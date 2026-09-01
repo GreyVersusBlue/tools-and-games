@@ -41,12 +41,16 @@ import { floorLabel } from './grid.js';
 import { shapesOf } from './shapes.js';
 import { stairsOf, stairWidth, isRun, isElevator, elevatorDoorWidth } from './stairs.js';
 import {
-  buildNav, egressField, pointField, clearWidth, MIN_CLEAR_W, MIN_ACCESSIBLE_W,
-  dischargeField, dischargePath,
+  buildNav, egressField, pointField, dischargeField, dischargePath,
 } from './navgraph.js';
+import {
+  clearWidth, MIN_CLEAR_W, doorRolls, rampRolls, turningAnalysis, reachAnalysis,
+} from './clearance.js';
+import { rampSlope } from './stairs.js';
 import { ACCESSIBLE_GRADE, MAX_RAMP_GRADE, pathGrade } from './sitemesh.js';
 import { terrainField } from './terrain.js';
 import { buildingOccupancy } from './occupancy.js';
+import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 
 // ---------- the code, as numbers ----------
 
@@ -483,10 +487,19 @@ export function egressAnalysis(state, opts = {}) {
 // The same building, walked by somebody who can't use a stair. What comes
 // back is the two lists that matter: what is on an accessible route, and what
 // is only reachable by climbing something.
+//
+// Phase 40 sits in the chair once it has arrived: `clearance.js` tests the
+// turning circle both sides of every doorway the route keeps, at every bend,
+// and somewhere in every room it reaches; and reads every counter, control
+// and work surface off the catalog against the reach ranges. Both land here
+// as findings beside the route's own, because to the reader they are one
+// question — can this person use this building — and the section is named
+// for it.
 export function accessibleAnalysis(state, opts = {}) {
   const nav = opts.nav || buildNav(state);
   const accessNav = opts.accessNav || buildNav(state, { accessible: true });
   const occupancy = opts.occupancy || buildingOccupancy(state, { nav });
+  const catalogGet = opts.catalogGet || defaultCatalogEntry;
   const loads = new Map(occupancy.rooms.map((r) => [r.id, r]));
   const walking = opts.field || egressField(nav, { metric: true });
   // Reachability *inward* from the accessible entrances: `egressField` is a
@@ -515,15 +528,30 @@ export function accessibleAnalysis(state, opts = {}) {
   const entrances = accessNav.exits.map((p) => ({
     id: p.id, x: p.x, z: p.z, w: p.w, clear: clearWidth(p.w),
   }));
-  const narrowDoors = nav.portals.filter((p) => p.w < MIN_ACCESSIBLE_W);
+  const narrowDoors = nav.portals.filter((p) => !doorRolls(p.w, p.leaf));
   const lifts = (state.links || []).filter((l) => l.type === 'elevator').length;
-  const ramps = (state.links || []).filter((l) => l.type === 'ramp').length;
+  // A ramp a chair cannot climb is not a ramp for this purpose — it is
+  // listed apart, and only the ones that roll count toward "there is a way up".
+  const steepRamps = (state.links || []).filter((l) => l.type === 'ramp' && !rampRolls(l));
+  const ramps = (state.links || []).filter((l) => l.type === 'ramp').length - steepRamps.length;
   const stairsOnly = rooms.filter((r) => r.stairsOnly);
+
+  // Phase 40: the chair, once it has arrived. Only the rooms the route reaches
+  // are asked — a wing that only stairs reach already has its finding.
+  const reachable = (id) => rolling.dist.has(id);
+  const circulation = (id) => { const l = loads.get(id); return !!(l && l.circulation); };
+  const turning = opts.turning === false
+    ? { spots: [], fails: [], tested: 0, findings: [] }
+    : turningAnalysis(state, { nav: accessNav, reachable, circulation, catalogGet });
+  const reach = opts.reach === false
+    ? { items: [], rooms: [], fails: [], tested: 0, lockers: 0, lockersLow: 0, findings: [] }
+    : reachAnalysis(state, { nav, catalogGet });
 
   const summary = {
     entrances: entrances.length,
     lifts,
     ramps,
+    steepRamps: steepRamps.length,
     narrowDoors: narrowDoors.length,
     reachable: rooms.filter((r) => r.rollable).length,
     unreachable: stairsOnly.length,
@@ -531,6 +559,13 @@ export function accessibleAnalysis(state, opts = {}) {
     // accessible route at all, and it is worth saying which are not.
     storeys: (state.floors || []).length,
     storeysReached: new Set(rooms.filter((r) => r.rollable).map((r) => r.floor)).size,
+    // The chair's own two numbers: how many places a turning circle was tried
+    // and how many it failed at; how many heights were read and how many were
+    // out of reach.
+    turningTested: turning.tested,
+    turningFails: turning.fails.length,
+    reachTested: reach.tested,
+    reachFails: reach.fails.length,
   };
 
   return {
@@ -538,9 +573,16 @@ export function accessibleAnalysis(state, opts = {}) {
     rooms,
     entrances,
     stairsOnly,
-    narrowDoors: narrowDoors.map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w })),
+    narrowDoors: narrowDoors.map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w, leaf: p.leaf })),
+    steepRamps: steepRamps.map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, slope: rampSlope(l) })),
+    turning,
+    reach,
     summary,
-    findings: accessibleFindings({ rooms: stairsOnly, entrances, summary, narrowDoors }),
+    findings: [
+      ...accessibleFindings({ rooms: stairsOnly, entrances, summary, narrowDoors, steepRamps }),
+      ...turning.findings,
+      ...reach.findings,
+    ],
   };
 }
 
@@ -664,7 +706,7 @@ function egressFindings({ rooms, exits, stairs, summary }) {
   return out;
 }
 
-function accessibleFindings({ rooms, entrances, summary, narrowDoors }) {
+function accessibleFindings({ rooms, entrances, summary, narrowDoors, steepRamps = [] }) {
   const out = [];
   if (!entrances.length) {
     out.push(finding('fail', 'no-accessible-entrance', 'No accessible entrance',
@@ -689,10 +731,20 @@ function accessibleFindings({ rooms, entrances, summary, narrowDoors }) {
   }
   if (narrowDoors.length) {
     out.push(finding('note', 'narrow-doors',
-      `${narrowDoors.length} doorway${narrowDoors.length === 1 ? '' : 's'} under 3 ft`,
+      `${narrowDoors.length} doorway${narrowDoors.length === 1 ? '' : 's'} too narrow for a chair`,
       'A 3 ft leaf is the narrowest door that leaves 32 in clear with the ' +
-      'leaf open, which is what a wheelchair needs.',
+      'leaf open, which is what a wheelchair needs; a pair is measured at one ' +
+      'leaf, so a pair wants 6 ft, and a cased opening wants the 32 in itself.',
       { doors: narrowDoors.slice(0, 8).map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w })) }));
+  }
+  if (steepRamps.length) {
+    const s = steepRamps.map((l) => rampSlope(l)).sort((a, b) => a - b)[0];
+    out.push(finding('warn', 'steep-ramp',
+      `${steepRamps.length} ramp${steepRamps.length === 1 ? '' : 's'} steeper than 1:12`,
+      `The steepest is 1:${Math.round(s)}. A chair climbs 1:12 at most (ADA 405.2), so ` +
+      'these are off the accessible route and what they lead to counts as stairs-only. ' +
+      'A longer run at 1:12 — or a lift — is the answer.',
+      { doors: steepRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })) }));
   }
   return out;
 }

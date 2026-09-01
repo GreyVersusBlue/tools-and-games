@@ -27,7 +27,7 @@
 // own. agents.js spends the credit; nothing else needs to know it exists.
 // Exercised by test/threshold.test.mjs.
 
-import { clearWidth } from './navgraph.js';
+import { clearWidth } from './clearance.js';
 
 // About one person a second through a 3ft leaf — the low end of the measured
 // door-flow range (roughly 1 to 1.3 persons per metre per second), because a

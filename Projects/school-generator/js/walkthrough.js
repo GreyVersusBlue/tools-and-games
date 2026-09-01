@@ -56,6 +56,7 @@ import {
   buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoorsFor,
   refreshProps,
 } from './collide.js';
+import { seatedStep, SEATED_EYE_H, THRESHOLD, refusalText } from './clearance.js';
 import { shoveProps } from './shove.js';
 import { lookEulerDelta } from './touch.js';
 import { stickVector, turnStep, XR_SPEED, XR_SPRINT, SNAP_ANGLE } from './xr.js';
@@ -97,6 +98,16 @@ const MAX_STEPS = Math.ceil(MAX_CATCHUP / FIXED_STEP);
 const EYE_FOLLOW = 5.4;  // ft
 const OTS_BACK = 8;      // ft
 const OTS_UP = 2.2;      // ft
+// Phase 40: the seated walker. One toggle, and the whole of what it changes
+// is here: the eye drops to a seated height, and the body hands `moveWalker`
+// the chair's rules instead of a pair of legs' — the same rules the report's
+// accessible-route section reads, from the same module, so what refuses you
+// in the walk is what the report already said. `SEATED_OPTS` is built once;
+// the per-step state is spread over it.
+const SEATED_OPTS = seatedStep();
+// How long a refusal stays on the HUD. Long enough to read, short enough that
+// walking away from the stair takes it with you.
+const REFUSAL_HOLD = 2.5;   // s
 
 export function initWalkthrough(camera, domElement, opts = {}) {
   const controls = new PointerLockControls(camera, domElement);
@@ -110,6 +121,12 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   // under you mid-walk.
   let site = emptyField();
   let ghost = false;  // no-clip flight — the pre-Phase-5 behaviour
+  // Phase 40: in the chair. Survives leaving and re-entering the walk on
+  // purpose — a reviewer who sat down wants to stay sat down.
+  let seated = false;
+  const eyeH = () => (seated ? SEATED_EYE_H : EYE_H);
+  let refusal = null;      // what the chair's rules last refused, in words
+  let refusalLeft = 0;     // s of HUD left to show it
   let vy = 0;         // vertical velocity, ft/s
   let grounded = false;
   let colliders = new Map();
@@ -240,7 +257,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
 
   function reportHud() {
     if (!opts.onHud) return;
-    const feet = body.y - EYE_H;
+    const feet = body.y - eyeH();
     const level = world
       ? storeyAt(world, feet, groundAt(site, body.x, body.z)) + 1 : 1;
     // Phase 19: the lift's call panel says its own key. E is listed nowhere a
@@ -253,8 +270,11 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       ? `Level ${level} · following ${follow.agent.name} (${follow.mode === 'fps' ? 'first person' : 'over the shoulder'})`
       : riding
         ? `Level ${level} · ${riding}`
-        : `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}` +
-          (atLift ? ' · at the lift — E calls it' : '');
+        : `Level ${level} · ${ghost ? 'ghost (no-clip)' : seated ? 'seated' : 'walking'}` +
+          (atLift ? ' · at the lift — E calls it' : '') +
+          // The refusal, said rather than felt: a stair that will not take
+          // you is a wall unless somebody explains it.
+          (seated && !ghost && refusal && refusalLeft > 0 ? ` · ${refusal}` : '');
     if (text === hudText) return;
     hudText = text;
     opts.onHud(text);
@@ -278,7 +298,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   // Which storey the body is standing on, by the same rule everything else
   // in this file uses.
   const storeyHere = () => (world
-    ? storeyAt(world, body.y - EYE_H, groundAt(site, body.x, body.z)) : 0);
+    ? storeyAt(world, body.y - eyeH(), groundAt(site, body.x, body.z)) : 0);
 
   // Press the lift button. Works from inside the car *and* from the landing
   // outside it, which is the difference between a lift and a teleport you
@@ -303,7 +323,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     // rather than a dead key. Every path that has a car takes the car.
     const shaft = elevatorAt(world, body.x, body.z, floorIndex);
     if (!shaft) return false;
-    body.y = shaft.y + EYE_H;
+    body.y = shaft.y + eyeH();
     vy = 0;
     grounded = true;
     hudText = '';
@@ -338,7 +358,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     riding = out.state === 'away' ? '' : liftText(car);
     if (out.state !== 'riding') {
       if (out.arrived) {
-        body.y = (out.y ?? body.y - EYE_H) + EYE_H;
+        body.y = (out.y ?? body.y - eyeH()) + eyeH();
         vy = 0;
         grounded = true;
       }
@@ -347,7 +367,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     // Being carried. The doors are shut around you and the walls of the shaft
     // are the collider's, so there is nothing to resolve against — the one
     // thing that moves is the floor.
-    body.y = out.y + EYE_H;
+    body.y = out.y + eyeH();
     vy = 0;
     grounded = true;
     return true;
@@ -422,7 +442,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const state = world;
     if (!state) return;
     const p = spawnPoint(activeFloor(state));
-    const eye = floorBaseY(state, state.currentFloor) + EYE_H;
+    const eye = floorBaseY(state, state.currentFloor) + eyeH();
     ceiling = topOfBuilding(state) + 40;
     camera.position.set(p.x, eye, p.z);
     camera.lookAt(p.x + p.lookX * 20, eye, p.z + p.lookZ * 20);
@@ -444,9 +464,9 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       return;
     }
     if (!world || !(fwd || right)) return;
-    const ride = stairUnder(world, body.x, body.z, body.y - EYE_H);
+    const ride = stairUnder(world, body.x, body.z, body.y - eyeH());
     if (!ride) return;
-    const target = ride.y + EYE_H;
+    const target = ride.y + eyeH();
     if (Math.abs(body.y - target) > RIDE_BAND) return;
     body.y = target;
   }
@@ -454,7 +474,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   // Walking: a circle on a surface. Horizontal movement is resolved against
   // the storey under your feet, then the surface it found decides your height.
   function updateWalk(dt, fwd, right, speed) {
-    const feet = body.y - EYE_H;
+    const feet = body.y - eyeH();
 
     // Heading, flattened: looking at the ceiling shouldn't slow you down or
     // walk you into the floor.
@@ -477,8 +497,17 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const collider = colliderFor(floorIndex);
     // You walk around the crowd, and it walks around you: the same body list,
     // resolved by the same `moveWalker`, from both sides.
+    // Seated, the step is the chair's: its radius, its half-inch threshold,
+    // its 1:12, its door rule — see clearance.js. Standing, exactly the step
+    // it always was.
     const moved = moveWalker(world, collider, { x: body.x, y: feet, z: body.z },
-      dx, dz, { grounded, bodies: bodiesOn(floorIndex) });
+      dx, dz, seated
+        ? { ...SEATED_OPTS, grounded, bodies: bodiesOn(floorIndex) }
+        : { grounded, bodies: bodiesOn(floorIndex) });
+    if (moved.refusal) {
+      refusal = refusalText(moved.refusal);
+      refusalLeft = REFUSAL_HOLD;
+    }
     const walked = Math.hypot(moved.x - body.x, moved.z - body.z);
     // Phase 11: what stopped you is what you push. The step this frame took
     // away from you — asked for minus got — is the whole input to the shove,
@@ -502,7 +531,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     const surface = support ? support.y : 0;
     let y = feet;
     if (grounded) {
-      if (surface <= feet + STEP_UP) y = surface;
+      if (surface <= feet + (seated ? THRESHOLD : STEP_UP)) y = surface;
       // Only a grounded walker takes steps. Airborne is silent, which is
       // what being airborne sounds like.
       if (walked > 0) {
@@ -523,7 +552,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
         y = surface; vy = 0; grounded = true;
       } else y = next;
     }
-    body.y = y + EYE_H;
+    body.y = y + eyeH();
   }
 
   // Doors answer to where you *ended up*, and they answer on every storey you
@@ -533,7 +562,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
   // same doors.
   function updateDoors(dt) {
     if (!world) return;
-    const floorIndex = storeyAt(world, body.y - EYE_H);
+    const floorIndex = storeyAt(world, body.y - eyeH());
     const collider = colliderFor(floorIndex);
     // The camera is one body among however many; a leaf answers to whoever is
     // nearest it, which in a busy corridor is rarely you.
@@ -575,7 +604,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
     // button calls, and this only has to let the car carry the rig.
     if (!updateLift(dt) && world) updateWalk(dt, -stick.y, stick.x, speed);
     updateDoors(dt);
-    if (xr.onPose) xr.onPose({ x: body.x, y: body.y - EYE_H, z: body.z, yaw: xr.yaw });
+    if (xr.onPose) xr.onPose({ x: body.x, y: body.y - eyeH(), z: body.z, yaw: xr.yaw });
     reportHud();
   }
 
@@ -609,12 +638,31 @@ export function initWalkthrough(camera, domElement, opts = {}) {
       reportHud();
     },
     get touchActive() { return touchActive; },
+    // Phase 40: the chair. Toggling keeps the feet where they are and moves
+    // the eye, so sitting down mid-corridor is sitting down rather than
+    // being teleported. What it changes about *walking* is in `updateWalk`.
+    get seated() { return seated; },
+    setSeated(on) {
+      if (seated === !!on) return;
+      const feet = body.y - eyeH();
+      seated = !!on;
+      body.y = feet + eyeH();
+      if (body !== camera.position) camera.position.y = body.y;
+      refusal = null;
+      refusalLeft = 0;
+      hudText = '';
+      reportHud();
+    },
+    // How high the eye is over the feet right now — everything outside this
+    // file that reads a storey off the camera has to ask, since Phase 40
+    // made it two numbers.
+    get eyeH() { return eyeH(); },
     // Where the walker is standing, storey included — the one question a
     // caller cannot answer off `camera.position` alone, since which storey a
     // height belongs to is `storeyAt`'s and the graded ground's business.
     // Phase 11's hunt asks it once a frame.
     get at() {
-      const feet = body.y - EYE_H;
+      const feet = body.y - eyeH();
       return {
         x: body.x, y: body.y, z: body.z,
         floor: world ? storeyAt(world, feet, groundAt(site, body.x, body.z)) : 0,
@@ -792,7 +840,7 @@ export function initWalkthrough(camera, domElement, opts = {}) {
         yaw: 0,
         latched: false,
       };
-      if (xr.onPose) xr.onPose({ x: body.x, y: body.y - EYE_H, z: body.z, yaw: 0 });
+      if (xr.onPose) xr.onPose({ x: body.x, y: body.y - eyeH(), z: body.z, yaw: 0 });
       reportHud();
     },
     disableXR() {
@@ -851,6 +899,10 @@ export function initWalkthrough(camera, domElement, opts = {}) {
         stepAcc = 0;
         if (ghost || !world) updateGhost(rest, fwd, right, speed);
         else updateWalk(rest, fwd, right, speed);
+      }
+      if (refusalLeft > 0) {
+        refusalLeft -= dt;
+        if (refusalLeft <= 0) { refusal = null; hudText = ''; }
       }
       updateDoors(dt);
       reportHud();

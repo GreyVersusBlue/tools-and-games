@@ -921,6 +921,54 @@ const CHECKS = [
     },
   },
   {
+    // Phase 40: the chair. The toggle is a walkthrough-only key with a button
+    // behind it, and the promise is three-fold — the eye drops, the feet stay
+    // where they were, and the HUD says so — none of which a pure suite can
+    // see, because the eye is the camera and the HUD is the page.
+    name: 'walk-seated',
+    what: 'Z sits the walker in the chair, keeps the feet put, and the HUD says so',
+    async run(d) {
+      await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
+      await d.page.waitForTimeout(600);
+      await d.page.evaluate(`document.getElementById('walk-start').click(); 1`);
+      await d.page.waitForTimeout(1200);
+      const read = `(() => ({
+        on: window.app.walk.seated,
+        eye: window.app.walk.eyeH,
+        y: window.app.renderApi.walkCamera.position.y,
+        hud: document.getElementById('walk-hud').textContent,
+        btn: document.getElementById('walk-seated').getAttribute('aria-pressed'),
+      }))()`;
+      const before = await d.page.evaluate(read);
+      await d.page.keyboard.press('KeyZ');
+      await d.page.waitForTimeout(500);
+      const seated = await d.page.evaluate(read);
+      await d.page.keyboard.press('KeyZ');
+      await d.page.waitForTimeout(500);
+      const up = await d.page.evaluate(read);
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(600);
+      return { before, seated, up };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.before.on) throw new Error('the walk started seated');
+      if (!ctx.seated.on) throw new Error('Z did not sit the walker down');
+      if (!(ctx.seated.eye < ctx.before.eye)) {
+        throw new Error(`the seated eye is ${ctx.seated.eye}ft; standing was ${ctx.before.eye}ft`);
+      }
+      const feetBefore = ctx.before.y - ctx.before.eye;
+      const feetAfter = ctx.seated.y - ctx.seated.eye;
+      if (Math.abs(feetBefore - feetAfter) > 0.05) {
+        throw new Error(`sitting down moved the feet from ${feetBefore.toFixed(2)} to ${feetAfter.toFixed(2)}`);
+      }
+      if (!/seated/.test(ctx.seated.hud)) throw new Error(`the HUD says "${ctx.seated.hud}"`);
+      if (ctx.seated.btn !== 'true') throw new Error('the overlay button did not follow the key');
+      if (ctx.up.on || ctx.up.eye !== ctx.before.eye || ctx.up.btn !== 'false') {
+        throw new Error('Z again did not stand the walker back up');
+      }
+    },
+  },
+  {
     name: 'walk-start-point',
     what: 'a chosen start point is where the next walk begins',
     async run(d) {

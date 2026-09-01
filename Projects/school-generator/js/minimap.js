@@ -249,7 +249,13 @@ export function findingMarks(report) {
     const doors = [...(f.doors || []), ...(f.exits || [])]
       .filter((d) => d && Number.isFinite(d.x) && Number.isFinite(d.z))
       .map((d) => ({ id: d.id, floor: d.floor ?? 0, x: d.x, z: d.z, w: d.w }));
-    if (!rooms.length && !doors.length) continue;
+    // Phase 40: a clearance finding carries the circle that *does* fit where
+    // one was wanted — drawn at its true size in feet, because the point of
+    // it is how much smaller than 60in it came out.
+    const circles = (f.circles || [])
+      .filter((c) => c && Number.isFinite(c.x) && Number.isFinite(c.z) && Number.isFinite(c.r))
+      .map((c) => ({ id: c.id, floor: c.floor ?? 0, x: c.x, z: c.z, r: c.r, need: c.need ?? c.r }));
+    if (!rooms.length && !doors.length && !circles.length) continue;
     out.push({
       code: f.code,
       section: f.section || null,
@@ -258,7 +264,8 @@ export function findingMarks(report) {
       detail: f.detail,
       rooms,
       doors,
-      floors: [...new Set([...rooms, ...doors].map((t) => t.floor))].sort((a, b) => a - b),
+      circles,
+      floors: [...new Set([...rooms, ...doors, ...circles].map((t) => t.floor))].sort((a, b) => a - b),
     });
   }
   return out;
@@ -274,10 +281,11 @@ export function markAt(marks, i) {
 
 // What of a mark is on the storey being drawn.
 export function markOnFloor(mark, floorIndex) {
-  if (!mark) return { rooms: [], doors: [] };
+  if (!mark) return { rooms: [], doors: [], circles: [] };
   return {
     rooms: mark.rooms.filter((r) => r.floor === floorIndex),
     doors: mark.doors.filter((d) => d.floor === floorIndex),
+    circles: (mark.circles || []).filter((c) => c.floor === floorIndex),
   };
 }
 
@@ -288,7 +296,7 @@ export function describeMark(marks, index, floorIndex) {
   if (!mark) return '';
   const n = marks.length;
   const here = markOnFloor(mark, floorIndex);
-  const at = here.rooms.length + here.doors.length;
+  const at = here.rooms.length + here.doors.length + here.circles.length;
   const where = at
     ? `${at} here`
     : (mark.floors.length

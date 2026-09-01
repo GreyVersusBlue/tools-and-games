@@ -12,7 +12,8 @@ import { sheet } from './build.mjs';
 import { addShape, addOpening, LEAF_SINGLE } from '../js/shapes.js';
 import { addStair } from '../js/stairs.js';
 import { buildSampleSchool } from '../js/sample.js';
-import { buildNav, egressField, MIN_ACCESSIBLE_W, clearWidth } from '../js/navgraph.js';
+import { buildNav, egressField } from '../js/navgraph.js';
+import { MIN_ACCESSIBLE_W, clearWidth } from '../js/clearance.js';
 import { buildingOccupancy } from '../js/occupancy.js';
 import {
   egressAnalysis, accessibleAnalysis, dischargeAnalysis, requiredExits, requiredWidth,

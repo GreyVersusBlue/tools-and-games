@@ -249,8 +249,26 @@ test('every level has a wash and a line, and an unknown one falls back', () => {
 test('the sample school produces marks a map could draw', () => {
   const marks = findingMarks(buildReport(buildSampleSchool(), { takeoff: false, acoustics: false }));
   for (const m of marks) {
-    assert.ok(m.rooms.length || m.doors.length);
+    assert.ok(m.rooms.length || m.doors.length || m.circles.length);
     assert.ok(m.floors.length);
     assert.ok(m.title);
   }
+});
+
+
+test('a clearance finding is a mark by its circles alone, and the circles keep their size', () => {
+  const marks = findingMarks(report([
+    {
+      level: 'warn', code: 'door-approach', section: 'accessible', title: 'No room to turn', detail: '',
+      circles: [{ id: 'p1', floor: 1, x: 10, z: 12, r: 1.25, need: 2.5 }, { x: 3, z: 3 }],
+    },
+  ]));
+  assert.equal(marks.length, 1);
+  assert.deepEqual(marks[0].circles, [{ id: 'p1', floor: 1, x: 10, z: 12, r: 1.25, need: 2.5 }]);
+  assert.deepEqual(marks[0].floors, [1]);
+  assert.equal(markOnFloor(marks[0], 1).circles.length, 1);
+  assert.equal(markOnFloor(marks[0], 0).circles.length, 0);
+  assert.match(describeMark(marks, 0, 1), /1 here/);
+  assert.match(describeMark(marks, 0, 0), /try Level 2/);
+  assert.deepEqual(markOnFloor(null, 0), { rooms: [], doors: [], circles: [] });
 });

@@ -122,16 +122,22 @@ export const ROOM_TEMPLATES = [
     ],
   },
   {
+    // Phase 40 moved the banks to the walls and took the bench out of the
+    // fairway. Until then the banks stood 1.4ft off each wall of a 12ft
+    // corridor with a bench down the middle, which left 33in between them —
+    // the first thing the chair found on every generated school, and a
+    // corridor no wheelchair (and, at 36in, no code) gets down. A bank's back
+    // is on the wall's face: half the corridor, less the interior wall's
+    // half-thickness, less half the bank's depth.
     key: 'locker-hallway',
     name: 'Locker Hallway',
     icon: '🔒',
-    footprint: { w: 16, d: 10 },
+    footprint: { w: 16, d: 12 },
     stamps: [
-      { type: 'locker-bank', dx: -4, dz: -4, rotationY: 0 },
-      { type: 'locker-bank', dx: 4, dz: -4, rotationY: 0 },
-      { type: 'locker-bank-half', dx: -4, dz: 4, rotationY: Math.PI },
-      { type: 'locker-bank-half', dx: 4, dz: 4, rotationY: Math.PI },
-      { type: 'bench-hall', dx: 0, dz: 0, rotationY: 0 },
+      { type: 'locker-bank', dx: -4, dz: -5.175, rotationY: 0 },
+      { type: 'locker-bank', dx: 4, dz: -5.175, rotationY: 0 },
+      { type: 'locker-bank-half', dx: -4, dz: 5.175, rotationY: Math.PI },
+      { type: 'locker-bank-half', dx: 4, dz: 5.175, rotationY: Math.PI },
     ],
   },
   {

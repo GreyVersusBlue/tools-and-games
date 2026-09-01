@@ -221,6 +221,7 @@
         <button id="walk-start" class="primary">Click to Walk</button>
         <button id="walk-life">👥 People</button>
         <button id="walk-hunt" class="hidden">⭐ Star hunt — find the hidden stars</button>
+        <button id="walk-seated" aria-pressed="false" title="Walk it seated: eye at 48 in, a half-inch threshold, 1:12 at most, and only the doors a chair rolls through">♿ Sit in the chair</button>
         <button id="walk-late" class="hidden">🏃 Late for class</button>
       </div>
       <p style="font-size:11px">
@@ -60438,10 +60439,10 @@ return { SWING_MAX, LEAF_T, LEAF_GAP, OPEN_NEAR, OPEN_FAR, OPEN_RATE, OPEN_BAND,
 // ---- js/collide.js ----
 const __m_js_collide_js = (() => {
 const { WALL_T, FLOOR_H, WALL_H } = __m_js_grid_js;
-const { shapesOf, segEnds, isBuilt, isDoorOpening } = __m_js_shapes_js;
+const { shapesOf, segEnds, isBuilt, isDoorOpening, openingSpec } = __m_js_shapes_js;
 const { propsOnFloor } = __m_js_props_js;
 const { footprintOf } = __m_js_propplace_js;
-const { stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt, openingRails, elevatorsOn, elevatorWalls } = __m_js_stairs_js;
+const { stairsOf, stairMetrics, stairSurfaceAt, floorCuts, inFloorCut, floorSolidAt, openingRails, elevatorsOn, elevatorWalls, rampSlope } = __m_js_stairs_js;
 const { wallProbe } = __m_js_walls_js;
 const { wallLinesOf, lineOpenings } = __m_js_wallrun_js;
 const { terrainField, emptyField, groundAt } = __m_js_terrain_js;
@@ -60665,6 +60666,46 @@ function wallSegments(floor, probe = null) {
   return out;
 }
 
+// The doorways themselves — the span of each opening, jamb to jamb, with its
+// width and how it is hung. Phase 40: a seated walker is refused at a doorway
+// the accessible graph would not keep, and the rule that decides which is
+// `clearance.js`'s `doorRolls`; this only says where the doorways are so that
+// `tryStep` can tell when a step crossed one and hand it to whatever rule the
+// walker was given. A standing walker never asks. Windows are not doorways
+// for the same reason they are not cuts above.
+function doorwaySegments(floor) {
+  const out = [];
+  if (!floor) return out;
+  const span = (ax, az, bx, bz, o) => {
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 0.01) return;
+    const ux = (bx - ax) / len, uz = (bz - az) / len;
+    const spec = openingSpec(o);
+    const c = spec.t * len;
+    out.push({
+      ax: ax + ux * (c - spec.w / 2), az: az + uz * (c - spec.w / 2),
+      bx: ax + ux * (c + spec.w / 2), bz: az + uz * (c + spec.w / 2),
+      w: spec.w, leaf: spec.leaf,
+    });
+  };
+  for (const shape of shapesOf(floor)) {
+    for (const ring of shape.rings) {
+      for (const o of ring.openings) {
+        if (!isDoorOpening(o) || !isBuilt(ring.walls[o.seg])) continue;
+        const [a, b] = segEnds(ring, o.seg);
+        span(a.x, a.z, b.x, b.z, o);
+      }
+    }
+  }
+  for (const line of wallLinesOf(floor)) {
+    for (const o of lineOpenings(line)) {
+      if (!isDoorOpening(o)) continue;
+      span(line.ax, line.az, line.bx, line.bz, o);
+    }
+  }
+  return out;
+}
+
 // ---------- props ----------
 
 // The props on a storey you can walk into, as rotated boxes. Only
@@ -60763,6 +60804,10 @@ function buildCollider(state, floorIndex, catalogGet, opts = {}) {
     segs,
     props,
     doors: closeAll(collectDoorLeaves(state, floorIndex)),
+    // Phase 40: where the doorways are, for a walker with a door rule. A
+    // handful per storey and asked about only by a seated body, so they are
+    // scanned rather than indexed.
+    doorways: doorwaySegments(floor),
     // Phase 6: one walker could afford a linear scan; a hundred cannot. The
     // index is built beside the arrays it indexes and never replaces them —
     // every function here still works against a collider that has none, which
@@ -60777,7 +60822,8 @@ function buildCollider(state, floorIndex, catalogGet, opts = {}) {
 }
 
 const emptyCollider = () => ({
-  floor: -1, segs: [], props: [], doors: [], bodies: [], index: null, site: emptyField(),
+  floor: -1, segs: [], props: [], doors: [], doorways: [], bodies: [], index: null,
+  site: emptyField(),
 });
 
 // Phase 22: the invalidation clause. "The collider is built once at
@@ -61144,6 +61190,16 @@ function crossesWall(collider, x0, z0, x1, z1) {
   return false;
 }
 
+// The doorway a step passed through, if it passed through one — the record
+// `doorwaySegments` made, so a caller with a rule about doors has the width
+// and the leaf to apply it to. Null for a step that crossed none.
+function crossesDoorway(collider, x0, z0, x1, z1) {
+  for (const d of (collider && collider.doorways) || []) {
+    if (segsCross(x0, z0, x1, z1, d.ax, d.az, d.bx, d.bz)) return d;
+  }
+  return null;
+}
+
 // ---------- what holds you up ----------
 
 // Which storey a pair of feet is on. Floors stack at fixed intervals, so this
@@ -61172,9 +61228,12 @@ function supportAt(state, x, z, feetY, opts = {}) {
   const ht = state.floorHt || FLOOR_H;
   const reach = feetY + (opts.stepUp ?? STEP_UP) + 1e-6;
   let best = null;
-  const consider = (y, kind, floor) => {
+  // `link` is Phase 40's one addition to the answer: which run a stair
+  // surface belongs to, so a walker with a rule about stairs can tell a
+  // stair from a ramp — both are 'stair' here, because both are a run.
+  const consider = (y, kind, floor, link = null) => {
     if (y > reach) return;
-    if (!best || y > best.y) best = { y, kind, floor };
+    if (!best || y > best.y) best = { y, kind, floor, link };
   };
 
   for (let i = 0; i < state.floors.length; i++) {
@@ -61189,7 +61248,7 @@ function supportAt(state, x, z, feetY, opts = {}) {
   for (const link of stairsOf(state)) {
     const h = stairSurfaceAt(link, metrics, x, z);
     if (h === null) continue;
-    consider(link.from * ht + h, 'stair', link.from);
+    consider(link.from * ht + h, 'stair', link.from, link);
   }
 
   // The site itself, considered last so that a slab laid on it wins the tie —
@@ -61273,21 +61332,105 @@ function headroomAt(state, x, z, feetY, opts = {}) {
 
 // ---------- moving ----------
 
+// Phase 40: how far ahead a walker with a grade rule looks. See clearance.js's
+// `GRADE_PROBE`, which is what a seated walker passes; this is only the
+// fallback for a caller that set `maxGrade` and nothing else.
+const GRADE_PROBE = 1;     // ft
+// ...and how far past its own front edge a walker with a door rule looks for
+// the doorway it is heading into. A pair of open leaves stands proud of the
+// wall by half the opening and stops a body short of the plane itself, so a
+// rule that waited for the plane would never be asked; a foot and a half
+// past the front edge sees the doorway from where the leaves stop you.
+const DOOR_LOOK = 1.5;     // ft
+
 // One horizontal step, fully resolved: null if it can't be taken at all.
 // `pos.y` is the *feet*, not the eye — every height in this module is.
+//
+// Phase 40's options are the seated walker's, and every one of them is a
+// rule rather than a shape, because a chair is stopped by things a body
+// merely steps over. None is set by default, and a walker that sets none
+// takes exactly the step it always took:
+//
+//   noStairs    a stair run (not a ramp) is refused — reason 'stair'
+//   maxGrade    a rise or a drop steeper than this, measured over
+//               `gradeProbe` feet ahead rather than over the step itself so
+//               that creeping up a bank in tiny steps is still climbing a
+//               bank — reason 'grade'
+//   doorRule    a function of a doorway record; a step through a doorway it
+//               answers false for is refused — reason 'door'
+//   refusal     an object the reason is written onto, so the caller can say
+//               *why* in words rather than stopping silently
 function tryStep(state, collider, pos, dx, dz, opts = {}) {
   const r = opts.radius ?? WALKER_R;
   // The collider already carries the site it was built against, so a caller
   // never has to remember to hand the ground to a function about walking.
   const o = opts.site || !collider || !collider.site ? opts : { ...opts, site: collider.site };
+  const refuse = (reason, extra) => {
+    if (opts.refusal) Object.assign(opts.refusal, { reason }, extra || null);
+    return null;
+  };
+  // The door rule is asked of the step *as wanted*, front edge included,
+  // before the walls have had their say: a body too wide for a doorway is
+  // stopped by the jambs like anybody, and would be stopped silently — the
+  // rule exists so that it is told why.
+  if (opts.doorRule) {
+    const len = Math.hypot(dx, dz);
+    const look = r + DOOR_LOOK;
+    const ex = pos.x + dx + (len > 1e-9 ? (dx / len) * look : 0);
+    const ez = pos.z + dz + (len > 1e-9 ? (dz / len) * look : 0);
+    const d = crossesDoorway(collider, pos.x, pos.z, ex, ez);
+    if (d && !opts.doorRule(d)) return refuse('door', { doorway: d });
+  }
   const p = resolvePoint(collider, pos.x + dx, pos.z + dz, r, opts.passes ?? 3,
     { bodies: opts.bodies, skip: opts.skip });
   if (crossesWall(collider, pos.x, pos.z, p.x, p.z)) return null;
-  const support = supportAt(state, p.x, p.z, pos.y, o);
+  let support = supportAt(state, p.x, p.z, pos.y, o);
   if (!support) return null;
+  const isStair = (s) => s && s.kind === 'stair' && s.link && s.link.type === 'stair';
+  const graded = Number.isFinite(opts.maxGrade);
+  // What a standing walker would be handed here — the surface a chair's own
+  // half-inch reach may have looked straight past. A run's treads are drawn
+  // on air over real floor, so a body with a small reach would otherwise
+  // roll *under* the stair at floor level, which is not a refusal so much as
+  // a hole in the building.
+  let ahead = support;
+  if (opts.noStairs || graded) {
+    const tall = supportAt(state, p.x, p.z, pos.y, { ...o, stepUp: STEP_UP });
+    if (tall && tall.y > support.y + 1e-9) ahead = tall;
+  }
+  if (opts.noStairs && isStair(ahead)) return refuse('stair', { link: ahead.link });
+  const rise = ahead.y - pos.y;
+  const stepDown = opts.stepDown ?? STEP_DOWN;
   // Grounded, a drop is an edge you stop at rather than fall off. Airborne
   // (a jump, or dropping out of ghost mode), there is nothing to stop at.
-  if (opts.grounded !== false && support.y < pos.y - (opts.stepDown ?? STEP_DOWN)) return null;
+  // Under a grade rule a drop is judged as a slope below, like a rise.
+  if (opts.grounded !== false && support.y < pos.y - stepDown && !graded) return null;
+  // The grade rule, asked a foot ahead rather than of this step: the step
+  // itself may be an inch long, and a bank crept up an inch at a time is
+  // still a bank.
+  if (graded) {
+    const len = Math.hypot(dx, dz);
+    if (len > 1e-9) {
+      const probe = opts.gradeProbe ?? GRADE_PROBE;
+      const far = supportAt(state, pos.x + (dx / len) * probe, pos.z + (dz / len) * probe,
+        pos.y, { ...o, stepUp: STEP_UP });
+      if (far) {
+        if (opts.noStairs && isStair(far)) return refuse('stair', { link: far.link });
+        // A ramp knows its own pitch, and is judged by it — measured from
+        // the flat floor at its foot, a 1:8 run reads as 1:10 for the first
+        // step, which is neither the rule nor the truth. Ground is measured.
+        const ramp = far.kind === 'stair' && far.link && far.link.type === 'ramp' ? far.link : null;
+        const grade = ramp ? 1 / rampSlope(ramp) : Math.abs(far.y - pos.y) / probe;
+        if (grade > opts.maxGrade + 1e-6) return refuse('grade', { grade, rise });
+      } else if (opts.grounded !== false && support.y < pos.y - stepDown) {
+        return refuse('grade', { rise });
+      }
+    }
+    // The slope passed, so the higher surface is the one to stand on — a
+    // 1:12 ramp rises more in a long step than a threshold allows, and it is
+    // the slope that was the rule, not the step.
+    if (ahead !== support) support = ahead;
+  }
   // ...and a step that puts your head inside a stair run is a step you don't
   // take. Measured from where your feet would *land*, not from where they are:
   // walking up a ramp toward a soffit, the question is how much air is left at
@@ -61302,30 +61445,43 @@ function tryStep(state, collider, pos, dx, dz, opts = {}) {
 // A step, and if it can't be taken whole, the same step along one axis — which
 // is what makes walking into a wall at an angle slide along it rather than
 // stop dead. Returns where you ended up and what is under you there.
+//
+// `refusal` on the answer is Phase 40's: null for a step a wall stopped or a
+// step that was taken, and `{ reason, ... }` when one of `tryStep`'s rules
+// refused it — so the walker can put the refusal in a sentence. Only a walker
+// that set a rule pays for the object; the crowd sets none.
 function moveWalker(state, collider, pos, dx, dz, opts = {}) {
   const site = opts.site || (collider && collider.site) || null;
+  const ruled = !!(opts.doorRule || opts.noStairs || Number.isFinite(opts.maxGrade));
+  const refusal = ruled ? {} : null;
+  const o = ruled ? { ...opts, refusal } : opts;
   const stay = (blocked) => ({
     x: pos.x, z: pos.z, blocked,
     support: supportAt(state, pos.x, pos.z, pos.y, site ? { ...opts, site } : opts),
     slid: false,
+    refusal: refusal && refusal.reason ? refusal : null,
   });
   if (!dx && !dz) return stay(false);
 
-  const whole = tryStep(state, collider, pos, dx, dz, opts);
-  if (whole) return { ...whole, blocked: false, slid: false };
+  const whole = tryStep(state, collider, pos, dx, dz, o);
+  if (whole) return { ...whole, blocked: false, slid: false, refusal: null };
 
+  // A slide that succeeds keeps the reason the whole step was refused for:
+  // sliding along the foot of a stair you were trying to climb is still
+  // being refused the stair, and the sentence is still owed.
+  const why = () => (refusal && refusal.reason ? refusal : null);
   if (dx) {
-    const alongX = tryStep(state, collider, pos, dx, 0, opts);
-    if (alongX) return { ...alongX, blocked: false, slid: true };
+    const alongX = tryStep(state, collider, pos, dx, 0, o);
+    if (alongX) return { ...alongX, blocked: false, slid: true, refusal: why() };
   }
   if (dz) {
-    const alongZ = tryStep(state, collider, pos, 0, dz, opts);
-    if (alongZ) return { ...alongZ, blocked: false, slid: true };
+    const alongZ = tryStep(state, collider, pos, 0, dz, o);
+    if (alongZ) return { ...alongZ, blocked: false, slid: true, refusal: why() };
   }
   return stay(true);
 }
 
-return { WALKER_R, WALL_PAD, LEAF_PAD, STEP_UP, STEP_DOWN, GRAVITY, TERMINAL_V, JUMP_V, MIN_OBSTACLE_H, GROUND_Y, HEAD_H, SOFFIT_T, segsCross, solidSpans, wallSegments, propObstacles, openingRailSegments, elevatorSegments, buildCollider, emptyCollider, refreshProps, INDEX_CELL, buildIndex, candidates, updateDoors, updateDoorsFor, pushOutOfBox, doorSegments, pushOutOfSeg, boxOverlapsSeg, boxesOverlap, pushOutOfCircle, resolvePoint, crossesWall, storeyAt, supportAt, overheadAt, headroomAt, tryStep, moveWalker };
+return { WALKER_R, WALL_PAD, LEAF_PAD, STEP_UP, STEP_DOWN, GRAVITY, TERMINAL_V, JUMP_V, MIN_OBSTACLE_H, GROUND_Y, HEAD_H, SOFFIT_T, segsCross, solidSpans, wallSegments, doorwaySegments, propObstacles, openingRailSegments, elevatorSegments, buildCollider, emptyCollider, refreshProps, INDEX_CELL, buildIndex, candidates, updateDoors, updateDoorsFor, pushOutOfBox, doorSegments, pushOutOfSeg, boxOverlapsSeg, boxesOverlap, pushOutOfCircle, resolvePoint, crossesWall, crossesDoorway, storeyAt, supportAt, overheadAt, headroomAt, GRADE_PROBE, DOOR_LOOK, tryStep, moveWalker };
 })();
 // ---- js/sound.js ----
 const __m_js_sound_js = (() => {
@@ -67008,6 +67164,769 @@ function yardSummary(mesh) {
 
 return { YARD_STEP, YARD_MARGIN, FACE_CLEAR, WALK_GRADE, ACCESSIBLE_GRADE, MAX_RAMP_GRADE, MIN_YARD_TILE, WAY_SPACING, MAX_WAYS, MAX_YARD_CELLS, siteExtent, buildingBounds, meshSite, publicWay, yardTileFor, pathGrade, yardArea, yardSummary };
 })();
+// ---- js/clearance.js ----
+const __m_js_clearance_js = (() => {
+const { floorLabel } = __m_js_grid_js;
+const { LEAF_NONE, floorSolidAt, shapeAt } = __m_js_shapes_js;
+const { floorCuts, inFloorCut, stairsOf, stairMetrics, stairSurfaceAt, rampSlope } = __m_js_stairs_js;
+const { MAX_RAMP_GRADE } = __m_js_sitemesh_js;
+const { buildCollider, candidates } = __m_js_collide_js;
+const { emptyField } = __m_js_terrain_js;
+const { propsOnFloor } = __m_js_props_js;
+// clearance.js — the chair: what a seated body needs of a building, said once.
+//
+// Phase 40. "Accessibility stops at routes" was the backlog's own sentence:
+// the accessible graph knew which stairs to leave out and which doorways were
+// too narrow, and nothing else in the tool had ever sat in the chair — no
+// turning circles, no reach ranges, no counter heights, and a walkthrough with
+// exactly one body in it, a tall adult standing up.
+//
+// This module is the two gaps closed as one thing. Everything the analysis
+// needs to know about a seated person — how wide, how high the eye, what a
+// wheel rolls over, how steep a ramp may be, how big a circle it turns in, how
+// far an arm reaches — is a constant here, and everything the *walkthrough*
+// needs to know about the same person is the same constant read through
+// `seatedStep()`. The report and the first-person camera derive from one
+// contract, which is the only way they can never disagree about a doorway:
+//
+//   doorRolls(w, leaf)   the accessible graph keeps a doorway iff this says so,
+//                        and a seated walker is refused at a doorway iff this
+//                        says so — the same function, called from both sides.
+//   rampRolls(link)      the same for a ramp: 1:12 is the most a chair climbs.
+//   seatedStep()         the body, as the options collide.js's `moveWalker`
+//                        takes — radius, threshold, grade, headroom, the door
+//                        rule above.
+//
+// The numbers are the 2010 ADA Standards, cited beside each. They are not
+// stored anywhere: every finding below is derived from the design as drawn,
+// so nothing in the save format moved.
+//
+// Pure module: no three.js, no DOM. Exercised by test/clearance.test.mjs.
+
+
+
+
+
+
+
+
+
+// ---------- the doorway ----------
+//
+// The clear width a doorway offers is not the hole in the wall: a leaf parked
+// at 90° and its stop eat into the opening, which is why a 36in door is the
+// smallest one that gives the 32in clear ADA asks for. These four lived in
+// navgraph.js from Phase 7 to Phase 39; they moved here because the walker
+// now reads them too, and a contract two readers share belongs to neither.
+const CLEAR_LOSS = 0.33;          // ft — leaf and stop, off a doorway's width
+const MIN_CLEAR_W = 32 / 12;      // ft — ADA 404.2.3
+// ...so the narrowest *opening* that passes, which is exactly a 3ft door.
+const MIN_ACCESSIBLE_W = MIN_CLEAR_W + CLEAR_LOSS;
+
+// The clear width a doorway of this opening width actually offers. An opening
+// with no leaf in it (a cased opening, a corridor mouth) loses nothing.
+const clearWidth = (w, leafed = true) =>
+  Math.max(0, w - (leafed ? CLEAR_LOSS : 0));
+
+// The clear width of a doorway *as hung*. A cased opening is all clear; a
+// leaf loses its stop. A pair is measured with both leaves open — which is
+// what the walkthrough does with one, and is the one place this reads more
+// generously than a plan checker would: ADA 404.2.3 measures a pair at its
+// active leaf alone, because the other may be bolted, and by that reading the
+// lattice's 4ft pair (two 2ft leaves, and every generated school's front
+// door) is not an accessible door. It rolls here, with both leaves open, and
+// the backlog says so.
+function doorClear(w, leaf = 1) {
+  if (leaf === LEAF_NONE) return Math.max(0, w);
+  return clearWidth(w);
+}
+
+// **The contract.** Does a chair go through this doorway? The accessible graph
+// (navgraph.js) keeps a doorway iff this is true, and a seated walker
+// (collide.js, via `seatedStep`) is refused at a doorway iff it is false.
+const doorRolls = (w, leaf = 1) => doorClear(w, leaf) >= MIN_CLEAR_W - 1e-9;
+
+// ---------- the body ----------
+
+// Half the clear width: the chair is exactly as wide as the doorway it is
+// entitled to, and that is what makes a 3ft door the narrowest it rolls
+// through in the walk as well as on the graph.
+const SEATED_R = MIN_CLEAR_W / 2;            // ft — 16in
+// Eye height. ADA 308 puts a seated eye between 43 and 51in; four feet is the
+// middle of that, and the drop from 5.5ft is the whole of what the first
+// person view has to say about the chair.
+const SEATED_EYE_H = 4;                      // ft — 48in
+// The top of a seated head — what ducks under a stair soffit.
+const SEATED_HEAD_H = 4.4;                   // ft
+// ADA 303.2: a vertical change of half an inch is the most a wheel rolls over
+// without a bevel. This is the seated walker's step-up *and* step-down — a
+// curb is a curb from either side.
+const THRESHOLD = 0.5 / 12;                  // ft
+// ADA 405.2: 1:12 is the steepest running slope a ramp may have. The same
+// number sitemesh.js measures a discharge route against, imported rather than
+// restated so the site and the chair cannot drift apart.
+const MAX_SEATED_GRADE = MAX_RAMP_GRADE;
+// How far ahead a grade is measured. A walker takes steps a few inches long,
+// and a rule that tested each step on its own would let a chair creep up a
+// bank in tiny steps each of which rose less than a threshold. Measured over
+// a foot, a bank is a bank however slowly you approach it.
+const GRADE_PROBE = 1;                       // ft
+
+// Is this ramp one a chair can use? Its slope is stored as feet of run per
+// foot of rise (stairs.js), so 12 is the limit and anything under it is
+// steeper.
+const rampRolls = (link) =>
+  !!link && link.type === 'ramp' && 1 / rampSlope(link) <= MAX_SEATED_GRADE + 1e-9;
+
+// The seated walker, as `moveWalker` options. `extra` is the per-step state
+// the caller owns (`grounded`, `bodies`); everything about the body is here.
+function seatedStep(extra = {}) {
+  return {
+    radius: SEATED_R,
+    stepUp: THRESHOLD,
+    stepDown: THRESHOLD,
+    headH: SEATED_HEAD_H,
+    noStairs: true,
+    maxGrade: MAX_SEATED_GRADE,
+    gradeProbe: GRADE_PROBE,
+    doorRule: (d) => doorRolls(d.w, d.leaf),
+    ...extra,
+  };
+}
+
+// The refusal, as a sentence — never a silent stop. `refusal` is what
+// `moveWalker` hands back when the seated rules, rather than a wall, are what
+// stopped the step.
+function refusalText(refusal) {
+  if (!refusal || !refusal.reason) return '';
+  switch (refusal.reason) {
+    case 'stair':
+      return 'A stair. Seated, the ramps and the lift are the way between storeys.';
+    case 'door': {
+      const w = refusal.doorway ? Math.round(refusal.doorway.w * 12) : null;
+      return w
+        ? `A ${w} in door. A chair needs 32 in clear, which is a 3 ft leaf.`
+        : 'Too narrow a door. A chair needs 32 in clear, which is a 3 ft leaf.';
+    }
+    case 'grade':
+      return Number.isFinite(refusal.grade) && refusal.grade > 0
+        ? `Too steep for a chair — 1:${Math.max(1, Math.round(1 / refusal.grade))}, and 1:12 is the most a ramp may climb.`
+        : 'A step. Half an inch is the most a wheel rolls over.';
+    default:
+      return '';
+  }
+}
+
+// ---------- the turning circle ----------
+
+// ADA 304.3.1: a circle 60in across is the space a chair turns round in. It is
+// asked for where a route turns or ends — both sides of every doorway, and
+// somewhere in every room a chair can enter.
+const TURN_D = 60 / 12;                      // ft
+const TURN_R = TURN_D / 2;
+// ADA 403.5.1: 36in is the narrowest a route may be along its length. Asked
+// at every corner the mesh knows about, which is where a corridor pinches.
+const PASSAGE_D = 36 / 12;                   // ft
+const PASSAGE_R = PASSAGE_D / 2;
+// How finely a circle is tested against the floor's edge: rings of samples,
+// each ring a fraction of the radius. Walls and furniture are exact.
+const RINGS = 6;
+const SAMPLES = 16;
+
+// Distance from (x, z) to segment a->b.
+function segDist(s, x, z) {
+  const dx = s.bx - s.ax, dz = s.bz - s.az;
+  const len2 = dx * dx + dz * dz;
+  const t = len2 > 0 ? Math.min(1, Math.max(0, ((x - s.ax) * dx + (z - s.az) * dz) / len2)) : 0;
+  return Math.hypot(x - (s.ax + dx * t), z - (s.az + dz * t));
+}
+
+// Distance from (x, z) to a rotated box (the prop obstacle shape collide.js
+// makes), zero inside it. Same frame as `pushOutOfBox`.
+function boxDist(o, x, z) {
+  const c = Math.cos(o.rotationY || 0), s = Math.sin(o.rotationY || 0);
+  const wx = x - o.x, wz = z - o.z;
+  const lx = wx * c - wz * s, lz = wx * s + wz * c;
+  const ex = Math.max(Math.abs(lx) - o.hw, 0);
+  const ez = Math.max(Math.abs(lz) - o.hd, 0);
+  return Math.hypot(ex, ez);
+}
+
+// Everything on one storey a circle can be tested against: the collider's
+// walls, rails, shaft walls and furniture (door leaves deliberately not — they
+// swing, and a clearance is measured with the door out of the way), plus what
+// the collider does not carry because a walker never needs it all at once —
+// where the slab is, where it is cut, and where a stair run climbs off it.
+function clearanceWorld(state, floorIndex, catalogGet = null) {
+  const floor = state && state.floors ? state.floors[floorIndex] : null;
+  return {
+    floor: floorIndex,
+    record: floor,
+    collider: buildCollider(state, floorIndex, catalogGet, { site: emptyField() }),
+    cuts: floorCuts(state, floorIndex),
+    runs: stairsOf(state).filter((l) => l.from === floorIndex),
+    metrics: stairMetrics(state),
+  };
+}
+
+// Is there level floor to stand on at (x, z) — slab, not a hole, not a stair
+// run climbing away under the wheel? Null when there is; otherwise what is
+// there instead, which is what a finding names.
+function notLevelAt(world, x, z) {
+  if (!world.record || !floorSolidAt(world.record, x, z)) return 'edge';
+  if (inFloorCut(world.cuts, x, z)) return 'edge';
+  for (const run of world.runs) {
+    const h = stairSurfaceAt(run, world.metrics, x, z);
+    if (h !== null && h > THRESHOLD) return run.type === 'ramp' ? 'ramp' : 'stair';
+  }
+  return null;
+}
+
+// The largest circle centred at (x, z) that touches nothing, up to `maxR`, and
+// what stopped it growing. `clear` is exact against walls and furniture and
+// sampled against the floor's edge.
+function clearRadiusAt(world, x, z, maxR = TURN_R) {
+  let clear = maxR;
+  let blocker = null;
+  const here = notLevelAt(world, x, z);
+  if (here) return { clear: 0, blocker: here };
+  const near = candidates(world.collider, x - maxR, z - maxR, x + maxR, z + maxR);
+  for (const s of near.segs) {
+    const d = segDist(s, x, z) - (s.pad ?? 0);
+    if (d < clear) { clear = Math.max(0, d); blocker = 'wall'; }
+  }
+  for (const p of near.props) {
+    const d = boxDist(p, x, z);
+    if (d < clear) { clear = Math.max(0, d); blocker = p.type ? `furniture:${p.type}` : 'furniture'; }
+  }
+  // The floor's edge, by rings: the largest ring whose every sample stands on
+  // level floor is how far the circle reaches before it hangs over a hole, a
+  // stair, or the outside of the building. Rings past what a wall or a desk
+  // already stopped are not asked — they could only agree.
+  let floorR = 0;
+  for (let k = 1; k <= RINGS; k++) {
+    const r = (maxR * k) / RINGS;
+    if (r > clear + 1e-9) break;
+    let hit = null;
+    for (let i = 0; i < SAMPLES && !hit; i++) {
+      const a = (i / SAMPLES) * Math.PI * 2;
+      hit = notLevelAt(world, x + Math.cos(a) * r, z + Math.sin(a) * r);
+    }
+    if (hit) { clear = floorR; blocker = hit; break; }
+    floorR = r;
+  }
+  return { clear, blocker };
+}
+
+// The same, remembered: a sweep asks about the same foot of corridor from
+// several lines, and a clearance does not change between askings. Keyed on
+// the foot, which is the pitch a sweep moves at.
+function clearCached(world, x, z, maxR) {
+  if (!world.cache) world.cache = new Map();
+  const key = `${Math.round(x)}|${Math.round(z)}|${maxR}`;
+  let hit = world.cache.get(key);
+  if (!hit) { hit = clearRadiusAt(world, Math.round(x), Math.round(z), maxR); world.cache.set(key, hit); }
+  return hit;
+}
+
+// The best of several candidate centres — a door approach may sit anywhere
+// beside the door, and a room's turning space anywhere on its floor.
+function bestOf(world, points, need) {
+  let best = null;
+  for (const p of points) {
+    const r = clearRadiusAt(world, p.x, p.z, need);
+    if (!best || r.clear > best.clear) best = { x: p.x, z: p.z, ...r };
+    if (best.clear >= need - 1e-9) break;
+  }
+  return best;
+}
+
+const inches = (ft) => `${Math.round(ft * 12)} in`;
+// A spot carries the name of the room it is in as `roomName`; a room row
+// carries its own as `name`. Both read the same way here.
+const roomName = (r) => (r && (r.roomName || r.name))
+  || (r ? `an unnamed room on ${floorLabel(r.floor)}` : 'a room');
+
+// Points spread over a tile at a pitch, centre first, for a search that stops
+// at the first one that passes. A tile is convex and inside its room, so
+// every one of them is somewhere a chair could actually be.
+const TILE_PITCH = 4;   // ft
+const MAX_TILE_POINTS = 64;
+function tilePoints(t) {
+  const out = [{ x: t.cx, z: t.cz }];
+  const nx = Math.max(1, Math.min(8, Math.floor((t.x1 - t.x0) / TILE_PITCH)));
+  const nz = Math.max(1, Math.min(8, Math.floor((t.z1 - t.z0) / TILE_PITCH)));
+  if (nx * nz <= 1) return out;
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) {
+      out.push({
+        x: t.x0 + ((i + 0.5) / nx) * (t.x1 - t.x0),
+        z: t.z0 + ((j + 0.5) / nz) * (t.z1 - t.z0),
+      });
+      if (out.length >= MAX_TILE_POINTS) return out;
+    }
+  }
+  return out;
+}
+const blockerName = (b) => {
+  if (!b) return 'nothing';
+  if (b === 'wall') return 'a wall';
+  if (b === 'edge') return 'the edge of the floor';
+  if (b === 'stair') return 'a stair';
+  if (b === 'ramp') return 'a ramp';
+  if (b.startsWith('furniture:')) return `the ${b.slice('furniture:'.length).replace(/-/g, ' ')}`;
+  return 'furniture';
+};
+
+// Where a chair has to be able to turn, tested. `opts.nav` is the accessible
+// graph (the doorways it kept are the ones a chair reaches); `opts.reachable`
+// says which rooms are on the route at all, so a wing only stairs reach does
+// not pile clearance findings on top of the finding that already says so;
+// `opts.circulation` says which rooms are corridors, whose routes are swept
+// for pinches.
+function turningAnalysis(state, opts = {}) {
+  const nav = opts.nav;
+  const reachable = opts.reachable || (() => true);
+  const circulation = opts.circulation || (() => false);
+  const catalogGet = opts.catalogGet || null;
+  const spots = [];
+  if (!nav || !state || !state.floors) return { spots, fails: [], tested: 0, findings: [] };
+  const worlds = new Map();
+  const worldFor = (i) => {
+    let w = worlds.get(i);
+    if (!w) { w = clearanceWorld(state, i, catalogGet); worlds.set(i, w); }
+    return w;
+  };
+  const rooms = new Map(nav.rooms.map((r) => [r.id, r]));
+  const spot = (kind, need, best, extra) => {
+    spots.push({
+      kind, need, x: best.x, z: best.z, clear: best.clear, blocker: best.blocker,
+      ok: best.clear >= need - 1e-9,
+      ...extra,
+    });
+  };
+
+  // Both sides of every doorway on the route. The approach is a circle beside
+  // the door — allowed to slide a little along the wall and in or out, since
+  // ADA 404.2.4's clearance is a rectangle at the door rather than a point.
+  for (const p of nav.portals) {
+    const along = { x: -p.nz, z: p.nx };
+    for (const [roomId, at] of [[p.a, p.pa], [p.b, p.pb]]) {
+      if (!roomId || !at || !reachable(roomId)) continue;
+      const room = rooms.get(roomId);
+      const world = worldFor(p.floor);
+      const out = { x: at.x - p.x, z: at.z - p.z };
+      const len = Math.hypot(out.x, out.z) || 1;
+      const ux = out.x / len, uz = out.z / len;
+      // Three feet off the door and then further out, a foot at a time, and
+      // a step either way along the wall at each: the lockers flanking a
+      // corridor door are beside it, not in front of it, and a chair turns
+      // in front of it.
+      const points = [];
+      for (const o of [0, 1, 2, 0.5, 1.5]) {
+        for (const a of [0, 1.5, -1.5]) {
+          points.push({
+            x: at.x + ux * o + along.x * a,
+            z: at.z + uz * o + along.z * a,
+          });
+        }
+      }
+      spot('door', TURN_R, bestOf(world, points, TURN_R), {
+        id: p.id, floor: p.floor, room: roomId, roomName: room ? room.name || null : null,
+      });
+    }
+  }
+
+  // The corridors, swept. A route through a corridor is the straight line
+  // between two things standing on one convex tile of it — a door to a door,
+  // a door to the bend — which is exactly how navgraph.js wired the graph.
+  // The passage circle is slid along each such line, and at every station it
+  // may step sideways across the corridor looking for room, because a chair
+  // goes round a fountain rather than through it: what is measured is the
+  // narrowest *cross-section* the route has to get through, and a pinch is a
+  // station where no point across the corridor clears 36in — a bench and a
+  // locker bank facing each other, a jog in the wall, a void's guardrail. Only
+  // circulation is swept: a classroom's route is its door, and the room test
+  // below is what asks about its floor. The room's own node is not an anchor
+  // here — nobody's route goes to the middle of a corridor.
+  const SWEEP = 2;        // ft between stations along a line
+  // Either side a station may look for room. Twelve feet is a wide corridor,
+  // and half the length of the open stair a route through a stair hall has
+  // to go round the end of — the answer the cache makes cheap.
+  const ASIDE = 12;       // ft
+  for (const m of nav.mesh || []) {
+    for (const t of m.tiles) {
+      if (!reachable(t.room) || !circulation(t.room)) continue;
+      const room = rooms.get(t.room);
+      const world = worldFor(t.floor);
+      const as = t.anchors.filter((a) => a.id !== t.room);
+      let worst = null;
+      for (let i = 0; i < as.length; i++) {
+        for (let j = i + 1; j < as.length; j++) {
+          if (as[i].id === as[j].id) continue;
+          const dx = as[j].x - as[i].x, dz = as[j].z - as[i].z;
+          const len = Math.hypot(dx, dz);
+          if (len < 1e-6) continue;
+          const px = -dz / len, pz = dx / len;
+          const n = Math.max(1, Math.ceil(len / SWEEP));
+          for (let k = 0; k <= n; k++) {
+            const x = as[i].x + (dx * k) / n, z = as[i].z + (dz * k) / n;
+            let best = null;
+            for (let o = 0; o <= ASIDE && !(best && best.clear >= PASSAGE_R - 1e-9); o++) {
+              for (const side of (o ? [1, -1] : [1])) {
+                const sx = x + px * o * side, sz = z + pz * o * side;
+                const r = clearCached(world, sx, sz, PASSAGE_R);
+                if (!best || r.clear > best.clear) best = { x: sx, z: sz, ...r };
+                if (best.clear >= PASSAGE_R - 1e-9) break;
+              }
+            }
+            if (!worst || best.clear < worst.clear) worst = best;
+          }
+        }
+      }
+      if (!worst || worst.clear >= PASSAGE_R - 1e-9) continue;
+      spot('pinch', PASSAGE_R, worst, {
+        id: t.id, floor: t.floor, room: t.room, roomName: room ? room.name || null : null,
+      });
+    }
+  }
+
+  // Somewhere in every room the route reaches. The candidates are the room's
+  // own point and a spread of points over each convex tile the mesh cut it
+  // into — a room passes if a chair can turn round anywhere in it, and the
+  // search stops at the first place it can.
+  for (const r of nav.rooms) {
+    if (!reachable(r.id)) continue;
+    const mesh = nav.mesh && nav.mesh[r.floor];
+    const tiles = (mesh && mesh.byRoom.get(r.id)) || [];
+    let points = [{ x: r.x, z: r.z }];
+    for (const t of tiles) if (t.rect) points = points.concat(tilePoints(t));
+    spot('room', TURN_R, bestOf(worldFor(r.floor), points, TURN_R), {
+      id: r.id, floor: r.floor, room: r.id, roomName: r.name || null,
+    });
+  }
+
+  const fails = spots.filter((s) => !s.ok);
+  return { spots, fails, tested: spots.length, findings: turningFindings(spots, fails) };
+}
+
+const finding = (level, code, title, detail, extra = {}) =>
+  ({ level, code, title, detail, ...extra });
+
+// A failing spot, as the mark a plan draws: the circle that *does* fit, and
+// the one that was wanted.
+const circleOf = (s) => ({
+  id: s.id, floor: s.floor, x: s.x, z: s.z, r: s.clear, need: s.need, kind: s.kind,
+});
+
+function turningFindings(spots, fails) {
+  const out = [];
+  if (!spots.length) return out;
+  const doors = fails.filter((s) => s.kind === 'door');
+  const pinches = fails.filter((s) => s.kind === 'pinch');
+  const rooms = fails.filter((s) => s.kind === 'room');
+  if (doors.length) {
+    const w = doors.reduce((a, b) => (b.clear < a.clear ? b : a));
+    out.push(finding('warn', 'door-approach',
+      `${doors.length} door approach${doors.length === 1 ? '' : 'es'} with no room to turn a chair`,
+      `Beside the door into ${roomName(w)} the clear circle is ${inches(w.clear * 2)} across ` +
+      `against the 60 in a chair turns in, and ${blockerName(w.blocker)} is what is in the way. ` +
+      'Moving what stands beside the door is usually the answer; a wider corridor is the other one.',
+      { circles: doors.slice(0, 12).map(circleOf) }));
+  }
+  if (pinches.length) {
+    const w = pinches.reduce((a, b) => (b.clear < a.clear ? b : a));
+    out.push(finding('warn', 'route-pinch',
+      `${pinches.length} pinch${pinches.length === 1 ? '' : 'es'} on the accessible route under 36 in`,
+      `In ${roomName(w)} the route narrows to ${inches(w.clear * 2)}, ` +
+      `where ${blockerName(w.blocker)} closes it in. A route is 36 in at its narrowest, ` +
+      'and 60 in wherever two chairs have to pass.',
+      { circles: pinches.slice(0, 12).map(circleOf) }));
+  }
+  if (rooms.length) {
+    out.push(finding('warn', 'turning-space',
+      `${rooms.length} room${rooms.length === 1 ? '' : 's'} a chair can enter and not turn round in`,
+      `${rooms.slice(0, 4).map(roomName).join(', ')}` +
+      `${rooms.length > 4 ? `, and ${rooms.length - 4} more` : ''} — nowhere on the floor ` +
+      'holds a 60 in circle once the walls and the furniture are counted.',
+      {
+        rooms: rooms.slice(0, 8).map((s) => ({ id: s.room, floor: s.floor, name: s.roomName })),
+        circles: rooms.slice(0, 12).map(circleOf),
+      }));
+  }
+  if (!fails.length) {
+    out.push(finding('ok', 'clearance', 'A chair turns everywhere it was tried',
+      `${spots.length} places tested: both sides of every doorway on the route, every ` +
+      'bend, and the open floor of every room a chair can reach.'));
+  }
+  return out;
+}
+
+// ---------- reach and heights ----------
+//
+// The catalog already knows every counter and shelf: `h` is a floor-standing
+// row's top and `y` a wall-mounted row's bottom, both in feet, and a prop may
+// scale one or move the other. The rules are ADA's, in inches, keyed on the
+// geometry family a row draws with — the same key the renderer picks a
+// builder by — so a new counter row is checked the day it is added.
+//
+//   904.4.1  a sales or service counter tops out at 36 in
+//   606.3    a lavatory rim at 34 in; a classroom sink is a lavatory
+//   602.4    a drinking fountain's spout at 36 in
+//   308      an operable part between 15 and 48 in off the floor
+//   902.3    a work surface between 28 and 34 in — one per room is the 5%
+//   225.2.1  lockers: some of them have to be within reach
+const REACH_MIN = 15 / 12;                   // ft
+const REACH_MAX = 48 / 12;                   // ft
+const COUNTER_MAX = 36 / 12;                 // ft
+const LAVATORY_MAX = 34 / 12;                // ft
+const SPOUT_MAX = 36 / 12;                   // ft
+const WORK_MIN = 28 / 12;                    // ft
+const WORK_MAX = 34 / 12;                    // ft
+// A fountain's spout sits a few inches under the unit's top.
+const SPOUT_BELOW_TOP = 0.3;                        // ft
+
+const REACH_RULES = [
+  { geo: 'counter', kind: 'counter', label: 'counter', max: COUNTER_MAX, cite: 'ADA 904.4.1' },
+  { geo: 'sinkcounter', kind: 'counter', label: 'sink counter', max: LAVATORY_MAX, cite: 'ADA 606.3' },
+  { geo: 'sink', kind: 'counter', label: 'sink', max: LAVATORY_MAX, cite: 'ADA 606.3' },
+  { geo: 'fountain', kind: 'counter', label: 'drinking fountain', max: SPOUT_MAX, cite: 'ADA 602.4',
+    at: (top) => top - SPOUT_BELOW_TOP },
+  { geo: 'wallbox', kind: 'control', label: 'wall-mounted control', min: REACH_MIN, max: REACH_MAX, cite: 'ADA 308',
+    // A speaker is a wall box with nothing on it to operate.
+    unless: (entry) => entry.style === 'grille' },
+  { geo: 'hookrail', kind: 'control', label: 'coat hook', min: REACH_MIN, max: REACH_MAX, cite: 'ADA 308' },
+  { geo: ['desk', 'table', 'workstation', 'carrel', 'labbench'], kind: 'work', label: 'work surface',
+    min: WORK_MIN, max: WORK_MAX, cite: 'ADA 902.3' },
+  { geo: 'locker', kind: 'locker', label: 'locker bank', cite: 'ADA 225.2.1' },
+];
+
+const ruleFor = (entry) => {
+  if (!entry || !entry.geo) return null;
+  const rule = REACH_RULES.find((r) => (Array.isArray(r.geo) ? r.geo.includes(entry.geo) : r.geo === entry.geo));
+  if (!rule || (rule.unless && rule.unless(entry))) return null;
+  return rule;
+};
+
+// The height a rule measures, in feet: a floor-standing row's top (scaled), a
+// wall-mounted row's bottom — the operable part of a dispenser or a cabinet
+// is at the bottom of the box, and 48 in at the bottom is the generous
+// reading.
+function heightOf(entry, prop) {
+  const scale = (typeof prop.scale === 'number' && prop.scale > 0) ? prop.scale : 1;
+  const y = Number.isFinite(prop.y) ? prop.y : (entry.y || 0);
+  if (entry.mount === 'wall' || entry.mount === 'ceiling') return y;
+  return y + (entry.h || 0) * scale;
+}
+
+function reachAnalysis(state, opts = {}) {
+  const catalogGet = opts.catalogGet || null;
+  const nav = opts.nav || null;
+  const items = [];
+  const work = new Map();       // room id -> { room, surfaces: [], within: n }
+  let lockers = 0, lockersLow = 0, tested = 0;
+  const count = state && state.floors ? state.floors.length : 0;
+  if (!catalogGet) return { items, fails: [], tested: 0, lockers: 0, lockersLow: 0, findings: [] };
+
+  for (let i = 0; i < count; i++) {
+    const floor = state.floors[i];
+    for (const p of propsOnFloor(state, i)) {
+      const entry = catalogGet(p.type);
+      const rule = ruleFor(entry);
+      if (!rule || entry.site) continue;
+      const shape = shapeAt(floor, p.x, p.z);
+      const roomId = shape ? `r${i}:s${shape.id}` : null;
+      const name = shape ? shape.name || null : null;
+      if (rule.kind === 'locker') {
+        lockers++;
+        if ((entry.tiers || 1) >= 2) lockersLow++;
+        continue;
+      }
+      const top = heightOf(entry, p);
+      const at = rule.at ? rule.at(top) : top;
+      tested++;
+      if (rule.kind === 'work') {
+        if (!roomId) continue;
+        let w = work.get(roomId);
+        if (!w) { w = { room: roomId, floor: i, name, surfaces: 0, within: 0, x: p.x, z: p.z }; work.set(roomId, w); }
+        w.surfaces++;
+        if (at >= rule.min - 1e-9 && at <= rule.max + 1e-9) w.within++;
+        continue;
+      }
+      const high = Number.isFinite(rule.max) && at > rule.max + 1e-9;
+      const low = Number.isFinite(rule.min) && at < rule.min - 1e-9;
+      if (!high && !low) continue;
+      items.push({
+        id: p.id, type: p.type, name: entry.name || p.type, label: rule.label, kind: rule.kind,
+        floor: i, x: p.x, z: p.z, room: roomId, roomName: name,
+        at, limit: high ? rule.max : rule.min, high, cite: rule.cite,
+      });
+    }
+  }
+  const rooms = [...work.values()].filter((w) => w.surfaces > 0 && w.within === 0);
+  const fails = items.concat(rooms.map((w) => ({
+    id: w.room, kind: 'work', floor: w.floor, x: w.x, z: w.z, room: w.room, roomName: w.name,
+  })));
+  return {
+    items, rooms, fails, tested, lockers, lockersLow,
+    findings: reachFindings({ items, rooms, tested, lockers, lockersLow }),
+  };
+}
+
+const propMark = (it) => ({ id: it.id, floor: it.floor, x: it.x, z: it.z, w: 0 });
+
+function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
+  const out = [];
+  const counters = items.filter((it) => it.kind === 'counter');
+  const controls = items.filter((it) => it.kind === 'control');
+  if (counters.length) {
+    const w = counters.reduce((a, b) => (b.at - b.limit > a.at - a.limit ? b : a));
+    out.push(finding('warn', 'counter-height',
+      `${counters.length} counter${counters.length === 1 ? '' : 's'} too high for a seated person`,
+      `The ${w.name.toLowerCase()}${w.roomName ? ` in ${w.roomName}` : ''} is ${inches(w.at)} ` +
+      `where ${inches(w.limit)} is the limit (${w.cite}). A lower section, or a lower unit, is the fix.`,
+      { doors: counters.slice(0, 8).map(propMark) }));
+  }
+  if (controls.length) {
+    const w = controls[0];
+    out.push(finding('warn', 'reach-range',
+      `${controls.length} control${controls.length === 1 ? '' : 's'} outside the 15–48 in reach range`,
+      `The ${w.name.toLowerCase()}${w.roomName ? ` in ${w.roomName}` : ''} is mounted at ${inches(w.at)}; ` +
+      `${w.high ? 'the highest' : 'the lowest'} an operable part may be is ${inches(w.limit)} (${w.cite}).`,
+      { doors: controls.slice(0, 8).map(propMark) }));
+  }
+  if (rooms.length) {
+    out.push(finding('warn', 'work-surface',
+      `${rooms.length} room${rooms.length === 1 ? '' : 's'} with no work surface at a seated height`,
+      `${rooms.slice(0, 4).map(roomName).join(', ')}` +
+      `${rooms.length > 4 ? `, and ${rooms.length - 4} more` : ''} — every desk, table or bench ` +
+      'in the room is outside 28–34 in (ADA 902.3). One at that height per room is enough.',
+      { rooms: rooms.slice(0, 8).map((w) => ({ id: w.room, floor: w.floor, name: w.name })) }));
+  }
+  if (lockers && !lockersLow) {
+    out.push(finding('note', 'lockers',
+      `${lockers} locker bank${lockers === 1 ? '' : 's'}, none within reach`,
+      'Every bank is full-height, so no locker has a hook or a shelf a seated person ' +
+      'reaches. Some of them (ADA 225.2.1 says 5%) want to be the half-height kind.'));
+  }
+  if (tested && !items.length && !rooms.length) {
+    out.push(finding('ok', 'reach', 'Every counter, control and work surface is within reach',
+      `${tested} of them checked against the catalog's own heights.`));
+  }
+  return out;
+}
+
+return { CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, doorClear, doorRolls, SEATED_R, SEATED_EYE_H, SEATED_HEAD_H, THRESHOLD, MAX_SEATED_GRADE, GRADE_PROBE, rampRolls, seatedStep, refusalText, TURN_D, TURN_R, PASSAGE_D, PASSAGE_R, clearanceWorld, clearRadiusAt, turningAnalysis, REACH_MIN, REACH_MAX, COUNTER_MAX, LAVATORY_MAX, SPOUT_MAX, WORK_MIN, WORK_MAX, REACH_RULES, reachAnalysis };
+})();
+// ---- js/threshold.js ----
+const __m_js_threshold_js = (() => {
+const { clearWidth } = __m_js_clearance_js;
+// threshold.js — a doorway admits people at a rate.
+//
+// Bodies queue at doors already: they follow, they yield, they take turns.
+// What they never did was pay for the door itself. A three-foot single leaf
+// passes about one person a second however politely the crowd behind it
+// behaves, and the morning crush at a school's front door is that number
+// made visible — four hundred people through six doors in fifteen minutes
+// works on paper and stacks up on the steps in practice. This module is the
+// number: a doorway has a flow, the flow accrues as credit, and crossing the
+// threshold spends one.
+//
+// Two bounds carry the honesty, and both are lift.js's lesson — *a queue
+// that can hold a door open needs a bound on the holding* — applied to a
+// threshold, once in each direction:
+//
+//   * **Credit is capped low.** A door that stood open all night has not
+//     banked four hundred admissions; when the first bus arrives the first
+//     person or two walk straight in and everybody after them waits for the
+//     door's own rate, which is what a crush stacking honestly means.
+//   * **Nobody is held forever.** A person the rate has held past `HOLD_MAX`
+//     is admitted anyway and the credit goes negative — the door's *average*
+//     rate still holds, spread over the people behind them, but no rule in
+//     this codebase is allowed to bring a body to a permanent halt, and this
+//     one isn't either.
+//
+// Pure module: plain records in a Map, no three.js, no DOM, no clock of its
+// own. agents.js spends the credit; nothing else needs to know it exists.
+// Exercised by test/threshold.test.mjs.
+
+
+
+// About one person a second through a 3ft leaf — the low end of the measured
+// door-flow range (roughly 1 to 1.3 persons per metre per second), because a
+// school morning is bags and held doors rather than a laboratory file.
+const FLOW_PER_FT = 0.35;     // persons per second per clear foot
+// The narrowest flow any admitting doorway offers, so a hostile or absurd
+// opening width never divides by nothing.
+const MIN_FLOW_W = 1.5;       // ft
+// How many admissions a quiet door may bank. One and a half: the first
+// arrival walks in, the second mostly does, the third waits.
+const CREDIT_MAX = 1.5;
+// The longest the rate may hold any one person out, in seconds. Past this
+// they are admitted on borrowed credit — see `admit`.
+const HOLD_MAX = 15;
+
+const makeThresholds = () => new Map();
+
+// The threshold for one portal, made the first time somebody reaches it. The
+// rate comes off the *clear* width — the leaf and its stop eat into the
+// opening here exactly as they do in the accessible-route check, and for the
+// same reason: the hole in the wall is not the width a body gets.
+function thresholdFor(map, portal, opts = {}) {
+  if (!map || !portal) return null;
+  let th = map.get(portal.id);
+  if (!th) {
+    const clear = Math.max(MIN_FLOW_W, clearWidth(portal.w || 0));
+    th = {
+      id: portal.id,
+      rate: (opts.flow ?? FLOW_PER_FT) * clear,
+      credit: CREDIT_MAX,
+      // Counted rather than derived, the way a lift counts its trips: "the
+      // front door admitted two hundred and forty people this morning" is a
+      // sentence somebody watching the crush wants a panel to be able to say.
+      admitted: 0,
+    };
+    map.set(th.id, th);
+  }
+  return th;
+}
+
+// The flow, accrued. Called once per frame with everybody's dt, never once
+// per person — a door's rate is the door's, and forty people at it do not
+// make it forty times faster.
+function stepThresholds(map, dt) {
+  if (!map || !(dt > 0)) return;
+  for (const th of map.values()) {
+    th.credit = Math.min(CREDIT_MAX, th.credit + th.rate * dt);
+  }
+}
+
+// One person at the threshold: through, or not yet. `waited` is how long the
+// rate has held *this* person; past `HOLD_MAX` they go through regardless and
+// the credit goes negative, so the door still averages its rate while nobody
+// is ever parked at it for good.
+function admit(th, waited = 0) {
+  if (!th) return true;
+  if (th.credit < 1 && waited <= HOLD_MAX) return false;
+  th.credit -= 1;
+  th.admitted++;
+  return true;
+}
+
+// What the morning looked like from the doors, for a panel.
+function thresholdReport(map) {
+  const out = { doors: 0, admitted: 0, busiest: null };
+  if (!map) return out;
+  for (const th of map.values()) {
+    out.doors++;
+    out.admitted += th.admitted;
+    if (!out.busiest || th.admitted > out.busiest.admitted) out.busiest = th;
+  }
+  return out;
+}
+
+return { FLOW_PER_FT, MIN_FLOW_W, CREDIT_MAX, HOLD_MAX, makeThresholds, thresholdFor, stepThresholds, admit, thresholdReport };
+})();
 // ---- js/heap.js ----
 const __m_js_heap_js = (() => {
 
@@ -67115,12 +68034,13 @@ return { MinHeap, minHeap };
 // ---- js/navgraph.js ----
 const __m_js_navgraph_js = (() => {
 const { FLOOR_H } = __m_js_grid_js;
-const { shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt } = __m_js_shapes_js;
+const { shapesOf, shapeArea, segEnds, isBuilt, isDoorOpening, interiorPoint, shapeAt, openingSpec } = __m_js_shapes_js;
 const { meshFloor, tileFor } = __m_js_navmesh_js;
 const { meshSite, yardTileFor } = __m_js_sitemesh_js;
 const { siteCurbs } = __m_js_site_js;
 const { MinHeap } = __m_js_heap_js;
 const { stairsOf, stairMetrics, runLength, localToWorld, elevatorSize, isRun, isElevator, LANDING } = __m_js_stairs_js;
+const { MIN_ACCESSIBLE_W, doorRolls, rampRolls } = __m_js_clearance_js;
 // navgraph.js — the building, read as somewhere to walk.
 //
 // Phase 6's first module, and the one the rest of it stands on. Nothing here
@@ -67182,6 +68102,7 @@ const { stairsOf, stairMetrics, runLength, localToWorld, elevatorSize, isRun, is
 
 
 
+
 // How far off a doorway to stand when asking which rooms it joins. Half a
 // lattice cell is 2ft and the thickest wall is 0.8, so 1.4 clears the wall and
 // still lands inside the smallest room either side of it.
@@ -67223,23 +68144,14 @@ const OUTDOOR_COST = 60;    // ft-equivalent per exterior doorway
 //
 // Phase 7's one genuinely new piece of navigation, and it is an option rather
 // than a module: the accessible route is the same graph with the things a
-// wheelchair can't use left out of it. A stair is out; a ramp and a lift stay,
-// which is what Phase 2 built them for. A doorway too narrow to roll through
-// is out too, and that is a *width* question rather than a kind one.
-//
-// The clear width a doorway offers is not the hole in the wall: a leaf parked
-// at 90° and its stop eat into the opening, which is why a 36in door is the
-// smallest one that gives the 32in clear ADA asks for.
-const CLEAR_LOSS = 0.33;    // ft — leaf and stop, off a doorway's width
-const MIN_CLEAR_W = 32 / 12;  // ft — ADA 404.2.3
-// ...so the narrowest *opening* that passes, which is exactly a 3ft door.
-const MIN_ACCESSIBLE_W = MIN_CLEAR_W + CLEAR_LOSS;
-
-// The clear width a doorway of this opening width actually offers. An opening
-// with no leaf in it (a cased opening, a corridor mouth) loses nothing.
-const clearWidth = (w, leafed = true) =>
-  Math.max(0, w - (leafed ? CLEAR_LOSS : 0));
-
+// wheelchair can't use left out of it. A stair is out; a ramp stays if a chair
+// can climb it (Phase 40: 1:12, and a steeper one is a stair with no treads);
+// a lift stays, which is what Phase 2 built them for. A doorway too narrow to
+// roll through is out too, and that is a *width* question rather than a kind
+// one — and since Phase 40 a question this file no longer answers itself.
+// `clearance.js` owns the door-width contract (`doorRolls`) and the ramp rule
+// (`rampRolls`), and the seated walker reads the same two functions, which is
+// what makes the report and the walkthrough agree about every doorway.
 
 // ---------- rooms ----------
 
@@ -67321,14 +68233,20 @@ function makePortal(id, x, z, nx, nz, w, floor, a, b, opts = {}) {
     exterior: opts.exterior === true,
     rep: opts.rep || 'shape',
     muster: opts.muster || null,
+    // How it is hung — none, a single leaf, a pair — which is what decides
+    // its clear width (Phase 40, `clearance.js`).
+    leaf: Number.isInteger(opts.leaf) ? opts.leaf : 1,
   };
 }
 
 // `opts.accessible` builds the same graph with the routes a wheelchair can't
-// take left out of it — no stairs, and no doorway narrower than
-// `opts.minWidth` (default `MIN_ACCESSIBLE_W`). Everything else about it is
-// the graph the crowd walks, which is the point: an accessible route is not a
-// second model of the building, it is this one with two things removed.
+// take left out of it — no stairs, no ramp steeper than a chair climbs, and
+// no doorway `doorRolls` refuses (a 3ft leaf, a 6ft pair, a 32in cased
+// opening are the narrowest of each). `minWidth` is the plain graph's floor
+// under a doorway (a cupboard is not a route) and is reported on the
+// accessible one for what it is worth. Everything else about it is the graph
+// the crowd walks, which is the point: an accessible route is not a second
+// model of the building, it is this one with three things removed.
 function buildNav(state, opts = {}) {
   const accessible = opts.accessible === true;
   const minWidth = Number.isFinite(opts.minWidth)
@@ -67430,8 +68348,8 @@ function buildNav(state, opts = {}) {
   // ---- doorways ----
 
   let pn = 0;
-  const joinPortal = (x, z, nx, nz, w, floorIndex, rep) => {
-    if (w < minWidth) return null;
+  const joinPortal = (x, z, nx, nz, w, floorIndex, rep, leaf = 1) => {
+    if (accessible ? !doorRolls(w, leaf) : w < minWidth) return null;
     const a = roomIdAt(floorIndex, x + nx * PROBE, z + nz * PROBE);
     const b = roomIdAt(floorIndex, x - nx * PROBE, z - nz * PROBE);
     if (a && a === b) return null;              // a doorway inside one room
@@ -67450,6 +68368,7 @@ function buildNav(state, opts = {}) {
       floorIndex, a || null, b || null, {
         exterior,
         rep,
+        leaf,
         pa,
         pb,
         muster: exterior
@@ -67500,7 +68419,8 @@ function buildNav(state, opts = {}) {
           const ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
           for (const o of ring.openings) {
             if (o.seg !== s || !isDoorOpening(o)) continue;
-            joinPortal(a.x + ux * o.t * len, a.z + uz * o.t * len, -uz, ux, o.w, i);
+            joinPortal(a.x + ux * o.t * len, a.z + uz * o.t * len, -uz, ux, o.w, i,
+              undefined, openingSpec(o).leaf);
           }
         }
       }
@@ -67516,6 +68436,8 @@ function buildNav(state, opts = {}) {
     // accessible graph it is simply not there, and whatever it was the only
     // way to becomes unreachable — which is the finding Phase 7 is after.
     if (accessible && link.type === 'stair') continue;
+    // ...and a ramp steeper than 1:12 is a stair with no treads on it.
+    if (accessible && link.type === 'ramp' && !rampRolls(link)) continue;
     const lo = Math.min(link.from, link.to);
     const hi = Math.max(link.from, link.to);
     if (!state.floors[lo] || !state.floors[hi]) continue;
@@ -68157,116 +69079,7 @@ function commonRooms(nav, opts = {}) {
   return nav.rooms.filter((r) => r.area >= min && !teaching.has(r.id));
 }
 
-return { PROBE, MIN_PORTAL_W, MUSTER_FT, DOOR_OFFSET, STAIR_COST, RAMP_COST, ELEVATOR_COST, FLOOR_PENALTY, OUTDOOR_COST, CLEAR_LOSS, MIN_CLEAR_W, MIN_ACCESSIBLE_W, clearWidth, floorRooms, buildNav, runLandings, nodeAt, outdoors, findPath, pathDistance, goesOutdoors, waypoints, pointEntry, route, egressField, pointField, nearestExit, dischargeField, dischargePath, unreachableRooms, navSummary, teachingRooms, commonRooms };
-})();
-// ---- js/threshold.js ----
-const __m_js_threshold_js = (() => {
-const { clearWidth } = __m_js_navgraph_js;
-// threshold.js — a doorway admits people at a rate.
-//
-// Bodies queue at doors already: they follow, they yield, they take turns.
-// What they never did was pay for the door itself. A three-foot single leaf
-// passes about one person a second however politely the crowd behind it
-// behaves, and the morning crush at a school's front door is that number
-// made visible — four hundred people through six doors in fifteen minutes
-// works on paper and stacks up on the steps in practice. This module is the
-// number: a doorway has a flow, the flow accrues as credit, and crossing the
-// threshold spends one.
-//
-// Two bounds carry the honesty, and both are lift.js's lesson — *a queue
-// that can hold a door open needs a bound on the holding* — applied to a
-// threshold, once in each direction:
-//
-//   * **Credit is capped low.** A door that stood open all night has not
-//     banked four hundred admissions; when the first bus arrives the first
-//     person or two walk straight in and everybody after them waits for the
-//     door's own rate, which is what a crush stacking honestly means.
-//   * **Nobody is held forever.** A person the rate has held past `HOLD_MAX`
-//     is admitted anyway and the credit goes negative — the door's *average*
-//     rate still holds, spread over the people behind them, but no rule in
-//     this codebase is allowed to bring a body to a permanent halt, and this
-//     one isn't either.
-//
-// Pure module: plain records in a Map, no three.js, no DOM, no clock of its
-// own. agents.js spends the credit; nothing else needs to know it exists.
-// Exercised by test/threshold.test.mjs.
-
-
-
-// About one person a second through a 3ft leaf — the low end of the measured
-// door-flow range (roughly 1 to 1.3 persons per metre per second), because a
-// school morning is bags and held doors rather than a laboratory file.
-const FLOW_PER_FT = 0.35;     // persons per second per clear foot
-// The narrowest flow any admitting doorway offers, so a hostile or absurd
-// opening width never divides by nothing.
-const MIN_FLOW_W = 1.5;       // ft
-// How many admissions a quiet door may bank. One and a half: the first
-// arrival walks in, the second mostly does, the third waits.
-const CREDIT_MAX = 1.5;
-// The longest the rate may hold any one person out, in seconds. Past this
-// they are admitted on borrowed credit — see `admit`.
-const HOLD_MAX = 15;
-
-const makeThresholds = () => new Map();
-
-// The threshold for one portal, made the first time somebody reaches it. The
-// rate comes off the *clear* width — the leaf and its stop eat into the
-// opening here exactly as they do in the accessible-route check, and for the
-// same reason: the hole in the wall is not the width a body gets.
-function thresholdFor(map, portal, opts = {}) {
-  if (!map || !portal) return null;
-  let th = map.get(portal.id);
-  if (!th) {
-    const clear = Math.max(MIN_FLOW_W, clearWidth(portal.w || 0));
-    th = {
-      id: portal.id,
-      rate: (opts.flow ?? FLOW_PER_FT) * clear,
-      credit: CREDIT_MAX,
-      // Counted rather than derived, the way a lift counts its trips: "the
-      // front door admitted two hundred and forty people this morning" is a
-      // sentence somebody watching the crush wants a panel to be able to say.
-      admitted: 0,
-    };
-    map.set(th.id, th);
-  }
-  return th;
-}
-
-// The flow, accrued. Called once per frame with everybody's dt, never once
-// per person — a door's rate is the door's, and forty people at it do not
-// make it forty times faster.
-function stepThresholds(map, dt) {
-  if (!map || !(dt > 0)) return;
-  for (const th of map.values()) {
-    th.credit = Math.min(CREDIT_MAX, th.credit + th.rate * dt);
-  }
-}
-
-// One person at the threshold: through, or not yet. `waited` is how long the
-// rate has held *this* person; past `HOLD_MAX` they go through regardless and
-// the credit goes negative, so the door still averages its rate while nobody
-// is ever parked at it for good.
-function admit(th, waited = 0) {
-  if (!th) return true;
-  if (th.credit < 1 && waited <= HOLD_MAX) return false;
-  th.credit -= 1;
-  th.admitted++;
-  return true;
-}
-
-// What the morning looked like from the doors, for a panel.
-function thresholdReport(map) {
-  const out = { doors: 0, admitted: 0, busiest: null };
-  if (!map) return out;
-  for (const th of map.values()) {
-    out.doors++;
-    out.admitted += th.admitted;
-    if (!out.busiest || th.admitted > out.busiest.admitted) out.busiest = th;
-  }
-  return out;
-}
-
-return { FLOW_PER_FT, MIN_FLOW_W, CREDIT_MAX, HOLD_MAX, makeThresholds, thresholdFor, stepThresholds, admit, thresholdReport };
+return { PROBE, MIN_PORTAL_W, MUSTER_FT, DOOR_OFFSET, STAIR_COST, RAMP_COST, ELEVATOR_COST, FLOOR_PENALTY, OUTDOOR_COST, floorRooms, buildNav, runLandings, nodeAt, outdoors, findPath, pathDistance, goesOutdoors, waypoints, pointEntry, route, egressField, pointField, nearestExit, dischargeField, dischargePath, unreachableRooms, navSummary, teachingRooms, commonRooms };
 })();
 // ---- js/lift.js ----
 const __m_js_lift_js = (() => {
@@ -75936,6 +76749,43 @@ function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
   ctx.fillText(opts.date || new Date().toLocaleDateString(), canvasW - layout.margin, layout.titleH * 0.75);
 }
 
+// Phase 40: the turning circle, where it does not fit. Each mark is the
+// circle that *does* clear (solid) inside the one that was wanted (dashed),
+// with the shortfall written beside it in inches — the sheet's way of saying
+// "this is how far from 60in the space beside this door is". Red, because a
+// clearance that fails is a finding rather than an annotation.
+function drawClearance(ctx, plan, layout, circles) {
+  const here = circles.filter((c) => (c.floor ?? plan.floorIndex) === plan.floorIndex
+    && Number.isFinite(c.x) && Number.isFinite(c.z) && Number.isFinite(c.r));
+  if (!here.length) return;
+  ctx.save();
+  for (const c of here) {
+    const p = toPx(plan, layout, c.x, c.z);
+    const need = (c.need ?? c.r) * layout.scale;
+    const got = Math.max(0, c.r) * layout.scale;
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = 'rgba(176, 44, 36, 0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, need, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(211, 74, 65, 0.22)';
+    ctx.strokeStyle = 'rgba(176, 44, 36, 0.95)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, got, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(176, 44, 36, 0.95)';
+    ctx.font = '600 9px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.round(c.r * 24)} in`, p.x, p.y);
+  }
+  ctx.restore();
+}
+
 // The drawing itself, without any of the sheet furniture around it: rooms,
 // walls, openings, stairs, and optionally the furniture and the tags. Split
 // out in Phase 9 for the minimap, which wants the plan at thumbnail size and
@@ -75952,6 +76802,10 @@ function drawPlanBody(ctx, plan, layout, opts = {}) {
   drawDoors(ctx, plan, layout);
   drawStairs(ctx, plan, layout);
   if (opts.showFurniture) drawProps(ctx, plan, layout);
+  // Phase 40: where a chair cannot turn, painted where it fails. Only when the
+  // caller hands the circles over — the report knows them, the sheet does not
+  // — and only the storey's own.
+  if (opts.clearance && opts.clearance.length) drawClearance(ctx, plan, layout, opts.clearance);
   if (opts.showLabels !== false) drawLabels(ctx, plan, layout);
   if (opts.showOccupancy) drawOccupancy(ctx, plan, layout);
   if (opts.showDimensions) drawDimensions(ctx, plan, layout);
@@ -76647,7 +77501,7 @@ function downloadCanvasPNG(canvas, filename) {
   }, 'image/png');
 }
 
-return { computeFloorPlan, computeSitePlan, drawPlanBody, drawFloorPlan, drawSitePlan, renderFloorPlanCanvas, renderSitePlanCanvas, drawElevation, drawSectionSheet, renderElevationCanvas, renderSectionCanvas, sheetSet, renderSheetCanvas, specLayout, renderSpecSheetCanvas, downloadCanvasPNG };
+return { computeFloorPlan, computeSitePlan, drawClearance, drawPlanBody, drawFloorPlan, drawSitePlan, renderFloorPlanCanvas, renderSitePlanCanvas, drawElevation, drawSectionSheet, renderElevationCanvas, renderSectionCanvas, sheetSet, renderSheetCanvas, specLayout, renderSpecSheetCanvas, downloadCanvasPNG };
 })();
 // ---- js/takeoff.js ----
 const __m_js_takeoff_js = (() => {
@@ -88033,6 +88887,7 @@ const { stride, footstepFor } = __m_js_sound_js;
 const { terrainField, emptyField, groundAt } = __m_js_terrain_js;
 const { siteSurfaceAt, surfaceEntry } = __m_js_site_js;
 const { GRAVITY, TERMINAL_V, JUMP_V, STEP_UP, buildCollider, emptyCollider, moveWalker, supportAt, storeyAt, updateDoorsFor, refreshProps } = __m_js_collide_js;
+const { seatedStep, SEATED_EYE_H, THRESHOLD, refusalText } = __m_js_clearance_js;
 const { shoveProps } = __m_js_shove_js;
 const { lookEulerDelta } = __m_js_touch_js;
 const { stickVector, turnStep, XR_SPEED, XR_SPRINT, SNAP_ANGLE } = __m_js_xr_js;
@@ -88091,6 +88946,7 @@ const { stickVector, turnStep, XR_SPEED, XR_SPRINT, SNAP_ANGLE } = __m_js_xr_js;
 
 
 
+
 const WALK_SPEED = 12;   // ft/s
 const SPRINT_SPEED = 24; // ft/s
 // How far the camera may be off a stair's surface and still ride it in ghost
@@ -88128,6 +88984,16 @@ const MAX_STEPS = Math.ceil(MAX_CATCHUP / FIXED_STEP);
 const EYE_FOLLOW = 5.4;  // ft
 const OTS_BACK = 8;      // ft
 const OTS_UP = 2.2;      // ft
+// Phase 40: the seated walker. One toggle, and the whole of what it changes
+// is here: the eye drops to a seated height, and the body hands `moveWalker`
+// the chair's rules instead of a pair of legs' — the same rules the report's
+// accessible-route section reads, from the same module, so what refuses you
+// in the walk is what the report already said. `SEATED_OPTS` is built once;
+// the per-step state is spread over it.
+const SEATED_OPTS = seatedStep();
+// How long a refusal stays on the HUD. Long enough to read, short enough that
+// walking away from the stair takes it with you.
+const REFUSAL_HOLD = 2.5;   // s
 
 function initWalkthrough(camera, domElement, opts = {}) {
   const controls = new PointerLockControls(camera, domElement);
@@ -88141,6 +89007,12 @@ function initWalkthrough(camera, domElement, opts = {}) {
   // under you mid-walk.
   let site = emptyField();
   let ghost = false;  // no-clip flight — the pre-Phase-5 behaviour
+  // Phase 40: in the chair. Survives leaving and re-entering the walk on
+  // purpose — a reviewer who sat down wants to stay sat down.
+  let seated = false;
+  const eyeH = () => (seated ? SEATED_EYE_H : EYE_H);
+  let refusal = null;      // what the chair's rules last refused, in words
+  let refusalLeft = 0;     // s of HUD left to show it
   let vy = 0;         // vertical velocity, ft/s
   let grounded = false;
   let colliders = new Map();
@@ -88271,7 +89143,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
 
   function reportHud() {
     if (!opts.onHud) return;
-    const feet = body.y - EYE_H;
+    const feet = body.y - eyeH();
     const level = world
       ? storeyAt(world, feet, groundAt(site, body.x, body.z)) + 1 : 1;
     // Phase 19: the lift's call panel says its own key. E is listed nowhere a
@@ -88284,8 +89156,11 @@ function initWalkthrough(camera, domElement, opts = {}) {
       ? `Level ${level} · following ${follow.agent.name} (${follow.mode === 'fps' ? 'first person' : 'over the shoulder'})`
       : riding
         ? `Level ${level} · ${riding}`
-        : `Level ${level} · ${ghost ? 'ghost (no-clip)' : 'walking'}` +
-          (atLift ? ' · at the lift — E calls it' : '');
+        : `Level ${level} · ${ghost ? 'ghost (no-clip)' : seated ? 'seated' : 'walking'}` +
+          (atLift ? ' · at the lift — E calls it' : '') +
+          // The refusal, said rather than felt: a stair that will not take
+          // you is a wall unless somebody explains it.
+          (seated && !ghost && refusal && refusalLeft > 0 ? ` · ${refusal}` : '');
     if (text === hudText) return;
     hudText = text;
     opts.onHud(text);
@@ -88309,7 +89184,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
   // Which storey the body is standing on, by the same rule everything else
   // in this file uses.
   const storeyHere = () => (world
-    ? storeyAt(world, body.y - EYE_H, groundAt(site, body.x, body.z)) : 0);
+    ? storeyAt(world, body.y - eyeH(), groundAt(site, body.x, body.z)) : 0);
 
   // Press the lift button. Works from inside the car *and* from the landing
   // outside it, which is the difference between a lift and a teleport you
@@ -88334,7 +89209,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
     // rather than a dead key. Every path that has a car takes the car.
     const shaft = elevatorAt(world, body.x, body.z, floorIndex);
     if (!shaft) return false;
-    body.y = shaft.y + EYE_H;
+    body.y = shaft.y + eyeH();
     vy = 0;
     grounded = true;
     hudText = '';
@@ -88369,7 +89244,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
     riding = out.state === 'away' ? '' : liftText(car);
     if (out.state !== 'riding') {
       if (out.arrived) {
-        body.y = (out.y ?? body.y - EYE_H) + EYE_H;
+        body.y = (out.y ?? body.y - eyeH()) + eyeH();
         vy = 0;
         grounded = true;
       }
@@ -88378,7 +89253,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
     // Being carried. The doors are shut around you and the walls of the shaft
     // are the collider's, so there is nothing to resolve against — the one
     // thing that moves is the floor.
-    body.y = out.y + EYE_H;
+    body.y = out.y + eyeH();
     vy = 0;
     grounded = true;
     return true;
@@ -88453,7 +89328,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
     const state = world;
     if (!state) return;
     const p = spawnPoint(activeFloor(state));
-    const eye = floorBaseY(state, state.currentFloor) + EYE_H;
+    const eye = floorBaseY(state, state.currentFloor) + eyeH();
     ceiling = topOfBuilding(state) + 40;
     camera.position.set(p.x, eye, p.z);
     camera.lookAt(p.x + p.lookX * 20, eye, p.z + p.lookZ * 20);
@@ -88475,9 +89350,9 @@ function initWalkthrough(camera, domElement, opts = {}) {
       return;
     }
     if (!world || !(fwd || right)) return;
-    const ride = stairUnder(world, body.x, body.z, body.y - EYE_H);
+    const ride = stairUnder(world, body.x, body.z, body.y - eyeH());
     if (!ride) return;
-    const target = ride.y + EYE_H;
+    const target = ride.y + eyeH();
     if (Math.abs(body.y - target) > RIDE_BAND) return;
     body.y = target;
   }
@@ -88485,7 +89360,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
   // Walking: a circle on a surface. Horizontal movement is resolved against
   // the storey under your feet, then the surface it found decides your height.
   function updateWalk(dt, fwd, right, speed) {
-    const feet = body.y - EYE_H;
+    const feet = body.y - eyeH();
 
     // Heading, flattened: looking at the ceiling shouldn't slow you down or
     // walk you into the floor.
@@ -88508,8 +89383,17 @@ function initWalkthrough(camera, domElement, opts = {}) {
     const collider = colliderFor(floorIndex);
     // You walk around the crowd, and it walks around you: the same body list,
     // resolved by the same `moveWalker`, from both sides.
+    // Seated, the step is the chair's: its radius, its half-inch threshold,
+    // its 1:12, its door rule — see clearance.js. Standing, exactly the step
+    // it always was.
     const moved = moveWalker(world, collider, { x: body.x, y: feet, z: body.z },
-      dx, dz, { grounded, bodies: bodiesOn(floorIndex) });
+      dx, dz, seated
+        ? { ...SEATED_OPTS, grounded, bodies: bodiesOn(floorIndex) }
+        : { grounded, bodies: bodiesOn(floorIndex) });
+    if (moved.refusal) {
+      refusal = refusalText(moved.refusal);
+      refusalLeft = REFUSAL_HOLD;
+    }
     const walked = Math.hypot(moved.x - body.x, moved.z - body.z);
     // Phase 11: what stopped you is what you push. The step this frame took
     // away from you — asked for minus got — is the whole input to the shove,
@@ -88533,7 +89417,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
     const surface = support ? support.y : 0;
     let y = feet;
     if (grounded) {
-      if (surface <= feet + STEP_UP) y = surface;
+      if (surface <= feet + (seated ? THRESHOLD : STEP_UP)) y = surface;
       // Only a grounded walker takes steps. Airborne is silent, which is
       // what being airborne sounds like.
       if (walked > 0) {
@@ -88554,7 +89438,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
         y = surface; vy = 0; grounded = true;
       } else y = next;
     }
-    body.y = y + EYE_H;
+    body.y = y + eyeH();
   }
 
   // Doors answer to where you *ended up*, and they answer on every storey you
@@ -88564,7 +89448,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
   // same doors.
   function updateDoors(dt) {
     if (!world) return;
-    const floorIndex = storeyAt(world, body.y - EYE_H);
+    const floorIndex = storeyAt(world, body.y - eyeH());
     const collider = colliderFor(floorIndex);
     // The camera is one body among however many; a leaf answers to whoever is
     // nearest it, which in a busy corridor is rarely you.
@@ -88606,7 +89490,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
     // button calls, and this only has to let the car carry the rig.
     if (!updateLift(dt) && world) updateWalk(dt, -stick.y, stick.x, speed);
     updateDoors(dt);
-    if (xr.onPose) xr.onPose({ x: body.x, y: body.y - EYE_H, z: body.z, yaw: xr.yaw });
+    if (xr.onPose) xr.onPose({ x: body.x, y: body.y - eyeH(), z: body.z, yaw: xr.yaw });
     reportHud();
   }
 
@@ -88640,12 +89524,31 @@ function initWalkthrough(camera, domElement, opts = {}) {
       reportHud();
     },
     get touchActive() { return touchActive; },
+    // Phase 40: the chair. Toggling keeps the feet where they are and moves
+    // the eye, so sitting down mid-corridor is sitting down rather than
+    // being teleported. What it changes about *walking* is in `updateWalk`.
+    get seated() { return seated; },
+    setSeated(on) {
+      if (seated === !!on) return;
+      const feet = body.y - eyeH();
+      seated = !!on;
+      body.y = feet + eyeH();
+      if (body !== camera.position) camera.position.y = body.y;
+      refusal = null;
+      refusalLeft = 0;
+      hudText = '';
+      reportHud();
+    },
+    // How high the eye is over the feet right now — everything outside this
+    // file that reads a storey off the camera has to ask, since Phase 40
+    // made it two numbers.
+    get eyeH() { return eyeH(); },
     // Where the walker is standing, storey included — the one question a
     // caller cannot answer off `camera.position` alone, since which storey a
     // height belongs to is `storeyAt`'s and the graded ground's business.
     // Phase 11's hunt asks it once a frame.
     get at() {
-      const feet = body.y - EYE_H;
+      const feet = body.y - eyeH();
       return {
         x: body.x, y: body.y, z: body.z,
         floor: world ? storeyAt(world, feet, groundAt(site, body.x, body.z)) : 0,
@@ -88823,7 +89726,7 @@ function initWalkthrough(camera, domElement, opts = {}) {
         yaw: 0,
         latched: false,
       };
-      if (xr.onPose) xr.onPose({ x: body.x, y: body.y - EYE_H, z: body.z, yaw: 0 });
+      if (xr.onPose) xr.onPose({ x: body.x, y: body.y - eyeH(), z: body.z, yaw: 0 });
       reportHud();
     },
     disableXR() {
@@ -88882,6 +89785,10 @@ function initWalkthrough(camera, domElement, opts = {}) {
         stepAcc = 0;
         if (ghost || !world) updateGhost(rest, fwd, right, speed);
         else updateWalk(rest, fwd, right, speed);
+      }
+      if (refusalLeft > 0) {
+        refusalLeft -= dt;
+        if (refusalLeft <= 0) { refusal = null; hudText = ''; }
       }
       updateDoors(dt);
       reportHud();
@@ -89759,6 +90666,7 @@ const VOICE_FADE = 0.35;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 function initAudio(camera, opts = {}) {
+  let eyeH = EYE_H;
   const catalogEntry = opts.catalogEntry || defaultCatalogEntry;
 
   let listener = null, ctx = null;
@@ -90130,7 +91038,7 @@ function initAudio(camera, opts = {}) {
   // Where the ear is, in world feet, and which storey and room it is in — the
   // three things every level calculation below needs.
   function ear() {
-    const feet = camera.position.y - EYE_H;
+    const feet = camera.position.y - eyeH;
     return {
       x: camera.position.x, y: camera.position.y, z: camera.position.z,
       floor: world ? storeyAt(world, feet) : 0,
@@ -90337,7 +91245,7 @@ function initAudio(camera, opts = {}) {
   // between them shouldn't hear the reverb re-seed.
   function applyRoom(force = false) {
     if (!ctx) return;
-    const feet = camera.position.y - EYE_H;
+    const feet = camera.position.y - eyeH;
     const floor = world ? storeyAt(world, feet) : 0;
     const here = world ? roomAt(world, floor, camera.position.x, camera.position.z) : null;
     const key = here ? `${floor}:${here.id}` : '';
@@ -90478,6 +91386,10 @@ function initAudio(camera, opts = {}) {
     // handoff the label gate gets. Without it the ray casts against the
     // pre-walk plan, which has no doors in motion.
     setLeavesSource(fn) { leavesSource = typeof fn === 'function' ? fn : null; },
+    // Phase 40: where the ear is relative to the feet. A seated walker's eye
+    // is a foot and a half lower, and a storey read off the wrong eye height
+    // is the wrong room's reverb.
+    setEyeHeight(h) { eyeH = Number.isFinite(h) && h > 0 ? h : EYE_H; },
 
     // Phase 28: the crowd's emitters, replaced wholesale — murmur.js derives
     // them, the shell hands them over on its own cadence, and the next
@@ -95333,7 +96245,13 @@ function findingMarks(report) {
     const doors = [...(f.doors || []), ...(f.exits || [])]
       .filter((d) => d && Number.isFinite(d.x) && Number.isFinite(d.z))
       .map((d) => ({ id: d.id, floor: d.floor ?? 0, x: d.x, z: d.z, w: d.w }));
-    if (!rooms.length && !doors.length) continue;
+    // Phase 40: a clearance finding carries the circle that *does* fit where
+    // one was wanted — drawn at its true size in feet, because the point of
+    // it is how much smaller than 60in it came out.
+    const circles = (f.circles || [])
+      .filter((c) => c && Number.isFinite(c.x) && Number.isFinite(c.z) && Number.isFinite(c.r))
+      .map((c) => ({ id: c.id, floor: c.floor ?? 0, x: c.x, z: c.z, r: c.r, need: c.need ?? c.r }));
+    if (!rooms.length && !doors.length && !circles.length) continue;
     out.push({
       code: f.code,
       section: f.section || null,
@@ -95342,7 +96260,8 @@ function findingMarks(report) {
       detail: f.detail,
       rooms,
       doors,
-      floors: [...new Set([...rooms, ...doors].map((t) => t.floor))].sort((a, b) => a - b),
+      circles,
+      floors: [...new Set([...rooms, ...doors, ...circles].map((t) => t.floor))].sort((a, b) => a - b),
     });
   }
   return out;
@@ -95358,10 +96277,11 @@ function markAt(marks, i) {
 
 // What of a mark is on the storey being drawn.
 function markOnFloor(mark, floorIndex) {
-  if (!mark) return { rooms: [], doors: [] };
+  if (!mark) return { rooms: [], doors: [], circles: [] };
   return {
     rooms: mark.rooms.filter((r) => r.floor === floorIndex),
     doors: mark.doors.filter((d) => d.floor === floorIndex),
+    circles: (mark.circles || []).filter((c) => c.floor === floorIndex),
   };
 }
 
@@ -95372,7 +96292,7 @@ function describeMark(marks, index, floorIndex) {
   if (!mark) return '';
   const n = marks.length;
   const here = markOnFloor(mark, floorIndex);
-  const at = here.rooms.length + here.doors.length;
+  const at = here.rooms.length + here.doors.length + here.circles.length;
   const where = at
     ? `${at} here`
     : (mark.floors.length
@@ -95387,7 +96307,7 @@ return { MODES, ORIENTS, MINI_SIZE, MINI_RANGE, MIN_RANGE, MAX_RANGE, FIT_PAD, C
 // ---- js/walk-main.js ----
 const __m_js_walk_main_js = (() => {
 const THREE = __m_libs_three_module_js;
-const { CELL, EYE_H } = __m_js_grid_js;
+const { CELL } = __m_js_grid_js;
 const { catalogEntry } = __m_js_catalog_js;
 const { initRender } = __m_js_render_js;
 const { initWalkthrough } = __m_js_walkthrough_js;
@@ -95402,11 +96322,11 @@ const { murmurEmitters, paScript } = __m_js_murmur_js;
 const { buildingOccupancy } = __m_js_occupancy_js;
 const { MOODS, applyMood } = __m_js_sky_js;
 const { WEATHER_MOODS, applyWeatherMood, normalizeWeather, isDefaultWeather } = __m_js_weather_js;
-const { buildCollider, storeyAt, WALKER_R, updateDoorsFor } = __m_js_collide_js;
+const { buildCollider, WALKER_R, updateDoorsFor } = __m_js_collide_js;
 const { startHunt, checkFind, huntWarmth, huntSummary, startLate, checkLate, lateWarmth, lateResult } = __m_js_hunt_js;
 const { normalizeHaunt, stageFor, stageKnobs, flickerAt, writingPlaces, crashCurve, CRASH_S, slamCandidate, banishNode, escapeDoor, LOCKED_TEXT, HAUNT_COUNT, HAUNT_ITEM } = __m_js_haunt_js;
 const { makeCreature, makeCreatureCtx, stepCreature, noteSlam, placeCreature, CREATURE_R } = __m_js_creature_js;
-const { terrainField, groundAt } = __m_js_terrain_js;
+const { terrainField } = __m_js_terrain_js;
 const { buildNav } = __m_js_navgraph_js;
 const { makePopulation, makeContext, retargetAll, stepAgents, bodiesOn, makeCrowdField, clearCrowd, normalizeLife } = __m_js_agents_js;
 const { blockAt, bellsBetween, wrapMinutes, clockText, nextBell } = __m_js_schedule_js;
@@ -95806,7 +96726,7 @@ function boot() {
     if (!life.on || !life.ctx) return;
     lifeAdvanceClock(dt);
     const eye = renderApi.walkCamera.position;
-    const floorIndex = storeyAt(state, eye.y - EYE_H, groundAt(life.site, eye.x, eye.z));
+    const floorIndex = walk.at.floor;
     stepAgents(life.ctx, life.agents, Math.min(dt, 0.05), {
       bodies: [{ id: 'camera', x: eye.x, z: eye.z, r: WALKER_R, push: 1 }],
       skipFloors: new Set([floorIndex]),
@@ -96153,7 +97073,7 @@ function boot() {
   function hauntRespawn() {
     const p = haunt.spawn || { x: 0, z: 0, floor: 0 };
     renderApi.walkCamera.position.set(
-      p.x, (p.floor || 0) * (state.floorHt || 12) + EYE_H, p.z);
+      p.x, (p.floor || 0) * (state.floorHt || 12) + walk.eyeH, p.z);
     if (haunt.creature && haunt.nav) {
       const far = banishNode(haunt.nav, p);
       if (far) placeCreature(haunt.creature, far);
@@ -96327,8 +97247,7 @@ function boot() {
 
   function drawMinimap() {
     const cam = renderApi.walkCamera;
-    const floorIndex = Math.max(0, Math.min(state.floors.length - 1,
-      storeyAt(state, cam.position.y - EYE_H)));
+    const floorIndex = Math.max(0, Math.min(state.floors.length - 1, walk.at.floor));
     const record = miniPlanFor(floorIndex);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const size = MINI_SIZE;
@@ -96419,6 +97338,21 @@ function boot() {
     miniRange = Math.min(MAX_RANGE, Math.round(miniRange * 1.5));
     updateMinimapButtons();
   });
+
+  // ---------- Phase 40: the chair ----------
+  //
+  // The same toggle the tool has: the eye drops, the body becomes the
+  // chair's, and the ear reads its storey off the same height.
+  function setSeated(on) {
+    walk.setSeated(on);
+    audio.setEyeHeight(walk.eyeH);
+    const b = $('walk-seated');
+    if (b) {
+      b.setAttribute('aria-pressed', String(walk.seated));
+      b.textContent = walk.seated ? '♿ Seated — stand up' : '♿ Sit in the chair';
+    }
+  }
+  if ($('walk-seated')) $('walk-seated').addEventListener('click', () => setSeated(!walk.seated));
 
   // ---------- photo mode ----------
   let photoMode = false;
@@ -96671,6 +97605,7 @@ function boot() {
       case 'KeyB': audio.ring(); break;
       case 'KeyN': audio.announce(); break;
       case 'KeyG': if (!$('walk-late').classList.contains('hidden')) $('walk-late').click(); break;
+      case 'KeyZ': setSeated(!walk.seated); break;
       default: break;
     }
   });

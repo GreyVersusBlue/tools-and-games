@@ -1161,6 +1161,43 @@ function drawTitleBlock(ctx, plan, layout, canvasW, opts) {
   ctx.fillText(opts.date || new Date().toLocaleDateString(), canvasW - layout.margin, layout.titleH * 0.75);
 }
 
+// Phase 40: the turning circle, where it does not fit. Each mark is the
+// circle that *does* clear (solid) inside the one that was wanted (dashed),
+// with the shortfall written beside it in inches — the sheet's way of saying
+// "this is how far from 60in the space beside this door is". Red, because a
+// clearance that fails is a finding rather than an annotation.
+export function drawClearance(ctx, plan, layout, circles) {
+  const here = circles.filter((c) => (c.floor ?? plan.floorIndex) === plan.floorIndex
+    && Number.isFinite(c.x) && Number.isFinite(c.z) && Number.isFinite(c.r));
+  if (!here.length) return;
+  ctx.save();
+  for (const c of here) {
+    const p = toPx(plan, layout, c.x, c.z);
+    const need = (c.need ?? c.r) * layout.scale;
+    const got = Math.max(0, c.r) * layout.scale;
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = 'rgba(176, 44, 36, 0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, need, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(211, 74, 65, 0.22)';
+    ctx.strokeStyle = 'rgba(176, 44, 36, 0.95)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, got, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(176, 44, 36, 0.95)';
+    ctx.font = '600 9px "IBM Plex Mono", ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${Math.round(c.r * 24)} in`, p.x, p.y);
+  }
+  ctx.restore();
+}
+
 // The drawing itself, without any of the sheet furniture around it: rooms,
 // walls, openings, stairs, and optionally the furniture and the tags. Split
 // out in Phase 9 for the minimap, which wants the plan at thumbnail size and
@@ -1177,6 +1214,10 @@ export function drawPlanBody(ctx, plan, layout, opts = {}) {
   drawDoors(ctx, plan, layout);
   drawStairs(ctx, plan, layout);
   if (opts.showFurniture) drawProps(ctx, plan, layout);
+  // Phase 40: where a chair cannot turn, painted where it fails. Only when the
+  // caller hands the circles over — the report knows them, the sheet does not
+  // — and only the storey's own.
+  if (opts.clearance && opts.clearance.length) drawClearance(ctx, plan, layout, opts.clearance);
   if (opts.showLabels !== false) drawLabels(ctx, plan, layout);
   if (opts.showOccupancy) drawOccupancy(ctx, plan, layout);
   if (opts.showDimensions) drawDimensions(ctx, plan, layout);
