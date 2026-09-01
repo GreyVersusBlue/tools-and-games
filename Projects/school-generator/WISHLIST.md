@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty-seven phases are shipped and one is open — Phase 34,
-below; arc six is underway: Phases 37 and 38 have shipped, and Phase 39 —
-on Claude Fable 5 — is the next open phase in the arc's order.** Three arcs took a grid
+**Status: thirty-eight phases are shipped and one is open — Phase 34,
+below; arc six is underway: Phases 37, 38 and 39 have shipped, and Phase
+40 — on Claude Fable 5 — is the next open phase in the arc's order.** Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school; arc
 four built for the person handed the result; arc five for the building
 itself; arc six builds for the reviewer; the phases between and after the
@@ -89,10 +89,11 @@ into that program) · `timetable.js` (class/room/period packing) ·
 What it plays: `schedule.js` (the day as five numbers) · `agents.js` (a
 seeded population with timetables) · `shove.js` (bump a chair) · `hunt.js`
 (scavenger hunt) · `decor.js` (seasonal palette) · `lift.js` (a car with a
-call button and a queue) · `haunt.js` (Phase 24's night: the stage machine,
-the writings, the crash, the way out) · `creature.js` (the one body in it) ·
-`murmur.js` (Phase 28: the crowd as sound — emitters from occupancy, the
-room tone, the PA's script).
+call button and a queue) · `threshold.js` (Phase 39: a doorway's admission
+rate — the morning crush, metered) · `haunt.js` (Phase 24's night: the stage
+machine, the writings, the crash, the way out) · `creature.js` (the one body
+in it) · `murmur.js` (Phase 28: the crowd as sound — emitters from
+occupancy, the room tone, the PA's script).
 
 What it shows and shares: `render.js` (the three.js scene) · `relief.js`
 (Phase 31: what shape a material is — a tileable height field per grain
@@ -329,6 +330,11 @@ and add to this list rather than starting a new one.
   Phase 31, and only half: most of them now have a bag on their back, but a
   bag that is worn is not a thing that is carried — nothing is ever picked
   up, put down, or taken out of one.*
+- An arrival is a person appearing at the curb (Phase 39) — no bus pulls in,
+  no car door opens, and the loop's only traffic is trees and paint.
+- The front door's admission gate meters waypoint crossings; a hard enough
+  crush can still squeeze a body through the opening uncounted, which a real
+  crush also does — but nobody is measuring the real one.
 
 **Generation**
 - Adjacency cannot move a room into a bigger slot — only same-sized rooms
@@ -1281,38 +1287,78 @@ the plan entirely, because a plan point has no height to hang a sentence
 at. Next in the arc: **Phase 39 — The school day starts at the curb**,
 named model **Claude Fable 5**; Phase 34 stays open beside the arc.
 
-## Phase 39 — The school day starts at the curb
+## Phase 39 — The school day starts at the curb *(shipped)*
 
 **Everyone the building holds was teleported into homeroom before the
 first bell.**
 
-The crowd is born seated and dies at the last bell; the site outside is
+The crowd was born seated and died at the last bell; the site outside was
 scenery with a mesh under it. A school's site is choreography — the bus
 loop, the drop-off, the walk in from the corner, four hundred people
 through six doors in fifteen minutes — and every piece of machinery it
-needs already exists: an outdoor mesh, agents that queue (the lift taught
-them), emitters that follow people, a PA with a morning script.
+needed already existed: an outdoor mesh, agents that queue (the lift
+taught them), emitters that follow people, a PA with a morning script.
 
-- [ ] **The site learns its verbs.** Bus loop, drop-off and parking as
-  region kinds `siteedit.js` draws and `generate.js` can place, each
-  carrying the curb points it implies as data.
-- [ ] **Arrival and dismissal.** Agents enter across `sitemesh.js` from
-  the curb in a seeded stagger before the first bell and stream back out
-  after the last — the building fills and empties instead of switching
-  on, and the walk's best minute becomes standing at the front door at
-  7:40.
-- [ ] **Doors queue.** A doorway admits people at a rate; the morning
-  crush stacks outside it honestly — `lift.js`'s bounded-holding lesson
-  applied to a threshold.
-- [ ] **The air reads it for free.** Murmur emitters already follow the
-  people, so the curb chatters and dies down on its own; the PA's morning
-  script fires while the building is actually filling.
+- [x] **The site learns its verbs.** `kind` on a site region — `busloop`,
+  `dropoff`, `parking` — as one stored word beside `surf` and `mark`,
+  picked on the site panel and placed by `generate.js` (which also grew a
+  drop-off lane the plan never had). The curb points it implies are
+  *derived*, never stored: `curbPointsFor` lays a loop's bays a bus apart
+  and a lot's let-out points along the same aisles `markStalls` stripes,
+  in the region's own oriented rectangle, clipped to its ring — so
+  re-shaping the asphalt moves the bays with it, the way a court's paint
+  has always moved.
+- [x] **Arrival and dismissal.** Every person carries a curb (a seeded
+  pick over `siteCurbs`, falling back to the public way, or to nothing
+  for a sealed building — which keeps the old born-in-homeroom lifecycle
+  verbatim) and a minute to reach it, off an `arrivalOf` side generator
+  on `wardrobeOf`'s terms so the crowd's own sequence never moved. A new
+  `away` state is "the bus hasn't come": no body, no draw, no collisions.
+  Before school the building *fills* — placed at the curb, routed across
+  the yard to homeroom; after the last bell everyone lingers a seeded few
+  minutes, then routes back out to the curb they came in by, because the
+  curbs are nodes on the same graph the morning walked in over.
+- [x] **Doors queue.** `threshold.js`, pure with its suite: an exterior
+  doorway admits inbound at a rate off its *clear* width, credit capped
+  at a person and a half, and nobody held past a bound — over it you are
+  admitted on borrowed credit, so the door's average rate holds while no
+  rule can park a body forever. Outbound spends nothing: a fire drill is
+  exactly the drill it was.
+- [x] **The air reads it for free.** As predicted, and with not one line
+  in `murmur.js`: walkers and queuers already cluster into rush knots
+  wherever they stand, so the curb chatters and dies down on its own, and
+  pairs still stop to talk on the walk in. The PA's arrival-bell script
+  now genuinely fires over a filling building.
 
-*Leans on:* `sitemesh.js`, `agents.js`, `site.js`, `murmur.js`,
-`schedule.js`, `generate.js`. *Save:* new site region kinds on the
-existing site record — additive, a site with no curb writes nothing new.
-*Model:* **Claude Fable 5** — outdoor routing, the crowd's lifecycle and a
-schema append are model layer.
+*Save:* `kind` on a site region, present only when set — additive, and a
+site with no curb writes nothing new. *Model:* **Claude Fable 5** —
+outdoor routing, the crowd's lifecycle and a schema append are model
+layer, and that is where it ran.
+
+*What fought back:* the doors, three times, and every time the dismissal
+found it — the first routes in this building's life that cross several
+doorways on their way to somewhere that is not a room, so "being in the
+room you were going to is arriving" never rescued them. First the
+far-side door waypoint: the near-portal steering aims *just* past the
+centre line, closer than the waypoint's own arrival radius, so a body
+parked in the leaf's swing three feet short of "arrived" until the door
+shut on it and squeezed it back where it came from — fixed in the aim
+(once through the plane you head for the waypoint proper), plus one new
+rule real people never needed telling: walk clear of a doorway's swing
+before you turn. Second the standoff: a walker pressed against a leaf
+parked open across its route, each politely holding for the other until
+the last bell — `lift.js`'s bounded-holding lesson a third time, in
+`openings.js`: a body that is not using a closing door and stands clear
+of its shut position does not get to hold it open for good. Third the
+patience counters: sliding along that leaf at walking speed counted as
+progress and kept resetting the very timer whose flip would have carried
+the body round the free end — progress is now measured *toward the aim*,
+not as displacement. And one honest concession: the admission gate meters
+the waypoint crossing, but a soft crowd can physically squeeze a body
+through the opening uncounted — a real crush does that too, and the
+stuck-skip at least may no longer jump the gate on purpose. Next in the
+arc: **Phase 40 — The chair, not the checklist**, named model **Claude
+Fable 5**; Phase 34 stays open beside the arc.
 
 ## Phase 40 — The chair, not the checklist
 

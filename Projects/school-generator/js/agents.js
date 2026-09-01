@@ -37,7 +37,10 @@ import {
 import { groundAt } from './terrain.js';
 import {
   blocks, blockAt, normalizeSchedule, isDefaultSchedule, makeTimetable, fixedTimetable,
+  dayStart, dayEnd,
 } from './schedule.js';
+import { siteCurbs } from './site.js';
+import { makeThresholds, stepThresholds, thresholdFor, admit } from './threshold.js';
 import {
   route, egressField, teachingRooms, commonRooms, runLandings, DOOR_OFFSET,
 } from './navgraph.js';
@@ -138,6 +141,20 @@ export const PATIENCE = 8;           // s
 export const REPATH_COOLDOWN = 5;    // s
 export const MAX_POP = 600;
 
+// ---------- arriving and leaving (Phase 39) ----------
+//
+// The crowd used to be born seated and die at the last bell. Now the day has
+// edges: everybody is assigned a curb point (a bus bay, a drop-off pull-in, a
+// parking aisle — whatever the site's region kinds imply) and a minute to
+// arrive at it, walks in across the site, and after the last bell walks back
+// out to the same curb and is gone. A design whose site implies no curb keeps
+// the old lifecycle verbatim — you cannot arrive at a building from a site
+// that has nowhere to arrive from.
+export const ARRIVE_WINDOW = 25;     // min — the stagger the students arrive over
+export const ARRIVE_LAST = 2;        // min before first bell the last one aims for
+export const TEACHER_EARLY = 12;     // min — teachers come in ahead of the crowd
+export const DEPART_LINGER = 6;      // min — how long the slowest linger after dismissal
+
 // ---------- talking (Phase 28) ----------
 //
 // Two people who meet in a corridor sometimes stop and talk. The pairing is
@@ -209,6 +226,17 @@ export function wardrobeOf(id, seed = 1, teacher = false) {
     build,
     bag: rand() < (teacher ? BAG_ODDS.teacher : BAG_ODDS.student) ? colour : null,
   };
+}
+
+// When this person reaches the curb, and which curb it is — drawn off a side
+// generator exactly the way the wardrobe is, and for the same reason: a
+// minute of the morning is as cosmetic to the *simulation's sequence* as a
+// hair colour, and folding it into `makeAgent`'s draws would move where
+// everybody spawns. `when` spreads the arrivals, `curb` picks the bay, and
+// `linger` is how long after the last bell this person takes to pack up.
+export function arrivalOf(id, seed = 1) {
+  const rand = rng((Math.imul(seed >>> 0, 0x27d4eb2f) ^ Math.imul(id | 0, 0x165667b1)) >>> 0);
+  return { when: rand(), curb: rand(), linger: rand() };
 }
 
 // How far the pelvis rises and falls over one stride, in feet at full height.
@@ -353,6 +381,12 @@ export function seatsIn(state, nav, room, catalogGet, limit = SEAT_SCAN) {
 function makeAgent(id, kind, rand, room, opts = {}) {
   const jitter = (r) => (rand() - 0.5) * r;
   const teacher = kind === 'teacher';
+  // Phase 39: how this person's day reaches the building, off the arrival
+  // side generator — none of it touches `rand`, so the crowd walks the walk
+  // it walked before the site had a curb.
+  const arr = arrivalOf(id, opts.seed);
+  const curbs = opts.curbs && opts.curbs.length ? opts.curbs : null;
+  const curb = curbs ? curbs[Math.floor(arr.curb * curbs.length) % curbs.length] : null;
   return {
     id,
     kind,
@@ -425,6 +459,21 @@ function makeAgent(id, kind, rand, room, opts = {}) {
     walked: 0,
     repathAt: -1e9,
     outAt: null,
+    // Phase 39: the day's edges. `curb` is where a vehicle lets this person
+    // out in the morning and picks them up again; `arriveMin` and `departMin`
+    // are the minutes of the day they reach it and head back for it, spread
+    // by the seeded stagger; `doorWait` is how long the front door's rate has
+    // held them on the steps. All null/zero for a design whose site implies
+    // no curb, whose crowd keeps the born-in-homeroom lifecycle it always had.
+    curb,
+    arriveMin: opts.dayStart !== undefined && curb
+      ? Math.max(0, opts.dayStart - ARRIVE_LAST - (teacher ? TEACHER_EARLY : 0)
+        - Math.round(arr.when * ARRIVE_WINDOW))
+      : null,
+    departMin: opts.dayEnd !== undefined && curb
+      ? opts.dayEnd + Math.round(arr.linger * DEPART_LINGER)
+      : null,
+    doorWait: 0,
   };
 }
 
@@ -456,8 +505,13 @@ export function makePopulation(state, nav, opts = {}) {
 
   const lunchRoom = pickLunchroom(common, teaching);
   const wanted = Math.max(0, Math.min(MAX_POP, Math.round(opts.students ?? 90)));
+  // Phase 39: where the day begins and ends. The curb list and the two bell
+  // minutes ride into every `makeAgent`, and a site that implies no curb
+  // hands over nothing — see `curbsFor`.
+  const curbs = curbsFor(state, nav);
+  const edges = { curbs, dayStart: dayStart(sched), dayEnd: dayEnd(sched) };
   const plan = planFor(opts.plan, nav, sched);
-  if (plan) return fromPlan(state, nav, plan, { rand, seed, floorHt, sched, lunchRoom, wanted });
+  if (plan) return fromPlan(state, nav, plan, { rand, seed, floorHt, sched, lunchRoom, wanted, edges });
 
   const teacherCount = Math.max(0, Math.min(teaching.length,
     Math.round(opts.teachers ?? teaching.length)));
@@ -470,6 +524,7 @@ export function makePopulation(state, nav, opts = {}) {
       floorHt,
       timetable: fixedTimetable(room.id, sched),
       lunch: room.id,
+      ...edges,
     }));
   }
   const roomIds = teaching.map((r) => r.id);
@@ -485,9 +540,22 @@ export function makePopulation(state, nav, opts = {}) {
       floorHt,
       timetable: makeTimetable(rand, roomIds, sched, { home }),
       lunch: lunchRoom,
+      ...edges,
     }));
   }
   return agents;
+}
+
+// Where the crowd reaches the property. The site's own curb points when any
+// region kind implies some; failing that the public way — you can still walk
+// in from the street a design has, even if nobody drew the bus its loop.
+// Nothing at all for a sealed or site-less building, whose population is born
+// in homeroom exactly as it was before this phase.
+export function curbsFor(state, nav) {
+  const drawn = siteCurbs(state);
+  if (drawn.length) return drawn;
+  return (nav && nav.ways ? nav.ways : [])
+    .map((w) => ({ id: w.id, x: w.x, z: w.z, kind: 'way', region: null, name: w.name }));
 }
 
 // A plan worth using: one with at least one cohort that has somewhere to be.
@@ -505,7 +573,7 @@ function planFor(plan, nav, sched) {
 // students slider meaningful with a timetable loaded: at half the roll you get
 // every cohort at half strength rather than half the cohorts at full.
 function fromPlan(state, nav, plan, ctx) {
-  const { rand, seed, floorHt, sched, lunchRoom, wanted } = ctx;
+  const { rand, seed, floorHt, sched, lunchRoom, wanted, edges } = ctx;
   const agents = [];
   const periods = normalizeSchedule(sched).periods;
   // A plan's rooms are indexed by *its* period count; a design whose bell
@@ -531,6 +599,7 @@ function fromPlan(state, nav, plan, ctx) {
     if (!room) continue;
     agents.push(makeAgent(id++, 'teacher', rand, room, {
       seed, floorHt, timetable, lunch: home, cohort: null, person: teacher.name,
+      ...edges,
     }));
   }
 
@@ -549,6 +618,7 @@ function fromPlan(state, nav, plan, ctx) {
     for (let i = 0; i < size; i++) {
       agents.push(makeAgent(id++, 'student', rand, room, {
         seed, floorHt, timetable, lunch: lunchRoom, cohort: cohort.id, group: cohort.name,
+        ...edges,
       }));
       budget--;
       if (budget <= 0) break;
@@ -653,7 +723,7 @@ function bucketBodies(agents, extra) {
     list.push(b);
   };
   for (const a of agents) {
-    if (a.state === 'out') continue;
+    if (a.state === 'out' || a.state === 'away') continue;
     add({
       id: a.id, x: a.x, z: a.z, r: AGENT_R, push: BODY_PUSH, floor: a.floorIndex ?? 0,
       // Which way they are going, so a queue can be told from a head-on meeting.
@@ -822,6 +892,17 @@ function releaseLift(ctx, agent) {
   agent.liftWait = 0;
 }
 
+// Is this door waypoint the *outdoor* side of its exterior portal? The near
+// side of the pair, approached from outside, is the outdoor point — which is
+// what makes a crossing inbound, and it is a fact about the waypoint rather
+// than about where the body happens to be standing this frame (a body nudged
+// half a step past the wall plane is still coming in).
+function isOutdoorSide(wp) {
+  const P = wp.portal;
+  const out = P.a ? P.pb : P.pa;
+  return Math.hypot(wp.x - out.x, wp.z - out.z) < 0.5;
+}
+
 // The gap to whoever is in front. Infinity if the way is clear — which is
 // what the person at the front of a queue always sees, and why a queue drains
 // from the front rather than shuffling as a block.
@@ -876,11 +957,14 @@ function yieldAtDoor(bodies, agent, portal) {
 
 // One agent, one frame.
 function stepAgent(ctx, agent, dt, bodies) {
+  // Gone home, or not here yet: either way there is no body to move. `away`
+  // is Phase 39's "the bus hasn't come" — the person exists, their day is
+  // assigned, and the site simply doesn't hold them yet.
+  if (agent.state === 'out' || agent.state === 'away') return;
   const floorHt = ctx.state.floorHt || FLOOR_H;
   const ground = groundAt(ctx.site, agent.x, agent.z);
   const floorIndex = storeyAt(ctx.state, agent.y, ground);
   agent.floorIndex = floorIndex;
-  if (agent.state === 'out') return;
   if (agent.chatIn > 0) agent.chatIn -= dt;
 
   const collider = ctx.colliderFor(floorIndex);
@@ -986,15 +1070,51 @@ function stepAgent(ctx, agent, dt, bodies) {
     const lane = spread > 0.05 ? agent.lane * spread : 0;
     const near = Math.hypot(agent.x - P.x, agent.z - P.z) < DOOR_OFFSET + 1;
     if (near) {
-      // Just through the opening, on its own centre line: the shortest aim
-      // that is guaranteed to be *between* the jambs rather than past one.
       const tx = target.x - P.x, tz = target.z - P.z;
       const tl = Math.hypot(tx, tz) || 1;
-      aimX = P.x + (tx / tl) * 0.75 - P.nz * lane;
-      aimZ = P.z + (tz / tl) * 0.75 + P.nx * lane;
+      // Already through the opening, on the waypoint's own side of it? Then
+      // the pulled-in aim below is *behind* the body, and steering at it
+      // parks you in the leaf's swing — three feet short of "arrived", with
+      // the door shutting on you and the resolution free to squeeze you back
+      // through the gap you came from. Aim at the waypoint proper instead:
+      // straight out of the swing, on the centre line you are already on.
+      // Room-bound routes never met this (being in the room you were going
+      // to is arriving); Phase 39's curb-bound walks cross enough doorways
+      // mid-route to find it in an afternoon.
+      const crossed = (agent.x - P.x) * tx + (agent.z - P.z) * tz > 0.2 * tl;
+      if (crossed) {
+        aimX = target.x;
+        aimZ = target.z;
+      } else {
+        // Just through the opening, on its own centre line: the shortest aim
+        // that is guaranteed to be *between* the jambs rather than past one.
+        aimX = P.x + (tx / tl) * 0.75 - P.nz * lane;
+        aimZ = P.z + (tz / tl) * 0.75 + P.nx * lane;
+      }
     } else {
       aimX += -P.nz * lane;
       aimZ += P.nx * lane;
+    }
+  }
+  // Just crossed a doorway? Walk clear of its swing before turning. A body
+  // that turns the moment it is through hugs the wall through the leaf's own
+  // arc — and a parked or closing leaf stands exactly there, so the turn ends
+  // pressed against a door with the route on the far side of it. Real people
+  // do this without being told: you step out of a doorway, then you turn.
+  // (Phase 39's curb walks found it — the first routes whose next waypoint
+  // is a long way down the same wall the door hangs in.)
+  const prevWp = agent.wp > 0 ? agent.path[agent.wp - 1] : null;
+  const prev2 = agent.wp > 1 ? agent.path[agent.wp - 2] : null;
+  if (prevWp && prevWp.kind === 'door' && prevWp.portal
+    && prev2 && prev2.node === prevWp.node) {
+    const P = prevWp.portal;
+    const away = Math.hypot(agent.x - P.x, agent.z - P.z);
+    const clear = (P.w || 3) + AGENT_R + 0.4;
+    if (away < clear) {
+      const ox = prevWp.x - P.x, oz = prevWp.z - P.z;
+      const ol = Math.hypot(ox, oz) || 1;
+      aimX = P.x + (ox / ol) * (clear + 0.5);
+      aimZ = P.z + (oz / ol) * (clear + 0.5);
     }
   }
   // Steering is toward the aim; arriving is measured to the waypoint. They are
@@ -1019,6 +1139,32 @@ function stepAgent(ctx, agent, dt, bodies) {
   const throughIt = nearSideOfPair
     && Math.hypot(target.portal.x - agent.x, target.portal.z - agent.z) < DOOR_OFFSET - 0.5;
   if ((flat < arrive || throughIt) && sameFloor) {
+    // Phase 39: an exterior doorway admits at a rate — inbound only. The
+    // morning crush spends the door's credit one person at a time and stacks
+    // outside it when the credit runs dry; the crash bar on the way out
+    // spends nothing, which is what keeps a fire drill exactly the drill it
+    // was. A person the rate holds is a queue, not a jam: resolved against
+    // the crowd, counted by the heatmap, cleared of the stuck counters that
+    // would otherwise shove them through the arithmetic, and never held past
+    // the bound `admit` keeps.
+    if (nearSideOfPair && target.portal.exterior && ctx.thresholds
+      && isOutdoorSide(target)) {
+      const th = thresholdFor(ctx.thresholds, target.portal);
+      if (!admit(th, agent.doorWait)) {
+        agent.doorWait += dt;
+        agent.state = 'queue';
+        agent.stuck = 0;
+        agent.wait = 0;
+        const held = resolvePoint(collider, agent.x, agent.z, AGENT_R, 2,
+          { bodies, skip: agent.id });
+        agent.x = held.x;
+        agent.z = held.z;
+        agent.y = supportOf(ctx, agent, floorIndex);
+        crowdAdd(ctx.crowd, floorIndex, agent.x, agent.z, dt);
+        return;
+      }
+      agent.doorWait = 0;
+    }
     // Reaching a waypoint is progress, and progress clears the patience
     // counters. Without this a route is burned through from the far end: the
     // counters keep whatever a busy corridor put into them, the next waypoint
@@ -1032,8 +1178,17 @@ function stepAgent(ctx, agent, dt, bodies) {
     return;
   }
   const shove = agent.wait > PATIENCE;
+  // Which way the body *wants* to go, before the shuffle angles it off. The
+  // patience counters measure progress against this rather than against raw
+  // displacement: a body pressed on a parked door leaf slides along it at
+  // walking speed while getting nowhere, and counting the slide as progress
+  // keeps resetting the very timer whose flip would carry it round the leaf's
+  // free end. (Found by Phase 39's dismissal — the first routes that walk a
+  // long leg *along* a wall a leaf stands open against.)
+  let wantX = 0, wantZ = 0;
   if (reach > 1e-6) {
     let ux = dx / reach, uz = dz / reach;
+    wantX = ux; wantZ = uz;
     // Held up? Angle off. Which side is the agent's own business — two people
     // meeting head on pick opposite ones and get past each other — and it
     // flips on a timer, so a jam that survives one choice does not survive the
@@ -1084,6 +1239,8 @@ function stepAgent(ctx, agent, dt, bodies) {
       bodies: shove ? null : bodies, skip: agent.id,
     });
   const walked = Math.hypot(moved.x - agent.x, moved.z - agent.z);
+  // ...and how much of it was in the direction the body wanted — see `wantX`.
+  const toward = (moved.x - agent.x) * wantX + (moved.z - agent.z) * wantZ;
   agent.x = moved.x;
   agent.z = moved.z;
   // Whatever `moveWalker` found under the step is what holds them up: it
@@ -1102,7 +1259,7 @@ function stepAgent(ctx, agent, dt, bodies) {
   // waypoint given up on. Only the second one is a problem, and telling them
   // apart is one boolean that `gapAhead` already worked out.
   const wanted = speed * dt * 0.35;
-  if (walked < wanted) {
+  if (toward < wanted) {
     agent.wait += dt;
     // Queueing still counts, at a quarter of the rate. Patience is right and
     // infinite patience is not: a body pressed against the wall beside a door
@@ -1123,6 +1280,12 @@ function stepAgent(ctx, agent, dt, bodies) {
       releaseSeat(ctx, agent);
       agent.path = null;
       agent.state = 'idle';
+    } else if (nearSideOfPair && target.portal && target.portal.exterior
+      && ctx.thresholds && isOutdoorSide(target)) {
+      // The one waypoint the skip may not jump: an admitting doorway. A body
+      // wedged in the morning crush that skipped the near side would walk in
+      // through the far one with nobody counting — so it stays in the crush,
+      // which is where the crush wants it anyway.
     } else if (agent.wp < agent.path.length - 1) {
       // **Skip the waypoint; don't re-plan.** Re-planning the moment anything
       // gets in the way is how a body ends up pacing a corridor forever: the
@@ -1250,8 +1413,9 @@ function arriveAtGoal(ctx, agent, target) {
     return;
   }
   // A muster point is the end of the day, or the end of a drill: either way
-  // the agent has left the building and stops being simulated.
-  if (target && target.kind === 'muster') {
+  // the agent has left the building and stops being simulated. The curb is
+  // the same thing said the Phase 39 way — the bus door shuts behind them.
+  if (target && (target.kind === 'muster' || target.kind === 'curb')) {
     agent.state = 'out';
     agent.outAt = ctx.elapsed;
     return;
@@ -1305,6 +1469,11 @@ export function makeContext(state, nav, opts = {}) {
     // `opts.lifts: false` turns them off, and turning them off is the Phase 2
     // teleport back, verbatim.
     lifts: opts.lifts === false ? null : makeLifts(state),
+    // Phase 39's doors. A threshold is a fact about this run of the school
+    // day, the same as a lift car or a claimed chair — never about the
+    // design. `opts.thresholds: false` turns the rate off, and off is the
+    // door that passes a crowd instantaneously, verbatim.
+    thresholds: opts.thresholds === false ? null : makeThresholds(),
   };
 }
 
@@ -1313,34 +1482,178 @@ export function makeContext(state, nav, opts = {}) {
 // because a route is a search and the answer only changes when the clock or
 // the building does.
 export function retargetAll(ctx, agents) {
+  const block = blockAt(ctx.schedule, ctx.minutes);
   for (const agent of agents) {
-    if (agent.state === 'out') continue;
     // A new block, a drill, a rebuilt world — whatever brought us here ends
     // every conversation: the states below are assigned fresh, and a `chat`
     // left set would be a pair whose other half no longer exists.
     if (agent.chat) { agent.chat = null; agent.state = 'idle'; }
-    releaseSeat(ctx, agent);
     if (ctx.mode === 'drill') {
+      if (agent.state === 'out' || agent.state === 'away') continue;
+      releaseSeat(ctx, agent);
       headForTheDoor(ctx, agent);
       continue;
     }
+    // Phase 39: the day has edges. Before school the building fills — from
+    // the curb, in the seeded stagger — instead of switching on; after the
+    // last bell it streams back out to the curb instead of switching off.
+    if (block.kind === 'before') {
+      beforeSchool(ctx, agent);
+      continue;
+    }
+    if (block.kind === 'after') {
+      afterSchool(ctx, agent);
+      continue;
+    }
+    // In session. Somebody not on site — the clock was scrubbed past their
+    // arrival, or a new day started under yesterday's `out` — arrives now,
+    // through the same curb their morning would have used. No curb, no way
+    // in: they stay wherever their old lifecycle left them.
+    if (agent.state === 'out' || agent.state === 'away') {
+      if (!agent.curb) continue;
+      placeAtCurb(ctx, agent);
+    }
+    releaseSeat(ctx, agent);
     const goal = goalRoomFor(agent, ctx.schedule, ctx.minutes, ctx.mode);
     if (!goal) {
-      // Before school and after it, everyone goes home — which from inside the
-      // model means out of the nearest door and off the end of the graph. The
-      // same walk a drill asks for, at a walk rather than a hurry.
       headForTheDoor(ctx, agent);
       continue;
     }
-    const room = ctx.nav.node(goal);
-    const here = ctx.nav.roomIdAt(agent.floorIndex ?? 0, agent.x, agent.z);
-    if (here === goal && room) {
-      agent.goal = goal;
-      if (ctx.sitting) takeSeat(ctx, agent, room);
-      else { agent.state = 'idle'; agent.path = null; }
-    } else {
-      repath(ctx, agent, goal);
-      agent.state = agent.path ? 'walk' : 'idle';
+    sendTo(ctx, agent, goal);
+  }
+}
+
+// The one way anybody is ever sent to a room: already there means settle
+// (a chair if the block sits, a spot to stand if it doesn't), anywhere else
+// means a route — the same three lines the old retarget ended in, named so
+// the day's edges can use them too.
+function sendTo(ctx, agent, goal) {
+  const room = goal ? ctx.nav.node(goal) : null;
+  const here = ctx.nav.roomIdAt(agent.floorIndex ?? 0, agent.x, agent.z);
+  if (here === goal && room) {
+    agent.goal = goal;
+    if (ctx.sitting) takeSeat(ctx, agent, room);
+    else { agent.state = 'idle'; agent.path = null; }
+  } else {
+    repath(ctx, agent, goal);
+    agent.state = agent.path ? 'walk' : 'idle';
+  }
+}
+
+// ---------- the day's edges (Phase 39) ----------
+
+// Before the first bell. Not here yet means parked at the curb as `away`;
+// arrived means walking in to homeroom, which is where an early school
+// morning actually gathers. A person with no curb keeps the old lifecycle:
+// born in the building, and before school they go home the way they always
+// did.
+function beforeSchool(ctx, agent) {
+  if (!agent.curb || agent.arriveMin === null) {
+    if (agent.state === 'out' || agent.state === 'away') return;
+    releaseSeat(ctx, agent);
+    headForTheDoor(ctx, agent);
+    return;
+  }
+  if (ctx.minutes < agent.arriveMin) {
+    parkAway(ctx, agent);
+    return;
+  }
+  if (agent.state === 'out' || agent.state === 'away') placeAtCurb(ctx, agent);
+  releaseSeat(ctx, agent);
+  sendTo(ctx, agent, agent.timetable[0] || agent.home);
+}
+
+// After the last bell. Whoever's linger has run out heads for their curb;
+// the rest keep their seat or their spot in the corridor — a school does not
+// empty on one bell, and the stagger out is the same seeded kind of stagger
+// the morning came in on.
+function afterSchool(ctx, agent) {
+  if (agent.state === 'out' || agent.state === 'away') return;
+  if (agent.departMin !== null && ctx.minutes < agent.departMin) {
+    agent.goal = null;
+    if (agent.state !== 'sit') { agent.state = 'idle'; agent.path = null; }
+    return;
+  }
+  releaseSeat(ctx, agent);
+  headForTheCurb(ctx, agent);
+}
+
+// Not on site yet: the body stands at its curb, unsimulated, until its
+// minute comes. Position is written now so the moment it appears it appears
+// *there*, and so a panel that asks where somebody is has an answer.
+function parkAway(ctx, agent) {
+  releaseSeat(ctx, agent);
+  releaseLift(ctx, agent);
+  agent.state = 'away';
+  agent.path = null;
+  agent.goal = null;
+  agent.chat = null;
+  agent.x = agent.curb.x;
+  agent.z = agent.curb.z;
+  agent.y = groundAt(ctx.site, agent.x, agent.z);
+  agent.floorIndex = 0;
+  agent.outAt = null;
+  agent.doorWait = 0;
+}
+
+// The vehicle door opens: the body is set down a pace along the curb by its
+// own `lane` — three people off one bus are a knot, not a totem, and the
+// crowd resolution spreads them the rest of the way.
+function placeAtCurb(ctx, agent) {
+  agent.x = agent.curb.x + Math.sin(agent.lane * Math.PI) * 1.5;
+  agent.z = agent.curb.z + Math.cos(agent.lane * Math.PI) * 1.5;
+  agent.y = groundAt(ctx.site, agent.x, agent.z);
+  agent.floorIndex = 0;
+  agent.state = 'idle';
+  agent.outAt = null;
+  agent.doorWait = 0;
+}
+
+// Out of the building and along the site to the curb the day started at.
+// The curb is a node on the same graph the morning walked in over, so the
+// route out is a real route — around the building, not through it — and
+// arriving at it is going home (see `arriveAtGoal`). A curb the graph lost
+// (the region was deleted mid-day) falls back to the plain walk out.
+function headForTheCurb(ctx, agent) {
+  const curbNode = agent.curb ? ctx.nav.node(agent.curb.id) : null;
+  if (curbNode) {
+    repath(ctx, agent, agent.curb.id);
+    if (agent.path) {
+      agent.state = 'walk';
+      return;
+    }
+    // No route, but already outdoors: close enough to be gone.
+    if (ctx.nav.roomIdAt(agent.floorIndex ?? 0, agent.x, agent.z) === null) {
+      agent.state = 'out';
+      agent.outAt = ctx.elapsed;
+      return;
+    }
+  }
+  headForTheDoor(ctx, agent);
+}
+
+// The edges, ticked every frame: an `away` person whose minute has come is
+// set down at the curb and walks in; after the last bell, whoever's linger
+// has run out heads back for it. Both are no-ops outside their block, and
+// neither costs a search unless somebody actually moves.
+function dayEdges(ctx, agents) {
+  if (ctx.mode === 'drill') return;
+  const block = blockAt(ctx.schedule, ctx.minutes);
+  if (block.kind === 'before') {
+    for (const agent of agents) {
+      if (agent.state !== 'away' || !agent.curb) continue;
+      if (ctx.minutes < agent.arriveMin) continue;
+      placeAtCurb(ctx, agent);
+      sendTo(ctx, agent, agent.timetable[0] || agent.home);
+    }
+  } else if (block.kind === 'after') {
+    for (const agent of agents) {
+      if (agent.state === 'out' || agent.state === 'away') continue;
+      if (agent.departMin !== null && ctx.minutes < agent.departMin) continue;
+      if (agent.goal || (agent.path && agent.wp < agent.path.length)) continue;
+      if (ctx.elapsed - agent.repathAt < REPATH_COOLDOWN) continue;
+      releaseSeat(ctx, agent);
+      headForTheCurb(ctx, agent);
     }
   }
 }
@@ -1430,6 +1743,10 @@ export function stepAgents(ctx, agents, dt, opts = {}) {
   // spent looking for a chair is a passing period nobody spends in a corridor.
   ctx.sitting = ctx.mode !== 'drill'
     && ['class', 'homeroom', 'lunch'].includes(blockAt(ctx.schedule, ctx.minutes).kind);
+  // Phase 39: the doors accrue their flow, and the day's edges tick — who
+  // has just reached the curb, who has finished lingering after the bell.
+  if (ctx.thresholds) stepThresholds(ctx.thresholds, dt);
+  dayEdges(ctx, agents);
   const map = bucketBodies(agents, opts.bodies);
   for (const agent of agents) {
     const near = neighbours(map, agent.floorIndex ?? 0, agent.x, agent.z);
@@ -1465,7 +1782,9 @@ export function stepAgents(ctx, agents, dt, opts = {}) {
 function swingDoors(ctx, agents, dt, opts = {}) {
   const skip = opts.skipFloors || null;
   const floors = new Set();
-  for (const a of agents) if (a.state !== 'out') floors.add(a.floorIndex ?? 0);
+  for (const a of agents) {
+    if (a.state !== 'out' && a.state !== 'away') floors.add(a.floorIndex ?? 0);
+  }
   const moved = [];
   for (const f of floors) {
     if (skip && skip.has(f)) continue;
@@ -1482,7 +1801,7 @@ function swingDoors(ctx, agents, dt, opts = {}) {
 export function bodiesOn(agents, floorIndex, opts = {}) {
   const out = [];
   for (const a of agents) {
-    if (a.state === 'out') continue;
+    if (a.state === 'out' || a.state === 'away') continue;
     // Somebody in the car is inside a shaft, behind three walls and a door.
     // Resolving the walker against them is resolving it against a body it
     // cannot reach, and on the frame the car passes a storey it is a body
@@ -1501,7 +1820,8 @@ export function bodiesNear(agents, floorIndex, x, z, radius = 30, extra = null) 
   const out = extra ? [...extra] : [];
   const r2 = radius * radius;
   for (const a of agents) {
-    if (a.state === 'out' || a.state === 'ride' || (a.floorIndex ?? 0) !== floorIndex) continue;
+    if (a.state === 'out' || a.state === 'away' || a.state === 'ride'
+      || (a.floorIndex ?? 0) !== floorIndex) continue;
     if ((a.x - x) ** 2 + (a.z - z) ** 2 > r2) continue;
     // `open` is intent, and it is the whole difference between one walker and
     // forty: a body only opens a door it is actually walking through. Everyone
@@ -1520,13 +1840,14 @@ export function bodiesNear(agents, floorIndex, x, z, radius = 30, extra = null) 
 export function census(agents) {
   const out = {
     total: agents.length, walking: 0, seated: 0, idle: 0, out: 0, teachers: 0,
-    queueing: 0, riding: 0, chatting: 0,
+    queueing: 0, riding: 0, chatting: 0, away: 0,
   };
   for (const a of agents) {
     if (a.kind === 'teacher') out.teachers++;
     if (a.state === 'walk') out.walking++;
     else if (a.state === 'sit') out.seated++;
     else if (a.state === 'out') out.out++;
+    else if (a.state === 'away') out.away++;
     else if (a.state === 'queue') out.queueing++;
     else if (a.state === 'ride') out.riding++;
     else if (a.state === 'chat') out.chatting++;
@@ -1541,8 +1862,12 @@ export function census(agents) {
 export function drillReport(agents, elapsed) {
   let out = 0, stranded = 0, longest = 0;
   for (const a of agents) {
-    if (a.state === 'out') { out++; longest = Math.max(longest, a.outAt || 0); }
-    else if (!a.path && !a.goal) stranded++;
+    // Somebody the bus never brought is not in the building, which for a
+    // drill is the same thing as being safely out of it.
+    if (a.state === 'out' || a.state === 'away') {
+      out++;
+      longest = Math.max(longest, a.outAt || 0);
+    } else if (!a.path && !a.goal) stranded++;
   }
   return {
     total: agents.length,

@@ -298,7 +298,23 @@ export function updateLeavesFor(leaves, bodies, dt, opts = {}) {
       for (const b of bodies) {
         const here = leafDistanceTo(leaf, leaf.open, b.x, b.z);
         const there = leafDistanceTo(leaf, next, b.x, b.z);
-        if (there < body && there < here) { blocked = true; break; }
+        if (there >= body || there >= here) continue;
+        // The swing is moving toward this body. Somebody the *shut* leaf
+        // would still touch is in the doorway proper and holds it, always.
+        // But a body merely leaning on a closing door from inside its arc,
+        // with no intent to use it, does not get to hold it open for good:
+        // the closer wins, the sweep nudges them aside (bodies are soft,
+        // and the next frame's resolution keeps them so), and the corridor
+        // the open leaf was barring comes back. Lift.js's bounded-holding
+        // lesson a third time — nothing here may be held in a state
+        // indefinitely by somebody who isn't using it. (Phase 39's curb
+        // walks found the standoff: a long leg along a wall, a leaf parked
+        // open across it, and a walker pressed against the face of it —
+        // each politely waiting for the other until the last bell.)
+        if (leaf.want === 0 && b.open === false
+          && leafDistanceTo(leaf, 0, b.x, b.z) >= body) continue;
+        blocked = true;
+        break;
       }
       if (blocked) continue;   // it would close on somebody — hold
     }
