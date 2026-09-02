@@ -177,7 +177,7 @@ ok(
 console.log("# hygiene");
 const expectedTopLevel = new Set([
   ...GENERATED, "src", "test", "tools", "source-material", "node_modules",
-  "README.md", "CONTENT-GUIDE.md", "package.json", "package-lock.json",
+  "README.md", "CONTENT-GUIDE.md", "WISHLIST.md", "package.json", "package-lock.json",
   ".gitignore", "eleventy.config.mjs", ".cache", "discord-logs",
 ]);
 const unexpected = readdirSync(root).filter((e) => !expectedTopLevel.has(e));
