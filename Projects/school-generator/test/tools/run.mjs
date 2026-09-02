@@ -287,6 +287,7 @@ const DEFERRED = [
   'cost', 'spec', 'rates', 'phasing', 'commonpath',
   'blueprint',                                                   // Phase 42: the printable set
   'session', 'presence', 'wire', 'cloud',                        // Phase 42: the session stack
+  'snapshots', 'designdiff',                                     // Phase 34: the history
 ];
 
 // ---------- the checks ----------
@@ -1271,6 +1272,59 @@ const CHECKS = [
       if (ctx.undone === ctx.at) throw new Error('six undos changed nothing');
       if (after.json !== ctx.at) {
         throw new Error(`redo landed on ${after.json} bytes, not the ${ctx.at} it started from`);
+      }
+    },
+  },
+  // ---------- Phase 34: a history somebody else can read ----------
+  //
+  // The pure suite proves the differ's sentences and the store's round trip;
+  // this proves the tool is wired to them: a snapshot kept, a room drawn, the
+  // change read back as a sentence with a mark behind it, the snapshot
+  // restored as an edit, and undo taking the restore back.
+  {
+    name: 'history',
+    what: 'a snapshot is kept, a change reads back as a sentence, and restoring it is an undoable edit',
+    async run(d) {
+      const a = await d.page.evaluate(`window.app.snapshotNow('before')`);
+      const before = await d.fp();
+      await d.pick('floor');
+      await d.page.evaluate('window.app.editor.setFloorRect(true); 1');
+      // The strip above the sample school's rooms, a clear cell or more east
+      // of where floor-rect drew: tiles that touch merge into the room beside
+      // them, and this has to make a room of its own.
+      await d.assertClear([[140, 8], [156, 20]]);
+      await d.drag([[140, 8], [156, 20]]);
+      const drawn = await d.fp();
+      const b = await d.page.evaluate(`window.app.snapshotNow('after')`);
+      const cmp = await d.page.evaluate(
+        `window.app.compareSnapshots(${JSON.stringify(a)}, ${JSON.stringify(b)})` +
+        `.then((c) => c && ({ headline: c.headline, sentences: c.diff.sentences, marks: c.diff.marks.length }))`);
+      const restored = await d.page.evaluate(`window.app.restoreSnapshot(${JSON.stringify(a)})`);
+      const back = await d.fp();
+      await d.page.evaluate(`document.getElementById('undo-btn').click(); 1`);
+      await d.page.waitForTimeout(400);
+      const undone = await d.fp();
+      const listed = await d.page.evaluate('window.app.history.map((s) => s.name)');
+      return { a, b, before, drawn, cmp, restored, back, undone, listed };
+    },
+    expect: ({ ctx }) => {
+      if (!ctx.a || !ctx.b) throw new Error('a snapshot was not kept — is IndexedDB refusing?');
+      if (ctx.drawn.shapes <= ctx.before.shapes) throw new Error('the rectangle drew no room');
+      if (!ctx.cmp) throw new Error('the comparison found no snapshots');
+      if (!/1 room appeared/.test(ctx.cmp.headline)) {
+        throw new Error(`the headline says "${ctx.cmp.headline}", not that one room appeared`);
+      }
+      if (!ctx.cmp.sentences.some((t) => /appeared — \d+ ft², Level 1/.test(t))) {
+        throw new Error(`no sentence says the room appeared: ${ctx.cmp.sentences.join(' | ')}`);
+      }
+      if (ctx.cmp.marks < 1) throw new Error('the change has no mark for the sheet');
+      if (!ctx.restored) throw new Error('the snapshot did not restore');
+      if (ctx.back.shapes !== ctx.before.shapes) {
+        throw new Error(`restoring left ${ctx.back.shapes} rooms, not the ${ctx.before.shapes} the snapshot had`);
+      }
+      if (ctx.undone.shapes !== ctx.drawn.shapes) throw new Error('undo did not take the restore back');
+      for (const name of ['before', 'after']) {
+        if (!ctx.listed.includes(name)) throw new Error(`the timeline does not list "${name}"`);
       }
     },
   },

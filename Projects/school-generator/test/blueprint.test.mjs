@@ -27,7 +27,7 @@ import { applyFinish } from '../js/finish.js';
 import { addProp } from '../js/props.js';
 import { catalogEntry } from '../js/catalog.js';
 import {
-  computeFloorPlan, computeSitePlan, drawFloorPlan, drawPlanBody, drawClearance,
+  computeFloorPlan, computeSitePlan, drawFloorPlan, drawPlanBody, drawClearance, drawDiff, DIFF_INK,
 } from '../js/blueprint.js';
 import { buildReport, codePanel, dayPanel } from '../js/report.js';
 import { buildNav } from '../js/navgraph.js';
@@ -576,4 +576,50 @@ test('drawClearance paints each failed circle on its own storey with its size in
   const { ctx: c3, texts: t3 } = recordingCtx();
   drawPlanBody(c3, plan, LAYOUT, { clearance: [{ floor: 1, x: 66, z: 54.5, r: 1.25, need: 2.5 }] });
   assert.ok(t3.some((t) => t.text === '30 in'));
+});
+
+// ---------- Phase 34: the diff on the sheet ----------
+
+test('the diff paints its marks on the storey they belong to, with a legend', () => {
+  const state = buildSampleSchool();
+  const plan = computeFloorPlan(state, 0);
+  const { ctx, texts, rects } = recordingCtx();
+  const arcs = [];
+  ctx.arc = (x, y, r) => arcs.push({ x, y, r });
+  const box = (x0, z0, x1, z1) => [{ x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 }];
+  const marks = [
+    { floor: 0, kind: 'room', change: 'added', pts: box(10, 10, 30, 30), label: 'Room 103' },
+    { floor: 0, kind: 'room', change: 'changed', pts: box(40, 10, 70, 30), was: box(40, 10, 60, 30), label: 'Main Hall' },
+    { floor: 0, kind: 'prop', change: 'removed', x: 12, z: 12 },
+    { floor: 0, kind: 'wall', change: 'added', a: { x: 0, z: 40 }, b: { x: 20, z: 40 } },
+    { floor: 1, kind: 'room', change: 'removed', pts: box(10, 10, 30, 30), label: 'Upstairs' },
+  ];
+  drawFloorPlan(ctx, plan, LAYOUT, { diff: marks, diffNote: 'since Tuesday, 3:14 pm' });
+  const words = texts.map((t) => t.text);
+  assert.ok(words.includes('+ Room 103'), 'an added room is labelled with its sign');
+  assert.ok(words.includes('~ Main Hall'), 'a changed room too');
+  assert.ok(!words.includes('− Upstairs'), 'the other storey\'s mark stays off this sheet');
+  for (const w of ['added', 'removed', 'changed', 'since Tuesday, 3:14 pm']) {
+    assert.ok(words.includes(w), `the legend says ${w}`);
+  }
+  // The plan draws arcs of its own (door swings), so the dot is counted on a
+  // context that sees only the diff.
+  const { ctx: c1 } = recordingCtx();
+  const dots = [];
+  c1.arc = (x, y, r) => dots.push({ x, y, r });
+  drawDiff(c1, plan, LAYOUT, marks, '');
+  assert.equal(dots.length, 1, 'one point mark, one dot');
+  assert.equal(rects.length >= 3, true, 'three legend swatches');
+  // The label sits at the room's centre, in sheet pixels — the same transform
+  // every other mark on the sheet goes through.
+  const at = texts.find((t) => t.text === '+ Room 103');
+  assert.equal(at.x, LAYOUT.margin + (20 - plan.bounds.minX) * LAYOUT.scale);
+  assert.equal(at.y, LAYOUT.margin + LAYOUT.titleH + (20 - plan.bounds.minZ) * LAYOUT.scale);
+  // No marks on this storey: nothing drawn, no legend.
+  const { ctx: c2, texts: t2 } = recordingCtx();
+  drawFloorPlan(c2, plan, LAYOUT, { diff: [marks[4]], diffNote: 'since Tuesday' });
+  assert.ok(!t2.map((t) => t.text).includes('added'));
+  drawDiff(c2, plan, LAYOUT, [], 'note');
+  assert.ok(!t2.map((t) => t.text).includes('note'));
+  assert.deepEqual(Object.keys(DIFF_INK), ['added', 'removed', 'changed']);
 });
