@@ -43,6 +43,7 @@ import { normalizeRoof, ensureRoof, roofStyleEntry, PARAPET_H } from './roof.js'
 import { ROOF_MEMBRANE, ROOF_SHINGLE } from './finish.js';
 import { assemblyEntry, assemblyMaterial, splitKey, systemEntry } from './rates.js';
 import { quantities } from './cost.js';
+import { csvRows } from './csv.js';
 
 const round = (n, places = 1) => {
   if (!Number.isFinite(n)) return 0;
@@ -277,11 +278,6 @@ export function specSheet(state, opts = {}) {
 
 // ---------- the spreadsheet ----------
 
-const csvCell = (v) => {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-const csvRows = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 
 export function specCSV(spec) {
   const rows = [['Specification', '', '', '', '', '', '']];

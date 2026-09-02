@@ -36,6 +36,7 @@ import { finishEntry } from './finish.js';
 import { siteSchedule, regionsOf, markingEntry } from './site.js';
 import { roofMask, maskCount, roofStyleEntry, ensureRoof, normalizeRoof } from './roof.js';
 import { MULLION_BAY } from './openings.js';
+import { csvRows } from './csv.js';
 
 // A wall's plan thickness says which of the two it is — `walls.js` probes for
 // it, and this only has to read the answer back.
@@ -325,13 +326,6 @@ export function takeoff(state, opts = {}) {
 }
 
 // ---------- the spreadsheet ----------
-
-const csvCell = (v) => {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-export const csvRows = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 
 // The takeoff as a spreadsheet, one row per line item. Deliberately long and
 // flat rather than pretty: this is the format a quantity surveyor pastes into

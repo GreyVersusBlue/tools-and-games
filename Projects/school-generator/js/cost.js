@@ -47,6 +47,7 @@ import {
   assemblyKey, assemblyEntry, assemblyLabel, systemEntry,
   normalizeRates, rateIndex, ratesSummary, isEmptyRates, currencySymbol, SYSTEMS,
 } from './rates.js';
+import { csvRows } from './csv.js';
 
 const round = (n, places = 1) => {
   if (!Number.isFinite(n)) return 0;
@@ -465,11 +466,6 @@ function costFindings({ rates, unpriced, summary, lines }) {
 
 // ---------- the spreadsheet ----------
 
-const csvCell = (v) => {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-const csvRows = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 
 // The estimate as a spreadsheet: the table that priced it first, because a
 // column of costs whose rates nobody can see is a column of costs nobody can

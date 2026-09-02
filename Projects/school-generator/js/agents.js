@@ -49,6 +49,7 @@ import {
   makeLifts, liftFor, callLift, canBoard, boardLift, canAlight, leaveLift,
   liftStop, stepLifts, BOARD_REACH,
 } from './lift.js';
+import { registerRecord } from './records.js';
 
 // A body a little narrower than the camera's. Two people have to pass each
 // other in a 3ft doorway without either of them being pushed through a jamb,
@@ -1879,3 +1880,8 @@ export function drillReport(agents, elapsed) {
     done: out + stranded >= agents.length,
   };
 }
+
+// Phase 42: the population settings are this module's record on the design.
+// Registered here rather than imported by the loader, so that opening a file
+// does not fetch the crowd — see records.js.
+registerRecord('life', { normalize: normalizeLife, isEmpty: isDefaultLife });

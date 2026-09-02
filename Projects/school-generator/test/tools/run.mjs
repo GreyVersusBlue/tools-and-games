@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// test/tools/run.mjs — the fourteen drawing tools, driven on the real page.
+// test/tools/run.mjs — the fourteen drawing tools, driven on the real page —
+// and, since Phase 42, what the page costs to boot.
 //
 //   node test/tools/run.mjs               run every check
 //   node test/tools/run.mjs --only wall   run one
@@ -235,6 +236,59 @@ function makeDriver(page) {
   return { at, fp, status, shapes, pick, click, drag, assertClear, centre, page };
 }
 
+// ---------- Phase 42: what the boot costs ----------
+//
+// The tool used to download 3.5 MB over a hundred requests before the first
+// frame, most of it for features behind a button nobody had pressed. Phase 42
+// put the report and its tail, the printable set and the session stack
+// behind `import()`; this is the ceiling that keeps them there, and the check
+// that each still arrives when its button is pressed. Measured here rather
+// than in the unit suite because the boot is a property of the page, not of
+// any module: the static import graph says what *could* load, and only a
+// browser says what did.
+//
+// The budget is the walk template's 4 MB rule applied to the tool itself,
+// with the number set from what this tree measures (see BOOT_BUDGET) so a
+// phase that quietly re-pins a module fails here rather than in a user's
+// first ten seconds.
+let bootLoad = null;         // { requests, bytes, jsBytes, modules } once booted
+const fetched = [];          // every same-origin response, boot and after
+
+function watchResponses(page) {
+  page.on('response', (r) => {
+    const url = r.url();
+    if (!url.startsWith('http://127.0.0.1')) return;
+    const entry = { path: new URL(url).pathname, bytes: 0, at: performance.now(), done: null };
+    // The body is the honest size; a response the browser will not hand
+    // back (a 304, one served by the worker) falls back to its own header.
+    entry.done = r.body().then((b) => { entry.bytes = b.length; }, () => {
+      entry.bytes = Number(r.headers()['content-length']) || 0;
+    });
+    fetched.push(entry);
+  });
+}
+const settleResponses = () => Promise.all(fetched.map((e) => e.done));
+const moduleName = (path) => (path.match(/\/js\/([\w.-]+)\.js$/) || [])[1] || null;
+const modulesFetched = (since = 0) =>
+  new Set(fetched.filter((e) => e.at >= since).map((e) => moduleName(e.path)).filter(Boolean));
+
+// Bytes and requests to the first frame. Measured here when Phase 42 landed:
+// 4117 KB over 121 requests before it, 3805 KB over 109 after — three.js is
+// 1274 KB of that and main.js and render.js another 678 KB. The byte ceiling
+// is the walk template's own 4 MB rule; the request ceiling leaves room for a
+// phase's worth of new modules above the measurement, because a budget that
+// is exactly the measurement is a budget that fails on a comment.
+const BOOT_BUDGET = { bytes: 4 * 1024 * 1024, requests: 115 };
+// Modules the boot must not fetch: each is behind a button, and the phase
+// that put it there is named so the next reader knows what re-pinning costs.
+const DEFERRED = [
+  'generate', 'gallerystock',                                    // the audit's pass
+  'report', 'egress', 'daylight', 'utilisation', 'takeoff',      // Phase 42: the report tail
+  'cost', 'spec', 'rates', 'phasing', 'commonpath',
+  'blueprint',                                                   // Phase 42: the printable set
+  'session', 'presence', 'wire', 'cloud',                        // Phase 42: the session stack
+];
+
 // ---------- the checks ----------
 //
 // Each one says what it drove and what it expects to have changed. `expect` is
@@ -243,6 +297,26 @@ function makeDriver(page) {
 // page, which is also how a person uses the tool.
 
 const CHECKS = [
+  {
+    name: 'boot-budget',
+    what: 'the boot stays under its budget, and the deferred modules stay out of it',
+    async run() { return bootLoad; },
+    expect: ({ ctx }) => {
+      if (!ctx) throw new Error('the boot was not measured');
+      const kb = (n) => `${Math.round(n / 1024)} KB`;
+      if (ctx.bytes > BOOT_BUDGET.bytes) {
+        throw new Error(`the boot is ${kb(ctx.bytes)}, over the ${kb(BOOT_BUDGET.bytes)} budget`);
+      }
+      if (ctx.requests > BOOT_BUDGET.requests) {
+        throw new Error(`the boot is ${ctx.requests} requests, over the budget of ${BOOT_BUDGET.requests}`);
+      }
+      const pinned = DEFERRED.filter((m) => ctx.modules.has(m));
+      if (pinned.length) {
+        throw new Error(`${pinned.join(', ')} loaded at boot — something on the boot path imports ` +
+          `${pinned.length === 1 ? 'it' : 'them'} again`);
+      }
+    },
+  },
   {
     name: 'floor-brush',
     what: 'the 4ft brush lays floor and bakes it into a room',
@@ -1200,6 +1274,103 @@ const CHECKS = [
       }
     },
   },
+  // ---------- Phase 42: what arrives when it is asked for ----------
+  //
+  // The other half of the budget: a module kept out of the boot is only a
+  // saving if it still turns up when its button is pressed. Each of these
+  // presses the button and watches the network.
+  {
+    name: 'report-on-demand',
+    what: 'the report panel fetches the analysis the first time it opens, and builds',
+    async run(d) {
+      const since = performance.now();
+      const loaded = await d.page.evaluate('window.app.analysisLoaded');
+      await d.page.evaluate(`document.getElementById('report-btn').click(); 1`);
+      await d.page.waitForFunction(
+        'window.app.analysisLoaded && !window.app.report.stale && !!window.app.report.data',
+        { timeout: 90000 });
+      const findings = await d.page.evaluate(
+        `document.querySelectorAll('#report-findings .finding').length`);
+      const verdict = await d.page.evaluate(
+        `document.getElementById('report-verdict').textContent`);
+      await d.page.evaluate(`document.getElementById('report-btn').click(); 1`);
+      await settleResponses();
+      return { loaded, findings, verdict, modules: modulesFetched(since) };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.loaded) throw new Error('the analysis was loaded before anybody opened the report');
+      for (const m of ['report', 'egress', 'daylight', 'cost', 'spec', 'utilisation', 'takeoff', 'rates', 'phasing']) {
+        if (!ctx.modules.has(m)) throw new Error(`opening the report did not fetch ${m}.js`);
+      }
+      if (!ctx.findings && !/Passes every check/.test(ctx.verdict)) {
+        throw new Error(`the report built but says "${ctx.verdict}" with no findings`);
+      }
+    },
+  },
+  {
+    name: 'cost-on-demand',
+    what: 'the cost sheet opens with its currencies and rate rows once its modules land',
+    async run(d) {
+      await d.page.evaluate(`document.getElementById('cost-open').click(); 1`);
+      await d.page.waitForFunction(
+        `!document.getElementById('cost-overlay').classList.contains('hidden')`, { timeout: 60000 });
+      const rows = await d.page.evaluate(`document.querySelectorAll('#cost-rows .rate-row').length`);
+      const currencies = await d.page.evaluate(`document.getElementById('cost-currency').options.length`);
+      await d.page.evaluate(`document.getElementById('cost-close').click(); 1`);
+      await d.page.waitForTimeout(200);
+      return { rows, currencies };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.currencies < 1) throw new Error('the currency list is empty — it is filled from rates.js on first open');
+      if (ctx.rows < 10) throw new Error(`${ctx.rows} rate rows — the sheet did not render its assemblies`);
+    },
+  },
+  {
+    name: 'minimap-on-demand',
+    what: 'walk mode fetches the plan builder and the minimap fills its plan cache',
+    async run(d) {
+      const since = performance.now();
+      await d.page.evaluate(`document.getElementById('mode-btn').click(); 1`);
+      await d.page.waitForTimeout(600);
+      await d.page.evaluate(`document.getElementById('walk-start').click(); 1`);
+      await d.page.waitForFunction('window.app.miniPlanned > 0', { timeout: 90000 });
+      const planned = await d.page.evaluate('window.app.miniPlanned');
+      await d.page.evaluate(`document.getElementById('walk-exit').click(); 1`);
+      await d.page.waitForTimeout(600);
+      await settleResponses();
+      // The report's tail imports blueprint.js too (the takeoff measures
+      // areas off the plan), so an earlier check may already have fetched
+      // it; what has to hold is that the boot did not, and the map has it.
+      return { planned, modules: modulesFetched(since), everFetched: modulesFetched() };
+    },
+    expect: ({ ctx }) => {
+      if (bootLoad && bootLoad.modules.has('blueprint')) throw new Error('blueprint.js was in the boot');
+      if (!ctx.everFetched.has('blueprint')) throw new Error('nothing fetched blueprint.js');
+      if (ctx.planned < 1) throw new Error('the minimap never filled a plan');
+    },
+  },
+  {
+    name: 'session-on-demand',
+    what: 'the Session panel fetches the session stack the first time it opens',
+    async run(d) {
+      const since = performance.now();
+      const loaded = await d.page.evaluate('window.app.netLoaded');
+      await d.page.evaluate(`document.getElementById('session-btn').click(); 1`);
+      await d.page.waitForFunction('window.app.netLoaded', { timeout: 60000 });
+      await d.page.waitForTimeout(200);
+      const text = await d.page.evaluate(`document.getElementById('session-state').textContent`);
+      await d.page.evaluate(`document.getElementById('session-btn').click(); 1`);
+      await settleResponses();
+      return { loaded, text, modules: modulesFetched(since) };
+    },
+    expect: ({ ctx }) => {
+      if (ctx.loaded) throw new Error('the session stack was loaded before anybody opened the panel');
+      for (const m of ['session', 'presence', 'wire', 'cloud']) {
+        if (!ctx.modules.has(m)) throw new Error(`opening the panel did not fetch ${m}.js`);
+      }
+      if (!/Not in a session/.test(ctx.text)) throw new Error(`the panel says "${ctx.text}"`);
+    },
+  },
   // ---------- Phase 30 ----------
   //
   // Deliberately last. The lessons draw on the sheet and the gallery replaces
@@ -1405,12 +1576,23 @@ try {
   page.on('pageerror', (e) => pageErrors.push(String(e).split('\n')[0]));
   page.on('console', (m) => { if (m.type() === 'error') pageErrors.push(m.text().slice(0, 200)); });
 
+  watchResponses(page);
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' });
   // Not networkidle: the page settles long before the scene finishes building,
   // and `window.app` is the only honest signal that the editor exists.
   await page.waitForFunction('window.app && window.app.state && window.app.renderApi',
     { timeout: 120000 });
   await page.waitForTimeout(1500);
+  // Phase 42: everything fetched to this point is the boot.
+  await settleResponses();
+  bootLoad = {
+    requests: fetched.length,
+    bytes: fetched.reduce((n, e) => n + e.bytes, 0),
+    jsBytes: fetched.filter((e) => /\.js$/.test(e.path)).reduce((n, e) => n + e.bytes, 0),
+    modules: modulesFetched(),
+  };
+  console.log(`  boot: ${bootLoad.requests} requests, ${Math.round(bootLoad.bytes / 1024)} KB ` +
+    `(${Math.round(bootLoad.jsBytes / 1024)} KB of JavaScript, ${bootLoad.modules.size} modules)`);
   await page.evaluate(HELPERS);
 
   record(pageErrors.length

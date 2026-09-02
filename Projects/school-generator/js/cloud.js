@@ -35,6 +35,8 @@
 // the suite exercises every path against a stub. Exercised by
 // test/cloud.test.mjs.
 
+import { FRAGMENT_KEYS, fragmentValue } from './fragment.js';
+
 const CONFIG_KEY = 'sg.cloud';
 const KEYS_KEY = 'sg.cloud.keys';
 
@@ -158,7 +160,7 @@ export function forgetKey(id, ls = store()) {
 
 // ---------- links ----------
 
-export const CLOUD_KEY = 'd';
+export const CLOUD_KEY = FRAGMENT_KEYS.cloud;
 
 export function cloudFragment(id, base = '') {
   const body = base ? `${id}~${encodeURIComponent(base)}` : String(id);
@@ -166,23 +168,16 @@ export function cloudFragment(id, base = '') {
 }
 
 export function readCloudFragment(hash) {
-  const text = String(hash || '');
-  const body = text.startsWith('#') ? text.slice(1) : text;
-  if (!body) return null;
-  for (const part of body.split('&')) {
-    const eq = part.indexOf('=');
-    if (eq < 0 || part.slice(0, eq) !== CLOUD_KEY) continue;
-    const value = part.slice(eq + 1).trim();
-    const tilde = value.indexOf('~');
-    const id = tilde < 0 ? value : value.slice(0, tilde);
-    if (!validId(id)) return null;
-    let base = '';
-    if (tilde >= 0) {
-      try { base = normalizeBase(decodeURIComponent(value.slice(tilde + 1))); } catch { base = ''; }
-    }
-    return { id, base };
+  const value = fragmentValue(hash, CLOUD_KEY);
+  if (!value) return null;
+  const tilde = value.indexOf('~');
+  const id = tilde < 0 ? value : value.slice(0, tilde);
+  if (!validId(id)) return null;
+  let base = '';
+  if (tilde >= 0) {
+    try { base = normalizeBase(decodeURIComponent(value.slice(tilde + 1))); } catch { base = ''; }
   }
-  return null;
+  return { id, base };
 }
 
 export function cloudURL(href, id, base = '') {

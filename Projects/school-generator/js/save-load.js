@@ -129,17 +129,11 @@ import { normalizeEnv, isDefaultEnv } from './sky.js';
 import { normalizeTerrain, packTerrain } from './terrain.js';
 import { normalizeRegion, MAX_REGIONS } from './site.js';
 import { normalizeRoof, isDefaultRoof } from './roof.js';
-import { normalizeLife, isDefaultLife } from './agents.js';
 import { normalizeOverlay } from './overlay.js';
 import { normalizeGridRef, isDefaultGridRef } from './gridref.js';
 import { PITCHES } from './snapgrid.js';
-import { normalizeTours } from './tour.js';
-import { normalizeModels, librarySize } from './models.js';
-import { normalizeTimetable, isEmptyTimetable } from './timetable.js';
-import { normalizeRates, isEmptyRates } from './rates.js';
-import { normalizePhasing, isEmptyPhasing } from './phasing.js';
-import { normalizeHaunt, isDefaultHaunt } from './haunt.js';
 import { normalizeWeather, isDefaultWeather } from './weather.js';
+import { readRecord } from './records.js';
 import { normalizeSections } from './elevation.js';
 import { normalizeDims, normalizeNotes } from './annotate.js';
 
@@ -187,6 +181,18 @@ const MAX_DIM = MAX_CELLS;
 // no regions and an ordinary roof records no roof — and it is the whole reason
 // a file from an older build survives a round trip through a newer one
 // unchanged.
+// Phase 42: the seven records that belong to a module the loader never needed
+// for anything else — `life`, `tours`, `models`, `timetable`, `rates`,
+// `phasing`, `haunt` — go through the registry in records.js rather than
+// through an import of each owner. Present owner: normalized, and left out
+// when it is the default one, exactly as before. Absent owner: carried as it
+// came, and normalized by `adoptRecords` when the owner arrives. Either way
+// the rule above still holds — a record nobody has used is not written.
+function keepRecord(target, key, raw) {
+  const read = readRecord(key, raw);
+  if (read.keep) target[key] = read.value; else delete target[key];
+}
+
 export function serialize(state, opts = {}) {
   if (!state) return JSON.stringify(state);
   const out = { ...state };
@@ -200,7 +206,7 @@ export function serialize(state, opts = {}) {
   if (isDefaultRoof(out.roof)) delete out.roof;
   // v8: how many people are in the building, and the seed that puts them
   // there. Never the people themselves — see agents.js.
-  if (isDefaultLife(out.life)) delete out.life; else out.life = normalizeLife(out.life);
+  keepRecord(out, 'life', out.life);
   // v9's tracing image. `omitOverlay` is the escape hatch for the one caller
   // that has somewhere too small to put it — the autosave, which would rather
   // keep the design without the picture than lose both.
@@ -209,31 +215,25 @@ export function serialize(state, opts = {}) {
   // v10's two. A design with no recorded tour and no imported model writes
   // neither key, so a v9 file still round-trips as the same bytes it went in
   // as — the fifth time that promise has been kept.
-  const tours = normalizeTours(out.tours);
-  if (tours.length) out.tours = tours; else delete out.tours;
-  const models = opts.omitModels ? [] : normalizeModels(out.models);
-  if (models.length) out.models = models; else delete out.models;
+  keepRecord(out, 'tours', out.tours);
+  keepRecord(out, 'models', opts.omitModels ? null : out.models);
   // v11's one design-wide record, on the same terms as the nine above it: a
   // building nobody has answered a code question about writes no `code` key.
   if (isDefaultCode(out.code)) delete out.code; else out.code = normalizeCode(out.code);
   // Phase 15's append, and the eleventh time the same rule has been applied: a
   // design with no school day in it writes no `timetable` key, so every file
   // written before this build round-trips through it as the same bytes.
-  const timetable = normalizeTimetable(out.timetable);
-  if (isEmptyTimetable(timetable)) delete out.timetable; else out.timetable = timetable;
+  keepRecord(out, 'timetable', out.timetable);
   // Phase 16's two, and the twelfth and thirteenth times the same rule has
   // been applied: a design nobody has priced writes no `rates` key and a
   // design nobody has phased writes no `phasing` key, so every file written
   // before this build still round-trips through it as the same bytes.
-  const rates = normalizeRates(out.rates);
-  if (isEmptyRates(rates)) delete out.rates; else out.rates = rates;
-  const phasing = normalizePhasing(out.phasing);
-  if (isEmptyPhasing(phasing)) delete out.phasing; else out.phasing = phasing;
+  keepRecord(out, 'rates', out.rates);
+  keepRecord(out, 'phasing', out.phasing);
   // v12's one record, the cheap append kind, and the fourteenth application
   // of the one rule: a building nobody has haunted writes no `haunt` key, so
   // every file written before this build round-trips through it unchanged.
-  const haunt = normalizeHaunt(out.haunt);
-  if (isDefaultHaunt(haunt)) delete out.haunt; else out.haunt = haunt;
+  keepRecord(out, 'haunt', out.haunt);
   // Phase 35's one record, and the same rule again: a design whose grid starts
   // at the corner of the sheet — every design written before this build, and
   // every design nobody has traced a photograph with — writes no `gridRef`
@@ -458,26 +458,21 @@ export function deserialize(json, opts = {}) {
   // that names a cohort the file doesn't contain is dropped by
   // `normalizeTimetable`, and an unreadable timetable is a design with no
   // school day rather than a design that won't open.
-  const timetable = normalizeTimetable(d.timetable);
-  if (!isEmptyTimetable(timetable)) state.timetable = timetable;
+  keepRecord(state, 'timetable', d.timetable);
   // Phase 16's two, on the same terms as everything above them. A rate row
   // keyed on an assembly this build has never heard of is *kept* — it is
   // somebody's typed-in number, and dropping it would be the one unrecoverable
   // thing a loader can do. A phase naming a room the file doesn't contain is
   // dropped instead, because a reference to nothing is not data.
-  const rates = normalizeRates(d.rates);
-  if (!isEmptyRates(rates)) state.rates = rates;
-  const phasing = normalizePhasing(d.phasing);
-  if (!isEmptyPhasing(phasing)) state.phasing = phasing;
+  keepRecord(state, 'rates', d.rates);
+  keepRecord(state, 'phasing', d.phasing);
   // v8's population settings, on the same terms as everything above: an
   // unreadable one is the default one, and a file from before v8 simply has
   // the default school in it.
-  const life = normalizeLife(d.life);
-  if (!isDefaultLife(life)) state.life = life;
+  keepRecord(state, 'life', d.life);
   // v12's haunt, on the same terms: an unreadable haunt is a building with
   // no haunt in it, never a design that won't open.
-  const haunt = normalizeHaunt(d.haunt);
-  if (!isDefaultHaunt(haunt)) state.haunt = haunt;
+  keepRecord(state, 'haunt', d.haunt);
   // Phase 29's weather, on the same terms: an unreadable weather is a clear
   // day, never a design that won't open.
   const weather = normalizeWeather(d.weather);
@@ -500,10 +495,8 @@ export function deserialize(json, opts = {}) {
   // v10, on the same terms as the eight optional records above it: an
   // unreadable tour is a design with no tour in it, and an unreadable model
   // is one import fewer, never a design that won't open.
-  const tours = normalizeTours(d.tours);
-  if (tours.length) state.tours = tours;
-  const models = normalizeModels(d.models);
-  if (models.length) state.models = models;
+  keepRecord(state, 'tours', d.tours);
+  keepRecord(state, 'models', d.models);
 
   if (Array.isArray(d.props)) {
     for (const raw of d.props.slice(0, MAX_PROPS)) {
@@ -600,7 +593,7 @@ function writeAutosave(state) {
   } catch (e) { /* fall through — the models are the other heavy record */ }
   try {
     localStorage.setItem(AUTOSAVE_KEY, serialize(state, { omitOverlay: true, omitModels: true }));
-    const shed = state && (state.overlay || librarySize(state.models));
+    const shed = state && (state.overlay || (Array.isArray(state.models) && state.models.length));
     return shed ? 'partial' : 'failed';
   } catch (e) {
     return 'failed';

@@ -36,7 +36,8 @@
 import { FLOOR_FINISHES, FACADE_MATERIALS, facadeEntry, finishEntry } from './finish.js';
 import { SITE_SURFACES, SITE_MARKINGS, surfaceEntry, markingEntry } from './site.js';
 import { CATEGORIES } from './catalog.js';
-import { parseCSV } from './timetable.js';
+import { csvRows, parseCSV } from './csv.js';
+import { registerRecord } from './records.js';
 
 // ---------- systems ----------
 //
@@ -435,11 +436,6 @@ export function assemblyMaterial(key) {
 // the importer ignores it — a person who renames "Floor finish — Carpet tile"
 // to "Carpet, broadloom" should not lose their number for it.
 
-const csvCell = (v) => {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-const csvRows = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 
 export const RATE_HEADERS = ['Key', 'Assembly', 'Unit', 'Rate', 'Dated', 'Source', 'Note'];
 
@@ -534,3 +530,8 @@ export function importRatesCSV(csv, opts = {}) {
   }
   return { rates: normalizeRates(out), read, skipped, unknown, found: true };
 }
+
+// Phase 42: the rate table is this module's record on the design — see
+// records.js. A row keyed on an assembly this build has never heard of is
+// *kept* by `normalizeRates`: it is somebody's typed-in number.
+registerRecord('rates', { normalize: normalizeRates, isEmpty: isEmptyRates });

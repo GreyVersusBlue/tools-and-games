@@ -51,6 +51,7 @@
 // couldn't afford to keep pure.
 import { MOODS } from './sky.js';
 import { WEATHER_KINDS, normalizeWeather } from './weather.js';
+import { registerRecord } from './records.js';
 
 export const MAX_TOURS = 12;
 export const MAX_KEYS = 64;
@@ -453,3 +454,7 @@ export function stepPlayback(play, dt) {
   const over = !play.tour.loop && t >= play.duration;
   return { ...play, t: over ? play.duration : t, playing: !over };
 }
+
+// Phase 42: the recorded tours are this module's record on the design — see
+// records.js. A design with none writes no `tours` key.
+registerRecord('tours', { normalize: normalizeTours, isEmpty: (tours) => tours.length === 0 });

@@ -27,6 +27,7 @@ import {
 import { solidSpans } from './collide.js';
 import { rng } from './agents.js';
 import { pointEntry, findPath, pathDistance, nearestExit } from './navgraph.js';
+import { registerRecord } from './records.js';
 
 // ---------- the record ----------
 
@@ -445,3 +446,7 @@ export function escapeDoor(nav, from, seed, opts = {}) {
 
 // The locked line, stated once so the HUD and the tests agree on it.
 export const LOCKED_TEXT = 'The door appears to be locked. Find another way.';
+
+// Phase 42: the haunt is this module's record on the design — see
+// records.js. An unreadable haunt is a building with no haunt in it.
+registerRecord('haunt', { normalize: normalizeHaunt, isEmpty: isDefaultHaunt });

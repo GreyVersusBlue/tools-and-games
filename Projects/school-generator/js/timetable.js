@@ -38,7 +38,8 @@ import { rng } from './agents.js';
 import { normalizeSchedule } from './schedule.js';
 import { teachingRooms } from './navgraph.js';
 import { roomOccupancy, occupancyIndex } from './occupancy.js';
-import { csvRows } from './takeoff.js';
+import { csvRows, parseCSV } from './csv.js';
+import { registerRecord } from './records.js';
 
 // ---------- what a school teaches ----------
 //
@@ -632,32 +633,6 @@ export function bindTimetable(tt, pool) {
 
 // ---------- the interchange format ----------
 
-// A minimal CSV reader. Quoted fields with commas and doubled quotes inside
-// them, which is the whole of what a spreadsheet emits and the whole of what
-// `Tools/schedule`'s own importer handles.
-export function parseCSV(csv) {
-  const rows = [];
-  const src = String(csv ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  for (const line of src.split('\n')) {
-    if (!line.trim()) continue;
-    const row = [];
-    let field = '', quoted = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (quoted) {
-        if (ch === '"' && line[i + 1] === '"') { field += '"'; i++; }
-        else if (ch === '"') quoted = false;
-        else field += ch;
-      } else if (ch === '"') quoted = true;
-      else if (ch === ',') { row.push(field); field = ''; }
-      else field += ch;
-    }
-    row.push(field);
-    rows.push(row);
-  }
-  return rows;
-}
-
 const SIZE_HEADERS = ['size', 'students', 'student count', 'headcount'];
 const SKIP_HEADERS = ['color', 'colour', 'day', 'notes', 'note'];
 
@@ -827,3 +802,9 @@ export function timetablePlan(tt, sched) {
   }
   return { cohorts, teachers, periods };
 }
+
+// Phase 42: the school day is this module's record on the design — see
+// records.js. A section that names a cohort the file does not contain is
+// dropped by `normalizeTimetable`, and an unreadable timetable is a design
+// with no school day rather than a design that will not open.
+registerRecord('timetable', { normalize: normalizeTimetable, isEmpty: isEmptyTimetable });

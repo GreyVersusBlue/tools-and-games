@@ -40,6 +40,8 @@
 // No DOM beyond the two platform classes, both injectable. Exercised by
 // test/wire.test.mjs.
 
+import { FRAGMENT_KEYS, fragmentValue } from './fragment.js';
+
 export const WIRE_V = 1;
 export const KINDS = ['hello', 'bye', 'ops', 'pres', 'want', 'snap'];
 
@@ -71,7 +73,7 @@ export const validRoom = (room) =>
 // of a URL a browser never sends anywhere. `#c=room` for a channel session,
 // `#c=room~relay` when there is a relay to point at, url-encoded.
 
-export const SESSION_KEY = 'c';
+export const SESSION_KEY = FRAGMENT_KEYS.session;
 
 export function sessionFragment(room, relay = '') {
   const body = relay ? `${room}~${encodeURIComponent(relay)}` : String(room);
@@ -79,24 +81,16 @@ export function sessionFragment(room, relay = '') {
 }
 
 export function readSessionFragment(hash) {
-  const text = String(hash || '');
-  const body = text.startsWith('#') ? text.slice(1) : text;
-  if (!body) return null;
-  for (const part of body.split('&')) {
-    const eq = part.indexOf('=');
-    if (eq < 0 || part.slice(0, eq) !== SESSION_KEY) continue;
-    const value = part.slice(eq + 1).trim();
-    if (!value) return null;
-    const tilde = value.indexOf('~');
-    const room = tilde < 0 ? value : value.slice(0, tilde);
-    if (!validRoom(room)) return null;
-    let relay = '';
-    if (tilde >= 0) {
-      try { relay = decodeURIComponent(value.slice(tilde + 1)); } catch { relay = ''; }
-    }
-    return { room, relay };
+  const value = fragmentValue(hash, SESSION_KEY);
+  if (!value) return null;
+  const tilde = value.indexOf('~');
+  const room = tilde < 0 ? value : value.slice(0, tilde);
+  if (!validRoom(room)) return null;
+  let relay = '';
+  if (tilde >= 0) {
+    try { relay = decodeURIComponent(value.slice(tilde + 1)); } catch { relay = ''; }
   }
-  return null;
+  return { room, relay };
 }
 
 export function sessionURL(href, room, relay = '') {
