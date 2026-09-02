@@ -24,6 +24,7 @@
 
 import { MOUNTS } from './props.js';
 import { MAX_MODEL_BYTES, bytesToBase64, base64ToBytes, toBytes, parseModelFile } from './gltf.js';
+import { registerRecord } from './records.js';
 
 // Types are namespaced so an imported row can never shadow (or be shadowed
 // by) a built-in one, and so a prop referring to a model that has since been
@@ -253,3 +254,7 @@ export function importModel(bytes, filename, opts = {}) {
   const model = makeModel(bytes, { ...opts, name });
   return { model, json: parsed.json };
 }
+
+// Phase 42: the model library is this module's record on the design — see
+// records.js. A design with no imports writes no `models` key.
+registerRecord('models', { normalize: normalizeModels, isEmpty: (models) => models.length === 0 });

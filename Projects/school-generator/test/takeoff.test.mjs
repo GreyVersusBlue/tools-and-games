@@ -14,7 +14,8 @@ import { addProp } from '../js/props.js';
 import { addStair } from '../js/stairs.js';
 import { buildSampleSchool } from '../js/sample.js';
 import { catalogEntry } from '../js/catalog.js';
-import { floorTakeoff, takeoff, takeoffCSV, csvRows } from '../js/takeoff.js';
+import { floorTakeoff, takeoff, takeoffCSV } from '../js/takeoff.js';
+import { csvRows } from '../js/csv.js';
 
 // A 4×4-cell room inside a 12×10 lot: 16 ft of wall on each side, all of it
 // exterior because there is nothing on the far side of any of it.

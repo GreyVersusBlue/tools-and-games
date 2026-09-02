@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: forty phases are shipped and one is open — Phase 34,
-below; arc six is underway: Phases 37, 38, 39, 40 and 41 have shipped, and
-Phase 42 — on Claude Opus 5 — is the next open phase in the arc's order.**
+**Status: forty-one phases are shipped and one is open — Phase 34,
+below; arc six is complete: Phases 37 through 42 have shipped, and Phase 34 —
+on Claude Fable 5 — is the next open phase.**
 Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school; arc
 four built for the person handed the result; arc five for the building
@@ -57,8 +57,12 @@ inter-floor links) · `catalog.js` (every placeable type, as data) ·
 `walls.js` / `openings.js` / `finish.js` (derived thickness, door leaves,
 window bands, floor/paint) · `stairs.js` (runs, landings, the holes they cut)
 · `terrain.js` / `site.js` / `roof.js` (ground, site drawing, roof) ·
-`rates.js` (cost vocabulary) · `history.js` (an edit as a diff) ·
-`save-load.js` (v12, one migration that ever changed a shape).
+`rates.js` (cost vocabulary) · `csv.js` (Phase 42: the one CSV reader and
+the one writer, which used to be six) · `history.js` (an edit as a diff) ·
+`records.js` (Phase 42: the optional records on a design and who owns each —
+an owner registers itself when it loads, and the loader carries what nobody
+has claimed yet) · `save-load.js` (v12, one migration that ever changed a
+shape).
 
 What it derives: `navgraph.js` + `navmesh.js` (walkable surface as convex
 tiles, graph over it) · `sitemesh.js` (the same, over the outdoors) ·
@@ -120,7 +124,12 @@ requests the service worker keeps, and for how long — `sw.js` is its three
 listeners and nothing else) · `filestore.js` (the design as a document: a
 session, a dirty flag, a filename, and which failures deserve a sentence) ·
 `demo.js` (a tool's own gesture as timed pointer events, so the tutorial and
-the smoke test are one artifact).
+the smoke test are one artifact) · `lazy.js` (a module fetched the first time
+somebody asks — since Phase 42, the generator, the gallery's stock, the
+report and its tail, the printable set and the session stack all arrive this
+way) · `fragment.js` (Phase 42: the three things a `#` can carry and the one
+loop that reads them, so the shell can tell a session link from a share link
+without loading the session stack to ask).
 
 What it shares with another person: `session.js` (a design as records, and
 which of two edits wins) · `presence.js` (who else is here) · `wire.js` (the
@@ -222,9 +231,38 @@ wrong.
   the fourteen of them driven with real pointer events on the real page,
   because `editor.js` and the seven `*edit.js` modules all import three.js and
   so cannot be loaded in Node at all. If you change what a tool does to the
-  state, that is the pass that will tell you. All three run in CI on every PR
+  state, that is the pass that will tell you. Since Phase 42 it is also where
+  the boot is measured — bytes and requests to the first frame, against a
+  stated ceiling, and a list of modules that must not be in it — because
+  the static import graph says what *could* load and only a browser says
+  what did. All three run in CI on every PR
   that touches this directory; the last two need Playwright and are optional
   locally — a machine without a browser loses them, not the suite.
+- **What pins a module is the whole graph, not the importer you can see.**
+  Phase 42's backlog table said the loader pinned eight modules and the
+  minimap pinned the plan builder; both were true and neither was the whole
+  story. `main.js` imported all eight itself, so a registry alone freed
+  nothing, and `blueprint.js` was pinned four modules deep — `render.js` →
+  `signage.js` → `timetable.js` → `takeoff.js` — by a room-number regex and
+  a CSV writer. Before cutting an import, walk the graph and simulate the
+  cut (thirty lines over the `import` statements); after, measure the boot
+  in the browser — `test/tools/run.mjs` prints it on every run.
+- **A record's owner registers itself; the loader never imports an owner.**
+  `records.js` is the one place a module is allowed a side effect at load —
+  `registerRecord('rates', …)` at the foot of rates.js — because it is the
+  only way "normalize this once the module that understands it is here" can
+  be true without a third party keeping a list. Before the owner arrives the
+  record is *carried*: read as it came, written as it came, never looked
+  inside. Anything that reads a lazily-owned record off the state normalizes
+  on read (`ratesNow`, `phasingOf`), because an undo can put a carried
+  record back after its owner has loaded.
+- **A lazily loaded module's readers are only reachable from the gesture
+  that awaited it.** The cost sheet's forty handlers read `analysis.rates`
+  bare; none of them can fire before the sheet opens, and opening it awaits
+  the loader. That is the whole contract, and it is stated once at the top
+  of the section rather than checked forty times — but the one function a
+  debug hook can reach without the gesture (`sessionStart`) checks, with a
+  sentence, rather than throwing a TypeError three lines down.
 - **A generated source file needs a tool that writes it and a suite that
   proves it has not drifted.** `js/gallerystock.js` is 90 KB of committed
   bytes nobody will ever read; what makes it trustworthy is that
@@ -496,22 +534,28 @@ and add to this list rather than starting a new one.
 - The walk export ships three.js as source — 2.6 MB that would be a quarter
   of that gzipped, if a compressed variant is ever worth the complication —
   and leaves the headset out: `xr.js` rides the bundle but no VR button does.
-- **Most of the tool still loads before the first frame.** `lazy.js` exists
-  and `generate.js` (the largest module, 108 KB) now arrives when somebody
-  presses Go, but the boot payload is still ~3.5 MB over a hundred requests.
-  What stops the rest is not the mechanism, it is the import graph — the
-  obvious candidates are each pinned eager by something on the boot path:
+- ~~**Most of the tool still loads before the first frame.**~~ *Phase 42
+  took the diet the table here prescribed: the report and its tail, the
+  printable set and the session stack now arrive when their button is
+  pressed, and the loader consults a registry instead of importing the
+  record owners. Measured cold on the tools harness's server: 4117 KB over
+  121 requests before, 3805 KB over 109 after; the ceiling is 4 MB and the
+  harness holds it.* What is still on the boot path, and why — a table the
+  next diet can start from, checked against the graph this time:
 
   | module | pinned by | what it would take |
   | --- | --- | --- |
-  | `blueprint.js` (54 KB) | the **minimap**, which calls `computeFloorPlan` / `drawPlanBody` every frame in walk mode | a plan cache the minimap can fill asynchronously, or its own tiny plan builder |
-  | `agents.js` (61 KB), `timetable.js`, `phasing.js`, `rates.js`, `tour.js`, `models.js`, `haunt.js`, `occupancy.js` | `save-load.js`, which normalizes each of their records on load | a registry the loader consults, so a record is normalized by the module that owns it once that module is present |
-  | `gltf.js` (29 KB), `hunt.js`, `xr.js` | `render.js` | the scene asking for them at the moment it draws one, not at import |
-  | `report.js` and its tail (`cost`, `spec`, `egress`, `daylight`, `utilisation`, `takeoff`) | `main.js`'s panel renderers, which are synchronous | the panels becoming async, which is the same shape of change as the Generate button |
-  | the collab stack — `session`, `wire`, `presence`, `cloud` (54 KB) | ~50 call sites in `main.js`, one of them (`createRoster()`) at module top level | a `collab` object built on first use rather than at load |
+  | `three.module.js` (1274 KB, a third of the boot) | everything | a minified or gzipped vendored build — the walk export's note about a quarter of the bytes applies to the tool too |
+  | `main.js` + `render.js` (678 KB) | they *are* the boot | the audit's split, now that the tool harness exists to hold it |
+  | `agents.js` (85 KB) | `main.js`'s crowd (`stepAgents` per frame), and `hunt.js` (via `render.js`), `murmur.js`, `haunt.js`, `timetable.js` — every one of the four for `rng` alone | `rng` in its own module; the crowd as an object built when the Life panel opens or a walk starts |
+  | `timetable.js` (35 KB) | `render.js` via `signage.js`, for `roomNumber`; `main.js`'s Life panel | `roomNumber` beside `nextRoomName` in `shapes.js`; the day tab of the Life panel async |
+  | `gltf.js` (29 KB), `hunt.js`, `xr.js`, `models.js` | `render.js` | unchanged: the scene asking for them at the moment it draws one, not at import |
+  | `tour.js`, `haunt.js` (37 KB) | `main.js`: the tours panel, and the palette's haunt entry, both read synchronously | the panel async; the palette entry reading `state.haunt` through the registry |
+  | `program.js` + `brief.js` (38 KB) | the Generate dialog's bands and schemes, filled at boot | filled on first open, the way the cost sheet's currencies now are |
 
-  None of it is hard; all of it is in the untested tool/UI layer, so do it
-  behind `test/tools/run.mjs` rather than in front of it.
+  Same terms as before: all of it is in the tool/UI layer, so it lands behind
+  `test/tools/run.mjs` — whose `boot-budget` check is now the thing that
+  fails if any of it is undone.
 - ~~The vendored `libs/` are 1.3 MB — 36% of the payload — and cannot be
   cached hard because the paths carry no version. Putting the version in the
   directory name would buy an `immutable` year on every return visit, and
@@ -1573,33 +1617,79 @@ new row and the "applied" from `codePanel` like any other).
 Next in the arc: **Phase 42 — The boot diet**, named model **Claude Opus
 5**; Phase 34 stays open beside the arc.
 
-## Phase 42 — The boot diet
+## Phase 42 — The boot diet *(shipped)*
 
 **Most of the tool still loads before the first frame, and the backlog has
 already written the diet.**
 
 The and-also, for the machine rather than the reviewer. The lazy-loading
-table in the backlog names every pinned module, what pins it, and its
-price of freedom; `lazy.js` exists and `generate.js` already proved the
-shape. This phase is that table, executed — and by the backlog's own note,
-all of it lives in the untested tool/UI layer, so it lands behind
-`test/tools/run.mjs` rather than in front of it.
+table in the backlog named every pinned module, what pinned it, and its
+price of freedom; `lazy.js` existed and `generate.js` had proved the shape.
+This phase is that table, executed — and by the backlog's own note, all of
+it lives in the tool/UI layer, so it landed behind `test/tools/run.mjs`
+rather than in front of it.
 
-- [ ] **A normalization registry.** `save-load.js` consults a registry
-  instead of importing the eight record-owning modules; a record is
-  normalized by its owner once the owner is present, exactly once.
-- [ ] **Panels go async.** The report tail — `cost`, `spec`, `egress`,
-  `daylight`, `utilisation`, `takeoff` — arrives when a panel opens: the
-  Generate button's shape, repeated.
-- [ ] **Collab on first use.** The session/wire/presence/cloud stack
-  builds on the first collaborative gesture instead of at module load,
-  retiring the top-level `createRoster()`.
-- [ ] **The minimap gets its own plan.** A cache it fills asynchronously,
-  so `blueprint.js` unpins from walk mode's every-frame path.
-- [ ] **A budget, stated and enforced.** Boot bytes and request count
-  measured in the tools pass with a ceiling the suite holds — the walk
-  template's 4 MB rule, applied to the tool itself.
+- [x] **A normalization registry.** `records.js`: an owner registers itself
+  when it loads — `registerRecord('life', …)` at the foot of agents.js, and
+  likewise tours, models, timetable, rates, phasing and haunt — and
+  `save-load.js` consults the registry instead of importing the seven. A
+  record whose owner has not arrived is *carried*: read as it came, written
+  as it came, never looked inside; `adoptRecords` normalizes it once the
+  owner is present, exactly once (a record an owner has read is remembered
+  and not read again).
+- [x] **Panels go async.** The report and its tail — `cost`, `spec`,
+  `egress`, `daylight`, `utilisation`, `takeoff`, `rates`, `phasing`,
+  `commonpath` — arrive when the report panel, the cost sheet or the export
+  dialog first asks; `reportBuild` answers a promise, and every reader of
+  `report.data` awaits `reportReady()` first. The cost sheet's currency list
+  is filled on first open rather than at boot.
+- [x] **Collab on first use.** `session`, `presence`, `wire` and `cloud`
+  build on the first collaborative gesture — the Session button, or a link
+  that is one — and the top-level `createRoster()` is gone: `collab.roster`
+  is null until then. `fragment.js` holds the three `#` keys and the one
+  loop that reads them, so the shell can tell a session link from a share
+  link without loading the stack to ask.
+- [x] **The minimap gets its own plan.** `blueprint.js` is fetched on the
+  way into walk mode and again by the first frame that finds it missing; a
+  frame without it draws the map without a plan (the eye, the cone, the
+  crowd and the peers still land), and the first frame after it lands fills
+  the cache. The export dialog awaits the same loader.
+- [x] **A budget, stated and enforced.** `test/tools/run.mjs` measures the
+  boot — bytes, requests, and which modules — on every run and holds it to
+  4 MB and 115 requests, with a list of modules that must not be in it; four
+  more checks press each button and watch the network for what should
+  arrive. Measured cold on the harness's own server: 4117 KB over 121
+  requests before, 3805 KB over 109 after.
 
 *Leans on:* `lazy.js`, the backlog's own table, `test/tools/run.mjs`.
-*Save:* none. *Model:* **Claude Opus 5** — the backlog's own verdict:
-none of it is hard, all of it is wiring.
+*Save:* none. *Model:* **Claude Opus 5** was named; the phase ran on Claude
+Fable 5.1, which is where the registry — model layer, by the conventions'
+own test — belonged anyway.
+
+*What fought back:* the table, first. It said the loader pinned eight
+modules and the minimap pinned the plan builder, and both were true and
+neither was the whole story: `main.js` imported all eight itself, so a
+registry alone freed nothing — a thirty-line walk over the `import`
+statements said so before a line was changed — and `blueprint.js` was
+pinned four modules deep, `render.js` → `signage.js` → `timetable.js` →
+`takeoff.js`, by a room-number regex and a CSV writer. The CSV writer turned
+out to exist five times, one private copy per module that wrote a
+spreadsheet, and the reader once, in timetable.js because the timetable was
+the first thing to import a spreadsheet; `csv.js` is the one copy of each,
+and the chain broke with it. The fragment reader existed three times too
+(share, session, store), each its own loop over `#k=v&k=v`; `fragment.js`
+is the one loop. Then the registry had to decide what a record *is* before
+its owner arrives, and the answer that keeps every promise the format has
+made is "content the loader does not understand": carried verbatim, and
+normalized on arrival. Three hundred and twelve kilobytes and twelve
+requests came off the boot, which is less than the audit's five hundred
+because the audit counted modules and the graph counts imports: agents.js
+is still there for the crowd, timetable.js for a room number the signage
+needs, and three.js is a third of everything. Suite 2086 green (fourteen
+new, across three new modules); the walk template rebuilt by its tool
+(save-load.js rides the bundle and now brings records.js and csv.js with
+it); the rail's chrome capture now waits for the two panels that fetch on
+open rather than photographing "Reading the model…", at zero pixels moved;
+five new tool checks — the budget, and one per button.
+Arc six is complete. Next open: **Phase 34 — A history somebody else can
+read**, named model **Claude Fable 5**.

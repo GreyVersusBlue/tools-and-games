@@ -47,7 +47,7 @@ suite.
 ```
 node --test 'test/*.test.mjs'      # 2,000+ assertions over every pure module
 node test/visual/run.mjs           # the printed sheets and the editor chrome
-node test/tools/run.mjs            # the drawing tools and the walk, on the real page
+node test/tools/run.mjs            # the drawing tools and the walk, on the real page — and what the boot costs
 ```
 
 The glob in the first one is not decoration: `node --test test/` resolves the
@@ -63,7 +63,7 @@ All three run on every pull request that touches this directory — see
 index.html      the page: chrome, styles, and the boot guard
 sw.js           the service worker — three listeners over js/offline.js
 manifest.webmanifest, icon.svg    what makes it installable
-js/             the tool — one module per question, ~95 of them
+js/             the tool — one module per question, ~100 of them
 libs/           vendored three.js and the addons it uses
 test/           one suite per pure module, plus visual/ and tools/
 server/         the optional design store and session relay

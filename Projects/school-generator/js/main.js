@@ -65,31 +65,14 @@ import {
   listDesigns, saveDesign, loadDesign, deleteDesign, renameDesign,
   serialize, deserialize,
 } from './save-load.js';
-import {
-  renderFloorPlanCanvas, renderSitePlanCanvas, renderSpecSheetCanvas, downloadCanvasPNG,
-  computeFloorPlan, drawPlanBody, sheetSet, renderSheetCanvas,
-} from './blueprint.js';
 import { INK } from './theme.js';
-import { buildReport, reportCSV, codePanel, dayPanel } from './report.js';
 // --- Phase 16 ---
-import {
-  assemblies, systemEntry, normalizeRates, emptyRates, exampleRates,
-  isEmptyRates, ratesCSV, importRatesCSV, setRate, ratesSummary, CURRENCIES,
-} from './rates.js';
-import { costCSV } from './cost.js';
-import { specCSV } from './spec.js';
-import {
-  phasingOf, normalizePhasing, emptyPhasing, isEmptyPhasing, phaseByStorey,
-  addPhase, removePhase, movePhase, renamePhase, claimShared, assignRooms,
-  phasingCSV, roomIdOf,
-} from './phasing.js';
 import { USES, buildingOccupancy } from './occupancy.js';
 import { codeOf, normalizeCode, isDefaultCode } from './codes.js';
 import {
   buildTimetable, importTimetableCSV, timetableCSV, timetablePlan, timetableSummary,
   timetableIssues, normalizeTimetable, isEmptyTimetable, bindTimetable, roomPool, rollFor,
 } from './timetable.js';
-import { crowdSize } from './utilisation.js';
 import { isTouchCapable, joystickAxes } from './touch.js';
 // --- Phase 8 ---
 import {
@@ -112,18 +95,6 @@ import {
 // --- Phase 32 ---
 import { moveStorey } from './section.js';
 // --- Phase 14 ---
-import {
-  createSession, adoptIds, blockOf, blocksClash, makeSite, describeOps,
-} from './session.js';
-import {
-  createRoster, presenceOf, worthSending, peerColor, peerLabel,
-  describeRoster, describePeer, TTL,
-} from './presence.js';
-import {
-  makeRoom, validRoom, readSessionFragment, sessionURL,
-  channelWire, socketWire, canChannel,
-} from './wire.js';
-import * as cloud from './cloud.js';
 import { clone as deepClone } from './history.js';
 // --- Phase 9 ---
 import { registerRows } from './catalog.js';
@@ -147,6 +118,9 @@ import {
 import { xrAvailability, rigPosition } from './xr.js';
 import { probeWebGL, failureText } from './bootcheck.js';
 import { lazy } from './lazy.js';
+// --- Phase 42 ---
+import { adoptRecords } from './records.js';
+import { wantsCompany } from './fragment.js';
 // --- Phase 30 ---
 import { galleryCards, thumbPaths } from './gallery.js';
 import { REV as OFFLINE_REV, registrable, offlineStatus, INSTALL_LABEL } from './offline.js';
@@ -164,6 +138,49 @@ const generateModule = lazy(() => import('./generate.js'));
 // The gallery's three schools are 90 KB of share payloads and are wanted on
 // exactly one load in a browser's life — the first one. Same bargain.
 const galleryStock = lazy(() => import('./gallerystock.js'));
+
+// Phase 42: the boot diet. Three more things the tool used to download before
+// the first frame and now fetches the first time they are wanted. Each loader
+// hands back the module namespaces and keeps them in a `let` beside it, so
+// that the code below can be written against `analysis.report.buildReport`
+// rather than against a promise — every function that reads one of these is
+// only reachable from a gesture that has already awaited the loader.
+//
+// The report and its tail — cost, spec, egress, daylight, utilisation, the
+// takeoff, the rate table and the phasing plan: a fifth of the tool, and
+// wanted only once a panel opens. report.js imports the lot, so asking for
+// the six together costs nothing extra; it just names them.
+let analysis = null;
+const analysisModules = lazy(async () => {
+  const [report, rates, phasing, cost, spec, utilisation] = await Promise.all([
+    import('./report.js'), import('./rates.js'), import('./phasing.js'),
+    import('./cost.js'), import('./spec.js'), import('./utilisation.js'),
+  ]);
+  analysis = { report, rates, phasing, cost, spec, utilisation };
+  // The rate table and the phasing plan were carried through the loader as
+  // they came; their owners are here now. See records.js.
+  adoptRecords(state);
+  return analysis;
+});
+// The printable set: every sheet the export dialog draws, and the plan the
+// minimap blits — which is why it used to be pinned to the walk's every
+// frame. The minimap now asks for it and draws without it until it lands.
+const blueprintModule = lazy(() => import('./blueprint.js'));
+// The session stack — the log, the roster, the pipe and the design store —
+// fetched on the first collaborative gesture: the Session button, or a link
+// that is one (see fragment.js). `collab.roster` is null until then, and
+// every function in the session section is guarded by `collab.wire`, which
+// nothing sets without this having loaded first.
+let net = null;
+const collabStack = lazy(async () => {
+  const [session, presence, wire, cloud] = await Promise.all([
+    import('./session.js'), import('./presence.js'), import('./wire.js'), import('./cloud.js'),
+  ]);
+  net = { session, presence, wire, cloud };
+  collab.roster = presence.createRoster();
+  initSessionPanel();
+  return net;
+});
 
 const canvas = document.getElementById('view');
 const $ = (id) => document.getElementById(id);
@@ -275,7 +292,7 @@ function rebuild(throttled = false) {
 const collab = {
   wire: null,          // the pipe, or null when this design is yours alone
   session: null,       // the log and the clock — see session.js
-  roster: createRoster(),
+  roster: null,        // presence.js's roster, once the session stack has loaded
   mirror: null,        // the design as the other people last heard it
   moved: false,        // something changed since the last flush
   pending: [],         // ops that arrived mid-gesture, waiting for the pointer
@@ -956,6 +973,10 @@ function setMode(m) {
     // The map is drawn from the plan, and the plan may have changed since the
     // last walk.
     invalidateMinimap();
+    // Phase 42: the plan builder is fetched on the way in, so the map's first
+    // frame usually finds it here — see `miniPlanFor` for the frame that does
+    // not.
+    blueprintModule().then((m) => { miniBlueprint = m; }, () => { /* the map asks again */ });
     updateMinimapButtons();
     renderTourPanel();
     // Phase 27: ask for the baked light — a cache hit wears it now, a fresh
@@ -2626,7 +2647,7 @@ function exportScope() {
 // code panel and a specification sheet are both readings of the report, and
 // the report is the most derived thing in the codebase. So it is built once,
 // here, and handed to every sheet — rather than each sheet building its own.
-function exportOpts() {
+async function exportOpts() {
   const wantsCode = $('export-code').checked;
   const wantsSpec = $('export-spec').checked;
   const wantsDay = $('export-day').checked;
@@ -2635,7 +2656,7 @@ function exportOpts() {
   const wantsClearance = $('export-clearance').checked;
   let data = null;
   if (wantsCode || wantsSpec || wantsDay || wantsClearance) {
-    if (report.stale || !report.data) reportBuild();
+    await reportReady();
     data = report.data;
   }
   return {
@@ -2667,8 +2688,8 @@ function exportOpts() {
 const sheetOpts = (opts, floorIndex) => {
   if (!opts.report) return opts;
   const out = { ...opts };
-  if (opts.wantsCode) out.codePanel = codePanel(opts.report, { floor: floorIndex });
-  if (opts.wantsDay) out.dayPanel = dayPanel(opts.report, { floor: floorIndex });
+  if (opts.wantsCode) out.codePanel = analysis.report.codePanel(opts.report, { floor: floorIndex });
+  if (opts.wantsDay) out.dayPanel = analysis.report.dayPanel(opts.report, { floor: floorIndex });
   return out;
 };
 
@@ -2698,8 +2719,8 @@ $('export-close').addEventListener('click', () => closeModal(exportOverlay));
 // and numbers each through the title block; this builds one entry's options
 // (the shared set, that storey's panels, and its place in the binding) and
 // renders it.
-function exportSheets(opts) {
-  const set = sheetSet(state, {
+function exportSheets(bp, opts) {
+  const set = bp.sheetSet(state, {
     site: wantsSite(),
     floors: exportScope(),
     elevations: $('export-elev').checked,
@@ -2707,7 +2728,7 @@ function exportSheets(opts) {
   });
   return set.map((entry, i) => ({
     entry,
-    render: () => renderSheetCanvas(state, entry, {
+    render: () => bp.renderSheetCanvas(state, entry, {
       ...sheetOpts(opts, entry.kind === 'plan' ? entry.floorIndex : null),
       sheetIndex: i + 1,
       sheetCount: set.length,
@@ -2720,20 +2741,22 @@ const sheetSlug = (entry) =>
     .replace(/-+$/, '');
 
 $('export-png').addEventListener('click', async () => {
-  const opts = { ...exportOpts(), trace: await exportTrace() };
-  for (const { entry, render } of exportSheets(opts)) {
+  const bp = await blueprintModule();
+  const opts = { ...(await exportOpts()), trace: await exportTrace() };
+  for (const { entry, render } of exportSheets(bp, opts)) {
     const canvas = render();
-    if (canvas) downloadCanvasPNG(canvas, `${sheetSlug(entry)}.png`);
+    if (canvas) bp.downloadCanvasPNG(canvas, `${sheetSlug(entry)}.png`);
   }
 });
 
 $('export-print').addEventListener('click', async () => {
-  const opts = { ...exportOpts(), trace: await exportTrace() };
+  const bp = await blueprintModule();
+  const opts = { ...(await exportOpts()), trace: await exportTrace() };
   printArea.textContent = '';
   // One dialog for the lot, bound the way a real set is bound: the site
   // leads, the plans follow, the elevations and cuts stand behind them, and
   // the specification closes the book.
-  for (const { render } of exportSheets(opts)) {
+  for (const { render } of exportSheets(bp, opts)) {
     const canvas = render();
     if (!canvas) continue;
     const page = document.createElement('div');
@@ -4436,9 +4459,10 @@ $('life-tt-csv').addEventListener('click', () => {
 // item it closes has been open since Phase 7 wrote the occupant loads down and
 // nothing read them: "the crowd doesn't know the occupant load the report
 // computed."
-$('life-atload').addEventListener('click', () => {
+$('life-atload').addEventListener('click', async () => {
+  const { utilisation } = await analysisModules();
   const { occupancy } = timetableWorld();
-  const at = crowdSize(occupancy, { timetable: timetableOf(state) });
+  const at = utilisation.crowdSize(occupancy, { timetable: timetableOf(state) });
   if (!at.students) {
     $('life-tt-state').innerHTML =
       '<span class="warn">Nothing to count</span> — no room here reads as a teaching space.';
@@ -4490,14 +4514,31 @@ function reportInvalidate() {
   report.timer = setTimeout(() => reportBuild(), REPORT_DEBOUNCE);
 }
 
+// Builds the report, and answers a promise that settles once it is built —
+// synchronously, except the first time: Phase 42 fetches the analysis modules
+// on the first ask, so the first build waits for them and the panel says
+// "Reading the model…" until they land. A load that fails (the network is
+// off, and this is a first visit) leaves `report.data` null and says why,
+// rather than throwing out of a click; the next ask tries again.
 function reportBuild() {
   clearTimeout(report.timer);
+  if (!analysis) {
+    renderReportPanel();
+    return analysisModules().then(() => reportBuild(), (err) => {
+      $('status').textContent = `Could not load the analysis: ${err.message}`;
+    });
+  }
   // No `sprinklered` option: since v11 it is a field on the design, and the
   // checkbox below writes it there rather than holding it for the session.
-  report.data = buildReport(state);
+  report.data = analysis.report.buildReport(state);
   report.stale = false;
   renderReportPanel();
+  return Promise.resolve();
 }
+
+// A fresh report, when the caller needs to read one: what every reader of
+// `report.data` awaits first, and a no-op when the report is already current.
+const reportReady = () => ((report.stale || !report.data) ? reportBuild() : Promise.resolve());
 
 function renderReportStale() {
   $('report-stale').classList.toggle('hidden', !report.stale);
@@ -4821,9 +4862,10 @@ $('report-edition').addEventListener('change', (e) => {
   setCode({ edition: e.target.value });
 });
 
-$('report-csv').addEventListener('click', () => {
-  if (report.stale || !report.data) reportBuild();
-  const blob = new Blob([reportCSV(report.data)], { type: 'text/csv;charset=utf-8' });
+$('report-csv').addEventListener('click', async () => {
+  await reportReady();
+  if (!report.data) return;
+  const blob = new Blob([analysis.report.reportCSV(report.data)], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -4854,13 +4896,17 @@ const download = (text, name, type = 'text/csv;charset=utf-8') => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 };
 
-const ratesNow = () => normalizeRates(state.rates);
-const phasingNow = () => phasingOf(state);
+// Everything from here to the end of the section runs after the sheet has
+// been opened, and opening it awaits the analysis modules (Phase 42) — so
+// `analysis` is never null below, and the rate table and the phasing plan
+// have been adopted by their owners.
+const ratesNow = () => analysis.rates.normalizeRates(state.rates);
+const phasingNow = () => analysis.phasing.phasingOf(state);
 
 function commitRates(next) {
   editor.pushUndo();
-  const r = normalizeRates(next);
-  if (isEmptyRates(r)) delete state.rates; else state.rates = r;
+  const r = analysis.rates.normalizeRates(next);
+  if (analysis.rates.isEmptyRates(r)) delete state.rates; else state.rates = r;
   autosave(state);
   reportBuild();
   renderCostSheet();
@@ -4869,8 +4915,8 @@ function commitRates(next) {
 
 function commitPhasing(next) {
   editor.pushUndo();
-  const p = normalizePhasing(next);
-  if (isEmptyPhasing(p)) delete state.phasing; else state.phasing = p;
+  const p = analysis.phasing.normalizePhasing(next);
+  if (analysis.phasing.isEmptyPhasing(p)) delete state.phasing; else state.phasing = p;
   autosave(state);
   reportBuild();
   renderCostSheet();
@@ -4897,6 +4943,7 @@ function renderRateRows() {
   // In use first inside each system: the rows that matter to *this* design are
   // the ones somebody is going to type into, and making them hunt is how a
   // rate table stays empty.
+  const { assemblies, systemEntry } = analysis.rates;
   const rows = assemblies().slice().sort((a, b) =>
     (qty.get(b.key) ? 1 : 0) - (qty.get(a.key) ? 1 : 0) || a.label.localeCompare(b.label));
   for (const sys of [...new Set(assemblies().map((a) => a.system))]) {
@@ -4994,7 +5041,7 @@ function renderPhaseList() {
     if (!shapes.length) return;
     html += `<div class="grp">${esc(floorLabel(i))}</div>`;
     for (const shape of shapes) {
-      const id = roomIdOf(i, shape);
+      const id = analysis.phasing.roomIdOf(i, shape);
       html += `<div class="room-row" data-room="${esc(id)}">` +
         `<span>${esc(shape.name || '(unnamed)')}</span>` +
         `<select aria-label="Phase for ${esc(shape.name || 'unnamed room')}">${opts(of.get(id) || '')}</select>` +
@@ -5007,7 +5054,7 @@ function renderPhaseList() {
 function renderCostSheet() {
   if (costOverlay.classList.contains('hidden')) return;
   const rates = ratesNow();
-  const summary = ratesSummary(rates);
+  const summary = analysis.rates.ratesSummary(rates);
   const warn = $('cost-warning');
   if (summary.example) {
     warn.textContent = 'These are the shipped worked-example rates. They are ' +
@@ -5028,11 +5075,26 @@ function renderCostSheet() {
   renderPhaseList();
 }
 
-$('cost-currency').innerHTML = CURRENCIES
-  .map((c) => `<option value="${c}">${c}</option>`).join('');
+// The currency list is rates.js's, so it is filled the first time the sheet
+// opens rather than at boot — the one piece of this dialog that used to be.
+let costSheetReady = false;
+function initCostSheet() {
+  if (costSheetReady) return;
+  costSheetReady = true;
+  $('cost-currency').innerHTML = analysis.rates.CURRENCIES
+    .map((c) => `<option value="${c}">${c}</option>`).join('');
+}
 
-$('cost-open').addEventListener('click', () => {
-  if (report.stale || !report.data) reportBuild();
+$('cost-open').addEventListener('click', async () => {
+  if (!analysis) $('status').textContent = 'Loading the cost sheet…';
+  try {
+    await analysisModules();
+  } catch (err) {
+    $('status').textContent = `Could not load the cost sheet: ${err.message}`;
+    return;
+  }
+  initCostSheet();
+  await reportReady();
   openModal(costOverlay, $('cost-currency'));
   renderCostSheet();
 });
@@ -5060,32 +5122,32 @@ $('cost-rows').addEventListener('change', (e) => {
   const row = rates.rows.find((r) => r.key === key) || null;
   if (field === 'rate') {
     const raw = input.value.trim();
-    commitRates(setRate(rates, key, raw === '' ? null : Number(raw)));
+    commitRates(analysis.rates.setRate(rates, key, raw === '' ? null : Number(raw)));
     return;
   }
   if (!row) { input.value = ''; return; }
-  commitRates(setRate(rates, key, row.rate, { [field]: input.value }));
+  commitRates(analysis.rates.setRate(rates, key, row.rate, { [field]: input.value }));
 });
 
 $('cost-example').addEventListener('click', () => {
-  if (!isEmptyRates(ratesNow()) &&
+  if (!analysis.rates.isEmptyRates(ratesNow()) &&
     !confirm('Replace the rate table with the worked example?')) return;
-  commitRates(exampleRates());
+  commitRates(analysis.rates.exampleRates());
 });
 $('cost-clear').addEventListener('click', () => {
-  if (isEmptyRates(ratesNow())) return;
+  if (analysis.rates.isEmptyRates(ratesNow())) return;
   if (!confirm('Empty the rate table? Nothing will be priced.')) return;
-  commitRates(emptyRates());
+  commitRates(analysis.rates.emptyRates());
 });
 $('cost-export').addEventListener('click', () => {
-  download(ratesCSV(ratesNow(), { quantities: assemblyQuantities() }), 'school-rates.csv');
+  download(analysis.rates.ratesCSV(ratesNow(), { quantities: assemblyQuantities() }), 'school-rates.csv');
 });
 $('cost-import').addEventListener('click', () => $('cost-file').click());
 $('cost-file').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  const res = importRatesCSV(await file.text(), { merge: ratesNow() });
+  const res = analysis.rates.importRatesCSV(await file.text(), { merge: ratesNow() });
   if (!res.found) { alert('No Key and Rate columns in that file.'); return; }
   commitRates(res.rates);
   // Said out loud rather than swallowed: an import that quietly drops eleven
@@ -5095,22 +5157,23 @@ $('cost-file').addEventListener('change', async (e) => {
     (res.unknown ? ` ${res.unknown} are for assemblies this build does not measure — kept, unused.` : ''));
 });
 
-$('cost-csv').addEventListener('click', () => {
-  if (report.stale || !report.data) reportBuild();
+$('cost-csv').addEventListener('click', async () => {
+  await reportReady();
   const r = report.data;
+  if (!r) return;
   const parts = [];
-  if (r.spec) parts.push(specCSV(r.spec));
-  if (r.cost) parts.push(costCSV(r.cost));
-  if (r.phasing && r.phasing.has) parts.push(phasingCSV(r.phasing));
+  if (r.spec) parts.push(analysis.spec.specCSV(r.spec));
+  if (r.cost) parts.push(analysis.cost.costCSV(r.cost));
+  if (r.phasing && r.phasing.has) parts.push(analysis.phasing.phasingCSV(r.phasing));
   download(parts.join('\r\n'), 'school-cost.csv');
 });
 
-$('phase-storey').addEventListener('click', () => commitPhasing(phaseByStorey(state)));
-$('phase-add').addEventListener('click', () => commitPhasing(addPhase(phasingNow())));
+$('phase-storey').addEventListener('click', () => commitPhasing(analysis.phasing.phaseByStorey(state)));
+$('phase-add').addEventListener('click', () => commitPhasing(analysis.phasing.addPhase(phasingNow())));
 $('phase-clear').addEventListener('click', () => {
-  if (isEmptyPhasing(phasingNow())) return;
+  if (analysis.phasing.isEmptyPhasing(phasingNow())) return;
   if (!confirm('Drop the phasing plan? The building is costed all at once again.')) return;
-  commitPhasing(emptyPhasing());
+  commitPhasing(analysis.phasing.emptyPhasing());
 });
 
 $('phase-list').addEventListener('click', (e) => {
@@ -5119,6 +5182,7 @@ $('phase-list').addEventListener('click', (e) => {
   if (!host) return;
   const id = host.dataset.phase;
   const p = phasingNow();
+  const { movePhase, claimShared, removePhase } = analysis.phasing;
   if (btn.dataset.act === 'up') commitPhasing(movePhase(p, id, -1));
   else if (btn.dataset.act === 'down') commitPhasing(movePhase(p, id, 1));
   else if (btn.dataset.act === 'shared') commitPhasing(claimShared(p, id));
@@ -5128,14 +5192,14 @@ $('phase-list').addEventListener('change', (e) => {
   const input = e.target.closest('input[data-field="name"]');
   const host = input && input.closest('.phase-row');
   if (!host) return;
-  commitPhasing(renamePhase(phasingNow(), host.dataset.phase, input.value));
+  commitPhasing(analysis.phasing.renamePhase(phasingNow(), host.dataset.phase, input.value));
 });
 
 $('phase-rooms').addEventListener('change', (e) => {
   const sel = e.target.closest('select');
   const host = sel && sel.closest('.room-row');
   if (!host) return;
-  commitPhasing(assignRooms(phasingNow(), sel.value || null, [host.dataset.room]));
+  commitPhasing(analysis.phasing.assignRooms(phasingNow(), sel.value || null, [host.dataset.room]));
 });
 
 // --- the generator ---
@@ -6419,18 +6483,24 @@ const FLUSH_MS = 350;
 // ---------- starting, joining, leaving ----------
 
 function sessionStart({ room, relay = '', joining = false } = {}) {
+  if (!net) {
+    // Every caller awaits `collabStack()` first; this is the sentence for the
+    // one that did not, rather than a TypeError three lines down.
+    sessionStatus('The session tools have not loaded yet — open the Session panel first.');
+    return false;
+  }
   sessionLeave({ quiet: true });
-  const id = validRoom(room) ? room : makeRoom();
-  const site = makeSite();
+  const id = net.wire.validRoom(room) ? room : net.wire.makeRoom();
+  const site = net.session.makeSite();
   let wire;
   try {
-    wire = relay ? socketWire(relay, id, site) : channelWire(id, site);
+    wire = relay ? net.wire.socketWire(relay, id, site) : net.wire.channelWire(id, site);
   } catch (err) {
     sessionStatus(`Could not open a session: ${err.message}`);
     return false;
   }
   collab.wire = wire;
-  collab.session = createSession({ site, name: collab.name, room: id });
+  collab.session = net.session.createSession({ site, name: collab.name, room: id });
   collab.room = id;
   collab.relay = relay;
   collab.roster.clear();
@@ -6442,7 +6512,7 @@ function sessionStart({ room, relay = '', joining = false } = {}) {
   // From here on, anything this browser creates is numbered out of this
   // site's own block, so two people drawing at once cannot mint the same id
   // for two different rooms. Ids already in the design are left alone.
-  adoptIds(state, site);
+  net.session.adoptIds(state, site);
   collab.session.baseline(sessionDesign());
   collab.mirror = deepClone(sessionDesign());
 
@@ -6452,9 +6522,9 @@ function sessionStart({ room, relay = '', joining = false } = {}) {
     renderSessionPanel();
   });
   wire.start();
-  wire.send('hello', { name: collab.name, block: blockOf(site), want: joining ? 1 : 0 });
+  wire.send('hello', { name: collab.name, block: net.session.blockOf(site), want: joining ? 1 : 0 });
 
-  history.replaceState(null, '', sessionURL(location.href, id, relay));
+  history.replaceState(null, '', net.wire.sessionURL(location.href, id, relay));
   renderSessionPanel();
   sessionStatus(joining
     ? `Joined session ${id} — waiting for the building…`
@@ -6492,7 +6562,7 @@ function onSessionMessage(msg) {
     // things. One in four thousand, caught here rather than discovered later:
     // the higher site id re-rolls, which is cheap because it has barely
     // allocated anything yet.
-    if (blocksClash(me, msg.s) && me > msg.s) {
+    if (net.session.blocksClash(me, msg.s) && me > msg.s) {
       sessionStatus('Two of us drew the same id block — taking another one.');
       sessionStart({ room: collab.room, relay: collab.relay, joining: false });
       return;
@@ -6500,7 +6570,7 @@ function onSessionMessage(msg) {
     collab.roster.see(msg.s, { name: msg.name, block: msg.block }, now);
     // Answer, so the newcomer sees everybody who was already here — but only
     // to a first hello, or two tabs would greet each other forever.
-    if (!msg.re) collab.wire.send('hello', { name: collab.name, block: blockOf(me), re: 1 });
+    if (!msg.re) collab.wire.send('hello', { name: collab.name, block: net.session.blockOf(me), re: 1 });
     if (msg.want) sendSnapshot(msg.s);
     renderSessionPanel();
     return;
@@ -6509,7 +6579,7 @@ function onSessionMessage(msg) {
   if (msg.k === 'bye') {
     const peer = collab.roster.get(msg.s);
     collab.roster.drop(msg.s);
-    if (peer) sessionStatus(`${peerLabel(peer)} left the session.`);
+    if (peer) sessionStatus(`${net.presence.peerLabel(peer)} left the session.`);
     renderSessionPanel();
     return;
   }
@@ -6555,8 +6625,8 @@ function applyRemoteOps(ops, from) {
   editor.markClean();
   designChanged({ structural: true });
   collab.moved = false;
-  const who = peerLabel(collab.roster.get(from) || { site: from });
-  sessionStatus(`${who} changed ${describeOps(ops)}.`);
+  const who = net.presence.peerLabel(collab.roster.get(from) || { site: from });
+  sessionStatus(`${who} changed ${net.session.describeOps(ops)}.`);
   renderSessionPanel();
 }
 
@@ -6594,10 +6664,10 @@ function takeSnapshot(msg) {
     // ...and its own ids stay its own. `deserialize` renumbers from what is in
     // the file, so the block has to be re-claimed on the way in.
     adoptState(next, { keepAutosave: true, keepView: !joining });
-    adoptIds(state, collab.session.site);
+    net.session.adoptIds(state, collab.session.site);
     collab.mirror = deepClone(sessionDesign());
     collab.moved = false;
-    const who = peerLabel(collab.roster.get(msg.s) || { site: msg.s });
+    const who = net.presence.peerLabel(collab.roster.get(msg.s) || { site: msg.s });
     const line = joining
       ? `Opened ${who}'s building — you are drawing on the same plan.`
       : `${who} changed something a log cannot say — the whole plan came across.`;
@@ -6647,8 +6717,8 @@ function sessionPresence(now) {
     const v = renderApi.editView;
     view = { x: v.x, z: v.z, yaw: 0, floor: state.currentFloor, mode: 'plan' };
   }
-  const p = presenceOf(view);
-  if (!worthSending(collab.presence, p, now, collab.presenceAt)) return;
+  const p = net.presence.presenceOf(view);
+  if (!net.presence.worthSending(collab.presence, p, now, collab.presenceAt)) return;
   collab.presence = p;
   collab.presenceAt = now;
   collab.wire.send('pres', { p });
@@ -6669,7 +6739,7 @@ function sessionTick(now) {
   sessionPresence(now);
   const gone = collab.roster.prune(now);
   if (gone.length) {
-    sessionStatus(`${gone.map(peerLabel).join(' and ')} ${gone.length === 1 ? 'has' : 'have'} gone.`);
+    sessionStatus(`${gone.map(net.presence.peerLabel).join(' and ')} ${gone.length === 1 ? 'has' : 'have'} gone.`);
     renderSessionPanel();
   }
   // Where the peers are is on the panel as words, and words go stale. Once a
@@ -6776,15 +6846,15 @@ function renderSessionPanel() {
 
   if (!on) {
     stateLine.innerHTML = 'Not in a session — this design is yours alone. ' +
-      (canChannel() ? '' : '<span class="warn">This browser cannot share between windows.</span>');
+      (net.wire.canChannel() ? '' : '<span class="warn">This browser cannot share between windows.</span>');
   } else {
     const others = collab.roster.list();
     const where = collab.relay ? esc(collab.relay) : 'the other windows of this browser';
     const trouble = collab.note ? ` <span class="warn">${esc(collab.note)}</span>` : '';
     stateLine.innerHTML =
       `<span class="live">Live</span> in <b>${esc(collab.room)}</b>, over ${where}.${trouble}<br />` +
-      `${esc(describeRoster(others))}`;
-    $('session-link').textContent = sessionURL(location.href, collab.room, collab.relay);
+      `${esc(net.presence.describeRoster(others))}`;
+    $('session-link').textContent = net.wire.sessionURL(location.href, collab.room, collab.relay);
   }
 
   const list = $('session-peers');
@@ -6792,36 +6862,53 @@ function renderSessionPanel() {
   list.innerHTML = rows.map((peer) => {
     const floor = peer.f < state.floors.length ? floorLabel(peer.f) : `Level ${peer.f + 1}`;
     return `<div class="peer"><span class="dot" style="background:${esc(peer.color)}"></span>` +
-      `${esc(peerLabel(peer))}<span class="doing">${esc(describePeer(peer, floor))}</span></div>`;
+      `${esc(net.presence.peerLabel(peer))}<span class="doing">${esc(net.presence.describePeer(peer, floor))}</span></div>`;
   }).join('');
 
-  const cfg = cloud.readConfig();
-  $('session-note').textContent = cloud.describeCloud(cfg);
+  const cfg = net.cloud.readConfig();
+  $('session-note').textContent = net.cloud.describeCloud(cfg);
 }
 
 // ---------- the controls ----------
 
+// The panel is the first collaborative gesture most sessions begin with, so
+// it is where the stack is fetched (Phase 42). Until it lands the panel says
+// so; if it never does, the panel says that instead.
+async function withNet(then) {
+  try {
+    await collabStack();
+  } catch (err) {
+    $('session-state').innerHTML =
+      `<span class="warn">Could not load the session tools: ${esc(err.message)}</span>`;
+    return;
+  }
+  then();
+}
+
 $('session-btn').addEventListener('click', () => {
   const panel = $('session-panel');
   const hidden = panel.classList.toggle('hidden');
-  if (!hidden) { railUnfold(panel); renderSessionPanel(); }
   $('session-btn').setAttribute('aria-pressed', String(!hidden));
+  if (hidden) return;
+  railUnfold(panel);
+  if (!net) $('session-state').textContent = 'Loading the session tools…';
+  withNet(renderSessionPanel);
 });
 
-$('session-start').addEventListener('click', () => {
-  const cfg = cloud.readConfig();
-  sessionStart({ room: makeRoom(), relay: cfg.relay, joining: false });
-});
+$('session-start').addEventListener('click', () => withNet(() => {
+  const cfg = net.cloud.readConfig();
+  sessionStart({ room: net.wire.makeRoom(), relay: cfg.relay, joining: false });
+}));
 
 $('session-leave').addEventListener('click', () => sessionLeave());
 
-$('session-name').addEventListener('change', () => {
+$('session-name').addEventListener('change', () => withNet(() => {
   collab.name = $('session-name').value.trim().slice(0, 24);
-  const cfg = cloud.readConfig();
-  cloud.writeConfig({ ...cfg, name: collab.name });
-  if (sessionOn()) collab.wire.send('hello', { name: collab.name, block: blockOf(collab.session.site), re: 1 });
+  const cfg = net.cloud.readConfig();
+  net.cloud.writeConfig({ ...cfg, name: collab.name });
+  if (sessionOn()) collab.wire.send('hello', { name: collab.name, block: net.session.blockOf(collab.session.site), re: 1 });
   renderSessionPanel();
-});
+}));
 
 $('session-copy').addEventListener('click', async () => {
   const link = $('session-link').textContent;
@@ -6841,26 +6928,26 @@ function roomFromInput(text) {
   const raw = String(text || '').trim();
   if (!raw) return null;
   const cut = raw.indexOf('#');
-  const frag = cut >= 0 ? readSessionFragment(raw.slice(cut)) : null;
+  const frag = cut >= 0 ? net.wire.readSessionFragment(raw.slice(cut)) : null;
   if (frag) return frag;
-  return validRoom(raw) ? { room: raw, relay: '' } : null;
+  return net.wire.validRoom(raw) ? { room: raw, relay: '' } : null;
 }
 
-$('session-go').addEventListener('click', () => {
+$('session-go').addEventListener('click', () => withNet(() => {
   const found = roomFromInput($('session-join').value);
   if (!found) {
     sessionStatus('That is not a session id — it is eight letters, or the whole link.');
     return;
   }
-  const cfg = cloud.readConfig();
+  const cfg = net.cloud.readConfig();
   sessionStart({ room: found.room, relay: found.relay || cfg.relay, joining: true });
   $('session-join').value = '';
-});
+}));
 
-$('session-server-save').addEventListener('click', () => {
-  const cfg = cloud.writeConfig({
+$('session-server-save').addEventListener('click', () => withNet(() => {
+  const cfg = net.cloud.writeConfig({
     base: $('session-store').value,
-    relay: $('session-relay').value || cloud.impliedRelay($('session-store').value),
+    relay: $('session-relay').value || net.cloud.impliedRelay($('session-store').value),
     name: collab.name,
   });
   $('session-store').value = cfg.base;
@@ -6869,24 +6956,24 @@ $('session-server-save').addEventListener('click', () => {
   sessionStatus(cfg.base || cfg.relay
     ? 'Addresses saved. A session started from now on will use the relay.'
     : 'Cleared — sessions stay between the windows of this browser.');
-});
+}));
 
-$('cloud-put').addEventListener('click', async () => {
-  const cfg = cloud.readConfig();
-  if (!cloud.cloudReady(cfg)) {
+$('cloud-put').addEventListener('click', () => withNet(async () => {
+  const cfg = net.cloud.readConfig();
+  if (!net.cloud.cloudReady(cfg)) {
     sessionStatus('No design store is set — put its address in the Server box first.');
     return;
   }
   const btn = $('cloud-put');
   btn.disabled = true;
   try {
-    const id = cloudId || cloud.newDesignId();
-    const key = cloud.keyFor(id) || cloud.newWriteKey();
+    const id = cloudId || net.cloud.newDesignId();
+    const key = net.cloud.keyFor(id) || net.cloud.newWriteKey();
     const json = serialize(state);
-    await cloud.putDesign(cfg.base, id, key, json, {});
-    cloud.rememberKey(id, key, 'design');
+    await net.cloud.putDesign(cfg.base, id, key, json, {});
+    net.cloud.rememberKey(id, key, 'design');
     cloudId = id;
-    const link = cloud.cloudURL(location.href, id, cfg.base);
+    const link = net.cloud.cloudURL(location.href, id, cfg.base);
     try { await navigator.clipboard.writeText(link); } catch { /* say it instead */ }
     sessionStatus(`Uploaded — the link is on your clipboard: ${link}`);
   } catch (err) {
@@ -6894,7 +6981,7 @@ $('cloud-put').addEventListener('click', async () => {
   } finally {
     btn.disabled = false;
   }
-});
+}));
 
 // Which design in the store this one is, once it has been up there — so a
 // second upload replaces it rather than making a second copy.
@@ -6904,21 +6991,28 @@ let cloudId = '';
 // bar. Both run at startup, after the autosave has been restored, and in that
 // order: open the building first, then join the people.
 async function openCloudDesign() {
-  const found = cloud.readCloudFragment(location.hash);
+  if (!wantsCompany(location.hash)) return false;
+  try {
+    await collabStack();
+  } catch (err) {
+    sessionStatus(`This link needs the session tools, which could not load: ${err.message}`);
+    return false;
+  }
+  const found = net.cloud.readCloudFragment(location.hash);
   if (!found) return false;
-  const cfg = cloud.readConfig();
+  const cfg = net.cloud.readConfig();
   const base = found.base || cfg.base;
   if (!base) {
     sessionStatus('That link points at a design store this browser has no address for.');
     return false;
   }
   try {
-    const json = await cloud.getDesign(base, found.id, {});
+    const json = await net.cloud.getDesign(base, found.id, {});
     adoptState(deserialize(json, { onMigrate }), { keepAutosave: true });
     fileSession = noteOpened(fileSession, { name: found.name || null, source: 'store' });
     syncFileChrome();
     cloudId = found.id;
-    if (!cfg.base) cloud.writeConfig({ ...cfg, base, relay: cfg.relay || cloud.impliedRelay(base) });
+    if (!cfg.base) net.cloud.writeConfig({ ...cfg, base, relay: cfg.relay || net.cloud.impliedRelay(base) });
     sessionStatus(migrationNote
       ? `${migrationNote} Opened from the store.`
       : 'Opened from the store — save it to keep a copy of your own.');
@@ -6930,17 +7024,23 @@ async function openCloudDesign() {
   }
 }
 
-function joinFromFragment() {
-  const found = readSessionFragment(location.hash);
+async function joinFromFragment() {
+  if (!wantsCompany(location.hash)) return false;
+  try {
+    await collabStack();
+  } catch {
+    return false;   // openCloudDesign already said why
+  }
+  const found = net.wire.readSessionFragment(location.hash);
   if (!found) return false;
-  const cfg = cloud.readConfig();
+  const cfg = net.cloud.readConfig();
   sessionStart({ room: found.room, relay: found.relay || cfg.relay, joining: true });
   return true;
 }
 
-// The saved addresses and name, into the panel, once.
+// The saved addresses and name, into the panel, once — when the stack loads.
 function initSessionPanel() {
-  const cfg = cloud.readConfig();
+  const cfg = net.cloud.readConfig();
   collab.name = cfg.name;
   $('session-name').value = cfg.name;
   $('session-store').value = cfg.base;
@@ -7470,10 +7570,14 @@ function refreshMiniMarks() {
     if (!miniMarksPending) {
       miniMarksPending = true;
       setTimeout(() => {
-        miniMarksPending = false;
-        reportBuild();
-        miniMarksDirty = true;
-        refreshMiniMarks();
+        reportBuild().then(() => {
+          miniMarksPending = false;
+          // A report that could not be built (the analysis did not load)
+          // is no findings, not a build asked for again every frame.
+          if (!report.data) { miniMarks = []; miniMarksDirty = false; return; }
+          miniMarksDirty = true;
+          refreshMiniMarks();
+        });
       }, 0);
     }
     return;
@@ -7552,10 +7656,22 @@ function drawMiniMarks(view, floorIndex, size) {
   }
 }
 
+// Phase 42: the plan builder is blueprint.js — the printable set, a fifth of
+// a megabyte the walk never needed until this map asked for a floor. The
+// module is fetched when walk mode is entered (see `walkPrefetch`) and again
+// here if it has not arrived; a frame that finds it missing draws the map
+// without a plan — the eye, the cone, the crowd and the peers still land —
+// and the first frame after it lands fills the cache. `miniPlans` never
+// caches the miss, so nothing has to be invalidated when the module arrives.
+let miniBlueprint = null;
 function miniPlanFor(floorIndex) {
   let cached = miniPlans.get(floorIndex);
   if (cached !== undefined) return cached;
-  const plan = computeFloorPlan(state, floorIndex);
+  if (!miniBlueprint) {
+    blueprintModule().then((m) => { miniBlueprint = m; }, () => { /* the next frame asks again */ });
+    return null;
+  }
+  const plan = miniBlueprint.computeFloorPlan(state, floorIndex);
   cached = plan ? { plan, bounds: miniBounds(state.floors[floorIndex], plan) } : null;
   miniPlans.set(floorIndex, cached);
   return cached;
@@ -7605,7 +7721,7 @@ function miniRasterFor(floorIndex, record, scale) {
   // `drawPlanBody` draws in world feet through the same layout record the
   // export sheet uses — with no margin and no title block, which is the whole
   // reason it was split out of `drawFloorPlan`.
-  drawPlanBody(ctx, record.plan, { scale, margin: 0, titleH: 0 }, {
+  miniBlueprint.drawPlanBody(ctx, record.plan, { scale, margin: 0, titleH: 0 }, {
     // Furniture only when there are pixels to draw it with: at a quarter of a
     // pixel to the foot a desk is smaller than the wall beside it.
     showFurniture: scale >= 1,
@@ -8220,7 +8336,9 @@ sayIfMigrated();
 // a design in the link itself, a design in a store, then the session to join
 // — which is last because joining hands the building over to whoever is
 // already in there.
-initSessionPanel();
+// Phase 42: the last two need the session stack, which is fetched on the
+// first collaborative gesture — and a link that names a store or a session
+// is that gesture. A link that names neither fetches nothing.
 openSharedDesign()
   .then(() => openCloudDesign())
   .then(() => joinFromFragment());
@@ -8559,7 +8677,11 @@ window.app = {
   // --- Phase 14 ---
   sessionStart, sessionLeave, sessionFlush, sendSnapshot,
   get collab() { return collab; },
-  get peers() { return collab.roster.list(); },
+  get peers() { return collab.roster ? collab.roster.list() : []; },
+  // --- Phase 42 ---
+  get analysisLoaded() { return !!analysis; },
+  get netLoaded() { return !!net; },
+  get miniPlanned() { return [...miniPlans.values()].filter(Boolean).length; },
   // --- Phase 30 ---
   openWelcome, fillGallery, openCard,
   demoStart, demoStop,

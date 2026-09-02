@@ -15,8 +15,9 @@ import {
   SUBJECTS, MAX_COHORTS, MAX_SECTIONS, BAND_GRADES,
   emptyTimetable, isEmptyTimetable, normalizeTimetable, periodsOf, timetableSummary,
   roomPool, poolIndex, buildTimetable, timetableIssues, bindRoom, bindTimetable, TEACHABLE, rollFor,
-  parseCSV, importTimetableCSV, timetableCSV, timetablePlan, subjectEntry, gradeLabel,
+  importTimetableCSV, timetableCSV, timetablePlan, subjectEntry, gradeLabel,
 } from '../js/timetable.js';
+import { parseCSV } from '../js/csv.js';
 
 const SAMPLE = buildSampleSchool();
 const NAV = buildNav(SAMPLE);

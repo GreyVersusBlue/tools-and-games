@@ -172,11 +172,19 @@ const CAPTURES = [
       for (const id of ['audio-btn','life-btn','report-btn','session-btn']) document.getElementById(id).click();
       document.querySelector('#env-panel .rail-fold').click();
       ${hideView}`,
+    // Phase 42: the report and the session panel each fetch their modules on
+    // the first open, so the picture waits for both to have landed rather
+    // than photographing "Reading the model…".
+    ready: 'window.app && !window.app.report.stale && window.app.netLoaded',
     settle: 900,
   },
   {
     name: 'chrome-walk-overlay', width: 1600, height: 950,
     prep: `document.getElementById('mode-btn').click(); ${hideView}`,
+    // Phase 42: the minimap behind the overlay fetches its plan builder on
+    // the way into walk mode and draws the plan on the first frame after it
+    // lands — which on a software rasterizer can be later than any settle.
+    ready: 'window.app && window.app.miniPlanned > 0',
     settle: 900,
   },
   {

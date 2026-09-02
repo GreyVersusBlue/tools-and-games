@@ -34,6 +34,8 @@ import {
   normalizeRates, currencySymbol, ratesSummary, assemblyEntry, assemblyLabel, rateIndex,
 } from './rates.js';
 import { quantities } from './cost.js';
+import { csvRows } from './csv.js';
+import { registerRecord } from './records.js';
 
 export const MAX_PHASES = 20;
 export const MAX_PHASE_ROOMS = 2000;
@@ -458,11 +460,6 @@ function phasingFindings(state, phasing, rows, unassigned, roomName) {
 
 // ---------- the spreadsheet ----------
 
-const csvCell = (v) => {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-const csvRows = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 
 export function phasingCSV(plan) {
   const rows = [['Phasing', '', '', '', '', '']];
@@ -490,3 +487,8 @@ export function phasingCSV(plan) {
   }
   return csvRows(rows);
 }
+
+// Phase 42: the phasing plan is this module's record on the design — see
+// records.js. A phase naming a room the file does not contain is dropped,
+// because a reference to nothing is not data.
+registerRecord('phasing', { normalize: normalizePhasing, isEmpty: isEmptyPhasing });

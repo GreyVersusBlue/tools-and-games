@@ -30,6 +30,8 @@
 // What fits everywhere without being mangled. Past this a link still works in
 // every current browser — the cap below is the real limit — but it is long
 // enough that a chat client may wrap it, so the UI says so.
+import { FRAGMENT_KEYS, fragmentValue } from './fragment.js';
+
 export const COMFORT_CHARS = 8000;
 // The hard refusal. Browsers themselves manage far more, but a link this long
 // has stopped being a link.
@@ -37,7 +39,7 @@ export const MAX_CHARS = 60000;
 
 // The fragment key. `#s=` rather than a bare fragment so an anchor, a
 // future second key, and this can share the hash.
-export const SHARE_KEY = 's';
+export const SHARE_KEY = FRAGMENT_KEYS.share;
 
 const TAG_DEFLATE = 'z1';
 const TAG_PLAIN = 'u1';
@@ -142,19 +144,7 @@ export const shareFragment = (payload) => `#${SHARE_KEY}=${payload}`;
 // The payload out of a `location.hash`, or null for an ordinary one. Written
 // against the string rather than against `URL` so it can be tested headless
 // and so a hash this build didn't write can't throw.
-export function readShareFragment(hash) {
-  const text = String(hash || '');
-  const body = text.startsWith('#') ? text.slice(1) : text;
-  if (!body) return null;
-  for (const part of body.split('&')) {
-    const eq = part.indexOf('=');
-    if (eq < 0) continue;
-    if (part.slice(0, eq) !== SHARE_KEY) continue;
-    const value = part.slice(eq + 1).trim();
-    return value || null;
-  }
-  return null;
-}
+export const readShareFragment = (hash) => fragmentValue(hash, SHARE_KEY);
 
 // A whole link. The current page's query string goes with it (it may name the
 // build), the current fragment does not — a share link replaces a share link
