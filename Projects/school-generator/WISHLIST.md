@@ -1229,8 +1229,8 @@ out to be a canvas that no longer exists — Phase 30 replaced it with
 geometry (`planThumb`, `thumbPaths`), which is smaller, sharper and what
 the timeline uses. Suite 2099 green (thirteen new, across two new modules and
 one new blueprint test); the walk template rebuilt by its tool, since
-blueprint.js rides the bundle for the minimap; one visual baseline — the palette's — re-recorded on the pinned
-Chromium for its two new entries; one new tool check, which keeps a
+blueprint.js rides the bundle for the minimap; every visual baseline unchanged at zero pixels (the palette's capture
+shows fewer entries than the two this phase adds); one new tool check, which keeps a
 snapshot, draws a room, reads the change back as a sentence, restores the
 snapshot and undoes the restore. Both new modules arrive when the Designs
 dialog first opens, on Phase 42's terms, and the boot budget holds.

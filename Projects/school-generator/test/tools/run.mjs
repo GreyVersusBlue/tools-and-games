@@ -1289,8 +1289,11 @@ const CHECKS = [
       const before = await d.fp();
       await d.pick('floor');
       await d.page.evaluate('window.app.editor.setFloorRect(true); 1');
-      await d.assertClear([[96, 40], [128, 56]]);
-      await d.drag([[96, 40], [128, 56]]);
+      // The strip above the sample school's rooms, a clear cell or more east
+      // of where floor-rect drew: tiles that touch merge into the room beside
+      // them, and this has to make a room of its own.
+      await d.assertClear([[140, 8], [156, 20]]);
+      await d.drag([[140, 8], [156, 20]]);
       const drawn = await d.fp();
       const b = await d.page.evaluate(`window.app.snapshotNow('after')`);
       const cmp = await d.page.evaluate(
