@@ -127,8 +127,12 @@ test('a shared nav graph gives an identical answer', () => {
 test('the acoustics section stands on its own and sorts loudest first', () => {
   const ac = acousticsSection(SAMPLE);
   assert.ok(ac.rooms.length > 0);
+  // Phase 41: worst first means by the bad end of the range — the tail the
+  // room would have if every surface reflected as much as any table says.
   for (let i = 1; i < ac.rooms.length; i++) {
-    assert.ok(ac.rooms[i - 1].rt60 >= ac.rooms[i].rt60);
+    assert.ok(ac.rooms[i - 1].rt60High >= ac.rooms[i].rt60High);
+    assert.ok(ac.rooms[i].rt60Low <= ac.rooms[i].rt60 && ac.rooms[i].rt60 <= ac.rooms[i].rt60High,
+      'the point sits inside its own range');
   }
   assert.equal(ac.summary.worst, ac.rooms[0]);
   assert.equal(ac.summary.over, ac.rooms.filter((r) => r.overLimit).length);
@@ -227,7 +231,9 @@ test('the report reads the design\'s own rates and plan', () => {
 
 test('the code panel says which code, and what it measured against it', () => {
   const panel = codePanel(REPORT, { floor: 0 });
-  assert.equal(panel.edition, REPORT.editionLabel);
+  // Phase 41: "applied", because it now is — every row was read off that
+  // edition's table rather than off a constant beside a label.
+  assert.equal(panel.edition, `${REPORT.editionLabel} applied`);
   assert.equal(panel.sprinklered, REPORT.sprinklered);
   const rows = new Map(panel.rows);
   assert.equal(rows.get('Occupant load'), String(REPORT.summary.occupants));
@@ -403,4 +409,81 @@ test('the code panel says what its badge counts', () => {
   const worth = REPORT.findings.filter((f) => f.level === 'fail' || f.level === 'warn');
   assert.deepEqual(panel.findings.lines.map((l) => l.title),
     worth.slice(0, 3).map((f) => f.title));
+});
+
+// ---------- Phase 41: numbers that know their edition ----------
+
+test('every finding that quotes a rule cites the edition or standard it came from', () => {
+  const sections = new Set(['egress', 'accessible', 'daylight', 'acoustics', 'occupancy']);
+  for (const f of REPORT.findings) {
+    if (!sections.has(f.section)) continue;
+    assert.ok(typeof f.cite === 'string' && f.cite.length, `${f.section}/${f.code} cites nothing`);
+  }
+  assert.ok(REPORT.findings.some((f) => f.cite && f.cite.startsWith(REPORT.editionLabel)));
+});
+
+test('the edition is applied, not printed: another table gives another report', () => {
+  const s = buildSampleSchool();
+  const base = buildReport(s, { acoustics: false, takeoff: false });
+  s.code = { edition: 'ibc2018', sprinklered: true };
+  const other = buildReport(s, { acoustics: false, takeoff: false });
+  assert.equal(other.editionLabel, 'IBC 2018');
+  assert.equal(other.egress.edition, 'ibc2018');
+  assert.equal(other.daylight.edition, 'ibc2018');
+  assert.equal(other.occupancy.edition, 'ibc2018');
+  // The three offered editions agree on every Group E number, so the
+  // findings are the same words with a different citation on each.
+  assert.equal(other.findings.length, base.findings.length);
+  for (const f of other.findings) if (f.cite && /^IBC/.test(f.cite)) assert.match(f.cite, /^IBC 2018/);
+  assert.ok(other.findings.some((f) => f.cite && f.cite.startsWith('IBC 2018')));
+});
+
+test('the acoustics section answers with a range and names the input that narrows it', () => {
+  const ac = REPORT.acoustics;
+  for (const r of ac.rooms) {
+    assert.ok(r.rt60Low <= r.rt60 && r.rt60 <= r.rt60High);
+    assert.ok(r.narrows && r.narrows.what);
+  }
+  assert.equal(ac.summary.maybe, ac.rooms.filter((r) => r.maybeOver).length);
+  const f = REPORT.findings.find((x) => x.code === 'reverberation');
+  assert.ok(f && /\d\.\d–\d\.\d s/.test(f.detail), 'the range is in the sentence');
+  if (ac.summary.maybe) {
+    const note = REPORT.findings.find((x) => x.code === 'reverberation-range');
+    assert.ok(note && note.level === 'note');
+    assert.match(note.detail, /narrows it most/);
+  }
+});
+
+test('an unnamed room makes the occupant load a range, on the panel and in the sheet', () => {
+  const s = createState(12, 10);
+  const f = sheet(s, 0);
+  f.box(1, 1, 5, 5);
+  f.edgeV(1, 3, EDGE_DOOR2);
+  f.bake();
+  const r = buildReport(s, { acoustics: false, takeoff: false });
+  assert.ok(r.summary.occupantsLow < r.summary.occupants && r.summary.occupants < r.summary.occupantsHigh);
+  const note = r.findings.find((x) => x.code === 'unnamed-rooms');
+  assert.match(note.detail, /\d+–\d+ depending/);
+  assert.match(note.detail, /narrows that most/);
+  assert.ok(note.rooms.length === 1 && note.rooms[0].id, 'the room to name is somewhere to go');
+  const panel = codePanel(r, { floor: 0 });
+  assert.match(new Map(panel.rows).get('Occupant load'), /^\d+ \(\d+–\d+\)$/);
+  const csv = reportCSV(r);
+  assert.ok(csv.includes('counting the unnamed rooms'));
+  assert.ok(csv.split('\r\n').some((l) => /,guess,/.test(l)), 'the room row says its load is a guess');
+  // A fully named building prints a plain number.
+  assert.match(new Map(codePanel(REPORT, { floor: 0 }).rows).get('Occupant load'), /^\d+$/);
+});
+
+test('the code panel prints the common path, and the CSV carries it with the citations', () => {
+  const panel = codePanel(REPORT, { floor: 0 });
+  const rows = new Map(panel.rows);
+  assert.match(rows.get('Common path'), /^\d+ ft \/ 75 ft$/);
+  const csv = reportCSV(REPORT);
+  const lines = csv.split('\r\n');
+  assert.ok(lines.some((l) => l.startsWith('Code,IBC 2021 applied,')));
+  assert.ok(lines.some((l) => l.startsWith('Longest common path,')));
+  assert.ok(lines.some((l) => l.startsWith('Findings,Level,Section,Detail,Measured against')));
+  assert.ok(lines.some((l) => /Table 1017\.2/.test(l)), 'a citation reached the sheet');
+  assert.ok(lines.some((l) => l.startsWith('Rooms,Level,Use,Use from,Area ft²,Occupants,Load from,Travel ft,Common path ft')));
 });

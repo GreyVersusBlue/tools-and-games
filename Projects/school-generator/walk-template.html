@@ -67632,7 +67632,7 @@ function turningFindings(spots, fails) {
       `Beside the door into ${roomName(w)} the clear circle is ${inches(w.clear * 2)} across ` +
       `against the 60 in a chair turns in, and ${blockerName(w.blocker)} is what is in the way. ` +
       'Moving what stands beside the door is usually the answer; a wider corridor is the other one.',
-      { circles: doors.slice(0, 12).map(circleOf) }));
+      { circles: doors.slice(0, 12).map(circleOf), cite: 'ADA 2010 · §404.2.4' }));
   }
   if (pinches.length) {
     const w = pinches.reduce((a, b) => (b.clear < a.clear ? b : a));
@@ -67641,7 +67641,7 @@ function turningFindings(spots, fails) {
       `In ${roomName(w)} the route narrows to ${inches(w.clear * 2)}, ` +
       `where ${blockerName(w.blocker)} closes it in. A route is 36 in at its narrowest, ` +
       'and 60 in wherever two chairs have to pass.',
-      { circles: pinches.slice(0, 12).map(circleOf) }));
+      { circles: pinches.slice(0, 12).map(circleOf), cite: 'ADA 2010 · §403.5' }));
   }
   if (rooms.length) {
     out.push(finding('warn', 'turning-space',
@@ -67652,12 +67652,14 @@ function turningFindings(spots, fails) {
       {
         rooms: rooms.slice(0, 8).map((s) => ({ id: s.room, floor: s.floor, name: s.roomName })),
         circles: rooms.slice(0, 12).map(circleOf),
+        cite: 'ADA 2010 · §304.3',
       }));
   }
   if (!fails.length) {
     out.push(finding('ok', 'clearance', 'A chair turns everywhere it was tried',
       `${spots.length} places tested: both sides of every doorway on the route, every ` +
-      'bend, and the open floor of every room a chair can reach.'));
+      'bend, and the open floor of every room a chair can reach.',
+      { cite: 'ADA 2010 · §304.3' }));
   }
   return out;
 }
@@ -67785,7 +67787,7 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
       `${counters.length} counter${counters.length === 1 ? '' : 's'} too high for a seated person`,
       `The ${w.name.toLowerCase()}${w.roomName ? ` in ${w.roomName}` : ''} is ${inches(w.at)} ` +
       `where ${inches(w.limit)} is the limit (${w.cite}). A lower section, or a lower unit, is the fix.`,
-      { doors: counters.slice(0, 8).map(propMark) }));
+      { doors: counters.slice(0, 8).map(propMark), cite: `ADA 2010 · §${w.cite}` }));
   }
   if (controls.length) {
     const w = controls[0];
@@ -67793,7 +67795,7 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
       `${controls.length} control${controls.length === 1 ? '' : 's'} outside the 15–48 in reach range`,
       `The ${w.name.toLowerCase()}${w.roomName ? ` in ${w.roomName}` : ''} is mounted at ${inches(w.at)}; ` +
       `${w.high ? 'the highest' : 'the lowest'} an operable part may be is ${inches(w.limit)} (${w.cite}).`,
-      { doors: controls.slice(0, 8).map(propMark) }));
+      { doors: controls.slice(0, 8).map(propMark), cite: `ADA 2010 · §${w.cite}` }));
   }
   if (rooms.length) {
     out.push(finding('warn', 'work-surface',
@@ -67801,17 +67803,19 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
       `${rooms.slice(0, 4).map(roomName).join(', ')}` +
       `${rooms.length > 4 ? `, and ${rooms.length - 4} more` : ''} — every desk, table or bench ` +
       'in the room is outside 28–34 in (ADA 902.3). One at that height per room is enough.',
-      { rooms: rooms.slice(0, 8).map((w) => ({ id: w.room, floor: w.floor, name: w.name })) }));
+      { rooms: rooms.slice(0, 8).map((w) => ({ id: w.room, floor: w.floor, name: w.name })), cite: 'ADA 2010 · §902.3' }));
   }
   if (lockers && !lockersLow) {
     out.push(finding('note', 'lockers',
       `${lockers} locker bank${lockers === 1 ? '' : 's'}, none within reach`,
       'Every bank is full-height, so no locker has a hook or a shelf a seated person ' +
-      'reaches. Some of them (ADA 225.2.1 says 5%) want to be the half-height kind.'));
+      'reaches. Some of them (ADA 225.2.1 says 5%) want to be the half-height kind.',
+      { cite: 'ADA 2010 · §225.2.1' }));
   }
   if (tested && !items.length && !rooms.length) {
     out.push(finding('ok', 'reach', 'Every counter, control and work surface is within reach',
-      `${tested} of them checked against the catalog's own heights.`));
+      `${tested} of them checked against the catalog's own heights.`,
+      { cite: 'ADA 2010 · §308' }));
   }
   return out;
 }
@@ -73763,10 +73767,344 @@ function reliefFor(grain, opts = {}) {
 
 return { RELIEF_SIZE, reliefRng, RELIEF_GRAINS, GRAIN_KEYS, hasRelief, heightField, normalTexels, reliefFor };
 })();
+// ---- js/codes.js ----
+const __m_js_codes_js = (() => {
+
+// codes.js — the code editions, as numbers rather than as a label.
+//
+// Phase 7 offered three editions of the IBC in a menu and Phase 12 put the
+// choice in the file, and from then until Phase 41 the choice changed exactly
+// one thing: the sentence printed under the title block. Every factor and
+// every limit the analyses used was a constant in the module that used it —
+// `egress.js` knew 250ft, `occupancy.js` knew 20ft² a head, `daylight.js` knew
+// 8% — and the edition was quoted beside numbers it had had no hand in. "The
+// code edition is printed, not applied", the backlog said, and it was right.
+//
+// This file is the fix, and it is *data*: one table per offered edition,
+// carrying the occupant load factors, the travel, dead-end and common-path
+// limits, the width per occupant, the exit thresholds and the glazing rule,
+// each with the section it is quoted from. The readers select a table by the
+// edition the design stores and read their numbers off it, so the sentence on
+// the sheet — "IBC 2021 applied" — is at last a true one, and an edition that
+// differs (or a jurisdiction's amendment) is one row here rather than a hunt
+// through five modules.
+//
+// **Checked against the tree, not against the file** — the convention Phase
+// 32 wrote. The phase was scoped as "three editions and not one of them
+// changes a number"; carrying the three tables in full is what showed that,
+// for a Group E occupancy and the rules this tool applies, the numbers this
+// codebase has used since Phase 7 are the same under every edition it
+// offers, as far as these tables know them: 250ft sprinklered, 75ft of common
+// path, 20ft² a classroom seat. So the rows below are identical, and each
+// says in `changes` what it altered from the edition before it — nothing,
+// here. A reviewer with the printed editions is the one to correct a row,
+// and correcting it is the whole of the work: the value of the tables is not
+// that they differ today; it is that the numbers now have a home, a
+// provenance, and a place to differ.
+//
+// Every entry in `cites` is a table or section number stable across the three
+// editions. Where an edition renumbers a section, the edition's own row is the
+// place to say so — that is the whole point of citing per edition.
+//
+// Pure module: no three.js, no DOM. A leaf — it imports nothing, so
+// occupancy.js, egress.js and daylight.js can all read it without a cycle.
+// Exercised by test/codes.test.mjs.
+
+// ---------- the settings a design stores ----------
+//
+// Two facts about the building, not about this editing session (see
+// occupancy.js's header for how they came to live in the file): which edition
+// the analysis is read against, and whether the building is sprinklered.
+
+// The factors and limits one edition of the code gives a Group E occupancy.
+// Written out in full per edition rather than as deltas so a reader holding
+// one table has the whole answer, and so a row that *does* differ is a
+// visible number rather than a patch to find.
+const GROUP_E_2018 = {
+  // IBC Table 1004.5 — occupant load factors, ft² per person, rounded to the
+  // values a school actually uses. Keyed on occupancy.js's use keys; `basis`
+  // (net or gross) stays on the use row because it is a fact about what is
+  // measured rather than about the edition. Circulation and restrooms carry
+  // other rooms' people and are not in the table at all.
+  factors: {
+    'assembly-seats': 7,
+    library: 50,
+    'assembly-tables': 15,
+    gym: 50,
+    stage: 15,
+    lab: 50,
+    kitchen: 200,
+    locker: 50,
+    office: 150,
+    storage: 300,
+    classroom: 20,
+    // Not a code number: what a room nobody named is counted at, chosen to be
+    // obviously provisional. Carried here so an edition's table is complete
+    // and the guess is beside the rules it stands in for.
+    unassigned: 100,
+  },
+  // IBC Table 1017.2 — exit access travel distance, Group E, ft.
+  travel: { sprinklered: 250, plain: 200 },
+  // IBC 1020 — dead-end corridors, ft. Fifty with sprinklers is the Group E
+  // allowance; twenty is everybody's.
+  deadEnd: { sprinklered: 50, plain: 20 },
+  // IBC Table 1006.2.1 — common path of egress travel, Group E, ft. The same
+  // number wet or dry, which is the table's own answer for E.
+  commonPath: { sprinklered: 75, plain: 75 },
+  // IBC 1005.3 — inches of clear width per occupant, on the level and on a
+  // stair.
+  widthPerOcc: { level: 0.2, stair: 0.3 },
+  // IBC Table 1006.2.1 — one way out of a space is enough up to this many.
+  singleExitOcc: 49,
+  // IBC 1006.3 — how many ways out a storey's occupant load needs, read top
+  // down: over the first threshold met.
+  exits: [{ over: 1000, need: 4 }, { over: 500, need: 3 }, { over: 49, need: 2 }],
+  // IBC 1010.1.1 / 1011.2 — the narrowest thing that counts as a way out, ft.
+  minExitClear: 32 / 12,
+  minEgressStairW: 44 / 12,
+  // IBC 1205.2 — net glazed area over floor area, for a room people occupy.
+  glazing: 0.08,
+  cites: {
+    factors: 'Table 1004.5',
+    travel: 'Table 1017.2',
+    deadEnd: '§1020 (dead ends)',
+    commonPath: 'Table 1006.2.1',
+    width: '§1005.3',
+    exits: '§1006.3 (number of exits)',
+    singleExit: 'Table 1006.2.1',
+    exitWidth: '§1010.1.1',
+    stairWidth: '§1011.2',
+    glazing: '§1205.2',
+    // IBC 1028 — exit discharge, which sets no number and is cited for the
+    // note that says so.
+    discharge: '§1028',
+  },
+};
+
+const EDITIONS = [
+  {
+    key: 'ibc2018', label: 'IBC 2018', year: 2018,
+    ...GROUP_E_2018,
+    changes: [],
+  },
+  {
+    key: 'ibc2021', label: 'IBC 2021', year: 2021,
+    ...GROUP_E_2018,
+    // What the edition altered in the rules this tool applies to a Group E
+    // occupancy, as a list of sentences a panel could print. Empty as far
+    // as this table knows: the numbers above are the ones the codebase has
+    // carried for a school under every edition it offers.
+    changes: [],
+  },
+  {
+    key: 'ibc2024', label: 'IBC 2024', year: 2024,
+    ...GROUP_E_2018,
+    changes: [],
+  },
+];
+
+const BY_KEY = new Map(EDITIONS.map((e) => [e.key, e]));
+
+// The menu: what a person picks from. Kept in the order the tool has offered
+// them since Phase 7 — current edition first — so the select's default and
+// the table's default are the same row for the same reason.
+const CODE_EDITIONS = [
+  { key: 'ibc2021', label: 'IBC 2021' },
+  { key: 'ibc2018', label: 'IBC 2018' },
+  { key: 'ibc2024', label: 'IBC 2024' },
+];
+const DEFAULT_EDITION = 'ibc2021';
+
+// The full table for an edition key, defaulting rather than throwing: a file
+// naming an edition this build has never heard of is read against the
+// default, and `normalizeCode` below is where that gets written back.
+const editionEntry = (k) => BY_KEY.get(k) || BY_KEY.get(DEFAULT_EDITION);
+
+// A school is a sprinklered building unless somebody says otherwise, which is
+// the assumption every reader made before there was anywhere to record it.
+const defaultCode = () => ({ edition: DEFAULT_EDITION, sprinklered: true });
+
+function normalizeCode(raw) {
+  const d = defaultCode();
+  if (!raw || typeof raw !== 'object') return d;
+  return {
+    edition: BY_KEY.has(raw.edition) ? raw.edition : d.edition,
+    sprinklered: raw.sprinklered === false ? false : true,
+  };
+}
+
+const isDefaultCode = (c) => {
+  const n = normalizeCode(c);
+  const d = defaultCode();
+  return n.edition === d.edition && n.sprinklered === d.sprinklered;
+};
+
+// What a reader should use, whether or not the design has ever said.
+const codeOf = (state) => normalizeCode(state && state.code);
+
+// The edition a reader applies, from whatever it was handed: an edition
+// table, an edition key, a `{ edition }` code record, or a design. Every
+// analysis module takes `opts.edition` in any of those forms and falls back
+// to the design's own — so a reader called on its own still applies the
+// file's edition, and a caller asking a hypothetical can hand it another.
+function editionOf(what, state = null) {
+  if (what && typeof what === 'object') {
+    if (what.factors && what.key) return what;             // a table
+    if (typeof what.edition === 'string') return editionEntry(what.edition);
+  }
+  if (typeof what === 'string') return editionEntry(what);
+  return editionEntry(codeOf(state).edition);
+}
+
+// ---------- reading a table ----------
+
+// ft² per person for a use, under an edition. A use the table does not price
+// (circulation, a restroom) is zero: it carries other rooms' people.
+const factorOf = (edition, useKey) => {
+  const f = edition && edition.factors ? edition.factors[useKey] : undefined;
+  return Number.isFinite(f) ? f : 0;
+};
+
+// The widest and narrowest factor a room could be counted at, which is the
+// spread of an unnamed room's occupant load: it is *some* kind of space, and
+// nothing said which. Circulation and the placeholder itself are left out —
+// the first carries nobody, the second is the guess being bounded.
+function factorSpan(edition) {
+  let lo = Infinity, hi = 0;
+  for (const [k, f] of Object.entries(edition.factors)) {
+    if (k === 'unassigned' || !(f > 0)) continue;
+    if (f < lo) lo = f;
+    if (f > hi) hi = f;
+  }
+  return { min: lo === Infinity ? 0 : lo, max: hi };
+}
+
+// The limits a building is held to, wet or dry, in feet.
+const limitsOf = (edition, sprinklered) => ({
+  travel: sprinklered ? edition.travel.sprinklered : edition.travel.plain,
+  deadEnd: sprinklered ? edition.deadEnd.sprinklered : edition.deadEnd.plain,
+  commonPath: sprinklered ? edition.commonPath.sprinklered : edition.commonPath.plain,
+});
+
+// How many ways out a given occupant load needs.
+function exitsRequired(edition, occ) {
+  for (const row of edition.exits) if (occ > row.over) return row.need;
+  return 1;
+}
+
+// The clear width that many people need, in feet.
+function widthRequired(edition, occ, opts = {}) {
+  const per = opts.stair ? edition.widthPerOcc.stair : edition.widthPerOcc.level;
+  return (occ * per) / 12;
+}
+
+// A finding's provenance: "IBC 2021 · Table 1017.2". Every number a reader
+// prints against a limit carries one of these beside it, the way a cost has
+// carried its rate table's name since Phase 16 — never a number without its
+// source. `rule` is a key of `cites`; an unknown rule cites the edition alone
+// rather than inventing a section.
+function citeFor(edition, rule) {
+  const e = edition && edition.label ? edition : editionEntry(edition);
+  const ref = rule && e.cites ? e.cites[rule] : null;
+  return ref ? `${e.label} · ${ref}` : e.label;
+}
+
+return { EDITIONS, CODE_EDITIONS, DEFAULT_EDITION, editionEntry, defaultCode, normalizeCode, isDefaultCode, codeOf, editionOf, factorOf, factorSpan, limitsOf, exitsRequired, widthRequired, citeFor };
+})();
+// ---- js/range.js ----
+const __m_js_range_js = (() => {
+
+// range.js — a number that knows how sure it is.
+//
+// Phase 41. Half of what the report measures is drawn — a wall is where it
+// is, a door is as wide as it is — and half is assumed: the use a room is
+// put to when nobody named it, the absorption of a ceiling nobody specified.
+// Until this phase every reader answered both kinds with one number, and the
+// arc-four closeout said what was wrong with that: "the model knows what it
+// does not know", and should say so. So an analysis whose input is a guess
+// answers low–high, and this is the arithmetic it answers with.
+//
+// A range is `{ low, high }`, low ≤ high, and a point is a range whose ends
+// meet. Nothing here is clever — the whole file is the four things every
+// caller was about to write for itself: make one, add them up, say which end
+// is the bad one, and print it. Worst-first sorting reads `worst()`, because
+// a range sorts by its bad end (the Phase 41 rule), and a printer reads
+// `fmtRange()`, so "34" and "3–129" come out of the same call.
+//
+// Pure module: no three.js, no DOM. Exercised by test/range.test.mjs.
+
+const num = (v) => (Number.isFinite(v) ? v : 0);
+
+// A range from two ends, in either order. Non-finite ends read as zero, the
+// same defensive default `roomOccupancy` applies to an area.
+function range(a, b = a) {
+  const x = num(a), y = num(b);
+  return x <= y ? { low: x, high: y } : { low: y, high: x };
+}
+
+const point = (v) => range(v, v);
+
+const isRange = (r) => !!r && Number.isFinite(r.low) && Number.isFinite(r.high) && r.low <= r.high;
+
+// True when the ends differ — when there is something to say.
+const isSpread = (r) => isRange(r) && r.high > r.low;
+
+const spanOf = (r) => (isRange(r) ? r.high - r.low : 0);
+
+// Sum, end for end. A total of ranges is a range whose low is every low and
+// whose high is every high — which is the honest total, and wider than the
+// truth (the rooms will not all be at their worst at once), which is why the
+// report also says which single input would narrow it most.
+function addRanges(list) {
+  let low = 0, high = 0;
+  for (const r of list || []) {
+    if (!isRange(r)) continue;
+    low += r.low; high += r.high;
+  }
+  return { low, high };
+}
+
+// Which end is the bad one depends on the question: more occupants is worse,
+// so is a longer tail, so is *less* glazing. `direction` is 'high' when a
+// bigger number is worse (the default), 'low' when a smaller one is.
+const worst = (r, direction = 'high') => {
+  if (!isRange(r)) return num(r);
+  return direction === 'low' ? r.low : r.high;
+};
+const best = (r, direction = 'high') => {
+  if (!isRange(r)) return num(r);
+  return direction === 'low' ? r.high : r.low;
+};
+
+// Does a limit fall inside the range — is the answer "maybe"? Both tests
+// are strict at the bad end and inclusive at the good one, so a range that
+// ends exactly on the limit passes rather than teeters.
+function against(r, limit, direction = 'high') {
+  if (!isRange(r) || !Number.isFinite(limit)) return { over: false, maybe: false };
+  const w = worst(r, direction), b = best(r, direction);
+  const over = direction === 'low' ? b < limit : b > limit;       // even the good end fails
+  const maybe = !over && (direction === 'low' ? w < limit : w > limit);   // only the bad end does
+  return { over, maybe };
+}
+
+// "34", or "3–129". `fmt` renders one end; the default rounds. A unit goes
+// on once, after the pair, the way a person writes it.
+function fmtRange(r, opts = {}) {
+  const fmt = opts.fmt || ((v) => String(Math.round(v)));
+  const unit = opts.unit ? ` ${opts.unit}` : '';
+  if (!isRange(r)) return `${fmt(num(r))}${unit}`;
+  const lo = fmt(r.low), hi = fmt(r.high);
+  return lo === hi ? `${lo}${unit}` : `${lo}–${hi}${unit}`;
+}
+
+return { range, point, isRange, isSpread, spanOf, addRanges, worst, best, against, fmtRange };
+})();
 // ---- js/occupancy.js ----
 const __m_js_occupancy_js = (() => {
 const { floorLabel } = __m_js_grid_js;
 const { floorRooms } = __m_js_navgraph_js;
+const { editionOf, factorOf, factorSpan, DEFAULT_EDITION, editionEntry } = __m_js_codes_js;
+const { range, addRanges } = __m_js_range_js;
 // occupancy.js — how many people a room is allowed to hold, and why.
 //
 // Phase 7's first module and the one the rest of the phase does arithmetic
@@ -73801,14 +74139,30 @@ const { floorRooms } = __m_js_navgraph_js;
 // and *listed* as unnamed rather than quietly folded into the total.
 //
 // The factors are IBC Table 1004.5 (occupant load factors, ft² per person)
-// rounded to the values a school actually uses. Net vs gross is carried as a
-// label rather than as arithmetic: this model's room area is already the area
+// rounded to the values a school actually uses — and since Phase 41 they are
+// read off `codes.js`'s table for the edition the design stores rather than
+// off this file, so the sheet's "IBC 2021 applied" is a sentence about these
+// numbers. `USES` below carries the use's *identity* (its key, its label, the
+// names that read as it, what it is measured over); the number comes from the
+// edition. The `factor` on each row is the default edition's, for a menu or a
+// test that has no edition in hand — a reader pricing a room asks the edition.
+//
+// **Phase 41's other change: an unnamed room answers with a range.** Its
+// factor is a placeholder, so its occupant load is a guess dressed as a
+// number; the row now carries `low` and `high` as well — the room counted as
+// the sparsest and the densest thing it could be — and the building's total
+// carries the sum. Naming the room collapses the range to a point, and the
+// report says which room to name first.
+//
+// Net vs gross is carried as a label rather than as arithmetic: this model's room area is already the area
 // inside the room's own walls, which is what "net" means and near enough what
 // "gross" means at one room's scale. Where the two genuinely differ — a whole
 // storey measured to the outside face — the difference is walls, and the
 // takeoff knows their thickness.
 //
 // Pure module: no three.js, no DOM. Exercised by test/occupancy.test.mjs.
+
+
 
 
 
@@ -73827,63 +74181,68 @@ const { floorRooms } = __m_js_navgraph_js;
 // building's occupant load on paper.
 const USES = [
   {
-    key: 'assembly-seats', label: 'Assembly (fixed seating)', factor: 7, basis: 'net',
+    key: 'assembly-seats', label: 'Assembly (fixed seating)', basis: 'net',
     match: /auditorium|theat|assembly|lecture hall|chapel|sanctuar/,
   },
   {
-    key: 'library', label: 'Library / media', factor: 50, basis: 'net',
+    key: 'library', label: 'Library / media', basis: 'net',
     // Above the assembly row on purpose: a *learning* commons is a library
     // with sofas in it, and a dining commons is the one that seats a crowd.
     match: /librar|media cent|learning commons|reading room|book/,
   },
   {
-    key: 'assembly-tables', label: 'Assembly (tables & chairs)', factor: 15, basis: 'net',
+    key: 'assembly-tables', label: 'Assembly (tables & chairs)', basis: 'net',
     match: /cafeteria|cafetorium|dining|lunch|commons|multipurpose|multi-purpose|cafe\b/,
   },
   {
-    key: 'gym', label: 'Gymnasium / exercise', factor: 50, basis: 'gross',
+    key: 'gym', label: 'Gymnasium / exercise', basis: 'gross',
     match: /gym|fitness|weight room|wrestling|dance studio|natatorium|pool/,
   },
   {
-    key: 'stage', label: 'Stage', factor: 15, basis: 'net',
+    key: 'stage', label: 'Stage', basis: 'net',
     match: /stage|band room|choir|orchestra|music room/,
   },
   {
-    key: 'lab', label: 'Laboratory / shop', factor: 50, basis: 'net',
+    key: 'lab', label: 'Laboratory / shop', basis: 'net',
     match: /\blab\b|laborator|science|chem|physics|biolog|shop|wood ?shop|metal ?shop|makerspace|maker space|art room|art studio|studio|computer lab|tech ed|vocational|culinary/,
   },
   {
-    key: 'kitchen', label: 'Kitchen', factor: 200, basis: 'gross',
+    key: 'kitchen', label: 'Kitchen', basis: 'gross',
     match: /kitchen|servery|serving|pantry|scullery/,
   },
   {
-    key: 'locker', label: 'Locker room', factor: 50, basis: 'gross',
+    key: 'locker', label: 'Locker room', basis: 'gross',
     match: /locker|changing|change room/,
   },
   {
-    key: 'office', label: 'Office / administration', factor: 150, basis: 'gross',
+    key: 'office', label: 'Office / administration', basis: 'gross',
     match: /office|admin|reception|conference|meeting|staff|faculty|teacher work|counsel|principal|nurse|clinic|health|work ?room|copy/,
   },
   {
-    key: 'storage', label: 'Storage / service', factor: 300, basis: 'gross',
+    key: 'storage', label: 'Storage / service', basis: 'gross',
     match: /storage|storeroom|store ?room|stock|mech|electric|boiler|server|\bit\b|data|custodi|janitor|maint|utility|closet|receiving|loading/,
   },
   {
-    key: 'circulation', label: 'Circulation', factor: 0, basis: 'gross', circulation: true,
+    key: 'circulation', label: 'Circulation', basis: 'gross', circulation: true,
     match: /corridor|hall(?!ow)|hallway|lobby|vestibul|foyer|atrium|stair|landing|elevator|lift|walkway|breezeway|entry|entrance/,
   },
   {
-    key: 'restroom', label: 'Restroom', factor: 0, basis: 'gross', circulation: true,
+    key: 'restroom', label: 'Restroom', basis: 'gross', circulation: true,
     match: /restroom|rest room|toilet|bathroom|washroom|\bwc\b|lavator|shower/,
   },
   {
-    key: 'classroom', label: 'Classroom', factor: 20, basis: 'net',
+    key: 'classroom', label: 'Classroom', basis: 'net',
     // A room *number* is a classroom in every school ever built, and so is
     // anything that says so. `room` on its own is not enough — "Storeroom"
     // and "Workroom" are above this row for exactly that reason.
     match: /classroom|class ?rm|home ?room|seminar|tutor|resource|\broom\s*\d|\brm\.?\s*\d|^\d{1,4}[a-z]?$|kindergarten|\bpre-?k\b|grade \d/,
   },
 ];
+
+// The default edition's number on every row, for readers with no edition in
+// hand. Assigned rather than typed so there is one table of factors, not two.
+const DEFAULT_TABLE = editionEntry(DEFAULT_EDITION);
+for (const u of USES) u.factor = u.circulation ? 0 : factorOf(DEFAULT_TABLE, u.key);
 
 const BY_KEY = new Map(USES.map((u) => [u.key, u]));
 
@@ -73895,50 +74254,18 @@ const isGroup = (k) => BY_KEY.has(k);
 
 // ---------- what the analysis is read against ----------
 //
-// Two facts about the building, not about this editing session. `edition`
-// names the code the numbers are quoted from — nothing here computes
-// differently for one or another, and printing which one a table came from is
-// the point: a sheet that says 250ft without saying under what is a sheet
-// nobody can check. `sprinklered` genuinely changes the answer (see
-// egress.js's travel and dead-end limits) and has been a checkbox with
-// nowhere to live since Phase 7.
-const CODE_EDITIONS = [
-  { key: 'ibc2021', label: 'IBC 2021' },
-  { key: 'ibc2018', label: 'IBC 2018' },
-  { key: 'ibc2024', label: 'IBC 2024' },
-];
-const DEFAULT_EDITION = 'ibc2021';
-const editionEntry = (k) =>
-  CODE_EDITIONS.find((e) => e.key === k) || CODE_EDITIONS[0];
-
-// A school is a sprinklered building unless somebody says otherwise, which is
-// the assumption every reader made before there was anywhere to record it.
-const defaultCode = () => ({ edition: DEFAULT_EDITION, sprinklered: true });
-
-function normalizeCode(raw) {
-  const d = defaultCode();
-  if (!raw || typeof raw !== 'object') return d;
-  return {
-    edition: CODE_EDITIONS.some((e) => e.key === raw.edition) ? raw.edition : d.edition,
-    sprinklered: raw.sprinklered === false ? false : true,
-  };
-}
-
-const isDefaultCode = (c) => {
-  const n = normalizeCode(c);
-  const d = defaultCode();
-  return n.edition === d.edition && n.sprinklered === d.sprinklered;
-};
-
-// What a reader should use, whether or not the design has ever said.
-const codeOf = (state) => normalizeCode(state && state.code);
+// Which edition the numbers are read against, and whether the building is
+// sprinklered: two facts about the building that live in the file (v11). They
+// lived here until Phase 41; they live in `codes.js` now, beside the tables
+// they select, and every importer moved with them — a re-export would be a
+// second name for the same rule, and the walk bundler refuses one anyway.
 
 // The use a room falls into when its name says nothing — or when it has no
 // name at all. Deliberately not `classroom`: guessing "classroom" fills a
 // building with occupants nobody put there, and this number is meant to be
 // obviously provisional. Every row that lands here is reported as unnamed.
 const UNASSIGNED = {
-  key: 'unassigned', label: 'Unassigned', factor: 100, basis: 'gross', guess: true,
+  key: 'unassigned', label: 'Unassigned', basis: 'gross', guess: true,
 };
 
 const useEntry = (key) => BY_KEY.get(key) || UNASSIGNED;
@@ -73962,18 +74289,29 @@ function classify(name) {
 // The order of precedence is the order of how much a person said: the room's
 // own `load` beats everything, its own `group` beats the label, and the label
 // is what is left. `opts.use` sits above all three because it is a caller
-// asking a hypothetical ("what would this be as a lab?").
+// asking a hypothetical ("what would this be as a lab?"). `opts.edition` is
+// the table the factor comes off — the design's own unless a caller says.
 function roomOccupancy(room, opts = {}) {
+  const edition = editionOf(opts.edition, opts.state);
   const forced = opts.use && BY_KEY.has(opts.use) ? opts.use : null;
   const chosen = isGroup(room.group) ? room.group : null;
   const key = forced || chosen || classify(room.name);
   const use = key ? BY_KEY.get(key) : UNASSIGNED;
+  const factor = use.circulation ? 0 : factorOf(edition, use.key);
   const area = Math.max(0, room.area || 0);
   const tiny = !key && area < MIN_OCCUPIABLE;
   // Round *up*: a code's occupant load is the number of people the space is
   // designed to hold, and half a person leaving the building is a whole one.
   const stated = Number.isFinite(room.load) && room.load > 0 ? Math.round(room.load) : null;
-  const occ = stated === null ? (use.factor > 0 && !tiny ? Math.ceil(area / use.factor) : 0) : stated;
+  const occ = stated === null ? (factor > 0 && !tiny ? Math.ceil(area / factor) : 0) : stated;
+  // The range. A point for anything a person or a label decided; for a room
+  // nobody named, the room counted as the emptiest and the fullest kind of
+  // space the edition prices — because it is *some* kind of space.
+  let span = range(occ, occ);
+  if (!key && !tiny && stated === null) {
+    const f = factorSpan(edition);
+    span = range(f.max > 0 ? Math.ceil(area / f.max) : 0, f.min > 0 ? Math.ceil(area / f.min) : 0);
+  }
   return {
     id: room.id,
     floor: room.floor,
@@ -73983,7 +74321,7 @@ function roomOccupancy(room, opts = {}) {
     area,
     use: use.key,
     useLabel: use.label,
-    factor: use.factor,
+    factor,
     basis: use.basis,
     // True when nothing about the room said what it was — the number below is
     // a placeholder, and a reader should say so rather than print it plain.
@@ -73998,6 +74336,13 @@ function roomOccupancy(room, opts = {}) {
     circulation: use.circulation === true,
     tiny,
     occ,
+    // Phase 41: what the number could be. `low === high === occ` for every
+    // room somebody or something named; wider for a guess, and `spread` is
+    // how much wider — the number naming this room would take off the total.
+    low: span.low,
+    high: span.high,
+    spread: span.high - span.low,
+    edition: edition.key,
   };
 }
 
@@ -74006,15 +74351,19 @@ function roomOccupancy(room, opts = {}) {
 // same answer to "which room is this point in".
 function floorOccupancy(state, floorIndex, opts = {}) {
   const nav = opts.nav || null;
+  const edition = editionOf(opts.edition, state);
   const rooms = nav && nav.perFloor && nav.perFloor[floorIndex]
     ? nav.perFloor[floorIndex].rooms
     : floorRooms(state, floorIndex).rooms;
-  const out = rooms.map((r) => roomOccupancy(r, opts));
+  const out = rooms.map((r) => roomOccupancy(r, { ...opts, edition }));
+  const span = addRanges(out);
   return {
     floor: floorIndex,
     label: floorLabel(floorIndex),
     rooms: out,
     occ: out.reduce((n, r) => n + r.occ, 0),
+    low: span.low,
+    high: span.high,
     area: out.reduce((n, r) => n + r.area, 0),
   };
 }
@@ -74037,15 +74386,32 @@ function tallyByUse(rows) {
 // number stair width is sized against and the one a single-storey building
 // gets to ignore.
 function buildingOccupancy(state, opts = {}) {
+  const edition = editionOf(opts.edition, state);
   const floors = [];
   const count = state && state.floors ? state.floors.length : 0;
-  for (let i = 0; i < count; i++) floors.push(floorOccupancy(state, i, opts));
+  for (let i = 0; i < count; i++) floors.push(floorOccupancy(state, i, { ...opts, edition }));
   const rooms = floors.flatMap((f) => f.rooms);
+  const span = addRanges(rooms);
+  // Which single input would narrow the total most: the unnamed room with
+  // the widest range. Naming it is worth `spread` people off the high end —
+  // the sentence the report prints beside the range.
+  const narrows = rooms
+    .filter((r) => r.spread > 0)
+    .sort((a, b) => b.spread - a.spread || b.area - a.area)[0] || null;
   return {
+    edition: edition.key,
+    editionLabel: edition.label,
     floors,
     rooms,
     byUse: tallyByUse(rooms),
     total: rooms.reduce((n, r) => n + r.occ, 0),
+    // Phase 41: the total as a range. Equal to `total` at both ends when every
+    // room is named; wider by exactly the unnamed rooms' spread when not.
+    low: span.low,
+    high: span.high,
+    narrows: narrows
+      ? { id: narrows.id, floor: narrows.floor, name: narrows.name, area: narrows.area, spread: narrows.spread }
+      : null,
     upper: floors.slice(1).reduce((n, f) => n + f.occ, 0),
     area: rooms.reduce((n, r) => n + r.area, 0),
     unnamed: rooms.filter((r) => r.guess && !r.tiny).length,
@@ -74057,7 +74423,7 @@ function buildingOccupancy(state, opts = {}) {
 // its load — egress, mainly, which asks once per doorway.
 const occupancyIndex = (occ) => new Map(occ.rooms.map((r) => [r.id, r]));
 
-return { USES, GROUP_KEYS, isGroup, CODE_EDITIONS, DEFAULT_EDITION, editionEntry, defaultCode, normalizeCode, isDefaultCode, codeOf, UNASSIGNED, useEntry, MIN_OCCUPIABLE, classify, roomOccupancy, floorOccupancy, buildingOccupancy, occupancyIndex };
+return { USES, GROUP_KEYS, isGroup, UNASSIGNED, useEntry, MIN_OCCUPIABLE, classify, roomOccupancy, floorOccupancy, buildingOccupancy, occupancyIndex };
 })();
 // ---- js/roof.js ----
 const __m_js_roof_js = (() => {
@@ -89841,6 +90207,17 @@ const { propsOnFloor } = __m_js_props_js;
 // "lively", it says "0.9 s — over the 0.6 s classroom limit". Phase 7's
 // "acoustics first pass, labeled as such" arrives early and by accident.
 //
+// **Phase 41: the coefficients are a guess, and the answer says so.** Every
+// alpha above is one number from a published table, and the tables disagree
+// with each other by a factor of two: painted gypsum is 0.03 in one and 0.10
+// in another, a mineral tile ceiling anywhere from 0.50 to 0.75. Nothing in
+// the model was *drawn* to settle it — the floor finish is chosen, the
+// ceiling tile never is — so the reverberation is now answered twice: the
+// point estimate the readout has always shown, and `rt60Low`–`rt60High`, the
+// tail with every surface at the absorptive and the reflective end of its
+// band. The room also says which surface's band is the widest in sabins —
+// the one input that, pinned down, would narrow the answer most.
+//
 // Pure module: no three.js, no Web Audio. audio.js turns what comes out of
 // here into a convolver; test/acoustics.test.mjs checks the physics.
 
@@ -89894,6 +90271,23 @@ const CATEGORY_ALPHA = {
   'Restroom': 0.03,
 };
 const DEFAULT_PROP_ALPHA = 0.08;
+
+// Phase 41: how far the published tables disagree about each surface, at
+// 500 Hz. Each band brackets the point value above — a test proves it — and
+// the ends are the least and most absorptive figures a reasonable table gives
+// for the material the point stands for.
+const ALPHA_BAND = {
+  wall: [0.03, 0.10],
+  glass: [0.03, 0.05],
+  door: [0.07, 0.15],
+  tile: [0.50, 0.75],
+  deck: [0.08, 0.15],
+};
+// A floor finish is a product somebody chose, so its coefficient is the
+// least guessed of the lot; a prop's category alpha is the most. Both are a
+// multiplier on the point value rather than a table of their own.
+const FINISH_SPREAD = [0.7, 1.3];
+const PROP_SPREAD = [0.6, 1.4];
 
 // Sabine stops describing anything useful at the extremes: a room with no
 // absorption at all would ring forever, and one lined entirely in panels is
@@ -90145,6 +90539,8 @@ function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null) {
       sabins: 0, meanAlpha: 0, rt60: 0, mfp: 0, criticalDist: Infinity,
       limit: null, overLimit: false, verdict: verdict(0), props: 0,
       surfaces: [],
+      sabinsLow: 0, sabinsHigh: 0, rt60Low: 0, rt60High: 0,
+      maybeOver: false, surelyOver: false, narrows: null,
     };
   }
 
@@ -90153,7 +90549,8 @@ function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null) {
   const wallArea = room.perimeter * ceil.height;
   // Mixed on the evidence rather than picked by a threshold: a hall that is a
   // third open to the structure above is a third deck and two thirds tile.
-  const ceilAlpha = ALPHA.tile + (ALPHA.deck - ALPHA.tile) * ceil.openFraction;
+  const mix = (t, d) => t + (d - t) * ceil.openFraction;
+  const ceilAlpha = mix(ALPHA.tile, ALPHA.deck);
   const floorAlpha = finishAlpha(room.fin);
   const furniture = furnitureSabins(state, room, catalogEntry);
 
@@ -90161,17 +90558,45 @@ function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null) {
     : (ceil.openFraction > 0
       ? `Ceiling (${Math.round(ceil.openFraction * 100)}% open)`
       : 'Ceiling (tile)');
+  // Each surface with its point coefficient and the band round it. `low` and
+  // `high` are absorption, so the *high* end is the quieter room.
   const surfaces = [
-    { what: 'Floor', area: room.area, alpha: floorAlpha },
-    { what: ceilingName, area: room.area, alpha: ceilAlpha },
-    { what: 'Walls', area: wallArea, alpha: ALPHA.wall },
+    {
+      what: 'Floor', area: room.area, alpha: floorAlpha,
+      low: floorAlpha * FINISH_SPREAD[0], high: floorAlpha * FINISH_SPREAD[1],
+    },
+    {
+      what: ceilingName, area: room.area, alpha: ceilAlpha,
+      low: mix(ALPHA_BAND.tile[0], ALPHA_BAND.deck[0]),
+      high: mix(ALPHA_BAND.tile[1], ALPHA_BAND.deck[1]),
+    },
+    {
+      what: 'Walls', area: wallArea, alpha: ALPHA.wall,
+      low: ALPHA_BAND.wall[0], high: ALPHA_BAND.wall[1],
+    },
   ];
-  let sabins = 0;
-  for (const s of surfaces) sabins += s.area * s.alpha;
-  sabins += furniture.sabins;
-  if (furniture.count) {
-    surfaces.push({ what: `Furniture (${furniture.count})`, area: 0, alpha: 0, sabins: furniture.sabins });
+  let sabins = 0, sabinsLow = 0, sabinsHigh = 0;
+  for (const s of surfaces) {
+    sabins += s.area * s.alpha;
+    sabinsLow += s.area * s.low;
+    sabinsHigh += s.area * s.high;
+    // How much of the answer this surface's uncertainty is, in sabins.
+    s.spread = s.area * (s.high - s.low);
   }
+  sabins += furniture.sabins;
+  sabinsLow += furniture.sabins * PROP_SPREAD[0];
+  sabinsHigh += furniture.sabins * PROP_SPREAD[1];
+  if (furniture.count) {
+    surfaces.push({
+      what: `Furniture (${furniture.count})`, area: 0, alpha: 0, sabins: furniture.sabins,
+      low: 0, high: 0,
+      spread: furniture.sabins * (PROP_SPREAD[1] - PROP_SPREAD[0]),
+    });
+  }
+  // The single input that would narrow the range most: the surface whose
+  // band is widest in sabins. The report prints it beside the range, because
+  // "0.5–0.9 s" is only useful with "and it is the ceiling that decides".
+  const narrows = surfaces.reduce((best, s) => (s.spread > (best ? best.spread : 0) ? s : best), null);
 
   // Total boundary area, which the mean free path and the room constant both
   // want. Furniture doesn't add boundary — it absorbs from inside the volume.
@@ -90187,7 +90612,12 @@ function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null) {
   const criticalDist = R > 0 ? 0.141 * Math.sqrt(R) : Infinity;
 
   const rt60 = sabineRT60(volume, sabins);
+  // More absorption is a shorter tail, so the band's ends swap: the room at
+  // its most absorptive is the low end of the reverberation.
+  const rt60Low = sabineRT60(volume, sabinsHigh);
+  const rt60High = sabineRT60(volume, sabinsLow);
   const limit = ansiLimit(volume);
+  const overLimit = limit !== null && rt60 > limit;
 
   return {
     ...room,
@@ -90198,10 +90628,20 @@ function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null) {
     volume, surface, wallArea,
     sabins, meanAlpha, mfp, criticalDist,
     rt60, limit,
-    overLimit: limit !== null && rt60 > limit,
+    overLimit,
     verdict: verdict(rt60),
     props: furniture.count,
     surfaces,
+    // Phase 41: the range, and what decides it.
+    sabinsLow, sabinsHigh,
+    rt60Low, rt60High,
+    // Over at the point estimate is `overLimit`; over only at the reflective
+    // end of the band is "maybe" — a finding of its own, at a lower level.
+    maybeOver: limit !== null && !overLimit && rt60High > limit,
+    // ...and past the limit even at the absorptive end: no coefficient will
+    // rescue it, only a different room.
+    surelyOver: limit !== null && rt60Low > limit,
+    narrows: narrows ? { what: narrows.what, spread: narrows.spread, low: narrows.low, high: narrows.high, area: narrows.area } : null,
   };
 }
 
@@ -90261,7 +90701,7 @@ function roomsOnFloor(state, floorIndex, catalogEntry = () => null) {
   return out;
 }
 
-return { SPEED_OF_SOUND, SABINE, ALPHA, CATEGORY_ALPHA, DEFAULT_PROP_ALPHA, MIN_RT60, MAX_RT60, finishAlpha, ceilingAt, CEILING_SAMPLES, roomCeiling, roomAt, outsideRoom, isOutside, propFace, propAlpha, furnitureSabins, sabineRT60, ansiLimit, verdict, roomAcoustics, wetFraction, reverbSpec, roomsOnFloor };
+return { SPEED_OF_SOUND, SABINE, ALPHA, CATEGORY_ALPHA, DEFAULT_PROP_ALPHA, ALPHA_BAND, FINISH_SPREAD, PROP_SPREAD, MIN_RT60, MAX_RT60, finishAlpha, ceilingAt, CEILING_SAMPLES, roomCeiling, roomAt, outsideRoom, isOutside, propFace, propAlpha, furnitureSabins, sabineRT60, ansiLimit, verdict, roomAcoustics, wetFraction, reverbSpec, roomsOnFloor };
 })();
 // ---- js/murmur.js ----
 const __m_js_murmur_js = (() => {
@@ -94717,7 +95157,7 @@ return { DEFAULT_HAUNT, normalizeHaunt, isDefaultHaunt, STAGES, STAGE_TIMES, DRI
 const __m_js_save_load_js = (() => {
 const { CELL, FLOOR_H, MAX_FLOORS, MIN_CELLS, MAX_CELLS, createFloor, createState } = __m_js_grid_js;
 const { EDGE_KINDS, createLattice, bake } = __m_js_lattice_js;
-const { normalizeCode, isDefaultCode } = __m_js_occupancy_js;
+const { normalizeCode, isDefaultCode } = __m_js_codes_js;
 const { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } = __m_js_props_js;
 const { normalizeShape, MAX_SHAPES } = __m_js_shapes_js;
 const { normalizeWallLines } = __m_js_wallrun_js;

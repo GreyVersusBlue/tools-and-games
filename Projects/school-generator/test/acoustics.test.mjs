@@ -15,7 +15,7 @@ import {
   SABINE, ALPHA, CATEGORY_ALPHA, MIN_RT60, MAX_RT60, SPEED_OF_SOUND,
   finishAlpha, sabineRT60, ansiLimit, verdict, ceilingAt, roomAt, outsideRoom,
   isOutside, propFace, propAlpha, furnitureSabins, roomAcoustics, reverbSpec,
-  wetFraction, roomsOnFloor,
+  wetFraction, roomsOnFloor, ALPHA_BAND, FINISH_SPREAD, PROP_SPREAD,
 } from '../js/acoustics.js';
 import { createState, CELL, WALL_H, FLOOR_H } from '../js/grid.js';
 import { sheet } from './build.mjs';
@@ -279,4 +279,43 @@ test('a storey rolls up to one entry per room, however it is drawn', () => {
   assert.ok(rooms.some((r) => r.name === 'Gym'));
   for (const r of rooms) assert.ok(r.rt60 > 0 && r.volume > 0);
   assert.deepEqual(roomsOnFloor(s, 9, entry), [], 'a storey that is not there has no rooms');
+});
+
+// ---------- Phase 41: the coefficients are a guess, and the answer says so ----------
+
+test('every band brackets the coefficient it is a band round', () => {
+  for (const [k, [lo, hi]] of Object.entries(ALPHA_BAND)) {
+    assert.ok(lo < hi, `${k} band is empty`);
+    assert.ok(lo <= ALPHA[k] && ALPHA[k] <= hi, `${k}: ${ALPHA[k]} is outside ${lo}–${hi}`);
+  }
+  assert.ok(FINISH_SPREAD[0] < 1 && 1 < FINISH_SPREAD[1]);
+  assert.ok(PROP_SPREAD[0] < 1 && 1 < PROP_SPREAD[1]);
+});
+
+test('the reverberation is a range round the point, and more absorption is the short end', () => {
+  const s = finished(10, 10, 'concrete');
+  const ac = roomAcoustics(s, 0, 20, 20, entry);
+  assert.ok(ac.rt60Low <= ac.rt60 && ac.rt60 <= ac.rt60High);
+  assert.ok(ac.rt60Low < ac.rt60High, 'a real spread');
+  assert.ok(ac.sabinsLow < ac.sabins && ac.sabins < ac.sabinsHigh);
+  near(ac.rt60Low, sabineRT60(ac.volume, ac.sabinsHigh), 1e-9, 'quietest surfaces, shortest tail');
+  near(ac.rt60High, sabineRT60(ac.volume, ac.sabinsLow), 1e-9, 'hardest surfaces, longest tail');
+  // Exactly one of the three verdicts, and they agree with the ends.
+  assert.equal(ac.overLimit, ac.rt60 > ac.limit);
+  assert.equal(ac.surelyOver, ac.rt60Low > ac.limit);
+  assert.equal(ac.maybeOver, !ac.overLimit && ac.rt60High > ac.limit);
+  // Every surface says its band, and the widest in sabins is the one named.
+  for (const sf of ac.surfaces) assert.ok(sf.low <= sf.alpha && sf.alpha <= sf.high || sf.area === 0);
+  const widest = ac.surfaces.reduce((a, b) => (b.spread > a.spread ? b : a));
+  assert.equal(ac.narrows.what, widest.what);
+  assert.ok(/Ceiling/.test(ac.narrows.what), 'in a bare room the tile decides');
+});
+
+test('outdoors has no range to report', () => {
+  const s = createState(8, 8);
+  const ac = roomAcoustics(s, 0, 100, 100, entry);
+  assert.equal(ac.rt60Low, 0);
+  assert.equal(ac.rt60High, 0);
+  assert.equal(ac.narrows, null);
+  assert.ok(!ac.maybeOver && !ac.surelyOver);
 });

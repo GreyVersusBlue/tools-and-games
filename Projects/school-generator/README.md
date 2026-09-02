@@ -8,10 +8,12 @@ site, a roof. Draw four walls, then cut the doors and windows into them; the
 eraser deletes anything you click, whichever tool placed it. The walkthrough
 has collision, gravity, footsteps, room acoustics, a positioned sun, a start
 point you choose, and a school's worth of people walking their timetable. It
-reads what you have drawn — occupant load, travel distance,
+reads what you have drawn — occupant load, travel distance, common path,
 accessible route, whether a wheelchair can turn at each door and reach each
-counter, glazing ratio, reverberation time — and it will generate a
-whole building from a student count and a sentence.
+counter, glazing ratio, reverberation time — against the code edition you
+name, citing the table each number came from and answering with a range
+where its input was a guess — and it will generate a whole building from a
+student count and a sentence.
 
 A single page, no build step, no dependencies beyond a vendored three.js. It
 installs, it runs with the network off, and it saves to `.school` files on
@@ -43,7 +45,7 @@ and are optional tooling — a machine without Playwright loses those, not the
 suite.
 
 ```
-node --test 'test/*.test.mjs'      # 1,800+ assertions over every pure module
+node --test 'test/*.test.mjs'      # 2,000+ assertions over every pure module
 node test/visual/run.mjs           # the printed sheets and the editor chrome
 node test/tools/run.mjs            # the drawing tools and the walk, on the real page
 ```

@@ -27,9 +27,12 @@ import {
 } from './shapes.js';
 import { buildNav, PROBE } from './navgraph.js';
 import { buildingOccupancy } from './occupancy.js';
+import { editionOf, editionEntry, citeFor, DEFAULT_EDITION } from './codes.js';
 
-// IBC 1205.2 — the floor of the thing, for a room people occupy.
-export const MIN_RATIO = 0.08;
+// IBC 1205.2 — the floor of the thing, for a room people occupy. The default
+// edition's number, for a caller with none in hand; since Phase 41 the
+// analysis reads it off the edition the design stores, and says which.
+export const MIN_RATIO = editionEntry(DEFAULT_EDITION).glazing;
 // What a daylit classroom is usually drawn at. Above the code minimum, below
 // a curtain wall; a room over this is not short of light.
 export const GOOD_RATIO = 0.15;
@@ -124,7 +127,9 @@ export function daylightOnFloor(state, floorIndex, opts = {}) {
 
 export function daylightAnalysis(state, opts = {}) {
   const nav = opts.nav || buildNav(state);
-  const occupancy = opts.occupancy || buildingOccupancy(state, { nav });
+  const edition = editionOf(opts.edition, state);
+  const min = edition.glazing;
+  const occupancy = opts.occupancy || buildingOccupancy(state, { nav, edition });
   const loads = new Map(occupancy.rooms.map((r) => [r.id, r]));
   const rooms = [];
   const count = (state && state.floors ? state.floors.length : 0);
@@ -141,7 +146,7 @@ export function daylightAnalysis(state, opts = {}) {
         occ: load ? load.occ : 0,
         ratio,
         wanted,
-        dark: wanted && ratio < MIN_RATIO,
+        dark: wanted && ratio < min,
         // A room with no exterior wall at all is a different problem from a
         // room with a small window, and worth saying differently.
         windowless: wanted && row.glazed <= 0,
@@ -162,20 +167,28 @@ export function daylightAnalysis(state, opts = {}) {
     borrowed: rooms.reduce((n, r) => n + r.borrowed, 0),
     area,
     ratio: area > 0 ? glazed / area : 0,
-    min: MIN_RATIO,
+    min,
+    edition: edition.key,
+    editionLabel: edition.label,
   };
-  return { rooms, summary, findings: daylightFindings(graded, summary) };
+  return {
+    rooms, summary, edition: edition.key,
+    findings: daylightFindings(graded, summary, edition),
+  };
 }
 
-function daylightFindings(rooms, summary) {
+function daylightFindings(rooms, summary, edition) {
   const out = [];
   const pct = (v) => `${(v * 100).toFixed(1)}%`;
+  const rule = `${Math.round(summary.min * 100)}%`;
+  const cite = citeFor(edition, 'glazing');
   const name = (r) => r.name || `an unnamed room on ${floorLabel(r.floor)}`;
   if (!summary.rooms) {
     out.push({
       level: 'note', code: 'daylight-none', title: 'Nothing here needs daylight yet',
       detail: 'No classroom, office or assembly space has been named, so there ' +
-        'is nothing to hold to the 8% glazing rule.',
+        `is nothing to hold to the ${rule} glazing rule.`,
+      cite,
     });
     return out;
   }
@@ -188,24 +201,27 @@ function daylightFindings(rooms, summary) {
         `${windowless.length > 4 ? `, and ${windowless.length - 4} more` : ''} — ` +
         'no window or curtain wall onto the outside.',
       rooms: windowless.slice(0, 8),
+      cite,
     });
   }
   const dark = rooms.filter((r) => r.dark && !r.windowless);
   if (dark.length) {
     out.push({
       level: 'warn', code: 'glazing-ratio',
-      title: `${dark.length} room${dark.length === 1 ? '' : 's'} under the 8% glazing rule`,
+      title: `${dark.length} room${dark.length === 1 ? '' : 's'} under the ${rule} glazing rule`,
       detail: `${name(dark[0])} is glazed to ${pct(dark[0].ratio)} of its floor ` +
         `area (${Math.round(dark[0].glazed)} ft² of glass over ${Math.round(dark[0].area)} ft²).`,
       rooms: dark.slice(0, 8),
+      cite,
     });
   }
   if (!windowless.length && !dark.length) {
     out.push({
-      level: 'ok', code: 'glazing-ratio', title: 'Every occupied room meets the 8% glazing rule',
+      level: 'ok', code: 'glazing-ratio', title: `Every occupied room meets the ${rule} glazing rule`,
       detail: `${summary.rooms} rooms measured, ${summary.bright} of them glazed ` +
         `past ${pct(GOOD_RATIO)}. Ratios are glass area over floor area — an ` +
         'approximation of daylight, not a simulation of it.',
+      cite,
     });
   }
   return out;

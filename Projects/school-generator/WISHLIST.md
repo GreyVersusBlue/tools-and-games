@@ -1,8 +1,9 @@
 # School Generator — Feature Wishlist
 
-**Status: thirty-nine phases are shipped and one is open — Phase 34,
-below; arc six is underway: Phases 37, 38, 39 and 40 have shipped, and Phase
-41 — on Claude Fable 5 — is the next open phase in the arc's order.** Three arcs took a grid
+**Status: forty phases are shipped and one is open — Phase 34,
+below; arc six is underway: Phases 37, 38, 39, 40 and 41 have shipped, and
+Phase 42 — on Claude Opus 5 — is the next open phase in the arc's order.**
+Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school; arc
 four built for the person handed the result; arc five for the building
 itself; arc six builds for the reviewer; the phases between and after the
@@ -64,6 +65,11 @@ tiles, graph over it) · `sitemesh.js` (the same, over the outdoors) ·
 `collide.js` (what stops/holds you up) · `clearance.js` (Phase 40: the chair —
 the door-width contract, the seated body as step rules, the turning circle and
 the reach ranges, one module the report and the walker both read) ·
+`codes.js` (Phase 41: the code editions as data — factors, limits, widths
+and the table each is quoted from, one row per offered edition, read by
+every analysis below) · `range.js` (a number that knows how sure it is) ·
+`commonpath.js` (the walk to the first point with two separate ways out,
+as two node-disjoint paths on the graph) ·
 `occupancy.js` / `egress.js` /
 `daylight.js` / `takeoff.js` / `acoustics.js` / `utilisation.js` / `cost.js` /
 `spec.js` / `phasing.js` / `report.js` (analysis, none of it stored) ·
@@ -328,7 +334,14 @@ and add to this list rather than starting a new one.
 **Analysis**
 - Daylight is a glazing ratio, not a daylight factor — nothing knows about
   orientation, overhangs or room depth.
-- Common path of egress travel is a constant that nothing measures.
+- ~~Common path of egress travel is a constant that nothing measures.~~
+  *Done, Phase 41: `commonpath.js` walks it from every corner of every room
+  to the first node with two node-disjoint routes to two distinct exits —
+  doorways, stairs and lifts are one body wide, open floor is not — and
+  egress.js holds it to the edition's 75ft.* What it still does not do: a
+  pair of leaves is one doorway (right), but so is a 12ft cased opening
+  (arguable); and a stair is a node, so two stairs off one landing count as
+  two ways where a plan checker might want them remote from one another.
 - ~~Accessibility stops at routes: no turning circles, reach ranges or counter
   heights.~~ *Done, Phase 40: `clearance.js` tests the 60in circle both sides
   of every doorway on the route and somewhere in every room it reaches,
@@ -340,8 +353,16 @@ and add to this list rather than starting a new one.
   leaf, so the lattice's 4ft pair passes here and would not on a plan check);
   the outside of an exterior door is not tested; and knee and toe clearance
   under a counter is not modelled at all.
-- The code edition is printed, not applied — three editions are offered and
-  none changes a factor or limit.
+- ~~The code edition is printed, not applied — three editions are offered and
+  none changes a factor or limit.~~ *Done, Phase 41: `codes.js` carries one
+  full table per edition and occupancy, egress and daylight read their
+  numbers off it — and checked against the code rather than the file, the
+  three offered editions agree on every Group E number this tool applies, so
+  the sheet says "IBC 2021 applied" and means it, and the first edition that
+  differs is one row.* What is still not applied: the reduced 0.15/0.2in per
+  occupant a sprinklered building with voice alarm may use (the file has no
+  alarm answer), and nothing for a Group A assembly space inside the school,
+  which the code treats separately.
 - A title-block panel prints its three worst findings and counts the rest;
   the full list still lives only in the report panel and the CSV.
 
@@ -748,7 +769,7 @@ Four asks stood here at arc four's close: a pure entry point to the report
 pipeline, a design history somebody else can read, analyses that answer
 with ranges where they only pretend to a number, and the session hardening
 a shipped relay made real. Arc five claimed the history (Phase 34); arc six
-now claims the entry point (Phase 37) and the ranges (Phase 41); the
+claimed the entry point (Phase 37) and shipped the ranges (Phase 41); the
 session hardening stays open in the backlog, honestly unclaimed.
 
 ## Arc five — the living school
@@ -1477,7 +1498,7 @@ sheets byte-stable. Next in the arc: **Phase 41 — Numbers that know their
 edition**, named model **Claude Fable 5**; Phase 34 stays open beside the
 arc.
 
-## Phase 41 — Numbers that know their edition
+## Phase 41 — Numbers that know their edition *(shipped)*
 
 **Three code editions are offered and not one of them changes a number.**
 
@@ -1487,27 +1508,70 @@ common path of egress travel is a constant nothing measures, and the
 readers answer with a number where they should answer with a range — "the
 model knows what it does not know", in the arc-four closeout's words.
 
-- [ ] **Editions as data.** One table per offered edition of the factors
-  the analyses already use — occupant load factors, travel and
-  common-path limits, egress width per occupant — selected by the edition
-  the file already stores; the title block prints the edition it
-  *applied*, which is finally a true sentence.
-- [ ] **Common path, measured.** The distance to the point where two
-  genuinely separate ways out first exist, walked per room on the
-  navgraph — the backlog's constant retired.
-- [ ] **Ranges where the input is a guess.** An analysis whose input is
-  assumed rather than drawn — a load classification, an absorption
-  coefficient — answers low–high instead of a point, and the report says
-  which single input would narrow the range most.
-- [ ] **Worst-first keeps its shape.** A range sorts by its bad end, and
-  a finding cites its edition the way a cost already cites the rate
-  table — never a number without its provenance.
+- [x] **Editions as data.** `codes.js`: one table per offered edition —
+  occupant load factors, travel, dead-end and common-path limits, width per
+  occupant, the exit thresholds, the glazing rule, each with the table it is
+  quoted from — selected by the edition the file already stores. Occupancy,
+  egress and daylight read their numbers off it (the constants they still
+  export are the default edition's, for a caller with no design in hand),
+  the code settings moved there with every importer, and the title block
+  prints "IBC 2021 applied", which is finally a true sentence.
+- [x] **Common path, measured.** `commonpath.js`: from every corner of every
+  room, a Dijkstra out over real feet that stops at the first node with two
+  separate ways out — two node-disjoint routes to two distinct exits, a
+  two-unit flow with node splitting, where a doorway, a stair and a lift are
+  one body wide and open floor is not — or at the exit, when the whole walk
+  was common. The backlog's constant is retired; the room's number is the
+  longest of its corners', held to the edition's 75ft, printed on the code
+  panel and in the CSV, and a finding names where the ways part.
+- [x] **Ranges where the input is a guess.** `range.js`, and two readers
+  that use it: an unnamed room's occupant load is the room counted as the
+  emptiest and the fullest thing the edition prices (3–129 for 900 ft²) and
+  the building's total carries the sum, with the unnamed room whose naming
+  narrows it most named in the finding; a room's reverberation is
+  `rt60Low`–`rt60High`, every surface at the absorptive and the reflective
+  end of its published band (`ALPHA_BAND`), with the surface whose band is
+  widest in sabins named as the input to pin down. A room over the limit
+  only at the bad end is a note of its own, not a warning.
+- [x] **Worst-first keeps its shape.** The acoustics section sorts by the
+  range's bad end; every egress, accessible, daylight, acoustics and
+  occupancy finding carries `cite` — "IBC 2021 · Table 1017.2", "ADA 2010 ·
+  §404.2.4", "ANSI/ASA S12.60 · §5.3" — printed under the finding in the
+  panel and in a column of the CSV, never a number without its provenance.
 
-*Leans on:* `egress.js`, `occupancy.js`, `daylight.js`, `acoustics.js`,
-`report.js`, `navgraph.js`. *Save:* none new — the code edition has lived
-in the file since the conventions said it belongs there. *Model:*
-**Claude Fable 5** — code factors, graph measurement and range arithmetic
-are model layer.
+*Save:* none new — the code edition has lived in the file since the
+conventions said it belongs there. *Model:* **Claude Fable 5** — code
+factors, graph measurement and range arithmetic are model layer, and that
+is where it ran.
+
+*What fought back:* the premise, first. Writing out the three tables in full
+is what showed that for a Group E occupancy and the rules this tool applies,
+the numbers this codebase has carried since Phase 7 — 250ft, 75ft, 20ft² a
+seat, 0.2in a head — are the same in every edition it offers, as far as the
+tables here know them; "not one of them changes a number" was a fact about
+the code as much as about the tool, and a reviewer with the printed
+editions in hand is the one to correct a row. The phase shipped anyway, on
+the convention's own terms (checked against the tree, not this file): the
+numbers now have a home and a citation, a suite proves a hypothetical
+edition moves every reader, and the first real difference is one row. Then
+the common path met the sample school: every classroom upstairs came out
+over 75ft, and every one was right — one stair, so the storey is common to
+the stair hall's door — which is the phase's premise proved by the tool's
+own first building. The two-path test also had to decide *what* is one
+body wide before it could be written: the mesh puts a gate node at every
+seam between two tiles of one room, and a seam is a line two people can
+cross a yard apart, so gates and room nodes carry as many paths as want
+them and only portals and links are capacity one — the strict reading,
+under which two doors from a classroom onto a corridor with one way off it
+are one route with a fork in it. Suite 2072 green (thirty-nine
+new); the walk template rebuilt by its tool, since occupancy.js and
+acoustics.js ride the bundle and now bring `codes.js` and `range.js` with
+them; one chrome baseline — the rail's — re-recorded on the pinned Chromium
+for the report's new findings and the readout's three new rows, the sheets
+byte-stable (the harness prints no code panel; an exported set gets the
+new row and the "applied" from `codePanel` like any other).
+Next in the arc: **Phase 42 — The boot diet**, named model **Claude Opus
+5**; Phase 34 stays open beside the arc.
 
 ## Phase 42 — The boot diet
 

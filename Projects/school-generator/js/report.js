@@ -20,7 +20,9 @@
 import { floorLabel } from './grid.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 import { buildNav, navSummary } from './navgraph.js';
-import { buildingOccupancy, codeOf, editionEntry } from './occupancy.js';
+import { buildingOccupancy } from './occupancy.js';
+import { codeOf, editionOf, citeFor } from './codes.js';
+import { isSpread, fmtRange } from './range.js';
 import { egressAnalysis, accessibleAnalysis } from './egress.js';
 import { daylightAnalysis } from './daylight.js';
 import { takeoff, takeoffCSV, csvRows } from './takeoff.js';
@@ -47,9 +49,18 @@ const navRoomId = (floorIndex, ac) => (ac.kind === 'shape'
   ? `r${floorIndex}:s${ac.id.slice(1)}`
   : `r${floorIndex}:g${ac.id.slice(ac.id.indexOf(':') + 1)}`);
 
+// What the reverberation is measured against — not a building code, and the
+// finding says which standard rather than which edition.
+const ANSI = 'ANSI/ASA S12.60 · §5.3';
+
 // Phase 4's reader, rolled up. Nothing new is computed here: `roomAcoustics`
 // already answers volume, absorption, reverberation and the ANSI limit for a
 // point, and `roomsOnFloor` already walks every room on a storey asking it.
+//
+// Phase 41: every row carries the range beside the point, the list sorts by
+// the range's bad end, and a room over the limit only at that end is a note
+// of its own — with the surface that decides it named, because "might be
+// over" is only useful with "and this is what to pin down".
 export function acousticsSection(state, opts = {}) {
   const catalogGet = opts.catalogGet || defaultCatalogEntry;
   const rooms = [];
@@ -70,38 +81,72 @@ export function acousticsSection(state, opts = {}) {
         area: ac.area,
         volume: ac.volume,
         rt60: ac.rt60,
+        rt60Low: ac.rt60Low,
+        rt60High: ac.rt60High,
         limit: ac.limit,
         overLimit: !!ac.overLimit,
+        maybeOver: !!ac.maybeOver,
+        surelyOver: !!ac.surelyOver,
+        narrows: ac.narrows || null,
         verdict: ac.verdict,
         sabins: ac.sabins,
       });
     }
   }
-  rooms.sort((a, b) => b.rt60 - a.rt60);
+  // Worst first, by the bad end of the range — then by the point, so two
+  // rooms with the same ceiling still sort by how they actually ring.
+  rooms.sort((a, b) => b.rt60High - a.rt60High || b.rt60 - a.rt60);
   const graded = rooms.filter((r) => r.limit !== null);
   const over = graded.filter((r) => r.overLimit);
+  const maybe = graded.filter((r) => r.maybeOver);
   const summary = {
     rooms: rooms.length,
     graded: graded.length,
     over: over.length,
+    maybe: maybe.length,
     worst: rooms[0] || null,
   };
+  const name = (r) => r.name || `an unnamed room on ${floorLabel(r.floor)}`;
+  const tail = (r) => `${r.rt60.toFixed(2)} s (${fmtRange({ low: r.rt60Low, high: r.rt60High }, { fmt: (v) => v.toFixed(1) })} s)`;
+  const pin = (r) => (r.narrows
+    ? ` The ${r.narrows.what.toLowerCase().replace(/ \(.*\)$/, '')}'s coefficient ` +
+      `(${r.narrows.low.toFixed(2)}–${r.narrows.high.toFixed(2)}` +
+      `${r.narrows.area ? ` over ${Math.round(r.narrows.area)} ft²` : ''}) is the input that narrows it most.`
+    : '');
   const findings = [];
   if (over.length) {
     findings.push({
       level: 'warn', code: 'reverberation',
       title: `${over.length} room${over.length === 1 ? '' : 's'} over the ANSI reverberation limit`,
-      detail: `${over[0].name || `an unnamed room on ${floorLabel(over[0].floor)}`} rings for ` +
-        `${over[0].rt60.toFixed(2)} s against a ${over[0].limit.toFixed(1)} s limit. ` +
+      detail: `${name(over[0])} rings for ${tail(over[0])} against a ` +
+        `${over[0].limit.toFixed(1)} s limit. ` +
         'Soft floor, an acoustic ceiling or more furniture is what brings it down — ' +
-        'the estimate is Sabine, which is honest about volume and rough about shape.',
+        'the estimate is Sabine, which is honest about volume and rough about shape.' +
+        (over[0].surelyOver ? '' : pin(over[0])),
       rooms: over.slice(0, 8),
+      cite: ANSI,
     });
-  } else if (graded.length) {
+  }
+  if (maybe.length) {
     findings.push({
-      level: 'ok', code: 'reverberation', title: 'Every graded room is within the ANSI limit',
+      level: 'note', code: 'reverberation-range',
+      title: `${maybe.length} ${over.length ? 'more ' : ''}room${maybe.length === 1 ? '' : 's'} could be over the reverberation limit`,
+      detail: `${name(maybe[0])} rings for ${tail(maybe[0])} against ${maybe[0].limit.toFixed(1)} s — ` +
+        'under at the estimate, over if the surfaces reflect more than the tables assume.' +
+        pin(maybe[0]),
+      rooms: maybe.slice(0, 8),
+      cite: ANSI,
+    });
+  }
+  if (!over.length && graded.length) {
+    findings.push({
+      level: 'ok', code: 'reverberation',
+      title: maybe.length
+        ? 'Every graded room is within the ANSI limit at the estimate'
+        : 'Every graded room is within the ANSI limit',
       detail: `${graded.length} rooms measured by Sabine reverberation over their ` +
-        'own volume and surfaces.',
+        `own volume and surfaces${maybe.length ? '' : ', at every end of the coefficients\' range'}.`,
+      cite: ANSI,
     });
   }
   return { rooms, summary, findings };
@@ -123,18 +168,20 @@ export function buildReport(state, opts = {}) {
   // which is the whole reason this file exists rather than a panel calling
   // five modules itself.
   const nav = opts.nav || buildNav(state);
-  const occupancy = buildingOccupancy(state, { nav });
   // Which code the numbers are read against, and whether the building is
   // sprinklered. Both are facts about the design and live in the file since
-  // v11 (see occupancy.js); `opts` still overrides, for a caller asking a
-  // hypothetical rather than reading the design.
+  // v11 (see codes.js); `opts` still overrides, for a caller asking a
+  // hypothetical rather than reading the design. Since Phase 41 the edition
+  // is *applied*: every reader below is handed the same table and reads its
+  // factors and limits off it, which is what makes the sheet's sentence true.
   const code = codeOf(state);
   const sprinklered = opts.sprinklered === undefined ? code.sprinklered : opts.sprinklered !== false;
-  const edition = editionEntry(code.edition);
+  const edition = editionOf(opts.edition, state);
+  const occupancy = buildingOccupancy(state, { nav, edition });
 
-  const egress = egressAnalysis(state, { nav, occupancy, sprinklered });
-  const accessible = accessibleAnalysis(state, { nav, occupancy, field: egress.field, catalogGet });
-  const daylight = daylightAnalysis(state, { nav, occupancy });
+  const egress = egressAnalysis(state, { nav, occupancy, sprinklered, edition });
+  const accessible = accessibleAnalysis(state, { nav, occupancy, field: egress.field, catalogGet, edition });
+  const daylight = daylightAnalysis(state, { nav, occupancy, edition });
   const acoustics = opts.acoustics === false
     ? { rooms: [], summary: { rooms: 0, graded: 0, over: 0, worst: null }, findings: [] }
     : acousticsSection(state, { catalogGet });
@@ -193,11 +240,20 @@ export function buildReport(state, opts = {}) {
   // than the building: a room nobody named was counted at a made-up factor,
   // and every number downstream of it inherits that.
   if (occupancy.unnamed > 0) {
+    const n = occupancy.narrows;
+    const load = { low: occupancy.low, high: occupancy.high };
     findings.push({
       section: 'occupancy', level: 'note', code: 'unnamed-rooms',
       title: `${occupancy.unnamed} room${occupancy.unnamed === 1 ? '' : 's'} with no name`,
-      detail: 'Counted at 100 ft² per person because nothing said what they are. ' +
-        'Name a room and its occupant load comes from what it is for.',
+      detail: `Counted at ${edition.factors.unassigned} ft² per person because nothing said what ` +
+        `they are, so the building holds ${occupancy.total} at the estimate and ` +
+        `${fmtRange(load)} depending on what they turn out to be. ` +
+        (n
+          ? `Naming ${n.name || `the ${Math.round(n.area)} ft² room on ${floorLabel(n.floor)}`} ` +
+            `narrows that most, by ${n.spread}.`
+          : 'Name a room and its occupant load comes from what it is for.'),
+      rooms: n ? [n] : [],
+      cite: citeFor(edition, 'factors'),
     });
   }
   findings.sort((a, b) => rank(a.level) - rank(b.level));
@@ -229,11 +285,16 @@ export function buildReport(state, opts = {}) {
     findings,
     summary: {
       occupants: occupancy.total,
+      // Phase 41: the same number as a range. The ends meet when every room
+      // is named; a panel prints the pair only when they do not.
+      occupantsLow: occupancy.low,
+      occupantsHigh: occupancy.high,
       area: occupancy.area,
       storeys: state && state.floors ? state.floors.length : 0,
       rooms: occupancy.rooms.length,
       exits: egress.summary.exits,
       travel: egress.summary.worst ? egress.summary.worst.travel : 0,
+      commonPath: egress.summary.commonPath ? egress.summary.commonPath.common : 0,
       // Null rather than zero when there is no timetable: a school day nobody
       // has described is not a school day of no length.
       utilisation: utilisation ? utilisation.summary.utilisation : null,
@@ -294,8 +355,13 @@ export function codePanel(report, opts = {}) {
     current: here !== null && f.floor === here,
   }));
   const worst = e.summary.worst;
+  const load = { low: s.occupantsLow, high: s.occupantsHigh };
+  const cp = e.summary.commonPath;
   const rows = [
-    ['Occupant load', `${s.occupants}`],
+    // The range in brackets when there is one: a title block that prints
+    // "437" for a building with three unnamed rooms is a title block that
+    // knows something it is not saying.
+    ['Occupant load', isSpread(load) ? `${s.occupants} (${fmtRange(load)})` : `${s.occupants}`],
     ['Building area', `${Math.round(s.area).toLocaleString()} ft²`],
     ['Storeys', `${s.storeys}`],
     ['Exits', `${e.summary.exits} of ${e.summary.exitsRequired} required`],
@@ -306,6 +372,11 @@ export function codePanel(report, opts = {}) {
     ['Dead end', e.deadEnds.length
       ? `${Math.round(e.deadEnds[0].depth)} ft / ${e.limits.deadEnd} ft`
       : `none / ${e.limits.deadEnd} ft`],
+    // Phase 41: the walk to a choice, which used to be a constant that
+    // nothing measured and is now the longest one in the building.
+    ['Common path', cp
+      ? `${Math.round(cp.common)} ft / ${e.limits.commonPath} ft`
+      : `— / ${e.limits.commonPath} ft`],
   ];
   // The half of the walk that used to stop at the threshold. No limit column,
   // because the code sets no number for it — but a panel that quotes a travel
@@ -320,7 +391,10 @@ export function codePanel(report, opts = {}) {
   }
   return {
     title: 'CODE INFORMATION',
-    edition: report.editionLabel,
+    // "IBC 2021 applied": the sentence the phase was for. Every row above
+    // was read against this table, so the panel says so rather than merely
+    // naming it.
+    edition: `${report.editionLabel} applied`,
     sprinklered: report.sprinklered,
     rows,
     storeys,
@@ -452,22 +526,28 @@ export function reportCSV(report) {
   rows.push(['School Generator — analysis', '', '', '', '', '']);
   // What the limits below are quoted from. A sheet that says 250ft without
   // saying under what is a sheet nobody can check.
-  rows.push(['Code', report.editionLabel, '',
+  rows.push(['Code', `${report.editionLabel} applied`, '',
     report.sprinklered ? 'sprinklered' : 'unsprinklered', '', '']);
-  rows.push(['Occupant load', s.occupants, 'people', '', '', '']);
+  const load = { low: s.occupantsLow, high: s.occupantsHigh };
+  rows.push(['Occupant load', s.occupants, 'people',
+    isSpread(load) ? `${fmtRange(load)} counting the unnamed rooms` : '', '', '']);
   rows.push(['Floor area', round(s.area), 'ft²', '', '', '']);
   rows.push(['Storeys', s.storeys, '', '', '', '']);
   rows.push(['Exits', s.exits, '', '', '', '']);
   rows.push(['Longest travel distance', round(s.travel), 'ft',
     `limit ${report.egress.limits.travel} ft`, '', '']);
+  rows.push(['Longest common path', round(s.commonPath), 'ft',
+    `limit ${report.egress.limits.commonPath} ft`, '', '']);
   if (report.structure) {
     rows.push(['Unsupported upper storey', round(report.structure.area), 'ft²',
       'outside the footprint below', '', '']);
   }
   rows.push([]);
 
-  rows.push(['Findings', 'Level', 'Section', 'Detail', '', '']);
-  for (const f of report.findings) rows.push([f.title, f.level, f.section, f.detail, '', '']);
+  // The fifth column is the provenance — which edition and table, or which
+  // standard, the finding was measured against.
+  rows.push(['Findings', 'Level', 'Section', 'Detail', 'Measured against', '']);
+  for (const f of report.findings) rows.push([f.title, f.level, f.section, f.detail, f.cite || '', '']);
   rows.push([]);
 
   // Phase 15's section, and the only one the sheet leaves out entirely when it
@@ -523,9 +603,10 @@ export function reportCSV(report) {
   const ac = new Map(report.acoustics.rooms.map((r) => [r.id, r]));
   const eg = new Map(report.egress.rooms.map((r) => [r.id, r]));
   const acc = new Map(report.accessible.rooms.map((r) => [r.id, r]));
+  const cpRows = new Map(((report.egress.common && report.egress.common.rows) || []).map((r) => [r.id, r]));
   rows.push(['Rooms', 'Level', 'Use', 'Use from', 'Area ft²', 'Occupants',
-    'Load from', 'Travel ft', 'Doors', 'Clear door in', 'Glazing %', 'RT60 s',
-    'Accessible']);
+    'Load from', 'Travel ft', 'Common path ft', 'Doors', 'Clear door in', 'Glazing %',
+    'RT60 s', 'RT60 low–high', 'Accessible']);
   for (const r of report.occupancy.rooms) {
     const e = eg.get(r.id);
     const d = day.get(r.id);
@@ -540,13 +621,17 @@ export function reportCSV(report) {
       // person and which was read off the plan.
       r.chosen ? 'chosen' : r.guess ? 'unnamed' : 'name',
       round(r.area),
-      r.occ,
-      r.stated === null ? 'area' : 'stated',
+      // A guessed room's load as its range, so the sheet says "3–129" where
+      // the panel says "9": the honest number is the pair.
+      r.spread > 0 ? fmtRange({ low: r.low, high: r.high }) : r.occ,
+      r.stated === null ? (r.guess ? 'guess' : 'area') : 'stated',
       e && e.reached ? round(e.travel) : 'unreachable',
+      cpRows.has(r.id) ? round(cpRows.get(r.id).common) : '',
       e ? e.doors : '',
       e ? round(e.doorWidth * 12) : '',
       d ? round(d.ratio * 100, 1) : '',
       a ? round(a.rt60, 2) : '',
+      a ? fmtRange({ low: a.rt60Low, high: a.rt60High }, { fmt: (v) => round(v, 2) }) : '',
       x ? (x.rollable ? 'yes' : 'stairs only') : '',
     ]);
   }
