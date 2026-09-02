@@ -95,6 +95,13 @@ hand-maintained duplication.
 
 ## Conventions a new builder must know
 
+
+- **A new top-level file in `Numina/` fails `npm test` until it is named.**
+  `test/smoke.mjs`'s hygiene check holds an allowlist of everything that may
+  sit beside the generated output; this file had to be added to it before CI
+  would pass on the pull request that introduced it. Anything else that lands
+  at the top level goes in the same list, or in `GENERATED` if the build made
+  it.
 - **Edit `src/`, run `npm run build`, run `npm test`, commit source and
   regenerated output together.** The deploy serves the repo as-is, so a
   source change without its rebuild ships a site that does not match its
