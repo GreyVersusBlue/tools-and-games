@@ -257,6 +257,13 @@ is not to add Shield Block and Attack of Opportunity — it is to build the seam
 and hang those two off it as proof it works. It goes first because a reaction is
 the smallest thing that needs a turn to have interior structure.
 
+Torchbearer needs the same seam and names it too — its `WISHLIST.md`, Phase 3,
+builds a trigger bus for the same three reactions in a different engine.
+Whichever ships first is the reference for the other: same event names, same
+"one reaction per round" rule, same refusal to let a trigger fire twice.
+Whether the two ever share *code* is the `Pathfinder/data/` question above,
+and this phase does not wait on it.
+
 - [ ] **A trigger bus in `game.js`.** One internal `fireTrigger(event, ctx)` at
       named points — before a Strike resolves, when a creature leaves a square
       adjacent to a reactor, when damage is about to land. Named points, not a
