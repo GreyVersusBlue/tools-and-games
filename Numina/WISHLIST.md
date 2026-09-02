@@ -440,7 +440,7 @@ wiring against links that already exist.
 **A sidebar link on every skills page leads to 34 words telling the reader to
 consult CONTENT-GUIDE.md.**
 
-Three thin spots, all named in audit A3 and A6, all content work under rules
+Four thin spots, all named in audit A3 and A6, all content work under rules
 the guide already states. Excellencies is the urgent one: linked from the
 sidebar and every skills page, present in the search index, and addressed to
 a developer.
@@ -469,7 +469,7 @@ a developer.
 read them before the first paragraph, not after.
 *Build/output:* new committed pages and an extended `timeline.json`; if
 Phase 1 has landed, re-run the extractor and expect `skills.json` to grow.
-*Model:* **Claude Opus 5** — porting to a format the guide specifies and four
+*Model:* **Claude Opus 5** — porting to a format the guide specifies and six
 sibling chapters demonstrate.
 
 ## Phase 7 — The print packet and the offline kit
@@ -545,11 +545,11 @@ from a schema that already exists.
 - **A rulebook version-diff report.** Phase 1 makes v3.51 → v3.52 diffable;
   nothing renders that diff as a page players can read, and "what changed at
   the start of the season" is a good question.
-- **The map as real geography.** The cartouche says "placeholder geography"
+- **The map as real geography.** The figcaption says "placeholder geography"
   and means it. Sixteen hand-authored region paths against an actual campaign
   map is a project, not a task.
-- **Crafting as data.** 96 rows of formulas and Machina in `crafting.md`, a
-  different shape from the skill tables, and the natural input to a crafting
+- **Crafting as data.** Roughly a hundred rows of formulas and Machina in
+  `crafting.md`, a different shape from the skill tables, and the natural input to a crafting
   planner the way `skills.json` is to the builder.
 - **A public plot log.** The Discord holds years of campaign events, and
   CONTENT-GUIDE's spoiler and provenance rules exist because somebody already

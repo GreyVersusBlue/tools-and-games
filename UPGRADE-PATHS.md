@@ -41,9 +41,9 @@ whoever opens the next session knows which one to open.
 | 3 | Torchbearer | `Projects/torchbearer/WISHLIST.md` | 1 — The rules core comes out of the page (Opus) | A declared PF2e platform whose engine is still one 3,268-line script the suite cannot import |
 | 4 | The Absalom Inheritance | `Projects/absalom-inheritance/WISHLIST.md` | 1 — The interrupt point (Fable) | A CRPG with a 2,000-run balance harness and no reaction, condition or template system yet |
 | 5 | The Fourth Quarter | `Projects/fourth-quarter/WISHLIST.md` | 1 — The room is a description (Fable) | Pure-logic engine and campaign under Node, every venue tier the same room, 67 MB of textures |
-| 6 | Faire Weekend | `Projects/Ren-Faire-Claude/WISHLIST.md` | Phase 1 | A 3,000-line suite guarding an economy that has never had a single guest walk through it |
+| 6 | Faire Weekend | `Projects/Ren-Faire-Claude/WISHLIST.md` | 1 — Guests who walk (Fable) | A 3,000-line suite guarding an economy that has never had a single guest walk through it |
 | 7 | Daredevil | `Projects/daredevil/WISHLIST.md` | 1 — The backer-less middle game (Fable; waits on Devon — Phase 2 runs meanwhile, Opus) | Eight endings and a transcript-diff harness, with the biggest open narrative question on the site |
-| 8 | Numina | `Numina/WISHLIST.md` | Phase 1 | 136,000 words of rules as prose and no data layer, so no character builder, no generated cross-links, no version diff |
+| 8 | Numina | `Numina/WISHLIST.md` | 1 — The skill table becomes a record (Fable) | 136,000 words of rules as prose and no data layer, so no character builder, no generated cross-links, no version diff |
 | 9 | Schedule Visualizer | `Tools/schedule/WISHLIST.md` | 1 — The simulation half, in numbers (Fable) | The largest hand-written thing in the repo, two thirds of it untested, blocked three rounds on one quota question |
 | 10 | Corner & Kettle | `Projects/corner-and-kettle/WISHLIST.md` | 1 — The sim without the page (Fable) | Every balance question ever asked of it was answered by hand-instrumenting a browser |
 
@@ -164,8 +164,8 @@ job, regulars, floor moments and the fail state are Opus 5.
 
 ### 6 — Faire Weekend
 
-Twenty-two stages, a 3,018-line JSDOM suite with seven `SIGNIFICANCE:`
-balance tests, and an economy that computes attendance as an aggregate
+Twenty-two stages, a 3,018-line JSDOM suite (801 assertions, seven of them
+`SIGNIFICANCE:` balance checks), and an economy that computes attendance as an aggregate
 function. "True guest-agent/pathfinding simulation remains the one fully
 untouched item from Stage 9 on." That is the phase that turns a spreadsheet
 into a sim, and it is the first one. Behind it: a pinch/pan/zoom canvas
@@ -174,9 +174,11 @@ targets the notes have carried twice), weather off the `TIME_BLOCKS.heat` hook
 that already exists, performer and vendor arcs, and a second win track.
 
 *Fable earns it for:* the guest agents, which have to reconcile with the
-existing aggregate economy without making the significance tests meaningless,
-and the canvas map across `ui.js`, `main.js` and 1,060 lines of CSS. Weather,
-arcs and the meta-layer are Opus 5.
+existing aggregate economy without making the significance tests meaningless;
+the multi-season save, the project's first real `migrate`; and the canvas map,
+whose hit-testing replaces the DOM the suite currently clicks. Weather, acts
+with a story, the density review, a third crew and the automatic wiring audit
+are Opus 5.
 
 ### 7 — Daredevil
 
@@ -209,9 +211,10 @@ calculator — the tool a player would actually open at an event. Arc two is
 the finishing work already specified: the accessibility pass (the audit wrote
 the one-line fixes), the join funnel, the Excellencies stub, print packets.
 
-*Fable earns it for:* extraction from a copyrighted rulebook under the
-CONTENT-GUIDE's don't-invent and provenance rules, and the builder's
-prerequisite semantics. Everything in arc two is Opus 5.
+*Fable earns it for:* the skill record itself, a schema extracted from prose
+under the CONTENT-GUIDE's don't-invent and provenance rules that every later
+phase inherits, and the builder, a rules engine where a mispriced build looks
+perfectly correct. The generated pages and everything in arc two are Opus 5.
 
 ### 9 — Schedule Visualizer
 
