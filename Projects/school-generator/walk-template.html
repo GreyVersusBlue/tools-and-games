@@ -93448,6 +93448,112 @@ function drawClearance(ctx, plan, layout, circles) {
   ctx.restore();
 }
 
+// Phase 34: what changed, painted on the plan. Each mark is one of the
+// differ's (designdiff.js) — a room's outline, a wall's two ends, a piece of
+// furniture's or a link's point — on a storey, with a change. Added in green,
+// removed in red, changed in amber; a changed room also shows the outline it
+// had, dashed, so "grew" is visible as the ring between the two. A legend
+// and the note ("since Tuesday, 3:14 pm") sit at the top-left of the plan,
+// where a reader's eye starts. Drawn under the labels, so a room's name is
+// never under a wash.
+const DIFF_INK = {
+  added: { fill: 'rgba(52, 168, 83, 0.22)', line: 'rgba(30, 120, 56, 0.95)', word: 'added' },
+  removed: { fill: 'rgba(211, 74, 65, 0.16)', line: 'rgba(176, 44, 36, 0.95)', word: 'removed' },
+  changed: { fill: 'rgba(230, 160, 30, 0.20)', line: 'rgba(170, 112, 10, 0.95)', word: 'changed' },
+};
+const DIFF_SIGN = { added: '+', removed: '−', changed: '~' };
+
+function drawDiff(ctx, plan, layout, marks, note = '') {
+  const here = (marks || []).filter((m) => m && m.floor === plan.floorIndex);
+  if (!here.length) return;
+  ctx.save();
+  const trace = (pts) => {
+    ctx.beginPath();
+    pts.forEach((pt, i) => {
+      const q = toPx(plan, layout, pt.x, pt.z);
+      if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y);
+    });
+    ctx.closePath();
+  };
+  const labels = [];
+  for (const m of here) {
+    const ink = DIFF_INK[m.change] || DIFF_INK.changed;
+    ctx.fillStyle = ink.fill;
+    ctx.strokeStyle = ink.line;
+    if ((m.kind === 'room' || m.kind === 'region') && Array.isArray(m.pts) && m.pts.length >= 3) {
+      if (Array.isArray(m.was) && m.was.length >= 3) {
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 1.2;
+        trace(m.was);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.lineWidth = m.change === 'removed' ? 1.5 : 2;
+      if (m.change === 'removed') ctx.setLineDash([6, 3]);
+      trace(m.pts);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (m.label) {
+        const cx = m.pts.reduce((n, pt) => n + pt.x, 0) / m.pts.length;
+        const cz = m.pts.reduce((n, pt) => n + pt.z, 0) / m.pts.length;
+        labels.push({ ...toPx(plan, layout, cx, cz), text: `${DIFF_SIGN[m.change] || '~'} ${m.label}`, ink });
+      }
+    } else if (m.kind === 'wall' && m.a && m.b) {
+      const a = toPx(plan, layout, m.a.x, m.a.z);
+      const b = toPx(plan, layout, m.b.x, m.b.z);
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      if (m.change === 'removed') ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (Number.isFinite(m.x) && Number.isFinite(m.z)) {
+      const p = toPx(plan, layout, m.x, m.z);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, m.kind === 'link' ? 7 : 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  ctx.font = '600 10px "Public Sans", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const l of labels) {
+    ctx.fillStyle = l.ink.line;
+    ctx.fillText(l.text, l.x, l.y);
+  }
+  drawDiffLegend(ctx, layout, note);
+  ctx.restore();
+}
+
+function drawDiffLegend(ctx, layout, note) {
+  let x = layout.margin;
+  const y = layout.margin + layout.titleH + 10;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace';
+  ctx.lineWidth = 1;
+  for (const key of ['added', 'removed', 'changed']) {
+    const ink = DIFF_INK[key];
+    ctx.fillStyle = ink.fill;
+    ctx.fillRect(x, y - 5, 10, 10);
+    ctx.strokeStyle = ink.line;
+    ctx.strokeRect(x, y - 5, 10, 10);
+    ctx.fillStyle = ink.line;
+    ctx.fillText(ink.word, x + 14, y);
+    x += 14 + ctx.measureText(ink.word).width + 12;
+  }
+  if (note) {
+    ctx.fillStyle = INK.dim;
+    ctx.font = '10px "Public Sans", system-ui, sans-serif';
+    ctx.fillText(note, x, y);
+  }
+}
+
 // The drawing itself, without any of the sheet furniture around it: rooms,
 // walls, openings, stairs, and optionally the furniture and the tags. Split
 // out in Phase 9 for the minimap, which wants the plan at thumbnail size and
@@ -93468,6 +93574,9 @@ function drawPlanBody(ctx, plan, layout, opts = {}) {
   // caller hands the circles over — the report knows them, the sheet does not
   // — and only the storey's own.
   if (opts.clearance && opts.clearance.length) drawClearance(ctx, plan, layout, opts.clearance);
+  // Phase 34: what changed since a snapshot, on the same terms — the caller
+  // hands the marks over, the sheet paints the storey's own.
+  if (opts.diff && opts.diff.length) drawDiff(ctx, plan, layout, opts.diff, opts.diffNote);
   if (opts.showLabels !== false) drawLabels(ctx, plan, layout);
   if (opts.showOccupancy) drawOccupancy(ctx, plan, layout);
   if (opts.showDimensions) drawDimensions(ctx, plan, layout);
@@ -94163,7 +94272,7 @@ function downloadCanvasPNG(canvas, filename) {
   }, 'image/png');
 }
 
-return { computeFloorPlan, computeSitePlan, drawClearance, drawPlanBody, drawFloorPlan, drawSitePlan, renderFloorPlanCanvas, renderSitePlanCanvas, drawElevation, drawSectionSheet, renderElevationCanvas, renderSectionCanvas, sheetSet, renderSheetCanvas, specLayout, renderSpecSheetCanvas, downloadCanvasPNG };
+return { computeFloorPlan, computeSitePlan, drawClearance, DIFF_INK, drawDiff, drawPlanBody, drawFloorPlan, drawSitePlan, renderFloorPlanCanvas, renderSitePlanCanvas, drawElevation, drawSectionSheet, renderElevationCanvas, renderSectionCanvas, sheetSet, renderSheetCanvas, specLayout, renderSpecSheetCanvas, downloadCanvasPNG };
 })();
 // ---- js/minimap.js ----
 const __m_js_minimap_js = (() => {

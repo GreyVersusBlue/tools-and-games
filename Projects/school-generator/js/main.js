@@ -122,7 +122,7 @@ import { lazy } from './lazy.js';
 import { adoptRecords } from './records.js';
 import { wantsCompany } from './fragment.js';
 // --- Phase 30 ---
-import { galleryCards, thumbPaths } from './gallery.js';
+import { galleryCards, thumbPaths, planThumb, cardFacts, factLine } from './gallery.js';
 import { REV as OFFLINE_REV, registrable, offlineStatus, INSTALL_LABEL } from './offline.js';
 import {
   fileMode, modeNote, makeFileSession, noteOpened, noteSaved, noteEdited,
@@ -2619,6 +2619,10 @@ $('designs-btn').addEventListener('click', () => {
   $('designs-new-name').value = '';
   renderDesignsList();
   openModal(designsOverlay, $('designs-new-name'));
+  // Phase 34: the timeline under the slots, fetched with its modules.
+  renderHistory().catch((err) => {
+    historyList.innerHTML = `<div class="empty">Could not load the history: ${esc(err.message)}</div>`;
+  });
 });
 $('designs-close').addEventListener('click', () => closeModal(designsOverlay));
 $('designs-save-new').addEventListener('click', () => {
@@ -2632,6 +2636,214 @@ $('designs-save-new').addEventListener('click', () => {
 });
 $('designs-new-name').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') $('designs-save-new').click();
+});
+
+// --- Phase 34: a history somebody else can read ---
+//
+// The file remembers everything and can answer nothing: autosave holds one
+// past, undo holds one session's, and "what changed since Tuesday" had no
+// answer anywhere in the tool. A snapshot is the whole design kept under a
+// name in IndexedDB (snapshots.js) — never in the file — with the gallery's
+// thumbnail and its three counted facts beside it; the timeline lives under
+// the slots in the Designs dialog; "what changed" is designdiff.js's
+// sentences, with the same marks the sheet paints (blueprint.js, `diff`).
+// Restoring is an edit: it goes on the undo stack exactly as loading a slot
+// does. The two modules arrive when the dialog first opens, on Phase 42's
+// terms — a history is not something the boot needs.
+const historyList = $('history-list');
+const historyModules = lazy(async () => {
+  const [snapshots, designdiff] = await Promise.all([
+    import('./snapshots.js'), import('./designdiff.js'),
+  ]);
+  return { snapshots, designdiff };
+});
+let historyRows = [];      // the timeline, as last listed
+let lastCompare = null;    // { diff, note, design, headline } — what the sheet would print
+
+// The gallery's thumbnail, the gallery's way: geometry into SVG paths.
+function thumbSVG(thumb, px) {
+  const { size, paths } = thumbPaths(thumb, px);
+  return `<svg class="thumb" viewBox="0 0 ${size} ${size}" aria-hidden="true">`
+    + paths.map((q) => `<path d="${q.d}" fill="${q.fill}" fill-rule="evenodd"/>`).join('')
+    + '</svg>';
+}
+
+// A name for a snapshot nobody named: the moment it was taken.
+const suggestSnapName = () => new Date().toLocaleString(undefined, {
+  month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+});
+
+async function snapshotNow(name) {
+  const { snapshots } = await historyModules();
+  const label = snapshots.snapName(name || suggestSnapName());
+  const res = await snapshots.saveSnapshot({
+    name: label, json: serialize(state), thumb: planThumb(state, 0), facts: cardFacts(state),
+  });
+  if (!res.ok) { alert(res.reason); return null; }
+  $('status').textContent = `Snapshot kept — "${label}". Compare against it any time.`;
+  renderHistory().catch(() => {});
+  return res.id;
+}
+
+async function renderHistory() {
+  const { snapshots } = await historyModules();
+  historyRows = await snapshots.listSnapshots();
+  historyList.textContent = '';
+  if (!historyRows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No snapshots yet — name this moment above and keep it, and the next one can be compared against it.';
+    historyList.appendChild(empty);
+  }
+  for (const snap of historyRows) {
+    const row = document.createElement('div');
+    row.className = 'snap-row';
+    row.dataset.id = snap.id;
+    row.innerHTML = thumbSVG(snap.thumb, 44)
+      + `<div class="snap-info"><div class="snap-name">${esc(snap.name)}</div>`
+      + `<div class="snap-meta">${esc(snapshots.whenLabel(snap.at))}`
+      + (snap.facts ? ` · ${esc(factLine(snap.facts))}` : '') + '</div></div>'
+      + '<button data-act="restore" title="Replace the current design with this one — undo takes you back">↩ Restore</button>'
+      + '<button data-act="rename" title="Rename">✏️</button>'
+      + '<button data-act="delete" title="Delete this snapshot">🗑</button>';
+    historyList.appendChild(row);
+  }
+  // The two pickers: the earlier one lists every snapshot, the later one
+  // starts at "now" — the question is almost always "since Tuesday, as of
+  // this minute".
+  const keepA = $('history-a').value, keepB = $('history-b').value;
+  const opt = (snap) => `<option value="${esc(snap.id)}">${esc(snap.name)} — ${esc(snapshots.whenLabel(snap.at))}</option>`;
+  $('history-a').innerHTML = historyRows.map(opt).join('');
+  $('history-b').innerHTML = '<option value="now">now — the design as it stands</option>' + historyRows.map(opt).join('');
+  if (historyRows.some((r) => r.id === keepA)) $('history-a').value = keepA;
+  $('history-b').value = keepB && (keepB === 'now' || historyRows.some((r) => r.id === keepB)) ? keepB : 'now';
+  $('history-compare').disabled = !historyRows.length;
+}
+
+async function restoreSnapshot(id) {
+  const { snapshots } = await historyModules();
+  const rec = await snapshots.loadSnapshot(id);
+  if (!rec) { alert('That snapshot is missing — it may have been deleted in another tab.'); return false; }
+  try {
+    editor.pushUndo();
+    adoptState(deserialize(rec.json, { onMigrate }), { undoable: true });
+    // A snapshot is not a file, on the same terms as a slot: the next Ctrl+S
+    // must not write one design over another.
+    fileSession = noteOpened(fileSession, { name: rec.name, source: 'store' });
+    syncFileChrome();
+    sayIfMigrated();
+    closeModal(designsOverlay);
+    $('status').textContent = `Restored "${rec.name}" (${snapshots.whenLabel(rec.at)}) — undo takes you back.`;
+    return true;
+  } catch (err) {
+    alert(`Could not restore that snapshot: ${err.message}`);
+    return false;
+  }
+}
+
+// Two designs, diffed: `a` is a snapshot id; `b` is one too, or 'now'. Both
+// sides go through the file — the live state is serialized and read back —
+// so the differ never compares a design against an object the editor is
+// still mutating.
+async function compareSnapshots(aId, bId = 'now') {
+  const { snapshots, designdiff } = await historyModules();
+  const a = await snapshots.loadSnapshot(aId);
+  if (!a) return null;
+  const b = bId && bId !== 'now' ? await snapshots.loadSnapshot(bId) : null;
+  if (bId && bId !== 'now' && !b) return null;
+  const before = deserialize(a.json);
+  const after = b ? deserialize(b.json) : deserialize(serialize(state));
+  const diff = designdiff.designDiff(before, after);
+  const note = `since ${a.name}, ${snapshots.whenLabel(a.at)}`
+    + (b ? ` — as of ${b.name}, ${snapshots.whenLabel(b.at)}` : '');
+  lastCompare = { diff, note, design: after, headline: designdiff.diffHeadline(diff), a, b };
+  return lastCompare;
+}
+
+// The sheet options that paint a comparison: every plan sheet of the later
+// design, its changes on it, the legend saying since when.
+const diffSheetOpts = (cmp) => ({
+  showFurniture: true, showLabels: true, showDimensions: false, showFinishes: false,
+  showSections: false, showAnnotations: false,
+  diff: cmp.diff.marks, diffNote: cmp.note, sheet: 'What changed',
+});
+
+async function renderCompare(cmp) {
+  const host = $('history-diff');
+  host.classList.remove('hidden');
+  $('history-headline').textContent = cmp.headline;
+  $('history-sentences').innerHTML = cmp.diff.sentences.map((t) => `<li>${esc(t)}</li>`).join('');
+  $('history-print').disabled = !cmp.diff.marks.length;
+  const preview = $('history-preview');
+  preview.textContent = '';
+  if (!cmp.diff.marks.length) return;
+  // The storey with the most to show, drawn at sheet scale and shown small.
+  const bp = await blueprintModule();
+  const counts = new Map();
+  for (const m of cmp.diff.marks) counts.set(m.floor, (counts.get(m.floor) || 0) + 1);
+  const floor = [...counts.entries()].sort((x, y) => y[1] - x[1])[0][0];
+  if (!cmp.design.floors[floor]) return;
+  const canvas = bp.renderFloorPlanCanvas(cmp.design, floor, { ...diffSheetOpts(cmp), scale: 6 });
+  if (!canvas) return;
+  const img = document.createElement('img');
+  img.alt = `${floorLabel(floor)}, with the changes painted on it`;
+  img.src = canvas.toDataURL('image/png');
+  preview.appendChild(img);
+}
+
+$('history-snap').addEventListener('click', () => {
+  snapshotNow($('history-new-name').value).then((id) => { if (id) $('history-new-name').value = ''; });
+});
+$('history-new-name').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('history-snap').click();
+});
+historyList.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  const row = btn && btn.closest('.snap-row');
+  if (!row) return;
+  const id = row.dataset.id;
+  const snap = historyRows.find((r) => r.id === id);
+  const { snapshots } = await historyModules();
+  if (btn.dataset.act === 'restore') {
+    await restoreSnapshot(id);
+  } else if (btn.dataset.act === 'rename') {
+    const next = prompt('Rename snapshot:', snap ? snap.name : '');
+    if (next === null) return;
+    await snapshots.renameSnapshot(id, next);
+    await renderHistory();
+  } else if (btn.dataset.act === 'delete') {
+    if (!confirm(`Delete the snapshot "${snap ? snap.name : id}"? This can't be undone.`)) return;
+    await snapshots.deleteSnapshot(id);
+    await renderHistory();
+  }
+});
+$('history-compare').addEventListener('click', async () => {
+  const cmp = await compareSnapshots($('history-a').value, $('history-b').value || 'now');
+  if (!cmp) { $('status').textContent = 'One of those snapshots is missing.'; return; }
+  await renderCompare(cmp);
+});
+$('history-print').addEventListener('click', async () => {
+  if (!lastCompare || !lastCompare.diff.marks.length) return;
+  const bp = await blueprintModule();
+  const cmp = lastCompare;
+  const floors = [...new Set(cmp.diff.marks.map((m) => m.floor))]
+    .filter((f) => Number.isFinite(f) && cmp.design.floors[f]).sort((x, y) => x - y);
+  const set = bp.sheetSet(cmp.design, { floors, site: false, elevations: false, sections: false, spec: false });
+  printArea.textContent = '';
+  set.forEach((entry, i) => {
+    const canvas = bp.renderSheetCanvas(cmp.design, entry, {
+      ...diffSheetOpts(cmp), sheetIndex: i + 1, sheetCount: set.length,
+    });
+    if (!canvas) return;
+    const page = document.createElement('div');
+    page.className = 'print-page';
+    const img = document.createElement('img');
+    img.src = canvas.toDataURL('image/png');
+    page.appendChild(img);
+    printArea.appendChild(page);
+  });
+  closeModal(designsOverlay);
+  window.print();
 });
 
 // --- export: printable top-down floor plan (PNG / print-to-PDF) ---
@@ -2659,6 +2871,13 @@ async function exportOpts() {
     await reportReady();
     data = report.data;
   }
+  // Phase 34: the changes since a snapshot, painted on every plan sheet.
+  let diff = null, diffNote = '';
+  const sinceId = $('export-since').value;
+  if (sinceId) {
+    const cmp = await compareSnapshots(sinceId, 'now');
+    if (cmp) { diff = cmp.diff.marks; diffNote = cmp.note; }
+  }
   return {
     showDimensions: $('export-dims').checked,
     showAnnotations: $('export-anno').checked,
@@ -2677,7 +2896,23 @@ async function exportOpts() {
     wantsCode,
     wantsDay,
     spec: wantsSpec && data ? data.spec : null,
+    diff, diffNote,
   };
+}
+
+// The snapshots into the export dialog's "changes since" picker, each time it
+// opens — a snapshot taken a minute ago belongs in the list.
+async function fillExportSince() {
+  const sel = $('export-since');
+  const keep = sel.value;
+  let rows = [];
+  try {
+    const { snapshots } = await historyModules();
+    rows = await snapshots.listSnapshots();
+    sel.innerHTML = '<option value="">— nothing: the plan as it stands —</option>'
+      + rows.map((snap) => `<option value="${esc(snap.id)}">${esc(snap.name)} — ${esc(snapshots.whenLabel(snap.at))}</option>`).join('');
+  } catch { /* no history, no picker — the option that is already there is the honest one */ }
+  if (rows.some((r) => r.id === keep)) sel.value = keep;
 }
 
 // The plan options for one storey: the shared set, plus that storey's own
@@ -2711,7 +2946,7 @@ async function exportTrace() {
   return { overlay: state.overlay, image };
 }
 
-$('export-btn').addEventListener('click', () => openModal(exportOverlay));
+$('export-btn').addEventListener('click', () => { openModal(exportOverlay); fillExportSince(); });
 $('export-close').addEventListener('click', () => closeModal(exportOverlay));
 
 // Phase 37: the set. `sheetSet` decides which sheets exist and in what
@@ -5739,6 +5974,10 @@ function cmdkCommands() {
       run: () => fileOpen() },
     { name: 'Saved designs…', hint: 'Named designs kept in this browser',
       keys: [], run: () => $('designs-btn').click() },
+    { name: 'Take a snapshot…', hint: 'Keep this moment in the timeline under a name — "before the meeting"',
+      keys: [], run: () => { const n = prompt('Name this snapshot:', suggestSnapName()); if (n !== null) snapshotNow(n); } },
+    { name: 'History — what changed since…', hint: 'Browse the snapshots, restore one, compare any two',
+      keys: [], run: () => { $('designs-btn').click(); historyList.scrollIntoView({ block: 'nearest' }); } },
     { name: 'Export plans…', hint: 'Printable sheets — PNG, PDF, or the building as glTF',
       keys: [], run: () => $('export-btn').click() },
     { name: 'Share a link…', hint: 'The whole design in a URL, nothing uploaded',
@@ -8678,6 +8917,10 @@ window.app = {
   sessionStart, sessionLeave, sessionFlush, sendSnapshot,
   get collab() { return collab; },
   get peers() { return collab.roster ? collab.roster.list() : []; },
+  // --- Phase 34 ---
+  snapshotNow, restoreSnapshot, compareSnapshots, renderHistory,
+  get history() { return historyRows; },
+  get lastCompare() { return lastCompare; },
   // --- Phase 42 ---
   get analysisLoaded() { return !!analysis; },
   get netLoaded() { return !!net; },

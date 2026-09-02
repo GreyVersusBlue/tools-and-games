@@ -1125,6 +1125,49 @@
     }
     #designs-list .design-meta { font-size: var(--fs-sm); color: var(--text-dim); }
     #designs-list .design-row button { padding: 5px 8px; font-size: var(--fs-md); }
+    /* Phase 34: the timeline under the slots. */
+    #designs-overlay .section-label { margin-top: 4px; }
+    #history-list {
+      display: flex; flex-direction: column; gap: 6px;
+      max-height: 30vh; overflow-y: auto; margin-bottom: 10px;
+    }
+    #history-list .empty { font-size: var(--fs-lg); color: var(--text-dim); padding: 6px 2px; }
+    #history-list .snap-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 10px; border-radius: var(--r-md); background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--panel-border);
+    }
+    #history-list .snap-row .thumb {
+      width: 44px; height: 44px; flex: none; background: rgba(0, 0, 0, 0.25);
+      border-radius: var(--r-sm);
+    }
+    #history-list .snap-info { flex: 1; min-width: 0; }
+    #history-list .snap-name {
+      font-size: var(--fs-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #history-list .snap-meta { font-size: var(--fs-sm); color: var(--text-dim); }
+    #history-list .snap-row button { padding: 5px 8px; font-size: var(--fs-md); }
+    #designs-overlay .compare-row {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      font-size: var(--fs-md); color: var(--text-dim); margin-bottom: 10px;
+    }
+    #designs-overlay .compare-row label { display: flex; align-items: center; gap: 6px; }
+    #designs-overlay .compare-row select {
+      font: inherit; color: var(--text); background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--panel-border); border-radius: var(--r-sm); padding: 5px 7px;
+      max-width: 200px;
+    }
+    #history-diff { margin-bottom: 12px; }
+    #history-headline { font-size: var(--fs-lg); margin-bottom: 4px; }
+    #history-sentences {
+      margin: 0 0 8px; padding-left: 18px; font-size: var(--fs-md); color: var(--text-dim);
+      max-height: 22vh; overflow-y: auto;
+    }
+    #history-sentences li { margin: 2px 0; }
+    #history-preview img {
+      display: block; max-width: 100%; border-radius: var(--r-sm);
+      border: 1px solid var(--panel-border);
+    }
     #export-overlay label.opt {
       display: flex; align-items: center; gap: 8px; font-size: var(--fs-lg); padding: 5px 0; cursor: pointer;
     }
@@ -2594,6 +2637,28 @@
         <button id="designs-save-new" class="primary">Save Current</button>
       </div>
       <div id="designs-list"></div>
+      <!-- Phase 34: a history somebody else can read. Snapshots are whole
+           designs kept under a name in IndexedDB (js/snapshots.js) — never
+           in the file — and "what changed" is js/designdiff.js read out as
+           sentences, with the same marks printable on the sheet. -->
+      <div class="section-label">History — snapshots kept in this browser</div>
+      <div class="save-row">
+        <label for="history-new-name" class="visually-hidden">Name this snapshot</label>
+        <input id="history-new-name" type="text" maxlength="60" placeholder="Name this moment… (before the meeting)" />
+        <button id="history-snap" class="primary">Snapshot now</button>
+      </div>
+      <div id="history-list"></div>
+      <div class="compare-row">
+        <label>What changed since <select id="history-a" aria-label="Earlier snapshot"></select></label>
+        <label>as of <select id="history-b" aria-label="Later snapshot"></select></label>
+        <button id="history-compare">Compare</button>
+        <button id="history-print" disabled title="Every plan sheet, with the changes painted on it">🖨 Print the changes</button>
+      </div>
+      <div id="history-diff" class="hidden">
+        <div id="history-headline"></div>
+        <ul id="history-sentences"></ul>
+        <div id="history-preview"></div>
+      </div>
       <div class="row" style="display:flex; justify-content:flex-end;">
         <button id="designs-close">Close</button>
       </div>
@@ -2621,6 +2686,11 @@
       <label class="opt"><input type="checkbox" id="export-elev" checked /> Four elevations</label>
       <label class="opt"><input type="checkbox" id="export-code" /> Code panel in the title block</label>
       <label class="opt"><input type="checkbox" id="export-day" /> School-day panel in the title block</label>
+      <label class="opt">Changes since
+        <select id="export-since" aria-label="Paint the changes since a snapshot">
+          <option value="">— nothing: the plan as it stands —</option>
+        </select>
+      </label>
       <label class="opt"><input type="checkbox" id="export-spec" /> Specification sheet</label>
       <p class="hint">
         PNG downloads one image per sheet. Print / Save as PDF opens your

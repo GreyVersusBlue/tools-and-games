@@ -1,8 +1,8 @@
 # School Generator — Feature Wishlist
 
-**Status: forty-one phases are shipped and one is open — Phase 34,
-below; arc six is complete: Phases 37 through 42 have shipped, and Phase 34 —
-on Claude Fable 5 — is the next open phase.**
+**Status: every planned phase has shipped — forty-two of them, Phase 34
+last, on Claude Fable 5.1 — and no phase is open. The standing backlog is
+where the next one is pulled from.**
 Three arcs took a grid
 editor to a walkable, furnished, generated, priced, networked school; arc
 four built for the person handed the result; arc five for the building
@@ -62,7 +62,11 @@ the one writer, which used to be six) · `history.js` (an edit as a diff) ·
 `records.js` (Phase 42: the optional records on a design and who owns each —
 an owner registers itself when it loads, and the loader carries what nobody
 has claimed yet) · `save-load.js` (v12, one migration that ever changed a
-shape).
+shape) · `designdiff.js` (Phase 34: what changed between two designs — rooms
+by id, then by name; walls, furniture, links, site regions, storeys, the
+sheet and every design-wide record — as sentences a person can read and as
+marks the sheet paints) · `snapshots.js` (Phase 34: a design's named pasts,
+in IndexedDB beside the autosave and never in the file).
 
 What it derives: `navgraph.js` + `navmesh.js` (walkable surface as convex
 tiles, graph over it) · `sitemesh.js` (the same, over the outdoors) ·
@@ -1165,32 +1169,72 @@ recorder reads or it does not exist on the far side of Save As, and no
 amount of CSS fixes that. *Next open phase:* **34 — Claude Fable 5** (a
 differ over the save format, model-layer by definition).
 
-## Phase 34 — A history somebody else can read
+## Phase 34 — A history somebody else can read *(shipped)*
 
 **The file remembers everything and can answer nothing.**
 
 The fifth-arc note asked for this by name: a design has a history somebody
 else can read. Autosave holds exactly one past; undo holds one session's;
 and the question every real project asks — *what changed since Tuesday* —
-has no answer anywhere in the tool.
+had no answer anywhere in the tool.
 
-- [ ] **Named snapshots.** Save a version with a name into IndexedDB
-  beside the autosave, thumbnail from the canvas the share card already
-  draws.
-- [ ] **A timeline.** Browse the snapshots, preview one, restore one —
-  restoring is an edit, and undo undoes it.
-- [ ] **`designdiff.js`, pure, with its suite.** Two serialized designs
-  in; out, sentences a person can read — which rooms appeared, vanished,
-  grew or moved, walls and doors and stairs likewise — and a paintable
-  overlay set.
-- [ ] **The diff on the sheet.** Added in green, removed in red, changed
-  in amber, over the blueprint, between any two snapshots; printable,
-  because a drawing that changed is a drawing.
+- [x] **Named snapshots.** `snapshots.js`: the whole serialized design kept
+  under a name in IndexedDB beside the autosave (bakestore.js's contract,
+  meekly — every function resolves, and a browser with no storage answers
+  with a sentence), with the gallery's geometry thumbnail and its three
+  counted facts beside it. Forty of them, and the cap is a refusal with a
+  sentence, never a prune. "Take a snapshot…" in the palette, or the
+  Designs dialog.
+- [x] **A timeline.** Under the slots in the Designs dialog: every snapshot
+  newest first with its thumbnail, when it was taken and what it held;
+  restore, rename, delete. Restoring is an edit — it goes on the undo stack
+  exactly as loading a slot does, and the file session forgets its handle
+  so the next Ctrl+S cannot write one design over another.
+- [x] **`designdiff.js`, pure, with its suite.** Two designs in — as
+  `deserialize` returns them — and out come sentences ("Room 204 appeared —
+  640 ft², Level 2"; "Main Hall grew from 1,200 to 1,480 ft²"; "Art Room
+  renamed from Room 101, gained a door, was refinished"; "A stair was added
+  between Level 1 and Level 2"; "The roof changed") and a set of marks in
+  world feet on the storey each belongs to. Rooms match by id, then by name
+  for the leftovers, so a room erased and redrawn under its name is one
+  room that moved rather than two events; a new id and nothing else is not
+  a change anybody drew.
+- [x] **The diff on the sheet.** `drawDiff` in blueprint.js: added in
+  green, removed in red, changed in amber — a changed room with the outline
+  it had dashed inside the one it has — with a legend and the note ("since
+  Tuesday, 3:14 pm") at the top-left of the plan, under the labels. Between
+  any two snapshots from the timeline (a preview of the storey with the most
+  to show, and "Print the changes" for every storey touched), and on the
+  export dialog as "Changes since", which paints the current design's plan
+  sheets against any snapshot.
 
-*Leans on:* `save-load.js`, `blueprint.js`, `share.js`'s thumbnail.
-*Save:* none — snapshots are the save format stored beside itself.
-*Model:* **Claude Fable 5** — a differ over the save format is model-layer
-by definition.
+*Leans on:* `save-load.js`, `blueprint.js`, `gallery.js`'s thumbnail,
+`bakestore.js`'s IndexedDB contract. *Save:* none — snapshots are the save
+format stored beside itself, and a history is this browser's, never the
+file's. *Model:* **Claude Fable 5** was named; the phase ran on Claude
+Fable 5.1.
+
+*What fought back:* the matching rule, twice. Ids are stable across an edit
+and are the honest key — until a room is erased and redrawn under the same
+name, which the tool does every time somebody straightens a wall with the
+brush; matching leftovers by name was the fix, and the first cut of it then
+reported "Room 102 was redrawn" for a room whose only difference was its
+id, which is a change nobody made — a name-paired room with nothing else
+different is now nothing. The fixture caught the other half: two designs
+built separately reuse the same small ids, so a test that gave a new room
+the id an old room had read as a rename; the tool never does that (ids
+count past the highest ever used), and the fixture now says so. The
+"thumbnail from the canvas the share card already draws" in the plan turned
+out to be a canvas that no longer exists — Phase 30 replaced it with
+geometry (`planThumb`, `thumbPaths`), which is smaller, sharper and what
+the timeline uses. Suite 2099 green (thirteen new, across two new modules and
+one new blueprint test); the walk template rebuilt by its tool, since
+blueprint.js rides the bundle for the minimap; one visual baseline — the palette's — re-recorded on the pinned
+Chromium for its two new entries; one new tool check, which keeps a
+snapshot, draws a room, reads the change back as a sentence, restores the
+snapshot and undoes the restore. Both new modules arrive when the Designs
+dialog first opens, on Phase 42's terms, and the boot budget holds.
+No phase is open: the standing backlog is where the next one is pulled from.
 
 ## Phase 35 — The square you pointed at *(shipped)*
 
