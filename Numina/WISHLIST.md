@@ -95,7 +95,6 @@ hand-maintained duplication.
 
 ## Conventions a new builder must know
 
-
 - **A new top-level file in `Numina/` fails `npm test` until it is named.**
   `test/smoke.mjs`'s hygiene check holds an allowlist of everything that may
   sit beside the generated output; this file had to be added to it before CI
