@@ -83,7 +83,8 @@ import {
   addPhase, removePhase, movePhase, renamePhase, claimShared, assignRooms,
   phasingCSV, roomIdOf,
 } from './phasing.js';
-import { codeOf, normalizeCode, isDefaultCode, USES, buildingOccupancy } from './occupancy.js';
+import { USES, buildingOccupancy } from './occupancy.js';
+import { codeOf, normalizeCode, isDefaultCode } from './codes.js';
 import {
   buildTimetable, importTimetableCSV, timetableCSV, timetablePlan, timetableSummary,
   timetableIssues, normalizeTimetable, isEmptyTimetable, bindTimetable, roomPool, rollFor,
@@ -4527,6 +4528,9 @@ function findingHTML(f, i) {
   return `<div class="finding ${f.level}" data-finding="${i}">` +
     `<button type="button" aria-expanded="false">` +
     `<b>${esc(f.title)}</b><span class="why">${esc(f.detail)}</span>` +
+    // Phase 41: what the finding was measured against — the edition and its
+    // table, or the standard. Shown with the detail, never without it.
+    (f.cite ? `<span class="cite">${esc(f.cite)}</span>` : '') +
     `</button>` +
     (goable
       ? `<button type="button" class="goto" data-goto="${i}">⌖ Show it on the plan</button>`
@@ -4601,9 +4605,15 @@ function reportSections(r) {
   const row = (a, b) => `<div class="row"><span>${a}</span><span>${b}</span></div>`;
 
   const uses = r.occupancy.byUse.filter((u) => u.occ > 0).slice(0, 4);
+  // Phase 41: the range beside the point when any room was counted at a
+  // guess — "437 (380–560)" — and the edition every number below was read
+  // against, said once at the top.
+  const spread = r.summary.occupantsHigh > r.summary.occupantsLow
+    ? ` <span class="dim">(${r.summary.occupantsLow}–${r.summary.occupantsHigh})</span>` : '';
   sec('Occupancy', [
-    row(`<b>${r.summary.occupants}</b> occupants`, `${ft(r.summary.area)} ft²`),
+    row(`<b>${r.summary.occupants}</b>${spread} occupants`, `${ft(r.summary.area)} ft²`),
     ...uses.map((u) => row(esc(u.label), `<b>${u.occ}</b>`)),
+    row('Read against', `${esc(r.editionLabel)} · ${r.sprinklered ? 'sprinklered' : 'unsprinklered'}`),
   ]);
 
   const e = r.egress.summary;
@@ -4617,6 +4627,10 @@ function reportSections(r) {
     r.egress.deadEnds.length
       ? row('Deepest dead end', `<b>${ft(r.egress.deadEnds[0].depth)} ft</b> / ${r.egress.limits.deadEnd}`)
       : row('Dead ends', 'none'),
+    // Phase 41: the walk to a choice, measured per room rather than assumed.
+    e.commonPath
+      ? row('Longest common path', `<b>${ft(e.commonPath.common)} ft</b> / ${r.egress.limits.commonPath}`)
+      : row('Common path', '—'),
     // The half of the walk that used to stop at the threshold. No limit
     // against it, because the code sets no number for it — but a panel that
     // quotes a travel distance and says nothing about the car park after the
@@ -4649,6 +4663,11 @@ function reportSections(r) {
       ? `<span class="warn">${d.dark} under</span>` : 'all over'),
     row('Rooms over the ANSI reverb limit',
       r.acoustics.summary.over ? `<b>${r.acoustics.summary.over}</b>` : 'none'),
+    // ...and the ones the coefficients' range cannot clear: over at the
+    // reflective end of every table, under at the absorptive one.
+    r.acoustics.summary.maybe
+      ? row('Could be over, by the range', `<span class="warn">${r.acoustics.summary.maybe}</span>`)
+      : '',
   ]);
 
   if (r.structure && r.summary.storeys > 1) {

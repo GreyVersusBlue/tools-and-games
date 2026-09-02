@@ -35,6 +35,14 @@
 // space holds fifty. A school is a sprinklered building unless somebody says
 // otherwise, so that is the default.
 //
+// **Since Phase 41 every one of those numbers is read off `codes.js`** for
+// the edition the design stores, and every finding below carries the edition
+// and the table it was measured against — never a number without its
+// provenance. The constants this file still exports are the default
+// edition's, for a caller with no edition in hand; the analysis itself asks
+// the edition. The same phase retired the one constant nothing measured: the
+// common path is walked per room now, on the graph, by `commonpath.js`.
+//
 // Pure module: no three.js, no DOM. Exercised by test/egress.test.mjs.
 
 import { floorLabel } from './grid.js';
@@ -44,30 +52,44 @@ import {
   buildNav, egressField, pointField, dischargeField, dischargePath,
 } from './navgraph.js';
 import {
-  clearWidth, MIN_CLEAR_W, doorRolls, rampRolls, turningAnalysis, reachAnalysis,
+  clearWidth, doorRolls, rampRolls, turningAnalysis, reachAnalysis,
 } from './clearance.js';
 import { rampSlope } from './stairs.js';
 import { ACCESSIBLE_GRADE, MAX_RAMP_GRADE, pathGrade } from './sitemesh.js';
 import { terrainField } from './terrain.js';
 import { buildingOccupancy } from './occupancy.js';
+import {
+  editionOf, editionEntry, limitsOf, exitsRequired, widthRequired, citeFor, codeOf,
+  DEFAULT_EDITION,
+} from './codes.js';
+import { commonPathAnalysis } from './commonpath.js';
+import { isSpread, fmtRange } from './range.js';
 import { catalogEntry as defaultCatalogEntry } from './catalog.js';
 
 // ---------- the code, as numbers ----------
-
+//
+// The default edition's, named the way this file has named them since Phase
+// 7 so a caller that wants "the travel limit" without a design in hand still
+// has one. Nothing below reads these: the analysis reads the edition it was
+// handed, and these are that edition's table when nobody handed it one.
+const D = editionEntry(DEFAULT_EDITION);
 // IBC Table 1017.2 — exit access travel distance, Group E.
-export const TRAVEL_LIMIT = { sprinklered: 250, plain: 200 };   // ft
-// IBC 1020.4 — dead-end corridors.
-export const DEAD_END_LIMIT = { sprinklered: 50, plain: 20 };   // ft
+export const TRAVEL_LIMIT = D.travel;                           // ft
+// IBC 1020 — dead-end corridors.
+export const DEAD_END_LIMIT = D.deadEnd;                        // ft
 // IBC Table 1006.2.1 — common path of egress travel, Group E.
-export const COMMON_PATH = 75;                                  // ft
+export const COMMON_PATH = D.commonPath.sprinklered;            // ft
 // IBC 1005.3 — capacity per occupant, in inches of clear width.
-export const LEVEL_IN_PER_OCC = 0.2;
-export const STAIR_IN_PER_OCC = 0.3;
-// IBC 1010.1.1 / 1011.2 — the narrowest thing that counts as a way out.
-export const MIN_EXIT_CLEAR = MIN_CLEAR_W;      // ft, 32in
-export const MIN_EGRESS_STAIR_W = 44 / 12;      // ft — a stair serving 50+
+export const LEVEL_IN_PER_OCC = D.widthPerOcc.level;
+export const STAIR_IN_PER_OCC = D.widthPerOcc.stair;
+// IBC 1010.1.1 / 1011.2 — the narrowest thing that counts as a way out. The
+// first is the same 32in `clearance.js` asks of a doorway for a chair, and
+// the table carries the same number: two rules that happen to agree, each
+// cited from its own source.
+export const MIN_EXIT_CLEAR = D.minExitClear;    // ft, 32in
+export const MIN_EGRESS_STAIR_W = D.minEgressStairW;   // ft — a stair serving 50+
 // IBC 1006.2.1 — one way out is enough up to this many people in one room.
-export const SINGLE_EXIT_OCC = 49;
+export const SINGLE_EXIT_OCC = D.singleExitOcc;
 // IBC 1028 — the exit discharge is the part of the way out that runs from the
 // exit to the public way, and it is not the part the travel limit is about.
 // There is no single number in the code for how long it may be, so this is not
@@ -76,25 +98,16 @@ export const SINGLE_EXIT_OCC = 49;
 // than as a failure.
 export const DISCHARGE_NOTE = 200;              // ft
 
-// How many ways out a given occupant load needs (IBC 1006.3.2).
-export function requiredExits(occ) {
-  if (occ > 1000) return 4;
-  if (occ > 500) return 3;
-  if (occ > SINGLE_EXIT_OCC) return 2;
-  return 1;
+// How many ways out a given occupant load needs (IBC 1006.3), under an
+// edition — the default's when none is given.
+export function requiredExits(occ, edition = null) {
+  return exitsRequired(editionOf(edition), occ);
 }
 
 // The clear width that many people need, in feet.
 export function requiredWidth(occ, opts = {}) {
-  const per = opts.stair ? STAIR_IN_PER_OCC : LEVEL_IN_PER_OCC;
-  return (occ * per) / 12;
+  return widthRequired(editionOf(opts.edition), occ, opts);
 }
-
-const limitsFor = (sprinklered) => ({
-  travel: sprinklered ? TRAVEL_LIMIT.sprinklered : TRAVEL_LIMIT.plain,
-  deadEnd: sprinklered ? DEAD_END_LIMIT.sprinklered : DEAD_END_LIMIT.plain,
-  commonPath: COMMON_PATH,
-});
 
 // ---------- how far it is across a room ----------
 
@@ -177,7 +190,7 @@ function worstTravel(nav, field, samples, room) {
 
 // One room's egress: how far out, by which door, and whether the doors it has
 // are enough for the people in it.
-function roomEgress(nav, field, samples, room, load, limits) {
+function roomEgress(nav, field, samples, room, load, limits, edition) {
   const hub = field.dist.get(room.id);
   const far = farthestFrom(samples, room.id, room);
   const doors = portalsOn(nav, room.id);
@@ -208,8 +221,8 @@ function roomEgress(nav, field, samples, room, load, limits) {
     doorWidth,
     // A room holding more than fifty people needs a second way out of it, and
     // a room's doors have to be wide enough for the people behind them.
-    needsTwo: occ > SINGLE_EXIT_OCC && doors.length < 2,
-    narrow: occ > 0 && doors.length > 0 && doorWidth < requiredWidth(occ),
+    needsTwo: occ > edition.singleExitOcc && doors.length < 2,
+    narrow: occ > 0 && doors.length > 0 && doorWidth < widthRequired(edition, occ),
     doorless: occ > 0 && doors.length === 0 && linksOn(nav, room.id).length === 0,
   };
 }
@@ -240,7 +253,7 @@ function deadEnds(nav, field, samples, loads, limits) {
 }
 
 // The exits themselves, priced by width rather than counted.
-function exitRows(nav) {
+function exitRows(nav, edition) {
   return nav.exits.map((p) => {
     const clear = clearWidth(p.w);
     return {
@@ -250,14 +263,14 @@ function exitRows(nav) {
       w: p.w,
       clear,
       // What that hole is worth in people, at 0.2in each.
-      capacity: Math.floor((clear * 12) / LEVEL_IN_PER_OCC),
-      narrow: clear < MIN_EXIT_CLEAR,
+      capacity: Math.floor((clear * 12) / edition.widthPerOcc.level),
+      narrow: clear < edition.minExitClear,
     };
   }).sort((a, b) => b.clear - a.clear);
 }
 
 // The vertical half of the same sum: what carries the upper storeys down.
-function stairRows(state) {
+function stairRows(state, edition) {
   const rows = [];
   for (const link of stairsOf(state)) {
     if (isElevator(link)) {
@@ -275,8 +288,8 @@ function stairRows(state) {
     rows.push({
       id: link.id, type: link.type, from: link.from, to: link.to,
       w,
-      capacity: Math.floor((w * 12) / STAIR_IN_PER_OCC),
-      narrow: link.type === 'stair' && w < MIN_EGRESS_STAIR_W,
+      capacity: Math.floor((w * 12) / edition.widthPerOcc.stair),
+      narrow: link.type === 'stair' && w < edition.minEgressStairW,
       egress: true,
     });
   }
@@ -304,6 +317,7 @@ function stairRows(state) {
 // the model can honestly make out of a heightfield it already had.
 export function dischargeAnalysis(state, opts = {}) {
   const nav = opts.nav || buildNav(state);
+  const edition = editionOf(opts.edition, state);
   const field = opts.discharge || dischargeField(nav);
   const yard = nav.yard;
   const site = opts.siteField || terrainField(state);
@@ -352,16 +366,22 @@ export function dischargeAnalysis(state, opts = {}) {
     area: yard ? yard.tiles.reduce((a, t) => a + t.area, 0) : 0,
     tiles: yard ? yard.tiles.length : 0,
   };
-  return { nav, field, rows, summary, findings: dischargeFindings({ rows, summary }) };
+  return {
+    nav, field, rows, summary,
+    edition: edition.key,
+    findings: dischargeFindings({ rows, summary, edition }),
+  };
 }
 
-function dischargeFindings({ rows, summary }) {
+function dischargeFindings({ rows, summary, edition }) {
   const out = [];
   if (!rows.length) return out;
+  const ibc = citeFor(edition, 'discharge');
   if (summary.rule === 'none') {
     out.push(finding('note', 'discharge-unknown', 'Nowhere to discharge to',
       'The site has no ground around the building that reaches its own ' +
-      'boundary, so there is nothing to measure the walk from the doors to.'));
+      'boundary, so there is nothing to measure the walk from the doors to.',
+      { cite: ibc }));
     return out;
   }
   const stranded = rows.filter((r) => !r.reaches);
@@ -372,7 +392,7 @@ function dischargeFindings({ rows, summary }) {
       'planting bed, a bank too steep to walk, or a courtyard with the ' +
       'building all the way round it. A door that opens into an enclosure is ' +
       'not an exit.',
-      { doors: stranded.slice(0, 8) }));
+      { doors: stranded.slice(0, 8), cite: ibc }));
   }
   const impassable = rows.filter((r) => r.impassable);
   const steep = rows.filter((r) => r.steep && !r.impassable);
@@ -382,14 +402,14 @@ function dischargeFindings({ rows, summary }) {
       `The steepest is ${pct(impassable[0].grade)} — beyond what may be built ` +
       'as a ramp at all, so this part of the site needs steps and a separate ' +
       'accessible route round it.',
-      { doors: impassable.slice(0, 8) }));
+      { doors: impassable.slice(0, 8), cite: ADA.ramp }));
   } else if (steep.length) {
     out.push(finding('warn', 'discharge-grade',
       `${steep.length} discharge route${steep.length === 1 ? '' : 's'} steeper than 1:20`,
       `${pct(steep[0].grade)} at the worst. Past 1:20 a walking surface is a ` +
       'ramp, and a ramp needs handrails, level landings and edge protection ' +
       'that nothing in this design draws yet.',
-      { doors: steep.slice(0, 8) }));
+      { doors: steep.slice(0, 8), cite: ADA.surface }));
   }
   if (summary.worst && summary.worst.long) {
     out.push(finding('note', 'discharge-distance',
@@ -397,22 +417,28 @@ function dischargeFindings({ rows, summary }) {
       `From that door it is ${ft(summary.worst.dist)} over the ground to the ` +
       `${summary.rule === 'paved' ? 'paving that reaches the boundary' : 'edge of the site'}. ` +
       'The code sets no limit on it, but it is the part of the way out that is ' +
-      'usually drawn as an arrow and never measured.'));
+      'usually drawn as an arrow and never measured.', { cite: ibc }));
   }
   if (!out.length && summary.worst) {
     out.push(finding('ok', 'discharge',
       `Every exit reaches the public way, the farthest in ${ft(summary.worst.dist)}`,
       `Measured over the site to the ${summary.rule === 'paved' ? 'paving at the boundary' : 'edge of the site'}, ` +
-      `at no more than ${pct(summary.worst.grade)} on the way.`));
+      `at no more than ${pct(summary.worst.grade)} on the way.`, { cite: ibc }));
   }
   return out;
 }
 
 export function egressAnalysis(state, opts = {}) {
   const nav = opts.nav || buildNav(state);
-  const occupancy = opts.occupancy || buildingOccupancy(state, { nav });
-  const sprinklered = opts.sprinklered !== false;
-  const limits = limitsFor(sprinklered);
+  // Which edition, and wet or dry: the design's own answers unless the
+  // caller is asking a hypothetical. A reader called on its own applies the
+  // file's edition, which is what makes the sheet's sentence true.
+  const edition = editionOf(opts.edition, state);
+  const sprinklered = opts.sprinklered === undefined
+    ? codeOf(state).sprinklered
+    : opts.sprinklered !== false;
+  const occupancy = opts.occupancy || buildingOccupancy(state, { nav, edition });
+  const limits = limitsOf(edition, sprinklered);
   // Measured in feet, not in routing cost: a stair charged at 1.7× is the
   // right way to *choose* a route and the wrong way to report how long it is.
   const field = opts.field || egressField(nav, { metric: true });
@@ -420,11 +446,17 @@ export function egressAnalysis(state, opts = {}) {
   const loads = new Map(occupancy.rooms.map((r) => [r.id, r]));
 
   const rooms = nav.rooms
-    .map((r) => roomEgress(nav, field, samples, r, loads.get(r.id), limits))
+    .map((r) => roomEgress(nav, field, samples, r, loads.get(r.id), limits, edition))
     .sort((a, b) => (b.reached ? b.travel : -1) - (a.reached ? a.travel : -1));
 
-  const exits = exitRows(nav);
-  const stairs = stairRows(state);
+  // Phase 41: the walk to a choice, per room, on the graph — the constant
+  // nothing measured, retired. Switched off with the rest of the slow half.
+  const common = opts.commonPath === false
+    ? null
+    : commonPathAnalysis(nav, { samples, limit: limits.commonPath });
+
+  const exits = exitRows(nav, edition);
+  const stairs = stairRows(state, edition);
   const total = occupancy.total;
   const capacity = exits.reduce((n, e) => n + e.capacity, 0);
   // IBC 1005.5: losing any one exit must not cost more than half the required
@@ -439,15 +471,27 @@ export function egressAnalysis(state, opts = {}) {
   // only the first half of it will draw the arrow and never measure it.
   const discharge = opts.discharge === false
     ? null
-    : dischargeAnalysis(state, { nav, siteField: opts.siteField });
+    : dischargeAnalysis(state, { nav, siteField: opts.siteField, edition });
+
+  // The occupant load as a range, when any room was counted at a guess. The
+  // checks below are made at the point estimate, as they always were; the
+  // range is what the findings say beside it, and one of them says when the
+  // high end would change an answer.
+  const low = Number.isFinite(occupancy.low) ? occupancy.low : total;
+  const high = Number.isFinite(occupancy.high) ? occupancy.high : total;
 
   const summary = {
+    edition: edition.key,
+    editionLabel: edition.label,
     sprinklered,
     limits,
     occupants: total,
+    occupantsLow: low,
+    occupantsHigh: high,
     upper: occupancy.upper,
     exits: exits.length,
-    exitsRequired: requiredExits(total),
+    exitsRequired: exitsRequired(edition, total),
+    exitsRequiredHigh: exitsRequired(edition, high),
     capacity,
     capacityRequired: total,
     redundant: exits.length > 1 && capacity - worstLoss >= total / 2,
@@ -455,6 +499,9 @@ export function egressAnalysis(state, opts = {}) {
     stairsRequired: occupancy.upper,
     unreachable: rooms.filter((r) => !r.reached && r.occ > 0).length,
     worst: rooms.find((r) => r.reached) || null,
+    // The longest walk to a choice, and how many rooms are past the limit.
+    commonPath: common ? common.summary.worst : null,
+    commonOver: common ? common.summary.over : 0,
     // The farthest anybody walks from where they are standing to the public
     // way: the worst room's travel plus the discharge from the door it leaves
     // by. Not a code number — the two halves are measured against different
@@ -469,14 +516,17 @@ export function egressAnalysis(state, opts = {}) {
 
   return {
     nav, field, limits, sprinklered,
+    edition: edition.key,
+    editionLabel: edition.label,
     rooms,
     exits,
     stairs,
     discharge,
+    common,
     deadEnds: deadEnds(nav, field, samples, loads, limits),
     summary,
     findings: [
-      ...egressFindings({ rooms, exits, stairs, summary }),
+      ...egressFindings({ rooms, exits, stairs, summary, common, edition, occupancy }),
       ...(discharge ? discharge.findings : []),
     ],
   };
@@ -498,7 +548,7 @@ export function egressAnalysis(state, opts = {}) {
 export function accessibleAnalysis(state, opts = {}) {
   const nav = opts.nav || buildNav(state);
   const accessNav = opts.accessNav || buildNav(state, { accessible: true });
-  const occupancy = opts.occupancy || buildingOccupancy(state, { nav });
+  const occupancy = opts.occupancy || buildingOccupancy(state, { nav, edition: opts.edition });
   const catalogGet = opts.catalogGet || defaultCatalogEntry;
   const loads = new Map(occupancy.rooms.map((r) => [r.id, r]));
   const walking = opts.field || egressField(nav, { metric: true });
@@ -591,17 +641,30 @@ export function accessibleAnalysis(state, opts = {}) {
 const finding = (level, code, title, detail, extra = {}) =>
   ({ level, code, title, detail, ...extra });
 
+// The accessible route is measured against the ADA Standards rather than the
+// building code's edition, and its findings say so — the same provenance
+// rule, a different source.
+const ADA = {
+  entrance: 'ADA 2010 · §206.4',
+  route: 'ADA 2010 · §206.2',
+  door: 'ADA 2010 · §404.2.3',
+  ramp: 'ADA 2010 · §405.2',
+  surface: 'ADA 2010 · §403.3',
+};
+
 const ft = (n) => `${Math.round(n)} ft`;
 const pct = (n) => `${(n * 100).toFixed(1)}%`;
 const inches = (n) => `${(n * 12).toFixed(0)} in`;
 const roomName = (r) => r.name || (r.floor !== undefined ? `an unnamed room on ${floorLabel(r.floor)}` : 'an unnamed room');
 
-function egressFindings({ rooms, exits, stairs, summary }) {
+function egressFindings({ rooms, exits, stairs, summary, common, edition, occupancy }) {
   const out = [];
+  const cite = (rule) => citeFor(edition, rule);
   if (!exits.length) {
     out.push(finding('fail', 'no-exits', 'No way out',
       'Nothing on the ground floor opens to the outside. Every room in this ' +
-      'design is sealed in, and a fire drill would strand all of it.'));
+      'design is sealed in, and a fire drill would strand all of it.',
+      { cite: cite('exits') }));
     return out;
   }
 
@@ -612,7 +675,7 @@ function egressFindings({ rooms, exits, stairs, summary }) {
       `${stranded.slice(0, 4).map(roomName).join(', ')}` +
       `${stranded.length > 4 ? `, and ${stranded.length - 4} more` : ''} — ` +
       'no doorway, stair or ramp joins them to a way out.',
-      { rooms: stranded.slice(0, 8) }));
+      { rooms: stranded.slice(0, 8), cite: cite('travel') }));
   }
 
   const over = rooms.filter((r) => r.over);
@@ -623,11 +686,36 @@ function egressFindings({ rooms, exits, stairs, summary }) {
       `${roomName(worst)} is ${ft(worst.travel)} from the nearest exit — the ` +
       `limit is ${ft(summary.limits.travel)}${summary.sprinklered ? ' with sprinklers' : ' unsprinklered'}. ` +
       'Another exterior door in that wing is the usual answer.',
-      { rooms: over.slice(0, 8) }));
+      { rooms: over.slice(0, 8), cite: cite('travel') }));
   } else if (summary.worst) {
     out.push(finding('ok', 'travel-distance', 'Travel distances are within the limit',
       `The farthest anybody walks is ${ft(summary.worst.travel)} from ` +
-      `${roomName(summary.worst)}, against a ${ft(summary.limits.travel)} limit.`));
+      `${roomName(summary.worst)}, against a ${ft(summary.limits.travel)} limit.`,
+      { cite: cite('travel') }));
+  }
+
+  // Phase 41: the common path, measured. A room whose walk to a choice is
+  // past the limit needs a second exit access doorway — the same rule as
+  // "over fifty with one door" below, from the other column of the table.
+  if (common) {
+    const far = common.rows.filter((r) => r.over);
+    if (far.length) {
+      const w = far[0];
+      const where = w.toExit
+        ? 'the whole walk to its one exit is common'
+        : `the ways out first part at ${w.at && w.at.kind === 'portal' ? 'a doorway' : 'a point'} ${ft(w.common)} away`;
+      out.push(finding('warn', 'common-path',
+        `${far.length} room${far.length === 1 ? ' has' : 's have'} a common path over ${ft(common.summary.limit)}`,
+        `${roomName(w)} walks ${ft(w.common)} before there are two separate ways ` +
+        `out — ${where}. A second exit access doorway from that end of the plan, ` +
+        'or a second stair, is what shortens it.',
+        { rooms: far.slice(0, 8), cite: cite('commonPath') }));
+    } else if (common.summary.worst) {
+      out.push(finding('ok', 'common-path', `Every common path is under ${ft(common.summary.limit)}`,
+        `The longest walk before a choice is ${ft(common.summary.worst.common)}, from ` +
+        `${roomName(common.summary.worst)}.`,
+        { cite: cite('commonPath') }));
+    }
   }
 
   if (exits.length < summary.exitsRequired) {
@@ -635,18 +723,31 @@ function egressFindings({ rooms, exits, stairs, summary }) {
       `${summary.occupants} occupants need ${summary.exitsRequired} exits`,
       `This design has ${exits.length}. Exits have to be remote from one ` +
       'another, so the second one belongs at the far end of the plan rather ' +
-      'than beside the first.'));
+      'than beside the first.', { cite: cite('exits') }));
+  } else if (summary.exitsRequiredHigh > summary.exitsRequired && exits.length < summary.exitsRequiredHigh) {
+    // The point estimate passes and the high end of the range would not:
+    // the answer depends on what the unnamed rooms turn out to be.
+    const n = occupancy && occupancy.narrows;
+    out.push(finding('note', 'exit-count-range',
+      `${summary.exitsRequiredHigh} exits if the unnamed rooms fill up`,
+      `The occupant load is ${fmtRange({ low: summary.occupantsLow, high: summary.occupantsHigh })} ` +
+      `depending on what the unnamed rooms are; at the high end this design's ` +
+      `${exits.length} exit${exits.length === 1 ? '' : 's'} ${exits.length === 1 ? 'is' : 'are'} ` +
+      `${summary.exitsRequiredHigh - exits.length} short.` +
+      (n ? ` Naming ${n.name || `the ${Math.round(n.area)} ft² room on ${floorLabel(n.floor)}`} narrows it most.` : ''),
+      { rooms: n ? [n] : [], cite: cite('exits') }));
   }
 
   if (summary.capacity < summary.capacityRequired) {
     out.push(finding('fail', 'exit-capacity', 'The exits are too narrow for the occupant load',
-      `${summary.occupants} occupants need ${inches(requiredWidth(summary.occupants))} ` +
+      `${summary.occupants} occupants need ${inches(widthRequired(edition, summary.occupants))} ` +
       `of clear exit width; the doors provide ${inches(exits.reduce((n, e) => n + e.clear, 0))}, ` +
-      `which carries ${summary.capacity}.`));
+      `which carries ${summary.capacity}.`, { cite: cite('width') }));
   } else if (exits.length > 1 && !summary.redundant) {
     out.push(finding('warn', 'exit-redundancy', 'One exit is carrying too much of the load',
       'Lose the widest door and what is left is under half the required ' +
-      'capacity. Codes size exits so that any one of them can be the one on fire.'));
+      'capacity. Codes size exits so that any one of them can be the one on fire.',
+      { cite: cite('width') }));
   }
 
   const narrowExits = exits.filter((e) => e.narrow);
@@ -658,7 +759,7 @@ function egressFindings({ rooms, exits, stairs, summary }) {
       // Carried so that a reader with a plan in front of it can point at
       // *that* door rather than go looking for it. Phase 10's minimap draws
       // them; the panel has always been able to and never had them.
-      { doors: narrowExits.slice(0, 8) }));
+      { doors: narrowExits.slice(0, 8), cite: cite('exitWidth') }));
   }
 
   const twoWays = rooms.filter((r) => r.needsTwo);
@@ -666,8 +767,8 @@ function egressFindings({ rooms, exits, stairs, summary }) {
     out.push(finding('warn', 'second-door',
       `${twoWays.length} room${twoWays.length === 1 ? '' : 's'} over 50 occupants with one door`,
       `${twoWays.slice(0, 3).map((r) => `${roomName(r)} (${r.occ})`).join(', ')} — ` +
-      'a space holding more than fifty people needs two ways out of it.',
-      { rooms: twoWays.slice(0, 8) }));
+      `a space holding more than ${edition.singleExitOcc} people needs two ways out of it.`,
+      { rooms: twoWays.slice(0, 8), cite: cite('singleExit') }));
   }
 
   const narrowRooms = rooms.filter((r) => r.narrow);
@@ -676,7 +777,7 @@ function egressFindings({ rooms, exits, stairs, summary }) {
       `${narrowRooms.length} room${narrowRooms.length === 1 ? '' : 's'} with doors too narrow for the people in them`,
       `${roomName(narrowRooms[0])} holds ${narrowRooms[0].occ} and offers ` +
       `${inches(narrowRooms[0].doorWidth)} of clear door.`,
-      { rooms: narrowRooms.slice(0, 8) }));
+      { rooms: narrowRooms.slice(0, 8), cite: cite('width') }));
   }
 
   const climbing = stairs.filter((s) => s.egress);
@@ -684,24 +785,30 @@ function egressFindings({ rooms, exits, stairs, summary }) {
     if (!climbing.length) {
       out.push(finding('fail', 'no-stairs', 'Upper storeys with no stair or ramp',
         `${summary.upper} occupants are above the ground floor with nothing to ` +
-        'walk down. A lift is not an exit.'));
+        'walk down. A lift is not an exit.', { cite: cite('exits') }));
     } else if (summary.stairCapacity < summary.upper) {
       out.push(finding('warn', 'stair-capacity', 'The stairs are narrow for the upper floors',
         `${summary.upper} occupants above ground need ` +
-        `${inches((summary.upper * STAIR_IN_PER_OCC) / 12)} of stair width at 0.3 in each; ` +
-        `there is ${inches(climbing.reduce((n, s) => n + s.w, 0))}.`));
+        `${inches(widthRequired(edition, summary.upper, { stair: true }))} of stair width at ` +
+        `${edition.widthPerOcc.stair} in each; there is ${inches(climbing.reduce((n, s) => n + s.w, 0))}.`,
+        { cite: cite('width') }));
     }
     const narrowStairs = climbing.filter((s) => s.narrow);
     if (narrowStairs.length) {
       out.push(finding('note', 'stair-width',
-        `${narrowStairs.length} stair${narrowStairs.length === 1 ? '' : 's'} under 44 in wide`,
-        'A stair serving fifty people or more is 44 in minimum.'));
+        `${narrowStairs.length} stair${narrowStairs.length === 1 ? '' : 's'} under ${inches(edition.minEgressStairW)} wide`,
+        `A stair serving fifty people or more is ${inches(edition.minEgressStairW)} minimum.`,
+        { cite: cite('stairWidth') }));
     }
   }
 
   if (!out.some((f) => f.level === 'fail')) {
+    const load = isSpread({ low: summary.occupantsLow, high: summary.occupantsHigh })
+      ? `${summary.occupants} (${fmtRange({ low: summary.occupantsLow, high: summary.occupantsHigh })} counting the unnamed rooms)`
+      : `${summary.occupants}`;
     out.push(finding('ok', 'exits', `${exits.length} ways out, carrying ${summary.capacity}`,
-      `The occupant load is ${summary.occupants}, and every room reaches a door.`));
+      `The occupant load is ${load}, and every room reaches a door.`,
+      { cite: cite('width') }));
   }
   return out;
 }
@@ -711,12 +818,12 @@ function accessibleFindings({ rooms, entrances, summary, narrowDoors, steepRamps
   if (!entrances.length) {
     out.push(finding('fail', 'no-accessible-entrance', 'No accessible entrance',
       'Every exterior door is under 3 ft wide, so nothing here can be entered ' +
-      'in a wheelchair.'));
+      'in a wheelchair.', { cite: ADA.entrance }));
   }
   if (summary.storeys > 1 && !summary.lifts && !summary.ramps) {
     out.push(finding('fail', 'no-lift', 'Upper storeys with no lift or ramp',
       'A stair is the only way up, which puts every room above the ground ' +
-      'floor off the accessible route.'));
+      'floor off the accessible route.', { cite: ADA.route }));
   }
   if (rooms.length) {
     const occupied = rooms.filter((r) => r.occ > 0);
@@ -724,10 +831,10 @@ function accessibleFindings({ rooms, entrances, summary, narrowDoors, steepRamps
       `${rooms.length} space${rooms.length === 1 ? '' : 's'} reachable only by stairs`,
       `${rooms.slice(0, 4).map((r) => r.name || `an unnamed room on ${floorLabel(r.floor)}`).join(', ')}` +
       `${rooms.length > 4 ? `, and ${rooms.length - 4} more` : ''}.`,
-      { rooms: rooms.slice(0, 8) }));
+      { rooms: rooms.slice(0, 8), cite: ADA.route }));
   } else if (entrances.length) {
     out.push(finding('ok', 'accessible-route', 'Every room is on an accessible route',
-      'No room in this design needs a stair to reach it.'));
+      'No room in this design needs a stair to reach it.', { cite: ADA.route }));
   }
   if (narrowDoors.length) {
     out.push(finding('note', 'narrow-doors',
@@ -735,7 +842,7 @@ function accessibleFindings({ rooms, entrances, summary, narrowDoors, steepRamps
       'A 3 ft leaf is the narrowest door that leaves 32 in clear with the ' +
       'leaf open, which is what a wheelchair needs; a pair is measured at one ' +
       'leaf, so a pair wants 6 ft, and a cased opening wants the 32 in itself.',
-      { doors: narrowDoors.slice(0, 8).map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w })) }));
+      { doors: narrowDoors.slice(0, 8).map((p) => ({ id: p.id, floor: p.floor, x: p.x, z: p.z, w: p.w })), cite: ADA.door }));
   }
   if (steepRamps.length) {
     const s = steepRamps.map((l) => rampSlope(l)).sort((a, b) => a - b)[0];
@@ -744,7 +851,7 @@ function accessibleFindings({ rooms, entrances, summary, narrowDoors, steepRamps
       `The steepest is 1:${Math.round(s)}. A chair climbs 1:12 at most (ADA 405.2), so ` +
       'these are off the accessible route and what they lead to counts as stairs-only. ' +
       'A longer run at 1:12 — or a lift — is the answer.',
-      { doors: steepRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })) }));
+      { doors: steepRamps.slice(0, 8).map((l) => ({ id: l.id, floor: l.from, x: l.x, z: l.z, w: 0 })), cite: ADA.ramp }));
   }
   return out;
 }

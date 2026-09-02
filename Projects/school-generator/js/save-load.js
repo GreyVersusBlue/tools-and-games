@@ -120,7 +120,7 @@ import {
   CELL, FLOOR_H, MAX_FLOORS, MIN_CELLS, MAX_CELLS, createFloor, createState,
 } from './grid.js';
 import { EDGE_KINDS, createLattice, bake } from './lattice.js';
-import { normalizeCode, isDefaultCode } from './occupancy.js';
+import { normalizeCode, isDefaultCode } from './codes.js';
 import { normalizeProp, normalizeLink, reseedIds, MAX_PROPS, MAX_LINKS } from './props.js';
 import { normalizeShape, MAX_SHAPES } from './shapes.js';
 import { normalizeWallLines } from './wallrun.js';

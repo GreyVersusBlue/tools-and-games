@@ -22,6 +22,7 @@ import {
   DISCHARGE_NOTE,
 } from '../js/egress.js';
 import { addRegion } from '../js/site.js';
+import { editionEntry, DEFAULT_EDITION } from '../js/codes.js';
 import { ensureTerrain, raiseTerrain } from '../js/terrain.js';
 import { ACCESSIBLE_GRADE, MAX_RAMP_GRADE } from '../js/sitemesh.js';
 
@@ -444,4 +445,88 @@ test('the note about a long discharge is a note, because no code sets a limit', 
   const r = dischargeAnalysis(s);
   const long = find(r.findings, 'discharge-distance');
   if (long) assert.equal(long.level, 'note');
+});
+
+// ---------- Phase 41: the edition, applied; the common path, measured ----------
+
+test('a hypothetical edition changes the egress numbers, so the sheet\'s "applied" is true', () => {
+  const s = corridorSchool({ len: 40 });
+  const base = egressAnalysis(s);
+  const e = editionEntry(DEFAULT_EDITION);
+  const strict = {
+    ...e, key: 'test', label: 'Test Code',
+    travel: { sprinklered: 100, plain: 80 },
+    widthPerOcc: { level: 1, stair: 1.5 },
+    exits: [{ over: 10, need: 2 }],
+    factors: { ...e.factors, classroom: 5 },
+    cites: { ...e.cites, travel: 'Table T' },
+  };
+  const held = egressAnalysis(s, { edition: strict });
+  assert.equal(held.edition, 'test');
+  assert.equal(held.limits.travel, 100);
+  assert.ok(held.rooms.filter((r) => r.over).length > base.rooms.filter((r) => r.over).length);
+  assert.ok(held.summary.occupants > base.summary.occupants, 'the occupant load came off the same table');
+  assert.equal(held.summary.exitsRequired, 2);
+  for (const x of held.exits) assert.equal(x.capacity, Math.floor(x.clear * 12));
+  assert.equal(find(held.findings, 'travel-distance').cite, 'Test Code · Table T');
+  // ...and the design's own edition is read when nobody hands one over.
+  s.code = { edition: 'ibc2018', sprinklered: false };
+  const own = egressAnalysis(s);
+  assert.equal(own.edition, 'ibc2018');
+  assert.equal(own.sprinklered, false);
+  assert.equal(own.limits.travel, TRAVEL_LIMIT.plain);
+});
+
+test('every egress finding says what it was measured against', () => {
+  for (const r of [egressAnalysis(buildSampleSchool()), egressAnalysis(corridorSchool({ exit: false })),
+    egressAnalysis(oneBigRoom('Auditorium')), accessibleAnalysis(buildSampleSchool())]) {
+    for (const f of r.findings) {
+      assert.ok(typeof f.cite === 'string' && f.cite.length, `${f.code} cites nothing`);
+      assert.match(f.cite, /^(IBC \d{4} · |ADA 2010 · )/);
+    }
+  }
+});
+
+test('the common path is in the analysis, per room, against the edition\'s limit', () => {
+  const r = egressAnalysis(buildSampleSchool());
+  assert.ok(r.common && r.common.rows.length === r.rooms.filter((x) => x.reached).length);
+  assert.equal(r.common.summary.limit, r.limits.commonPath);
+  assert.equal(r.summary.commonPath, r.common.summary.worst);
+  // The sample school has one stair, so its upper storey is over the limit
+  // and the finding names it.
+  const f = find(r.findings, 'common-path');
+  assert.ok(f && f.level === 'warn');
+  assert.ok(f.rooms.length > 0 && f.rooms.every((x) => x.over));
+  assert.match(f.cite, /Table 1006\.2\.1/);
+  // A short school with a door at each end of its corridor is under it.
+  const ok = egressAnalysis(corridorSchool({ len: 8, extra: (f) => f.edgeV(9, 4, EDGE_DOOR2) }));
+  assert.equal(find(ok.findings, 'common-path').level, 'ok');
+  assert.equal(ok.summary.commonOver, 0);
+  // ...and it can be left out with the rest of the slow half.
+  const quick = egressAnalysis(buildSampleSchool(), { commonPath: false });
+  assert.equal(quick.common, null);
+  assert.equal(quick.summary.commonPath, null);
+  assert.ok(!find(quick.findings, 'common-path'));
+});
+
+test('an unnamed room widens the occupant load, and the exit count says so only when it matters', () => {
+  // A small school with one unnamed room: the point passes with one exit
+  // and the high end of the range would want two.
+  const s = createState(16, 10);
+  const f = sheet(s, 0);
+  f.box(1, 4, 12, 4, { name: 'Corridor' });
+  f.box(1, 1, 8, 3);                       // unnamed, 24 cells — 384 ft², 55 at 7 ft² a head
+  f.edgeH(3, 4, EDGE_DOOR);
+  f.edgeV(1, 4, EDGE_DOOR2);
+  f.bake();
+  const r = egressAnalysis(s);
+  assert.ok(r.summary.occupantsLow < r.summary.occupantsHigh);
+  assert.equal(r.summary.exitsRequired, 1);
+  assert.equal(r.summary.exitsRequiredHigh, 2);
+  const note = find(r.findings, 'exit-count-range');
+  assert.ok(note && note.level === 'note');
+  assert.match(note.detail, /Naming/);
+  // Name it, and the note goes.
+  for (const sh of s.floors[0].shapes) if (!sh.name) sh.name = 'Office';
+  assert.ok(!find(egressAnalysis(s).findings, 'exit-count-range'));
 });

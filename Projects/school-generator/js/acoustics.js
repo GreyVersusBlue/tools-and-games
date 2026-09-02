@@ -34,6 +34,17 @@
 // "lively", it says "0.9 s — over the 0.6 s classroom limit". Phase 7's
 // "acoustics first pass, labeled as such" arrives early and by accident.
 //
+// **Phase 41: the coefficients are a guess, and the answer says so.** Every
+// alpha above is one number from a published table, and the tables disagree
+// with each other by a factor of two: painted gypsum is 0.03 in one and 0.10
+// in another, a mineral tile ceiling anywhere from 0.50 to 0.75. Nothing in
+// the model was *drawn* to settle it — the floor finish is chosen, the
+// ceiling tile never is — so the reverberation is now answered twice: the
+// point estimate the readout has always shown, and `rt60Low`–`rt60High`, the
+// tail with every surface at the absorptive and the reflective end of its
+// band. The room also says which surface's band is the widest in sabins —
+// the one input that, pinned down, would narrow the answer most.
+//
 // Pure module: no three.js, no Web Audio. audio.js turns what comes out of
 // here into a convolver; test/acoustics.test.mjs checks the physics.
 
@@ -90,6 +101,23 @@ export const CATEGORY_ALPHA = {
   'Restroom': 0.03,
 };
 export const DEFAULT_PROP_ALPHA = 0.08;
+
+// Phase 41: how far the published tables disagree about each surface, at
+// 500 Hz. Each band brackets the point value above — a test proves it — and
+// the ends are the least and most absorptive figures a reasonable table gives
+// for the material the point stands for.
+export const ALPHA_BAND = {
+  wall: [0.03, 0.10],
+  glass: [0.03, 0.05],
+  door: [0.07, 0.15],
+  tile: [0.50, 0.75],
+  deck: [0.08, 0.15],
+};
+// A floor finish is a product somebody chose, so its coefficient is the
+// least guessed of the lot; a prop's category alpha is the most. Both are a
+// multiplier on the point value rather than a table of their own.
+export const FINISH_SPREAD = [0.7, 1.3];
+export const PROP_SPREAD = [0.6, 1.4];
 
 // Sabine stops describing anything useful at the extremes: a room with no
 // absorption at all would ring forever, and one lined entirely in panels is
@@ -341,6 +369,8 @@ export function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null
       sabins: 0, meanAlpha: 0, rt60: 0, mfp: 0, criticalDist: Infinity,
       limit: null, overLimit: false, verdict: verdict(0), props: 0,
       surfaces: [],
+      sabinsLow: 0, sabinsHigh: 0, rt60Low: 0, rt60High: 0,
+      maybeOver: false, surelyOver: false, narrows: null,
     };
   }
 
@@ -349,7 +379,8 @@ export function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null
   const wallArea = room.perimeter * ceil.height;
   // Mixed on the evidence rather than picked by a threshold: a hall that is a
   // third open to the structure above is a third deck and two thirds tile.
-  const ceilAlpha = ALPHA.tile + (ALPHA.deck - ALPHA.tile) * ceil.openFraction;
+  const mix = (t, d) => t + (d - t) * ceil.openFraction;
+  const ceilAlpha = mix(ALPHA.tile, ALPHA.deck);
   const floorAlpha = finishAlpha(room.fin);
   const furniture = furnitureSabins(state, room, catalogEntry);
 
@@ -357,17 +388,45 @@ export function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null
     : (ceil.openFraction > 0
       ? `Ceiling (${Math.round(ceil.openFraction * 100)}% open)`
       : 'Ceiling (tile)');
+  // Each surface with its point coefficient and the band round it. `low` and
+  // `high` are absorption, so the *high* end is the quieter room.
   const surfaces = [
-    { what: 'Floor', area: room.area, alpha: floorAlpha },
-    { what: ceilingName, area: room.area, alpha: ceilAlpha },
-    { what: 'Walls', area: wallArea, alpha: ALPHA.wall },
+    {
+      what: 'Floor', area: room.area, alpha: floorAlpha,
+      low: floorAlpha * FINISH_SPREAD[0], high: floorAlpha * FINISH_SPREAD[1],
+    },
+    {
+      what: ceilingName, area: room.area, alpha: ceilAlpha,
+      low: mix(ALPHA_BAND.tile[0], ALPHA_BAND.deck[0]),
+      high: mix(ALPHA_BAND.tile[1], ALPHA_BAND.deck[1]),
+    },
+    {
+      what: 'Walls', area: wallArea, alpha: ALPHA.wall,
+      low: ALPHA_BAND.wall[0], high: ALPHA_BAND.wall[1],
+    },
   ];
-  let sabins = 0;
-  for (const s of surfaces) sabins += s.area * s.alpha;
-  sabins += furniture.sabins;
-  if (furniture.count) {
-    surfaces.push({ what: `Furniture (${furniture.count})`, area: 0, alpha: 0, sabins: furniture.sabins });
+  let sabins = 0, sabinsLow = 0, sabinsHigh = 0;
+  for (const s of surfaces) {
+    sabins += s.area * s.alpha;
+    sabinsLow += s.area * s.low;
+    sabinsHigh += s.area * s.high;
+    // How much of the answer this surface's uncertainty is, in sabins.
+    s.spread = s.area * (s.high - s.low);
   }
+  sabins += furniture.sabins;
+  sabinsLow += furniture.sabins * PROP_SPREAD[0];
+  sabinsHigh += furniture.sabins * PROP_SPREAD[1];
+  if (furniture.count) {
+    surfaces.push({
+      what: `Furniture (${furniture.count})`, area: 0, alpha: 0, sabins: furniture.sabins,
+      low: 0, high: 0,
+      spread: furniture.sabins * (PROP_SPREAD[1] - PROP_SPREAD[0]),
+    });
+  }
+  // The single input that would narrow the range most: the surface whose
+  // band is widest in sabins. The report prints it beside the range, because
+  // "0.5–0.9 s" is only useful with "and it is the ceiling that decides".
+  const narrows = surfaces.reduce((best, s) => (s.spread > (best ? best.spread : 0) ? s : best), null);
 
   // Total boundary area, which the mean free path and the room constant both
   // want. Furniture doesn't add boundary — it absorbs from inside the volume.
@@ -383,7 +442,12 @@ export function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null
   const criticalDist = R > 0 ? 0.141 * Math.sqrt(R) : Infinity;
 
   const rt60 = sabineRT60(volume, sabins);
+  // More absorption is a shorter tail, so the band's ends swap: the room at
+  // its most absorptive is the low end of the reverberation.
+  const rt60Low = sabineRT60(volume, sabinsHigh);
+  const rt60High = sabineRT60(volume, sabinsLow);
   const limit = ansiLimit(volume);
+  const overLimit = limit !== null && rt60 > limit;
 
   return {
     ...room,
@@ -394,10 +458,20 @@ export function roomAcoustics(state, floorIndex, x, z, catalogEntry = () => null
     volume, surface, wallArea,
     sabins, meanAlpha, mfp, criticalDist,
     rt60, limit,
-    overLimit: limit !== null && rt60 > limit,
+    overLimit,
     verdict: verdict(rt60),
     props: furniture.count,
     surfaces,
+    // Phase 41: the range, and what decides it.
+    sabinsLow, sabinsHigh,
+    rt60Low, rt60High,
+    // Over at the point estimate is `overLimit`; over only at the reflective
+    // end of the band is "maybe" — a finding of its own, at a lower level.
+    maybeOver: limit !== null && !overLimit && rt60High > limit,
+    // ...and past the limit even at the absorptive end: no coefficient will
+    // rescue it, only a different room.
+    surelyOver: limit !== null && rt60Low > limit,
+    narrows: narrows ? { what: narrows.what, spread: narrows.spread, low: narrows.low, high: narrows.high, area: narrows.area } : null,
   };
 }
 

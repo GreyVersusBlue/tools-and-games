@@ -695,6 +695,13 @@
     .finding.ok { border-left-color: var(--ok); }
     .finding .why { display: none; }
     .finding.open .why { display: block; margin-top: 2px; }
+    /* Phase 41: the edition and table a finding was measured against — the
+       provenance, in small type, once the finding is open. */
+    .finding .cite { display: none; }
+    .finding.open .cite {
+      display: block; margin-top: 2px; font-size: var(--fs-xs);
+      font-family: 'IBM Plex Mono', monospace; color: var(--text-dim); opacity: 0.85;
+    }
     .finding button {
       all: unset; cursor: pointer; display: block; width: 100%;
     }
@@ -713,6 +720,7 @@
     }
     #report-readout b { color: var(--text); font-weight: 600; }
     #report-readout .row { display: flex; justify-content: space-between; gap: 8px; }
+    #report-readout .dim { color: var(--text-dim); font-weight: 400; }
     #report-readout .sec {
       margin-top: 7px; padding-top: 6px; border-top: 1px dashed var(--panel-border);
     }

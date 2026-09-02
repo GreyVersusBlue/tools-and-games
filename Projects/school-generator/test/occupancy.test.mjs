@@ -16,6 +16,7 @@ import {
   USES, UNASSIGNED, MIN_OCCUPIABLE, classify, useEntry,
   roomOccupancy, floorOccupancy, buildingOccupancy, occupancyIndex,
 } from '../js/occupancy.js';
+import { editionEntry, DEFAULT_EDITION, factorSpan } from '../js/codes.js';
 
 // One named room of a given size, as the reader sees it.
 const room = (name, area) => ({ id: 'r0:g0', floor: 0, name, area, rep: 'grid', x: 0, z: 0 });
@@ -180,4 +181,68 @@ test('an empty design has no occupants and does not throw', () => {
   assert.equal(b.total, 0);
   assert.equal(b.rooms.length, 0);
   assert.equal(b.byUse.length, 0);
+});
+
+// ---------- Phase 41: the edition, applied; the guess, bounded ----------
+
+test('the factor comes off the edition the reader is handed', () => {
+  const e = editionEntry(DEFAULT_EDITION);
+  const strict = { ...e, key: 'test', label: 'Test', factors: { ...e.factors, classroom: 10 } };
+  assert.equal(roomOccupancy(room('Room 101', 600)).occ, 30);
+  assert.equal(roomOccupancy(room('Room 101', 600), { edition: strict }).occ, 60);
+  assert.equal(roomOccupancy(room('Room 101', 600), { edition: strict }).edition, 'test');
+  // ...and a design carrying an edition is read against it by default.
+  const s = createState(8, 8);
+  s.code = { edition: 'ibc2018', sprinklered: true };
+  assert.equal(buildingOccupancy(s).edition, 'ibc2018');
+  // The rows' own factors are the default edition's, and nothing else.
+  for (const u of USES) if (!u.circulation) assert.equal(u.factor, e.factors[u.key]);
+});
+
+test('a named room is a point and an unnamed one is a range', () => {
+  const named = roomOccupancy(room('Room 101', 672));
+  assert.equal(named.low, named.occ);
+  assert.equal(named.high, named.occ);
+  assert.equal(named.spread, 0);
+  const guess = roomOccupancy(room(null, 900));
+  assert.ok(guess.guess);
+  const span = factorSpan(editionEntry(DEFAULT_EDITION));
+  assert.equal(guess.low, Math.ceil(900 / span.max));
+  assert.equal(guess.high, Math.ceil(900 / span.min));
+  assert.ok(guess.low <= guess.occ && guess.occ <= guess.high, 'the placeholder sits inside the range');
+  assert.equal(guess.spread, guess.high - guess.low);
+  // A stated load is somebody's answer, whatever the room is called.
+  const told = roomOccupancy({ ...room(null, 900), load: 40 });
+  assert.deepEqual([told.low, told.occ, told.high], [40, 40, 40]);
+  // A tiny nameless pocket holds nobody at either end.
+  const pocket = roomOccupancy(room(null, MIN_OCCUPIABLE - 1));
+  assert.deepEqual([pocket.low, pocket.high], [0, 0]);
+});
+
+test('the building total is a range only as wide as its unnamed rooms, and says which to name', () => {
+  const s = createState(20, 12);
+  const f = sheet(s, 0);
+  f.box(1, 1, 4, 4, { name: 'Room 101' });
+  f.box(6, 1, 9, 4);                 // unnamed, 16 cells
+  f.box(11, 1, 18, 6);               // unnamed, 48 cells — the one to name
+  f.bake();
+  const b = buildingOccupancy(s);
+  assert.equal(b.unnamed, 2);
+  assert.ok(b.low < b.total && b.total < b.high);
+  const guesses = b.rooms.filter((r) => r.guess);
+  assert.equal(b.high - b.low, guesses.reduce((n, r) => n + r.spread, 0));
+  assert.ok(b.narrows, 'something to name');
+  assert.equal(b.narrows.area, Math.max(...guesses.map((r) => r.area)));
+  // Naming it does exactly what the report promises: the spread it carried
+  // comes off the total.
+  const big = s.floors[0].shapes.find((sh) => Math.abs(sh.area - b.narrows.area) < 1e-6 || true);
+  for (const sh of s.floors[0].shapes) if (`r0:s${sh.id}` === b.narrows.id) sh.name = 'Gym';
+  const after = buildingOccupancy(s);
+  assert.equal(after.unnamed, 1);
+  assert.equal((after.high - after.low), (b.high - b.low) - b.narrows.spread);
+  // A fully named building is a point.
+  const sample = buildingOccupancy(buildSampleSchool());
+  assert.equal(sample.low, sample.total);
+  assert.equal(sample.high, sample.total);
+  assert.equal(sample.narrows, null);
 });

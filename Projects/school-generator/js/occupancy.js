@@ -32,8 +32,22 @@
 // and *listed* as unnamed rather than quietly folded into the total.
 //
 // The factors are IBC Table 1004.5 (occupant load factors, ft² per person)
-// rounded to the values a school actually uses. Net vs gross is carried as a
-// label rather than as arithmetic: this model's room area is already the area
+// rounded to the values a school actually uses — and since Phase 41 they are
+// read off `codes.js`'s table for the edition the design stores rather than
+// off this file, so the sheet's "IBC 2021 applied" is a sentence about these
+// numbers. `USES` below carries the use's *identity* (its key, its label, the
+// names that read as it, what it is measured over); the number comes from the
+// edition. The `factor` on each row is the default edition's, for a menu or a
+// test that has no edition in hand — a reader pricing a room asks the edition.
+//
+// **Phase 41's other change: an unnamed room answers with a range.** Its
+// factor is a placeholder, so its occupant load is a guess dressed as a
+// number; the row now carries `low` and `high` as well — the room counted as
+// the sparsest and the densest thing it could be — and the building's total
+// carries the sum. Naming the room collapses the range to a point, and the
+// report says which room to name first.
+//
+// Net vs gross is carried as a label rather than as arithmetic: this model's room area is already the area
 // inside the room's own walls, which is what "net" means and near enough what
 // "gross" means at one room's scale. Where the two genuinely differ — a whole
 // storey measured to the outside face — the difference is walls, and the
@@ -43,6 +57,8 @@
 
 import { floorLabel } from './grid.js';
 import { floorRooms } from './navgraph.js';
+import { editionOf, factorOf, factorSpan, DEFAULT_EDITION, editionEntry } from './codes.js';
+import { range, addRanges } from './range.js';
 
 // ---------- the use table ----------
 //
@@ -58,63 +74,68 @@ import { floorRooms } from './navgraph.js';
 // building's occupant load on paper.
 export const USES = [
   {
-    key: 'assembly-seats', label: 'Assembly (fixed seating)', factor: 7, basis: 'net',
+    key: 'assembly-seats', label: 'Assembly (fixed seating)', basis: 'net',
     match: /auditorium|theat|assembly|lecture hall|chapel|sanctuar/,
   },
   {
-    key: 'library', label: 'Library / media', factor: 50, basis: 'net',
+    key: 'library', label: 'Library / media', basis: 'net',
     // Above the assembly row on purpose: a *learning* commons is a library
     // with sofas in it, and a dining commons is the one that seats a crowd.
     match: /librar|media cent|learning commons|reading room|book/,
   },
   {
-    key: 'assembly-tables', label: 'Assembly (tables & chairs)', factor: 15, basis: 'net',
+    key: 'assembly-tables', label: 'Assembly (tables & chairs)', basis: 'net',
     match: /cafeteria|cafetorium|dining|lunch|commons|multipurpose|multi-purpose|cafe\b/,
   },
   {
-    key: 'gym', label: 'Gymnasium / exercise', factor: 50, basis: 'gross',
+    key: 'gym', label: 'Gymnasium / exercise', basis: 'gross',
     match: /gym|fitness|weight room|wrestling|dance studio|natatorium|pool/,
   },
   {
-    key: 'stage', label: 'Stage', factor: 15, basis: 'net',
+    key: 'stage', label: 'Stage', basis: 'net',
     match: /stage|band room|choir|orchestra|music room/,
   },
   {
-    key: 'lab', label: 'Laboratory / shop', factor: 50, basis: 'net',
+    key: 'lab', label: 'Laboratory / shop', basis: 'net',
     match: /\blab\b|laborator|science|chem|physics|biolog|shop|wood ?shop|metal ?shop|makerspace|maker space|art room|art studio|studio|computer lab|tech ed|vocational|culinary/,
   },
   {
-    key: 'kitchen', label: 'Kitchen', factor: 200, basis: 'gross',
+    key: 'kitchen', label: 'Kitchen', basis: 'gross',
     match: /kitchen|servery|serving|pantry|scullery/,
   },
   {
-    key: 'locker', label: 'Locker room', factor: 50, basis: 'gross',
+    key: 'locker', label: 'Locker room', basis: 'gross',
     match: /locker|changing|change room/,
   },
   {
-    key: 'office', label: 'Office / administration', factor: 150, basis: 'gross',
+    key: 'office', label: 'Office / administration', basis: 'gross',
     match: /office|admin|reception|conference|meeting|staff|faculty|teacher work|counsel|principal|nurse|clinic|health|work ?room|copy/,
   },
   {
-    key: 'storage', label: 'Storage / service', factor: 300, basis: 'gross',
+    key: 'storage', label: 'Storage / service', basis: 'gross',
     match: /storage|storeroom|store ?room|stock|mech|electric|boiler|server|\bit\b|data|custodi|janitor|maint|utility|closet|receiving|loading/,
   },
   {
-    key: 'circulation', label: 'Circulation', factor: 0, basis: 'gross', circulation: true,
+    key: 'circulation', label: 'Circulation', basis: 'gross', circulation: true,
     match: /corridor|hall(?!ow)|hallway|lobby|vestibul|foyer|atrium|stair|landing|elevator|lift|walkway|breezeway|entry|entrance/,
   },
   {
-    key: 'restroom', label: 'Restroom', factor: 0, basis: 'gross', circulation: true,
+    key: 'restroom', label: 'Restroom', basis: 'gross', circulation: true,
     match: /restroom|rest room|toilet|bathroom|washroom|\bwc\b|lavator|shower/,
   },
   {
-    key: 'classroom', label: 'Classroom', factor: 20, basis: 'net',
+    key: 'classroom', label: 'Classroom', basis: 'net',
     // A room *number* is a classroom in every school ever built, and so is
     // anything that says so. `room` on its own is not enough — "Storeroom"
     // and "Workroom" are above this row for exactly that reason.
     match: /classroom|class ?rm|home ?room|seminar|tutor|resource|\broom\s*\d|\brm\.?\s*\d|^\d{1,4}[a-z]?$|kindergarten|\bpre-?k\b|grade \d/,
   },
 ];
+
+// The default edition's number on every row, for readers with no edition in
+// hand. Assigned rather than typed so there is one table of factors, not two.
+const DEFAULT_TABLE = editionEntry(DEFAULT_EDITION);
+for (const u of USES) u.factor = u.circulation ? 0 : factorOf(DEFAULT_TABLE, u.key);
 
 const BY_KEY = new Map(USES.map((u) => [u.key, u]));
 
@@ -126,50 +147,18 @@ export const isGroup = (k) => BY_KEY.has(k);
 
 // ---------- what the analysis is read against ----------
 //
-// Two facts about the building, not about this editing session. `edition`
-// names the code the numbers are quoted from — nothing here computes
-// differently for one or another, and printing which one a table came from is
-// the point: a sheet that says 250ft without saying under what is a sheet
-// nobody can check. `sprinklered` genuinely changes the answer (see
-// egress.js's travel and dead-end limits) and has been a checkbox with
-// nowhere to live since Phase 7.
-export const CODE_EDITIONS = [
-  { key: 'ibc2021', label: 'IBC 2021' },
-  { key: 'ibc2018', label: 'IBC 2018' },
-  { key: 'ibc2024', label: 'IBC 2024' },
-];
-export const DEFAULT_EDITION = 'ibc2021';
-export const editionEntry = (k) =>
-  CODE_EDITIONS.find((e) => e.key === k) || CODE_EDITIONS[0];
-
-// A school is a sprinklered building unless somebody says otherwise, which is
-// the assumption every reader made before there was anywhere to record it.
-export const defaultCode = () => ({ edition: DEFAULT_EDITION, sprinklered: true });
-
-export function normalizeCode(raw) {
-  const d = defaultCode();
-  if (!raw || typeof raw !== 'object') return d;
-  return {
-    edition: CODE_EDITIONS.some((e) => e.key === raw.edition) ? raw.edition : d.edition,
-    sprinklered: raw.sprinklered === false ? false : true,
-  };
-}
-
-export const isDefaultCode = (c) => {
-  const n = normalizeCode(c);
-  const d = defaultCode();
-  return n.edition === d.edition && n.sprinklered === d.sprinklered;
-};
-
-// What a reader should use, whether or not the design has ever said.
-export const codeOf = (state) => normalizeCode(state && state.code);
+// Which edition the numbers are read against, and whether the building is
+// sprinklered: two facts about the building that live in the file (v11). They
+// lived here until Phase 41; they live in `codes.js` now, beside the tables
+// they select, and every importer moved with them — a re-export would be a
+// second name for the same rule, and the walk bundler refuses one anyway.
 
 // The use a room falls into when its name says nothing — or when it has no
 // name at all. Deliberately not `classroom`: guessing "classroom" fills a
 // building with occupants nobody put there, and this number is meant to be
 // obviously provisional. Every row that lands here is reported as unnamed.
 export const UNASSIGNED = {
-  key: 'unassigned', label: 'Unassigned', factor: 100, basis: 'gross', guess: true,
+  key: 'unassigned', label: 'Unassigned', basis: 'gross', guess: true,
 };
 
 export const useEntry = (key) => BY_KEY.get(key) || UNASSIGNED;
@@ -193,18 +182,29 @@ export function classify(name) {
 // The order of precedence is the order of how much a person said: the room's
 // own `load` beats everything, its own `group` beats the label, and the label
 // is what is left. `opts.use` sits above all three because it is a caller
-// asking a hypothetical ("what would this be as a lab?").
+// asking a hypothetical ("what would this be as a lab?"). `opts.edition` is
+// the table the factor comes off — the design's own unless a caller says.
 export function roomOccupancy(room, opts = {}) {
+  const edition = editionOf(opts.edition, opts.state);
   const forced = opts.use && BY_KEY.has(opts.use) ? opts.use : null;
   const chosen = isGroup(room.group) ? room.group : null;
   const key = forced || chosen || classify(room.name);
   const use = key ? BY_KEY.get(key) : UNASSIGNED;
+  const factor = use.circulation ? 0 : factorOf(edition, use.key);
   const area = Math.max(0, room.area || 0);
   const tiny = !key && area < MIN_OCCUPIABLE;
   // Round *up*: a code's occupant load is the number of people the space is
   // designed to hold, and half a person leaving the building is a whole one.
   const stated = Number.isFinite(room.load) && room.load > 0 ? Math.round(room.load) : null;
-  const occ = stated === null ? (use.factor > 0 && !tiny ? Math.ceil(area / use.factor) : 0) : stated;
+  const occ = stated === null ? (factor > 0 && !tiny ? Math.ceil(area / factor) : 0) : stated;
+  // The range. A point for anything a person or a label decided; for a room
+  // nobody named, the room counted as the emptiest and the fullest kind of
+  // space the edition prices — because it is *some* kind of space.
+  let span = range(occ, occ);
+  if (!key && !tiny && stated === null) {
+    const f = factorSpan(edition);
+    span = range(f.max > 0 ? Math.ceil(area / f.max) : 0, f.min > 0 ? Math.ceil(area / f.min) : 0);
+  }
   return {
     id: room.id,
     floor: room.floor,
@@ -214,7 +214,7 @@ export function roomOccupancy(room, opts = {}) {
     area,
     use: use.key,
     useLabel: use.label,
-    factor: use.factor,
+    factor,
     basis: use.basis,
     // True when nothing about the room said what it was — the number below is
     // a placeholder, and a reader should say so rather than print it plain.
@@ -229,6 +229,13 @@ export function roomOccupancy(room, opts = {}) {
     circulation: use.circulation === true,
     tiny,
     occ,
+    // Phase 41: what the number could be. `low === high === occ` for every
+    // room somebody or something named; wider for a guess, and `spread` is
+    // how much wider — the number naming this room would take off the total.
+    low: span.low,
+    high: span.high,
+    spread: span.high - span.low,
+    edition: edition.key,
   };
 }
 
@@ -237,15 +244,19 @@ export function roomOccupancy(room, opts = {}) {
 // same answer to "which room is this point in".
 export function floorOccupancy(state, floorIndex, opts = {}) {
   const nav = opts.nav || null;
+  const edition = editionOf(opts.edition, state);
   const rooms = nav && nav.perFloor && nav.perFloor[floorIndex]
     ? nav.perFloor[floorIndex].rooms
     : floorRooms(state, floorIndex).rooms;
-  const out = rooms.map((r) => roomOccupancy(r, opts));
+  const out = rooms.map((r) => roomOccupancy(r, { ...opts, edition }));
+  const span = addRanges(out);
   return {
     floor: floorIndex,
     label: floorLabel(floorIndex),
     rooms: out,
     occ: out.reduce((n, r) => n + r.occ, 0),
+    low: span.low,
+    high: span.high,
     area: out.reduce((n, r) => n + r.area, 0),
   };
 }
@@ -268,15 +279,32 @@ function tallyByUse(rows) {
 // number stair width is sized against and the one a single-storey building
 // gets to ignore.
 export function buildingOccupancy(state, opts = {}) {
+  const edition = editionOf(opts.edition, state);
   const floors = [];
   const count = state && state.floors ? state.floors.length : 0;
-  for (let i = 0; i < count; i++) floors.push(floorOccupancy(state, i, opts));
+  for (let i = 0; i < count; i++) floors.push(floorOccupancy(state, i, { ...opts, edition }));
   const rooms = floors.flatMap((f) => f.rooms);
+  const span = addRanges(rooms);
+  // Which single input would narrow the total most: the unnamed room with
+  // the widest range. Naming it is worth `spread` people off the high end —
+  // the sentence the report prints beside the range.
+  const narrows = rooms
+    .filter((r) => r.spread > 0)
+    .sort((a, b) => b.spread - a.spread || b.area - a.area)[0] || null;
   return {
+    edition: edition.key,
+    editionLabel: edition.label,
     floors,
     rooms,
     byUse: tallyByUse(rooms),
     total: rooms.reduce((n, r) => n + r.occ, 0),
+    // Phase 41: the total as a range. Equal to `total` at both ends when every
+    // room is named; wider by exactly the unnamed rooms' spread when not.
+    low: span.low,
+    high: span.high,
+    narrows: narrows
+      ? { id: narrows.id, floor: narrows.floor, name: narrows.name, area: narrows.area, spread: narrows.spread }
+      : null,
     upper: floors.slice(1).reduce((n, f) => n + f.occ, 0),
     area: rooms.reduce((n, r) => n + r.area, 0),
     unnamed: rooms.filter((r) => r.guess && !r.tiny).length,

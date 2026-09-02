@@ -156,3 +156,20 @@ test('an empty design says there is nothing to grade', () => {
   assert.equal(r.summary.rooms, 0);
   assert.ok(has(r.findings, 'daylight-none'));
 });
+
+// ---------- Phase 41: the rule comes off the edition, and the finding says which ----------
+
+test('the glazing rule is read off the edition and cited', () => {
+  const s = createState(12, 10);
+  sheet(s, 0).box(1, 1, 6, 5, { name: 'Room 101' }).bake();
+  const r = daylightAnalysis(s);
+  assert.equal(r.summary.min, MIN_RATIO);
+  assert.equal(r.summary.editionLabel, 'IBC 2021');
+  for (const f of r.findings) assert.match(f.cite, /^IBC 2021 · §1205\.2$/);
+  // A hypothetical edition asking for more glass moves the verdict.
+  const strict = { key: 'test', label: 'Test', factors: { classroom: 20 }, glazing: 0.5, cites: { glazing: '§X' } };
+  const held = daylightAnalysis(s, { edition: strict });
+  assert.equal(held.summary.min, 0.5);
+  assert.ok(held.findings.some((f) => f.cite === 'Test · §X'));
+  assert.ok(held.rooms.every((r) => r.dark === (r.wanted && r.ratio < 0.5)));
+});

@@ -459,7 +459,7 @@ function turningFindings(spots, fails) {
       `Beside the door into ${roomName(w)} the clear circle is ${inches(w.clear * 2)} across ` +
       `against the 60 in a chair turns in, and ${blockerName(w.blocker)} is what is in the way. ` +
       'Moving what stands beside the door is usually the answer; a wider corridor is the other one.',
-      { circles: doors.slice(0, 12).map(circleOf) }));
+      { circles: doors.slice(0, 12).map(circleOf), cite: 'ADA 2010 · §404.2.4' }));
   }
   if (pinches.length) {
     const w = pinches.reduce((a, b) => (b.clear < a.clear ? b : a));
@@ -468,7 +468,7 @@ function turningFindings(spots, fails) {
       `In ${roomName(w)} the route narrows to ${inches(w.clear * 2)}, ` +
       `where ${blockerName(w.blocker)} closes it in. A route is 36 in at its narrowest, ` +
       'and 60 in wherever two chairs have to pass.',
-      { circles: pinches.slice(0, 12).map(circleOf) }));
+      { circles: pinches.slice(0, 12).map(circleOf), cite: 'ADA 2010 · §403.5' }));
   }
   if (rooms.length) {
     out.push(finding('warn', 'turning-space',
@@ -479,12 +479,14 @@ function turningFindings(spots, fails) {
       {
         rooms: rooms.slice(0, 8).map((s) => ({ id: s.room, floor: s.floor, name: s.roomName })),
         circles: rooms.slice(0, 12).map(circleOf),
+        cite: 'ADA 2010 · §304.3',
       }));
   }
   if (!fails.length) {
     out.push(finding('ok', 'clearance', 'A chair turns everywhere it was tried',
       `${spots.length} places tested: both sides of every doorway on the route, every ` +
-      'bend, and the open floor of every room a chair can reach.'));
+      'bend, and the open floor of every room a chair can reach.',
+      { cite: 'ADA 2010 · §304.3' }));
   }
   return out;
 }
@@ -612,7 +614,7 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
       `${counters.length} counter${counters.length === 1 ? '' : 's'} too high for a seated person`,
       `The ${w.name.toLowerCase()}${w.roomName ? ` in ${w.roomName}` : ''} is ${inches(w.at)} ` +
       `where ${inches(w.limit)} is the limit (${w.cite}). A lower section, or a lower unit, is the fix.`,
-      { doors: counters.slice(0, 8).map(propMark) }));
+      { doors: counters.slice(0, 8).map(propMark), cite: `ADA 2010 · §${w.cite}` }));
   }
   if (controls.length) {
     const w = controls[0];
@@ -620,7 +622,7 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
       `${controls.length} control${controls.length === 1 ? '' : 's'} outside the 15–48 in reach range`,
       `The ${w.name.toLowerCase()}${w.roomName ? ` in ${w.roomName}` : ''} is mounted at ${inches(w.at)}; ` +
       `${w.high ? 'the highest' : 'the lowest'} an operable part may be is ${inches(w.limit)} (${w.cite}).`,
-      { doors: controls.slice(0, 8).map(propMark) }));
+      { doors: controls.slice(0, 8).map(propMark), cite: `ADA 2010 · §${w.cite}` }));
   }
   if (rooms.length) {
     out.push(finding('warn', 'work-surface',
@@ -628,17 +630,19 @@ function reachFindings({ items, rooms, tested, lockers, lockersLow }) {
       `${rooms.slice(0, 4).map(roomName).join(', ')}` +
       `${rooms.length > 4 ? `, and ${rooms.length - 4} more` : ''} — every desk, table or bench ` +
       'in the room is outside 28–34 in (ADA 902.3). One at that height per room is enough.',
-      { rooms: rooms.slice(0, 8).map((w) => ({ id: w.room, floor: w.floor, name: w.name })) }));
+      { rooms: rooms.slice(0, 8).map((w) => ({ id: w.room, floor: w.floor, name: w.name })), cite: 'ADA 2010 · §902.3' }));
   }
   if (lockers && !lockersLow) {
     out.push(finding('note', 'lockers',
       `${lockers} locker bank${lockers === 1 ? '' : 's'}, none within reach`,
       'Every bank is full-height, so no locker has a hook or a shelf a seated person ' +
-      'reaches. Some of them (ADA 225.2.1 says 5%) want to be the half-height kind.'));
+      'reaches. Some of them (ADA 225.2.1 says 5%) want to be the half-height kind.',
+      { cite: 'ADA 2010 · §225.2.1' }));
   }
   if (tested && !items.length && !rooms.length) {
     out.push(finding('ok', 'reach', 'Every counter, control and work surface is within reach',
-      `${tested} of them checked against the catalog's own heights.`));
+      `${tested} of them checked against the catalog's own heights.`,
+      { cite: 'ADA 2010 · §308' }));
   }
   return out;
 }
