@@ -34,18 +34,18 @@ whoever opens the next session knows which one to open.
 
 ## The ten
 
-| # | Project | Wishlist | First open phase | The one-line case |
+| # | Project | Wishlist | First open phase (model) | The one-line case |
 |---|---|---|---|---|
-| 1 | Bell to Bell | `Projects/bell-to-bell/WISHLIST.md` | Phase 1 | The most active project in the repo, with the best design doc and a vertical slice that wants to become a school day |
-| 2 | Hearth | `Projects/hearth/WISHLIST.md` | Phase 1 | The most rigorous harness on the site, and a sim whose next pillars (a tune you can hear, decades, a wider world) are already named |
-| 3 | Torchbearer | `Projects/torchbearer/WISHLIST.md` | Phase 1 | A declared PF2e platform whose engine is still one 3,268-line script the suite cannot import |
-| 4 | The Absalom Inheritance | `Projects/absalom-inheritance/WISHLIST.md` | Phase 1 | A CRPG with a 2,000-run balance harness and no reaction, condition or template system yet |
-| 5 | The Fourth Quarter | `Projects/fourth-quarter/WISHLIST.md` | Phase 1 | Pure-logic engine and campaign under Node, every venue tier the same room, 67 MB of textures |
+| 1 | Bell to Bell | `Projects/bell-to-bell/WISHLIST.md` | 1 — A day with more than two periods in it (Fable) | The most active project in the repo, with the best design doc and a vertical slice that wants to become a school day |
+| 2 | Hearth | `Projects/hearth/WISHLIST.md` | 1 — Songs you can hear (Opus) | The most rigorous harness on the site, and a sim whose next pillars (a tune you can hear, decades, a wider world) are already named |
+| 3 | Torchbearer | `Projects/torchbearer/WISHLIST.md` | 1 — The rules core comes out of the page (Opus) | A declared PF2e platform whose engine is still one 3,268-line script the suite cannot import |
+| 4 | The Absalom Inheritance | `Projects/absalom-inheritance/WISHLIST.md` | 1 — The interrupt point (Fable) | A CRPG with a 2,000-run balance harness and no reaction, condition or template system yet |
+| 5 | The Fourth Quarter | `Projects/fourth-quarter/WISHLIST.md` | 1 — The room is a description (Fable) | Pure-logic engine and campaign under Node, every venue tier the same room, 67 MB of textures |
 | 6 | Faire Weekend | `Projects/Ren-Faire-Claude/WISHLIST.md` | Phase 1 | A 3,000-line suite guarding an economy that has never had a single guest walk through it |
-| 7 | Daredevil | `Projects/daredevil/WISHLIST.md` | Phase 1 | Eight endings and a transcript-diff harness, with the biggest open narrative question on the site |
+| 7 | Daredevil | `Projects/daredevil/WISHLIST.md` | 1 — The backer-less middle game (Fable; waits on Devon — Phase 2 runs meanwhile, Opus) | Eight endings and a transcript-diff harness, with the biggest open narrative question on the site |
 | 8 | Numina | `Numina/WISHLIST.md` | Phase 1 | 136,000 words of rules as prose and no data layer, so no character builder, no generated cross-links, no version diff |
-| 9 | Schedule Visualizer | `Tools/schedule/WISHLIST.md` | Phase 1 | The largest hand-written thing in the repo, two thirds of it untested, blocked three rounds on one quota question |
-| 10 | Corner & Kettle | `Projects/corner-and-kettle/WISHLIST.md` | Phase 1 | Every balance question ever asked of it was answered by hand-instrumenting a browser |
+| 9 | Schedule Visualizer | `Tools/schedule/WISHLIST.md` | 1 — The simulation half, in numbers (Fable) | The largest hand-written thing in the repo, two thirds of it untested, blocked three rounds on one quota question |
+| 10 | Corner & Kettle | `Projects/corner-and-kettle/WISHLIST.md` | 1 — The sim without the page (Fable) | Every balance question ever asked of it was answered by hand-instrumenting a browser |
 
 Each wishlist carries its own **Status** line, the architecture as it stands,
 the conventions its own notes learned the hard way, the standing backlog, any
@@ -68,9 +68,14 @@ treatment describes a semester. The wishlist's arc one builds the school day
 (a real per-period save architecture first, because the two hardcoded `*5`
 slots are the thing every later phase trips over), then procedural rosters,
 tells and lessons validated against `balance.mjs`, then the longitudinal
-meta-layer. The and-also is an asset prune: `Assets/` is ~146 MB because the
-Kenney kits were committed in every format they ship in, and `assets.json`
-references only the glTF set.
+meta-layer. The and-also is an asset prune: measured against `assets.json`,
+932 of the 1,037 files under `Assets/` (~82 MB of 142) are referenced by
+nothing — unnamed prop directories and texture variants more than the
+Kenney kits' duplicate formats, and some of it a deliberate alternates
+palette the prune has to keep honest. The wishlist also found that the
+project loads three.js from a CDN through its import map, an offsite request
+the integrity sweep cannot see because it reads resource tags, not script
+bodies.
 
 *Fable earns it for:* the save-slot architecture, the generator that must
 compose valid tell schedules against the balance band, and the semester
@@ -91,9 +96,11 @@ and conflict as systems the chronicle can finally have drama about, then the
 chronicle as a shareable artifact, and a proper migration ladder for a save
 chain now eight versions deep.
 
-*Fable earns it for:* the melody synthesis against the gain budget, long-horizon
-determinism plus perf, and emergent scarcity that must not break 22,000 soak
-audits. The chronicle rendering and the migration ladder are Opus 5.
+*Fable earns it for:* the generational time path, which must produce a
+bit-identical world to the slow one; the migration ladder, a schema everything
+after it inherits; and scarcity that must not break 22,000 soak audits. The
+songs themselves run on Opus 5 — synthesis in the `note()` pattern that
+already exists — as do the saga, the far island and the CI job.
 
 ### 3 — Torchbearer
 
@@ -114,9 +121,10 @@ recommendation in both wishlists is to design it once here, in the declared
 platform, and port the pattern; whether the two ever share *code* is bound up
 with the still-open `Pathfinder/data/` ownership question, which is Devon's.
 
-*Fable earns it for:* the extraction refactor (large, entangled, weak net) and
-the reaction/interrupt and detection rules. Campaign content and the validator
-are Opus 5.
+*Fable earns it for:* pulling combat out of the page (large, entangled, weak
+net), the reaction/interrupt seam, and a hero who levels past 3 with the first
+real `migrate`. The rules-core extraction that comes first, detection, the
+action economy, the campaign spine and the validator are Opus 5.
 
 ### 4 — The Absalom Inheritance
 
@@ -145,13 +153,14 @@ on top. Devon has already answered the difficulty question (spoilage, round
 tier (every tier is the same 30-seat room today), the full campaign port
 (league standings, regulars, a rival bar, distributors, events as floor
 moments), and a real fail state. The wishlist also phases the texture
-pipeline — `textures/` is 67 MB of 2k Poly Haven maps with no 1k tier — as
-routine work with the largest single payoff in repo weight.
+pipeline — `textures/` is 67 MB of 2k Poly Haven maps with no 1k tier, and
+all 27 of them load for the first room because `buildWorld()` uses every
+material set — as routine work with a payoff the player feels on first load.
 
-*Fable earns it for:* data-driven room generation with collision and pathing
-regeneration, and the campaign systems that must keep 390 assertions green
-while the model grows. Textures, staff content and the fail-state UI are
-Opus 5.
+*Fable earns it for:* the room as a pure description with derived collision,
+patrons who path to a door instead of through a table, and the league season
+as a model layer with a save shape later phases inherit. Textures, the CI
+job, regulars, floor moments and the fail state are Opus 5.
 
 ### 6 — Faire Weekend
 
@@ -171,7 +180,7 @@ arcs and the meta-layer are Opus 5.
 
 ### 7 — Daredevil
 
-207 scenes, ~21,000 words, five milestones, four hubs, eight endings, and the
+207 scenes, some 23,000 words of scene text, five milestones, four hubs, eight endings, and the
 strongest narrative harness on the site: four committed transcript baselines
 diffed line-for-line before and after any story edit. It also carries the
 single biggest open item in the whole repo, in its own prompt's words: a
@@ -208,9 +217,9 @@ prerequisite semantics. Everything in arc two is Opus 5.
 
 ~590 KB of application JavaScript across seven classic scripts sharing ~491
 globals, a published-artifact mechanism that stringifies its own source, and a
-README that says plainly: "the blueprint editor, the pathfinding engine, the
-congestion heatmap, the travel-time playback and the What-If lab have no
-tests. That is roughly two thirds of the file." This is the tool Devon uses at
+simulation half — blueprint editor, pathfinding, congestion, travel-time
+playback, the What-If lab — that round 3 gave sixteen assertions, every one of
+them about shape and none about a number. This is the tool Devon uses at
 work. The wishlist's first phase is a headless harness that drives the
 blueprint editor and asserts pathfinding and congestion numerically against
 the Northwind fixture; the second answers the storage-quota question that has
@@ -235,10 +244,11 @@ rates and prestige curves become numbers a test holds. Then the module split
 on the Daredevil precedent, then the staff system, customers with memory, and
 prestige as real meta-progression.
 
-*Fable earns it for:* decoupling a `requestAnimationFrame` loop from wall-clock
-time without changing observed behaviour, and the module split behind a
-browser-only safety net. The staff, customer and prestige systems are Opus 5
-once the harness exists.
+*Fable earns it for:* lifting the live simulation out of the DOM without
+changing what it does, the balance harness itself (worth exactly its
+correctness), and customers whose memory feeds spawn and reputation — a loop
+with a silent wrong sign. The module split, the Serve gate, staff and prestige
+are Opus 5 once the harness exists.
 
 ---
 
@@ -280,15 +290,17 @@ They are noted here so the next site-wide session (prompt 22) can pick them up.
   `gvb-save.test.mjs`, or any of the ~20 project suites. The School Generator
   workflow is a good template nothing else reuses.
 - **Asset weight.** Bell to Bell, Castle Conundrum and The Fourth Quarter
-  together carry ~380 MB, nearly all of it duplicate-format models,
-  uncompressed glTF buffers and 2k textures with no smaller tier. One shared
+  together carry ~380 MB: unreferenced props and texture variants, duplicate
+  model formats, uncompressed glTF buffers and 2k textures with no smaller
+  tier. One shared
   pipeline (prune, resize, draco/meshopt) pays off three times.
 - **`gvb-save.js` v2.** Quota accounting, multi-key namespaces and an
   IndexedDB tier are what the Schedule Visualizer needs and what Hearth's and
   Bell to Bell's growing saves will want.
-- **Real hardware.** Every performance number in the 3D projects' notes is
-  software rasterization. Touch input has "never had a thumb on it" in three
-  separate notes files.
+- **Real hardware.** The atmospheric pieces' performance numbers are all
+  software rasterization (The Fourth Quarter is the exception: its round-1
+  frame times were real Chrome). Touch input has "never had a thumb on it" in
+  three separate notes files.
 - **Ownership.** `Tools/prompt-builder.html` is owned by no prompt, swept by
   no check, and hotlinks Google Fonts. An ownership manifest that
   `check-integrity.mjs` enforces would catch the next one.
