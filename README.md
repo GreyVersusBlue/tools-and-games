@@ -9,6 +9,7 @@ A personal collection of browser-based games, tools, and TTRPG projects — most
 | Path | What it is |
 | --- | --- |
 | `index.html` / `404.html` | The site shell — landing page and board of everything below |
+| `landing.html` | A studio-style landing mockup of the same site — Three.js hero, editorial sections, mobile-first; not linked from the board (like `newindex.html`) |
 | `Projects/` | The games — each is its own subfolder with its own assets and (mostly) its own save data |
 | `Tools/` | Standalone utilities — classroom tools, reference browsers, etc. |
 | `Pathfinder/` | Reference data (PF2e Remaster rules JSON) shared by the TTRPG-adjacent tools |

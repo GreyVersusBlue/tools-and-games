@@ -1,20 +1,20 @@
 # The site's own fonts
 
 Ten woff2 files, 176.6 KB total, backing the six typefaces `index.html`,
-`404.html`, and `newindex.html` share between them:
+`404.html`, `newindex.html`, and `landing.html` share between them:
 
 | File | Weight / style | Used by |
 | --- | --- | --- |
-| `alegreya-latin-400-normal.woff2` | Alegreya 400 normal | index.html, 404.html |
-| `alegreya-latin-400-italic.woff2` | Alegreya 400 italic | index.html, 404.html |
-| `alegreya-sc-latin-400-normal.woff2` | Alegreya SC 400 normal | index.html, 404.html |
-| `grenze-gotisch-latin-500-normal.woff2` | Grenze Gotisch 500 normal | index.html, 404.html |
-| `grenze-gotisch-latin-700-normal.woff2` | Grenze Gotisch 700 normal | index.html, 404.html |
-| `space-grotesk-latin-600-normal.woff2` | Space Grotesk 600 normal | newindex.html |
-| `public-sans-latin-400-normal.woff2` | Public Sans 400 normal | newindex.html |
-| `public-sans-latin-700-normal.woff2` | Public Sans 700 normal | newindex.html |
-| `ibm-plex-mono-latin-400-normal.woff2` | IBM Plex Mono 400 normal | newindex.html |
-| `ibm-plex-mono-latin-500-normal.woff2` | IBM Plex Mono 500 normal | newindex.html |
+| `alegreya-latin-400-normal.woff2` | Alegreya 400 normal | index.html, 404.html, landing.html |
+| `alegreya-latin-400-italic.woff2` | Alegreya 400 italic | index.html, 404.html, landing.html |
+| `alegreya-sc-latin-400-normal.woff2` | Alegreya SC 400 normal | index.html, 404.html, landing.html |
+| `grenze-gotisch-latin-500-normal.woff2` | Grenze Gotisch 500 normal | index.html, 404.html, landing.html |
+| `grenze-gotisch-latin-700-normal.woff2` | Grenze Gotisch 700 normal | index.html, 404.html, landing.html |
+| `space-grotesk-latin-600-normal.woff2` | Space Grotesk 600 normal | newindex.html, landing.html |
+| `public-sans-latin-400-normal.woff2` | Public Sans 400 normal | newindex.html, landing.html |
+| `public-sans-latin-700-normal.woff2` | Public Sans 700 normal | newindex.html, landing.html |
+| `ibm-plex-mono-latin-400-normal.woff2` | IBM Plex Mono 400 normal | newindex.html, landing.html |
+| `ibm-plex-mono-latin-500-normal.woff2` | IBM Plex Mono 500 normal | newindex.html, landing.html |
 
 Alegreya/Alegreya SC/Grenze Gotisch's five combinations are read from
 `index.html`/`404.html`'s CSS, not from the old hotlink, which asked for more
@@ -24,8 +24,11 @@ read from `newindex.html`'s CSS (only `.name`/`h1` use Space Grotesk, and only
 at 600; body text and `strong`/`b` are the only two Public Sans weights in
 use; IBM Plex Mono never goes italic and only appears at 400 and 500) rather
 than the hotlink it shipped with, which asked for the full 400–700 range of
-both plus italics neither one renders. Latin subset only; none of the three
-pages render outside it.
+both plus italics neither one renders. Latin subset only; none of the four
+pages render outside it. `landing.html` (the studio-style landing mockup)
+declares all ten faces: the tavern three for its dark sections and the
+gradebook three for its light Schoolhouse section, which reuses
+`newindex.html`'s tokens.
 
 Source: [Fontsource](https://fontsource.org) `@fontsource/alegreya`,
 `@fontsource/alegreya-sc`, `@fontsource/grenze-gotisch`, `@fontsource/public-sans`,
