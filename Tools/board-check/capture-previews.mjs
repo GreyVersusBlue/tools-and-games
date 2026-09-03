@@ -412,7 +412,7 @@ const RECIPES = {
   // ---- Orbital: Deep Field (deepspace#11), games.mjs's open() already
   // loaded it. A real winning aim drag — world-space (dx:200, dy:-350) from
   // this level's own start — grazes a blackhole and a wormhole before the
-  // goal (verified live, Claude Prompts/notes/21-orbital-notes.md), a real
+  // goal (verified live; see BACKLOG.md's Orbital section), a real
   // curve rather than a straight line, so the preview reads as "this game
   // rewards reading the curve." Screenshot before pointerup: aim mode draws
   // the dotted flight plan; firing would replace it with the flight itself.

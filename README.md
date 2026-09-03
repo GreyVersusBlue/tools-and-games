@@ -13,9 +13,10 @@ A personal collection of browser-based games, tools, and TTRPG projects — most
 | `Projects/` | The games — each is its own subfolder with its own assets and (mostly) its own save data |
 | `Tools/` | Standalone utilities — classroom tools, reference browsers, etc. |
 | `Pathfinder/` | Reference data (PF2e Remaster rules JSON) shared by the TTRPG-adjacent tools |
-| `Claude Prompts/` | Development notes, prompts, and session handoff docs from building/maintaining the site with AI assistance |
+| `BACKLOG.md` | Every open idea on the site, ranked — the entry point for picking up work |
 | `Audio/`, `assets/` | Shared media, fonts, and JS (including a shared save/load module used across games) |
-| `gvb-site-handoff-v*.md` | Running log of site-wide maintenance sessions — what changed, what broke, what's still open |
+| `HISTORY.md` | What already shipped — 58 locked design decisions, ten site sessions, and every project's phase log |
+| `CLAUDE.md` | House rules, the npm scripts and where each runs, ownership, and the definition of done for a session |
 
 ## Games
 
@@ -40,9 +41,9 @@ A personal collection of browser-based games, tools, and TTRPG projects — most
 
 ## Notes on how this repo is maintained
 
-Most of these were built and are maintained in collaboration with Claude, including large multi-project maintenance passes tracked in the `gvb-site-handoff-v*.md` files at the repo root. Those documents are a running record of site-wide fixes (shared save module, offsite-request audits, previews, etc.) — useful context if you're picking up work on this repo after a break.
+Most of these were built and are maintained in collaboration with Claude. Two files at the repo root carry that record. **`BACKLOG.md`** is the entry point: every open idea, ranked, with the per-project `WISHLIST.md` files holding the plans it links to. **`HISTORY.md`** is what already shipped — 58 numbered design decisions that code across the repo cites by number, ten site-wide maintenance sessions, three rounds of a parallel prompt system since retired, and each project's own phase or sprint log. `CLAUDE.md` has the house rules and the definition of done. Useful context if you're picking up work on this repo after a break.
 
-There's a small internal test/check suite (`npm run games`, `npm run tools`, `npm run check`, `npm run previews`, etc. — see individual project folders) used to catch regressions across the games and tools before publishing.
+There's a small internal test/check suite used to catch regressions across the games and tools before publishing. **The site-wide scripts all live in `Tools/board-check/`** — `npm run check`, `npm run games`, `npm run tools`, `npm run previews`, `npm run social:check` and the rest — not in the individual project folders; most projects' own suites are a bare `node` invocation against a file in their `test/` folder. `CLAUDE.md` has the full table of what runs where.
 
 ## License
 

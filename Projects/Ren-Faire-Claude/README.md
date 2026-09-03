@@ -29,7 +29,7 @@ account's other GitHub Pages projects.
   As of Stage 20, `--vellum-faint` and a new `--wine-text` token were
   lightened to clear WCAG AA contrast (4.5:1) against the dark panel
   backgrounds they're used as small text on — both measured under 3.1:1
-  before the fix. See HANDOFF.md for the full audit.
+  before the fix. See `HISTORY.md`, Faire Weekend stage 19, for the full audit.
 - `js/data.js` — content: the grounds grid/terrain legend (authored at its full extent, 14×10, now threaded by a real path network — the row-2 artery plus a col-3 spur and, as of Stage 12, a second col-10 spur with an eastward connector so the grounds-expansion territory has path frontage), an `ENTRANCE` constant (Stage 17 — the front gate the path-distance BFS walks out from), a `GRID_EXPANSIONS` unlock schedule for how much of that grid is actually buildable at a given weekend, buildable structure types (stage/food/vendor/demo) with terrain cost/capacity modifiers and, as of Stage 12, a `footprint` (stage is 2×2; everything else defaults to 1×1), a `PLACEMENT_RULES` table (terrain bans — including, as of Stage 18, food/craft stalls banned from hill terrain — minimum stage-to-stage spacing, `requiresPathFrontage` (Stage 12), and, as of Stage 18, same-kind stall-to-stall spacing (`stallSpacingKinds`/`minStallSpacing`) and a per-kind build cap (`maxBuiltByKind`, currently just demo camps at 3)), performers (15, as of Stage 9), vendors (12, as of Stage 9), ad/marketing campaigns, one shared contract-type catalog (Day Rate/Weekend Package/Season Contract) used by both performers and, as of Stage 7, vendors, and the random event pool (including Stage 9's roster-composition-gated "backstage drama" events) — each campaign, contract, and grounds-expansion tier tagged with the weekend (`unlockSeason`) it becomes available, **As of Stage 19**: `TIME_BLOCKS` entries carry a `heat` value (how much sun
   is on the crowd, 0–1) which weights how much a stage's shade counts toward
   crowd quality that block; a new `GROUNDS_DRAW` table (per-kind draw points,
@@ -41,7 +41,7 @@ account's other GitHub Pages projects.
   money — `baseOverhead`, `upkeepRate`, `wristbandCut`, `startingCash`,
   `bankruptcyFloor`, `winCondition.minCash`, every structure base cost,
   `stage.baseCapacity`, and every performer/vendor/campaign rate — see
-  HANDOFF.md for the measurements that prompted it. Also config (including
+  `HISTORY.md` for the measurements that prompted it. Also config (including
   `seasonLength`, days per weekend, and, as of Stage 10, `demolishFeeMult`/`relocateDiscountMult`/`maxPlotNameLength`, as of Stage 15, `escalatingBuildCostRate` for the same-kind escalating build-cost curve, and, as of Stage 16, `bankruptcyFloor` and `winCondition` — the loss/win thresholds). As of Stage 22, a new `WEEKEND_DAY_ATTENDANCE` table keyed by `weekendDay` (Friday 0.85x, Saturday 1.2x, Sunday 0.95x) gives the three days of a weekend a real shape instead of being mechanically identical. No logic.
 - `js/engine.js` — pure simulation math (RNG, scheduling validation, terrain/adjacency lookup, build-cost quoting, campaign lookup, contract-aware performer AND vendor cost, season-unlock checks, the currently-unlocked grounds size and next expansion (Stage 8), quirk-aware performer popularity including the block-conditional `night_owl` quirk (Stage 9), the `EVENT_REQUIREMENTS` gating map for random events, weekend-summary aggregation, day simulation, `stallSummary`/`STALL_KIND_BY_VENDOR_TYPE` for the per-kind stall vacancy tracker (Stage 10), `isLegalPlacement` — the terrain-ban/stage-spacing/path-frontage check sitting alongside `quoteBuild` as the other half of "can this be built here" (as of Stage 18, also a same-kind stall-spacing check and a per-kind build-count cap, and the terrain-ban refusal message is now built dynamically from whatever terrain is actually still allowed rather than a hardcoded suggestion), the footprint primitives everything above runs on (`footprintFor`/`footprintCells`/`plotFootprintCells`/`isFootprintWithinCurrentGrid` and `hasPathFrontage`, Stage 12), per-plot daily upkeep (`plotUpkeep`/`totalUpkeep`, Stage 13), and, as of Stage 14, `computeFootTraffic` — turns each built food/vendor stall's terrain+adjacency `traffic` attribute into a per-stall sales multiplier relative to the day's average stall, wired into `simulateDay`'s vendor-revenue calc so placement (path frontage, proximity to a stage or a now-functional demo camp) has a real economic payoff, not just a cosmetic stat), and, as of Stage 15, `countBuiltOfKind` plus a `quoteBuild(kind, x, y, builtPlots, excludeId)` that compounds a same-kind structure's price by `CONFIG.escalatingBuildCostRate` per already-*built* one of that kind, and `previewCommitAll` — prices a whole batch of planning plots being committed together in order, so a same-kind cluster committed at once escalates against itself exactly like committing one at a time would, and, as of Stage 16, `checkBankruptcy(cash)` and `checkWinCondition(state)` — the two pure predicates the loss/win phases in state.js are built on), and, as of Stage 17, `computePathDistances()` (a memoized BFS along path tiles from `ENTRANCE`), `reachabilityDistance(plot)`, and `computeReachability(builtPlots)` — a gate-distance sales/draw multiplier (0.8×-1.2×, grouped separately for stages vs. stalls) wired into both `simulateDay`'s vendor-revenue calc and its per-block stage draw-weight, layered on top of Stage 14's foot-traffic multiplier rather than replacing
   it. And, as of Stage 19, `computeGroundsDraw(builtPlots)` — the term that
@@ -102,7 +102,7 @@ account's other GitHub Pages projects.
   them: deleting them takes the 709-check suite with them.
 - `assets/fonts/` — the three vendored type families, woff2 only. See the
   README in that folder for source, licence, and which weights are here and why.
-- `HANDOFF.md` — status, what's next, and retro notes for whoever (or whatever model) picks this up next
+- `WISHLIST.md` — the plan: eight ranked phases, the standing backlog, and the open questions. Stages 1-22 are recorded in the repo root's `HISTORY.md`
 
 ## Running the tests
 
@@ -153,7 +153,7 @@ expansion, a vendor hire-under-contract/let-go-early flow (including
 auto-seating), a full 3-day weekend walkthrough ending at the weekend-end
 summary screen and rolling into Weekend 2, and a regression test for a
 post-ship crash fix (two prima-donna performers sharing a time block
-previously threw; see HANDOFF.md), a per-plot daily-upkeep block (Stage
+previously threw; see `HISTORY.md`), a per-plot daily-upkeep block (Stage
 13: built-vs-planning-vs-missing plots, upkeep scaling with a plot's own
 stored cost, the total costs line including it), and, as of Stage 14, a
 `computeFootTraffic` block (empty/undefined input, a lone stall always at

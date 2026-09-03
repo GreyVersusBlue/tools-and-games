@@ -143,7 +143,7 @@ node Projects/absalom-inheritance/test/balance.mjs 400 --verbose   (a fast spot 
 ## Questions for Devon
 
 - **Is `Pathfinder/data/**` a published interface or private to prompts 01–03?**
-  Asked a sixth time site-wide as of `gvb-site-handoff-v10.md`, jointly by this
+  Asked a sixth time site-wide as of site session 10, jointly by this
   project and Torchbearer, and tracked centrally in prompt 01's own "Questions
   for Devon" block. Measured facts: 24 JSON files of PF2e rules data sit there;
   this game reads none and hand-writes three stat blocks and seven commands into

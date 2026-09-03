@@ -13,7 +13,7 @@
 // and Projects/integer-foundry/test/browser.mjs.
 //
 // Every beat below is transcribed from a real hands-on session, recorded in
-// Claude Prompts/notes/18-name-picker-notes.md's "What I verified" section:
+// Recorded in HISTORY.md under the prompt rounds; what round 1 verified:
 // export (hook createObjectURL, neuter the anchor click, read the exact bytes),
 // import (a real file chooser, not a shortcut), fairness (read np_history off
 // disk after real clicks), the corrupt-roster guard (seed a truncated np_rosters

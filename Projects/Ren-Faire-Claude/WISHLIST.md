@@ -8,7 +8,7 @@ nobody has scoped.** The suite stands at **801 passed, 0 failed**
 Round 3 closed the mobile tap-target debt, found one more never-clicked action
 (`cancelMove`) after round 2 had called that audit closed, and left the
 layout/density review owed for a fourth round running. Every stage's plan and
-how it landed is in `HANDOFF.md` (608 lines) and `README.md` (284); nothing
+how it landed is in the repo root's `HISTORY.md` and in `README.md`; nothing
 here repeats them. The first open phase is **Phase 1 — Guests who walk**, on
 **Claude Fable 5.1**.
 

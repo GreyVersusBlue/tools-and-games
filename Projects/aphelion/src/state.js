@@ -2,7 +2,8 @@
 //
 // Persistence goes through the shared assets/js/gvb-save.js slot rather than
 // touching localStorage directly (the Fourth Quarter is the worked example —
-// see gvb-site-handoff-v7.md §1). `mode` is the one field on `state` that
+// see HISTORY.md, session 7, and locked decisions #36 and #37). `mode` is the
+// one field on `state` that
 // never reaches the slot: it's transient, and every load resets it to
 // 'interior' regardless of what a save says.
 //

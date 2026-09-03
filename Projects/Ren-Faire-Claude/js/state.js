@@ -545,7 +545,7 @@ export function nextDay(state) {
   next.phase = 'plan';
   // roster, built plots, hired vendors, ticket price, and schedule all
   // persist day-to-day on purpose — replanning from zero every day would
-  // make a multi-day run tedious. See HANDOFF.md backlog for a "reset
+  // make a multi-day run tedious. See WISHLIST.md's standing backlog for a "reset
   // schedule each weekend" toggle if that turns out to be too sticky.
   return { state: next };
 }

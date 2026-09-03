@@ -49,7 +49,7 @@ UI.updateHUD();
 
 // Save bar lives in the logbook (TAB), reachable any time play is underway —
 // not stuck behind a reload the way the Fourth Quarter's first cut was
-// (gvb-site-handoff-v7.md §9).
+// (HISTORY.md, session 7; locked decision #48's `buttons` override).
 mountSaveBar(document.getElementById('savebar'), aphelionSlot(), {
   buttons: ['export', 'import', 'reset'],
   getState: () => { const { mode, ...rest } = state; return rest; },

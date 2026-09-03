@@ -6,7 +6,7 @@ added a save, vendored fonts and a test suite alongside the still-monolithic
 deferred: the engine and the story are now separate ES modules under `js/`,
 and `index.html` here is the entry point. `Projects/daredevil_r4.html` is now
 a redirect stub (matching locked decision #46's pattern) pointing here — see
-`Claude Prompts/notes/13-daredevil-notes.md` for the full account.
+the repo root's `HISTORY.md`, round 2, for the full account.
 
 ```
 daredevil/
@@ -57,7 +57,7 @@ crashing at the county fair — and fails on a dead end, a loop, or an ending it
 did not expect.
 
 `transcript.mjs` is the exploratory half. It is what produced the description of
-the game in `Claude Prompts/notes/13-daredevil-notes.md`, and re-running it before
+the game in `HISTORY.md`, round 1, and re-running it before
 and after a refactor is the only reliable way to notice that a branch quietly
 stopped existing.
 

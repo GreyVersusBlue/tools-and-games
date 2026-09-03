@@ -6,8 +6,9 @@ check, CI on every PR touching `Numina/**` — and the August 2026 audit's
 engineering and sharing/SEO sections are done while its content and
 accessibility sections are not. The first open phase is Phase 1, on Claude
 Fable 5.1.** Two prompt
-batches ran before this file existed (`Claude Prompts/numina-batch1-fixes.md`
-and `numina-batch2-toc.md`): between them the new-player rewrite, the
+batches ran before this file existed, and their prompt files are retired; the
+audit label each item answered is in `HISTORY.md`. Between them: the
+new-player rewrite, the
 source-book deploy fix, mobile sidebar and map legibility, favicon and Open
 Graph and sitemap, the CI job, and the build-time contents with heading
 permalinks. What they did not touch is the audit's sections A and B, and that

@@ -166,5 +166,5 @@ Most of what this game needs next is content, and content is data:
 ## Design docs
 
 `docs/BELL-TO-BELL-treatment.md` is the full creative treatment (subjects, classroom
-builder, bureaucracy, multi-year arc). `docs/HANDOFF.md` is the working state, open
+builder, bureaucracy, multi-year arc). `WISHLIST.md` is the working state, open
 questions, and the backlog.

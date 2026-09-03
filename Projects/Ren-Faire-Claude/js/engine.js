@@ -1017,7 +1017,7 @@ function rollEvents(rng, ctx) {
   const totalWeight = eligible.reduce((s, e) => s + e.weight, 0);
   const events = [];
   // At most one event per day for stage 1 — keeps the report readable and
-  // the sim easy to reason about. See HANDOFF.md for scaling this up.
+  // the sim easy to reason about. See WISHLIST.md Phase 1 for scaling this up.
   if (rng() < 0.6 && eligible.length > 0) {
     let roll = rng() * totalWeight;
     for (const e of eligible) {

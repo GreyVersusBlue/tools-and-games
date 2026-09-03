@@ -115,7 +115,7 @@ break out above the fog into bright air over a cloud sea. That never worked —
 the mountain is a ramp with no peak in it, so the cloud plane sat inside the
 hillside and was reachable by 2 of 30 test rays — and it was the wrong promise
 anyway for a walk about being somewhere you'd rather not be. The altitude blend
-now runs the other way. See `Claude Prompts/notes/24-blue-hour-notes.md`.
+now runs the other way. See `HISTORY.md`, Blue Hour session 2.
 
 A second scar, found the first time anybody walked back DOWN: above t 0.5 the
 trail is not benched into anything. `mountainH` is a ramp in z alone and

@@ -6,7 +6,7 @@ today — `<article class="campaign">`, `<div class="scenario-group">`, and
 shouldn't get `localStorage`-backed editing (a DM's chronicle updates a
 handful of times a year; hardcoded HTML with git history is a better fit
 than browser storage that can silently drift or get cleared — see
-`Claude Prompts/notes/02-pathfinder-campaigns-notes.md`). This script keeps
+HISTORY.md, round 2). This script keeps
 that property — everything still gets pasted into the page and committed —
 while cutting the copy-paste-and-fix-the-quotes friction of writing the
 markup by hand.

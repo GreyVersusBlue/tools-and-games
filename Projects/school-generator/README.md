@@ -83,7 +83,7 @@ somebody made once.
 
 The most recent audit of the whole thing, including what is and isn't
 covered by tests, is
-[`school-generator-audit-2026-08.md`](../../school-generator-audit-2026-08.md)
+[the August 2026 audit](../../HISTORY.md)
 at the repository root.
 
 ## The one rule

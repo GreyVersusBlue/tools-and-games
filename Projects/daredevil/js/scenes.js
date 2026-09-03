@@ -2,10 +2,9 @@
 //
 // Split out of daredevil_r4.html's inline module script in the round-2
 // restructure. 4,260 of the monolith's 6,888 lines (62%, 208.3 KB) were this
-// object; a full run reads 43% of it. See Claude Prompts/notes/
-// 13-daredevil-notes.md for the byte breakdown that made the split worth
-// doing, and Projects/torchbearer/content-authoring-guide.md for the
-// same-repo precedent on documenting a content format with an authoring
+// object; a full run reads 43% of it. See HISTORY.md, round 2, for the
+// account of the split, and Projects/torchbearer/content-authoring-guide.md
+// for the same-repo precedent on documenting a content format with an authoring
 // contract — that guide is the model for js/README.md in this folder.
 //
 // Every scene: { art, artLabel, bgText?, lines[], choices?, statUpdate?, next?,
