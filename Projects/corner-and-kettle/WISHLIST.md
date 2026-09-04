@@ -8,7 +8,7 @@ notes close with "there is no known outstanding defect," and the one open item
 is a design question with numbers attached rather than a bug. Nine phases are
 open across two arcs; the first is Phase 1 — The sim without the page, on
 **Claude Fable 5.1**.** Everything below is planned work, not history. The
-project's history lives in `Claude Prompts/notes/12-coffee-shop-sim-notes.md`
+project's history lives in the repo root's `HISTORY.md`, under the prompt rounds
 and the two archived rounds beside it.
 
 ## What it is

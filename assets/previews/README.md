@@ -28,7 +28,7 @@ are enforced by the promote step.
 | `corner-and-kettle.jpg` | Corner & Kettle |
 
 Torchbearer is the one remaining quest with neither — see
-`gvb-site-handoff-v8.md`'s backlog for why (it needs a prebuilt save file from
+`HISTORY.md`, site session 8, for why (it needs a prebuilt save file from
 an actual playthrough, not something to generate blind).
 
 ## To add one for a different quest

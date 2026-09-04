@@ -1,0 +1,1454 @@
+# HISTORY
+
+What already shipped on greyversusblue.com, condensed. **Nothing open lives
+here** — open work is in `BACKLOG.md`, and the plans it links to are the
+per-project `WISHLIST.md` files.
+
+This file replaces ten session handoffs (`gvb-site-handoff-v1.md` through
+`v10.md`), a 22-prompt parallel round system with three archived rounds
+(`Claude Prompts/`), thirteen Hearth sprint handoffs, the Faire Weekend and
+Bell to Bell project handoffs, and two August 2026 audits. All of it is still
+in git history; none of it is on disk.
+
+---
+
+# Locked decisions
+
+Fifty-eight numbered decisions, accumulated across ten sessions. **Code cites
+these by number, and this is now the only place the numbers resolve.** Each is
+verbatim, with the file and section it came from — those files were deleted in
+this consolidation and the citation is provenance, not a link: `git log` is
+where they live.
+
+Two of them have moved since they were written:
+
+- **#26 was amended in v6.** It was written as a rule about the test ("NPC
+  positions get checked against geometry, not just against the interact
+  prompt") and v6 §9 records it as now enforced by the game itself, not only by
+  `npm run play` — `interaction.js` tests line of sight, so the class of bug
+  that hid the Guard inside a wall for three sessions is fixed in the game
+  rather than guarded against in a test.
+- **#35 was formalised into code as #55.** #35 warned that direct
+  `camera.rotation` writes only work where `PointerLockControls` does. It stayed
+  a documented-but-unresolved warning for three sessions, and The Fourth
+  Quarter's Real Estate walk kept failing on it. #55 is that warning turned into
+  an API: `drive.mjs`'s `walkTo()` takes a `{steer:'lookAt', sens}` option for
+  games that hand-roll their own camera.
+
+1. **The parchment moved from `.notice` to `.notice::before`.** The old
+   `clip-path` on the anchor was clipping every descendant — which is why
+   pins rendered as half-domes, and why corner ribbons and hover-unfurl were
+   impossible. The anchor now has no background and no clip; `::before`
+   paints the parchment at `z-index:-1` inside an `isolation:isolate`
+   context, and `.unfurl` sits at `z-index:-2` behind it. **Consequence:**
+   pins are now full pushpin heads floating above the card's top edge. This
+   is intentional. To revert you would have to give up ribbons and unfurl.
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+2. **"Sports Bar Sim" is the archive card, not a dead link.** It points at
+   `Projects/The-Fourth-Quarter.html` (the original 2D single-file build),
+   carries `class="archived"`, and reads "OLD NOTICE — STILL PINNED". The
+   `.archived` treatment (desaturated paper, ink-coloured eyebrow, greyed
+   seal) is a reusable state for future retirements.
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+3. **Bestiary Gallery lives under Pathfinder**, not Town Services. Town
+   Services means schoolhouse tools.
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+4. **Ren-Faire's `package.json` / `package-lock.json` / `.gitignore` / `tests/`
+   stay.** Reason is in that project's README now.
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+5. **Seal glyphs are per project; ribbon tags are per genre.** They are two
+   different axes on purpose. Don't collapse them.
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+6. **The ledger rail is generated from the DOM**, never hand-authored. Adding
+   a card with `data-tags="Sim"` updates the chip counts automatically. Don't
+   hard-code counts.
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+7. **Interactive spans inside the `<a>` cards** (`.tag-ribbon`, `.suite`,
+   `#p-seal`) use `preventDefault()` + `stopPropagation()` to avoid
+   navigating. This follows the pattern already in the codebase for the
+   Anathema Archive easter egg. It is technically invalid HTML (interactive
+   content nested in an anchor) — see §4.
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+8. **`404.html` links are root-absolute.** Relative links break it on subpaths.
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+9. **The version line.** `<p class="board-note version">version 2</p>`
+   replaced "Postings Last Updated on 7-24-26". **Bump this by one every
+   session** — next session ships `version 3`. There is an HTML comment above
+   it saying so.
+
+   ---
+   *Source: `gvb-site-handoff-v1.md`, v1 §3 "Locked decisions — do not relitigate".*
+
+10. **`#quest-board .notice { padding-top: 2.15rem }` is load-bearing.** It is
+   the reserved band the corner ornaments live in. Removing it reintroduces the
+   overlaps. `check-collisions.mjs` will catch that.
+   *Source: `gvb-site-handoff-v2.md`, v2 §8 "Locked decisions".*
+
+11. **Collision measurement is 2D.** Horizontal proximity is not overlap. See
+   §2.
+   *Source: `gvb-site-handoff-v2.md`, v2 §8 "Locked decisions".*
+
+12. **`tools/board-check/` stays out of the served experience** and gitignores
+   its own dependencies. It is dev tooling in the repo, same rationale as
+   Ren-Faire's test scaffolding (v1 §3.4).
+   *Source: `gvb-site-handoff-v2.md`, v2 §8 "Locked decisions".*
+
+13. **A check that only prints is a check that gets ignored.** Both checkers
+   exit non-zero. Keep that.
+
+   ---
+   *Source: `gvb-site-handoff-v2.md`, v2 §8 "Locked decisions".*
+
+14. **`Tools/` is capitalized, including `board-check` inside it.** Windows
+   hides this; git and GitHub Pages don't. Match the case in scripts, docs,
+   and CI if any gets added.
+   *Source: `gvb-site-handoff-v3.md`, v3 §6 "Locked decisions".*
+
+15. **`modelPath` on an NPC def is honoured generically in `npc.js`.** The
+   class doesn't hardcode which model belongs to which NPC id — if a real
+   model is ever assigned, it's a `data/npcs.json` edit, not a code change.
+   Don't special-case NPC ids in `build()`.
+   *Source: `gvb-site-handoff-v3.md`, v3 §6 "Locked decisions".*
+
+16. **`getDialogueLines()` returns the raw array, `{RIDDLE}` token intact.**
+   Token substitution is `quest-manager.js`'s job. Don't move it into
+   `npc.js` — that would double-substitute or desync from
+   `quest-manager.js`'s own `hasRiddleToken` check, which greps for the
+   same literal string.
+
+   ---
+   *Source: `gvb-site-handoff-v3.md`, v3 §6 "Locked decisions".*
+
+17. **Each project vendors its own `libs/`; nothing is shared across
+   projects.** Aphelion and The Fourth Quarter both happen to be on
+   three@0.160.0 right now, but their `libs/three.module.js` are separate
+   copies, not a shared file. This matches how every other asset in the repo
+   already works (each project is self-contained) and means bumping one
+   project's three.js version later can't silently affect another.
+   *Source: `gvb-site-handoff-v4.md`, v4 §5 "Locked decisions".*
+
+18. **Castle Conundrum's `libs/addons/` mirrors three.js's own
+   `examples/jsm/` folder layout** (`loaders/`, `controls/`, `utils/`),
+   rather than flattening addon files into `libs/` the way Golden Hour does
+   for `Sky.js`/`Water.js`. Do this again for any future addon needed by any
+   project once that addon (or its transitive dependencies) has its own
+   internal relative imports — flattening those would mean hand-patching a
+   vendored third-party file's import paths, which silently rots.
+   *Source: `gvb-site-handoff-v4.md`, v4 §5 "Locked decisions".*
+
+19. **`Tools/board-check` vendors three.js from npm for its own reasons
+   (offline-rendering shim, see v3 §3), completely unrelated to the
+   site-serving vendoring in §1 above.** Don't conflate the two — but do
+   remember `three-0.160.0/` and `three-0.169.0/` under `Tools/board-check/`
+   are handy, already-on-disk, npm-authoritative copies of those exact
+   versions if a project's vendored copy ever needs re-copying.
+   *Source: `gvb-site-handoff-v4.md`, v4 §5 "Locked decisions".*
+
+20. **`launch()` in `harness.mjs` picks its engine by `process.platform`, not
+   by probing.** Linux always tries `@sparticuz/chromium` first; anything
+   else goes straight to Playwright's channel list. Don't add a "try
+   puppeteer, fall back to playwright" probe on Linux — the whole reason
+   `@sparticuz/chromium` was chosen originally was CDN-unreachable sandboxes,
+   and a probe would add a slow, failing first attempt in exactly that
+   environment.
+
+   ---
+   *Source: `gvb-site-handoff-v4.md`, v4 §5 "Locked decisions".*
+
+21. **The npc↔model casting is `King`→Guard, `Adventurer`→Scholar,
+   `Farmer`→Wizard, and the filenames are actively misleading about why.**
+   §1 has the visual reasoning. If you want to revisit it, render the three
+   models first; reasoning from names alone produces a worse answer.
+   *Source: `gvb-site-handoff-v5.md`, v5 §6 "Locked decisions".*
+
+22. **`hideMaterials` / `hideNodes` on an npc def are the sanctioned way to
+   subtract from a cast model.** Generic, data-driven, no npc id consulted.
+   Use them rather than editing a vendored `.gltf` or special-casing in code.
+   *Source: `gvb-site-handoff-v5.md`, v5 §6 "Locked decisions".*
+
+23. **Anything that loads a rigged model goes through `loadGLTF()` and clones
+   via `SkeletonUtils`.** Never `Object3D.clone()` a `SkinnedMesh` — it keeps
+   the original's skeleton and the copy silently refuses to animate. This is
+   the single most confusing failure mode in the project so far: the mixer
+   runs, the clip advances, and nothing moves.
+   *Source: `gvb-site-handoff-v5.md`, v5 §6 "Locked decisions".*
+
+24. **Held props are aimed from rig geometry, tip following the fingers.** The
+   mean of the hand bone's child bone offsets points out through the fingers;
+   the prop's heavy end goes *that* way. The opposite direction — which reads
+   as more natural — puts the whole prop inside the arm.
+   *Source: `gvb-site-handoff-v5.md`, v5 §6 "Locked decisions".*
+
+25. **Verify anything visual in headed Chrome via `playwright-core`, not the
+   in-app browser pane.** The pane doesn't composite WebGL when hidden, so
+   rAF never fires and every frame-dependent check hangs rather than failing
+   loudly. §4 has the recipe.
+   *Source: `gvb-site-handoff-v5.md`, v5 §6 "Locked decisions".*
+
+26. **NPC positions get checked against geometry, not just against the
+   interact prompt.** Interaction is proximity + facing with no line-of-sight
+   test, so the prompt appears happily for a body sealed inside a wall.
+   `npm run play` now enforces this for the Guard.
+   *Source: `gvb-site-handoff-v5.md`, v5 §6 "Locked decisions".*
+
+27. **`play-castle.mjs` runs headed on purpose; `launch({ headed: true })` is
+   opt-in and every other script stays headless.** Don't "optimise" it back to
+   headless — pointer lock and GPU rendering both need real compositing, and
+   the failure mode is a hang, not an error. Noted in the README too.
+
+   ---
+   *Source: `gvb-site-handoff-v5.md`, v5 §6 "Locked decisions".*
+
+28. **A preview is a frame from *play*, and the capture script has to prove it
+   got there.** Every recipe asserts intro overlays are gone and makes a positive
+   DOM claim about gameplay state; the ones with a clock also assert the frame
+   changes. A screenshot script that only screenshots is how five sessions ended
+   up with no previews.
+   *Source: `gvb-site-handoff-v6.md`, v6 §9 "Locked decisions".*
+
+29. **`live: false` on a turn-based recipe is correct, not a workaround.** Closing
+   Time and Faire Weekend genuinely have still frames while being played. Don't
+   "fix" them by animating something to satisfy a motion check.
+   *Source: `gvb-site-handoff-v6.md`, v6 §9 "Locked decisions".*
+
+30. **One chosen frame produces both the 330×200 hover preview and the 1200×630
+   share card.** Same moment, two crops, so the two never disagree. Resize and
+   encode happen in a canvas — do not add an image library to this folder.
+   *Source: `gvb-site-handoff-v6.md`, v6 §9 "Locked decisions".*
+
+31. **Page titles and descriptions live in `index.html`'s notices; every head is
+   generated from them.** Reword the notice and run `npm run social`. Never
+   hand-edit inside the `gvb:social` markers — it will be overwritten, and
+   `npm run social:check` will call it drift.
+   *Source: `gvb-site-handoff-v6.md`, v6 §9 "Locked decisions".*
+
+32. **The favicon is one shared inline SVG data-URI on every page.** Per-project
+   marks were considered and rejected: the icon is the site's identity, and it
+   costs zero requests this way.
+   *Source: `gvb-site-handoff-v6.md`, v6 §9 "Locked decisions".*
+
+33. **Occlusion tests in Castle Conundrum go against the mesh tree, not
+   `castle.colliders`.** Decorative geometry can be `noCollide` — the gate arch
+   is — so the collider list is not a description of what you can see through.
+   *Source: `gvb-site-handoff-v6.md`, v6 §9 "Locked decisions".*
+
+34. **Verify a guard-rail by reintroducing the bug it guards.** Two versions of the
+   line-of-sight check passed the full suite while doing nothing at all. The only
+   thing that caught either was moving the Guard back into the wall. If you add a
+   check, break the thing on purpose and watch it fail.
+   *Source: `gvb-site-handoff-v6.md`, v6 §9 "Locked decisions".*
+
+35. **Direct `camera.rotation` writes only work where `PointerLockControls` does.**
+   Three of the four 3D projects own the camera's rotation and rewrite it every
+   frame. Use `lookAt` for those, and prefer it over `turnBy` because Playwright
+   clicks under pointer lock silently accumulate yaw and pitch drift.
+
+   ---
+   *Source: `gvb-site-handoff-v6.md`, v6 §9 "Locked decisions".*
+
+36. **A project adopting `gvb-save.js` keeps its existing storage key.** Changing
+   it silently abandons everyone mid-campaign. Unversioned saves read as version 0
+   and come through `repair`.
+   *Source: `gvb-site-handoff-v7.md`, v7 §10 "Locked decisions".*
+
+37. **`migrate` is for version drift; `repair` is for every load.** If a fill-in
+   has to happen whatever the version says — and the pass a project already had in
+   its own `load()` always does — it goes in `repair`.
+   *Source: `gvb-site-handoff-v7.md`, v7 §10 "Locked decisions".*
+
+38. **The way into a game lives in `games.mjs`, once.** Any new script that has to
+   get past a title screen imports `enter()`. Two copies of an opening is the
+   thing `drive.mjs` and this file both exist to prevent.
+   *Source: `gvb-site-handoff-v7.md`, v7 §10 "Locked decisions".*
+
+39. **Assert against the DOM for anything that just happened, and against the save
+   only for what a reload has to survive.** Three of these six games write to
+   localStorage on a timer or on a code path a report never reaches; a stale save
+   reads exactly like a broken game.
+   *Source: `gvb-site-handoff-v7.md`, v7 §10 "Locked decisions".*
+
+40. **A guard-rail that can be satisfied by luck gets seeded, not retried.**
+   Integer Foundry's random sink target is written into the save before the run
+   that depends on it, with the outgoing page's autosave disarmed first.
+   *Source: `gvb-site-handoff-v7.md`, v7 §10 "Locked decisions".*
+
+41. **Headed runs launch with backgrounding disabled.** A suite whose result
+   depends on whether the person running it clicked away is not a suite.
+   *Source: `gvb-site-handoff-v7.md`, v7 §10 "Locked decisions".*
+
+42. **Measure before deciding an asset is too heavy.** The one argument against
+   vendoring the sand texture for two sessions was a size estimate that was 4×
+   too big and had never been checked. Two `curl -I`s settled it.
+
+   ---
+   *Source: `gvb-site-handoff-v7.md`, v7 §10 "Locked decisions".*
+
+43. **The site's own fonts live in `assets/fonts/`, shared between
+   `index.html` and `404.html`, not duplicated per page.** Locked decision
+   #17 ("each project vendors its own copy; nothing shared across
+   projects") is a parallel-safety rule for twenty threads that can't see
+   each other's work — it doesn't apply here, because `index.html` and
+   `404.html` aren't a project, they're the site, and they're both owned by
+   the one thread that can safely share a folder between them. See
+   `assets/fonts/README.md`.
+   *Source: `gvb-site-handoff-v8.md`, v8 §9 "Locked decisions".*
+
+44. **`page.__blocked` is "offsite and refused"; `page.__shimmed` is
+   "offsite and fulfilled locally instead."** A page can report an empty
+   `__blocked` and still hotlink Google Fonts, because `harness.mjs`'s font
+   shim answers the request before the blocked-list check ever sees it.
+   Checking `__blocked` alone answered "did we see this happen" instead of
+   "did the page ask" for the site's entire history until this session.
+   `check-integrity.mjs`'s static source sweep is the check that actually
+   scales past what a browser suite happens to drive.
+   *Source: `gvb-site-handoff-v8.md`, v8 §9 "Locked decisions".*
+
+45. **Faire Weekend: a day is final once the gates close.** Persisting a
+   report and locking it against replay are the same action, not two
+   design choices — `runDay()` already applies its results the instant the
+   button is clicked, so the only reason a reload used to undo a day was
+   that the result never reached disk. Reloading mid-report now keeps the
+   day rather than rewinding to before the gates opened.
+   *Source: `gvb-site-handoff-v8.md`, v8 §9 "Locked decisions".*
+
+46. **A tool's own version lives in the page, not the filename.** Schedule
+   Browser and Schedule Visualizer were both suffixed with a date or a
+   version number, which meant every republish was a board `href` edit —
+   a cross-thread request under the twenty-way split. `TOOL_VERSION` is now
+   a constant shown in the header and stamped into every file the tool
+   publishes; the board `href`s are the plain, permanent names
+   (`Tools/schedule-browser.html`, `Tools/schedule-visualizer.html`), and
+   the old dated paths stay as tiny redirect stubs so nothing already
+   linked or bookmarked 404s.
+   *Source: `gvb-site-handoff-v8.md`, v8 §9 "Locked decisions".*
+
+47. **`gvb-save.js`'s `fresh`/`reset` forward arguments to a `defaults`
+   factory, and `clear()` erases without invoking one.** Added because a
+   second and third adopter's day-one state depends on a runtime choice
+   (which brokerage) rather than only randomness, and because building and
+   immediately discarding a fresh state just to reach `clear the key` was
+   real, if harmless, waste. See §4.
+   *Source: `gvb-site-handoff-v8.md`, v8 §9 "Locked decisions".*
+
+48. **`gvb-save.js`'s `mountSaveBar` takes `filename` and `labels`
+   overrides, and its import handler calls `setState` before writing to
+   storage, vetoable by returning `false`.** Three adopters independently
+   needed to rename the export file or the buttons to fit their own
+   vocabulary rather than a game's; one needed to stop an import from
+   overwriting a good save with a rejected one. See §4.
+   *Source: `gvb-site-handoff-v8.md`, v8 §9 "Locked decisions".*
+
+49. **Two storage-construction gaps in `gvb-save.js`, both in the exact
+   scenario the memory fallback exists to survive:** `typeof localStorage`
+   itself can throw in a browser that blocks storage (it's a declared
+   accessor, not an undeclared identifier), and `load()`'s `getItem` call
+   was unguarded. Both fixed; both would have taken a page down in a
+   private-mode or storage-blocked browser before this session. See §4.
+   *Source: `gvb-site-handoff-v8.md`, v8 §9 "Locked decisions".*
+
+50. **`repair` also covers content drift, not just schema drift.** A
+   data-driven game whose save holds one entry per content file will meet
+   saves written before some of that content existed — that's not a
+   version problem, `repair` runs on every accepted load regardless of
+   version for exactly this reason, and it is the right hook for it without
+   being bent to fit.
+   *Source: `gvb-site-handoff-v8.md`, v8 §9 "Locked decisions".*
+
+51. **`assets/fonts/` extends to any file that is the site itself, not just
+   `index.html`/`404.html`.** `newindex.html`, linked directly from a board
+   notice and committed by Devon rather than any of the twenty-one prompts,
+   is board-adjacent the same way — its fonts joined the shared folder
+   rather than starting a third precedent. See §1, `assets/fonts/README.md`.
+   *Source: `gvb-site-handoff-v9.md`, v9 §10 "Locked decisions".*
+
+52. **`Tools/board-check/package-lock.json` is tracked; `node_modules/` stays
+   ignored.** An unpinned lockfile is exactly how #3's bug went unnoticed
+   for a whole round — see §3, §7.
+   *Source: `gvb-site-handoff-v9.md`, v9 §10 "Locked decisions".*
+
+53. **A real-time movement or physics assertion failing under this
+   environment's Linux/software-rendered Chromium is inconclusive, not
+   confirmed.** `harness.mjs`'s Linux launch args force software rendering,
+   which measurably (§4) runs three.js scenes far slower and less
+   consistently than their own physics assume, on at least this session's
+   sandbox. Re-verify from a machine where the non-Linux branch applies
+   (real Chrome/Edge via Playwright) before treating a failure here as real,
+   and before treating a pass here as proof it works everywhere.
+   *Source: `gvb-site-handoff-v9.md`, v9 §10 "Locked decisions".*
+
+54. **`play-games.mjs`'s Golden Hour wading beat needs an explicit re-aim
+   before its `KeyW` hold — arrow keys, not `lookAt()`.** Two prior
+   look-tests leave the camera facing an arbitrary direction and nothing
+   re-aims after; `lookAt()` silently no-ops once pointer lock is released
+   (which the arrow-key test above it releases on purpose), so the fix
+   polls `camState().facing` toward 0 using the same arrow keys a
+   keyboard-only player would use. See §1.
+   *Source: `gvb-site-handoff-v10.md`, v10 §10 "Locked decisions".*
+
+55. **`drive.mjs`'s `walkTo()` takes a `{steer:'lookAt', sens}` option for
+   games that hand-roll their own camera control** (Aphelion, Golden Hour,
+   The Fourth Quarter) instead of `aimAt()`'s raw `camera.rotation.set()`
+   write, which those games' own per-frame yaw/pitch overwrite erases
+   within ~16ms. Formalizes locked decision #35 into working code rather
+   than leaving it as a documented-but-unresolved warning. See §2.
+   *Source: `gvb-site-handoff-v10.md`, v10 §10 "Locked decisions".*
+
+56. **Before assuming a `lookAt()`/`turnBy()` steering fix is wrong, check
+   whether pointer lock is actually held at that point in the test.** Every
+   one of these hand-rolled-camera games gates its mousemove handler on
+   `document.pointerLockElement`/a `this.locked` flag, and anything
+   upstream in the same test that calls `exitPointerLock()` (proving a
+   keyboard-only path, or opening a dev menu) silently disables the next
+   `lookAt()` call rather than erroring. See §1, §2.
+   *Source: `gvb-site-handoff-v10.md`, v10 §10 "Locked decisions".*
+
+57. **`sync-social-tags.mjs`'s generated block must match the target file's
+   own line-ending convention, not hardcode `\n`.** A Windows checkout with
+   `core.autocrlf=true` rewrites every previously-written LF block back to
+   CRLF, so a hardcoded-LF comparison shows permanent false drift on any
+   page the script has ever touched. See §3.
+   *Source: `gvb-site-handoff-v10.md`, v10 §10 "Locked decisions".*
+
+58. **`check-integrity.mjs`'s offsite-host sweep covers `.js`/`.mjs`/`.css`,
+   not just `.html`.** `/libs/` joined its `SKIP` list for vendored
+   bundles. See §4. (Also: `SKIP`'s own matching is now
+   case/separator-normalized — it silently matched nothing on Windows
+   before this round.)
+   *Source: `gvb-site-handoff-v10.md`, v10 §10 "Locked decisions".*
+
+
+---
+
+# The site sessions, 1–10
+
+Ten site-wide maintenance sessions took the board from version 2 to version 11.
+Sessions 8, 9 and 10 were not single sessions in the usual sense — they were
+the closing pass of a parallel round (see the next section), applying every
+other thread's shared-file requests, bumping the version line and writing the
+handoff.
+
+**Session 1 (version 2).** Closed the four known issues the board arrived with:
+"Sports Bar Sim" and "The Fourth Quarter" both pointed at the same folder, so
+the archive card was repointed at the orphaned 2D build and restyled as an
+archived posting; `Projects/Castle Conundrum/` had no `index.html` and 404'd;
+`Tools/creature_artwork_gallery.html` was unlinked, and got linked into
+Pathfinder as the Bestiary Gallery; Ren-Faire's Node scaffolding was kept
+deliberately, because deleting it deletes the test suite. Built the per-project
+wax seal glyphs (a 16-symbol inline SVG sprite), the DOM-generated ledger rail,
+and the version line itself, with an HTML comment above it saying to bump it
+every session. **What it learned:** the `clip-path` on `.notice` was clipping
+every descendant, which is why pins rendered as half-domes — moving the
+parchment to `::before` is what made ribbons and hover-unfurl possible at all
+(#1).
+
+**Session 2 (version 3).** Got a real browser running for the first time and
+pointed it at the board. The corner-ornament collision v1 flagged as unverified
+turned out to be real, and got fixed. A whole-site parse sweep turned up
+something worse: **Castle Conundrum had been broken in production**, and still
+was. The seven preview screenshots did not get captured. The verification
+tooling landed in the repo as `tools/board-check/` so none of it would have to
+be rebuilt from scratch again. **What it learned:** a check that only prints is
+a check that gets ignored (#13) — both new checkers exit non-zero.
+
+**Session 3 (version 4).** Fixed what v2 flagged as most urgent: Castle
+Conundrum no longer hung on "Summoning stonework…" forever. `src/npc.js` was
+real JavaScript now, not JSON. Rebuilding it turned up a second real bug —
+`data/npcs.json`'s held-prop path pointed at a folder that doesn't exist — and
+the integrity checker caught an orphaned Pathfinder monster-export file with a
+stray bracket. `Tools/board-check/` ran clean on a real Windows machine for the
+first time. **What it learned:** `Tools/` is capitalized, including
+`board-check` inside it (#14); Windows hides this and git doesn't.
+
+**Session 4 (version 5).** Aphelion, Castle Conundrum and The Fourth Quarter
+stopped depending on `cdn.jsdelivr.net` — three.js vendored locally in each
+project's own `libs/`, at each project's already-pinned version. Separately,
+`Tools/board-check` began running its full suite on Windows, including the
+collision guard and screenshot script v3 found completely broken there:
+`harness.mjs` picks `@sparticuz/chromium` on Linux and falls back to Playwright
+driving the machine's installed Chrome/Edge everywhere else. **What it
+learned:** each project vendors its own copy and nothing is shared across
+projects (#17) — the rule that has shaped every asset decision since.
+
+**Session 5 (version 6).** Cleared two items that had sat on the list for three
+sessions. The Guard/Scholar/Wizard ↔ Adventurer/Farmer/King mapping was
+decided, implemented and *looked at*, with real character models, real
+idle/walk/greet animations, and the Guard's mace actually in his fist rather
+than floating beside him. Castle Conundrum was played through to victory on a
+real machine — real pointer lock, real WASD, real E presses, real typing into
+the riddle box — which turned up a genuine placement bug nobody could see
+before: **the Guard was standing inside the gatehouse wall**, invisible from
+every approach even though the "Press E" prompt appeared. That playthrough
+became `npm run play`, 22 assertions. **What it learned:** never
+`Object3D.clone()` a `SkinnedMesh` (#23) — it keeps the original's skeleton and
+the copy silently refuses to animate, with the mixer running and the clip
+advancing and nothing moving. The single most confusing failure mode the
+project had produced.
+
+**Session 6 (version 7).** All seven hover previews existed, captured by
+actually playing each game rather than screenshotting a title screen. Every
+page linked from the board got a favicon and per-project Open Graph tags,
+generated from the board's own notice copy so the two can't drift — which also
+closed the phantom `/favicon.ico` 404 present in every verification log since
+session 1. `interaction.js` began testing line of sight, so the class of bug
+that hid the Guard inside a wall was fixed in the game rather than guarded in a
+test (the #26 amendment). **What it learned:** verify a guard-rail by
+reintroducing the bug it guards (#34). Two versions of the line-of-sight check
+passed the full suite while doing nothing at all; the only thing that caught
+either was moving the Guard back into the wall.
+
+**Session 7 (version 8).** `gvb-save.js` finally got an adopter — The Fourth
+Quarter — after four sessions on the list, and the adoption paid for itself by
+finding three gaps in the shared module and two bugs in the game. That adoption
+is the worked example every later adopter followed, and it is where locked
+decisions #36, #37 and #47 come from. `npm run games` arrived as an end-to-end
+regression suite for the six games that aren't Castle Conundrum: 94 assertions
+driving real pages with real clicks. Golden Hour's sand texture got vendored,
+and the estimate that had made it look too expensive to vendor for two sessions
+was wrong by 4× and had never been checked (#42). Two things this session
+deliberately did not fix, both of which became decisions later: **Faire Weekend
+never wrote a save while a report was on screen** — `render()` returned early
+for the report, victory, gameOver and weekendEnd phases — so reloading while
+looking at a day's takings rewound to before the gates opened and the day was
+replayable; that became #45. And **the save bar was only on the start screen**,
+so exporting a campaign mid-week meant reloading the page to get the start
+overlay back; that became #48's `buttons` and `labels` overrides. **What it
+learned:** Chrome throttles a window nobody is looking at — a seven-game run
+failed twice and passed on retry for that reason alone, which is why headed
+runs now launch with backgrounding disabled (#41).
+
+**Session 8 (version 9).** The first closing pass of a parallel round. **The
+Bestiary Gallery is gone** — it hotlinked 3,894 images from `2e.aonprd.com`,
+unnoticed for the site's whole history because no suite ever opened it, and the
+board dropped from 23 notices to 22. **v7 §5's "zero offsite requests
+site-wide" was wrong**, and the reason it looked right got fixed: the font shim
+in `harness.mjs` was fulfilling Google Fonts requests before the blocked-list
+check ran, so a hotlink never reached `page.__blocked` (#44). `index.html` and
+`404.html`'s fonts got vendored. **The shared save module went from one adopter
+to eleven**, and five real gaps surfaced across four of them, all fixed in the
+module rather than worked around four separate ways. `play-games.mjs` grew from
+94 checks to 126, and a new `tools.mjs` closed the "nothing ever opens a Tools
+page" hole that had let a live grading bug and font hotlinks both hide in plain
+sight. **What it learned:** checking `__blocked` alone answered "did we see
+this happen" instead of "did the page ask" — for the site's entire history.
+
+**Session 9 (version 10).** A live problem, not caused by any of the twenty
+project threads, got fixed: `newindex.html` and a matching `index.html` notice
+change were committed directly, mid-round, which broke `npm run check` (offsite
+font hotlinks) and `npm run social:check` (the notice-count floor) for every
+thread that ran after it landed — nineteen of them hit this and correctly
+flagged it as "not mine." A second, more consequential bug, also not caused by
+any project thread: three independent sessions found the same `puppeteer-core`
+incompatibility breaking `npm run games` and `npm run previews` completely, for
+every game. Fixing it exposed a structural finding that outlived it — this
+environment's forced-software-rendering Chromium runs three.js real-time
+movement far slower and less consistently than the games' own physics assume
+(#53). Torchbearer got a preview, an OG card and a `npm run games` entry for
+the first time, now that a real committed save existed. **What it learned:** an
+unpinned lockfile is exactly how a whole round's worth of test breakage goes
+unnoticed (#52).
+
+**Session 10 (version 11).** Two previously-undiagnosed bugs in shared tooling
+got fixed rather than flagged, because this round happened to run on a fair
+environment. **Golden Hour's wading beat was walking the player inland instead
+of toward the sea** — traced to a missing re-aim after two prior look-tests,
+and to `lookAt()` itself being a red herring fix once pointer lock turns out to
+be released at that point in the test (#54, #56). **The Fourth Quarter's Real
+Estate walk-to-station beat was failing for the reason #35 already named**, so
+`walkTo()` gained a `steer:'lookAt'` option (#55). **A repo-wide
+`sync-social-tags.mjs` false-DRIFT, reported independently by sixteen of
+twenty-one projects, was fixed at the root**: a Windows checkout with
+`core.autocrlf=true` rewrites every LF the script ever wrote back to CRLF, and
+the script compared against a hardcoded LF-built block, so every page it had
+ever touched showed permanent drift after a fresh checkout, forever, regardless
+of content (#57). `check-integrity.mjs`'s offsite sweep grew to cover
+`.js`/`.mjs`/`.css` (#58) — and its `SKIP` list turned out to have silently
+matched nothing on Windows for its whole life, since `path.join` returns
+backslashes and the list's patterns are lowercase forward-slash. Orbital got a
+preview and OG card using a real winning flight plan. **The whole `npm run
+games` suite came back clean for the first time any handoff ever reported:
+146 checks, 0 failed, across three full independent runs.**
+
+**Versions 12 through 15 have no handoff.** `index.html:575` reads "version
+15", as does `landing.html` at lines 840 and 861, and no document records what
+sessions 11 through 14 did. The only evidence is `git log -- index.html`, and
+it is thin: the repository's history begins at a squashed import on 2026-08-25,
+at which point the footer already read version 15. The one commit to touch the
+file since is `153a59b` (2026-08-26, "School Generator: a face, and a way
+home"), which added the School Generator's board card and did not move the
+version line. So the four versions were shipped before this repository's
+history starts, and nothing here can say what they contained. Don't guess.
+
+---
+
+# The prompt rounds, 1–3
+
+Between site sessions 7 and 10, the repo ran a parallel round system: 22
+self-contained prompts, one per project, each scoped so that all 22 could run
+at once without touching the same file. Each project thread wrote one notes
+file; one prompt (General Site Improvements) ran last and applied every
+shared-file request, bumped the version line and wrote the handoff; a third
+(Refresh) archived the round and rewrote the perishable parts of all 22
+prompts. Three rounds ran. The fourth never started.
+
+## Round 1 — site version 8 → 9
+
+Covered every project for the first time. **Headline finds:** Daredevil had
+never been completable by anyone, due to five independent wiring bugs (fixed);
+The Absalom Inheritance was completely unwinnable, 0 wins in 2,000 simulated
+runs (fixed, to 59.3%); Final Grade Checker had a live grading bug (fixed);
+`gvb-save.js` went from one adopter to eleven.
+
+| Project | What shipped |
+| --- | --- |
+| Anathema Archive | Three Foundry-token rendering bugs (double-printed heighten text, a `@Damage` parenthesis-parsing bug, missing `@Embed` handling); deleted an orphaned duplicate NPC JSON file. |
+| Pathfinder Campaigns | Vendored fonts, fixed a heading-order gap, ARIA tab semantics on both tab widgets, one contrast nudge. Recommended (not requested) a future merge with `characters.html`. |
+| Pathfinder Characters | Vendored fonts, same heading-order gap, one contrast failure. Same merge recommendation, independently arrived at. |
+| Aphelion | Vendored fonts, adopted `gvb-save.js`, arrow-key look for pointer-lock-denied browsers, EVA content (2 POIs, 3 log entries), a 23-check smoke suite. |
+| Castle Conundrum | Fixed the blurry-wall bug (texture magnification filter, not a UV/resolution problem), gave the braziers a physical model and un-buried them from inside walls, fixed a floating candelabra, moved the Scholar out of the table. `play-castle.mjs` grew 22→29 beats. |
+| Closing Time | Adopted `gvb-save.js`; found and fixed two content-drift bugs (a listing or neighborhood added after a save existed could crash or silently freeze). Rewrote `tools/smoke.mjs` to actually assert — it was print-only. |
+| The Fourth Quarter | Save-bar mounts on the box score and Tonight panel, a dev-menu "skip to last call," and a full legacy-save arithmetic audit: 7 real bugs fixed in `repairCampaign`. |
+| Golden Hour | Audit-driven, no prior backlog: fixed a sun-glint blending bug, fixed `camera.rotation.order` (the driver was reading a false heading), arrow-key look, beach content (groyne, boulders, driftwood, 460-piece wrack line, a moving sun), a 33-check smoke suite. |
+| Faire Weekend | Decided and shipped the report-phase save policy ("a day is final once the gates close"), vendored fonts, grew the smoke suite 684→737 checks. |
+| Torchbearer | First session. Restructured into `Projects/torchbearer/` (URL unchanged), made both bundled adventure packs reachable from the title screen, adopted `gvb-save.js`, fixed a fixed-feat bug that meant **no Fighter could ever Shield Block**, added 8 validator rules, an 86-check suite. |
+| The Absalom Inheritance | First session. Found the game **unwinnable** (0/2,000 runs), fixed the encounter design (wake sentinels one at a time, restore HP at the gate) to 59.3%, restructured into ES modules, adopted `gvb-save.js`, fixed a renderer canvas-sizing bug and a mobile-breakpoint bug (0px board below 900px), added full keyboard play. |
+| Corner & Kettle | First session. Vendored fonts, adopted `gvb-save.js`, found 7 save-related bugs (nested `presets`/`regulars` fields with no guards). |
+| Daredevil | First session, and the largest find of the round: the 207-scene game had **never been completable** by any player, due to 5 independent wiring bugs — a hub-exhaustion counter that couldn't reach zero, an unrouted minigame scene, two flag-gate typos, a missing relationship assignment that hid an entire ending, and a `res.outcome` vs `res.result` field mismatch. All fixed. |
+| Integer Foundry | Found the order generator could hand out **unfillable orders** from the 12th order onward (51% unfillable by order 30); replaced it with a BFS reachability solver. Adopted `gvb-save.js` with `slot.autosave`, fixed a grid-resize repair bug, vendored fonts, fixed a mobile clipping bug. |
+| The Fracture Cycle | First session. Fixed a genuinely unreachable ending (`end_radiant`'s condition could never be met), added an ending-tracker save, vendored fonts, a 26-check suite. |
+| Final Grade Checker | Found and fixed a **live grading bug**: the "round up at .5" rule was actually rounding at .45 at every letter boundary, so some students were reported a letter grade too high. Wired up a corrected math module that existed in git but was never imported. Fixed an importer bug that let a system-average column be misread as a real quarter grade. 119 assertions. |
+| Image to PDF | Vendored jsPDF, added JPEG/WEBP input, quality presets, fixed an EXIF-rotation bug for "Original quality" JPEGs, per-file reorder/remove and per-file error isolation. |
+| Name Picker | Vendored fonts, adopted `gvb-save.js` across all 13 storage keys (with a `boxed()` adapter to keep on-disk bytes unchanged), added a "🔒 Data" tab for one-click student-data erasure, and **fixed the random-pick fairness** — it was independent uniform draws with no memory, now draws without replacement — plus a biased `sort(() => Math.random()-0.5)` shuffle. |
+| Schedule Visualizer / Browser | Renamed both dated filenames to permanent ones with redirect stubs, moved the version into the page itself (#46), vendored fonts, fixed a mobile map-scroll bug. **Flagged a possible school-security exposure**: the committed `PUBLISHED_DATA` names real staff, rooms and planning-period schedules alongside a floor plan. |
+| Seating Chart Generator | Adopted `gvb-save.js`, rewrote the print stylesheet (it was cutting off columns in portrait), full keyboard operation, fixed a solver bug (auto-assign silently dropped all constraints when there were more students than desks), fit-to-window zoom. |
+| General Site Improvements | See site session 8. |
+
+## Round 2 — site version 9 → 10
+
+Every one of the twenty project threads shipped real work. **Headline finds:** a
+second real grading bug in Final Grade Checker (quality points don't round at
+.5 the way percentages do); a stall bug in The Absalom Inheritance's new second
+area that only a few thousand seeded balance runs would have caught; Daredevil's
+restructure into a real module layout, finally safe now that a full regression
+suite existed to prove nothing broke; a repo-wide `puppeteer-core`
+incompatibility that broke `npm run games` for every game, found independently
+by three threads and fixed once; a live site-wide breakage introduced by a
+direct commit outside the prompt process, found and fixed. Three long-standing
+recurring questions were resolved by Devon this round: the Pathfinder
+Campaigns/Characters merge (harmonize, don't share), the committed schedule data
+(leave it), and the Final Grade Checker's rounding rule (percentage rounds at
+.5, quality points don't).
+
+| Project | What shipped |
+| --- | --- |
+| Anathema Archive | The first test suite (33 checks), swept every NPC shard for round 1's duplication bug class and found none, fixed a stale roadmap comment. |
+| Pathfinder Campaigns | A JSON-to-HTML generator script so the page stays hand-authored but not hand-typed; the merge recommendation stood a third time. |
+| Pathfinder Characters | With sign-off, harmonized (not merged) the two pages' shared chrome with `[shared]` drift-guard comments. The merge question closed as "harmonize, don't share." |
+| Aphelion | Built the EVA distance-only signal readout. |
+| Castle Conundrum | Shrank shipped assets 46→29 MB, fixed a wall-scale bug that also broke the hall's proportions, gave columns and braziers real geometry and colliders. Found (not fixed) the hall table and gothic statue embedded in the back wall. |
+| Closing Time | Gave the career a real ending at day 336, collapsed the mobile topbar, added a real Ledger filter, fixed a content-removal crash. |
+| The Fourth Quarter | Gave the fully-built venue ladder an actual door into the game (a station, a panel, a dark-night flow), fixed a seat-count lie and a room-rebuild leak, made rent scale with venue tier. |
+| Golden Hour | Wading depth that rides the tide, footprints in wet sand, a second sand texture to break tiling — 4 of 5 backlog items with zero new asset bytes. |
+| Faire Weekend | Adopted `gvb-save.js`, gave the weekend a real day-of-week shape, click-tested ten previously-unexercised UI actions. |
+| Torchbearer | Fixed Assurance, fixed the potion-heal bug (real, reachable, silently under-healing), fixed Shield Block double-granting, committed a real save fixture that unblocked its preview. |
+| The Absalom Inheritance | Built a second area (the Reliquary) — five of eight engine files touched to give "which area is the PC in" a real answer — and found and fixed a stall bug the balance harness caught that a browser playthrough never would have. |
+| Corner & Kettle | Fixed the flat difficulty curve at high prestige, closed the mid-shift reload exploit, made baristas hand off finished drinks instead of auto-serving, added keyboard shortcuts. |
+| Daredevil | Restructured the largest file in the repo (a 356 KB monolith into 4 files), wired the previously-unreachable Work the Crowd minigame, fixed two continuity holes in the prose. |
+| Integer Foundry | Replaced a magnitude-based difficulty ramp with a tile-cost-based one, fixing a stretch (orders 15–30) that had gone flat forever once a multiply unlock existed. |
+| The Fracture Cycle | Verified everything round 1 shipped is still true; made zero edits. |
+| Final Grade Checker | Asked directly and found **a real grading bug**: quality points don't round up at .5, only the percentage average does. Fixed the asymmetry; replaced the dead xlsx export with CSV; added an add-row button. |
+| Image to PDF | A per-page 90°-rotation control for sideways scans, verified pixel-correct against real generated PDFs. |
+| Name Picker | Built the browser suite round 1 flagged as the top gap (44 checks); decided and shipped `np_history`'s day-boundary clear. |
+| Schedule Visualizer / Browser | Read the entire ~4,400-line pathfinding/congestion/playback engine for the first time and confirmed it's a real traffic model, not a toy. Fixed a **21 MB PDF export down to ~190 KB** and two accessibility gaps. |
+| Seating Chart Generator | Named room zones with a solver constraint, four layout presets, a print-all-sections feature. |
+| General Site Improvements | See site session 9. |
+
+## Round 3 — site version 10 → 11
+
+Every project thread shipped real work. **Headline finds:** Daredevil's "Not
+interested" to Earl was discovered to leave the entire milestone spine (M2–M4)
+almost unchanged despite removing three optional evening cards — the biggest
+open item on the site, and a content-authoring decision, not a bug. Final Grade
+Checker's grading bug turned out much bigger than round 2 thought: the correct
+quality-point thresholds are whole numbers (4/3/2/1/0), not `.5`-offset
+midpoints, so every `x.75` average had been one full letter too high since the
+tool's dual-method calculation first went live, not just for one round. A
+repo-wide `sync-social-tags.mjs` false-DRIFT was independently reported by
+sixteen of twenty-one projects and root-caused once. Schedule Visualizer's
+863 KB monolith was finally restructured into a seven-file `app/` split,
+byte-for-byte verified against the original. Two real bugs in shared test
+tooling got fixed at the root once a fair environment let them prove out.
+
+| Project | What shipped |
+| --- | --- |
+| Anathema Archive | Did not run — already stable and correctly skipped. Re-verified: still nothing outstanding. |
+| Pathfinder Campaigns | Zero edits, zero findings — first fully clean verification round. |
+| Pathfinder Characters | Same — first fully clean round. |
+| Aphelion | Zero code changes; confirmed the `#signal` regression beat is still blocked on an airlock-entry beat that doesn't exist yet. |
+| Castle Conundrum | Fixed four objects sealed in the back wall (table, statue, a cabinet and a commode), reviewed and promoted the preview candidate, fixed `play-castle.mjs`'s own engine-mismatch bug, fixed the gate door's hinge/pivot math. No known open bugs. |
+| Closing Time | Threaded an exact `recId` through the Ledger filter (it was a display-name substring match) and answered the career-ending "what's next" question. |
+| The Fourth Quarter | Built the spoilage mechanic, answering its own difficulty-curve question directly. |
+| Golden Hour | Rebuilt dune grass as camera-facing quads, closing the last obviously-flat-looking thing on the project. |
+| Faire Weekend | Closed the mobile-tap-target gap (48px cells, `#board`'s desktop column split) and found one more real wiring gap (`cancelMove`, untested until then) **even after round 2 called the wiring audit closed**. |
+| Torchbearer | Wired `edge-outwit`, a real Feint action, and a reload mechanic — closing all three feature items round 2 left open. Did the `mountSaveBar` cleanup. Only `mobility` remains, blocked on monster data. |
+| The Absalom Inheritance | Built a real character-creation pick screen with a second build (Fighter, alongside the original Wizard) — closing what round 2 called the single highest-value gap. |
+| Corner & Kettle | Fixed its own `test/drive-save.mjs`'s `waitForFunction` bug (9 instances, one beyond what a grep first found) and **measured** the Serve-gate design question rather than arguing it. |
+| Daredevil | Closed all four of round 2's remaining tasks (gzip measurement, absent-relationship sweep, touch-control verification, contrast fix) and found the biggest open item on the site. |
+| Integer Foundry | Fixed its own `test/browser.mjs`'s engine-mismatch bug, played the difficulty curve for feel, and made the case that the two remaining model gaps are one coupled piece of work, not two. |
+| The Fracture Cycle | Did not run — already stable. Re-verified: still nothing outstanding. |
+| Final Grade Checker | Asked directly and found the grading bug was bigger than round 2 thought — whole-number thresholds, and the bug window is the tool's entire history. |
+| Image to PDF | Re-verified the rotation fix fresh against a new real PDF; made no code changes. |
+| Name Picker | Fixed `test/browser.mjs`'s own engine-mismatch bug; found the rename question now targets `newindex.html`, not `index.html`. |
+| Schedule Visualizer / Browser | The restructure: 863,737 bytes in one file became a 124,566-byte shell plus a seven-file `Tools/schedule/app/` split, verified byte-for-byte. Read the What-If Lab and both floor-plan renderers for the first time; both genuinely non-duplicative. |
+| Seating Chart Generator | Fixed rotated desk labels (they now counter-rotate) and all three Playwright-only bugs in its own test file, one beyond what was flagged. |
+| Orbital | First real round: a physics test suite (all 22 levels confirmed winnable, plus wormhole/booster/solidity/save-migration checks), a reset-confirmation fix, and a preview/OG card. Found the live level count was 22, not the 21 a previous survey recorded. |
+| General Site Improvements | See site session 10. |
+
+## What the round system got wrong, and what it got right
+
+Two facts the prompts were originally written on (session 7, version 8) turned
+out to be false, and both were corrected in place rather than deleted, because
+a prompt set that quietly rewrites its own history teaches the next session
+nothing:
+
+1. **v7 §5 claimed the site made zero offsite requests site-wide. It did not**,
+   and the suite couldn't see it. Fixed in round 1 (`page.__shimmed`,
+   `check-integrity.mjs`'s static source sweep — #44).
+2. **The regression suites only drove the seven games.** Fixed in round 1 — the
+   Bestiary Gallery (3,894 offsite requests, the site's largest by three orders
+   of magnitude) was deleted, and `npm run tools` began sweeping all six Tools
+   pages.
+
+The one structural thing the system produced that outlived it: **a "Questions
+for Devon" block in each project's own file** as the durable home for a genuine
+open decision, replacing the older pattern of burying it in a task description
+or mentioning it only in the handoff. That convention survives, in
+`BACKLOG.md`'s Questions for Devon section.
+
+The system's own stated failure mode was real: the closing prompt **would stop
+rather than write a handoff from a partial set of notes files**, which happened
+in round 2 and was by design.
+
+---
+
+# School Generator, phases 1–42
+
+The most heavily phased project in the repo. Phases 19–42 came out of
+`Projects/school-generator/WISHLIST.md`, which carried their full shipped
+records; that log lived there and lives here now, so the wishlist can go back
+to being a plan.
+
+## Phases 1–18
+
+The repository's history begins at a squashed import, so no per-phase record
+survives for Phases 1–11. Phases 12–18 are named by their own commits:
+
+- **Phase 12 — the lattice, and the one door out of it.** Landed across seven
+  commits: the room record where somebody can reach it; save v11 and the second
+  path deleted; an undo step that says what changed; the 4ft brush over rooms
+  that own their outlines; the generator and the sample school, baked; and
+  three things a walkthrough of the real page found.
+- **Phase 13 — the sheet you draw on.**
+- **Phase 14 — two people, one plan.**
+- **Phase 15 — a real school day.**
+- **Phase 16 — what it costs.**
+- **Phase 17 — the site, meshed, and the four refusals it lifts.**
+- **Phase 18 — the server that never shipped, and the arc's leftovers.**
+
+## Arc four — the guest (Phases 19–24)
+
+**Phase 19 — The first five minutes.** *The tool rewards the hundredth hour and
+punishes the first five minutes.* Shipped the opening moment (three doors on
+first visit), the Ctrl-K command palette fuzzy-matched over every verb, a coach
+that surfaces one hint at a time, the walk-mode key sheet regrouped by how soon
+a guest needs it, a phone-sized photo panel and minimap, and findings put where
+the eye is. *What fought back:* running the tool on an actual phone found that
+it never booted on one — `main.js` had written a touch hint into an element two
+redesigns had removed, a TypeError before init finished. And the chrome pass
+found `--accent-soft` defined as `var(--accent-soft)`: every active-state wash
+had been transparent for two phases. Both are the kind of bug only *looking*
+finds, which is what the phase was.
+
+**Phase 20 — Worth a screenshot.** *The picture is honest. Honest is not yet
+worth looking at.* Five one-click time-of-day moods, troffers that actually
+light off the ceiling-pan lattice, four-octave value-noise clouds, per-family
+finish roughness, and chrome restyled as dark glass. *What fought back:* the
+first night walkthrough was white. Real troffers per pan plus a spill every
+school saturates plus the night exposure lift stacked into a washout; the tune
+that landed is 1,000lm a pan and `SPILL_MAX` down to 0.30 — the level the old
+invented house fill sat at, now earned.
+
+**Phase 21 — Line of sight.** *A label the walker did not earn is information
+through a wall.* `sightline.js`, pure with its own suite, gates walk-mode room
+labels on line of sight to the room's door. *What fought back:* two things,
+both geometric. A cast aimed *at* a doorway's centreline never strictly crosses
+the shut leaf lying exactly along it, so the cast reaches `DOOR_PAST` beyond
+the wall. And "the segments `collide.js` already derives" did not survive
+contact: **sight has its own idea of a wall.** `wallSegments` puts glass and
+railings in with drywall — right for a body, a lie for an eye — and never cuts
+a window, so `sightSegments` derives its own occluders.
+
+**Phase 22 — Hands.** *In walk mode you have feet and no hands.* *What fought
+back:* the rotation convention, again — under it local +x swings toward −z, and
+the first overlap test was written for the other handedness. Escape turned out
+not to be cancellable: under pointer lock the browser owns Esc, so putting a
+carried prop back is X. One deliberate consequence: a committed placement
+redraws the scene *and* the colliders from the file, so everything the walk had
+shoved snaps back where it was drawn — the picture and the physics agree,
+because they are read from the same place.
+
+**Phase 23 — The walk you can hand to somebody.** *Sharing the school still
+means sharing the tool.* *What fought back:* less than the plan feared, and the
+plan gets the credit — twenty phases of house style meant the graph had no
+default exports, no re-exports, no `export let` and no cycles anywhere in the
+walk's reach, so the "biggest single piece of surgery since the nav mesh" was
+four regexes against a discipline. The one real scare was a black viewport in
+the headless smoke test, chased into the *tool*, where the existing chrome-edit
+baseline has the same black viewport: a SwiftShader artifact, identical on both
+sides.
+
+**Phase 24 — Lights out.** *A building that can host a school day can host a
+bad night.* *What fought back:* the flicker trap was real —
+`updateDynamicLights` early-returns on `lampLevel`, so the seam multiplies
+cached base intensities *after* the budget and never touches the level. The
+routed warmth's first cut charged a detour to the middle of the destination
+room, and its second discovered that a corner place's next-door test point was
+*outside the building* — both times the routed answer was right and the fixture
+was lying.
+
+## Arc five — the living school (Phases 25–34)
+
+**Phase 25 — The point you meant.** *Every drawing tool in this editor guessed,
+and three of them guessed wrong.* *What fought back:* the free-standing wall
+wanted to be a room with a two-point ring, which would have been one line in
+`shapes.js` and a branch in every one of the forty modules that walk
+`shapesOf(floor)` treating each shape as a room. A separate per-storey array is
+additive in the save file, invisible to everything that counts rooms, and
+reaches the eight places that actually care about boundaries.
+
+**Phase 26 — Take it out again.** *Three sentences of feedback, and every one
+of them was about a thing the build could already do and could not be asked to
+do.* *What fought back:* the eraser's press-or-drag ambiguity. Claiming the
+press for the object under it is one line and makes the rectangle eraser
+unusable along any edge of a room. Deferring to the pointer-up costs a held
+candidate and a second `pushUndo` — which is free, because `commit()` diffs and
+an empty diff pushes nothing.
+
+**Phase 27 — Light that stops at walls.** *A troffer shines through the wall
+its range crosses, and everyone has agreed not to look.* *What fought back:*
+where the brightness comes from. A tint can only *darken*, so at night a
+lamplit room has nothing to multiply. And the day channel had to stop being the
+sun: a baked sun patch is wrong the moment the mood moves the clock, so what is
+banked is directionless daylight *access*, recombined per environment write.
+Ceilings turned out to be load-bearing: they had no vertex colours at all, and
+a dark corridor under a bright ceiling reads as a lie.
+
+**Phase 28 — A school you can hear.** *The simulation knows where every person
+is. The air has no idea.* *What fought back:* the Web Speech API's one hard
+wall — synthesized speech never enters the Web Audio graph, so the
+announcement's words cannot literally pass the convolver. And the crowd's
+census turned out to be load-bearing: two suites enumerate every state a person
+can be in and assert the sum, and both had to learn the new word before
+anything else would pass.
+
+**Phase 29 — Weather.** *The cloud deck is one coverage and one drift
+everywhere, and nothing has ever fallen out of it.* *What fought back:* the
+temptation to invent a second cross-slab number. The rain's attenuation *is*
+`PATH_SLAB` — importing the constant instead of coining one is what keeps "rain
+loudest on the top storey" and "a hum through the ceiling" the same physics,
+and the suite pins the equality so the two can never drift apart.
+
+**Phase 30 — The first click.** *The tool still assumes they arrived with a
+network, and leave nothing behind.* *What fought back:* the service worker's
+one hard wall, the same shape as Phase 28's speech synthesis — a worker that
+imports a pure module has to be a *module* worker, and not every engine has
+them, so registration is attempted and a rejection is caught and reported. The
+demo ran into the one browser API that can tell a synthetic pointer from a real
+one: `setPointerCapture` throws `NotFoundError` for a `pointerId` the browser
+never issued. Two smaller ones: a first draft of `sanitizeName` reserved
+`[ -<...]` as a *range*, which eats the digits, so "Room 101" saved as
+"Room ---"; and a `let galleryFilled` sat below the block that opens the
+welcome — fine on every path a seeded harness takes, and a TDZ error on the one
+path nobody automates, the very first load.
+
+**Phase 31 — Surfaces worth touching.** *Every wall in the building is flatter
+than the floor it stands on.* *What fought back:* three rules the codebase had
+already written down and this phase read too quickly, plus one real mistake.
+**A partition belongs to exactly one of the two rooms it divides**, so signing a
+room from its own openings signs about half a school — six of eleven, with the
+missing five looking like geometry errors. The wardrobe started as three more
+draws inside `makeAgent`, and every draw after them moved, so a purely cosmetic
+addition changed where everybody spawned; nothing failed except the one
+*simulating* test, and a threshold one person the other side of the line would
+have shipped a silently different school. And the fourth, worth stating at
+length: a transmissive material makes three.js render the whole scene a second
+time. That was known, written down as a cost, and taken on anyway — then CI
+went red, and measured, **547ms a frame became 1,186ms**. Refraction moved to
+where depth of field already lives, paid for only while a photograph is being
+composed. **The lesson is not "transmission is expensive" — it is that a cost
+written into a comment is not a cost anybody has checked**, and the number took
+one afternoon script to get.
+
+**Phase 32 — Rooms that repeat.** *Schools are the most repetitive building
+type there is, and the tool cannot repeat anything.* *What fought back:* the
+phase's own premise, first. That sentence was true when drafted against memory
+and false against the tree — Phase 6 had already shipped multi-select, copy,
+paste, duplicate, rotate and mirror. **A phase's premise is checked against the
+tree, not against the wishlist.** The bug underneath was worth the retelling:
+the conventions had warned since Phase 6 that `hand` and `sw` are relative to a
+run's direction, and the code path those words were written about still got it
+wrong for twenty-six phases, because `reverseRing` renumbered segments and
+flipped `t` and left `hand` and `sw` alone. Nothing noticed because the one
+operation that re-winds a live ring is the mirror, and nobody had tested what a
+mirrored *door* did. The suite now proves the door *physically* rather than by
+the stored signs, which a re-wind legitimately scrambles.
+
+**Phase 33 — The director's cut.** *A tour moves the camera and does nothing
+else.* *What fought back:* **the TDZ bug this project has now shipped three
+times.** `lastMoodKey` is read by `envChanged` on every call, and a `let`
+declared textually below the function that reads it is exactly the mistake
+Phases 30 and 31 each made once. It is declared ahead of it here, with the
+reason written beside it, so a fourth phase does not get to rediscover the rule.
+
+**Phase 34 — A history somebody else can read.** *The file remembers everything
+and can answer nothing.* *What fought back:* the matching rule, twice. Ids are
+stable across an edit and are the honest key — until a room is erased and
+redrawn under the same name, which the tool does every time somebody
+straightens a wall with the brush. Matching leftovers by name was the fix, and
+the first cut of *that* reported "Room 102 was redrawn" for a room whose only
+difference was its id, which is a change nobody made.
+
+**Phase 35 — The square you pointed at.** *Phase 25 gave the grid a pitch that
+follows the zoom, and then let two of the three tools ignore it.* *What fought
+back:* the raster's *phase*, not its pitch. An origin that is not a whole
+number of pitches from the corner means the raster overhangs the sheet by up to
+one tile on each edge and the sheet's border stops being a grid line. And
+`traceRegion` had `CELL` baked into the two lines that turn cells back into
+feet, which is the sort of constant that reads as arithmetic until the day it
+is a parameter.
+
+**Phase 36 — The door slides to the mark.** *The last tool still aiming with a
+raw click, and the last catalog still behind a mode wall.* *What fought back:*
+upstream, not the feature — Phase 35 landed mid-write and had already rebuilt
+the floor tool around tiles, so `snapAlongSeg` grew its origin parameter in the
+merge rather than after a bug report, which is the cheap time to learn it. The
+four-pixel click/drag discrimination is borrowed from the rectangle eraser
+rather than invented, because a threshold that already survived two years of
+real pointers is worth more than a fresh guess.
+
+## Arc six — the design review (Phases 37–42)
+
+**Phase 37 — A drawing is a set of sheets.** *The blueprint was one sheet, and
+a building has never been a plan.* *What fought back:* an import cycle, caught
+by the walk bundle's cycle check rather than by anything at runtime. The fix
+was the rule the sheet panels had already set: this module draws readings and
+never takes them, so the caller hands the spec in.
+
+**Phase 38 — Say it on the sheet.** *The sheet shows every wall and states not
+one number.* *What fought back:* two promises rather than pixels. The
+round-trip suite caught the byte-identity claim over-reaching — annotate-then-
+clean removes the key, but `nextId` has still moved. And the elevations forced
+a scope decision: an oblique dimension projected onto a facade would draw a
+foreshortened line under an unforeshortened number, so **the sheet would
+disagree with itself**; a vertical sheet prints exactly the dimensions parallel
+to its plane.
+
+**Phase 39 — The school day starts at the curb.** *Everyone the building holds
+was teleported into homeroom before the first bell.* *What fought back:* the
+doors, three times, and every time the dismissal found it. The far-side door
+waypoint (the near-portal steering aims *just* past the centre line, closer
+than the waypoint's own arrival radius, so a body parked in the leaf's swing).
+The standoff (a walker pressed against a leaf parked open across its route,
+each politely holding for the other until the last bell). And the patience
+counters (sliding along that leaf at walking speed counted as progress and kept
+resetting the very timer whose flip would have carried the body round). Plus
+one honest concession: the admission gate meters the waypoint crossing, but a
+soft crowd can physically squeeze a body through the opening uncounted — a real
+crush does that too.
+
+**Phase 40 — The chair, not the checklist.** *The tool can find an accessible
+route and has never once sat in the chair.* *What fought back:* the chair, on
+its first walk, rolled *under* the stairs — a run's treads are drawn on air
+over real floor, and a body whose reach is half an inch never sees a surface a
+foot up. Then the door rule never fired at a pair of open leaves. Then the
+grade rule read a 1:8 ramp as 1:10 from the flat floor at its foot. And then
+the premise met the tree: the first pass over every generated school reported a
+hundred door approaches and a dozen pinches, and **every one of them was true**
+— the corridor template stood its locker banks 1.4ft off each wall with a bench
+down the middle, leaving 33in.
+
+**Phase 41 — Numbers that know their edition.** *Three code editions are
+offered and not one of them changes a number.* *What fought back:* the premise,
+first. Writing the three tables out in full is what showed that for a Group E
+occupancy and the rules this tool applies, the numbers carried since Phase 7
+are the same in every edition it offers — "not one of them changes a number"
+was a fact about the code as much as about the tool. The phase shipped anyway,
+on the convention's own terms: the numbers now have a home and a citation, a
+suite proves a hypothetical edition moves every reader, and the first real
+difference is one row.
+
+**Phase 42 — The boot diet.** *Most of the tool still loads before the first
+frame, and the backlog has already written the diet.* *What fought back:* the
+table, first. It said the loader pinned eight modules and the minimap pinned
+the plan builder, and both were true and neither was the whole story —
+`main.js` imported all eight itself, so a registry alone freed nothing. The CSV
+writer turned out to exist five times, one private copy per module; the
+fragment reader three times. **312 KB and twelve requests came off the boot**,
+which is less than the audit's 500 because the audit counted modules and the
+graph counts imports.
+
+## The struck-through backlog items, and the phases that closed them
+
+Twelve entries in the standing backlog were closed by a named phase and struck
+through rather than deleted. They are recorded here so the wishlist's backlog
+can hold only open work:
+
+| Item | Closed by |
+| --- | --- |
+| Warmth is a straight line plus a per-storey charge, not routed | Phase 24 — `routedDistance` walks the navgraph; the straight line survives as the no-graph fallback and the outdoors' answer |
+| A boundary that bounds no room cannot be drawn | Phase 25 — `floor.walls` is a boundary that belongs to the storey |
+| The wall drag's parallel-segment fix isn't applied to the erase tool | Phase 25 — moot; there is no wall drag any more |
+| No shadows from the building's own lights; light doesn't respect geometry | Phase 27, for the walk — the bake casts every fixture against sightline's occluders. The editor's live path still lights by distance alone |
+| The cloud deck is one coverage and one drift everywhere | Phase 29 — `weather.js`: overcast, rain and snow |
+| The vendored `libs/` are 1.3 MB and cannot be cached hard | Phase 30, and more cheaply than proposed — the service worker's cache is named for the worker's own revision, so `REV` invalidates the lot. Not one import path moved |
+| Shrinking the sheet can strand a lattice-aligned room outside it | Phase 32 — the Slide row moves a storey's rooms, walls and props as one set; stairs and lifts stand on two storeys and stay put, and the status line says so |
+| The tracing overlay is edit-mode only | Phase 38 — it prints under the plan behind a checkbox, at the sheet's own scale |
+| Accessibility stops at routes: no turning circles, reach ranges or counter heights | Phase 40 — `clearance.js` |
+| Common path of egress travel is a constant that nothing measures | Phase 41 — `commonpath.js` |
+| The code edition is printed, not applied | Phase 41 — `codes.js` |
+| Most of the tool still loads before the first frame | Phase 42 — the diet above |
+
+Three of these landed *partly*, and the remainder is still in the wishlist's
+standing backlog rather than here: the editor's live light path, the transmission-
+loss ray's cross-slab constant, and the boot path's remaining table.
+
+---
+
+# Hearth, sprints 4–16
+
+A zero-dependency living island whose whole world round-trips through the URL
+hash. Sprints 1–3 predate the surviving handoffs; sprints 4–16 each left one,
+and each ends with an "Issues I hit" section that is the most useful writing
+in them.
+
+**Sprint 4 — Wildlife and the wider world.** Deer, rabbits, a fox, gulls, fish
+shadows, fireflies, geese and a whale; the far island as a silhouette with a
+one-time voyager who may or may not come back. *What went wrong:* the voyager
+never left — the first cut `continue`d the people loop for `task==='voyage'`
+alongside `boat`, so its `case` never ran. Rabbits lived permanently in hiding,
+because homes near fields put them under people's feet forever; fixed with a
+scare counter and relocation to a 9–24 ring. And `MutationObserver` doesn't
+fire inside a synchronous step loop, so the harness polls `#log` children
+instead.
+
+**Sprint 5 — The watcher, that's the player.** Blessings, dreams, the campfire
+story, the chronicle export, save/load through the hash. *What went wrong:*
+**the compressor was silently wrong.** The encoder seeded single characters
+into the LZW dictionary that the decoder never adds, so every dictionary index
+past 256 was off by one and the round trip threw `URI malformed`. Then
+fixed-width 16-bit codes turned out to make the payload *bigger* than the raw
+JSON; variable-width 9→16 bit codes cut it to 55%. The decoder widens on
+`n+1===(1<<bits)`, one entry earlier than the encoder, because at the moment it
+reads a code it is always one dictionary entry behind. Also found: a hard-luck
+island — storms most days early, three people gone by day 8, no farms, wood
+untouched at its starting 12 — which recovered on its own by day 51 but looks
+broken for forty days.
+
+**Sprint 6 — Sound as place.** *What went wrong:* the `R()` leak — use `ar()`,
+never `rnd()`, inside anything that runs from `audioTick` or from a click, or
+saved islands stop replaying identically. The first balance was wrong by about
+3×: the axe measured 7× the ambient bed, which is fine once and awful for an
+afternoon. `localStorage` throws outright inside a `data:` URL, which is how
+the preview harness serves the file. And an `AudioContext` cannot start itself,
+so the arming listener is registered with `capture: true`.
+
+**Sprint 7 — The quality pass.** *What went wrong:* `setWx('thunder')` is a
+short fuse — storm `wxT` is 30–50 sim-seconds, so a test that steps 40+ seconds
+after setting it is quietly testing rain. The sim/draw split had to hold: the
+occupancy Set is built in `draw()` without touching `R()`, and the storm smoke
+is in `step()` *with* it. Get those backwards and either the render changes the
+world or saves stop replaying identically.
+
+**Sprint 8 — The short list.** *What went wrong:* **the previous sprint's own
+test was too polite.** It checked deer every 50 steps on one healthy island and
+passed; the wider soak (every 25 steps, all species, more islands) is what
+exposed the rabbits. If you add movement code, soak it across several random
+seeds, not one. The NaN islander was observed once on an island collapsed to
+one person by day 44 and never reproduced, including under forced starvation
+for 144 sim-days.
+
+**Sprint 9 — Solid ground.** *What went wrong:* an inserted `//` comment
+mid-edit swallowed the rest of a one-line statement and killed the whole IIFE —
+the page loaded with no `__hearth` at all. Almost every statement in this file
+shares a line with its neighbours; use `/* */` inline. The mooring bug is a
+standing warning: **any code that places a person must place them on ground
+`walk()` accepts**, or they are stuck rather than invisibly wading.
+
+**Sprint 10 — What the hands learn.** *What went wrong:* **the mill printed
+grain** — +2 to the granary per carry with no ceiling reached 1,403 meal by day
+121. Frame-craft never developed when it only gained at build *finishes*. And
+the lighthouse-islet hang was found because seed 7 built exactly one work in
+five years when probability said six: **"suspiciously quiet" is a bug signature
+in its own right.**
+
+**Sprint 11 — The island answers.** Prayer, the shrine, arcs, ways. *What went
+wrong:* the grant check was off by one — `rainedDay > prayer.d` meant rain
+falling the same day as the dawn ask never counted. The harness's first prayer
+test ran in winter, where dry ground decays .56/day and can't survive to the
+dawn check. And asserting `arc === null` after a forced drought was wrong: a new
+year legitimately deals a new card. **Assert on the chronicle, not the slot.**
+
+**Sprint 12 — What is handed down.** Heirlooms, made things, the book of days.
+*What went wrong:* a `//` comment ate half a line again. The autosave boot gate
+still said `v<=7` after `pack()` went to v:8 — **there are two version gates,
+and only one had been updated.** The first depth runs grew zero stories,
+because the entries the fire reliably retells are the chronicle's oldest and
+`landing`, `name` and `temper` weren't in the growth table: **the growth table
+must cover whatever the sampler favours, not whatever seems dramatic.** And the
+listening pass measured silence at first, because `master.gain` is stamped from
+`audioOn` when the graph is built.
+
+**Sprint 13 — Where the stories stand.** *What went wrong:* **midnight is not
+morning** — `newDay()` fires when the clock crosses midnight, so launching a
+walk from there sends a child out in the dark. The fix is the voyage pattern:
+`newDay` only queues, and `step()` launches once `dayFrac()` clears dawn. Spots
+are rebuilt from scratch at load, so lore spots had to be re-derived in
+`unpack` *after* farms and buildings restore.
+
+**Sprint 14 — The walking of the bounds.** *What went wrong:* `runDay` ends at
+midnight, and a bounds launched into the night just walks home — the fix
+belonged in the harness (`skipToMorning()` first, and then **re-pause**, because
+`skipToMorning` unpauses the RAF loop). The thirteen-mode round-trip test
+asserted `v === 9` and failed the moment the version bumped; **version-pinned
+asserts in older modes are a trap each new sprint should grep for.**
+
+**Sprint 15 — The hill remembers.** *What went wrong:* the log-scraping test
+was the sprint's only real dead end — `logEl` keeps only its last 9 `<p>`
+children, and the harness runs a full sim-day between launching the walk and
+checking. Fixed by trusting durable counts instead of log text; the log-text
+version was left out rather than kept as a flaky check. `p.mourn` was
+write-once, consumed by a single line that nulls it before arrival. And **the
+same version-pin trap sprint 13 warned about sprang on schedule** — grepped for
+`rt.v !==` this time, not just `o.v !==`, and fixed both instances.
+
+**Sprint 16 — The island talks to itself.** Songs, news, conversation. *What
+went wrong:* **the trader broke the bounds, and had always been able to** — new
+`R()` draws shifted the stream enough that the regression's walk day now had
+the trade boat arrive mid-procession, the leader went to `wave`, the rite
+dissolved, one stone short. A whole conversation can happen inside one
+`step()`, so the harness's "did I ever glimpse `task==='chat'`" check was false
+while both pockets already held the news: **assert the durable signals, not the
+transient state** — the same lesson as sprint 15's log-scraping dead end, one
+layer down. And a caveat noted rather than fixed: names recycle, and songs live
+on names, so a child named for a dead knower technically "knows" every song the
+ancestor knew.
+
+Two things every sprint from 11 on repeated in its own leftovers, and both are
+now questions in `BACKLOG.md` rather than notes here: the rich-island
+population cap settling at 47–49 (`popCap()+1` in the birth rule), noted by six
+consecutive sprints and dismissed by all six; and prayer kinds being checked in
+a fixed priority (heal > rain > food > calm > dream), so the stone only hears
+the loudest of two live needs.
+
+---
+
+# Faire Weekend, stages 1–22
+
+**Stages 1–9 — the game.** Stage 1 was the first playable slice: a multi-file
+project, 9 fixed plots with authored sightline/shade/traffic, 10 performers
+across 6 roles, 8 vendors, 6 random day-events, a plan → gates → report → next
+day loop, a `localStorage` save and a 47-check smoke suite. Stage 2 gave the 9
+plots a real coordinate grid and terrain, and derived their attributes from
+terrain plus stage-adjacency instead of authored flat numbers. **Stage 3 threw
+the plot catalog away**: 4 buildable structure *kinds* placeable on any open
+cell, with cost, capacity and name derived from the terrain via `quoteBuild()`.
+Stage 4 added marketing, Stage 5 contract negotiation for performers, Stage 6
+the season and weekend structure, Stage 7 the same contract depth for vendors,
+and Stage 8 grounds expansion as a season unlock. Stage 9 filled the content
+pools (performers 10→15, vendors 8→12) and added backstage drama events — and
+its `night_owl` quirk, the first whose effect depends on which time block is
+passed in, forced `effectivePopularity` out of `simulateDay`'s private closure
+into a properly testable exported function.
+
+**Stage 10 — the soft-lock that wasn't, and the bug that was.** Direct
+stress-testing found "Open the Gates" was never actually disabled — but did
+find a real latent bug: `hireVendor`'s cap summed food and craft stalls into
+one shared pool instead of capping each separately.
+
+**Stages 11–13 — placement gets rules.** Stage 11 introduced `PLACEMENT_RULES`
+and a pure `isLegalPlacement`. Stage 12 gave stages a 2×2 footprint and built a
+real path network with a frontage requirement, making a plot's *whole*
+footprint the unit every placement check operates over. Stage 13 added daily
+upkeep, needing zero new fields and zero save migration since `plot.cost` had
+existed since Stage 3.
+
+**Stages 14–18 — the crowd, the ladder, the endings.** Stage 14 made every
+built stall's traffic attribute a real per-stall sales multiplier. Stage 15
+added escalating build cost. Stage 16 added win and loss conditions. Stage 17
+added reachability-gated draw — a memoized BFS along path tiles from the
+entrance. Stage 18 added three more legality rules, and most of the stage went
+into fixing about a dozen pre-existing fixtures that had incidentally used
+adjacent food stalls or hill anchors as generic scaffolding.
+
+**Stage 19 — the systemic one.** The first stage aimed at a systemic problem
+rather than a new mechanic, and the diagnosis is the valuable part: 250-seeded-
+day sweeps found **an empty field earned +$5,420/day** (a full build paid back
+in 1.1 days), ticket price peaked at exactly the slider max, **`state.builtPlots`
+was never read by attendance at all** — Stages 12, 14 and 17 had only resliced a
+crowd the map had no vote in — and satisfaction was capped near 68 by an
+anti-correlated sightline/shade data table. `computeGroundsDraw` made built
+structures multiply attendance themselves; costs were rescaled and coupled to
+scale; price elasticity was retuned so cash peaks at $19 and reputation at $16,
+two different optima. Net measured: empty field +$5,420/day → −$1,245/day;
+satisfaction range 56–68 → 47–89. The visual rebuild replaced the parchment
+look with a dark operations room. **And it added the `SIGNIFICANCE:` test
+class** — assertions that a mechanic is strategically load-bearing, not just
+correctly implemented — *because Stage 18 shipped fully green with a dominant
+do-nothing strategy.*
+
+**Stages 20–22 — the browser stages.** Stage 21 was the first with a browser
+actually available, and both its changes were decided by measurement:
+`saveState` moved to the top of `render()`, so the report-phase early return
+can no longer skip it, and **a day is now final once the gates close** (#45).
+400 seeded days showed the old behaviour wasn't forgiving — it was a free
+reroll worth about 3× the median day's profit, able to reach the win
+condition's reputation floor in a quarter of the intended days, and it meant
+bankruptcy could never end a run. The three vendored type families replaced a
+`fonts.googleapis.com` hotlink that had made v7's "zero offsite requests"
+claim wrong. Stage 22 adopted `gvb-save.js`, gave the weekend its day-of-week
+shape, and ran a by-hand wiring audit against both test suites that found **ten
+never-clicked actions and two never-dispatched event types**.
+
+Three lessons from the project's own retro, worth keeping:
+
+- **A `createSaveSlot()` call is not free to cache across simulated page
+  loads.** Any Node smoke suite that reassigns `globalThis.localStorage` to test
+  multiple boots in one process needs its slot built fresh per
+  `save`/`load`/`reset` call — the module doing the reassigning is not the
+  module that gets cache-busted, so a cached slot silently survives every
+  "reload."
+- **jsdom implements neither `URL.createObjectURL` nor a readable `Blob`, and
+  clicking a real `<a href="blob:...">` schedules an unimplemented navigation**
+  unless the click's default action is prevented. Both are one-time setup costs
+  worth knowing before any adopter's suite exercises `mountSaveBar`'s export
+  button for real.
+- The wiring audit found gaps a fuzzer or coverage tool wouldn't have flagged
+  as clearly: ten specific, nameable actions, plus the entire `change`/`input`
+  event family. **Concrete findings, not "coverage is at 80%."** It is a person
+  with grep, and it found a real gap in each of the last two rounds it ran.
+
+---
+
+# Bell to Bell, through T7
+
+The vertical slice: one first-person class period built on *Withitness* as a
+vision mode that costs bandwidth and lies to you under stress. T5 gave the room
+draggable furniture and a "blind" legend swatch; T6 shipped a second
+hand-authored roster, schedule and lesson; T7 shipped one hand-authored
+observation at a fixed minute 30, plus a post-conference that isn't skippable.
+
+**Where the balance sat at T7.** These numbers exist nowhere else, and the
+project's `balance.mjs` reproduces them. Every number moved from the previous
+session, because the Observation's ambient Mastery cost now runs in every
+simulated period — she always visits — which is why mastery reads a few points
+lower across the board and fidelity a few points higher.
+
+```
+4th period
+ideal (never scans)        mastery 74  fidelity 87  bandwidth 18  restless 72  missed 7  obs 1/5
+the good teacher           mastery 79  fidelity 82  bandwidth  0  restless  0  missed 0  obs 1/5
+the good teacher, rubric   mastery 79  fidelity 92  bandwidth  0  restless  0  missed 0  obs 5/5
+the hypervigilant          mastery  8  fidelity 57  bandwidth  0  restless  0  missed 0  obs 0/5
+the wanderer               mastery 50  fidelity 56  bandwidth 53  restless 14  missed 0  obs 1/5
+never checks, never looks  mastery 51  fidelity 70  bandwidth 55  restless 93  missed 7  obs 0/5
+
+the August chart           mastery 74  restless 72  missed 7  obs 1/5
+the pairs split up         mastery 75  restless 44  missed 6  obs 1/5
+the barometer up front     mastery 75  restless 49  missed 6  obs 1/5
+
+5th period
+ideal (never scans)        mastery 73  fidelity 87  bandwidth 18  restless 79  missed 8  obs 1/5
+the good teacher           mastery 78  fidelity 82  bandwidth  0  restless  0  missed 0  obs 1/5
+never checks, never looks  mastery 49  fidelity 70  bandwidth 55  restless 91  missed 8  obs 0/5
+```
+
+"the good teacher, rubric" is the same teacher, same everything, except she
+also plays to the rubric the instant the AP walks in: identical mastery (the
+ambient cost doesn't care whether you performed), ten points more Fidelity (the
+rubric actually rewarding the show). **That is the whole mechanic in one row.**
+5th period is genuinely busier — one more scheduled tell, restless hotter
+across the board — while landing in the same neighbourhood on mastery, and
+still with exactly one thing that quietly never happens.
+
+Two gaps in the slice were settled rather than fixed, and are recorded here so
+nobody reopens them as bugs:
+
+- **The lesson is 2,000 game-seconds against a 2,820-second period, and that is
+  intentional.** `filler` ("sustained silent work") is the designed answer to
+  running out of lesson before the bell. Both periods' authored beats sum to
+  exactly 2,000s on purpose, so there is one ratio for the slice, not two
+  accidental ones. Revisit only if playtesting says the filler stretch actually
+  feels bad, not because the number looks incomplete.
+- **"No desk in this room is fully blind" was closed by T5.** The August default
+  still doesn't produce one — that was never the bug — but you can now drag the
+  furniture until it does, and the "blind" legend swatch lights up when you have.
+
+---
+
+# Blue Hour, sessions 1–6
+
+A fog-bound mountain trail after dark, and the deliberate sibling of Golden
+Hour. It shipped in PR #8 and was unreachable from the board until much later.
+
+**Session 1 — the instruments.** A `?debug` → `window.__bh` hook, on the same
+bargain Golden Hour struck: a regression suite cannot walk 860 m in real time,
+cannot wait out a 337-second fog period, and cannot stand in the woods for the
+~70 s before dread's first beat and then hope the coin lands right. `dread.js`
+split `tryFire` into `tryFire` + `runBeat` so a beat could be staged without
+winning a weighted draw, with `_lastBeat` moved into `runBeat` so the "never the
+same beat twice running" rule holds across both paths. And a browser half of the
+suite, serving the site root over a throwaway http server so the import map and
+`libs/` resolve exactly as they do in play.
+
+**Session 2 — the walk ends in the fog.** Devon set the thesis and it reframed
+the open item rather than answering it: *this is not a place we want to be, and
+we want to get out — but the fog hides something.* Under that reading the
+summit defect stopped being a rendering bug and became a design one. **The
+altitude blend inverted.** `altT` drove seven things and every one of them was
+relief — fog thinning, light coming up, exposure opening, mist and shafts
+fading, a cloud sea appearing. All of it now runs the other way: the summit is
+the thickest air on the mountain, the light goes out of it, and the mist gets
+*heavier* with altitude.
+
+**Session 3 — the mountain gets a voice.** Adaptive music: eight drone
+oscillators in D aeolian on a bus inside `Soundscape`, so mute and the fog
+muffle apply for free and nothing slams on the first click. Two altitude voices
+— E♭2 beating at ~4.4 Hz against the root above the fog line, A♭2 (the tritone)
+only near the summit, ×1.6 while the lookout figure watches. This session also
+wrote the piece's north star and its governing doctrine into the record, which
+**settled session 2's direction question: dread, not collection.**
+
+**Session 4 — the logbook, and the mist that was never there.** Three grants
+from Devon, narrowly: one reading verb, one memory, one findable tool. The
+logbook is ten weathered pages and eight keepers drifting administrative-to-
+personal, with no inventory, no counter and nothing remembering what has been
+read. **The real find:** the mist banks (session 1) and the breath vapour
+(session 3) **had never drawn a single frame** — silently, with no page error,
+no shader warning and no pixels.
+
+**Session 5 — first light: the truth pass.** No new systems; the job was to
+*see* the things session 4 made renderable but nobody had ever looked at, read
+the writing the way a player reads it, and walk the seams. A/B drawing-buffer
+diffs judged every blind-authored constant. The logbook proofread found one
+clunk. **The chip timing was real seconds by the end** — it had ticked 1/60 per
+frame, which meant minutes on a slow tab and 2.4 s at 144 Hz.
+
+**Session 6 — the walk down.** *Every design decision in this piece faces
+downhill and nobody had ever walked that way.* This session did, bench to
+trailhead in one go, 860 m, and spent the rest of itself on what the descent
+turned up: the causeway (the trail rides up to 10.9 m above the hillside on
+both sides, invisible on the way up), the phantom's downhill pan measuring
+exactly 0.000, and a doctrine break — a sting that only fired if you ran the
+experiment, deleted on the grounds that the doctrine postdates the code and
+wins every tie. smoke 93 → 104, browser 72 → 95.
+
+**The standing environment caveat:** every number on this piece is swiftshader,
+1.0–1.8 fps, and `main.js` clamps `dt` to 0.1 s, so the world runs at roughly a
+tenth speed under the harness. The clamp is correct — it stops a stalled tab
+teleporting the walker — but any walk distance read from this project must be
+scaled.
+
+---
+
+# The two August 2026 audits
+
+## Numina, August 2026
+
+An audit of the Eleventy rules site: 55 pages, ~136,000 words of source
+markdown. Its findings were labelled, and **`Numina/WISHLIST.md` still refers to
+those labels** — "Audit §B, all still true", "A3/A6", "A5" — so the label-to-
+finding map is the reason this audit is worth keeping at all. Everything in
+sections D and E shipped, in the two prompt batches that ran before the wishlist
+existed; sections A and B are where that wishlist starts.
+
+| Label | Finding | Where it went |
+| --- | --- | --- |
+| A1 | "New Players Start Here" doesn't deliver what it promises | Shipped, batch 1 |
+| A2 | There is no path to actually joining | Wishlist Phase 5 |
+| A3 | The Excellencies page is a live stub | Wishlist Phase 6, and question Q33 |
+| A4 | Nation infoboxes are mostly empty | Question Q34 |
+| A5 | Zero cross-links in the ported content | Wishlist Phases 1–2 |
+| A6 | Thin pages — `history.md` is 183 words of prose plus a 17-event timeline | Wishlist Phase 6 |
+| A7 | The home page assumes context | Wishlist Phase 5 |
+| B1 | The nation map is invisible to screen readers | Wishlist Phase 4 |
+| B2 | No skip link — keyboard users tab through the header plus up to ~27 links | Wishlist Phase 4 |
+| B3 | Anchor targets hide under the sticky header | **Shipped, batch 2** (`scroll-margin-top`) |
+| B4 | Timeline era headers are `aria-hidden` | Wishlist Phase 4 |
+| B5 | `table { display: block }` destroys table semantics | Wishlist Phase 4 |
+| B6 | Small gold text is low-contrast in light mode (`--gold` ≈3.1:1) | Wishlist Phase 4 |
+| B7 | Theme toggle announces no state | Wishlist Phase 4 |
+| B8 | Smooth scrolling isn't motion-gated | **Shipped, batch 2** |
+| C1 | The open sidebar pushes content a full screen down on mobile | Shipped, batch 1 |
+| C2 | Map labels are unreadable on phones | Shipped, batch 1 |
+| C3 | Minor visual nits — the `hr::before` flat-color patch | Wishlist standing backlog |
+| D1 | No favicon; generic tab icon plus a 404 for `/favicon.ico` | Shipped, batch 1 |
+| D2 | No Open Graph / Twitter card metadata | Shipped, batch 1 |
+| D3 | No `sitemap.xml`, `robots.txt` or canonical URLs | Shipped, batch 1 |
+| D4 | Footer official-site link is `http://` | Shipped, batch 1; the HTTPS half is question Q35 |
+| E1 | The source books are deployed publicly | Shipped, batch 1 |
+| E2 | Smoke tests never run in CI | Shipped, batch 1 |
+| E3 | `nav.json` is a second source of truth | Shipped, batch 1 |
+| E4 | Long rules pages have no in-page navigation | **Shipped, batch 2** (build-time contents with heading permalinks) |
+| E5 | 404s strand Numina visitors | Shipped, batch 1 |
+| E6 | Small cleanups | Shipped, batch 1 (subset) |
+
+## School Generator, August 2026
+
+Five findings and five smaller marks, **all addressed in the same pass that
+produced the report.** Worth keeping for one observation the audit made about
+itself:
+
+> The five findings above are all, in their way, the same observation: the parts
+> of this project that were built with a test suite beside them are in excellent
+> shape, and the parts that could not have one — the boot path, the tool layer,
+> the deploy gate — are where every problem is.
+
+| # | Finding | What resolved it |
+| --- | --- | --- |
+| 01 | Nothing runs the tests before a deploy | `.github/workflows/school-generator-ci.yml` on every PR touching the folder and on merges to `main`: the unit suite on bare Node, and the two browser passes on a pinned Playwright, with failing captures uploaded as an artifact |
+| 02 | When boot fails, the app looks fine and does nothing | `js/bootcheck.js` holds the four ways the tool can fail to start and the words for each; `index.html` carries an inline classic-script guard, and `test/bootcheck.test.mjs` fails if the guard's hard-coded copy ever drifts from the module. All five paths verified in a browser, including the one that must stay quiet: an error hours into a healthy session |
+| 03 | Every hand-drawn room is called "Room 101" | `nextRoomName` reads the whole building and answers with a number nobody has used, per storey, filling gaps. Separately, `bindRoom` now refuses an ambiguous *name* the way it always refused an ambiguous number |
+| 04 | The tool layer is the one layer with no tests | `test/tools/run.mjs` drives all twelve tools with real pointer events and asserts the state delta, with an `assertClear` guard so a gesture that would land on a floating panel fails loudly instead of passing quietly |
+| 05 | 3.5 MB of JavaScript across 99 requests before the first frame | **Partly.** `js/lazy.js` plus deferring `generate.js` measured 3,616 KB → 3,531 KB and one request fewer; the rest turned out to be pinned eager by the import graph rather than by the lack of a mechanism, and that map went into the wishlist backlog. Phase 42 later took 312 KB and twelve requests more |
+
+The five smaller marks: selecting a prop by clicking it said nothing (now names
+the piece); `isAxisRun` was exported and called from nowhere (wired into
+`runLabel`, which no longer rounds a near-miss into a right angle); the one
+invocation of the suite that works wasn't written down (`node --test
+'test/*.test.mjs'`, since plain `node --test test/` fails with
+`MODULE_NOT_FOUND` on Node 22); there was no README (there is now); and
+`main.js` (6,919 lines) and `render.js` (6,112 lines) resist the codebase's own
+one-module-per-question rule. **The last was deliberately left alone** — the
+finding said not urgent and not a bug, and splitting them without the tool
+harness underneath would have been the least safe change in the set.
+
+**What held up**, said plainly because an audit that only lists faults
+misreports the thing: 1,622 assertions across 75 files, every one green on the
+first run with no flakes and no skips. Not one `TODO`, `FIXME` or stray
+`console.log` in 50,320 lines. Autosave degrades in three deliberate tiers when
+`localStorage` fills, each with its own sentence for the user. Undo round-trips
+byte-exactly.
+
+Two claims in that report went stale within weeks and are corrected here so
+nobody acts on them: **the `libs/` caching block is closed** (Phase 30 — the
+service worker's cache is named for its own revision, so `REV` invalidates the
+lot, and not one import path moved), and **the boot-diet table is half closed**
+(Phase 42 — `js/lazy.js`, and a `boot-budget` check in `test/tools/run.mjs`
+that fails if any of it is undone).

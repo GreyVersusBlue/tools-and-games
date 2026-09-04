@@ -1,7 +1,7 @@
 // Tests for blueprint.js — the pure half of the printable floor plan
 // (`computeFloorPlan`). No real canvas here, so this runs under `node --test`
 // the same as every other model module; what a sheet *looks like* is still
-// exercised by hand (see WISHLIST.md Phase 7).
+// exercised by hand (see HISTORY.md, School Generator, Phase 37).
 //
 // One exception at the bottom of this file, added when the two title-block
 // panels were folded into one drawer: a recording stub of a 2D context, which

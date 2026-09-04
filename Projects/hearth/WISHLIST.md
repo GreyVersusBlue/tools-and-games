@@ -8,12 +8,11 @@ through sixteen): 5 islands × 40 days, ~22,465 full-cast audits, 0 violations
 and 0 breadcrumbs; identical `pack()` hashes on seeds 7 and 20260819 across
 two fresh runs each; the autosave round-trip through a real reload passing,
 and a forged v11 save loading clean with every v12 field empty. **There is no
-prompt file for Hearth in `Claude Prompts/`** — it is not one of the
-twenty-two projects in the parallel split that `Claude Prompts/README.md`
-describes, it carries no "Questions for Devon" block, and
-`gvb-site-handoff-v10.md` does not mention it. The record is thirteen handoff
-files in the project root, `HEARTH-SPRINT4-HANDOFF.md` through
-`HEARTH-SPRINT16-HANDOFF.md`; this file is the plan.
+prompt file for Hearth** — it was never one of the twenty-two projects in the
+parallel split the prompt rounds ran, it carried no "Questions for Devon"
+block, and
+no site handoff ever mentioned it. The record of sprints 4–16 — what shipped,
+and what fought back in each — is in `HISTORY.md`; this file is the plan.
 
 ## What it is
 
@@ -254,6 +253,39 @@ and add to this list rather than starting a new one.
   and the repeat-walk rate (25% per fire night) are felt, not measured.
 - Nobody carries anything but an heirloom, and nothing is ever put down.
 - The trade boat arrives once a season, is waved at, and leaves. No trade.
+
+**People and behaviour, from the sprint handoffs**
+
+Nine leftovers the thirteen sprint handoffs named and no phase in this file
+claims. Carried here when those handoffs were retired into `HISTORY.md`.
+
+- **Sheltering islanders vanish entirely during a storm.** A lit window would
+  fix the feeling (sprints 5 and 6).
+- **The beached-boat pixel at the hut is crude** (sprints 5 and 6).
+- **Deer do not avoid water when fleeing across a narrow neck** — they retarget
+  six times, then go anyway (sprints 5 and 6).
+- **A lone surviving child has no behaviour but `play`** (sprint 6).
+- **The NaN islander is an open case.** Observed once on a random island that
+  had collapsed to one person by day 44; never reproduced since, including
+  under forced starvation for 144 sim-days. The guard converts it from a
+  permanent ghost into a one-frame blip with a breadcrumb — if a
+  `hearth: non-finite position` warning ever appears in a console, the task
+  name in it is the lead (sprint 8).
+- **A storm-heavy island's first 40 days can look broken.** Storms send
+  everyone indoors, hunger drives people off, and with `food` low no arrivals
+  come; one observed island had three people gone by day 8 and wood untouched
+  at its starting 12, and recovered on its own by day 51. Worth a balance pass:
+  maybe let people work through light rain, or give the granary a floor
+  (sprint 5).
+- **Works in progress lose progress on save**, the shrine included — it
+  re-arms itself at the next dawn via `faithSt`, so the stone always eventually
+  stands (sprint 11).
+- **The shelf in the hall has no art.** Things on it exist only in prose; a
+  two-pixel row inside the hall when `things.some(t=>!t.holder)` would be a
+  nice touch (sprint 12).
+- **Named places have no art on the ground.** They exist in spot labels, walks
+  and the chronicle, but the ground draws nothing — a worn patch, or a small
+  cairn after enough walks, would be the same trick as the shelf (sprint 13).
 
 **Format, tooling, and the machine**
 - There is no pure module and no unit suite; everything is tested by driving

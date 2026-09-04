@@ -2,7 +2,7 @@
 
 **Status: nothing is open and nothing is broken.** Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage, and the
-prompt file sits in `Claude Prompts/Stable/` because its own task list ran out.
+project had run its own task list out by the time the prompt rounds ended.
 Both suites are green as of this file — `node test/smoke-campaign.mjs` 203
 passed, `node test/smoke-engine.mjs` 190 passed — and round 3's site-wide
 `npm run games` reported 146 checks, 0 failed across three independent runs on

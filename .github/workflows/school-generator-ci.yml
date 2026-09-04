@@ -1,7 +1,8 @@
 # Checks for the School Generator. The tool is a build-free static page that is
 # deployed by copying files, so nothing in the deploy path ever executes a line
 # of its JavaScript — without this job a commit that breaks the whole suite
-# reaches production unremarked. See school-generator-audit-2026-08.md, 01.
+# reaches production unremarked. See HISTORY.md, the August 2026 School
+# Generator audit, finding 01.
 #
 # Three passes, in the order they get cheaper to debug:
 #

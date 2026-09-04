@@ -4,7 +4,7 @@ Through Stage 20 these three families were hotlinked from
 `fonts.googleapis.com`. Stage 21 vendored them. **Nothing in this project makes
 an offsite request any more, and nothing at runtime references `node_modules`.**
 
-Why it mattered enough to do: `gvb-site-handoff-v7.md` §5 claimed the site made
+Why it mattered enough to do: site session 7 claimed the site made
 zero offsite requests site-wide, and that was wrong — this game was still
 calling out on every load. The board-check suite could not see it, because
 `prepPage()` in `Tools/board-check/harness.mjs` fulfills Google Fonts requests

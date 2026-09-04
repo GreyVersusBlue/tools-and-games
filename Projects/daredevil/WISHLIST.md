@@ -10,8 +10,7 @@ suite; round 2 split the 356 KB monolith into modules and placed a minigame
 that had never had a call site; round 3 measured what two rounds had deferred
 and found the thing this wishlist is mostly about: a fully reachable choice at
 the county fair that the next three chapters do not look at. The per-round
-history lives in `Claude Prompts/notes/13-daredevil-notes.md` and, for rounds 1
-and 2, under `Claude Prompts/archive/round-*/notes/`.
+history lives in the repo root's `HISTORY.md`, under the prompt rounds.
 
 ## What it is
 

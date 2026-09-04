@@ -1,7 +1,7 @@
 // state.js — the tiny leaf module both scenes.js and engine.js import.
 //
 // Split out of daredevil_r4.html's inline module script in the round-2
-// restructure (see Claude Prompts/notes/13-daredevil-notes.md). scenes.js's
+// restructure (see HISTORY.md, round 2). scenes.js's
 // SCENES object interpolates GS.town / GS.name and calls N()/D()/C() at
 // module-evaluation time — not inside functions — so those bindings have to
 // live somewhere with zero dependency on SCENES itself. If state.js instead

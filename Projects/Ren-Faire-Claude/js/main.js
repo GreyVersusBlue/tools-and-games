@@ -1,7 +1,7 @@
 // main.js — the only place that touches `document`. Keeps a single mutable
 // `state` reference (game state) and a tiny `ui` reference (transient view
 // state like which tab is active) and re-renders in full after every action.
-// Full re-render is deliberately simple for stage 1's scale; see HANDOFF.md
+// Full re-render is deliberately simple for stage 1's scale; see WISHLIST.md
 // before optimizing this into a diffing renderer.
 
 import * as State from './state.js';

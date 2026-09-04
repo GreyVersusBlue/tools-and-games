@@ -188,7 +188,7 @@ encounter budget was supposed to be.
 
 `speed` defaults to 25 rather than throwing, but it is never allowed to be `undefined`: a
 creature with no Speed paths zero feet and stands still forever, which is the same class of bug
-as The Fourth Quarter's staffer whose missing walking speed became a NaN (`gvb-site-handoff-v7.md`
+as The Fourth Quarter's staffer whose missing walking speed became a NaN (site session 7,
 §2). The smoke suite asserts the fallback is a usable number.
 
 ### Creature AI

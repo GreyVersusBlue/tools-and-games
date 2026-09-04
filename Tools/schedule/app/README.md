@@ -3,7 +3,7 @@
 Written round 19, when `Tools/schedule-visualizer.html` was cut from 863,737 bytes into a
 124,555-byte shell plus the eight files here.
 
-The session notes for that round, `Claude Prompts/notes/19-schedule-visualizer-notes.md`, say
+The record of that round, in the repo root's `HISTORY.md`, says
 what changed and what was verified. This file says why the shape is what it is, what was
 considered and rejected, what this shape is bad at, and what to do before you edit it. Read
 this one first if you are about to move code between files.

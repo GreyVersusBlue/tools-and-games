@@ -27,7 +27,7 @@ It used to load from `cdnjs.cloudflare.com`. Two problems with that:
 - A school network's content filter blocking cdnjs left the page loading fine and
   then silently failing on click — the worst failure mode for a single-button tool.
 - It was a real offsite request from a page that otherwise makes none, and the site
-  aims for zero (see `gvb-site-handoff-v7.md` §5).
+  aims for zero (see `HISTORY.md`, site sessions 7 and 8).
 
 357 KB is nothing against a repo whose Castle Conundrum asset kit alone is 178 MB.
 

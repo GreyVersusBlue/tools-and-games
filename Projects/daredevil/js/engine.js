@@ -1,7 +1,7 @@
 // engine.js — Daredevil's runtime.
 //
 // Split out of daredevil_r4.html's inline module script in the round-2
-// restructure; see Claude Prompts/notes/13-daredevil-notes.md for the full
+// restructure; see HISTORY.md, round 2, for the full
 // account and js/README.md for the file map. Screen management, scene
 // rendering, the four free-roam hubs, the three canvas minigames (the Stunt
 // Run, the Recovery, and — new this round — Work the Crowd, finally wired to

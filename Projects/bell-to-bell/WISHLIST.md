@@ -6,7 +6,7 @@ PASS lines and no FAIL, and `tests/balance.mjs` runs six styles through 4th
 period, one style across three seating charts, and three styles through 5th.
 The first open phase is Phase 1 — A day with more than two periods in it, on
 **Claude Fable 5.1**.**
-The prior work is recorded in `docs/HANDOFF.md`, ticket by ticket, with the
+The prior work through T7 is recorded in the repo root's `HISTORY.md`, with the
 balance table as it stood at the end of T7. This file is what comes after: the
 architecture as it actually is, the conventions the project already learned,
 the standing backlog, and eight ranked phases.
@@ -163,13 +163,13 @@ And the working rules:
   Match `data/interventions.json` and the treatment's event cards. No
   exclamation points except from the sub and the intercom.
 - **One ticket at a time, to a runnable state,** and when a change touches both
-  data and code, do the data shape first. `docs/HANDOFF.md` closes with the
+  data and code, do the data shape first. The T7 record closes with the
   reason: an agent given an open brief on a 40-file repo will refactor things
   that were working.
-- **This project has no prompt file.** No `Claude Prompts/NN-bell-to-bell.md`,
-  no notes file in `Claude Prompts/notes/` — it sits outside the twenty-two-way
-  rotation `Claude Prompts/README.md` describes, so none of the round-based
-  conventions apply. `CLAUDE.md` and `docs/HANDOFF.md` are the whole contract;
+- **This project sat outside the parallel prompt rounds.** It never had a
+  prompt or a notes file, so none of the round-based conventions applied to it,
+  and the rounds are retired now in any case. `CLAUDE.md` and this file are the
+  whole contract;
   keep them current, because nothing else will.
 - **The site's checks do not cover this project.** `Tools/board-check/games.mjs`
   has no Bell to Bell entry, so no browser suite ever opens it, and
@@ -180,7 +180,7 @@ And the working rules:
 
 ## Questions for Devon
 
-`docs/HANDOFF.md` carries these open; nothing in this file resolves them.
+The T7 record left these open; nothing in this file resolves them.
 
 - **Authoring or generation?** T6 shipped a second hand-authored roster,
   schedule and lesson; T7 one hand-authored observation at a fixed minute 30.

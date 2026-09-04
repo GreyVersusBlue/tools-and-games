@@ -2,7 +2,7 @@
 
 **Status: nothing is shipped against this file yet — it is written the round
 after the project went quiet.** Three rounds closed every inert engine hook but
-one, the prompt moved to `Claude Prompts/Stable/`, and round 3's notes end with
+one, the project ran its own task list out, and round 3's notes ended with
 the honest sentence that there is "no outstanding engine work I'm aware of."
 That is true of the *hooks*. It is not true of the engine.
 `node Projects/torchbearer/test/smoke.mjs` is green at **95 passed, 0 failed**,
