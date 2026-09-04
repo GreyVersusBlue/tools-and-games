@@ -1,9 +1,15 @@
 {
-  "_note": "The school day, in order. A row's presentation fields (label, tag, ordinal, short) are literal; its content fields (seatGrid, roster, schedule, lesson, seatingCopy) are pointers of the form file.path.into.that.file, resolved against the loaded data bundle. src/loader.js fetches whatever files the pointers name, so adding a period is this file plus its content file and no JavaScript at all.",
+  "_note": "The school day, in order. A row's presentation fields (label, tag, ordinal, short) are literal; its content fields (seatGrid, roster, schedule, lesson, seatingCopy) are pointers of the form file.path.into.that.file, resolved against the loaded data bundle. src/loader.js fetches whatever files the pointers name, so adding a period is this file plus its content file and no JavaScript at all. A row with \"generate\": true and no roster or schedule pointer gets its twelve kids and their tell schedule from src/systems/generate.js off one seed (data/generation.json has the distributions); the lesson is still a pointer because the lesson is still authored.",
 
   "copy": {
     "next": "Next period — {short}",
-    "restart": "Run it again"
+    "restart": "Run it again",
+    "seed": {
+      "label": "Class seed",
+      "report": "This class was not authored. Seed {seed} made them; type it into the start screen and you get the same twelve back.",
+      "use": "Use this seed",
+      "hint": "Twelve kids out of one number. Same number, same kids."
+    }
   },
 
   "periods": [
@@ -44,6 +50,18 @@
       "schedule": "period6.schedule",
       "lesson": "period6.lesson",
       "seatingCopy": "period6.seatingCopy",
+      "next": "p7"
+    },
+    {
+      "id": "p7",
+      "label": "Period 7 — U.S. Hist.",
+      "tag": "7TH PERIOD",
+      "ordinal": "7th Period",
+      "short": "7th",
+      "seatGrid": "students.seatGrid",
+      "generate": true,
+      "lesson": "lesson",
+      "seatingCopy": "period7.seatingCopy",
       "next": null
     }
   ]

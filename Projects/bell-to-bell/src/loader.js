@@ -3,7 +3,7 @@ import { CONTENT_FIELDS, fileOf } from './periods.js';
 // The files the game always needs: the room, the rulebook, the copy decks, and
 // the day's running order.
 const CORE = ['room', 'students', 'tells', 'interventions', 'events', 'lesson',
-  'reactions', 'seating', 'observation', 'assets', 'periods'];
+  'reactions', 'seating', 'observation', 'assets', 'periods', 'generation'];
 
 async function fetchAll(names, base) {
   const entries = await Promise.all(names.map(async name => {

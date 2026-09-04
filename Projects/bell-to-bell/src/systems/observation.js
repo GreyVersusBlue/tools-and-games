@@ -12,7 +12,9 @@ import { applyEffects } from '../state.js';
 // also just good teaching, and costs nothing extra here because lesson.js
 // already charges for it. Being watched costs Mastery the whole window is
 // open, win or lose the rubric; that part is not something you can perform.
-export function createObservation({ data, dom, toast }) {
+// Phase 3: `windowScale` is what a growth plan does to the rubric window — she
+// stays longer. 1 is the eleven minutes the data says.
+export function createObservation({ data, dom, toast, windowScale = 1 }) {
   const O = CFG.observation;
   const byKey = Object.fromEntries(data.lookFors.map(l => [l.key, l]));
 
@@ -48,7 +50,7 @@ export function createObservation({ data, dom, toast }) {
 
   function startActive(state) {
     state.obsPhase = 'active';
-    state.obsWindowRemaining = O.windowMinutes * 60;
+    state.obsWindowRemaining = O.windowMinutes * 60 * windowScale;
     dom.paTitle.textContent = data.arrival.title;
     dom.paTxt.textContent = data.arrival.body;
     toast('', data.arrival.title, data.arrival.body);

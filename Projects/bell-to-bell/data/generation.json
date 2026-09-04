@@ -1,0 +1,123 @@
+{
+  "_note": "Phase 2. Everything the class generator draws from. A generated period is a row in periods.json with \"generate\": true and no roster or schedule pointer; src/systems/roster.js and src/systems/scheduler.js read this file and one integer seed. The seed is the whole input: same seed, same twelve kids, forever. The tell schedule is the seed plus the day, so the same class does different things on Tuesday. The lesson stays authored — voice is what generation is worst at.",
+
+  "names": [
+    "Aaliyah", "Abel", "Adaeze", "Alma", "Amir", "Anders", "Aracely", "August",
+    "Bea", "Benji", "Bram", "Bridget",
+    "Calvin", "Cece", "Chidi", "Clem", "Cruz",
+    "Dahlia", "Dante", "Delphine", "Dov",
+    "Eamon", "Eloise", "Ephraim", "Esperanza", "Ezra",
+    "Fabián", "Fern", "Finn", "Frankie",
+    "Gael", "Gia", "Gideon", "Greta",
+    "Hana", "Harlan", "Hugo",
+    "Idris", "Imani", "Ines", "Isaac",
+    "Jada", "Javier", "Jonah", "Jubilee",
+    "Kai", "Keon", "Kiara", "Kwame",
+    "Lark", "Leila", "Lorenzo", "Luz",
+    "Maeve", "Malik", "Mercer", "Milo", "Moses",
+    "Naomi", "Nico", "Nkechi", "Noor",
+    "Octavia", "Omar", "Otis",
+    "Paz", "Percy", "Phoebe",
+    "Quentin", "Quinn",
+    "Rafael", "Reuben", "Rosalind",
+    "Sadie", "Salomé", "Sefa", "Soren", "Sunny",
+    "Tamsin", "Teo", "Thea", "Tobias",
+    "Ulises", "Uma",
+    "Val", "Vivi",
+    "Walter", "Winnie",
+    "Xiomara",
+    "Yara", "Yusuf",
+    "Zadie", "Zeke"
+  ],
+  "shirts": ["shirtA", "shirtB", "shirtC"],
+
+  "distributions": {
+    "aptitude": { "min": 0.80, "max": 1.24 },
+    "tension":  { "min": 0.10, "max": 0.85, "noise": 0.08 },
+    "steady":   { "min": 0.05, "max": 0.84, "noise": 0.08 }
+  },
+
+  "roster": {
+    "size": 12,
+    "stabiliserSteady": 0.66,
+    "stabilisers": { "min": 1, "max": 2 },
+    "edgeTension": 0.70,
+    "edges": { "min": 1, "max": 3 },
+    "aptitudeSpread": 0.30,
+    "notes": { "min": 4, "max": 7 },
+    "rerollCap": 200
+  },
+
+  "notes": {
+    "stabiliser": [
+      "the barometer",
+      "the actual thermostat in here",
+      "the closest thing this class has to a floor",
+      "settles the desks around them without being asked",
+      "the reason the back row is survivable"
+    ],
+    "edge": [
+      "extremely funny, worst timing",
+      "will argue the bell",
+      "louder every minute after lunch",
+      "keeps a running list of unfair things",
+      "narrates the sub's plans before the sub gets here",
+      "has never once had a pencil"
+    ],
+    "any": [
+      "asks if it is for a grade",
+      "asks if it's on the test, every time",
+      "fixes your projector",
+      "hands your marker back before you ask",
+      "reads ahead and does not mention it",
+      "starts packing up at 2:40 regardless",
+      "will do the work if you are standing there",
+      "answers every question with another question",
+      "keeps the class clock, out loud",
+      "runs a snack economy out of a backpack",
+      "the ghost",
+      "has an opinion about the seating chart and will share it",
+      "is always retrieving a pencil",
+      "writes the date on everything, including the desk",
+      "has read the syllabus and cites it",
+      "knows what the fire drill schedule is before you do",
+      "laughs four seconds after everyone else, every time",
+      "brings a water bottle the size of a fire extinguisher",
+      "signs the sign-in sheet for two other people",
+      "has been in your room during a class that was not yours"
+    ]
+  },
+
+  "schedule": {
+    "count": { "min": 8, "max": 10 },
+    "firstMinute": 1.0,
+    "lastMinute": 33.0,
+    "minGapMinutes": 1.5,
+    "curveball": { "type": "QUIET", "minute": { "min": 18.0, "max": 22.0 } },
+    "mix": {
+      "PHONE":   { "min": 2, "max": 3, "weight": 3 },
+      "WHISPER": { "min": 2, "max": 3, "weight": 2 },
+      "NOTE":    { "min": 1, "max": 2, "weight": 2 },
+      "COPYING": { "min": 1, "max": 2, "weight": 2 }
+    },
+    "life": {
+      "PHONE":   { "min": 170, "max": 200 },
+      "WHISPER": { "min": 140, "max": 160 },
+      "NOTE":    { "min": 190, "max": 210 },
+      "COPYING": { "min": 160, "max": 170 },
+      "QUIET":   { "min": 300, "max": 320 }
+    },
+    "pressure": { "min": 1450, "max": 1900 },
+    "maxPerSeat": 3,
+    "maxSwallowed": 2,
+    "swallowedWeight": 0.25,
+    "rerollCap": 200
+  },
+
+  "bands": {
+    "_note": "Where a generated period has to land when the headless sim in src/systems/simulate.js runs it through two play styles. Ranges come from the authored periods' balance table (HISTORY.md): 4th, 5th and 6th land at ideal mastery 74/73/69, restless 72/79/81, missed 7/8/9, and never-checks mastery 51/49/44, restless 93/91/93. A period outside every range is rejected and the schedule re-rolled; the roster never re-rolls on a band miss, because the roster is the class and the class has to be the same on Tuesday.",
+    "ideal":       { "mastery": [62, 82], "restless": [55, 95], "missed": [5, 11] },
+    "neverChecks": { "mastery": [36, 60], "restless": [78, 100], "missed": [5, 11] },
+    "rerollCap": 24
+  }
+}

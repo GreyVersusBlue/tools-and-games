@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { CFG } from './config.js';
 import { createState, clamp01to100 } from './state.js';
 import { loadData } from './loader.js';
-import { periodFor, resolvePeriodId, firstPeriodId } from './periods.js';
+import { periodFor, resolvePeriodId, firstPeriodId, rowFor, isGenerated } from './periods.js';
+import { drawSeed, SEED_MAX } from './systems/rng.js';
 import { createMaterials, createRegistry } from './world/materials.js';
 import { createModelLoader } from './world/models.js';
 import { buildRoom } from './world/room.js';
@@ -68,7 +69,18 @@ const state = createState();
 // and a `period` key naming a class data/periods.json no longer has falls back
 // to the first row rather than throwing.
 const activePeriodId = resolvePeriodId(persist.load('period', null), data);
-const period = periodFor(activePeriodId, data);
+
+// Phase 2: a generated period is twelve kids out of one integer. The integer
+// lives in the period's own slot, drawn once and kept, so a refresh mid-7th is
+// the same 7th, and typed back in from the report screen it is that class
+// again. An authored period has no seed and ignores the one it is handed.
+const seedKey = persist.slot(activePeriodId, 'seed');
+let seed = persist.load(seedKey, null);
+if (isGenerated(rowFor(activePeriodId, data)) && !(Number.isInteger(seed) && seed > 0 && seed <= SEED_MAX)) {
+  seed = drawSeed();
+  persist.save(seedKey, seed);
+}
+const period = periodFor(activePeriodId, data, { seed, day: 0 });
 
 // Phase 1: Bandwidth crosses the bell. Everything else in CFG.start is a fact
 // about walking into a room and resets at each one; Bandwidth is a fact about
@@ -374,6 +386,8 @@ function endPeriod() {
       lesson: lesson.summary(state), students,
       seating: { plan, copy: data.seating.report, chart, learned },
       periodTag: period.periodTag,
+      // Phase 2: a class nobody authored says which number made it.
+      seed: period.generated ? { value: period.generated.seed, copy: data.periods.copy.seed } : null,
       observation: state.obsResult ? {
         result: state.obsResult,
         labels: observation.lookFors.filter(l => state.obsSatisfied[l.key]).map(l => l.label),
@@ -434,6 +448,27 @@ function beginPeriod() {
   audio.init();
   state.running = true;
   last = performance.now();
+}
+
+// Phase 2: the seed, on the start screen, for a generated period only. Type a
+// different one in and the page reloads into that class.
+if (period.generated) {
+  const copy = data.periods.copy.seed;
+  dom.seedLabel.textContent = copy.label;
+  dom.seedBtn.textContent = copy.use;
+  dom.seedHint.textContent = copy.hint;
+  dom.seedInput.value = String(period.generated.seed);
+  dom.seedRow.classList.remove('hide');
+  dom.seedBtn.addEventListener('click', () => {
+    const typed = parseInt(dom.seedInput.value, 10);
+    if (!(Number.isInteger(typed) && typed > 0 && typed <= SEED_MAX)) {
+      dom.seedInput.value = String(period.generated.seed);
+      return;
+    }
+    if (typed === period.generated.seed) return;
+    persist.save(seedKey, typed);
+    location.reload();
+  });
 }
 
 dom.startBtn.textContent = 'Seating chart';
