@@ -60,6 +60,14 @@ through `semester.repair` on every load; a generated period's seed is the slot k
   mutable state, no singletons except `src/ui/dom.js`.
 - **Anything added to the 3D scene must be registered** with the material registry
   (`registry.add(mesh)`) or it will not swap into thermal view during Withitness.
+  The exception is what the *vision* draws rather than what the room contains —
+  the note's route line, the copying thread, the comprehension aura. Those are
+  inferences, not objects: they live in a tell group's `vision` bucket or are
+  unregistered on purpose, with the comment saying so.
+- **A module under `src/` imports three from `./three.js`, never as `'three'`.**
+  The bare specifier only resolves against the import map, so a file that uses
+  it cannot be loaded by a test. That is why `systems/tells.js` went its whole
+  life unexecuted.
 - **`src/ui/` never imports from `src/systems/`.** UI takes data in and calls back out.
 - Keep `main.js` as wiring and the frame loop. Logic belongs in a system.
 
@@ -102,7 +110,14 @@ These are locked. Do not "improve" them without asking.
     across nights the way it holds across a period: the class entry in the semester
     record carries `comp[]` by seat and a baseline to relax toward, and the only
     `mastery` number anywhere in the record is the day line the Friday Report reads.
-15. **The roster is the seed alone.** Same seed, same twelve kids, on Tuesday and in
+15. **A tell is an object in the room, and the vision is what tells you what it
+    is.** Treatment §3.3's Tier 1 / Tier 2 split. The phone, the note and the
+    angled paper are physical: dark, small, low, and drawn whether or not SHIFT
+    is held. What Withitness adds is the thermal swap and the inference — the
+    route line, the thread, the annotation. Do not move an object into the
+    vision bucket to make it easier to see, and do not make an inference
+    permanent to make it easier to find.
+16. **The roster is the seed alone.** Same seed, same twelve kids, on Tuesday and in
     week six. The tell schedule is the seed plus the day. A class the band check
     cannot fit is a loud error, not a quiet easy period, and nothing re-rolls the
     roster to make the numbers land.

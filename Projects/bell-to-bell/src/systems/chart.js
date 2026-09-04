@@ -20,13 +20,59 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
   const viewpoints = room.viewpoints || [{ id: 'front', x: 0, z: room.spawn?.z ?? -2.4 }];
   const B = room.bounds;
 
+  // Where the desks are. Built before the chart's own desk list because
+  // clampOccluder needs them and the layout below runs first; the grid is a
+  // function of seatGrid alone, so it is knowable this early.
+  const F = S.deskFootprint;
+  const deskRects = [];
+  for (let r = 0; r < rows.length && deskRects.length < roster.length; r++) {
+    for (let c = 0; c < cols.length && deskRects.length < roster.length; c++) {
+      deskRects.push({ x: cols[c], z: rows[r] + F.offsetZ, halfW: F.halfW, halfD: F.halfD });
+    }
+  }
+
+  const inside = (B_, r, x, z) => Math.abs(x - B_.x) < B_.halfW + r.halfW + S.furnitureClearance
+                               && Math.abs(z - B_.z) < B_.halfD + r.halfD + S.furnitureClearance;
+
   // A rectangle's centre may not leave the room, and the room's centre is not
   // yours to give away: everything is clamped to the room's own footprint.
-  function clampOccluder(r, x, z) {
+  //
+  // Phase 7 (T5 gap 9): and not onto a desk, or onto the other cabinet. The
+  // clamp used to know about the walls and nothing else, so the storage
+  // cabinet could be dropped on top of a twelve-year-old's desk and the room
+  // would draw it there — furniture that overlaps is a bug you can see the
+  // moment the plan view becomes a 3D room. Overlaps are resolved by pushing
+  // along the axis of least penetration, walls re-applied after each push, and
+  // if a few passes cannot find a free spot the furniture does not move at all.
+  // Sliding it into a wall is better than sliding it into a desk.
+  function walls(r, x, z) {
     return {
       x: Math.min(B.x - r.halfW, Math.max(-B.x + r.halfW, x)),
       z: Math.min(B.zBack - r.halfD, Math.max(B.zFront + r.halfD, z))
     };
+  }
+
+  function blockersFor(r) {
+    return [...deskRects, ...rects.filter(o => o.id !== r.id)];
+  }
+
+  function clampOccluder(r, x, z) {
+    let p = walls(r, x, z);
+    const blockers = blockersFor(r);
+
+    for (let pass = 0; pass < 6; pass++) {
+      const hit = blockers.find(b => inside(b, r, p.x, p.z));
+      if (!hit) return p;
+      // Least penetration wins, so a cabinet nudged at a desk's corner slides
+      // around it rather than teleporting to the far side.
+      const gapX = hit.halfW + r.halfW + S.furnitureClearance - Math.abs(p.x - hit.x);
+      const gapZ = hit.halfD + r.halfD + S.furnitureClearance - Math.abs(p.z - hit.z);
+      if (gapX < gapZ) p = walls(r, p.x + Math.sign(p.x - hit.x || 1) * gapX, p.z);
+      else p = walls(r, p.x, p.z + Math.sign(p.z - hit.z || 1) * gapZ);
+    }
+
+    // Still stuck after six passes: leave it where it was.
+    return blockers.some(b => inside(b, r, p.x, p.z)) ? { x: r.x, z: r.z } : p;
   }
 
   // T5: a chart carried over from last period may have moved the furniture too.

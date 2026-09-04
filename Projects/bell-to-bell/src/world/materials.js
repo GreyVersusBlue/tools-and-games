@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../three.js';
 
 // Every material carries a thermal twin. Withitness swaps the whole scene
 // over in one traversal, so anything added to the world must be registered.
@@ -97,20 +97,60 @@ export function tiled(mats, key, w, d) {
   return m;
 }
 
+// Tell objects are small, dark, physical things: a phone flat on a thigh, a
+// folded note, a sheet of paper angled at the next desk. They are in the room
+// whether or not you are looking with Withitness, which is the Tier 1 / Tier 2
+// line the treatment draws (§3.3) — you can notice them without holding SHIFT,
+// and the vision is what tells you what you are looking at. So each one gets a
+// normal colour chosen to be genuinely easy to miss from the front of the room
+// and a thermal twin that is not, and they register like anything else.
+//
+// The vision's own drawings — the note's route line, the copying thread, the
+// whisper arcs — are not objects and are not in here. Those live in the tell
+// group's `vision` bucket, appear only in Withitness, and are deliberately
+// unregistered.
+const TELL_PALETTE = {
+  case:   [0x22242A, 0xFF7A18],   // a phone body, seen against a lap
+  screen: [0x2E3640, 0xFFD166],   // brightness at minimum, which is the tell
+  paper:  [0xCFC9BC, 0xFFB347]
+};
+
+export function createTellMaterials() {
+  const mats = {};
+  for (const [key, [normal, thermal]] of Object.entries(TELL_PALETTE)) {
+    // Paper is folded into planes rather than boxes, so it is lit and read
+    // from both faces; setting it here rather than on the mesh keeps a shape
+    // from reaching into a material every other shape shares.
+    const side = key === 'paper' ? THREE.DoubleSide : THREE.FrontSide;
+    const m = new THREE.MeshStandardMaterial({ color: normal, roughness: 0.6, metalness: 0.1, side });
+    m.userData.thermal = new THREE.MeshBasicMaterial({ color: thermal, side });
+    mats[key] = m;
+  }
+  return mats;
+}
+
 export function createRegistry() {
   const meshes = [];
+  // Tells are born mid-period, and a tell born while Withitness is already on
+  // used to sit in its normal material until the next toggle. The registry
+  // knows whether the room is hot, so a mesh added now can be swapped now.
+  let thermalOn = false;
+
+  function swap(m, on) {
+    if (on) {
+      if (!m.userData.orig) m.userData.orig = m.material;
+      const t = m.userData.orig.userData?.thermal;
+      if (t) m.material = t;
+    } else if (m.userData.orig) {
+      m.material = m.userData.orig;
+    }
+  }
+
   return {
-    add(mesh) { meshes.push(mesh); return mesh; },
+    add(mesh) { meshes.push(mesh); swap(mesh, thermalOn); return mesh; },
     setThermal(on) {
-      for (const m of meshes) {
-        if (on) {
-          if (!m.userData.orig) m.userData.orig = m.material;
-          const t = m.userData.orig.userData?.thermal;
-          if (t) m.material = t;
-        } else if (m.userData.orig) {
-          m.material = m.userData.orig;
-        }
-      }
+      thermalOn = on;
+      for (const m of meshes) swap(m, on);
     }
   };
 }

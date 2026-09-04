@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../three.js';
 import { createScreens } from './board.js';
 import { tiled } from './materials.js';
 import { fitFootprint, fitPlane, loadTexture, registerModel } from './models.js';

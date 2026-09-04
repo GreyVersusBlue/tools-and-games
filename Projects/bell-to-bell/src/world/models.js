@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../three.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // This module has no export actually named `SkeletonUtils` — it exports
 // `clone`/`retarget`/`retargetClip` directly, so the namespace import is what

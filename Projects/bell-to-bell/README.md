@@ -152,14 +152,16 @@ src/
   periods.js          reads the day out of periods.json; periodFor() is a lookup, or a generation
   persist.js          the chart, what you learned, the seed and the semester, between periods; the slot scheme
   input.js            keys, look, movement, collision
-  audio.js            drone, heartbeat, bell
-  world/materials.js  palette + thermal twins + swap registry
+  audio.js            drone, heartbeat, bell, directional whisper
+  three.js            the one place the bare `three` specifier becomes a path
+  world/materials.js  palette + thermal twins + swap registry + the tell palette
   world/room.js       builds the room from room.json
   world/board.js      canvas-texture whiteboard and objective board
   world/students.js   bodies, the reaction tween, comprehension auras
+  world/tellmesh.js   what a tell looks like: the object, and what the vision draws
   systems/chart.js    the seating chart: desks, reach, suppression, discovery
   systems/sightlines.js  line of sight in plan view, for the chart screen
-  systems/tells.js    tell lifecycle, meshes, line of sight
+  systems/tells.js    tell lifecycle and line of sight (geometry is injected)
   systems/withitness.js  the mode toggle and its costs
   systems/lesson.js   beats, comprehension, checks, reteach  ← owns Mastery
   systems/roomtemp.js the cheap whole-room reading
@@ -177,6 +179,7 @@ src/
   main.js             wiring and the frame loop
 tests/smoke.mjs       headless assertions
 tests/balance.mjs     full-period simulation across play styles, the generator soak, a week
+tests/assets.mjs      the asset manifest: referenced, cataloged, unreferenced, and the budget
 ```
 
 ## Adding content without touching code
@@ -184,8 +187,12 @@ tests/balance.mjs     full-period simulation across play styles, the generator s
 Most of what this game needs next is content, and content is data:
 
 - **A new tell type** — add an entry to `data/tells.json` → `types`, then schedule it
-  in `schedule`. Give it an `anchor` of `seat` or `pair`. If it needs a custom mesh,
-  that's the one code change (`src/systems/tells.js` → `buildMesh`).
+  in `schedule`. Give it an `anchor` of `seat` or `pair` and a `mesh` naming one of
+  the shapes in `src/world/tellmesh.js` (`phone`, `note`, `paper`, `murmur`); the
+  suite fails on a shape that does not exist. `phantom: true` makes it a drawing
+  the vision produces rather than an object in the room. A tell type with an
+  `audio.fragments` list gets a directional conversation at its own position. Only
+  a genuinely new *shape* is a code change.
 - **A seating rule** — `data/seating.json` → `rules`: how close counts as adjacent,
   how steady a neighbour has to be to absorb something, what a separated pair does
   instead. The numbers that balance against the rest of the game are in

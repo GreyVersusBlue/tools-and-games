@@ -1,16 +1,19 @@
 # Bell to Bell — Feature Wishlist
 
-**Status: Phases 1 through 5 have shipped. The game is at T7 plus five phases:
+**Status: Phases 1 through 7 have shipped. The game is at T7 plus seven phases:
 a four-period day whose 7th period is generated from a seed, a five-day week
 the semester record carries each class across with admin's ladder at the end of
-it, an AP whose visits are a calendar rather than a metronome, and four
-subjects that are files rather than branches. `tests/smoke.mjs` prints 497 PASS
-lines and no FAIL, and `tests/balance.mjs` runs six styles through 4th period,
-one style across three seating charts, three styles through each later period,
-the whole day on one Bandwidth pool, fifty generated seeds through the band
-(its one assertion), four subjects side by side, one lab day under four styles,
-and two styles through a week on the AP's real calendar. The first open phase
-is Phase 6 — What the room weighs, on **Claude Opus 5**.**
+it, an AP whose visits are a calendar rather than a metronome, four subjects
+that are files rather than branches, an `Assets/` tree that knows what it
+weighs, a three.js that is vendored rather than fetched, and tells that are
+objects in the room rather than boxes in a vision mode. `tests/smoke.mjs`
+prints 561 PASS lines and no FAIL, `tests/assets.mjs` audits the asset
+manifest against a budget, and `tests/balance.mjs` runs six styles through 4th
+period, one style across three seating charts, three styles through each later
+period, the whole day on one Bandwidth pool, fifty generated seeds through the
+band (its one assertion), four subjects side by side, one lab day under four
+styles, and two styles through a week on the AP's real calendar. The first open
+phase is Phase 8 — A thumb has never touched this, on **Claude Opus 5**.**
 The prior work through T7 is recorded in the repo root's `HISTORY.md`, with the
 balance table as it stood at the end of T7. This file is what comes after: the
 architecture as it actually is, the conventions the project already learned,
@@ -543,85 +546,123 @@ that disagreed with its own lesson would be worse than no subject. Putting 6th
 period in an ELA room is one line in `data/periods.json` and a lesson somebody
 has to write.
 
-## Phase 6 — What the room weighs
+## Phase 6 — What the room weighs — **SHIPPED**
 
 **142 MB of assets, 82 MB of it referenced by nothing, and a three.js that
 comes from somebody else's CDN.**
 
-Measured from `data/assets.json` against the tree: 1,037 files, 932 unreferenced.
-It is not one problem. The Kenney kit's six-format duplicate is the famous cause
-and the smallest (17 MB, of which the game loads four `.glb`); `Props/` is 53 MB
-for 20 props of which 11 are named; `textures/` carries variants the game
-genuinely picked between and documented. So a prune must distinguish "shipped in
-a format nothing reads" from "the alternate we chose against," and keep the
-second as a catalog rather than deleting it.
+Shipped. `Assets/` arrived at 149,313,216 bytes across 1,037 files and leaves
+at 76,685,204 across 269. `tests/assets.mjs` is the thing that made the prune
+arguable rather than a guess, and it stays as the regression check.
 
-- [ ] **A manifest check.** `tests/assets.mjs`: walk `Assets/`, resolve every
-  path in `data/assets.json` including glTF `.bin` sidecars and texture
-  directories, print referenced/unreferenced counts and bytes. Run before and
-  after; it is the phase's evidence and it stays as a regression check.
-- [ ] **Prune the format duplicates.** Delete the `.stl` / `.obj` / `.mtl` /
-  `.fbx` / `.dae` trees from the Kenney kit — 700 files, ~12.8 MB, zero of
-  which any loader in `src/` can read.
-- [ ] **Prune what the catalog does not name.** The nine unnamed `Props/`
-  directories, headed by the sapling. Anything an alternates block names stays,
-  and anything deleted comes out of the alternates block in the same commit, so
-  `assets.json` never advertises a file that is gone.
-- [ ] **Vendor three.js.** `libs/three.module.js` and `libs/addons/`, import map
-  pointed at `./libs/`, matching School Generator exactly. This closes the
-  project's only offsite request and matches a site decision made in session 4.
-- [ ] **Teach the sweep to read an import map.** `check-integrity.mjs` reads
-  `href`/`src` attributes on resource tags, so an import map's URLs — in the
-  script body, not an attribute — are invisible to it. Parse
-  `<script type="importmap">` bodies as JSON and sweep their values. Shared
-  tooling: call it out in the PR, because it will find other pages.
-- [ ] **A loading budget in the smoke suite.** Assert the manifest's referenced
-  total stays under a stated ceiling, so the next asset has to argue for itself.
+- [x] **A manifest check.** `tests/assets.mjs` walks `Assets/` and resolves
+  every path `data/assets.json` names, including the `.bin` sidecars and
+  `textures/` folders a `.gltf` names but the manifest does not. It sorts the
+  tree into referenced, cataloged and unreferenced, and it fails rather than
+  prints on five things: a referenced path missing, a cataloged path gone, a
+  `_pruned` path back on disk, either byte total over its `_budget` ceiling,
+  and the `_budget` block itself being deleted. All five were broken on purpose
+  and watched to fail.
+- [x] **Prune the format duplicates.** The Kenney kit's `.dae` / `.fbx` /
+  `.obj` / `.stl` trees: 700 files, 13,384,129 bytes, and `GLTFLoader` is the
+  only loader in `src/`.
+- [x] **Prune what the catalog does not name.** The nine unnamed `Props/`
+  directories, 35,514,776 bytes, headed by a 21.9 MB outdoor pine sapling in a
+  game that has never been outdoors.
+- [x] **A third prune the bullets above did not name, found by the check.**
+  Every Poly Haven texture set ships a preview sphere — a `.gltf` and a 2.37 MB
+  `.bin` beside the `textures/` folder. `materials.js` builds its jpg filenames
+  out of `dir` and `base` and never opens either one. Ten sets, 23,696,840
+  bytes, the same "shipped in a format nothing reads" case as the `.stl` trees
+  and larger than either named prune.
+- [x] **The catalog became machine-readable.** Three prose alternates blocks
+  are now one `_alternates` (paths that must still resolve) and a `_pruned`
+  record (paths that must still be gone, and why each one went). The check
+  reads both, so `assets.json` can no longer advertise a file that is not
+  there, and nothing can quietly come back.
+- [x] **Vendor three.js.** r160 in `libs/` — the revision the CDN was serving,
+  so no `src/` change — with `GLTFLoader`, `SkeletonUtils` and the
+  `BufferGeometryUtils` that `GLTFLoader` itself reaches for. That is the whole
+  closure and `smoke.mjs` asserts it stays closed. Verified in a browser: the
+  page loads and plays with zero requests leaving the origin.
+- [x] **Teach the sweep to read an import map.** `check-integrity.mjs` parses
+  `<script type="importmap">` bodies as JSON and sweeps their values, and fails
+  a malformed map and a local target that does not exist. Shared tooling, and
+  the honest result is that it found no other page: every other import map in
+  the repo was already local. Bell to Bell was the only offender.
+- [x] **A loading budget.** `_budget` in `data/assets.json`, asserted by
+  `assets.mjs` and by `smoke.mjs`, sitting just above the measured 62,102,693
+  referenced bytes and 3,745,076 unreferenced. Raising it is where the next
+  asset argues for itself.
 
-*Leans on:* `data/assets.json`, `world/models.js`, `Tools/board-check/check-integrity.mjs`.
-*Save:* none. *Model:* **Claude Opus 5** — asset accounting and a vendoring
-move with a manifest check standing behind both.
+*Left standing:* 140 `.glb` files in the Kenney kit's GLTF format of which the
+game places four. They are 2.2 MB together and they are the kit, so they read
+as a catalog rather than as waste — but nothing in `assets.json` says so, and a
+later session could reasonably move them into `_alternates` or delete them.
 
-## Phase 7 — Things you can notice without holding SHIFT
+## Phase 7 — Things you can notice without holding SHIFT — **SHIPPED**
 
 **Every tell is a box or a sphere, every student wears a torus, and a whisper
 makes no sound.**
 
-Handoff gaps 2, 4 and 5 together, because they are one problem: the room
-communicates almost nothing outside the vision mode, undercutting the design's
-own Tier 1 / Tier 2 distinction — the thing T1's held postures were built to
-create. A phone under a desk should read as a shape a teacher recognises before
-it reads as an annotation. Gap 5 is also T8, the next ticket the handoff named.
+Shipped, and the phase turned out to have a prerequisite nobody had written
+down: `systems/tells.js` imported `three` by bare specifier, which only
+resolves against the import map, so no Node test could load it and the file had
+never been executed by anything. `src/three.js` is the seam that fixed that —
+one module that turns the bare specifier into a path — and every file under
+`src/` goes through it now.
 
-- [ ] **Real tell meshes.** `buildMesh` in `systems/tells.js` gets a per-type
-  geometry: a phone in a lap, a folded note mid-pass, a paper angled toward the
-  next desk. Built from the props the prune kept, or from primitives assembled
-  with intent. Every mesh registers with the material registry so it swaps in
-  thermal view.
-- [ ] **Retire the torus.** Replace `TorusGeometry(0.19, 0.018, 6, 20)` over
-  every head with something that reads in a crowd of twelve — a desk-surface
-  tint, or a posture the reaction system already holds. It stays deliberately
-  unregistered with the material registry, comment intact.
-- [ ] **Whisper audio, directional.** A `PannerNode` at the tell's position,
-  radio-crackle syllables rather than words, fragments authored in
-  `data/tells.json` beside the `WHISPER` type. It ducks *up* under Withitness,
-  not down. And a whisper you cannot see stays faintly audible — attenuated,
-  not occluded, the one cue in the game that survives a blind spot.
-- [ ] **Furniture that does not overlap.** T5's gap 9: `chart.moveOccluder`
-  clamps to `room.bounds` and nothing else, so the cabinet can sit on a desk.
-  Add desk and occluder rectangles to the clamp — mandatory once the furniture
-  is visible in 3D as well as in plan.
-- [ ] **The first suites for `tells.js` and `withitness.js`.** 160 lines and 39,
-  both dependency-injected factories, neither ever executed under Node. Stub
-  the scene and the audio; cover birth/expiry/resolve, the occlusion call, and
-  the toggle's costs.
-- [ ] **Verify in a browser.** Playwright, headless Chromium, as T7 did — and
-  as T7 recorded, the frame clock runs slow under software rendering, so poll
-  state rather than assume durations.
-
-*Leans on:* `systems/tells.js`, `world/students.js`, `world/materials.js`,
-`audio.js`, Phase 6's surviving props. *Save:* none. *Model:* **Claude Opus 5**
-— geometry, materials and Web Audio against registries that already exist.
+- [x] **Real tell meshes.** `buildMesh` moved out of `systems/tells.js` and
+  into `world/tellmesh.js`, and a tell type names its shape in
+  `data/tells.json`. A phone is a 6.8 × 13.5 cm slab tilted on a thigh with a
+  screen at minimum brightness; a note is two planes meeting at a fold; copying
+  is two sheets on two desks, each angled at the other, because the tell is the
+  angle and not the paper.
+- [x] **And the Tier 1 / Tier 2 line the treatment draws (§3.3), which is what
+  the phase title is about.** A tell mesh is two buckets. The *object* is in
+  the room whether or not you are looking — dark, small, low, registered with
+  the material registry so Withitness swaps it hot. What the vision *infers* —
+  the note's route line, the copying thread, the shape of a conversation — is
+  drawn only while SHIFT is held and is deliberately unregistered. A
+  hypervigilance false positive is all inference and no object, which is what a
+  false positive is.
+- [x] **Retire the torus.** Twelve 19 cm rings at one height over twelve heads
+  read as twelve identical halos: you could see that some were red without
+  being able to say whose. The comprehension aura is now the desk surface,
+  which is the thing a student is already identified by from the front of the
+  room. Twelve of those are a heat map you read in one pass. The body bobs and
+  the desk does not, so the idle bob is subtracted back out of it every frame.
+- [x] **Whisper audio, directional.** A `PannerNode` at the tell's position,
+  with fragments authored in `data/tells.json` beside the `WHISPER` type. The
+  fragments are phrases and you never hear the phrase: `audio.js` renders one
+  band-passed noise burst per syllable at a vowel-derived centre frequency,
+  falling the way a sentence does, so what arrives is the rhythm of a sentence
+  and never a word of it. It ducks *up* under Withitness while the room ducks
+  down, and a whisper behind the cabinet drops to `occludedScale` rather than
+  to nothing — the one cue in the game that survives a blind spot.
+- [x] **Furniture that does not overlap.** T5's gap 9. `clampOccluder` knew
+  about the walls and nothing else, so the storage cabinet could be dropped on
+  a desk. It now resolves overlaps against every desk footprint and the other
+  occluder by pushing along the axis of least penetration, re-applies the walls
+  after each push, and leaves the furniture where it was if six passes cannot
+  find a free spot — sliding it into a wall beats sliding it into a desk. The
+  shipped layout in `data/room.json` is untouched by it, which the suite
+  asserts, and a saved layout from before the clamp is repaired on load rather
+  than trusted.
+- [x] **The first suites for `tells.js` and `withitness.js`.** Birth, expiry,
+  resolve, the blind spot against a real `THREE.Mesh` and a real raycast, the
+  false positive, both material buckets, the registry swap, and every locked
+  cost of the toggle. Ten guards broken on purpose and watched to fail,
+  including the raycast replaced with a distance check (locked constraint 3)
+  and the Mastery drain removed (locked constraint 1).
+- [x] **Verify in a browser.** Headless Chromium, software rendered, polling
+  state rather than assuming durations (#53). It found a real bug the Node
+  suite could not: `audio.setListener` handed a plain object to three's
+  `getWorldDirection`, which wants a `Vector3` and throws — every frame. The
+  forward vector now comes off the camera's world matrix. The verified run:
+  three r160 resolved from `./libs/`, zero offsite requests, zero toruses in
+  the scene, twelve desk auras, and a tell whose vision bucket appears while
+  SHIFT is down and is gone when it is up.
 
 ## Phase 8 — A thumb has never touched this
 
