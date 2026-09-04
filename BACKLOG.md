@@ -7,7 +7,7 @@ ranked index you scan, and the ideas underneath it that have no other home.
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
 The last thing that shipped is **Bell to Bell Phase 8, "A thumb has never
-touched this", and Hearth Phase 1, "Songs you can hear" (PR #PENDING)** — a
+touched this", and Hearth Phase 1, "Songs you can hear" (PR #111)** — a
 classroom a thumb can walk, teach and rechart, on a frame budget of 33.3 ms
 that is a number in `CFG.quality` rather than an opinion, with the renderer
 giving up resolution in named steps when it misses it; and an island whose
