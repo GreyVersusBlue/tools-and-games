@@ -576,7 +576,9 @@ function endPeriod() {
       if (band) out.push(band.line);
       out.push(subject.stack.report.replace('{n}', n));
     }
-    if (subject.flavor?.report) out.push(subject.flavor.report);
+    // The subject's own line is an introduction, not a refrain: four periods a
+    // day of the same sentence is a worse report than three.
+    if (subject.flavor?.report && carry.firstDay) out.push(subject.flavor.report);
     return out;
   }
 
