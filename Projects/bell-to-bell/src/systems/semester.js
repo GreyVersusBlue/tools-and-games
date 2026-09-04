@@ -23,18 +23,29 @@ import { CFG } from '../config.js';
 // any, tomorrow starts on. Versioned from day one. `repair` runs on every
 // load; `migrate` is for version drift and there has not been any yet.
 
-export const RECORD_VERSION = 1;
+export const RECORD_VERSION = 2;
 const S = () => CFG.semester;
 
-export function createRecord() {
+// `seed` is the semester's own integer, drawn once by main.js the same way a
+// generated class's is and kept forever after. It is what makes AP Reyes's
+// calendar a function rather than a list: systems/observation.js's visitFor
+// takes (seed, dayIndex, periodId) and hands back the same answer today and
+// on Thursday, so an announced visit can be read days early without anything
+// about it being written down. Nothing in this module draws a die.
+export function createRecord(seed = 0) {
   return {
     version: RECORD_VERSION,
+    seed: Number.isInteger(seed) ? seed : 0,
     week: 1,
     day: 0,                 // 0-based index into data/admin.json's days
     classes: {},            // periodId -> class entry
     today: [],              // this day's finished periods, in order
     days: [],               // every finished day, in order
-    admin: { active: null, history: [] }
+    admin: { active: null, history: [] },
+    // Phase 4: what you promised AP Reyes in a post-conference and have not
+    // done yet. One entry per open promise; kept ones are dropped at the next
+    // night, forgotten ones are charged once and then dropped.
+    owed: []
   };
 }
 
@@ -64,20 +75,24 @@ export function adminOpinion(record) {
 
 // ---- migrate and repair --------------------------------------------------
 
-// Version drift only. Nothing older than 1 was ever written; anything without
-// a version is not a record, and repair() below starts it over.
+// Version drift. A version 1 record is a real semester written before AP
+// Reyes had a calendar or a follow-up existed: it comes forward as itself with
+// a seed of 0 and nothing owed, which is a semester where she visits on a
+// calendar rather than none at all. Anything without a version is not a
+// record, and repair() below starts it over.
 export function migrate(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (raw.version === RECORD_VERSION) return raw;
+  if (raw.version === 1) return { ...raw, version: RECORD_VERSION, seed: 0, owed: [] };
   return null;
 }
 
 // Every load. Whatever comes out of storage becomes a record with every field
 // the code below reads, or a fresh one if it cannot be made into one.
-export function repair(raw) {
+export function repair(raw, seed = 0) {
   const r = migrate(raw);
-  if (!r) return createRecord();
-  const out = createRecord();
+  if (!r) return createRecord(seed);
+  const out = createRecord(Number.isInteger(r.seed) ? r.seed : seed);
   out.week = Math.max(1, Math.floor(num(r.week, 1)));
   out.day = Math.min(S().daysPerWeek - 1, Math.max(0, Math.floor(num(r.day, 0))));
   for (const [id, c] of Object.entries(r.classes || {})) {
@@ -101,6 +116,15 @@ export function repair(raw) {
     active: typeof r.admin?.active === 'string' ? r.admin.active : null,
     history: isArr(r.admin?.history) ? r.admin.history.filter(h => h && typeof h.id === 'string') : []
   };
+  out.owed = (isArr(r.owed) ? r.owed : []).filter(o =>
+    o && typeof o.id === 'string' && typeof o.periodId === 'string' &&
+    typeof o.lookFor === 'string' && Number.isFinite(o.dueDay)
+  ).map(o => ({
+    id: o.id, periodId: o.periodId, lookFor: o.lookFor,
+    fromDay: Math.max(0, Math.floor(num(o.fromDay, 0))),
+    dueDay: Math.max(0, Math.floor(o.dueDay)),
+    kept: !!o.kept, broken: !!o.broken
+  }));
   return out;
 }
 
@@ -122,26 +146,85 @@ export function ladderRung(record, ladder) {
 // Everything main.js needs to open a period. `roster` decides whether the
 // carried comprehension still fits (same length, same class); `seed` is the
 // generated class's seed or null for an authored one.
-export function entering(record, periodId, { roster, seed = null, admin }) {
+export function entering(record, periodId, { roster, seed = null, admin, observation = null }) {
   const c = record.classes[periodId];
   const sameClass = c && c.seed === (seed ?? null);
   const fits = sameClass && c.comp && c.comp.length === roster.length;
   const rung = record.admin.active
     ? (admin?.escalation?.ladder || []).find(s => s.id === record.admin.active) || null
     : null;
+
+  // Phase 4: a follow-up you promised her and did not do. advanceDay marked it
+  // broken last night; this is the morning it costs something. One charge, on
+  // the period it was promised in, and then it is gone.
+  const broken = record.owed.filter(o => o.broken && o.periodId === periodId);
+  const brokenCopy = broken.length ? observation?.followUp?.broken : null;
+
+  const effects = (rung?.effects || brokenCopy?.effects)
+    ? { ...(rung?.effects || {}) } : null;
+  if (effects && brokenCopy?.effects) {
+    for (const [k, v] of Object.entries(brokenCopy.effects)) effects[k] = (effects[k] || 0) + v * broken.length;
+  }
+
+  const events = rung?.event ? [{ id: `admin-${rung.id}`, ...rung.event }] : [];
+  if (brokenCopy?.event) events.push({ id: `owed-${broken[0].id}`, ...brokenCopy.event });
+
   return {
     firstDay: !sameClass || !c.comp,
     startComp: fits ? c.comp.slice() : null,
     rapport: sameClass ? c.rapport : CFG.start.rapport,
     fidelity: sameClass ? c.fidelity : CFG.start.fidelity,
     rung,
-    effects: rung?.effects || null,
+    effects,
     obsWindowScale: rung?.obsWindowScale ?? 1,
-    events: rung?.event ? [{ id: `admin-${rung.id}`, ...rung.event }] : [],
+    events,
+    // Phase 4: what this period still owes, and what it forgot. `owed` is what
+    // the start screen names; `broken` is what this morning is charging for.
+    owed: openFollowUps(record, periodId),
+    broken,
     week: record.week,
     day: record.day,
     dayIndex: dayIndexOf(record)
   };
+}
+
+// ---- follow-ups ----------------------------------------------------------
+//
+// Phase 4. The affirming answer in the post-conference used to say it cost you
+// a follow-up and then cost you nothing. Now it books one: a look-for, a
+// period, and a day by which you have to have done it in that room. She is not
+// there when you do it. Forgetting it is a Fidelity hit the morning after it
+// comes due, once.
+
+// A promise, on the books. Promising the same thing again replaces the old one
+// rather than stacking a second copy of it.
+export function oweFollowUp(record, { periodId, id, lookFor, days }, dayIndex = dayIndexOf(record)) {
+  const out = structuredClone(record);
+  out.owed = out.owed.filter(o => !(o.id === id && o.periodId === periodId));
+  out.owed.push({
+    id, periodId, lookFor,
+    fromDay: dayIndex,
+    dueDay: dayIndex + Math.max(1, Math.floor(days)),
+    kept: false, broken: false
+  });
+  return out;
+}
+
+// Everything this period still owes and has not been charged for.
+export const openFollowUps = (record, periodId) =>
+  record.owed.filter(o => !o.broken && !o.kept && (periodId == null || o.periodId === periodId));
+
+// What the period actually did in the room today. A promise is kept by doing
+// the thing on a later day than the one you made it on — you cannot keep it in
+// the same breath you promise it.
+export function settleFollowUps(record, { periodId, dayIndex, used = [] }) {
+  const out = structuredClone(record);
+  const kept = [];
+  for (const o of out.owed) {
+    if (o.periodId !== periodId || o.kept || o.broken) continue;
+    if (dayIndex > o.fromDay && used.includes(o.lookFor)) { o.kept = true; kept.push(o); }
+  }
+  return { record: out, kept };
 }
 
 // ---- what a period ends with -------------------------------------------
@@ -223,6 +306,14 @@ export function advanceDay(record, periodResults = [], { admin } = {}) {
     c.fidelity = clamp100(sem.districtFidelity + (c.fidelity - sem.districtFidelity) * (1 - sem.fidelityRevert));
     c.rapport = clamp100(CFG.start.rapport + (c.rapport - CFG.start.rapport) * (1 - sem.rapportRevert));
   }
+
+  // Phase 4: the night the promises turn over. A promise you kept is done
+  // with; one that was charged yesterday morning is done with too; one whose
+  // day has now gone past without you doing it is marked broken, which is what
+  // tomorrow's entering() charges for, once.
+  const today = dayIndexOf(out);
+  out.owed = out.owed.filter(o => !o.kept && !o.broken);
+  for (const o of out.owed) if (o.dueDay <= today) o.broken = true;
 
   // Tomorrow's rung, off the days that are now on the books.
   const rung = admin ? ladderRung(out, admin.escalation.ladder) : null;

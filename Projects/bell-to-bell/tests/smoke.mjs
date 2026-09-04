@@ -5,7 +5,7 @@ import { createLesson } from '../src/systems/lesson.js';
 import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
-import { createObservation } from '../src/systems/observation.js';
+import { createObservation, visitFor, announcedAhead, defaultVisit } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
 import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor } from '../src/periods.js';
 import { contentFiles } from '../src/loader.js';
@@ -581,6 +581,7 @@ check("a carried-over chart still reads as novel for Rapport purposes when compa
 
 // ---------------------------------------------------------------------------
 // T7 — the Observation: the alert, the window, the rubric, the conference
+// Phase 4 — and the calendar, the pool, the tree, and the follow-up
 // ---------------------------------------------------------------------------
 
 const fakeClassList = () => {
@@ -592,18 +593,25 @@ const mkObsDom = () => ({
   paTitle: { textContent: '' },
   paTxt: { textContent: '' }
 });
-const mkObs = () => {
+// Phase 4: a visit is a thing you hand in now. Leaving it out here means the
+// one the balance table runs — always comes, minute 30, the five look-fors
+// that used to be fixed rows in index.html.
+const mkObs = (visit) => {
   const msgs = [];
   const dom = mkObsDom();
-  const obs = createObservation({ data: obsData, dom, toast: (k, t, b) => msgs.push([k, t, b]) });
+  const obs = createObservation({
+    data: obsData, dom, toast: (k, t, b) => msgs.push([k, t, b]),
+    visit: visit === undefined ? defaultVisit(obsData) : visit
+  });
   return { obs, dom, msgs };
 };
+const AT = obsData.visit.default.atMinute;
 
 // idle until her scheduled minute arrives
 {
   const { obs } = mkObs();
   const st = createState();
-  st.t = CFG.periodSeconds - (obsData.atMinute - 1) * 60;   // one minute early
+  st.t = CFG.periodSeconds - (AT - 1) * 60;   // one minute early
   obs.tick(st, 1 / 60);
   check('no alert before her scheduled minute', st.obsPhase === 'idle');
 }
@@ -612,7 +620,7 @@ const mkObs = () => {
 {
   const { obs, dom } = mkObs();
   const st = createState();
-  st.t = CFG.periodSeconds - obsData.atMinute * 60;
+  st.t = CFG.periodSeconds - AT * 60;
   obs.tick(st, 1 / 60);
   check('the alert starts exactly on her scheduled minute', st.obsPhase === 'alert');
   check('the alert banner is up', dom.pa.classList.contains('on'));
@@ -681,17 +689,192 @@ check("checks for understanding is a real look-for key, not one you press direct
   check('what got satisfied is reported back', st.obsResult.satisfied.length === 2 && st.obsResult.total === 5);
 }
 
-// the post-conference: three options, real effects, honesty flagged for the report
+// ---- Phase 4: she does not always come, and sometimes she tells you --------
+
+// A period she skipped is a period with no phase machine at all: nothing ticks,
+// nothing arrives, and the report has no observation row to draw.
+{
+  const { obs, dom } = mkObs(null);
+  const st = createState();
+  for (let i = 0; i < 60 * 60; i++) { st.t -= 10 / 60; obs.tick(st, 1 / 60); }
+  check('a period she skipped never starts an alert', st.obsPhase === 'idle');
+  check('and never puts the banner up', !dom.pa.classList.contains('on'));
+  check('and has no result to report', st.obsResult === null);
+}
+
+// The calendar is a function, not a list: the same day and the same period
+// give the same answer forever, and a different day is a different answer.
+{
+  const args = { seed: 4821, dayIndex: 3, periodId: 'p4' };
+  const a = visitFor(obsData, args), b = visitFor(obsData, args);
+  check('the same day and period is the same visit, read twice',
+    JSON.stringify(a) === JSON.stringify(b));
+  const month = [];
+  for (let d = 0; d < 40; d++) {
+    for (const id of ['p4', 'p5', 'p6', 'p7']) month.push(visitFor(obsData, { seed: 4821, dayIndex: d, periodId: id }));
+  }
+  const came = month.filter(Boolean);
+  check('she does not come to every period', came.length < month.length && came.length > 0);
+  check('and she comes to more than one', new Set(came.map(v => v.periodId)).size > 1);
+  check('every visit lands inside her window', came.every(v =>
+    v.atMinute >= obsData.visit.window.fromMinute && v.atMinute <= obsData.visit.window.toMinute));
+  check('some of them were on the calendar', came.some(v => v.announced));
+  check('and most of them were not', came.filter(v => v.announced).length < came.length / 2);
+  check('an announced visit has real lead time', came.filter(v => v.announced)
+    .every(v => v.leadDays >= obsData.visit.announced.leadDays.min &&
+                v.leadDays <= obsData.visit.announced.leadDays.max));
+}
+
+// An announced visit skips the nine-second Admin Proximity Alert. You have
+// known for days; the countdown belongs to the surprise.
+{
+  const visit = { ...defaultVisit(obsData), announced: true };
+  const { obs, msgs } = mkObs(visit);
+  const st = createState();
+  st.t = CFG.periodSeconds - AT * 60;
+  obs.tick(st, 1 / 60);
+  check('an announced visit walks straight in, no countdown', st.obsPhase === 'active');
+  check('and says so in her own words',
+    msgs.some(m => m[1] === obsData.visit.announced.arrival.title));
+  st.obsWindowRemaining = 0.001;
+  obs.tick(st, 1 / 60);
+  check('the report knows it was on the calendar', st.obsResult.announced === true);
+}
+
+// An announced visit is readable before it happens, from the day it goes on
+// the calendar and not one day earlier.
+{
+  const seed = 4821, ids = ['p4', 'p5', 'p6', 'p7'];
+  let found = null;
+  for (let d = 4; d < 60 && !found; d++) {
+    for (const id of ids) {
+      const v = visitFor(obsData, { seed, dayIndex: d, periodId: id });
+      if (v && v.announced && v.leadDays >= 1) { found = { ...v, day: d }; break; }
+    }
+  }
+  check('there is an announced visit somewhere in the first twelve weeks', !!found);
+  const onDay = d => announcedAhead(obsData, { seed, dayIndex: d, periodIds: ids })
+    .some(v => v.periodId === found.periodId && v.dayIndex === found.day);
+  check('it is on the calendar the day it is announced', onDay(found.day - found.leadDays));
+  check('and not the day before that', !onDay(found.day - found.leadDays - 1));
+  check('and still on it the morning of', onDay(found.day));
+}
+
+// ---- Phase 4: the rubric is drawn from a pool ----------------------------
+
+check('the pool is bigger than one window', obsData.lookFors.length > obsData.visit.rubricSize);
+check('every look-for in the pool has a unique key and code',
+  new Set(obsData.lookFors.map(l => l.key)).size === obsData.lookFors.length &&
+  new Set(obsData.lookFors.map(l => l.code)).size === obsData.lookFors.length);
+// Every one-shot look-for needs a key in config, and every look-for key in
+// config needs a row in the pool. A pool row with no key is unreachable.
+{
+  const pool = new Set(obsData.lookFors.filter(l => !l.hold && !l.implicit).map(l => l.key));
+  const bound = Object.keys(CFG.keys).filter(k => k.startsWith('look:')).map(k => k.slice(5));
+  check('every one-shot look-for in the pool has a key bound to it',
+    [...pool].every(k => bound.includes(k)));
+  check('and every bound look-for key is in the pool', bound.every(k => pool.has(k)));
+  const codeOf = k => obsData.lookFors.find(l => l.key === k).code;
+  check('the letter on the rubric row is the letter you press',
+    bound.every(k => CFG.keys['look:' + k] === 'Key' + codeOf(k)));
+}
+
+// Two visits are not the same performance twice.
+{
+  const drawn = [];
+  for (let d = 0; d < 60; d++) {
+    const v = visitFor(obsData, { seed: 991, dayIndex: d, periodId: 'p4' });
+    if (v) drawn.push(v.rubric.join(','));
+  }
+  check('a drawn rubric never repeats a look-for inside one window',
+    drawn.every(r => new Set(r.split(',')).size === obsData.visit.rubricSize));
+  check('and two observations are not the same five things', new Set(drawn).size > 1);
+}
+
+// A look-for she did not bring is not on the rubric, does not score, and says so.
+{
+  const visit = { ...defaultVisit(obsData), rubric: ['objective', 'question', 'wait', 'check', 'discourse'] };
+  const { obs, msgs } = mkObs(visit);
+  const st = createState();
+  st.obsPhase = 'active';
+  const before = st.fidelity;
+  check('a look-for she did not bring does not score', obs.satisfy(st, 'modeling') === false);
+  check('and costs nothing either way', st.fidelity === before);
+  check('and it tells you why', msgs.some(m => m[2] === obsData.notOnRubric));
+  check('the HUD only lists the five she brought', obs.lookFors.length === 5 &&
+    obs.lookFors.every(l => visit.rubric.includes(l.key)));
+}
+
+// Wait time is only bankable when wait time is on today's rubric.
+{
+  const visit = { ...defaultVisit(obsData), rubric: ['objective', 'question', 'modeling', 'check', 'discourse'] };
+  const { obs } = mkObs(visit);
+  const st = createState();
+  st.obsPhase = 'active';
+  for (let i = 0; i < CFG.observation.waitHoldSeconds * 60 + 60; i++) obs.tickWait(st, 1 / 60, true);
+  check('holding the wait key books nothing she did not ask for', !st.obsSatisfied.wait);
+}
+
+// ---- Phase 4: the post-conference is a tree ------------------------------
+
+// the post-conference: real effects, honesty flagged for the report
 {
   const { obs } = mkObs();
   const st = createState();
   const before = st.fidelity;
-  const opt = obs.resolveConference(st, 'honest');
-  check('resolving a real option returns it', opt && opt.key === 'honest');
+  const step = obs.resolveConference(st, 'engagement', 'honest');
+  check('resolving a real option returns it', step && step.option.key === 'honest');
   check('its effects actually apply', st.fidelity < before);
-  check('the honest option is flagged for the report', opt.honest === true);
-  check('the other two are not', !obs.conferenceOption('turnAndTalk').honest && !obs.conferenceOption('hollow').honest);
-  check('an unknown option resolves to nothing', obs.resolveConference(createState(), 'nope') === null);
+  check('the honest option is flagged for the report', step.option.honest === true);
+  check('an unknown option resolves to nothing',
+    obs.resolveConference(createState(), 'engagement', 'nope') === null);
+  check('and so does an unknown node', obs.resolveConference(createState(), 'nope', 'honest') === null);
+}
+
+// every node's every option either ends the conference or names a node that
+// exists, and every node is reachable from the root
+{
+  const nodes = obsData.conference.nodes;
+  const named = new Set();
+  const bad = [];
+  for (const [id, node] of Object.entries(nodes)) {
+    if (!node.prompt || node.options.length < 2) bad.push(id + ' is not an exchange');
+    for (const o of node.options) {
+      if (o.then) { named.add(o.then); if (!nodes[o.then]) bad.push(id + '.' + o.key + ' -> ' + o.then); }
+      if (!o.result) bad.push(id + '.' + o.key + ' has no line');
+    }
+  }
+  check('every `then` names a node that exists', bad.length === 0);
+  check('every node but the root is reachable',
+    Object.keys(nodes).every(id => id === obsData.conference.root || named.has(id)));
+  check('the tree is more than one exchange', named.size > 0);
+}
+
+// walking the tree: two exchanges, effects at every node, the path in order
+{
+  const { obs } = mkObs();
+  const st = createState();
+  const first = obs.resolveConference(st, 'engagement', 'turnAndTalk');
+  check('the affirming answer has somewhere to go', first.next && first.nextId === 'when');
+  const f1 = st.fidelity;
+  const second = obs.resolveConference(st, 'when', 'named');
+  check('naming a day is the end of the conference', second.next === null);
+  check('the second node moved fidelity too', st.fidelity > f1);
+  check('the path is both exchanges, in order',
+    obs.conferencePath(st).map(o => o.key).join() === 'turnAndTalk,named');
+}
+
+// naming a day is a promise the record has to keep
+{
+  const { obs } = mkObs();
+  const st = createState();
+  obs.resolveConference(st, 'engagement', 'turnAndTalk');
+  obs.resolveConference(st, 'when', 'named');
+  check('naming a day puts a follow-up on the books', st.obsOwed && st.obsOwed.lookFor === 'discourse');
+  const st2 = createState();
+  obs.resolveConference(st2, 'engagement', 'turnAndTalk');
+  obs.resolveConference(st2, 'when', 'vague');
+  check('being vague about it does not', st2.obsOwed === null);
 }
 
 // ---------------------------------------------------------------------------
@@ -1110,13 +1293,22 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
   const high = roster.map(() => 0.8);
 
   const fresh = semester.createRecord();
-  check('a fresh record is versioned from day one', fresh.version === semester.RECORD_VERSION && fresh.version === 1);
+  check('a fresh record is versioned from day one', fresh.version === semester.RECORD_VERSION && fresh.version === 2);
   check('a fresh record is Monday of week one', fresh.week === 1 && fresh.day === 0 && Object.keys(fresh.classes).length === 0);
 
-  // repair: every load. migrate: version drift, of which there is none yet.
-  check('garbage repairs to a fresh record', semester.repair('nope').version === 1 && semester.repair(null).week === 1);
+  // repair: every load. migrate: version drift, of which there has now been
+  // one — a version 1 record is a semester written before AP Reyes had a
+  // calendar or a follow-up existed.
+  check('garbage repairs to a fresh record', semester.repair('nope').version === 2 && semester.repair(null).week === 1);
   check('an unversioned object is not a record', semester.migrate({ week: 3, classes: {} }) === null);
   check('a future version is not a record either', semester.migrate({ version: 99 }) === null);
+  check('a version 1 record comes forward with an empty calendar', (() => {
+    const r = semester.repair({ version: 1, week: 3, day: 2, classes: {} });
+    return r.version === 2 && r.week === 3 && r.seed === 0 && r.owed.length === 0;
+  })());
+  check('the semester seed survives a reload', semester.repair({ version: 2, seed: 4821, week: 1, day: 0, classes: {} }, 777).seed === 4821);
+  check('and a record that never had one takes the one it is handed',
+    semester.repair(null, 777).seed === 777 && semester.createRecord(4821).seed === 4821);
   check('repair fills in what a half-written record lacks', (() => {
     const r = semester.repair({ version: 1, week: 2, day: 9, classes: { p4: { comp: [0.5, 'x'], fidelity: 200 } } });
     return r.week === 2 && r.day === SEM.daysPerWeek - 1 && r.classes.p4.comp === null &&
@@ -1237,9 +1429,9 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
   // The observation window scale actually reaches the observation.
   check('windowScale scales the rubric window', (() => {
     const fakeClassList = () => ({ add() {}, remove() {}, contains: () => false });
-    const mk = scale => createObservation({ data: obsData, dom: { pa: { classList: fakeClassList() }, paTitle: {}, paTxt: {} }, toast: () => {}, windowScale: scale });
+    const mk = scale => createObservation({ data: obsData, dom: { pa: { classList: fakeClassList() }, paTitle: {}, paTxt: {} }, toast: () => {}, windowScale: scale, visit: defaultVisit(obsData) });
     const a = createState(), b = createState();
-    a.t = b.t = CFG.periodSeconds - obsData.atMinute * 60 - 1;
+    a.t = b.t = CFG.periodSeconds - obsData.visit.default.atMinute * 60 - 1;
     const oa = mk(1), ob = mk(2);
     oa.tick(a, 0.1); ob.tick(b, 0.1);
     a.obsAlertRemaining = b.obsAlertRemaining = 0;
@@ -1278,6 +1470,99 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
   check('the good teacher hears nothing from admin', good.rec.admin.history.length === 0);
   check('the wanderer meets AP Reyes by Friday', wander.rec.admin.history.some(h => h.id === 'checkIn'));
   check('the wanderer does not fall through the floor', wander.opens[4] > 30);
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase 4 — a follow-up you actually owe. The affirming answer used to say it
+// cost you one and then cost you nothing; now it books a look-for, a period
+// and a day, and forgetting it is a Fidelity hit the morning after.
+// ---------------------------------------------------------------------------
+{
+  const roster = sData.roster;
+  const owe = (rec, day) => semester.oweFollowUp(rec, { periodId: 'p4', id: 'turnAndTalk', lookFor: 'discourse', days: 2 }, day);
+  const night = rec => semester.advanceDay(rec, [], { admin: adminData });
+  const enter = rec => semester.entering(rec, 'p4', { roster, seed: null, admin: adminData, observation: obsData });
+
+  let rec = owe(semester.createRecord(4821), 0);
+  check('a promise goes on the books with a day on it',
+    rec.owed.length === 1 && rec.owed[0].dueDay === 2 && rec.owed[0].fromDay === 0);
+  check('promising the same thing twice does not stack it',
+    owe(rec, 0).owed.length === 1);
+  check('the morning after promising, you owe it and are not charged for it', (() => {
+    const e = enter(rec);
+    return e.owed.length === 1 && e.broken.length === 0 && e.effects === null;
+  })());
+
+  // Doing the thing in the same breath you promised it does not count.
+  check('you cannot keep a promise on the day you made it',
+    semester.settleFollowUps(rec, { periodId: 'p4', dayIndex: 0, used: ['discourse'] }).kept.length === 0);
+
+  // Doing it later does, and the night clears it off the books.
+  {
+    const later = semester.settleFollowUps(night(rec), { periodId: 'p4', dayIndex: 1, used: ['objective', 'discourse'] });
+    check('doing it on a later day keeps it', later.kept.length === 1 && later.record.owed[0].kept);
+    const after = night(later.record);
+    check('a kept promise is off the books at the next bell', after.owed.length === 0);
+    check('and never charges anything', enter(after).effects === null && enter(after).broken.length === 0);
+  }
+
+  // Doing something else does not.
+  check('doing something else is not doing the thing',
+    semester.settleFollowUps(night(rec), { periodId: 'p4', dayIndex: 1, used: ['objective', 'question'] }).kept.length === 0);
+
+  // The due day passing without it is what costs. Day 0 promise, due day 2:
+  // nights at 0 and 1 leave it open, the night at 2 marks it broken, and the
+  // morning of day 3 charges for it, once.
+  {
+    let x = rec;
+    for (let d = 0; d < 2; d++) x = night(x);
+    check('an open promise survives the nights before it is due',
+      x.owed.length === 1 && !x.owed[0].broken && enter(x).broken.length === 0);
+    x = night(x);
+    check('the night its day goes past marks it broken', x.owed[0].broken === true);
+    const morning = enter(x);
+    check('and the next morning charges Fidelity for it',
+      morning.broken.length === 1 && morning.effects.fidelity === obsData.followUp.broken.effects.fidelity);
+    check('with an email about it, like everything else admin does',
+      morning.events.some(e => e.id === 'owed-turnAndTalk' && e.kind === 'pa'));
+    const after = night(x);
+    check('and it is charged once, then gone', after.owed.length === 0 && enter(after).effects === null);
+  }
+
+  // It is the period's promise, not the day's.
+  {
+    const other = semester.entering(rec, 'p5', { roster, seed: null, admin: adminData, observation: obsData });
+    check('5th period does not owe what 4th period promised', other.owed.length === 0);
+    check('and 5th period cannot keep it either',
+      semester.settleFollowUps(night(rec), { periodId: 'p5', dayIndex: 1, used: ['discourse'] }).kept.length === 0);
+  }
+
+  // The promise survives a reload, which is the whole point of putting it on
+  // the record rather than in state.
+  check('an owed follow-up survives a day boundary and a repair', (() => {
+    const round = semester.repair(JSON.parse(JSON.stringify(night(rec))));
+    return round.owed.length === 1 && round.owed[0].id === 'turnAndTalk' &&
+      round.owed[0].dueDay === 2 && round.owed[0].periodId === 'p4';
+  })());
+
+  // A broken follow-up stacks with admin's ladder rather than replacing it:
+  // both bags land, and the ladder's own event is still there.
+  check('a broken promise and a rung of the ladder both land', (() => {
+    let x = semester.createRecord(4821);
+    const low = { periodId: 'p4', seed: null, roster, students: [], rapport: 50, fidelity: 40,
+      mastery: 40, bandwidth: 50, missed: 0, caught: 0, obsResult: null, known: {} };
+    // A bad day every day, so admin's opinion stays under the ladder's line
+    // rather than drifting back over it while the promise runs out.
+    for (let i = 0; i < 2; i++) x = night(semester.recordPeriod(x, low));
+    x = owe(x, semester.dayIndexOf(x));
+    for (let i = 0; i < 3; i++) x = night(semester.recordPeriod(x, low));
+    const e = enter(x);
+    return e.rung && e.broken.length === 1 &&
+      e.effects.bandwidth === e.rung.effects.bandwidth &&
+      e.effects.fidelity === (e.rung.effects.fidelity || 0) + obsData.followUp.broken.effects.fidelity &&
+      e.events.length === 2;
+  })());
 }
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');

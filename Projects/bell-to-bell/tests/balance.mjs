@@ -13,6 +13,7 @@ import { CFG } from '../src/config.js';
 import { periodFor, periodIds, rowFor } from '../src/periods.js';
 import { contentFiles } from '../src/loader.js';
 import { runPeriod, STYLES } from '../src/systems/simulate.js';
+import { visitFor } from '../src/systems/observation.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`, 'utf8'));
 const lData = D('lesson'), sData = D('students'), tData = D('tells'), eData = D('events');
@@ -208,7 +209,11 @@ const adminData = D('admin');
 
 function week(style) {
   console.log(`${style.label}, a week of ${PERIODS.length} periods a day, the record at each bell:`);
-  let record = semester.createRecord();
+  // Phase 4: the week runs AP Reyes's real calendar rather than a visit every
+  // period, so the `obs` column is where a `chance` that makes her a metronome
+  // (or a stranger) shows up as a column of dashes or a column of fives.
+  let record = semester.createRecord(TABLE_SEED);
+  let visits = 0;
   for (let d = 0; d < CFG.semester.daysPerWeek; d++) {
     let pool = null;
     for (const id of periodIds(bundle)) {
@@ -218,9 +223,11 @@ function week(style) {
       });
       const opens = carry.startComp
         ? carry.startComp.reduce((a, b) => a + b, 0) / carry.startComp.length * 100 : null;
+      const visit = visitFor(obsData, { seed: record.seed, dayIndex: carry.dayIndex, periodId: id });
+      if (visit) visits++;
       const r = runPeriod({ period, data: SIM, style, opts: {
         bandwidth: pool, startComp: carry.startComp, rapport: carry.rapport, fidelity: carry.fidelity,
-        obsWindowScale: carry.obsWindowScale, effects: carry.effects
+        obsWindowScale: carry.obsWindowScale, effects: carry.effects, visit
       } });
       pool = Math.min(100, r.state.bandwidth + CFG.day.passingPeriodRecovery);
       record = semester.recordPeriod(record, {
@@ -234,7 +241,9 @@ function week(style) {
       console.log(`  ${adminData.shortDays[record.day]} ${period.short.padEnd(4)} ` +
         `mastery ${p(opens)} -> ${p(r.state.mastery)}   fidelity ${p(carry.fidelity)} -> ${p(r.state.fidelity)}   ` +
         `rapport ${p(carry.rapport)} -> ${p(r.state.rapport)}   bandwidth ${p(r.state.bandwidth)}   ` +
-        `missed ${r.missed}   admin ${carry.rung ? carry.rung.label : '—'}`);
+        `missed ${r.missed}   obs ${r.state.obsResult
+          ? `${r.state.obsResult.satisfied.length}/${r.state.obsResult.total}${visit.announced ? '*' : ' '}`
+          : ' -- '}  admin ${carry.rung ? carry.rung.label : '—'}`);
     }
     record = semester.advanceDay(record, [], { admin: adminData });
   }
@@ -242,6 +251,7 @@ function week(style) {
   const p = v => String(Math.round(v)).padStart(3);
   console.log(`  ${'week (means)'.padEnd(8)} mastery ${p(w.means.mastery)}         fidelity ${p(w.means.fidelity)}         ` +
     `rapport ${p(w.means.rapport)}         missed ${w.missed}   ` +
+    `visits ${visits}/${CFG.semester.daysPerWeek * PERIODS.length} (* announced)   ` +
     `admin ${record.admin.history.length ? record.admin.history.map(h => `${h.id} from ${adminData.shortDays[(h.day + 1) % CFG.semester.daysPerWeek]}`).join(', ') : 'nothing'}\n`);
   return record;
 }

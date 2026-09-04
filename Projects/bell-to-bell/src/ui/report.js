@@ -105,8 +105,12 @@ export function showReport(state, data, extra = {}) {
   if (state.withitnessUses > 14) quotes.push(c.heavyScanning.replace('{uses}', state.withitnessUses));
   if (state.missed > 2) quotes.push(c.missedSeveral.replace('{missed}', state.missed));
   if (state.leverage.length) quotes.push(c.leverage.replace('{list}', state.leverage.join('; ')));
-  if (obs?.option) quotes.push(obs.option.result);
-  if (obs?.option?.honest) quotes.push(obs.copy.honest);
+  // Phase 4: the conference is a path now, so every exchange gets its line,
+  // in the order it was said.
+  for (const opt of obs?.options || []) if (opt.result) quotes.push(opt.result);
+  if (obs?.result?.announced) quotes.push(obs.copy.announced);
+  if ((obs?.options || []).some(o => o.honest)) quotes.push(obs.copy.honest);
+  for (const line of extra.followUpLines || []) quotes.push(line);
   if (!quotes.length && !seatQuotes.length) quotes.push(c.quiet);
   quotes.push(...seatQuotes);
 

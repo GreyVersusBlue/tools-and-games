@@ -15,12 +15,22 @@ export const CFG = {
     check: 'KeyQ',
     reteach: 'KeyR',
     roomTemp: 'KeyT',
-    // T7: the rubric's other four look-fors. Checks for understanding (KeyQ,
-    // above) is the one look-for that is also just good teaching; these three
-    // one-shot keys and the held wait key are close to pure performance.
-    postObjective: 'KeyO',
-    askQuestion: 'KeyH',
-    discourse: 'KeyG'
+    // T7: the rubric's other look-fors. Checks for understanding (KeyQ, above)
+    // is the one that is also just good teaching; the one-shot keys below and
+    // the held wait key are close to pure performance.
+    //
+    // Phase 4: one key per one-shot look-for in data/observation.json's pool,
+    // named `look:<key>` so main.js's action dispatch can hand the suffix
+    // straight to observation.satisfy() without knowing what is in the pool.
+    // Adding a look-for is a row in that file and a line here, and the letter
+    // in the row has to be the letter here.
+    'look:objective': 'KeyO',
+    'look:question': 'KeyH',
+    'look:discourse': 'KeyG',
+    'look:modeling': 'KeyM',
+    'look:vocabulary': 'KeyV',
+    'look:nonverbal': 'KeyN',
+    'look:evidence': 'KeyC'
   },
 
   // withitness costs
@@ -105,9 +115,10 @@ export const CFG = {
     quadrantMinShare: 0.45      // below this the reading is "evenly distributed"
   },
 
-  // T7: The Observation. Announced by a countdown, not a coin flip — it always
-  // happens, same as the intercom PA does, so a slice about one day at school
-  // does not have to model whether today is an observation day.
+  // T7: The Observation. Phase 4: whether she comes at all, when in the window
+  // she arrives, whether it was on the calendar days ahead and which five of
+  // the nine look-fors she brought are all in data/observation.json, because
+  // they are content. What is left in here is what it costs.
   observation: {
     alertSeconds: 9,       // real seconds between the Admin Proximity Alert and AP walking in
     windowMinutes: 11,     // game-minutes the rubric window stays open once she has

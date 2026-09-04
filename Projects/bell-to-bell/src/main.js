@@ -16,7 +16,7 @@ import { createInterventions } from './systems/interventions.js';
 import { createEvents } from './systems/events.js';
 import { createLesson } from './systems/lesson.js';
 import { createRoomTemp } from './systems/roomtemp.js';
-import { createObservation } from './systems/observation.js';
+import { createObservation, visitFor, announcedAhead } from './systems/observation.js';
 import { inTeachingZone, tickMeters } from './systems/meters.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
@@ -77,7 +77,13 @@ const activePeriodId = resolvePeriodId(persist.load('period', null), data);
 // finished period and asks what the next one opens with. Repaired on every
 // load, so a browser that stored garbage starts a fresh week rather than a
 // broken one.
-let record = semester.repair(persist.load('semester', null));
+// Phase 4: the record carries the semester's own seed, drawn here once the
+// same way a generated class's is. It is what makes AP Reyes's calendar
+// readable days ahead without a line of it being stored.
+let record = semester.repair(persist.load('semester', null), drawSeed());
+// The seed has to survive a browser that is closed before the first bell, or
+// tomorrow is a different calendar than the one this morning showed you.
+persist.save('semester', record);
 
 // Phase 2: a generated period is twelve kids out of one integer. The integer
 // lives in the period's own slot, drawn once and kept, so a refresh mid-7th is
@@ -98,7 +104,16 @@ const period = periodFor(activePeriodId, data, { seed, day: semester.dayIndexOf(
 // they will put up with. A class on its first day gets CFG.start, same as
 // before there was a semester.
 const carry = semester.entering(record, activePeriodId, {
-  roster: period.roster, seed: period.generated ? period.generated.seed : null, admin: data.admin
+  roster: period.roster, seed: period.generated ? period.generated.seed : null,
+  admin: data.admin, observation: data.observation
+});
+
+// Phase 4: whether she comes to this period today, when, whether it was on the
+// calendar, and which five of the nine look-fors she brought. Pure off the
+// semester seed, the day and the period id, so a refresh is the same visit and
+// next Thursday's announced one can be read this morning.
+const visit = visitFor(data.observation, {
+  seed: record.seed, dayIndex: carry.dayIndex, periodId: period.id
 });
 state.rapport = clamp01to100(carry.rapport);
 state.fidelity = clamp01to100(carry.fidelity);
@@ -174,6 +189,31 @@ dom.cbRoom.textContent = `${data.admin.shortDays[carry.day]} · ${data.room.meta
 dom.startSub.textContent = `SLICE 001 — "ONE PERIOD" · ${weekday} · ${period.ordinal} · 47 minutes · 12 students`;
 dom.startDay.textContent = (carry.firstDay ? data.admin.copy.firstDay : data.admin.copy.returning)
   .replace('{day}', weekday).replace('{week}', carry.week);
+
+// Phase 4: what is already on the calendar, and what you still owe her. Both
+// are read forward off the same pure function the visit itself comes from, so
+// nothing on this line was stored and nothing on it can go stale.
+{
+  const O = data.observation, A = O.visit.announced;
+  const labelOf = id => rowFor(id, data)?.short || id;
+  const inDaysCopy = (copy, n) => (copy[String(n)] || copy.n.replace('{n}', n));
+  const lines = [];
+  for (const v of announcedAhead(O, {
+    seed: record.seed, dayIndex: carry.dayIndex, periodIds: periodIds(data)
+  })) {
+    lines.push(v.inDays === 0 && v.periodId === period.id
+      ? A.today.replace('{period}', labelOf(v.periodId))
+      : A.notice.replace('{period}', labelOf(v.periodId))
+        .replace('{when}', inDaysCopy(A.when, v.inDays)));
+  }
+  for (const o of carry.owed) {
+    lines.push(O.followUp.owedLabel
+      .replace('{what}', O.followUp.what[o.id] || o.lookFor)
+      .replace('{when}', inDaysCopy(O.followUp.when, Math.max(0, o.dueDay - carry.dayIndex))));
+  }
+  if (carry.broken.length) lines.push(O.followUp.broken.report);
+  dom.startAdmin.textContent = lines.join(' ');
+}
 
 const reactions = createReactions({ students, data: data.reactions, camera });
 
@@ -257,7 +297,14 @@ const events = createEvents({
 
 // T7: the Observation. Shared across periods on purpose — it is the same
 // rubric and the same AP regardless of whose desks are in the room.
-const observation = createObservation({ data: data.observation, dom, toast, windowScale: carry.obsWindowScale });
+const observation = createObservation({
+  data: data.observation, dom, toast, windowScale: carry.obsWindowScale, visit
+});
+
+// The rubric panel is the five she brought, not a fixed five in index.html.
+dom.obsRows.innerHTML = observation.lookFors.map(l =>
+  `<div class="obsrow" data-key="${l.key}"><b>${l.code}</b>` +
+  `<span>${l.label}${l.hold ? ' (hold)' : ''}</span></div>`).join('');
 
 room.screens.board?.set(lesson.current(state).board);
 room.screens.objective?.set(period.lessonData.objectiveBoard);
@@ -281,6 +328,13 @@ function drawObservationHUD(state) {
   for (const row of dom.observation.querySelectorAll('.obsrow')) {
     row.classList.toggle('got', !!state.obsSatisfied[row.dataset.key]);
   }
+}
+
+// Phase 4: what you did in this room today, rubric or no rubric. A follow-up
+// you promised her is kept by doing the thing on a later day, and she is not
+// standing there when you do it.
+function useLookFor(key) {
+  if (!state.lookForsUsed.includes(key)) state.lookForsUsed.push(key);
 }
 
 function handleTellClick(t) {
@@ -331,11 +385,17 @@ function frame(now) {
     if (action === 'roomTemp') { temp.read(state); continue; }
     if (state.openTell) continue;              // one thing at a time
     if (action === 'advance') lesson.advance(state);
-    else if (action === 'check') { if (lesson.check(state).ok) observation.satisfy(state, 'check'); }
+    else if (action === 'check') {
+      if (lesson.check(state).ok) { useLookFor('check'); observation.satisfy(state, 'check'); }
+    }
     else if (action === 'reteach') lesson.reteach(state);
-    else if (action === 'postObjective') observation.satisfy(state, 'objective');
-    else if (action === 'askQuestion') observation.satisfy(state, 'question');
-    else if (action === 'discourse') observation.satisfy(state, 'discourse');
+    // Phase 4: one branch for every one-shot look-for in the pool, whatever is
+    // in it. The rubric decides whether it scores; the room does not care.
+    else if (action.startsWith('look:')) {
+      const key = action.slice(5);
+      useLookFor(key);
+      observation.satisfy(state, key);
+    }
   }
 
   withitness.tick(state, dt);
@@ -370,6 +430,7 @@ function endPeriod() {
   withitness.set(state, false);
   closeMenu();
   audio.bell();
+  const followUpLines = [];
 
   // What this period taught you about the room. Next chart knows it; nothing
   // about it was labelled in advance. A new roster next period gets none of
@@ -389,13 +450,33 @@ function endPeriod() {
     bandwidth: state.bandwidth, missed: state.missed, caught: state.caught,
     sawCurveball: state.sawCurveball, obsResult: state.obsResult, known
   });
+
+  // Phase 4: a follow-up you promised her in some earlier conference is kept
+  // by doing the thing in this room on a later day. Nobody is watching, which
+  // is the point; the toast is the only acknowledgement it gets.
+  const settled = semester.settleFollowUps(record, {
+    periodId: period.id, dayIndex: carry.dayIndex, used: state.lookForsUsed
+  });
+  record = settled.record;
+  if (settled.kept.length) {
+    const copy = data.observation.followUp.kept;
+    toast(copy.toast.kind, copy.toast.title, copy.toast.body);
+    followUpLines.push(copy.report);
+  }
+  // And one you did not: entering() charged for it this morning, and this is
+  // where the report says so.
+  if (carry.broken.length) followUpLines.push(data.observation.followUp.broken.report);
   persist.save('semester', record);
 
   // T6: each period hands off into the next; the last period's own report just
   // restarts the day at the top, which is what "Run it again" always meant.
   // Phase 1: which period that is, and what the button says, are both rows in
   // data/periods.json now rather than string literals in here.
+  // Phase 4: built after the post-conference rather than before it, because a
+  // conference can put a follow-up on the books and the night that turns those
+  // over has to see it.
   const next = period.nextPeriodId;
+  function buildRestart() {
   let restart;
   if (next) {
     restart = {
@@ -442,6 +523,8 @@ function endPeriod() {
       onClick: () => { sleep(); location.reload(); }
     };
   }
+  return restart;
+  }
 
   function report() {
     showReport(state, data.events, {
@@ -453,19 +536,32 @@ function endPeriod() {
       observation: state.obsResult ? {
         result: state.obsResult,
         labels: observation.lookFors.filter(l => state.obsSatisfied[l.key]).map(l => l.label),
-        option: observation.conferenceOption(state.obsConference),
+        options: observation.conferencePath(state),
         copy: observation.report
       } : null,
-      restart
+      followUpLines,
+      restart: buildRestart()
     });
   }
 
   // T7: if she came today, the post-conference happens before the report —
   // the day is not over until you've answered her, one way or another.
+  // Phase 4: it is a tree, so this hands ui/conference.js the first node and
+  // lets it loop until an answer has nothing after it.
   if (state.obsPhase === 'done') {
-    showConference(observation.conference, key => {
-      observation.resolveConference(state, key);
-      report();
+    showConference(observation.conference, {
+      firstNode: observation.rootNode(),
+      onPick: (nodeId, key) => observation.resolveConference(state, nodeId, key),
+      onDone: () => {
+        // A promise made at this bell goes on the books before the night that
+        // turns promises over, and it is due a day later than today, so you
+        // cannot keep it in the same breath you made it.
+        if (state.obsOwed) {
+          record = semester.oweFollowUp(record, { periodId: period.id, ...state.obsOwed }, carry.dayIndex);
+          persist.save('semester', record);
+        }
+        report();
+      }
     });
   } else {
     report();

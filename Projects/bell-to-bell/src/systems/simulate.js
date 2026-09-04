@@ -3,7 +3,7 @@ import { createState, applyEffects } from '../state.js';
 import { createLesson } from './lesson.js';
 import { createRoomTemp } from './roomtemp.js';
 import { createChart } from './chart.js';
-import { createObservation } from './observation.js';
+import { createObservation, defaultVisit } from './observation.js';
 import { tickMeters } from './meters.js';
 
 // Phase 2 — THE PERIOD, HEADLESS.
@@ -80,6 +80,9 @@ export const STYLES = {
 //                     from CFG.lesson.startComprehension (Phase 3)
 //   opts.rapport / opts.fidelity   what the class walks in with (Phase 3)
 //   opts.obsWindowScale            the Observation's window, scaled (Phase 3)
+//   opts.visit                     the AP's visit (Phase 4). Omit for the one
+//                                  the balance table has always run; null for
+//                                  a period she did not come to.
 //   opts.effects                   an effect bag applied at the bell, the way
 //                                  main.js applies admin's rung (Phase 3)
 //
@@ -113,9 +116,15 @@ export function runPeriod({ period, data, style, opts = {} }) {
     startComp: opts.startComp ?? null
   });
   const temp = createRoomTemp({ data: data.events, students, tellSystem, toast: () => {} });
+  // Phase 4: she does not visit every period any more, so the sim has to be
+  // told which visit it is playing. `undefined` means the one the balance
+  // table has always run — always comes, minute 30, the same five look-fors —
+  // so a phase about variety does not quietly move data/generation.json's
+  // bands. `null` is a period she skipped.
+  const visit = opts.visit === undefined ? defaultVisit(data.observation) : opts.visit;
   const observation = createObservation({
     data: data.observation, dom: mkObsDom(), toast: () => {},
-    windowScale: opts.obsWindowScale ?? 1
+    windowScale: opts.obsWindowScale ?? 1, visit
   });
   let rubricPerformed = false;
 
@@ -155,7 +164,9 @@ export function runPeriod({ period, data, style, opts = {} }) {
 
     if (style.performRubric && observation.active(state) && !rubricPerformed) {
       rubricPerformed = true;
-      for (const key of ['objective', 'question', 'wait', 'discourse']) observation.satisfy(state, key);
+      // Whatever she brought today, minus the one that piggybacks on a real
+      // check — that one is booked by the check below, if this style checks.
+      for (const key of observation.rubric) if (key !== 'check') observation.satisfy(state, key);
     }
 
     const beat = lesson.current(state);
