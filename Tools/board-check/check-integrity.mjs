@@ -121,6 +121,55 @@ for (const p of files.filter(f => f.endsWith('.html'))) {
   if (hosts.size) fail(p, `references offsite host(s): ${[...hosts].join(', ')}`);
 }
 
+// Same sweep, one level deeper: an import map's URLs.
+//
+// The sweep above reads `href`/`src` attributes on resource tags. An import
+// map's URLs are not attributes — they are JSON in the script body — so a page
+// could point `three` at a CDN and this check would call it clean, which is
+// exactly what Bell to Bell did for its whole history. The inline-script parse
+// loop above skips importmaps too (they are not JavaScript), so nothing looked
+// inside them at all until now.
+//
+// A bare specifier's target is a real request the page makes the moment a
+// module imports it, so an offsite one is the same failure as an offsite
+// <script src>. A malformed map is also a failure: the browser ignores an
+// import map it cannot parse and every bare specifier on the page then throws.
+const IMPORTMAP = /<script[^>]*\btype\s*=\s*["']importmap["'][^>]*>([\s\S]*?)<\/script>/gi;
+
+for (const p of files.filter(f => f.endsWith('.html'))) {
+  const src = fs.readFileSync(p, 'utf8');
+  for (const m of src.matchAll(IMPORTMAP)) {
+    checked++;
+    let map;
+    try { map = JSON.parse(m[1]); }
+    catch (e) { fail(p, `import map is not JSON: ${String(e.message).slice(0, 100)}`); continue; }
+    const urls = [
+      ...Object.values(map.imports || {}),
+      ...Object.values(map.scopes || {}).flatMap(s => Object.values(s || {}))
+    ].filter(v => typeof v === 'string');
+    const hosts = new Set();
+    for (const u of urls) {
+      const h = u.match(/^https?:\/\/([^/]+)/i);
+      if (h) hosts.add(h[1].split(':')[0]);
+    }
+    for (const h of [...hosts]) if (OWN_HOST.test(h)) hosts.delete(h);
+    if (hosts.size) fail(p, `import map points offsite: ${[...hosts].join(', ')}`);
+
+    // A local target that does not exist is the other way an import map goes
+    // wrong silently: the map parses, the page loads, and the first bare
+    // import 404s. Only same-directory-relative targets are resolvable from
+    // here; a trailing slash is a prefix mapping, so check the directory.
+    for (const u of urls) {
+      if (/^(https?:|data:|\/)/i.test(u)) continue;
+      const target = path.resolve(path.dirname(p), u);
+      const ok = u.endsWith('/')
+        ? fs.existsSync(target) && fs.statSync(target).isDirectory()
+        : fs.existsSync(target);
+      if (!ok) fail(p, `import map target does not exist: ${u}`);
+    }
+  }
+}
+
 // Same sweep, extended to .js/.css — this repo's own code, not just markup.
 // Schedule Visualizer's round-3 finding: this check only ever walked .html,
 // so a tool that splits its logic into .js/.css (590 KB / 156 KB under

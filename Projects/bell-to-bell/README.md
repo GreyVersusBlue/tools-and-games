@@ -113,18 +113,21 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
-Deploys to GitHub Pages as-is. three.js loads from a CDN via the import map in
-`index.html`; there is no build step and no `node_modules`.
+Deploys to GitHub Pages as-is. three.js is vendored in `libs/` and resolved by
+the import map in `index.html`, so the page makes no offsite requests; there is
+no build step and no `node_modules`.
 
 ```bash
-cd tests && node smoke.mjs     # 381 headless assertions
+cd tests && node smoke.mjs     # headless assertions
 cd tests && node balance.mjs   # six styles through whole periods, three charts, the day, a 50-seed generator soak, and a week
+cd tests && node assets.mjs    # the asset manifest: referenced, cataloged, unreferenced, and the budget
 ```
 
 ## Layout
 
 ```
 index.html            shell, HUD markup, import map
+libs/                 vendored three.js r160 and the three addons src/ imports
 styles/main.css       all styling
 data/                 ← content lives here, not in code
   room.json           fixtures, occluders, screens, lights, spawn, teaching zone

@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import { createState, applyEffects } from '../src/state.js';
 import { createInterventions } from '../src/systems/interventions.js';
 import { createLesson } from '../src/systems/lesson.js';
@@ -20,6 +21,7 @@ import { runPeriod, STYLES } from '../src/systems/simulate.js';
 import * as semester from '../src/systems/semester.js';
 import * as persist from '../src/persist.js';
 import { PREFIX, slot, dayKey, LEGACY_KEYS, migrateLegacyKeys } from '../src/persist.js';
+import { auditAssets } from './assets.mjs';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
@@ -1893,6 +1895,82 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     check('with its meters, its hazard, and its room',
       r.state.hazard > 0 && subjectRoom(roomData, shop.subject, 9).props.length === roomData.props.length);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — WHAT THE ROOM WEIGHS. The tree arrived at 149.3 MB across 1,037
+// files with nothing able to say which of it the game opens, and three.js came
+// from cdn.jsdelivr.net. Both of those are checks, not opinions, so they live
+// here where the suite people already run will catch them coming back.
+// ---------------------------------------------------------------------------
+{
+  const { totals, problems, budget } = auditAssets();
+
+  check('the asset manifest resolves, and nothing is over budget', problems.length === 0);
+  if (problems.length) for (const p of problems) console.log('        ' + p);
+  check('referenced bytes are under the ceiling', totals.referenced.bytes <= budget.referencedBytes);
+  check('unreferenced bytes are under the ceiling', totals.unreferenced.bytes <= budget.unreferencedBytes);
+
+  // ---- nothing offsite, and nothing bare -------------------------------
+  // The import map is the one place a URL can hide from check-integrity's
+  // resource-tag sweep: its entries live in the script body, not in an
+  // attribute. Tools/board-check now parses it too (Phase 6), but this is the
+  // project's own copy of the assertion, so a bell-to-bell session that never
+  // runs the site-wide check still cannot reintroduce the CDN.
+  const html = fs.readFileSync('../index.html', 'utf8');
+  const mapBody = html.match(/<script[^>]*type\s*=\s*["']importmap["'][^>]*>([\s\S]*?)<\/script>/i);
+  check('index.html has an import map', !!mapBody);
+  const imports = mapBody ? JSON.parse(mapBody[1]).imports : {};
+  check('no import map entry points offsite',
+    Object.values(imports).every(v => !/^https?:/i.test(v)));
+  check('three and three/addons/ both resolve into ./libs/',
+    imports.three === './libs/three.module.js' && imports['three/addons/'] === './libs/addons/');
+
+  // ---- the vendored closure is closed ----------------------------------
+  // An addon import nobody vendored is a 404 in a browser and nothing at all
+  // under Node, which is exactly the shape of bug that survives a test suite.
+  const srcFiles = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(p); else if (p.endsWith('.js')) srcFiles.push(p);
+    }
+  })('../src');
+
+  const wanted = new Set();
+  for (const f of srcFiles) {
+    for (const m of fs.readFileSync(f, 'utf8').matchAll(/from\s+['"]three\/addons\/([^'"]+)['"]/g)) {
+      wanted.add(m[1]);
+    }
+  }
+  check('src/ imports at least one addon', wanted.size > 0);
+  const missingAddons = [...wanted].filter(a => !fs.existsSync(`../libs/addons/${a}`));
+  check('every three/addons/ import in src/ is vendored', missingAddons.length === 0);
+  if (missingAddons.length) console.log('        not vendored: ' + missingAddons.join(', '));
+
+  // And each vendored addon's own relative imports, one level deep: GLTFLoader
+  // reaches sideways for BufferGeometryUtils, which is not something any
+  // import in src/ would have told us about.
+  const libFiles = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(p); else if (p.endsWith('.js')) libFiles.push(p);
+    }
+  })('../libs/addons');
+
+  const danglers = [];
+  for (const f of libFiles) {
+    for (const m of fs.readFileSync(f, 'utf8').matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1]));
+      if (!fs.existsSync(target)) danglers.push(`${f} -> ${m[1]}`);
+    }
+  }
+  check('every vendored addon\'s own relative imports resolve', danglers.length === 0);
+  if (danglers.length) for (const d of danglers) console.log('        ' + d);
+
+  check('the vendored three is the revision the CDN was serving',
+    /const REVISION = '160'/.test(fs.readFileSync('../libs/three.module.js', 'utf8')));
 }
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');

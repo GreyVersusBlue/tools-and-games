@@ -16,10 +16,14 @@ python3 -m http.server 8000     # run it (ES modules need a server)
 cd tests && node smoke.mjs      # headless logic checks — run before you claim done
 cd tests && node balance.mjs    # whole-period sim, the 50-seed generator soak (asserts), and a week
 cd tests && SOAK=500 node balance.mjs   # more seeds through the generator
+cd tests && node assets.mjs     # what Assets/ weighs, and what of it the game opens
 node --check src/<file>.js      # syntax check a module
 ```
-No build step, no package manager, no `node_modules`. three.js comes from the import
-map in `index.html`. Keep it that way unless there is a real reason not to.
+No build step, no package manager, no `node_modules`. three.js is vendored in
+`libs/` and `index.html`'s import map points at it — the project makes zero
+offsite requests and Phase 6 is where that became true. Adding a `three/addons/`
+import means vendoring the file beside the others; `smoke.mjs` fails if you do
+not.
 
 `src/persist.js` is the only thing that writes to `localStorage`, and it degrades to
 an in-memory store if the browser refuses. Nothing else may reach for storage.
