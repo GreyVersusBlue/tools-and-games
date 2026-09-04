@@ -299,3 +299,181 @@
 .card .startover{margin-left:12px;opacity:.7}
 .card .startover:hover{opacity:1}
 .rubricline.weekhead{border-bottom:1px solid var(--ink);opacity:.7}
+
+/* ==========================================================================
+   Phase 8 — A THUMB HAS NEVER TOUCHED THIS
+   Two separate jobs, kept separate on purpose:
+   1. The on-screen controls, which only exist on a touch device (body.touch).
+   2. A media-query pass that compacts the readouts on any small viewport,
+      touchscreen or not — a 900x500 browser window had the same collisions a
+      landscape phone does, and they had the same cause.
+   ========================================================================== */
+
+/* ---------- the on-screen controls ---------- */
+/* The layer is inert; only the controls in it are pressable. Without this the
+   div covers the canvas and the room stops taking touches at all. */
+#touch{position:fixed;inset:0;z-index:12;display:none;pointer-events:none;
+  font-family:"Arial Narrow",Arial,sans-serif}
+#touch.on{display:block}
+#touch > *{pointer-events:auto}
+
+/* The stick is drawn where the thumb landed, not where a designer put a
+   circle — input.js reports the touchdown point and this follows it. */
+#stickPad{position:fixed;width:124px;height:124px;margin:-62px 0 0 -62px;border-radius:50%;
+  border:2px solid rgba(243,238,224,.5);background:rgba(11,22,38,.22);
+  opacity:0;transition:opacity .12s linear;pointer-events:none}
+#stickPad.on{opacity:1}
+#stickPad i{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;
+  border-radius:50%;background:rgba(243,238,224,.6);border:1px solid rgba(35,36,31,.5)}
+
+#touchBar{position:fixed;left:0;right:0;bottom:0;display:flex;gap:6px;align-items:stretch;
+  padding:7px 8px calc(7px + env(safe-area-inset-bottom,0px));overflow-x:auto;
+  scrollbar-width:none;background:linear-gradient(rgba(13,15,12,0),rgba(13,15,12,.62));
+  touch-action:pan-x}
+#touchBar::-webkit-scrollbar{display:none}
+
+.tchip{flex:0 0 auto;min-width:66px;min-height:44px;padding:5px 9px;border:1px solid #A2977A;
+  background:var(--manila);color:var(--ink);box-shadow:0 3px 0 rgba(0,0,0,.35);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  font:inherit;cursor:pointer;touch-action:none;-webkit-tap-highlight-color:transparent}
+.tchip b{font:700 10px/1.1 "Arial Narrow",Arial,sans-serif;letter-spacing:.12em;white-space:nowrap}
+.tchip em{font:400 8px/1 "SFMono-Regular",Consolas,monospace;font-style:normal;color:#6B6455}
+.tchip.lit{background:var(--highlight)}
+.tchip.tray{background:var(--panel);border-color:var(--rule)}
+.tchip.tray.open{background:var(--rule);color:var(--manila)}
+.tchip.tray.open em{color:rgba(243,238,224,.7)}
+
+/* The look-fors, behind one chip. Eleven buttons across the bottom of a phone
+   is not a control scheme, and only five of these are on today's rubric
+   anyway — which the Observation panel already says. */
+#touchTray{position:fixed;left:8px;right:8px;max-height:44vh;overflow-y:auto;
+  bottom:calc(132px + env(safe-area-inset-bottom,0px));
+  background:var(--panel);border:1px solid var(--rule);box-shadow:0 6px 0 rgba(0,0,0,.4);
+  padding:8px 9px 9px}
+#touchTray .tth{font:700 10px/1.3 "Arial Narrow",Arial,sans-serif;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--rule);border-bottom:1px solid var(--manila-dk);
+  padding-bottom:5px;margin-bottom:7px}
+#touchTray .tth span{display:block;font:400 10px/1.35 "SFMono-Regular",Consolas,monospace;
+  color:#6B6455;letter-spacing:0;text-transform:none;margin-top:3px}
+#touchTray .ttchips{display:flex;flex-wrap:wrap;gap:6px}
+
+/* Two pads, not one "held control": the five-second wait-time hold has to
+   work while Withitness is already down, which is the interesting case and
+   the reason input.js keeps two independent flags. */
+#touchHolds{position:fixed;right:8px;bottom:calc(66px + env(safe-area-inset-bottom,0px));
+  display:flex;gap:8px}
+.tpad{min-width:88px;min-height:56px;padding:6px 10px;border:1px solid #A2977A;
+  background:var(--panel);color:var(--ink);box-shadow:0 3px 0 rgba(0,0,0,.35);
+  display:flex;align-items:center;justify-content:center;font:inherit;cursor:pointer;
+  touch-action:none;-webkit-tap-highlight-color:transparent}
+.tpad b{font:700 11px/1.15 "Arial Narrow",Arial,sans-serif;letter-spacing:.14em;text-align:center}
+.tpad.down{background:var(--manila-dk)}
+.tpad.active,.tpad[data-hold="withitness"].down{background:#F6E4DE;border-color:var(--rule);color:var(--rule)}
+
+
+/* The keyboard chip is a keyboard instruction; the pad says the same thing
+   and shows the state. The toast log moves up off the pads. */
+body.touch #withitness{display:none}
+/* The toast log used to sit bottom-right, which is where the hold pads are
+   now, and top-right lands on Room Temp and the lesson strip. Bottom-left is
+   the one corner nothing else wants. */
+/* The toast log used to sit bottom-right, which is where the hold pads are
+   now, and top-right lands on Room Temp and the lesson strip. Bottom-left,
+   above the pads, is the free corner in portrait; in landscape the rubric
+   panel is there instead and the log moves to the middle (below). */
+body.touch #log{right:auto;left:8px;transform:none;align-items:flex-start;
+  bottom:calc(132px + env(safe-area-inset-bottom,0px));width:min(300px,calc(50vw - 16px))}
+body.touch #menu{bottom:132px;width:min(430px,calc(100vw - 20px))}
+/* The rubric panel ends above the hold pads, not behind them. */
+body.touch #observation{bottom:calc(138px + env(safe-area-inset-bottom,0px));top:auto}
+/* A tell annotation is the one thing in the HUD you press with a fingertip. */
+body.touch .tell{min-width:210px;padding:8px 11px 9px}
+body.touch #menu button{padding:12px 14px}
+
+/* ---------- the readouts, on a small viewport ---------- */
+/* Landscape on a phone is ~390px tall. #lesson sat at top:96 and
+   #observation at top:336, which is off the bottom of that screen. */
+@media (max-width:880px),(max-height:560px){
+  #clipboard{left:8px;top:8px;width:168px;padding:7px 8px 8px}
+  #clipboard::before{height:2px}
+  .cb-head{padding-bottom:4px;margin-bottom:6px}
+  .cb-head b{font-size:10px}
+  .meter{margin-bottom:4px}
+  .bar{height:5px}
+  .cb-foot{margin-top:6px;padding-top:5px;font-size:9px}
+
+  #clock{top:8px;padding:3px 11px 4px}
+  #clock .t{font-size:16px}
+  #clock .p{font-size:7px}
+
+  #roomtemp,#hazardBox{right:8px;top:8px;min-width:118px;padding:5px 8px}
+  #roomtemp .v,#hazardBox .v{font-size:12px}
+  #hazardBox{top:66px}
+
+  /* Room Temp's box is 53px tall here; #lesson starts below it, and below the
+     hazard readout as well when the subject has one. */
+  #lesson{right:8px;top:66px;width:172px;padding:6px 8px 7px}
+  #hazardBox:not(.hide) ~ #lesson{top:124px}
+  #lesson .lb{font-size:11px;margin:3px 0 5px}
+  #lesson .ln{min-height:0;max-height:44px;overflow:hidden}
+  #lesson .lk{gap:6px;font-size:8px}
+
+  /* The rubric sat at a fixed top:336px, which on a landscape phone is past
+     the bottom of the screen. */
+  #observation{right:8px;top:auto;bottom:96px;width:172px;padding:6px 8px 7px}
+  .obsrow{font-size:9px;gap:5px}
+
+  #log{width:min(300px,54vw)}
+  .screen{padding:10px}
+  .card .top{padding:14px 16px 12px}
+  .card h1{font-size:26px}
+  .card .body{padding:14px 16px 18px}
+  .card .keys{grid-template-columns:auto 1fr;gap:5px 9px;font-size:11px}
+}
+
+/* On a phone the rubric and the lesson strip would land on top of the
+   look-for tray. The tray is a deliberate act; the readouts yield to it. */
+@media (max-height:560px){
+  /* Nothing is dropped on a landscape phone, it is moved: the five look-fors
+     she brought are the whole point of the panel and hiding them would be
+     hiding the rubric. Under the clipboard is the one place left. */
+  body.touch #observation{left:8px;right:auto;top:184px;bottom:auto;width:168px;padding:5px 8px 6px}
+  body.touch #observation .oh{font-size:9px;margin-bottom:4px;padding-bottom:3px}
+  body.touch #lesson{width:150px}
+  /* There is no room above the pads on a landscape phone, so the tray sits
+     beside them instead, and is allowed to cover the rubric panel while it is
+     open — the tray IS the rubric, and opening it was a deliberate act. */
+  #touchTray{bottom:calc(66px + env(safe-area-inset-bottom,0px));
+    right:calc(16px + 184px);max-height:38vh}
+  /* Four toasts stacked up a landscape phone reach the clipboard. Two do not.
+     And the bottom-left corner is the rubric's here, so they move to the
+     middle band, which is canvas in every orientation. */
+  body.touch #log > :nth-last-child(n+3){display:none}
+  body.touch #log{left:50%;transform:translateX(-50%);align-items:center;width:min(300px,64vw)}
+}
+
+/* A 390px-wide phone in portrait: the centred clock landed on the clipboard,
+   and the three readouts across the top do not fit at their own widths. */
+@media (max-width:460px){
+  #clipboard{width:140px}
+  .cb-head b{font-size:9px;letter-spacing:.1em}
+  .cb-foot{font-size:8px}
+  #roomtemp,#hazardBox{min-width:102px}
+  #lesson{width:150px}
+}
+
+/* ---------- the seating chart, with a fingertip ---------- */
+/* The plan was already pointer-driven (T5) and already had touch-action:none
+   on the plan and the occluders. What it did not have was a target big enough
+   to hit, or the same guard on the desk cards themselves — without it the
+   browser can decide a slow drag is a scroll and cancel the swap halfway. */
+.deskcard{touch-action:none;-webkit-tap-highlight-color:transparent}
+@media (pointer:coarse){
+  #chartPlan{min-height:min(58vh,330px)}
+  .deskcard b{font-size:11px}
+  .deskcard.sel{outline-width:4px}
+  .planocc span{font-size:8px}
+  #chartBtns{flex-wrap:wrap}
+  .card .cta,.card .ghost{min-height:48px}
+  #chartSide{font-size:12px}
+}

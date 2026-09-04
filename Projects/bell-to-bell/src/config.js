@@ -24,6 +24,53 @@ export const CFG = {
   moveSpeed: 2.7,         // m/s
   eyeHeight: 1.65,
 
+  // Phase 8 — the thumb. Pixels, in CSS pixels, at the viewport's own scale:
+  // stickRadius is how far from the touchdown point counts as full tilt (a
+  // little under a thumb's comfortable arc on a 6" phone), and deadZone is
+  // how much of a stationary thumb's wobble is not a step. walkHalf is the
+  // fraction of the screen width that walks rather than looks; 0.5 is the
+  // left half, and it is a number here rather than a literal in input.js
+  // because a left-handed player is the obvious next thing to want.
+  touch: {
+    stickRadius: 62,
+    deadZone: 10,
+    walkHalf: 0.5
+  },
+
+  // Phase 8 — the frame budget, written down.
+  //
+  // 33.3 ms is 30 fps, and 30 fps is the floor this game is allowed to run
+  // at on a phone: it is a room you walk around slowly, not something with a
+  // reaction window, and the one timed input (the five-second wait-time hold)
+  // is measured in seconds. Above the budget for `overBudgetSeconds` of
+  // sustained median frame time and the renderer gives up resolution, in the
+  // order below, one step per breach.
+  //
+  // What gets dropped, in order, and why that order:
+  //   1. Pixel ratio, 2 -> 1.5 -> 1 -> 0.75. Free at any moment, costs only
+  //      sharpness, and on a 3x phone panel this is the single biggest lever
+  //      there is — the room is fill-bound long before it is vertex-bound.
+  //   2. The rigged characters. Twelve skinned glTF bodies are the draw-call
+  //      and skinning bill; world/students.js already has a primitive-body
+  //      fallback for a failed fetch, and a `low` boot tier takes it on
+  //      purpose. This is a boot decision, not a runtime one — you cannot
+  //      unskin twelve people mid-period without the room blinking.
+  //   3. Antialiasing. Also a boot decision: WebGL will not turn MSAA off
+  //      after the context exists.
+  // There are no shadow maps to drop. This renderer has never had any.
+  quality: {
+    budgetMs: 33.3,
+    sampleFrames: 90,          // ~1.5 s of frames per median
+    overBudgetSeconds: 4,      // sustained, before anything is given up
+    pixelRatios: [2, 1.5, 1, 0.75],
+    // Boot tiers. `characters` false takes students.js's primitive bodies.
+    tiers: {
+      high:   { pixelRatio: 2,   antialias: true,  characters: true },
+      medium: { pixelRatio: 1.5, antialias: false, characters: true },
+      low:    { pixelRatio: 1,   antialias: false, characters: false }
+    }
+  },
+
   keys: {
     advance: 'KeyE',
     check: 'KeyQ',

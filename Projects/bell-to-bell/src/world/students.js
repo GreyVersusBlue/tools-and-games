@@ -106,7 +106,10 @@ async function buildCharacterBody(loader, outfitPath, targetHeight, registry) {
 export async function buildStudents(scene, registry, mats, data, chart, opts = {}) {
   const { loader, assets } = opts;
   const modelPaths = assets?.models || {};
-  const charCfg = assets?.characters;
+  // Phase 8: the `low` frame-budget tier takes the primitive bodies on
+  // purpose. This is the same fallback a failed fetch has always used — the
+  // difference is that nothing failed.
+  const charCfg = opts.characters === false ? null : assets?.characters;
   const targetHeight = charCfg?.targetHeight || 1.48;
   const { bodyOffsetZ } = data.seatGrid;
 

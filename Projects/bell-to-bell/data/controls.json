@@ -1,0 +1,19 @@
+{
+  "_comment": "Phase 8. What the on-screen controls say. The strip itself is generated from CFG.keys, so adding a key puts a button on screen whether or not it is named here; a key with no row falls back to its own action name. The look-for chips take their words from observation.json's lookFors instead, because those already exist and there must not be two places that name the same rubric line.",
+  "hint": "Left thumb walks. Drag anywhere else to look.",
+  "labels": {
+    "advance": { "short": "NEXT", "long": "Next beat of the lesson" },
+    "check": { "short": "CHECK", "long": "Check for understanding" },
+    "reteach": { "short": "RETEACH", "long": "Say it a second way" },
+    "roomTemp": { "short": "TEMP", "long": "One cheap glance at the room" }
+  },
+  "holds": {
+    "withitness": { "short": "WITHITNESS", "long": "Hold to see the whole room" },
+    "wait": { "short": "WAIT", "long": "Hold and say nothing" }
+  },
+  "tray": {
+    "open": "RUBRIC",
+    "title": "The look-fors",
+    "note": "She is not always here. These do the same thing when she is not."
+  }
+}

@@ -1,23 +1,24 @@
 # Bell to Bell — Feature Wishlist
 
-**Status: Phases 1 through 7 have shipped. The game is at T7 plus seven phases:
+**Status: all eight phases have shipped. The game is at T7 plus eight phases:
 a four-period day whose 7th period is generated from a seed, a five-day week
 the semester record carries each class across with admin's ladder at the end of
 it, an AP whose visits are a calendar rather than a metronome, four subjects
 that are files rather than branches, an `Assets/` tree that knows what it
-weighs, a three.js that is vendored rather than fetched, and tells that are
-objects in the room rather than boxes in a vision mode. `tests/smoke.mjs`
-prints 561 PASS lines and no FAIL, `tests/assets.mjs` audits the asset
-manifest against a budget, and `tests/balance.mjs` runs six styles through 4th
-period, one style across three seating charts, three styles through each later
-period, the whole day on one Bandwidth pool, fifty generated seeds through the
-band (its one assertion), four subjects side by side, one lab day under four
-styles, and two styles through a week on the AP's real calendar. The first open
-phase is Phase 8 — A thumb has never touched this, on **Claude Opus 5**.**
+weighs, a three.js that is vendored rather than fetched, tells that are objects
+in the room rather than boxes in a vision mode, and a room a thumb can walk,
+teach and rechart on a written-down frame budget. `tests/smoke.mjs` prints 631
+PASS lines and no FAIL, `tests/assets.mjs` audits the asset manifest against a
+budget, and `tests/balance.mjs` runs six styles through 4th period, one style
+across three seating charts, three styles through each later period, the whole
+day on one Bandwidth pool, fifty generated seeds through the band (its one
+assertion), four subjects side by side, one lab day under four styles, and two
+styles through a week on the AP's real calendar. What comes next is the later
+arc at the bottom of this file, not a ninth phase — THE COPIER first.**
 The prior work through T7 is recorded in the repo root's `HISTORY.md`, with the
 balance table as it stood at the end of T7. This file is what comes after: the
 architecture as it actually is, the conventions the project already learned,
-the standing backlog, and eight ranked phases.
+the standing backlog, and the eight phases as they shipped.
 
 ## What it is
 
@@ -249,9 +250,12 @@ The T7 record left these open; nothing in this file resolves them.
   `CFG.observation.masteryDrainPerSec` is 0.008 — ~5 points over the window, by
   design math and not by playtest. In the table it costs the good teacher
   nothing visible (79 either way) and buys 10 Fidelity if performed.
-- **Mobile.** Undecided, and the answer determines whether Phase 8 exists.
-  `input.js` has `touchstart`/`touchmove` look and no way to walk or to press
-  E, Q, R, T, O, H, G or F.
+- **Mobile, on a real phone.** Phase 8 answered the design question and left
+  the measurement open. Everything in it was driven in a real browser at seven
+  viewports, and none of that is a mid-range Android: the frame budget is
+  33.3 ms and nothing in this repo has ever measured a phone against it.
+  `bellToBellFrames()` in the console on a device reports the median, the fps
+  and every drop the renderer took. That number is the one thing still wanted.
 - **An announced Observation variant** (treatment §6.1 has both)? The handoff
   calls the surprise one funnier and rates this low; Phase 4 assumes yes.
 
@@ -664,41 +668,76 @@ one module that turns the bare specifier into a path — and every file under
   the scene, twelve desk auras, and a tell whose vision bucket appears while
   SHIFT is down and is gone when it is up.
 
-## Phase 8 — A thumb has never touched this
+## Phase 8 — A thumb has never touched this — **SHIPPED**
 
 **`input.js` lets a phone look around the room and gives it no way to walk or
 to teach.**
 
-Gap 3, open since the first handoff, and one of three places in the repo where
-the site's own notes say touch has never had a thumb on it. The look handler is
-already there (`touchstart` / `touchmove` / `touchend`, lines 27–37); what is
-missing is locomotion and every action key. The chart screen has its own
-problem: it is a drag-and-drop plan view driven by `pointerdown`, which is the
-one interaction here that touch is *better* at, and it has never been tried.
+Gap 3, open since the first handoff. Shipped, with one rule holding the whole
+thing up: a touch source never gets its own branch downstream. The stick
+produces the same `{fx, fz}` pair WASD produces and hands it to the same
+clamp-and-collide walk; an on-screen chip pushes the same action string a
+keydown pushes; a hold pad sets the same flag SHIFT sets. `main.js`'s frame
+loop cannot tell which one happened.
 
-- [ ] **Walk with a thumb.** A left-half virtual stick feeding the same movement
-  vector `input.js` builds from WASD. One code path, two input sources.
-- [ ] **The actions, on screen.** E / Q / R / T and the four Observation
-  look-fors as a HUD strip, generated from `CFG.keys` so a new key never needs
-  a second edit. Withitness becomes hold-to-scan on its own control; the
-  five-second wait-time hold has to work under it, which is the interesting
-  case.
-- [ ] **Withitness on a small screen.** The thermal CSS overlay, the tell
-  annotations and the rubric box are all absolutely positioned for a desktop
-  viewport. `styles/main.css` is 283 lines; this is a media query pass, not a
-  rewrite.
-- [ ] **The chart screen, properly.** `ui/seating.js`'s drag already runs on
-  pointer events; make the desks big enough for a fingertip, and confirm a swap
-  and a furniture drag both work on a real phone.
-- [ ] **Decide the frame budget.** Twelve rigged glTF characters, a lit room and
-  the thermal swap on a mid-range phone is an open question nobody has measured.
-  Measure it, write the number down, and if it fails, name what gets dropped
-  (character LODs, texture tier, shadow) rather than shipping something that
-  stutters.
+- [x] **Walk with a thumb.** `moveVector(keys, stick)` is the one path, and it
+  is exported and executed by a Node test rather than only by a browser. The
+  stick is drawn where the thumb lands, not where a designer put a circle:
+  every touch is tracked by identifier, a finger in the walk half walks, one
+  anywhere else looks, and both are alive at once because crossing a room while
+  looking is the normal case. A half-tilted stick walks at half speed, which a
+  key cannot express at all.
+- [x] **The actions, on screen.** One chip per row of `CFG.keys`, generated —
+  a key added to that table is a button without an edit in `main.js` or
+  `ui/touch.js`. The words come from `data/controls.json`, except a look-for's,
+  which already exist in `data/observation.json` and are read from there rather
+  than written down twice; a key nobody labelled still gets a chip with its own
+  action name on it, which is the right failure. Eleven chips across the bottom
+  of a phone is not a control scheme, so the seven look-fors are behind one
+  RUBRIC chip. Withitness and wait time are two pads with two independent
+  flags, and the five-second hold works with Withitness already down.
+- [x] **Withitness on a small screen.** A media-query pass at `max-width:880px`
+  or `max-height:560px`, plus a narrower one at 460px. The rubric panel sat at
+  a fixed `top:336px`, which is past the bottom of a landscape phone; the toast
+  log sat where the hold pads are now. Every readout was measured in a real
+  browser at seven viewports from 375×667 to 1440×900, and the overlap audit is
+  zero at all seven.
+- [x] **The chart screen, properly.** A desk card is sized in room metres, so
+  on a phone the twelve of them came out about 52×34 CSS px. On a coarse
+  pointer the card's own footprint widens to 1.72 × 1.24 m — 55×45 px in
+  portrait, 80×58 in landscape — and `.deskcard` gets the `touch-action:none`
+  the plan and the occluders already had, without which the browser can decide
+  a slow drag is a scroll and cancel the swap halfway. A tap-tap swap and a
+  finger drag of the cabinet were both driven and both land. The trade the
+  bigger card makes: the cabinet and the bookshelf now sit further under the
+  desks around them. Their positions still read and the blind-spot rectangle is
+  untouched, but a card is drawn on top of an occluder it overlaps, and nothing
+  reorders them.
+- [x] **Decide the frame budget.** **33.3 ms — 30 fps — in `CFG.quality`.**
+  Nobody in this repo has had a phone in front of them and a frame time off a
+  software-rendered Chromium is not evidence about a mid-range Android (root
+  `CLAUDE.md`, decision 53), so the game measures itself on whatever it is
+  actually running on and says so: `bellToBellFrames()` in the console returns
+  the median frame time, the fps, the current pixel ratio and every drop it
+  took. What gets dropped, in order: pixel ratio 2 → 1.5 → 1 → 0.75, one step
+  per four sustained seconds over budget, because the room is fill-bound long
+  before it is vertex-bound; then, at boot only, the twelve rigged glTF bodies
+  (`world/students.js` already had a primitive fallback for a failed fetch, and
+  the `low` tier takes it on purpose); then antialiasing, also boot-only,
+  because WebGL will not turn MSAA off after the context exists. There are no
+  shadow maps to drop — this renderer has never had any.
 
 *Leans on:* `input.js`, `styles/main.css`, `ui/seating.js`, `config.js`'s `keys`.
 *Save:* none. *Model:* **Claude Opus 5** — input plumbing and CSS against an
 existing key table.
+
+The verified run: seven viewports driven through the start screen, a seating
+swap, a furniture drag, a two-finger walk-and-look, both pads held at once, a
+Room Temp chip and the rubric tray, with a zero-overlap HUD audit at each. One
+bug that only a real browser could find — `#touch` covers the viewport, and
+without `pointer-events:none` on the layer itself it ate every touch meant for
+the room, so the game took no input at all. `smoke.mjs` now asserts the layer
+is inert.
 
 ## What this leaves for a later arc
 

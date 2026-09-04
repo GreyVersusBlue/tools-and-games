@@ -373,26 +373,58 @@ if (mode === 'twelve') {
         if (performance.now() - t0 > ms) { clearInterval(iv); res(peak); }
       }, 25);
     });
-    const settle = async () => { h.audioTick(.05); await peakFor(250); }; // let tails die between shots
+    const settle = async (ms = 250) => { h.audioTick(.05); await peakFor(ms); }; // let tails die between shots
     const x = h.cur.x, y = h.cur.y, out = {};
+    // phase 1: a tune needs a song, and the song has to be a real one — its degrees come off its chronicle index.
+    const sung = { ci: 0, comp: h.people[0].name, kn: h.people.map(p => p.name), lost: 0, d: h.dayCount };
     const shots = [
       ['thock', () => h.thock(x, y)], ['hammer', () => h.hammer(x, y)], ['stoneTap', () => h.stoneTap(x, y)],
       ['splash', () => h.splash(x, y)], ['whoosh', () => h.whoosh(x, y, .9)], ['gullCry', () => h.gullCry(x, y)],
       ['creak', () => h.creak(x, y)], ['bell', () => h.bell(1)], ['plink', () => h.plink(.15)],
       ['chirp', () => h.chirp()], ['thunder', () => h.thunder(.2)], ['lullaby', () => h.lullaby(x, y)],
-      ['wayTune', () => h.wayTune()],
+      ['wayTune', () => h.wayTune()], ['songTune', () => h.songTune(sung, 4)],
     ];
+    // a song is two passes of up to ten notes; it needs a longer window to peak in and a longer tail to die in,
+    // or it bleeds into the duck measurement below and the storm bed reads hot for no reason.
+    const peakWindow = n => n === 'songTune' ? 3000 : (n === 'thunder' || n === 'bell') ? 2200 : 1300;
     for (const [name, fn] of shots) {
       h.audioTick(.05); // resets the per-frame sfx cap so every shot actually fires
-      fn(); out[name] = +(await peakFor(name === 'thunder' || name === 'bell' ? 2200 : 1300)).toFixed(4);
-      await settle();
+      fn(); out[name] = +(await peakFor(peakWindow(name))).toFixed(4);
+      await settle(name === 'songTune' ? 7000 : 250);
     }
+    // A lost song is silent, measured on the same analyser as everything else: nothing scheduled, nothing heard.
+    // Against the room's own floor, not against zero — the wind and the sea are always on this bus's neighbour.
+    const lost = { ci: 0, comp: '', kn: [], lost: 1, d: 0 };
+    h.audioTick(.05);
+    const floor = +(await peakFor(1200)).toFixed(4);
+    h.audioTick(.05);
+    const lostReturn = h.songTune(lost, 4);
+    const lostPeak = +(await peakFor(1500)).toFixed(4);
+    // and what a hearing plays is the derived phrase, not something rolled at the fire
+    h.audioTick(.05);
+    const played = h.songTune(sung, 1);
+    await settle(7000);
+    out.song = {
+      degrees: h.songDegrees(0),
+      sameTwice: JSON.stringify(h.songDegrees(3)) === JSON.stringify(h.songDegrees(3)),
+      playedIsDerived: JSON.stringify(played) === JSON.stringify(h.songDegrees(0)),
+      lostReturn, lostPeak, floor
+    };
     // ducking: under a thunderstorm the sfx bus steps back and the rain bed itself keeps headroom.
     // (a peak comparison of the same hammer is confounded — the analyser hears the storm bed under it —
     // so assert on the duck gain the game actually applies, and on the bed's own level)
-    h.setWx('thunder'); for (let i = 0; i < 40; i++) h.audioTick(.1); await peakFor(1800);
-    const sfxStorm = h.buses.sfxG.gain.value, bedStorm = await peakFor(900);
-    h.setWx('clear'); for (let i = 0; i < 40; i++) h.audioTick(.1); await peakFor(1800);
+    // Chromium only advances an AudioParam's automation while the node is actually processing, so a SILENT sfx bus
+    // freezes this reading wherever the last audible thing left it — and then the number below is not the gain the
+    // game applies, it is a leftover. Keep something cheap flowing through the bus while it settles.
+    const settleDuck = async ms => {
+      const t0 = performance.now();
+      while (performance.now() - t0 < ms) { h.audioTick(.05); h.plink(.02); await peakFor(200); }
+    };
+    h.setWx('thunder'); await settleDuck(2400);
+    const sfxStorm = h.buses.sfxG.gain.value;
+    await peakFor(400);                       // let the last settling plink die before reading the bed
+    const bedStorm = await peakFor(900);
+    h.setWx('clear'); await settleDuck(2400);
     const sfxClear = h.buses.sfxG.gain.value;
     out.duck = { sfxStorm: +sfxStorm.toFixed(3), sfxClear: +sfxClear.toFixed(3), bedStorm: +bedStorm.toFixed(4) };
     return out;
@@ -400,13 +432,62 @@ if (mode === 'twelve') {
   if (audio.skip) { failed = true; console.log(`FAIL: listening pass skipped (${audio.skip})`); }
   else {
     console.log('listening pass, master-bus peaks per one-shot:');
-    const names = Object.keys(audio).filter(k => k !== 'duck');
+    const names = Object.keys(audio).filter(k => k !== 'duck' && k !== 'song');
     for (const k of names) console.log(`  ${k.padEnd(10)} ${audio[k].toFixed(3)}${audio[k] > .9 ? '  !! CLIPPING RISK' : audio[k] < .004 ? '  !! INAUDIBLE' : ''}`);
     const d = audio.duck;
     console.log(`  duck bus: sfx gain ${d.sfxStorm} in storm vs ${d.sfxClear} clear; storm bed peaks ${d.bedStorm}`);
     for (const k of names) if (audio[k] > .9 || audio[k] < .004) failed = true;
     if (!(d.sfxStorm < d.sfxClear - .1)) { failed = true; console.log('FAIL: the sfx bus does not step back under a storm'); }
     if (d.bedStorm > .5) { failed = true; console.log('FAIL: the storm bed itself is running hot'); }
+    // The sfx bus is where the tune lives, so the phase that added it is not allowed to move these two numbers.
+    // A band, not an equality: this is a converging exponential read off a live graph, and it lands near .72 / .97.
+    if (!(d.sfxStorm >= .70 && d.sfxStorm <= .75) || !(d.sfxClear >= .94 && d.sfxClear <= 1.0)) {
+      failed = true;
+      console.log(`FAIL: the duck budget moved — sfx gain ${d.sfxStorm}/${d.sfxClear}, want ~0.72 storm / ~0.97 clear`);
+    }
+
+    // ---- phase 1: the song, checked rather than admired ----
+    const sg = audio.song;
+    console.log(`  song: degrees [${sg.degrees.join(' ')}], same twice ${sg.sameTwice}, ` +
+      `played-is-derived ${sg.playedIsDerived}, lost returns ${sg.lostReturn} at ${sg.lostPeak.toFixed(4)} ` +
+      `against a room floor of ${sg.floor.toFixed(4)} (a sung one peaks ${audio.songTune.toFixed(4)})`);
+    if (!(sg.degrees.length >= 6 && sg.degrees.length <= 10)) {
+      failed = true; console.log(`FAIL: a phrase is ${sg.degrees.length} degrees, not 6-10`);
+    }
+    if (!sg.degrees.every(d => Number.isInteger(d) && d >= 0 && d <= 9)) {
+      failed = true; console.log('FAIL: a degree fell outside the two octaves of the season\'s five');
+    }
+    const last = sg.degrees.length - 1;
+    if (sg.degrees[last] !== (sg.degrees[last - 1] >= 5 ? 5 : 0)) {
+      failed = true; console.log('FAIL: the phrase does not come home to the root');
+    }
+    if (!sg.sameTwice) { failed = true; console.log('FAIL: one island hummed two different tunes for one story'); }
+    if (!sg.playedIsDerived) { failed = true; console.log('FAIL: what was played is not the phrase songDegrees names'); }
+    if (sg.lostReturn !== null) { failed = true; console.log('FAIL: a lost song still had a tune to give'); }
+    // Against the room's floor times a ratio, not against zero: the wind and the sea wander a few thousandths
+    // between windows, and a sung phrase is most of a floor again on top of it (1.8x in practice).
+    if (sg.lostPeak > sg.floor * 1.3) {
+      failed = true; console.log(`FAIL: a lost song made a sound (${sg.lostPeak} over a floor of ${sg.floor})`);
+    }
+    if (audio.songTune < sg.floor * 1.5) {
+      failed = true; console.log(`FAIL: a song that is not lost is inaudible (${audio.songTune} over ${sg.floor})`);
+    }
+  }
+
+  // two runs of a seed produce the same degree sequence: the phrase is a function of the island seed and the story's
+  // chronicle index, stored nowhere and never drawn from R(). A second island on seed 7 has to hum the same thing.
+  {
+    const first = await H(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.songDegrees(ci)));
+    const other = await openIsland(browser, 7, warns);
+    const again = await other.page.evaluate(() => [0, 1, 2, 3, 4].map(ci => window.__hearth.songDegrees(ci)));
+    const elsewhere = await other.page.evaluate(() => { window.__hearth.newWorld(8); return window.__hearth.songDegrees(0); });
+    await other.ctx.close();
+    const same = JSON.stringify(first) === JSON.stringify(again);
+    console.log(`songs across two runs of seed 7: ${same ? 'identical' : 'DIFFERENT'} (${first.map(d => d.length).join('/')} degrees)`);
+    if (!same) { failed = true; console.log(`FAIL: seed 7 hummed ${JSON.stringify(first[0])} and then ${JSON.stringify(again[0])}`); }
+    if (JSON.stringify(elsewhere) === JSON.stringify(first[0])) {
+      failed = true; console.log('FAIL: a different island hums the same tune — the seed is not in the phrase');
+    }
   }
 
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }

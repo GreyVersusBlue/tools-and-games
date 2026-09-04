@@ -86,6 +86,33 @@ function lullaby(x,y){if(!AC||!audioOn)return;const P=place(x,y),k=KEYS[sea()],t
   const seq=[4,3,2,1,0,2,1,0];
   seq.forEach((d,i)=>{const f=k[0]*Math.pow(2,k[1][d]/12)*(d>3?1:2)/2;
     note(f,i===seq.length-1?2.4:1.1,.055*P.g,'sine',P.p*.5,sfxG,t+i*.62+(i>4?.3:0))})}
+// ---------- the songs, heard (phase 1) ----------
+// Sprint 16 built the songs completely except for the sound and said so on purpose. This is the sound.
+// A tune is DERIVED, never stored: the degrees come off the island seed and the story's own chronicle index, the way yearName() and
+// MADE() come off the seed. So a shared link hums the same phrase, save.js carries not one byte more than it did, and R() is never
+// touched here — sound must not move the simulation's stream.
+const SONG_STEPS=[-2,-1,-1,1,1,2];                                    // a phrase walks; it does not scatter
+function songDegrees(ci){let a=(seed^Math.imul((ci|0)+1,2654435761))|0;
+  const nx=()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+  const n=6+((nx()*5)|0),out=[];let d=2+((nx()*5)|0);                 // 6..10 degrees over two octaves of the season's five, starting mid-range
+  for(let i=0;i<n;i++){out.push(d);let m=d+SONG_STEPS[(nx()*6)|0];
+    if(m<0)m=-m;if(m>9)m=18-m;d=m}                                    // reflected at both ends, not clamped: a clamp parks the phrase on one note and calls it a tune
+  out[n-1]=out[n-2]>=5?5:0;                                           // and it comes home: the last note is the root, in whichever octave the phrase ended up
+  return out}
+// degree -> hertz in the season's key. 0-4 is the scale, 5-9 the same five an octave up. The key is the ONLY thing that moves between
+// hearings: a song made in spring and sung again in winter is the same tune, lower, which is the whole idea.
+const songHz=(d,k)=>k[0]*Math.pow(2,(k[1][d%5]+(d>=5?12:0))/12)/2;
+// The tune, at the fire. Pass one is the composer alone; on pass two the ones who know it come in, which is what the prose at the fire
+// already says happens. Every voice is one note() per degree, scheduled ahead on sfxG, so the storm ducks this with everything else.
+// Returns the degrees, or null when nothing sounded — a lost song is silent, and that is the design.
+function songTune(sg,voices){if(!sg||sg.lost)return null;const deg=songDegrees(sg.ci);
+  if(!AC||!audioOn)return deg;                                        // the tune is a fact about the island; the sound is a setting
+  const k=KEYS[sea()],t=AC.currentTime+.2,beat=.38,vs=Math.max(1,Math.min(4,(voices|0)||1));
+  deg.forEach((d,i)=>note(songHz(d,k),beat*2.1,.05,'triangle',-.12,sfxG,t+i*beat));
+  const t2=t+deg.length*beat+.45;
+  for(let v=0;v<vs;v++){const pan=vs<2?0:(v/(vs-1))*1.1-.55;          // the second pass, spread across the fire
+    deg.forEach((d,i)=>note(songHz(d,k)*(v?1.003:1),beat*2.1,v?.026:.05,v?'sine':'triangle',pan,sfxG,t2+i*beat+v*.02))}
+  return deg}
 function chirp(){if(!AC||!audioOn)return;const o=AC.createOscillator(),gn=AC.createGain(),t=AC.currentTime;o.type='sine';const f=2200+Math.random()*1800;
   o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*1.5,t+.06);o.frequency.exponentialRampToValueAtTime(f*.9,t+.13);
   gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(.06,t+.02);gn.gain.linearRampToValueAtTime(0,t+.15);

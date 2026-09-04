@@ -1,8 +1,13 @@
 # Hearth — Feature Wishlist
 
-**Status: sixteen sprints are shipped and nothing is open — this file opens
-the first two arcs of phased work, and Phase 1 — *Songs you can hear*, on
-Claude Opus 5 — is the next thing to build.** Sprint 16 closed green across
+**Status: sixteen sprints and Phase 1 are shipped. Phase 2 — *Decades, not
+years*, on Claude Fable 5.1 — is the next thing to build.** Phase 1 gave the
+songs a sound: `songDegrees(ci)` derives a 6–10 note phrase from the island
+seed and the story's own chronicle index, and `songTune(sg, voices)` plays it
+at the fire, twice, through `sfxG`. Nothing was added to the save. The
+listening pass in `harness.mjs twelve` now measures the tune alongside the
+other thirteen one-shots, and two runs of a seed are asserted to hum the same
+phrase. Sprint 16 closed green across
 all eleven harness modes (soak / nan / determinism / save / depth / eleven
 through sixteen): 5 islands × 40 days, ~22,465 full-cast audits, 0 violations
 and 0 breadcrumbs; identical `pack()` hashes on seeds 7 and 20260819 across
@@ -34,7 +39,9 @@ go hungry and leave. Partnerships form, children are born and grow up, elders
 die and get a stone on the hill. The village names itself on day 10 and starts
 using the name. Everything is synthesized — thirteen one-shots and a seasonal
 pad through a Web Audio graph built in `startAudio()`, no files — and the
-whole world LZ-compresses into the URL hash, so an island is a link.
+whole world LZ-compresses into the URL hash, so an island is a link. Since
+Phase 1 there are fourteen one-shots: the fourteenth is a song, and it is the
+only one whose notes are a function of the seed.
 
 What sprints 12–16 built on top of that is the part worth protecting: the
 island keeps its own memory. Things (`things[]`) are made or found and pass
@@ -323,44 +330,61 @@ into the closing report), and the closing report — a handoff file in the
 project root, in the established five-section shape — names the **next open
 phase's number and its named model**.
 
-## Phase 1 — Songs you can hear
+## Phase 1 — Songs you can hear — **SHIPPED**
 
 **The island composes music, names it, teaches it, mourns it when the last
 person who knew it dies, and you never hear a note.**
 
 Sprint 16 built songs completely except for the sound and said so on purpose:
-"a real melody system is its own sprint with its own listening pass." This is
-that sprint, and everything it needs exists — `note()` takes a bus and a
-`when`, `KEYS` holds a root and a five-note scale per season, `wayTune()` is
-the working precedent for a short phrase scheduled ahead on `sfxG`, and
-`songs[].ci` is already a perfectly good melody seed. The discipline is the
-point: inside the existing gain budget, not beside it.
+"a real melody system is its own sprint with its own listening pass." This was
+that sprint. Everything it needed existed — `note()` takes a bus and a `when`,
+`KEYS` holds a root and a five-note scale per season, `wayTune()` was the
+working precedent for a short phrase scheduled ahead on `sfxG`, and
+`songs[].ci` was already a perfectly good melody seed.
 
-- [ ] **`songTune(sg)` — a phrase from a song's own identity.** 6–10 scale
-  degrees derived from `sg.ci` and `seed` (never `R()`, so a shared link hums
-  the same tune), quantized to `KEYS[sea()]`, with the season's key the only
-  thing that moves between hearings.
-- [ ] **Fire nights only, and only the moments that already print prose.** The
-  composition night, an older song started near the end of a telling, and a
-  returner bringing a lost tune home. Nothing hums at work.
-- [ ] **Voices, not one oscillator.** The composer carries the phrase and the
-  people who know it come in on the second pass, which is what the prose says
-  happens: one `note()` per voice per degree, scheduled with `when`, through
-  `sfxG` under the existing storm ducking.
-- [ ] **A lost song is silent, and that is the design.** When `loseSongs()`
-  fires nothing plays; the `songlost` chronicle entry carries it. Same
-  precedent as the answered prayer — the island's most important sounds are
-  the ones it does not make.
-- [ ] **Extend `harness.mjs twelve` rather than adding a mode.** The tune
-  joins the same `AnalyserNode` table, on a peak budget that keeps the sfx bus
-  where it is (0.723 storm / 0.954 clear), plus an assertion that two runs of
-  a seed produce the same degree sequence.
+- [x] **`songTune(sg)` — a phrase from a song's own identity.** `songDegrees(ci)`
+  runs its own mulberry stream off `seed ^ (ci+1)*2654435761` — never `R()`, so
+  the sim's stream is untouched and a shared link hums the same phrase. 6 to 10
+  degrees over two octaves of `KEYS[sea()]`'s five, walked with steps of ±1 and
+  ±2 and **reflected** at both ends rather than clamped: the first version
+  clamped, and clamping parks a phrase on the bottom note and calls it a tune —
+  the first seed it was asked for came out `0 1 0 0 0 0 1 2 0`. The last note is
+  the root of whichever octave the phrase ended in, so it comes home. 199 of the
+  first 200 seeds produce a distinct phrase.
+- [x] **Fire nights only, and only the moments that already print prose.** Three
+  call sites and no others: the composition night in `tellStory`, an older song
+  started near the end of a telling, and the returner in `life.js` whose line
+  already said "It is sung twice" — which is exactly what `songTune` does.
+  Nothing hums at work.
+- [x] **Voices, not one oscillator.** Pass one is the composer alone on a
+  triangle; on pass two up to four voices come in on sines, detuned 0.3% and
+  spread across the stereo field, one `note()` per voice per degree scheduled
+  with `when` on `sfxG`. It peaks at 0.103 on the master analyser, between
+  `lullaby` (0.100) and `wayTune` (0.106).
+- [x] **A lost song is silent, and that is the design.** `songTune` returns
+  `null` for a lost song and schedules nothing. The harness measures that on the
+  same analyser rather than taking the return value's word for it.
+- [x] **Extended `harness.mjs twelve` rather than adding a mode.** The tune is
+  the fourteenth row of the same `AnalyserNode` table. Adding it exposed a real
+  weakness in the duck assertion next to it: **Chromium only advances an
+  `AudioParam`'s automation while the node is actually processing**, so a silent
+  `sfxG` freezes `gain.value` wherever the last audible thing left it — the
+  reading was 0.711 for "clear" when the gain the game applies is ~0.99. The
+  duck now settles with something cheap flowing through the bus, and asserts a
+  band (0.70–0.75 storm, 0.94–1.00 clear) rather than a measurement to three
+  decimals. Two runs of seed 7 are asserted to produce identical degree
+  sequences, and seed 8 to produce different ones.
 
 *Leans on:* `js/audio.js` (`note`, `KEYS`, `wayTune`, `sfxG`),
 `js/watcher.js`'s `tellStory`, `js/life.js`'s `loseSongs`. *Save:* none — the
 tune is derived from `sg.ci` and the seed, the way `yearName()` is derived
 from the chronicle. *Model:* **Claude Opus 5** — synthesis in an established
 pattern with a measurement pass that already exists.
+
+Broken on purpose, three times, each watched to fail first: a lost song given
+its tune back (the measured silence check caught it, not just the return
+value), the phrase's first degree drawn from `Math.random()` (the two-run
+assertion caught it), and the resolving note commented out.
 
 ## Phase 2 — Decades, not years
 

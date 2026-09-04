@@ -54,6 +54,12 @@
   <div id="tells"></div>
 </div>
 
+<!-- Phase 8: the on-screen controls. Empty until src/ui/touch.js fills it,
+     and only shown on a device with a coarse pointer (or ?touch=on). It sits
+     outside #hud because #hud is pointer-events:none and every one of these
+     is a thing you press. -->
+<div id="touch"></div>
+
 <div id="cfu"></div>
 <div id="menu"></div>
 <div id="log"></div>
@@ -68,7 +74,7 @@
     <div class="body">
       <p><b>Withitness</b> <i>(Kounin, 1970)</i> &mdash; "the teacher's awareness of student behavior in all areas of the classroom at all times." Hold SHIFT to become aware of student behavior in all areas of the classroom at all times.</p>
       <p>It costs Bandwidth. The lesson does not pause while you use it. And your furniture casts blind spots &mdash; the cabinet and the bookshelf hide what is behind them, so some things can only be seen from somewhere else in the room.</p>
-      <div class="keys">
+      <div class="keys" id="kbdKeys">
         <kbd>W A S D</kbd><span>Move around the room</span>
         <kbd>DRAG</kbd><span>Look</span>
         <kbd>SHIFT</kbd><span>Withitness (hold)</span>
@@ -79,6 +85,16 @@
         <kbd>T</kbd><span>Room Temp &mdash; one cheap glance at the whole room</span>
         <kbd>ESC</kbd><span>Close menu</span>
       </div>
+      <!-- Phase 8: the same list for a phone. main.js shows one of these two
+           and hides the other; nothing here is a second set of rules. -->
+      <div class="keys touchkeys hide" id="touchKeys">
+        <kbd>LEFT THUMB</kbd><span>Walk. The stick appears where you put it down.</span>
+        <kbd>DRAG</kbd><span>Look, anywhere on the right</span>
+        <kbd>HOLD</kbd><span>Withitness, on the pad bottom-right &mdash; you can hold WAIT at the same time</span>
+        <kbd>TAP</kbd><span>Anything you have spotted, to open the intervention menu</span>
+        <kbd>STRIP</kbd><span>The lesson keys along the bottom; RUBRIC opens the look-fors</span>
+      </div>
+      <p class="fineprint hide" id="touchHint"></p>
       <p><b>Mastery is not a bar you fill.</b> It is the average of what twelve people understand, and each of them has their own number. Deliver from the front strip and those numbers climb. A kid with a phone under the desk is not learning anything, which is what the phone is actually costing you.</p>
       <p class="fineprint">Check for understanding to see the comprehension aura in Withitness. It goes stale in about a minute. You are always deciding whether you have time to know.</p>
       <p class="fineprint">Someone with a clipboard visits some periods and not others. Sometimes it is on the calendar days ahead; more often it is nine seconds of warning. Either way the rubric she brought will tell you what it wants, and it is not the same five things every time.</p>
