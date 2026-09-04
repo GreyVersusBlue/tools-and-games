@@ -7,8 +7,14 @@ import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
 import { createObservation } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
-import { periodFor, periodIds, firstPeriodId, resolvePeriodId } from '../src/periods.js';
+import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor } from '../src/periods.js';
 import { contentFiles } from '../src/loader.js';
+import { createRng, mixSeed, drawSeed, SEED_MAX } from '../src/systems/rng.js';
+import { generateRoster, rosterProblems } from '../src/systems/roster.js';
+import { generateSchedule, scheduleProblems } from '../src/systems/scheduler.js';
+import { generateClass, bandProblems, simulateBands } from '../src/systems/generate.js';
+import { runPeriod, STYLES } from '../src/systems/simulate.js';
+import * as semester from '../src/systems/semester.js';
 import * as persist from '../src/persist.js';
 import { PREFIX, slot, dayKey, LEGACY_KEYS, migrateLegacyKeys } from '../src/persist.js';
 
@@ -16,6 +22,7 @@ const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
 const roomData = D('room'), seatData = D('seating'), p5Data = D('period5'), obsData = D('observation');
+const genData = D('generation'), adminData = D('admin');
 
 const mkChart = (saved=null, layout=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
@@ -698,12 +705,12 @@ const pData = D('periods');
 // own contentFiles() means a row pointing at a file nobody shipped fails here
 // rather than in a browser.
 const bundle = { room: roomData, students: sData, tells: tData, lesson: lData,
-  seating: seatData, periods: pData };
+  seating: seatData, periods: pData, events: eData, observation: obsData, generation: genData };
 for (const name of contentFiles(pData)) {
   if (!(name in bundle)) bundle[name] = D(name);
 }
 
-check('the day is three periods long, in order', periodIds(bundle).join() === 'p4,p5,p6');
+check('the day is four periods long, in order', periodIds(bundle).join() === 'p4,p5,p6,p7');
 check('the day starts at the top of the day', firstPeriodId(bundle) === 'p4');
 
 const p4 = periodFor('p4', bundle);
@@ -733,18 +740,27 @@ check('5th period overrides one button and inherits the other',
 check('6th period exists and is a full class', p6.roster.length === 12);
 check('6th period has its own tell schedule', p6.schedule.length === 10);
 check('6th period has a full lesson', p6.lessonData.beats.reduce((a, b) => a + b.seconds, 0) === 2000);
-check('6th period is the last one', p6.nextPeriodId === null);
+check('6th period hands off to the generated 7th', p6.nextPeriodId === 'p7');
+
+// Phase 2: the 7th period is a row with no roster and no schedule pointer.
+const p7 = periodFor('p7', bundle, { seed: 4821, day: 0 });
+check('7th period is generated', isGenerated(rowFor('p7', bundle)) && !!p7.generated);
+check('7th period is the last one', p7.nextPeriodId === null);
+check('7th period is a full class', p7.roster.length === 12);
+check('7th period reads the authored lesson', p7.lessonData.beats === lData.beats);
+check('7th period has its own chart copy', p7.seatingCopy.sub.includes('7TH PERIOD'));
 
 // What the report's button says is data too, so a seventh period needs no
 // string literal in main.js.
 check('4th period hands off to 5th', p4.nextPeriodId === 'p5' && p4.nextLabel === 'Next period — 5th');
 check('5th period hands off to 6th',
   p5.nextPeriodId === 'p6' && p5.nextLabel === 'Next period — 6th');
-check('the last period offers the day again', p6.nextLabel === null && p6.restartLabel === 'Run it again');
+check('6th period hands off to 7th', p6.nextLabel === 'Next period — 7th');
+check('the last period offers the day again', p7.nextLabel === null && p7.restartLabel === 'Run it again');
 
 // Every period is the same room and the same rulebook (T6's premise, now
-// enforced across three classes instead of asserted across two).
-for (const p of [p4, p5, p6]) {
+// enforced across four classes instead of asserted across two).
+for (const p of [p4, p5, p6, p7]) {
   check(`${p.id}: twelve kids in the twelve desks`, p.roster.length === 12);
   check(`${p.id}: same desk grid`, p.seatGrid === sData.seatGrid);
   check(`${p.id}: every scheduled tell names a real seat`,
@@ -767,7 +783,8 @@ check('asking for a period that is not in the data is an error, not a guess', ((
 // The seam itself: what the loader fetches comes out of periods.json, so a
 // seventh period is a row and a file and no edit to src/loader.js.
 check('the loader fetches whatever the rows point at',
-  contentFiles(pData).includes('period6') && contentFiles(pData).includes('period5'));
+  contentFiles(pData).includes('period6') && contentFiles(pData).includes('period5') &&
+  contentFiles(pData).includes('period7'));
 check('and does not fetch the same file twice',
   new Set(contentFiles(pData)).size === contentFiles(pData).length);
 
@@ -868,6 +885,400 @@ check('main.js no longer names a period or a save slot in JavaScript',
 check('main.js carries Bandwidth across the bell through the day key',
   mainSrc.includes("persist.dayKey('bandwidth')") &&
   mainSrc.includes('CFG.day.passingPeriodRecovery'));
+
+// Phase 2: the seed lives in the period's own slot, is drawn once through the
+// rng module rather than Math.random, and reaches the report screen.
+check('main.js keeps the seed in the period slot',
+  /persist\.slot\(activePeriodId, 'seed'\)/.test(mainSrc));
+check('main.js draws a seed only for a generated period, and keeps it',
+  /isGenerated\(rowFor\(activePeriodId, data\)\)/.test(mainSrc) &&
+  /seed = drawSeed\(\);\s*persist\.save\(seedKey, seed\)/.test(mainSrc));
+check('main.js hands periodFor the seed', /periodFor\(activePeriodId, data, \{ seed/.test(mainSrc));
+check('main.js puts the seed on the report', /seed: period\.generated \? \{ value: period\.generated\.seed/.test(mainSrc));
+check('the start screen has somewhere to type a seed',
+  /id="seedInput"/.test(fs.readFileSync('../index.html', 'utf8')));
+
+// ---------------------------------------------------------------------------
+// Phase 2 — kids nobody authored. One integer in, the same class out; every
+// promise the authored rosters and schedules kept without saying so is now a
+// rule, and the period they add up to has to land inside a band.
+// ---------------------------------------------------------------------------
+
+// The RNG. Boring on purpose; the one thing it must be is repeatable.
+{
+  const a = createRng(7), b = createRng(7);
+  const sa = [a.next(), a.next(), a.int(1, 6), a.pick(['x', 'y', 'z'])];
+  const sb = [b.next(), b.next(), b.int(1, 6), b.pick(['x', 'y', 'z'])];
+  check('the same seed gives the same stream', sa.join() === sb.join());
+  check('a different seed gives a different stream', createRng(8).next() !== createRng(7).next());
+  check('int() is inclusive at both ends', (() => {
+    const r = createRng(3), seen = new Set();
+    for (let i = 0; i < 500; i++) seen.add(r.int(2, 4));
+    return seen.size === 3 && seen.has(2) && seen.has(4);
+  })());
+  check('a zero weight never comes up', (() => {
+    const r = createRng(11);
+    for (let i = 0; i < 300; i++) if (r.weighted([{ item: 'no', weight: 0 }, { item: 'yes', weight: 1 }]) === 'no') return false;
+    return true;
+  })());
+  check('shuffle leaves the input alone', (() => {
+    const arr = [1, 2, 3, 4, 5];
+    createRng(5).shuffle(arr);
+    return arr.join() === '1,2,3,4,5';
+  })());
+  check('mixSeed tells day 3 from day 4', mixSeed(4821, 3, 0) !== mixSeed(4821, 4, 0));
+  check('mixSeed tells attempt 0 from attempt 1', mixSeed(4821, 0, 0) !== mixSeed(4821, 0, 1));
+  check('mixSeed is stable', mixSeed(4821, 3, 0) === mixSeed(4821, 3, 0));
+  check('a drawn seed is a positive six-digit number', (() => {
+    const lo = drawSeed(() => 0), hi = drawSeed(() => 0.999999999);
+    return lo === 1 && hi === SEED_MAX && Number.isInteger(drawSeed());
+  })());
+}
+
+// The roster.
+{
+  const r1 = generateRoster(4821, genData), r2 = generateRoster(4821, genData);
+  check('the same seed gives the same twelve kids', JSON.stringify(r1) === JSON.stringify(r2));
+  check('a different seed gives different kids',
+    generateRoster(4822, genData).map(s => s.name).join() !== r1.map(s => s.name).join());
+  check('a generated roster has the authored shape',
+    r1.every(s => typeof s.name === 'string' && typeof s.shirt === 'string' &&
+      Number.isFinite(s.aptitude) && Number.isFinite(s.tension) && Number.isFinite(s.steady)));
+  let bad = 0;
+  for (let seed = 1; seed <= 300; seed++) if (rosterProblems(generateRoster(seed, genData), genData).length) bad++;
+  check('300 seeds, 300 rosters that keep their promises', bad === 0);
+
+  // The promises, each broken on purpose. If rosterProblems lets one of these
+  // through, the generator is free to make it.
+  const clone = () => JSON.parse(JSON.stringify(r1));
+  let r = clone(); r[1].name = r[0].name.slice(0, 2) + 'xyz';
+  check('two names that read alike are refused', rosterProblems(r, genData).some(p => p.includes('read alike')));
+  r = clone(); for (const s of r) s.steady = 0.3;
+  check('a roster with no stabiliser is refused', rosterProblems(r, genData).some(p => p.includes('stabiliser')));
+  r = clone(); for (const s of r) s.tension = 0.3;
+  check('a roster with nobody at the edge is refused', rosterProblems(r, genData).some(p => p.includes('edge')));
+  r = clone(); for (const s of r) s.aptitude = 1.0;
+  check('a flat aptitude spread is refused', rosterProblems(r, genData).some(p => p.includes('spread')));
+  r = clone(); const noted = r.filter(s => s.note); noted[1].note = noted[0].note;
+  check('two kids with the same note are refused', rosterProblems(r, genData).some(p => p.includes('same note')));
+  r = clone(); r.pop();
+  check('eleven kids are refused', rosterProblems(r, genData).length === 1 && rosterProblems(r, genData)[0].includes('11 students'));
+  check('the stabiliser note goes to the steadiest kid', (() => {
+    const top = [...r1].sort((a, b) => b.steady - a.steady)[0];
+    return genData.notes.stabiliser.includes(top.note);
+  })());
+  check('nothing in the generated pool is an authored name', (() => {
+    const authored = new Set([...sData.roster, ...p5Data.roster, ...D('period6').roster].map(s => s.name));
+    return genData.names.every(n => !authored.has(n));
+  })());
+  check('an impossible roster is a loud error, not a quiet one', (() => {
+    const g = JSON.parse(JSON.stringify(genData));
+    g.roster.stabilisers = { min: 12, max: 12 };
+    g.roster.rerollCap = 5;
+    try { generateRoster(1, g); return false; } catch (e) { return /5 draws/.test(e.message); }
+  })());
+}
+
+// The schedule.
+const schedDeps = { tellTypes: tData.types, seatGrid: sData.seatGrid, rules: seatData.rules, gen: genData };
+{
+  const roster = generateRoster(4821, genData);
+  const a = generateSchedule(mixSeed(4821, 0, 0), roster, schedDeps);
+  const b = generateSchedule(mixSeed(4821, 0, 0), roster, schedDeps);
+  check('the same seed gives the same schedule', JSON.stringify(a) === JSON.stringify(b));
+  check('a different day gives a different schedule for the same kids',
+    JSON.stringify(generateSchedule(mixSeed(4821, 1, 0), roster, schedDeps)) !== JSON.stringify(a));
+  check('a generated row looks like an authored row',
+    a.every(r => typeof r.type === 'string' && Number.isInteger(r.seat) && Number.isFinite(r.atMinute) && Number.isInteger(r.life)));
+  check('the generated schedule is in time order', a.every((r, i) => i === 0 || r.atMinute >= a[i - 1].atMinute));
+  let bad = 0, swallowMismatch = 0;
+  for (let seed = 1; seed <= 100; seed++) {
+    const ro = generateRoster(seed, genData);
+    for (const day of [0, 1, 2]) {
+      const rows = generateSchedule(mixSeed(seed, day, 0), ro, schedDeps);
+      if (scheduleProblems(rows, ro, schedDeps).length) bad++;
+      // The scheduler's paper answer to "would the August chart swallow this"
+      // must agree with the chart's own, or the cap is a guess.
+      const chart = createChart({ seatGrid: sData.seatGrid, room: roomData, roster: ro,
+        tellTypes: tData.types, rules: seatData.rules, plan: seatData.plan.furniture });
+      if (chart.resolveSchedule(rows).suppressed.length > genData.schedule.maxSwallowed) swallowMismatch++;
+    }
+  }
+  check('100 seeds x 3 days, every schedule keeps its promises', bad === 0);
+  check('the August chart never swallows more than the cap', swallowMismatch === 0);
+
+  // The promises, each broken on purpose.
+  const clone = () => JSON.parse(JSON.stringify(a));
+  const has = (rows, needle) => scheduleProblems(rows, roster, schedDeps).some(p => p.includes(needle));
+  let rows = clone(); rows.find(r => r.type === 'PHONE').type = 'QUIET';
+  check('two curveballs are refused', has(rows, 'curveballs'));
+  rows = clone(); rows.find(r => r.type === 'QUIET').atMinute = 5;
+  check('a curveball at minute 5 is refused', has(rows, 'the curveball is at'));
+  rows = clone(); { const w = rows.find(r => r.type === 'WHISPER'); w.with = (w.seat + 6) % 12; }
+  check('a whisper across the room is refused', has(rows, 'across the room'));
+  rows = clone(); { const n = rows.find(r => r.type === 'NOTE'); n.with = n.seat % 4 === 3 ? n.seat - 1 : n.seat + 1; }
+  check('a note passed one desk over is refused as a handoff', has(rows, 'handoff'));
+  rows = clone(); rows[1].seat = rows[0].seat; rows[1].atMinute = rows[0].atMinute + 1.5; rows[1].with = undefined; rows[1].type = 'PHONE';
+  check('two things on one seat inside each other\'s lifespan are refused', has(rows, 'already carrying'));
+  rows = clone(); rows[2].atMinute = rows[1].atMinute + 0.5;
+  check('two tells half a minute apart are refused', has(rows, 'min after the last one'));
+  rows = clone(); for (const r of rows) r.life = 60;
+  check('too little tell pressure is refused', has(rows, 'of tell; wanted'));
+  rows = clone(); rows.find(r => r.type === 'PHONE').seat = 99;
+  check('a seat that does not exist is refused', has(rows, 'no real seat'));
+  rows = clone(); rows[rows.length - 1].atMinute = 46;
+  check('a tell that outlives the bell is refused', has(rows, 'outlives the bell'));
+  check('a schedule the August chart mostly swallows is refused, and the chart agrees', (() => {
+    // Seat 0 is a rock; seats 1 (beside) and 4 (behind) carry everything.
+    const ro = JSON.parse(JSON.stringify(roster));
+    for (const s of ro) s.steady = 0.1;
+    ro[0].steady = 0.9;
+    const rows = [];
+    let m = 1.0;
+    for (const seat of [1, 4, 1, 4, 1, 4]) { rows.push({ type: 'PHONE', seat, atMinute: m, life: 170 }); m += 4; }
+    rows.push({ type: 'QUIET', seat: 9, atMinute: 20.0, life: 300 });
+    const chart = createChart({ seatGrid: sData.seatGrid, room: roomData, roster: ro,
+      tellTypes: tData.types, rules: seatData.rules, plan: seatData.plan.furniture });
+    const sup = chart.resolveSchedule(rows).suppressed.length;
+    return sup === 6 && scheduleProblems(rows, ro, schedDeps).some(p => p.includes('swallows 6'));
+  })());
+  check('an impossible schedule is a loud error', (() => {
+    const g = JSON.parse(JSON.stringify(genData));
+    g.schedule.pressure = { min: 99999, max: 100000 };
+    g.schedule.rerollCap = 3;
+    try { generateSchedule(1, roster, { ...schedDeps, gen: g }); return false; } catch (e) { return /3 draws/.test(e.message); }
+  })());
+}
+
+// The sim, and the band.
+const simData = { room: roomData, tells: tData, seating: seatData, events: eData, observation: obsData };
+{
+  const r1 = runPeriod({ period: p4, data: simData, style: STYLES.ideal });
+  const r2 = runPeriod({ period: p4, data: simData, style: STYLES.ideal });
+  check('the headless sim is deterministic',
+    r1.state.mastery === r2.state.mastery && r1.state.restless === r2.state.restless && r1.missed === r2.missed);
+  check('the sim reports the students with their comprehension',
+    r1.students.length === 12 && r1.students.every(s => s.comp >= 0 && s.comp <= 1));
+  check('every band names a play style the sim has',
+    Object.keys(genData.bands).filter(k => !k.startsWith('_') && k !== 'rerollCap').every(k => STYLES[k]));
+  const results = simulateBands({ period: p4, data: simData, bands: genData.bands });
+  check('the authored 4th period sits inside the bands', bandProblems(results, genData.bands).length === 0);
+  check('a period outside a band is named, with the number',
+    bandProblems({ ...results, ideal: { ...results.ideal, mastery: 5 } }, genData.bands)
+      .some(p => /ideal: mastery 5 outside/.test(p)));
+  check('a style that was not simulated is a problem, not a pass',
+    bandProblems({ ideal: results.ideal }, genData.bands).some(p => p.includes('neverChecks: not simulated')));
+
+  check('generateClass rerolls the schedule and never the roster', (() => {
+    const a = generateClass({ seed: 4821, day: 0, data: bundle, lessonData: p4.lessonData, seatGrid: sData.seatGrid });
+    const b = generateClass({ seed: 4821, day: 3, data: bundle, lessonData: p4.lessonData, seatGrid: sData.seatGrid });
+    return JSON.stringify(a.roster) === JSON.stringify(b.roster) &&
+      JSON.stringify(a.schedule) !== JSON.stringify(b.schedule) &&
+      a.roster.map(s => s.name).join() === generateRoster(4821, genData).map(s => s.name).join();
+  })());
+  check('a class that cannot land in the band is a loud error, not an easy period', (() => {
+    const d = JSON.parse(JSON.stringify(bundle));
+    d.generation.bands.ideal.mastery = [99, 100];
+    d.generation.bands.rerollCap = 2;
+    try { generateClass({ seed: 1, day: 0, data: d, lessonData: p4.lessonData, seatGrid: sData.seatGrid }); return false; }
+    catch (e) { return /2 attempts/.test(e.message) && /ideal: mastery/.test(e.message); }
+  })());
+  check('a generated period needs a seed', (() => {
+    try { periodFor('p7', bundle); return false; } catch (e) { return /needs a seed/.test(e.message); }
+  })());
+  check('an authored period ignores the seed', periodFor('p4', bundle, { seed: 99 }).roster === sData.roster);
+  check('the generated period records its seed and day',
+    p7.generated.seed === 4821 && p7.generated.day === 0 && Number.isInteger(p7.generated.rerolls));
+  check('the same seed and day is the same 7th period',
+    JSON.stringify(periodFor('p7', bundle, { seed: 4821, day: 0 }).schedule) === JSON.stringify(p7.schedule));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — the semester remembers. A record per class, advanced one night
+// at a time, pure in and pure out. Twelve numbers, never a mastery scalar.
+// ---------------------------------------------------------------------------
+{
+  const SEM = CFG.semester;
+  const roster = sData.roster;
+  const mkStudents = comps => roster.map((r, i) => ({ ...r, seat: i, comp: comps[i] }));
+  const result = (periodId, comps, over = {}) => ({
+    periodId, seed: null, roster, students: mkStudents(comps),
+    rapport: 70, fidelity: 82, mastery: comps.reduce((a, b) => a + b, 0) / comps.length * 100,
+    bandwidth: 5, missed: 1, caught: 3, sawCurveball: true,
+    obsResult: { satisfied: ['check'], total: 5 }, known: { edges: ['1-2'], steadies: [6] }, ...over
+  });
+  const high = roster.map(() => 0.8);
+
+  const fresh = semester.createRecord();
+  check('a fresh record is versioned from day one', fresh.version === semester.RECORD_VERSION && fresh.version === 1);
+  check('a fresh record is Monday of week one', fresh.week === 1 && fresh.day === 0 && Object.keys(fresh.classes).length === 0);
+
+  // repair: every load. migrate: version drift, of which there is none yet.
+  check('garbage repairs to a fresh record', semester.repair('nope').version === 1 && semester.repair(null).week === 1);
+  check('an unversioned object is not a record', semester.migrate({ week: 3, classes: {} }) === null);
+  check('a future version is not a record either', semester.migrate({ version: 99 }) === null);
+  check('repair fills in what a half-written record lacks', (() => {
+    const r = semester.repair({ version: 1, week: 2, day: 9, classes: { p4: { comp: [0.5, 'x'], fidelity: 200 } } });
+    return r.week === 2 && r.day === SEM.daysPerWeek - 1 && r.classes.p4.comp === null &&
+      r.classes.p4.fidelity === 100 && Array.isArray(r.today) && r.admin.active === null;
+  })());
+  check('repair keeps a whole class intact', (() => {
+    const one = semester.recordPeriod(fresh, result('p4', high));
+    const back = semester.repair(JSON.parse(JSON.stringify(one)));
+    return JSON.stringify(back.classes.p4) === JSON.stringify(one.classes.p4) && back.today.length === 1;
+  })());
+
+  // entering, day one: CFG.start, nothing carried.
+  const day1 = semester.entering(fresh, 'p4', { roster, seed: null, admin: adminData });
+  check('a class on its first day walks in on CFG.start',
+    day1.firstDay && day1.startComp === null && day1.rapport === CFG.start.rapport &&
+    day1.fidelity === CFG.start.fidelity && day1.effects === null && day1.obsWindowScale === 1 && day1.events.length === 0);
+  check('day one is day index 0', day1.dayIndex === 0 && semester.dayIndexOf(fresh) === 0);
+
+  // recordPeriod: twelve values, by seat, never a scalar.
+  const shuffled = mkStudents(high).reverse();          // seat order scrambled; seat still says who
+  shuffled.find(s => s.seat === 3).comp = 0.2;
+  const one = semester.recordPeriod(fresh, { ...result('p4', high), students: shuffled });
+  check('recordPeriod does not touch the record it was given', Object.keys(fresh.classes).length === 0 && fresh.today.length === 0);
+  check('the class carries twelve values, by seat', one.classes.p4.comp.length === 12 && one.classes.p4.comp[3] === 0.2 && one.classes.p4.comp[0] === 0.8);
+  check('the class record has no mastery scalar (constraint 7)', !('mastery' in one.classes.p4));
+  check('the class carries Rapport and Fidelity', one.classes.p4.rapport === 70 && one.classes.p4.fidelity === 82);
+  check('the class knows its baseline', one.classes.p4.base.length === 12 &&
+    Math.abs(one.classes.p4.base[6] - CFG.lesson.startComprehension * roster[6].aptitude) < 1e-9);
+  check('the class counts what the chart learned', one.classes.p4.edges === 1 && one.classes.p4.steadies === 1 && one.classes.p4.observations === 1);
+  check("today's line has the period's numbers", one.today.length === 1 && one.today[0].missed === 1 && one.today[0].obs === '1/5' && one.today[0].curveball);
+  check('recording the same period twice replaces the line', semester.recordPeriod(one, result('p4', high)).today.length === 1);
+  check('a period with a student missing carries no comprehension', (() => {
+    const r = semester.recordPeriod(fresh, { ...result('p4', high), students: mkStudents(high).slice(1) });
+    return r.classes.p4.comp === null;
+  })());
+
+  // entering, day two: yesterday's numbers.
+  const two = semester.recordPeriod(one, result('p5', high));
+  const night = semester.advanceDay(two, [], { admin: adminData });
+  check('advanceDay turns the page', night.day === 1 && night.week === 1 && night.today.length === 0 && night.days.length === 1);
+  check("the finished day is on the books with the day's means",
+    night.days[0].periods.length === 2 && Math.abs(night.days[0].fidelity - 82) < 1e-9 && night.days[0].missed === 2 &&
+    night.days[0].bandwidth === 5 && Number.isFinite(night.days[0].opinion));
+  check('advanceDay does not touch the record it was given', two.day === 0 && two.today.length === 2);
+  const d2 = semester.entering(night, 'p4', { roster, seed: null, admin: adminData });
+  const b3 = one.classes.p4.base[3], b0 = one.classes.p4.base[0];
+  check('overnight, what they learned above the baseline keeps retainOvernight of itself',
+    Math.abs(d2.startComp[0] - (b0 + (0.8 - b0) * SEM.retainOvernight)) < 1e-9);
+  check('overnight, what a bad period took from under the baseline comes partway back',
+    Math.abs(d2.startComp[3] - (b3 + (0.2 - b3) * SEM.retainOvernight)) < 1e-9 && d2.startComp[3] > 0.2);
+  check('Fidelity reverts toward the district mean overnight',
+    Math.abs(d2.fidelity - (SEM.districtFidelity + (82 - SEM.districtFidelity) * (1 - SEM.fidelityRevert))) < 1e-9);
+  check('Rapport reverts toward its start overnight',
+    Math.abs(d2.rapport - (CFG.start.rapport + (70 - CFG.start.rapport) * (1 - SEM.rapportRevert))) < 1e-9);
+  check('a class that did not meet yesterday still opens on what it has', !d2.firstDay && d2.startComp.length === 12);
+  check('a different seed is a different class', (() => {
+    const g = semester.recordPeriod(fresh, { ...result('p7', high), seed: 4821 });
+    const same = semester.entering(g, 'p7', { roster, seed: 4821, admin: adminData });
+    const other = semester.entering(g, 'p7', { roster, seed: 4822, admin: adminData });
+    return !same.firstDay && other.firstDay && other.startComp === null && other.rapport === CFG.start.rapport;
+  })());
+  check('a roster of a different size does not carry', semester.entering(night, 'p4', { roster: roster.slice(0, 11), seed: null, admin: adminData }).startComp === null);
+  check('the weekend forgets more than a night', SEM.retainWeekend < SEM.retainOvernight &&
+    semester.retentionAfter(SEM.daysPerWeek - 1) === SEM.retainWeekend && semester.retentionAfter(0) === SEM.retainOvernight);
+
+  // The week rolls over.
+  let r = fresh;
+  for (let d = 0; d < SEM.daysPerWeek; d++) r = semester.advanceDay(semester.recordPeriod(r, result('p4', high)), [], { admin: adminData });
+  check('five nights is a week', r.week === 2 && r.day === 0 && r.days.length === 5);
+  check('the Friday before the roll is the last day of the week', semester.isLastDayOfWeek({ ...r, day: SEM.daysPerWeek - 1 }) && !semester.isLastDayOfWeek(r));
+  check('the second Monday is day index five', semester.dayIndexOf(r) === SEM.daysPerWeek);
+  const w = semester.weekSummary(r);
+  check('the week summary reads the week that just closed', w.week === 1 && w.days.length === 5 && w.periods === 5 && w.missed === 5);
+  check('the week summary has a from and a to', w.from && w.to && Number.isFinite(w.means.mastery) && Number.isFinite(w.means.bandwidth));
+  check('the week summary counts what was learned', w.learned.edges === 1 && w.learned.steadies === 1 && w.curveballs === 5);
+
+  // The ladder. Sustained low Fidelity, and nothing else, schedules admin.
+  const ladder = adminData.escalation.ladder;
+  check('the ladder climbs: each rung is lower and longer than the last',
+    ladder.every((s, i) => i === 0 || (s.when.fidelityBelow < ladder[i - 1].when.fidelityBelow && s.when.days > ladder[i - 1].when.days)));
+  check('every rung has an event, effects that never touch mastery, and a report line',
+    ladder.every(s => s.event && s.effects && !('mastery' in s.effects) && s.report && s.label));
+  const low = v => result('p4', roster.map(() => 0.4), { fidelity: v });
+  // 43 is under every rung's line; what separates the rungs is how many days
+  // running it has been there.
+  let lr = fresh;
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(43)), [], { admin: adminData });
+  check('one low day is not a pattern', lr.admin.active === null);
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(43)), [], { admin: adminData });
+  check('two low days is a check-in', lr.admin.active === 'checkIn' && lr.admin.history.length === 1);
+  const ent = semester.entering(lr, 'p4', { roster, seed: null, admin: adminData });
+  check('the rung reaches the period as effects, an event and a window',
+    ent.rung.id === 'checkIn' && ent.effects.bandwidth === -4 && ent.events.length === 1 &&
+    ent.events[0].id === 'admin-checkIn' && ent.events[0].kind === 'pa' && ent.obsWindowScale === 1);
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(43)), [], { admin: adminData });
+  check('three low days is the second observation', lr.admin.active === 'secondObservation');
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(43)), [], { admin: adminData });
+  check('four low days is the growth plan', lr.admin.active === 'growthPlan' && lr.admin.history.length === 3);
+  check('a day just under the first line is a check-in and nothing more', (() => {
+    let x = fresh;
+    for (let i = 0; i < 4; i++) x = semester.advanceDay(semester.recordPeriod(x, low(52)), [], { admin: adminData });
+    return x.admin.active === 'checkIn' && x.admin.history.length === 1;
+  })());
+  check('the growth plan keeps her longer', semester.entering(lr, 'p4', { roster, seed: null, admin: adminData }).obsWindowScale === 2);
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(90)), [], { admin: adminData });
+  check('one good day clears the ladder', lr.admin.active === null);
+  check('the ladder reads admin opinion, the mean across classes', (() => {
+    let x = fresh;
+    for (let i = 0; i < 2; i++) {
+      x = semester.recordPeriod(x, low(30));
+      x = semester.recordPeriod(x, { ...result('p5', high), fidelity: 90 });
+      x = semester.advanceDay(x, [], { admin: adminData });
+    }
+    return x.admin.active === null && Math.abs(x.days[0].opinion - 60) < 1e-9;
+  })());
+  check('history records the first day of each rung, once', lr.admin.history.map(h => h.id).join() === 'checkIn,secondObservation,growthPlan');
+
+  // The observation window scale actually reaches the observation.
+  check('windowScale scales the rubric window', (() => {
+    const fakeClassList = () => ({ add() {}, remove() {}, contains: () => false });
+    const mk = scale => createObservation({ data: obsData, dom: { pa: { classList: fakeClassList() }, paTitle: {}, paTxt: {} }, toast: () => {}, windowScale: scale });
+    const a = createState(), b = createState();
+    a.t = b.t = CFG.periodSeconds - obsData.atMinute * 60 - 1;
+    const oa = mk(1), ob = mk(2);
+    oa.tick(a, 0.1); ob.tick(b, 0.1);
+    a.obsAlertRemaining = b.obsAlertRemaining = 0;
+    oa.tick(a, 0.1); ob.tick(b, 0.1);
+    return a.obsPhase === 'active' && Math.abs(b.obsWindowRemaining - 2 * a.obsWindowRemaining) < 1;
+  })());
+  check('the lesson opens on carried comprehension, by seat', (() => {
+    const st = mkStudents(high).map(s => ({ ...s, comp: 0 })).reverse();
+    const carried = roster.map((_, i) => i / 20);
+    createLesson({ data: lData, students: st, tellSystem: { defs: tData.types, tells: [] }, toast: () => {}, rand: () => 0.5, startComp: carried });
+    return st.every(s => s.comp === carried[s.seat]);
+  })());
+
+  // Drift. The good teacher, five days of 4th period: Friday must not open
+  // lower than Tuesday did, and nothing may run away toward 100 either. The
+  // wanderer must have met AP Reyes by Friday. Cheap: ten headless periods.
+  const week = style => {
+    let rec = fresh; const opens = [], closes = [];
+    for (let d = 0; d < SEM.daysPerWeek; d++) {
+      const carry = semester.entering(rec, 'p4', { roster, seed: null, admin: adminData });
+      opens.push(carry.startComp ? carry.startComp.reduce((a, b) => a + b, 0) / 12 * 100 : null);
+      const run = runPeriod({ period: p4, data: simData, style, opts: { startComp: carry.startComp, rapport: carry.rapport, fidelity: carry.fidelity } });
+      closes.push(run.state.mastery);
+      rec = semester.advanceDay(semester.recordPeriod(rec, {
+        periodId: 'p4', seed: null, roster, students: run.students, rapport: run.state.rapport, fidelity: run.state.fidelity,
+        mastery: run.state.mastery, bandwidth: run.state.bandwidth, missed: run.missed, caught: 0, obsResult: run.state.obsResult, known: {}
+      }), [], { admin: adminData });
+    }
+    return { rec, opens, closes };
+  };
+  const good = week(STYLES.good), wander = week(STYLES.wanderer);
+  check('the good teacher plateaus: Friday opens within 1 of Thursday', Math.abs(good.opens[4] - good.opens[3]) < 1);
+  check('the good teacher does not drift: Friday closes within 5 of Monday', Math.abs(good.closes[4] - good.closes[0]) < 5);
+  check('nothing runs away: Friday opens under 90', good.opens[4] < 90);
+  check('Fidelity does not pin at 100 by Friday for the good teacher', good.rec.classes.p4.fidelity < 100 && good.closes.every(Number.isFinite));
+  check('the good teacher hears nothing from admin', good.rec.admin.history.length === 0);
+  check('the wanderer meets AP Reyes by Friday', wander.rec.admin.history.some(h => h.id === 'checkIn'));
+  check('the wanderer does not fall through the floor', wander.opens[4] > 30);
+}
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');
 process.exit(fails?1:0);

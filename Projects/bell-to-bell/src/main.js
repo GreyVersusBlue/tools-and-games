@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { CFG } from './config.js';
-import { createState, clamp01to100 } from './state.js';
+import { createState, clamp01to100, applyEffects } from './state.js';
 import { loadData } from './loader.js';
-import { periodFor, resolvePeriodId, firstPeriodId } from './periods.js';
+import { periodFor, resolvePeriodId, firstPeriodId, periodIds, rowFor, isGenerated } from './periods.js';
+import { drawSeed, SEED_MAX } from './systems/rng.js';
+import * as semester from './systems/semester.js';
 import { createMaterials, createRegistry } from './world/materials.js';
 import { createModelLoader } from './world/models.js';
 import { buildRoom } from './world/room.js';
@@ -25,6 +27,7 @@ import { updateLabels } from './ui/labels.js';
 import { openMenu, closeMenu } from './ui/menu.js';
 import { showReport } from './ui/report.js';
 import { showConference } from './ui/conference.js';
+import { showWeek } from './ui/week.js';
 import { createSeatingScreen } from './ui/seating.js';
 import * as persist from './persist.js';
 
@@ -68,7 +71,38 @@ const state = createState();
 // and a `period` key naming a class data/periods.json no longer has falls back
 // to the first row rather than throwing.
 const activePeriodId = resolvePeriodId(persist.load('period', null), data);
-const period = periodFor(activePeriodId, data);
+
+// Phase 3: the semester record. What every class walked out with, advanced
+// one night at a time by systems/semester.js; this file only ever hands it a
+// finished period and asks what the next one opens with. Repaired on every
+// load, so a browser that stored garbage starts a fresh week rather than a
+// broken one.
+let record = semester.repair(persist.load('semester', null));
+
+// Phase 2: a generated period is twelve kids out of one integer. The integer
+// lives in the period's own slot, drawn once and kept, so a refresh mid-7th is
+// the same 7th, and typed back in from the report screen it is that class
+// again. An authored period has no seed and ignores the one it is handed.
+const seedKey = persist.slot(activePeriodId, 'seed');
+let seed = persist.load(seedKey, null);
+if (isGenerated(rowFor(activePeriodId, data)) && !(Number.isInteger(seed) && seed > 0 && seed <= SEED_MAX)) {
+  seed = drawSeed();
+  persist.save(seedKey, seed);
+}
+// The day index reaches the tell scheduler, so a generated class does
+// something different on Tuesday and the same kids do it.
+const period = periodFor(activePeriodId, data, { seed, day: semester.dayIndexOf(record) });
+
+// What this class walks in with today: yesterday's twelve numbers minus a
+// night, admin's running opinion, whatever admin has scheduled, and how much
+// they will put up with. A class on its first day gets CFG.start, same as
+// before there was a semester.
+const carry = semester.entering(record, activePeriodId, {
+  roster: period.roster, seed: period.generated ? period.generated.seed : null, admin: data.admin
+});
+state.rapport = clamp01to100(carry.rapport);
+state.fidelity = clamp01to100(carry.fidelity);
+if (carry.effects) applyEffects(state, carry.effects);
 
 // Phase 1: Bandwidth crosses the bell. Everything else in CFG.start is a fact
 // about walking into a room and resets at each one; Bandwidth is a fact about
@@ -133,9 +167,13 @@ let plan = chart.resolveSchedule(period.schedule);
 chart.apply(students, plan);
 
 camera.position.set(room.spawn.x, CFG.eyeHeight, room.spawn.z);
+const weekday = data.admin.days[carry.day];
+const dayTag = data.admin.copy.dayTag.replace('{day}', weekday.toUpperCase()).replace('{week}', carry.week);
 dom.cbTitle.textContent = period.periodLabel;
-dom.cbRoom.textContent = data.room.meta.room;
-dom.startSub.textContent = `SLICE 001 — "ONE PERIOD" · ${period.ordinal} · 47 minutes · 12 students`;
+dom.cbRoom.textContent = `${data.admin.shortDays[carry.day]} · ${data.room.meta.room}`;
+dom.startSub.textContent = `SLICE 001 — "ONE PERIOD" · ${weekday} · ${period.ordinal} · 47 minutes · 12 students`;
+dom.startDay.textContent = (carry.firstDay ? data.admin.copy.firstDay : data.admin.copy.returning)
+  .replace('{day}', weekday).replace('{week}', carry.week);
 
 const reactions = createReactions({ students, data: data.reactions, camera });
 
@@ -189,6 +227,7 @@ const interventions = createInterventions({
 
 const lesson = createLesson({
   data: period.lessonData, students, tellSystem, toast,
+  startComp: carry.startComp,
   onBoard: beat => room.screens.board?.set(beat.board),
   onRoomReact: kind => {
     const cfg = data.reactions.room[kind];
@@ -208,7 +247,8 @@ const temp = createRoomTemp({
 });
 
 const events = createEvents({
-  data: data.events, dom, toast,
+  // Phase 3: whatever admin scheduled for today fires like any other event.
+  data: { ...data.events, scheduled: [...data.events.scheduled, ...carry.events] }, dom, toast,
   react: ev => {
     if (!ev.reaction) return;
     reactions.wave(ev.reaction, { scale: 0.9, delayPerMetre: 0.02 });
@@ -217,7 +257,7 @@ const events = createEvents({
 
 // T7: the Observation. Shared across periods on purpose — it is the same
 // rubric and the same AP regardless of whose desks are in the room.
-const observation = createObservation({ data: data.observation, dom, toast });
+const observation = createObservation({ data: data.observation, dom, toast, windowScale: carry.obsWindowScale });
 
 room.screens.board?.set(lesson.current(state).board);
 room.screens.objective?.set(period.lessonData.objectiveBoard);
@@ -338,42 +378,78 @@ function endPeriod() {
   known = learned.known;
   persist.save(knownKey, known);
 
+  // Phase 3: what this class walks out with, on the record. Written now, not
+  // on the button, so a closed tab after the bell still counts the period.
+  // Recording the same period twice replaces today's line rather than adding
+  // one, so a refresh that replays it is not a second Tuesday.
+  record = semester.recordPeriod(record, {
+    periodId: period.id, seed: period.generated ? period.generated.seed : null,
+    roster: period.roster, students,
+    rapport: state.rapport, fidelity: state.fidelity, mastery: state.mastery,
+    bandwidth: state.bandwidth, missed: state.missed, caught: state.caught,
+    sawCurveball: state.sawCurveball, obsResult: state.obsResult, known
+  });
+  persist.save('semester', record);
+
   // T6: each period hands off into the next; the last period's own report just
   // restarts the day at the top, which is what "Run it again" always meant.
   // Phase 1: which period that is, and what the button says, are both rows in
   // data/periods.json now rather than string literals in here.
   const next = period.nextPeriodId;
-  const restart = next ? {
-    label: period.nextLabel,
-    onClick: () => {
-      // The room's desks carry forward as a fact about the room. Whether
-      // moving further from them costs Rapport is a fact about the kids, and
-      // the next class has never met this chart, so that resets to novel.
-      persist.save(persist.slot(next, 'chart'), chart.seatOf);
-      persist.save(persist.slot(next, 'rapportBase'), null);
-      persist.clear(persist.slot(next, 'known'));
-      // Phase 1: and Bandwidth goes with you, minus everything this period
-      // cost, plus whatever four minutes in the hallway are worth.
-      persist.save(persist.dayKey('bandwidth'),
-        clamp01to100(state.bandwidth + CFG.day.passingPeriodRecovery));
-      persist.save('period', next);
-      location.reload();
-    }
-  } : {
-    label: period.restartLabel,
-    onClick: () => {
-      // A new day, which is the only thing that gives Bandwidth back in full.
+  let restart;
+  if (next) {
+    restart = {
+      label: period.nextLabel,
+      onClick: () => {
+        // The room's desks carry forward as a fact about the room, once: a
+        // class that has never sat in any chart inherits this one, and has no
+        // opinion about it yet. Phase 3: a class that made its own chart
+        // yesterday keeps it, and keeps what it taught you.
+        if (persist.load(persist.slot(next, 'chart'), null) == null) {
+          persist.save(persist.slot(next, 'chart'), chart.seatOf);
+          persist.save(persist.slot(next, 'rapportBase'), null);
+        }
+        // Phase 1: and Bandwidth goes with you, minus everything this period
+        // cost, plus whatever four minutes in the hallway are worth.
+        persist.save(persist.dayKey('bandwidth'),
+          clamp01to100(state.bandwidth + CFG.day.passingPeriodRecovery));
+        persist.save('period', next);
+        location.reload();
+      }
+    };
+  } else {
+    // Phase 3: the last bell of the day is the night. The record forgets what
+    // a night forgets, admin's opinion drifts, and tomorrow's rung is decided
+    // — all in advanceDay, none of it in here. A new day is also the only
+    // thing that gives Bandwidth back in full.
+    const friday = semester.isLastDayOfWeek(record);
+    const tomorrow = semester.advanceDay(record, [], { admin: data.admin });
+    const sleep = () => {
+      persist.save('semester', tomorrow);
       persist.clear(persist.dayKey('bandwidth'));
       persist.save('period', firstPeriodId(data));
-      location.reload();
-    }
-  };
+    };
+    restart = friday ? {
+      label: data.admin.copy.fridayReport,
+      onClick: () => {
+        sleep();
+        showWeek(semester.weekSummary(tomorrow), {
+          admin: data.admin, endings: data.events.endings, district: CFG.semester.districtFidelity
+        }, { label: data.admin.copy.nextWeek, onClick: () => location.reload() });
+      }
+    } : {
+      label: data.admin.copy.tomorrow.replace('{day}', data.admin.days[tomorrow.day]),
+      onClick: () => { sleep(); location.reload(); }
+    };
+  }
 
   function report() {
     showReport(state, data.events, {
       lesson: lesson.summary(state), students,
       seating: { plan, copy: data.seating.report, chart, learned },
-      periodTag: period.periodTag,
+      periodTag: `${dayTag} · ${period.periodTag}`,
+      // Phase 2: a class nobody authored says which number made it.
+      seed: period.generated ? { value: period.generated.seed, copy: data.periods.copy.seed } : null,
       observation: state.obsResult ? {
         result: state.obsResult,
         labels: observation.lookFors.filter(l => state.obsSatisfied[l.key]).map(l => l.label),
@@ -435,6 +511,47 @@ function beginPeriod() {
   state.running = true;
   last = performance.now();
 }
+
+// Phase 2: the seed, on the start screen, for a generated period only. Type a
+// different one in and the page reloads into that class.
+if (period.generated) {
+  const copy = data.periods.copy.seed;
+  dom.seedLabel.textContent = copy.label;
+  dom.seedBtn.textContent = copy.use;
+  dom.seedHint.textContent = copy.hint;
+  dom.seedInput.value = String(period.generated.seed);
+  dom.seedRow.classList.remove('hide');
+  dom.seedBtn.addEventListener('click', () => {
+    const typed = parseInt(dom.seedInput.value, 10);
+    if (!(Number.isInteger(typed) && typed > 0 && typed <= SEED_MAX)) {
+      dom.seedInput.value = String(period.generated.seed);
+      return;
+    }
+    if (typed === period.generated.seed) return;
+    persist.save(seedKey, typed);
+    // A different seed is a different class: nothing you learned about the
+    // last one, and no chart they sat in, belongs to this one.
+    persist.clear(chartKey);
+    persist.clear(knownKey);
+    persist.clear(rapportKey);
+    location.reload();
+  });
+}
+
+// Phase 3: the semester over, from the top. New kids where the kids were
+// generated, the August chart, nothing learned, Monday of week one. The
+// furniture stays where it is, because that is a fact about the room.
+dom.startOver.textContent = data.admin.copy.startOver;
+dom.startOver.addEventListener('click', () => {
+  if (!confirm(data.admin.copy.startOverConfirm)) return;
+  persist.clear('semester');
+  persist.clear('period');
+  persist.clear(persist.dayKey('bandwidth'));
+  for (const id of periodIds(data)) {
+    for (const key of ['chart', 'known', 'rapportBase', 'seed']) persist.clear(persist.slot(id, key));
+  }
+  location.reload();
+});
 
 dom.startBtn.textContent = 'Seating chart';
 dom.startBtn.disabled = false;

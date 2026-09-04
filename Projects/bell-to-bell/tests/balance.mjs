@@ -1,133 +1,46 @@
-// Balance harness. Runs whole 47-minute periods headlessly with three crude
-// play styles and prints where the meters land. Not an assertion suite — a
-// sanity check you run after touching src/config.js or data/lesson.json.
+// Balance harness. Runs whole 47-minute periods headlessly with crude play
+// styles and prints where the meters land. Mostly not an assertion suite — a
+// sanity check you run after touching src/config.js or the lesson data — with
+// one exception since Phase 2: the generator soak at the bottom fails loudly
+// if any seed leaves data/generation.json's bands, because a check that only
+// prints is a check that gets ignored.
 //
 //   cd tests && node balance.mjs
+//   SPREAD=1 node balance.mjs     # per-student comprehension under each row
+//   SOAK=200 node balance.mjs     # more seeds through the generator
 import fs from 'fs';
 import { CFG } from '../src/config.js';
-import { createState, applyEffects } from '../src/state.js';
-import { createLesson } from '../src/systems/lesson.js';
-import { createRoomTemp } from '../src/systems/roomtemp.js';
-import { createChart } from '../src/systems/chart.js';
-import { createObservation } from '../src/systems/observation.js';
-import { tickMeters } from '../src/systems/meters.js';
-import { periodFor, periodIds } from '../src/periods.js';
+import { periodFor, periodIds, rowFor } from '../src/periods.js';
 import { contentFiles } from '../src/loader.js';
+import { runPeriod, STYLES } from '../src/systems/simulate.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`, 'utf8'));
 const lData = D('lesson'), sData = D('students'), tData = D('tells'), eData = D('events');
 const roomData = D('room'), seatData = D('seating'), obsData = D('observation');
 
 // Phase 1: the day comes out of data/periods.json, so a period added there
-// shows up in this table without an edit in here.
+// shows up in this table without an edit in here. Phase 2: a generated row
+// needs a seed to become a class; this one is fixed so the table is stable.
 const pData = D('periods');
 const bundle = { room: roomData, students: sData, tells: tData, lesson: lData,
-  seating: seatData, periods: pData };
+  seating: seatData, periods: pData, events: eData, observation: obsData,
+  generation: D('generation') };
 for (const name of contentFiles(pData)) if (!(name in bundle)) bundle[name] = D(name);
-const PERIODS = periodIds(bundle).map(id => periodFor(id, bundle));
+const TABLE_SEED = 4821;
+const PERIODS = periodIds(bundle).map(id => periodFor(id, bundle, { seed: TABLE_SEED, day: 0 }));
+const SIM = { room: roomData, tells: tData, seating: seatData, events: eData, observation: obsData };
 
-// T7: a fake DOM just big enough for createObservation to touch without
-// throwing — the balance harness has no HUD to actually draw.
-const fakeClassList = () => ({ add() {}, remove() {}, contains: () => false });
-const mkObsDom = () => ({ pa: { classList: fakeClassList() }, paTitle: {}, paTxt: {} });
-
-const DT = 1 / 60;
-
-// T6: whichever period it is handed — same shape either way, because since
-// Phase 1 every period is a row of the same shape read out of periods.json.
-// `opts.bandwidth` is the day's carried pool; null means a full tank.
+// Phase 2: `run()` moved into src/systems/simulate.js so the generator can
+// hold a class to the same numbers this table prints. This is the printing.
 function run(name, style, chartSeats = null, period = PERIODS[0], opts = {}) {
-  const content = { roster: period.roster, schedule: period.schedule, lesson: period.lessonData };
-  // T4: everything starts at the chart. The schedule this room produces is not
-  // the authored schedule — it is what the authored schedule becomes once you
-  // decide who is sitting next to whom.
-  const chart = createChart({
-    seatGrid: period.seatGrid, room: roomData, roster: content.roster,
-    tellTypes: tData.types, rules: seatData.rules,
-    plan: seatData.plan.furniture, saved: chartSeats
-  });
-  const students = chart.apply(content.roster.map((r, i) => ({ ...r, seat: i })));
-  const plan = chart.resolveSchedule(content.schedule);
-  chart.apply(students, plan);
-
-  // A live tell schedule, resolved (or not) according to the style.
-  const tells = plan.rows.map((row, i) => ({
-    id: i, type: row.type, seat: row.seat, seat2: row.seat2,
-    at: CFG.periodSeconds - row.atMinute * 60, life: row.life,
-    born: null, dead: false, resolved: false
-  }));
-  const tellSystem = { defs: tData.types, tells, kill(t) { t.dead = true; }, describe: () => '' };
-
-  const state = createState();
-  // Phase 1: Bandwidth does not regenerate during the school day. Second and
-  // third period start with whatever the last bell left, plus the hallway.
-  if (opts.bandwidth != null) state.bandwidth = Math.max(0, Math.min(100, opts.bandwidth));
-  const lesson = createLesson({ data: content.lesson, students, tellSystem, toast: () => {}, rand: () => 0.5 });
-  const temp = createRoomTemp({ data: eData, students, tellSystem, toast: () => {} });
-  const observation = createObservation({ data: obsData, dom: mkObsDom(), toast: () => {} });
-  let rubricPerformed = false;
-
-  let missed = 0;
-  while (state.t > 0) {
-    state.t -= DT * CFG.timeScale;
-
-    for (const t of tells) {
-      if (t.born === null && state.t <= t.at) t.born = state.t;
-      if (t.born !== null && !t.dead && (t.born - state.t) > t.life) {
-        if (!t.resolved) { missed++; state.masteryPending += CFG.missedMastery; state.restless += CFG.missedRestless; }
-        t.dead = true;
-      }
-      // the style decides whether it gets caught, and how fast
-      if (t.born !== null && !t.dead && !t.resolved && style.catchAfter != null &&
-          (t.born - state.t) > style.catchAfter) {
-        t.resolved = true; t.dead = true;
-        applyEffects(state, { bandwidth: -2, rapport: 1, restless: -5 });
-      }
-    }
-
-    state.withitness = style.scan(state);
-    if (state.withitness) {
-      state.bandwidth -= CFG.bandwidthDrainPerSec * DT;
-      state.hyper += CFG.hyperGainPerSec * DT;
-      state.restless += CFG.scanRestlessPerSec * DT;
-      state.withitnessSeconds += DT;
-    } else {
-      state.hyper -= CFG.hyperDecayPerSec * DT;
-    }
-    state.hyper = Math.max(0, Math.min(100, state.hyper));
-
-    const teaching = style.teaching(state);
-    const live = tells.filter(t => t.born !== null && !t.dead && !t.resolved).length;
-    tickMeters(state, DT, teaching, live);
-    lesson.tick(state, DT, { teaching });
-    observation.tick(state, DT);
-
-    // T7: she always visits. Whether you play to the rubric is the style's
-    // call — "cram all five into eleven artificial minutes" is a crude but
-    // honest stand-in for actually timing four keypresses and a hold.
-    if (style.performRubric && observation.active(state) && !rubricPerformed) {
-      rubricPerformed = true;
-      for (const key of ['objective', 'question', 'wait', 'discourse']) observation.satisfy(state, key);
-    }
-
-    // advance beats when they are done; check and reteach on the style's rhythm
-    const beat = lesson.current(state);
-    if (!state.onFiller && state.beatProgress > beat.seconds * style.advanceAt) lesson.advance(state);
-    if (style.checkEvery && state.beatProgress > 0 &&
-        state.checksThisBeat < style.checkEvery &&
-        state.beatProgress > beat.seconds * (0.35 + state.checksThisBeat * 0.4)) {
-      if (lesson.check(state).ok && observation.active(state)) observation.satisfy(state, 'check');
-      if (style.reteach && state.mastery < 60) lesson.reteach(state);
-    }
-    if (style.temp && Math.floor(state.t) % 30 === 0) temp.read(state);
-  }
-
+  const r = runPeriod({ period, data: SIM, style, opts: { ...opts, chartSeats } });
+  const { state, missed, plan, students } = r;
   const p = v => String(Math.round(v)).padStart(3);
   const obs = state.obsResult ? `  obs ${state.obsResult.satisfied.length}/${state.obsResult.total}` : '';
   console.log(
     `${name.padEnd(22)} mastery ${p(state.mastery)}  fidelity ${p(state.fidelity)}  ` +
     `rapport ${p(state.rapport)}  bandwidth ${p(state.bandwidth)}  restless ${p(state.restless)}  ` +
-    `beats ${state.beatsDelivered}/${content.lesson.beats.length}  checks ${String(state.checks).padStart(2)}  ` +
+    `beats ${state.beatsDelivered}/${r.beats}  checks ${String(state.checks).padStart(2)}  ` +
     `missed ${missed}  scan ${Math.round(state.withitnessSeconds)}s${obs}`
   );
   if (plan.suppressed.length || plan.separated.length) {
@@ -138,45 +51,26 @@ function run(name, style, chartSeats = null, period = PERIODS[0], opts = {}) {
     console.log('   ' + [...students].sort((a, b) => b.comp - a.comp)
       .map(s => `${s.name} ${Math.round(s.comp * 100)}`).join('  '));
   }
-  return { state, missed, beats: content.lesson.beats.length };
+  return r;
 }
 
 console.log(`\nperiod: ${CFG.periodSeconds}s game / ${Math.round(CFG.periodSeconds / CFG.timeScale)}s real`);
 console.log(`lesson: ${lData.beats.reduce((a, b) => a + b.seconds, 0)}s of authored beats\n`);
 
-run('ideal (never scans)', {
-  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 2, catchAfter: null
-});
-run('the good teacher', {
-  teaching: s => !s.withitness, scan: s => Math.floor(s.t / 45) % 4 === 0 && s.bandwidth > 5,
-  advanceAt: 1.0, checkEvery: 2, reteach: true, catchAfter: 30, temp: true
-});
+run(STYLES.ideal.label, STYLES.ideal);
+run(STYLES.good.label, STYLES.good);
 // T7: same teacher, same everything, except she also plays to the rubric the
 // moment AP Reyes walks in. If mastery/fidelity land identically to the row
 // above, the Observation is decoration and something is wrong.
-run('the good teacher, plays the rubric', {
-  teaching: s => !s.withitness, scan: s => Math.floor(s.t / 45) % 4 === 0 && s.bandwidth > 5,
-  advanceAt: 1.0, checkEvery: 2, reteach: true, catchAfter: 30, temp: true, performRubric: true
-});
-run('the hypervigilant', {
-  teaching: s => !s.withitness, scan: s => s.bandwidth > 3 && Math.floor(s.t / 20) % 2 === 0,
-  advanceAt: 0.5, checkEvery: 0, catchAfter: 12
-});
-run('the wanderer', {
-  teaching: s => Math.floor(s.t / 60) % 2 === 0, scan: () => false,
-  advanceAt: 1.3, checkEvery: 1, catchAfter: 40
-});
+run(STYLES.goodRubric.label, STYLES.goodRubric);
+run(STYLES.hypervigilant.label, STYLES.hypervigilant);
+run(STYLES.wanderer.label, STYLES.wanderer);
 // The chart matters most to a teacher who is not catching everything, so the
 // comparison below uses one who never looks up: whatever the seating produces,
 // runs its course.
-const HEADS_DOWN = {
-  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 2, catchAfter: null
-};
-
-const NEVER_CHECKS = {
-  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 0, catchAfter: null
-};
-run('never checks, never looks', NEVER_CHECKS);
+const HEADS_DOWN = STYLES.ideal;
+const NEVER_CHECKS = STYLES.neverChecks;
+run(NEVER_CHECKS.label, NEVER_CHECKS);
 
 // T4: the same teacher, three charts. If these three lines are identical, the
 // seating chart is decoration and something is wrong.
@@ -197,17 +91,15 @@ console.log('');
 // T6: a different roster, a different tell schedule, a different lesson — same
 // room, same rulebook, same three representative styles. Phase 1: this loops
 // over whatever data/periods.json holds rather than naming 5th period, so an
-// authored 7th period lands in this table on its own.
-const IDEAL = { teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 2, catchAfter: null };
-const GOOD = {
-  teaching: s => !s.withitness, scan: s => Math.floor(s.t / 45) % 4 === 0 && s.bandwidth > 5,
-  advanceAt: 1.0, checkEvery: 2, reteach: true, catchAfter: 30, temp: true
-};
+// authored 7th period lands in this table on its own. Phase 2: so does a
+// generated one, under the fixed seed above.
+const IDEAL = STYLES.ideal, GOOD = STYLES.good;
 
 for (const period of PERIODS.slice(1)) {
   const beatSeconds = period.lessonData.beats.reduce((a, b) => a + b.seconds, 0);
+  const gen = period.generated ? ` — generated, seed ${period.generated.seed}, ${period.generated.rerolls} reroll${period.generated.rerolls === 1 ? '' : 's'}` : '';
   console.log(`${period.short} period lesson: ${beatSeconds}s of authored beats, ` +
-    `${period.schedule.length} scheduled tells (vs 4th's ${PERIODS[0].schedule.length})\n`);
+    `${period.schedule.length} scheduled tells (vs 4th's ${PERIODS[0].schedule.length})${gen}\n`);
   run(`${period.short}: ideal (never scans)`, IDEAL, null, period);
   run(`${period.short}: the good teacher`, GOOD, null, period);
   run(`${period.short}: never checks, never looks`, NEVER_CHECKS, null, period);
@@ -239,3 +131,119 @@ console.log(
   `rapport ${avg(day.rapport)}  (means)          ` +
   `beats ${day.delivered}/${day.beats}  checks ${String(day.checks).padStart(2)}  missed ${day.missed}`);
 console.log('');
+
+// Phase 2: the generator soak. Fifty seeds (SOAK=n for more), each a fresh
+// class through the two banded play styles; min/mean/max per meter, and the
+// only assertion in this file: every seed lands inside data/generation.json's
+// bands and every roster and schedule keeps its structural promises. The
+// generator already rerolls a schedule that misses the band, so a failure
+// here means a roster the schedule could not be made to fit — a distribution
+// problem in generation.json, which is a bug and exits non-zero as one.
+import { generateRoster, rosterProblems } from '../src/systems/roster.js';
+import { scheduleProblems } from '../src/systems/scheduler.js';
+import { bandProblems } from '../src/systems/generate.js';
+
+const SOAK = Math.max(1, parseInt(process.env.SOAK || '50', 10));
+const genData = bundle.generation;
+const genRow = periodIds(bundle).map(id => rowFor(id, bundle)).find(r => r.generate);
+if (!genRow) {
+  console.log('no generated period in data/periods.json; nothing to soak');
+} else {
+  console.log(`the generator, ${SOAK} seeds through ${genRow.short} period, ` +
+    `${Object.keys(genData.bands).filter(k => STYLES[k]).join(' and ')}:`);
+  const agg = {};
+  const failures = [];
+  let rerolls = 0, maxRerolls = 0, tells = 0, swallowed = 0;
+  const t0 = Date.now();
+  for (let seed = 1; seed <= SOAK; seed++) {
+    let period;
+    try {
+      period = periodFor(genRow.id, bundle, { seed, day: 0 });
+    } catch (e) { failures.push(`seed ${seed}: ${e.message}`); continue; }
+    const deps = { tellTypes: tData.types, seatGrid: period.seatGrid, rules: seatData.rules, gen: genData };
+    for (const p of rosterProblems(period.roster, genData)) failures.push(`seed ${seed} roster: ${p}`);
+    for (const p of scheduleProblems(period.schedule, period.roster, deps)) failures.push(`seed ${seed} schedule: ${p}`);
+    for (const p of bandProblems(period.generated.results, genData.bands)) failures.push(`seed ${seed} band: ${p}`);
+    rerolls += period.generated.rerolls; maxRerolls = Math.max(maxRerolls, period.generated.rerolls);
+    tells += period.schedule.length;
+    swallowed += runPeriod({ period, data: SIM, style: STYLES.ideal }).plan.suppressed.length;
+    for (const [style, r] of Object.entries(period.generated.results)) {
+      for (const [meter, v] of Object.entries(r)) {
+        const key = `${style}.${meter}`;
+        (agg[key] = agg[key] || []).push(v);
+      }
+    }
+  }
+  const stat = arr => ({
+    min: Math.min(...arr), max: Math.max(...arr), mean: arr.reduce((a, b) => a + b, 0) / arr.length
+  });
+  const p = v => String(Math.round(v)).padStart(3);
+  for (const [key, arr] of Object.entries(agg)) {
+    const s = stat(arr);
+    const [style, meter] = key.split('.');
+    const [lo, hi] = genData.bands[style][meter];
+    console.log(`  ${(STYLES[style].label + ', ' + meter).padEnd(38)} min ${p(s.min)}  mean ${p(s.mean)}  max ${p(s.max)}   band ${lo}..${hi}`);
+  }
+  const ok = SOAK - failures.filter(f => f.includes(': Class seed')).length;
+  console.log(`  ${SOAK} seeds in ${Date.now() - t0}ms; ${(tells / ok).toFixed(1)} tells per period, ` +
+    `${(swallowed / ok).toFixed(2)} swallowed by the August chart; ` +
+    `${(rerolls / ok).toFixed(2)} rerolls per seed, worst ${maxRerolls} of ${genData.bands.rerollCap}`);
+  if (failures.length) {
+    console.log(`\n${failures.length} FAILURES`);
+    for (const f of failures) console.log('  ' + f);
+    process.exit(1);
+  }
+  console.log('  every seed inside the band\n');
+}
+
+// Phase 3: a week. Five days, every period, one style, with the semester
+// record at each bell: what the class opened on (yesterday's twelve numbers
+// minus a night), what it closed on, admin's opinion, and which rung of the
+// ladder the day started on. The failure this table catches is drift — a
+// per-night cost that looks trivial on Tuesday and has compounded to zero by
+// Thursday — so read the `opens` column down, not the `closes` column across.
+// The good teacher should plateau; the wanderer should meet AP Reyes.
+import * as semester from '../src/systems/semester.js';
+const adminData = D('admin');
+
+function week(style) {
+  console.log(`${style.label}, a week of ${PERIODS.length} periods a day, the record at each bell:`);
+  let record = semester.createRecord();
+  for (let d = 0; d < CFG.semester.daysPerWeek; d++) {
+    let pool = null;
+    for (const id of periodIds(bundle)) {
+      const period = periodFor(id, bundle, { seed: TABLE_SEED, day: semester.dayIndexOf(record) });
+      const carry = semester.entering(record, id, {
+        roster: period.roster, seed: period.generated ? period.generated.seed : null, admin: adminData
+      });
+      const opens = carry.startComp
+        ? carry.startComp.reduce((a, b) => a + b, 0) / carry.startComp.length * 100 : null;
+      const r = runPeriod({ period, data: SIM, style, opts: {
+        bandwidth: pool, startComp: carry.startComp, rapport: carry.rapport, fidelity: carry.fidelity,
+        obsWindowScale: carry.obsWindowScale, effects: carry.effects
+      } });
+      pool = Math.min(100, r.state.bandwidth + CFG.day.passingPeriodRecovery);
+      record = semester.recordPeriod(record, {
+        periodId: id, seed: period.generated ? period.generated.seed : null,
+        roster: period.roster, students: r.students,
+        rapport: r.state.rapport, fidelity: r.state.fidelity, mastery: r.state.mastery,
+        bandwidth: r.state.bandwidth, missed: r.missed, caught: 0,
+        obsResult: r.state.obsResult, known: { edges: [], steadies: [] }
+      });
+      const p = v => (v == null ? ' --' : String(Math.round(v)).padStart(3));
+      console.log(`  ${adminData.shortDays[record.day]} ${period.short.padEnd(4)} ` +
+        `mastery ${p(opens)} -> ${p(r.state.mastery)}   fidelity ${p(carry.fidelity)} -> ${p(r.state.fidelity)}   ` +
+        `rapport ${p(carry.rapport)} -> ${p(r.state.rapport)}   bandwidth ${p(r.state.bandwidth)}   ` +
+        `missed ${r.missed}   admin ${carry.rung ? carry.rung.label : '—'}`);
+    }
+    record = semester.advanceDay(record, [], { admin: adminData });
+  }
+  const w = semester.weekSummary(record);
+  const p = v => String(Math.round(v)).padStart(3);
+  console.log(`  ${'week (means)'.padEnd(8)} mastery ${p(w.means.mastery)}         fidelity ${p(w.means.fidelity)}         ` +
+    `rapport ${p(w.means.rapport)}         missed ${w.missed}   ` +
+    `admin ${record.admin.history.length ? record.admin.history.map(h => `${h.id} from ${adminData.shortDays[(h.day + 1) % CFG.semester.daysPerWeek]}`).join(', ') : 'nothing'}\n`);
+  return record;
+}
+week(STYLES.good);
+week(STYLES.wanderer);

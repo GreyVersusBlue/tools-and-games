@@ -8,16 +8,22 @@ import { clamp01, clamp01to100, applyEffects } from '../state.js';
 //
 // A student with an active tell on them is not learning. That is the seam between
 // this system and Withitness, and it is the whole reason the tells matter.
-export function createLesson({ data, students, tellSystem, toast, onBoard, onRoomReact, rand = Math.random }) {
+export function createLesson({ data, students, tellSystem, toast, onBoard, onRoomReact, rand = Math.random,
+                               startComp = null }) {
   const L = CFG.lesson;
   const beats = data.beats;
   const filler = data.filler;
   const copy = data.copy;
 
   // Everyone starts somewhere slightly different, weighted by aptitude.
+  // Phase 3: unless the semester record says where this kid actually is —
+  // twelve numbers indexed by seat, which is who they are, never by desk.
   for (const s of students) {
     const apt = s.aptitude ?? 1;
-    s.comp = clamp01(L.startComprehension * apt + (rand() - 0.5) * 2 * L.startSpread);
+    const carried = startComp && Number.isFinite(startComp[s.seat]) ? startComp[s.seat] : null;
+    s.comp = carried != null
+      ? clamp01(carried)
+      : clamp01(L.startComprehension * apt + (rand() - 0.5) * 2 * L.startSpread);
     s.compShown = s.comp;
   }
 

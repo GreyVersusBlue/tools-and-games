@@ -14,7 +14,7 @@ in git history; none of it is on disk.
 
 # Locked decisions
 
-Fifty-nine numbered decisions, accumulated across ten sessions and the project
+Sixty-one numbered decisions, accumulated across ten sessions and the project
 phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -439,6 +439,31 @@ Two of them have moved since they were written:
    it twice changes nothing. Do the migration or leave the keys alone. Never
    half.
    *Source: Bell to Bell Phase 1, "A day with more than two periods in it".*
+
+60. **A generated roster is a function of its seed and nothing else.** Bell to
+   Bell's 7th period draws twelve kids from one six-digit integer, and the
+   integer is the whole input: no `Math.random` anywhere in the generator, no
+   day, no attempt counter. The tell schedule is the seed plus the day plus
+   the attempt, so the same class does different things on Tuesday. When a
+   generated period misses the balance band, the schedule is re-rolled and
+   the roster is never touched, because the roster is the class and the
+   semester record indexes the class by seat. A roster no schedule can be
+   made to fit inside the cap is a thrown error with the last miss in its
+   message, not a quiet easy period.
+   *Source: Bell to Bell Phase 2, "Kids nobody authored".*
+
+61. **The semester record stores twelve values, never a Mastery scalar, and
+   the night pulls them toward the baseline from either side.** Constraint 7
+   crosses the day boundary intact: a class entry carries `comp[]` by seat and
+   a `base[]` to relax toward, and the only `mastery` number in the record is
+   a day line the Friday Report reads. Overnight, what you taught above the
+   walking-in level keeps `retainOvernight` of itself and what a bad period
+   took from under it comes back by the same share. The one-sided version, a
+   floor at the baseline and nothing coming back, was tried first and sent
+   the wanderer's 7th period from 29 to 12 in a week with zero the week
+   after. That spiral is a Bandwidth-pool fact about a bad day, and it is
+   not allowed to be permanent.
+   *Source: Bell to Bell Phase 3, "The semester remembers".*
 
 
 ---
@@ -1262,7 +1287,7 @@ Three lessons from the project's own retro, worth keeping:
 
 ---
 
-# Bell to Bell, through Phase 1
+# Bell to Bell, through Phase 3
 
 The vertical slice: one first-person class period built on *Withitness* as a
 vision mode that costs bandwidth and lies to you under stress. T5 gave the room
@@ -1397,6 +1422,171 @@ because she is teaching instead of looking. It is that her Withitness budget
 drops from fourteen seconds in 4th to four in 5th and 6th, and she stops being
 able to afford to check the room. That is the mechanic the constant is for, and
 26 is design math: nobody has played it.
+
+## Phase 2 — kids nobody authored
+
+Ranks 1 and 2 of the backlog, shipped together in one pull request with Phase 3
+below. Three rosters and three tell schedules were the game's whole content and
+every one was typed by hand. Phase 2 made the fourth a seed.
+
+**Seven new modules, all pure.** `systems/rng.js` is mulberry32 plus `mixSeed`,
+so seed, day and attempt are separate streams and nothing in the generator
+touches `Math.random`. `systems/roster.js` draws twelve kids with stratified
+temperaments and aptitudes, so the room always has a calm end and a loud end,
+and `rosterProblems()` is the list of promises the authored rosters kept without
+saying so: 1 to 3 kids with steady at or above 0.66, 1 to 3 with tension at or
+above 0.70, an aptitude spread of at least 0.30, no two names sharing their first
+two letters, 4 to 7 notes with no repeats. `systems/scheduler.js` composes 8 to
+10 tells and `scheduleProblems()` holds them to the wishlist's invariants: pair
+tells on kids who can reach each other in the August chart, notes on kids who
+cannot (or it is a handoff you never see), exactly one QUIET between minutes 18
+and 22 on somebody from the calm half, no seat carrying two things at once,
+1.5 minutes between starts, total tell-seconds between 1,450 and 1,900.
+`systems/simulate.js` is `balance.mjs`'s `run()` moved out so the generator
+could hold a class to the same numbers the table prints; the table was diffed
+byte-identical after the move. `systems/generate.js` runs two crude teachers
+through each candidate and re-rolls the schedule if either lands outside
+`data/generation.json`'s bands.
+
+**The promise the wishlist did not name.** Seed 11 was the first miss: a roster
+whose two stabilisers sat, in roll-call order, beside most of the noise. The
+August chart swallowed all but three tells and the never-checks teacher closed
+at 65 Mastery with restless 55. That is a period where nothing happens, and it
+is what constraint 10 (suppression is silent) looks like when a generator does
+not know it exists. The scheduler now asks the chart's own question on paper
+(`adjacencyOf`, exported from `chart.js`, and the steady-times-weight rule) and
+lets the August chart swallow at most two. The suite constructs a roster with
+one rock and six phones beside it and checks that `resolveSchedule` and
+`scheduleProblems` count the same six.
+
+**The band.** From the authored table: ideal Mastery 62 to 82, restless 55 to
+95, missed 5 to 11; never-checks Mastery 36 to 60, restless 78 to 100, missed 5
+to 11. Fifty seeds, and every one landed inside it:
+
+```
+the generator, 50 seeds through 7th period, ideal and neverChecks
+ideal (never scans), mastery           min  70  mean  73  max  74   band 62..82
+ideal (never scans), restless          min  59  mean  76  max  80   band 55..95
+ideal (never scans), missed            min   6  mean   8  max  10   band 5..11
+never checks, never looks, mastery     min  46  mean  51  max  55   band 36..60
+never checks, never looks, restless    min  89  mean  92  max  92   band 78..100
+never checks, never looks, missed      min   6  mean   8  max  10   band 5..11
+9.1 tells per period, 1.40 swallowed by the August chart, 0.08 rerolls per seed, worst 1 of 24
+```
+
+A 1,400-run probe (1,000 seeds on day 0, 100 seeds across five days) needed at
+most 3 rerolls against the cap of 24. The soak is `balance.mjs`'s one assertion
+and exits 1 on any miss; with the reroll removed it listed 10 misses in 120
+seeds, which is how the guard was verified.
+
+**The 7th period, under the fixed seed 4821 the table uses:**
+
+```
+7th period, generated (9 tells, 2 swallowed by the August chart)
+ideal (never scans)        mastery 73  fidelity 87  bandwidth 18  restless 65  missed 7  obs 1/5
+the good teacher           mastery 79  fidelity 82  bandwidth  0  restless  0  missed 0  obs 1/5
+never checks, never looks  mastery 51  fidelity 70  bandwidth 55  restless 89  missed 7  obs 0/5
+
+the good teacher, the whole day on one Bandwidth pool (+26 per passing period)
+7th (opens at  26)         mastery 77  fidelity 85  rapport 68  beats 5/5  checks 11  scan  4s
+4 periods (means)          mastery 77  fidelity 84  rapport 70  beats 19/20  checks 42  missed 0
+```
+
+4th, 5th and 6th are unchanged from Phase 1. The seed lives in the period slot
+(`p7.seed`), is drawn once through `rng.js`, is printed on the report, and the
+start screen takes one back; typing a different seed clears that period's
+chart, discoveries and rapport base, because a different seed is a different
+class. Two guard rails were broken on purpose: removing the validator's
+seat-stacking rule failed one assertion, and removing the band reroll failed
+the soak. Removing the *draw's* busy check failed nothing, because the
+draw-then-validate loop simply redrew, which is the validator doing its job
+and the reason the validator is the thing under test.
+
+## Phase 3 — the semester remembers
+
+**The record.** `systems/semester.js`, 250 lines, pure. One entry per class:
+`comp[]` by seat, `base[]` (start comprehension times aptitude, the level a
+night relaxes toward), Rapport, Fidelity, the seed, and counts of days,
+observations, edges and stabilisers. `entering(record, periodId, { roster,
+seed, admin })` says what a class opens with; `recordPeriod` takes what it
+closed with and replaces today's line if the period is replayed; `advanceDay`
+is the night; `weekSummary` is the Friday Report's input. `repair` runs on
+every load and `migrate` handles version drift, of which there has not been
+any: the record is version 1 from its first write.
+
+**The constants, all design math.** `CFG.semester`: retain 0.82 overnight and
+0.64 over the weekend; Fidelity reverting 0.7 a night toward the district's
+62; Rapport reverting 0.5 toward 55. The first cut had Fidelity reverting 0.3
+and the good teacher pinned at 100 by Tuesday, because a +22 period on a
+carried 76 is 98. At 0.7 she opens near 71 and closes in the 90s all week,
+which leaves the rubric something to buy. Rapport at 0.12 climbed to 95 by
+Friday; at 0.5 a seven-point rechart is a two-point grudge three nights later,
+which is what the chart screen's copy already promised.
+
+**Admin's ladder** is three rows in `data/admin.json`: a quick check-in after
+2 days under 56, a second observation the same week after 3 under 50, a
+growth plan after 4 under 44. Admin's opinion is the mean carried Fidelity
+across every class on the books; the highest rung whose run holds wins and
+nothing stacks. A rung is an effect bag at the bell (Bandwidth only, never
+Mastery), a PA scheduled like any other event, a scale on the rubric window
+(1, 1.5, 2), and a line for the Friday Report. Of the six simulated styles
+only the wanderer reaches a rung: she closes every day at 53, which is under
+the first line and over the second. A teacher who reaches the growth plan
+teaches from the back of the room; there is no such style in `STYLES`.
+
+**Two weeks, twenty rows each.** The good teacher plateaus: from Wednesday
+every class opens at 67 or 68 and closes at 73 to 75, Fidelity opens at 71 or
+72 and closes 93 to 97, Rapport settles at 62 to 64 opening. Nothing drifts and
+nothing runs away. The wanderer is the interesting one:
+
+```
+the wanderer, a week of 4 periods a day, the record at each bell
+MON 4th  mastery  -- -> 50   fidelity 62 -> 56   bandwidth 53   admin —
+MON 6th  mastery  -- -> 38   fidelity 62 -> 56   bandwidth  4   admin —
+MON 7th  mastery  -- -> 29   fidelity 62 -> 56   bandwidth  0   admin —
+THU 4th  mastery  52 -> 56   fidelity 59 -> 53   bandwidth 49   admin Quick check-in
+THU 6th  mastery  36 -> 28   fidelity 59 -> 53   bandwidth  0   admin Quick check-in
+THU 7th  mastery  21 -> 13   fidelity 59 -> 53   bandwidth  0   admin Quick check-in
+FRI 7th  mastery  18 -> 11   fidelity 59 -> 53   bandwidth  0   admin Quick check-in
+week (means)     mastery 40   fidelity 54   rapport 68   admin checkIn from THU
+```
+
+Her 4th and 5th are fine every day. Her 6th and 7th are not, and the reason is
+Phase 1's Bandwidth pool, not Phase 3: the wanderer spends 47 Bandwidth a
+period, opens 7th with about 30, spends most of it under
+`CFG.lowBandwidthThreshold`, and the low-Bandwidth Mastery penalty takes the
+period apart. From Thursday the check-in's 4 Bandwidth at every bell pushes 6th
+under the threshold too. The one-sided retention rule (nothing comes back
+below the baseline) turned that into 29, 22, 17, 15, 12 and then zero the next
+week; the symmetric rule holds it at 11 to 14. That is locked decision #61.
+
+**What reached the browser.** The start screen names the day and the week and
+says whether the class has met you; the clipboard reads `TUE · RM 214`; the
+report's tag reads `TUESDAY · WEEK 1 · 4TH PERIOD`; the last report of the day
+offers `Tomorrow — Tuesday`, and on Friday `The Friday Report`, which is
+`ui/week.js` on the report card: five day rows, a means row, the mastery and
+Fidelity trend lines, what the charts taught you, how many times you looked
+too long, and the rung's line or `admin.escalation.clear`. Its title is the
+period report's four endings read off the week's means, which is the first
+time they have had anything longitudinal to read. A handoff no longer clears
+the next period's `known` slot or overwrites its chart once it has one; both
+belonged to the T6 world where a day was a replay.
+
+**Suites.** 257 smoke assertions became 381. The Phase 3 block asserts the
+record's shape, the twelve-values rule, both directions of overnight
+retention, both reversions, the seed-changes-the-class rule, the week roll,
+every rung of the ladder including the mean-across-classes opinion, the
+window scale reaching the observation, the carried comprehension reaching the
+lesson by seat, and a ten-period drift check: the good teacher's Friday opens
+within 1 of Thursday and closes within 5 of Monday, and the wanderer has met
+AP Reyes. Three guard rails were broken on purpose: dropping the retention
+multiply failed 2, dropping the Fidelity reversion failed 2, and dropping the
+rung's effects from `entering()` crashed the suite on the assertion that reads
+them. A headless Playwright pass over the real page (boot, chart, three
+seconds of play, the generated 7th, a typed seed, the Friday Report from a
+fake week) was run by hand and is not committed; the session's proxy blocked
+the three.js CDN and the pass answered the import map from Castle Conundrum's
+vendored copy.
 
 ---
 

@@ -82,8 +82,16 @@
       <p><b>Mastery is not a bar you fill.</b> It is the average of what twelve people understand, and each of them has their own number. Deliver from the front strip and those numbers climb. A kid with a phone under the desk is not learning anything, which is what the phone is actually costing you.</p>
       <p class="fineprint">Check for understanding to see the comprehension aura in Withitness. It goes stale in about a minute. You are always deciding whether you have time to know.</p>
       <p class="fineprint">Someone with a clipboard will visit today, on no notice. When she does, the rubric she's using will tell you what it wants.</p>
+      <p class="fineprint" id="startDay"></p>
       <p><b>First, the seating chart.</b> Drag a name onto another name. Where somebody sits decides who they can reach, who settles them, what you can see from the front, and how much of you they get. None of that is written on the chart. You learn it by teaching them, and it is still there next period.</p>
+      <div class="seed hide" id="seedRow">
+        <label for="seedInput" id="seedLabel">Class seed</label>
+        <input id="seedInput" class="mono" inputmode="numeric" maxlength="6" autocomplete="off">
+        <button class="ghost" id="seedBtn">Use this seed</button>
+        <span class="fineprint" id="seedHint"></span>
+      </div>
       <button class="cta" id="startBtn">Seating chart</button>
+      <button class="ghost startover" id="startOver">Start the semester over</button>
     </div>
   </div>
 </div>

@@ -105,12 +105,7 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
   // one people forget about, which is why it is worth half.
   function adjacency(i, j) {
     if (i === j || i == null || j == null) return 0;
-    const a = deskOf(i), b = deskOf(j);
-    const dc = Math.abs(a.col - b.col), dr = Math.abs(a.row - b.row);
-    if (dc > 1 || dr > 1) return 0;
-    if (dr === 0) return S.adjacency.side;
-    if (dc === 0) return S.adjacency.frontBack;
-    return S.adjacency.diagonal;
+    return adjacencyOf(deskOf(i), deskOf(j));
   }
 
   function neighbours(i) {
@@ -263,6 +258,32 @@ export function createChart({ seatGrid, room, roster, tellTypes, rules, plan = [
     resolveSchedule, apply, movesFrom, rechartCost, viewModel,
     moveOccluder, occluderLayout
   };
+}
+
+// The reach rule itself, on two desks rather than two students, so the tell
+// scheduler (Phase 2) can ask "could these two do this in the August chart"
+// without building a chart to ask it. createChart's adjacency() is this on
+// whatever desks the chart currently has them in.
+export function adjacencyOf(a, b) {
+  const S = CFG.seating;
+  const dc = Math.abs(a.col - b.col), dr = Math.abs(a.row - b.row);
+  if (dc > 1 || dr > 1) return 0;
+  if (dr === 0) return S.adjacency.side;
+  if (dc === 0) return S.adjacency.frontBack;
+  return S.adjacency.diagonal;
+}
+
+// Where roll-call order puts everyone: desk i is column i mod cols, row i div
+// cols, which is the loop createChart runs before it knows anything else.
+export function gridDesks(seatGrid, n) {
+  const desks = [];
+  for (let r = 0; r < seatGrid.rows.length; r++) {
+    for (let c = 0; c < seatGrid.cols.length; c++) {
+      if (desks.length >= n) return desks;
+      desks.push({ index: desks.length, col: c, row: r });
+    }
+  }
+  return desks;
 }
 
 // Edge keys are order-independent: the chart does not care who started it.

@@ -1,0 +1,12 @@
+{
+  "_note": "Phase 2. The 7th period has no roster and no schedule in here on purpose: both come out of src/systems/generate.js, from the seed the save slot holds. What a generated class still needs authored is what the chart screen says about it.",
+  "seatingCopy": {
+    "sub": "RM 214 · 7TH PERIOD · 5 MINUTES BEFORE THE BELL",
+    "intro": [
+      "Last period of the day. You have never met this class before today and the roster came from the office at 7:52 this morning, which is not a complaint, it is a fact about the office.",
+      "Drag a name onto another name to swap them. The room is drawn from above; the whiteboard is at the top, same as it has been all day.",
+      "The cabinet and the bookshelf are wherever sixth period left them. Nobody in this room has an opinion about that yet."
+    ],
+    "buttons": { "reset": "Back to roll-call order" }
+  }
+}

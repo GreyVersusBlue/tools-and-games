@@ -132,6 +132,35 @@ export const CFG = {
     passingPeriodRecovery: 26   // what four minutes in the hallway give back
   },
 
+  // Phase 3: the semester. What a class walks in with tomorrow is a function
+  // of what it walked out with today, and these are the functions. All of it
+  // is design math until somebody plays a week; the balance harness's week
+  // table is where a wrong number shows up before Thursday does.
+  semester: {
+    daysPerWeek: 5,
+    // Overnight, a student's comprehension relaxes toward their walking-in
+    // level (CFG.lesson.startComprehension x aptitude) from either side: this
+    // much of what you taught them above it survives the night, and the same
+    // share of what a bad period took out from under it comes back, because
+    // they knew that part last week. The weekend is the between-days sibling
+    // of CFG.lesson.forgetPerSec, and it is the bigger one. A class taught
+    // well plateaus in the mid 70s by Wednesday; a class taught badly does
+    // not spiral to zero, it just stays bad.
+    retainOvernight: 0.82,
+    retainWeekend: 0.64,
+    // Fidelity is admin's running opinion, and admin's opinion drifts back
+    // toward the district mean every night unless something keeps moving it.
+    // 0.7 is what keeps a +22 period from pinning the meter at 100 by
+    // Tuesday: the good teacher opens near 71 and closes near 93, the
+    // wanderer opens near 59 and closes near 53, which is under the first
+    // rung of the ladder in data/admin.json and stays there.
+    districtFidelity: 62,
+    fidelityRevert: 0.70,       // per night, of the distance from the district mean
+    // Rapport carries too, and they will be over most of it by Thursday: a
+    // seven-point rechart is a two-point grudge three nights later.
+    rapportRevert: 0.50
+  },
+
   // unresolved tell expiry
   missedRestless: 8,
   missedMastery: -1.2,
