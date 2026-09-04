@@ -6,9 +6,12 @@ ranked index you scan, and the ideas underneath it that have no other home.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **The Seal, a studio-style landing mockup at
-`landing.html` (PR #101)**, two days after **the upgrade paths and ten phased
-wishlists (PR #100)**, which is where most of the ranking below comes from.
+The last thing that shipped is **this consolidation itself (PR #102)** — the
+prompt rounds, the ten handoffs and `UPGRADE-PATHS.md` retired into this file
+and `HISTORY.md`. Before it: **The Seal, a studio-style landing mockup at
+`landing.html` (PR #101)**, and **the upgrade paths and ten phased wishlists
+(PR #100)**, which is where most of the ranking below comes from. No site
+version was bumped — this shipped no game, tool or page change.
 
 **144 ranked items.** 82 of them are phases in one of the ten project
 `WISHLIST.md` files; the other 62 are standalone, and live in Tier 2 below.
