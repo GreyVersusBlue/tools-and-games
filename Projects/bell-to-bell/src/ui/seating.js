@@ -14,7 +14,17 @@ import { dom } from './dom.js';
 // the very element under the pointer mid-drag (same trap the desk comment
 // above used to warn about). Dragging instead repositions elements in place
 // and lets `onMoveOccluder` hand back a fresh view model to patch from.
-export function createSeatingScreen({ copy, onSwap, onReset, onMoveOccluder, onConfirm }) {
+//
+// Phase 8: a desk card is drawn at a size in room metres, not in pixels, so on
+// a phone the twelve of them come out around 52x34 CSS px — under every
+// fingertip guideline there is, and the swap is a press on one and a lift over
+// another. `touch` widens the card's own footprint rather than scaling the
+// plan, because the plan is a map of a real room and the desks are the only
+// thing on it you are meant to hit.
+const DESK = { mouse: [1.45, 0.95], touch: [1.72, 1.24] };
+
+export function createSeatingScreen({ copy, onSwap, onReset, onMoveOccluder, onConfirm, touch = false }) {
+  const [deskW, deskD] = touch ? DESK.touch : DESK.mouse;
   let vm = null, meta = null;
   let selected = null, pressed = null, dragOcc = null;
   const cards = new Map(), occEls = new Map();
@@ -119,7 +129,7 @@ export function createSeatingScreen({ copy, onSwap, onReset, onMoveOccluder, onC
       el.title = s.sightFromLabels.length
         ? `${s.name} \u2014 you can see this desk from ${s.sightFromLabels.join(', ')}`
         : `${s.name} \u2014 you cannot see this desk from the front at all`;
-      place(el, s.x, s.z, 1.45, 0.95);
+      place(el, s.x, s.z, deskW, deskD);
       plan.appendChild(el);
       cards.set(s.desk, el);
     }

@@ -5,7 +5,7 @@ import { subjectKey } from './systems/subject.js';
 // the day's running order.
 const CORE = ['room', 'students', 'tells', 'interventions', 'events', 'lesson',
   'reactions', 'seating', 'observation', 'assets', 'periods', 'generation', 'admin',
-  'subjects'];
+  'subjects', 'controls'];
 
 async function fetchAll(names, base) {
   const entries = await Promise.all(names.map(async name => {

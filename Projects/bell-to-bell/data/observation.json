@@ -35,6 +35,7 @@
       "key": "objective",
       "code": "O",
       "label": "Posted objective",
+      "short": "OBJECTIVE",
       "toast": {
         "kind": "good", "title": "Posted objective",
         "body": "You flip the board to today's actual date. Nobody in this room has seen it do that before."
@@ -44,6 +45,7 @@
       "key": "question",
       "code": "H",
       "label": "Higher-order question",
+      "short": "QUESTION",
       "toast": {
         "kind": "good", "title": "Higher-order question",
         "body": "You ask one with more than one right answer. Two hands go up. Neither is right, but they went up."
@@ -53,6 +55,7 @@
       "key": "wait",
       "code": "F",
       "label": "Wait time",
+      "short": "WAIT",
       "hold": true,
       "toast": {
         "kind": "good", "title": "Wait time",
@@ -63,12 +66,14 @@
       "key": "check",
       "code": "Q",
       "label": "Checks for understanding",
+      "short": "CHECK",
       "implicit": true
     },
     {
       "key": "discourse",
       "code": "G",
       "label": "Student-led discourse",
+      "short": "DISCOURSE",
       "toast": {
         "kind": "good", "title": "Student-led discourse",
         "body": "You step back and let them talk to each other instead of to you. Three of them actually do."
@@ -78,6 +83,7 @@
       "key": "modeling",
       "code": "M",
       "label": "Modeled thinking aloud",
+      "short": "MODEL",
       "toast": {
         "kind": "good", "title": "Modeled thinking aloud",
         "body": "You do the first one on the board and narrate every wrong turn you take on the way. It is the most useful ninety seconds of the period and it looks like stalling."
@@ -87,6 +93,7 @@
       "key": "vocabulary",
       "code": "V",
       "label": "Academic vocabulary",
+      "short": "VOCAB",
       "toast": {
         "kind": "good", "title": "Academic vocabulary",
         "body": "You say the word, write the word, and make them say the word. She writes the word down too."
@@ -96,6 +103,7 @@
       "key": "nonverbal",
       "code": "N",
       "label": "Nonverbal redirect",
+      "short": "NONVERBAL",
       "toast": {
         "kind": "good", "title": "Nonverbal redirect",
         "body": "You look at the back corner for one second longer than necessary and the back corner sits up. She logs it as a management strategy. It was eye contact."
@@ -105,6 +113,7 @@
       "key": "evidence",
       "code": "C",
       "label": "Cites textual evidence",
+      "short": "EVIDENCE",
       "toast": {
         "kind": "good", "title": "Cites textual evidence",
         "body": "You make somebody say a page number out loud. The page number was correct, which surprised both of you."

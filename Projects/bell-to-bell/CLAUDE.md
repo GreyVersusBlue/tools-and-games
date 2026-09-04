@@ -69,6 +69,18 @@ through `semester.repair` on every load; a generated period's seed is the slot k
   it cannot be loaded by a test. That is why `systems/tells.js` went its whole
   life unexecuted.
 - **`src/ui/` never imports from `src/systems/`.** UI takes data in and calls back out.
+- **The on-screen controls are generated from `CFG.keys`.** Adding a key must put a
+  chip on the phone without an edit in `main.js` or `ui/touch.js`. Its words come from
+  `data/controls.json`, except a look-for's, which live in `data/observation.json` and
+  are read from there — the rubric line is written down once.
+- **`#touch` covers the viewport and must stay `pointer-events:none`**, with the
+  controls inside it `auto`. Without that the layer eats every touch meant for the room
+  and the game takes no input at all. `smoke.mjs` asserts it.
+- **The frame budget is `CFG.quality.budgetMs`, and `src/quality.js` is the only thing
+  that decides what to give up.** Resolution is the only lever that may move
+  mid-period; antialiasing and the rigged characters are boot decisions, because WebGL
+  will not un-MSAA a live context and twelve people cannot be unskinned without the
+  room blinking.
 - Keep `main.js` as wiring and the frame loop. Logic belongs in a system.
 
 ## Design constraints that are not up for renegotiation
@@ -121,6 +133,12 @@ These are locked. Do not "improve" them without asking.
     week six. The tell schedule is the seed plus the day. A class the band check
     cannot fit is a loud error, not a quiet easy period, and nothing re-rolls the
     roster to make the numbers land.
+17. **A touch source never gets its own branch downstream.** The virtual stick
+    produces the same `{fx, fz}` pair WASD produces and hands it to the same
+    clamp-and-collide walk; an on-screen chip pushes the same action string a keydown
+    pushes; a hold pad sets the same flag SHIFT sets. There is no second movement path
+    and there is not to be one. Withitness and wait time stay two independent flags:
+    the five-second hold has to work with Withitness already down.
 
 ## Voice
 Flavor text is deadpan, specific, and written for someone who has actually taught.

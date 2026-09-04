@@ -27,12 +27,15 @@ import { createTellSystem } from '../src/systems/tells.js';
 import { createWithitness } from '../src/systems/withitness.js';
 import { createTellMaterials, createRegistry } from '../src/world/materials.js';
 import { createTellMeshBuilder, setTellVision, TELL_SHAPES } from '../src/world/tellmesh.js';
+import { createInput, moveVector, stickVector, wantsTouchUI } from '../src/input.js';
+import { pickTier, tierSettings, median, createFrameBudget } from '../src/quality.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
 const roomData = D('room'), seatData = D('seating'), p5Data = D('period5'), obsData = D('observation');
 const genData = D('generation'), adminData = D('admin');
+const ctrlData = D('controls');
 
 const mkChart = (saved=null, layout=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
@@ -2259,6 +2262,324 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
       !overlaps({ ...rectOf('cabinet'), x: target.x, z: target.z }, repaired));
   }
 }
+
+
+// ---------------------------------------------------------------------------
+// Phase 8 — A THUMB HAS NEVER TOUCHED THIS. input.js could look around the
+// room on a phone and could not walk, teach, or hold anything. Everything
+// below exists to hold one line true: a touch source never gets its own
+// branch downstream. The stick makes the same vector WASD makes, an on-screen
+// chip pushes the same action a keydown pushes, and a pad sets the same flag
+// SHIFT sets.
+//
+// The event wiring is executed here, not just the math. createInput takes its
+// listener target as an argument for exactly that reason, and the stub below
+// is the whole reason two fingers at once can be tested at all.
+// ---------------------------------------------------------------------------
+{
+  // ---- the math, on its own -------------------------------------------
+  {
+    const w = moveVector({ KeyW: true }, { x: 0, y: 0 });
+    check('W alone is a unit vector forward', Math.abs(w.fz - 1) < 1e-9 && w.fx === 0 && w.mag === 1);
+
+    const wd = moveVector({ KeyW: true, KeyD: true }, { x: 0, y: 0 });
+    check('W and D together are still unit length',
+      Math.abs(Math.hypot(wd.fx, wd.fz) - 1) < 1e-9);
+
+    check('nothing held is nothing to do', moveVector({}, { x: 0, y: 0 }) === null);
+
+    // A thumb on the pad is a deliberate act; a stuck key is not.
+    const both = moveVector({ KeyS: true }, { x: 1, y: 0 });
+    check('the stick wins over a held key', both.fx === 1 && both.fz === 0);
+
+    // Half a tilt is half a step, which a key cannot express at all.
+    const half = moveVector({}, { x: 0, y: -0.5 });
+    check('a half-tilted stick walks at half speed', Math.abs(half.mag - 0.5) < 1e-9);
+    check('and still points somewhere unit-length',
+      Math.abs(Math.hypot(half.fx, half.fz) - 1) < 1e-9);
+  }
+
+  {
+    const dead = stickVector(100, 100, 100 + CFG.touch.deadZone - 1, 100);
+    check('a thumb inside the deadzone is not a step', dead.x === 0 && dead.y === 0);
+
+    const full = stickVector(100, 100, 100 + CFG.touch.stickRadius * 3, 100);
+    check('a thumb past the radius clamps to full tilt', Math.abs(full.x - 1) < 1e-9);
+
+    const up = stickVector(100, 100, 100, 100 - CFG.touch.stickRadius);
+    check('stick space is screen space: up is negative y', up.y < 0 && up.x === 0);
+  }
+
+  {
+    check('a coarse pointer gets the on-screen controls', wantsTouchUI({ coarse: true }));
+    check('a mouse does not', !wantsTouchUI({ coarse: false, hasTouch: false }));
+    check('a browser that only admits to ontouchstart still does',
+      wantsTouchUI({ coarse: false, hasTouch: true }));
+    check('?touch=off is how you look at the desktop branch from a phone',
+      !wantsTouchUI({ coarse: true, hasTouch: true, override: 'off' }));
+    check('?touch=on is how you look at the phone branch from a desktop',
+      wantsTouchUI({ override: 'on' }));
+  }
+
+  // ---- the wiring, executed -------------------------------------------
+  //
+  // A stub that records handlers and lets the test fire them, because the
+  // interesting case — walking while looking — is two touch identifiers alive
+  // at the same moment and nothing short of real dispatch proves it works.
+  const mkTarget = () => {
+    const handlers = new Map();
+    return {
+      innerWidth: 800,
+      addEventListener(type, fn) {
+        if (!handlers.has(type)) handlers.set(type, []);
+        handlers.get(type).push(fn);
+      },
+      fire(type, ev) { for (const fn of (handlers.get(type) || [])) fn(ev); }
+    };
+  };
+  const touches = (...list) => ({ changedTouches: list.map(([identifier, clientX, clientY]) =>
+    ({ identifier, clientX, clientY })) });
+  const mkInput = () => {
+    const root = mkTarget(), canvas = mkTarget();
+    return { root, canvas, input: createInput(canvas, { yaw: 0 }, { root }) };
+  };
+  const bounds = roomData.bounds;
+  const mkCam = () => ({ position: { x: 0, y: CFG.eyeHeight, z: 1.0 } });
+  const walk = (input, cam, seconds) => input.move(cam, seconds, bounds, [], []);
+
+  {
+    // The claim the whole phase rests on: full-tilt stick forward and W held
+    // move the camera the same distance in the same direction.
+    const a = mkInput(), b = mkInput();
+    const camStick = mkCam(), camKeys = mkCam();
+
+    a.canvas.fire('touchstart', touches([1, 120, 300]));
+    a.canvas.fire('touchmove', touches([1, 120, 300 - CFG.touch.stickRadius * 2]));
+    walk(a.input, camStick, 0.1);
+
+    b.root.fire('keydown', { code: 'KeyW', preventDefault() {} });
+    walk(b.input, camKeys, 0.1);
+
+    check('a full-tilt stick and a held W walk the same way',
+      Math.abs(camStick.position.x - camKeys.position.x) < 1e-9 &&
+      Math.abs(camStick.position.z - camKeys.position.z) < 1e-9);
+    check('and it actually moved somewhere', Math.abs(camKeys.position.z - 1.0) > 1e-6);
+  }
+
+  {
+    // Two fingers. The left half walks, the right half looks, and neither
+    // takes the other's identifier.
+    const { canvas, input } = mkInput();
+    const cam = mkCam();
+    const yaw0 = input.look.yaw;
+
+    canvas.fire('touchstart', touches([7, 100, 320], [8, 600, 200]));
+    canvas.fire('touchmove', touches([7, 100 + CFG.touch.stickRadius * 2, 320], [8, 660, 200]));
+    walk(input, cam, 0.1);
+
+    check('the left-half finger walks', Math.abs(cam.position.x) > 1e-6);
+    check('the right-half finger looks at the same time', input.look.yaw !== yaw0);
+
+    // Lifting the look finger must not take the stick with it.
+    const x = cam.position.x;
+    canvas.fire('touchend', touches([8, 660, 200]));
+    walk(input, cam, 0.1);
+    check('lifting the look finger leaves the stick alone', cam.position.x > x);
+
+    canvas.fire('touchend', touches([7, 700, 320]));
+    const stopped = cam.position.x;
+    walk(input, cam, 0.1);
+    check('lifting the walk finger stops the walk', cam.position.x === stopped);
+  }
+
+  {
+    // A finger that lands on the right first must not become the stick, or
+    // looking around the room walks you across it.
+    const { canvas, input } = mkInput();
+    const cam = mkCam();
+    const yaw0 = input.look.yaw;
+    canvas.fire('touchstart', touches([5, 700, 200]));
+    canvas.fire('touchmove', touches([5, 700, 100]));
+    walk(input, cam, 0.2);
+    check('a finger that lands on the right looks and does not walk',
+      input.look.pitch !== -0.04 && cam.position.x === 0 && cam.position.z === 1.0);
+    check('and the walk half is still free for the other thumb',
+      (canvas.fire('touchstart', touches([6, 100, 300])),
+       canvas.fire('touchmove', touches([6, 100 + CFG.touch.stickRadius * 2, 300])),
+       walk(input, cam, 0.1), Math.abs(cam.position.x) > 1e-6));
+  }
+
+  {
+    // A second finger landing in the walk half while the stick is taken looks
+    // rather than fighting over it.
+    const { canvas, input } = mkInput();
+    const cam = mkCam();
+    canvas.fire('touchstart', touches([1, 100, 300]));
+    const yaw0 = input.look.yaw;
+    canvas.fire('touchstart', touches([2, 140, 300]));
+    canvas.fire('touchmove', touches([2, 240, 300]));
+    walk(input, cam, 0.1);
+    check('a second finger in the walk half looks instead of stealing the stick',
+      input.look.yaw !== yaw0 && cam.position.x === 0);
+  }
+
+  {
+    // The chips and the pads. Same actions, same flags, no second path.
+    const { root, input } = mkInput();
+
+    root.fire('keydown', { code: CFG.keys.advance, preventDefault() {} });
+    check('a keydown queues its action', (input.takeActions() || []).includes('advance'));
+
+    input.press('advance');
+    check('and an on-screen chip queues the same one',
+      (input.takeActions() || []).includes('advance'));
+    check('actions drain once per frame', input.takeActions() === null);
+
+    check('nothing is held to start with', !input.wantsWithitness() && !input.wantsWait());
+    input.setHold('withitness', true);
+    check('the Withitness pad is SHIFT', input.wantsWithitness());
+    // The interesting case: the five-second wait-time hold under a pad that
+    // is already down.
+    input.setHold('wait', true);
+    check('the wait pad works while Withitness is already held',
+      input.wantsWithitness() && input.wantsWait());
+    input.setHold('withitness', false);
+    check('and releasing one does not release the other',
+      !input.wantsWithitness() && input.wantsWait());
+
+    root.fire('blur', {});
+    check('losing the window releases every pad', !input.wantsWithitness() && !input.wantsWait());
+    input.setHold('nonsense', true);
+    check('an unknown hold name is ignored rather than invented',
+      !input.wantsWithitness() && !input.wantsWait());
+  }
+
+  {
+    // A pad stuck down after the window blurs would leave the room in thermal
+    // view with nobody touching anything; the stick stuck down would walk the
+    // teacher into a wall.
+    const { root, canvas, input } = mkInput();
+    const cam = mkCam();
+    canvas.fire('touchstart', touches([3, 90, 300]));
+    canvas.fire('touchmove', touches([3, 300, 300]));
+    root.fire('blur', {});
+    const at = cam.position.x;
+    walk(input, cam, 0.2);
+    check('losing the window releases the stick too', cam.position.x === at);
+  }
+
+  // ---- the strip is generated, not written down ------------------------
+  {
+    // main.js builds one chip per row of CFG.keys. Adding a key must not need
+    // an edit anywhere else, and a key with no label must still get a button.
+    const lookCopy = Object.fromEntries(obsData.lookFors.map(l => [l.key, l]));
+    const chipFor = action => {
+      const c = action.startsWith('look:') ? lookCopy[action.slice(5)] : ctrlData.labels[action];
+      return { action, short: (c?.short || action).toUpperCase(), long: c?.long || c?.label || '' };
+    };
+    const chips = Object.keys(CFG.keys).map(chipFor);
+    check('every key in CFG.keys becomes exactly one chip', chips.length === Object.keys(CFG.keys).length);
+    check('and every chip has words on it', chips.every(c => c.short.length > 0));
+    check('a key nobody wrote a label for still gets a chip',
+      chipFor('somethingNew').short === 'SOMETHINGNEW');
+
+    // The look-for chips must read data/observation.json rather than spelling
+    // the same rubric line out a second time in data/controls.json.
+    const lookActions = Object.keys(CFG.keys).filter(a => a.startsWith('look:'));
+    check('every look-for key has a row in observation.json',
+      lookActions.every(a => lookCopy[a.slice(5)]));
+    check('and observation.json is where its words are',
+      lookActions.every(a => !(a in ctrlData.labels)));
+    check('every look-for row carries a chip-length short form',
+      obsData.lookFors.every(l => typeof l.short === 'string' && l.short.length && l.short.length <= 10));
+    check('both hold pads are named in controls.json',
+      !!ctrlData.holds.withitness?.short && !!ctrlData.holds.wait?.short);
+  }
+
+  // ---- the frame budget ------------------------------------------------
+  {
+    check('the budget is written down as a number', CFG.quality.budgetMs === 33.3);
+    check('median of an even list is the middle pair', median([10, 20, 30, 40]) === 25);
+    check('median of an odd list is the middle', median([50, 10, 30]) === 30);
+    check('an empty sample is zero, not NaN', median([]) === 0);
+
+    check('a mouse with cores gets everything', pickTier({ coarse: false, cores: 8 }) === 'high');
+    check('a browser that admits nothing is assumed to be a desktop',
+      pickTier({}) === 'high');
+    check('a current phone keeps its twelve rigged bodies and loses MSAA',
+      pickTier({ coarse: true, cores: 8, memory: 6 }) === 'medium');
+    check('a four-core phone takes the primitive bodies',
+      pickTier({ coarse: true, cores: 4, memory: 4 }) === 'low');
+    check('so does one with 3 GB', pickTier({ coarse: true, cores: 8, memory: 3 }) === 'low');
+    check('and only the low tier drops the characters',
+      tierSettings('low').characters === false && tierSettings('medium').characters === true);
+    check('an unknown tier name falls back to high rather than to undefined',
+      tierSettings('nonsense') === CFG.quality.tiers.high);
+  }
+
+  {
+    const mk = () => createFrameBudget({
+      budgetMs: 33.3, sampleFrames: 10, overBudgetSeconds: 0.9,
+      ratios: [2, 1.5, 1, 0.75], startRatio: 2
+    });
+    const feed = (b, ms, frames) => {
+      let last = null;
+      for (let i = 0; i < frames; i++) { const r = b.push(ms); if (r) last = r; }
+      return last;
+    };
+
+    const fine = mk();
+    check('a room inside the budget gives up nothing', feed(fine, 16, 200) === null);
+    check('and reports the median it measured', Math.abs(fine.report().medianMs - 16) < 1e-9);
+    check('and the fps that goes with it', fine.report().fps === 63);
+
+    const slow = mk();
+    // 50 ms frames: one 10-frame window is 0.5 s, so one window is not enough.
+    check('one slow window is not a verdict', feed(slow, 50, 10) === null);
+    const dropped = feed(slow, 50, 10);
+    check('two of them is', dropped && dropped.pixelRatio === 1.5);
+    check('and the drop is on the record',
+      slow.report().drops.length === 1 && slow.report().pixelRatio === 1.5);
+
+    // All the way down, and then nothing left to give up.
+    feed(slow, 50, 200);
+    check('the ladder bottoms out at the last ratio', slow.report().pixelRatio === 0.75);
+    check('and stops asking for more', feed(slow, 50, 200) === null);
+    check('every step it took is written down', slow.report().drops.length === 3);
+
+    // A phone whose boot tier already capped it at 1 can only fall one step.
+    const capped = createFrameBudget({
+      budgetMs: 33.3, sampleFrames: 10, overBudgetSeconds: 0.9,
+      ratios: [2, 1.5, 1, 0.75], startRatio: 1
+    });
+    feed(capped, 50, 100);
+    check('a device that started at 1 falls to 0.75 and no further',
+      capped.report().pixelRatio === 0.75 && capped.report().drops.length === 1);
+  }
+
+  // ---- the document the controls are drawn into ------------------------
+  {
+    const html = fs.readFileSync('../index.html', 'utf8');
+    const css = fs.readFileSync('../styles/main.css', 'utf8');
+    check('index.html has somewhere to put the on-screen controls', /id="touch"/.test(html));
+    check('and both halves of the start screen key list',
+      /id="kbdKeys"/.test(html) && /id="touchKeys"/.test(html));
+    check('the touch layer is styled', /#touch\.on\{display:block\}/.test(css));
+    // The layer covers the whole viewport. If it is not inert, it eats every
+    // touch meant for the room and the game stops taking input at all.
+    check('the touch layer itself is inert', /#touch\{[^}]*pointer-events:none/.test(css));
+    check('and its controls are not', /#touch > \*\{pointer-events:auto\}/.test(css));
+    check('a chip is at least 44px of fingertip', /\.tchip\{[^}]*min-height:44px/.test(css));
+    check('a hold pad is bigger than that', /\.tpad\{[^}]*min-height:56px/.test(css));
+    // The rubric panel sat at a fixed top:336px, which is past the bottom of a
+    // landscape phone. The media-query pass is the fix, so assert it exists.
+    check('the readouts have a small-viewport pass',
+      /@media \(max-width:880px\),\(max-height:560px\)/.test(css));
+    check('and a desk card cannot be mistaken for a scroll',
+      /\.deskcard\{touch-action:none/.test(css));
+  }
+}
+
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');
 process.exit(fails?1:0);
