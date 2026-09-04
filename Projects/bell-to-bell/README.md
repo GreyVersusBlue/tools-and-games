@@ -3,7 +3,8 @@
 A 3D browser game about being a classroom teacher. This repo currently contains
 **Slice 001 — "One Period"**: a 47-minute class period, one room, twelve students,
 and the mechanic the whole game is built around — followed, if you take the report
-screen's offer, by a second period: same room, a different twelve students.
+screen's offer, by 5th and then 6th: same room, a different twelve students each
+time, on one Bandwidth pool that does not refill until tomorrow.
 
 ## Withitness
 
@@ -109,13 +110,16 @@ data/                 ← content lives here, not in code
   lesson.json         the beats, what goes on the board, and the lesson's copy
   reactions.json      pose definitions: what a body does and for how long
   seating.json        chart screen copy, the seating rules table, report lines
-  period5.json         5th period: its own roster, tell schedule, lesson and chart copy
-  observation.json     the Observation: alert/arrival copy, look-fors, the post-conference tree
+  periods.json        the school day in order: one row per period, pointing at its content
+  period5.json        5th period: its own roster, tell schedule, lesson and chart copy
+  period6.json        6th period: the same, for the class that lost Monday
+  observation.json    the Observation: alert/arrival copy, look-fors, the post-conference tree
 src/
   config.js           every tuning constant
   state.js            game state + effect application
-  loader.js           fetches data/
-  persist.js          the chart and what you learned, between periods
+  loader.js           fetches data/, including whatever periods.json points at
+  periods.js          reads the day out of periods.json; periodFor() is a lookup
+  persist.js          the chart and what you learned, between periods; the slot scheme
   input.js            keys, look, movement, collision
   audio.js            drone, heartbeat, bell
   world/materials.js  palette + thermal twins + swap registry
@@ -153,6 +157,11 @@ Most of what this game needs next is content, and content is data:
   its key in `defaultOptions` or a `byType` list.
 - **A new lesson beat** — add an entry to `data/lesson.json` → `beats`: a label, the line
   you say, what goes on the whiteboard, how long it should take, and how fast it lands.
+- **A whole new period** — write `data/period7.json` with a `roster`, a `schedule`, a
+  `lesson` and a `seatingCopy` (copy `period6.json` and start editing), then add a row
+  to `data/periods.json` pointing at it and set the period before it to hand off to it.
+  That is the entire job: no `.js` file is involved, `src/loader.js` fetches whatever
+  the new row names, and both test suites pick the period up on their own.
 - **A new reaction** — add a pose to `data/reactions.json`, then name it in an intervention's
   `reaction` field or a tell type's `posture` field.
 - **Retuning difficulty** — `src/config.js`. Nothing else. Then run `tests/balance.mjs`.

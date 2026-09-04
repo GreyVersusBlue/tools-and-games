@@ -11,10 +11,20 @@ import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart } from '../src/systems/chart.js';
 import { createObservation } from '../src/systems/observation.js';
 import { tickMeters } from '../src/systems/meters.js';
+import { periodFor, periodIds } from '../src/periods.js';
+import { contentFiles } from '../src/loader.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`, 'utf8'));
 const lData = D('lesson'), sData = D('students'), tData = D('tells'), eData = D('events');
-const roomData = D('room'), seatData = D('seating'), p5Data = D('period5'), obsData = D('observation');
+const roomData = D('room'), seatData = D('seating'), obsData = D('observation');
+
+// Phase 1: the day comes out of data/periods.json, so a period added there
+// shows up in this table without an edit in here.
+const pData = D('periods');
+const bundle = { room: roomData, students: sData, tells: tData, lesson: lData,
+  seating: seatData, periods: pData };
+for (const name of contentFiles(pData)) if (!(name in bundle)) bundle[name] = D(name);
+const PERIODS = periodIds(bundle).map(id => periodFor(id, bundle));
 
 // T7: a fake DOM just big enough for createObservation to touch without
 // throwing — the balance harness has no HUD to actually draw.
@@ -23,20 +33,16 @@ const mkObsDom = () => ({ pa: { classList: fakeClassList() }, paTitle: {}, paTxt
 
 const DT = 1 / 60;
 
-// T6: period4's content, or period5's — same shape either way, so `run` can
-// simulate whichever one it's handed.
-const P4_CONTENT = { roster: sData.roster, schedule: tData.schedule, lesson: lData };
-const P5_CONTENT = {
-  roster: p5Data.roster, schedule: p5Data.schedule,
-  lesson: { ...p5Data.lesson, copy: lData.copy }
-};
-
-function run(name, style, chartSeats = null, content = P4_CONTENT) {
+// T6: whichever period it is handed — same shape either way, because since
+// Phase 1 every period is a row of the same shape read out of periods.json.
+// `opts.bandwidth` is the day's carried pool; null means a full tank.
+function run(name, style, chartSeats = null, period = PERIODS[0], opts = {}) {
+  const content = { roster: period.roster, schedule: period.schedule, lesson: period.lessonData };
   // T4: everything starts at the chart. The schedule this room produces is not
   // the authored schedule — it is what the authored schedule becomes once you
   // decide who is sitting next to whom.
   const chart = createChart({
-    seatGrid: sData.seatGrid, room: roomData, roster: content.roster,
+    seatGrid: period.seatGrid, room: roomData, roster: content.roster,
     tellTypes: tData.types, rules: seatData.rules,
     plan: seatData.plan.furniture, saved: chartSeats
   });
@@ -53,6 +59,9 @@ function run(name, style, chartSeats = null, content = P4_CONTENT) {
   const tellSystem = { defs: tData.types, tells, kill(t) { t.dead = true; }, describe: () => '' };
 
   const state = createState();
+  // Phase 1: Bandwidth does not regenerate during the school day. Second and
+  // third period start with whatever the last bell left, plus the hallway.
+  if (opts.bandwidth != null) state.bandwidth = Math.max(0, Math.min(100, opts.bandwidth));
   const lesson = createLesson({ data: content.lesson, students, tellSystem, toast: () => {}, rand: () => 0.5 });
   const temp = createRoomTemp({ data: eData, students, tellSystem, toast: () => {} });
   const observation = createObservation({ data: obsData, dom: mkObsDom(), toast: () => {} });
@@ -129,6 +138,7 @@ function run(name, style, chartSeats = null, content = P4_CONTENT) {
     console.log('   ' + [...students].sort((a, b) => b.comp - a.comp)
       .map(s => `${s.name} ${Math.round(s.comp * 100)}`).join('  '));
   }
+  return { state, missed, beats: content.lesson.beats.length };
 }
 
 console.log(`\nperiod: ${CFG.periodSeconds}s game / ${Math.round(CFG.periodSeconds / CFG.timeScale)}s real`);
@@ -163,9 +173,10 @@ const HEADS_DOWN = {
   teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 2, catchAfter: null
 };
 
-run('never checks, never looks', {
+const NEVER_CHECKS = {
   teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 0, catchAfter: null
-});
+};
+run('never checks, never looks', NEVER_CHECKS);
 
 // T4: the same teacher, three charts. If these three lines are identical, the
 // seating chart is decoration and something is wrong.
@@ -183,18 +194,48 @@ run('  the pairs split up', HEADS_DOWN, swaps([5, 11], [2, 7]));
 run('  the barometer up front', HEADS_DOWN, swaps([6, 0]));
 console.log('');
 
-// T6: a different roster, a different (busier) tell schedule, a different
-// lesson — same room, same rulebook, same two representative styles.
-console.log(`5th period lesson: ${P5_CONTENT.lesson.beats.reduce((a, b) => a + b.seconds, 0)}s of authored beats, ` +
-  `${p5Data.schedule.length} scheduled tells (vs 4th's ${tData.schedule.length})\n`);
-run('5th: ideal (never scans)', {
-  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 2, catchAfter: null
-}, null, P5_CONTENT);
-run('5th: the good teacher', {
+// T6: a different roster, a different tell schedule, a different lesson — same
+// room, same rulebook, same three representative styles. Phase 1: this loops
+// over whatever data/periods.json holds rather than naming 5th period, so an
+// authored 7th period lands in this table on its own.
+const IDEAL = { teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 2, catchAfter: null };
+const GOOD = {
   teaching: s => !s.withitness, scan: s => Math.floor(s.t / 45) % 4 === 0 && s.bandwidth > 5,
   advanceAt: 1.0, checkEvery: 2, reteach: true, catchAfter: 30, temp: true
-}, null, P5_CONTENT);
-run('5th: never checks, never looks', {
-  teaching: () => true, scan: () => false, advanceAt: 1.0, checkEvery: 0, catchAfter: null
-}, null, P5_CONTENT);
+};
+
+for (const period of PERIODS.slice(1)) {
+  const beatSeconds = period.lessonData.beats.reduce((a, b) => a + b.seconds, 0);
+  console.log(`${period.short} period lesson: ${beatSeconds}s of authored beats, ` +
+    `${period.schedule.length} scheduled tells (vs 4th's ${PERIODS[0].schedule.length})\n`);
+  run(`${period.short}: ideal (never scans)`, IDEAL, null, period);
+  run(`${period.short}: the good teacher`, GOOD, null, period);
+  run(`${period.short}: never checks, never looks`, NEVER_CHECKS, null, period);
+  console.log('');
+}
+
+// Phase 1: the whole day, back to back, on one Bandwidth pool. Bandwidth is
+// the one meter the treatment says does not regenerate during the school day,
+// so this is the only row in the file where a period starts from anything
+// other than CFG.start — each one opens on whatever the last bell left plus
+// CFG.day.passingPeriodRecovery. If the last row here looks like the first,
+// the pool is not costing anything and the constant is wrong.
+console.log(`the good teacher, the whole day on one Bandwidth pool ` +
+  `(+${CFG.day.passingPeriodRecovery} per passing period):`);
+let pool = null;
+const day = { mastery: 0, fidelity: 0, rapport: 0, beats: 0, delivered: 0, checks: 0, missed: 0 };
+for (const period of PERIODS) {
+  const opened = pool == null ? CFG.start.bandwidth : pool;
+  const r = run(`  ${period.ordinal} (from ${Math.round(opened)})`, GOOD, null, period, { bandwidth: pool });
+  pool = Math.min(100, r.state.bandwidth + CFG.day.passingPeriodRecovery);
+  day.mastery += r.state.mastery; day.fidelity += r.state.fidelity; day.rapport += r.state.rapport;
+  day.beats += r.beats; day.delivered += r.state.beatsDelivered;
+  day.checks += r.state.checks; day.missed += r.missed;
+}
+const n = PERIODS.length;
+const avg = v => String(Math.round(v / n)).padStart(3);
+console.log(
+  `  ${String(n + ' periods').padEnd(20)} mastery ${avg(day.mastery)}  fidelity ${avg(day.fidelity)}  ` +
+  `rapport ${avg(day.rapport)}  (means)          ` +
+  `beats ${day.delivered}/${day.beats}  checks ${String(day.checks).padStart(2)}  missed ${day.missed}`);
 console.log('');

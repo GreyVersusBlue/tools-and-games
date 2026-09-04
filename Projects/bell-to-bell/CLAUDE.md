@@ -2,9 +2,10 @@
 
 ## What this is
 `Bell to Bell`, a 3D browser game about teaching. Currently one vertical slice:
-a 47-minute class period, now followed by a second one (4th period hands off into
-5th — same room, different kids). Read `docs/BELL-TO-BELL-treatment.md` for the full
-design vision and `WISHLIST.md` for current state and the backlog.
+a 47-minute class period, run three times (4th hands off into 5th hands off into
+6th — same room, different kids, one Bandwidth pool). Read
+`docs/BELL-TO-BELL-treatment.md` for the full design vision and `WISHLIST.md` for
+current state and the backlog.
 
 ## Commands
 ```bash
@@ -18,8 +19,16 @@ map in `index.html`. Keep it that way unless there is a real reason not to.
 
 `src/persist.js` is the only thing that writes to `localStorage`, and it degrades to
 an in-memory store if the browser refuses. Nothing else may reach for storage.
+Period-scoped keys go through `slot(periodId, key)` and day-scoped ones through
+`dayKey(key)`; nothing writes a key name by hand. The six flat pre-slot keys
+migrate on read, once, and `migrateLegacyKeys` is never to be rewritten.
 
 ## Architecture rules
+- **A period is a row in `data/periods.json`, not a branch in a `.js` file.**
+  Presentation fields are literal; `roster`, `schedule`, `lesson`, `seatGrid` and
+  `seatingCopy` are pointers of the form `file.path.into.that.file`, and
+  `src/loader.js` fetches whatever files the rows name. Adding a period must stay
+  a JSON edit. If it ever needs a JavaScript one, the seam has moved.
 - **Content goes in `data/`, logic goes in `src/`.** If you are about to hardcode a
   student name, a piece of flavor text, a meter delta, or a tell schedule inside a
   `.js` file, stop and put it in JSON instead. The test: could a teacher with no
@@ -60,6 +69,12 @@ These are locked. Do not "improve" them without asking.
 12. The seating chart labels nothing you have not watched happen. Volatility edges and
     stabilisers are drawn from what the last period taught you (`learnFrom`), never
     from the roster data that defines them.
+13. **Bandwidth is the one meter that crosses the bell.** Mastery, Fidelity, Rapport
+    and Restlessness reset from `CFG.start` at every bell because they are facts
+    about walking into a room. Bandwidth is a fact about how much day you have
+    already taught: it carries in `dayKey('bandwidth')` and the hallway gives back
+    `CFG.day.passingPeriodRecovery`, no more. Do not add a second carried meter
+    without saying why the treatment's line stops applying to it.
 
 ## Voice
 Flavor text is deadpan, specific, and written for someone who has actually taught.

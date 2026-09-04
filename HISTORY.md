@@ -14,8 +14,9 @@ in git history; none of it is on disk.
 
 # Locked decisions
 
-Fifty-eight numbered decisions, accumulated across ten sessions. **Code cites
-these by number, and this is now the only place the numbers resolve.** Each is
+Fifty-nine numbered decisions, accumulated across ten sessions and the project
+phases after them. **Code cites these by number, and this is now the only place
+the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
 this consolidation and the citation is provenance, not a link: `git log` is
 where they live.
@@ -423,6 +424,21 @@ Two of them have moved since they were written:
    case/separator-normalized — it silently matched nothing on Windows
    before this round.)
    *Source: `gvb-site-handoff-v10.md`, v10 §10 "Locked decisions".*
+
+59. **Decision #36 bends for a read-time migration, and only for one.** The site
+   rule is never to change a storage key, because changing one silently
+   abandons anyone mid-use. Bell to Bell's Phase 1 changed six of them on
+   purpose — `chart`/`known`/`rapportBase` and their `*5` twins became
+   `p4.chart`, `p5.known` and so on — and that was allowed because
+   `migrateLegacyKeys` moves them on read, once, before anything else reads a
+   key. A migration is the price of renaming a key, not an alternative to
+   decision #36. It has four properties and they are all asserted: old keys in
+   and namespaced out; a stored JSON `null` is a value and not an absent key;
+   where both the flat and the namespaced key exist the namespaced one wins,
+   because it can only have been written after the migration ran; and running
+   it twice changes nothing. Do the migration or leave the keys alone. Never
+   half.
+   *Source: Bell to Bell Phase 1, "A day with more than two periods in it".*
 
 
 ---
@@ -1246,7 +1262,7 @@ Three lessons from the project's own retro, worth keeping:
 
 ---
 
-# Bell to Bell, through T7
+# Bell to Bell, through Phase 1
 
 The vertical slice: one first-person class period built on *Withitness* as a
 vision mode that costs bandwidth and lies to you under stress. T5 gave the room
@@ -1299,6 +1315,88 @@ nobody reopens them as bugs:
 - **"No desk in this room is fully blind" was closed by T5.** The August default
   still doesn't produce one — that was never the bug — but you can now drag the
   furniture until it does, and the "blind" legend swatch lights up when you have.
+
+## Phase 1 — a day with more than two periods in it
+
+The first phase off `WISHLIST.md`, and the one every later phase would have
+tripped over. Before it there were two save slots called `chart` and `chart5`,
+three ternaries at `main.js:142` picking between them, two hardcoded branches in
+`periodFor()`, and `'chart5'`/`'rapportBase5'`/`'known5'` written as string
+literals in `endPeriod()`. A third period needed a slot scheme, not a fourth
+ternary.
+
+**A period became a row.** `data/periods.json` holds the day in order. A row's
+presentation fields (`label`, `tag`, `ordinal`, `short`, `next`) are literal;
+its content fields (`seatGrid`, `roster`, `schedule`, `lesson`, `seatingCopy`)
+are pointers of the form `file.path.into.that.file`, resolved against the loaded
+bundle. `src/loader.js` fetches the core files, reads the rows, and fetches
+whatever content files they name that it does not already have — so the file
+list is data, not a constant. `periodFor()` left `main.js` for `src/periods.js`,
+77 lines that import neither three.js nor the DOM, and became a lookup plus two
+uniform merges: the lesson's shared copy deck and objective board under the
+period's own unit/beats/filler, and the base chart copy under the period's
+overrides. `main.js` now names no class and no save slot anywhere, and the
+suite asserts that with a regex over its own source.
+
+**The migration.** Six flat keys became namespaced slots, read-time and once:
+`chart` → `p4.chart`, `known5` → `p5.known`, and so on through the six.
+`furniture` stayed global, because where the cabinet sits is a fact about the
+room rather than about whoever is sitting in it, and `period` stayed global
+because it names the active class. `migrateLegacyKeys(target)` takes anything
+with `localStorage`'s three methods, so the game hands it the real store and the
+suite hands it a `Map`. This is locked decision #59, and the four properties it
+guarantees are listed there. Each was broken on purpose once and watched to
+fail: a silent no-op fails nine assertions, a clobbering write fails two, a
+missing `removeItem` fails two, and treating a stored `"null"` as an absent key
+fails three.
+
+**Gap 11, in one line.** `beginPeriod()` writes the period id, so a refresh
+mid-6th is still 6th. It used to be written only by the two report buttons,
+which meant a reload mid-5th discarded the period you were in. The read side
+(`resolvePeriodId`) falls back to the first row rather than throwing when the
+stored id names a class the data no longer has.
+
+**Bandwidth crosses the bell.** The treatment's "does not regenerate during the
+school day" made real, and the only meter it applies to:
+`persist.dayKey('bandwidth')` carries the pool, `CFG.day.passingPeriodRecovery`
+(26) is what four minutes in the hallway give back, and the last period's report
+clears the key because a new day is the only thing that fills it. Mastery,
+Fidelity, Rapport and Restlessness still reset from `CFG.start` at every bell,
+which is now constraint 13 in the project's `CLAUDE.md`.
+
+**The sixth period is the proof.** `data/period6.json` — twelve kids, ten
+scheduled tells, five beats summing to 2,000 seconds like the other two, and a
+section that lost Monday to a fire drill and is meeting the map for the first
+time at 2:05 — plus one row in `periods.json`. No `.js` file was touched to add
+it. Both suites picked it up on their own: `balance.mjs` loops over whatever
+`periods.json` holds instead of naming 5th period, and `smoke.mjs` walks every
+period the data declares.
+
+**Where the balance sat after Phase 1.** 4th and 5th are unchanged from T7. The
+6th is the busiest schedule in the game and reads that way — nine missed for the
+teacher who never looks up, against 4th's seven and 5th's eight — while landing
+in the same mastery neighbourhood and, like both of the others, with exactly one
+thing that quietly never happens.
+
+```
+6th period
+ideal (never scans)        mastery 69  fidelity 87  bandwidth 18  restless 81  missed 9  obs 1/5
+the good teacher           mastery 78  fidelity 82  bandwidth  0  restless  0  missed 0  obs 1/5
+never checks, never looks  mastery 44  fidelity 70  bandwidth 55  restless 93  missed 9  obs 0/5
+
+the good teacher, the whole day on one Bandwidth pool (+26 per passing period)
+4th (opens at 100)         mastery 79  fidelity 82  rapport 70  beats 4/5  checks 10  scan 14s
+5th (opens at  26)         mastery 76  fidelity 85  rapport 69  beats 5/5  checks 11  scan  4s
+6th (opens at  26)         mastery 77  fidelity 84  rapport 72  beats 5/5  checks 10  scan  4s
+3 periods (means)          mastery 77  fidelity 84  rapport 70  beats 14/15  checks 31  missed 0
+```
+
+**Read the scan column, not the mastery column.** The whole-day cost of the pool
+is not that the teacher gets worse — she gets marginally better on Fidelity,
+because she is teaching instead of looking. It is that her Withitness budget
+drops from fourteen seconds in 4th to four in 5th and 6th, and she stops being
+able to afford to check the room. That is the mechanic the constant is for, and
+26 is design math: nobody has played it.
 
 ---
 

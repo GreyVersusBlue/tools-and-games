@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { CFG } from './config.js';
-import { createState } from './state.js';
+import { createState, clamp01to100 } from './state.js';
 import { loadData } from './loader.js';
+import { periodFor, resolvePeriodId, firstPeriodId } from './periods.js';
 import { createMaterials, createRegistry } from './world/materials.js';
 import { createModelLoader } from './world/models.js';
 import { buildRoom } from './world/room.js';
@@ -48,48 +49,6 @@ function showFatalError(err) {
   document.body.appendChild(box);
 }
 
-// T6: everything that differs between 4th and 5th period, in one place. Room,
-// tell types, seating rules, interventions, reactions and events are the same
-// building and the same rulebook regardless of which class is in front of you
-// — only the kids, their tell schedule, and the lesson change.
-function periodFor(id, data) {
-  if (id === 'p5') {
-    const p5 = data.period5;
-    return {
-      id: 'p5',
-      periodLabel: p5.meta.period,
-      periodTag: '5TH PERIOD',
-      ordinal: '5th Period',
-      seatGrid: data.students.seatGrid,
-      roster: p5.roster,
-      schedule: p5.schedule,
-      lessonData: {
-        unit: p5.lesson.unit, beats: p5.lesson.beats, filler: p5.lesson.filler,
-        copy: data.lesson.copy, objectiveBoard: data.lesson.objectiveBoard
-      },
-      seatingCopy: {
-        ...data.seating,
-        sub: p5.seatingCopy.sub,
-        intro: p5.seatingCopy.intro,
-        buttons: { ...data.seating.buttons, ...p5.seatingCopy.buttons }
-      },
-      nextPeriodId: null
-    };
-  }
-  return {
-    id: 'p4',
-    periodLabel: data.room.meta.period,
-    periodTag: '4TH PERIOD',
-    ordinal: '4th Period',
-    seatGrid: data.students.seatGrid,
-    roster: data.students.roster,
-    schedule: data.tells.schedule,
-    lessonData: data.lesson,
-    seatingCopy: data.seating,
-    nextPeriodId: 'p5'
-  };
-}
-
 try {
 
 // Models and textures now make boot a real network-bound wait, not the near-
@@ -103,11 +62,20 @@ const data = await loadData();
 const state = createState();
 
 // T6: which class is in front of you right now. A fresh browser (or "Run it
-// again" from 5th period's own report) always starts back at 4th; the only
-// way forward is 4th period's report handing you off.
-const activePeriodId = persist.load('period', 'p4');
-const isP5 = activePeriodId === 'p5';
+// again" from the last period's own report) always starts back at the top of
+// the day; the only way forward is a report handing you off.
+// Phase 1: beginPeriod() writes this too, so a refresh mid-6th is still 6th,
+// and a `period` key naming a class data/periods.json no longer has falls back
+// to the first row rather than throwing.
+const activePeriodId = resolvePeriodId(persist.load('period', null), data);
 const period = periodFor(activePeriodId, data);
+
+// Phase 1: Bandwidth crosses the bell. Everything else in CFG.start is a fact
+// about walking into a room and resets at each one; Bandwidth is a fact about
+// how much day you have already taught, and the hallway only gives back
+// CFG.day.passingPeriodRecovery of it.
+const carriedBandwidth = persist.load(persist.dayKey('bandwidth'), null);
+if (carriedBandwidth != null) state.bandwidth = clamp01to100(carriedBandwidth);
 
 // ---------- renderer ----------
 const scene = new THREE.Scene();
@@ -139,9 +107,9 @@ const room = await buildRoom(scene, registry, mats, data.room, { loader: modelLo
 // T6: 5th period keeps its own chart/discovery history, seeded once from
 // whatever 4th period's desks looked like the moment you handed off — see
 // rapportBase below for why that seeding is not the same thing as "familiar."
-const chartKey = isP5 ? 'chart5' : 'chart';
-const knownKey = isP5 ? 'known5' : 'known';
-const rapportKey = isP5 ? 'rapportBase5' : 'rapportBase';
+const chartKey = persist.slot(period.id, 'chart');
+const knownKey = persist.slot(period.id, 'known');
+const rapportKey = persist.slot(period.id, 'rapportBase');
 
 let savedChart = persist.load(chartKey, null);
 let savedLayout = persist.load('furniture', null);
@@ -370,23 +338,35 @@ function endPeriod() {
   known = learned.known;
   persist.save(knownKey, known);
 
-  // T6: 4th period hands off into 5th; 5th period's own report just restarts
-  // the day at 4th, which is what "Run it again" always meant.
-  const restart = period.nextPeriodId ? {
-    label: 'Next period — 5th',
+  // T6: each period hands off into the next; the last period's own report just
+  // restarts the day at the top, which is what "Run it again" always meant.
+  // Phase 1: which period that is, and what the button says, are both rows in
+  // data/periods.json now rather than string literals in here.
+  const next = period.nextPeriodId;
+  const restart = next ? {
+    label: period.nextLabel,
     onClick: () => {
       // The room's desks carry forward as a fact about the room. Whether
       // moving further from them costs Rapport is a fact about the kids, and
-      // this class has never met this chart, so that resets to novel.
-      persist.save('chart5', chart.seatOf);
-      persist.save('rapportBase5', null);
-      persist.clear('known5');
-      persist.save('period', period.nextPeriodId);
+      // the next class has never met this chart, so that resets to novel.
+      persist.save(persist.slot(next, 'chart'), chart.seatOf);
+      persist.save(persist.slot(next, 'rapportBase'), null);
+      persist.clear(persist.slot(next, 'known'));
+      // Phase 1: and Bandwidth goes with you, minus everything this period
+      // cost, plus whatever four minutes in the hallway are worth.
+      persist.save(persist.dayKey('bandwidth'),
+        clamp01to100(state.bandwidth + CFG.day.passingPeriodRecovery));
+      persist.save('period', next);
       location.reload();
     }
   } : {
-    label: 'Run it again',
-    onClick: () => { persist.save('period', 'p4'); location.reload(); }
+    label: period.restartLabel,
+    onClick: () => {
+      // A new day, which is the only thing that gives Bandwidth back in full.
+      persist.clear(persist.dayKey('bandwidth'));
+      persist.save('period', firstPeriodId(data));
+      location.reload();
+    }
   };
 
   function report() {
@@ -443,6 +423,9 @@ function beginPeriod() {
   const cost = chart.rechartCost(rapportBase);
   state.rechart = cost;
   if (cost.rapport) state.rapport += cost.rapport;
+  // Phase 1, gap 11: the period you are in is written when you take it, not
+  // only when a report hands you on. Refresh mid-6th and you are still in 6th.
+  persist.save('period', period.id);
   persist.save(chartKey, chart.seatOf);
   persist.save(rapportKey, chart.seatOf);
   persist.save('furniture', chart.occluderLayout());

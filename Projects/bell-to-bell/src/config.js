@@ -124,6 +124,14 @@ export const CFG = {
     lookForBandwidth: -1.2    // performing it is not free either
   },
 
+  // Phase 1: the school day, as opposed to the period. Bandwidth is the one
+  // meter the treatment says does not regenerate during the day, so it is the
+  // one meter that crosses the bell — everything else in `start` below is a
+  // fact about walking into a room and resets at every one.
+  day: {
+    passingPeriodRecovery: 26   // what four minutes in the hallway give back
+  },
+
   // unresolved tell expiry
   missedRestless: 8,
   missedMastery: -1.2,

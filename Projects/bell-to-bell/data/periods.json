@@ -1,0 +1,50 @@
+{
+  "_note": "The school day, in order. A row's presentation fields (label, tag, ordinal, short) are literal; its content fields (seatGrid, roster, schedule, lesson, seatingCopy) are pointers of the form file.path.into.that.file, resolved against the loaded data bundle. src/loader.js fetches whatever files the pointers name, so adding a period is this file plus its content file and no JavaScript at all.",
+
+  "copy": {
+    "next": "Next period — {short}",
+    "restart": "Run it again"
+  },
+
+  "periods": [
+    {
+      "id": "p4",
+      "label": "Period 4 — U.S. Hist.",
+      "tag": "4TH PERIOD",
+      "ordinal": "4th Period",
+      "short": "4th",
+      "seatGrid": "students.seatGrid",
+      "roster": "students.roster",
+      "schedule": "tells.schedule",
+      "lesson": "lesson",
+      "seatingCopy": "seating",
+      "next": "p5"
+    },
+    {
+      "id": "p5",
+      "label": "Period 5 — U.S. Hist.",
+      "tag": "5TH PERIOD",
+      "ordinal": "5th Period",
+      "short": "5th",
+      "seatGrid": "students.seatGrid",
+      "roster": "period5.roster",
+      "schedule": "period5.schedule",
+      "lesson": "period5.lesson",
+      "seatingCopy": "period5.seatingCopy",
+      "next": "p6"
+    },
+    {
+      "id": "p6",
+      "label": "Period 6 — U.S. Hist.",
+      "tag": "6TH PERIOD",
+      "ordinal": "6th Period",
+      "short": "6th",
+      "seatGrid": "students.seatGrid",
+      "roster": "period6.roster",
+      "schedule": "period6.schedule",
+      "lesson": "period6.lesson",
+      "seatingCopy": "period6.seatingCopy",
+      "next": null
+    }
+  ]
+}

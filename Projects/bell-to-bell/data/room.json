@@ -1,5 +1,5 @@
 {
-  "meta": { "period": "Period 4 — U.S. Hist.", "room": "RM 214" },
+  "meta": { "room": "RM 214" },
   "bounds": { "x": 5.2, "zFront": -3.6, "zBack": 5.4, "height": 3.0 },
   "teachingZone": { "maxZ": -1.7, "maxAbsX": 4.4 },
   "spawn": { "x": 0, "z": -2.4, "yaw": 3.14159 },
