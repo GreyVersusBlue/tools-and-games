@@ -7,6 +7,10 @@ import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
 import { createObservation } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
+import { periodFor, periodIds, firstPeriodId, resolvePeriodId } from '../src/periods.js';
+import { contentFiles } from '../src/loader.js';
+import * as persist from '../src/persist.js';
+import { PREFIX, slot, dayKey, LEGACY_KEYS, migrateLegacyKeys } from '../src/persist.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
@@ -682,6 +686,188 @@ check("checks for understanding is a real look-for key, not one you press direct
   check('the other two are not', !obs.conferenceOption('turnAndTalk').honest && !obs.conferenceOption('hollow').honest);
   check('an unknown option resolves to nothing', obs.resolveConference(createState(), 'nope') === null);
 }
+
+// ---------------------------------------------------------------------------
+// Phase 1 — the school day is data, the save slots are namespaced, and the
+// migration off the six flat keys runs on read and only once.
+// ---------------------------------------------------------------------------
+const pData = D('periods');
+
+// The bundle loadData() would hand main.js: the core files, plus whatever
+// content files the period rows point at. Assembling it through the loader's
+// own contentFiles() means a row pointing at a file nobody shipped fails here
+// rather than in a browser.
+const bundle = { room: roomData, students: sData, tells: tData, lesson: lData,
+  seating: seatData, periods: pData };
+for (const name of contentFiles(pData)) {
+  if (!(name in bundle)) bundle[name] = D(name);
+}
+
+check('the day is three periods long, in order', periodIds(bundle).join() === 'p4,p5,p6');
+check('the day starts at the top of the day', firstPeriodId(bundle) === 'p4');
+
+const p4 = periodFor('p4', bundle);
+const p5 = periodFor('p5', bundle);
+const p6 = periodFor('p6', bundle);
+
+// 4th period's content still lives where it always did; the row points at it.
+check('4th period reads its roster out of students.json', p4.roster === sData.roster);
+check("4th period reads its tell schedule out of tells.json", p4.schedule === tData.schedule);
+check('4th period reads its lesson out of lesson.json', p4.lessonData.beats === lData.beats);
+check('4th period gets the base chart copy unchanged', p4.seatingCopy.sub === seatData.sub);
+
+// 5th period overrides three things and inherits the rest, which is what the
+// two hardcoded branches of the old periodFor() did by hand.
+check('5th period has its own roster', p5.roster[0].name === 'Farah' && p5.roster !== p4.roster);
+check('5th period has its own lesson', p5.lessonData.unit.endsWith('DAY 3 OF 3'));
+check('5th period still shares the day\'s lesson copy deck', p5.lessonData.copy === lData.copy);
+check('5th period still shares the objective on the wall',
+  p5.lessonData.objectiveBoard === lData.objectiveBoard);
+check('5th period overrides the chart screen sub', p5.seatingCopy.sub.includes('5TH PERIOD'));
+check('5th period overrides one button and inherits the other',
+  p5.seatingCopy.buttons.reset === 'Back to roll-call order' &&
+  p5.seatingCopy.buttons.confirm === seatData.buttons.confirm);
+
+// The 6th period is the whole point: it was authored as a data row and a
+// content file, and it behaves like the two that came before it.
+check('6th period exists and is a full class', p6.roster.length === 12);
+check('6th period has its own tell schedule', p6.schedule.length === 10);
+check('6th period has a full lesson', p6.lessonData.beats.reduce((a, b) => a + b.seconds, 0) === 2000);
+check('6th period is the last one', p6.nextPeriodId === null);
+
+// What the report's button says is data too, so a seventh period needs no
+// string literal in main.js.
+check('4th period hands off to 5th', p4.nextPeriodId === 'p5' && p4.nextLabel === 'Next period — 5th');
+check('5th period hands off to 6th',
+  p5.nextPeriodId === 'p6' && p5.nextLabel === 'Next period — 6th');
+check('the last period offers the day again', p6.nextLabel === null && p6.restartLabel === 'Run it again');
+
+// Every period is the same room and the same rulebook (T6's premise, now
+// enforced across three classes instead of asserted across two).
+for (const p of [p4, p5, p6]) {
+  check(`${p.id}: twelve kids in the twelve desks`, p.roster.length === 12);
+  check(`${p.id}: same desk grid`, p.seatGrid === sData.seatGrid);
+  check(`${p.id}: every scheduled tell names a real seat`,
+    p.schedule.every(r => r.seat < p.roster.length && (r.with == null || r.with < p.roster.length)));
+  check(`${p.id}: exactly one curveball`, p.schedule.filter(r => r.type === 'QUIET').length === 1);
+  check(`${p.id}: every scheduled tell is a real type`,
+    p.schedule.every(r => tData.types[r.type]));
+  check(`${p.id}: nothing is scheduled after the bell`,
+    p.schedule.every(r => r.atMinute * 60 < CFG.periodSeconds));
+}
+
+// A `period` key naming a class that no longer exists must not strand anyone.
+check('a saved period id resolves to itself', resolvePeriodId('p6', bundle) === 'p6');
+check('no saved period id starts the day at the top', resolvePeriodId(null, bundle) === 'p4');
+check('a stale period id falls back rather than throwing', resolvePeriodId('p9', bundle) === 'p4');
+check('asking for a period that is not in the data is an error, not a guess', (() => {
+  try { periodFor('p9', bundle); return false; } catch { return true; }
+})());
+
+// The seam itself: what the loader fetches comes out of periods.json, so a
+// seventh period is a row and a file and no edit to src/loader.js.
+check('the loader fetches whatever the rows point at',
+  contentFiles(pData).includes('period6') && contentFiles(pData).includes('period5'));
+check('and does not fetch the same file twice',
+  new Set(contentFiles(pData)).size === contentFiles(pData).length);
+
+// ---------------------------------------------------------------------------
+// Phase 1 — the migration. Six flat keys become namespaced slots, on read,
+// once. Break any of the four properties below and one of these fails.
+// ---------------------------------------------------------------------------
+const fakeStore = (seed = {}) => {
+  const m = new Map(Object.entries(seed));
+  return {
+    getItem: k => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => { m.set(k, String(v)); },
+    removeItem: k => { m.delete(k); },
+    keys: () => [...m.keys()].sort(),
+    raw: k => (m.has(k) ? m.get(k) : null)
+  };
+};
+const K = k => PREFIX + k;
+
+check('a slot is the period id and the key', slot('p5', 'chart') === 'p5.chart');
+check('a day key is not a period key', dayKey('bandwidth') === 'day.bandwidth');
+check('the migration table is exactly the six keys that existed',
+  Object.keys(LEGACY_KEYS).sort().join() === 'chart,chart5,known,known5,rapportBase,rapportBase5');
+
+// A browser that never played the old build has nothing to migrate.
+{
+  const st = fakeStore();
+  check('a fresh store migrates nothing', migrateLegacyKeys(st) === 0 && st.keys().length === 0);
+}
+
+// The real case: somebody who played the two-period build and comes back.
+{
+  const st = fakeStore({
+    [K('chart')]: '[3,1,2]', [K('known')]: '{"edges":[["a","b"]],"steadies":[6]}',
+    [K('rapportBase')]: '[0,1,2]', [K('chart5')]: '[11,0,4]',
+    [K('known5')]: '{"edges":[],"steadies":[]}', [K('rapportBase5')]: 'null',
+    [K('furniture')]: '[{"id":"cabinet"}]', [K('period')]: '"p5"'
+  });
+  check('all six period keys move', migrateLegacyKeys(st) === 6);
+  check('4th period\'s chart lands in its slot', st.raw(K('p4.chart')) === '[3,1,2]');
+  check('5th period\'s chart lands in its slot', st.raw(K('p5.chart')) === '[11,0,4]');
+  check('what 4th period taught you comes with it',
+    st.raw(K('p4.known')) === '{"edges":[["a","b"]],"steadies":[6]}');
+  // rapportBase5 is deliberately the JSON null "this class has never met this
+  // chart" — an absent key and a stored null mean different things and a
+  // migration that confuses them hands a new class a Rapport bill.
+  check('a stored null survives as a stored null', st.raw(K('p5.rapportBase')) === 'null');
+  check('the old flat keys are gone', Object.keys(LEGACY_KEYS).every(k => st.raw(K(k)) === null));
+  check('the room\'s own facts are not period-scoped and are left alone',
+    st.raw(K('furniture')) === '[{"id":"cabinet"}]' && st.raw(K('period')) === '"p5"');
+
+  const snapshot = st.keys().map(k => `${k}=${st.raw(k)}`).join('|');
+  check('running it again moves nothing', migrateLegacyKeys(st) === 0);
+  check('and changes nothing, key or value',
+    st.keys().map(k => `${k}=${st.raw(k)}`).join('|') === snapshot);
+}
+
+// Half-migrated: an old key and its namespaced home both present. The
+// namespaced one can only have been written after the migration ran, so it is
+// the newer of the two and it wins.
+{
+  const st = fakeStore({ [K('chart')]: '[9,9,9]', [K('p4.chart')]: '[1,2,3]', [K('known5')]: '{"edges":[]}' });
+  check('a half-migrated store only moves what is missing', migrateLegacyKeys(st) === 1);
+  check('the namespaced value wins over the flat one', st.raw(K('p4.chart')) === '[1,2,3]');
+  check('and the flat one is cleared out anyway', st.raw(K('chart')) === null);
+  check('the key that had not moved yet still moves', st.raw(K('p5.known')) === '{"edges":[]}');
+}
+
+// Already namespaced, nothing flat: the second launch, and every launch after.
+{
+  const st = fakeStore({ [K('p4.chart')]: '[1,2,3]', [K('p6.known')]: '{"edges":[]}' });
+  const before = st.keys().join();
+  check('an already-migrated store is untouched',
+    migrateLegacyKeys(st) === 0 && st.keys().join() === before);
+}
+
+// The live module runs the migration on import and still round-trips.
+{
+  persist.save(slot('p6', 'chart'), [4, 5, 6]);
+  check('a slot key round-trips through the real store',
+    persist.load(slot('p6', 'chart'), null).join() === '4,5,6');
+  persist.clear(slot('p6', 'chart'));
+  check('and clears', persist.load(slot('p6', 'chart'), 'gone') === 'gone');
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1, gap 11 — a refresh mid-period lands you in that period. The read
+// side is resolvePeriodId, asserted above; the write side is one line in
+// main.js's beginPeriod(), which no Node suite can execute because main.js
+// imports three.js. Assert the line instead of assuming it.
+// ---------------------------------------------------------------------------
+const mainSrc = fs.readFileSync('../src/main.js', 'utf8');
+const beginPeriod = mainSrc.slice(mainSrc.indexOf('function beginPeriod()'));
+check('beginPeriod() writes the active period, not just the report buttons',
+  /persist\.save\('period', period\.id\)/.test(beginPeriod.slice(0, beginPeriod.indexOf('\n}\n'))));
+check('main.js no longer names a period or a save slot in JavaScript',
+  !/chart5|known5|rapportBase5|isP5|period5|period6/.test(mainSrc));
+check('main.js carries Bandwidth across the bell through the day key',
+  mainSrc.includes("persist.dayKey('bandwidth')") &&
+  mainSrc.includes('CFG.day.passingPeriodRecovery'));
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');
 process.exit(fails?1:0);

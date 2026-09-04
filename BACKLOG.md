@@ -69,7 +69,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 1 — A day with more than two periods in it | `Projects/bell-to-bell` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/bell-to-bell/WISHLIST.md#phase-1--a-day-with-more-than-two-periods-in-it) |
+| 1 | Phase 1 — A day with more than two periods in it | `Projects/bell-to-bell` | 1 | Fable 5.1 | `claude/new-session-wo3blc` | [WISHLIST.md Phase 1](Projects/bell-to-bell/WISHLIST.md#phase-1--a-day-with-more-than-two-periods-in-it) |
 | 2 | Phase 2 — Kids nobody authored | `Projects/bell-to-bell` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/bell-to-bell/WISHLIST.md#phase-2--kids-nobody-authored) |
 | 3 | Phase 3 — The semester remembers | `Projects/bell-to-bell` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/bell-to-bell/WISHLIST.md#phase-3--the-semester-remembers) |
 | 4 | Phase 4 — The bureaucracy answers back | `Projects/bell-to-bell` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/bell-to-bell/WISHLIST.md#phase-4--the-bureaucracy-answers-back) |

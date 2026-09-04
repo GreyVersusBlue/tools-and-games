@@ -1,5 +1,4 @@
 {
-  "meta": { "period": "Period 5 — U.S. Hist." },
   "roster": [
     { "name": "Farah",    "aptitude": 1.05, "shirt": "shirtB", "tension": 0.50, "steady": 0.24, "note": "keeps a running list of unfair things" },
     { "name": "Deshawn",  "aptitude": 0.95, "shirt": "shirtA", "tension": 0.60, "steady": 0.20, "note": "runs a snack economy out of his backpack" },

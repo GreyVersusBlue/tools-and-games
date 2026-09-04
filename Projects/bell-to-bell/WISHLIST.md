@@ -1,10 +1,11 @@
 # Bell to Bell — Feature Wishlist
 
-**Status: no phase in this file has shipped yet. The game itself is at T7 —
-tickets T1 through T7 are built and playable, `tests/smoke.mjs` prints 191
-PASS lines and no FAIL, and `tests/balance.mjs` runs six styles through 4th
-period, one style across three seating charts, and three styles through 5th.
-The first open phase is Phase 1 — A day with more than two periods in it, on
+**Status: Phase 1 has shipped. The game is at T7 plus Phase 1 — tickets T1
+through T7 and "A day with more than two periods in it" are built and playable,
+`tests/smoke.mjs` prints 257 PASS lines and no FAIL, and `tests/balance.mjs`
+runs six styles through 4th period, one style across three seating charts,
+three styles through each later period, and the whole day back to back on one
+Bandwidth pool. The first open phase is Phase 2 — Kids nobody authored, on
 **Claude Fable 5.1**.**
 The prior work through T7 is recorded in the repo root's `HISTORY.md`, with the
 balance table as it stood at the end of T7. This file is what comes after: the
@@ -22,9 +23,10 @@ What ships today is **Slice 001 — "One Period"**: forty-seven game-minutes in 
 214, compressed 10:1 by `CFG.timeScale` into about four and a half real ones,
 with twelve students, five authored lesson beats summing to exactly 2,000
 seconds, an intercom interruption at minute 19, an Observation at minute 30, and
-four endings. Take the report screen's offer and you get a second period — same
-room, a different twelve kids, its own tell schedule and lesson, out of
-`data/period5.json`.
+four endings. Take the report screen's offer and you get 5th, and then 6th —
+same room, a different twelve kids each time, each with its own tell schedule
+and lesson, out of `data/period5.json` and `data/period6.json`. The day itself
+is `data/periods.json`, three rows deep.
 
 The mechanic it is built around is **Withitness**: hold SHIFT and the room goes
 thermal and every tell in line of sight annotates itself. Three things keep that
@@ -39,10 +41,11 @@ What it is not: a school day, a semester, or a year. The treatment
 (`docs/BELL-TO-BELL-treatment.md`, 468 lines) describes six subjects with
 distinct hazard profiles, eight bureaucracy minigames of which one is built,
 seven Calendar bosses, rumor propagation on the seating graph, a hidden fifth
-meter, and a ten-year meta-arc. Two periods of one of those days exist, and
-nothing carries between them but your seating chart, your furniture layout and
-what you watched happen — all four meters reset from `CFG.start` at every bell,
-and a refresh mid-5th-period puts you back in 4th.
+meter, and a ten-year meta-arc. Three periods of one of those days exist, and
+what carries between them is your seating chart, your furniture layout, what you
+watched happen, and your Bandwidth — Mastery, Fidelity, Rapport and Restlessness
+still reset from `CFG.start` at every bell, because they are facts about walking
+into a room rather than facts about the day.
 
 ## The architecture that is there
 
@@ -76,9 +79,10 @@ loading), `systems/tells.js` (160, tell lifecycle and meshes and the raycast),
 349 lines, largest `ui/seating.js` (243, the chart screen); it never imports from
 `systems/`, and `ui/dom.js` is the one permitted singleton.
 
-**`main.js` is wiring and one frame loop.** `periodFor(id, data)` at line 55 is
-the entire seam between 4th and 5th period; everything else in the file is
-period-agnostic. `endPeriod()` at 359 runs `learnFrom`, persists, and hands the
+**`main.js` is wiring and one frame loop.** The seam between periods is
+`src/periods.js` (77 lines, three-free), which reads `data/periods.json` and
+hands `main.js` one resolved period; everything in `main.js` is period-agnostic
+and it no longer names a class or a save slot anywhere. `endPeriod()` at 359 runs `learnFrom`, persists, and hands the
 report a `restart` action that writes a `persist` key and calls
 `location.reload()`. That reload *is* the period transition — there is no
 teardown/rebuild path, because the linear boot sequence already runs once per
@@ -91,8 +95,11 @@ the module boundary — `systems/tells.js` and `systems/withitness.js` are
 dependency-injected factories with no suite at all, and `world/`, `ui/` and
 `main.js` have never been executed by anything but a browser. Roughly 31% of
 `src/` is under test, and the untested 69% includes the tell lifecycle. The other
-soft spot is persistence: `persist.js` is 37 lines with six hardcoded key names,
-three of which are the other three with a `5` typed on the end.
+soft spot is persistence, and Phase 1 took the worst of it: `persist.js` is 86
+lines, its keys are built by `slot(periodId, key)` and `dayKey(key)` rather than
+typed out, and the six flat pre-slot names migrate on read exactly once. What is
+still soft is that it has no browser-side suite of its own — the migration is
+asserted against an injected fake store, not against `localStorage`.
 
 ## Conventions a new builder must know
 
@@ -209,21 +216,22 @@ Open and unclaimed. Pull from here for a phase; add here rather than starting a
 new list.
 
 **The day**
-- Two hardcoded save slots — `chart`/`known`/`rapportBase` and their `*5`
-  twins, chosen by three ternaries at `main.js:142`. A third period needs a
-  slot scheme, not a fourth ternary.
-- A page reload always lands on 4th period: only "Run it again" and "Next
-  period" write the `period` key, so a refresh mid-5th discards the period you
-  were in.
-- No 6th period, no homeroom, no passing period, no planning, no lunch.
-- All four meters reset from `CFG.start` at every bell. Bandwidth is the one
-  the treatment says "does not regenerate during the school day," and today it
-  fully regenerates twice.
+- No homeroom, no passing period you play, no planning, no lunch. The four
+  minutes between classes are a constant (`CFG.day.passingPeriodRecovery`), not
+  a place you stand.
+- `CFG.day.passingPeriodRecovery` is 26 by design math and not by playtest: it
+  is what makes the good teacher's Withitness budget drop from 14 seconds in
+  4th to 4 seconds in 5th and 6th. Nobody has played that.
+- The day is three periods and then it restarts. There is no Tuesday, and
+  nothing distinguishes the last period of the day from the first except its
+  authored content.
 
 **Content**
-- Beats and tells are hand-authored and never vary. Two rosters, two schedules,
-  two lessons, forever.
-- The Observation fires at `atMinute: 30` in both periods, unannounced, always.
+- Beats and tells are hand-authored and never vary. Three rosters, three
+  schedules, three lessons, forever.
+- The Observation fires at `atMinute: 30` in every period, unannounced, always.
+  Three periods in a day means AP Reyes now walks in three times before lunch
+  is over, which reads as a bug and is not one yet.
 - The post-conference is one exchange with three options; treatment §6.1 shows
   a tree.
 - Subject is Social Studies and nothing else; §4's six are unbuilt.
@@ -279,49 +287,31 @@ request, that pull request has merged to main with CI green, and the closing
 report names the **next open phase's number and its named model**, plus the
 fresh `balance.mjs` table so the next session can diff it without running it.
 
-## Phase 1 — A day with more than two periods in it
+## Phase 1 — A day with more than two periods in it — **SHIPPED**
 
-**There are two save slots, they are called `chart` and `chart5`, and the second
-one is the first one with a `5` typed on the end.**
+**There were two save slots, they were called `chart` and `chart5`, and the
+second one was the first one with a `5` typed on the end.**
 
-`main.js:142` picks a storage key with three ternaries, `periodFor()` hardcodes
-two branches, and `endPeriod()` writes `'chart5'` and `'rapportBase5'` as string
-literals. The handoff is explicit that this was right at the time — "not worth
-building until there's a third period to prove the pattern against" — and
-equally explicit that gaps 10 and 11 are what a third period demands first.
-This is that scaffolding, and it is the one phase later phases cannot route
-around.
+Shipped. The full record — what moved where, the migration's four properties,
+the 6th period's balance row and the whole-day table — is in the repo root's
+`HISTORY.md` under "Bell to Bell, through Phase 1". In short:
 
-- [ ] **A period is data.** Move the two hardcoded branches of `periodFor()`
-  into `data/periods.json`: an ordered list of `{ id, label, tag, ordinal,
-  roster, schedule, lesson, seatingCopy, next }`, with 4th and 5th as its first
-  two rows and the existing `data/students.json` / `data/period5.json` as the
-  content they point at. `periodFor()` becomes a lookup.
-- [ ] **Namespaced save slots.** One helper in `persist.js` — `slot(periodId,
-  key)` — replacing the `isP5 ?` ternaries and the `'chart5'` literals. Migrate
-  the six existing keys on read (`chart` → `p4.chart`, `known5` → `p5.known`),
-  once and idempotently. `furniture` stays global: it is a fact about the room,
-  not about a class.
-- [ ] **Resume where you were.** Persist the active period id in
-  `beginPeriod()`, not only on the report's hand-off button, so a refresh
-  mid-5th returns to 5th. Gap 11 is two lines once the slot scheme exists.
-- [ ] **A 6th period, authored.** One more roster, tell schedule and lesson in
-  the new shape — the point being that adding it touches no `.js` at all. If it
-  does, the seam is in the wrong place.
-- [ ] **Bandwidth crosses the bell.** The treatment's "does not regenerate
-  during the school day" made real: carry `bandwidth` (and only bandwidth)
-  forward through the day's slots, with a `CFG.day.passingPeriodRecovery`
-  constant for what the four minutes between classes give back.
-- [ ] **The suites follow.** Smoke assertions for the migration (old keys in,
-  namespaced out, run twice, same result), resume-on-reload, and `periodFor`
-  reading three periods out of data. `balance.mjs` grows a whole-day run: three
-  periods back to back on one Bandwidth pool, three rows and a total.
+- [x] **A period is data.** `data/periods.json`, one row per period, presentation
+  fields literal and content fields pointers. `periodFor()` moved out of
+  `main.js` into `src/periods.js` and became a lookup.
+- [x] **Namespaced save slots.** `persist.slot(periodId, key)` and
+  `persist.dayKey(key)`. The six flat keys migrate on read, once, idempotently;
+  `furniture` stayed global.
+- [x] **Resume where you were.** `beginPeriod()` writes the period id.
+- [x] **A 6th period, authored.** `data/period6.json` plus one row. No `.js`
+  file was touched to add it, which was the phase's own success criterion.
+- [x] **Bandwidth crosses the bell.** `CFG.day.passingPeriodRecovery`, 26.
+- [x] **The suites follow.** 191 smoke assertions became 257; `balance.mjs`
+  loops over the data's periods and runs the whole day on one Bandwidth pool.
 
-*Leans on:* `persist.js`, `main.js`'s `periodFor`/`endPeriod`, `data/period5.json`.
-*Save:* a migration — six flat keys become namespaced slots, read-migrated once,
-never rewritten again. *Model:* **Claude Fable 5.1** — this is the save schema
-every later phase inherits, and a silently wrong migration eats a player's
-seating chart with no error.
+What it left open is in the standing backlog above, under **The day**: the
+recovery constant is design math rather than playtest, and the Observation now
+fires three times in one day.
 
 ## Phase 2 — Kids nobody authored
 
