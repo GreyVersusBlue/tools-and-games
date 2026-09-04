@@ -1,14 +1,16 @@
 # Bell to Bell — Feature Wishlist
 
-**Status: Phases 1, 2 and 3 have shipped. The game is at T7 plus three phases:
-a four-period day whose 7th period is generated from a seed, and a five-day
-week the semester record carries each class across, with admin's ladder at the
-end of it. `tests/smoke.mjs` prints 381 PASS lines and no FAIL, and
-`tests/balance.mjs` runs six styles through 4th period, one style across three
-seating charts, three styles through each later period, the whole day on one
-Bandwidth pool, fifty generated seeds through the band (its one assertion), and
-two styles through a week. The first open phase is Phase 4 — The bureaucracy
-answers back, on **Claude Opus 5**.**
+**Status: Phases 1 through 5 have shipped. The game is at T7 plus five phases:
+a four-period day whose 7th period is generated from a seed, a five-day week
+the semester record carries each class across with admin's ladder at the end of
+it, an AP whose visits are a calendar rather than a metronome, and four
+subjects that are files rather than branches. `tests/smoke.mjs` prints 497 PASS
+lines and no FAIL, and `tests/balance.mjs` runs six styles through 4th period,
+one style across three seating charts, three styles through each later period,
+the whole day on one Bandwidth pool, fifty generated seeds through the band
+(its one assertion), four subjects side by side, one lab day under four styles,
+and two styles through a week on the AP's real calendar. The first open phase
+is Phase 6 — What the room weighs, on **Claude Opus 5**.**
 The prior work through T7 is recorded in the repo root's `HISTORY.md`, with the
 balance table as it stood at the end of T7. This file is what comes after: the
 architecture as it actually is, the conventions the project already learned,
@@ -24,11 +26,13 @@ keys and exists only so Node treats the test files as ES modules. It has to be
 What ships today is **Slice 001 — "One Period"**: forty-seven game-minutes in RM
 214, compressed 10:1 by `CFG.timeScale` into about four and a half real ones,
 with twelve students, five authored lesson beats summing to exactly 2,000
-seconds, an intercom interruption at minute 19, an Observation at minute 30, and
-four endings. Take the report screen's offer and you get 5th, and then 6th —
-same room, a different twelve kids each time, each with its own tell schedule
-and lesson, out of `data/period5.json` and `data/period6.json`. The day itself
-is `data/periods.json`, three rows deep.
+seconds, an intercom interruption at minute 19, an Observation on some periods
+and not others, and four endings. Take the report screen's offer and you get
+5th, and then 6th, and then a 7th nobody authored — same room, a different
+twelve kids each time, each with its own tell schedule and lesson, out of
+`data/period5.json`, `data/period6.json` and a seed. The day itself is
+`data/periods.json`, four rows deep, and what each row teaches is a subject
+file in `data/subjects/`.
 
 The mechanic it is built around is **Withitness**: hold SHIFT and the room goes
 thermal and every tell in line of sight annotates itself. Three things keep that
@@ -40,8 +44,8 @@ raycast against furniture defined in `data/room.json`, which is why the seating
 chart and the classroom builder are the same puzzle as the vision mode.
 
 What it is not: a school day, a semester, or a year. The treatment
-(`docs/BELL-TO-BELL-treatment.md`, 468 lines) describes six subjects with
-distinct hazard profiles, eight bureaucracy minigames of which one is built,
+(`docs/BELL-TO-BELL-treatment.md`, 468 lines) describes six subjects of which
+four are files, eight bureaucracy minigames of which one is built,
 seven Calendar bosses, rumor propagation on the seating graph, a hidden fifth
 meter, and a ten-year meta-arc. Three periods of one of those days exist, and
 what carries between them is your seating chart, your furniture layout, what you
@@ -51,12 +55,12 @@ into a room rather than facts about the day.
 
 ## The architecture that is there
 
-About 4,600 lines across 37 files in `src/`, 60 KB of JSON across fourteen
-files in `data/`, and 142 MB in `Assets/`.
+About 5,500 lines across 39 files in `src/`, 78 KB of JSON across 21 files in
+`data/` (five of them subjects), and 142 MB in `Assets/`.
 
-**The three-free core** — sixteen modules importing neither three.js nor the
-DOM, and therefore the only part of the game the Node suites can reach. Phase 2
-and Phase 3 added seven of them, all pure:
+**The three-free core** — seventeen modules importing neither three.js nor the
+DOM, and therefore the only part of the game the Node suites can reach. Phases
+2 through 5 added eight of them, all pure:
 
 - `systems/simulate.js` (Phase 2) — the period, headless. `balance.mjs`'s old
   `run()` extracted so the generator's band check and the balance table run
@@ -71,7 +75,14 @@ and Phase 3 added seven of them, all pure:
   opens with, `recordPeriod()` takes what it closed with, `advanceDay()` is the
   night: retention toward the baseline from either side, Fidelity and Rapport
   reverting toward their means, and admin's ladder off the days on the books.
-  Versioned from day one, `repair`ed on every load.
+  Versioned from day one, `repair`ed on every load. Phase 4 added the semester
+  seed (version 2) and `owed`, the follow-ups you promised AP Reyes.
+- `systems/subject.js` (Phase 5) — what a room teaches. Almost all of it is
+  merging a subject's JSON over the day's: meter modifiers, tell-type weights
+  the Phase 2 scheduler consumes, event and intervention flavor, and the props
+  and occluders a subject puts in the room. The one rule it adds is Hazard, and
+  Hazard is one number. Nothing in `src/` may name a subject id; the suite
+  greps every file to make sure.
 
 The nine that were there before:
 
@@ -436,40 +447,49 @@ Shipped, with Phase 2. The record, the constants and the two week tables are in
 What it did not do: give 7th period a 2:40, or the lesson a Tuesday. Rapport
 and Fidelity carry per class; the observation still fires every period.
 
-## Phase 4 — The bureaucracy answers back
+## Phase 4 — The bureaucracy answers back — **SHIPPED**
 
 **AP Reyes visits at minute 30 of every period forever, asks one question, and
 accepts one of three answers.**
 
-`data/observation.json` is a good file and `systems/observation.js` is 110 lines
-of clean phase machine. What they lack is variation and depth, both data-shaped
-now that Phase 3 gives an observation something to be a consequence of. This is
-the arc's content phase: no new pure module, one existing system widened.
+Shipped. `data/observation.json` went from 95 lines to 260;
+`systems/observation.js` from 112 to 210. No new pure module, one existing
+system widened.
 
-- [ ] **She does not always come, and sometimes she tells you.** `atMinute`
-  becomes a window plus a per-period probability, and an `announced` variant
-  puts the visit on the schedule days ahead — §6.1's other half, and what turns
-  Fidelity into something you can prepare for. Leave the surprise variant's
-  nine-second Admin Proximity Alert exactly as it is; it is the funnier one.
-- [ ] **The post-conference becomes a tree.** `conference.options` grows a
-  `then` key and `ui/conference.js` loops until an option has none. Two or
-  three exchanges, three responses each, effects at every node — the shape §6.1
-  shows and T7 deliberately did not build.
-- [ ] **A follow-up you actually owe.** The affirming answer already says it
-  costs you one; with Phase 3's record it can schedule it, and forgetting it is
-  a Fidelity hit next week.
-- [ ] **More look-fors than fit in one window.** A rubric drawn from a pool
-  rather than five fixed rows, so two observations are not the same performance
-  twice. `config.js` gains a key per one-shot look-for; `main.js`'s action
-  dispatch reads the pool.
-- [ ] **Smoke assertions.** The announced variant scheduling and firing, the
-  tree's traversal and its per-node effects, an owed follow-up surviving a day
-  boundary, and a pooled rubric never repeating a look-for in one window.
+- [x] **She does not always come, and sometimes she tells you.** `visitFor` is
+  a pure function of the semester seed, the day index and the period id:
+  whether she comes at all (58%), where in a 24..34 window she arrives, whether
+  it was on the calendar days ahead (34% of visits, 1-3 days' lead), and which
+  five look-fors she brought. Nothing about the calendar is stored, so
+  `announcedAhead` reads Thursday off this morning and gets the same answer
+  twice. The semester record carries the seed (version 2; a version 1 record
+  migrates forward with seed 0). Announced visits skip the nine-second Admin
+  Proximity Alert, which stayed exactly as it was.
+- [x] **The post-conference becomes a tree.** Four nodes, three options each,
+  effects at every one; options carry `then` and `ui/conference.js` loops until
+  an answer has nothing after it. Two exchanges deep, with a step cap so a data
+  file that loops a `then` cannot trap the player on the screen.
+- [x] **A follow-up you actually owe.** Naming a specific Thursday books a
+  look-for, a period and a due day on `record.owed`. You keep it by doing the
+  thing in that room on a later day, with nobody watching. The night its day
+  goes past marks it broken, the next morning charges Fidelity −5 once and
+  sends one email about it, and then it is gone. Three of the tree's answers
+  book one; being vague books nothing.
+- [x] **More look-fors than fit in one window.** Nine in the pool, five drawn
+  without replacement. `config.js` has one key per one-shot look-for, named
+  `look:<key>`, and `main.js`'s dispatch hands the suffix straight to
+  `satisfy()` without knowing what is in the pool. index.html's five hardcoded
+  rubric rows are gone. Pressing one she did not bring scores nothing and says
+  why.
+- [x] **Smoke assertions.** 58 of them, on the calendar's purity and its
+  announcement window, the skipped period, the pool draw, the key/pool/letter
+  correspondence, the tree's reachability and traversal, and the follow-up's
+  whole life including a day boundary and a repair. Four were broken on purpose
+  and watched to fail first.
 
-*Leans on:* `systems/observation.js`, `ui/conference.js`, Phase 3's semester
-record. *Save:* additive — owed follow-ups on the semester record. *Model:*
-**Claude Opus 5** — content tables and dialogue depth on a phase machine that
-already works, with a suite already shaped for it.
+What it did not do: move a balance number. The headless sim takes an explicit
+visit and defaults to the one the table has always run, so every band in
+`data/generation.json` is unchanged.
 
 ## Arc two — the room you are standing in
 
@@ -480,43 +500,48 @@ each other and of arc one — any of them can be pulled forward when a session
 wants a shorter phase. Same model convention, same definition of finished,
 `balance.mjs` in every closing report.
 
-## Phase 5 — Subject is the weather
+## Phase 5 — Subject is the weather — **SHIPPED**
 
 **Six subjects are specified in detail and the game teaches Social Studies.**
 
-Treatment §4 is the most build-ready unbuilt section in the document: each
-subject is a passive, a curse, a hazard profile and a signature minigame, and
-three of those four are data shapes this project already has. A subject does
-not change a system — it changes which tells are common, what the events say,
-and one number on the meters.
+Shipped. `data/subjects.json` is a manifest and `data/subjects/*.json` are the
+subjects; `src/systems/subject.js` is 180 lines of merging plus one rule.
 
-- [ ] **`data/subjects/*.json`.** One file per subject: display copy, a tell-type
-  weighting Phase 2's scheduler consumes, meter start modifiers, flavor
-  overrides for events and interventions. Social Studies ships as the file
-  describing what already exists — the honest test of whether the shape is
-  right.
-- [ ] **Science, with the Hazard meter.** The first subject that adds a rule: a
-  fifth tracked value that rises with lab days and, at cap, generates an
-  incident report. It is one number, one band table in `data/events.json`, and
-  a consequence — not a new system.
-- [ ] **ELA, with THE STACK.** Essays as physical objects accumulating on the
-  teacher's desk with collision, through the existing prop loader and
-  `world/room.js`'s fixture placement. Grading debt you can see from across the
-  room is the best visual idea in the treatment and it costs one mesh and a
-  counter. Math ships alongside it as two data rows: an unearned starting
-  Rapport penalty, and the line a student says aloud in every unit.
-- [ ] **Subject picks the room, not the code.** Verify by adding a subject with
-  a JSON file and no `.js` edit, and say so in the closing report. If it needed
-  a code change, the seam is wrong.
-- [ ] **`balance.mjs` runs each subject.** One representative style per subject,
-  printed as a table, so a hazard profile that makes a subject unplayable shows
-  up as a row rather than as a complaint.
+- [x] **`data/subjects/*.json`.** Four files: display copy, a tell-type
+  weighting the Phase 2 scheduler consumes, meter start modifiers, and flavor
+  overrides for events, interventions and missed-tell copy. Social Studies
+  ships as the file describing what already exists, and the suite holds it to
+  that: 4th period plays identically with it and without it, to the thousandth
+  of a meter point.
+- [x] **Science, with the Hazard meter.** One number that rises on lab days
+  with how loud the room is and with anything unhandled in it, reads off a band
+  table in `data/events.json` next to Room Temp's, and at the cap generates an
+  incident report worth Fidelity −8. It does not cross the bell, so constraint
+  13 still has exactly one carried meter. A lab day lands at 46 for the good
+  teacher, 90 for the one who never looks up, and tops out with an incident for
+  the one who never checks.
+- [x] **ELA, with THE STACK.** Essays accumulate on the semester record — five
+  a period on, three a night off — and are drawn as props on the teacher's desk
+  through the same prop manifest and the same `world/room.js` fixture
+  placement everything else in RM 214 uses. Past fourteen they stop fitting and
+  the overflow is a real occluder with real collision and a real blind spot.
+  Math ships alongside as two data rows: an unearned Rapport −9, and the line a
+  student says aloud in every unit.
+- [x] **Subject picks the room, not the code.** Verified two ways. No file
+  under `src/` may name a subject id, in code or in a comment, and the suite
+  greps all 39 of them. And a fifth subject built entirely as JSON in the test
+  resolves through `periodFor` and plays a whole period with its meters, its
+  hazard and its room, with no edit to anything in `src/`.
+- [x] **`balance.mjs` runs each subject.** One representative style through 4th
+  period under each, as a table, plus Science's lab day under four styles so a
+  hazard profile that makes a subject unplayable is a row rather than a
+  complaint.
 
-*Leans on:* `data/events.json`, `world/room.js`, and Phase 2's scheduler
-weighting if it has landed — without it the weighting applies to the authored
-schedules instead. *Save:* additive — one `subject` key, on the semester record
-if Phase 3 exists and on the period slot if it does not. *Model:* **Claude Opus
-5** — content tables and flavor against seams that already exist.
+What it did not do: change what the shipped day teaches. All four periods are
+Social Studies, because they all teach the same U.S. History unit and a subject
+that disagreed with its own lesson would be worse than no subject. Putting 6th
+period in an ELA room is one line in `data/periods.json` and a lesson somebody
+has to write.
 
 ## Phase 6 — What the room weighs
 

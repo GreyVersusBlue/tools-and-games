@@ -5,10 +5,13 @@ import { createLesson } from '../src/systems/lesson.js';
 import { createRoomTemp } from '../src/systems/roomtemp.js';
 import { createChart, learnFrom, edgeKey } from '../src/systems/chart.js';
 import { segmentHitsRect, classifySight, occluderRects } from '../src/systems/sightlines.js';
-import { createObservation } from '../src/systems/observation.js';
+import { createObservation, visitFor, announcedAhead, defaultVisit } from '../src/systems/observation.js';
 import { CFG } from '../src/config.js';
 import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor } from '../src/periods.js';
 import { contentFiles } from '../src/loader.js';
+import { subjectKey, subjectFor, applySubject, weightedMix, subjectEvents, subjectTells,
+  subjectInterventions, tickHazard, hazardBand, isLabDay, stackFixtures, subjectRoom,
+  stackBand } from '../src/systems/subject.js';
 import { createRng, mixSeed, drawSeed, SEED_MAX } from '../src/systems/rng.js';
 import { generateRoster, rosterProblems } from '../src/systems/roster.js';
 import { generateSchedule, scheduleProblems } from '../src/systems/scheduler.js';
@@ -581,6 +584,7 @@ check("a carried-over chart still reads as novel for Rapport purposes when compa
 
 // ---------------------------------------------------------------------------
 // T7 — the Observation: the alert, the window, the rubric, the conference
+// Phase 4 — and the calendar, the pool, the tree, and the follow-up
 // ---------------------------------------------------------------------------
 
 const fakeClassList = () => {
@@ -592,18 +596,25 @@ const mkObsDom = () => ({
   paTitle: { textContent: '' },
   paTxt: { textContent: '' }
 });
-const mkObs = () => {
+// Phase 4: a visit is a thing you hand in now. Leaving it out here means the
+// one the balance table runs — always comes, minute 30, the five look-fors
+// that used to be fixed rows in index.html.
+const mkObs = (visit) => {
   const msgs = [];
   const dom = mkObsDom();
-  const obs = createObservation({ data: obsData, dom, toast: (k, t, b) => msgs.push([k, t, b]) });
+  const obs = createObservation({
+    data: obsData, dom, toast: (k, t, b) => msgs.push([k, t, b]),
+    visit: visit === undefined ? defaultVisit(obsData) : visit
+  });
   return { obs, dom, msgs };
 };
+const AT = obsData.visit.default.atMinute;
 
 // idle until her scheduled minute arrives
 {
   const { obs } = mkObs();
   const st = createState();
-  st.t = CFG.periodSeconds - (obsData.atMinute - 1) * 60;   // one minute early
+  st.t = CFG.periodSeconds - (AT - 1) * 60;   // one minute early
   obs.tick(st, 1 / 60);
   check('no alert before her scheduled minute', st.obsPhase === 'idle');
 }
@@ -612,7 +623,7 @@ const mkObs = () => {
 {
   const { obs, dom } = mkObs();
   const st = createState();
-  st.t = CFG.periodSeconds - obsData.atMinute * 60;
+  st.t = CFG.periodSeconds - AT * 60;
   obs.tick(st, 1 / 60);
   check('the alert starts exactly on her scheduled minute', st.obsPhase === 'alert');
   check('the alert banner is up', dom.pa.classList.contains('on'));
@@ -681,17 +692,192 @@ check("checks for understanding is a real look-for key, not one you press direct
   check('what got satisfied is reported back', st.obsResult.satisfied.length === 2 && st.obsResult.total === 5);
 }
 
-// the post-conference: three options, real effects, honesty flagged for the report
+// ---- Phase 4: she does not always come, and sometimes she tells you --------
+
+// A period she skipped is a period with no phase machine at all: nothing ticks,
+// nothing arrives, and the report has no observation row to draw.
+{
+  const { obs, dom } = mkObs(null);
+  const st = createState();
+  for (let i = 0; i < 60 * 60; i++) { st.t -= 10 / 60; obs.tick(st, 1 / 60); }
+  check('a period she skipped never starts an alert', st.obsPhase === 'idle');
+  check('and never puts the banner up', !dom.pa.classList.contains('on'));
+  check('and has no result to report', st.obsResult === null);
+}
+
+// The calendar is a function, not a list: the same day and the same period
+// give the same answer forever, and a different day is a different answer.
+{
+  const args = { seed: 4821, dayIndex: 3, periodId: 'p4' };
+  const a = visitFor(obsData, args), b = visitFor(obsData, args);
+  check('the same day and period is the same visit, read twice',
+    JSON.stringify(a) === JSON.stringify(b));
+  const month = [];
+  for (let d = 0; d < 40; d++) {
+    for (const id of ['p4', 'p5', 'p6', 'p7']) month.push(visitFor(obsData, { seed: 4821, dayIndex: d, periodId: id }));
+  }
+  const came = month.filter(Boolean);
+  check('she does not come to every period', came.length < month.length && came.length > 0);
+  check('and she comes to more than one', new Set(came.map(v => v.periodId)).size > 1);
+  check('every visit lands inside her window', came.every(v =>
+    v.atMinute >= obsData.visit.window.fromMinute && v.atMinute <= obsData.visit.window.toMinute));
+  check('some of them were on the calendar', came.some(v => v.announced));
+  check('and most of them were not', came.filter(v => v.announced).length < came.length / 2);
+  check('an announced visit has real lead time', came.filter(v => v.announced)
+    .every(v => v.leadDays >= obsData.visit.announced.leadDays.min &&
+                v.leadDays <= obsData.visit.announced.leadDays.max));
+}
+
+// An announced visit skips the nine-second Admin Proximity Alert. You have
+// known for days; the countdown belongs to the surprise.
+{
+  const visit = { ...defaultVisit(obsData), announced: true };
+  const { obs, msgs } = mkObs(visit);
+  const st = createState();
+  st.t = CFG.periodSeconds - AT * 60;
+  obs.tick(st, 1 / 60);
+  check('an announced visit walks straight in, no countdown', st.obsPhase === 'active');
+  check('and says so in her own words',
+    msgs.some(m => m[1] === obsData.visit.announced.arrival.title));
+  st.obsWindowRemaining = 0.001;
+  obs.tick(st, 1 / 60);
+  check('the report knows it was on the calendar', st.obsResult.announced === true);
+}
+
+// An announced visit is readable before it happens, from the day it goes on
+// the calendar and not one day earlier.
+{
+  const seed = 4821, ids = ['p4', 'p5', 'p6', 'p7'];
+  let found = null;
+  for (let d = 4; d < 60 && !found; d++) {
+    for (const id of ids) {
+      const v = visitFor(obsData, { seed, dayIndex: d, periodId: id });
+      if (v && v.announced && v.leadDays >= 1) { found = { ...v, day: d }; break; }
+    }
+  }
+  check('there is an announced visit somewhere in the first twelve weeks', !!found);
+  const onDay = d => announcedAhead(obsData, { seed, dayIndex: d, periodIds: ids })
+    .some(v => v.periodId === found.periodId && v.dayIndex === found.day);
+  check('it is on the calendar the day it is announced', onDay(found.day - found.leadDays));
+  check('and not the day before that', !onDay(found.day - found.leadDays - 1));
+  check('and still on it the morning of', onDay(found.day));
+}
+
+// ---- Phase 4: the rubric is drawn from a pool ----------------------------
+
+check('the pool is bigger than one window', obsData.lookFors.length > obsData.visit.rubricSize);
+check('every look-for in the pool has a unique key and code',
+  new Set(obsData.lookFors.map(l => l.key)).size === obsData.lookFors.length &&
+  new Set(obsData.lookFors.map(l => l.code)).size === obsData.lookFors.length);
+// Every one-shot look-for needs a key in config, and every look-for key in
+// config needs a row in the pool. A pool row with no key is unreachable.
+{
+  const pool = new Set(obsData.lookFors.filter(l => !l.hold && !l.implicit).map(l => l.key));
+  const bound = Object.keys(CFG.keys).filter(k => k.startsWith('look:')).map(k => k.slice(5));
+  check('every one-shot look-for in the pool has a key bound to it',
+    [...pool].every(k => bound.includes(k)));
+  check('and every bound look-for key is in the pool', bound.every(k => pool.has(k)));
+  const codeOf = k => obsData.lookFors.find(l => l.key === k).code;
+  check('the letter on the rubric row is the letter you press',
+    bound.every(k => CFG.keys['look:' + k] === 'Key' + codeOf(k)));
+}
+
+// Two visits are not the same performance twice.
+{
+  const drawn = [];
+  for (let d = 0; d < 60; d++) {
+    const v = visitFor(obsData, { seed: 991, dayIndex: d, periodId: 'p4' });
+    if (v) drawn.push(v.rubric.join(','));
+  }
+  check('a drawn rubric never repeats a look-for inside one window',
+    drawn.every(r => new Set(r.split(',')).size === obsData.visit.rubricSize));
+  check('and two observations are not the same five things', new Set(drawn).size > 1);
+}
+
+// A look-for she did not bring is not on the rubric, does not score, and says so.
+{
+  const visit = { ...defaultVisit(obsData), rubric: ['objective', 'question', 'wait', 'check', 'discourse'] };
+  const { obs, msgs } = mkObs(visit);
+  const st = createState();
+  st.obsPhase = 'active';
+  const before = st.fidelity;
+  check('a look-for she did not bring does not score', obs.satisfy(st, 'modeling') === false);
+  check('and costs nothing either way', st.fidelity === before);
+  check('and it tells you why', msgs.some(m => m[2] === obsData.notOnRubric));
+  check('the HUD only lists the five she brought', obs.lookFors.length === 5 &&
+    obs.lookFors.every(l => visit.rubric.includes(l.key)));
+}
+
+// Wait time is only bankable when wait time is on today's rubric.
+{
+  const visit = { ...defaultVisit(obsData), rubric: ['objective', 'question', 'modeling', 'check', 'discourse'] };
+  const { obs } = mkObs(visit);
+  const st = createState();
+  st.obsPhase = 'active';
+  for (let i = 0; i < CFG.observation.waitHoldSeconds * 60 + 60; i++) obs.tickWait(st, 1 / 60, true);
+  check('holding the wait key books nothing she did not ask for', !st.obsSatisfied.wait);
+}
+
+// ---- Phase 4: the post-conference is a tree ------------------------------
+
+// the post-conference: real effects, honesty flagged for the report
 {
   const { obs } = mkObs();
   const st = createState();
   const before = st.fidelity;
-  const opt = obs.resolveConference(st, 'honest');
-  check('resolving a real option returns it', opt && opt.key === 'honest');
+  const step = obs.resolveConference(st, 'engagement', 'honest');
+  check('resolving a real option returns it', step && step.option.key === 'honest');
   check('its effects actually apply', st.fidelity < before);
-  check('the honest option is flagged for the report', opt.honest === true);
-  check('the other two are not', !obs.conferenceOption('turnAndTalk').honest && !obs.conferenceOption('hollow').honest);
-  check('an unknown option resolves to nothing', obs.resolveConference(createState(), 'nope') === null);
+  check('the honest option is flagged for the report', step.option.honest === true);
+  check('an unknown option resolves to nothing',
+    obs.resolveConference(createState(), 'engagement', 'nope') === null);
+  check('and so does an unknown node', obs.resolveConference(createState(), 'nope', 'honest') === null);
+}
+
+// every node's every option either ends the conference or names a node that
+// exists, and every node is reachable from the root
+{
+  const nodes = obsData.conference.nodes;
+  const named = new Set();
+  const bad = [];
+  for (const [id, node] of Object.entries(nodes)) {
+    if (!node.prompt || node.options.length < 2) bad.push(id + ' is not an exchange');
+    for (const o of node.options) {
+      if (o.then) { named.add(o.then); if (!nodes[o.then]) bad.push(id + '.' + o.key + ' -> ' + o.then); }
+      if (!o.result) bad.push(id + '.' + o.key + ' has no line');
+    }
+  }
+  check('every `then` names a node that exists', bad.length === 0);
+  check('every node but the root is reachable',
+    Object.keys(nodes).every(id => id === obsData.conference.root || named.has(id)));
+  check('the tree is more than one exchange', named.size > 0);
+}
+
+// walking the tree: two exchanges, effects at every node, the path in order
+{
+  const { obs } = mkObs();
+  const st = createState();
+  const first = obs.resolveConference(st, 'engagement', 'turnAndTalk');
+  check('the affirming answer has somewhere to go', first.next && first.nextId === 'when');
+  const f1 = st.fidelity;
+  const second = obs.resolveConference(st, 'when', 'named');
+  check('naming a day is the end of the conference', second.next === null);
+  check('the second node moved fidelity too', st.fidelity > f1);
+  check('the path is both exchanges, in order',
+    obs.conferencePath(st).map(o => o.key).join() === 'turnAndTalk,named');
+}
+
+// naming a day is a promise the record has to keep
+{
+  const { obs } = mkObs();
+  const st = createState();
+  obs.resolveConference(st, 'engagement', 'turnAndTalk');
+  obs.resolveConference(st, 'when', 'named');
+  check('naming a day puts a follow-up on the books', st.obsOwed && st.obsOwed.lookFor === 'discourse');
+  const st2 = createState();
+  obs.resolveConference(st2, 'engagement', 'turnAndTalk');
+  obs.resolveConference(st2, 'when', 'vague');
+  check('being vague about it does not', st2.obsOwed === null);
 }
 
 // ---------------------------------------------------------------------------
@@ -708,6 +894,12 @@ const bundle = { room: roomData, students: sData, tells: tData, lesson: lData,
   seating: seatData, periods: pData, events: eData, observation: obsData, generation: genData };
 for (const name of contentFiles(pData)) {
   if (!(name in bundle)) bundle[name] = D(name);
+}
+// Phase 5: the subjects, loaded the way src/loader.js loads them.
+const subjData = D('subjects');
+bundle.subjects = subjData;
+for (const id of subjData.subjects) {
+  bundle[subjectKey(id)] = JSON.parse(fs.readFileSync(`../data/subjects/${id}.json`, 'utf8'));
 }
 
 check('the day is four periods long, in order', periodIds(bundle).join() === 'p4,p5,p6,p7');
@@ -1110,13 +1302,22 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
   const high = roster.map(() => 0.8);
 
   const fresh = semester.createRecord();
-  check('a fresh record is versioned from day one', fresh.version === semester.RECORD_VERSION && fresh.version === 1);
+  check('a fresh record is versioned from day one', fresh.version === semester.RECORD_VERSION && fresh.version === 2);
   check('a fresh record is Monday of week one', fresh.week === 1 && fresh.day === 0 && Object.keys(fresh.classes).length === 0);
 
-  // repair: every load. migrate: version drift, of which there is none yet.
-  check('garbage repairs to a fresh record', semester.repair('nope').version === 1 && semester.repair(null).week === 1);
+  // repair: every load. migrate: version drift, of which there has now been
+  // one — a version 1 record is a semester written before AP Reyes had a
+  // calendar or a follow-up existed.
+  check('garbage repairs to a fresh record', semester.repair('nope').version === 2 && semester.repair(null).week === 1);
   check('an unversioned object is not a record', semester.migrate({ week: 3, classes: {} }) === null);
   check('a future version is not a record either', semester.migrate({ version: 99 }) === null);
+  check('a version 1 record comes forward with an empty calendar', (() => {
+    const r = semester.repair({ version: 1, week: 3, day: 2, classes: {} });
+    return r.version === 2 && r.week === 3 && r.seed === 0 && r.owed.length === 0;
+  })());
+  check('the semester seed survives a reload', semester.repair({ version: 2, seed: 4821, week: 1, day: 0, classes: {} }, 777).seed === 4821);
+  check('and a record that never had one takes the one it is handed',
+    semester.repair(null, 777).seed === 777 && semester.createRecord(4821).seed === 4821);
   check('repair fills in what a half-written record lacks', (() => {
     const r = semester.repair({ version: 1, week: 2, day: 9, classes: { p4: { comp: [0.5, 'x'], fidelity: 200 } } });
     return r.week === 2 && r.day === SEM.daysPerWeek - 1 && r.classes.p4.comp === null &&
@@ -1237,9 +1438,9 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
   // The observation window scale actually reaches the observation.
   check('windowScale scales the rubric window', (() => {
     const fakeClassList = () => ({ add() {}, remove() {}, contains: () => false });
-    const mk = scale => createObservation({ data: obsData, dom: { pa: { classList: fakeClassList() }, paTitle: {}, paTxt: {} }, toast: () => {}, windowScale: scale });
+    const mk = scale => createObservation({ data: obsData, dom: { pa: { classList: fakeClassList() }, paTitle: {}, paTxt: {} }, toast: () => {}, windowScale: scale, visit: defaultVisit(obsData) });
     const a = createState(), b = createState();
-    a.t = b.t = CFG.periodSeconds - obsData.atMinute * 60 - 1;
+    a.t = b.t = CFG.periodSeconds - obsData.visit.default.atMinute * 60 - 1;
     const oa = mk(1), ob = mk(2);
     oa.tick(a, 0.1); ob.tick(b, 0.1);
     a.obsAlertRemaining = b.obsAlertRemaining = 0;
@@ -1278,6 +1479,420 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
   check('the good teacher hears nothing from admin', good.rec.admin.history.length === 0);
   check('the wanderer meets AP Reyes by Friday', wander.rec.admin.history.some(h => h.id === 'checkIn'));
   check('the wanderer does not fall through the floor', wander.opens[4] > 30);
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase 4 — a follow-up you actually owe. The affirming answer used to say it
+// cost you one and then cost you nothing; now it books a look-for, a period
+// and a day, and forgetting it is a Fidelity hit the morning after.
+// ---------------------------------------------------------------------------
+{
+  const roster = sData.roster;
+  const owe = (rec, day) => semester.oweFollowUp(rec, { periodId: 'p4', id: 'turnAndTalk', lookFor: 'discourse', days: 2 }, day);
+  const night = rec => semester.advanceDay(rec, [], { admin: adminData });
+  const enter = rec => semester.entering(rec, 'p4', { roster, seed: null, admin: adminData, observation: obsData });
+
+  let rec = owe(semester.createRecord(4821), 0);
+  check('a promise goes on the books with a day on it',
+    rec.owed.length === 1 && rec.owed[0].dueDay === 2 && rec.owed[0].fromDay === 0);
+  check('promising the same thing twice does not stack it',
+    owe(rec, 0).owed.length === 1);
+  check('the morning after promising, you owe it and are not charged for it', (() => {
+    const e = enter(rec);
+    return e.owed.length === 1 && e.broken.length === 0 && e.effects === null;
+  })());
+
+  // Doing the thing in the same breath you promised it does not count.
+  check('you cannot keep a promise on the day you made it',
+    semester.settleFollowUps(rec, { periodId: 'p4', dayIndex: 0, used: ['discourse'] }).kept.length === 0);
+
+  // Doing it later does, and the night clears it off the books.
+  {
+    const later = semester.settleFollowUps(night(rec), { periodId: 'p4', dayIndex: 1, used: ['objective', 'discourse'] });
+    check('doing it on a later day keeps it', later.kept.length === 1 && later.record.owed[0].kept);
+    const after = night(later.record);
+    check('a kept promise is off the books at the next bell', after.owed.length === 0);
+    check('and never charges anything', enter(after).effects === null && enter(after).broken.length === 0);
+  }
+
+  // Doing something else does not.
+  check('doing something else is not doing the thing',
+    semester.settleFollowUps(night(rec), { periodId: 'p4', dayIndex: 1, used: ['objective', 'question'] }).kept.length === 0);
+
+  // The due day passing without it is what costs. Day 0 promise, due day 2:
+  // nights at 0 and 1 leave it open, the night at 2 marks it broken, and the
+  // morning of day 3 charges for it, once.
+  {
+    let x = rec;
+    for (let d = 0; d < 2; d++) x = night(x);
+    check('an open promise survives the nights before it is due',
+      x.owed.length === 1 && !x.owed[0].broken && enter(x).broken.length === 0);
+    x = night(x);
+    check('the night its day goes past marks it broken', x.owed[0].broken === true);
+    const morning = enter(x);
+    check('and the next morning charges Fidelity for it',
+      morning.broken.length === 1 && morning.effects.fidelity === obsData.followUp.broken.effects.fidelity);
+    check('with an email about it, like everything else admin does',
+      morning.events.some(e => e.id === 'owed-turnAndTalk' && e.kind === 'pa'));
+    const after = night(x);
+    check('and it is charged once, then gone', after.owed.length === 0 && enter(after).effects === null);
+  }
+
+  // It is the period's promise, not the day's.
+  {
+    const other = semester.entering(rec, 'p5', { roster, seed: null, admin: adminData, observation: obsData });
+    check('5th period does not owe what 4th period promised', other.owed.length === 0);
+    check('and 5th period cannot keep it either',
+      semester.settleFollowUps(night(rec), { periodId: 'p5', dayIndex: 1, used: ['discourse'] }).kept.length === 0);
+  }
+
+  // The promise survives a reload, which is the whole point of putting it on
+  // the record rather than in state.
+  check('an owed follow-up survives a day boundary and a repair', (() => {
+    const round = semester.repair(JSON.parse(JSON.stringify(night(rec))));
+    return round.owed.length === 1 && round.owed[0].id === 'turnAndTalk' &&
+      round.owed[0].dueDay === 2 && round.owed[0].periodId === 'p4';
+  })());
+
+  // A broken follow-up stacks with admin's ladder rather than replacing it:
+  // both bags land, and the ladder's own event is still there.
+  check('a broken promise and a rung of the ladder both land', (() => {
+    let x = semester.createRecord(4821);
+    const low = { periodId: 'p4', seed: null, roster, students: [], rapport: 50, fidelity: 40,
+      mastery: 40, bandwidth: 50, missed: 0, caught: 0, obsResult: null, known: {} };
+    // A bad day every day, so admin's opinion stays under the ladder's line
+    // rather than drifting back over it while the promise runs out.
+    for (let i = 0; i < 2; i++) x = night(semester.recordPeriod(x, low));
+    x = owe(x, semester.dayIndexOf(x));
+    for (let i = 0; i < 3; i++) x = night(semester.recordPeriod(x, low));
+    const e = enter(x);
+    return e.rung && e.broken.length === 1 &&
+      e.effects.bandwidth === e.rung.effects.bandwidth &&
+      e.effects.fidelity === (e.rung.effects.fidelity || 0) + obsData.followUp.broken.effects.fidelity &&
+      e.events.length === 2;
+  })());
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase 5 — SUBJECT IS THE WEATHER. Treatment §4: subject choice does not
+// change a system, it changes which tells are common, what the events say, and
+// one number on the meters. Everything below is that claim, held to.
+// ---------------------------------------------------------------------------
+{
+  const subjOf = id => ({ meters: {}, tellWeights: {}, events: [], flavor: {}, hazard: null, stack: null,
+    ...bundle[subjectKey(id)] });
+  const socialStudies = subjOf('socialStudies'), science = subjOf('science');
+  const ela = subjOf('ela'), math = subjOf('math');
+
+  // ---- the manifest and the rows ----------------------------------------
+  check('every subject the manifest lists shipped a file',
+    subjData.subjects.every(id => bundle[subjectKey(id)]?.id === id));
+  check('the default is one of them', subjData.subjects.includes(subjData.default));
+  check('a row with no subject takes the default',
+    subjectFor(bundle, { id: 'p4' }).id === subjData.default);
+  check('a row that names one gets it', subjectFor(bundle, { id: 'p4', subject: 'math' }).id === 'math');
+  check('a row that names a subject nobody shipped is a loud error, not a quiet default', (() => {
+    try { subjectFor(bundle, { id: 'p4', subject: 'woodshop' }); return false; }
+    catch (e) { return e.message.includes('woodshop'); }
+  })());
+  check('periodFor hands the subject out with the period', p4.subject.id === subjData.default);
+
+  // ---- Social Studies is the honest test --------------------------------
+  //
+  // It is the file that describes what the game already was. If any number in
+  // it is doing work, 4th period plays differently with it than without, and
+  // the shape is wrong.
+  {
+    const withIt = runPeriod({ period: { ...p4, subject: socialStudies }, data: simData, style: STYLES.good });
+    const without = runPeriod({ period: { ...p4, subject: null }, data: simData, style: STYLES.good });
+    const shape = r => [r.state.mastery, r.state.fidelity, r.state.rapport, r.state.bandwidth,
+      r.state.restless, r.missed].map(v => Math.round(v * 1000)).join();
+    check('Social Studies is a no-op: the shipped day plays identically with it and without',
+      shape(withIt) === shape(without));
+    check('and it still has something to say in the report', !!socialStudies.flavor.report);
+  }
+
+  // ---- one number on the meters -----------------------------------------
+  {
+    const st = createState();
+    applySubject(st, math);
+    check("Math's unearned Rapport penalty lands at the bell",
+      st.rapport === CFG.start.rapport + math.meters.rapport && math.meters.rapport < 0);
+    const st2 = createState();
+    applySubject(st2, socialStudies);
+    check('and a subject with no meters moves nothing',
+      st2.rapport === CFG.start.rapport && st2.fidelity === CFG.start.fidelity);
+  }
+
+  // ---- which tells are common -------------------------------------------
+  {
+    const mix = genData.schedule.mix;
+    const weighted = weightedMix(mix, math);
+    check('a subject scales the weight of a tell type',
+      weighted.COPYING.weight === mix.COPYING.weight * math.tellWeights.COPYING);
+    check('and leaves a type it says nothing about alone',
+      weighted.NOTE.weight === mix.NOTE.weight && math.tellWeights.NOTE == null);
+    check('but never touches the minimums, which are promises to the seating chart',
+      Object.entries(weighted).every(([t, m]) => m.min === mix[t].min && m.max === mix[t].max));
+    check('and a subject with no weights is the mix itself',
+      JSON.stringify(weightedMix(mix, socialStudies)) === JSON.stringify(mix));
+    // The scheduler actually draws through the weighting: thirty seeds, the
+    // same rosters, two mixes. Math leans on COPYING and away from WHISPER,
+    // and thirty schedules have to show it.
+    const deps = mix => ({ tellTypes: tData.types, seatGrid: sData.seatGrid, rules: seatData.rules,
+      gen: { ...genData, schedule: { ...genData.schedule, mix } } });
+    const counts = (subject) => {
+      const d = deps(weightedMix(genData.schedule.mix, subject));
+      const out = { PHONE: 0, WHISPER: 0, NOTE: 0, COPYING: 0 };
+      for (let seed = 1; seed <= 30; seed++) {
+        const roster = generateRoster(seed, genData);
+        for (const r of generateSchedule(mixSeed(seed, 0, 0), roster, d)) {
+          if (out[r.type] != null) out[r.type]++;
+        }
+      }
+      return out;
+    };
+    const plain = counts(socialStudies), leaning = counts(math);
+    check('a subject makes its own tells common', leaning.COPYING > plain.COPYING);
+    check('and the ones it says nothing about rare', leaning.WHISPER < plain.WHISPER);
+    check('over the same thirty seeds, with the same total pressure',
+      Object.values(plain).reduce((a, b) => a + b, 0) === Object.values(leaning).reduce((a, b) => a + b, 0));
+    // And the class is still the class: the roster is the seed alone.
+    const mathBundle = { ...bundle, periods: { ...pData,
+      periods: pData.periods.map(r => (r.generate ? { ...r, subject: 'math' } : r)) } };
+    const p7math = periodFor('p7', mathBundle, { seed: 4821, day: 0 });
+    const p7base = periodFor('p7', bundle, { seed: 4821, day: 0 });
+    check('the roster is the seed alone, whatever the subject is',
+      p7math.roster.map(s => s.name).join() === p7base.roster.map(s => s.name).join());
+    check('and a weighted schedule still keeps every structural promise',
+      scheduleProblems(p7math.schedule, p7math.roster,
+        { tellTypes: tData.types, seatGrid: p7math.seatGrid, rules: seatData.rules, gen: genData }).length === 0);
+  }
+
+  // ---- what the events say ----------------------------------------------
+  {
+    const merged = subjectEvents(eData, math);
+    check("a subject's own event joins the day's",
+      merged.scheduled.length === eData.scheduled.length + math.events.length &&
+      merged.scheduled.some(e => e.id === 'subject-whenWillWeUse'));
+    check('and the day keeps its own', merged.scheduled.some(e => e.id === 'pa-portal'));
+    check('the base events file is not touched', eData.scheduled.length === 1);
+    // An override replaces rather than appends.
+    const over = { ...socialStudies, events: [{ id: 'pa-portal', body: 'different' }] };
+    const o = subjectEvents(eData, over);
+    check('a subject overriding an event by id replaces it, and does not add a second',
+      o.scheduled.length === eData.scheduled.length &&
+      o.scheduled[0].body === 'different' && o.scheduled[0].atMinute === 19);
+    check('a subject rewrites the missed-tell line without dropping the type-specific one',
+      subjectTells(tData, science).missedCopy.default !== tData.missedCopy.default &&
+      subjectTells(tData, science).missedCopy.QUIET === tData.missedCopy.QUIET);
+    check("and an intervention's toast without dropping its effects", (() => {
+      const iv2 = subjectInterventions(iData, math);
+      return iv2.options.pause.toast.body !== iData.options.pause.toast.body &&
+        iv2.options.pause.effects.mastery === iData.options.pause.effects.mastery &&
+        iv2.options.prox.blurb === iData.options.prox.blurb;
+    })());
+  }
+
+  // ---- Science, and the Hazard meter -------------------------------------
+  {
+    check('only a subject with a hazard block has one',
+      !!science.hazard && !socialStudies.hazard && !ela.hazard && !math.hazard);
+    check('a subject with no hazard never produces one', (() => {
+      const st = createState();
+      const out = tickHazard(st, 60, socialStudies, { day: 1, restless: 100, liveTells: 4 });
+      return out === null && st.hazard === 0;
+    })());
+    check('Hazard rises on a lab day and settles on the others', (() => {
+      const lab = createState(), lecture = createState();
+      lecture.hazard = 20;
+      for (let i = 0; i < 100; i++) {
+        tickHazard(lab, 1, science, { day: science.hazard.labDays[0], restless: 50, liveTells: 1 });
+        tickHazard(lecture, 1, science, { day: 0, restless: 50, liveTells: 1 });
+      }
+      return lab.hazard > 0 && lecture.hazard < 20 && !isLabDay(science, 0) && isLabDay(science, 1);
+    })());
+    check('a loud room raises it faster than a quiet one', (() => {
+      const quiet = createState(), loud = createState();
+      for (let i = 0; i < 500; i++) {
+        tickHazard(quiet, 1, science, { day: 1, restless: 5, liveTells: 0 });
+        tickHazard(loud, 1, science, { day: 1, restless: 95, liveTells: 3 });
+      }
+      return loud.hazard > quiet.hazard * 1.5;
+    })());
+    check('it tops out at the cap, once, with effects and a report line', (() => {
+      const st = createState();
+      let fired = 0;
+      for (let i = 0; i < 4000; i++) {
+        if (tickHazard(st, 1, science, { day: 1, restless: 100, liveTells: 4 })) fired++;
+      }
+      return fired === 1 && st.incident === true && st.hazard === science.hazard.cap &&
+        st.fidelity === CFG.start.fidelity + science.hazard.incident.effects.fidelity &&
+        !!science.hazard.incident.report;
+    })());
+    check('and it never goes under zero', (() => {
+      const st = createState();
+      for (let i = 0; i < 1000; i++) tickHazard(st, 1, science, { day: 0 });
+      return st.hazard === 0;
+    })());
+    check('the band table is in data/events.json, next to Room Temp’s', (() => {
+      const b = eData.hazard;
+      return Array.isArray(b) && b.length >= 3 && b[b.length - 1].below >= 999 &&
+        b.every((r, i) => i === 0 || r.below > b[i - 1].below) &&
+        hazardBand(eData, 0).label === b[0].label &&
+        hazardBand(eData, 99).label === b[b.length - 1].label;
+    })());
+    // CLAUDE.md constraint 13: Bandwidth is still the only meter that crosses
+    // the bell. Hazard is a fact about this period in this room.
+    check('Hazard does not cross the bell', createState().hazard === 0 && createState().incident === false);
+    // The whole point: a lab day is survivable for a teacher who is watching
+    // and is not for one who is not.
+    {
+      const lab = style => runPeriod({ period: { ...p4, subject: science }, data: simData, style, opts: { day: 1 } });
+      const good = lab(STYLES.good), blind = lab(STYLES.neverChecks);
+      check('a lab day is survivable if you are watching the room', !good.incident && good.state.hazard < science.hazard.cap);
+      check('and is not if you are not', !!blind.incident && blind.state.hazard === science.hazard.cap);
+      check('and off a lab day nothing happens at all', (() => {
+        const off = runPeriod({ period: { ...p4, subject: science }, data: simData, style: STYLES.neverChecks, opts: { day: 0 } });
+        return !off.incident && off.state.hazard === 0;
+      })());
+    }
+  }
+
+  // ---- ELA, and THE STACK ------------------------------------------------
+  {
+    check('only a subject with a stack block has one', !!ela.stack && !science.stack);
+    check('an empty desk draws nothing', stackFixtures(ela, 0).props.length === 0);
+    check('one essay is one prop on the desk', (() => {
+      const f = stackFixtures(ela, 1);
+      return f.props.length === 1 && f.occluders.length === 0 &&
+        f.props[0].asset === ela.stack.desk.asset && f.props[0].y === ela.stack.desk.y;
+    })());
+    check('a column stacks upward and the next one starts over', (() => {
+      const D = ela.stack.desk;
+      const f = stackFixtures(ela, D.perColumn + 1);
+      const top = f.props[D.perColumn - 1], next = f.props[D.perColumn];
+      return top.y > f.props[0].y && next.y === D.y && next.pos[0] !== f.props[0].pos[0];
+    })());
+    check('past the desk it stops fitting and the overflow is a real occluder', (() => {
+      const under = stackFixtures(ela, ela.stack.floorAt);
+      const over = stackFixtures(ela, ela.stack.floorAt + 1);
+      return under.occluders.length === 0 && over.occluders.length === 1 &&
+        over.props.length === ela.stack.floorAt &&
+        over.occluders[0].id === ela.stack.floor.id;
+    })());
+    check('and the occluder is the shape world/room.js already places', (() => {
+      const o = stackFixtures(ela, 20).occluders[0];
+      return Array.isArray(o.size) && o.size.length === 3 && Array.isArray(o.pos) && o.pos.length === 2 &&
+        typeof o.mat === 'string' && typeof o.label === 'string';
+    })());
+    check('the stack lands in the room without touching data/room.json', (() => {
+      const before = JSON.stringify(roomData);
+      const r = subjectRoom(roomData, ela, 20);
+      return JSON.stringify(roomData) === before &&
+        r.props.length === roomData.props.length + ela.stack.floorAt &&
+        r.occluders.length === roomData.occluders.length + 1 &&
+        r.bounds === roomData.bounds;
+    })());
+    check('and a subject with no stack leaves the room exactly as it is', (() => {
+      const r = subjectRoom(roomData, math, 0);
+      return r.props.length === roomData.props.length && r.occluders.length === roomData.occluders.length;
+    })());
+    check('the stack has something to say at every height',
+      [0, 5, 13, 21, 26].every(n => !!stackBand(ela, n)));
+  }
+
+  // ---- the stack on the record ------------------------------------------
+  {
+    const roster = sData.roster;
+    const base = { periodId: 'p4', seed: null, roster, students: [], rapport: 55, fidelity: 62,
+      mastery: 50, bandwidth: 50, missed: 0, caught: 0, obsResult: null, known: {} };
+    const teach = (rec, over = {}) => semester.recordPeriod(rec, { ...base, subject: 'ela', stack: ela.stack, ...over });
+    const night = rec => semester.advanceDay(rec, [], { admin: adminData });
+
+    let rec = teach(semester.createRecord(4821));
+    check('a period taught adds a period of essays', rec.classes.p4.stack === ela.stack.add);
+    rec = night(rec);
+    check('and a night grades some of them off', rec.classes.p4.stack === ela.stack.add - ela.stack.graded);
+    check('it is the only thing in the game that gets smaller while you sleep',
+      ela.stack.graded > 0 && ela.stack.graded < ela.stack.add);
+    // It outruns you, which is the point.
+    for (let i = 0; i < 20; i++) rec = night(teach(rec));
+    const ceiling = ela.stack.max - ela.stack.graded;
+    check('teaching it every day outruns grading it every night',
+      rec.classes.p4.stack === ceiling && ceiling > ela.stack.add * 3);
+    check('and the pile is capped rather than unbounded', teach(rec).classes.p4.stack === ela.stack.max);
+    check('the class walks in carrying it', (() => {
+      const e = semester.entering(rec, 'p4', { roster, seed: null, admin: adminData, observation: obsData });
+      return e.stack === ceiling && e.subject === 'ela';
+    })());
+    check('nobody carries last unit’s essays into a different course', (() => {
+      const switched = teach(rec, { subject: 'math', stack: null });
+      return switched.classes.p4.stack === 0 && switched.classes.p4.subject === 'math';
+    })());
+    check('a subject with no stack never accumulates one',
+      teach(semester.createRecord(4821), { subject: 'math', stack: null }).classes.p4.stack === 0);
+    check('and the pile survives a reload', (() => {
+      const round = semester.repair(JSON.parse(JSON.stringify(rec)));
+      return round.classes.p4.stack === ela.stack.max - ela.stack.graded && round.classes.p4.subject === 'ela';
+    })());
+  }
+
+  // ---- subject picks the room, not the code ------------------------------
+  //
+  // The moment an `if (subject.id === 'ela')` appears anywhere in src/, the
+  // seam has moved and this fails. There is no allow-list: no file under src/
+  // may name any subject in the manifest.
+  {
+    const files = [];
+    const walk = dir => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = `${dir}/${e.name}`;
+        if (e.isDirectory()) walk(full);
+        else if (e.name.endsWith('.js')) files.push(full);
+      }
+    };
+    walk('../src');
+    const named = [];
+    for (const f of files) {
+      const src = fs.readFileSync(f, 'utf8');
+      for (const id of subjData.subjects) if (src.includes(`'${id}'`) || src.includes(`"${id}"`)) named.push(`${f}: ${id}`);
+    }
+    check(`no file in src/ names a subject (${files.length} files checked)`, named.length === 0);
+  }
+
+  // Adding a subject is a line in the manifest and a file next to it. This is
+  // that, with the file built here rather than shipped: a period row names it,
+  // periodFor resolves it, and a whole period runs under it, with no edit to
+  // anything in src/.
+  {
+    const woodshop = {
+      id: 'woodshop', label: 'Woodshop', tagline: 'Ten Fingers, Every Time',
+      meters: { rapport: 8, fidelity: -4 },
+      tellWeights: { WHISPER: 0.5 },
+      hazard: { labDays: [0, 1, 2, 3, 4], risePerSec: 0.02, restlessPerSec: 0.0003,
+        perLiveTellPerSec: 0.005, settlePerSec: 0.01, cap: 100,
+        labToast: { kind: '', title: 'Shop', body: 'The saw is on.' },
+        incident: { effects: { fidelity: -10 }, toast: { kind: 'bad', title: 'Incident', body: 'A form.' },
+          report: 'There is a form.' },
+        safeReport: 'Ten fingers.' },
+      flavor: { report: 'Nobody has ever observed this room.' }
+    };
+    const shopBundle = {
+      ...bundle,
+      subjects: { ...subjData, subjects: [...subjData.subjects, 'woodshop'] },
+      [subjectKey('woodshop')]: woodshop,
+      periods: { ...pData, periods: pData.periods.map(r => (r.id === 'p4' ? { ...r, subject: 'woodshop' } : r)) }
+    };
+    const shop = periodFor('p4', shopBundle);
+    check('a subject added as one JSON file resolves with no code edit', shop.subject.id === 'woodshop');
+    const r = runPeriod({ period: shop, data: simData, style: STYLES.good, opts: { day: 0 } });
+    check('and a whole period runs under it', r.state.beatsDelivered > 0 && Number.isFinite(r.state.mastery));
+    check('with its meters, its hazard, and its room',
+      r.state.hazard > 0 && subjectRoom(roomData, shop.subject, 9).props.length === roomData.props.length);
+  }
 }
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');

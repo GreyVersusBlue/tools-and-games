@@ -39,6 +39,13 @@ export function createState() {
     tempUses: 0,
     tempZone: null,
 
+    // Phase 5: the subject's one number. Science is the only subject that has
+    // it, it rises on lab days and settles otherwise, and it does not cross
+    // the bell — it is a fact about this period in this room, the way
+    // Restlessness is, so Bandwidth is still the only carried meter.
+    hazard: 0,
+    incident: false,
+
     caught: 0,
     missed: 0,
     sawCurveball: false,
@@ -53,8 +60,18 @@ export function createState() {
     obsWindowRemaining: 0,  // game seconds left once she's actually in the room
     obsSatisfied: {},       // look-for key -> true, once satisfied it stays satisfied
     obsWaitHeld: 0,         // real seconds KeyF has been held, this window
-    obsResult: null,        // { satisfied: [...], total } once the window closes
-    obsConference: null     // the option key the player picked in the post-conference
+    obsResult: null,        // { satisfied: [...], total, announced } once the window closes
+
+    // Phase 4: the post-conference is a tree, so what you said to her is a
+    // path through it rather than one key; `obsOwed` is the follow-up an
+    // option put on the books, which the semester record settles, not this.
+    obsConference: [],      // [{ node, key }], in the order they were said
+    obsOwed: null,          // { id, lookFor, days } if an answer promised one
+
+    // Phase 4: what you actually did in the room today, rubric or no rubric.
+    // A promised follow-up is kept by doing the thing on a later day, and she
+    // is not in the room when you do it.
+    lookForsUsed: []
   };
 }
 

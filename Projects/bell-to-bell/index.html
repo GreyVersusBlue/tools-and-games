@@ -29,6 +29,10 @@
   <div id="clock"><div class="t" id="tClock">47:00</div><div class="p">remaining</div></div>
   <div id="roomtemp" class="cold"><div class="k">Room Temp <span class="key">T</span></div>
     <div class="v" id="tempV">&mdash;</div><div class="s" id="tempS">not read yet</div></div>
+  <!-- Phase 5: only a subject whose file carries a `hazard` block ever shows
+       this. It is a reading, not an ability: nothing is pressed to get it. -->
+  <div id="hazardBox" class="readout hide"><div class="k" id="hazardKey">Hazard</div>
+    <div class="v" id="hazardV">&mdash;</div><div class="s" id="hazardS"></div></div>
 
   <div id="lesson">
     <div class="lh"><span id="lsUnit">UNIT</span><span id="lsCount">0/0</span></div>
@@ -41,13 +45,9 @@
   </div>
   <div id="observation" class="hide">
     <div class="oh">The Observation</div>
-    <div class="orows">
-      <div class="obsrow" data-key="objective"><b>O</b><span>Posted objective</span></div>
-      <div class="obsrow" data-key="question"><b>H</b><span>Higher-order question</span></div>
-      <div class="obsrow" data-key="wait"><b>F</b><span>Wait time (hold)</span></div>
-      <div class="obsrow" data-key="check"><b>Q</b><span>Checks for understanding</span></div>
-      <div class="obsrow" data-key="discourse"><b>G</b><span>Student-led discourse</span></div>
-    </div>
+    <!-- Phase 4: the rows are the five look-fors she actually brought today,
+         drawn from data/observation.json's pool and written in by main.js. -->
+    <div class="orows" id="obsRows"></div>
   </div>
   <div id="crosshair"></div>
   <div id="withitness"><span class="key">SHIFT</span><span class="txt" id="wTxt">Hold for Withitness</span></div>
@@ -81,7 +81,8 @@
       </div>
       <p><b>Mastery is not a bar you fill.</b> It is the average of what twelve people understand, and each of them has their own number. Deliver from the front strip and those numbers climb. A kid with a phone under the desk is not learning anything, which is what the phone is actually costing you.</p>
       <p class="fineprint">Check for understanding to see the comprehension aura in Withitness. It goes stale in about a minute. You are always deciding whether you have time to know.</p>
-      <p class="fineprint">Someone with a clipboard will visit today, on no notice. When she does, the rubric she's using will tell you what it wants.</p>
+      <p class="fineprint">Someone with a clipboard visits some periods and not others. Sometimes it is on the calendar days ahead; more often it is nine seconds of warning. Either way the rubric she brought will tell you what it wants, and it is not the same five things every time.</p>
+      <p class="fineprint" id="startAdmin"></p>
       <p class="fineprint" id="startDay"></p>
       <p><b>First, the seating chart.</b> Drag a name onto another name. Where somebody sits decides who they can reach, who settles them, what you can see from the front, and how much of you they get. None of that is written on the chart. You learn it by teaching them, and it is still there next period.</p>
       <div class="seed hide" id="seedRow">

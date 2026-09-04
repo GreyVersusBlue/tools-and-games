@@ -3,8 +3,9 @@ import { createState, applyEffects } from '../state.js';
 import { createLesson } from './lesson.js';
 import { createRoomTemp } from './roomtemp.js';
 import { createChart } from './chart.js';
-import { createObservation } from './observation.js';
+import { createObservation, defaultVisit } from './observation.js';
 import { tickMeters } from './meters.js';
+import { applySubject, tickHazard, subjectEvents } from './subject.js';
 
 // Phase 2 — THE PERIOD, HEADLESS.
 //
@@ -80,8 +81,13 @@ export const STYLES = {
 //                     from CFG.lesson.startComprehension (Phase 3)
 //   opts.rapport / opts.fidelity   what the class walks in with (Phase 3)
 //   opts.obsWindowScale            the Observation's window, scaled (Phase 3)
+//   opts.visit                     the AP's visit (Phase 4). Omit for the one
+//                                  the balance table has always run; null for
+//                                  a period she did not come to.
 //   opts.effects                   an effect bag applied at the bell, the way
 //                                  main.js applies admin's rung (Phase 3)
+//   opts.day                       which weekday it is, for a subject whose
+//                                  Hazard only rises on lab days (Phase 5)
 //
 // Returns { state, missed, students, plan } — the students carry their final
 // comprehension, which is what the semester record (Phase 3) reads.
@@ -107,15 +113,36 @@ export function runPeriod({ period, data, style, opts = {} }) {
   if (opts.rapport != null) state.rapport = Math.max(0, Math.min(100, opts.rapport));
   if (opts.fidelity != null) state.fidelity = Math.max(0, Math.min(100, opts.fidelity));
   if (opts.effects) applyEffects(state, opts.effects);
+  // Phase 5: the subject's one number on the meters, at the bell, the same way
+  // admin's rung lands. A period with no subject is the game before Phase 5.
+  const subject = period.subject || null;
+  if (subject) applySubject(state, subject);
+  const day = opts.day ?? 0;
+  let incident = null;
 
   const lesson = createLesson({
     data: period.lessonData, students, tellSystem, toast: () => {}, rand: () => 0.5,
     startComp: opts.startComp ?? null
   });
-  const temp = createRoomTemp({ data: data.events, students, tellSystem, toast: () => {} });
+  // The subject's own scheduled events are folded in the same way main.js does
+  // it, so a subject that hits Bandwidth at minute 22 costs the sim what it
+  // costs the player. Only the ones the subject added fire in here: the sim has
+  // never modelled the day's own intercom, and starting now would move every
+  // band in data/generation.json for reasons that have nothing to do with
+  // subjects.
+  const events = subject ? subjectEvents(data.events, subject) : data.events;
+  const subjectEventIds = new Set((subject?.events || []).map(e => e.id));
+  const temp = createRoomTemp({ data: events, students, tellSystem, toast: () => {} });
+  const fired = new Set();
+  // Phase 4: she does not visit every period any more, so the sim has to be
+  // told which visit it is playing. `undefined` means the one the balance
+  // table has always run — always comes, minute 30, the same five look-fors —
+  // so a phase about variety does not quietly move data/generation.json's
+  // bands. `null` is a period she skipped.
+  const visit = opts.visit === undefined ? defaultVisit(data.observation) : opts.visit;
   const observation = createObservation({
     data: data.observation, dom: mkObsDom(), toast: () => {},
-    windowScale: opts.obsWindowScale ?? 1
+    windowScale: opts.obsWindowScale ?? 1, visit
   });
   let rubricPerformed = false;
 
@@ -150,12 +177,26 @@ export function runPeriod({ period, data, style, opts = {} }) {
     const teaching = style.teaching(state);
     const live = tells.filter(t => t.born !== null && !t.dead && !t.resolved).length;
     tickMeters(state, DT, teaching, live);
+    for (const ev of events.scheduled) {
+      if (!subjectEventIds.has(ev.id)) continue;
+      if (fired.has(ev.id) || state.t > CFG.periodSeconds - ev.atMinute * 60) continue;
+      fired.add(ev.id);
+      if (ev.effects) applyEffects(state, ev.effects);
+    }
+    // Game seconds, the same as main.js hands it: Hazard is a fact about how
+    // long the lab has been running, not about frame rate.
+    if (subject) {
+      incident = tickHazard(state, DT * CFG.timeScale, subject,
+        { day, restless: state.restless, liveTells: live }) || incident;
+    }
     lesson.tick(state, DT, { teaching });
     observation.tick(state, DT);
 
     if (style.performRubric && observation.active(state) && !rubricPerformed) {
       rubricPerformed = true;
-      for (const key of ['objective', 'question', 'wait', 'discourse']) observation.satisfy(state, key);
+      // Whatever she brought today, minus the one that piggybacks on a real
+      // check — that one is booked by the check below, if this style checks.
+      for (const key of observation.rubric) if (key !== 'check') observation.satisfy(state, key);
     }
 
     const beat = lesson.current(state);
@@ -169,5 +210,5 @@ export function runPeriod({ period, data, style, opts = {} }) {
     if (style.temp && Math.floor(state.t) % 30 === 0) temp.read(state);
   }
   state.missed = missed;
-  return { state, missed, students, plan, beats: period.lessonData.beats.length };
+  return { state, missed, students, plan, subject, incident, beats: period.lessonData.beats.length };
 }

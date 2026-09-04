@@ -1,0 +1,61 @@
+{
+  "id": "ela",
+  "label": "ELA",
+  "tagline": "The Mountain",
+
+  "_note": "THE STACK. Essays are physical objects in the room: each period taught adds `stack.add` of them to the class's pile on the semester record, each night grades `stack.graded` off it, and the pile is drawn from the same prop manifest and the same room.js fixture placement everything else in RM 214 is. Past `stack.floorAt` it stops fitting on the desk and the overflow goes on the floor as a real occluder, with real collision and a real blind spot. You can see your grading debt from across the room, and it can see you back.",
+
+  "meters": { "rapport": 6, "fidelity": -2 },
+  "tellWeights": { "NOTE": 1.5, "COPYING": 1.3, "PHONE": 0.8 },
+
+  "stack": {
+    "add": 5,
+    "graded": 3,
+    "max": 26,
+    "desk": {
+      "asset": "binder",
+      "footprint": [0.28, 0.22],
+      "origin": [-3.15, -2.6],
+      "y": 0.78,
+      "step": 0.055,
+      "perColumn": 7,
+      "columnStep": -0.34
+    },
+    "floorAt": 14,
+    "floor": {
+      "id": "theStack",
+      "label": "the stack",
+      "mat": "board",
+      "size": [0.52, 0.95, 0.46],
+      "pos": [-2.95, -2.15]
+    },
+    "bands": [
+      { "below": 6,  "line": "There is a stack. There is always a stack. This one is a Tuesday's worth." },
+      { "below": 14, "line": "The stack has reached the edge of the desk and stopped, the way a stack does right before it does not." },
+      { "below": 22, "line": "The overflow is on the floor now and you have started walking around it without noticing you do that." },
+      { "below": 999, "line": "Third period asked whose essays those were. You said theirs. They did not think that was funny and neither did you." }
+    ],
+    "report": "{n} essays, ungraded, in this room, where you and eleven other people can see them."
+  },
+
+  "events": [
+    {
+      "id": "subject-stack",
+      "atMinute": 22.0,
+      "kind": "pa",
+      "durationMs": 8000,
+      "title": "Email — Parent, 10:02 a.m.",
+      "body": "Subject: essay grade. \"Just checking in, no rush at all, I know you're busy — was just wondering if the essays from the 4th had been graded yet. Thanks so much!\" It is the 19th.",
+      "effects": { "bandwidth": -2 },
+      "toast": { "kind": "", "title": "No rush at all", "body": "There is a rush. Bandwidth −2." }
+    }
+  ],
+
+  "flavor": {
+    "missedCopy": { "default": "You were reading a paragraph at your desk and the room went on without you." },
+    "interventions": {
+      "bank": { "toast": { "body": "Filed, next to the other thing they told you that you are not allowed to write down anywhere." } }
+    },
+    "report": "They tell you things in here that they do not tell anybody else in the building. That is the passive. The stack is the price."
+  }
+}

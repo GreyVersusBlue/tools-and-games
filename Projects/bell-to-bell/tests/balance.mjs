@@ -13,6 +13,8 @@ import { CFG } from '../src/config.js';
 import { periodFor, periodIds, rowFor } from '../src/periods.js';
 import { contentFiles } from '../src/loader.js';
 import { runPeriod, STYLES } from '../src/systems/simulate.js';
+import { visitFor } from '../src/systems/observation.js';
+import { subjectKey, hazardBand, stackBand } from '../src/systems/subject.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`, 'utf8'));
 const lData = D('lesson'), sData = D('students'), tData = D('tells'), eData = D('events');
@@ -26,6 +28,13 @@ const bundle = { room: roomData, students: sData, tells: tData, lesson: lData,
   seating: seatData, periods: pData, events: eData, observation: obsData,
   generation: D('generation') };
 for (const name of contentFiles(pData)) if (!(name in bundle)) bundle[name] = D(name);
+// Phase 5: the subjects, loaded the way src/loader.js loads them so a period
+// row naming one resolves in here too.
+const subjData = D('subjects');
+for (const id of subjData.subjects) {
+  bundle[subjectKey(id)] = JSON.parse(fs.readFileSync(`../data/subjects/${id}.json`, 'utf8'));
+}
+bundle.subjects = subjData;
 const TABLE_SEED = 4821;
 const PERIODS = periodIds(bundle).map(id => periodFor(id, bundle, { seed: TABLE_SEED, day: 0 }));
 const SIM = { room: roomData, tells: tData, seating: seatData, events: eData, observation: obsData };
@@ -196,6 +205,48 @@ if (!genRow) {
   console.log('  every seed inside the band\n');
 }
 
+// Phase 5: the subjects. Treatment §4 says a subject does not change a system,
+// it changes which tells are common, what the events say, and one number on
+// the meters — so the honest test is one representative style through 4th
+// period under each of them, side by side. Social Studies is the file that
+// describes what already exists: its row has to land on the same numbers as
+// "the good teacher" at the top of this file, or the shape is wrong. Science's
+// Hazard column is what says whether a lab day is playable; a subject whose
+// Hazard tops out under every style needs a smaller number in its own file,
+// not a change in here.
+console.log('the good teacher, 4th period, one subject at a time (Tuesday, a lab day):');
+for (const id of subjData.subjects) {
+  const subject = { meters: {}, tellWeights: {}, events: [], flavor: {}, hazard: null, stack: null,
+    ...bundle[subjectKey(id)] };
+  const r = runPeriod({ period: { ...PERIODS[0], subject }, data: SIM, style: GOOD, opts: { day: 1 } });
+  const p = v => String(Math.round(v)).padStart(3);
+  const haz = subject.hazard
+    ? `  hazard ${p(r.state.hazard)} ${(hazardBand(eData, r.state.hazard)?.label || '').padEnd(13)}`
+    : '  hazard  --' + ' '.padEnd(14);
+  const stack = subject.stack
+    ? `  stack ${String(subject.stack.add).padStart(2)}/night -${subject.stack.graded}`
+    : '';
+  console.log(
+    `  ${subject.label.padEnd(16)} mastery ${p(r.state.mastery)}  fidelity ${p(r.state.fidelity)}  ` +
+    `rapport ${p(r.state.rapport)}  bandwidth ${p(r.state.bandwidth)}  restless ${p(r.state.restless)}  ` +
+    `missed ${r.missed}${haz}${stack}`);
+}
+console.log('');
+
+// Phase 5: and the same lab day played badly, because a Hazard profile is only
+// interesting if the difference between the two rows above and below is real.
+console.log('science, 4th period, a lab day under four styles:');
+for (const key of ['ideal', 'good', 'wanderer', 'neverChecks']) {
+  const subject = { meters: {}, tellWeights: {}, events: [], flavor: {}, hazard: null, stack: null,
+    ...bundle[subjectKey('science')] };
+  const r = runPeriod({ period: { ...PERIODS[0], subject }, data: SIM, style: STYLES[key], opts: { day: 1 } });
+  const p = v => String(Math.round(v)).padStart(3);
+  console.log(`  ${STYLES[key].label.padEnd(26)} hazard ${p(r.state.hazard)}  ` +
+    `${(hazardBand(eData, r.state.hazard)?.label || '').padEnd(13)}  ` +
+    `incident ${r.incident ? 'YES' : 'no '}  fidelity ${p(r.state.fidelity)}  restless ${p(r.state.restless)}`);
+}
+console.log('');
+
 // Phase 3: a week. Five days, every period, one style, with the semester
 // record at each bell: what the class opened on (yesterday's twelve numbers
 // minus a night), what it closed on, admin's opinion, and which rung of the
@@ -208,7 +259,11 @@ const adminData = D('admin');
 
 function week(style) {
   console.log(`${style.label}, a week of ${PERIODS.length} periods a day, the record at each bell:`);
-  let record = semester.createRecord();
+  // Phase 4: the week runs AP Reyes's real calendar rather than a visit every
+  // period, so the `obs` column is where a `chance` that makes her a metronome
+  // (or a stranger) shows up as a column of dashes or a column of fives.
+  let record = semester.createRecord(TABLE_SEED);
+  let visits = 0;
   for (let d = 0; d < CFG.semester.daysPerWeek; d++) {
     let pool = null;
     for (const id of periodIds(bundle)) {
@@ -218,9 +273,11 @@ function week(style) {
       });
       const opens = carry.startComp
         ? carry.startComp.reduce((a, b) => a + b, 0) / carry.startComp.length * 100 : null;
+      const visit = visitFor(obsData, { seed: record.seed, dayIndex: carry.dayIndex, periodId: id });
+      if (visit) visits++;
       const r = runPeriod({ period, data: SIM, style, opts: {
         bandwidth: pool, startComp: carry.startComp, rapport: carry.rapport, fidelity: carry.fidelity,
-        obsWindowScale: carry.obsWindowScale, effects: carry.effects
+        obsWindowScale: carry.obsWindowScale, effects: carry.effects, visit
       } });
       pool = Math.min(100, r.state.bandwidth + CFG.day.passingPeriodRecovery);
       record = semester.recordPeriod(record, {
@@ -234,7 +291,9 @@ function week(style) {
       console.log(`  ${adminData.shortDays[record.day]} ${period.short.padEnd(4)} ` +
         `mastery ${p(opens)} -> ${p(r.state.mastery)}   fidelity ${p(carry.fidelity)} -> ${p(r.state.fidelity)}   ` +
         `rapport ${p(carry.rapport)} -> ${p(r.state.rapport)}   bandwidth ${p(r.state.bandwidth)}   ` +
-        `missed ${r.missed}   admin ${carry.rung ? carry.rung.label : '—'}`);
+        `missed ${r.missed}   obs ${r.state.obsResult
+          ? `${r.state.obsResult.satisfied.length}/${r.state.obsResult.total}${visit.announced ? '*' : ' '}`
+          : ' -- '}  admin ${carry.rung ? carry.rung.label : '—'}`);
     }
     record = semester.advanceDay(record, [], { admin: adminData });
   }
@@ -242,6 +301,7 @@ function week(style) {
   const p = v => String(Math.round(v)).padStart(3);
   console.log(`  ${'week (means)'.padEnd(8)} mastery ${p(w.means.mastery)}         fidelity ${p(w.means.fidelity)}         ` +
     `rapport ${p(w.means.rapport)}         missed ${w.missed}   ` +
+    `visits ${visits}/${CFG.semester.daysPerWeek * PERIODS.length} (* announced)   ` +
     `admin ${record.admin.history.length ? record.admin.history.map(h => `${h.id} from ${adminData.shortDays[(h.day + 1) % CFG.semester.daysPerWeek]}`).join(', ') : 'nothing'}\n`);
   return record;
 }

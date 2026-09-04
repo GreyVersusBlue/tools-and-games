@@ -1,0 +1,32 @@
+{
+  "id": "math",
+  "label": "Math",
+  "tagline": "Inherited Trauma",
+
+  "_note": "Two rows, exactly as the treatment has it. A starting Rapport penalty you did not earn, from every prior math class these kids have had, and the line a student says out loud in every single unit. No new rule, no new meter, no new prop.",
+
+  "meters": { "rapport": -9, "fidelity": 3 },
+  "tellWeights": { "COPYING": 1.6, "PHONE": 1.1, "WHISPER": 0.8 },
+
+  "events": [
+    {
+      "id": "subject-whenWillWeUse",
+      "atMinute": 13.5,
+      "kind": "toast",
+      "toast": {
+        "kind": "", "title": "From the third row",
+        "body": "\"When are we ever going to use this.\" It is not a question and it is not rudeness. It is the sentence this room has been handed every year since fourth grade and today it is your turn to answer it."
+      },
+      "effects": { "restless": 6, "rapport": -1 },
+      "reaction": "listenUp"
+    }
+  ],
+
+  "flavor": {
+    "missedCopy": { "default": "Two people quietly stopped trying and you were writing on the board." },
+    "interventions": {
+      "pause": { "toast": { "body": "You stop mid-derivation. The room finds itself. Somebody uses the silence to copy down step three." } }
+    },
+    "report": "You walked in nine points of Rapport down on a room you had never met, for things that happened to them in other people's classrooms."
+  }
+}

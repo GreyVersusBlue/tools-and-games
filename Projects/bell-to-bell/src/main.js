@@ -16,8 +16,10 @@ import { createInterventions } from './systems/interventions.js';
 import { createEvents } from './systems/events.js';
 import { createLesson } from './systems/lesson.js';
 import { createRoomTemp } from './systems/roomtemp.js';
-import { createObservation } from './systems/observation.js';
+import { createObservation, visitFor, announcedAhead } from './systems/observation.js';
 import { inTeachingZone, tickMeters } from './systems/meters.js';
+import { applySubject, tickHazard, hazardBand, isLabDay, subjectEvents, subjectTells,
+  subjectInterventions, subjectRoom, stackBand } from './systems/subject.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { dom } from './ui/dom.js';
@@ -77,7 +79,13 @@ const activePeriodId = resolvePeriodId(persist.load('period', null), data);
 // finished period and asks what the next one opens with. Repaired on every
 // load, so a browser that stored garbage starts a fresh week rather than a
 // broken one.
-let record = semester.repair(persist.load('semester', null));
+// Phase 4: the record carries the semester's own seed, drawn here once the
+// same way a generated class's is. It is what makes AP Reyes's calendar
+// readable days ahead without a line of it being stored.
+let record = semester.repair(persist.load('semester', null), drawSeed());
+// The seed has to survive a browser that is closed before the first bell, or
+// tomorrow is a different calendar than the one this morning showed you.
+persist.save('semester', record);
 
 // Phase 2: a generated period is twelve kids out of one integer. The integer
 // lives in the period's own slot, drawn once and kept, so a refresh mid-7th is
@@ -98,11 +106,35 @@ const period = periodFor(activePeriodId, data, { seed, day: semester.dayIndexOf(
 // they will put up with. A class on its first day gets CFG.start, same as
 // before there was a semester.
 const carry = semester.entering(record, activePeriodId, {
-  roster: period.roster, seed: period.generated ? period.generated.seed : null, admin: data.admin
+  roster: period.roster, seed: period.generated ? period.generated.seed : null,
+  admin: data.admin, observation: data.observation
+});
+
+// Phase 4: whether she comes to this period today, when, whether it was on the
+// calendar, and which five of the nine look-fors she brought. Pure off the
+// semester seed, the day and the period id, so a refresh is the same visit and
+// next Thursday's announced one can be read this morning.
+const visit = visitFor(data.observation, {
+  seed: record.seed, dayIndex: carry.dayIndex, periodId: period.id
 });
 state.rapport = clamp01to100(carry.rapport);
 state.fidelity = clamp01to100(carry.fidelity);
 if (carry.effects) applyEffects(state, carry.effects);
+
+// Phase 5: the subject. One number on the meters, which tells are common,
+// what the events say, and — for a subject that has one — a fifth tracked
+// value and a pile of essays with collision. Everything below reads a merged
+// copy of a data file; no system downstream learns that a subject exists.
+const subject = period.subject;
+applySubject(state, subject);
+const subjectData = {
+  events: subjectEvents(data.events, subject),
+  tells: subjectTells(data.tells, subject),
+  interventions: subjectInterventions(data.interventions, subject)
+};
+// How many essays are in the room right now: what this class was carrying at
+// the last bell, before today's period adds its own.
+const stackCount = carry.stack;
 
 // Phase 1: Bandwidth crosses the bell. Everything else in CFG.start is a fact
 // about walking into a room and resets at each one; Bandwidth is a fact about
@@ -133,7 +165,11 @@ const mats = createMaterials(data.assets);
 // Shared across the room and the roster so a desk.glb used by both the
 // teacher's desk and every student desk is only ever fetched once.
 const modelLoader = createModelLoader();
-const room = await buildRoom(scene, registry, mats, data.room, { loader: modelLoader, assets: data.assets });
+// THE STACK is drawn as props and one occluder in exactly the shape
+// data/room.json uses, so world/room.js places it the way it places the
+// bookshelf, blind spot and all.
+const room = await buildRoom(scene, registry, mats, subjectRoom(data.room, subject, stackCount),
+  { loader: modelLoader, assets: data.assets });
 
 // T4: the chart decides who sits where before anything is built. It survives
 // between periods; the first period of a fresh browser gets the August chart.
@@ -171,9 +207,34 @@ const weekday = data.admin.days[carry.day];
 const dayTag = data.admin.copy.dayTag.replace('{day}', weekday.toUpperCase()).replace('{week}', carry.week);
 dom.cbTitle.textContent = period.periodLabel;
 dom.cbRoom.textContent = `${data.admin.shortDays[carry.day]} · ${data.room.meta.room}`;
-dom.startSub.textContent = `SLICE 001 — "ONE PERIOD" · ${weekday} · ${period.ordinal} · 47 minutes · 12 students`;
+dom.startSub.textContent = `SLICE 001 — "ONE PERIOD" · ${weekday} · ${period.ordinal} · ` +
+  `${data.subjects.copy.tag.replace('{label}', subject.label).replace('{tagline}', subject.tagline)} · 12 students`;
 dom.startDay.textContent = (carry.firstDay ? data.admin.copy.firstDay : data.admin.copy.returning)
   .replace('{day}', weekday).replace('{week}', carry.week);
+
+// Phase 4: what is already on the calendar, and what you still owe her. Both
+// are read forward off the same pure function the visit itself comes from, so
+// nothing on this line was stored and nothing on it can go stale.
+{
+  const O = data.observation, A = O.visit.announced;
+  const labelOf = id => rowFor(id, data)?.short || id;
+  const inDaysCopy = (copy, n) => (copy[String(n)] || copy.n.replace('{n}', n));
+  const lines = [];
+  const ahead = announcedAhead(O, {
+    seed: record.seed, dayIndex: carry.dayIndex, periodIds: periodIds(data)
+  }).map(v => (v.inDays === 0
+    ? A.today.replace('{period}', labelOf(v.periodId))
+    : A.notice.replace('{period}', labelOf(v.periodId))
+      .replace('{when}', inDaysCopy(A.when, v.inDays))));
+  if (ahead.length) lines.push(A.lead.replace('{list}', ahead.join(' ')));
+  for (const o of carry.owed) {
+    lines.push(O.followUp.owedLabel
+      .replace('{what}', O.followUp.what[o.id] || o.lookFor)
+      .replace('{when}', inDaysCopy(O.followUp.when, Math.max(0, o.dueDay - carry.dayIndex))));
+  }
+  if (carry.broken.length) lines.push(O.followUp.broken.report);
+  dom.startAdmin.textContent = lines.join(' ');
+}
 
 const reactions = createReactions({ students, data: data.reactions, camera });
 
@@ -182,12 +243,12 @@ const audio = createAudio();
 const input = createInput(renderer.domElement, room.spawn);
 
 const tellSystem = createTellSystem({
-  scene, camera, students, data: data.tells, occluders: room.occluders,
+  scene, camera, students, data: subjectData.tells, occluders: room.occluders,
   schedule: plan.rows,
   // T1: a tell arriving changes how the kid sits. Subtle enough to be deniable,
   // which is the point — the posture is a Tier 1 tell and the phone is Tier 2.
   onBorn: t => {
-    const def = data.tells.types[t.type];
+    const def = subjectData.tells.types[t.type];
     if (!def.posture) return;
     reactions.play(students[t.seat], def.posture, { key: `tell${t.id}`, partner: students[t.seat2] });
     if (t.seat2 != null) {
@@ -204,7 +265,7 @@ const tellSystem = createTellSystem({
 const withitness = createWithitness({ scene, registry, tellSystem, audio, dom });
 
 const interventions = createInterventions({
-  data: data.interventions, students, tellSystem, toast,
+  data: subjectData.interventions, students, tellSystem, toast,
   react: ({ seat, seat2, reaction, reactRoom, escalated }) => {
     const subject = students[seat];
     if (escalated && reaction === 'ripple') {
@@ -237,7 +298,7 @@ const lesson = createLesson({
 });
 
 const temp = createRoomTemp({
-  data: data.events, students, tellSystem, toast,
+  data: subjectData.events, students, tellSystem, toast,
   onPulse: () => {
     dom.tempBox.classList.remove('pulse');
     void dom.tempBox.offsetWidth;
@@ -248,7 +309,7 @@ const temp = createRoomTemp({
 
 const events = createEvents({
   // Phase 3: whatever admin scheduled for today fires like any other event.
-  data: { ...data.events, scheduled: [...data.events.scheduled, ...carry.events] }, dom, toast,
+  data: { ...subjectData.events, scheduled: [...subjectData.events.scheduled, ...carry.events] }, dom, toast,
   react: ev => {
     if (!ev.reaction) return;
     reactions.wave(ev.reaction, { scale: 0.9, delayPerMetre: 0.02 });
@@ -257,7 +318,14 @@ const events = createEvents({
 
 // T7: the Observation. Shared across periods on purpose — it is the same
 // rubric and the same AP regardless of whose desks are in the room.
-const observation = createObservation({ data: data.observation, dom, toast, windowScale: carry.obsWindowScale });
+const observation = createObservation({
+  data: data.observation, dom, toast, windowScale: carry.obsWindowScale, visit
+});
+
+// The rubric panel is the five she brought, not a fixed five in index.html.
+dom.obsRows.innerHTML = observation.lookFors.map(l =>
+  `<div class="obsrow" data-key="${l.key}"><b>${l.code}</b>` +
+  `<span>${l.label}${l.hold ? ' (hold)' : ''}</span></div>`).join('');
 
 room.screens.board?.set(lesson.current(state).board);
 room.screens.objective?.set(period.lessonData.objectiveBoard);
@@ -271,6 +339,13 @@ function flashCFU() {
   audio.chime();
 }
 
+// Phase 5: what the Hazard box reads, or null for a subject that does not have
+// one, which is every subject but Science today.
+const hazardReadout = () => (subject.hazard
+  ? { key: data.subjects.copy.hazardKey, band: hazardBand(subjectData.events, state.hazard),
+      hotAt: subject.hazard.cap * 0.8 }
+  : null);
+
 // T7: the rubric panel is visible from the Admin Proximity Alert through the
 // end of the window, so you can see what it wants before she's even in the
 // room, and it goes away the moment she's done writing.
@@ -281,6 +356,13 @@ function drawObservationHUD(state) {
   for (const row of dom.observation.querySelectorAll('.obsrow')) {
     row.classList.toggle('got', !!state.obsSatisfied[row.dataset.key]);
   }
+}
+
+// Phase 4: what you did in this room today, rubric or no rubric. A follow-up
+// you promised her is kept by doing the thing on a later day, and she is not
+// standing there when you do it.
+function useLookFor(key) {
+  if (!state.lookForsUsed.includes(key)) state.lookForsUsed.push(key);
 }
 
 function handleTellClick(t) {
@@ -296,7 +378,7 @@ function onExpire(t) {
   state.missed++;
   state.restless += CFG.missedRestless;
   state.masteryPending += CFG.missedMastery;
-  const copy = data.tells.missedCopy[t.type] || data.tells.missedCopy.default;
+  const copy = subjectData.tells.missedCopy[t.type] || subjectData.tells.missedCopy.default;
   toast('', 'Missed it', copy);
 }
 
@@ -331,11 +413,17 @@ function frame(now) {
     if (action === 'roomTemp') { temp.read(state); continue; }
     if (state.openTell) continue;              // one thing at a time
     if (action === 'advance') lesson.advance(state);
-    else if (action === 'check') { if (lesson.check(state).ok) observation.satisfy(state, 'check'); }
+    else if (action === 'check') {
+      if (lesson.check(state).ok) { useLookFor('check'); observation.satisfy(state, 'check'); }
+    }
     else if (action === 'reteach') lesson.reteach(state);
-    else if (action === 'postObjective') observation.satisfy(state, 'objective');
-    else if (action === 'askQuestion') observation.satisfy(state, 'question');
-    else if (action === 'discourse') observation.satisfy(state, 'discourse');
+    // Phase 4: one branch for every one-shot look-for in the pool, whatever is
+    // in it. The rubric decides whether it scores; the room does not care.
+    else if (action.startsWith('look:')) {
+      const key = action.slice(5);
+      useLookFor(key);
+      observation.satisfy(state, key);
+    }
   }
 
   withitness.tick(state, dt);
@@ -345,6 +433,12 @@ function frame(now) {
   observation.tick(state, dt);
   observation.tickWait(state, dt, input.wantsWait());
   drawObservationHUD(state);
+
+  // Phase 5: the subject's one number. A subject with no `hazard` block
+  // returns null here every tick and nothing else in the loop changes.
+  const incident = tickHazard(state, dt * CFG.timeScale, subject,
+    { day: carry.day, restless: state.restless, liveTells });
+  if (incident) toast(incident.toast.kind, incident.toast.title, incident.toast.body);
 
   if (state.hyper > CFG.hyperThreshold && !state.falseSpawned && state.t > 420) {
     state.falseSpawned = true;
@@ -360,7 +454,7 @@ function frame(now) {
   audio.setMurmur(state.restless / 100, state.withitness);
 
   updateLabels({ state, camera, tellSystem, students, onClick: handleTellClick, projector });
-  drawHUD(state, teaching, temp.display(state), lesson.summary(state));
+  drawHUD(state, teaching, temp.display(state), lesson.summary(state), hazardReadout());
   renderer.render(scene, camera);
 }
 
@@ -370,6 +464,7 @@ function endPeriod() {
   withitness.set(state, false);
   closeMenu();
   audio.bell();
+  const followUpLines = [];
 
   // What this period taught you about the room. Next chart knows it; nothing
   // about it was labelled in advance. A new roster next period gets none of
@@ -387,64 +482,108 @@ function endPeriod() {
     roster: period.roster, students,
     rapport: state.rapport, fidelity: state.fidelity, mastery: state.mastery,
     bandwidth: state.bandwidth, missed: state.missed, caught: state.caught,
-    sawCurveball: state.sawCurveball, obsResult: state.obsResult, known
+    sawCurveball: state.sawCurveball, obsResult: state.obsResult, known,
+    // Phase 5: which course this was, and one period's worth of essays onto
+    // the pile. The record adds and the night subtracts; neither of them has
+    // heard of ELA.
+    subject: subject.id, stack: subject.stack
   });
+
+  // Phase 4: a follow-up you promised her in some earlier conference is kept
+  // by doing the thing in this room on a later day. Nobody is watching, which
+  // is the point; the toast is the only acknowledgement it gets.
+  const settled = semester.settleFollowUps(record, {
+    periodId: period.id, dayIndex: carry.dayIndex, used: state.lookForsUsed
+  });
+  record = settled.record;
+  if (settled.kept.length) {
+    const copy = data.observation.followUp.kept;
+    toast(copy.toast.kind, copy.toast.title, copy.toast.body);
+    followUpLines.push(copy.report);
+  }
+  // And one you did not: entering() charged for it this morning, and this is
+  // where the report says so.
+  if (carry.broken.length) followUpLines.push(data.observation.followUp.broken.report);
   persist.save('semester', record);
 
   // T6: each period hands off into the next; the last period's own report just
   // restarts the day at the top, which is what "Run it again" always meant.
   // Phase 1: which period that is, and what the button says, are both rows in
   // data/periods.json now rather than string literals in here.
+  // Phase 4: built after the post-conference rather than before it, because a
+  // conference can put a follow-up on the books and the night that turns those
+  // over has to see it.
   const next = period.nextPeriodId;
-  let restart;
-  if (next) {
-    restart = {
-      label: period.nextLabel,
-      onClick: () => {
-        // The room's desks carry forward as a fact about the room, once: a
-        // class that has never sat in any chart inherits this one, and has no
-        // opinion about it yet. Phase 3: a class that made its own chart
-        // yesterday keeps it, and keeps what it taught you.
-        if (persist.load(persist.slot(next, 'chart'), null) == null) {
-          persist.save(persist.slot(next, 'chart'), chart.seatOf);
-          persist.save(persist.slot(next, 'rapportBase'), null);
+  function buildRestart() {
+    let restart;
+    if (next) {
+      restart = {
+        label: period.nextLabel,
+        onClick: () => {
+          // The room's desks carry forward as a fact about the room, once: a
+          // class that has never sat in any chart inherits this one, and has no
+          // opinion about it yet. Phase 3: a class that made its own chart
+          // yesterday keeps it, and keeps what it taught you.
+          if (persist.load(persist.slot(next, 'chart'), null) == null) {
+            persist.save(persist.slot(next, 'chart'), chart.seatOf);
+            persist.save(persist.slot(next, 'rapportBase'), null);
+          }
+          // Phase 1: and Bandwidth goes with you, minus everything this period
+          // cost, plus whatever four minutes in the hallway are worth.
+          persist.save(persist.dayKey('bandwidth'),
+            clamp01to100(state.bandwidth + CFG.day.passingPeriodRecovery));
+          persist.save('period', next);
+          location.reload();
         }
-        // Phase 1: and Bandwidth goes with you, minus everything this period
-        // cost, plus whatever four minutes in the hallway are worth.
-        persist.save(persist.dayKey('bandwidth'),
-          clamp01to100(state.bandwidth + CFG.day.passingPeriodRecovery));
-        persist.save('period', next);
-        location.reload();
-      }
-    };
-  } else {
-    // Phase 3: the last bell of the day is the night. The record forgets what
-    // a night forgets, admin's opinion drifts, and tomorrow's rung is decided
-    // — all in advanceDay, none of it in here. A new day is also the only
-    // thing that gives Bandwidth back in full.
-    const friday = semester.isLastDayOfWeek(record);
-    const tomorrow = semester.advanceDay(record, [], { admin: data.admin });
-    const sleep = () => {
-      persist.save('semester', tomorrow);
-      persist.clear(persist.dayKey('bandwidth'));
-      persist.save('period', firstPeriodId(data));
-    };
-    restart = friday ? {
-      label: data.admin.copy.fridayReport,
-      onClick: () => {
-        sleep();
-        showWeek(semester.weekSummary(tomorrow), {
-          admin: data.admin, endings: data.events.endings, district: CFG.semester.districtFidelity
-        }, { label: data.admin.copy.nextWeek, onClick: () => location.reload() });
-      }
-    } : {
-      label: data.admin.copy.tomorrow.replace('{day}', data.admin.days[tomorrow.day]),
-      onClick: () => { sleep(); location.reload(); }
-    };
+      };
+    } else {
+      // Phase 3: the last bell of the day is the night. The record forgets what
+      // a night forgets, admin's opinion drifts, and tomorrow's rung is decided
+      // — all in advanceDay, none of it in here. A new day is also the only
+      // thing that gives Bandwidth back in full.
+      const friday = semester.isLastDayOfWeek(record);
+      const tomorrow = semester.advanceDay(record, [], { admin: data.admin });
+      const sleep = () => {
+        persist.save('semester', tomorrow);
+        persist.clear(persist.dayKey('bandwidth'));
+        persist.save('period', firstPeriodId(data));
+      };
+      restart = friday ? {
+        label: data.admin.copy.fridayReport,
+        onClick: () => {
+          sleep();
+          showWeek(semester.weekSummary(tomorrow), {
+            admin: data.admin, endings: data.events.endings, district: CFG.semester.districtFidelity
+          }, { label: data.admin.copy.nextWeek, onClick: () => location.reload() });
+        }
+      } : {
+        label: data.admin.copy.tomorrow.replace('{day}', data.admin.days[tomorrow.day]),
+        onClick: () => { sleep(); location.reload(); }
+      };
+    }
+    return restart;
+  }
+
+  // What the subject has to say about the period, in the report's own voice.
+  function subjectLines() {
+    const out = [];
+    if (subject.hazard && isLabDay(subject, carry.day)) {
+      out.push(state.incident ? subject.hazard.incident.report : subject.hazard.safeReport);
+    }
+    if (subject.stack) {
+      const n = Math.min(subject.stack.max, stackCount + subject.stack.add);
+      const band = stackBand(subject, n);
+      if (band) out.push(band.line);
+      out.push(subject.stack.report.replace('{n}', n));
+    }
+    // The subject's own line is an introduction, not a refrain: four periods a
+    // day of the same sentence is a worse report than three.
+    if (subject.flavor?.report && carry.firstDay) out.push(subject.flavor.report);
+    return out;
   }
 
   function report() {
-    showReport(state, data.events, {
+    showReport(state, subjectData.events, {
       lesson: lesson.summary(state), students,
       seating: { plan, copy: data.seating.report, chart, learned },
       periodTag: `${dayTag} · ${period.periodTag}`,
@@ -453,19 +592,33 @@ function endPeriod() {
       observation: state.obsResult ? {
         result: state.obsResult,
         labels: observation.lookFors.filter(l => state.obsSatisfied[l.key]).map(l => l.label),
-        option: observation.conferenceOption(state.obsConference),
+        options: observation.conferencePath(state),
         copy: observation.report
       } : null,
-      restart
+      followUpLines,
+      subjectLines: subjectLines(),
+      restart: buildRestart()
     });
   }
 
   // T7: if she came today, the post-conference happens before the report —
   // the day is not over until you've answered her, one way or another.
+  // Phase 4: it is a tree, so this hands ui/conference.js the first node and
+  // lets it loop until an answer has nothing after it.
   if (state.obsPhase === 'done') {
-    showConference(observation.conference, key => {
-      observation.resolveConference(state, key);
-      report();
+    showConference(observation.conference, {
+      firstNode: observation.rootNode(),
+      onPick: (nodeId, key) => observation.resolveConference(state, nodeId, key),
+      onDone: () => {
+        // A promise made at this bell goes on the books before the night that
+        // turns promises over, and it is due a day later than today, so you
+        // cannot keep it in the same breath you made it.
+        if (state.obsOwed) {
+          record = semester.oweFollowUp(record, { periodId: period.id, ...state.obsOwed }, carry.dayIndex);
+          persist.save('semester', record);
+        }
+        report();
+      }
     });
   } else {
     report();
@@ -510,6 +663,10 @@ function beginPeriod() {
   audio.init();
   state.running = true;
   last = performance.now();
+  if (isLabDay(subject, carry.day)) {
+    const t = subject.hazard.labToast;
+    toast(t.kind, t.title, t.body);
+  }
 }
 
 // Phase 2: the seed, on the start screen, for a generated period only. Type a
@@ -560,7 +717,7 @@ dom.startBtn.addEventListener('click', () => {
   seating.open(chart.viewModel(known), { cost: chart.rechartCost(rapportBase) });
 });
 
-drawHUD(state, true, temp.display(state), lesson.summary(state));
+drawHUD(state, true, temp.display(state), lesson.summary(state), hazardReadout());
 requestAnimationFrame(frame);
 
 } catch (err) {

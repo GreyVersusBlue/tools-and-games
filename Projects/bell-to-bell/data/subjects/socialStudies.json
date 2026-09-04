@@ -1,0 +1,14 @@
+{
+  "id": "socialStudies",
+  "label": "Social Studies",
+  "tagline": "The Forgotten Discipline",
+
+  "_note": "The honest one. This file describes what the game already was before subjects existed, which is the only real test of whether the shape is right: every number below is a no-op, and the shipped day plays identically with it and without it. If a field here has to hold anything but a neutral value to keep 4th period where it was, the seam is wrong.",
+
+  "meters": {},
+  "tellWeights": {},
+
+  "flavor": {
+    "report": "Nobody checked on you today. That is the passive and it is also the curse."
+  }
+}

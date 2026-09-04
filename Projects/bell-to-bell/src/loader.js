@@ -1,9 +1,11 @@
 import { CONTENT_FIELDS, fileOf } from './periods.js';
+import { subjectKey } from './systems/subject.js';
 
 // The files the game always needs: the room, the rulebook, the copy decks, and
 // the day's running order.
 const CORE = ['room', 'students', 'tells', 'interventions', 'events', 'lesson',
-  'reactions', 'seating', 'observation', 'assets', 'periods', 'generation', 'admin'];
+  'reactions', 'seating', 'observation', 'assets', 'periods', 'generation', 'admin',
+  'subjects'];
 
 async function fetchAll(names, base) {
   const entries = await Promise.all(names.map(async name => {
@@ -28,8 +30,21 @@ export function contentFiles(periodsFile) {
   return [...names];
 }
 
+// Phase 5: the subjects. data/subjects.json lists the ids; each one is a file
+// in data/subjects/, parked in the bundle under a namespaced key so a subject
+// called "lesson" cannot shadow the lesson file. Adding a subject is a line in
+// the manifest and a file next to it, and nothing in here changes.
+async function fetchSubjects(manifest, base) {
+  const entries = await Promise.all(manifest.subjects.map(async id => {
+    const res = await fetch(`${base}/subjects/${id}.json`);
+    if (!res.ok) throw new Error(`Could not load subjects/${id}.json (${res.status})`);
+    return [subjectKey(id), await res.json()];
+  }));
+  return Object.fromEntries(entries);
+}
+
 export async function loadData(base = './data') {
   const core = await fetchAll(CORE, base);
   const extra = contentFiles(core.periods).filter(name => !(name in core));
-  return { ...core, ...await fetchAll(extra, base) };
+  return { ...core, ...await fetchAll(extra, base), ...await fetchSubjects(core.subjects, base) };
 }

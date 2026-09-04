@@ -1,5 +1,26 @@
 {
-  "atMinute": 30,
+  "_note": "Phase 4. She does not always come, and sometimes she tells you days ahead. A visit is a pure function of the semester seed, the day index and the period id (visitFor in src/systems/observation.js), so nothing about the calendar is stored and looking ahead gives the same answer twice. The rubric is drawn from the pool below instead of being the same five rows forever, and the post-conference is a tree of nodes rather than one exchange. Logic is in src/systems/observation.js and src/ui/conference.js; this file is only ever read.",
+
+  "visit": {
+    "chance": 0.58,
+    "window": { "fromMinute": 24, "toMinute": 34 },
+    "rubricSize": 5,
+    "announced": {
+      "chance": 0.34,
+      "leadDays": { "min": 1, "max": 3 },
+      "horizonDays": 4,
+      "notice": "AP Reyes, {period}, {when}.",
+      "today": "AP Reyes, {period}, today.",
+      "when": { "0": "today", "1": "tomorrow", "n": "in {n} school days" },
+      "lead": "On the calendar: {list} The rubric is attached to each invite. It is the same rubric.",
+      "arrival": {
+        "title": "AP Reyes, as scheduled",
+        "body": "She is in the doorway at the minute the invite said. Nothing about this is a surprise, which turns out not to help."
+      }
+    },
+    "default": { "atMinute": 30, "rubric": ["objective", "question", "wait", "check", "discourse"] }
+  },
+
   "alert": {
     "title": "Admin Proximity Alert",
     "body": "Someone with a clipboard is two doors down and moving with intent."
@@ -8,6 +29,7 @@
     "title": "AP Reyes",
     "body": "She takes the seat by the door without being asked. Clipboard open before she sits down."
   },
+
   "lookFors": [
     {
       "key": "objective",
@@ -40,7 +62,8 @@
     {
       "key": "check",
       "code": "Q",
-      "label": "Checks for understanding"
+      "label": "Checks for understanding",
+      "implicit": true
     },
     {
       "key": "discourse",
@@ -50,46 +73,203 @@
         "kind": "good", "title": "Student-led discourse",
         "body": "You step back and let them talk to each other instead of to you. Three of them actually do."
       }
+    },
+    {
+      "key": "modeling",
+      "code": "M",
+      "label": "Modeled thinking aloud",
+      "toast": {
+        "kind": "good", "title": "Modeled thinking aloud",
+        "body": "You do the first one on the board and narrate every wrong turn you take on the way. It is the most useful ninety seconds of the period and it looks like stalling."
+      }
+    },
+    {
+      "key": "vocabulary",
+      "code": "V",
+      "label": "Academic vocabulary",
+      "toast": {
+        "kind": "good", "title": "Academic vocabulary",
+        "body": "You say the word, write the word, and make them say the word. She writes the word down too."
+      }
+    },
+    {
+      "key": "nonverbal",
+      "code": "N",
+      "label": "Nonverbal redirect",
+      "toast": {
+        "kind": "good", "title": "Nonverbal redirect",
+        "body": "You look at the back corner for one second longer than necessary and the back corner sits up. She logs it as a management strategy. It was eye contact."
+      }
+    },
+    {
+      "key": "evidence",
+      "code": "C",
+      "label": "Cites textual evidence",
+      "toast": {
+        "kind": "good", "title": "Cites textual evidence",
+        "body": "You make somebody say a page number out loud. The page number was correct, which surprised both of you."
+      }
     }
   ],
+
   "idle": "Nobody's watching. Save it.",
+  "notOnRubric": "Not on today's rubric. She brought her own five.",
+
   "conclusion": {
     "full": "She checks the last box without looking up. Five for five.",
     "partial": "She writes something for a while. You cannot see the tense of it from here.",
     "empty": "She writes for a while, unprompted. That is somehow worse than a question."
   },
+
   "conference": {
     "title": "Post-Conference",
     "sub": "AP REYES · 3:40 PM · 12 MINUTES",
-    "prompt": "AP Reyes: “I noticed only about four students spoke during the discussion. Talk to me about your engagement strategy.”",
-    "options": [
-      {
-        "key": "turnAndTalk",
-        "label": "“You're right — I want to build in more structured turn-and-talks.”",
-        "blurb": "Fidelity +, and you now owe a follow-up.",
-        "effects": { "fidelity": 3, "bandwidth": -1 },
-        "result": "She writes “follow-up” and underlines it twice. You have just promised her a specific Tuesday."
+    "root": "engagement",
+    "nodes": {
+      "engagement": {
+        "prompt": "AP Reyes: “I noticed only about four students spoke during the discussion. Talk to me about your engagement strategy.”",
+        "options": [
+          {
+            "key": "turnAndTalk",
+            "label": "“You're right — I want to build in more structured turn-and-talks.”",
+            "blurb": "Fidelity +. She will want a date.",
+            "effects": { "fidelity": 3, "bandwidth": -1 },
+            "result": "She writes “follow-up” and underlines it twice.",
+            "then": "when"
+          },
+          {
+            "key": "honest",
+            "label": "“Those four were the ones who'd read it.”",
+            "blurb": "Honest. Fidelity −.",
+            "effects": { "fidelity": -3 },
+            "honest": true,
+            "result": "She looks up from the clipboard for the first time all conference.",
+            "then": "unread"
+          },
+          {
+            "key": "hollow",
+            "label": "“That's a great point, I'll add it to my growth plan.”",
+            "blurb": "Free. Hollow. Bandwidth −, from the small death inside.",
+            "effects": { "bandwidth": -1 },
+            "result": "She nods and writes something down. You will never know what it was.",
+            "then": "goal"
+          }
+        ]
       },
-      {
-        "key": "honest",
-        "label": "“Those four were the ones who'd read it.”",
-        "blurb": "Honest. Fidelity −.",
-        "effects": { "fidelity": -3 },
-        "honest": true,
-        "result": "She looks up from the clipboard for the first time all conference. It is not clear yet whether that was a mistake."
+      "when": {
+        "prompt": "AP Reyes: “Good. When should I come back and see one?”",
+        "options": [
+          {
+            "key": "named",
+            "label": "“Thursday. Same period.”",
+            "blurb": "A specific day. She writes it in pen.",
+            "effects": { "fidelity": 2 },
+            "owes": { "id": "turnAndTalk", "lookFor": "discourse", "days": 4 },
+            "result": "You have just promised her a specific Thursday. It is in her calendar before she is out of the room."
+          },
+          {
+            "key": "vague",
+            "label": "“Sometime in the next couple of weeks.”",
+            "blurb": "Nothing owed. Nothing gained.",
+            "effects": {},
+            "result": "“Sure,” she says, and does not write anything, which is its own kind of answer."
+          },
+          {
+            "key": "deferred",
+            "label": "“Whenever works for you.”",
+            "blurb": "Fidelity −. Bandwidth −. You handed her the pen.",
+            "effects": { "fidelity": -1, "bandwidth": -1 },
+            "result": "She picks a day. She does not tell you which one."
+          }
+        ]
       },
-      {
-        "key": "hollow",
-        "label": "“That's a great point, I'll add it to my growth plan.”",
-        "blurb": "Free. Hollow. Bandwidth −, from the small death inside.",
-        "effects": { "bandwidth": -1 },
-        "result": "She nods and writes something down. You will never know what it was."
+      "unread": {
+        "prompt": "AP Reyes: “All right. So what do we do about the eight who hadn't?”",
+        "options": [
+          {
+            "key": "inClass",
+            "label": "“We read it in here. It costs me a day of the pacing guide.”",
+            "blurb": "Fidelity +. Bandwidth −. A real answer with a real price.",
+            "effects": { "fidelity": 3, "bandwidth": -2 },
+            "owes": { "id": "readAloud", "lookFor": "evidence", "days": 3 },
+            "result": "“Then lose the day,” she says, and writes the date you lose. That is the closest thing to backup you will get this year."
+          },
+          {
+            "key": "blame",
+            "label": "“They have six other classes assigning reading.”",
+            "blurb": "True. Fidelity −. She has heard it.",
+            "effects": { "fidelity": -2 },
+            "result": "“They do,” she agrees, and moves on, and the agreement costs you more than an argument would have."
+          },
+          {
+            "key": "nothing",
+            "label": "“I don't know yet.”",
+            "blurb": "Also honest. Nothing moves.",
+            "effects": {},
+            "honest": true,
+            "result": "She writes down “not yet,” which is either generous or the beginning of a file."
+          }
+        ]
+      },
+      "goal": {
+        "prompt": "AP Reyes: “Which of the three goals does that map to? I want to write it in the right box.”",
+        "options": [
+          {
+            "key": "guessed",
+            "label": "“Goal two. Engagement.”",
+            "blurb": "Confident. Fidelity +. You have not read the goals.",
+            "effects": { "fidelity": 2, "bandwidth": -1 },
+            "result": "Goal two is attendance procedures. She writes it in the engagement box anyway, because she has also not read the goals."
+          },
+          {
+            "key": "admit",
+            "label": "“I'd have to look at them again.”",
+            "blurb": "Honest. Fidelity −.",
+            "effects": { "fidelity": -2 },
+            "honest": true,
+            "result": "“I'll send them,” she says, and she does, at 9:40 that night, with the comments still on."
+          },
+          {
+            "key": "reframe",
+            "label": "“Can we write a fourth one that's actually mine?”",
+            "blurb": "Fidelity +. Bandwidth −. Now you owe a document.",
+            "effects": { "fidelity": 4, "bandwidth": -3 },
+            "owes": { "id": "fourthGoal", "lookFor": "modeling", "days": 5 },
+            "result": "She says yes immediately, which means she has wanted somebody to ask that for a while, and now it is a thing you have to write."
+          }
+        ]
       }
-    ]
+    }
   },
+
+  "followUp": {
+    "owedLabel": "You owe AP Reyes a {what}, by {when}.",
+    "what": {
+      "turnAndTalk": "structured turn-and-talk she can watch",
+      "readAloud": "period where they read it in the room",
+      "fourthGoal": "goal you actually wrote"
+    },
+    "when": { "0": "the end of today", "1": "tomorrow", "n": "{n} school days from now" },
+    "kept": {
+      "toast": { "kind": "good", "title": "Follow-up", "body": "You did the thing you said you would do. Nobody was in the room to see it. That is how those go." },
+      "report": "You kept the follow-up you promised her. It was one line in a period nobody watched."
+    },
+    "broken": {
+      "effects": { "fidelity": -5 },
+      "event": {
+        "atMinute": 0.6, "kind": "pa", "durationMs": 9500,
+        "title": "Email — AP Reyes, 7:38 a.m.",
+        "body": "Subject: following up. “I had you down for one of those turn-and-talks last week and I don't think I caught it. No worries either way — just want to make sure I'm not missing it.” She is not missing it.",
+        "toast": { "kind": "bad", "title": "Follow-up", "body": "The thing you promised her did not happen and she noticed. Fidelity −5." }
+      },
+      "report": "You promised her a specific thing on a specific day and the day went past. She sent one email about it and did not send a second."
+    }
+  },
+
   "report": {
     "head": "Observation",
     "rubric": "{count} of five look-fors, performed",
+    "announced": "It was on the calendar. You knew, and it did not help.",
     "honest": "You told her the truth about the discussion. That is worth more than it paid out today."
   }
 }

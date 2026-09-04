@@ -1,0 +1,11 @@
+{
+  "_note": "Phase 5. Treatment §4: subject choice does not change a system, it changes which tells are common, what the events say, and one number on the meters. This file is the manifest; each id below is fetched by src/loader.js from data/subjects/<id>.json. Adding a subject is a line here and a file there, and no JavaScript at all. A period row in data/periods.json names one with a \"subject\" key; a row that names none gets `default`. If adding a subject ever needs a code change, the seam has moved.",
+
+  "default": "socialStudies",
+  "subjects": ["socialStudies", "science", "ela", "math"],
+
+  "copy": {
+    "tag": "{label} — {tagline}",
+    "hazardKey": "Hazard"
+  }
+}

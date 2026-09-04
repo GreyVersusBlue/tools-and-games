@@ -1,7 +1,7 @@
 import { CFG } from '../config.js';
 import { dom } from './dom.js';
 
-export function drawHUD(state, teaching, temp, lesson) {
+export function drawHUD(state, teaching, temp, lesson, hazard = null) {
   for (const [key, [bar, val]] of Object.entries(dom.meters)) {
     bar.style.width = state[key] + '%';
     val.textContent = Math.round(state[key]);
@@ -24,7 +24,19 @@ export function drawHUD(state, teaching, temp, lesson) {
     ? 'Withitness active \u2014 you are not teaching'
     : 'Hold for Withitness';
 
+  drawHazard(state, hazard);
   drawLesson(state, teaching, lesson);
+}
+
+// Phase 5: the subject's one number, read the same way Room Temp is read. A
+// subject with no hazard hands in null and the box is not on screen at all.
+function drawHazard(state, hazard) {
+  dom.hazardBox.classList.toggle('hide', !hazard);
+  if (!hazard) return;
+  dom.hazardKey.textContent = hazard.key;
+  dom.hazardV.textContent = hazard.band ? hazard.band.label : '\u2014';
+  dom.hazardS.textContent = hazard.band ? hazard.band.line : '';
+  dom.hazardBox.classList.toggle('hot', state.hazard >= hazard.hotAt);
 }
 
 function drawLesson(state, teaching, ls) {

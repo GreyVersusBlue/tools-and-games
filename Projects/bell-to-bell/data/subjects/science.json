@@ -1,0 +1,54 @@
+{
+  "id": "science",
+  "label": "Science",
+  "tagline": "High Ceiling, Open Flame",
+
+  "_note": "The first subject that adds a rule. Hazard is one number: it rises on lab days with restlessness and with anything unhandled in the room, it reads off a band table in data/events.json, and at the cap it generates an incident report. It is not a system and it does not cross the bell — it is a fact about this period in this room, the same as Restlessness, so it resets at every one (CLAUDE.md constraint 13 stands).",
+
+  "meters": { "rapport": 3, "restless": 4 },
+  "tellWeights": { "WHISPER": 1.4, "PHONE": 0.8, "COPYING": 0.7 },
+
+  "hazard": {
+    "labDays": [1, 3],
+    "risePerSec": 0.0155,
+    "restlessPerSec": 0.00022,
+    "perLiveTellPerSec": 0.004,
+    "settlePerSec": 0.011,
+    "cap": 100,
+    "labToast": {
+      "kind": "", "title": "Lab day",
+      "body": "Six stations, twelve kids, one of you. The ceiling on today is higher than any lecture will ever be and so is everything else."
+    },
+    "incident": {
+      "effects": { "fidelity": -8, "bandwidth": -7 },
+      "toast": {
+        "kind": "bad", "title": "Incident report",
+        "body": "Nobody is hurt. There is a form. The form has a section for what you will do differently and it is eleven lines long. Fidelity −8."
+      },
+      "report": "Something happened at station four that has to be written up. Nobody was hurt, which is not the part the form is interested in."
+    },
+    "safeReport": "Nothing caught, spilled, or ended up in an eye. That is the whole job on a lab day and nobody will mention it."
+  },
+
+  "events": [
+    {
+      "id": "subject-goggles",
+      "atMinute": 6.5,
+      "kind": "pa",
+      "durationMs": 8000,
+      "title": "Intercom — Main Office",
+      "body": "Teachers, a reminder that the monthly eyewash station test log is due Friday. If your station has not been tested this month, please do not use it, and please continue with your scheduled labs. Thank you and have a great Bulldog day.",
+      "effects": { "restless": 5 },
+      "reaction": "listenUp",
+      "toast": { "kind": "", "title": "Compliance", "body": "You are required to do the lab and required not to use the thing that makes the lab legal." }
+    }
+  ],
+
+  "flavor": {
+    "missedCopy": { "default": "It ran its course at a station you were not standing at. Something in the room shifted and you did not see it." },
+    "interventions": {
+      "prox": { "toast": { "body": "You walk over. Nothing is said. Two hands come off the apparatus. It always works and it is always boring." } }
+    },
+    "report": "The ceiling on a lab day is the highest in the building. So is the floor of the paperwork."
+  }
+}
