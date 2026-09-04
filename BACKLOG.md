@@ -6,16 +6,18 @@ ranked index you scan, and the ideas underneath it that have no other home.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Bell to Bell Phases 2 and 3, "Kids nobody
-authored" and "The semester remembers" (PR #106)** — a generated 7th period
-drawn from a seed and held to a balance band, and a semester record that
-carries each class's twelve comprehension values, Rapport and Fidelity across
-nights, with admin's three-rung ladder and a Friday Report at the end of the
-week. Before it: **Phase 1, the slot scheme and the 6th period (PR #104)**,
-**this backlog's own consolidation (PR #102 and #103)**, **The Seal (PR
-#101)**, and **the upgrade paths and ten phased wishlists (PR #100)**, which is
-where most of the ranking below comes from. No site version was bumped —
-neither phase shipped a board, tool or page change.
+The last thing that shipped is **Bell to Bell Phases 4 and 5, "The bureaucracy
+answers back" and "Subject is the weather" (PR #108)** — an AP whose visits are
+a calendar rather than a metronome, drawn off the semester seed and readable
+days ahead, with a rubric pulled from a pool of nine, a post-conference that is
+a tree, and follow-ups you promise her and can forget; and four subjects that
+are JSON files rather than branches, one of them carrying a Hazard meter and
+one of them a stack of essays with real collision. Before it: **Phases 2 and 3
+(PR #106)**, **Phase 1, the slot scheme and the 6th period (PR #104)**, **this
+backlog's own consolidation (PR #102 and #103)**, **The Seal (PR #101)**, and
+**the upgrade paths and ten phased wishlists (PR #100)**, which is where most
+of the ranking below comes from. No site version was bumped — none of these
+phases shipped a board, tool or page change.
 
 **139 ranked items.** 77 of them are phases in one of the ten project
 `WISHLIST.md` files; the other 62 are standalone, and live in Tier 2 below.
