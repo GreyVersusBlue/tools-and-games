@@ -515,53 +515,53 @@ function endPeriod() {
   // over has to see it.
   const next = period.nextPeriodId;
   function buildRestart() {
-  let restart;
-  if (next) {
-    restart = {
-      label: period.nextLabel,
-      onClick: () => {
-        // The room's desks carry forward as a fact about the room, once: a
-        // class that has never sat in any chart inherits this one, and has no
-        // opinion about it yet. Phase 3: a class that made its own chart
-        // yesterday keeps it, and keeps what it taught you.
-        if (persist.load(persist.slot(next, 'chart'), null) == null) {
-          persist.save(persist.slot(next, 'chart'), chart.seatOf);
-          persist.save(persist.slot(next, 'rapportBase'), null);
+    let restart;
+    if (next) {
+      restart = {
+        label: period.nextLabel,
+        onClick: () => {
+          // The room's desks carry forward as a fact about the room, once: a
+          // class that has never sat in any chart inherits this one, and has no
+          // opinion about it yet. Phase 3: a class that made its own chart
+          // yesterday keeps it, and keeps what it taught you.
+          if (persist.load(persist.slot(next, 'chart'), null) == null) {
+            persist.save(persist.slot(next, 'chart'), chart.seatOf);
+            persist.save(persist.slot(next, 'rapportBase'), null);
+          }
+          // Phase 1: and Bandwidth goes with you, minus everything this period
+          // cost, plus whatever four minutes in the hallway are worth.
+          persist.save(persist.dayKey('bandwidth'),
+            clamp01to100(state.bandwidth + CFG.day.passingPeriodRecovery));
+          persist.save('period', next);
+          location.reload();
         }
-        // Phase 1: and Bandwidth goes with you, minus everything this period
-        // cost, plus whatever four minutes in the hallway are worth.
-        persist.save(persist.dayKey('bandwidth'),
-          clamp01to100(state.bandwidth + CFG.day.passingPeriodRecovery));
-        persist.save('period', next);
-        location.reload();
-      }
-    };
-  } else {
-    // Phase 3: the last bell of the day is the night. The record forgets what
-    // a night forgets, admin's opinion drifts, and tomorrow's rung is decided
-    // — all in advanceDay, none of it in here. A new day is also the only
-    // thing that gives Bandwidth back in full.
-    const friday = semester.isLastDayOfWeek(record);
-    const tomorrow = semester.advanceDay(record, [], { admin: data.admin });
-    const sleep = () => {
-      persist.save('semester', tomorrow);
-      persist.clear(persist.dayKey('bandwidth'));
-      persist.save('period', firstPeriodId(data));
-    };
-    restart = friday ? {
-      label: data.admin.copy.fridayReport,
-      onClick: () => {
-        sleep();
-        showWeek(semester.weekSummary(tomorrow), {
-          admin: data.admin, endings: data.events.endings, district: CFG.semester.districtFidelity
-        }, { label: data.admin.copy.nextWeek, onClick: () => location.reload() });
-      }
-    } : {
-      label: data.admin.copy.tomorrow.replace('{day}', data.admin.days[tomorrow.day]),
-      onClick: () => { sleep(); location.reload(); }
-    };
-  }
-  return restart;
+      };
+    } else {
+      // Phase 3: the last bell of the day is the night. The record forgets what
+      // a night forgets, admin's opinion drifts, and tomorrow's rung is decided
+      // — all in advanceDay, none of it in here. A new day is also the only
+      // thing that gives Bandwidth back in full.
+      const friday = semester.isLastDayOfWeek(record);
+      const tomorrow = semester.advanceDay(record, [], { admin: data.admin });
+      const sleep = () => {
+        persist.save('semester', tomorrow);
+        persist.clear(persist.dayKey('bandwidth'));
+        persist.save('period', firstPeriodId(data));
+      };
+      restart = friday ? {
+        label: data.admin.copy.fridayReport,
+        onClick: () => {
+          sleep();
+          showWeek(semester.weekSummary(tomorrow), {
+            admin: data.admin, endings: data.events.endings, district: CFG.semester.districtFidelity
+          }, { label: data.admin.copy.nextWeek, onClick: () => location.reload() });
+        }
+      } : {
+        label: data.admin.copy.tomorrow.replace('{day}', data.admin.days[tomorrow.day]),
+        onClick: () => { sleep(); location.reload(); }
+      };
+    }
+    return restart;
   }
 
   // What the subject has to say about the period, in the report's own voice.
