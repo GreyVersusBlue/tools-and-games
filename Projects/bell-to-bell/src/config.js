@@ -7,6 +7,20 @@ export const CFG = {
   withitnessRange: 13,    // metres; beyond this a tell will not annotate
   proximityRange: 2.6,    // how close you must stand for the Proximity option
 
+  // The whisper. Directional, and the one cue in the game that survives a
+  // blind spot: a conversation behind the cabinet is quieter, never gone.
+  // Withitness ducks the room down and this UP, which is the whole point of
+  // the ability rendered in one number.
+  whisper: {
+    gain: 0.34,           // heard plainly: in the open, in Withitness
+    ambientGain: 0.12,    // heard at all: in the open, not in Withitness
+    occludedScale: 0.45,  // multiplier when furniture is in the way
+    refDistance: 1.6,     // metres of full volume around the pair
+    rolloff: 1.5,
+    maxDistance: 16,
+    gapSeconds: [1.6, 4.2]  // silence between fragments
+  },
+
   moveSpeed: 2.7,         // m/s
   eyeHeight: 1.65,
 
@@ -107,7 +121,16 @@ export const CFG = {
 
     // What it costs the kid you keep using as furniture.
     steadyCompPenalty: 0.16,   // per thing they quietly absorbed
-    steadyLoadCap: 0.45
+    steadyLoadCap: 0.45,
+
+    // Phase 7 (T5 gap 9): the footprint a desk occupies, used to keep dragged
+    // furniture off it. These are the desk mesh's own half-extents — the mesh
+    // is 0.72 x 0.52 — not a padded box: the shipped bookshelf already sits
+    // 0.9m from the nearest desk centre, and a generous footprint would call
+    // the room as authored broken. `clearance` is 4cm of daylight, enough that
+    // two objects never render touching.
+    deskFootprint: { halfW: 0.36, halfD: 0.26, offsetZ: 0 },
+    furnitureClearance: 0.04
   },
 
   roomTemp: {

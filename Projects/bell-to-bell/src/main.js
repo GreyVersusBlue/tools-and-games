@@ -1,11 +1,12 @@
-import * as THREE from 'three';
+import * as THREE from './three.js';
 import { CFG } from './config.js';
 import { createState, clamp01to100, applyEffects } from './state.js';
 import { loadData } from './loader.js';
 import { periodFor, resolvePeriodId, firstPeriodId, periodIds, rowFor, isGenerated } from './periods.js';
 import { drawSeed, SEED_MAX } from './systems/rng.js';
 import * as semester from './systems/semester.js';
-import { createMaterials, createRegistry } from './world/materials.js';
+import { createMaterials, createTellMaterials, createRegistry } from './world/materials.js';
+import { createTellMeshBuilder, setTellVision } from './world/tellmesh.js';
 import { createModelLoader } from './world/models.js';
 import { buildRoom } from './world/room.js';
 import { buildStudents, placeStudents, createReactions } from './world/students.js';
@@ -162,6 +163,7 @@ addEventListener('resize', () => {
 // ---------- world ----------
 const registry = createRegistry();
 const mats = createMaterials(data.assets);
+const tellMats = createTellMaterials();
 // Shared across the room and the roster so a desk.glb used by both the
 // teacher's desk and every student desk is only ever fetched once.
 const modelLoader = createModelLoader();
@@ -245,10 +247,20 @@ const input = createInput(renderer.domElement, room.spawn);
 const tellSystem = createTellSystem({
   scene, camera, students, data: subjectData.tells, occluders: room.occluders,
   schedule: plan.rows,
+  // Phase 7: the object goes in the room and registers, the vision's drawings
+  // do not. world/tellmesh.js is the only thing here that knows a phone from
+  // a folded note.
+  buildTellMesh: createTellMeshBuilder({ mats: tellMats, register: m => registry.add(m) }),
+  setVision: setTellVision,
   // T1: a tell arriving changes how the kid sits. Subtle enough to be deniable,
   // which is the point — the posture is a Tier 1 tell and the phone is Tier 2.
   onBorn: t => {
     const def = subjectData.tells.types[t.type];
+    // Phase 7: a tell type that authored audio fragments starts a conversation
+    // at its own position. The level is set every frame below, not here.
+    if (def.audio?.fragments?.length && t.pos) {
+      audio.startWhisper(t.id, t.pos, def.audio.fragments);
+    }
     if (!def.posture) return;
     reactions.play(students[t.seat], def.posture, { key: `tell${t.id}`, partner: students[t.seat2] });
     if (t.seat2 != null) {
@@ -257,6 +269,7 @@ const tellSystem = createTellSystem({
     audio.scrape(0.35);
   },
   onGone: t => {
+    audio.stopWhisper(t.id);
     reactions.release(students[t.seat], `tell${t.id}`);
     if (t.seat2 != null) reactions.release(students[t.seat2], `tell${t.id}`);
   }
@@ -452,6 +465,16 @@ function frame(now) {
     auraFor: state.withitness ? (s => lesson.auraOf(s, state)) : null
   });
   audio.setMurmur(state.restless / 100, state.withitness);
+  // The whisper is the one cue that survives a blind spot. tellSystem.isVisible
+  // is the raycast the furniture breaks, so a conversation behind the cabinet
+  // drops to occludedScale rather than to nothing, and Withitness raises it
+  // instead of ducking it.
+  audio.setListener(camera);
+  for (const t of tellSystem.tells) {
+    if (t.born === null || t.dead) continue;
+    if (!subjectData.tells.types[t.type]?.audio) continue;
+    audio.setWhisperLevel(t.id, { withitness: state.withitness, occluded: !tellSystem.hasLineOfSight(t.pos) });
+  }
 
   updateLabels({ state, camera, tellSystem, students, onClick: handleTellClick, projector });
   drawHUD(state, teaching, temp.display(state), lesson.summary(state), hazardReadout());

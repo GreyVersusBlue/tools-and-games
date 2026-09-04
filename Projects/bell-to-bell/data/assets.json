@@ -1,23 +1,43 @@
 {
   "_comment": "Content, not code — swap any path here and nothing in src/ needs to change.",
-
   "textures": {
-    "floor": { "dir": "Assets/textures/Floor/interior_tiles_1k.gltf/textures", "base": "interior_tiles", "tile": 2.6 },
-    "wall":  { "dir": "Assets/textures/wall/painted_concrete_02_1k.gltf/textures", "base": "painted_concrete_02", "tile": 2.2 },
-    "ceil":  { "dir": "Assets/textures/ceil/ceiling_interior_1k.gltf/textures", "base": "ceiling_interior", "tile": 2.6 },
-    "desk":  { "dir": "Assets/textures/desk/plywood_1k.gltf/textures", "base": "plywood", "tile": 0.6, "packedArm": false },
-    "wood":  { "dir": "Assets/textures/wood/wood_planks_1k.gltf/textures", "base": "wood_planks", "tile": 1.0 },
-    "metal": { "dir": "Assets/textures/metal/blue_metal_plate_1k.gltf/textures", "base": "blue_metal_plate", "tile": 0.5 },
-    "rug":   { "dir": "Assets/textures/rug/wool_boucle_1k.gltf/textures", "base": "wool_boucle", "tile": 1.6 }
+    "floor": {
+      "dir": "Assets/textures/Floor/interior_tiles_1k.gltf/textures",
+      "base": "interior_tiles",
+      "tile": 2.6
+    },
+    "wall": {
+      "dir": "Assets/textures/wall/painted_concrete_02_1k.gltf/textures",
+      "base": "painted_concrete_02",
+      "tile": 2.2
+    },
+    "ceil": {
+      "dir": "Assets/textures/ceil/ceiling_interior_1k.gltf/textures",
+      "base": "ceiling_interior",
+      "tile": 2.6
+    },
+    "desk": {
+      "dir": "Assets/textures/desk/plywood_1k.gltf/textures",
+      "base": "plywood",
+      "tile": 0.6,
+      "packedArm": false
+    },
+    "wood": {
+      "dir": "Assets/textures/wood/wood_planks_1k.gltf/textures",
+      "base": "wood_planks",
+      "tile": 1.0
+    },
+    "metal": {
+      "dir": "Assets/textures/metal/blue_metal_plate_1k.gltf/textures",
+      "base": "blue_metal_plate",
+      "tile": 0.5
+    },
+    "rug": {
+      "dir": "Assets/textures/rug/wool_boucle_1k.gltf/textures",
+      "base": "wool_boucle",
+      "tile": 1.6
+    }
   },
-  "_textureAlternates": {
-    "wall": ["blue_plaster_wall (Assets/textures/wall/blue_plaster_wall_1k.gltf/textures)"],
-    "rug": [
-      "curly_teddy_checkered (Assets/textures/rug/curly_teddy_checkered_1k.gltf/textures)",
-      "faux_fur_geometric (Assets/textures/rug/faux_fur_geometric_1k.gltf/textures)"
-    ]
-  },
-
   "models": {
     "teacherDesk": "Assets/models/kenney_furniture-kit/Models/GLTF format/desk.glb",
     "cabinet": "Assets/models/kenney_furniture-kit/Models/GLTF format/bookcaseClosedDoors.glb",
@@ -25,7 +45,6 @@
     "studentDesk": "Assets/models/kenney_furniture-kit/Models/GLTF format/desk.glb",
     "studentChair": "Assets/models/kenney_furniture-kit/Models/GLTF format/chairDesk.glb"
   },
-
   "characters": {
     "targetHeight": 1.48,
     "outfits": [
@@ -39,7 +58,6 @@
       "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Adventurer.gltf"
     ]
   },
-
   "art": {
     "frame": "Assets/models/art/fancy_picture_frame_01_1k.gltf/fancy_picture_frame_01_1k.gltf",
     "paintings": {
@@ -49,16 +67,6 @@
       "posterD": "Assets/models/art/public domain art/Landscape with the Good Samaritan - Rembrandt.jpg"
     }
   },
-  "_artAlternates": [
-    "Cavalier soldier Hals.jpg",
-    "David Teniers the Younger - Archduke Leopold William in his Gallery at Brussels.jpg",
-    "Evelyn De Morgan The Love Potion (1903).jpg",
-    "I Am the Witch of the North.jpg",
-    "Jan Matejko, Stańczyk.jpg",
-    "Lights of Canopus.jpg",
-    "Thomas Cole The Architects Dream.jpg"
-  ],
-
   "props": {
     "wallClock": "Assets/models/Props/wall_clock_1k.gltf/wall_clock_1k.gltf",
     "fireAlarm": "Assets/models/Props/fire_alarm_1k.gltf/fire_alarm_1k.gltf",
@@ -72,11 +80,105 @@
     "binder": "Assets/models/Props/binder_notebook_1k.gltf/binder_notebook_1k.gltf",
     "stapler": "Assets/models/Props/vintage_stapler_1k.gltf/vintage_stapler_1k.gltf"
   },
-  "_propAlternates": [
-    "SchoolDesk_01, SchoolChair_01 (an alternate desk/chair style, unused)",
-    "wooden_bookshelf_worn, Shelf_01, metal_office_desk (unused, would compete with the furniture already in place)",
-    "chemistry_set (science-flavored, not this room's subject)",
-    "pine_sapling_small (outdoor prop, not used indoors)",
-    "office_notepads (unused, redundant with stationery_supplies)"
-  ]
+  "_alternates": {
+    "_comment": "The sets we chose against and kept on disk on purpose, so the choice stays re-makeable. tests/assets.mjs asserts every path here still resolves, so this block can never advertise a file that is gone.",
+    "textures": [
+      {
+        "path": "Assets/textures/wall/blue_plaster_wall_1k.gltf/textures",
+        "note": "blue plaster, the wall we chose against"
+      },
+      {
+        "path": "Assets/textures/rug/curly_teddy_checkered_1k.gltf/textures",
+        "note": "checkered rug"
+      },
+      {
+        "path": "Assets/textures/rug/faux_fur_geometric_1k.gltf/textures",
+        "note": "geometric faux fur rug"
+      }
+    ],
+    "art": [
+      {
+        "path": "Assets/models/art/public domain art/Cavalier soldier Hals.jpg",
+        "note": "public domain, hung in no period"
+      },
+      {
+        "path": "Assets/models/art/public domain art/David Teniers the Younger - Archduke Leopold William in his Gallery at Brussels.jpg",
+        "note": "public domain, hung in no period"
+      },
+      {
+        "path": "Assets/models/art/public domain art/Evelyn De Morgan The Love Potion (1903).jpg",
+        "note": "public domain, hung in no period"
+      },
+      {
+        "path": "Assets/models/art/public domain art/I Am the Witch of the North.jpg",
+        "note": "public domain, hung in no period"
+      },
+      {
+        "path": "Assets/models/art/public domain art/Jan Matejko, Stańczyk.jpg",
+        "note": "public domain, hung in no period"
+      },
+      {
+        "path": "Assets/models/art/public domain art/Lights of Canopus.jpg",
+        "note": "public domain, hung in no period"
+      },
+      {
+        "path": "Assets/models/art/public domain art/Thomas Cole The Architects Dream.jpg",
+        "note": "public domain, hung in no period"
+      }
+    ]
+  },
+  "_pruned": {
+    "_comment": "Deleted in Phase 6, kept here as the record of what was here and why. tests/assets.mjs asserts every path is still absent, so none of this can come back without this block changing with it.",
+    "paths": [
+      "Assets/models/kenney_furniture-kit/Models/DAE format",
+      "Assets/models/kenney_furniture-kit/Models/FBX format",
+      "Assets/models/kenney_furniture-kit/Models/OBJ format",
+      "Assets/models/kenney_furniture-kit/Models/STL format",
+      "Assets/models/Props/SchoolChair_01_1k.gltf",
+      "Assets/models/Props/SchoolDesk_01_1k.gltf",
+      "Assets/models/Props/Shelf_01_1k.gltf",
+      "Assets/models/Props/chemistry_set_1k.gltf",
+      "Assets/models/Props/metal_office_desk_1k.gltf",
+      "Assets/models/Props/office_notepads_1k.gltf",
+      "Assets/models/Props/pine_sapling_small_1k.gltf",
+      "Assets/models/Props/plastic_crate_01_1k.gltf",
+      "Assets/models/Props/wooden_bookshelf_worn_1k.gltf",
+      "Assets/textures/Floor/interior_tiles_1k.gltf/interior_tiles_1k.gltf",
+      "Assets/textures/Floor/interior_tiles_1k.gltf/interior_tiles.bin",
+      "Assets/textures/ceil/ceiling_interior_1k.gltf/ceiling_interior_1k.gltf",
+      "Assets/textures/ceil/ceiling_interior_1k.gltf/ceiling_interior.bin",
+      "Assets/textures/desk/plywood_1k.gltf/plywood_1k.gltf",
+      "Assets/textures/desk/plywood_1k.gltf/plywood.bin",
+      "Assets/textures/metal/blue_metal_plate_1k.gltf/blue_metal_plate_1k.gltf",
+      "Assets/textures/metal/blue_metal_plate_1k.gltf/blue_metal_plate.bin",
+      "Assets/textures/rug/curly_teddy_checkered_1k.gltf/curly_teddy_checkered_1k.gltf",
+      "Assets/textures/rug/curly_teddy_checkered_1k.gltf/curly_teddy_checkered.bin",
+      "Assets/textures/rug/faux_fur_geometric_1k.gltf/faux_fur_geometric_1k.gltf",
+      "Assets/textures/rug/faux_fur_geometric_1k.gltf/faux_fur_geometric.bin",
+      "Assets/textures/rug/wool_boucle_1k.gltf/wool_boucle_1k.gltf",
+      "Assets/textures/rug/wool_boucle_1k.gltf/wool_boucle.bin",
+      "Assets/textures/wall/blue_plaster_wall_1k.gltf/blue_plaster_wall_1k.gltf",
+      "Assets/textures/wall/blue_plaster_wall_1k.gltf/blue_plaster_wall.bin",
+      "Assets/textures/wall/painted_concrete_02_1k.gltf/painted_concrete_02_1k.gltf",
+      "Assets/textures/wall/painted_concrete_02_1k.gltf/painted_concrete_02.bin",
+      "Assets/textures/wood/wood_planks_1k.gltf/wood_planks_1k.gltf",
+      "Assets/textures/wood/wood_planks_1k.gltf/wood_planks.bin"
+    ],
+    "notes": [
+      "The Kenney kit shipped one furniture set in five formats. 700 files, 12.8 MB, and GLTFLoader is the only loader in src/ -- nothing here could read a .dae, .fbx, .obj or .stl even if something asked for it.",
+      "SchoolDesk_01, SchoolChair_01: an alternate desk/chair style that would compete with the kit already in place.",
+      "wooden_bookshelf_worn, Shelf_01, metal_office_desk: same, for storage furniture.",
+      "chemistry_set: science-flavored, and no shipped subject is chemistry.",
+      "pine_sapling_small: an outdoor prop, 21.9 MB of it, in a game that has never been outdoors. The single largest thing in the tree.",
+      "office_notepads: redundant with stationery_supplies, which is placed.",
+      "plastic_crate_01: named by nothing, not even the old alternates list.",
+      "Every Poly Haven texture set ships a preview sphere: a .gltf and a 2.37 MB .bin beside the textures/ folder. materials.js builds its jpg filenames out of `dir` and `base` and never opens either one, so ten sets carried 23.7 MB of mesh nothing could reach. The jpgs stay; the sphere does not."
+    ]
+  },
+  "_budget": {
+    "_comment": "Ceilings in bytes, asserted by tests/assets.mjs and by tests/smoke.mjs. Raising one is the moment an asset argues for itself: say in the commit what the new file buys.",
+    "referencedBytes": 66000000,
+    "unreferencedBytes": 5000000,
+    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files."
+  }
 }

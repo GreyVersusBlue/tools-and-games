@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../three.js';
 
 // The boards. What is written on the whiteboard is the lesson, so the lesson has
 // to be somewhere you can look at it — and the objective board has to be visibly,

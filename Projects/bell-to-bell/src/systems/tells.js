@@ -1,10 +1,10 @@
-import * as THREE from 'three';
+import * as THREE from '../three.js';
 import { CFG } from '../config.js';
 
 // A tell is something true about the room that a normal glance would miss.
 // It has a birth, a lifespan, a world position, and a line of sight that the
 // furniture is allowed to break.
-export function createTellSystem({ scene, camera, students, data, occluders, schedule, onBorn, onGone }) {
+export function createTellSystem({ scene, camera, students, data, occluders, schedule, buildTellMesh, setVision, onBorn, onGone }) {
   const defs = data.types;
   const tells = [];
   const ray = new THREE.Raycaster();
@@ -49,40 +49,15 @@ export function createTellSystem({ scene, camera, students, data, occluders, sch
 
   load(schedule || data.schedule);
 
+  // Geometry lives in world/tellmesh.js and arrives as a dependency, so this
+  // file — the birth, the lifespan, the raycast — loads and runs under Node.
+  // Before Phase 7 it imported three directly and no test had ever executed a
+  // line of it.
   function buildMesh(t) {
-    const grp = new THREE.Group();
-    grp.position.copy(t.pos);
-    const a = students[t.seat];
-    const b = t.seat2 != null ? students[t.seat2] : null;
-
-    if (t.type === 'NOTE' && b) {
-      const note = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.09),
-        new THREE.MeshBasicMaterial({ color: 0xFF7A18 }));
-      grp.add(note);
-      const geo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(a.x, 0.8, a.bodyZ),
-        new THREE.Vector3((a.x + b.x) / 2, 1.0, (a.bodyZ + b.bodyZ) / 2),
-        new THREE.Vector3(b.x, 0.8, b.bodyZ)
-      ]);
-      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xFF7A18, transparent: true, opacity: 0.75 }));
-      line.position.sub(t.pos);
-      grp.add(line);
-    } else if (t.type === 'COPYING' && b) {
-      const geo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(a.x, 0.76, a.z), new THREE.Vector3(b.x, 0.76, b.z)
-      ]);
-      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xFF7A18 }));
-      line.position.sub(t.pos);
-      grp.add(line);
-    } else if (t.type === 'WHISPER') {
-      grp.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8),
-        new THREE.MeshBasicMaterial({ color: 0xFF9C4A, transparent: true, opacity: 0.85 })));
-    } else {
-      grp.add(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.005, 0.16),
-        new THREE.MeshBasicMaterial({ color: 0xFFD166 })));
-    }
-
-    grp.visible = false;
+    const grp = buildTellMesh(t, defs[t.type], {
+      a: students[t.seat],
+      b: t.seat2 != null ? students[t.seat2] : null
+    });
     scene.add(grp);
     t.obj = grp;
   }
@@ -107,7 +82,9 @@ export function createTellSystem({ scene, camera, students, data, occluders, sch
   function kill(t) {
     if (t.dead) return;
     t.dead = true;
-    if (t.obj) t.obj.visible = false;
+    // The object leaves the room with the tell. A phone that has gone back in
+    // a pocket is not a phone on a thigh, and it is no longer clickable.
+    if (t.obj) { t.obj.visible = false; setVision(t.obj, false); }
     if (t.el) { t.el.remove(); t.el = null; }
     onGone?.(t);
   }
@@ -118,7 +95,7 @@ export function createTellSystem({ scene, camera, students, data, occluders, sch
         t.born = state.t;
         t.pos = positionFor(t.type, t.seat, t.seat2);
         buildMesh(t);
-        t.obj.visible = state.withitness;
+        setVision(t.obj, state.withitness);
         onBorn?.(t);
       }
       if (t.born !== null && !t.dead && (t.born - state.t) > t.life) {
@@ -135,7 +112,7 @@ export function createTellSystem({ scene, camera, students, data, occluders, sch
     t.born = state.t;
     t.pos = positionFor(t.type, t.seat, t.seat2);
     buildMesh(t);
-    t.obj.visible = state.withitness;
+    setVision(t.obj, state.withitness);
     onBorn?.(t);
     return t;
   }
@@ -145,8 +122,11 @@ export function createTellSystem({ scene, camera, students, data, occluders, sch
     for (const t of tells) if (t.el) { t.el.remove(); t.el = null; }
   }
 
+  // Only what the vision draws. The objects themselves are in the room either
+  // way — the material registry is what makes them read differently under
+  // Withitness, not this.
   function setThermalVisible(on) {
-    for (const t of tells) if (t.obj) t.obj.visible = on && t.born !== null && !t.dead;
+    for (const t of tells) if (t.obj) setVision(t.obj, on && t.born !== null && !t.dead);
   }
 
   function describe(t) {
@@ -156,5 +136,6 @@ export function createTellSystem({ scene, camera, students, data, occluders, sch
       .replace('{b}', t.seat2 != null ? students[t.seat2].name : '');
   }
 
-  return { tells, defs, load, update, isVisible, kill, spawnFalsePositive, setThermalVisible, clearLabels, describe };
+  return { tells, defs, load, update, isVisible, hasLineOfSight, kill, spawnFalsePositive,
+           setThermalVisible, clearLabels, describe };
 }

@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../three.js';
 import { tiled } from './materials.js';
 import { fitFootprint, fitHeight, registerModel, findBone, poseIdle } from './models.js';
 
@@ -127,7 +127,7 @@ export async function buildStudents(scene, registry, mats, data, chart, opts = {
     const outfitPath = charCfg?.outfits?.length ? charCfg.outfits[i % charCfg.outfits.length] : null;
     const built = await buildCharacterBody(loader, outfitPath, targetHeight, registry);
 
-    let torso, head, auraY, headRestX = 0, headRestY = 0, torsoRestX = 0;
+    let torso, head, headRestX = 0, headRestY = 0, torsoRestX = 0;
 
     if (built) {
       g.add(built.root);
@@ -135,7 +135,6 @@ export async function buildStudents(scene, registry, mats, data, chart, opts = {
       head = built.head;
       headRestX = built.headRestX; headRestY = built.headRestY;
       torsoRestX = built.torsoRestX;
-      auraY = targetHeight + 0.08;
     } else {
       const shirt = mats[spec.shirt] || mats.shirtA;
       torso = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.22, 0.55, 10), shirt);
@@ -153,17 +152,29 @@ export async function buildStudents(scene, registry, mats, data, chart, opts = {
       const legs = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.42), shirt);
       legs.position.set(0, 0.5, -0.24); g.add(legs); registry.add(legs);
 
-      auraY = 1.42;
     }
 
-    // Comprehension aura (lesson T2). Deliberately NOT registered with the
-    // material registry: it has its own palette and must not thermal-swap.
+    // Comprehension aura (lesson T2). Phase 7 took it off the head.
+    //
+    // It was a 19cm torus floating over every skull, and twelve of them in one
+    // room read as twelve identical halos at one height — you could see that
+    // some were red without being able to say whose. A desk is the thing a
+    // student is already identified by from the front of the room, so the
+    // aura is now the desk surface itself, lit from under the work. Twelve of
+    // those are a heat map of the room you can read in one pass.
+    //
+    // Deliberately NOT registered with the material registry: it has its own
+    // palette and must not thermal-swap. The comment survives the geometry.
     const aura = new THREE.Mesh(
-      new THREE.TorusGeometry(0.19, 0.018, 6, 20),
-      new THREE.MeshBasicMaterial({ color: AURA.amber, transparent: true, opacity: 0.85 })
+      new THREE.PlaneGeometry(0.62, 0.44),
+      new THREE.MeshBasicMaterial({ color: AURA.amber, transparent: true, opacity: 0.42,
+        depthWrite: false, side: THREE.DoubleSide })
     );
-    aura.rotation.x = Math.PI / 2;
-    aura.position.y = auraY;
+    aura.rotation.x = -Math.PI / 2;
+    // The desk sits bodyOffsetZ in front of the body, and its surface is at
+    // 0.745; 6mm of clearance keeps this off the desk's own top face.
+    aura.position.set(0, 0.751, -bodyOffsetZ);
+    aura.renderOrder = 2;
     aura.visible = false;
     g.add(aura);
 
@@ -311,6 +322,10 @@ export function createReactions({ students, data, camera }) {
         if (band) {
           s.aura.visible = true;
           s.aura.material.color.setHex(AURA[band]);
+          // The body breathes; the desk does not. The aura is a child of the
+          // body group so it follows the seating chart for free, so the bob
+          // has to come back out of it here or the desks all pulse.
+          s.aura.position.y = 0.751 - s.group.position.y;
         } else {
           s.aura.visible = false;
         }

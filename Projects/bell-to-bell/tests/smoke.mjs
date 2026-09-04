@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import { createState, applyEffects } from '../src/state.js';
 import { createInterventions } from '../src/systems/interventions.js';
 import { createLesson } from '../src/systems/lesson.js';
@@ -20,6 +21,12 @@ import { runPeriod, STYLES } from '../src/systems/simulate.js';
 import * as semester from '../src/systems/semester.js';
 import * as persist from '../src/persist.js';
 import { PREFIX, slot, dayKey, LEGACY_KEYS, migrateLegacyKeys } from '../src/persist.js';
+import { auditAssets } from './assets.mjs';
+import * as THREE from '../src/three.js';
+import { createTellSystem } from '../src/systems/tells.js';
+import { createWithitness } from '../src/systems/withitness.js';
+import { createTellMaterials, createRegistry } from '../src/world/materials.js';
+import { createTellMeshBuilder, setTellVision, TELL_SHAPES } from '../src/world/tellmesh.js';
 
 const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
@@ -1892,6 +1899,364 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     check('and a whole period runs under it', r.state.beatsDelivered > 0 && Number.isFinite(r.state.mastery));
     check('with its meters, its hazard, and its room',
       r.state.hazard > 0 && subjectRoom(roomData, shop.subject, 9).props.length === roomData.props.length);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — WHAT THE ROOM WEIGHS. The tree arrived at 149.3 MB across 1,037
+// files with nothing able to say which of it the game opens, and three.js came
+// from cdn.jsdelivr.net. Both of those are checks, not opinions, so they live
+// here where the suite people already run will catch them coming back.
+// ---------------------------------------------------------------------------
+{
+  const { totals, problems, budget } = auditAssets();
+
+  check('the asset manifest resolves, and nothing is over budget', problems.length === 0);
+  if (problems.length) for (const p of problems) console.log('        ' + p);
+  check('referenced bytes are under the ceiling', totals.referenced.bytes <= budget.referencedBytes);
+  check('unreferenced bytes are under the ceiling', totals.unreferenced.bytes <= budget.unreferencedBytes);
+
+  // ---- nothing offsite, and nothing bare -------------------------------
+  // The import map is the one place a URL can hide from check-integrity's
+  // resource-tag sweep: its entries live in the script body, not in an
+  // attribute. Tools/board-check now parses it too (Phase 6), but this is the
+  // project's own copy of the assertion, so a bell-to-bell session that never
+  // runs the site-wide check still cannot reintroduce the CDN.
+  const html = fs.readFileSync('../index.html', 'utf8');
+  const mapBody = html.match(/<script[^>]*type\s*=\s*["']importmap["'][^>]*>([\s\S]*?)<\/script>/i);
+  check('index.html has an import map', !!mapBody);
+  const imports = mapBody ? JSON.parse(mapBody[1]).imports : {};
+  check('no import map entry points offsite',
+    Object.values(imports).every(v => !/^https?:/i.test(v)));
+  check('three and three/addons/ both resolve into ./libs/',
+    imports.three === './libs/three.module.js' && imports['three/addons/'] === './libs/addons/');
+
+  // ---- the vendored closure is closed ----------------------------------
+  // An addon import nobody vendored is a 404 in a browser and nothing at all
+  // under Node, which is exactly the shape of bug that survives a test suite.
+  const srcFiles = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(p); else if (p.endsWith('.js')) srcFiles.push(p);
+    }
+  })('../src');
+
+  const wanted = new Set();
+  for (const f of srcFiles) {
+    for (const m of fs.readFileSync(f, 'utf8').matchAll(/from\s+['"]three\/addons\/([^'"]+)['"]/g)) {
+      wanted.add(m[1]);
+    }
+  }
+  check('src/ imports at least one addon', wanted.size > 0);
+  const missingAddons = [...wanted].filter(a => !fs.existsSync(`../libs/addons/${a}`));
+  check('every three/addons/ import in src/ is vendored', missingAddons.length === 0);
+  if (missingAddons.length) console.log('        not vendored: ' + missingAddons.join(', '));
+
+  // And each vendored addon's own relative imports, one level deep: GLTFLoader
+  // reaches sideways for BufferGeometryUtils, which is not something any
+  // import in src/ would have told us about.
+  const libFiles = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(p); else if (p.endsWith('.js')) libFiles.push(p);
+    }
+  })('../libs/addons');
+
+  const danglers = [];
+  for (const f of libFiles) {
+    for (const m of fs.readFileSync(f, 'utf8').matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1]));
+      if (!fs.existsSync(target)) danglers.push(`${f} -> ${m[1]}`);
+    }
+  }
+  check('every vendored addon\'s own relative imports resolve', danglers.length === 0);
+  if (danglers.length) for (const d of danglers) console.log('        ' + d);
+
+  check('the vendored three is the revision the CDN was serving',
+    /const REVISION = '160'/.test(fs.readFileSync('../libs/three.module.js', 'utf8')));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 — THINGS YOU CAN NOTICE WITHOUT HOLDING SHIFT. tells.js is 160 lines
+// and withitness.js is 39, both dependency-injected factories, and until this
+// block neither had ever been executed by anything. They imported `three` by
+// bare specifier, which only resolves against index.html's import map, so no
+// Node test could load them at all. src/three.js is the seam that fixed that.
+// ---------------------------------------------------------------------------
+{
+  const stubDom = () => ({
+    thermal: { classList: { toggle() {} } },
+    tint: { classList: { toggle() {} } },
+    chip: { classList: { toggle() {} } }
+  });
+  const stubAudio = () => {
+    const calls = [];
+    return { calls, setDrone: on => calls.push(['setDrone', on]) };
+  };
+
+  // A room: two students, and one cabinet between the camera and the second.
+  const mkRoom = () => {
+    const scene = new THREE.Scene();
+    const camera = { position: new THREE.Vector3(0, 1.65, -2.4) };
+    const roster = [
+      { name: 'Ada', x: -1.0, z: 1.0, bodyZ: 1.52 },
+      { name: 'Bo', x: 1.0, z: 1.0, bodyZ: 1.52 }
+    ];
+    // A real mesh, because the blind-spot rule is a real raycast (locked
+    // constraint 3) and a stub occluder would test nothing.
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2, 0.6), new THREE.MeshBasicMaterial());
+    wall.position.set(1.06, 1, -0.4);   // between the camera and Bo
+    wall.updateMatrixWorld(true);
+    return { scene, camera, roster, occluders: [wall] };
+  };
+
+  const mkTells = (over = {}) => {
+    const { scene, camera, roster, occluders } = mkRoom();
+    const registry = createRegistry();
+    const built = [];
+    const sys = createTellSystem({
+      scene, camera, students: roster, occluders,
+      data: { types: tData.types },
+      schedule: over.schedule ?? [{ type: 'PHONE', seat: 0, atMinute: 1, life: 90 }],
+      buildTellMesh: createTellMeshBuilder({
+        mats: createTellMaterials(),
+        register: m => { built.push(m); return registry.add(m); }
+      }),
+      setVision: setTellVision,
+      onBorn: over.onBorn, onGone: over.onGone
+    });
+    return { sys, scene, camera, roster, registry, built };
+  };
+
+  // ---- birth, expiry, resolve -------------------------------------------
+  {
+    const born = [], gone = [], expired = [];
+    const { sys, scene } = mkTells({ onBorn: t => born.push(t.id), onGone: t => gone.push(t.id) });
+    const state = { t: CFG.periodSeconds, withitness: false };
+
+    check('a tell is not born before its minute', (sys.update(state, t => expired.push(t)), born.length === 0));
+    check('and nothing is in the scene yet', scene.children.length === 0);
+
+    state.t = CFG.periodSeconds - 60;
+    sys.update(state, t => expired.push(t));
+    check('a tell is born at its minute', born.length === 1);
+    check('birth resolves a position, not before', sys.tells[0].pos instanceof THREE.Vector3);
+    check('and puts an object in the room', scene.children.length === 1);
+
+    state.t = CFG.periodSeconds - 60 - 89;
+    sys.update(state, t => expired.push(t));
+    check('a tell inside its life has not expired', expired.length === 0 && !sys.tells[0].dead);
+
+    state.t = CFG.periodSeconds - 60 - 91;
+    sys.update(state, t => expired.push(t));
+    check('a tell past its life expires exactly once', expired.length === 1 && gone.length === 1);
+    sys.update(state, t => expired.push(t));
+    check('and does not expire again', expired.length === 1);
+  }
+
+  {
+    const expired = [];
+    const { sys } = mkTells();
+    const state = { t: CFG.periodSeconds - 60, withitness: false };
+    sys.update(state, t => expired.push(t));
+    sys.tells[0].resolved = true;
+    state.t = CFG.periodSeconds - 200;
+    sys.update(state, t => expired.push(t));
+    check('a resolved tell dies without counting as missed', expired.length === 0 && sys.tells[0].dead);
+  }
+
+  // ---- the blind spot ----------------------------------------------------
+  {
+    const { sys, camera } = mkTells({
+      schedule: [{ type: 'PHONE', seat: 0, atMinute: 1, life: 900 },
+                 { type: 'PHONE', seat: 1, atMinute: 1, life: 900 }]
+    });
+    sys.update({ t: CFG.periodSeconds - 60, withitness: false }, () => {});
+    const [ada, bo] = sys.tells;
+    check('a tell in the open has line of sight', sys.hasLineOfSight(ada.pos));
+    check('a tell behind the cabinet does not', !sys.hasLineOfSight(bo.pos));
+    check('and is therefore not visible', sys.isVisible(ada) && !sys.isVisible(bo));
+
+    // Move to where the cabinet is not in the way. The raycast is the whole
+    // reason the furniture exists, so it has to be the thing that changes.
+    camera.position.set(3.0, 1.65, -2.4);
+    check('walking somewhere else in the room reveals it', sys.hasLineOfSight(bo.pos));
+
+    camera.position.set(0, 1.65, -40);
+    check('range still gates the annotation', !sys.isVisible(ada) && sys.hasLineOfSight(ada.pos));
+    check('a dead tell is never visible',
+      (sys.kill(ada), camera.position.set(0, 1.65, -2.4), sys.isVisible(ada) === false));
+  }
+
+  // ---- the false positive ------------------------------------------------
+  {
+    const { sys, scene } = mkTells();
+    const state = { t: 400, withitness: false };
+    const t = sys.spawnFalsePositive(state);
+    check('a false positive is born already alive, in the room', t.born === 400 && !t.dead && scene.children.length === 1);
+    check('and it is never suppressible (locked constraint 2)', tData.types.FALSE.suppressible === false);
+  }
+
+  // ---- the objects, and what the vision draws ---------------------------
+  // The Tier 1 / Tier 2 line, held: a phone is a thing in the room and the
+  // route line is an inference. One is registered and always drawn, the other
+  // is neither.
+  {
+    const { sys, registry, built } = mkTells({
+      schedule: [{ type: 'PHONE', seat: 0, atMinute: 1, life: 900 },
+                 { type: 'NOTE', seat: 0, seat2: 1, atMinute: 1, life: 900 },
+                 { type: 'FALSE', seat: 1, atMinute: 1, life: 900 }]
+    });
+    sys.update({ t: CFG.periodSeconds - 60, withitness: false }, () => {});
+    const [phone, note, phantom] = sys.tells;
+
+    const vis = g => { const o = []; g.traverse(m => { if (m.isMesh || m.isLine) o.push(m.visible && (!m.parent || m.parent.visible)); }); return o; };
+    const shapeOf = t => t.obj.children[0].children.map(m => m.geometry.type).join('+');
+    check('a phone is a slab with a screen on it', shapeOf(phone) === 'BoxGeometry+PlaneGeometry');
+    check('a note is two planes, which is what a fold is',
+      shapeOf(note) === 'PlaneGeometry+PlaneGeometry'
+      && note.obj.children[0].children[0].rotation.x !== note.obj.children[0].children[1].rotation.x);
+    check('the note has a route line and the phone does not',
+      note.obj.userData.vision[0].children.length === 1 && phone.obj.userData.vision[0].children.length === 0);
+    check('the vision starts hidden', note.obj.userData.vision.every(g => !g.visible));
+
+    sys.setThermalVisible(true);
+    check('SHIFT shows what the vision draws', note.obj.userData.vision.every(g => g.visible));
+    sys.setThermalVisible(false);
+    check('and letting go hides it again', note.obj.userData.vision.every(g => !g.visible));
+
+    check('the objects themselves stay in the room either way', phone.obj.visible && vis(phone.obj)[0]);
+    check('a hypervigilance false positive is not an object — it is a drawing',
+      phantom.obj.userData.vision.length === 2 && !phantom.obj.children[0].visible);
+
+    // Registered, so Withitness swaps them with the rest of the room.
+    const normals = built.map(m => m.material);
+    registry.setThermal(true);
+    check('every tell object registers and swaps into thermal view',
+      built.length > 0 && built.every((m, i) => m.material !== normals[i]));
+    registry.setThermal(false);
+    check('and swaps back', built.every((m, i) => m.material === normals[i]));
+
+    // A tell born while the room is already hot used to sit in its normal
+    // material until the next toggle.
+    registry.setThermal(true);
+    const late = createRegistry();
+    late.setThermal(true);
+    const mat = createTellMaterials().case;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), mat);
+    late.add(m);
+    check('a mesh added while the room is hot is hot immediately', m.material === mat.userData.thermal);
+  }
+
+  {
+    const named = Object.entries(tData.types).map(([k, v]) => [k, v.mesh]);
+    check('every tell type names a mesh shape', named.every(([, m]) => m));
+    check('and every shape it names is one that exists',
+      named.every(([, m]) => TELL_SHAPES.includes(m)));
+  }
+
+  // ---- the whisper's fragments ------------------------------------------
+  {
+    const w = tData.types.WHISPER;
+    check('WHISPER authors its audio fragments in data, not in a .js file',
+      Array.isArray(w.audio?.fragments) && w.audio.fragments.length >= 6);
+    check('every other tell type is silent',
+      Object.entries(tData.types).filter(([k, v]) => v.audio).map(([k]) => k).join() === 'WHISPER');
+    check('the whisper is louder in Withitness than out of it, and never zero',
+      CFG.whisper.gain > CFG.whisper.ambientGain && CFG.whisper.ambientGain > 0);
+    check('and a blind spot attenuates it rather than removing it',
+      CFG.whisper.occludedScale > 0 && CFG.whisper.occludedScale < 1);
+  }
+
+  // ---- withitness.js, first execution -----------------------------------
+  {
+    const registry = createRegistry();
+    const scene = { background: { set() {} }, fog: { color: { set() {} } } };
+    const audio = stubAudio();
+    let visionOn = null, cleared = 0;
+    const tellSystem = { setThermalVisible: on => { visionOn = on; }, clearLabels: () => cleared++ };
+    const wi = createWithitness({ scene, registry, tellSystem, audio, dom: stubDom() });
+
+    const state = { withitness: false, withitnessUses: 0, bandwidth: 100, hyper: 0,
+                    withitnessSeconds: 0, mastery: 60, restless: 10 };
+
+    wi.set(state, false);
+    check('turning Withitness off when it is off does nothing', state.withitnessUses === 0 && visionOn === null);
+
+    wi.set(state, true);
+    check('turning it on counts a use, and shows the vision', state.withitnessUses === 1 && visionOn === true);
+    check('and the drone comes up', audio.calls.at(-1)[1] === true);
+    wi.set(state, true);
+    check('holding it does not count a second use', state.withitnessUses === 1);
+
+    wi.tick(state, 1);
+    check('looking costs Bandwidth (locked constraint 1)', state.bandwidth < 100);
+    check('and drains Mastery, because you are not teaching (locked constraint 1)', state.mastery < 60);
+    check('and builds hypervigilance', state.hyper > 0);
+    check('and the room gets more restless while you stare', state.restless > 10);
+    check('and the seconds are counted for the report', state.withitnessSeconds === 1);
+
+    wi.set(state, false);
+    check('letting go hides the vision and drops the labels', visionOn === false && cleared === 1);
+    const hyperAfterOn = state.hyper;
+    wi.tick(state, 1);
+    check('hypervigilance decays once you stop', state.hyper < hyperAfterOn);
+    check('and never below zero', (state.hyper = 0.01, wi.tick(state, 100), state.hyper === 0));
+    check('nor above 100', (state.withitness = true, state.hyper = 99, wi.tick(state, 100), state.hyper === 100));
+  }
+
+  // ---- T5 gap 9: furniture that does not overlap -------------------------
+  {
+    const F = CFG.seating.deskFootprint, C = CFG.seating.furnitureClearance;
+    const deskAt = (c, r) => ({ x: roomData.seatGrid?.cols?.[c] ?? sData.seatGrid.cols[c],
+                                z: (roomData.seatGrid?.rows?.[r] ?? sData.seatGrid.rows[r]) + F.offsetZ });
+    const overlaps = (rect, p) => Math.abs(p.x - rect.x) < rect.halfW + F.halfW + C
+                               && Math.abs(p.z - rect.z) < rect.halfD + F.halfD + C;
+    const allDesks = [];
+    for (let r = 0; r < sData.seatGrid.rows.length; r++) {
+      for (let c = 0; c < sData.seatGrid.cols.length; c++) {
+        if (allDesks.length < sData.roster.length) allDesks.push(deskAt(c, r));
+      }
+    }
+    const rectOf = id => occluderRects(roomData.occluders).find(o => o.id === id);
+
+    const shipped = mkChart().occluderLayout();
+    check('the shipped furniture layout is already clear of every desk',
+      shipped.every(o => allDesks.every(d => !overlaps({ ...rectOf(o.id), x: d.x, z: d.z }, o))));
+
+    // Drop the cabinet dead centre on a desk. Before this it landed there.
+    const c1 = mkChart();
+    const target = allDesks[5];
+    const moved = c1.moveOccluder('cabinet', target.x, target.z);
+    check('a cabinet dragged onto a desk does not stay on it',
+      !overlaps({ ...rectOf('cabinet'), x: target.x, z: target.z }, moved));
+    check('and it moves, rather than refusing to move at all',
+      Math.abs(moved.x - target.x) > 0.01 || Math.abs(moved.z - target.z) > 0.01);
+    check('and it is still inside the room',
+      Math.abs(moved.x) <= roomData.bounds.x && moved.z >= roomData.bounds.zFront && moved.z <= roomData.bounds.zBack);
+
+    // Two pieces of furniture, one spot.
+    const c2 = mkChart();
+    const shelf = c2.occluderLayout().find(o => o.id === 'bookshelf');
+    const onTop = c2.moveOccluder('cabinet', shelf.x, shelf.z);
+    const gapX = rectOf('cabinet').halfW + rectOf('bookshelf').halfW + C;
+    const gapZ = rectOf('cabinet').halfD + rectOf('bookshelf').halfD + C;
+    check('the cabinet cannot be parked inside the bookshelf',
+      Math.abs(onTop.x - shelf.x) >= gapX - 1e-9 || Math.abs(onTop.z - shelf.z) >= gapZ - 1e-9);
+
+    // The walls still win: locked behaviour from T5, unchanged.
+    const c3 = mkChart();
+    const far = c3.moveOccluder('cabinet', 99, 99);
+    check('the walls still clamp', far.x <= roomData.bounds.x && far.z <= roomData.bounds.zBack);
+
+    // And a saved layout that names an overlapping spot is repaired on load,
+    // not trusted — a chart written before this clamp existed still opens.
+    const c4 = mkChart(null, [{ id: 'cabinet', x: target.x, z: target.z }]);
+    const repaired = c4.occluderLayout().find(o => o.id === 'cabinet');
+    check('a saved layout from before the clamp is repaired, not trusted',
+      !overlaps({ ...rectOf('cabinet'), x: target.x, z: target.z }, repaired));
   }
 }
 
