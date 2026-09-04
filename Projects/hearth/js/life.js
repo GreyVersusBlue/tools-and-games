@@ -265,6 +265,7 @@ function boatArrive(b){
       say(`${B(p)} goes into the hall before going anywhere else, and comes out with ${t.n}, which has been waiting the whole time.`,true)}}
     for(const sg of songs){if(sg.lost&&sg.kn.includes(p.name)&&chron[sg.ci]){sg.lost=0; /* sprint 16: a tune that left in a boat can come back in one */
       say(`At the fire that night it turns out ${B(p)} still carries the tune of ${chron[sg.ci].label}, which everyone had agreed was gone. It is sung twice.`,true);
+      songTune(sg,sg.kn.length); // phase 1: sung twice is exactly what songTune does — the returner alone, then the ones who still have it
       addEvent('songback',`the ${sea()} the song of ${chron[sg.ci].label} came back`,`The song of ${chron[sg.ci].label} came back the day ${p.name} did — it had been away, not lost, the whole time.`)}}
     for(const q of people){if(q===p)continue;const r=q.rels.find(r=>r.who===p.name);if(r)q.hist.push({d:dayCount,s:`was on the shore the day ${p.name} came back`})}}
   else if(b.kind==='away'&&b.st==='out'){b.gone=true;const p=b.p;p.inBoat=false;people=people.filter(q=>q!==p);if(selected===p)showCard(null)}

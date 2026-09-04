@@ -135,10 +135,14 @@ function tellStory(nat){if(storyDay===dayCount)return false;
             addEvent('song',`the making of the song of ${e.label}`,`After enough tellings the story of ${e.label} stopped fitting in plain words, and ${cp.name} put a tune under it, and by the end of that night everyone at the fire had the refrain.`)}}}
       L.push(`<i>year ${e.y}</i>${e.st}`)}
     if(grew)L.push(`That part is longer than it used to be. Nobody minds. That is what the good parts are for.`);
-    if(made)L.push(`Then ${B(byName(songs[songs.length-1].comp)||teller)} does a thing that has not been done here before: sings it. By the second time through, everyone at the fire has the refrain, and the story of ${made.label} has a tune now, for good — or for as long as somebody still carries it.`);
+    if(made){const sg=songs[songs.length-1];
+      L.push(`Then ${B(byName(sg.comp)||teller)} does a thing that has not been done here before: sings it. By the second time through, everyone at the fire has the refrain, and the story of ${made.label} has a tune now, for good — or for as long as somebody still carries it.`);
+      songTune(sg,sg.kn.length)}                                    // phase 1: and you hear it. Once, on the night it is made.
+
     else{const known=songs.filter(sg=>!sg.lost&&chron[sg.ci]&&cand.some(q=>sg.kn.includes(q.name))); // an older song gets an airing, and everyone present leaves knowing it
       if(known.length&&R()<.6){const sg=known[(R()*known.length)|0],kk=cand.find(q=>sg.kn.includes(q.name));
         L.push(`Near the end ${B(kk)} starts the song of ${chron[sg.ci].label}, and the ones who know it come in on the parts they know, and the ones who do not have it by the last verse.`);
+        songTune(sg,sg.kn.length);                                  // phase 1: the same phrase, in tonight's key
         for(const q of cand)if((!isKid(q)||ageOf(q)>=5)&&!sg.kn.includes(q.name))sg.kn.push(q.name)}}
     L.push(pick(['Nobody corrects any of it. Most of it is true.','When it is done the fire has burned low, and somebody builds it up again anyway.','Then it is late, and nobody moves for a while.','The children have heard it before and listen anyway, in case it changes.']));
     if(R()<.5)teller.hist.push({d:dayCount,s:'told the whole story of the island at the fire, from the landing on'})}
