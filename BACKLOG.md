@@ -7,7 +7,7 @@ ranked index you scan, and the ideas underneath it that have no other home.
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
 The last thing that shipped is **Bell to Bell Phases 6 and 7, "What the room
-weighs" and "Things you can notice without holding SHIFT" (PR #PENDING)** — an
+weighs" and "Things you can notice without holding SHIFT" (PR #109)** — an
 `Assets/` tree cut from 149.3 MB across 1,037 files to 76.7 MB across 269, with
 `tests/assets.mjs` standing behind the prune and a budget standing behind the
 next one; three.js vendored into `Projects/bell-to-bell/libs/`, which closes the
