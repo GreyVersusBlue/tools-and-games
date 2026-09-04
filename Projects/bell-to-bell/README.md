@@ -3,8 +3,11 @@
 A 3D browser game about being a classroom teacher. This repo currently contains
 **Slice 001 — "One Period"**: a 47-minute class period, one room, twelve students,
 and the mechanic the whole game is built around — followed, if you take the report
-screen's offer, by 5th and then 6th: same room, a different twelve students each
-time, on one Bandwidth pool that does not refill until tomorrow.
+screen's offer, by 5th, 6th and 7th: same room, a different twelve students each
+time, on one Bandwidth pool that does not refill until tomorrow. Then tomorrow: the
+same four classes walk back in with what they walked out with, minus a night, five
+days to a Friday Report. The 7th period's twelve were not written by anyone; they
+come out of a seed the report screen prints and the start screen takes back.
 
 ## Withitness
 
@@ -79,6 +82,28 @@ the whole time regardless of what you do about it; performing the rubric costs s
 and pays out in Fidelity. Afterward, one exchange, three ways to answer it, and the "correct"
 one is usually not the cheap one.
 
+## The semester
+
+Every class keeps a record between days: each student's comprehension (twelve
+numbers, never one), the Rapport they left with, and admin's running opinion of you,
+which is what Fidelity turns into once it is carried. Overnight, what you taught above
+where they walked in fades by a fraction and what a bad period took from under it
+comes partway back; the weekend costs more than a night. Fidelity drifts back toward
+the district mean unless something keeps moving it, and if admin's opinion stays under
+a line for enough days running, the calendar answers: a quick check-in, then a second
+observation the same week, then a growth plan. None of it is a punishment. Friday
+closes with five days of meters and three lines about what changed.
+
+## The class nobody wrote
+
+7th period is generated. One six-digit seed makes the roster; the seed plus the day
+makes the tell schedule, so the same kids do something different on Tuesday. Every
+promise the hand-written rosters kept without saying so is a rule now (a stabiliser,
+a kid at the edge, an aptitude spread, no two names alike on the chart, pair tells on
+kids who can reach each other), and a period is accepted only after two crude
+teachers have played it headlessly and landed inside the band the authored periods
+set. Type a seed into the start screen and you get that class again.
+
 ## Running it
 
 ES modules need a server — opening `index.html` from the filesystem will not work.
@@ -92,8 +117,8 @@ Deploys to GitHub Pages as-is. three.js loads from a CDN via the import map in
 `index.html`; there is no build step and no `node_modules`.
 
 ```bash
-cd tests && node smoke.mjs     # 191 headless assertions
-cd tests && node balance.mjs   # five styles through whole periods, plus one style across three charts
+cd tests && node smoke.mjs     # 381 headless assertions
+cd tests && node balance.mjs   # six styles through whole periods, three charts, the day, a 50-seed generator soak, and a week
 ```
 
 ## Layout
@@ -113,13 +138,16 @@ data/                 ← content lives here, not in code
   periods.json        the school day in order: one row per period, pointing at its content
   period5.json        5th period: its own roster, tell schedule, lesson and chart copy
   period6.json        6th period: the same, for the class that lost Monday
+  period7.json        7th period: chart copy only; its kids and schedule are generated
+  generation.json     the generator: name pool, distributions, schedule mix, and the bands a period must land in
+  admin.json          the week: day names, the escalation ladder, the Friday Report's copy
   observation.json    the Observation: alert/arrival copy, look-fors, the post-conference tree
 src/
   config.js           every tuning constant
   state.js            game state + effect application
   loader.js           fetches data/, including whatever periods.json points at
-  periods.js          reads the day out of periods.json; periodFor() is a lookup
-  persist.js          the chart and what you learned, between periods; the slot scheme
+  periods.js          reads the day out of periods.json; periodFor() is a lookup, or a generation
+  persist.js          the chart, what you learned, the seed and the semester, between periods; the slot scheme
   input.js            keys, look, movement, collision
   audio.js            drone, heartbeat, bell
   world/materials.js  palette + thermal twins + swap registry
@@ -136,10 +164,16 @@ src/
   systems/interventions.js  menu construction + outcome resolution
   systems/events.js   scheduled interruptions
   systems/observation.js  the alert, the rubric window, the look-fors
-  ui/                 dom refs, hud, labels, menu, toast, report, seating, conference
+  systems/rng.js      seeded randomness; the generator never touches Math.random
+  systems/roster.js   twelve kids out of a seed, and the promises a roster keeps
+  systems/scheduler.js  a tell schedule out of a roster, and the promises it keeps
+  systems/simulate.js the period, headless: what balance.mjs and the band check both run
+  systems/generate.js roster + schedule + the band check + the reroll
+  systems/semester.js the record: what a class walks in with, and what a night does to it
+  ui/                 dom refs, hud, labels, menu, toast, report, seating, conference, week
   main.js             wiring and the frame loop
 tests/smoke.mjs       headless assertions
-tests/balance.mjs     full-period simulation across play styles
+tests/balance.mjs     full-period simulation across play styles, the generator soak, a week
 ```
 
 ## Adding content without touching code
@@ -157,11 +191,19 @@ Most of what this game needs next is content, and content is data:
   its key in `defaultOptions` or a `byType` list.
 - **A new lesson beat** — add an entry to `data/lesson.json` → `beats`: a label, the line
   you say, what goes on the whiteboard, how long it should take, and how fast it lands.
-- **A whole new period** — write `data/period7.json` with a `roster`, a `schedule`, a
+- **A whole new period** — write `data/period8.json` with a `roster`, a `schedule`, a
   `lesson` and a `seatingCopy` (copy `period6.json` and start editing), then add a row
   to `data/periods.json` pointing at it and set the period before it to hand off to it.
   That is the entire job: no `.js` file is involved, `src/loader.js` fetches whatever
-  the new row names, and both test suites pick the period up on their own.
+  the new row names, and both test suites pick the period up on their own. Or leave
+  the roster and schedule out, give the row `"generate": true`, and the class is drawn
+  from a seed instead (`period7.json` is that: chart copy and nothing else).
+- **A new name, a new note, a different mix of tells** — `data/generation.json`. The
+  name pool, the notes a generated kid can carry, how many of each tell type a period
+  gets, how long each lives, and the bands a generated period has to land inside.
+- **A new rung on admin's ladder** — `data/admin.json` → `escalation.ladder`: the line
+  Fidelity has to be under, for how many days running, what it costs at the bell, the
+  PA that fires, and the line the Friday Report says about it.
 - **A new reaction** — add a pose to `data/reactions.json`, then name it in an intervention's
   `reaction` field or a tell type's `posture` field.
 - **Retuning difficulty** — `src/config.js`. Nothing else. Then run `tests/balance.mjs`.

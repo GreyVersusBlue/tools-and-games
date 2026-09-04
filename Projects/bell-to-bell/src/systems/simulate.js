@@ -80,6 +80,8 @@ export const STYLES = {
 //                     from CFG.lesson.startComprehension (Phase 3)
 //   opts.rapport / opts.fidelity   what the class walks in with (Phase 3)
 //   opts.obsWindowScale            the Observation's window, scaled (Phase 3)
+//   opts.effects                   an effect bag applied at the bell, the way
+//                                  main.js applies admin's rung (Phase 3)
 //
 // Returns { state, missed, students, plan } — the students carry their final
 // comprehension, which is what the semester record (Phase 3) reads.
@@ -104,6 +106,7 @@ export function runPeriod({ period, data, style, opts = {} }) {
   if (opts.bandwidth != null) state.bandwidth = Math.max(0, Math.min(100, opts.bandwidth));
   if (opts.rapport != null) state.rapport = Math.max(0, Math.min(100, opts.rapport));
   if (opts.fidelity != null) state.fidelity = Math.max(0, Math.min(100, opts.fidelity));
+  if (opts.effects) applyEffects(state, opts.effects);
 
   const lesson = createLesson({
     data: period.lessonData, students, tellSystem, toast: () => {}, rand: () => 0.5,

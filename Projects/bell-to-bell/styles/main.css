@@ -288,3 +288,8 @@
 .card .seed input{width:7.5em;padding:8px 10px;border:1px solid var(--ink);background:transparent;color:var(--ink);
   font:700 15px/1 "SFMono-Regular",Consolas,monospace;letter-spacing:.08em}
 .card .seed .fineprint{flex-basis:100%}
+
+/* ---------- Phase 3: the semester ---------- */
+.card .startover{margin-left:12px;opacity:.7}
+.card .startover:hover{opacity:1}
+.rubricline.weekhead{border-bottom:1px solid var(--ink);opacity:.7}

@@ -31,6 +31,8 @@ export const dom = {
   observation: $('observation'),
   startScreen: $('startScreen'),
   startSub: $('startSub'),
+  startDay: $('startDay'),
+  startOver: $('startOver'),
   startBtn: $('startBtn'),
   seedRow: $('seedRow'),
   seedLabel: $('seedLabel'),

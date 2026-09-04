@@ -14,6 +14,7 @@ import { generateRoster, rosterProblems } from '../src/systems/roster.js';
 import { generateSchedule, scheduleProblems } from '../src/systems/scheduler.js';
 import { generateClass, bandProblems, simulateBands } from '../src/systems/generate.js';
 import { runPeriod, STYLES } from '../src/systems/simulate.js';
+import * as semester from '../src/systems/semester.js';
 import * as persist from '../src/persist.js';
 import { PREFIX, slot, dayKey, LEGACY_KEYS, migrateLegacyKeys } from '../src/persist.js';
 
@@ -21,7 +22,7 @@ const D = f => JSON.parse(fs.readFileSync(`../data/${f}.json`,'utf8'));
 const iData = D('interventions'), tData = D('tells'), sData = D('students');
 const lData = D('lesson'), eData = D('events'), rData = D('reactions');
 const roomData = D('room'), seatData = D('seating'), p5Data = D('period5'), obsData = D('observation');
-const genData = D('generation');
+const genData = D('generation'), adminData = D('admin');
 
 const mkChart = (saved=null, layout=null) => createChart({
   seatGrid: sData.seatGrid, room: roomData, roster: sData.roster,
@@ -1090,6 +1091,193 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
     p7.generated.seed === 4821 && p7.generated.day === 0 && Number.isInteger(p7.generated.rerolls));
   check('the same seed and day is the same 7th period',
     JSON.stringify(periodFor('p7', bundle, { seed: 4821, day: 0 }).schedule) === JSON.stringify(p7.schedule));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — the semester remembers. A record per class, advanced one night
+// at a time, pure in and pure out. Twelve numbers, never a mastery scalar.
+// ---------------------------------------------------------------------------
+{
+  const SEM = CFG.semester;
+  const roster = sData.roster;
+  const mkStudents = comps => roster.map((r, i) => ({ ...r, seat: i, comp: comps[i] }));
+  const result = (periodId, comps, over = {}) => ({
+    periodId, seed: null, roster, students: mkStudents(comps),
+    rapport: 70, fidelity: 82, mastery: comps.reduce((a, b) => a + b, 0) / comps.length * 100,
+    bandwidth: 5, missed: 1, caught: 3, sawCurveball: true,
+    obsResult: { satisfied: ['check'], total: 5 }, known: { edges: ['1-2'], steadies: [6] }, ...over
+  });
+  const high = roster.map(() => 0.8);
+
+  const fresh = semester.createRecord();
+  check('a fresh record is versioned from day one', fresh.version === semester.RECORD_VERSION && fresh.version === 1);
+  check('a fresh record is Monday of week one', fresh.week === 1 && fresh.day === 0 && Object.keys(fresh.classes).length === 0);
+
+  // repair: every load. migrate: version drift, of which there is none yet.
+  check('garbage repairs to a fresh record', semester.repair('nope').version === 1 && semester.repair(null).week === 1);
+  check('an unversioned object is not a record', semester.migrate({ week: 3, classes: {} }) === null);
+  check('a future version is not a record either', semester.migrate({ version: 99 }) === null);
+  check('repair fills in what a half-written record lacks', (() => {
+    const r = semester.repair({ version: 1, week: 2, day: 9, classes: { p4: { comp: [0.5, 'x'], fidelity: 200 } } });
+    return r.week === 2 && r.day === SEM.daysPerWeek - 1 && r.classes.p4.comp === null &&
+      r.classes.p4.fidelity === 100 && Array.isArray(r.today) && r.admin.active === null;
+  })());
+  check('repair keeps a whole class intact', (() => {
+    const one = semester.recordPeriod(fresh, result('p4', high));
+    const back = semester.repair(JSON.parse(JSON.stringify(one)));
+    return JSON.stringify(back.classes.p4) === JSON.stringify(one.classes.p4) && back.today.length === 1;
+  })());
+
+  // entering, day one: CFG.start, nothing carried.
+  const day1 = semester.entering(fresh, 'p4', { roster, seed: null, admin: adminData });
+  check('a class on its first day walks in on CFG.start',
+    day1.firstDay && day1.startComp === null && day1.rapport === CFG.start.rapport &&
+    day1.fidelity === CFG.start.fidelity && day1.effects === null && day1.obsWindowScale === 1 && day1.events.length === 0);
+  check('day one is day index 0', day1.dayIndex === 0 && semester.dayIndexOf(fresh) === 0);
+
+  // recordPeriod: twelve values, by seat, never a scalar.
+  const shuffled = mkStudents(high).reverse();          // seat order scrambled; seat still says who
+  shuffled.find(s => s.seat === 3).comp = 0.2;
+  const one = semester.recordPeriod(fresh, { ...result('p4', high), students: shuffled });
+  check('recordPeriod does not touch the record it was given', Object.keys(fresh.classes).length === 0 && fresh.today.length === 0);
+  check('the class carries twelve values, by seat', one.classes.p4.comp.length === 12 && one.classes.p4.comp[3] === 0.2 && one.classes.p4.comp[0] === 0.8);
+  check('the class record has no mastery scalar (constraint 7)', !('mastery' in one.classes.p4));
+  check('the class carries Rapport and Fidelity', one.classes.p4.rapport === 70 && one.classes.p4.fidelity === 82);
+  check('the class knows its baseline', one.classes.p4.base.length === 12 &&
+    Math.abs(one.classes.p4.base[6] - CFG.lesson.startComprehension * roster[6].aptitude) < 1e-9);
+  check('the class counts what the chart learned', one.classes.p4.edges === 1 && one.classes.p4.steadies === 1 && one.classes.p4.observations === 1);
+  check("today's line has the period's numbers", one.today.length === 1 && one.today[0].missed === 1 && one.today[0].obs === '1/5' && one.today[0].curveball);
+  check('recording the same period twice replaces the line', semester.recordPeriod(one, result('p4', high)).today.length === 1);
+  check('a period with a student missing carries no comprehension', (() => {
+    const r = semester.recordPeriod(fresh, { ...result('p4', high), students: mkStudents(high).slice(1) });
+    return r.classes.p4.comp === null;
+  })());
+
+  // entering, day two: yesterday's numbers.
+  const two = semester.recordPeriod(one, result('p5', high));
+  const night = semester.advanceDay(two, [], { admin: adminData });
+  check('advanceDay turns the page', night.day === 1 && night.week === 1 && night.today.length === 0 && night.days.length === 1);
+  check("the finished day is on the books with the day's means",
+    night.days[0].periods.length === 2 && Math.abs(night.days[0].fidelity - 82) < 1e-9 && night.days[0].missed === 2 &&
+    night.days[0].bandwidth === 5 && Number.isFinite(night.days[0].opinion));
+  check('advanceDay does not touch the record it was given', two.day === 0 && two.today.length === 2);
+  const d2 = semester.entering(night, 'p4', { roster, seed: null, admin: adminData });
+  const b3 = one.classes.p4.base[3], b0 = one.classes.p4.base[0];
+  check('overnight, what they learned above the baseline keeps retainOvernight of itself',
+    Math.abs(d2.startComp[0] - (b0 + (0.8 - b0) * SEM.retainOvernight)) < 1e-9);
+  check('overnight, what a bad period took from under the baseline comes partway back',
+    Math.abs(d2.startComp[3] - (b3 + (0.2 - b3) * SEM.retainOvernight)) < 1e-9 && d2.startComp[3] > 0.2);
+  check('Fidelity reverts toward the district mean overnight',
+    Math.abs(d2.fidelity - (SEM.districtFidelity + (82 - SEM.districtFidelity) * (1 - SEM.fidelityRevert))) < 1e-9);
+  check('Rapport reverts toward its start overnight',
+    Math.abs(d2.rapport - (CFG.start.rapport + (70 - CFG.start.rapport) * (1 - SEM.rapportRevert))) < 1e-9);
+  check('a class that did not meet yesterday still opens on what it has', !d2.firstDay && d2.startComp.length === 12);
+  check('a different seed is a different class', (() => {
+    const g = semester.recordPeriod(fresh, { ...result('p7', high), seed: 4821 });
+    const same = semester.entering(g, 'p7', { roster, seed: 4821, admin: adminData });
+    const other = semester.entering(g, 'p7', { roster, seed: 4822, admin: adminData });
+    return !same.firstDay && other.firstDay && other.startComp === null && other.rapport === CFG.start.rapport;
+  })());
+  check('a roster of a different size does not carry', semester.entering(night, 'p4', { roster: roster.slice(0, 11), seed: null, admin: adminData }).startComp === null);
+  check('the weekend forgets more than a night', SEM.retainWeekend < SEM.retainOvernight &&
+    semester.retentionAfter(SEM.daysPerWeek - 1) === SEM.retainWeekend && semester.retentionAfter(0) === SEM.retainOvernight);
+
+  // The week rolls over.
+  let r = fresh;
+  for (let d = 0; d < SEM.daysPerWeek; d++) r = semester.advanceDay(semester.recordPeriod(r, result('p4', high)), [], { admin: adminData });
+  check('five nights is a week', r.week === 2 && r.day === 0 && r.days.length === 5);
+  check('the Friday before the roll is the last day of the week', semester.isLastDayOfWeek({ ...r, day: SEM.daysPerWeek - 1 }) && !semester.isLastDayOfWeek(r));
+  check('the second Monday is day index five', semester.dayIndexOf(r) === SEM.daysPerWeek);
+  const w = semester.weekSummary(r);
+  check('the week summary reads the week that just closed', w.week === 1 && w.days.length === 5 && w.periods === 5 && w.missed === 5);
+  check('the week summary has a from and a to', w.from && w.to && Number.isFinite(w.means.mastery) && Number.isFinite(w.means.bandwidth));
+  check('the week summary counts what was learned', w.learned.edges === 1 && w.learned.steadies === 1 && w.curveballs === 5);
+
+  // The ladder. Sustained low Fidelity, and nothing else, schedules admin.
+  const ladder = adminData.escalation.ladder;
+  check('the ladder climbs: each rung is lower and longer than the last',
+    ladder.every((s, i) => i === 0 || (s.when.fidelityBelow < ladder[i - 1].when.fidelityBelow && s.when.days > ladder[i - 1].when.days)));
+  check('every rung has an event, effects that never touch mastery, and a report line',
+    ladder.every(s => s.event && s.effects && !('mastery' in s.effects) && s.report && s.label));
+  const low = v => result('p4', roster.map(() => 0.4), { fidelity: v });
+  // 43 is under every rung's line; what separates the rungs is how many days
+  // running it has been there.
+  let lr = fresh;
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(43)), [], { admin: adminData });
+  check('one low day is not a pattern', lr.admin.active === null);
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(43)), [], { admin: adminData });
+  check('two low days is a check-in', lr.admin.active === 'checkIn' && lr.admin.history.length === 1);
+  const ent = semester.entering(lr, 'p4', { roster, seed: null, admin: adminData });
+  check('the rung reaches the period as effects, an event and a window',
+    ent.rung.id === 'checkIn' && ent.effects.bandwidth === -4 && ent.events.length === 1 &&
+    ent.events[0].id === 'admin-checkIn' && ent.events[0].kind === 'pa' && ent.obsWindowScale === 1);
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(43)), [], { admin: adminData });
+  check('three low days is the second observation', lr.admin.active === 'secondObservation');
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(43)), [], { admin: adminData });
+  check('four low days is the growth plan', lr.admin.active === 'growthPlan' && lr.admin.history.length === 3);
+  check('a day just under the first line is a check-in and nothing more', (() => {
+    let x = fresh;
+    for (let i = 0; i < 4; i++) x = semester.advanceDay(semester.recordPeriod(x, low(52)), [], { admin: adminData });
+    return x.admin.active === 'checkIn' && x.admin.history.length === 1;
+  })());
+  check('the growth plan keeps her longer', semester.entering(lr, 'p4', { roster, seed: null, admin: adminData }).obsWindowScale === 2);
+  lr = semester.advanceDay(semester.recordPeriod(lr, low(90)), [], { admin: adminData });
+  check('one good day clears the ladder', lr.admin.active === null);
+  check('the ladder reads admin opinion, the mean across classes', (() => {
+    let x = fresh;
+    for (let i = 0; i < 2; i++) {
+      x = semester.recordPeriod(x, low(30));
+      x = semester.recordPeriod(x, { ...result('p5', high), fidelity: 90 });
+      x = semester.advanceDay(x, [], { admin: adminData });
+    }
+    return x.admin.active === null && Math.abs(x.days[0].opinion - 60) < 1e-9;
+  })());
+  check('history records the first day of each rung, once', lr.admin.history.map(h => h.id).join() === 'checkIn,secondObservation,growthPlan');
+
+  // The observation window scale actually reaches the observation.
+  check('windowScale scales the rubric window', (() => {
+    const fakeClassList = () => ({ add() {}, remove() {}, contains: () => false });
+    const mk = scale => createObservation({ data: obsData, dom: { pa: { classList: fakeClassList() }, paTitle: {}, paTxt: {} }, toast: () => {}, windowScale: scale });
+    const a = createState(), b = createState();
+    a.t = b.t = CFG.periodSeconds - obsData.atMinute * 60 - 1;
+    const oa = mk(1), ob = mk(2);
+    oa.tick(a, 0.1); ob.tick(b, 0.1);
+    a.obsAlertRemaining = b.obsAlertRemaining = 0;
+    oa.tick(a, 0.1); ob.tick(b, 0.1);
+    return a.obsPhase === 'active' && Math.abs(b.obsWindowRemaining - 2 * a.obsWindowRemaining) < 1;
+  })());
+  check('the lesson opens on carried comprehension, by seat', (() => {
+    const st = mkStudents(high).map(s => ({ ...s, comp: 0 })).reverse();
+    const carried = roster.map((_, i) => i / 20);
+    createLesson({ data: lData, students: st, tellSystem: { defs: tData.types, tells: [] }, toast: () => {}, rand: () => 0.5, startComp: carried });
+    return st.every(s => s.comp === carried[s.seat]);
+  })());
+
+  // Drift. The good teacher, five days of 4th period: Friday must not open
+  // lower than Tuesday did, and nothing may run away toward 100 either. The
+  // wanderer must have met AP Reyes by Friday. Cheap: ten headless periods.
+  const week = style => {
+    let rec = fresh; const opens = [], closes = [];
+    for (let d = 0; d < SEM.daysPerWeek; d++) {
+      const carry = semester.entering(rec, 'p4', { roster, seed: null, admin: adminData });
+      opens.push(carry.startComp ? carry.startComp.reduce((a, b) => a + b, 0) / 12 * 100 : null);
+      const run = runPeriod({ period: p4, data: simData, style, opts: { startComp: carry.startComp, rapport: carry.rapport, fidelity: carry.fidelity } });
+      closes.push(run.state.mastery);
+      rec = semester.advanceDay(semester.recordPeriod(rec, {
+        periodId: 'p4', seed: null, roster, students: run.students, rapport: run.state.rapport, fidelity: run.state.fidelity,
+        mastery: run.state.mastery, bandwidth: run.state.bandwidth, missed: run.missed, caught: 0, obsResult: run.state.obsResult, known: {}
+      }), [], { admin: adminData });
+    }
+    return { rec, opens, closes };
+  };
+  const good = week(STYLES.good), wander = week(STYLES.wanderer);
+  check('the good teacher plateaus: Friday opens within 1 of Thursday', Math.abs(good.opens[4] - good.opens[3]) < 1);
+  check('the good teacher does not drift: Friday closes within 5 of Monday', Math.abs(good.closes[4] - good.closes[0]) < 5);
+  check('nothing runs away: Friday opens under 90', good.opens[4] < 90);
+  check('Fidelity does not pin at 100 by Friday for the good teacher', good.rec.classes.p4.fidelity < 100 && good.closes.every(Number.isFinite));
+  check('the good teacher hears nothing from admin', good.rec.admin.history.length === 0);
+  check('the wanderer meets AP Reyes by Friday', wander.rec.admin.history.some(h => h.id === 'checkIn'));
+  check('the wanderer does not fall through the floor', wander.opens[4] > 30);
 }
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');

@@ -1,6 +1,6 @@
 import { dom } from './dom.js';
 
-function pickEnding(state, endings) {
+export function pickEnding(state, endings) {
   for (const e of endings) {
     const w = e.when;
     if (!w || Object.keys(w).length === 0) return e;
@@ -17,7 +17,7 @@ function pickEnding(state, endings) {
   return endings[endings.length - 1];
 }
 
-function tierText(value, tiers) {
+export function tierText(value, tiers) {
   for (const [threshold, text] of tiers) if (value > threshold) return text;
   return tiers[tiers.length - 1][1];
 }

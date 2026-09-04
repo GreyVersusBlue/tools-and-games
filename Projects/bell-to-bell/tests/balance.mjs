@@ -195,3 +195,55 @@ if (!genRow) {
   }
   console.log('  every seed inside the band\n');
 }
+
+// Phase 3: a week. Five days, every period, one style, with the semester
+// record at each bell: what the class opened on (yesterday's twelve numbers
+// minus a night), what it closed on, admin's opinion, and which rung of the
+// ladder the day started on. The failure this table catches is drift — a
+// per-night cost that looks trivial on Tuesday and has compounded to zero by
+// Thursday — so read the `opens` column down, not the `closes` column across.
+// The good teacher should plateau; the wanderer should meet AP Reyes.
+import * as semester from '../src/systems/semester.js';
+const adminData = D('admin');
+
+function week(style) {
+  console.log(`${style.label}, a week of ${PERIODS.length} periods a day, the record at each bell:`);
+  let record = semester.createRecord();
+  for (let d = 0; d < CFG.semester.daysPerWeek; d++) {
+    let pool = null;
+    for (const id of periodIds(bundle)) {
+      const period = periodFor(id, bundle, { seed: TABLE_SEED, day: semester.dayIndexOf(record) });
+      const carry = semester.entering(record, id, {
+        roster: period.roster, seed: period.generated ? period.generated.seed : null, admin: adminData
+      });
+      const opens = carry.startComp
+        ? carry.startComp.reduce((a, b) => a + b, 0) / carry.startComp.length * 100 : null;
+      const r = runPeriod({ period, data: SIM, style, opts: {
+        bandwidth: pool, startComp: carry.startComp, rapport: carry.rapport, fidelity: carry.fidelity,
+        obsWindowScale: carry.obsWindowScale, effects: carry.effects
+      } });
+      pool = Math.min(100, r.state.bandwidth + CFG.day.passingPeriodRecovery);
+      record = semester.recordPeriod(record, {
+        periodId: id, seed: period.generated ? period.generated.seed : null,
+        roster: period.roster, students: r.students,
+        rapport: r.state.rapport, fidelity: r.state.fidelity, mastery: r.state.mastery,
+        bandwidth: r.state.bandwidth, missed: r.missed, caught: 0,
+        obsResult: r.state.obsResult, known: { edges: [], steadies: [] }
+      });
+      const p = v => (v == null ? ' --' : String(Math.round(v)).padStart(3));
+      console.log(`  ${adminData.shortDays[record.day]} ${period.short.padEnd(4)} ` +
+        `mastery ${p(opens)} -> ${p(r.state.mastery)}   fidelity ${p(carry.fidelity)} -> ${p(r.state.fidelity)}   ` +
+        `rapport ${p(carry.rapport)} -> ${p(r.state.rapport)}   bandwidth ${p(r.state.bandwidth)}   ` +
+        `missed ${r.missed}   admin ${carry.rung ? carry.rung.label : '—'}`);
+    }
+    record = semester.advanceDay(record, [], { admin: adminData });
+  }
+  const w = semester.weekSummary(record);
+  const p = v => String(Math.round(v)).padStart(3);
+  console.log(`  ${'week (means)'.padEnd(8)} mastery ${p(w.means.mastery)}         fidelity ${p(w.means.fidelity)}         ` +
+    `rapport ${p(w.means.rapport)}         missed ${w.missed}   ` +
+    `admin ${record.admin.history.length ? record.admin.history.map(h => `${h.id} from ${adminData.shortDays[(h.day + 1) % CFG.semester.daysPerWeek]}`).join(', ') : 'nothing'}\n`);
+  return record;
+}
+week(STYLES.good);
+week(STYLES.wanderer);

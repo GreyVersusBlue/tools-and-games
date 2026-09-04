@@ -1,12 +1,14 @@
 # Bell to Bell — Feature Wishlist
 
-**Status: Phase 1 has shipped. The game is at T7 plus Phase 1 — tickets T1
-through T7 and "A day with more than two periods in it" are built and playable,
-`tests/smoke.mjs` prints 257 PASS lines and no FAIL, and `tests/balance.mjs`
-runs six styles through 4th period, one style across three seating charts,
-three styles through each later period, and the whole day back to back on one
-Bandwidth pool. The first open phase is Phase 2 — Kids nobody authored, on
-**Claude Fable 5.1**.**
+**Status: Phases 1, 2 and 3 have shipped. The game is at T7 plus three phases:
+a four-period day whose 7th period is generated from a seed, and a five-day
+week the semester record carries each class across, with admin's ladder at the
+end of it. `tests/smoke.mjs` prints 381 PASS lines and no FAIL, and
+`tests/balance.mjs` runs six styles through 4th period, one style across three
+seating charts, three styles through each later period, the whole day on one
+Bandwidth pool, fifty generated seeds through the band (its one assertion), and
+two styles through a week. The first open phase is Phase 4 — The bureaucracy
+answers back, on **Claude Opus 5**.**
 The prior work through T7 is recorded in the repo root's `HISTORY.md`, with the
 balance table as it stood at the end of T7. This file is what comes after: the
 architecture as it actually is, the conventions the project already learned,
@@ -49,11 +51,29 @@ into a room rather than facts about the day.
 
 ## The architecture that is there
 
-3,422 lines across 30 files in `src/`, 42 KB of JSON across eleven files in
-`data/`, and 142 MB in `Assets/`.
+About 4,600 lines across 37 files in `src/`, 60 KB of JSON across fourteen
+files in `data/`, and 142 MB in `Assets/`.
 
-**The three-free core** — nine modules, 1,075 lines, importing neither three.js
-nor the DOM, and therefore the only part of the game the Node suites can reach:
+**The three-free core** — sixteen modules importing neither three.js nor the
+DOM, and therefore the only part of the game the Node suites can reach. Phase 2
+and Phase 3 added seven of them, all pure:
+
+- `systems/simulate.js` (Phase 2) — the period, headless. `balance.mjs`'s old
+  `run()` extracted so the generator's band check and the balance table run
+  the same code; `STYLES` holds the six play styles by name.
+- `systems/rng.js`, `systems/roster.js`, `systems/scheduler.js`,
+  `systems/generate.js` (Phase 2) — a seed, twelve kids, their tell schedule,
+  and the band check that re-rolls the schedule until two crude teachers land
+  inside `data/generation.json`'s ranges. `rosterProblems()` and
+  `scheduleProblems()` are the promise lists; the suite breaks each promise on
+  purpose and watches the list catch it.
+- `systems/semester.js` (Phase 3) — the record. `entering()` says what a class
+  opens with, `recordPeriod()` takes what it closed with, `advanceDay()` is the
+  night: retention toward the baseline from either side, Fidelity and Rapport
+  reverting toward their means, and admin's ladder off the days on the books.
+  Versioned from day one, `repair`ed on every load.
+
+The nine that were there before:
 
 - `systems/chart.js` (289) — the seating chart, headless. Desk assignment,
   adjacency, `resolveSchedule` (what the authored tell schedule *becomes* once
@@ -80,26 +100,31 @@ loading), `systems/tells.js` (160, tell lifecycle and meshes and the raycast),
 `systems/`, and `ui/dom.js` is the one permitted singleton.
 
 **`main.js` is wiring and one frame loop.** The seam between periods is
-`src/periods.js` (77 lines, three-free), which reads `data/periods.json` and
-hands `main.js` one resolved period; everything in `main.js` is period-agnostic
-and it no longer names a class or a save slot anywhere. `endPeriod()` at 359 runs `learnFrom`, persists, and hands the
-report a `restart` action that writes a `persist` key and calls
-`location.reload()`. That reload *is* the period transition — there is no
+`src/periods.js` (three-free), which reads `data/periods.json` and hands
+`main.js` one resolved period, generating it from the slot's seed and the day
+if the row says `generate`; everything in `main.js` is period-agnostic and it
+no longer names a class or a save slot anywhere. `endPeriod()` runs
+`learnFrom`, writes the period onto the semester record, persists, and hands
+the report a `restart` action that writes `persist` keys and calls
+`location.reload()`. That reload *is* the period transition, and the last
+period's button is the night: `advanceDay` runs before it, and on Friday the
+week screen (`ui/week.js`) sits between the report and Monday. There is no
 teardown/rebuild path, because the linear boot sequence already runs once per
 page load.
 
 **Where the habits break down.** Content-not-code holds: a new tell type,
-intervention, beat, reaction or post-conference response is a JSON edit. The
-pure-module-plus-suite habit holds for the nine modules above and stops dead at
-the module boundary — `systems/tells.js` and `systems/withitness.js` are
-dependency-injected factories with no suite at all, and `world/`, `ui/` and
-`main.js` have never been executed by anything but a browser. Roughly 31% of
-`src/` is under test, and the untested 69% includes the tell lifecycle. The other
-soft spot is persistence, and Phase 1 took the worst of it: `persist.js` is 86
-lines, its keys are built by `slot(periodId, key)` and `dayKey(key)` rather than
-typed out, and the six flat pre-slot names migrate on read exactly once. What is
-still soft is that it has no browser-side suite of its own — the migration is
-asserted against an injected fake store, not against `localStorage`.
+intervention, beat, reaction, post-conference response, generated name, note or
+rung of admin's ladder is a JSON edit. The pure-module-plus-suite habit holds
+for the sixteen modules above and stops dead at the module boundary —
+`systems/tells.js` and `systems/withitness.js` are dependency-injected
+factories with no suite at all, and `world/`, `ui/` and `main.js` have never
+been executed by anything but a browser and the one headless Playwright pass
+Phases 2 and 3 ran by hand (it is not committed; the proxy in that session
+blocked the three.js CDN and the pass answered the import map from Castle
+Conundrum's vendored 0.169). Persistence is where Phase 1 left it: `persist.js`
+builds keys with `slot()` and `dayKey()`, the six flat names migrate on read
+once, the semester record goes through `repair` on every load, and none of it
+has a browser-side suite of its own.
 
 ## Conventions a new builder must know
 
@@ -159,13 +184,17 @@ And the working rules:
 - **Run both suites from `tests/`.** They read `../data/*.json` by relative path
   and will not run from the repo root:
   ```bash
-  cd tests && node smoke.mjs      # 191 assertions; prints "all green"
-  cd tests && node balance.mjs    # six styles, three charts, two periods
+  cd tests && node smoke.mjs      # 381 assertions; prints "all green"
+  cd tests && node balance.mjs    # six styles, three charts, four periods, the day, the soak, a week
   SPREAD=1 node balance.mjs       # the front-row spread comparison
+  SOAK=500 node balance.mjs       # more seeds through the generator
   node --check src/<file>.js      # syntax check one module
   ```
-  `smoke.mjs` asserts; `balance.mjs` does not — it prints a table you read.
-  Paste that table into the closing report so the next session can diff it.
+  `smoke.mjs` asserts. `balance.mjs` mostly prints a table you read, with one
+  exception since Phase 2: the generator soak exits 1 if any seed lands outside
+  `data/generation.json`'s bands, because a check that only prints is a check
+  that gets ignored. Paste the table into the closing report so the next
+  session can diff it.
 - **Voice: deadpan, specific, written for someone who has actually taught.**
   Match `data/interventions.json` and the treatment's event cards. No
   exclamation points except from the sub and the intercom.
@@ -189,12 +218,14 @@ And the working rules:
 
 The T7 record left these open; nothing in this file resolves them.
 
-- **Authoring or generation?** T6 shipped a second hand-authored roster,
-  schedule and lesson; T7 one hand-authored observation at a fixed minute 30.
-  Both deliberate — prove the authored shape before automating it. Phase 2 is
-  the automation. Now, or does a third authored period come first?
+- **Authoring or generation?** Answered by shipping: Phase 1 authored a third
+  period and Phase 2 generated a fourth, so the day is three authored classes
+  and one drawn from a seed. The open version of the question is whether the
+  authored three should also become seeds (one JSON edit each, and their names
+  would go), or whether authored kids stay authored because the notes are
+  better. Nothing depends on the answer.
 - **Does the period need a fail state?** Answered "still no" three times.
-  Confirming it lets Phase 3 stop designing around the possibility.
+  Phase 3 designed without one: a bad week gets a growth plan, not a game over.
 - **Is suppression too strong?** Measured: in every 4th-period balance run
   exactly one scheduled tell never happens (Priya in front of June); splitting
   the pairs makes that "2 never happened, 2 found another way" and drops
@@ -221,17 +252,54 @@ new list.
   a place you stand.
 - `CFG.day.passingPeriodRecovery` is 26 by design math and not by playtest: it
   is what makes the good teacher's Withitness budget drop from 14 seconds in
-  4th to 4 seconds in 5th and 6th. Nobody has played that.
-- The day is three periods and then it restarts. There is no Tuesday, and
-  nothing distinguishes the last period of the day from the first except its
-  authored content.
+  4th to 4 seconds in 5th, 6th and 7th. Nobody has played that. A fourth period
+  made it bite harder: the wanderer opens 7th with 30 Bandwidth, spends the
+  period under `CFG.lowBandwidthThreshold`, and closes at 29 Mastery where the
+  same teacher closes 4th at 50. That is the pool working as designed, and
+  nobody has played it either.
+- Nothing distinguishes the last period of the day from the first except its
+  content. Phase 3 gave the day a tomorrow; it did not give 7th period a 2:40.
+
+**The week**
+- Every number in `CFG.semester` is design math: overnight retention 0.82,
+  weekend 0.64, Fidelity reverting 0.7 toward 62 a night, Rapport 0.5 toward
+  55. The week table shows the good teacher plateauing at 68 opening and 75
+  closing from Wednesday on, and the wanderer meeting AP Reyes on Thursday.
+  Nobody has played a week.
+- Admin's ladder has three rungs and no simulated style reaches the second.
+  The wanderer closes each day at 53 Fidelity, under the check-in's 56 and
+  over the second observation's 50. A player who teaches from the back of the
+  room all period loses 34 Fidelity and reaches the growth plan by Thursday;
+  a style for that teacher is not in `STYLES`.
+- Overnight retention relaxes toward the baseline from either side, so a
+  wrecked period comes partway back by morning. The alternative, a floor at
+  the baseline and nothing coming back, sent the wanderer's 7th from 29 to 12
+  by Friday and would have sent it to zero the week after. Whether "they knew
+  it last week" is the right story for the recovery is a design call, made
+  once, here.
+- The record counts what the chart learned but does not own it: `edges` and
+  `steadies` per class are read off the `known` slot at the bell. The slot is
+  the truth; the record is the report.
+- There is one week. Week 2 is week 1 again with the record carried; nothing
+  in the lesson data knows it is week 2. The lesson is still "DAY 2 OF 3" every
+  day.
+- "Start the semester over" on the start screen clears the record, every
+  period's chart, discoveries and seed, and the day's Bandwidth. It keeps the
+  furniture. There is no confirmation beyond the browser's own `confirm()`.
 
 **Content**
-- Beats and tells are hand-authored and never vary. Three rosters, three
-  schedules, three lessons, forever.
+- Beats are hand-authored and never vary, and the generated 7th period reads
+  4th period's lesson. Generation stops at the roster and the schedule on
+  purpose: voice is what it is worst at.
+- The generator's name pool is 93 names, disjoint from the 36 authored ones,
+  and a roster takes twelve with no two sharing their first two letters. The
+  notes pool is 31 lines. Both will start to repeat across seeds sooner than
+  the numbers will.
 - The Observation fires at `atMinute: 30` in every period, unannounced, always.
-  Three periods in a day means AP Reyes now walks in three times before lunch
-  is over, which reads as a bug and is not one yet.
+  Four periods in a day means AP Reyes now walks in four times before the
+  buses, and the ladder's "second observation the same week" is a longer
+  window on a visit that was already happening. Phase 4 is where that stops
+  reading as a bug.
 - The post-conference is one exchange with three options; treatment §6.1 shows
   a tree.
 - Subject is Social Studies and nothing else; §4's six are unbuilt.
@@ -267,6 +335,9 @@ new list.
 - No CI. `.github/workflows/` has three files and none runs these two suites.
 - `systems/tells.js` (160) and `systems/withitness.js` (39) are
   dependency-injected factories with no test file.
+- The generator's band check runs two headless periods per attempt at boot,
+  about 25 ms each in Node. At the reroll cap of 24 that is a second of boot on
+  a bad seed; no seed in 1,400 tried needed more than 3.
 
 ## Arc one — the school day
 
@@ -313,87 +384,57 @@ What it left open is in the standing backlog above, under **The day**: the
 recovery constant is design math rather than playtest, and the Observation now
 fires three times in one day.
 
-## Phase 2 — Kids nobody authored
+## Phase 2 — Kids nobody authored — **SHIPPED**
 
 **Two rosters and two tell schedules is the whole game's content, and both were
 typed by hand.**
 
-The handoff's own open question, asked and deferred twice. The argument for
-answering it now is that the authored shape has been proved twice and the
-harness to validate a generated one already exists: `balance.mjs` runs a whole
-period headlessly in milliseconds and prints where six play styles land, so a
-generator can be held to that band by construction rather than by taste.
+Shipped, with Phase 3, in one pull request. The full record, the promises each
+generator keeps, the one the scheduler had to learn from the chart, and the
+soak numbers, is in the repo root's `HISTORY.md` under "Bell to Bell, through
+Phase 3". In short:
 
-- [ ] **`systems/roster.js`, pure, with its suite.** Seeded generation of twelve
-  students — name, shirt, `tension`, `aptitude`, `steady` — against
-  distributions in `data/generation.json`, guaranteeing what the roster
-  actually needs: at least one genuine stabiliser, an aptitude spread wide
-  enough for reteach to mean something, and no two names that read alike on the
-  chart.
-- [ ] **`systems/scheduler.js`, pure, with its suite.** Compose a tell schedule
-  from the generated roster and the existing `data/tells.json` types: minute,
-  type, seat, pair, life. The invariants are the interesting part — a `pair`
-  tell needs two students the chart can actually seat adjacent, exactly one
-  `QUIET` per period, the total unresolved-tell pressure inside a band, and no
-  two tells stacked on one seat inside one another's lifespan.
-- [ ] **A band, not a number.** Encode the balance table's acceptable ranges as
-  `data/generation.json` → `bands`: where mastery, restless and missed should
-  land for "ideal (never scans)" and "never checks, never looks". A period
-  outside the band is rejected and re-rolled, with a reroll cap and a loud
-  failure.
-- [ ] **A seed you can name.** The whole generator runs off one integer, printed
-  on the report screen, so a class that produced something funny can be typed
-  back in.
-- [ ] **`balance.mjs` grows a soak.** Fifty seeds through two play styles;
-  min/max/mean per meter, failing loudly if any seed leaves the band. That is
-  the whole safety net for this phase. Beats stay authored: voice is what
-  generation is worst at, and nothing here needs to write a lesson.
+- [x] **`systems/roster.js`, pure, with its suite.** Stratified draws, so the
+  room always has a calm end and a loud end; `rosterProblems()` is the promise
+  list, and the suite breaks each promise on purpose.
+- [x] **`systems/scheduler.js`, pure, with its suite.** Every invariant the
+  wishlist named plus one it did not: the August chart may swallow at most two
+  tells, because the first seed that missed the band was a roster whose
+  stabilisers sat next to everything.
+- [x] **A band, not a number.** `data/generation.json` → `bands`, checked by
+  `systems/generate.js` against `systems/simulate.js`, which is `balance.mjs`'s
+  runner extracted so the two cannot drift. A miss re-rolls the schedule and
+  never the roster.
+- [x] **A seed you can name.** Six digits, stored in the period slot, on the
+  report screen and editable on the start screen.
+- [x] **`balance.mjs` grows a soak.** Fifty seeds; exits 1 on any miss.
 
-*Leans on:* `systems/chart.js`'s `resolveSchedule`, `data/tells.json` types,
-`tests/balance.mjs`. *Save:* additive — the seed, stored per period slot, so a
-reload regenerates the same class. *Model:* **Claude Fable 5.1** — a generator
-that must compose content satisfying invariants the balance harness only checks
-after the fact, where a bad distribution reads as "the game got easier" rather
-than as a bug.
+What it did not do: touch the lesson. 7th period teaches 4th period's.
 
-## Phase 3 — The semester remembers
+## Phase 3 — The semester remembers — **SHIPPED**
 
 **Every meter resets at every bell, so nothing you did on Monday exists on
 Tuesday.**
 
-`createState()` reads `CFG.start` and hands back mastery 38, fidelity 62,
-rapport 55, bandwidth 100 — the same four numbers for 4th period, for 5th, and
-for the 5th you reached after doing something remarkable in 4th. Treatment §8's
-four ending-by-meter-shape titles are already in `data/events.json` as
-`endings`; they have nothing longitudinal to read.
+Shipped, with Phase 2. The record, the constants and the two week tables are in
+`HISTORY.md` under "Bell to Bell, through Phase 3". In short:
 
-- [ ] **`systems/semester.js`, pure, with its suite.** A record per class —
-  cumulative comprehension by student, Rapport, Fidelity, discovered edges and
-  stabilisers, observations survived — advanced by one `advanceDay(record,
-  periodResults)`. Pure in, pure out; `main.js` never does date arithmetic.
-- [ ] **Mastery persists per student, not per class.** The twelve numbers carry
-  forward and `CFG.lesson.forgetPerSec` gets a between-days sibling so the
-  weekend costs something. Constraint 7 holds: the record stores twelve values,
-  never a `mastery` scalar.
-- [ ] **Fidelity is admin's running opinion.** Carried across days and decaying
-  toward the district mean rather than sitting still — the Mastery-vs-Fidelity
-  tension only bites if last week's choice is still on the books.
-- [ ] **Escalation, per treatment §6.2.** Sustained low Fidelity schedules
-  consequences from `data/admin.json`: a second observation the same week, a
-  "quick check-in," a growth plan. Content driven off bands in the record, all
-  of it sincere and none of it villainous (constraint 6). Surfaced in a Friday
-  Report — five days of meters and three lines about what changed, reusing
-  `ui/report.js`'s layout and not its logic.
-- [ ] **`balance.mjs` grows a week.** Five days, three periods each, one style,
-  as a fifteen-row table with the record's state at each bell. The failure it
-  catches is drift — a per-day cost that looks trivial and compounds to zero
-  mastery by Thursday.
+- [x] **`systems/semester.js`, pure, with its suite.** `entering`,
+  `recordPeriod`, `advanceDay`, `weekSummary`; `main.js` does no date
+  arithmetic. Versioned 1 from day one, `repair`ed on every load.
+- [x] **Mastery persists per student, not per class.** Twelve values by seat and
+  a baseline to relax toward; `CFG.semester.retainOvernight` and
+  `retainWeekend` are `forgetPerSec`'s between-days siblings. Constraint 14.
+- [x] **Fidelity is admin's running opinion.** Reverting 0.7 a night toward the
+  district's 62, which is what keeps a good week off the 100 ceiling.
+- [x] **Escalation, per treatment §6.2.** Three rungs in `data/admin.json`, each
+  a line, a number of days, an effect bag, a PA and a report line. The Friday
+  Report is `ui/week.js` on the report screen's card.
+- [x] **`balance.mjs` grows a week.** Twenty rows per style, two styles, the
+  record at each bell.
 
-*Leans on:* Phase 1's slots, `systems/lesson.js`'s comprehension array,
-`data/events.json`'s endings. *Save:* a new `semester` record, versioned from
-day one, additive to Phase 1's slots and never overwriting them. *Model:*
-**Claude Fable 5.1** — a longitudinal model where a wrong decay constant is
-invisible for six simulated weeks and then decides the ending.
+What it did not do: give 7th period a 2:40, or the lesson a Tuesday. Rapport
+and Fidelity carry per class; the observation still fires every period.
 
 ## Phase 4 — The bureaucracy answers back
 

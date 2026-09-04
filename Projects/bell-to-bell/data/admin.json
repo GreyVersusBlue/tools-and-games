@@ -1,0 +1,85 @@
+{
+  "_note": "Phase 3. The week, and what admin does about it. Everything the semester record turns into words lives here: the day names, the escalation ladder (treatment 6.2 — sincere, not villainous), and the Friday Report. Logic is in src/systems/semester.js; this file is only ever read.",
+
+  "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+  "shortDays": ["MON", "TUE", "WED", "THU", "FRI"],
+
+  "copy": {
+    "dayTag": "{day} · WEEK {week}",
+    "tomorrow": "Tomorrow — {day}",
+    "fridayReport": "The Friday Report",
+    "nextWeek": "Monday",
+    "startOver": "Start the semester over",
+    "startOverConfirm": "New kids, new week, nothing remembered. Sure?",
+    "firstDay": "It is {day} of week {week}. Nobody in this room has met you before.",
+    "returning": "It is {day} of week {week}. They walked in with what they walked out with yesterday, minus a night."
+  },
+
+  "escalation": {
+    "_note": "Admin's opinion is the mean Fidelity across every class on the books at the last bell. A rung is active tomorrow when the opinion has been under its line for `days` school days running. The highest active rung wins; nothing stacks. Effects land at the start of every period that day (Bandwidth, through applyEffects like everything else — never mastery directly), the PA fires at atMinute like any scheduled event, and the rubric window scales when she visits. None of this is a punishment. It is a calendar.",
+    "ladder": [
+      {
+        "id": "checkIn",
+        "label": "Quick check-in",
+        "when": { "fidelityBelow": 56, "days": 2 },
+        "effects": { "bandwidth": -4 },
+        "obsWindowScale": 1,
+        "event": {
+          "atMinute": 0.4, "kind": "pa", "durationMs": 9000,
+          "title": "Email — AP Reyes, 7:41 a.m.",
+          "body": "Subject: quick check-in. \"Do you have ten minutes before 4th? Nothing urgent. Just want to touch base on how the unit is landing.\" The ten minutes were before 4th. It is 4th.",
+          "toast": { "kind": "", "title": "Quick check-in", "body": "It was not about anything. It took a piece of the morning with it anyway. Bandwidth −4." }
+        },
+        "report": "AP Reyes asked for ten minutes before first period. It was not about anything, which is how you know it was about something."
+      },
+      {
+        "id": "secondObservation",
+        "label": "A second observation, same week",
+        "when": { "fidelityBelow": 50, "days": 3 },
+        "effects": { "bandwidth": -6 },
+        "obsWindowScale": 1.5,
+        "event": {
+          "atMinute": 0.4, "kind": "pa", "durationMs": 9000,
+          "title": "Calendar invite — Informal Walkthrough",
+          "body": "Accepted on your behalf. \"Informal\" is in the title, and the rubric is attached, and it is the same rubric. She will stay longer this time. Nobody said that. It is just true.",
+          "toast": { "kind": "bad", "title": "A second observation", "body": "Same week, same rubric, longer window. Bandwidth −6, before the day has started." }
+        },
+        "report": "She came back the same week. The second visit was longer than the first and the rubric had not changed, which was the message."
+      },
+      {
+        "id": "growthPlan",
+        "label": "Growth plan",
+        "when": { "fidelityBelow": 44, "days": 4 },
+        "effects": { "bandwidth": -9, "fidelity": 2 },
+        "obsWindowScale": 2,
+        "event": {
+          "atMinute": 0.4, "kind": "pa", "durationMs": 10000,
+          "title": "Document shared with you — Growth Plan (DRAFT)",
+          "body": "Three goals, each with a measurable indicator and a timeline. You did not write any of them. There is a signature line with your name typed under it already. It is a Google Doc. Comments are on.",
+          "toast": { "kind": "bad", "title": "Growth plan", "body": "It is sincere. That is the worst part. Bandwidth −9; Fidelity +2 for having a plan, which is what plans are for." }
+        },
+        "report": "There is a growth plan with your name typed under a line. Every goal on it is reasonable. That is not the same as achievable."
+      }
+    ],
+    "clear": "Nothing from admin this week. That is the good outcome and it will not feel like one."
+  },
+
+  "week": {
+    "title": "Friday Report",
+    "sub": "WEEK {week} · {days} DAYS · {periods} PERIODS",
+    "columns": { "day": "Day", "mastery": "Mastery", "fidelity": "Fidelity", "rapport": "Rapport", "missed": "Missed", "admin": "Admin" },
+    "means": "Week, on average",
+    "lines": {
+      "masteryUp": "The building understands more than it did on Monday — {from} at the first bell, {to} at the last. Most of that was Tuesday through Thursday, which is what Tuesday through Thursday are for.",
+      "masteryFlat": "Mastery opened the week at {from} and closed it at {to}. A week is long enough to have moved that. It did not move.",
+      "masteryDown": "Mastery went from {from} on Monday to {to} on Friday. What they learned did not survive the nights between, and the nights are not yours to teach.",
+      "fidelityUp": "Fidelity climbed from {from} to {to}. Admin has noticed. Admin noticing is not, on its own, good or bad.",
+      "fidelityFlat": "Fidelity held near {to} all week. Nothing anyone could write up, in either direction.",
+      "fidelityDown": "Fidelity slid from {from} to {to}. The district mean is {district}, and admin's opinion drifts back toward it every night unless something keeps it moving. Something kept it moving.",
+      "learned": "You learned {edges} pair{edgesS} and {steadies} stabiliser{steadiesS} this week that were on nobody's roster.",
+      "learnedNothing": "You learned nothing about who reaches whom this week. Everything you know about the room, you knew on Monday.",
+      "curveballs": "{n} time{nS} this week you looked at something longer than you meant to."
+    },
+    "buttons": { "next": "Monday" }
+  }
+}
