@@ -19,6 +19,14 @@
     { "below": 60,  "label": "Suspiciously Quiet", "line": "Too quiet for a Wednesday. Somebody is getting away with something." },
     { "below": 999, "label": "Feral",              "line": "You have lost the room. It is recoverable. It will cost four minutes." }
   ],
+  "_hazardNote": "Phase 5. Science's one number, read the same way Room Temp reads Restlessness: a band table, in the same file, next to the one it is a sibling of. Only a subject whose file carries a `hazard` block ever produces a reading; every other subject leaves these four rows unread.",
+  "hazard": [
+    { "below": 25,  "label": "Compliant",    "line": "Goggles on, aprons on, nobody has touched the gas taps." },
+    { "below": 55,  "label": "Live",         "line": "Six stations are running and you can see four of them." },
+    { "below": 82,  "label": "Unsupervised", "line": "Station four has gone quiet in the way that is not quiet." },
+    { "below": 999, "label": "Uncontained",  "line": "You are one spill from a form with eleven lines on it." }
+  ],
+
   "roomTempReading": {
     "cost": { "bandwidth": -0.4 },
     "cooldownSeconds": 9,

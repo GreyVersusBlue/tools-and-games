@@ -61,18 +61,22 @@ export const defaultVisit = (data, periodId = 'p4') => ({
 });
 
 // Every announced visit you already know about: one whose announcement day
-// (its own day minus its lead) is today or earlier, within the horizon. Today's
-// own announced visit is the first row when there is one.
+// (its own day minus its lead) is today or earlier, within the horizon. At most
+// one row per period — the soonest — because a calendar that says she is coming
+// to 5th tomorrow and again on Thursday is a paragraph, and the thing you have
+// to plan around is the next one. Sorted soonest first, and today's own is the
+// first row when there is one.
 export function announcedAhead(data, { seed = 0, dayIndex = 0, periodIds = [] }) {
   const horizon = data.visit.announced.horizonDays;
-  const out = [];
+  const soonest = new Map();
   for (let d = dayIndex; d <= dayIndex + horizon; d++) {
     for (const periodId of periodIds) {
+      if (soonest.has(periodId)) continue;
       const v = visitFor(data, { seed, dayIndex: d, periodId });
-      if (v && v.announced && d - v.leadDays <= dayIndex) out.push({ ...v, inDays: d - dayIndex });
+      if (v && v.announced && d - v.leadDays <= dayIndex) soonest.set(periodId, { ...v, inDays: d - dayIndex });
     }
   }
-  return out;
+  return [...soonest.values()].sort((a, b) => a.inDays - b.inDays);
 }
 
 export function createObservation({ data, dom, toast, windowScale = 1, visit = null }) {

@@ -9,6 +9,9 @@ import { createObservation, visitFor, announcedAhead, defaultVisit } from '../sr
 import { CFG } from '../src/config.js';
 import { periodFor, periodIds, firstPeriodId, resolvePeriodId, isGenerated, rowFor } from '../src/periods.js';
 import { contentFiles } from '../src/loader.js';
+import { subjectKey, subjectFor, applySubject, weightedMix, subjectEvents, subjectTells,
+  subjectInterventions, tickHazard, hazardBand, isLabDay, stackFixtures, subjectRoom,
+  stackBand } from '../src/systems/subject.js';
 import { createRng, mixSeed, drawSeed, SEED_MAX } from '../src/systems/rng.js';
 import { generateRoster, rosterProblems } from '../src/systems/roster.js';
 import { generateSchedule, scheduleProblems } from '../src/systems/scheduler.js';
@@ -892,6 +895,12 @@ const bundle = { room: roomData, students: sData, tells: tData, lesson: lData,
 for (const name of contentFiles(pData)) {
   if (!(name in bundle)) bundle[name] = D(name);
 }
+// Phase 5: the subjects, loaded the way src/loader.js loads them.
+const subjData = D('subjects');
+bundle.subjects = subjData;
+for (const id of subjData.subjects) {
+  bundle[subjectKey(id)] = JSON.parse(fs.readFileSync(`../data/subjects/${id}.json`, 'utf8'));
+}
 
 check('the day is four periods long, in order', periodIds(bundle).join() === 'p4,p5,p6,p7');
 check('the day starts at the top of the day', firstPeriodId(bundle) === 'p4');
@@ -1563,6 +1572,327 @@ const simData = { room: roomData, tells: tData, seating: seatData, events: eData
       e.effects.fidelity === (e.rung.effects.fidelity || 0) + obsData.followUp.broken.effects.fidelity &&
       e.events.length === 2;
   })());
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase 5 — SUBJECT IS THE WEATHER. Treatment §4: subject choice does not
+// change a system, it changes which tells are common, what the events say, and
+// one number on the meters. Everything below is that claim, held to.
+// ---------------------------------------------------------------------------
+{
+  const subjOf = id => ({ meters: {}, tellWeights: {}, events: [], flavor: {}, hazard: null, stack: null,
+    ...bundle[subjectKey(id)] });
+  const socialStudies = subjOf('socialStudies'), science = subjOf('science');
+  const ela = subjOf('ela'), math = subjOf('math');
+
+  // ---- the manifest and the rows ----------------------------------------
+  check('every subject the manifest lists shipped a file',
+    subjData.subjects.every(id => bundle[subjectKey(id)]?.id === id));
+  check('the default is one of them', subjData.subjects.includes(subjData.default));
+  check('a row with no subject takes the default',
+    subjectFor(bundle, { id: 'p4' }).id === subjData.default);
+  check('a row that names one gets it', subjectFor(bundle, { id: 'p4', subject: 'math' }).id === 'math');
+  check('a row that names a subject nobody shipped is a loud error, not a quiet default', (() => {
+    try { subjectFor(bundle, { id: 'p4', subject: 'woodshop' }); return false; }
+    catch (e) { return e.message.includes('woodshop'); }
+  })());
+  check('periodFor hands the subject out with the period', p4.subject.id === subjData.default);
+
+  // ---- Social Studies is the honest test --------------------------------
+  //
+  // It is the file that describes what the game already was. If any number in
+  // it is doing work, 4th period plays differently with it than without, and
+  // the shape is wrong.
+  {
+    const withIt = runPeriod({ period: { ...p4, subject: socialStudies }, data: simData, style: STYLES.good });
+    const without = runPeriod({ period: { ...p4, subject: null }, data: simData, style: STYLES.good });
+    const shape = r => [r.state.mastery, r.state.fidelity, r.state.rapport, r.state.bandwidth,
+      r.state.restless, r.missed].map(v => Math.round(v * 1000)).join();
+    check('Social Studies is a no-op: the shipped day plays identically with it and without',
+      shape(withIt) === shape(without));
+    check('and it still has something to say in the report', !!socialStudies.flavor.report);
+  }
+
+  // ---- one number on the meters -----------------------------------------
+  {
+    const st = createState();
+    applySubject(st, math);
+    check("Math's unearned Rapport penalty lands at the bell",
+      st.rapport === CFG.start.rapport + math.meters.rapport && math.meters.rapport < 0);
+    const st2 = createState();
+    applySubject(st2, socialStudies);
+    check('and a subject with no meters moves nothing',
+      st2.rapport === CFG.start.rapport && st2.fidelity === CFG.start.fidelity);
+  }
+
+  // ---- which tells are common -------------------------------------------
+  {
+    const mix = genData.schedule.mix;
+    const weighted = weightedMix(mix, math);
+    check('a subject scales the weight of a tell type',
+      weighted.COPYING.weight === mix.COPYING.weight * math.tellWeights.COPYING);
+    check('and leaves a type it says nothing about alone',
+      weighted.NOTE.weight === mix.NOTE.weight && math.tellWeights.NOTE == null);
+    check('but never touches the minimums, which are promises to the seating chart',
+      Object.entries(weighted).every(([t, m]) => m.min === mix[t].min && m.max === mix[t].max));
+    check('and a subject with no weights is the mix itself',
+      JSON.stringify(weightedMix(mix, socialStudies)) === JSON.stringify(mix));
+    // The scheduler actually draws through the weighting: thirty seeds, the
+    // same rosters, two mixes. Math leans on COPYING and away from WHISPER,
+    // and thirty schedules have to show it.
+    const deps = mix => ({ tellTypes: tData.types, seatGrid: sData.seatGrid, rules: seatData.rules,
+      gen: { ...genData, schedule: { ...genData.schedule, mix } } });
+    const counts = (subject) => {
+      const d = deps(weightedMix(genData.schedule.mix, subject));
+      const out = { PHONE: 0, WHISPER: 0, NOTE: 0, COPYING: 0 };
+      for (let seed = 1; seed <= 30; seed++) {
+        const roster = generateRoster(seed, genData);
+        for (const r of generateSchedule(mixSeed(seed, 0, 0), roster, d)) {
+          if (out[r.type] != null) out[r.type]++;
+        }
+      }
+      return out;
+    };
+    const plain = counts(socialStudies), leaning = counts(math);
+    check('a subject makes its own tells common', leaning.COPYING > plain.COPYING);
+    check('and the ones it says nothing about rare', leaning.WHISPER < plain.WHISPER);
+    check('over the same thirty seeds, with the same total pressure',
+      Object.values(plain).reduce((a, b) => a + b, 0) === Object.values(leaning).reduce((a, b) => a + b, 0));
+    // And the class is still the class: the roster is the seed alone.
+    const mathBundle = { ...bundle, periods: { ...pData,
+      periods: pData.periods.map(r => (r.generate ? { ...r, subject: 'math' } : r)) } };
+    const p7math = periodFor('p7', mathBundle, { seed: 4821, day: 0 });
+    const p7base = periodFor('p7', bundle, { seed: 4821, day: 0 });
+    check('the roster is the seed alone, whatever the subject is',
+      p7math.roster.map(s => s.name).join() === p7base.roster.map(s => s.name).join());
+    check('and a weighted schedule still keeps every structural promise',
+      scheduleProblems(p7math.schedule, p7math.roster,
+        { tellTypes: tData.types, seatGrid: p7math.seatGrid, rules: seatData.rules, gen: genData }).length === 0);
+  }
+
+  // ---- what the events say ----------------------------------------------
+  {
+    const merged = subjectEvents(eData, math);
+    check("a subject's own event joins the day's",
+      merged.scheduled.length === eData.scheduled.length + math.events.length &&
+      merged.scheduled.some(e => e.id === 'subject-whenWillWeUse'));
+    check('and the day keeps its own', merged.scheduled.some(e => e.id === 'pa-portal'));
+    check('the base events file is not touched', eData.scheduled.length === 1);
+    // An override replaces rather than appends.
+    const over = { ...socialStudies, events: [{ id: 'pa-portal', body: 'different' }] };
+    const o = subjectEvents(eData, over);
+    check('a subject overriding an event by id replaces it, and does not add a second',
+      o.scheduled.length === eData.scheduled.length &&
+      o.scheduled[0].body === 'different' && o.scheduled[0].atMinute === 19);
+    check('a subject rewrites the missed-tell line without dropping the type-specific one',
+      subjectTells(tData, science).missedCopy.default !== tData.missedCopy.default &&
+      subjectTells(tData, science).missedCopy.QUIET === tData.missedCopy.QUIET);
+    check("and an intervention's toast without dropping its effects", (() => {
+      const iv2 = subjectInterventions(iData, math);
+      return iv2.options.pause.toast.body !== iData.options.pause.toast.body &&
+        iv2.options.pause.effects.mastery === iData.options.pause.effects.mastery &&
+        iv2.options.prox.blurb === iData.options.prox.blurb;
+    })());
+  }
+
+  // ---- Science, and the Hazard meter -------------------------------------
+  {
+    check('only a subject with a hazard block has one',
+      !!science.hazard && !socialStudies.hazard && !ela.hazard && !math.hazard);
+    check('a subject with no hazard never produces one', (() => {
+      const st = createState();
+      const out = tickHazard(st, 60, socialStudies, { day: 1, restless: 100, liveTells: 4 });
+      return out === null && st.hazard === 0;
+    })());
+    check('Hazard rises on a lab day and settles on the others', (() => {
+      const lab = createState(), lecture = createState();
+      lecture.hazard = 20;
+      for (let i = 0; i < 100; i++) {
+        tickHazard(lab, 1, science, { day: science.hazard.labDays[0], restless: 50, liveTells: 1 });
+        tickHazard(lecture, 1, science, { day: 0, restless: 50, liveTells: 1 });
+      }
+      return lab.hazard > 0 && lecture.hazard < 20 && !isLabDay(science, 0) && isLabDay(science, 1);
+    })());
+    check('a loud room raises it faster than a quiet one', (() => {
+      const quiet = createState(), loud = createState();
+      for (let i = 0; i < 500; i++) {
+        tickHazard(quiet, 1, science, { day: 1, restless: 5, liveTells: 0 });
+        tickHazard(loud, 1, science, { day: 1, restless: 95, liveTells: 3 });
+      }
+      return loud.hazard > quiet.hazard * 1.5;
+    })());
+    check('it tops out at the cap, once, with effects and a report line', (() => {
+      const st = createState();
+      let fired = 0;
+      for (let i = 0; i < 4000; i++) {
+        if (tickHazard(st, 1, science, { day: 1, restless: 100, liveTells: 4 })) fired++;
+      }
+      return fired === 1 && st.incident === true && st.hazard === science.hazard.cap &&
+        st.fidelity === CFG.start.fidelity + science.hazard.incident.effects.fidelity &&
+        !!science.hazard.incident.report;
+    })());
+    check('and it never goes under zero', (() => {
+      const st = createState();
+      for (let i = 0; i < 1000; i++) tickHazard(st, 1, science, { day: 0 });
+      return st.hazard === 0;
+    })());
+    check('the band table is in data/events.json, next to Room Temp’s', (() => {
+      const b = eData.hazard;
+      return Array.isArray(b) && b.length >= 3 && b[b.length - 1].below >= 999 &&
+        b.every((r, i) => i === 0 || r.below > b[i - 1].below) &&
+        hazardBand(eData, 0).label === b[0].label &&
+        hazardBand(eData, 99).label === b[b.length - 1].label;
+    })());
+    // CLAUDE.md constraint 13: Bandwidth is still the only meter that crosses
+    // the bell. Hazard is a fact about this period in this room.
+    check('Hazard does not cross the bell', createState().hazard === 0 && createState().incident === false);
+    // The whole point: a lab day is survivable for a teacher who is watching
+    // and is not for one who is not.
+    {
+      const lab = style => runPeriod({ period: { ...p4, subject: science }, data: simData, style, opts: { day: 1 } });
+      const good = lab(STYLES.good), blind = lab(STYLES.neverChecks);
+      check('a lab day is survivable if you are watching the room', !good.incident && good.state.hazard < science.hazard.cap);
+      check('and is not if you are not', !!blind.incident && blind.state.hazard === science.hazard.cap);
+      check('and off a lab day nothing happens at all', (() => {
+        const off = runPeriod({ period: { ...p4, subject: science }, data: simData, style: STYLES.neverChecks, opts: { day: 0 } });
+        return !off.incident && off.state.hazard === 0;
+      })());
+    }
+  }
+
+  // ---- ELA, and THE STACK ------------------------------------------------
+  {
+    check('only a subject with a stack block has one', !!ela.stack && !science.stack);
+    check('an empty desk draws nothing', stackFixtures(ela, 0).props.length === 0);
+    check('one essay is one prop on the desk', (() => {
+      const f = stackFixtures(ela, 1);
+      return f.props.length === 1 && f.occluders.length === 0 &&
+        f.props[0].asset === ela.stack.desk.asset && f.props[0].y === ela.stack.desk.y;
+    })());
+    check('a column stacks upward and the next one starts over', (() => {
+      const D = ela.stack.desk;
+      const f = stackFixtures(ela, D.perColumn + 1);
+      const top = f.props[D.perColumn - 1], next = f.props[D.perColumn];
+      return top.y > f.props[0].y && next.y === D.y && next.pos[0] !== f.props[0].pos[0];
+    })());
+    check('past the desk it stops fitting and the overflow is a real occluder', (() => {
+      const under = stackFixtures(ela, ela.stack.floorAt);
+      const over = stackFixtures(ela, ela.stack.floorAt + 1);
+      return under.occluders.length === 0 && over.occluders.length === 1 &&
+        over.props.length === ela.stack.floorAt &&
+        over.occluders[0].id === ela.stack.floor.id;
+    })());
+    check('and the occluder is the shape world/room.js already places', (() => {
+      const o = stackFixtures(ela, 20).occluders[0];
+      return Array.isArray(o.size) && o.size.length === 3 && Array.isArray(o.pos) && o.pos.length === 2 &&
+        typeof o.mat === 'string' && typeof o.label === 'string';
+    })());
+    check('the stack lands in the room without touching data/room.json', (() => {
+      const before = JSON.stringify(roomData);
+      const r = subjectRoom(roomData, ela, 20);
+      return JSON.stringify(roomData) === before &&
+        r.props.length === roomData.props.length + ela.stack.floorAt &&
+        r.occluders.length === roomData.occluders.length + 1 &&
+        r.bounds === roomData.bounds;
+    })());
+    check('and a subject with no stack leaves the room exactly as it is', (() => {
+      const r = subjectRoom(roomData, math, 0);
+      return r.props.length === roomData.props.length && r.occluders.length === roomData.occluders.length;
+    })());
+    check('the stack has something to say at every height',
+      [0, 5, 13, 21, 26].every(n => !!stackBand(ela, n)));
+  }
+
+  // ---- the stack on the record ------------------------------------------
+  {
+    const roster = sData.roster;
+    const base = { periodId: 'p4', seed: null, roster, students: [], rapport: 55, fidelity: 62,
+      mastery: 50, bandwidth: 50, missed: 0, caught: 0, obsResult: null, known: {} };
+    const teach = (rec, over = {}) => semester.recordPeriod(rec, { ...base, subject: 'ela', stack: ela.stack, ...over });
+    const night = rec => semester.advanceDay(rec, [], { admin: adminData });
+
+    let rec = teach(semester.createRecord(4821));
+    check('a period taught adds a period of essays', rec.classes.p4.stack === ela.stack.add);
+    rec = night(rec);
+    check('and a night grades some of them off', rec.classes.p4.stack === ela.stack.add - ela.stack.graded);
+    check('it is the only thing in the game that gets smaller while you sleep',
+      ela.stack.graded > 0 && ela.stack.graded < ela.stack.add);
+    // It outruns you, which is the point.
+    for (let i = 0; i < 20; i++) rec = night(teach(rec));
+    const ceiling = ela.stack.max - ela.stack.graded;
+    check('teaching it every day outruns grading it every night',
+      rec.classes.p4.stack === ceiling && ceiling > ela.stack.add * 3);
+    check('and the pile is capped rather than unbounded', teach(rec).classes.p4.stack === ela.stack.max);
+    check('the class walks in carrying it', (() => {
+      const e = semester.entering(rec, 'p4', { roster, seed: null, admin: adminData, observation: obsData });
+      return e.stack === ceiling && e.subject === 'ela';
+    })());
+    check('nobody carries last unit’s essays into a different course', (() => {
+      const switched = teach(rec, { subject: 'math', stack: null });
+      return switched.classes.p4.stack === 0 && switched.classes.p4.subject === 'math';
+    })());
+    check('a subject with no stack never accumulates one',
+      teach(semester.createRecord(4821), { subject: 'math', stack: null }).classes.p4.stack === 0);
+    check('and the pile survives a reload', (() => {
+      const round = semester.repair(JSON.parse(JSON.stringify(rec)));
+      return round.classes.p4.stack === ela.stack.max - ela.stack.graded && round.classes.p4.subject === 'ela';
+    })());
+  }
+
+  // ---- subject picks the room, not the code ------------------------------
+  //
+  // The moment an `if (subject.id === 'ela')` appears anywhere in src/, the
+  // seam has moved and this fails. There is no allow-list: no file under src/
+  // may name any subject in the manifest.
+  {
+    const files = [];
+    const walk = dir => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = `${dir}/${e.name}`;
+        if (e.isDirectory()) walk(full);
+        else if (e.name.endsWith('.js')) files.push(full);
+      }
+    };
+    walk('../src');
+    const named = [];
+    for (const f of files) {
+      const src = fs.readFileSync(f, 'utf8');
+      for (const id of subjData.subjects) if (src.includes(`'${id}'`) || src.includes(`"${id}"`)) named.push(`${f}: ${id}`);
+    }
+    check(`no file in src/ names a subject (${files.length} files checked)`, named.length === 0);
+  }
+
+  // Adding a subject is a line in the manifest and a file next to it. This is
+  // that, with the file built here rather than shipped: a period row names it,
+  // periodFor resolves it, and a whole period runs under it, with no edit to
+  // anything in src/.
+  {
+    const woodshop = {
+      id: 'woodshop', label: 'Woodshop', tagline: 'Ten Fingers, Every Time',
+      meters: { rapport: 8, fidelity: -4 },
+      tellWeights: { WHISPER: 0.5 },
+      hazard: { labDays: [0, 1, 2, 3, 4], risePerSec: 0.02, restlessPerSec: 0.0003,
+        perLiveTellPerSec: 0.005, settlePerSec: 0.01, cap: 100,
+        labToast: { kind: '', title: 'Shop', body: 'The saw is on.' },
+        incident: { effects: { fidelity: -10 }, toast: { kind: 'bad', title: 'Incident', body: 'A form.' },
+          report: 'There is a form.' },
+        safeReport: 'Ten fingers.' },
+      flavor: { report: 'Nobody has ever observed this room.' }
+    };
+    const shopBundle = {
+      ...bundle,
+      subjects: { ...subjData, subjects: [...subjData.subjects, 'woodshop'] },
+      [subjectKey('woodshop')]: woodshop,
+      periods: { ...pData, periods: pData.periods.map(r => (r.id === 'p4' ? { ...r, subject: 'woodshop' } : r)) }
+    };
+    const shop = periodFor('p4', shopBundle);
+    check('a subject added as one JSON file resolves with no code edit', shop.subject.id === 'woodshop');
+    const r = runPeriod({ period: shop, data: simData, style: STYLES.good, opts: { day: 0 } });
+    check('and a whole period runs under it', r.state.beatsDelivered > 0 && Number.isFinite(r.state.mastery));
+    check('with its meters, its hazard, and its room',
+      r.state.hazard > 0 && subjectRoom(roomData, shop.subject, 9).props.length === roomData.props.length);
+  }
 }
 
 console.log(fails? `\n${fails} FAILURES` : '\nall green');

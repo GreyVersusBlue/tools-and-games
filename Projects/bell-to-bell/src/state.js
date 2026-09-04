@@ -39,6 +39,13 @@ export function createState() {
     tempUses: 0,
     tempZone: null,
 
+    // Phase 5: the subject's one number. Science is the only subject that has
+    // it, it rises on lab days and settles otherwise, and it does not cross
+    // the bell — it is a fact about this period in this room, the way
+    // Restlessness is, so Bandwidth is still the only carried meter.
+    hazard: 0,
+    incident: false,
+
     caught: 0,
     missed: 0,
     sawCurveball: false,

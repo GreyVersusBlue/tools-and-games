@@ -111,6 +111,8 @@ export function showReport(state, data, extra = {}) {
   if (obs?.result?.announced) quotes.push(obs.copy.announced);
   if ((obs?.options || []).some(o => o.honest)) quotes.push(obs.copy.honest);
   for (const line of extra.followUpLines || []) quotes.push(line);
+  // Phase 5: what the subject has to say. Lines, not a system.
+  for (const line of extra.subjectLines || []) quotes.push(line);
   if (!quotes.length && !seatQuotes.length) quotes.push(c.quiet);
   quotes.push(...seatQuotes);
 

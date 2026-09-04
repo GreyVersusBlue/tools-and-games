@@ -29,6 +29,10 @@
   <div id="clock"><div class="t" id="tClock">47:00</div><div class="p">remaining</div></div>
   <div id="roomtemp" class="cold"><div class="k">Room Temp <span class="key">T</span></div>
     <div class="v" id="tempV">&mdash;</div><div class="s" id="tempS">not read yet</div></div>
+  <!-- Phase 5: only a subject whose file carries a `hazard` block ever shows
+       this. It is a reading, not an ability: nothing is pressed to get it. -->
+  <div id="hazardBox" class="readout hide"><div class="k" id="hazardKey">Hazard</div>
+    <div class="v" id="hazardV">&mdash;</div><div class="s" id="hazardS"></div></div>
 
   <div id="lesson">
     <div class="lh"><span id="lsUnit">UNIT</span><span id="lsCount">0/0</span></div>

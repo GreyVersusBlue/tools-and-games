@@ -18,6 +18,8 @@ import { createLesson } from './systems/lesson.js';
 import { createRoomTemp } from './systems/roomtemp.js';
 import { createObservation, visitFor, announcedAhead } from './systems/observation.js';
 import { inTeachingZone, tickMeters } from './systems/meters.js';
+import { applySubject, tickHazard, hazardBand, isLabDay, subjectEvents, subjectTells,
+  subjectInterventions, subjectRoom, stackBand } from './systems/subject.js';
 import { createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { dom } from './ui/dom.js';
@@ -119,6 +121,21 @@ state.rapport = clamp01to100(carry.rapport);
 state.fidelity = clamp01to100(carry.fidelity);
 if (carry.effects) applyEffects(state, carry.effects);
 
+// Phase 5: the subject. One number on the meters, which tells are common,
+// what the events say, and — for a subject that has one — a fifth tracked
+// value and a pile of essays with collision. Everything below reads a merged
+// copy of a data file; no system downstream learns that a subject exists.
+const subject = period.subject;
+applySubject(state, subject);
+const subjectData = {
+  events: subjectEvents(data.events, subject),
+  tells: subjectTells(data.tells, subject),
+  interventions: subjectInterventions(data.interventions, subject)
+};
+// How many essays are in the room right now: what this class was carrying at
+// the last bell, before today's period adds its own.
+const stackCount = carry.stack;
+
 // Phase 1: Bandwidth crosses the bell. Everything else in CFG.start is a fact
 // about walking into a room and resets at each one; Bandwidth is a fact about
 // how much day you have already taught, and the hallway only gives back
@@ -148,7 +165,11 @@ const mats = createMaterials(data.assets);
 // Shared across the room and the roster so a desk.glb used by both the
 // teacher's desk and every student desk is only ever fetched once.
 const modelLoader = createModelLoader();
-const room = await buildRoom(scene, registry, mats, data.room, { loader: modelLoader, assets: data.assets });
+// THE STACK is drawn as props and one occluder in exactly the shape
+// data/room.json uses, so world/room.js places it the way it places the
+// bookshelf, blind spot and all.
+const room = await buildRoom(scene, registry, mats, subjectRoom(data.room, subject, stackCount),
+  { loader: modelLoader, assets: data.assets });
 
 // T4: the chart decides who sits where before anything is built. It survives
 // between periods; the first period of a fresh browser gets the August chart.
@@ -186,7 +207,8 @@ const weekday = data.admin.days[carry.day];
 const dayTag = data.admin.copy.dayTag.replace('{day}', weekday.toUpperCase()).replace('{week}', carry.week);
 dom.cbTitle.textContent = period.periodLabel;
 dom.cbRoom.textContent = `${data.admin.shortDays[carry.day]} · ${data.room.meta.room}`;
-dom.startSub.textContent = `SLICE 001 — "ONE PERIOD" · ${weekday} · ${period.ordinal} · 47 minutes · 12 students`;
+dom.startSub.textContent = `SLICE 001 — "ONE PERIOD" · ${weekday} · ${period.ordinal} · ` +
+  `${data.subjects.copy.tag.replace('{label}', subject.label).replace('{tagline}', subject.tagline)} · 12 students`;
 dom.startDay.textContent = (carry.firstDay ? data.admin.copy.firstDay : data.admin.copy.returning)
   .replace('{day}', weekday).replace('{week}', carry.week);
 
@@ -198,14 +220,13 @@ dom.startDay.textContent = (carry.firstDay ? data.admin.copy.firstDay : data.adm
   const labelOf = id => rowFor(id, data)?.short || id;
   const inDaysCopy = (copy, n) => (copy[String(n)] || copy.n.replace('{n}', n));
   const lines = [];
-  for (const v of announcedAhead(O, {
+  const ahead = announcedAhead(O, {
     seed: record.seed, dayIndex: carry.dayIndex, periodIds: periodIds(data)
-  })) {
-    lines.push(v.inDays === 0 && v.periodId === period.id
-      ? A.today.replace('{period}', labelOf(v.periodId))
-      : A.notice.replace('{period}', labelOf(v.periodId))
-        .replace('{when}', inDaysCopy(A.when, v.inDays)));
-  }
+  }).map(v => (v.inDays === 0
+    ? A.today.replace('{period}', labelOf(v.periodId))
+    : A.notice.replace('{period}', labelOf(v.periodId))
+      .replace('{when}', inDaysCopy(A.when, v.inDays))));
+  if (ahead.length) lines.push(A.lead.replace('{list}', ahead.join(' ')));
   for (const o of carry.owed) {
     lines.push(O.followUp.owedLabel
       .replace('{what}', O.followUp.what[o.id] || o.lookFor)
@@ -222,12 +243,12 @@ const audio = createAudio();
 const input = createInput(renderer.domElement, room.spawn);
 
 const tellSystem = createTellSystem({
-  scene, camera, students, data: data.tells, occluders: room.occluders,
+  scene, camera, students, data: subjectData.tells, occluders: room.occluders,
   schedule: plan.rows,
   // T1: a tell arriving changes how the kid sits. Subtle enough to be deniable,
   // which is the point — the posture is a Tier 1 tell and the phone is Tier 2.
   onBorn: t => {
-    const def = data.tells.types[t.type];
+    const def = subjectData.tells.types[t.type];
     if (!def.posture) return;
     reactions.play(students[t.seat], def.posture, { key: `tell${t.id}`, partner: students[t.seat2] });
     if (t.seat2 != null) {
@@ -244,7 +265,7 @@ const tellSystem = createTellSystem({
 const withitness = createWithitness({ scene, registry, tellSystem, audio, dom });
 
 const interventions = createInterventions({
-  data: data.interventions, students, tellSystem, toast,
+  data: subjectData.interventions, students, tellSystem, toast,
   react: ({ seat, seat2, reaction, reactRoom, escalated }) => {
     const subject = students[seat];
     if (escalated && reaction === 'ripple') {
@@ -277,7 +298,7 @@ const lesson = createLesson({
 });
 
 const temp = createRoomTemp({
-  data: data.events, students, tellSystem, toast,
+  data: subjectData.events, students, tellSystem, toast,
   onPulse: () => {
     dom.tempBox.classList.remove('pulse');
     void dom.tempBox.offsetWidth;
@@ -288,7 +309,7 @@ const temp = createRoomTemp({
 
 const events = createEvents({
   // Phase 3: whatever admin scheduled for today fires like any other event.
-  data: { ...data.events, scheduled: [...data.events.scheduled, ...carry.events] }, dom, toast,
+  data: { ...subjectData.events, scheduled: [...subjectData.events.scheduled, ...carry.events] }, dom, toast,
   react: ev => {
     if (!ev.reaction) return;
     reactions.wave(ev.reaction, { scale: 0.9, delayPerMetre: 0.02 });
@@ -317,6 +338,13 @@ function flashCFU() {
   dom.cfu.classList.add('on');
   audio.chime();
 }
+
+// Phase 5: what the Hazard box reads, or null for a subject that does not have
+// one, which is every subject but Science today.
+const hazardReadout = () => (subject.hazard
+  ? { key: data.subjects.copy.hazardKey, band: hazardBand(subjectData.events, state.hazard),
+      hotAt: subject.hazard.cap * 0.8 }
+  : null);
 
 // T7: the rubric panel is visible from the Admin Proximity Alert through the
 // end of the window, so you can see what it wants before she's even in the
@@ -350,7 +378,7 @@ function onExpire(t) {
   state.missed++;
   state.restless += CFG.missedRestless;
   state.masteryPending += CFG.missedMastery;
-  const copy = data.tells.missedCopy[t.type] || data.tells.missedCopy.default;
+  const copy = subjectData.tells.missedCopy[t.type] || subjectData.tells.missedCopy.default;
   toast('', 'Missed it', copy);
 }
 
@@ -406,6 +434,12 @@ function frame(now) {
   observation.tickWait(state, dt, input.wantsWait());
   drawObservationHUD(state);
 
+  // Phase 5: the subject's one number. A subject with no `hazard` block
+  // returns null here every tick and nothing else in the loop changes.
+  const incident = tickHazard(state, dt * CFG.timeScale, subject,
+    { day: carry.day, restless: state.restless, liveTells });
+  if (incident) toast(incident.toast.kind, incident.toast.title, incident.toast.body);
+
   if (state.hyper > CFG.hyperThreshold && !state.falseSpawned && state.t > 420) {
     state.falseSpawned = true;
     tellSystem.spawnFalsePositive(state);
@@ -420,7 +454,7 @@ function frame(now) {
   audio.setMurmur(state.restless / 100, state.withitness);
 
   updateLabels({ state, camera, tellSystem, students, onClick: handleTellClick, projector });
-  drawHUD(state, teaching, temp.display(state), lesson.summary(state));
+  drawHUD(state, teaching, temp.display(state), lesson.summary(state), hazardReadout());
   renderer.render(scene, camera);
 }
 
@@ -448,7 +482,11 @@ function endPeriod() {
     roster: period.roster, students,
     rapport: state.rapport, fidelity: state.fidelity, mastery: state.mastery,
     bandwidth: state.bandwidth, missed: state.missed, caught: state.caught,
-    sawCurveball: state.sawCurveball, obsResult: state.obsResult, known
+    sawCurveball: state.sawCurveball, obsResult: state.obsResult, known,
+    // Phase 5: which course this was, and one period's worth of essays onto
+    // the pile. The record adds and the night subtracts; neither of them has
+    // heard of ELA.
+    subject: subject.id, stack: subject.stack
   });
 
   // Phase 4: a follow-up you promised her in some earlier conference is kept
@@ -526,8 +564,24 @@ function endPeriod() {
   return restart;
   }
 
+  // What the subject has to say about the period, in the report's own voice.
+  function subjectLines() {
+    const out = [];
+    if (subject.hazard && isLabDay(subject, carry.day)) {
+      out.push(state.incident ? subject.hazard.incident.report : subject.hazard.safeReport);
+    }
+    if (subject.stack) {
+      const n = Math.min(subject.stack.max, stackCount + subject.stack.add);
+      const band = stackBand(subject, n);
+      if (band) out.push(band.line);
+      out.push(subject.stack.report.replace('{n}', n));
+    }
+    if (subject.flavor?.report) out.push(subject.flavor.report);
+    return out;
+  }
+
   function report() {
-    showReport(state, data.events, {
+    showReport(state, subjectData.events, {
       lesson: lesson.summary(state), students,
       seating: { plan, copy: data.seating.report, chart, learned },
       periodTag: `${dayTag} · ${period.periodTag}`,
@@ -540,6 +594,7 @@ function endPeriod() {
         copy: observation.report
       } : null,
       followUpLines,
+      subjectLines: subjectLines(),
       restart: buildRestart()
     });
   }
@@ -606,6 +661,10 @@ function beginPeriod() {
   audio.init();
   state.running = true;
   last = performance.now();
+  if (isLabDay(subject, carry.day)) {
+    const t = subject.hazard.labToast;
+    toast(t.kind, t.title, t.body);
+  }
 }
 
 // Phase 2: the seed, on the start screen, for a generated period only. Type a
@@ -656,7 +715,7 @@ dom.startBtn.addEventListener('click', () => {
   seating.open(chart.viewModel(known), { cost: chart.rechartCost(rapportBase) });
 });
 
-drawHUD(state, true, temp.display(state), lesson.summary(state));
+drawHUD(state, true, temp.display(state), lesson.summary(state), hazardReadout());
 requestAnimationFrame(frame);
 
 } catch (err) {

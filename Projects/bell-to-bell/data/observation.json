@@ -9,9 +9,10 @@
       "chance": 0.34,
       "leadDays": { "min": 1, "max": 3 },
       "horizonDays": 4,
-      "notice": "On the calendar: AP Reyes, {period}, {when}. The rubric is attached to the invite. It is the same rubric.",
-      "today": "AP Reyes is on the calendar for {period} today. She accepted on your behalf in August.",
+      "notice": "AP Reyes, {period}, {when}.",
+      "today": "AP Reyes, {period}, today.",
       "when": { "0": "today", "1": "tomorrow", "n": "in {n} school days" },
+      "lead": "On the calendar: {list} The rubric is attached to each invite. It is the same rubric.",
       "arrival": {
         "title": "AP Reyes, as scheduled",
         "body": "She is in the doorway at the minute the invite said. Nothing about this is a surprise, which turns out not to help."

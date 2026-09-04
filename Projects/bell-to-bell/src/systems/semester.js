@@ -50,6 +50,9 @@ export function createRecord(seed = 0) {
 }
 
 const num = (v, fallback) => (Number.isFinite(v) ? v : fallback);
+// One period's worth of essays, on top of what was already in the room.
+const stackAfter = (before, cfg) =>
+  (cfg ? Math.max(0, Math.min(cfg.max, before + cfg.add)) : 0);
 const clamp100 = v => Math.max(0, Math.min(100, v));
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const isArr = v => Array.isArray(v);
@@ -107,7 +110,14 @@ export function repair(raw, seed = 0) {
       days: Math.max(0, Math.floor(num(c.days, 0))),
       observations: Math.max(0, Math.floor(num(c.observations, 0))),
       edges: Math.max(0, Math.floor(num(c.edges, 0))),
-      steadies: Math.max(0, Math.floor(num(c.steadies, 0)))
+      steadies: Math.max(0, Math.floor(num(c.steadies, 0))),
+      // Phase 5: the subject this class was last taught, and how much of it is
+      // sitting ungraded in the room. Generic on purpose — this module has
+      // never heard of ELA; it adds what the period tells it to add and takes
+      // off what the period tells it to take off overnight.
+      subject: typeof c.subject === 'string' ? c.subject : null,
+      stack: Math.max(0, Math.floor(num(c.stack, 0))),
+      stackGraded: Math.max(0, Math.floor(num(c.stackGraded, 0)))
     };
   }
   out.today = (isArr(r.today) ? r.today : []).filter(p => p && typeof p.periodId === 'string');
@@ -178,6 +188,10 @@ export function entering(record, periodId, { roster, seed = null, admin, observa
     effects,
     obsWindowScale: rung?.obsWindowScale ?? 1,
     events,
+    // Phase 5: how many essays this class already has in the room, and what it
+    // was last taught. A class that changed subject walks in with an empty desk.
+    stack: sameClass ? (c.stack || 0) : 0,
+    subject: sameClass ? (c.subject || null) : null,
     // Phase 4: what this period still owes, and what it forgot. `owed` is what
     // the start screen names; `broken` is what this morning is charging for.
     owed: openFollowUps(record, periodId),
@@ -250,7 +264,12 @@ export function recordPeriod(record, result) {
     days: (sameClass ? prev.days : 0) + 1,
     observations: (sameClass ? prev.observations : 0) + (result.obsResult ? 1 : 0),
     edges: result.known?.edges?.length ?? (sameClass ? prev.edges : 0),
-    steadies: result.known?.steadies?.length ?? (sameClass ? prev.steadies : 0)
+    steadies: result.known?.steadies?.length ?? (sameClass ? prev.steadies : 0),
+    // Phase 5. A class that changed subject starts a new pile; nobody carries
+    // last unit's essays into a different course.
+    subject: result.subject ?? null,
+    stack: stackAfter(sameClass && prev.subject === (result.subject ?? null) ? prev.stack : 0, result.stack),
+    stackGraded: Math.max(0, Math.floor(num(result.stack?.graded, 0)))
   };
   out.today = out.today.filter(p => p.periodId !== result.periodId);
   out.today.push({
@@ -305,6 +324,9 @@ export function advanceDay(record, periodResults = [], { admin } = {}) {
     }
     c.fidelity = clamp100(sem.districtFidelity + (c.fidelity - sem.districtFidelity) * (1 - sem.fidelityRevert));
     c.rapport = clamp100(CFG.start.rapport + (c.rapport - CFG.start.rapport) * (1 - sem.rapportRevert));
+    // Phase 5: and a night is how many of them you get through. This is the
+    // only thing in the game that gets smaller while you sleep.
+    c.stack = Math.max(0, c.stack - c.stackGraded);
   }
 
   // Phase 4: the night the promises turn over. A promise you kept is done

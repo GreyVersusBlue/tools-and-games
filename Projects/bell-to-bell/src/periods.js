@@ -16,10 +16,15 @@
 // plus the day so the same class does different things on Tuesday. The lesson
 // is still a pointer, because the lesson is still authored.
 import { generateClass } from './systems/generate.js';
+import { subjectFor, weightedMix } from './systems/subject.js';
 
 // The row fields that are pointers rather than literals. src/loader.js reads
 // this to work out which content files a day actually needs.
 export const CONTENT_FIELDS = ['seatGrid', 'roster', 'schedule', 'lesson', 'seatingCopy'];
+
+// Phase 5: `subject` is a row field too, but it names an id in
+// data/subjects.json rather than a path into a content file, so it is not one
+// of the pointers above and src/loader.js fetches it its own way.
 
 // "period5.lesson" -> data.period5.lesson. A bare "lesson" is the whole file.
 export function deref(data, pointer) {
@@ -54,13 +59,25 @@ export function periodFor(id, data, opts = {}) {
   const lessonData = { ...data.lesson, ...deref(data, row.lesson) };
   const seatGrid = deref(data, row.seatGrid);
 
+  // Phase 5: what this room teaches. A row names a subject or takes the
+  // manifest's default; the subject is content all the way down, and the only
+  // thing it reaches from in here is which tells are common.
+  const subject = subjectFor(data, row);
+
   let roster, schedule, generated = null;
   if (isGenerated(row)) {
     if (!Number.isInteger(opts.seed) || opts.seed <= 0) {
       throw new Error(`Period "${id}" is generated and needs a seed`);
     }
     const day = Number.isInteger(opts.day) ? opts.day : 0;
-    const cls = generateClass({ seed: opts.seed, day, data, lessonData, seatGrid });
+    // The subject leans on the mix weights rather than the promises: a
+    // COPYING-heavy room still gets its minimum WHISPER, because that
+    // minimum is a promise the schedule made to the seating chart.
+    const genData = {
+      ...data.generation,
+      schedule: { ...data.generation.schedule, mix: weightedMix(data.generation.schedule.mix, subject) }
+    };
+    const cls = generateClass({ seed: opts.seed, day, data: { ...data, generation: genData }, lessonData, seatGrid });
     roster = cls.roster;
     schedule = cls.schedule;
     generated = { seed: cls.seed, day, rerolls: cls.rerolls, results: cls.results };
@@ -89,6 +106,7 @@ export function periodFor(id, data, opts = {}) {
     roster,
     schedule,
     generated,
+    subject,
     lessonData,
     seatingCopy,
     nextPeriodId: nextRow ? nextRow.id : null,
