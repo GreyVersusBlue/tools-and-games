@@ -143,7 +143,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 4 — A saga somebody who wasn't watching can read | `Projects/hearth` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/hearth/WISHLIST.md#phase-4--a-saga-somebody-who-wasnt-watching-can-read) |
+| 1 | Phase 4 — A saga somebody who wasn't watching can read | `Projects/hearth` | 1 | Opus 5 | claude/backlog-ranked-batch-glmumy | [WISHLIST.md Phase 4](Projects/hearth/WISHLIST.md#phase-4--a-saga-somebody-who-wasnt-watching-can-read) |
 | 2 | Phase 5 — The far island becomes a place | `Projects/hearth` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/hearth/WISHLIST.md#phase-5--the-far-island-becomes-a-place) |
 | 3 | Phase 6 — Scarcity that bites | `Projects/hearth` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/hearth/WISHLIST.md#phase-6--scarcity-that-bites) |
 | 4 | Phase 7 — Play that reads as play, and four other leftovers | `Projects/hearth` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/hearth/WISHLIST.md#phase-7--play-that-reads-as-play-and-four-other-leftovers) |

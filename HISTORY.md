@@ -53,7 +53,7 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-Sixty-one numbered decisions, accumulated across ten sessions and the project
+Sixty-three numbered decisions, accumulated across ten sessions and the project
 phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -503,6 +503,34 @@ Two of them have moved since they were written:
    after. That spiral is a Bandwidth-pool fact about a bad day, and it is
    not allowed to be permanent.
    *Source: Bell to Bell Phase 3, "The semester remembers".*
+
+62. **An exported page that carries a link back to the thing it came out of
+   points at the page that made it when there is one, and at
+   `greyversusblue.com` when there is not.** Hearth's saga export puts the
+   whole island in the link's hash. On `http:` or `https:` the base is
+   `location.href` with the hash stripped, so a saga exported from a preview
+   channel, a fork or a LAN server comes back to the build it came out of
+   rather than to production. From `file://` there is no shareable base to
+   use — a `file:///C:/Users/...` link is dead in anybody else's hands — so
+   the canonical site URL is hard-coded as the fallback. The alternative,
+   always hard-coding the site, was rejected because it silently sends
+   somebody testing a change to the live build and hides the change.
+   *Source: Hearth Phase 4, "A saga somebody who wasn't watching can read".*
+
+63. **A guard-rail that can pass while the thing it guards is deleted is not
+   a guard-rail, and the fix is a precondition, not a longer run.** Deleting
+   the living-only filter from Hearth's song carriers left the new `saga`
+   harness mode green at 170 days, because on seed 7 no song had yet outlived
+   anyone who knew it: every list the check compared was identical either
+   way. Raising the run to 400 days makes it fail, but a later change to
+   lifespans or song spread would make it vacuous again with nothing to say
+   so. So the mode now refuses to pass unless the island it ran produced the
+   material every assertion needs — a song that has outlived a carrier, a
+   grown story, a stone on the hill, a named place, a thing, and four
+   finished years — and names the missing one when it does not. This is #34
+   with the failure moved forward: not "watch it fail once", but "fail when
+   there is nothing to check".
+   *Source: Hearth Phase 4, "A saga somebody who wasn't watching can read".*
 
 
 ---

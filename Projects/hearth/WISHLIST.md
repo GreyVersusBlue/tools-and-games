@@ -1,14 +1,16 @@
 # Hearth — Feature Wishlist
 
-**Status: sixteen sprints and Phases 1, 2 and 3 are shipped. Phase 4 — *A saga
-somebody who wasn't watching can read*, on Claude Opus 5 — is the next thing to
-build.** Phase 2 gave the island a generational speed and then found that three
-of the four systems it was meant to reach could not have fired at any length of
-run; Phase 3 turned eight versions of `||` defaults into one `migrate()` and one
-version gate. The harness has thirteen modes now: the eleven that were there,
-plus `decade` (35 game-years x 2 seeds, ~40,000 audits, and the fast path
-asserted bit-identical to 1x) and `migrate` (every save shape v5 through v12
-forged out of one live island and walked back up).
+**Status: sixteen sprints and Phases 1 through 4 are shipped. Phase 5 — *The
+far island becomes a place*, on Claude Opus 5 — is the next thing to build.**
+Phase 2 gave the island a generational speed and then found that three of the
+four systems it was meant to reach could not have fired at any length of run;
+Phase 3 turned eight versions of `||` defaults into one `migrate()` and one
+version gate; Phase 4 gave the chronicle a page to leave as. The harness has
+fourteen modes now: the eleven that were there, plus `decade` (35 game-years x
+2 seeds, ~40,000 audits, and the fast path asserted bit-identical to 1x),
+`migrate` (every save shape v5 through v12 forged out of one live island and
+walked back up) and `saga` (400 days on seed 7, the export generated and then
+read back off the DOM claim by claim).
 
 **What Phase 1 left:** the
 songs a sound — `songDegrees(ci)` derives a 6–10 note phrase from the island
@@ -132,10 +134,10 @@ identically, which is why sprint 16's inherited skin colour still consumes the
 is also the migration ladder.
 
 There is no pure module with its own unit suite anywhere. The only test is
-`test/harness.mjs` (937 lines), which drives the real page in Playwright's
-Chromium through `window.__hearth`, pausing the RAF loop first so every
-`step()` comes from the test file. Eleven modes live in it as top-level
-`if (mode === '…')` blocks: `soak`, `nan`, `depth`, `determinism`, `save`, and
+`test/harness.mjs`, which drives the real page in Playwright's Chromium through
+`window.__hearth`, pausing the RAF loop first so every `step()` comes from the
+test file. Fourteen modes live in it as top-level `if (mode === '…')` blocks:
+`soak`, `nan`, `depth`, `determinism`, `save`, `decade`, `migrate`, `saga`, and
 one per sprint, `eleven` through `sixteen`. It is a good harness. It is not a
 fast one, and it cannot tell you a function is wrong, only that an island is.
 
@@ -215,7 +217,8 @@ wrong, and the handoff that names it is cited.
 - **The test invocation, in full.** From `Projects/hearth/test`, once
   `npm install`; then `node harness.mjs soak` (5 islands × 40 days, the
   standing gate), `determinism`, `save`, `depth --days 120`, `nan` (400 days
-  with starvation windows), `migrate` (every save shape v5–v12), `decade`
+  with starvation windows), `migrate` (every save shape v5–v12), `saga` (400
+  days, the chronicle export read back off the DOM, about a minute), `decade`
   (35 game-years × 2 seeds, ~4.5 minutes, and the generational speed asserted
   bit-identical to 1×), and the per-sprint regressions by name, `eleven`
   through `sixteen`. `package.json` scripts only the first four. `decade` is the
@@ -586,7 +589,7 @@ beside them, with literal 4 and 13 at the gate. Re-broken: the no-op `up` reads
 cannot land on a v4 there is no hop for, and once because `canLoad({v:4})` comes
 back true.
 
-## Phase 4 — A saga somebody who wasn't watching can read
+## Phase 4 — A saga somebody who wasn't watching can read — **SHIPPED**
 
 **The chronicle is the best thing the island makes and it leaves as
 monospaced plain text.**
@@ -600,24 +603,55 @@ hill with visit counts, and things with the hands they passed through — none
 of which survives the export. This phase makes the record worth sending to
 somebody, which is the same as making the island worth sharing.
 
-- [ ] **The chronicle panel earns its typography.** Year headers with their
-  names, grown entries visibly grown, songs and lost songs set apart, a
-  song's carriers listed. `css/hearth.css` and `renderChron()`; no new state.
-- [ ] **A saga export that is a page, not a dump.** One self-contained HTML
-  file — years, names, entries, and four appendices the island already knows:
-  the people, the stones and their counts, the named places and their cairns,
-  the things and their hands. Zero dependencies, opens from a download folder.
-- [ ] **Keep the `.txt`.** It is 14 lines and somebody will want it.
-- [ ] **The link goes in the saga.** The export carries the island's hash, so
-  a chronicle is one click from the island it came out of.
-- [ ] **A harness assertion on the export.** Generate on a depth-run island,
-  parse it back, check the year names, grown markers and song knower lists
-  against `chron`, `songs` and `yearName()`.
+- [x] **The chronicle panel earns its typography.** Year headers carry their
+  name in the heading. A grown story gets a rule down its side as well as its
+  "as it is told now". A story somebody set to a tune gets the tune's own line
+  under it, in gold, naming who made it and everyone alive who still carries
+  it; a lost song gets the same line greyed and says the tune is gone.
+- [x] **A saga export that is a page, not a dump.** `sagaHTML()` builds one
+  self-contained file: a header, a `section.yr` per year with its name, every
+  entry with its day, and four appendices — the people (age, whether child,
+  grown or elder, the craft epithet once mastered, traits, and the ones away
+  over the water), the hill (each stone with the year, the age and the count of
+  visits left on it), the named ground (each name with the stones on its
+  cairn), and the things (each with whose hands it is in and every line of its
+  history). One inline `<style>`, no scripts, no external reference of any
+  kind, and a print rule that flips it to ink on paper. 104 KB on a 400-day
+  island.
+- [x] **Keep the `.txt`.** Untouched, down to the column padding. Both buttons
+  now share one `dlFile()`.
+- [x] **The link goes in the saga.** `islandHash()` came out of `saveHash()`
+  and has two callers now: the keep button and the saga's header link (locked
+  decision #62 says where that link points).
+- [x] **A harness assertion on the export.** `node harness.mjs saga`, 400 days
+  on seed 7, generates the page, loads it into a blank tab and reads every
+  claim off the DOM — year headings against `yearName()`, grown days against
+  `chron`, each song's composer and carriers against `songs` and the living
+  cast, each stone against `graves`, each cairn against `loreN`, each thing's
+  hand-count against `things` — plus zero scripts, zero external references,
+  and a link whose hash comes back through `lzDec` and `canLoad` at the right
+  seed and day.
 
 *Leans on:* `js/save.js` (`renderChron`, `exportChron`, `saveHash`),
 `css/hearth.css`, `js/core.js`'s `yearName`. *Save:* none — every fact
 rendered is already packed or derived. *Model:* **Claude Opus 5** — rendering
 and layout over state that already exists.
+
+Broken on purpose, and **the first break passed.** Deleting the living-only
+filter from `carriers()` outright left the mode green at 170 days, because at
+day 171 nobody on seed 7 who had ever learned a song had died yet: the filter
+was a no-op and the assertion around it was vacuous, which is #34's whole
+point. The default run is 400 days now, and the mode refuses to pass unless at
+least one song has outlived one of its carriers — along with a story grown, a
+stone on the hill, a named place, a thing, and four finished years. Re-broken
+at 400 days, the same deletion fails on two songs by name; dropping the `gr`
+class fails with 17 grown stories claimed and none rendered; dropping the year
+name from the heading fails on all 21 headings.
+
+The 400-day run also turned up a real ordering bug in the check itself:
+`songs` is in the order the songs were made and the saga renders them where
+their stories sit in the chronicle, which on seed 7 is not the same order. The
+mode sorts by `ci` now.
 
 ## Arc two — the world past the shore
 
