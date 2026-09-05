@@ -53,7 +53,7 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-Sixty-seven numbered decisions, accumulated across ten sessions and the project
+Seventy-eight numbered decisions, accumulated across ten sessions and the project
 phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -726,6 +726,56 @@ Two of them have moved since they were written:
    else does. The cost is symmetric and needs no rule of its own: sitting
    beside somebody with it is being near somebody with it.
    *Source: Hearth Phase 6, "Scarcity that bites" — second increment.*
+
+76. **A feud is the rival pair the raid makes, given somewhere to live, and
+   the raid is its only door in.** A rivalry was a label two flavour lines
+   read and nothing else did. `feud` is now a record on the shape `want` and
+   `ill` already have — the day, the two names, whether it has outlived a
+   thaw, how many nights at the store it has in it — with one door in
+   (`startFeud`, which only `wantRaid` walks through) and one door out
+   (`endFeud`, which writes exactly one chronicle entry every time). While it
+   lives the two work at `.8`, neither goes where the other is standing
+   (`shunned`, 4 tiles, read by the idle detours), the two never stop to talk
+   (`apart`), and one of them is not at the fire on a fire night. Nothing
+   starts one but the raid, on purpose: a rare roll over every rival pair on
+   every island would have moved every observational check off its island
+   (#74) for a system that is scarcity's child anyway. A second short winter
+   inside an open feud is the same feud's doing — the same one at the store,
+   the same one who sees, the raid entry labelled `again` — rather than a
+   second pair, so the chronicle's raids and its endings account for each
+   other: `strain` holds `squared + walked + parted + worn + open` to the
+   raids that started one, on both seeds, at the end of every forty-day run.
+   *Source: Hearth Phase 6, "Scarcity that bites" — third increment.*
+
+77. **The one deliberate mender in the game mends a feud too, and the feud's
+   own door writes the entry.** The second increment left the question in the
+   open: a rival pair is a thing nursing can un-make (#75), so a feud has to
+   survive somebody sitting up with the other one, or say out loud that it
+   does not. It does not. Sitting up with the other one, and the `mend` dream,
+   and the thaw, and a fire night, all end it `squared`; the walking of the
+   bounds ends it `walked`, with the two put in the same line behind the
+   children and the elder not discussing it. What was decided beyond the yes
+   is where the entry comes from: `nursedBy` and `wakeDreams` hand the feud
+   pair to `endFeud` and write nothing themselves, so one night is one entry
+   and the accounting in #76 stays exact. A death or a boat ends it `parted`
+   the next morning through `feudDay`, not the moment it happens — the same
+   morning-after shape `illDay` has — and the one left carries both halves.
+   *Source: Hearth Phase 6, "Scarcity that bites" — third increment.*
+
+78. **A feud wears out at forty days, and the children inherit it on
+   purpose.** #73's shape again: the off-ramp is a number. `FEUDD` is 40, two
+   game-years, and `feudDay` ends anything older as `worn` — not settled, the
+   two stay rivals, the village stops counting it — so no feud is older than
+   forty days on any island, ever, and `strain` asserts it every day alongside
+   three more (a day to count from, both of them on the island, rivals of each
+   other both ways). The children are the other half of "a system, not a
+   label": a child of either side is kept from following the other side's
+   work or chasing its children while the feud lives, and one who comes of
+   age inside it takes it up (`feudInherit`) as a rivalry of their own that
+   the feud's ending does not undo. That outliving is deliberate. A feud that
+   left no mark on the next generation would be the label again, with a
+   clock on it.
+   *Source: Hearth Phase 6, "Scarcity that bites" — third increment.*
 
 
 ---

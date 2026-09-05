@@ -147,7 +147,7 @@ function step(dt){
         else p.said=false;break;
       case 'play':{p.t-=dt;if(p.t<=0){p.t=rnd(2,5);let anchor=null;
         if(ageOf(p)>=5){ /* sprint 16: play that reads as play — a chase, a snowman, a stone sent the way the island's stones get sent */
-          if(R()<.22){let m=null,md=36;for(const o of people){if(o===p||o.dead||!isKid(o)||ageOf(o)<5||o.inside||o.task!=='play')continue;
+          if(R()<.22){let m=null,md=36;for(const o of people){if(o===p||o.dead||!isKid(o)||ageOf(o)<5||o.inside||o.task!=='play'||apart(p,o))continue; /* phase 6: the children keep the distance too */
               const d2=(o.x-p.x)*(o.x-p.x)+(o.y-p.y)*(o.y-p.y);if(d2<md){md=d2;m=o}}
             if(m){p.task='tag';p.tagW=m.name;p.tagIt=1;p.tagN=0;p.tagT=0;p.tagR=0;m.task='tag';m.tagW=p.name;m.tagIt=0;m.tagN=0;m.tagT=0;m.tagR=0;
               if(R()<.25)say(`${B(p)} slaps ${B(m)} on the shoulder and runs. The chase is on before anyone agreed to one.`,false,'tag');break}}
@@ -155,7 +155,7 @@ function step(dt){
             if(s0){p.task='snowman';p.snT=0;p.tx=s0.x+.5;p.ty=s0.y+.5;break}}
           if(skipN>0&&R()<.08){const sh=nearestShore(p.x,p.y);if(sh&&Math.hypot(sh.x-p.x,sh.y-p.y)<9){goTo(p,sh.x,sh.y,'kidskip',rnd(3,5));break}}}
         if(ageOf(p)>=5&&R()<.4){ // old enough to follow the work around, asking why
-          const wkers=people.filter(q=>!isKid(q)&&!q.dead&&!q.inside&&(q.task==='chop'||q.task==='till'||q.task==='harvest'||q.task==='fish'||q.task==='build'||q.task==='carry'||q.task==='water'));
+          const wkers=people.filter(q=>!isKid(q)&&!q.dead&&!q.inside&&!apart(p,q)&&(q.task==='chop'||q.task==='till'||q.task==='harvest'||q.task==='fish'||q.task==='build'||q.task==='carry'||q.task==='water'));
           if(wkers.length){const q=wkers[(R()*wkers.length)|0];anchor=q;
             if(p.shadN===q.name)p.shadC=(p.shadC||0)+1;else if(!p.shadN||R()<.4){p.shadN=q.name;p.shadC=1}}}
         if(hasW('swing')&&!anchor&&R()<.25){const sw=works.find(w=>w.wk==='swing');anchor=sw}
@@ -208,20 +208,20 @@ function step(dt){
             const q=need.reduce((a,b)=>sc(b)>sc(a)?b:a);
             p.nursD=dayCount;p.nursW=q.name;goTo(p,q.x,q.y,'nurse',rnd(10,18));break}}
         // trait detours
-        if(has(p,'restless')&&R()<.22){const far=spots[0];goTo(p,far.x,far.y,'wander',rnd(6,12));break}
+        if(has(p,'restless')&&R()<.22&&!shunned(p,spots[0].x,spots[0].y)){const far=spots[0];goTo(p,far.x,far.y,'wander',rnd(6,12));break}
         if(has(p,'gentle')&&graves.length&&R()<.1){const gr=pick(graves);p.vg=gr;goTo(p,gr.x,gr.y+.7,'visit',rnd(4,8));break}
         if(graves.length&&p.rels.length===0&&dead.some(d=>d.rels.some(r=>r.who===p.name))&&R()<.06){const gr=pick(graves);p.vg=gr;goTo(p,gr.x,gr.y+.7,'visit',rnd(4,8));break}
-        if((has(p,'dreamy')||has(p,'homesick'))&&R()<.1){goTo(p,p.spot.x,p.spot.y,'linger',rnd(5,9));break}
+        if((has(p,'dreamy')||has(p,'homesick'))&&R()<.1&&!shunned(p,p.spot.x,p.spot.y)){goTo(p,p.spot.x,p.spot.y,'linger',rnd(5,9));break} /* phase 6: not if the other one is standing there */
         // a word on the way past (sprint 16): two idle grown-ups stop and talk, and what one of them knows walks with the other
         if(p.chatD!==dayCount&&R()<(has(p,'gossipy')?.16:.07)){let q=null,qd=49;
-          for(const o of people){if(o===p||o.dead||isKid(o)||o.inside||o.task!=='idle'||o.chatD===dayCount)continue;
+          for(const o of people){if(o===p||o.dead||isKid(o)||o.inside||o.task!=='idle'||o.chatD===dayCount||apart(p,o))continue; /* phase 6: the two who are not speaking do not stop to talk, and neither do their children with the other side */
             const d2=(o.x-p.x)*(o.x-p.x)+(o.y-p.y)*(o.y-p.y);if(d2<qd){qd=d2;q=o}}
           if(q){p.chatD=q.chatD=dayCount;p.chatW=q.name;q.chatW=p.name;
             const mx=(p.x+q.x)/2,my=(p.y+q.y)/2,dw=rnd(5,9)+((has(p,'gossipy')||has(q,'gossipy'))?3:0);
             if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;
             goTo(p,mx,my,'chat',dw);goTo(q,mx,my,'chat',dw);p.chatSd=q.chatSd=0;break}}
         // the market at midday
-        {const m=getB('market');const f=dayFrac();if(m&&f>.45&&f<.56&&!p.marketed&&R()<.5){p.marketed=dayCount;goTo(p,m.x+1.5+rnd(-1,1),m.y+1.6+rnd(-.8,.8),'market',rnd(8,16));break}if(p.marketed&&p.marketed!==dayCount&&f>.6)p.marketed=0}
+        {const m=getB('market');const f=dayFrac();if(m&&f>.45&&f<.56&&!p.marketed&&R()<.5){p.marketed=dayCount;if(!shunned(p,m.x+1.5,m.y+1.6)){goTo(p,m.x+1.5+rnd(-1,1),m.y+1.6+rnd(-.8,.8),'market',rnd(8,16));break}} /* phase 6: not today, if the other one is at the market */if(p.marketed&&p.marketed!==dayCount&&f>.6)p.marketed=0}
         // choose job
         const needFood=food<people.length*4, needWood=wood<14, canBuild=wood>=18&&(people.length>=popCap()-1||p.wantHouse), proud=has(p,'proud');
         const uw=works.find(w=>!w.done);

@@ -167,6 +167,7 @@ window.__hearth={step,draw,frame,FAST,get speed(){return speed},set speed(v){spe
 get faith(){return faith},setFaith:v=>faith=v,get faithSt(){return faithSt},get prayer(){return prayer},faithDay,get arc(){return arc},startArc,get ways(){return ways},setWays:v=>ways=v,hasWay,get temper(){return temper},noteAct,get acts(){return acts},get sickCount(){return people.filter(p=>p.sick).length},
 get want(){return want},get wantYr(){return wantYr},setWantYr:v=>wantYr=v,declareWant,wantRaid,wantShort,endWant,workRateOf:workRate,
 get ill(){return ill},takeSick,illDay,endIll,wellAgain,canTake,nursedBy,sickBed,illChanceOf:illChance,SICKD,WAVED,WELLD,
+get feud(){return feud},startFeud,endFeud,feudDay,feudWith,feudSide,apart,shunned,feudInherit,feudChanceOf:feudChance,FEUDD,FEUDR,setStoryDay:v=>storyDay=v,
 get things(){return things},get heirYr(){return heirYr},thingsOf,craftUp,finishWork,die,stoneTap,wayTune,wayN,
 get lorePl(){return lorePl},get walkP(){return walkP},madeOf:ci=>MADE(ci),LORE_PLACE,
 get loreN(){return loreN},setLoreN:(k,n)=>loreN[k]=n,boundsOut,get boundsYr(){return boundsYr},get boundsP(){return boundsP},

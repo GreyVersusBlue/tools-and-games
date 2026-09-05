@@ -89,7 +89,7 @@ function dreamOf(p){if(p.dreamt===dayCount||p.dead)return false;
   if(d.k&&(R()<.5||d.k==='heal'))p.pend={k:d.k,who:q?q.name:null,gr};
   return true}
 function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pend=null;
-    if(d.k==='mend'){const q=byName(d.who);if(!q)continue;const r=p.rels.find(r=>r.who===q.name),r2=q.rels.find(r=>r.who===p.name);
+    if(d.k==='mend'){const q=byName(d.who);if(!q)continue;if(feud&&feudWith(p)===q){endFeud('dreamt');continue} /* phase 6: a dream can mend a feud, and the feud's own door writes it */const r=p.rels.find(r=>r.who===q.name),r2=q.rels.find(r=>r.who===p.name);
       if(r&&r.k==='rival'){r.k='friend';if(r2)r2.k='friend';
         say(`${B(p)} and ${B(q)}, who have not agreed about anything in a year, walk down to the fields together. Neither of them mentions a dream.`,true);
         p.hist.push({d:dayCount,s:`made it up with ${q.name}, and could not say why`});q.hist.push({d:dayCount,s:`made it up with ${p.name}, and could not say why`});
@@ -112,7 +112,13 @@ function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pen
 function tellStory(nat){if(storyDay===dayCount)return false;
   const cand=people.filter(p=>!p.dead&&p.task!=='boat'&&p.task!=='voyage');if(!cand.length)return false;
   storyDay=dayCount;if(!nat){actDone('story');noteAct('story',.05)} // a midwinter fire is the village's own doing; the stone gets no credit for it
-  for(const q of cand){if(q.task==='shelter')continue;if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.inside=false;
+  // phase 6, third increment: the two who are not speaking. A fire night is the one place the whole island sits in reach of each
+  // other, so it is where a feud is seen whole — either the two of them end up on the same log by the end of it, or one of them does
+  // not come down at all and the gap on the log is exactly one person wide. One R() draw, and only while there is a feud (#74).
+  let away=null,mended=null;
+  if(feud){const a=byName(feud.rv[0]),b=byName(feud.rv[1]),here=q=>q&&cand.includes(q)&&q.task!=='shelter'&&!q.sick;
+    if(here(a)&&here(b)){if(R()<feudChance(a,b))mended=[a,b];else away=(has(a,'proud')||has(a,'stubborn'))?a:(has(b,'proud')||has(b,'stubborn'))?b:a}}
+  for(const q of cand){if(q.task==='shelter'||q===away)continue;if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null;q.inside=false;
     goTo(q,center.x+rnd(-3,3),center.y+rnd(-2.2,2.2),'gather',rnd(24,44))}
   const grown=cand.filter(p=>!isKid(p)),teller=grown.sort((a,b)=>ageOf(b)-ageOf(a))[0]||cand[0];
   const big=chron.filter(e=>e.st&&e.kind!=='arrival'&&e.kind!=='trade'),src=big.length>=4?big:chron.filter(e=>e.st),
@@ -165,7 +171,9 @@ function tellStory(nat){if(storyDay===dayCount)return false;
   {const nw=cand.find(h=>h.heard&&h.heard.d>=dayCount-4); /* sprint 16: news that has been walking person to person reaches the fire, and stops being news */
     if(nw){L.push(`${B(nw)} adds the news of ${nw.heard.l}${nw.heard.f?`, having had it from ${nw.heard.f}`:', having been there for it'}.`);
       for(const h of cand)h.heard=null}}
+  if(away)L.push(`${B(away)} does not come down to the fire. The gap on the log is exactly one person wide, and everyone can see it.`);
   say(L.join('<br>'),true);
+  if(mended){const [a,b]=mended,fx=center.x+rnd(-2,2),fy=center.y+rnd(-1.5,1.5),dw=rnd(24,44);goTo(a,fx-.4,fy,'gather',dw);goTo(b,fx+.4,fy,'gather',dw);endFeud('fire')}
   return true}
 // the walking of the bounds (sprint 14): once a year, in spring, an elder leads the children round every named place, oldest story
 // first, and puts a stone down at each. Queued by newDay, launched by step() once the light is up; each walker carries their own
@@ -178,12 +186,16 @@ function boundsOut(){const stops=lorePl.map(k=>spots.find(sp=>sp.lore&&sp.k===k)
   const atHill=graves.length>0; // sprint 15: the walk ends on the hill, where the elder names the dead, oldest first
   const route=stops.map(s=>({l:s.l,x:s.x,y:s.y,k:s.k}));
   if(atHill)route.push({l:'the hill',x:hill.x,y:hill.y+.7,k:null,grave:1});
-  for(const p of [eld,...kids]){if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;
+  // phase 6, third increment: and the two who are not speaking, if there are two, walk it in the same line behind the children.
+  // The elder does not discuss it. The walk is the island saying what it is, and a feud is not in the list.
+  const fp=feud?[byName(feud.rv[0]),byName(feud.rv[1])]:[],both=fp.length===2&&fp.every(p=>p&&free(p));
+  for(const p of both?[eld,...kids,...fp.filter(p=>p!==eld&&!kids.includes(p))]:[eld,...kids]){if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;
     p.stops=route.map(s=>({...s}));p.si=0;p.bLead=p===eld?1:0;goTo(p,route[0].x,route[0].y,'bounds',rnd(5,9))}
   say(`${B(eld)} calls the children away from whatever they were doing and sets out to walk the named places in order, oldest story first${kids.length?'':', alone, which is not how it is supposed to go'}. Nobody asks why. It is obviously a thing that should be done.`,true);
   if(first)addEvent('bounds','the first walking of the bounds',`In the spring of year ${yearOf(dayCount)}, ${eld.name} led the children out to stand in every story the island has ground for, in order, and put a stone down at each${atHill?', finishing on the hill, where the dead were named in the same order things always get told in: oldest first':''}. It had never been done before. It was immediately old.`);
   eld.hist.push({d:dayCount,s:first?'led the first walking of the bounds, and put a stone down at every named place':'led the walking of the bounds, the way it is done'});
   for(const k of kids)k.hist.push({d:dayCount,s:atHill?`was walked round the named places by ${eld.name}, and up the hill at the end, and told who is under every stone`:`was walked round the named places by ${eld.name}, and shown where everything happened`});
+  if(both)endFeud('bounds');
   return true}
 // ---------- the year's fortunes (sprint 11): every year turns up its own card ----------
 function startArc(k,len){arc={k,d0:dayCount,end:dayCount+(len||6)};

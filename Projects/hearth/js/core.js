@@ -64,6 +64,14 @@ const SICKD=6, WAVED=12, WELLD=14;
 /* how near is near enough to hand it over, and the per-step chance at that range — one draw per susceptible person per step, and
    only while somebody is actually in bed, so an island with nobody ill is on exactly the stream it was on before */
 const CATCH=1.9, CATCHR=.004;
+// phase 6 state: the feud. `feud` is a rival pair given somewhere to live — the day it started, the two names, whether it has outlived
+// a thaw, and how many nights at the store it has in it — and it is null on every day nobody on the island is not speaking to somebody
+// on purpose. The raid opens one and nothing else does. While it lives the two work at .8, neither goes where the other is standing
+// (within FEUDR tiles), the two never stop to talk, and their children keep the same distance without being told. It ends squared,
+// walked, parted or worn, and FEUDD is the cap the way SICKD is the sickness's (#73): no feud is older than FEUDD days on any island,
+// ever — a thing two people have kept up for two years is a habit, not a feud, and the village stops counting it.
+let feud=null;
+const FEUDD=40, FEUDR=4;
 /* who carries a tune: from the seed alone, no rnd() — old links get their singers retroactively and identically */
 const musical=p=>((p.seed>>>4)%5)===0;
 /* whether tonight is an aurora night: pure function of seed and day, so every device that opens this island agrees */
@@ -90,6 +98,11 @@ const GROW={
   nursed:['By now the story has them sitting up three nights. It was one night, and it was enough.'],
   want:['The number in that story gets smaller every year it is told, and the winter longer.','By now the story has the store down to one lid and a handful, which it was not, quite.'],
   raid:['Nobody in the story is named any more. Everybody listening knows anyway, and that is how it is kept.'],
+  kept:['Every year the story adds a winter to it. By now it has lasted longer than any two people could have kept it up.'],
+  squared:['In the telling now the two of them were never really at odds, only busy, which everyone listening knows to be false.'],
+  parted:['The one left holding both halves of it holds them a little more lightly each time it is told.'],
+  walked:['In the story the children knew what the walk was for before the elder did, and led the way.'],
+  worn:['By now nobody in the telling can say what it was about either, which is exactly how it ended.'],
   gave:['In the telling now, the plate goes round three times before it comes back full. It went round once.'],
   shoal:['The fish in that story have grown a hand-span since it happened.','By now the story says you could walk across the bay on them, and nobody says otherwise.'],
   left:['The sea in that story has grown rougher with the years, to make the going kinder.'],
@@ -186,6 +199,7 @@ function yearName(yr){if(!yr||yr>=yearOf(dayCount))return null;const E=chron.fil
   if(k('want'))return 'the year of the short winter';
   if(k('hardwinter'))return 'the year of the long winter';
   if(k('ill'))return 'the year of the sickness';
+  if(k('kept'))return 'the year of the feud';
   if(k('shoal'))return 'the year the fish came in';
   if(n('death')>=2)return 'the year of the partings';
   if(k('stayed')||k('voyage')||k('returned')||k('farname')||k('farcame'))return 'the year of the far island';
@@ -208,7 +222,7 @@ function trimHist(p){if(p.hist.length>HIST_MAX)p.hist.splice(1,p.hist.length-HIS
 function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
-  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;farRec=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;songs=[];snowmen=[];skipN=0;rbUntil=0;shoots=[];starDay=0;want=null;wantYr=0;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;farRec=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;songs=[];snowmen=[];skipN=0;rbUntil=0;shoots=[];starDay=0;want=null;wantYr=0;ill=null;feud=null;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
   faith=0;faithSt=0;acts=[];prayer=null;arc=null;arcYr=0;wayYr=0;bookYr=0;ways=0;lastStormDay=0;rainedDay=0;wreckYr=0;famDone=false;temper=TEMPERS[(seed>>>0)%5]; // temper from the seed alone: no rnd(), so old links keep their terrain
   const cx=W/2,cy=H/2;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -378,7 +392,7 @@ function popCap(){return 4+houses.length*2}
 const has=(p,t)=>p.tr.includes(t);
 // which craft a task teaches (and is sped by): field, wood, sea, frame, store
 const CRAFT_TASK={till:0,harvest:0,water:0,chop:1,fish:2,boat:2,build:3,carry:4};
-const workRate=p=>(has(p,'patient')?1.15:1)*(isElder(p)?.7:1)*(1-hunger*.5)*(p.sick?.45:1)*(want?.85:1)*(p.short?.9:1)*(p.craft>=0&&CRAFT_TASK[p.task]===p.craft?1+.35*p.cxp:1); /* phase 6: rations are the decision that slows everyone, and the elder eating last is slower again */
+const workRate=p=>(has(p,'patient')?1.15:1)*(isElder(p)?.7:1)*(1-hunger*.5)*(p.sick?.45:1)*(want?.85:1)*(p.short?.9:1)*(feud&&(p.name===feud.rv[0]||p.name===feud.rv[1])?.8:1)*(p.craft>=0&&CRAFT_TASK[p.task]===p.craft?1+.35*p.cxp:1); /* phase 6: rations are the decision that slows everyone, and the elder eating last is slower again */
 // what the hands learn: a finished cycle of work teaches. The craftless drift into whatever they do most; the crafted deepen.
 const CRAFT_WORK=['the fields','the woodpile','the nets','the framing','the store'];
 const MILE=[

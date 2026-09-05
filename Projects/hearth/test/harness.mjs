@@ -1160,6 +1160,7 @@ if (mode === 'migrate') {
     h.gone.push({ name: 'A Forced Leaver', far: 1 });
     h.declareWant(); h.people[0].short = 1;                              // v14: the short winter, and the one eating last through it
     h.takeSick(h.people[1], null); h.people[2].wellD = h.dayCount - 1;    // v15: a wave, somebody in it, and somebody proof against it
+    h.startFeud(h.people[3], h.people[4]);                                // v16: two who are not speaking, on purpose
   });
 
   // A current island packs, unpacks and re-packs byte-identical: the ladder must not touch a save already at SAVE_V.
@@ -1189,7 +1190,7 @@ if (mode === 'migrate') {
       const wide = (rows, dflt) => rows && rows.length ? Math.min(...rows.map(a => a.length)) : dflt;
       const shape = { v: o.v, pe: wide(o.pe, 32), vo: o.vo && o.vo[5] ? o.vo[5].length : 32, gv: wide(o.gv, 7),
         wk: wide(o.wk, 8), ch: wide(o.ch, 7), go: wide(o.go, 2),
-        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi', 'wa', 'wy', 'iw'].filter(k => o[k] === undefined) };
+        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi', 'wa', 'wy', 'iw', 'fd'].filter(k => o[k] === undefined) };
       try { h.unpack(o); } catch (e) { return { err: 'threw: ' + e.message } }
       try { h.pack(); } catch (e) { return { err: 'packs no more: ' + e.message } }
       return { shape,
@@ -1203,6 +1204,7 @@ if (mode === 'migrate') {
         want: h.want ? 1 : 0, short: h.people.filter(p => p.short).length,
         ill: h.ill ? 1 : 0, sick: h.people.filter(p => p.sick).length, clock: h.people.filter(p => p.sick && !p.sickD).length,
         well: h.people.filter(p => p.wellD).length,
+        feud: h.feud ? 1 : 0, rivals: h.feud ? [0, 1].filter(i => { const x = h.byName(h.feud.rv[i]), y = h.feud.rv[1 - i]; return x && x.rels.some(r => r.who === y && r.k === 'rival') }).length : 0,
       };
     }, { cur, v });
     if (r.err) { failed = true; console.log(`  v${v}: FAIL — ${r.err}`); continue; }
@@ -1215,6 +1217,9 @@ if (mode === 'migrate') {
     // `sick` itself is slot 26 and has ridden the ladder since v7, so it comes up an old save and should. What v15 added is the wave
     // record and the two clocks — so an old save must come up with no proof-against-it at all, and with the wave and the day-taken
     // that repair (#37) is supposed to invent for whoever it finds in bed. That second one is a positive assertion, not an absence.
+    // v16 added the feud record and nothing else; an older save comes up with nobody not speaking to anybody on purpose, and a v16 one
+    // comes up with the record and with the two of them rivals both ways, which is what the repair (#37) is for
+    if (v <= 15 && r.feud) bad.push('a feud came through a v15 save');
     if (v <= 14 && r.well) bad.push('proof against having had it came through a v14 save');
     if (v <= 14 && r.sick && !r.ill) bad.push('somebody came up a v14 save in bed with no wave to belong to — repair did not run');
     if (v <= 6 && (r.sick || r.ill)) bad.push('a sick flag came through a v6 save');
@@ -1237,7 +1242,7 @@ if (mode === 'migrate') {
     console.log(`  v${v}: pop ${r.pop}, songs ${r.songs}, snowmen ${r.snowmen}, skipN ${r.skipN}, grave-visits ${r.vn}, ` +
       `loreN ${r.loreN}, places ${r.lorePl}, things ${r.things}, works ${r.works} (${r.wip} wip, prog ${r.prog || '-'}), faith ${r.faith}, ` +
       `far ${r.far} (${r.goneN} gone, ${r.farGone} of them over the water), want ${r.want}/${r.short}, ill ${r.ill}/${r.sick}` +
-      `, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}/${r.shape.go}` +
+      `, feud ${r.feud}/${r.rivals}, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}/${r.shape.go}` +
       (bad.length ? `  !! ${bad.join('; ')}` : '  ok'));
     if (bad.length) failed = true;
   }
@@ -1246,13 +1251,13 @@ if (mode === 'migrate') {
   // constants under test, so moving one moves the assertion with it and the check says nothing. Literals, and the ladder above is
   // what proves the range is one the ladder can actually walk.
   // These two literals are moved by hand on every version bump, and that is the whole point: phase 5 bumped SAVE_V to 13 and this
-  // check went red on its own, which is what a computed bound would never have done. Phase 6 bumped it to 14, and then to 15, and it
-  // did so both times.
+  // check went red on its own, which is what a computed bound would never have done. Phase 6 bumped it to 14, then to 15, then to
+  // 16, and it did so all three times.
   const gate = await H(() => {
     const h = window.__hearth, o = JSON.parse(JSON.stringify(h.pack()));
-    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 16 }), nope: h.canLoad({ ...o, pe: undefined }) };
+    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 17 }), nope: h.canLoad({ ...o, pe: undefined }) };
   });
-  console.log(`the gate: v4 ${gate.low}, v16 ${gate.high}, no people ${gate.nope} — all three must be false`);
+  console.log(`the gate: v4 ${gate.low}, v17 ${gate.high}, no people ${gate.nope} — all three must be false`);
   if (gate.low || gate.high || gate.nope) { failed = true; console.log('FAIL: canLoad accepts something it should not'); }
 
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
@@ -1648,7 +1653,8 @@ if (mode === 'wider') {
 if (mode === 'strain') {
   // Phase 6, first increment: the short winter. Everything here changes what people eat, how fast they work and who is speaking to
   // whom, and the soak invariants are the only thing between "a village having a hard year" and a broken island — so every day this
-  // mode runs is audited and the violations are carried to the end.
+  // mode runs is audited and the violations are carried to the end. The second increment added the sickness (nine, ten) and the
+  // third the feud (eleven), each on the same plan: forced through its own door, then run unforced under the forty-day audit.
   //
   // Three of the four things under test cannot be waited for on a given island. The reckoning is held once, at the turn of winter,
   // and only when the store is short; the raid is a 16%-a-day roll inside a famine; and the elder who eats last needs an elder and a
@@ -1992,6 +1998,179 @@ if (mode === 'strain') {
     await ctx.close();
   }
 
+  // ---- eleven: the feud, forced through its own door. On a real island the only way one starts is the raid, and the raid needs a
+  // famine, so `startFeud` is the harness's door; what is asserted is the durable state it leaves on both of them, the rules read
+  // off it as numbers, and every ending it can have — each through the function that ends it that way on a real island, because
+  // "the two never happened to be at the same fire" is not something a check can wait for.
+  {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, 7, warns);
+    for (let d = 0; d < 20; d++) { const r = await runDay(page, 25); viol = viol.concat(r.viol) }
+    // the start, and what it does to the two: rivals both ways, work at .8, and neither goes where the other is standing
+    const st = await page.evaluate(() => {
+      const h = window.__hearth, ps = h.people.filter(p => !p.dead && !p.child), [a, b, c] = ps;
+      const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      const off = h.workRateOf(a), cOff = h.workRateOf(c);
+      const ok = h.startFeud(a, b), again = h.startFeud(b, c);
+      const on = h.workRateOf(a), cOn = h.workRateOf(c);
+      const sx = a.spot.x, sy = a.spot.y;                                             // b stands on a's favourite spot, then walks off it
+      b.x = sx + .5; b.y = sy; const near = h.shunned(a, sx, sy), bystander = h.shunned(c, sx, sy);
+      b.x = sx + h.FEUDR + 1; const far = h.shunned(a, sx, sy);
+      return { a: a.name, b: b.name, ok, again, ab: rel(a, b), ba: rel(b, a), off, on, cOff, cOn, near, far, bystander,
+        d0: h.feud && h.feud.d0, day: h.dayCount, with: h.feudWith(a) === b && h.feudWith(b) === a && !h.feudWith(c),
+        apart: h.apart(a, b) && !h.apart(a, c) && !h.apart(b, c) };
+    });
+    console.log(`the feud: ${st.a} and ${st.b} from day ${st.d0}, now ${st.ab}/${st.ba}; ${st.a} works at ${st.on.toFixed(3)} against ${st.off.toFixed(3)} before it`);
+    check(st.ok && !st.again, 'startFeud either refused the first pair or opened a second feud on top of the first');
+    check(st.d0 === st.day, `the feud has no day to count from: ${st.d0} on day ${st.day}`);
+    check(st.ab === 'rival' && st.ba === 'rival', `the feud did not make them rivals both ways: ${st.ab}/${st.ba}`);
+    check(st.on < st.off, `the feud did not slow the work: ${st.on} against ${st.off}`);
+    check(st.cOn === st.cOff, 'the feud slowed somebody who is not in it');
+    check(st.near && !st.far, `the spot the other one is standing on is ${st.near ? '' : 'not '}shunned, and the one they have walked off is ${st.far ? '' : 'not '}`);
+    check(!st.bystander, 'somebody outside the feud shuns a spot over it');
+    check(st.with && st.apart, 'feudWith and apart do not name the two, and only the two');
+
+    // the chance to end it at a fire, clause by clause, against the same two
+    const ch = await page.evaluate(() => {
+      const h = window.__hearth, a = h.byName(h.feud.rv[0]), b = h.byName(h.feud.rv[1]), ta = a.tr.slice(), tb = b.tr.slice();
+      a.tr = ['patient', 'funny']; b.tr = ['patient', 'funny']; const base = h.feudChanceOf(a, b);
+      a.tr = ['gentle', 'funny']; const gentle = h.feudChanceOf(a, b);
+      a.tr = ['stubborn', 'funny']; const stubborn = h.feudChanceOf(a, b);
+      a.tr = ['patient', 'funny']; const d0 = h.feud.d0; h.feud.d0 = d0 - 20; const old = h.feudChanceOf(a, b); h.feud.d0 = d0;
+      a.tr = ta; b.tr = tb;
+      return { base, gentle, stubborn, old, cap: h.FEUDD, r: h.FEUDR };
+    });
+    console.log(`  ending it at a fire: ${ch.base.toFixed(2)} plain, ${ch.gentle.toFixed(2)} with somebody gentle, ${ch.stubborn.toFixed(2)} with somebody stubborn, ${ch.old.toFixed(2)} a year in; cap ${ch.cap} days, ${ch.r} tiles`);
+    check(ch.gentle > ch.base, `somebody gentle did not make it likelier: ${ch.gentle} against ${ch.base}`);
+    check(ch.stubborn < ch.base, `somebody stubborn did not make it less likely: ${ch.stubborn} against ${ch.base}`);
+    check(ch.old > ch.base, 'a year of it did not make the two of them any more tired of it');
+    check(ch.cap > 0 && ch.r > 0, `the cap and the distance are not bounds: ${ch.cap}/${ch.r}`);
+
+    // the fire night. tellStory is called through its own door until it settles, the story day reset between calls so each is a new
+    // night; on every night it does not settle, exactly one of the two is at the fire and the other is not. Take the fire-night
+    // branch out of tellStory and this runs to its limit with the feud still open (#34).
+    const fire = await page.evaluate(() => {
+      const h = window.__hearth, a = h.byName(h.feud.rv[0]), b = h.byName(h.feud.rv[1]), n0 = h.chron.length;
+      const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      for (const p of h.people) p.sick = 0; h.endIll();                        // through the wave's own door, so no record outlives its subject
+      let nights = 0, gaps = 0, badNight = 0;
+      while (h.feud && nights < 60) { nights++; h.setStoryDay(0);
+        for (const p of [a, b]) { p.task = 'idle'; p.inside = false }
+        h.tellStory(true);
+        if (h.feud) { if ((a.task === 'gather') !== (b.task === 'gather')) gaps++; else badNight++ } }
+      return { nights, gaps, badNight, settled: !h.feud, kinds: h.chron.slice(n0).map(e => e.kind), ab: rel(a, b), ba: rel(b, a),
+        label: h.chron[h.chron.length - 1].label,
+        together: a.task === 'gather' && b.task === 'gather' && Math.hypot(a.tx - b.tx, a.ty - b.ty) < 2,
+        hist: a.hist.some(x => x.s.includes('same log')) && b.hist.some(x => x.s.includes('same log')) };
+    });
+    console.log(`  the fire: settled on night ${fire.nights} (${fire.gaps} nights with a gap on the log before it) — "${fire.label}", now ${fire.ab}/${fire.ba}`);
+    check(fire.settled, `${fire.nights} fire nights and the two never ended up on the same log`);
+    check(!fire.badNight, `on ${fire.badNight} of the nights it did not settle, the two were both at the fire or both away from it`);
+    check(fire.kinds.filter(k => k === 'squared').length === 1, `the fire wrote [${fire.kinds.join(',')}], expected exactly one squared entry`);
+    check(fire.ab === 'friend' && fire.ba === 'friend', `the fire left them at ${fire.ab}/${fire.ba}`);
+    check(fire.together, 'the night it settled the two were not sent to the same log');
+    check(fire.hist, 'neither of them carries the night in their own history');
+
+    // sitting up with the other one ends it, and writes the feud's entry rather than nursing's; so does a dream
+    const mend = await page.evaluate(() => {
+      const h = window.__hearth, ps = h.people.filter(p => !p.dead && !p.child), [a, b] = ps;
+      const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      for (const p of h.people) { p.sick = 0; p.wellD = 0 } h.endIll();
+      h.startFeud(a, b); h.takeSick(b, null); let n0 = h.chron.length; h.nursedBy(a, b);
+      const nurse = { open: !!h.feud, kinds: h.chron.slice(n0).map(e => e.kind), ab: rel(a, b), ba: rel(b, a),
+        hist: b.hist.some(x => x.s.includes('of all people, and stopped not speaking')) };
+      h.startFeud(a, b); a.pend = { k: 'mend', who: b.name, gr: null }; n0 = h.chron.length; h.wakeDreams();
+      const dream = { open: !!h.feud, kinds: h.chron.slice(n0).map(e => e.kind), ab: rel(a, b), ba: rel(b, a) };
+      return { nurse, dream };
+    });
+    console.log(`  the bedside: [${mend.nurse.kinds.join(',')}], now ${mend.nurse.ab}/${mend.nurse.ba}; the dream: [${mend.dream.kinds.join(',')}], now ${mend.dream.ab}/${mend.dream.ba}`);
+    check(!mend.nurse.open && mend.nurse.ab === 'friend' && mend.nurse.ba === 'friend', 'sitting up with the other one did not end the feud');
+    check(mend.nurse.kinds.join(',') === 'squared', `nursing the other one wrote [${mend.nurse.kinds.join(',')}], expected one squared entry and no nursed one`);
+    check(mend.nurse.hist, 'the one nursed does not carry it in their own history');
+    check(!mend.dream.open && mend.dream.kinds.join(',') === 'squared' && mend.dream.ab === 'friend', `a dream of the other one left the feud ${mend.dream.open ? 'open' : 'closed'} and wrote [${mend.dream.kinds.join(',')}]`);
+
+    // the walking of the bounds: the two walk it in the same line behind the children, and the elder does not discuss it
+    const walk = await page.evaluate(() => {
+      const h = window.__hearth, ps = h.people.filter(p => !p.dead && !p.child), [a, b, e, k] = ps;
+      const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      e.age0 = 66; e.born = h.dayCount; k.age0 = 8; k.born = h.dayCount; k.child = true;
+      for (const kk of ['landing', 'rainscame']) if (!h.spots.some(s => s.lore && s.k === kk)) {
+        if (!h.lorePl.includes(kk)) h.lorePl.push(kk); const at = h.LORE_PLACE[kk].at() || { x: a.x, y: a.y };
+        h.spots.push({ l: h.LORE_PLACE[kk].l, x: at.x, y: at.y, lore: 1, k: kk }) }
+      for (const p of [a, b, e, k]) { p.task = 'idle'; p.sick = 0; p.inside = false }
+      h.startFeud(a, b); const n0 = h.chron.length; const went = h.boundsOut();
+      return { went, open: !!h.feud, kinds: h.chron.slice(n0).map(x => x.kind), walking: a.task === 'bounds' && b.task === 'bounds', ab: rel(a, b), ba: rel(b, a),
+        hist: a.hist.some(x => x.s.includes('same line')) && b.hist.some(x => x.s.includes('same line')) };
+    });
+    console.log(`  the bounds: walked ${walk.went}, [${walk.kinds.join(',')}], both in the line ${walk.walking}, now ${walk.ab}/${walk.ba}`);
+    check(walk.went, 'the walking of the bounds could not be started, so the ending could not be tested');
+    check(!walk.open && walk.kinds.includes('walked'), `the walk left the feud ${walk.open ? 'open' : 'closed'} and wrote [${walk.kinds.join(',')}]`);
+    check(walk.walking, 'the two were not put in the line');
+    check(walk.ab === 'friend' && walk.ba === 'friend' && walk.hist, `the walk left them at ${walk.ab}/${walk.ba}`);
+
+    // parted: one of them gone, caught the morning after through feudDay. And worn: put at the cap exactly, and one day short of it.
+    const ends = await page.evaluate(() => {
+      const h = window.__hearth, ps = h.people.filter(p => !p.dead && !p.child), [a, b, c] = ps;
+      const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      for (const p of [a, b, c]) { p.task = 'idle'; if (p.stops) p.stops = null }
+      h.startFeud(a, b); let n0 = h.chron.length; h.die(b); const still = !!h.feud; h.feudDay();
+      const gone = { still, open: !!h.feud, kinds: h.chron.slice(n0).map(e => e.kind), hist: a.hist.some(x => x.s.includes('both halves')) };
+      if (h.feud) h.endFeud('gone');   // only when feudDay failed to: clears the way for the cap test so that failure is reported rather than crashed on
+      h.startFeud(a, c); n0 = h.chron.length; h.feud.d0 = h.dayCount - h.FEUDD + 1; h.feudDay(); const early = !!h.feud;
+      h.feud.d0 = h.dayCount - h.FEUDD; h.feudDay();
+      const worn = { early, open: !!h.feud, kinds: h.chron.slice(n0).map(e => e.kind), ac: rel(a, c), ca: rel(c, a) };
+      return { gone, worn };
+    });
+    console.log(`  one gone: [${ends.gone.kinds.join(',')}]; the cap: a day short ${ends.worn.early ? 'kept it' : 'ended it'}, at it [${ends.worn.kinds.join(',')}], still ${ends.worn.ac}/${ends.worn.ca}`);
+    check(ends.gone.still && !ends.gone.open && ends.gone.kinds.includes('parted'), `a death left the feud ${ends.gone.open ? 'open' : 'closed the moment it happened'} and wrote [${ends.gone.kinds.join(',')}]`);
+    check(ends.gone.hist, 'the one left does not carry both halves of it in their own history');
+    check(ends.worn.early, 'a feud one day short of the cap was ended by it');
+    check(!ends.worn.open && ends.worn.kinds.includes('worn'), `a feud at the cap was ${ends.worn.open ? 'not ended' : 'ended'} and wrote [${ends.worn.kinds.join(',')}]`);
+    check(ends.worn.ac === 'rival' && ends.worn.ca === 'rival', `wearing out mended them: ${ends.worn.ac}/${ends.worn.ca}`);
+
+    // the children: on one side or the other, kept apart, and taking it up on coming of age — and only the children of the two
+    const kids = await page.evaluate(() => {
+      const h = window.__hearth, ps = h.people.filter(p => !p.dead && !p.child), [a, b, c, k1, k2, k3] = ps;
+      const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      k1.parents = [a.name]; k2.parents = [b.name]; k3.parents = [c.name];
+      h.startFeud(a, b);
+      return { side: h.feudSide(k1) === 1 && h.feudSide(k2) === 2 && h.feudSide(k3) === 0,
+        apart: h.apart(k1, k2) && h.apart(k1, b) && !h.apart(k1, a) && !h.apart(k1, k3) && !h.apart(k3, b),
+        took: h.feudInherit(k1), rel: rel(k1, b) === 'rival' && rel(b, k1) === 'rival', notK3: !h.feudInherit(k3), notA: !h.feudInherit(a),
+        hist: k1.hist.some(x => x.s.includes('without being asked')) };
+    });
+    console.log(`  the children: sides ${kids.side}, kept apart ${kids.apart}, took it up ${kids.took} (${kids.rel})`);
+    check(kids.side && kids.apart, 'the children are not on the sides they should be, or are not kept apart');
+    check(kids.took && kids.rel && kids.hist, 'a child of one side came of age and did not take it up');
+    check(kids.notK3 && kids.notA, 'somebody who is not a child of the two took it up');
+
+    // and it packs — the record, and the repair (#37) for a save whose feud names somebody who is not there, or names two who the
+    // save says are friends
+    const rt = await page.evaluate(() => {
+      const h = window.__hearth, rel = (x, y) => { const r = x && x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      for (const p of h.people) p.sick = 0; h.endIll();   // the sections above took people sick and then took one of them off the island by hand; a step() would have closed that wave, and none ran
+      const a = JSON.stringify(h.pack()), o = JSON.parse(a); h.unpack(JSON.parse(a));
+      const f = h.feud, x = f && h.byName(f.rv[0]), y = f && h.byName(f.rv[1]);
+      const a2 = JSON.stringify(h.pack()); let i = 0; while (i < a.length && a[i] === a2[i]) i++;
+      const out = { v: o.v, fd: o.fd, open: !!f, rivals: !!(x && y) && rel(x, y) === 'rival' && rel(y, x) === 'rival', again: a === a2,
+        diff: a === a2 ? '' : `at ${i}: "${a.slice(Math.max(0, i - 60), i + 60)}" against "${a2.slice(Math.max(0, i - 60), i + 60)}"` };
+      const o2 = JSON.parse(a); o2.fd[1] = 'Nobody Of That Name'; h.unpack(o2); out.dropped = !h.feud;
+      const o3 = JSON.parse(a); for (const pe of o3.pe) for (const r of pe[6]) if ((pe[2] === o3.fd[1] && r[0] === o3.fd[2]) || (pe[2] === o3.fd[2] && r[0] === o3.fd[1])) r[1] = 'friend';
+      h.unpack(o3); const x3 = h.byName(o3.fd[1]), y3 = h.byName(o3.fd[2]);
+      out.repaired = !!h.feud && rel(x3, y3) === 'rival' && rel(y3, x3) === 'rival';
+      return out;
+    });
+    console.log(`  round trip: pack v${rt.v}, fd=${JSON.stringify(rt.fd)}; back: open ${rt.open}, rivals ${rt.rivals}; a stranger's name dropped it ${rt.dropped}, friends in the save repaired to rivals ${rt.repaired}`);
+    check(rt.v >= 16, `the feud did not bump the save shape: v${rt.v}`);
+    check(!!rt.fd && rt.fd.length === 5, `the feud packs as ${JSON.stringify(rt.fd)}, expected five slots`);
+    check(rt.open && rt.rivals, 'the feud did not survive pack/unpack with the two of them rivals');
+    check(rt.again, `re-packing after the round trip is not byte-identical ${rt.diff}`);
+    check(rt.dropped, 'a feud naming somebody who is not on the island came through unpack');
+    check(rt.repaired, 'a feud whose two are friends in the save came through with them still friends');
+    warnAll = warnAll.concat(warns);
+    await ctx.close();
+  }
+
   // ---- eight: and the whole of it under the soak invariants. On the eve of each winter the store is knocked down to four a head —
   // low enough that a day of fishing and harvest cannot carry it to the cold season's nineteen, high enough that the island is on
   // rations rather than starving, which is a different system. Nothing else is touched after that: the reckoning is held through its
@@ -2002,11 +2181,15 @@ if (mode === 'strain') {
   // reach — and after that nobody touches it. Four things are asserted on every single day, alongside the famine's two: nobody is
   // in bed without a day to count from, nobody is in bed longer than the cap allows, the wave record and the people in bed agree
   // with each other in both directions, and no wave outlives WAVED + SICKD days from the day it started.
-  let audits = 0, travelled = 0;
+  // The third increment adds the feud, and forces nothing for it: the raid inside each forced famine is what starts one, at the
+  // same 16%-a-day roll a real island gets. Four things are asserted on every day there is one: it has a day to count from, it is
+  // not older than FEUDD, both of the two are on the island, and they are rivals of each other both ways — and at the end, every
+  // raid that started one has exactly one ending written down, or the feud is still open.
+  let audits = 0, travelled = 0, feudDaysAll = 0;
   for (const seed of seeds) {
     const warns = [];
     const { ctx, page } = await openIsland(browser, seed, warns);
-    let famines = 0, waves = 0, peak = 0, sickDays = 0, maxN = 0, wasWave = false;
+    let famines = 0, waves = 0, peak = 0, sickDays = 0, maxN = 0, wasWave = false, feuds = 0, feudDays = 0, wasFeud = false;
     for (let d = 0; d < days; d++) {
       await page.evaluate(() => {
         const h = window.__hearth, d2 = h.dayCount, sd = ((d2 - 1) % 20) % 5, se = Math.floor(((d2 - 1) % 20) / 5);
@@ -2022,8 +2205,16 @@ if (mode === 'strain') {
         return { day: h.dayCount, on: !!h.want, short: h.people.filter(p => p.short).length,
           sick: sick.length, noClock: sick.filter(p => !p.sickD).length,
           stale: sick.filter(p => h.dayCount - p.sickD > h.SICKD).map(p => `${p.name} ${h.dayCount - p.sickD}d`),
-          wave: h.ill ? h.dayCount - h.ill.d0 : -1, n: h.ill ? h.ill.n : 0, bound: h.WAVED + h.SICKD, cap: h.SICKD };
+          wave: h.ill ? h.dayCount - h.ill.d0 : -1, n: h.ill ? h.ill.n : 0, bound: h.WAVED + h.SICKD, cap: h.SICKD,
+          feud: h.feud ? h.dayCount - h.feud.d0 : -1, fcap: h.FEUDD, fpair: h.feud ? h.feud.rv.join(' / ') : '',
+          fhere: !h.feud || h.feud.rv.every(n => { const p = h.byName(n); return p && !p.dead }),
+          frival: !h.feud || [0, 1].every(i => { const x = h.byName(h.feud.rv[i]); return x && x.rels.some(r => r.who === h.feud.rv[1 - i] && r.k === 'rival') }) };
       });
+      if (st.feud >= 0) { feudDays++; if (!wasFeud) feuds++ } wasFeud = st.feud >= 0;
+      check(st.feud < 0 || st.day - st.feud >= 1, `seed ${seed} day ${st.day}: a feud with no day to count from`);
+      check(st.feud <= st.fcap, `seed ${seed} day ${st.day}: the feud between ${st.fpair} is ${st.feud} days old, past the ${st.fcap}-day cap`);
+      check(st.fhere, `seed ${seed} day ${st.day}: the feud between ${st.fpair} has one of them not on the island`);
+      check(st.frival, `seed ${seed} day ${st.day}: the feud between ${st.fpair} has them not rivals of each other both ways`);
       if (st.on) famines++;
       if (st.sick) { sickDays++; peak = Math.max(peak, st.sick) }
       if (st.wave >= 0 && !wasWave) waves++;                       // the transition, not the age: a wave forced before a day runs is one day old by the end of it
@@ -2043,30 +2234,37 @@ if (mode === 'strain') {
       for (const e of h.chron) c[e.kind] = (c[e.kind] || 0) + 1;
       return { pop: h.people.length, want: c.want | 0, raid: c.raid | 0, gave: c.gave | 0, thaw: c.thaw | 0,
         squared: c.squared | 0, kept: c.kept | 0, parted: c.parted | 0, left: (c.left | 0) + (c.farleft | 0), store: h.granary, on: h.want ? 1 : 0,
-        ill: c.ill | 0, nursed: c.nursed | 0, sick: h.people.filter(p => p.sick).length };
+        ill: c.ill | 0, nursed: c.nursed | 0, sick: h.people.filter(p => p.sick).length,
+        walked: c.walked | 0, worn: c.worn | 0, again: h.chron.filter(e => e.kind === 'raid' && e.label.endsWith(' again')).length, fopen: h.feud ? 1 : 0 };
     });
-    console.log(`seed ${seed}: ${days} days, ${famines} of them on rations — ${s2.want} reckonings, ${s2.raid} raids, ${s2.gave} eating last, ` +
-      `${s2.thaw} thaws (${s2.squared} squared, ${s2.kept} not, ${s2.parted} left unsettled), ${s2.left} sailed, pop ${s2.pop}, store ${s2.store}`);
+    console.log(`seed ${seed}: ${days} days, ${famines} of them on rations — ${s2.want} reckonings, ${s2.raid} raids (${s2.again} inside a feud already open), ${s2.gave} eating last, ` +
+      `${s2.thaw} thaws, ${s2.left} sailed, pop ${s2.pop}, store ${s2.store}`);
+    console.log(`  and ${feuds} feuds over ${feudDays} days with two people not speaking: ${s2.kept} outlived a thaw; ${s2.squared} squared, ${s2.walked} walked off, ` +
+      `${s2.parted} left unsettled, ${s2.worn} worn out, ${s2.fopen} still open`);
+    feudDaysAll += feudDays;
     console.log(`  and ${waves} waves of sickness over ${sickDays} days with somebody in bed, ${peak} of them at once at the worst, ` +
       `${s2.ill} written down, ${s2.nursed} sitting-up entries, ${s2.sick} still in bed at the end (the biggest wave took ${maxN})`);
     check(waves > 0, `seed ${seed}: a wave was started on the first day of every winter and none of them ever ran`);
     travelled = Math.max(travelled, maxN);   // whether it travels at all is proved by force in section nine; here it only has to happen once, unforced, across both islands
     check(s2.want > 0, `seed ${seed} went ${days} days with a short store at the turn of winter and never held a reckoning`);
     check(s2.thaw === s2.want - s2.on, `seed ${seed}: ${s2.want} reckonings, ${s2.thaw} thaws, ${s2.on} still running — they must account for each other`);
-    check(s2.squared + s2.kept + s2.parted === s2.raid - (s2.on && s2.raid ? 1 : 0),
-      `seed ${seed}: ${s2.raid} raids but ${s2.squared + s2.kept + s2.parted} endings written down — every raid ends one of the three ways`);
+    check(s2.squared + s2.walked + s2.parted + s2.worn + s2.fopen === s2.raid - s2.again,
+      `seed ${seed}: ${s2.raid - s2.again} raids started a feud but ${s2.squared + s2.walked + s2.parted + s2.worn} endings are written down and ${s2.fopen} still open — every feud ends one of the four ways, once`);
+    check(s2.kept <= s2.raid, `seed ${seed}: ${s2.kept} feuds outlived a thaw and only ${s2.raid} raids happened`);
+    check(feuds <= s2.raid - s2.again, `seed ${seed}: ${feuds} feuds ran and only ${s2.raid - s2.again} raids could have started one`);
     check(s2.pop >= 4, `seed ${seed} came out of ${days} days at ${s2.pop} people: the famine emptied the island`);
     warnAll = warnAll.concat(warns);
     await ctx.close();
   }
 
   check(travelled >= 2, `over ${seeds.length * days} island-days with a wave forced into every winter, no wave anywhere ever reached a second person`);
+  check(feudDaysAll > 0, `over ${seeds.length * days} island-days with a famine forced into every winter, no raid ever started a feud that lived a day`);
   if (viol.length) { failed = true; console.log('VIOLATIONS:'); [...new Set(viol)].slice(0, 20).forEach(v => console.log('  ' + v)) }
   if (warnAll.length) { failed = true; console.log('WARNINGS:'); [...new Set(warnAll)].slice(0, 20).forEach(v => console.log('  ' + v)) }
   if (bad.length) { failed = true; console.log('FAILURES:'); bad.forEach(v => console.log('  ' + v)) }
-  console.log(failed ? '\nFAIL' : `\nPASS: the short winter bites and lets go and the sickness travels and burns out — reckoning, raid, the one eating last, ` +
-    `a thaw that is not optional, a wave with a clock on every person in it, and nursing that costs a rivalry, ` +
-    `over ${seeds.length * days + 66} audited sim-days (~${audits} full-cast audits), 0 violations`);
+  console.log(failed ? '\nFAIL' : `\nPASS: the short winter bites and lets go, the sickness travels and burns out, and the feud lives and ends — reckoning, raid, the one eating last, ` +
+    `a thaw that is not optional, a wave with a clock on every person in it, nursing that costs a rivalry, and two who are not speaking until a fire or a walk or a death or the calendar ends it, ` +
+    `over ${seeds.length * days + 86} audited sim-days (~${audits} full-cast audits), 0 violations`);
 }
 
 if (mode === 'determinism') {

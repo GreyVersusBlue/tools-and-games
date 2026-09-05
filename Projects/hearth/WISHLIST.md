@@ -1,23 +1,23 @@
 # Hearth — Feature Wishlist
 
-**Status: sixteen sprints, Phases 1 through 5, and the first increment of Phase
-6 are shipped. Phase 6 is a 2+ and is still open: the short winter is in, and
-the illness that spreads and the feud that is a system are not.** Whoever takes
-it next takes nothing else with it, does one increment, and leaves the row
-standing again. Phase 2 gave the island a generational speed and then found that
+**Status: sixteen sprints and Phases 1 through 6 are shipped.** Phase 6 was a
+2+ and took three sessions, one system each: the short winter, the illness that
+walks the paths, and the feud that is a system rather than a label. Phase 7 is
+next, and it is a 1. Phase 2 gave the island a generational speed and then found that
 three of the four systems it was meant to reach could not have fired at any
 length of run; Phase 3 turned eight versions of `||` defaults into one
 `migrate()` and one version gate; Phase 4 gave the chronicle a page to leave as;
 Phase 5 gave the horizon a seed, a name and a boat that goes both ways; Phase
-6's first increment gave the island a winter it can be short of. The
+6 gave the island a winter it can be short of, a sickness that travels, and two
+people who are not speaking. The
 harness has sixteen modes now: the eleven that were there, plus `decade` (35
 game-years x 2 seeds, ~40,000 audits, and the fast path asserted bit-identical
-to 1x), `migrate` (every save shape v5 through v14 forged out of one live island
+to 1x), `migrate` (every save shape v5 through v16 forged out of one live island
 and walked back up), `saga` (400 days on seed 7, the export generated and then
 read back off the DOM claim by claim), `wider` (the far island, from the
 involution to a second tab opened at its own link) and `strain` (the short
-winter, forced through each of its own entry points and then lived through
-unforced for forty audited days on two seeds).
+winter, the sickness and the feud, each forced through its own entry points and
+then lived through unforced for forty audited days on two seeds).
 
 **What Phase 1 left:** the
 songs a sound — `songDegrees(ci)` derives a 6–10 note phrase from the island
@@ -183,8 +183,8 @@ wrong, and the handoff that names it is cited.
   `FIXTURES` in the harness, bump `SAVE_V`. The `down` half is not optional —
   it is what forges the fixture, and a hop without one cannot be tested.
 - **Save changes are additive, and old saves read as empty, never as an
-  error.** A packed person is a positional array of 29 slots (`packP`,
-  indices 0–28) — append only, never reorder; new keys land as `o.foo||0`.
+  error.** A packed person is a positional array of 32 slots (`packP`,
+  indices 0–31) — append only, never reorder; new keys land as `o.foo||0`.
   Sprint 15's v10 forgery loads with every grave's `vn` at zero, and that is
   correct: the island tidied its cairns.
 - **Version-pinned assertions in older harness modes are a recurring trap.**
@@ -224,13 +224,14 @@ wrong, and the handoff that names it is cited.
 - **The test invocation, in full.** From `Projects/hearth/test`, once
   `npm install`; then `node harness.mjs soak` (5 islands × 40 days, the
   standing gate), `determinism`, `save`, `depth --days 120`, `nan` (400 days
-  with starvation windows, ~5 minutes), `migrate` (every save shape v5–v14),
+  with starvation windows, ~5 minutes), `migrate` (every save shape v5–v16),
   `saga` (400 days, the chronicle export read back off the DOM, about a minute),
   `wider`
   (the far island: four cargoes, a trade, a departure, a return, the hash and a
-  second tab opened at `#s=`, under a minute), `strain` (the short winter:
-  reckoning, raid, the one eating last, the thaw, and forty audited days on two
-  seeds, about 20 seconds), `decade`
+  second tab opened at `#s=`, under a minute), `strain` (the short winter,
+  the sickness and the feud: each forced through its own doors, then forty
+  audited days on two seeds with ten invariants held every day, about two
+  minutes), `decade`
   (35 game-years × 2 seeds, ~6 minutes, and the generational speed asserted
   bit-identical to 1×), and the per-sprint regressions by name, `eleven`
   through `sixteen`. `package.json` scripts only the first four. `decade` and
@@ -821,11 +822,65 @@ Broken on purpose, four times, each break watched to fail and then put back:
   twice, at `farSeed is not an involution: 7 -> 6232613 -> 12465219` and again in
   the second tab, where `the far island's far island is 12465219, not 7`.
 
-## Phase 6 — Scarcity that bites — **TWO OF THREE SYSTEMS IN**
+## Phase 6 — Scarcity that bites — **SHIPPED**
 
 **Nothing on this island was ever really at stake, and everyone was unfailingly
-nice about it.** Two thirds of that is fixed. This is a 2+ and it stays on the
-list until the last third is.
+nice about it.** That is fixed, in three increments over three sessions.
+
+**What shipped, in the third increment: a feud that is a system, not a label.**
+A rivalry was two `rels` entries that four flavour lines read and nothing else
+did; the raid made one on purpose and the thaw ended it three ways, and between
+those two moments nothing on the island was any different for it. `feud` is now
+a record on the shape `want` and `ill` already have — the day it started, the
+two names, whether it has outlived a thaw, how many nights at the store it has
+in it — with one door in (`startFeud`, which only the raid walks through) and
+one door out (`endFeud`, which writes exactly one chronicle entry every time it
+is called). While it lives the two work at `.8`; neither goes to a favourite
+spot, the far shore or the market while the other is standing within four
+tiles of it (`shunned`); the two never stop to talk on the path (`apart`); and
+on a fire night either they end up on the same log or one of them does not
+come down at all and the gap on the log is exactly one person wide. Their
+children keep the distance without being told — a child of one side does not
+follow the other side's work or chase its children — and a child who comes of
+age inside it takes it up as a rivalry of their own, which the feud's ending
+does not undo (#78). It ends five ways and every one is written down: squared,
+at the thaw or a fire night or by somebody sitting up with the other one or in
+a dream; walked, at the walking of the bounds, where the elder puts the two in
+the same line behind the children and does not discuss it; parted, the morning
+after a death or a boat, with the one left carrying both halves; and worn, at
+`FEUDD` (40) days, where nobody can say what it was about any more and the two
+stay rivals and the village stops counting it. A second short winter inside an
+open feud is the same feud's doing — the same one at the store, the same one
+who sees, the entry labelled `again` — so the raids and the endings account for
+each other and `strain` holds them to it (#76). The standing question from the
+second increment is answered: sitting up with the other one ends it, and the
+feud's own door writes the entry rather than nursing's, so one night is one
+entry (#77). Save **v16**: one key, one ladder hop with its inverse, and a
+repair on every load that drops a feud naming somebody who is not there and
+makes the two of them rivals both ways whatever else the save says. The
+inspect card says *not speaking to*; four flavour lines, five growth lines for
+the fire, and a year name.
+
+Measured, forced: the two work at `.800` against `1.000` before it; the chance
+to end it at a fire is `.40` plain, `.60` with somebody gentle, `.20` with
+somebody stubborn and `.50` a year in; and the forced fire settled it on the
+eighth night, with a gap on the log on each of the seven before. Unforced, over
+sixty audited days on seeds 7, 20260819, 42, 11 and 99 with a famine put into
+every winter: nine raids, one of them a second night at the store inside a
+feud already open, started eight feuds, and every one accounts for itself —
+six squared, none walked, none parted, none worn, two still open at the end —
+with four of the eight outliving their thaw. The longest lived 21 days on seed
+7; the two on seed 11 started and ended inside one winter night, at the fire,
+without ever reaching a day boundary. The five islands came out at 31, 30, 27,
+28 and 26 people, seed 99 with the store at 43, which is the leanest any of
+them has been and still not a boat.
+
+**Nothing else moved off its stream.** Every roll the feud adds sits behind
+`if(feud)`, and only the raid opens one, so an island that has never been short
+at the turn of winter draws the exact stream it drew before: `pack()` on seeds
+7, 20260819 and 42 after forty days is byte-identical to the previous commit's
+with the new key removed, and `soak`, `determinism`, `save`, `migrate` and every
+sprint mode stayed on the islands they were checked against (#74, a third time).
 
 **What shipped, in the second increment: illness that travels.** `p.sick` had
 one setter and one clearer, both inside the fever arc, and a line at the top of
@@ -923,46 +978,51 @@ the island is leaner, not emptier.
   told from the island's own by `d0`, and what that mode asserts now is the arc
   ending and the clock on everybody still in bed, because the wave outlives the
   arc on purpose and "nobody is sick afterwards" stopped being true.
-- [ ] **A feud that is a system, not a label.** Two rivals whose work suffers,
+- [x] **A feud that is a system, not a label.** Two rivals whose work suffers,
   who avoid each other's spots, whose children inherit the distance — and which
   ends, at a fire night or a death or a walking of the bounds, with a chronicle
-  entry either way. The raid already makes a rival pair and already ends it
-  three ways at the thaw; a feud is that pair given somewhere to live in between,
-  and `endWant`'s three endings are the shape to copy.
-- [ ] **`strain` grows with them.** Two systems in, two sections added: the
+  entry either way. The raid makes the pair and `endFeud` ends it, five ways,
+  and `endWant`'s three endings were the shape copied.
+- [x] **`strain` grows with them.** Three systems in, three sections added: the
   wave forced through `takeSick` (the record, the clock, the second day in bed,
   the roll asserted clause by clause against `illChanceOf`, twelve people put at
   the six-day cap at once so that the cap is proved rather than coincided with,
   and everybody held beside the one in bed for a day inside a single day's steps
   so that "it travels" is proved and no fever arc can have done it), and nursing
   forced through `nursedBy` (a rival pair and a pair of strangers, both ending as
-  friends, both written down). The forty-day run now
-  forces a wave into every winter on top of the famine and asserts four illness
-  invariants a day. It grows once more when the feud lands.
+  friends, both written down), and the feud forced through `startFeud` (rivals
+  both ways and the work slowed, asserted on `workRateOf`; the shunned spot and
+  the walked-off one; the fire-night chance clause by clause against
+  `feudChanceOf`; a fire night called through `tellStory` until it settles,
+  with exactly one of the two away from the fire on every night it does not;
+  the bedside, the dream, the bounds, a death and the cap each through the
+  function that ends it that way; the children on their sides, kept apart, and
+  taking it up; and a round trip with both repairs). The forty-day run forces
+  nothing for the feud — the raid inside each forced famine starts one at the
+  roll a real island gets — and asserts four feud invariants a day beside the
+  famine's two and the illness's four, then holds the raids to the endings.
 
-**What the next increment should know.** The feud is the last third, and the
-shape to copy is `endWant()`'s three endings — squared, not squared, or left
-unsettled because one of the two is no longer on the island. The raid already
-makes a rival pair and already ends it three ways at the thaw; a feud is that
-pair given somewhere to live in between: work that suffers, spots each avoids,
-children who inherit the distance. Two things to know before starting. **A rival
-pair is now a thing nursing can un-make** — that is the only deliberate mender
-in the game (#75) and a feud has to survive somebody sitting up with the other
-one, or decide out loud that it does not. And **the stream moves whenever
-somebody is ill** and only then (#74): a run that gets nobody sick is on the old
-stream exactly, so if an older check goes red, first ask whether that run had
-anybody in bed, then read #66, #67 and #71, and do not treat a red check as a
-verdict. Still open from the first increment: seed 7 barely makes elders, so the
+**What this phase leaves.** Seed 7 barely makes elders, so the
 elder-who-eats-last system fired zero times in ten game-years there against
 twice on 20260819 — that is the same throttle the standing backlog names at the
-top, and it is Phase 7's, not this row's.
+top, and it is Phase 7's. **The stream moves whenever somebody is ill or two
+people are not speaking**, and only then (#74): a run with nobody in bed and no
+raid is on the old stream exactly, so if an older check goes red, first ask
+whether that run had either, then read #66, #67 and #71, and do not treat a red
+check as a verdict. The feud is only ever visible whole at a fire night; the
+rest of it is a person taking the long way round, which the card says and the
+map does not. And the seven guard-rails the third increment added were each
+broken on purpose once (#34) — the fire-night branch, the cap, the rivals on
+`startFeud`, the fire's chronicle entry, the work rate, the save repair and the
+bedside door — and every one went red on the check written for it.
 
 *Leans on:* `js/sim.js`'s task switch, `js/life.js`'s `newDay` and arcs,
 `js/watcher.js`'s `faithDay`, `js/flavor.js`'s grammar. *Save:* additive
 fields for the new person and village states, on Phase 3's ladder. *Model:*
 **Claude Fable 5.1** — new rules moving people through a simulation whose only
 safety net is a headless soak, where a wrong answer looks like a village
-having a hard year. *Both increments so far were worked under Claude Opus 5.*
+having a hard year. *The first two increments were worked under Claude Opus 5,
+the third under Claude Fable 5.1.*
 
 ## Phase 7 — Play that reads as play, and four other leftovers
 
