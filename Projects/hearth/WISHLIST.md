@@ -821,7 +821,7 @@ Broken on purpose, four times, each break watched to fail and then put back:
   twice, at `farSeed is not an involution: 7 -> 6232613 -> 12465219` and again in
   the second tab, where `the far island's far island is 12465219, not 7`.
 
-## Phase 6 — Scarcity that bites — **THE SHORT WINTER IS IN; TWO SYSTEMS LEFT**
+## Phase 6 — Scarcity that bites — **ONE OF THREE SYSTEMS IN**
 
 **Nothing on this island was ever really at stake, and everyone was unfailingly
 nice about it.** One third of that is fixed. This is a 2+ and it stays on the
