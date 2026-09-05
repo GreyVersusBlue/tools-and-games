@@ -327,8 +327,9 @@ is 335 checks up to 663.
   `spellRows`, `armSpell`, `spendSpell`, `effectFor`, `castAt`, `aiStep` and
   `aiTurn`, plus `heroCombatant(ch)` and `companionCombatant(id)` as exported
   functions. 402 of the 518 non-blank lines that left the page's `Combat` are
-  byte-identical in the module; the rest are the seams below. The page's `Combat` is still `newCombat()` with its view methods
-  assigned over the top, and not one call site into it changed.
+  byte-identical in the module; the rest are the seams below. The page's
+  `Combat` is still `newCombat()` with its view methods assigned over the top,
+  and not one call site into it changed.
 - [x] **An event log instead of `App.log`** (locked #89), and now `check`
   beside `seal`: Demoralize, Feint and Battle Medicine roll through
   `this.check(title, mod, dc)`, which emits the same `{kind:"roll"}` the page
