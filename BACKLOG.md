@@ -53,35 +53,42 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Hearth Phase 5, "The far island becomes a
-place" (PR #115)** — the silhouette on the horizon has a seed now, and the seed
-is this island's flipped: `farSeed(s) = (s ^ 0x5f1a1e) >>> 0` is an involution,
-so the island the link opens has *this* one on its own horizon and names it
-back, out of one constant and no stored pair. `#s=<seed in base 36>` opens it,
-because nothing over there has ever been simulated — a place is a seed, not a
-save (locked decision #64). The boat goes both ways now: a voyage comes back
-with news, a thing, a tune or somebody the island already lost to the water; the
-trader will part with something no hand here could make, for ten of timber and
-eight of meal; and a hungry departure turns for a named place rather than for
-nowhere. Save **v13**, one ladder hop with its inverse. The saga has a fifth
-appendix, "Over the water".
+The last thing that shipped is **the first increment of Hearth Phase 6, "The
+short winter" (PR #117)** — the first thing that has ever gone wrong on that
+island that is somebody's fault. At the turn of every winter whoever keeps the
+store counts it and says the number out loud, and if it will not cover the cold
+season the village goes onto rations: everyone works at `.85`, the store is
+drawn down at `.62`, and inside the famine one person takes more than a share
+out of the store in the dark and is seen, and an elder stands down from a
+measure and calls it not being hungry. At the thaw all of it comes off, on the
+first day of spring, whatever the store says. Save **v14**, one ladder hop with
+its inverse. A sixteenth harness mode, `strain`.
 
-**Three older checks went red on the shifted stream, and the first one was
-right.** The trade's original 14-timber floor was a tax on the housing stock,
-not a use for a surplus: timber is houses, houses are `popCap()`, and 35
-game-years on seed 20260819 built 24 houses instead of 28 and spent 203 days of
-700 at the cap with births shut off. At a floor of 34 the same island builds 31
-and has children on 691 days of 700 (#65) — which is the population-cap question
-six consecutive sprints noted and dismissed, arriving at last as a real failure.
-The other two were checks reading whatever the island happened to be doing:
-`fourteen` decided which of two endings the walking of the bounds should have
-had by reading `graves.length` *after* the walked day (#66), and `decade`
-demanded a 5%-a-day event on a run that gave it 26 chances (#67). **`sixteen`
-was already red on `main`** and was not in this header's list of standing reds —
-it looked for the chronicle panel's year name in the `.txt` export's format,
-which the panel stopped using when Phase 4 restyled it. Fixed here.
+**The threshold was the work, and it was measured twice.** The season line has
+quoted 13 measures a head as what a winter wants since sprint 2, and by that
+number the island is *never* short: at every one of thirty turns of winter
+across ten game-years on seeds 7, 20260819 and 42, the store stood at 1.32 to
+1.75 times it. A famine written against 13 could not have fired on any island —
+the Phase 2 failure again. The number the island's own consumption implies is 19
+a head, and at 19 the same three seeds are short about one winter in four (#68).
+Hunger was the second: unclamped, a seven-day cold season on rations reaches
+`.78`, past the `.7` that puts somebody in a boat, so a village that decided to
+eat less would lose more people than one that did nothing. It is capped at `.45`
+while the store is not actually empty (#69). Everything the famine turns on is
+turned off by the calendar rather than by a roll (#70).
 
-Before it: **Hearth Phase 4 (PR #114)**, **Hearth Phases 2 and 3 (PR
+**Two older checks went red on the shifted stream and neither was a bug** — the
+third and fourth instances of #66 in three sessions. `eleven` forced a fever
+arc, ran eight days, then read the *live* `arc`; the island had dealt itself a
+second fever on day 32 and the check called that a forced fever that never
+ended. It tells them apart by `d0` now. `saga` needs one song that has outlived
+a carrier or its living-only filter is untested, and this stream does not
+deliver one by day 400 on seed 7; it takes a carrier of a song that has others,
+the way `wider` forces its cargoes, and keeps the thinness guard for when there
+is none (#71). Both were verified green against `main`'s game code and red when
+the thing they guard is broken.
+
+Before it: **Hearth Phase 5 (PR #115)**, **Hearth Phase 4 (PR #114)**, **Hearth Phases 2 and 3 (PR
 #112)**, **Bell to Bell Phase 8 and Hearth Phase 1 (PR #111)**, **Bell to
 Bell Phases 6 and 7 (PR #109)**, **Phases 4 and 5 (PR #108)**, **Phases 2 and 3 (PR #106)**,
 **Phase 1, the slot scheme and the 6th period (PR #104)**, **this backlog's own
@@ -90,10 +97,10 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**No shared tooling moved this time either, and the same two site-wide checks
-are still red on `main` and were red before that branch existed** (verified
-again by stashing the branch's changes and re-running both — same counts, same
-lines)**:** `check-integrity.mjs` fails on
+**One line of shared tooling moved — `CLAUDE.md`'s locked-decision count, 67 to
+71 — and the same two site-wide checks are still red on `main` and were red
+before that branch existed** (verified again by stashing the branch's changes
+and re-running both: same counts, same lines)**:** `check-integrity.mjs` fails on
 `Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
 inline `<script type="module">`, which is a syntax error in a module) and on
 `Tools/prompt-builder.html` (it references `fonts.googleapis.com` and
@@ -108,27 +115,35 @@ standing backlogs and 52 open questions for Devon — 415 open items in all.
 Bell to Bell has no ranked rows left: all eight of its phases have shipped, and
 what it wants next is the later arc at the bottom of its own `WISHLIST.md`.
 
-**Pick up rank 1: `Projects/hearth` Phase 6, "Scarcity that bites"
-(Fable 5.1). It is a 2+, so it is the whole batch** — take nothing else with it,
-do one increment, and leave the row in place with its Item text rewritten to say
-what is done and what is left. Nothing on this island is ever really at stake
-and everyone is unfailingly nice about it: hunger, fever and storms are the
-whole of adversity and all three are weather, so nothing is anyone's fault. The
-phase wants a famine with decisions in it, illness that spreads on the paths, a
-feud that is a system rather than a label, an off-ramp on every new state, and a
-`strain` harness mode. It is also the most dangerous phase in Hearth's file —
-every one of those moves people, and the soak invariants are the only thing
-between "a village under strain" and a broken island, so `soak --days 40` and
-`nan --days 400` go after *each* of them rather than at the end.
+**Pick up rank 1 again: `Projects/hearth` Phase 6, "Scarcity that bites"
+(Fable 5.1). It is a 2+ and it is not finished** — one of its three systems is
+in and the row stays where it is. Take nothing else with it, do one increment,
+and leave the row standing again with its text rewritten. What is left:
+**illness that spreads on the paths** (`p.sick` is still set only by the fever
+arc and cleared only by it; let proximity carry it, let the chapel or the hall
+matter, let nursing become a relationship, and give prayer's `heal` — top of its
+priority list and idle since sprint 11 — something to do), and **a feud that is
+a system rather than a label** (two rivals whose work suffers, who avoid each
+other's spots, whose children inherit the distance). The raid already makes a
+rival pair and already ends it three ways at the thaw; a feud is that pair given
+somewhere to live in between, and `endWant()`'s three endings are the shape to
+copy. `strain` is built to take a section per system, and the forty-day audited
+run at the end of it picks up anything new for free.
 
-Two things Phase 5 left that whoever takes Phase 6 should know. The `R()` stream
-has now moved twice in two sessions, and both times it put an older observational
-check red rather than finding a bug — budget for that, and read #66 and #67
-before deciding a red check is a verdict. And Hearth's standing backlog has a new
-top entry: **the teller has to be an elder, and this island rarely makes one** —
-somebody aged sixty is alive on 57 days out of 700 on seed 7, which is why the
-system sprint 16 built to keep the dead's names working fires about once per 35
-game-years. That is Phase 7's, not Phase 6's.
+Both of those move people, which is what makes this the most dangerous row in
+Hearth's file: the soak invariants are the only thing between "a village under
+strain" and a broken island, so `soak --days 40`, `nan --days 400` and `strain`
+go after *each* piece rather than at the end.
+
+Three things this increment leaves for the next one. The `R()` stream has now
+moved three sessions running and all three times it put an older observational
+check red without there being a bug — budget for it, read #66, #67 and #71
+first, and do not treat a red check as a verdict. Seed 7 barely makes elders, so
+the elder-who-eats-last system fired zero times in ten game-years there against
+twice on 20260819; that is the same throttle Hearth's standing backlog names at
+the top and it is Phase 7's, not this row's. And `nan` is now a five-minute mode
+and `decade` a six-minute one, which is worth knowing before planning a session
+around running everything.
 
 **Read this before trusting the order.** Two sources rank the same work
 differently, and the table follows `UPGRADE-PATHS.md`'s order because it is
@@ -173,7 +188,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 6 — Scarcity that bites | `Projects/hearth` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-1qjiex` | [WISHLIST.md Phase 6](Projects/hearth/WISHLIST.md#phase-6--scarcity-that-bites) |
+| 1 | Phase 6 — Scarcity that bites: the short winter is in, illness and the feud are not | `Projects/hearth` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/hearth/WISHLIST.md#phase-6--scarcity-that-bites--one-of-three-systems-in) |
 | 2 | Phase 7 — Play that reads as play, and four other leftovers | `Projects/hearth` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/hearth/WISHLIST.md#phase-7--play-that-reads-as-play-and-four-other-leftovers) |
 | 3 | Phase 8 — Hearth gets a machine that watches it | `Projects/hearth` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/hearth/WISHLIST.md#phase-8--hearth-gets-a-machine-that-watches-it) |
 | 4 | Phase 1 — The rules core comes out of the page | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 1](Projects/torchbearer/WISHLIST.md#phase-1--the-rules-core-comes-out-of-the-page) |
