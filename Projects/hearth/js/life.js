@@ -6,10 +6,16 @@ function newDay(){saidToday=new Set();
   wakeDreams();
   // sprint 16: the day comes round again. On the anniversary of a death, whoever lost a partner or a parent walks up the hill —
   // the same mourn plumbing every grave visit uses, so the stone keeps its own count of who still comes.
-  for(const p of people){if(p.dead||isKid(p)||p.mourn)continue;
-    for(const r of p.rels){if(r.k!=='partner'&&r.k!=='parent')continue;if(byName(r.who))continue;
+  // Phase 2 found the once-a-year record being dropped: this used to skip anybody already mourning, so a widow who happened to be up
+  // the hill for her own reasons on the anniversary itself got no line for it. Being already there is not a reason to forget the day.
+  for(const p of people){if(p.dead||isKid(p))continue;
+    for(const r of p.rels){if(r.k!=='partner'&&r.k!=='parent')continue;
       const gr=graves.find(g2=>g2.name===r.who);if(!gr||dayCount<=gr.d||((dayCount-gr.d)%YEAR)!==0)continue;
-      p.mourn=gr;
+      // and names recycle here — a child gets named for an ancestor — so "is anybody by that name alive" is not the question. It was
+      // the second thing dropping this record: a widow whose new daughter was named for her dead husband was read as not a widow.
+      // A living namesake was born after the stone went up; nobody living can have carried the name before it.
+      const q=byName(r.who);if(q&&q.born<gr.d)continue;
+      if(!p.mourn)p.mourn=gr;
       if(dayCount-gr.d===YEAR){p.hist.push({d:dayCount,s:`walked up the hill a year to the day after ${gr.name} died, without anyone suggesting it`});
         if(R()<.6)say(`${B(p)} is up the hill early. It is a year to the day, and ${p.name} did not need the book to know it.`,false,'anniv')}
       break}}
@@ -55,8 +61,12 @@ function newDay(){saidToday=new Set();
     else{voyage.st='stayed';farIsle.lit=true;say(`${B(voyage.p)} has not come back from the far island. Nobody says it at the fire, but at dusk they look that way.`,true);addEvent('stayed',`the ${sea()} ${voyage.name} did not come back from the far island`,`${voyage.name} did not come back from the far island. After that there was a light out there on clear nights, and everyone had an opinion about it.`);
       for(const q of people){const r=q.rels.find(r=>r.who===voyage.name);if(r)q.hist.push({d:dayCount,s:`stopped waiting for ${voyage.name} to come back from the far island`})}}}
   if(dayCount===10&&!village){village=pick(NAME1)+pick(NAME2);say(`By now the place has a name. Nobody decided it; it is simply ${village}, and has been for a while.`,true);addEvent('name',`the naming of ${village}`,`The place turned out to be called ${village}. Nobody decided it and nobody argued.`);document.getElementById('seedlbl').textContent=village+' · island '+seed.toString(36)}
-  // midwinter: the village keeps its own fire night, and the stories get told whether the watcher is watching or not (sprint 12)
-  if(s==='winter'&&seaDay()===2&&people.length>=6&&chron.length>=4&&R()<.75)tellStory(true);
+  // The village keeps its own fire nights, and the stories get told whether the watcher is watching or not (sprint 12). Sprint 12 gave
+  // it one a year, at midwinter, and thirty-five game-years of that is twenty-six tellings against five hundred chronicle entries:
+  // seed 7 grew exactly one story in the whole time and so never had the two named places the walking of the bounds needs. A village
+  // with a hall and something to tell does not wait for midwinter. Winter keeps its near-certainty; the other three seasons get a
+  // night of it too, once there are enough people to sit round one fire.
+  if(seaDay()===2&&people.length>=6&&chron.length>=4&&R()<(s==='winter'?.75:.4))tellStory(true);
   if(s!==lastSea){lastSea=s;say(SEASON_LINE[s],true);if(s==='winter'){const need=people.length*13;say(granary+food>=need?`The store holds ${granary}. It should see the village through.`:granary+food>=need*.5?`The store holds ${granary}. It will be a thin winter.`:`The store holds ${granary}, and that is not enough. Someone will have to go down to the ice with a line.`,true)}}
   // the works: once the village has its buildings, smaller ambitions surface, about one a year
   if(seaDay()===0&&dayCount>YEAR&&bldg.length>=6&&!bldgTgt&&!works.some(w=>!w.done)&&R()<.35){
@@ -69,6 +79,7 @@ function newDay(){saidToday=new Set();
   if(hunger>.7&&R()<hunger*.4){const cand=people.filter(p=>!p.dead&&!isKid(p)&&!people.some(k=>k.parents.includes(p.name)));if(cand.length>1){const wts=cand.map(p=>(has(p,'restless')?2.5:1)*(has(p,'homesick')?2.5:1)*(p.partner?.4:1));let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}leave(p)}}
   if(yr!==lastYear){lastYear=yr;const oldest=people.filter(p=>!p.dead).sort((a,b)=>ageOf(b)-ageOf(a))[0];say(`A new year begins. ${oldest?B(oldest)+' is the eldest now, at '+ageI(oldest)+'.':''}`,true);
     {const yn=yearName(yr-1);if(yn&&yn!=='a quiet year')say(`The year that ended is already being called ${yn}. Nobody decided that either.`,true)} /* sprint 16: the year's name arrives the way the village's did */
+    forgetSongs();
     if(hasWay(3)&&bookYr!==yr){bookYr=yr;addEvent('book',`the book of days, year ${yr-1}`,`The book of days for year ${yr-1}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill, ${granary} in the store at the turn. Written fair, and argued over anyway.`)}
     // sometimes, in a kind year, one of the ones who left comes back
     if(gone.length&&retYr!==yr&&people.length<popCap()&&food+granary>people.length*5&&landings.length&&R()<.4){retYr=yr;
@@ -83,12 +94,16 @@ function newDay(){saidToday=new Set();
   // friendships drift into being
   if(alive.length>2&&R()<.35){const a=pick(alive),b=pick(alive);if(a!==b&&!isKid(a)&&!isKid(b)&&a.rels.length<5&&b.rels.length<6&&!a.rels.some(r=>r.who===b.name)){relate(a,b,'friend');say(`${B(a)} and ${B(b)} have started eating together. Nobody comments.`)}}
   // sprint 16: the dead get said out loud. An elder who knew somebody under a stone tells a child about them, so the names keep working.
-  if(dead.length&&R()<.05){const elds=alive.filter(isElder),kds=alive.filter(p=>isKid(p)&&ageOf(p)>=5);
+  // Two things were wrong with it and the decade run found both. The elder was picked blind and then asked whether they had known any
+  // of the dead, so most days the roll landed on somebody with nothing to tell; the elders who knew somebody are the ones who get
+  // picked now. And the telling was only written down three times in ten, which left the whole system with almost no durable trace —
+  // thirty-five game-years on seed 20260819 produced not one. What the child keeps is the only record there is, so the child keeps it.
+  if(dead.length&&R()<.05){const kds=alive.filter(p=>isKid(p)&&ageOf(p)>=5);
+    const elds=alive.filter(p=>isElder(p)&&dead.some(d2=>d2.rels&&d2.rels.some(r=>r.who===p.name)));
     if(elds.length&&kds.length){const el=pick(elds),kd=pick(kds);
-      const kn=dead.filter(d2=>d2.rels&&d2.rels.some(r=>r.who===el.name));
-      if(kn.length){const d2=pick(kn);
-        say(`${B(el)} tells ${B(kd)} about ${d2.name}, who is under one of the stones on the hill, and ${kd.name} repeats the name to get it right.`,false,'tolddead');
-        if(R()<.3)kd.hist.push({d:dayCount,s:`was told about ${d2.name}, who died before ${kd.name} was born`})}}}
+      const d2=pick(dead.filter(d2=>d2.rels&&d2.rels.some(r=>r.who===el.name)));
+      say(`${B(el)} tells ${B(kd)} about ${d2.name}, who is under one of the stones on the hill, and ${kd.name} repeats the name to get it right.`,false,'tolddead');
+      kd.hist.push({d:dayCount,s:`was told about ${d2.name}, who died before ${kd.name} was born`})}}
   // partnerships
   const single=alive.filter(p=>!p.partner&&!isKid(p)&&ageOf(p)>=18&&ageOf(p)<58);
   for(const a of single){if(a.partner)continue;const fr=a.rels.filter(r=>r.k==='friend').map(r=>byName(r.who)).filter(b=>b&&!b.partner&&!isKid(b)&&ageOf(b)>=18&&ageOf(b)<58&&!b.dead&&!a.parents.includes(b.name)&&!b.parents.includes(a.name));
@@ -109,10 +124,16 @@ function newDay(){saidToday=new Set();
       say(`A child is born to ${B(a)} and ${B(b)}. They call the child ${B(k)}${nm?', after '+nm:''}.`);addEvent('birth',`the ${seasonOf(dayCount)} ${k.name} was born`,`A child, ${k.name}, was born to ${a.name} and ${b.name} in the ${seasonOf(dayCount)}.`)}}
   // old age
   for(const p of alive){const a=ageOf(p);if(a<55)continue;const chance=Math.pow((a-54)/18,3);if(R()<chance)die(p)}
-  autoSave();
+  for(const p of people)trimHist(p); /* a long life earns more lines than anyone reads; the first one and the last HIST_MAX-1 keep */
+  autoSaveTick();
 }
 // sprint 9: the island keeps itself. Written at each dawn; read back at boot when no link is pinned in the address bar.
 function autoSave(){try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
+// The LZ of a 500-day island measured 26 ms, and at the generational speed a day goes by in about half a second, so a dawn autosave
+// there is a third of the frame budget spent on a thing nobody is waiting for. It writes every tenth day while the speed is up, and
+// once more the moment the speed comes down (setSpeed). Nothing here draws from R(), and no decision in the simulation reads it.
+let autoDay=-99;
+function autoSaveTick(){if(speed>=FAST&&dayCount>=autoDay&&dayCount-autoDay<10)return;autoDay=dayCount;autoSave()} /* dayCount<autoDay is a new island started at speed */
 // sprint 16: what passes between two people who stop to talk. Fresh news enters the world at whichever chat happens nearest to it —
 // the elder of the two "was there" — and then walks person to person until a fire night collects it and it stops being news.
 function chatNews(p,q){const fresh=h=>h&&h.d>=dayCount-3;
@@ -121,6 +142,18 @@ function chatNews(p,q){const fresh=h=>h&&h.d>=dayCount-3;
   if(fresh(p.heard)&&(!fresh(q.heard)||p.heard.d>q.heard.d))q.heard={l:p.heard.l,d:p.heard.d,f:p.name};
   else if(fresh(q.heard)&&(!fresh(p.heard)||q.heard.d>p.heard.d))p.heard={l:q.heard.l,d:q.heard.d,f:q.name};
   if(R()<.05)p.hist.push({d:dayCount,s:`fell into talk with ${q.name} on the way past, and the work waited the little it took`})}
+// A song nobody has called for in years starts to go. Sprint 16 built a song that could be lost and then handed it to every pair of
+// ears on the island, which meant it never could be: thirty-five game-years produced a song with forty-seven knowers out of
+// forty-eight people, and not one song has ever been lost outside a forced test. Two changes, phase 2. A tune is picked up only by
+// the ones with a tune in them (tellStory), and one that has gone three years unsung slips out of the ones who never had much of an
+// ear for it, faster than out of the ones who did. sg.d is the day it was last sung now, not the day it was made; an old save's
+// composition day reads as an unsung song, which is what it is.
+function forgetSongs(){for(const sg of songs){if(sg.lost||dayCount-sg.d<YEAR*3)continue;
+    sg.kn=sg.kn.filter(n=>{const q=byName(n);return !q||R()>=(musical(q)?.28:.55)});   // names of the dead stay in the list; they are not the ones forgetting
+    if(people.some(q=>!q.dead&&sg.kn.includes(q.name)))continue;
+    sg.lost=1;const lbl=chron[sg.ci]?chron[sg.ci].label:'the island';
+    say(`Nobody has asked for the song of ${lbl} in years, and this year nobody at the fire can find the start of it. The story is still told, plainly now.`,true);
+    addEvent('songlost',`the losing of the song of ${lbl}`,`The song of ${lbl} went years without being sung, and then it could not be: the last of the ones who had the tune had stopped being able to find it. It was never written down, because it never needed to be, until it did.`)}}
 // sprint 16: a song lives only in the people who carry it. When the last of them goes, it goes with them — the story stays; the tune does not.
 function loseSongs(p,how){for(const sg of songs){if(sg.lost||!sg.kn.includes(p.name))continue;
     if(people.some(q=>!q.dead&&q!==p&&sg.kn.includes(q.name)))continue;

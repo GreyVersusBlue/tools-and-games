@@ -1,8 +1,17 @@
 # Hearth — Feature Wishlist
 
-**Status: sixteen sprints and Phase 1 are shipped. Phase 2 — *Decades, not
-years*, on Claude Fable 5.1 — is the next thing to build.** Phase 1 gave the
-songs a sound: `songDegrees(ci)` derives a 6–10 note phrase from the island
+**Status: sixteen sprints and Phases 1, 2 and 3 are shipped. Phase 4 — *A saga
+somebody who wasn't watching can read*, on Claude Opus 5 — is the next thing to
+build.** Phase 2 gave the island a generational speed and then found that three
+of the four systems it was meant to reach could not have fired at any length of
+run; Phase 3 turned eight versions of `||` defaults into one `migrate()` and one
+version gate. The harness has thirteen modes now: the eleven that were there,
+plus `decade` (35 game-years x 2 seeds, ~40,000 audits, and the fast path
+asserted bit-identical to 1x) and `migrate` (every save shape v5 through v12
+forged out of one live island and walked back up).
+
+**What Phase 1 left:** the
+songs a sound — `songDegrees(ci)` derives a 6–10 note phrase from the island
 seed and the story's own chronicle index, and `songTune(sg, voices)` plays it
 at the fire, twice, through `sfxG`. Nothing was added to the save. The
 listening pass in `harness.mjs twelve` now measures the tune alongside the
@@ -157,10 +166,13 @@ wrong, and the handoff that names it is cited.
   behaves the same on every phone. `store()`/`pref()` (`hearth.*`) hold the
   sound and music toggles, the hints and the autosave — nothing the island
   itself knows.
-- **There are two version gates and both must move when `pack()` bumps.**
-  `loadHash()` (`js/save.js:118`) and the autosave boot path
-  (`js/main.js:139`) each carry their own `o.v>=5&&o.v<=12`. Sprint 12 shipped
-  with one stale; grep `o.v>=5`, expect two hits.
+- **There is one version gate, and one ladder.** Phase 3 folded the two copies
+  of `o.v>=5&&o.v<=12` — `loadHash()` and the autosave boot path in
+  `js/main.js` — into `canLoad(o)`, over `SAVE_MIN` and `SAVE_V`. Grep `o.v>=5`,
+  expect no hits. A new field costs four lines: append the slot or key to
+  `pack()`, add a `{from,to,up,down}` hop to `LADDER`, add the version to
+  `FIXTURES` in the harness, bump `SAVE_V`. The `down` half is not optional —
+  it is what forges the fixture, and a hop without one cannot be tested.
 - **Save changes are additive, and old saves read as empty, never as an
   error.** A packed person is a positional array of 29 slots (`packP`,
   indices 0–28) — append only, never reorder; new keys land as `o.foo||0`.
@@ -170,6 +182,14 @@ wrong, and the handoff that names it is cited.
   `thirteen` asserted `v === 9` and `fourteen` asserted `rt.v !== 10`; both
   broke on the next bump. Grep `rt.v !==` *and* `o.v !==` on every version
   move, and write new assertions as `>=`.
+- **A behaviour change shifts the `R()` stream, and the stream is what every
+  observational check is standing on.** Phase 2 moved three numbers and put four
+  of the harness's own checks red — two of them genuine bugs the shift merely
+  uncovered (an anniversary dropped twice over), and two of them checks that had
+  been reading whatever the island happened to be doing: `twelve` measured its
+  one-shots in whatever weather was overhead, and `sixteen` taught a song back to
+  an adult. Pin the conditions a measurement depends on. A red check after a
+  tuning change is a question, not a verdict.
 - **Do not test by scraping the log.** `say()` keeps only the last nine `<p>`
   children (`js/core.js:267`) and an ordinary sim-day evicts a forced line
   before any check runs. Assert on durable state — grave touch counts,
@@ -195,8 +215,12 @@ wrong, and the handoff that names it is cited.
 - **The test invocation, in full.** From `Projects/hearth/test`, once
   `npm install`; then `node harness.mjs soak` (5 islands × 40 days, the
   standing gate), `determinism`, `save`, `depth --days 120`, `nan` (400 days
-  with starvation windows), and the per-sprint regressions by name, `eleven`
-  through `sixteen`. `package.json` scripts only the first four. Chromium
+  with starvation windows), `migrate` (every save shape v5–v12), `decade`
+  (35 game-years × 2 seeds, ~4.5 minutes, and the generational speed asserted
+  bit-identical to 1×), and the per-sprint regressions by name, `eleven`
+  through `sixteen`. `package.json` scripts only the first four. `decade` is the
+  slow one and the one to run after any change to `step()`, `newDay()` or
+  `tellStory()`; everything else is under a minute. Chromium
   launches with `--autoplay-policy=no-user-gesture-required` always and falls
   back to `/opt/pw-browsers/chromium` when Playwright's own download is
   absent.
@@ -386,87 +410,181 @@ its tune back (the measured silence check caught it, not just the return
 value), the phrase's first degree drawn from `Math.random()` (the two-run
 assertion caught it), and the resolving note commented out.
 
-## Phase 2 — Decades, not years
+## Phase 2 — Decades, not years — **SHIPPED**
 
 **Four of the island's best systems have never happened on their own, because
 nobody has ever watched one of these islands grow up.**
 
-Heirlooms pass rarely by day 121. The walking of the bounds has never launched
-unforced in a depth run. Elders telling children of the dead fired zero times
-in both. No song has ever been lost outside a forced test. Sprints 12 through
-16 each wrote a version of the same sentence — *this pays out on decade-old
-islands, nothing to fix* — and none made a decade reachable. This phase does,
-on both sides: a way to get there, and the confidence that arriving is
-correct.
+All four happen now, unforced, on both fixed seeds. Getting there took two
+things, and only the first was the one the plan expected. A decade had to be
+reachable — that part was a profiling job and it came out easier than feared.
+Then, with a decade reachable, three of the four systems turned out not to fire
+at *any* length of run: they were gated on things that could not happen. The
+first 700-day run measured, on seed 7, one grown story in thirty-five years, one
+named place where the walking of the bounds needs two, and a song known by
+forty-seven of the island's forty-eight people, which is a song that can never
+be lost by anybody dying.
 
-- [ ] **A generational speed.** Past the existing 1× / 3× / 10×, a mode that
-  batches `step()` between paints and skips the presentation-only layers while
-  keeping the log and the chronicle. `main.js` already loops `step(dt)` per
-  frame by `speed`; this is the same idea past the point where drawing is the
-  cost.
-- [ ] **Profile a 500-day island first and write the number down.** Where the
-  frame goes at pop 48 with 500 days of `chron`, `events`, per-person `hist`
-  and `prints`. Nothing has been measured past 120 days, and the answer
-  decides how much of the rest of this list is real.
-- [ ] **Bound what grows without bound.** `chron` is packed and rendered in
-  full; a person's `hist` is every line they ever earned. Per list: cap,
-  summarize, or leave it and pay. The chronicle is the island's point and
-  should be the last thing cut.
-- [ ] **A `decade` harness mode.** 20 game-years on two fixed seeds asserting
-  that the bounds walks unforced, a song is lost unforced, an heirloom passes,
-  an elder tells a child about somebody under a stone, and the soak audits
-  stay at zero violations throughout.
-- [ ] **Determinism across the fast path.** The generational speed must
-  produce a `pack()` hash identical to the same island run at 1× for the same
-  days. If it cannot, it is a different simulation and must not ship.
-- [ ] **Then re-tune what the decade exposes.** The `.05`/day elder roll, the
-  60% bounds chance, the 25% repeat-walk rate and the cairn tiers are felt
-  numbers; a decade run is the first thing that could measure them.
+- [x] **A generational speed.** `FAST=240`, a fourth button in the time control
+  reading **years**, and `y`. `loop()` split into `loop` and `frame(dt,run)` so
+  the harness can drive real frames; at FAST a frame runs 240 `step()`s and
+  paints on every fourth, which is about half a second a sim-day at 60 fps, or a
+  decade in two minutes against forty minutes at 10×. `audioTick` runs on the
+  paint cadence with the accumulated dt; hints do not run at all, because they
+  are for somebody who has just arrived and this is not their speed.
+- [x] **Profile a 500-day island first and write the number down.** Seed 7, day
+  501, pop 52: **`step()` 0.0204 ms, `draw()` 9.2 ms.** Drawing is 450 times the
+  cost of simulating, which is the whole finding — the way to a decade is not a
+  faster simulation, it is a rarer paint. `pack()` 1.1 ms, `JSON.stringify` 1.3
+  ms, `lzEnc` 26.4 ms on a 144,686-byte save, and that last one is a dawn
+  autosave, so at FAST it writes every tenth day and once more on the way down.
+- [x] **Bound what grows without bound.** The save at day 501 was 42% people
+  (`pe`, and 83% of that is `hist`), 37% chronicle, and **12% stumps** — 1,102 of
+  them, in 17,677 bytes, lying several deep on ground that has been worked for
+  twenty years, and nothing in the simulation has ever read one. Stumps cap at
+  240 and the oldest go back to grass (2,881 bytes at day 701). A person's `hist`
+  caps at 60, keeping the first line, which is how they came to be here. The
+  chronicle is left whole and paid for: it is the island's point. Both caps are
+  applied where the world changes, not in `pack()`, so a link and a straight run
+  look the same, and both are asserted in `decade` rather than eyeballed.
+- [x] **A `decade` harness mode.** Thirty-five game-years on two fixed seeds, not
+  the twenty the plan asked for: the first natural handing-down measured at day
+  459, 469, 481 and 619 across four runs, because a thing is made by whoever
+  first masters a craft and that person then has to live out a life before it can
+  pass to anyone. The island's first heirloom is a year-23-to-32 event. 700 days
+  × 2 seeds, ~40,580 full-cast audits, **0 violations**, 4.5 minutes.
+- [x] **Determinism across the fast path.** Two fresh copies of seed 7 driven
+  through real frames, 33,600 frames of one step against 140 frames of 240, same
+  dt, same total: pack hash `582e414:17608` both ways. `draw()` and `audio.js`
+  have never drawn from `R()`, which is why this works, and the assertion is
+  there so that stays true. The one thing legitimately different is `sp`, the
+  speed the watcher left it at, which `pack()` carries.
+- [x] **Then re-tune what the decade exposes.** This was most of the work.
+  **The fire.** One night a year, at midwinter, is twenty-six tellings against
+  five hundred chronicle entries, and sprint 12's teller samples five entries at
+  fixed fractions of the whole chronicle — so every pick except the first slides
+  onto a different entry each time something new happens, and only the first,
+  which sits at fraction zero and never moves, ever reached the three tellings a
+  story needs to grow. Two changes: the other three seasons get a fire night at
+  0.4, and the teller comes back to the most-told story that has not grown yet
+  (0.45), which is the counterpart of the line above it that comes back to one
+  that has. **Stories grown over thirty-five years went 1 → 31 and 3 → 30; named
+  places 1 → 4 and 2 → 4, and the bounds now walk on both seeds** (first at day
+  264 and day 564).
+  **The song.** Sprint 16 built a song that could be lost and then handed it to
+  every pair of ears on the island. Carriers are the ones with a tune in them
+  now (`musical`), plus whoever made it; an airing teaches the children with the
+  ear, not every musical adult present, which was the thing topping the carriers
+  back up faster than anything could thin them; and `sg.d` is the night it was
+  last sung rather than the night it was made, which `forgetSongs` counts from —
+  three years unsung and it starts slipping, at .28 a year from the musical and
+  .55 from anyone else. **Songs went from 47 knowers out of 48 people and none
+  ever lost, to 6 and 7 songs carried by 2 to 7 people each, of which 4 and 2
+  have been lost** (first at day 521 and day 661).
+  **The telling of the dead.** The `.05`/day roll was fine; the selection was
+  not. It picked an elder blind and *then* asked whether they had known any of
+  the dead, so most days it landed on somebody with nothing to tell, and it only
+  wrote the telling into the child three times in ten — which left a system with
+  almost no durable trace at all. Thirty-five years produced 2 and 0. Elders who
+  knew somebody are the ones picked now, and the child keeps it, because what
+  the child keeps is the only record there is. **3 and 1.**
+  **The anniversary of a death** was being dropped two ways, both found by the
+  same 22-day check going red under a shifted stream. It skipped anybody already
+  mourning, so a widow who happened to be up the hill for her own reasons on the
+  day itself got no line for it; and it asked "is anybody by that name alive",
+  which on this island is not the same question as "is the one they lost still
+  alive" — names recycle, and a widow whose new daughter had been named for her
+  dead husband read as not a widow. A living namesake was born after the stone
+  went up, and that is now the test.
+  **Left alone, with the number:** the 60% bounds chance and the 25% repeat-walk
+  rate both measure fine — "where the boat first came in" was walked seven times
+  by day 401, which is the cairn's top tier, so the tiers are reached too.
+
+Two of the harness's own checks were re-pointed rather than relaxed, because
+phase 2 moved what they were aimed at. The listening pass in `twelve` measured
+its one-shots in whatever weather the island happened to be in, and rain goes
+straight to the master bus by design: the room floor read 0.1616 instead of the
+0.0557 every threshold in the pass was written against, and a perfectly audible
+song failed for being only 1.17 floors loud. It pins the sky clear first now,
+and reads 0.0567 floor against a 0.1060 song, which is the number phase 1
+recorded. And `sixteen`'s "the fire teaches the song back" pulled an adult out
+of the carriers; the fire teaches the children now, so it pulls a child.
 
 *Leans on:* `js/sim.js`'s `step`, `js/main.js`'s loop and `setSpeed`,
 `js/save.js`'s `pack`, `test/harness.mjs`'s `depth` and `soak`. *Save:* none —
-but the growth bounds may change what `pack()` writes, in which case it is an
-additive version bump on Phase 3's ladder. *Model:* **Claude Fable 5.1** — a
-second time path through the same simulation that must produce a bit-identical
-world is exactly the kind of wrong answer that stays silent.
+the two caps change how much `pack()` writes, never what shape it writes, so no
+version moved and Phase 3's ladder inherited nothing. *Model:* **Claude Fable
+5.1.**
 
-## Phase 3 — The migration ladder
+Broken on purpose, four times, each watched to fail first. `draw()` given one
+`R()` call: the fast-path hashes split at once — `bf652769` against `452ea1d0`
+— which is the point of asserting by hash rather than by argument. `STUMP_MAX`
+raised to 1e9: 14,797 bytes of stumps against a 3,600 ceiling. `trimHist` made a
+no-op: a life story 67 lines long. And the airing put back to teaching every
+musical adult present: seed 7 went thirty-five years without losing a song, the
+exact state the phase started from. The `STUMP_MAX` break also turned up a trap
+in the fast-path check itself — a `--fastdays` that does not divide into whole
+FAST frames left the fast run one part-frame ahead and reported a divergence
+that was arithmetic. It rounds up to a whole number of frames now, and passes at
+1, 7 and 12 days.
+
+## Phase 3 — The migration ladder — **SHIPPED**
 
 **Eight save versions are handled by `||` defaults scattered through one
 sixty-line function, and there is no way to test a single hop.**
 
-`unpack()` accepts v5 through v12. The whole migration story is `o.ln||[]`,
-`o.sg||[]`, `a[26]?1:0`, and exactly one explicit version test (`o.v>=8`, for
-works in progress). It has held for eight versions because each sprint forged
-a save by hand and ran it through the harness — a genuinely valuable practice
-that produced the v6–v11 forgeries now scattered across six modes. But every
-new field costs a fresh read of the whole function, the version gate has been
-missed once already, and nobody can test "does a v7 island become a correct
-v12 island" except by loading one and looking.
-
-- [ ] **`migrate(o)` — one function, one hop at a time.** A table of
-  `{from, to, fn}` steps applied in order until `o.v` is current; `unpack()`
-  then reads only the current shape and stops carrying defaults for shapes it
-  will never see again.
-- [ ] **One version gate, shared.** Fold `js/save.js:118` and `js/main.js:139`
-  into a `SAVE_MIN`/`SAVE_V` pair both paths read. The two-gate bug has cost
-  one sprint already.
-- [ ] **Move the forged saves into fixtures.** The v6–v11 forgeries live
-  inline in `eleven` through `fifteen`; as data, all of them can run through
-  every future ladder in one mode instead of five.
-- [ ] **A `migrate` harness mode.** Every fixture up to current, asserting the
-  documented empty-reads: a v10 island's graves at `vn:0`, a v9 island's
-  `loreN` empty with places still named, a v11 island with no songs and
-  27-field people.
-- [ ] **Write down what a new field costs.** Four lines in the handoff
-  convention: append to `packP`, add the hop, add a fixture, bump `SAVE_V`.
+- [x] **`migrate(o)` — one function, one hop at a time.** A `LADDER` of seven
+  entries, `{from, to, up, down}`, applied in order until `o.v` is current.
+  `unpack()` calls it first and then reads only the current shape: there is no
+  `o.v` test anywhere below that line, and no `o.ln||[]`, `o.lp||[]`, `o.sg||[]`,
+  `o.sm||[]`, `o.hl||[]` or `o.wk||[]` either. The `||` that survive are the ones
+  on values that are legitimately falsy — `o.sp||1`, `o.dr||0` — not on shapes.
+- [x] **One version gate, shared.** `SAVE_V=12` and `SAVE_MIN=5`, and one
+  `canLoad(o)` that both readers call: `loadHash` here and the autosave boot path
+  in `js/main.js`. `pack()` writes `v:SAVE_V`. Grep `o.v>=5`: no hits.
+- [x] **Move the forged saves into fixtures.** Better than fixtures: `down` is
+  `up` walked backwards, so `forge(o,v)` builds a v5-through-v11 save out of a
+  live one using the same table the migration reads, and a hop cannot be added
+  without its inverse. This is what the six inline forgeries could not do — they
+  were each written by hand against the ladder that existed on the day of their
+  sprint, and the v7 one had already drifted, leaving the sprint-10 keys in a
+  save that predates them.
+- [x] **A `migrate` harness mode.** All seven shapes out of one island, each
+  loaded and re-packed, each asserted against its documented empty reads: v11 no
+  songs, no snowmen, `skipN` 0, 27-field people; v10 graves at `vn:0`; v9 `loreN`
+  empty with places still named; v8 no named places at all; v7 no heirlooms and
+  its one finished work back at `prog:99`; v6 `faith` 0. Plus the gate itself —
+  `SAVE_MIN-1`, `SAVE_V+1` and a save with no people all refused.
+- [x] **Write down what a new field costs.** Four lines, in the comment above
+  `migrate`: append the slot or key to `pack()`; add a hop with its `up` and its
+  `down`; add the version to `FIXTURES` in the harness; bump `SAVE_V`.
 
 *Leans on:* `js/save.js` end to end, `js/main.js`'s boot path,
-`test/harness.mjs`'s `save` mode and the six sprint modes that carry
-forgeries. *Save:* this phase **is** the save format — no new fields, no
-version bump, byte-identical output for a current island (assert it). *Model:*
-**Claude Fable 5.1** — a schema everything downstream inherits, refactored
-under a test suite that can only see whole islands.
+`test/harness.mjs`. *Save:* this phase **is** the save format — no new fields, no
+version bump, and byte-identical output for a current island, asserted in
+`migrate` as `pack → unpack → pack`. *Model:* **Claude Fable 5.1.**
+
+Broken on purpose, three times — and **two of the three passed while broken**,
+which is exactly why #34 says to watch the check fail before trusting it.
+
+Reintroducing the sprint-12 bug by hand (`main.js` given back its own inline
+gate, upper bound left stale at 11) was caught at once: the `save` mode's reload
+came back at day 1 instead of day 4. The other two were not. Making the 10→11
+`up` a no-op left the v10 fixture with 6-field graves; `unpack` read `a[6]` as
+`undefined`, and every count downstream treats `undefined` as zero, so
+"grave-visits 0" passed a ladder that was doing nothing at all. And lowering
+`SAVE_MIN` to 4 was invisible because the gate check asked about `SAVE_MIN-1` —
+a bound computed from the constant under test, so moving the constant moved the
+assertion with it.
+
+Both checks were rewritten before either caught anything. The mode now asserts
+the migrated **shape** — 29-slot people, 7-wide graves, 8-wide works, 7-wide
+chronicle rows, and none of the twelve keys the ladder fills left missing — and
+derives its fixture list from `SAVE_MIN` and `SAVE_V` rather than listing it
+beside them, with literal 4 and 13 at the gate. Re-broken: the no-op `up` reads
+`shape 29/6/8/7` and fails; `SAVE_MIN=4` fails twice over, once because `forge`
+cannot land on a v4 there is no hop for, and once because `canLoad({v:4})` comes
+back true.
 
 ## Phase 4 — A saga somebody who wasn't watching can read
 

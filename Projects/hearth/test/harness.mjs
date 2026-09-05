@@ -9,6 +9,8 @@
 //   node harness.mjs determinism  [--days 30] [--seed 7]
 //   node harness.mjs save         [--seed 7]
 //   node harness.mjs nan          [--days 400] [--seeds 7] [--random 4]   (soak with starvation stress windows)
+//   node harness.mjs decade       [--years 25] [--seeds 7,20260819] [--audit 100] [--fastdays 12]
+//   node harness.mjs migrate
 //
 // Checks, per sprint-8 lessons: audit EVERY species and people every N steps across MULTIPLE
 // seeds including random ones; a single healthy island at a polite interval proves nothing.
@@ -374,6 +376,10 @@ if (mode === 'twelve') {
       }, 25);
     });
     const settle = async (ms = 250) => { h.audioTick(.05); await peakFor(ms); }; // let tails die between shots
+    // The room the one-shots are measured in has to be the same room every time. Phase 2 shifted the R() stream, the island happened
+    // to be under rain during this pass, and rain goes straight to the master bus by design — the floor read 0.1616 instead of the
+    // 0.0557 every threshold below was written against, and a perfectly audible song failed for being only 1.17 floors loud.
+    h.setWx('clear'); h.setSnow(0); h.audioTick(.05); await new Promise(r => setTimeout(r, 400));
     const x = h.cur.x, y = h.cur.y, out = {};
     // phase 1: a tune needs a song, and the song has to be a real one — its degrees come off its chronicle index.
     const sung = { ci: 0, comp: h.people[0].name, kn: h.people.map(p => p.name), lost: 0, d: h.dayCount };
@@ -806,7 +812,21 @@ if (mode === 'sixteen') {
   if (song.n < 1 || !song.ev || song.kn < 1 || song.ci !== 0) { failed = true; console.log('FAIL: a grown story told six times produced no song'); }
   let taught = false, nights = 0;
   if (song.n) {
-    await H(() => { const sg = window.__hearth.songs[0]; window.__hearth.__pulled = sg.kn.pop(); }); // one knower forgets, so the fire can teach them back
+    // One carrier forgets, so the fire can teach them back. Phase 2 changed who the fire teaches: a song goes to the children with
+    // the ear, and an adult who has let one go has let it go — which is the only thing that ever let a song be lost at all, because
+    // topping the carriers back up with every musical adult present outran any rate of forgetting. So the one pulled out is a child,
+    // made musical if the island has not got one to hand.
+    const pulled = await H(() => {
+      const h = window.__hearth, age = p => p.age0 + (h.dayCount - p.born) / 20;
+      let k = h.people.find(p => p.child && age(p) >= 5) ||
+        h.people.filter(p => !p.partner).sort((a, b) => age(a) - age(b))[0];   // six days in there may be no child of five; make one
+      if (!k) return null;
+      k.child = true; k.age0 = 8; k.born = h.dayCount;
+      while (!h.musical(k)) k.seed = (k.seed + 1) >>> 0;
+      const sg = h.songs[0]; sg.kn = sg.kn.filter(n => n !== k.name);
+      window.__hearth.__pulled = k.name; return k.name;
+    });
+    if (!pulled) { failed = true; console.log('FAIL: no child of five to teach the song to'); }
     for (let d = 0; d < 6 && !taught; d++) {
       await runDay(page, 1e9); nights++;
       await H(() => window.__hearth.tellStory());
@@ -969,6 +989,201 @@ if (mode === 'sixteen') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
   await ctx.close();
   console.log(failed ? '\nFAIL' : '\nPASS: sprint 16 systems behave — the island talks to itself');
+}
+
+if (mode === 'decade') {
+  // Phase 2. Four of the island's systems pay out on a scale nothing had ever been run at: heirlooms passing, the walking of the
+  // bounds, elders telling children of the dead, a song being lost. Every sprint from 12 to 16 wrote a version of "this pays out on
+  // decade-old islands, nothing to fix" instead of finding out. Two fixed seeds, twenty-five game-years each, and every one of the
+  // four has to happen on its own — no forcing, no setting a flag first. Thirty-five game-years and not the twenty the plan asked for
+  // because the first natural handing-down was measured at day 459, 469, 503 and 637 across four runs of these two seeds: a thing is
+  // made by whoever first masters a craft, and that person then has to live out the rest of a life before it can pass to anyone. The
+  // island's first heirloom is a year-23-to-32 event, and no amount of wanting it at year 20 makes it one.
+  const years = parseInt(arg('years', '35'));
+  const days = years * 20;
+  const seeds = arg('seeds', '7,20260819').split(',').filter(Boolean).map(Number);
+  const auditEvery = parseInt(arg('audit', '100'));
+  console.log(`decade: ${years} game-years (${days} days) x seeds [${seeds.join(', ')}], audit every ${auditEvery} steps\n`);
+  for (const seed of seeds) {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, seed, warns);
+    let viol = [], audits = 0;
+    const t0 = Date.now();
+    for (let d = 0; d < days; d++) {
+      const r = await runDay(page, auditEvery);
+      viol = viol.concat(r.viol); audits += Math.floor(r.steps / auditEvery) + 1;
+    }
+    const s = await page.evaluate(() => {
+      const H = window.__hearth, firstOf = k => { const e = H.chron.find(e => e.kind === k); return e ? e.d : 0 };
+      return {
+        day: H.dayCount, pop: H.people.length, graves: H.graves.length, chron: H.chron.length,
+        bounds: H.chron.filter(e => e.kind === 'bounds').length, boundsD: firstOf('bounds'),
+        heir: H.chron.filter(e => e.kind === 'heir').length, heirD: firstOf('heir'),
+        lost: H.songs.filter(s => s.lost).length, lostD: firstOf('songlost'), songs: H.songs.length,
+        told: H.people.filter(p => p.hist.some(x => x.s.includes('who died before'))).length,
+        grown: H.chron.filter(e => e.gr).length, places: H.lorePl.length,
+        carriers: H.songs.filter(s => !s.lost).map(s => s.kn.filter(n => H.people.some(p => p.name === n)).length).join('/'),
+        stumps: JSON.stringify(H.pack().su).length, hist: Math.max(...H.people.map(p => p.hist.length)),
+        packLen: JSON.stringify(H.pack()).length,
+      };
+    });
+    const mins = ((Date.now() - t0) / 60000).toFixed(1);
+    console.log(`seed ${seed} @ day ${s.day} (year ${Math.floor((s.day - 1) / 20) + 1}), ${mins} min: pop ${s.pop}, ${s.graves} stones, ${s.chron} things remembered`);
+    console.log(`  stories grown ${s.grown}, named places ${s.places}, songs ${s.songs} (carried by ${s.carriers || 'nobody'})`);
+    console.log(`  the four: bounds walked ${s.bounds} (first day ${s.boundsD || '—'}), heirlooms passed ${s.heir} (first day ${s.heirD || '—'}),` +
+      ` songs lost ${s.lost} (first day ${s.lostD || '—'}), children told of the dead ${s.told}`);
+    console.log(`  bounds: stumps ${s.stumps} bytes, longest life-story ${s.hist} lines, save ${s.packLen} bytes`);
+    const missing = [];
+    if (!s.bounds) missing.push('the bounds were never walked');
+    if (!s.heir) missing.push('nothing was ever handed down');
+    if (!s.lost) missing.push('no song was ever lost');
+    if (!s.told) missing.push('no child was ever told about somebody under a stone');
+    // and the two lists that used to grow for as long as the island did stay where phase 2 put them. A 500-day island carried 1,102
+    // stumps in 17,677 bytes before the cap; 240 of them pack into about 2,900.
+    if (s.stumps > 3600) missing.push(`the stumps are unbounded again (${s.stumps} bytes)`);
+    if (s.hist > 60) missing.push(`a life story ran past the cap (${s.hist} lines)`);
+    if (missing.length) { failed = true; console.log(`  FAIL: ${missing.join('; ')}`); }
+    if (viol.length) { failed = true; console.log(`  FAIL: ${viol.length} audit violations:`); [...new Set(viol)].slice(0, 10).forEach(v => console.log('    ' + v)); }
+    if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
+    console.log(`  ~${audits} full-cast audits, ${viol.length} violations`);
+    await ctx.close();
+  }
+
+  // ---- and the generational speed is the same island ----
+  // Two fresh copies of one seed driven through real frames — the same step() calls at the same dt in both, one frame at a time and
+  // FAST frames at a time — and the pack hashes have to match. If they do not, something the fast path skips is not presentation.
+  const fdays = parseInt(arg('fastdays', '12'));
+  const hashes = [], counts = [];
+  for (const mult of [1, 'FAST']) {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, 7, warns);
+    const n = await page.evaluate(({ DT, fdays, mult }) => {
+      const H = window.__hearth;
+      H.speed = mult === 'FAST' ? H.FAST : 1;
+      // dayLen 140, and rounded up to a whole number of FAST frames so both runs make exactly the same number of step() calls —
+      // a step count that is not a multiple of FAST leaves the fast run one part-frame ahead and reports a divergence that is arithmetic.
+      const steps = Math.ceil(fdays * 140 / DT / H.FAST) * H.FAST;
+      let frames = 0;
+      for (let i = 0; i < steps; i += H.speed) { H.frame(DT, true); frames++ }
+      const speed = H.speed; H.speed = 1;   // pack() carries `sp`, the speed the watcher left it at: the one thing legitimately different
+      return { frames, speed, day: H.dayCount };
+    }, { DT, fdays, mult });
+    hashes.push(await packHash(page));
+    counts.push(n);
+    console.log(`  ${n.speed}x: ${n.frames} frames to day ${n.day}, pack hash ${hashes[hashes.length - 1]}`);
+    if (warns.length) { failed = true; [...new Set(warns)].slice(0, 6).forEach(v => console.log('  WARN ' + v)); }
+    await ctx.close();
+  }
+  const same = hashes[0] === hashes[1];
+  console.log(`\nthe generational speed, ${counts[0].frames} frames against ${counts[1].frames}: ${same ? 'the same island' : 'A DIFFERENT ISLAND'}`);
+  if (!same || counts[0].day !== counts[1].day) { failed = true; console.log('FAIL: the fast path is not the same simulation'); }
+
+  console.log(failed ? '\nFAIL' : '\nPASS: a decade happens on its own, and happens the same at both speeds');
+}
+
+if (mode === 'migrate') {
+  // Phase 3: every save shape the ladder still accepts, forged out of one live island and walked back up, in one place.
+  // The six forgeries this consolidates lived inline in `eleven` through `sixteen`, one per mode, each written by hand against the
+  // ladder that existed on the day of its sprint — which is how the v7 one came to leave the sprint-10 keys in and nobody noticed.
+  // These are forged with save.js's own `forge()`, the LADDER walked backwards, so a hop cannot be added without its inverse.
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  const H = fn => page.evaluate(fn);
+  for (let d = 0; d < 6; d++) await runDay(page, 1e9);
+
+  // Force the state every older shape is documented to read as empty. Shape is what is under test here, not plausibility.
+  await H(() => {
+    const h = window.__hearth;
+    h.chron.push({ d: h.dayCount, y: 1, kind: 'landing', label: 'a forced entry', st: 'A forced entry.', tl: 6, gr: 1 });
+    h.songs.push({ ci: h.chron.length - 1, comp: h.people[0].name, kn: h.people.map(p => p.name), lost: 0, d: h.dayCount });
+    h.snowmen.push({ x: 40, y: 30, s: .8, d: h.dayCount });
+    h.setSkipN(3);
+    h.people[0].heard = { l: 'a carried thing', d: h.dayCount, f: 0 }; h.people[0].fSk = 2;
+    h.things.push({ n: 'a test comb', full: 'a test comb', holder: 0, src: 'found', hist: [{ d: 1, s: 'found' }] });
+    h.works.push({ wk: 'racks', x: 38, y: 30, y0: 1, done: true, prog: 99, paid: 1, said: 1 });
+    h.works.push({ wk: 'bench', x: 40, y: 30, y0: 1, done: false, prog: 7.5, paid: 1, said: 0 });
+    h.graves.push({ x: 50, y: 20, name: 'A Forced Name', d: 2, y2: 1, age: 70, vn: 4 });
+    for (const k of ['landing', 'rainscame']) if (!h.lorePl.includes(k)) { h.lorePl.push(k); h.setLoreN(k, 3); }
+    h.setFaith(.5);
+  });
+
+  // A current island packs, unpacks and re-packs byte-identical: the ladder must not touch a save already at SAVE_V.
+  const same = await H(() => {
+    const h = window.__hearth, a = JSON.stringify(h.pack());
+    h.unpack(JSON.parse(a));
+    return { v: h.SAVE_V, min: h.SAVE_MIN, ok: a === JSON.stringify(h.pack()), len: a.length };
+  });
+  console.log(`ladder v${same.min}..v${same.v}; a v${same.v} island round-trips byte-identical: ${same.ok} (${same.len} bytes)`);
+  if (!same.ok) { failed = true; console.log('FAIL: pack -> unpack -> pack is not byte-identical at the current version'); }
+
+  const cur = await H(() => JSON.stringify(window.__hearth.pack()));
+
+  // Every shape the gate accepts, derived from the gate rather than listed beside it — a SAVE_MIN the ladder has no hop for is the
+  // bug this catches, and a hard-coded list of fixtures cannot see it. Two things are asserted per shape: the migrated object is the
+  // *current* shape, slot for slot, and the island it unpacks into reads empty where the version says it should. The first of those
+  // is not decoration: an `up` made a no-op leaves 6-field graves, `unpack` reads `a[6]` as undefined, and every count downstream
+  // treats undefined as zero — so the empty-reads alone pass a ladder that is doing nothing at all.
+  const FIXTURES = [];
+  for (let v = same.v - 1; v >= same.min; v--) FIXTURES.push(v);
+  for (const v of FIXTURES) {
+    const r = await page.evaluate(({ cur, v }) => {
+      const h = window.__hearth, o = h.forge(JSON.parse(cur), v);
+      if (o.v !== v) return { err: `forge landed on v${o.v}, not v${v} — the ladder has no hop that low` };
+      if (!h.canLoad(o)) return { err: 'canLoad refused a shape the ladder claims to accept' };
+      h.migrate(o);
+      const wide = (rows, dflt) => rows && rows.length ? Math.min(...rows.map(a => a.length)) : dflt;
+      const shape = { v: o.v, pe: wide(o.pe, 29), vo: o.vo && o.vo[5] ? o.vo[5].length : 29, gv: wide(o.gv, 7),
+        wk: wide(o.wk, 8), ch: wide(o.ch, 7),
+        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax'].filter(k => o[k] === undefined) };
+      try { h.unpack(o); } catch (e) { return { err: 'threw: ' + e.message } }
+      try { h.pack(); } catch (e) { return { err: 'packs no more: ' + e.message } }
+      return { shape,
+        pop: h.people.length, songs: h.songs.length, snowmen: h.snowmen.length, skipN: h.skipN,
+        heard: h.people.some(p => p.heard), fSk: h.people.some(p => p.fSk !== undefined),
+        vn: h.graves.reduce((a, g) => a + (g.vn || 0), 0), graves: h.graves.length,
+        loreN: Object.keys(h.loreN).length, lorePl: h.lorePl.length, spots: h.spots.filter(s => s.lore).length,
+        things: h.things.length, wip: h.works.filter(w => !w.done).length, works: h.works.length, faith: h.faith,
+        prog: h.works.map(w => w.prog).join('/'),
+      };
+    }, { cur, v });
+    if (r.err) { failed = true; console.log(`  v${v}: FAIL — ${r.err}`); continue; }
+    const bad = [], sh = r.shape;
+    if (sh.v !== same.v) bad.push(`the ladder stopped at v${sh.v}`);
+    if (sh.pe !== 29 || sh.vo !== 29) bad.push(`people came up ${sh.pe}/${sh.vo} slots wide, not 29`);
+    if (sh.gv !== 7 || sh.wk !== 8 || sh.ch !== 7) bad.push(`rows came up gv ${sh.gv}/7, wk ${sh.wk}/8, ch ${sh.ch}/7`);
+    if (sh.gone.length) bad.push(`the ladder left ${sh.gone.join(', ')} missing`);
+    if (!r.pop) bad.push('nobody loaded');
+    if (v <= 11 && (r.songs || r.snowmen || r.skipN || r.heard || r.fSk)) bad.push('v12 state came through a v11 save');
+    if (v <= 10 && r.vn) bad.push(`graves came back with ${r.vn} visits`);
+    if (v <= 10 && !r.graves) bad.push('the hill went with them');
+    if (v <= 9 && r.loreN) bad.push('walk counts came through a v9 save');
+    if (v <= 9 && v > 8 && !r.lorePl) bad.push('a v9 save lost its named places');
+    if (v <= 8 && (r.lorePl || r.spots)) bad.push('named places came through a v8 save');
+    if (v <= 7 && (r.things || r.wip)) bad.push('heirlooms or a work in progress came through a v7 save');
+    if (v <= 7 && r.works !== 1) bad.push(`a v7 save should keep its one finished work, kept ${r.works}`);
+    if (v <= 7 && r.prog !== '99') bad.push(`a v7 work should come back at prog 99, came back at ${r.prog}`);
+    if (v <= 9 && v > 8 && r.loreN) bad.push('walk counts came through a v9 save');
+    if (v <= 6 && r.faith) bad.push('faith came through a v6 save');
+    console.log(`  v${v}: pop ${r.pop}, songs ${r.songs}, snowmen ${r.snowmen}, skipN ${r.skipN}, grave-visits ${r.vn}, ` +
+      `loreN ${r.loreN}, places ${r.lorePl}, things ${r.things}, works ${r.works} (${r.wip} wip, prog ${r.prog || '-'}), faith ${r.faith}` +
+      `, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}` +
+      (bad.length ? `  !! ${bad.join('; ')}` : '  ok'));
+    if (bad.length) failed = true;
+  }
+
+  // and the range itself, by the one gate both readers now share. Not SAVE_MIN-1 and SAVE_V+1 — those are computed from the very
+  // constants under test, so moving one moves the assertion with it and the check says nothing. Literals, and the ladder above is
+  // what proves the range is one the ladder can actually walk.
+  const gate = await H(() => {
+    const h = window.__hearth, o = JSON.parse(JSON.stringify(h.pack()));
+    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 13 }), nope: h.canLoad({ ...o, pe: undefined }) };
+  });
+  console.log(`the gate: v4 ${gate.low}, v13 ${gate.high}, no people ${gate.nope} — all three must be false`);
+  if (gate.low || gate.high || gate.nope) { failed = true; console.log('FAIL: canLoad accepts something it should not'); }
+
+  if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
+  await ctx.close();
+  console.log(failed ? '\nFAIL' : '\nPASS: every shape v5 through v12 comes up the ladder and reads empty where it should');
 }
 
 if (mode === 'determinism') {
