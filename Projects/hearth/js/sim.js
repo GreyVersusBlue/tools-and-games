@@ -104,10 +104,17 @@ function step(dt){
     // storms send everyone but the brave indoors
     const shelt=storm&&!(has(p,'brave')&&!isKid(p));
     if(p.task==='boat')continue;
-    if(shelt&&p.task!=='shelter'&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='voyage'){p.task='shelter';let h=homeOf(p);if(!h&&houses.length)h=houses.reduce((a,b)=>Math.hypot(b.x-p.x,b.y-p.y)<Math.hypot(a.x-p.x,a.y-p.y)?b:a);
+    // phase 6: the second day of it and you are in bed, whether you agree or not. The first day you are up and out and working badly,
+    // which is exactly how it gets round the island — an illness nobody walks about with cannot walk anywhere.
+    if(p.sick&&dayCount>p.sickD&&p.task!=='abed'&&p.task!=='voyage'){
+      if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;p.inside=false;p.stops=null;
+      const bd=sickBed(p);p.task='abed';p.abedH=bd.hall;p.tx=bd.x;p.ty=bd.y;
+      if(bd.hall&&!saidToday.has('sickhall'))say(`The ones with it are carried up to the hall and laid out along one wall, where there is a fire going anyway and one person can watch all of them at once.`,false,'sickhall');
+      continue}
+    if(shelt&&p.task!=='shelter'&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='voyage'&&p.task!=='abed'){p.task='shelter';let h=homeOf(p);if(!h&&houses.length)h=houses.reduce((a,b)=>Math.hypot(b.x-p.x,b.y-p.y)<Math.hypot(a.x-p.x,a.y-p.y)?b:a);
       p.inside=false;p.shelterH=h;p.tx=h?h.x+1+rnd(-.5,.5):center.x+rnd(-1.5,1.5);p.ty=h?h.y+2.2:center.y+rnd(-1,1);if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;continue}
     if(!storm&&p.task==='shelter'){p.task='idle';p.inside=false;p.t=rnd(.5,2)}
-    if(night&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='shelter'&&p.task!=='wave'&&p.task!=='voyage'&&p.task!=='gather'){p.task='gohome';const h=homeOf(p);const hx=h?h.x+1:center.x,hy=h?h.y+2.2:center.y;p.tx=hx+rnd(-.6,.6);p.ty=hy+rnd(-.4,.4);if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;continue}
+    if(night&&p.task!=='sleep'&&p.task!=='gohome'&&p.task!=='shelter'&&p.task!=='wave'&&p.task!=='voyage'&&p.task!=='gather'&&p.task!=='abed'){p.task='gohome';const h=homeOf(p);const hx=h?h.x+1:center.x,hy=h?h.y+2.2:center.y;p.tx=hx+rnd(-.6,.6);p.ty=hy+rnd(-.4,.4);if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;p.tgt=null;continue}
     if(!night&&p.task==='sleep'){p.task='idle';p.t=rnd(.5,2)}
     // homesick islanders go to the shore at dusk
     if(dusk&&has(p,'homesick')&&!p.dusked&&p.task==='idle'){p.dusked=dayCount;const s=nearestShore(p.x,p.y);if(s)goTo(p,s.x,s.y,'look',rnd(8,14))}
@@ -116,6 +123,12 @@ function step(dt){
       case 'gohome': if(walk(p,dt))p.task='sleep';break;
       case 'shelter': if(walk(p,dt)&&p.shelterH)p.inside=true;break;
       case 'sleep': break;
+      case 'abed': walk(p,dt);break;   // there is nowhere to be but here, and getting up again is illDay's to decide
+      case 'nurse':{const q=byName(p.nursW);
+        if(!q||q.dead||!q.sick){p.task='idle';p.t=1;break}
+        if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){p.task='idle';p.t=rnd(1,2)}
+          else if(!p.said){p.said=true;if(q.nursed!==dayCount){q.nursed=dayCount;if(ill)ill.nu++;nursedBy(p,q)}}}
+        else p.said=false;break}
       case 'mourn': case 'look': case 'wander': case 'visit': case 'linger': case 'wave': case 'market': case 'gather': case 'pilgrim': case 'chat': case 'kidskip':
         if(walk(p,dt)){p.dwell-=dt;if(p.dwell<=0){p.task='idle';p.t=rnd(1,2)}
           else if(!p.said){p.said=true;
@@ -185,6 +198,15 @@ function step(dt){
           p.tendOut=1;const sh=nearestShore(p.x,p.y)||center;goTo(p,sh.x,sh.y,'tend',rnd(2,4));break}
         p.task='play';p.t=0;break}
         p.t-=dt;if(p.t>0){if(R()<dt*.6){p.tx=p.x+rnd(-2,2);p.ty=p.y+rnd(-2,2)}walk(p,dt);break}
+        // somebody is in bed and nobody has been to them today (phase 6). Their partner first, then their own people, then a friend,
+        // then whoever is gentle about it — and nearness breaks the tie, because this is an errand, not a vocation.
+        if(ill&&!p.sick&&p.nursD!==dayCount&&R()<(has(p,'gentle')?.5:.22)){
+          const need=people.filter(q=>q!==p&&q.sick&&!q.dead&&q.task==='abed'&&q.nursed!==dayCount);
+          if(need.length){const sc=q=>(q.name===p.partner?6:0)+((p.parents.includes(q.name)||q.parents.includes(p.name))?4:0)+
+              (p.rels.some(r=>r.who===q.name&&r.k==='friend')?2:0)+(p.rels.some(r=>r.who===q.name&&r.k==='rival')?(has(p,'gentle')?1:-1):0)+
+              (has(p,'gentle')?1.5:0)-Math.hypot(q.x-p.x,q.y-p.y)*.06;
+            const q=need.reduce((a,b)=>sc(b)>sc(a)?b:a);
+            p.nursD=dayCount;p.nursW=q.name;goTo(p,q.x,q.y,'nurse',rnd(10,18));break}}
         // trait detours
         if(has(p,'restless')&&R()<.22){const far=spots[0];goTo(p,far.x,far.y,'wander',rnd(6,12));break}
         if(has(p,'gentle')&&graves.length&&R()<.1){const gr=pick(graves);p.vg=gr;goTo(p,gr.x,gr.y+.7,'visit',rnd(4,8));break}
@@ -263,6 +285,20 @@ function step(dt){
           p.task='idle';p.t=2}}break;
     }
   }
+  /* phase 6: the wave ends the moment there is nobody left in it — whether they got up, sailed, or died of something else entirely.
+     A wave with nobody in bed is not a wave nearly over, it is a record that has outlived its subject, and `strain` asserts against
+     one every day of its run. Otherwise the sickness walks the paths: one draw per susceptible person per step, and only while there
+     is somebody to catch it from, so an island with nobody in bed is on exactly the stream it was on before this existed. Nearness is
+     the whole mechanism — the fire, the market and the hall matter because they are where everyone stands close together, not because
+     they are named here. After WAVED days the wave stops finding anybody new, which is what bounds it. */
+  if(ill&&!people.some(p=>p.sick&&!p.dead))endIll();
+  else if(ill&&dayCount<ill.d0+WAVED){
+    const src=people.filter(p=>p.sick&&!p.dead&&!p.inBoat);
+    if(src.length)for(const q of people){if(q.inBoat||!canTake(q))continue;
+      let near=0;for(const p of src){if(p===q)continue;if(Math.abs(p.x-q.x)<CATCH&&Math.abs(p.y-q.y)<CATCH)near++}
+      if(near&&R()<dt*CATCHR*near*(isKid(q)?1.4:isElder(q)?1.2:1)*(hunger>.4?1.3:1)){
+        const from=src.find(p=>p!==q&&Math.abs(p.x-q.x)<CATCH&&Math.abs(p.y-q.y)<CATCH);
+        if(takeSick(q,from)&&R()<.5)say(`${B(q)} has it now too, and knew before anyone said so.`,false,'took')}}}
   /* phase 6: rations are the whole of the decision — the store lasts longer and the work goes slower (workRate), and the elder who
      stood down from a measure draws half as often. One R() draw per person per step either way, so a village not on rations is on
      exactly the stream it was on before. */

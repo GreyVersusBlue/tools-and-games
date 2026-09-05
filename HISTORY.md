@@ -663,6 +663,70 @@ Two of them have moved since they were written:
    where there is no such carrier to take.
    *Source: Hearth Phase 6, "Scarcity that bites".*
 
+72. **An illness is a wave with a clock on every person in it, not a flag an
+   arc owns.** `p.sick` had one setter and one clearer, both inside the fever
+   arc, and `newDay` swept up strays by healing everybody the moment the arc
+   was over — so illness could not begin anywhere, could not go anywhere, and
+   ended on a calendar the body had no say in. It is now its own state: one
+   door in (`takeSick`), one door out (`wellAgain`), a `sickD` on the person
+   saying when they took it, a `wellD` saying when they shook it off, and an
+   `ill` record for the wave they belong to, on the same shape as `want`. The
+   arc still opens a wave and still keeps finding somebody while it runs; it
+   no longer heals anyone, and the wave routinely outlives it by a day or two,
+   which is what a fever actually does. The two are told apart by asking the
+   right question of each: the arc by its `d0`, the wave by whether anybody is
+   in bed.
+   *Source: Hearth Phase 6, "Scarcity that bites" — second increment.*
+
+73. **The off-ramp is a bound, not a hope, and the bound is a number a check
+   can hold every day of a run to.** #70 put the famine's ending on the
+   calendar. A contagion cannot be ended by one date the same way, because it
+   is a chain — so it gets two caps instead, and they multiply out to one
+   number. Nobody is in bed longer than `SICKD` (6) days, and a wave stops
+   finding anybody new after `WAVED` (12), so no wave can be older than 18
+   days from the day it started, ever, on any island. `strain` asserts exactly
+   that on every single day of its forty: nobody in bed without a day to count
+   from, nobody in bed past the cap, no wave past the bound, and the wave
+   record and the people in bed agreeing with each other in *both* directions.
+   `WELLD` (14) is the third leg — having had it leaves you proof against it
+   for longer than a wave can last, which is what stops one wave going round
+   the village twice and is why the bound is a bound at all. Proving a cap
+   needs more than one person reaching it: the roll at six days in is `.48`
+   and would have got most of them up anyway, so the check puts twelve people
+   at the cap at once and requires all twelve up, which the roll alone does
+   about one run in ninety thousand. The first version of it passed with the
+   cap deleted.
+   *Source: Hearth Phase 6, "Scarcity that bites" — second increment.*
+
+74. **A system that draws from the random stream only when its subject exists
+   costs nothing to every island that has not got one.** The spread rule is
+   one `R()` a susceptible person a step, and the whole block is behind
+   `if(ill)` — so an island with nobody in bed runs the exact stream it ran
+   before any of this was written. That is not an optimisation, it is what let
+   a change this size land without moving `soak`, `determinism`, `save`,
+   `decade`, `saga`, `wider` or any of the sprint modes off the islands they
+   were checked against; only runs that actually get somebody ill shift, which
+   is the fifth time #66 has been the difference between a red check and a
+   bug. Write new rolls inside the condition that makes them matter, not
+   beside it.
+   *Source: Hearth Phase 6, "Scarcity that bites" — second increment.*
+
+75. **Nearness is the whole mechanism, so the places that gather people matter
+   without being named in the rule.** The wishlist asked for the chapel or the
+   hall to matter. Naming a building in the spreading rule would have been a
+   coefficient; what is there instead is a distance (1.9 tiles) and a rate
+   (`.004` a step), and the fire, the market, the bell and the fire night
+   already put the whole island inside that distance without anything having
+   to say so. What the hall gets is the other half, and it is a kindness
+   rather than a penalty: with a hall and more than one of them in bed, the
+   sick are laid out along one wall where a single person can sit with all of
+   them, and the roll to get up is better for it. Nursing is the relationship
+   — sitting up with somebody makes a friend of a stranger and, uniquely in
+   this game, turns a rival back into a friend *on purpose*, which nothing
+   else does. The cost is symmetric and needs no rule of its own: sitting
+   beside somebody with it is being near somebody with it.
+   *Source: Hearth Phase 6, "Scarcity that bites" — second increment.*
+
 
 ---
 

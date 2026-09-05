@@ -101,7 +101,9 @@ function wakeDreams(){for(const p of people){const d=p.pend;if(!d)continue;p.pen
     else if(d.k==='calling'){const old=p.craft;if(old>=0){let nc=(R()*4)|0;if(nc>=old)nc++;p.craft=nc;p.cxp=Math.max(.1,+(p.cxp*.4).toFixed(2));
       say(`${B(p)} spends the morning at ${CRAFT_WORK[nc]}, and does not go back to ${CRAFT_WORK[old]}.`,true);
       p.hist.push({d:dayCount,s:'changed work overnight, and could not say why'})}}
-    else if(d.k==='heal'){if(p.sick){p.sick=0;say(`${B(p)} wakes with the fever broken and an appetite, and tells the dream to everyone, twice.`,true);p.hist.push({d:dayCount,s:'dreamed the fever away, or so it is told'})}}
+    else if(d.k==='heal'){if(p.sick){const dz=dayCount-p.sickD;wellAgain(p,dz);p.hist.push({d:dayCount,s:'dreamed the fever away, or so it is told'}); /* phase 6: through the one door, so the wave's count and the proof-against-it clock stay honest */
+      say(`${B(p)} wakes with the fever broken and an appetite, and tells the dream to everyone, twice.`,true);
+      if(!people.some(q=>q.sick&&!q.dead))endIll()}}
     else if(d.k==='far')p.dreamFar=1;
     else if(d.k==='fish')p.luck=1;
     else if(d.k==='grow'){const sp=freeSpot(3,14);if(sp){trees.push(mkTree(sp.x+.5,sp.y+.5,.6));say('There is a young tree at the edge of the clearing that nobody remembers being that tall.',false,'growtree')}}
@@ -190,22 +192,24 @@ function startArc(k,len){arc={k,d0:dayCount,end:dayCount+(len||6)};
   else if(k==='longwinter'){say('This winter has teeth. The cold gets into the walls in the first week and does not leave, and the store is counted more often than it changes.',true);
     addEvent('hardwinter',`the hard winter of year ${yearOf(dayCount)}`,`The winter of year ${yearOf(dayCount)} was the kind that gets talked about in other winters. The store was counted daily, and everyone came out of it lean.`)}
   else if(k==='fever'){const cand=people.filter(p=>!p.dead&&!isKid(p));const n=Math.min(cand.length,2+((people.length/8)|0));
-    for(let i=0;i<n;i++){const p=pick(cand);if(!p.sick){p.sick=1;p.hist.push({d:dayCount,s:'took the fever, and was made to lie down, eventually'})}}
+    for(let i=0;i<n;i++)takeSick(pick(cand),null); /* phase 6: the arc opens the wave, and after that the wave is its own thing and outlives it */
     say('A fever comes into the village with the turn of the weather. It starts as a cough in one house and is in three houses by evening. The pot of broth at the fire stops being anyone\'s in particular.',true);
     addEvent('fever',`the fever of year ${yearOf(dayCount)}`,`A fever went through ${V()} in year ${yearOf(dayCount)}. Broth was carried, doors were left open for listening, and the village held its breath a while.`)}
   else if(k==='shoal'){say('The first boat back can hardly lift its own catch. Something has driven the silver fish inshore in a body, and for a few days the sea is a field that harvests itself.',true);
     addEvent('shoal',`the ${sea()} the fish came inshore`,`In year ${yearOf(dayCount)} the fish came inshore in a great shoal, and for days every line came up heavy, and the racks were full.`)}}
 function arcDay(){if(!arc)return;
-  if(arc.k==='fever'){let any=false;
-    for(const p of people){if(!p.sick)continue;any=true;
-      if(R()<.35){p.sick=0;say(`${B(p)} is up again, thin and cross about the lost days, and goes back to work too early, and is watched.`,false,'feverup');p.hist.push({d:dayCount,s:'shook the fever off'})}
-      else if(isElder(p)&&R()<.07){p.hist.push({d:dayCount,s:'was taken by the fever'});die(p)}}
-    if(!any){arc=null;say('The fever burns itself out the way they do: one morning there is simply nobody left in bed, and the broth pot goes back to being somebody\'s.',true);return}}
+  // phase 6: getting over it belongs to illDay now, for everybody, whatever put them in bed. What the arc still does is keep finding
+  // somebody: a bad season for it is one that will not stop at the first house, and that is the whole difference between the arc and
+  // the wave it started. The arc ends when there is nobody in bed — the wave can outlive it, and usually does by a day or two.
+  if(arc.k==='fever'){
+    if(!people.some(p=>p.sick&&!p.dead)){arc=null;say('The fever burns itself out the way they do: one morning there is simply nobody left in bed, and the broth pot goes back to being somebody\'s.',true);return}
+    if(dayCount<arc.end&&people.filter(p=>p.sick).length<3&&R()<.5){const c=people.filter(p=>!p.dead&&canTake(p));
+      if(c.length)takeSick(c[(R()*c.length)|0],null)}}
   if(dayCount>=arc.end){const k=arc.k;arc=null;
     if(k==='drought'){setWx('thunder');say('The sky goes the colour of a bruise all in one afternoon, and breaks. People stand out in the rain on purpose. Nobody hurries indoors, not even the sensible ones.',true);
       addEvent('rainscame','the day the rain came back',`The drought of year ${yearOf(dayCount)} broke in one great storm, and people stood out in it on purpose, and the fields drank for two days straight.`)}
     else if(k==='longwinter')say('The worst of the winter lets go. It will still snow, but the cold has stopped meaning it, and everyone can feel the difference through the walls.',true);
-    else if(k==='fever'){for(const p of people)p.sick=0;say('The fever burns itself out the way they do: one morning there is simply nobody left in bed.',true)}
+    else if(k==='fever')say('The fever has stopped travelling: no new house has it this morning. The ones still in bed will get up in their own time, which is not the same thing as being over.',true);
     else if(k==='shoal')say('The shoal moves on as suddenly as it came. The racks are full, the store smells of the sea, and the gulls take a few days to accept it.',true)}}
 // ---------- the ways (sprint 11): what the village learns for good, in whatever order its masters come ----------
 const WAYS=[

@@ -1,4 +1,4 @@
-// Hearth — the chronicle panel, pack/unpack and the migration ladder — the whole island in the address bar (save v:13, back to v5).
+// Hearth — the chronicle panel, pack/unpack and the migration ladder — the whole island in the address bar (save v15, back to v5).
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- the chronicle ----------
 const chronEl=document.getElementById('chron'),rollEl=document.getElementById('chron-roll');
@@ -160,13 +160,13 @@ function lzDec(b64){const b=atob(b64.replace(/-/g,'+').replace(/_/g,'/'));
     const k=get();let e;if(k<256)e=String.fromCharCode(k);else if(d.has(k))e=d.get(k);else e=w+w[0];
     out+=e;if(n<65536)d.set(n++,w+e[0]);w=e}
   return decodeURIComponent(escape(out))}
-const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0,p.craft===undefined?-1:p.craft,+(p.cxp||0).toFixed(2),p.shadN?[p.shadN,p.shadC|0]:0,p.sick?1:0,p.heard?[p.heard.l,p.heard.d,p.heard.f||0]:0,p.fSk===undefined?-1:p.fSk,p.short?1:0]; /* v12 adds 27 (news carried) and 28 (inherited skin); v14 adds 29 (eating last, on purpose) */
+const packP=p=>[+p.x.toFixed(2),+p.y.toFixed(2),p.name,p.age0,p.born,p.tr,p.rels.map(r=>[r.who,r.k]),p.hist.map(h=>[h.d,h.s]),p.col,p.hair,houses.indexOf(p.home),p.partner||0,p.parents,p.child?1:0,[p.spot.l,+p.spot.x.toFixed(1),+p.spot.y.toFixed(1)],+p.off.toFixed(2),p.fishRain||0,p.boats||0,p.wantHouse?1:0,p.dreamFar?1:0,p.luck?1:0,p.pend?[p.pend.k,p.pend.who||0,p.pend.gr?p.pend.gr.name:0]:0,p.keeper?1:0,p.craft===undefined?-1:p.craft,+(p.cxp||0).toFixed(2),p.shadN?[p.shadN,p.shadC|0]:0,p.sick?1:0,p.heard?[p.heard.l,p.heard.d,p.heard.f||0]:0,p.fSk===undefined?-1:p.fSk,p.short?1:0,p.sick?p.sickD|0:0,p.wellD|0]; /* v12 adds 27 (news carried) and 28 (inherited skin); v14 adds 29 (eating last, on purpose); v15 adds 30 (the day it was taken) and 31 (the day it was shaken off, which is what proof against it is counted from) */
 function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]===v)n++;else{rd.push(v,n);v=road[i];n=1}}rd.push(v,n)}
   return{v:SAVE_V,s:seed,t:+time.toFixed(2),d:dayCount,ly:lastYear,ls:lastSea,w:wood,f:food,g:granary,hu:+hunger.toFixed(3),lp:lorePl,ln:Object.keys(loreN).map(k=>[k,loreN[k]]),by:boundsYr,
     sg:songs.map(s=>[s.ci,s.comp,s.kn,s.lost?1:0,s.d]),sm:snowmen.map(s=>[+s.x.toFixed(1),+s.y.toFixed(1),+s.s.toFixed(2),s.d]),ss:skipN,
     dr:+dry01.toFixed(2),br:breadYr,ry:retYr,wk:works.map(w=>[w.wk,+w.x.toFixed(1),+w.y.toFixed(1),w.y0,w.done?1:0,+(w.prog||0).toFixed(1),w.paid?1:0,w.said?1:0]),
     hl:things.map(t=>[t.n,t.full,t.holder||0,t.src,t.ci===undefined?-1:t.ci,t.hist.map(h=>[h.d,h.s])]),hy:heirYr,
-    fa:+faith.toFixed(2),fs:faithSt,py:prayer?[prayer.k,prayer.d,prayer.who||0]:0,ay:ways,ax:arc?[arc.k,arc.d0,arc.end]:0,az:arcYr,aw:wayYr,ab:bookYr,al:lastStormDay,am:rainedDay,an:wreckYr,af:famDone?1:0,wa:want?[want.d0,want.by,want.gave,want.raid,want.rv||0]:0,wy:wantYr,
+    fa:+faith.toFixed(2),fs:faithSt,py:prayer?[prayer.k,prayer.d,prayer.who||0]:0,ay:ways,ax:arc?[arc.k,arc.d0,arc.end]:0,az:arcYr,aw:wayYr,ab:bookYr,al:lastStormDay,am:rainedDay,an:wreckYr,af:famDone?1:0,wa:want?[want.d0,want.by,want.gave,want.raid,want.rv||0]:0,wy:wantYr,iw:ill?[ill.d0,ill.n,ill.by,ill.nu]:0,
     wx,wt:+wxT.toFixed(1),sn:+snowD.toFixed(3),fz:frozen?1:0,fo:+fogA.toFixed(2),vn:village||0,rv:roadV,td:traderDay,be:belled,rs:ruinSeen,
     gd:geeseDay,wd:whaleDay,ar:+arrivalT.toFixed(1),sp:speed,wi:wind,sy:storyDay,sk:sackUsed?1:0,
     pe:people.map(packP),de:dead.map(p=>[p.name,p.rels.map(r=>[r.who,r.k])]),go:gone.map(p=>[p.name,p.far?1:0]),
@@ -184,14 +184,14 @@ function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]
 // SAVE_V is the shape pack() writes. SAVE_MIN is the oldest shape the ladder can still bring forward. Both readers — the link in the
 // address bar and the autosave at boot — used to carry their own copy of that range, and sprint 12 shipped with one of the two stale;
 // canLoad() is the only copy there is now.
-const SAVE_V=14, SAVE_MIN=5;
+const SAVE_V=15, SAVE_MIN=5;
 const canLoad=o=>!!(o&&o.v>=SAVE_MIN&&o.v<=SAVE_V&&o.pe);
 // One hop per version, in order. `up` takes a save shaped `from` and makes it shaped `to`, filling in exactly what unpack() used to
 // synthesize with a `||` at the point of reading; `down` is the same hop walked backwards, and is what the harness's `migrate` mode
 // forges its fixtures with. The two halves live next to each other on purpose: six hand-written forgeries scattered across five
 // harness modes could not be kept honest, and one of them (v7) had already drifted — it left the sprint-10 keys in.
-// A packed person is a positional array of 29 slots; these are the defaults for the slots the ladder has had to add, by index.
-const P_DEF={23:-1,24:0,25:0,26:0,27:0,28:-1,29:0};
+// A packed person is a positional array of 32 slots; these are the defaults for the slots the ladder has had to add, by index.
+const P_DEF={23:-1,24:0,25:0,26:0,27:0,28:-1,29:0,30:0,31:0};
 const growP=(o,n)=>{const g=a=>{while(a.length<n)a.push(P_DEF[a.length]===undefined?0:P_DEF[a.length])};
   for(const a of o.pe)g(a);if(o.vo&&o.vo[5])g(o.vo[5])};                 // the one away on a voyage is packed with packP too
 const cutP=(o,n)=>{for(const a of o.pe)a.length=n;if(o.vo&&o.vo[5])o.vo[5].length=n};
@@ -212,7 +212,9 @@ const LADDER=[
  {from:12,to:13,up:o=>{if(o.fi===undefined)o.fi=0;o.go=(o.go||[]).map(a=>Array.isArray(a)?a:[a,0])},
               down:o=>{delete o.fi;o.go=(o.go||[]).map(a=>Array.isArray(a)?a[0]:a)}},
  {from:13,to:14,up:o=>{if(o.wa===undefined)o.wa=0;if(o.wy===undefined)o.wy=0;growP(o,30)},
-              down:o=>{delete o.wa;delete o.wy;cutP(o,29)}}];   /* v14: the short winter, and the one eating last through it */
+              down:o=>{delete o.wa;delete o.wy;cutP(o,29)}},     /* v14: the short winter, and the one eating last through it */
+ {from:14,to:15,up:o=>{if(o.iw===undefined)o.iw=0;growP(o,32)},
+              down:o=>{delete o.iw;cutP(o,30)}}];                /* v15: the wave of sickness, and each person's own clock inside it */
 // Up the ladder, one hop at a time, in place. unpack() calls this first and then reads only the current shape, which is why there is
 // no `o.v` test left below this line. What a new field costs, in four lines: append the slot or key to pack(); add a hop here, with
 // its up and its down; add the version to FIXTURES in test/harness.mjs; bump SAVE_V.
@@ -230,6 +232,7 @@ function unpack(o){
   faith=o.fa||0;faithSt=o.fs||0;prayer=o.py?{k:o.py[0],d:o.py[1],who:o.py[2]||null}:null;ways=o.ay||0;
   arc=o.ax?{k:o.ax[0],d0:o.ax[1],end:o.ax[2]}:null;arcYr=o.az||0;wayYr=o.aw||0;bookYr=o.ab||0;lastStormDay=o.al||0;rainedDay=o.am||0;wreckYr=o.an||0;famDone=!!o.af;
   want=o.wa?{d0:o.wa[0],by:o.wa[1],gave:o.wa[2]||0,raid:o.wa[3]||0,rv:o.wa[4]||0}:null;wantYr=o.wy||0;
+  ill=o.iw?{d0:o.iw[0],n:o.iw[1]||0,by:o.iw[2],nu:o.iw[3]||0}:null;
   houses=o.ho.map(h=>({x:h[0],y:h[1],r:h[2],owners:h[3].slice()}));
   farms=o.fm.map(f=>({x:f[0],y:f[1],g:f[2]}));
   trees=o.tr.map(t=>({x:t[0],y:t[1],s:t[2],hp:t[3],b:!!t[4],a:t[5],o:t[6]||0}));
@@ -257,8 +260,16 @@ function unpack(o){
     if(a[13])p.child=true;if(a[18])p.wantHouse=true;if(a[19])p.dreamFar=1;if(a[20])p.luck=1;
     if(a[21])p.pend={k:a[21][0],who:a[21][1]||null,gr:a[21][2]?graves.find(g=>g.name===a[21][2]):null};if(a[22])p.keeper=1;
     p.craft=a[23];p.cxp=a[24];if(a[25]){p.shadN=a[25][0];p.shadC=a[25][1]}if(a[26])p.sick=1;
-    if(a[27])p.heard={l:a[27][0],d:a[27][1],f:a[27][2]||0};if(a[28]>=0)p.fSk=a[28];if(a[29])p.short=1;return p};
+    if(a[27])p.heard={l:a[27][0],d:a[27][1],f:a[27][2]||0};if(a[28]>=0)p.fSk=a[28];if(a[29])p.short=1;
+    if(a[30])p.sickD=a[30];if(a[31])p.wellD=a[31];return p};
   names=new Set();people=o.pe.map(mk);people.forEach(p=>names.add(p.name));
+  // repair, not migrate (#37): every load, not only an old one. A v14 save can carry somebody sick with no wave to belong to and no
+  // day to count from, and so can a v15 one written before the wave existed on that island — give them today, so the caps that end
+  // an illness have something to measure. A wave with nobody in it is no wave.
+  {const sk=people.filter(p=>p.sick&&!p.dead);
+    for(const p of sk)if(!p.sickD)p.sickD=dayCount;
+    if(sk.length&&!ill)ill={d0:dayCount,n:sk.length,by:sk[0].name,nu:0};
+    if(!sk.length)ill=null}
   dead=o.de.map(a=>({name:a[0],rels:a[1].map(r=>({who:r[0],k:r[1]})),dead:true,hist:[],tr:[]}));
   gone=o.go.map(a=>({name:a[0],far:a[1]||0}));
   voyage=o.vo?{name:o.vo[0],st:o.vo[1],day:o.vo[2],back:!!o.vo[3],n:o.vo[4],p:o.vo[5]?mk(o.vo[5]):byName(o.vo[0])}:null;

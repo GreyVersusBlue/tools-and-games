@@ -53,6 +53,17 @@ let songs=[],snowmen=[],skipN=0,rbUntil=0,shoots=[],starDay=0;
 let want=null,wantYr=0;
 /* what a store has to cover per head between the first frost and the first harvest after it — the number the reckoning is held against */
 const COLD=19;
+// phase 6 state: the sickness that walks the paths. `ill` is the wave — the day it started, how many have taken it, who had it first
+// and how many times somebody sat up with somebody — and it is null on every day nobody on the island is in bed. It is not the fever
+// arc: the arc is one bad season for it, the wave is what the arc (or one cough in one house) sets going, and the wave outlives the
+// arc by as long as the last person takes to get up. Every wave ends, and it ends by the calendar rather than by a roll, the way the
+// thaw does (#70): nobody is ill for more than SICKD days, and after WAVED days the wave has been through everyone it is going to.
+// Shaking it off leaves you proof against it for WELLD days, which is what stops one wave from going round the village twice.
+let ill=null;
+const SICKD=6, WAVED=12, WELLD=14;
+/* how near is near enough to hand it over, and the per-step chance at that range — one draw per susceptible person per step, and
+   only while somebody is actually in bed, so an island with nobody ill is on exactly the stream it was on before */
+const CATCH=1.9, CATCHR=.004;
 /* who carries a tune: from the seed alone, no rnd() — old links get their singers retroactively and identically */
 const musical=p=>((p.seed>>>4)%5)===0;
 /* whether tonight is an aurora night: pure function of seed and day, so every device that opens this island agrees */
@@ -75,6 +86,8 @@ const GROW={
   rainscame:['The storm that broke it gets bigger every winter it is told.','Half the village now remembers standing out in that rain. It was not half the village. It is now.'],
   hardwinter:['The snow in that story has been getting deeper for years.','Every telling, one more wolf is heard in it. No wolf was ever seen.'],
   fever:['In the telling now, nobody was ever really afraid, which is not how it was.'],
+  ill:['The number who took it goes up by one most years it is told, and the number who sat up with them by two.','In the telling it went round every house on the island. It went round rather fewer, and every house heard about it.'],
+  nursed:['By now the story has them sitting up three nights. It was one night, and it was enough.'],
   want:['The number in that story gets smaller every year it is told, and the winter longer.','By now the story has the store down to one lid and a handful, which it was not, quite.'],
   raid:['Nobody in the story is named any more. Everybody listening knows anyway, and that is how it is kept.'],
   gave:['In the telling now, the plate goes round three times before it comes back full. It went round once.'],
@@ -172,6 +185,7 @@ function yearName(yr){if(!yr||yr>=yearOf(dayCount))return null;const E=chron.fil
   if(k('drought'))return k('rainscame')?'the year the rain broke':'the dry year';
   if(k('want'))return 'the year of the short winter';
   if(k('hardwinter'))return 'the year of the long winter';
+  if(k('ill'))return 'the year of the sickness';
   if(k('shoal'))return 'the year the fish came in';
   if(n('death')>=2)return 'the year of the partings';
   if(k('stayed')||k('voyage')||k('returned')||k('farname')||k('farcame'))return 'the year of the far island';

@@ -49,8 +49,10 @@ function drawFace(ctx,p){const rr=mulberry(p.seed);const kid=isKid(p),eld=isElde
 const cardEl=document.getElementById('card'),faceCv=document.getElementById('face'),faceCtx=faceCv.getContext('2d');
 let cardT=0;
 function whyText(p){const w=WX();
-  if(p.sick)return `Should be lying down. The fever is going round, and ${p.name} has it, and is being ${has(p,'stubborn')?'exactly as stubborn about it as you would expect':'stubborn about it'}.`;
+  if(p.sick&&p.task!=='abed')return `Has it, and is still up. ${has(p,'stubborn')?'Exactly as stubborn about that as you would expect':'Insisting it is nothing'}, and standing far too near everybody.`;
+  if(p.sick)return `In bed with it${p.abedH?' along the wall of the hall, with the others':homeOf(p)?' at home':' by the fire'}, ${dayCount-p.sickD===0?'since this morning':`${dayCount-p.sickD} ${dayCount-p.sickD===1?'day':'days'} in`}. ${p.nursed>=dayCount-1?'Somebody has been sitting with them.':'Nobody has been up to sit with them today.'}`;
   switch(p.task){
+    case 'nurse':return `Going to sit with ${p.nursW||'somebody'}, who has it. Broth, a fire kept up, and nothing much said.`;
     case 'sleep':return `Asleep${homeOf(p)?' at home':' by the fire'}. ${has(p,'restless')?'Lightly.':has(p,'dreamy')?'Dreaming, probably.':''}`;
     case 'gohome':return `Heading home for the night${p.partner&&byName(p.partner)?', where '+p.partner+' will be':''}.`;
     case 'chop':return `Chopping a tree. ${has(p,'proud')?'Would rather do this than farm.':wood<14?'The woodpile is low.':'It needs doing.'}`;
@@ -292,6 +294,6 @@ function draw(){
   for(const st of shoots){const x=st.x*T,y=st.y*T,a=Math.min(1,st.l/.7);g.fillStyle=`rgba(255,255,255,${(a*.9).toFixed(2)})`;g.fillRect(x,y,2,1);
     g.fillStyle=`rgba(255,255,255,${(a*.3).toFixed(2)})`;g.fillRect(x-st.vx*.03*T,y-st.vy*.03*T,2,1);g.fillRect(x-st.vx*.06*T,y-st.vy*.06*T,1,1)}
   document.getElementById('s-pop').textContent=people.length;document.getElementById('s-wood').textContent=wood;document.getElementById('s-food').textContent=food;document.getElementById('s-store').textContent=granary;
-  const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(want?' · rations':hunger>.3?' · hungry':'');
+  const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(want?' · rations':hunger>.3?' · hungry':'')+(ill?` · ${people.filter(p=>p.sick&&!p.dead).length} abed`:'');
   document.getElementById('s-time').textContent=`year ${yearOf(dayCount)} · day ${dayCount} · ${s} · ${lbl}${wxl}`;document.getElementById('s-time-s').textContent=`d${dayCount} · ${s} · ${lbl}${wxl}`;
 }
