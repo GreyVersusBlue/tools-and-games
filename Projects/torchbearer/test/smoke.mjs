@@ -10,6 +10,10 @@
 //      in ../packs — and against a deliberately broken pack per rule.
 //   2. The save slot, through every door: localStorage, an exported file, a
 //      pasted blob, a save written by a build that predates a field.
+//   3. The rules core in js/rules.js — every core class forged at level 3 and
+//      checked against the numbers the Player Core prints, every row of the
+//      effects DSL in guide §6 pinned to what the engine actually does with it
+//      (including the three rows that do nothing), and Assurance's floor.
 //
 // Nothing here needs a browser. Anything that only breaks in a browser is
 // verified by hand and written up in the session notes.
@@ -28,6 +32,10 @@ const mod = p => import(pathToFileURL(path.join(PROJECT, p)).href);
 const { Validator, emptyRegistry } = await mod("js/registry.js");
 const { createTorchSlot, repairSnapshot, repairBuild, repairHero, validateSnapshot, SAVE_KEY, SAVE_VERSION }
   = await mod("js/save.js");
+const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, Dice, setDiceSource, activeEffects, abilityMods,
+        finalizeCharacter, skillMod, assuranceFloor, assuranceDegree } = {
+  ...await mod("js/registry.js"), ...await mod("js/rules.js")
+};
 
 /* ---------------- harness ---------------- */
 let pass = 0; const fails = [];
@@ -78,6 +86,7 @@ group("page wiring");
 ok(/<script type="module">/.test(html), "the script tag is a module");
 ok(html.includes('from "../assets/js/gvb-save.js"'), "imports the shared save module");
 ok(html.includes('from "./torchbearer/js/registry.js"'), "imports registry.js");
+ok(html.includes('from "./torchbearer/js/rules.js"'), "imports rules.js");
 ok(html.includes('from "./torchbearer/js/save.js"'), "imports save.js");
 ok(html.includes('from "./torchbearer/js/library.js"'), "imports library.js");
 // The whole point of adopting gvb-save: one implementation of storage, in one
@@ -89,6 +98,11 @@ const codeOnly = html
   .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 ok(!/localStorage\s*\./.test(codeOnly), "the page makes no direct localStorage call");
 ok(!/const (Registry|Validator) = \{/.test(html), "Registry and Validator are not inlined again");
+// Same guard for the rules core: a copy left behind in the page would shadow the
+// import and every check in section 7 would be testing a file nobody runs.
+ok(!/^function (activeEffects|abilityMods|finalizeCharacter|skillMod)\(/m.test(html),
+  "the rules core is not inlined again");
+ok(!/^const (Dice|PROF_VAL|SKILLS|CHAR_LEVEL) ?=/m.test(html), "the rules constants are not inlined again");
 // Locked decision #31: never hand-edit between the gvb:social markers.
 ok(/<!-- gvb:social:start/.test(html) && /gvb:social:end -->/.test(html), "the social block is intact");
 
@@ -364,6 +378,251 @@ group("repair");
   ok(validateSnapshot(goodSnap()), "a good snapshot validates");
   ok(!validateSnapshot({ build: { ancestry: "human", background: "scout" } }), "a snapshot with no class does not");
   ok(!validateSnapshot(null), "null does not");
+}
+
+/* ---------------- 7. the rules core, at level 3 ----------------
+   Until this session `finalizeCharacter` could not be called from Node at all,
+   so the numbers every sheet in the game is printed from had never once been
+   checked against the book. Each expected value below is derived by hand from
+   the PF2e Remaster Player Core, not read back off the engine.
+
+   One build shape for all eight classes, so the arithmetic stays legible:
+
+     Human (8 HP, Speed 25, two free ancestry boosts, no flaw), Skilled Human,
+     Soldier background, Explorer's Clothing (unarmored, +0 AC, no Dex cap),
+     no feats, level 3.
+
+     Boosts: ancestry con+dex, background con (Soldier offers Str or Con) and a
+     free str, the class key ability, and the four level-1 free boosts on dex,
+     wis, int, cha. Nothing is boosted twice except through the key, so every
+     modifier is +1, +2 on con and dex, and +1 more on whatever the class keys
+     off. Rogue therefore reads Dex +3 and everyone else Dex +2.
+
+   From that: AC is 10 + (2 + 3 trained) + Dex + 0 = 15 + Dex. HP is
+   8 + (class HP + 2) x 3. Perception is (rank bonus) + Wis. Class DC is
+   10 + (2 + 3 trained) + key. Slots come straight off the class. */
+group("core classes at level 3");
+Registry.loadPack(core);
+ok(Registry.hasPack("core"), "the rules-core registry has the core pack");
+eq(CHAR_LEVEL, 3, "CHAR_LEVEL is 3 (Phase 6 changes it here and nowhere else)");
+
+const KEY = { bard:"cha", cleric:"wis", druid:"wis", fighter:"str", ranger:"str", rogue:"dex", witch:"int", wizard:"int" };
+/** The one build shape above, for a class. `over` patches it for a targeted check. */
+const forge = (cls, over = {}) => finalizeCharacter({
+  name: "Testcase", ancestry: "human", heritage: "skilled-human", background: "soldier",
+  cls, subclass: null,
+  boosts: { ancestry: ["con", "dex"], bgA: "con", bgFree: "str", key: KEY[cls] || "str", free: ["dex", "wis", "int", "cha"] },
+  skills: [], loreExtra: [], feats: {}, extraPicks: [], focusChoices: {},
+  spells: { cantrips: [], r1: [], r2: [] },
+  gear: { weapon: null, weapon2: null, ranged: null, armor: "explorers-clothing", shield: false },
+  ...over
+});
+
+/* subclass, AC, HP, Perception, class DC, {fort,ref,will}, rank-1/2 slots.
+   The saves are here because three of them are the only proof that a level-3
+   `profUp` feature fires at all: Bard's Lightning Reflexes, Druid's Great
+   Fortitude, Ranger's Iron Will. Druid's Perception 9 is Alertness. */
+const CORE_SHEETS = [
+  ["bard",    "maestro",              17, 38, 8, 17, { fort: 7, ref: 9, will: 8 },  { 1: 3, 2: 2 }],
+  ["cleric",  "cloistered-sarenrae",  17, 38, 7, 17, { fort: 7, ref: 7, will: 9 },  { 1: 3, 2: 2 }],
+  ["druid",   "storm",                17, 38, 9, 17, { fort: 9, ref: 7, will: 9 },  { 1: 3, 2: 2 }],
+  ["fighter", null,                   17, 44, 8, 17, { fort: 9, ref: 9, will: 6 },  null],
+  ["ranger",  "precision",            17, 44, 8, 17, { fort: 9, ref: 9, will: 8 },  null],
+  ["rogue",   "thief",                18, 38, 8, 18, { fort: 7, ref: 10, will: 8 }, null],
+  ["witch",   "wilding-steward",      17, 32, 6, 17, { fort: 7, ref: 7, will: 8 },  { 1: 3, 2: 2 }],
+  ["wizard",  "school-battle-magic",  17, 32, 6, 17, { fort: 7, ref: 9, will: 8 },  { 1: 3, 2: 2 }]
+];
+ok(CORE_SHEETS.length === Object.keys(Registry.classes).length,
+  `every class in CORE_PACK has a sheet here — ${Object.keys(Registry.classes).join(", ")}`);
+
+for (const [cls, subclass, ac, hp, per, dc, saves, slots] of CORE_SHEETS) {
+  const ch = forge(cls, { subclass });
+  eq(ch.ac, ac, `${cls}: AC`);
+  eq(ch.hpMax, hp, `${cls}: HP`);
+  eq(ch.perception, per, `${cls}: Perception`);
+  eq(ch.classDC, dc, `${cls}: class DC`);
+  eq(ch.saves, saves, `${cls}: saves`);
+  eq(ch.casting ? ch.casting.slots : null, slots, `${cls}: spell slots`);
+  eq(ch.speed, 25, `${cls}: Speed (Explorer's Clothing has no penalty)`);
+}
+
+// Second Doctrine is `profUp save.fort ifSubclass warpriest`, and it is the only
+// place in core content where the subclass gate decides a printed number.
+eq(forge("cleric", { subclass: "warpriest-gorum" }).saves.fort, 9, "a Warpriest cleric's Fortitude is expert at 3");
+eq(forge("cleric", { subclass: "cloistered-pharasma" }).saves.fort, 7, "a Cloistered cleric's stays trained");
+eq(forge("cleric", { subclass: "cloistered-sarenrae" }).casting.font, { spell: "heal", uses: 4 },
+  "the divine font is four bonus heals");
+
+// Armor is the other half of AC, and the Dex cap is where it goes wrong.
+eq(forge("fighter", { gear: { weapon: null, weapon2: null, ranged: null, armor: "chain-shirt", shield: false } }).ac,
+  19, "Chain Shirt: 10 + 5 trained + 2 Dex + 2 = 19");
+eq(forge("rogue", { gear: { weapon: null, weapon2: null, ranged: null, armor: "studded-leather", shield: false } }).ac,
+  20, "Studded Leather takes a Rogue's +3 Dex whole: 10 + 5 + 3 + 2 = 20");
+// The Dex cap only bites above the cap, so it needs a build the standard one
+// does not produce: a Rogue with Dex +4, one over Chain Shirt's cap of 3.
+{
+  const capped = forge("rogue", {
+    boosts: { ancestry: ["dex", "con"], bgA: "con", bgFree: "dex", key: "dex", free: ["dex", "wis", "int", "cha"] },
+    gear: { weapon: null, weapon2: null, ranged: null, armor: "chain-shirt", shield: false }
+  });
+  eq(capped.abil.dex, 4, "the capped-Dex build really has Dex +4");
+  eq(capped.ac, 20, "Chain Shirt caps Dex at +3: 10 + 5 + 3 + 2 = 20, not 21");
+}
+
+// skillMod, the other export the page leans on for every check in the game.
+{
+  const ch = forge("fighter");
+  eq(ch.skills.athletics, "T", "Soldier trains Athletics");
+  eq(skillMod(ch, "athletics"), PROF_VAL.T + 3 + ch.abil.str, "a trained skill is rank + level + ability");
+  eq(skillMod(ch, "occultism"), ch.abil.int, "an untrained skill is ability only, with no level added");
+  eq(skillMod(ch, "perception"), ch.perception, "skillMod('perception') hands back the sheet's Perception");
+  ok(Object.keys(SKILLS).every(s => typeof skillMod(ch, s) === "number"),
+    "every skill in SKILLS resolves to a number");
+}
+
+/* ---------------- 8. the effects DSL, row by row ----------------
+   One check per row of content-authoring-guide.md §6, against a feat that
+   carries nothing but that row. Three of them are pinned as *currently
+   dropped*: the guide says so, and Phase 5 changing any of them should show up
+   as a diff in this file rather than as a silent behaviour change. */
+group("effects DSL (guide §6)");
+
+let probeN = 0;
+/** Forge a fighter holding one made-up feat with exactly these effects. */
+function withEffects(effects, over = {}) {
+  const id = `smoke-probe-${++probeN}`;
+  Registry.feats[id] = { id, name: `Probe ${probeN}`, type: "class", level: 1, effects };
+  return forge(over.cls || "fighter", { ...over, feats: { "class-1": id } });
+}
+const BASE = withEffects([]);
+eq([BASE.speed, BASE.hpMax, BASE.initBonus, BASE.perception], [25, 44, 0, 8],
+  "the control fighter, holding a feat that does nothing");
+
+eq(withEffects([{ bonus: { target: "speed", value: 10, type: "status" } }]).speed, 35, "bonus/speed adds to Speed");
+eq(withEffects([{ bonus: { target: "speed", value: 10, vs: "seek" } }]).speed, 25, "bonus/speed with a `vs` is a note, not a number");
+eq(withEffects([{ bonus: { target: "hp", value: 5 } }]).hpMax, 49, "bonus/hp adds to max HP");
+eq(withEffects([{ bonus: { target: "hp", value: 5, vs: "seek" } }]).hpMax, 49, "a `vs` on hp is ignored and the bonus applies flatly (§6)");
+eq(withEffects([{ bonus: { target: "initiative", value: 1 } }]).initBonus, 1, "bonus/initiative reaches the sheet");
+eq(withEffects([{ profUp: { target: "perception", rank: "M" } }]).perception, 10, "profUp/perception raises Perception");
+eq(withEffects([{ profUp: { target: "save.will", rank: "M" } }]).saves.will, 10, "profUp/save.will raises Will");
+eq(withEffects([{ profUp: { target: "save.will", rank: "T" } }]).saves.will, 6, "profUp never lowers a rank");
+eq(withEffects([{ profUp: { target: "save.will", rank: "M", ifSubclass: "warpriest" } }]).saves.will, 6,
+  "profUp/ifSubclass does nothing when the subclass does not match");
+eq(withEffects([{ attackProf: { advanced: "E" } }]).prof.attacks.advanced, "E", "attackProf merges weapon proficiency");
+eq(withEffects([{ armorProf: { heavy: "E" } }]).prof.defenses.heavy, "E", "armorProf merges armor proficiency");
+eq(withEffects([{ trainSkill: "nature" }]).skills.nature, "T", "trainSkill trains that skill");
+eq(withEffects([{ trainSkill: "choice" }]).skills.nature, "U", 'trainSkill "choice" is a builder pick, not a training');
+eq(withEffects([{ grantLore: "Bardic Lore", rank: "E" }]).lores.slice(-1),
+  [{ name: "Bardic Lore", rank: "E" }], "grantLore adds a Lore at its stated rank");
+eq(withEffects([{ grantLore: "Bardic Lore" }]).lores.slice(-1), [{ name: "Bardic Lore", rank: "T" }],
+  "grantLore defaults to trained");
+eq(withEffects([{ sense: "darkvision" }]).senses, ["darkvision"], "sense reaches the sheet");
+eq(withEffects([{ resist: { type: "fire", value: "halfLevel" } }]).resists, [{ type: "fire", value: 1 }],
+  'resist "halfLevel" is floor(3/2) = 1 at level 3');
+eq(withEffects([{ resist: { type: "cold", value: 7 } }]).resists, [{ type: "cold", value: 7 }], "a numeric resist passes through");
+eq(withEffects([{ focusPoints: 1 }, { focusPoints: 1 }, { focusPoints: 1 }, { focusPoints: 1 }]).focusMax, 3,
+  "focusPoints caps the pool at 3");
+eq(withEffects([{ grantFocusSpell: "fire-ray" }]).focusSpells, ["fire-ray"], "grantFocusSpell adds a focus spell");
+ok(withEffects([{ note: "free text" }]).notes.some(n => n.endsWith(": free text")), "note reaches the sheet, credited to its source");
+ok(withEffects([{ special: "totally-made-up" }]).specials.includes("totally-made-up"),
+  "an unknown special id is carried, harmlessly (§6)");
+eq(withEffects([{ special: "toughness" }]).hpMax, 44 + CHAR_LEVEL, "special/toughness adds level to HP");
+eq(withEffects([{ grantCantrip: { tradition: "primal" } }], { cls: "wizard", subclass: "school-battle-magic" }).casting.cantrips,
+  [], "grantCantrip is a builder pick — the tradition on it is not read (§6)");
+eq(withEffects([{ tradition: "occult" }], { cls: "witch", subclass: "wilding-steward" }).casting.tradition,
+  "occult", 'tradition resolves a "patron" caster');
+ok(withEffects([{ font: "heal" }], { cls: "cleric", subclass: "cloistered-sarenrae" }).casting.font.uses === 4,
+  "font grants the divine font");
+
+// grantFeat, one level deep. A Wizard has no Shield Block of its own, so the
+// special on the sheet can only have come through the grant.
+{
+  const ch = withEffects([{ grantFeat: "shield-block" }], { cls: "wizard", subclass: "school-battle-magic" });
+  ok(ch.specials.includes("shield-block"), "grantFeat applies the named feat's own effects");
+  ok(!forge("wizard", { subclass: "school-battle-magic" }).specials.includes("shield-block"),
+    "…and a wizard without it does not have Shield Block");
+}
+{
+  // "a granted feat's grantFeat is not followed" (§6). Two probes: one that
+  // grants a feat that grants shield-block, and shield-block itself for contrast.
+  Registry.feats["smoke-inner"] = { id: "smoke-inner", name: "Inner", type: "class", level: 1, effects: [{ grantFeat: "shield-block" }] };
+  const ch = withEffects([{ grantFeat: "smoke-inner" }], { cls: "wizard", subclass: "school-battle-magic" });
+  ok(!ch.specials.includes("shield-block"), "grantFeat expands exactly one level deep, so no cycles");
+}
+{
+  const ch = withEffects([{ grantFocusSpellChoice: ["fire-ray", "bit-of-luck"] }]);
+  eq(ch.focusSpells, ["fire-ray"], "grantFocusSpellChoice defaults to the first option");
+  const picked = finalizeCharacter({
+    ...forge("fighter").build, feats: { "class-1": `smoke-probe-${probeN}` },
+    focusChoices: { [`Probe ${probeN}`]: "bit-of-luck" }
+  });
+  eq(picked.focusSpells, ["bit-of-luck"], "…and honours the player's pick, keyed by the granting feature's name");
+}
+
+/* The three rows the guide says parse and do nothing. Each is asserted as
+   dropped, so Phase 5 wiring any of them up is a visible diff here. */
+eq(withEffects([{ bonus: { target: "perception", value: 2 } }]).perception, BASE.perception,
+  "currently dropped: bonus on perception (only speed, hp and initiative are read)");
+eq(withEffects([{ bonus: { target: "save.all", value: 1 } }]).saves, BASE.saves,
+  "currently dropped: bonus on save.all");
+eq(withEffects([{ profUp: { target: "save.all", rank: "M" } }]).saves, BASE.saves,
+  "currently dropped: profUp on save.all (§6 says list the three saves separately)");
+
+/* ---------------- 9. Assurance, and a die a test can pin ---------------- */
+group("assurance and dice");
+{
+  const ch = forge("fighter");                       // Athletics trained, Str +2
+  eq(ch.skills.athletics, "T", "the fighter under test is trained in Athletics");
+  eq(assuranceFloor(ch, "athletics"), 10 + PROF_VAL.T + 3,
+    "Assurance is 10 + proficiency bonus: no ability modifier, no item bonus");
+  ok(assuranceFloor(ch, "athletics") !== 10 + PROF_VAL.T + 3 + ch.abil.str,
+    "…and specifically not the skill modifier, which is 2 higher here");
+  eq(assuranceFloor(ch, "occultism"), 10, "untrained Assurance is a flat 10, not 10 + level");
+  const floor = assuranceFloor(ch, "athletics");
+  eq(assuranceDegree(floor, floor), 2, "meeting the DC exactly is a success");
+  eq(assuranceDegree(floor, floor + 1), 1, "missing it by one is a failure");
+  eq(assuranceDegree(floor, floor - 10), 2, "beating it by ten is still only a success — Assurance cannot crit");
+  eq(assuranceDegree(floor, floor + 10), 1, "…and missing by ten is still only a failure");
+  // The Assurance feats in core content are keyed per skill, which is what lets
+  // the page ask `specials.includes("assurance-athletics")`.
+  const farmhand = forge("fighter", { background: "farmhand", feats: { "skill-1": "assurance-athletics" } });
+  ok(farmhand.specials.includes("assurance-athletics") && !farmhand.specials.includes("assurance"),
+    "an Assurance feat lands on the sheet keyed by its skill, not as a bare 'assurance'");
+}
+{
+  // Dice.d is the only place randomness enters the game, so pinning the source
+  // pins every roll. Without this a test could not assert a natural 20.
+  const rolls = [];
+  setDiceSource(() => rolls.shift());
+  rolls.push(0.999999);
+  eq(Dice.d(20), 20, "a pinned source rolls a natural 20");
+  rolls.push(0);
+  eq(Dice.d(20), 1, "…and a natural 1");
+  rolls.push(0.5, 0.5);
+  eq(Dice.roll("2d6+3").total, 4 + 4 + 3, "Dice.roll sums its dice and its flat modifier");
+  setDiceSource();
+  ok(Dice.d(20) >= 1 && Dice.d(20) <= 20, "clearing the source restores Math.random");
+  // degree(), which every check in the game reads.
+  eq([Dice.degree(10, 25, 15), Dice.degree(10, 15, 15), Dice.degree(10, 14, 15), Dice.degree(10, 5, 15)],
+    [3, 2, 1, 0], "degree: +10 crits, meeting succeeds, under fails, -10 crit-fails");
+  eq(Dice.degree(20, 15, 15), 3, "a natural 20 steps the degree up one");
+  eq(Dice.degree(1, 15, 15), 1, "a natural 1 steps it down one");
+  eq(Dice.degree(20, 5, 15), 1, "a natural 20 on a would-be critical failure is only a failure");
+}
+{
+  // activeEffects and abilityMods, the two exports nothing above calls directly.
+  const b = forge("fighter").build;
+  ok(activeEffects(b).some(x => x.e.special === "reactive-strike"),
+    "activeEffects collects a class feature at or below level 3");
+  ok(activeEffects(b).some(x => x.e.special === "bravery"),
+    "…and a level-3 one: Bravery is in range at CHAR_LEVEL 3");
+  ok(!activeEffects({ ...b, cls: "wizard", subclass: "school-battle-magic" }).some(x => x.e.special === "bravery"),
+    "…while another class's features are not");
+  eq(abilityMods(b), { str: 2, dex: 2, con: 2, int: 1, wis: 1, cha: 1 }, "abilityMods reproduces the boost sheet");
+  eq(abilityMods({ boosts: { ancestry: [], bgA: null, bgFree: null, key: "str", free: ["str", "str", "str", "str", "str"] }, ancestry: "human" }).str,
+    4, "no ability climbs past +4");
+  eq(abilityMods({ boosts: { ancestry: ["con"], bgA: null, bgFree: null, key: null, free: [] }, ancestry: "dwarf" }),
+    { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: -1 }, "an ancestry's fixed boosts and its flaw both apply");
 }
 
 /* ---------------- report ---------------- */

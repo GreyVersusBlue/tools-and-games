@@ -871,6 +871,45 @@ Two of them have moved since they were written:
    sync with; it goes with that cleanup, not with a CI phase. *Source:
    Hearth Phase 8.*
 
+85. **Class DC is on the sheet now, computed the standard way.** Moving the
+   rules core out of the page surfaced a dead local: `finalizeCharacter`
+   assigned `keyAbil` and never read it, so the class DC every PF2e class
+   sheet prints did not exist anywhere in this game. Phase 1's checklist asks
+   a test to assert it, which is not possible against a number nothing
+   computes. `classDC = 10 + proficiency bonus + key ability modifier`, and
+   `keyAbil` itself, are on the finalized sheet. Nothing renders them yet;
+   the Combat and Builder screens are untouched. All eight core classes read
+   17 at level 3 on the standard build, 18 for the Rogue, which is what the
+   Player Core prints. *Source: Torchbearer Phase 1, "The rules core comes
+   out of the page".*
+
+86. **Assurance is one function, not arithmetic in two places.** The floor
+   was computed inline in `Story.choose` and its degree inline in
+   `Story.resolveCheck`; two earlier rounds found two bugs in that pair.
+   `assuranceFloor(ch, skill)` and `assuranceDegree(floor, dc)` live in
+   `js/rules.js` with checks on both: the floor is `10 + proficiency bonus`
+   with no ability modifier and a flat 10 when untrained, and the degree is
+   only ever 2 or 1 — forgoing the roll can never crit in either direction.
+   The page calls them. *Source: Torchbearer Phase 1.*
+
+87. **Randomness in Torchbearer enters through exactly one door, and a test
+   can hold it.** `Dice.d` is the only consumer of `Math.random()` in the
+   game, so `setDiceSource(fn)` in `js/rules.js` pins every roll — strikes,
+   saves, damage, all of it — without patching a global. `setDiceSource()`
+   with no argument restores `Math.random`. Phase 2 lifts Combat out of the
+   page and will want this. *Source: Torchbearer Phase 1.*
+
+88. **The three effects rows that do nothing are pinned as doing nothing.**
+   `bonus` on `perception`, `bonus` on `save.all` and `profUp` on `save.all`
+   all parse and are all dropped, which `content-authoring-guide.md` §6
+   already says. `test/smoke.mjs` asserts each one as *currently dropped*
+   against a control build, so Phase 5 wiring any of them up is a visible
+   diff in the test file rather than a silent behaviour change. All three
+   were broken on purpose (#34): wiring `profUp save.all` to the three saves
+   moved a fighter to 11/11/10, wiring `bonus perception` moved Perception 8
+   to 10, and adding a save bonus bag moved 9/9/6 to 10/10/7. Each failed the
+   matching check and exited 1. *Source: Torchbearer Phase 1.*
+
 
 ---
 
