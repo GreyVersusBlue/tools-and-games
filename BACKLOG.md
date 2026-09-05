@@ -53,41 +53,46 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Torchbearer Phase 1, "The rules core comes
-out of the page" (PR #127)**, and its row is off the table. One 1-row, on its
-own, which is what the size rule says. `Projects/torchbearer/js/rules.js` (261
-lines) is `PROF_VAL`, `ABILITIES`, `SKILLS`, `CHAR_LEVEL`, `Dice`,
-`activeEffects`, `abilityMods`, `finalizeCharacter` (with `weaponAttack` and
-`dieUp` still nested inside it) and `skillMod`, moved verbatim out of the page,
-which drops from 3,268 lines to 3,056. `test/smoke.mjs` goes from 95 checks to
-227. Save: none. No site version was bumped.
+The last thing that shipped is **Torchbearer Phase 2, increment 1, "The rules
+half of combat comes out of the page" (PR #129)**. Its row is **still rank 1**,
+because Phase 2 is a 2+ and a 2+ row stays until it is actually finished; its
+Item text now says which half is out. `Projects/torchbearer/js/combat.js` (304
+lines) is the geometry, the conditions, the AC and attack math, damage, saves,
+`strike` and `strikeMonster` — everything a Strike passes through — with no
+`document`, no `setTimeout` and no `App.` in it. The page drops from 3,056
+lines to 2,817 and `Combat` there is 666. `test/smoke.mjs` goes from 227 checks
+to 335. Save: none. No site version was bumped.
 
-**The math was right; the class DC did not exist.** All eight core classes
-forged at level 3 agreed with the Player Core on the first run — AC, HP,
-Perception, all three saves, Speed, spell slots — and the Thornwake bridge
-scene renders Sera Voss at AC 18 and 52 HP and Mercy Vane at AC 19 and 38/42
-in a real headless Chromium both before and after the cut, with no page errors
-either side. What was missing was class DC: `keyAbil` was a dead local in
-`finalizeCharacter`, assigned and never read, so the number every PF2e class
-sheet prints was computed nowhere. It is on the finalized sheet now and nothing
-renders it yet (#85). Two more calls went with it: Assurance's floor and its
-"never a crit" rule are one function each rather than arithmetic inline in two
-places (#86), and `setDiceSource(fn)` swaps the source behind `Dice.d`, the
-game's only consumer of `Math.random()`, so Phase 2 can pin a natural 20
-without patching a global (#87). The three effects rows guide §6 says parse and
-do nothing are pinned as doing nothing, so Phase 5 wiring any of them up is a
-diff in the test file (#88). Fifteen guard-rails were broken on purpose (#34)
+**242 of the moved lines are byte-identical**, and the two seams are why the
+rest are not. The engine emits `{kind, text, cls}` events; the page's one-line
+`onEvent` turns a roll event back into `App.rollSeal` and everything else into
+`App.log`, so the Chronicle reads exactly as it did (#89). `esc` and `cap` are
+`js/text.js` now, imported by both sides, because the engine builds HTML and a
+pack is a file anyone can write (#91). `floatText` is a no-op in the module and
+the page overrides it. The page's `Combat` is `Object.assign(newCombat(), {…})`,
+so `this` is still one object and not one call site changed.
+
+**Monsters cannot flank, and never could.** Foe combatants are built in
+`Combat.start` with no `dying` field, so `isFlanking`'s `a.dying===0` partner
+test is `undefined===0`; and `strikeMonster` hands `effAC` a bare
+`{id, ranged}` with no `x` or `y`, so the geometry is `NaN` first. PF2e's rule
+is symmetric, so this is a real divergence. It is pinned as-is with two tests
+naming locked decision #90 rather than fixed inside a refactor, because a
+change that also buffs every monster in the game makes the next balance
+regression unattributable. The fix and the balance pass it needs are in
+Torchbearer's standing backlog. Twenty guard-rails were broken on purpose (#34)
 and each exited 1; the PR body lists them with what each failure printed.
 
-**Torchbearer has no CI, and this PR proved it.** None of the four workflows
-(`hearth-ci.yml`, `fourth-quarter-ci.yml`, `numina-ci.yml`,
-`school-generator-ci.yml`) path-matches `Projects/torchbearer/**`, so PR #127
-merged with zero checks reported. `node Projects/torchbearer/test/smoke.mjs` is
-a bare `node` invocation that exits non-zero and takes about a second; it is
-the cheapest possible fifth workflow, and rank 81 — the site-wide row about CI
-running almost nothing — is where that belongs.
+**Torchbearer still has no CI, and PR #129 proved it again.** None of the five
+workflows path-matches `Projects/torchbearer/**`, so #129 merged with one check
+reported (Cloudflare Pages) and none of the 335 assertions ran anywhere but a
+session's terminal. `node Projects/torchbearer/test/smoke.mjs` is a bare `node`
+invocation that exits non-zero and takes about a second; it is the cheapest
+possible fifth workflow, and rank 81 — the site-wide row about CI running
+almost nothing — is where that belongs. Two Torchbearer PRs in a row have now
+said this.
 
-Before it: **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
+Before that: **Torchbearer Phase 1 (PR #127)**, **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
 (PRs #117, #119 and #121)**,
 **Hearth Phase 5 (PR #115)**, **Hearth Phase 4 (PR #114)**, **Hearth Phases 2 and 3 (PR
 #112)**, **Bell to Bell Phase 8 and Hearth Phase 1 (PR #111)**, **Bell to
@@ -98,8 +103,8 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**One line of shared tooling moved — `CLAUDE.md`'s locked-decision count, 84 to
-88 — and the same two site-wide checks are still red on `main` and were red
+**One line of shared tooling moved — `CLAUDE.md`'s locked-decision count, 88 to
+91 — and the same two site-wide checks are still red on `main` and were red
 before that branch existed** (re-run on this branch: same counts, same lines,
 and nothing in the diff goes near either file)**:** `check-integrity.mjs` fails on
 `Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
@@ -111,30 +116,34 @@ three are somebody's next quarter-session.
 
 **126 ranked items.** 64 of them are phases in one of the ten project
 `WISHLIST.md` files; the other 62 are standalone, and live in Tier 2 below.
-Beyond the ranked list there are 232 open bullets in the eleven wishlists'
-standing backlogs and 49 open questions for Devon — 407 open items in all.
+Beyond the ranked list there are 233 open bullets in the eleven wishlists'
+standing backlogs and 49 open questions for Devon — 408 open items in all. The
+one added this round is Torchbearer's: monsters cannot flank (#90).
 Bell to Bell has no ranked rows left: all eight of its phases have shipped, and
 what it wants next is the later arc at the bottom of its own `WISHLIST.md`.
 Hearth now has none either: all eight of its phases have shipped. Torchbearer
 has seven left, ranks 1 through 7.
 
-**Pick up rank 1: `Projects/torchbearer` Phase 2, "Combat comes out of the
-page" (Fable 5.1, size 2+).** A 2+ row is the whole batch and is never paired
-with anything. It will not finish in one session, and that is expected: do one
-increment, ship it, and leave the row in place with its Item text rewritten to
-say what is done and what is left. `Combat` is 905 lines in
-`Projects/torchbearer.html` (now at 1732–2636), with Dijkstra movement,
-Bresenham line of sight, `effAC`, `strike`, `castAt` and `aiTurn` interleaved
-with thirteen render methods, so the cut is not the clean lift Phase 1 was —
-the render half stays in the page and the rules half comes out. Phase 1 left
-two things waiting for it: `setDiceSource` in `js/rules.js` pins every roll a
-Strike makes (#87), and `js/rules.js` is where the shared math already lives.
-Rank 2 is Torchbearer Phase 3, a 1, which the session after takes on its own.
+**Pick up rank 1 again: `Projects/torchbearer` Phase 2, increment 2 (Fable
+5.1, size 2+).** A 2+ row is the whole batch and is never paired with anything.
+Increment 1 took the rules half; increment 2 is the half that needs a DOM or a
+clock, and the wishlist row lists it: the turn loop (`beginTurn`, `endTurn`,
+`nextTurn`, `checkEnd`, `finish` — `beginTurn` paces a recovery check with
+`setTimeout` and `finish` calls `App.autosave`), `aiTurn` returning the next
+action it wants instead of chaining `setTimeout(step, 450)` closures,
+`resolveTargeted` and the spells (`castAt`, `armSpell`, `spendSpell`,
+`effectFor`, `spellMenu` — `resolveTargeted` still calls `App.rollCheck`, which
+wants the same seam `this.seal` already is), and then the headless encounter
+harness, which needs `start` out first because it reads `App.party()` and
+`App.flags` and writes the whole combat DOM. `Combat` in the page is 666 lines
+at 1732–2397. Rank 2 is Torchbearer Phase 3, a 1, which the session after takes
+on its own — but only once Phase 2's row is gone.
 
 Two things the CI rows below now know that they did not: `hearth-ci.yml` and
 `fourth-quarter-ci.yml` are the third and fourth per-project workflows, and
 the site-wide row about CI running almost nothing (rank 81) is two suites
-shorter than when it was written. Hearth's preview capture is parked with the
+shorter than when it was written — and now a third, since Torchbearer's is 335
+checks nothing runs. Hearth's preview capture is parked with the
 social-tag cleanup, not lost — see #84 and the Hearth entry in Tier 2.
 
 **Read this before trusting the order.** Two sources rank the same work
@@ -180,7 +189,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 2 — Combat comes out of the page | `Projects/torchbearer` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/torchbearer/WISHLIST.md#phase-2--combat-comes-out-of-the-page) |
+| 1 | Phase 2 — Combat comes out of the page — **increment 1 shipped (PR #129)**; the turn loop, `aiTurn`, `resolveTargeted`, the spells and the headless encounter harness are left | `Projects/torchbearer` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/torchbearer/WISHLIST.md#phase-2--combat-comes-out-of-the-page) |
 | 2 | Phase 3 — Reactions, reach, and an interrupt point | `Projects/torchbearer` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/torchbearer/WISHLIST.md#phase-3--reactions-reach-and-an-interrupt-point) |
 | 3 | Phase 4 — Detection: Hide, Seek, cover, invisibility | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/torchbearer/WISHLIST.md#phase-4--detection-hide-seek-cover-invisibility) |
 | 4 | Phase 5 — The rest of the action economy | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/torchbearer/WISHLIST.md#phase-5--the-rest-of-the-action-economy) |
