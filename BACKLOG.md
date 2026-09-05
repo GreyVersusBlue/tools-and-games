@@ -188,7 +188,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 6 — Scarcity that bites: the short winter is in, illness and the feud are not | `Projects/hearth` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/hearth/WISHLIST.md#phase-6--scarcity-that-bites--one-of-three-systems-in) |
+| 1 | Phase 6 — Scarcity that bites: the short winter is in, illness and the feud are not | `Projects/hearth` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-ntnfcr` | [WISHLIST.md Phase 6](Projects/hearth/WISHLIST.md#phase-6--scarcity-that-bites--two-of-three-systems-in) |
 | 2 | Phase 7 — Play that reads as play, and four other leftovers | `Projects/hearth` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/hearth/WISHLIST.md#phase-7--play-that-reads-as-play-and-four-other-leftovers) |
 | 3 | Phase 8 — Hearth gets a machine that watches it | `Projects/hearth` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/hearth/WISHLIST.md#phase-8--hearth-gets-a-machine-that-watches-it) |
 | 4 | Phase 1 — The rules core comes out of the page | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 1](Projects/torchbearer/WISHLIST.md#phase-1--the-rules-core-comes-out-of-the-page) |

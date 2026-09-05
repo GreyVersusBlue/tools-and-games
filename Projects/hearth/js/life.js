@@ -35,7 +35,7 @@ function newDay(){saidToday=new Set();
     if(cands.length){let sum=cands.reduce((a,c)=>a+c[1],0),r=R()*sum,c=cands[0];for(const cc of cands){r-=cc[1];if(r<=0){c=cc;break}}
       arcYr=yr;startArc(c[0],c[2]+((R()*(c[3]-c[2]+1))|0))}}
   arcDay();
-  if(arcK()!=='fever'&&people.some(p=>p.sick))people.forEach(p=>p.sick=0); // no fever, no fevered: stray flags heal
+  illDay(); /* phase 6: the sickness has its own clock now, so a stray flag is not something the arc's ending sweeps up — see illDay */
   if(!want&&people.some(p=>p.short))people.forEach(p=>p.short=0); // and no rations, nobody eating last: the off-ramp is unconditional, not a roll
   wayDay(yr);faithDay();
   // the morning after a fire night, someone may walk out to stand where a grown story happens — and the first walk names the ground (sprint 13).
@@ -276,6 +276,67 @@ function die(p){remove(p);dead.push(p);loseSongs(p,'died');
       else if(R()<.4)addEvent('heir',`the ${sea} ${t.n} changed hands`,`${Cap(t.n)} — ${p.name}'s once — went to ${h.name}, with everything it remembers.`)}
     else{t.hist.push({d:dayCount,s:`set on the shelf in the hall when ${p.name} died, there being no one to take it`});
       say(`${Cap(t.n)} that ${p.name} kept goes onto the shelf in the hall, where things wait.`,true)}}}
+// ---------- the sickness that walks the paths, the ones who sit up with it, and the getting over it (phase 6) ----------
+// Before this, `p.sick` was set by the fever arc and cleared by it, and a stray flag was swept up by a line in newDay that healed
+// everybody the moment the arc was over. That is a flag, not an illness: it could not start anywhere, it could not go anywhere, and
+// it ended on a calendar the body had no say in. Now it starts in one house, travels by being near somebody, and ends per person —
+// but it still ends, and the ending is not a roll: SICKD days is the longest anyone is in bed and WAVED days is the longest a wave
+// can still find somebody new, so the worst case is bounded and assertable rather than hoped for (the same shape as #70's thaw).
+const wellNow=p=>!!p.wellD&&dayCount<p.wellD+WELLD;                    // shook it off recently enough to be proof against this one
+const canTake=p=>!p.dead&&!p.sick&&!wellNow(p);
+function takeSick(p,from){if(!canTake(p))return false;
+  p.sick=1;p.sickD=dayCount;p.wellD=0;
+  if(!ill)ill={d0:dayCount,n:0,by:p.name,nu:0};
+  ill.n++;
+  p.hist.push({d:dayCount,s:from?`took it from ${from.name}, or from the same thing ${from.name} did`:'took the fever, and was made to lie down, eventually'});
+  return true}
+// Where the sick lie. Their own bed, unless there is a hall and more than one of them, in which case the hall — one room, one fire,
+// and one person can sit with all of them at once, which is the whole of what a hall is for on a week like this.
+const sickHall=()=>hasB('hall')&&people.filter(p=>p.sick&&!p.dead).length>=2?getB('hall'):null;
+function sickBed(p){const hl=sickHall();
+  if(hl)return{x:hl.x+1.5+rnd(-.8,.8),y:hl.y+hl.h+.4,hall:1};
+  const h=homeOf(p);return h?{x:h.x+1+rnd(-.4,.4),y:h.y+2.2,hall:0}:{x:center.x+rnd(-1.5,1.5),y:center.y+rnd(-1,1),hall:0}}
+// Sitting up with somebody is the one thing in this game that turns a rival back into a friend on purpose. Everything else that has
+// ever mended one was a dream (`mend`) or a thaw, and neither of those is a decision anybody made.
+function nursedBy(p,q){const r=p.rels.find(r2=>r2.who===q.name),r2=q.rels.find(x=>x.who===p.name);
+  if(r&&r.k==='rival'){r.k='friend';if(r2)r2.k='friend';
+    say(`${B(p)} sits up with ${B(q)}, who has not had a word for ${p.name} since whenever it was. Neither of them mentions that either.`,true);
+    p.hist.push({d:dayCount,s:`sat up with ${q.name}, who was a rival until that night`});
+    q.hist.push({d:dayCount,s:`was nursed through it by ${p.name}, of all people`});
+    addEvent('nursed',`the ${sea()} ${p.name} sat up with ${q.name}`,`${q.name} took the sickness, and it was ${p.name} who sat up with them — the same ${p.name} who had not had a word for them in a long time. Neither of them ever explained it, and neither of them went back to it afterwards.`);
+    return}
+  if(!r){relate(p,q,'friend');
+    say(`${B(p)} carries broth to ${B(q)} and stays, and they end up talking about nothing for two hours, which neither of them has ever done before.`,true);
+    p.hist.push({d:dayCount,s:`sat up with ${q.name} through the sickness, and came out of it a friend`});
+    q.hist.push({d:dayCount,s:`was sat up with by ${p.name}, and came out of it a friend`});
+    if(!chron.some(e=>e.kind==='nursed'))addEvent('nursed','the first time somebody sat up with somebody',`When ${q.name} took the sickness, ${p.name} sat up with them — carried the broth, kept the fire, and did not go home. It had not been done before on this island. It is done every time now.`);
+    return}
+  say(`${B(p)} sits with ${B(q)} a while, and makes them drink something, and does not ask whether they want it.`,false,'nurse')}
+// One person's chance of getting up tomorrow, as a number rather than as an outcome, so the harness can assert on the rule itself —
+// the same reason `workRate` is a function the first increment could check rations against directly. It gets better the longer it
+// has gone on, better again if somebody sat up with them yesterday or today, better in the hall than alone in a house, and better if
+// what was asked at the quiet stone was asked for them, which is the first thing prayer's `heal` has ever had to do: it has been at
+// the top of that list, and idle, since sprint 11.
+function illChance(p){const days=dayCount-p.sickD;
+  return .18+days*.05+(p.nursed>=dayCount-1?.25:0)+(sickHall()?.1:0)+(prayer&&prayer.k==='heal'&&prayer.who===p.name?.2:0)
+    -(isElder(p)?.12:0)-(hunger>.4?.1:0)}
+function illDay(){if(!ill)return;
+  for(const p of people){if(!p.sick||p.dead)continue;
+    const days=dayCount-p.sickD;
+    // an elder does not always come through it — but never on the first day, which would be a coin flipped on arrival rather than an illness
+    if(isElder(p)&&days>=2&&R()<.05){p.hist.push({d:dayCount,s:'was taken by the sickness'});die(p);continue}
+    if(days>=SICKD||R()<illChance(p))wellAgain(p,days)}
+  if(!people.some(p=>p.sick&&!p.dead))endIll()}
+function wellAgain(p,days){p.sick=0;p.wellD=dayCount;p.sickD=0;p.nursed=0;
+  if(p.task==='abed'){p.task='idle';p.t=rnd(.5,2)}
+  say(`${B(p)} is up again, thin and cross about the lost days, and goes back to work too early, and is watched.`,false,'feverup');
+  p.hist.push({d:dayCount,s:days>=SICKD?`was a full week in bed with it, and got up because the week was over, not because it was`:days>=3?`was ${days} days in bed with it, and got up too early`:'shook it off in a day or two, and said it had never been anything'})}
+// The wave ends when the last person gets up. A wave that took three or more of them is a thing the village will refer to afterwards;
+// anything smaller was a bad week in one house, and gets a line and no more.
+function endIll(){if(!ill)return;const w=ill;ill=null;const dz=dayCount-w.d0;
+  if(w.n>=3){say(`Nobody is in bed this morning. Whatever it was went through ${plural(w.n,'person','people')} in ${plural(dz,'day','days')} and then ran out of houses, which is how they end.`,true);
+    addEvent('ill',`the sickness of year ${yearOf(dayCount)}`,`A sickness went through ${V()} in year ${yearOf(dayCount)}, starting with ${w.by}. ${Cap(plural(w.n,'person','people'))} took it over ${plural(dz,'day','days')}${w.nu?`, and somebody sat up with somebody ${w.nu===1?'once':plural(w.nu,'time','times')}`:', and nobody sat up with anybody, which was noticed'}.`)}
+  else say('Whatever was going round has gone. It was one house and a few bad nights, and it will not be remembered.',false,'illend')}
 // ---------- buildings, boats, roads ----------
 function nextBuild(){if(bldgTgt)return null;for(const k in BLD){if(hasB(k))continue;const d=BLD[k];if(wood<d.wood||!d.cond())continue;let s=null;
     if(k==='hut'){const l=landings[0];s={x:l.x,y:l.y}}

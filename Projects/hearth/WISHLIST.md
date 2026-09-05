@@ -821,11 +821,59 @@ Broken on purpose, four times, each break watched to fail and then put back:
   twice, at `farSeed is not an involution: 7 -> 6232613 -> 12465219` and again in
   the second tab, where `the far island's far island is 12465219, not 7`.
 
-## Phase 6 — Scarcity that bites — **ONE OF THREE SYSTEMS IN**
+## Phase 6 — Scarcity that bites — **TWO OF THREE SYSTEMS IN**
 
 **Nothing on this island was ever really at stake, and everyone was unfailingly
-nice about it.** One third of that is fixed. This is a 2+ and it stays on the
-list until the other two thirds are.
+nice about it.** Two thirds of that is fixed. This is a 2+ and it stays on the
+list until the last third is.
+
+**What shipped, in the second increment: illness that travels.** `p.sick` had
+one setter and one clearer, both inside the fever arc, and a line at the top of
+`newDay` that healed everybody the moment the arc was over. It is its own state
+now. One door in (`takeSick`), one door out (`wellAgain`), a `sickD` on the
+person saying when they took it and a `wellD` saying when they shook it off, and
+an `ill` record for the wave they are part of — the day it started, who started
+it, how many have taken it, how many times somebody sat up with somebody — on
+exactly the shape `want` already had. The first day of it you are up and out and
+working at `.45`, which is how it gets round the island; from the second day you
+are in bed (task `abed`) whether you agree or not. It is carried by being within
+**1.9 tiles of somebody who has it**, at `.004` a step per source, and that
+distance is the whole mechanism: the fire, the market, the bell and the fire
+night already put the island inside it without the rule having to name a
+building. What the hall gets is the other half — with a hall and more than one
+of them down, the sick are laid out along one wall of it where a single person
+can sit with all of them, and the roll to get up is better for it. Somebody
+comes to sit with them: their partner first, then their own people, then a
+friend, then whoever is gentle about it, and **sitting up with somebody makes a
+friend of a stranger and turns a rival back into a friend on purpose**, which
+nothing else in this game does — the dream and the thaw both mend rivalries
+without anybody deciding to. The cost needs no rule: sitting beside somebody
+with it is being near somebody with it. And prayer's `heal`, top of its priority
+list and idle since sprint 11, finally does something — a prayer standing on
+somebody adds `.2` to their chance of getting up, on the same roll the weather
+is on, which is the point of the quiet stone.
+
+**It ends, and the ending is a number.** Nobody is in bed longer than `SICKD`
+(6) days; a wave stops finding anybody new after `WAVED` (12); having had it
+leaves you proof against it for `WELLD` (14), which is longer than a wave can
+last and is what stops one wave going round the village twice. Multiply those
+out and no wave can be more than 18 days old, on any island, ever — so `strain`
+asserts it on every single day of a forty-day run, along with three more: nobody
+in bed without a day to count from, nobody in bed past the six-day cap, and the
+wave record and the people in bed agreeing with each other in both directions
+(#73).
+
+Measured: a wave forced on day 31 of seeds 7, 20260819, 42, 11 and 99 took 1, 1,
+14, 22 and 9 people over 3 to 10 days — two of them never got out of the house
+they started in and one went through all but one of the island, and the range is
+the point. Over `strain`'s forty audited days with a wave forced into every
+winter on top of the famine, seed 7 ran one wave (8 days
+with somebody in bed, 4 of them at once at the worst, 13 people through it) and
+20260819 ran two (12 days, 4 at once, 16 through the biggest), and both islands
+came out at 20 and 23 people with the store above 80. The whole spread block
+sits behind `if(ill)`, so an island with nobody in bed draws exactly the stream
+it drew before any of this existed (#74) — which is why `soak`, `determinism`,
+`save` and every sprint mode stayed on the islands they were checked against.
 
 **What shipped, in the first increment.** The store is counted against the cold
 season now, not against winter — the season line's 13 measures a head is what
@@ -868,32 +916,45 @@ the island is leaner, not emptier.
   point and asserted on durable state, then a real reckoning at a real turn of
   winter, then forty audited days on two seeds with the thaw asserted on every
   single day.
-- [ ] **Illness that spreads on the paths.** `p.sick` is still set only by the
-  fever arc and cleared only by it. Let proximity carry it, let the chapel or
-  the hall matter, let nursing become a relationship. Prayer still has `heal` at
-  the top of its priority list and nothing to do. Note before starting: the
-  `eleven` mode now tells the arc it forced from the one the island dealt itself
-  by `d0`, and anything that moves `p.sick` should keep that distinction.
+- [x] **Illness that spreads on the paths.** Proximity carries it, the hall is
+  where the sick are laid out together, nursing makes a friend and unmakes a
+  rivalry, and `heal` is worth `.2` on the roll to get up. Save **v15**, one
+  ladder hop with its inverse. The `eleven` distinction held: the arc is still
+  told from the island's own by `d0`, and what that mode asserts now is the arc
+  ending and the clock on everybody still in bed, because the wave outlives the
+  arc on purpose and "nobody is sick afterwards" stopped being true.
 - [ ] **A feud that is a system, not a label.** Two rivals whose work suffers,
   who avoid each other's spots, whose children inherit the distance — and which
   ends, at a fire night or a death or a walking of the bounds, with a chronicle
   entry either way. The raid already makes a rival pair and already ends it
   three ways at the thaw; a feud is that pair given somewhere to live in between,
   and `endWant`'s three endings are the shape to copy.
-- [ ] **`strain` grows with them.** The mode is built to take more sections:
-  each new system forces through its own entry point, asserts its chronicle
-  entry and its off-ramp, and the forty-day audited run at the end picks it up
-  for free.
+- [ ] **`strain` grows with them.** Two systems in, two sections added: the
+  wave forced through `takeSick` (the record, the clock, the second day in bed,
+  the roll asserted clause by clause against `illChanceOf`, twelve people put at
+  the six-day cap at once so that the cap is proved rather than coincided with,
+  and everybody held beside the one in bed for a day inside a single day's steps
+  so that "it travels" is proved and no fever arc can have done it), and nursing
+  forced through `nursedBy` (a rival pair and a pair of strangers, both ending as
+  friends, both written down). The forty-day run now
+  forces a wave into every winter on top of the famine and asserts four illness
+  invariants a day. It grows once more when the feud lands.
 
-**What the next increment should know.** The stream has now moved three sessions
-running, and all three times it put an older observational check red without
-there being a bug: budget for it, read #66, #67 and #71 first, and do not treat
-a red check as a verdict. This time it was `eleven` reading the live `arc`
-instead of the one it forced, and `saga` waiting on a song outliving a carrier
-that this stream does not deliver by day 400. Both are fixed in the harness and
-neither was a change to the game. Also: seed 7 barely makes elders, so the
-elder-who-eats-last system fired zero times in ten game-years there and twice on
-20260819 — that is the same throttle the wishlist's standing backlog names at the
+**What the next increment should know.** The feud is the last third, and the
+shape to copy is `endWant()`'s three endings — squared, not squared, or left
+unsettled because one of the two is no longer on the island. The raid already
+makes a rival pair and already ends it three ways at the thaw; a feud is that
+pair given somewhere to live in between: work that suffers, spots each avoids,
+children who inherit the distance. Two things to know before starting. **A rival
+pair is now a thing nursing can un-make** — that is the only deliberate mender
+in the game (#75) and a feud has to survive somebody sitting up with the other
+one, or decide out loud that it does not. And **the stream moves whenever
+somebody is ill** and only then (#74): a run that gets nobody sick is on the old
+stream exactly, so if an older check goes red, first ask whether that run had
+anybody in bed, then read #66, #67 and #71, and do not treat a red check as a
+verdict. Still open from the first increment: seed 7 barely makes elders, so the
+elder-who-eats-last system fired zero times in ten game-years there against
+twice on 20260819 — that is the same throttle the standing backlog names at the
 top, and it is Phase 7's, not this row's.
 
 *Leans on:* `js/sim.js`'s task switch, `js/life.js`'s `newDay` and arcs,
@@ -901,7 +962,7 @@ top, and it is Phase 7's, not this row's.
 fields for the new person and village states, on Phase 3's ladder. *Model:*
 **Claude Fable 5.1** — new rules moving people through a simulation whose only
 safety net is a headless soak, where a wrong answer looks like a village
-having a hard year. *This increment was worked under Claude Opus 5.*
+having a hard year. *Both increments so far were worked under Claude Opus 5.*
 
 ## Phase 7 — Play that reads as play, and four other leftovers
 

@@ -245,14 +245,20 @@ if (mode === 'eleven') {
   const sick0 = await H(() => window.__hearth.sickCount);
   for (let d = 0; d < 8; d++) await runDay(page, 1e9);
   const fever = await H(() => {
-    const h = window.__hearth, a = h.arc;
-    return { sick: h.sickCount, arcK: a ? a.k : null, arcD0: a ? a.d0 : -1, chr: h.chron.some(e => e.kind === 'fever') };
+    const h = window.__hearth, a = h.arc, ill = h.people.filter(p => p.sick && !p.dead);
+    return { sick: h.sickCount, arcK: a ? a.k : null, arcD0: a ? a.d0 : -1, chr: h.chron.some(e => e.kind === 'fever'),
+      noClock: ill.filter(p => !p.sickD).length,                       // a sick flag with no day behind it is the stray this ever caught
+      stale: ill.filter(p => h.dayCount - p.sickD > h.SICKD).length };  // and nobody is in bed longer than the cap says they can be
   });
   const mine = fever.arcD0 === arc0.d0;                 // the arc this check started, told apart by the day it started on
-  const strays = (fever.arcK === 'fever' && !mine) ? 0 : fever.sick;   // a fever dealt after the forced one owns its own patients
-  console.log(`fever: ${sick0} taken, ${fever.sick} still sick after, the forced arc (day ${arc0.d0}) still running ${mine}, ` +
+  // Phase 6, second increment: the arc's ending is no longer everybody's. It used to clear `p.sick` on every person the day it ran
+  // out, so "still sick after" was the whole of the test; now the illness has its own clock and outlives the arc by however long the
+  // last person takes to get up. So what is asserted here is the arc (it ended, and it was written down) and that nobody is carrying
+  // a flag without a clock — the stray this check was always really looking for. Where the wave itself ends is `strain`'s to prove.
+  console.log(`fever: ${sick0} taken, ${fever.sick} still sick after, ${fever.noClock} of them with no day to count from, ` +
+    `the forced arc (day ${arc0.d0}) still running ${mine}, ` +
     `the island's arc now ${fever.arcK ? fever.arcK + ' from day ' + fever.arcD0 : 'none'}, chronicled ${fever.chr}`);
-  if (sick0 < 1 || strays > 0 || mine || !fever.chr) { failed = true; console.log('FAIL: fever arc misbehaved'); }
+  if (sick0 < 1 || fever.noClock > 0 || fever.stale > 0 || mine || !fever.chr) { failed = true; console.log('FAIL: fever arc misbehaved'); }
   await H(() => { window.__hearth.setDry(.1); window.__hearth.startArc('drought', 3); });
   for (let d = 0; d < 5; d++) await runDay(page, 1e9);
   const dr = await H(() => ({ dry: window.__hearth.dry01, now: window.__hearth.arc ? window.__hearth.arc.k : 'none', broke: window.__hearth.chron.some(e => e.kind === 'rainscame') }));
@@ -1153,6 +1159,7 @@ if (mode === 'migrate') {
     h.farRec.kn = 1; h.farCross('name', 'a forced crossing');            // v13: the far island's record, and a gone who knows which way they went
     h.gone.push({ name: 'A Forced Leaver', far: 1 });
     h.declareWant(); h.people[0].short = 1;                              // v14: the short winter, and the one eating last through it
+    h.takeSick(h.people[1], null); h.people[2].wellD = h.dayCount - 1;    // v15: a wave, somebody in it, and somebody proof against it
   });
 
   // A current island packs, unpacks and re-packs byte-identical: the ladder must not touch a save already at SAVE_V.
@@ -1180,9 +1187,9 @@ if (mode === 'migrate') {
       if (!h.canLoad(o)) return { err: 'canLoad refused a shape the ladder claims to accept' };
       h.migrate(o);
       const wide = (rows, dflt) => rows && rows.length ? Math.min(...rows.map(a => a.length)) : dflt;
-      const shape = { v: o.v, pe: wide(o.pe, 30), vo: o.vo && o.vo[5] ? o.vo[5].length : 30, gv: wide(o.gv, 7),
+      const shape = { v: o.v, pe: wide(o.pe, 32), vo: o.vo && o.vo[5] ? o.vo[5].length : 32, gv: wide(o.gv, 7),
         wk: wide(o.wk, 8), ch: wide(o.ch, 7), go: wide(o.go, 2),
-        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi', 'wa', 'wy'].filter(k => o[k] === undefined) };
+        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi', 'wa', 'wy', 'iw'].filter(k => o[k] === undefined) };
       try { h.unpack(o); } catch (e) { return { err: 'threw: ' + e.message } }
       try { h.pack(); } catch (e) { return { err: 'packs no more: ' + e.message } }
       return { shape,
@@ -1194,15 +1201,24 @@ if (mode === 'migrate') {
         prog: h.works.map(w => w.prog).join('/'),
         far: h.farRec ? (h.farRec.kn ? 1 : 0) + h.farRec.cr.length : -1, farGone: h.gone.filter(g => g.far).length, goneN: h.gone.length,
         want: h.want ? 1 : 0, short: h.people.filter(p => p.short).length,
+        ill: h.ill ? 1 : 0, sick: h.people.filter(p => p.sick).length, clock: h.people.filter(p => p.sick && !p.sickD).length,
+        well: h.people.filter(p => p.wellD).length,
       };
     }, { cur, v });
     if (r.err) { failed = true; console.log(`  v${v}: FAIL — ${r.err}`); continue; }
     const bad = [], sh = r.shape;
     if (sh.v !== same.v) bad.push(`the ladder stopped at v${sh.v}`);
-    if (sh.pe !== 30 || sh.vo !== 30) bad.push(`people came up ${sh.pe}/${sh.vo} slots wide, not 30`);
+    if (sh.pe !== 32 || sh.vo !== 32) bad.push(`people came up ${sh.pe}/${sh.vo} slots wide, not 32`);
     if (sh.gv !== 7 || sh.wk !== 8 || sh.ch !== 7 || sh.go !== 2) bad.push(`rows came up gv ${sh.gv}/7, wk ${sh.wk}/8, ch ${sh.ch}/7, go ${sh.go}/2`);
     if (sh.gone.length) bad.push(`the ladder left ${sh.gone.join(', ')} missing`);
     if (!r.pop) bad.push('nobody loaded');
+    // `sick` itself is slot 26 and has ridden the ladder since v7, so it comes up an old save and should. What v15 added is the wave
+    // record and the two clocks — so an old save must come up with no proof-against-it at all, and with the wave and the day-taken
+    // that repair (#37) is supposed to invent for whoever it finds in bed. That second one is a positive assertion, not an absence.
+    if (v <= 14 && r.well) bad.push('proof against having had it came through a v14 save');
+    if (v <= 14 && r.sick && !r.ill) bad.push('somebody came up a v14 save in bed with no wave to belong to — repair did not run');
+    if (v <= 6 && (r.sick || r.ill)) bad.push('a sick flag came through a v6 save');
+    if (r.clock) bad.push(`${r.clock} came up the ladder sick with no day to count it from — repair did not run`);
     if (v <= 13 && (r.want || r.short)) bad.push('a short winter came through a v13 save');
     if (v <= 12 && r.far) bad.push('a far-island record came through a v12 save');
     if (v <= 12 && r.farGone) bad.push('a v12 save knew which way one of the gone had gone');
@@ -1220,7 +1236,7 @@ if (mode === 'migrate') {
     if (v <= 6 && r.faith) bad.push('faith came through a v6 save');
     console.log(`  v${v}: pop ${r.pop}, songs ${r.songs}, snowmen ${r.snowmen}, skipN ${r.skipN}, grave-visits ${r.vn}, ` +
       `loreN ${r.loreN}, places ${r.lorePl}, things ${r.things}, works ${r.works} (${r.wip} wip, prog ${r.prog || '-'}), faith ${r.faith}, ` +
-      `far ${r.far} (${r.goneN} gone, ${r.farGone} of them over the water), want ${r.want}/${r.short}` +
+      `far ${r.far} (${r.goneN} gone, ${r.farGone} of them over the water), want ${r.want}/${r.short}, ill ${r.ill}/${r.sick}` +
       `, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}/${r.shape.go}` +
       (bad.length ? `  !! ${bad.join('; ')}` : '  ok'));
     if (bad.length) failed = true;
@@ -1230,12 +1246,13 @@ if (mode === 'migrate') {
   // constants under test, so moving one moves the assertion with it and the check says nothing. Literals, and the ladder above is
   // what proves the range is one the ladder can actually walk.
   // These two literals are moved by hand on every version bump, and that is the whole point: phase 5 bumped SAVE_V to 13 and this
-  // check went red on its own, which is what a computed bound would never have done. Phase 6 bumped it to 14 and it did so again.
+  // check went red on its own, which is what a computed bound would never have done. Phase 6 bumped it to 14, and then to 15, and it
+  // did so both times.
   const gate = await H(() => {
     const h = window.__hearth, o = JSON.parse(JSON.stringify(h.pack()));
-    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 15 }), nope: h.canLoad({ ...o, pe: undefined }) };
+    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 16 }), nope: h.canLoad({ ...o, pe: undefined }) };
   });
-  console.log(`the gate: v4 ${gate.low}, v15 ${gate.high}, no people ${gate.nope} — all three must be false`);
+  console.log(`the gate: v4 ${gate.low}, v16 ${gate.high}, no people ${gate.nope} — all three must be false`);
   if (gate.low || gate.high || gate.nope) { failed = true; console.log('FAIL: canLoad accepts something it should not'); }
 
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
@@ -1809,25 +1826,213 @@ if (mode === 'strain') {
     await ctx.close();
   }
 
+  // ---- nine: the sickness, forced through its own door. `takeSick` is the only way anybody ever becomes ill now — the fever arc
+  // calls it too — so it is the entry point, and what is asserted is the durable state it leaves: a wave that knows when it started
+  // and who started it, a person with a clock on them, and a second call that refuses because they already have it.
+  {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, 7, warns);
+    for (let d = 0; d < 20; d++) { const r = await runDay(page, 25); viol = viol.concat(r.viol) }
+    const t0 = await page.evaluate(() => {
+      const h = window.__hearth;
+      for (const p of h.people) { p.sick = 0; p.sickD = 0; p.wellD = 0 }                 // whatever the island has been doing, start clean
+      h.endIll();                                                                        // and close whatever wave those flags belonged to
+      const p = h.people.find(q => !q.dead && !q.child), q = h.people.find(x => x !== p && !x.dead && !x.child);
+      const first = h.takeSick(p, null), again = h.takeSick(p, null);
+      q.wellD = h.dayCount;                                                              // just got over it: proof against this one
+      return { who: p.name, first, again, canTakeAgain: h.canTake(p), proof: !h.canTake(q),
+        d0: h.ill && h.ill.d0, by: h.ill && h.ill.by, n: h.ill && h.ill.n, day: h.dayCount, clock: p.sickD };
+    });
+    console.log(`the wave: ${t0.who} took it on day ${t0.day}, wave from day ${t0.d0} by ${t0.by}, counted ${t0.n}`);
+    check(t0.first && !t0.again, 'takeSick either did not take, or took twice on the same person');
+    check(t0.n === 1 && t0.by === t0.who && t0.d0 === t0.day, `the wave record is wrong: ${t0.n} taken, first ${t0.by}, from day ${t0.d0}`);
+    check(t0.clock === t0.day, `the one who took it has no day to count from: sickD ${t0.clock}`);
+    check(!t0.canTakeAgain, 'somebody already in bed can take it again');
+    check(t0.proof, 'shaking it off the day before leaves you able to take it again the next morning');
+
+    // the first day you are up and out, which is how it travels; the second day you are in bed whether you agree or not
+    const up = await page.evaluate(() => ({ task: window.__hearth.people.find(p => p.sick).task }));
+    let r1 = await runDay(page, 25); viol = viol.concat(r1.viol);
+    const bed = await page.evaluate(() => {
+      const h = window.__hearth, p = h.people.find(x => x.sick);
+      return p ? { task: p.task, days: h.dayCount - p.sickD, hall: !!p.abedH } : { task: 'well', days: -1 };
+    });
+    console.log(`  day one ${up.task}, day two ${bed.task}${bed.days >= 0 ? ` (${bed.days} in)` : ' — up again already'}`);
+    check(up.task !== 'abed', 'the first day of it puts somebody straight to bed, so it can never travel anywhere');
+    check(bed.days < 0 || bed.task === 'abed', `the second day of it and ${bed.task} is not being in bed`);
+
+    // the roll to get up, asserted as a number rather than waited for. Every clause of it, one at a time, against the same person.
+    const ch = await page.evaluate(() => {
+      const h = window.__hearth, p = h.people.find(x => x.sick) || h.people.find(x => !x.dead && !x.child);
+      if (!p.sick) { h.takeSick(p, null) }
+      p.nursed = 0; const base = h.illChanceOf(p);
+      p.nursed = h.dayCount; const nursed = h.illChanceOf(p); p.nursed = 0;
+      const older = p.age0; p.age0 = 70; const elder = h.illChanceOf(p); p.age0 = older;
+      const long = (() => { const d0 = p.sickD; p.sickD = d0 - 3; const v = h.illChanceOf(p); p.sickD = d0; return v })();
+      return { name: p.name, base, nursed, elder, long, cap: h.SICKD, wave: h.WAVED, well: h.WELLD };
+    });
+    console.log(`  getting up: ${ch.name} at ${ch.base.toFixed(2)} alone, ${ch.nursed.toFixed(2)} sat up with, ${ch.elder.toFixed(2)} as an elder, ` +
+      `${ch.long.toFixed(2)} three days in; caps ${ch.cap}/${ch.wave}/${ch.well}`);
+    check(ch.nursed > ch.base, `sitting up with somebody did not help them: ${ch.nursed} against ${ch.base}`);
+    check(ch.elder < ch.base, `an elder is not slower to come through it: ${ch.elder} against ${ch.base}`);
+    check(ch.long > ch.base, 'the longer it goes on the harder it gets, which is the wrong way round');
+    check(ch.cap > 0 && ch.wave > 0 && ch.well > ch.cap, `the caps are not a bound: ${ch.cap}/${ch.wave}/${ch.well}`);
+
+    // and that it travels, which is the whole point of it and the one thing an island cannot be waited on to do. Nearness is the
+    // only mechanism there is, so nearness is what gets forced: everybody is put beside the one in bed and held there for a day's
+    // worth of steps, and somebody has to catch it. Break the spread rule and this is the check that goes red (#34).
+    const caught = await page.evaluate(() => {
+      const h = window.__hearth;
+      // to the top of a day, and then 2700 of the 2800 steps in it: no `newDay` runs inside this loop, so the fever arc — the only
+      // other thing in the game that makes anybody ill — cannot seed a single one of these. Whatever is caught here was caught by
+      // standing next to somebody, which is the rule under test. Disable the spread and this comes back zero.
+      h.setTime(Math.ceil(h.time / 140) * 140 + 0.01);
+      const p = h.people.find(x => x.sick) || h.people.find(x => !x.dead && !x.child);
+      if (!p.sick) { p.wellD = 0; h.takeSick(p, null) }
+      const others = h.people.filter(q => q !== p && !q.dead && !q.inBoat && h.canTake(q));
+      const day0 = h.dayCount;
+      for (let i = 0; i < 2700; i++) { for (const q of others) { q.x = p.x + .3; q.y = p.y + .3 } h.step(0.05) }
+      return { who: p.name, of: others.length, got: others.filter(q => q.sick).length, rolled: h.dayCount !== day0 };
+    });
+    console.log(`  travelling: ${caught.got} of ${caught.of} took it off ${caught.who} in a day of standing next to them`);
+    check(!caught.rolled, 'the travelling section crossed a day boundary, so a fever arc could have done its work for it');
+    check(caught.got > 0, `a day beside somebody in bed and none of ${caught.of} took it — it does not travel at all`);
+
+    // what the quiet stone is finally for. `heal` has been top of prayer's list and idle since sprint 11: now it is worth something,
+    // and it is worth it the way everything the stone does is — quietly, on the same roll the weather is on, indistinguishable.
+    const pray = await page.evaluate(() => {
+      const h = window.__hearth, p = h.people.find(x => x.sick);
+      if (!p) return { skip: 1 };
+      const none = h.illChanceOf(p);
+      h.people.forEach(q => { if (q !== p) q.sick = 0 });
+      const w = h.works.find(x => x.wk === 'shrine');
+      h.setFaith(1); if (!w) h.works.push({ wk: 'shrine', x: 40, y: 30, y0: 1, done: true, prog: 99, paid: 1, said: 1 });
+      let asked = null; for (let i = 0; i < 200 && !asked; i++) { h.faithDay(); asked = h.prayer }
+      const with_ = h.illChanceOf(p);
+      return { skip: 0, k: asked && asked.k, who: asked && asked.who, name: p.name, none, with_ };
+    });
+    if (pray.skip) check(false, 'nobody was ill by the time the quiet stone was asked, so heal could not be tested');
+    else {
+      console.log(`  the quiet stone: asked for ${pray.k}${pray.who ? ' for ' + pray.who : ''}; ${pray.name} at ${pray.none.toFixed(2)} without it, ${pray.with_.toFixed(2)} with`);
+      check(pray.k === 'heal' && pray.who === pray.name, `with somebody in bed the stone was asked for ${pray.k} for ${pray.who}, not heal for ${pray.name}`);
+      check(pray.with_ > pray.none, `a prayer standing on somebody did nothing for them: ${pray.with_} against ${pray.none}`);
+    }
+
+    // and the cap, which is the whole off-ramp (#73). One person reaching six days and getting up proves nothing — the roll at six
+    // days in is `.48` and would have got most of them up anyway — so twelve of them are put at exactly the cap at once and `illDay`
+    // is called through its own door. All twelve have to be up. By the roll alone that is `.48^12`, about one run in ninety
+    // thousand, which is what makes this a check rather than a coincidence: take `days>=SICKD` out and it goes red.
+    const cap = await page.evaluate(() => {
+      const h = window.__hearth;
+      const ps = h.people.filter(p => !p.dead).slice(0, 12);
+      for (const p of h.people) { p.sick = 0; p.wellD = 0 }
+      h.endIll();
+      for (const p of ps) { p.age0 = 30; p.born = h.dayCount; h.takeSick(p, null); p.sickD = h.dayCount - h.SICKD }
+      const on = ps.filter(p => p.sick).length;
+      h.illDay();
+      return { of: ps.length, on, up: ps.filter(p => !p.sick).length, cap: h.SICKD,
+        hist: ps.filter(p => p.hist.some(x => x.s.includes('full week'))).length, wave: !!h.ill };
+    });
+    console.log(`  the cap: ${cap.on} of them put at ${cap.cap} days in at once, ${cap.up} up the next morning, ${cap.hist} of them saying why`);
+    check(cap.on === cap.of, `only ${cap.on} of ${cap.of} could be put in bed for the cap test`);
+    check(cap.up === cap.of, `${cap.of - cap.up} of ${cap.of} reached the ${cap.cap}-day cap and stayed in bed — the cap is not a cap`);
+    check(cap.hist === cap.of, `${cap.hist} of ${cap.of} carry the line saying the week was over rather than the illness`);
+    check(!cap.wave, 'the wave outlived the last person in it');
+    warnAll = warnAll.concat(warns);
+    await ctx.close();
+  }
+
+  // ---- ten: nursing, which is the only thing on this island that turns a rival back into a friend on purpose. Forced through
+  // `nursedBy`, because whether two particular people are ever both idle and near each other is not something a check can wait for.
+  {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, 20260819, warns);
+    for (let d = 0; d < 16; d++) { const r = await runDay(page, 25); viol = viol.concat(r.viol) }
+    const n = await page.evaluate(() => {
+      const h = window.__hearth, ps = h.people.filter(p => !p.dead && !p.child);
+      const rel = (x, y) => { const r = x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      const set = (x, y, k) => { const r = x.rels.find(r2 => r2.who === y.name); if (r) r.k = k; else x.rels.push({ who: y.name, k }) };
+      // a rival pair, made on purpose, and a pair who have never had a thing to do with each other
+      const [a, b, c, d] = ps; set(a, b, 'rival'); set(b, a, 'rival');
+      c.rels = c.rels.filter(r => r.who !== d.name); d.rels = d.rels.filter(r => r.who !== c.name);
+      h.takeSick(b, null); h.takeSick(d, null);
+      const n0 = h.chron.length;
+      h.nursedBy(c, d); h.nursedBy(a, b);   // strangers first: theirs is the "first time anybody did this" entry, and it is written once ever
+      return { a: a.name, b: b.name, c: c.name, d: d.name, ab: rel(a, b), ba: rel(b, a), cd: rel(c, d), dc: rel(d, c),
+        kinds: h.chron.slice(n0).map(e => e.kind),
+        hist: a.hist.some(x => x.s.includes('rival')) && b.hist.some(x => x.s.includes('of all people')) &&
+              c.hist.some(x => x.s.includes('came out of it a friend')) && d.hist.some(x => x.s.includes('came out of it a friend')) };
+    });
+    console.log(`nursing: ${n.a}/${n.b} were rivals, now ${n.ab}/${n.ba}; ${n.c}/${n.d} were nothing to each other, now ${n.cd}/${n.dc}; chronicle +[${n.kinds.join(',')}]`);
+    check(n.ab === 'friend' && n.ba === 'friend', `sitting up with a rival left them at ${n.ab}/${n.ba}`);
+    check(n.cd === 'friend' && n.dc === 'friend', `sitting up with a stranger left them at ${n.cd}/${n.dc}`);
+    check(n.kinds.filter(k => k === 'nursed').length === 2, `nursing wrote [${n.kinds.join(',')}], expected two nursed entries`);
+    check(n.hist, 'the four of them do not carry the night in their own histories');
+
+    // ---- and all of it packs, including the clocks and the proof-against-it
+    const rt = await page.evaluate(() => {
+      const h = window.__hearth, p = h.people.find(x => x.sick);
+      const q = h.people.find(x => !x.dead && !x.sick); q.wellD = h.dayCount - 2;
+      const a = JSON.stringify(h.pack()), o = JSON.parse(a);
+      h.unpack(JSON.parse(a));
+      const p2 = h.byName(p.name), q2 = h.byName(q.name);
+      return { v: o.v, iw: o.iw, slots: Math.min(...o.pe.map(x => x.length)),
+        sick: !!(p2 && p2.sick), clock: p2 && p2.sickD, well: q2 && q2.wellD, proof: !!(q2 && !h.canTake(q2)),
+        wave: !!h.ill, n: h.ill && h.ill.n, again: JSON.stringify(h.pack()) === a };
+    });
+    console.log(`  round trip: pack v${rt.v}, iw=${JSON.stringify(rt.iw)}, ${rt.slots} slots a person; back: in bed ${rt.sick} since day ${rt.clock}, ` +
+      `${rt.well ? 'somebody proof against it since day ' + rt.well : 'nobody proof against it'}`);
+    check(rt.v >= 15, `the sickness did not bump the save shape: v${rt.v}`);
+    check(rt.slots >= 32, `a packed person is ${rt.slots} slots wide, not 32`);
+    check(rt.sick && rt.clock > 0, 'somebody in bed came back out of the save with no day to count from');
+    check(rt.well > 0 && rt.proof, 'having had it did not survive pack/unpack, so a wave can go round the village twice');
+    check(rt.wave && rt.n >= 2, `the wave did not survive pack/unpack: ${JSON.stringify(rt.iw)}`);
+    check(rt.again, 're-packing after the round trip is not byte-identical');
+    warnAll = warnAll.concat(warns);
+    await ctx.close();
+  }
+
   // ---- eight: and the whole of it under the soak invariants. On the eve of each winter the store is knocked down to four a head —
   // low enough that a day of fishing and harvest cannot carry it to the cold season's nineteen, high enough that the island is on
   // rations rather than starving, which is a different system. Nothing else is touched after that: the reckoning is held through its
   // own door and the island lives the winter out. Every day is audited — nobody in the water, nobody NaN — and two invariants are
   // asserted on every single day: no rations once the ground has softened, and nobody left eating last.
-  let audits = 0;
+  // The second increment adds the sickness to it. A wave is started by hand on the first day of every winter — the same winter the
+  // store has just been knocked down for, because a village on rations with people in bed is the state this whole row exists to
+  // reach — and after that nobody touches it. Four things are asserted on every single day, alongside the famine's two: nobody is
+  // in bed without a day to count from, nobody is in bed longer than the cap allows, the wave record and the people in bed agree
+  // with each other in both directions, and no wave outlives WAVED + SICKD days from the day it started.
+  let audits = 0, travelled = 0;
   for (const seed of seeds) {
     const warns = [];
     const { ctx, page } = await openIsland(browser, seed, warns);
-    let famines = 0;
+    let famines = 0, waves = 0, peak = 0, sickDays = 0, maxN = 0, wasWave = false;
     for (let d = 0; d < days; d++) {
       await page.evaluate(() => {
-        const h = window.__hearth, d2 = h.dayCount;
-        if (Math.floor(((d2 - 1) % 20) / 5) !== 2 || ((d2 - 1) % 20) % 5 !== 4) return;   // autumn's last day, and only that
-        h.setGranary(Math.round(h.people.length * 4)); h.setFood(0);
+        const h = window.__hearth, d2 = h.dayCount, sd = ((d2 - 1) % 20) % 5, se = Math.floor(((d2 - 1) % 20) / 5);
+        if (se === 2 && sd === 4) { h.setGranary(Math.round(h.people.length * 4)); h.setFood(0) }   // autumn's last day, and only that
+        if (se === 3 && sd === 0 && !h.ill) {                                                       // winter's first, and only if nobody has it
+          const c = h.people.filter(p => !p.dead && !p.child && h.canTake(p));
+          if (c.length) h.takeSick(c[0], null);
+        }
       });
       const r = await runDay(page, 25); viol = viol.concat(r.viol); audits += Math.floor(r.steps / 25) + 1;
-      const st = await page.evaluate(() => ({ day: window.__hearth.dayCount, on: !!window.__hearth.want, short: window.__hearth.people.filter(p => p.short).length }));
+      const st = await page.evaluate(() => {
+        const h = window.__hearth, sick = h.people.filter(p => p.sick && !p.dead);
+        return { day: h.dayCount, on: !!h.want, short: h.people.filter(p => p.short).length,
+          sick: sick.length, noClock: sick.filter(p => !p.sickD).length,
+          stale: sick.filter(p => h.dayCount - p.sickD > h.SICKD).map(p => `${p.name} ${h.dayCount - p.sickD}d`),
+          wave: h.ill ? h.dayCount - h.ill.d0 : -1, n: h.ill ? h.ill.n : 0, bound: h.WAVED + h.SICKD, cap: h.SICKD };
+      });
       if (st.on) famines++;
+      if (st.sick) { sickDays++; peak = Math.max(peak, st.sick) }
+      if (st.wave >= 0 && !wasWave) waves++;                       // the transition, not the age: a wave forced before a day runs is one day old by the end of it
+      wasWave = st.wave >= 0; maxN = Math.max(maxN, st.n);
+      check(!st.noClock, `seed ${seed} day ${st.day}: ${st.noClock} in bed with no day to count from`);
+      check(!st.stale.length, `seed ${seed} day ${st.day}: ${st.stale.join(', ')} in bed past the ${st.cap}-day cap`);
+      check(st.wave >= 0 || !st.sick, `seed ${seed} day ${st.day}: ${st.sick} in bed and no wave they belong to`);
+      check(st.wave < 0 || st.sick > 0, `seed ${seed} day ${st.day}: a wave still running with nobody in bed`);
+      check(st.wave <= st.bound, `seed ${seed} day ${st.day}: a wave is ${st.wave} days old, past the ${st.bound}-day bound`);
       if (seaOf(st.day) === 'spring' || seaOf(st.day) === 'summer') {
         check(!st.on, `seed ${seed} day ${st.day} is ${seaOf(st.day)} and the rations are still on`);
         check(!st.short, `seed ${seed} day ${st.day} is ${seaOf(st.day)} and ${st.short} are still eating last`);
@@ -1837,10 +2042,15 @@ if (mode === 'strain') {
       const h = window.__hearth, c = {};
       for (const e of h.chron) c[e.kind] = (c[e.kind] || 0) + 1;
       return { pop: h.people.length, want: c.want | 0, raid: c.raid | 0, gave: c.gave | 0, thaw: c.thaw | 0,
-        squared: c.squared | 0, kept: c.kept | 0, parted: c.parted | 0, left: (c.left | 0) + (c.farleft | 0), store: h.granary, on: h.want ? 1 : 0 };
+        squared: c.squared | 0, kept: c.kept | 0, parted: c.parted | 0, left: (c.left | 0) + (c.farleft | 0), store: h.granary, on: h.want ? 1 : 0,
+        ill: c.ill | 0, nursed: c.nursed | 0, sick: h.people.filter(p => p.sick).length };
     });
     console.log(`seed ${seed}: ${days} days, ${famines} of them on rations — ${s2.want} reckonings, ${s2.raid} raids, ${s2.gave} eating last, ` +
       `${s2.thaw} thaws (${s2.squared} squared, ${s2.kept} not, ${s2.parted} left unsettled), ${s2.left} sailed, pop ${s2.pop}, store ${s2.store}`);
+    console.log(`  and ${waves} waves of sickness over ${sickDays} days with somebody in bed, ${peak} of them at once at the worst, ` +
+      `${s2.ill} written down, ${s2.nursed} sitting-up entries, ${s2.sick} still in bed at the end (the biggest wave took ${maxN})`);
+    check(waves > 0, `seed ${seed}: a wave was started on the first day of every winter and none of them ever ran`);
+    travelled = Math.max(travelled, maxN);   // whether it travels at all is proved by force in section nine; here it only has to happen once, unforced, across both islands
     check(s2.want > 0, `seed ${seed} went ${days} days with a short store at the turn of winter and never held a reckoning`);
     check(s2.thaw === s2.want - s2.on, `seed ${seed}: ${s2.want} reckonings, ${s2.thaw} thaws, ${s2.on} still running — they must account for each other`);
     check(s2.squared + s2.kept + s2.parted === s2.raid - (s2.on && s2.raid ? 1 : 0),
@@ -1850,11 +2060,13 @@ if (mode === 'strain') {
     await ctx.close();
   }
 
+  check(travelled >= 2, `over ${seeds.length * days} island-days with a wave forced into every winter, no wave anywhere ever reached a second person`);
   if (viol.length) { failed = true; console.log('VIOLATIONS:'); [...new Set(viol)].slice(0, 20).forEach(v => console.log('  ' + v)) }
   if (warnAll.length) { failed = true; console.log('WARNINGS:'); [...new Set(warnAll)].slice(0, 20).forEach(v => console.log('  ' + v)) }
   if (bad.length) { failed = true; console.log('FAILURES:'); bad.forEach(v => console.log('  ' + v)) }
-  console.log(failed ? '\nFAIL' : `\nPASS: the short winter bites and lets go — reckoning, raid, the one eating last, and a thaw that is not optional, ` +
-    `over ${seeds.length * days + 30} audited sim-days (~${audits} full-cast audits), 0 violations`);
+  console.log(failed ? '\nFAIL' : `\nPASS: the short winter bites and lets go and the sickness travels and burns out — reckoning, raid, the one eating last, ` +
+    `a thaw that is not optional, a wave with a clock on every person in it, and nursing that costs a rivalry, ` +
+    `over ${seeds.length * days + 66} audited sim-days (~${audits} full-cast audits), 0 violations`);
 }
 
 if (mode === 'determinism') {
