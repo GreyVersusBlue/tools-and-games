@@ -1,0 +1,153 @@
+# Checks for Hearth. Seventeen sprints and seven phases of regressions ran on
+# somebody's desk: every "harness green" in every handoff was a person running
+# every mode of Projects/hearth/test/harness.mjs and pasting the output.
+# Nothing in the deploy path executes a line of the game, so without this job
+# a commit that breaks the island reaches production unremarked. See
+# Projects/hearth/WISHLIST.md, Phase 8.
+#
+# Two jobs:
+#
+#   gate  on every pull request and push to main — determinism, save, a
+#         twelve-day soak on the two fixed seeds, and `pinned`, which compares
+#         the forty-day pack() hashes of seeds 7 and 20260819 against
+#         test/hashes.json. About a minute of browser time; the install is the
+#         slow part.
+#   deep  nightly and on demand — the full forty-day soak, `nan` (five
+#         minutes), `decade` (six), and every per-sprint mode, one job per
+#         mode so a red one names itself. Never on a pull request: the sweep
+#         is about half an hour end to end and would hold every PR open.
+#
+# The harness has no screenshots, so the browser pin is not about pixels. It
+# is about arithmetic. Every distance on the island goes through Math.hypot,
+# every roll through Math.pow and Math.sin, and V8 revises that library
+# between releases: on the machine that wrote this, Node 22's V8 and Chrome
+# 141's V8 agree on 200,000 hypot() results and disagree on pow() and
+# sin()+cos() over the same inputs. The first run of this job installed the
+# lockfile's Playwright 1.62.1, whose Chromium (build 1234, Chrome 151) ran a
+# different island from day one: `determinism` passed against itself and
+# `pinned` failed on both seeds, 6639ed2c:35012 against the recorded
+# 41eb3cb5:37275. The recorded hashes were made on Chromium 1194 (Chrome 141),
+# the build Playwright 1.56.1 ships, and the lockfile now pins exactly that
+# version, the same one school-generator-ci.yml pins for its screenshots.
+# `npm ci` installs it and `playwright install` fetches its Chromium, so a
+# moved hash is a claim about the simulation and not about the runner.
+# Bumping the lockfile is a deliberate act that comes with re-running
+# `node harness.mjs pinned --write` on the new build and committing the new
+# hashes in the same PR, never on a desk with a different browser.
+
+name: Hearth CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/hearth/**"
+      - ".github/workflows/hearth-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Projects/hearth/**"
+      - ".github/workflows/hearth-ci.yml"
+  schedule:
+    # 09:20 UTC daily, about 2 am on the dev machine's clock. Off the hour so
+    # it is not queued behind everybody else's nightly.
+    - cron: "20 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hearth-ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: Projects/hearth/test
+
+jobs:
+  gate:
+    name: determinism, save, 12-day soak, pinned hashes
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Projects/hearth/test/package-lock.json
+
+      - name: Install the pinned Playwright
+        run: npm ci
+
+      - name: Install its Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Printed so a hash that moves with a browser bump is one line in the
+      # log rather than a week of "why did seed 7 drift". 1.56.1 is Chromium
+      # 1194; anything else and `pinned` is comparing two browsers, not two
+      # commits.
+      - name: Say which browser is running the island
+        run: npx playwright --version
+
+      - name: Determinism (two fresh runs of seed 7, 30 days, same hash)
+        run: node harness.mjs determinism
+
+      - name: Save (autosave at dawn survives a reload)
+        run: node harness.mjs save
+
+      - name: Soak, 12 days on the two fixed seeds
+        run: node harness.mjs soak --days 12 --seeds 7,20260819 --random 0
+
+      - name: Pinned forty-day hashes (test/hashes.json)
+        run: node harness.mjs pinned
+
+  deep:
+    name: deep · ${{ matrix.mode }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode:
+          - soak
+          - nan
+          - depth
+          - decade
+          - migrate
+          - saga
+          - wider
+          - strain
+          - eleven
+          - twelve
+          - thirteen
+          - fourteen
+          - fifteen
+          - sixteen
+          - leftovers
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Projects/hearth/test/package-lock.json
+
+      - name: Install the pinned Playwright
+        run: npm ci
+
+      - name: Install its Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Say which browser is running the island
+        run: npx playwright --version
+
+      # Each mode's own defaults: soak is the full 40 days on three fixed seeds
+      # plus two random ones, nan is 400 days with starvation windows, decade
+      # is 25 years on two seeds. The harness exits non-zero on any violation,
+      # breadcrumb, page error or failed check.
+      - name: ${{ matrix.mode }}
+        run: node harness.mjs ${{ matrix.mode }}

@@ -389,7 +389,7 @@ table. *Save:* none — a chosen tier is a per-device fact, not campaign state.
 *Model:* **Claude Opus 5** — asset conversion and a load-time heuristic, both
 verifiable by looking.
 
-## Phase 5 — The suite runs on every pull request
+## Phase 5 — The suite runs on every pull request — **SHIPPED**
 
 **393 assertions that run when somebody remembers to run them.**
 
@@ -399,17 +399,16 @@ no dependency, two `node` invocations, and both already
 `process.exit(fail ? 1 : 0)`, so the only missing piece is the YAML. "Merged
 with CI green" is currently a promise nothing checks.
 
-- [ ] **`.github/workflows/fourth-quarter-ci.yml`.** Node 22, path-filtered on
-  `Projects/fourth-quarter/**` and the workflow file, on pull requests and
-  pushes to main, with a `concurrency` group — the shape
-  `school-generator-ci.yml` already uses. Both suites as two named steps, so a
-  failure names which one.
-- [ ] **A third step that runs the new module's suite**, if phases 1, 3, 6 or 8
-  landed first — this file assumes `smoke-layout.mjs` and friends, and a glob
-  over `test/*.mjs` is the version that does not need editing again.
-- [ ] **Reintroduce the bug.** Break one assertion locally, confirm a non-zero
-  exit and a red job, restore. Confirm the path filter actually fires by
-  touching a file under it in the phase's own PR.
+- [x] **`.github/workflows/fourth-quarter-ci.yml`.** Node 22, path-filtered
+  on `Projects/fourth-quarter/**` and the workflow file, on pull requests and
+  pushes to main, one `concurrency` group. `smoke-engine` and `smoke-campaign`
+  are two named steps, so a failure names which one.
+- [x] **A third step that runs whatever else is in `test/*.mjs`**, one process
+  per file, skipping the two above; a suite a later phase adds runs from its
+  first commit and fails the job naming the file.
+- [x] **Reintroduce the bug.** `ok` in `smoke-engine.mjs` made to fail every
+  assertion: exit 1. Restored, and the loop over the other files exited 0. The
+  path filter fires on this phase's own PR because this file changed in it.
 
 *Leans on:* `test/*.mjs`, `.github/workflows/school-generator-ci.yml` as the
 worked example. *Save:* none. *Model:* **Claude Opus 5** — test wiring around

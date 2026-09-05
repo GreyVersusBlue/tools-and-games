@@ -15,6 +15,7 @@
 //   node harness.mjs wider
 //   node harness.mjs strain      [--days 40] [--seeds 7,20260819]
 //   node harness.mjs leftovers   (phase 7: the ring's shared phase, the widened elder roll, the weighted prayer, the most-visited stone)
+//   node harness.mjs pinned      [--write]   (phase 8: the forty-day pack() hashes in hashes.json, compared, or rewritten with --write)
 //
 // Checks, per sprint-8 lessons: audit EVERY species and people every N steps across MULTIPLE
 // seeds including random ones; a single healthy island at a polite interval proves nothing.
@@ -22,6 +23,7 @@
 import { chromium } from 'playwright';
 import { pathToFileURL, fileURLToPath } from 'url';
 import path from 'path';
+import fs from 'fs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GAME = pathToFileURL(path.join(HERE, '..', 'index.html')).href;
@@ -2396,6 +2398,36 @@ if (mode === 'leftovers') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 6).forEach(v => console.log('  WARN ' + v)); }
   console.log(failed ? '\nFAIL' : '\nPASS: the four leftovers, each through its own door');
   await ctx.close();
+}
+
+// Phase 8: the machine's copy of the number every handoff pasted by hand. hashes.json holds the pack() hash of each listed seed
+// after `days` sim-days; a shifted R() draw, a field added to pack(), or a rule that moves anybody's stream changes it, and this
+// mode says which seed and by how much (the length after the colon is the packed save's size, which is the cheap half of the
+// diagnosis). Rewrite the file with --write when the move was meant, and say so in the PR; the diff is then the record.
+if (mode === 'pinned') {
+  const FILE = path.join(HERE, 'hashes.json');
+  const pin = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+  const write = process.argv.includes('--write');
+  console.log(`pinned: ${Object.keys(pin.seeds).length} seeds at ${pin.days} days, against ${path.basename(FILE)}${write ? ' (rewriting)' : ''}\n`);
+  const got = {};
+  for (const seed of Object.keys(pin.seeds).map(Number)) {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, seed, warns);
+    for (let d = 0; d < pin.days; d++) await runDay(page, 1e9);
+    got[seed] = await packHash(page);
+    const want = pin.seeds[seed];
+    const same = got[seed] === want;
+    if (!same && !write) failed = true;
+    console.log(`  seed ${seed}: ${got[seed]}${same ? '  = pinned' : `  != pinned ${want}`}`);
+    if (warns.length) { failed = true; [...new Set(warns)].slice(0, 6).forEach(w => console.log('  WARN ' + w)); }
+    await ctx.close();
+  }
+  if (write) {
+    fs.writeFileSync(FILE, JSON.stringify({ days: pin.days, seeds: got }, null, 2) + '\n');
+    console.log(`\nwrote ${path.basename(FILE)}`);
+  }
+  console.log(failed ? '\nFAIL: the island moved off its stream — an R() draw shifted, or pack() changed shape; --write if it was meant'
+                     : `\nPASS: ${Object.keys(got).length} islands still on their streams at day ${pin.days}`);
 }
 
 if (mode === 'determinism') {
