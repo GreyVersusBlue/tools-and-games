@@ -187,9 +187,6 @@ Open and unclaimed. Add here rather than starting a new list.
   party. Found by the headless Causeway fight in Phase 2 and pinned as-is in
   `smoke.mjs`; the fix is in `finish`, and it wants a decision about what a
   dead companion means for the scene graph.
-- The Chronicle never shows a monster's recovery: foes have no `dying`, so
-  `applyDamage` kills them at 0 (correct), but the same missing field is why
-  they cannot flank (#90).
 
 **Combat rules**
 - **Monsters cannot flank.** Foe combatants are built in `Combat.start` with no
