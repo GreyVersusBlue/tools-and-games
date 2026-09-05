@@ -7,7 +7,7 @@ ranked index you scan, and the ideas underneath it that have no other home.
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
 The last thing that shipped is **Hearth Phases 2 and 3, "Decades, not years"
-and "The migration ladder" (PR #PRNUM)** — a fourth speed that runs 240 sim
+and "The migration ladder" (PR #112)** — a fourth speed that runs 240 sim
 steps between paints and gets the island to a decade in two minutes instead of
 forty, and then the discovery that three of the four systems the decade was
 meant to reach could not have fired at any length of run: the fire told the same
