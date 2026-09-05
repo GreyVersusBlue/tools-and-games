@@ -47,9 +47,15 @@
   #chron .roll{overflow-y:auto;margin:10px 6px 0 0;padding-right:8px;font-size:13px;line-height:1.5}
   #chron .roll h4{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:normal;margin:14px 0 4px;border-bottom:1px solid var(--line);padding-bottom:3px}
   #chron .roll h4:first-child{margin-top:0}
+  #chron .roll h4 span{text-transform:none;letter-spacing:.04em;font-style:italic;color:var(--dim);font-size:11px}
+  #chron .roll h4 span::before{content:'\2014\a0'}
   #chron .roll p{padding-left:52px;text-indent:-52px;margin-bottom:3px;opacity:.92}
   #chron .roll p i{font-style:normal;color:var(--dim);font-size:11px;display:inline-block;width:52px;text-indent:0}
   #chron .roll p em.tl{font-style:italic;color:var(--dim);font-size:11px}
+  /* a story that has grown gets a rule down its side; a story somebody set to a tune gets the tune's own line under it (sprint 17) */
+  #chron .roll p.gr{border-left:1px solid var(--line);margin-left:-10px;padding-left:61px}
+  #chron .roll p.sg em.sgl{display:block;text-indent:0;font-style:italic;font-size:11px;color:var(--gold);opacity:.8}
+  #chron .roll p.sg.lost em.sgl{color:var(--dim);opacity:1}
   #chron .foot{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
   #chron .foot span{font-size:11px;color:var(--dim);font-style:italic}
   #ctl{display:flex;gap:0}

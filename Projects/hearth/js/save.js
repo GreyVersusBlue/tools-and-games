@@ -3,18 +3,129 @@
 // ---------- the chronicle ----------
 const chronEl=document.getElementById('chron'),rollEl=document.getElementById('chron-roll');
 function showChron(v){chronEl.hidden=!v;document.getElementById('b-chron').classList.toggle('on',!!v);if(v){if(innerWidth<=520)showCard(null);renderChron()}}
-function renderChron(){let h='',cy=0;
-  for(const e of chron){if(e.y!==cy){cy=e.y;const yn=yearName(cy);h+=`<h4>year ${cy}${yn?' — '+yn:''}</h4>`}h+=`<p><i>day ${e.d}</i>${e.st||e.label}${e.gr?' <em class="tl">— as it is told now</em>':''}</p>`}
+// A song's story is a chron entry, held by index, so the panel and the saga both need chron-index -> song. Rebuilt on every render:
+// a song can be made, or lost, between two of them, and a stale map would keep singing a tune nobody has.
+const songAt=()=>{const m=new Map();for(const s of songs)m.set(s.ci,s);return m};
+const carriers=sg=>sg.kn.filter(n=>people.some(p=>p.name===n));
+function songLine(sg){const kn=carriers(sg);
+  if(sg.lost)return `the song of it is lost — ${sg.comp} made the tune and nobody left can find it`;
+  return `made into a song by ${sg.comp} · carried by ${kn.length?kn.join(', '):'nobody now'}`}
+function renderChron(){let h='',cy=0;const SG=songAt();
+  chron.forEach((e,i)=>{if(e.y!==cy){cy=e.y;const yn=yearName(cy);h+=`<h4>year ${cy}${yn?` <span>${yn}</span>`:''}</h4>`}
+    const sg=SG.get(i),cls=[e.gr?'gr':'',sg?(sg.lost?'sg lost':'sg'):''].filter(Boolean).join(' ');
+    h+=`<p${cls?` class="${cls}"`:''}><i>day ${e.d}</i>${e.st||e.label}${e.gr?' <em class="tl">— as it is told now</em>':''}`+
+      (sg?`<em class="sgl">${songLine(sg)}</em>`:'')+'</p>'});
   rollEl.innerHTML=h||'<p>Nothing has happened yet that anyone will remember.</p>';
   document.getElementById('chron-t').firstChild.textContent=village?`The Chronicle of ${village}`:'The Chronicle';
   document.getElementById('chron-s').textContent=`island ${seed.toString(36)} · year ${yearOf(dayCount)}, day ${dayCount}`+(hasWay(3)?' · written in the book of days':'');
   document.getElementById('chron-n').textContent=chron.length===1?'one thing remembered':`${chron.length} things remembered`;
   rollEl.scrollTop=rollEl.scrollHeight}
+// The .txt is 14 lines and somebody will want it. It stays what it was; only the download plumbing is shared with the saga now.
 function exportChron(){const L=[`The chronicle of ${village||'an island with no name'}`,`island ${seed.toString(36)}`,''];let cy=0;
   for(const e of chron){if(e.y!==cy){cy=e.y;const yn=yearName(cy);L.push('',`YEAR ${cy}${yn?' — '+yn:''}`,'')}L.push(`  day ${String(e.d).padStart(4)}   ${(e.st||e.label).replace(/<[^>]+>/g,'')}${e.gr?' (as it is told now)':''}`)}
   L.push('','',`It is year ${yearOf(dayCount)}, day ${dayCount}. There are ${people.length} people here, ${houses.length} houses, and ${graves.length} stones on the hill.`);
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([L.join('\n')],{type:'text/plain'}));
-  a.download=(village||'island-'+seed.toString(36)).toLowerCase()+'-chronicle.txt';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+  dlFile(L.join('\n'),'text/plain','-chronicle.txt')}
+function dlFile(body,type,suffix){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([body],{type}));
+  a.download=(village||'island-'+seed.toString(36)).toLowerCase()+suffix;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+// ---------- the saga: the chronicle as a page, not a dump ----------
+// One self-contained HTML file, zero dependencies, opens out of a download folder. Everything in it is already in state or derived
+// from it, so the save does not change. The chron labels carry <b>Name</b> and nothing else, so the escape keeps that one tag,
+// takes every other tag to text, and escapes what is left.
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const sagaText=s=>String(s).split(/(<\/?b>)/).map(t=>t==='<b>'||t==='</b>'?t:esc(t.replace(/<[^>]+>/g,''))).join('');
+const plural=(n,one,many)=>`${n} ${n===1?one:many}`;
+// Where the saga's link points. On http(s) it is this page, so a saga exported from a fork or a preview channel comes back to the
+// build it came out of; from file:// there is no shareable path to use, so it is the live site (locked decision #62).
+const SITE='https://greyversusblue.com/Projects/hearth/';
+function islandLink(){let h;try{h=islandHash()}catch(err){return null}
+  const p=location.protocol;return((p==='http:'||p==='https:')?location.href.split('#')[0]:SITE)+'#'+h}
+const SAGA_CSS=`:root{--ink:#e8dcc4;--dim:#9a8b6d;--gold:#f0b35a;--line:#3a3020}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0b0d12;color:var(--ink);font:16px/1.6 Georgia,'Iowan Old Style',serif;padding:40px 20px 80px}
+main,header,footer,.app{max-width:38em;margin:0 auto}
+h1{font-size:22px;font-weight:normal;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+header .sub,header .link{font-size:13px;color:var(--dim);font-style:italic;margin-top:6px}
+header .link a{color:var(--gold)}
+header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:10px}
+h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);font-weight:normal;margin:34px 0 8px;border-bottom:1px solid var(--line);padding-bottom:4px}
+h2 span{text-transform:none;letter-spacing:.04em;font-style:italic;color:var(--dim);font-size:13px}
+main p{padding-left:64px;text-indent:-64px;margin-bottom:8px}
+main p .d{color:var(--dim);font-size:12px;font-style:italic;display:inline-block;width:64px;text-indent:0}
+main p b{font-weight:normal;color:#fff2d8}
+main p em{font-style:italic;color:var(--dim);font-size:13px}
+main p.gr{border-left:2px solid var(--line);margin-left:-12px;padding-left:74px}
+main p.sg em.s{display:block;text-indent:0;color:var(--gold);opacity:.8;font-size:13px}
+main p.sg.lost em.s{color:var(--dim);opacity:1}
+.app ul{list-style:none}
+.app li{margin-bottom:7px;font-size:14px;padding-left:16px;text-indent:-16px}
+.app li b{font-weight:normal;color:#fff2d8}
+.app li i{font-style:italic;color:var(--dim)}
+.app li .h{display:block;padding-left:16px;text-indent:0;color:var(--dim);font-size:13px;font-style:italic}
+.app .sub{font-size:13px;color:var(--dim);margin-top:8px}
+footer{margin-top:44px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--dim);font-style:italic}
+@media print{:root{--ink:#20180e;--dim:#6a5c46;--gold:#6a4a12;--line:#c9bda4}
+ body{background:#fff;color:#20180e;padding:0}
+ h1,h2,header .link a{color:#3a2a10}
+ main p b,.app li b{color:#20180e}
+ main p.sg em.s{color:#6a4a12}}`;
+// The saga itself: the years the island has finished, and then four appendices of things it already knows.
+function sagaHTML(){const SG=songAt(),link=islandLink(),T=`The chronicle of ${village||'an island with no name'}`,L=[];
+  L.push('<!DOCTYPE html>','<html lang="en">','<head>','<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',`<title>${esc(T)}</title>`,
+    `<style>${SAGA_CSS}</style>`,'</head>','<body>','<header>',`<h1>${esc(T)}</h1>`,
+    `<p class="sub">island ${seed.toString(36)} · year ${yearOf(dayCount)}, day ${dayCount} · `+
+      `${plural(people.length,'person','people')}, ${plural(houses.length,'house','houses')}, ${plural(graves.length,'stone','stones')} on the hill</p>`,
+    link?`<p class="link"><a href="${esc(link)}">Open the island as it stood when this was written</a></p>`:
+      '<p class="link">This island would not fit in a link.</p>','</header>','<main>');
+  let cy=0,inYr=false;
+  chron.forEach((e,i)=>{if(e.y!==cy){cy=e.y;if(inYr)L.push('</section>');const yn=yearName(cy);
+      L.push(`<section class="yr"><h2>year ${cy}${yn?` <span>${esc(yn)}</span>`:''}</h2>`);inYr=true}
+    const sg=SG.get(i),cls=['e',e.gr?'gr':'',sg?(sg.lost?'sg lost':'sg'):''].filter(Boolean).join(' ');
+    L.push(`<p class="${cls}"><span class="d">day ${e.d}</span>${sagaText(e.st||e.label)}`+
+      (e.gr?' <em class="tl">as it is told now</em>':'')+(sg?`<em class="s">${esc(songLine(sg))}</em>`:'')+'</p>')});
+  if(inYr)L.push('</section>');else L.push('<p>Nothing has happened yet that anyone will remember.</p>');
+  L.push('</main>');
+  // one: the people, oldest first, with what the island calls them
+  L.push('<section class="app" id="app-people"><h2>The people</h2><ul>');
+  for(const p of people.slice().sort((a,b)=>ageOf(b)-ageOf(a))){
+    const bits=[String(ageI(p)),isKid(p)?'a child':isElder(p)?'an elder':'grown'];
+    if(p.craft>=0&&p.cxp>=1)bits.push(CRAFT_EPITHET[p.craft]);
+    if(p.tr&&p.tr.length)bits.push(p.tr.join(', '));
+    L.push(`<li><b>${esc(p.name)}</b> <i>${esc(bits.join(' · '))}</i></li>`)}
+  L.push('</ul>');
+  if(gone.length)L.push(`<p class="sub">Away over the water: ${esc(gone.map(p=>p.name).join(', '))}.</p>`);
+  L.push('</section>');
+  // two: the hill, and what has been left on it
+  L.push('<section class="app" id="app-hill"><h2>The hill</h2>');
+  if(!graves.length)L.push('<p class="sub">Nobody is under the hill yet.</p>');
+  else{L.push('<ul>');
+    for(const g of graves.slice().sort((a,b)=>a.d-b.d)){const v=g.vn||0;
+      L.push(`<li><b>${esc(g.name)}</b> <i>year ${g.y2}, aged ${g.age} · ${v?plural(v,'visit','visits'):'not visited yet'}</i></li>`)}
+    L.push('</ul>')}
+  L.push('</section>');
+  // three: the ground the island has named, and the cairn each name has grown
+  const named=spots.filter(s=>s.lore);
+  L.push('<section class="app" id="app-ground"><h2>The named ground</h2>');
+  if(!named.length)L.push('<p class="sub">No ground has been named yet.</p>');
+  else{L.push('<ul>');
+    for(const s of named){const n=loreN[s.k]||0;
+      L.push(`<li><b>${esc(s.l)}</b> <i>${n?plural(n,'stone on the cairn','stones on the cairn'):'no cairn yet'}</i></li>`)}
+    L.push('</ul>')}
+  L.push('</section>');
+  // four: the things, and every hand each one has been through
+  L.push('<section class="app" id="app-things"><h2>The things</h2>');
+  if(!things.length)L.push('<p class="sub">Nothing has been made or found that outlasted the making of it.</p>');
+  else{L.push('<ul>');
+    for(const t of things){L.push(`<li><b>${esc(t.full)}</b> <i>${t.holder?'held by '+esc(t.holder):'on the shelf in the hall'}</i>`);
+      for(const h of t.hist)L.push(`<span class="h">day ${h.d} · ${esc(h.s)}</span>`);
+      L.push('</li>')}
+    L.push('</ul>')}
+  L.push('</section>');
+  L.push(`<footer>Written out of ${plural(chron.length,'thing','things')} remembered on island ${seed.toString(36)}, on day ${dayCount}. Hearth.</footer>`,
+    '</body>','</html>');
+  return L.join('\n')}
+function exportSaga(){dlFile(sagaHTML(),'text/html','-saga.html');
+  say('The saga is written out: one page, needing nothing, carrying the way back here.',true)}
 // ---------- save & load: the whole island, in the address bar ----------
 function lzEnc(str){const s=unescape(encodeURIComponent(str)),d=new Map(),codes=[];let n=256,w='';
   for(const c of s){const wc=w+c;if(d.has(wc))w=wc;else{if(w){codes.push(d.has(w)?d.get(w):w.charCodeAt(0));if(n<65536)d.set(wc,n++)}w=c}}
@@ -153,8 +264,10 @@ function unpack(o){
   say(`The island is as it was left. ${village?village+', year':'Year'} ${yearOf(dayCount)}, day ${dayCount}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill.`,true)}
 function loadHash(){const h=(location.hash||'').replace(/^#/,'');if(h.length<40)return false;
   const o=JSON.parse(lzDec(h));if(!canLoad(o))return false;unpack(o);return true}
+// The whole island as one hash string. Two callers now: the keep button, and the saga's way back (phase 4).
+const islandHash=()=>lzEnc(JSON.stringify(pack()));
 function saveHash(){let str;
-  try{str=lzEnc(JSON.stringify(pack()))}catch(err){say('Something about this island will not fit in a link.',true);return}
+  try{str=islandHash()}catch(err){say('Something about this island will not fit in a link.',true);return}
   try{history.replaceState(null,'','#'+str)}catch(err){location.hash=str}
   const done=ok=>say(ok?'This island is copied. The link holds everyone in it, exactly as they are now.':'This island is in the address bar now. Copy that line to keep it.',true);
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(location.href).then(()=>done(true),()=>done(false));else done(false)}

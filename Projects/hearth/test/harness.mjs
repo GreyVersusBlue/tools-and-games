@@ -11,6 +11,7 @@
 //   node harness.mjs nan          [--days 400] [--seeds 7] [--random 4]   (soak with starvation stress windows)
 //   node harness.mjs decade       [--years 25] [--seeds 7,20260819] [--audit 100] [--fastdays 12]
 //   node harness.mjs migrate
+//   node harness.mjs saga         [--days 400] [--seeds 7]
 //
 // Checks, per sprint-8 lessons: audit EVERY species and people every N steps across MULTIPLE
 // seeds including random ones; a single healthy island at a polite interval proves nothing.
@@ -1184,6 +1185,172 @@ if (mode === 'migrate') {
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
   await ctx.close();
   console.log(failed ? '\nFAIL' : '\nPASS: every shape v5 through v12 comes up the ladder and reads empty where it should');
+}
+
+if (mode === 'saga') {
+  // Phase 4. The saga export is a rendering of state that already exists, so the only way it can be wrong is by disagreeing with
+  // that state — a year called by the wrong name, a grown story that reads as ungrown, a song listing somebody who is dead. So:
+  // run an island long enough to have all four, generate the page, load it back into a blank tab as a reader would, and read every
+  // claim off the DOM to compare against chron, songs, graves, loreN, things and yearName(). Nothing here reuses the export's own
+  // helpers to build its expectation; a test that calls songLine() to check songLine() checks nothing.
+  const days = parseInt(arg('days', '400'));
+  const seeds = arg('seeds', '7').split(',').filter(Boolean).map(Number);
+  console.log(`saga: ${days} days x seeds [${seeds.join(', ')}]\n`);
+  for (const seed of seeds) {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, seed, warns);
+    let viol = [];
+    for (let d = 0; d < days; d++) { const r = await runDay(page, 100); viol = viol.concat(r.viol); }
+
+    // what the island actually holds, in its own terms
+    const want = await page.evaluate(() => {
+      const H = window.__hearth, live = n => H.people.some(p => p.name === n);
+      const years = [];
+      for (const e of H.chron) if (!years.some(y => y.n === e.y)) years.push({ n: e.y, name: H.yearName(e.y) });
+      return {
+        village: H.village, seed36: H.seed.toString(36), day: H.dayCount,
+        title: `The chronicle of ${H.village || 'an island with no name'}`,
+        years, entries: H.chron.length,
+        days: H.chron.map(e => e.d), ys: H.chron.map(e => e.y),
+        grownDays: H.chron.filter(e => e.gr).map(e => e.d),
+        // songs are pushed in the order they were made and the saga renders them where their story sits, which is not the same order
+        songs: H.songs.filter(s => s.ci < H.chron.length).sort((a, b) => a.ci - b.ci)
+          .map(s => ({ day: H.chron[s.ci].d, comp: s.comp, lost: !!s.lost, kn: s.kn.filter(live), knAll: s.kn.length })),
+        people: H.people.map(p => p.name).sort(),
+        gone: H.gone.map(p => p.name),
+        graves: H.graves.slice().sort((a, b) => a.d - b.d).map(g => ({ name: g.name, y2: g.y2, age: g.age, vn: g.vn || 0 })),
+        ground: H.spots.filter(s => s.lore).map(s => ({ l: s.l, n: H.loreN[s.k] || 0 })),
+        things: H.things.map(t => ({ full: t.full, holder: t.holder || '', hist: t.hist.length })),
+      };
+    });
+    const html = await page.evaluate(() => window.__hearth.sagaHTML());
+
+    // read it back the way a reader would: a blank tab, the file, and nothing else
+    const rd = await ctx.newPage();
+    await rd.setContent(html);
+    const got = await rd.evaluate(() => {
+      const txt = el => (el ? el.textContent.replace(/\s+/g, ' ').trim() : null);
+      const all = s => [...document.querySelectorAll(s)];
+      const link = document.querySelector('header .link a');
+      return {
+        title: txt(document.querySelector('h1')),
+        docTitle: document.title,
+        sub: txt(document.querySelector('header .sub')),
+        href: link ? link.getAttribute('href') : null,
+        years: all('main section.yr').map(s => ({
+          head: txt(s.querySelector('h2')),
+          days: [...s.querySelectorAll('p.e')].map(p => txt(p.querySelector('.d'))),
+        })),
+        entries: all('main p.e').length,
+        grown: all('main p.e.gr').map(p => ({ day: txt(p.querySelector('.d')), tl: txt(p.querySelector('em.tl')) })),
+        songs: all('main p.e.sg').map(p => ({ day: txt(p.querySelector('.d')), lost: p.classList.contains('lost'), line: txt(p.querySelector('em.s')) })),
+        people: all('#app-people li b').map(b => txt(b)).sort(),
+        away: txt(document.querySelector('#app-people .sub')),
+        hill: all('#app-hill li').map(li => ({ name: txt(li.querySelector('b')), i: txt(li.querySelector('i')) })),
+        ground: all('#app-ground li').map(li => ({ l: txt(li.querySelector('b')), i: txt(li.querySelector('i')) })),
+        things: all('#app-things li').map(li => ({ full: txt(li.querySelector('b')), i: txt(li.querySelector('i')), hist: li.querySelectorAll('.h').length })),
+        scripts: document.querySelectorAll('script').length,
+        offsite: all('link[href],img[src],iframe[src]').length,
+      };
+    });
+    await rd.close();
+
+    const bad = [];
+    const eq = (what, a, b) => { if (JSON.stringify(a) !== JSON.stringify(b)) bad.push(`${what}: saga says ${JSON.stringify(a)}, island says ${JSON.stringify(b)}`) };
+
+    // the run has to have produced the things the export is being tested on, or the comparisons below are all vacuously true
+    const thin = [];
+    if (!want.grownDays.length) thin.push('no story ever grew');
+    if (!want.songs.length) thin.push('no song was ever made');
+    if (!want.graves.length) thin.push('nobody is under the hill');
+    if (!want.ground.length) thin.push('no ground was ever named');
+    if (!want.things.length) thin.push('nothing was ever made or found');
+    if (want.years.length < 4) thin.push(`only ${want.years.length} years happened`);
+    // the carriers line is the one claim that can be wrong while looking right: kn keeps the name of everybody who ever had the tune,
+    // living or not. At 170 days nobody who had ever learned a song had died yet, and dropping the living-only filter altogether
+    // still passed. The run is only long enough when at least one song has outlived one of its carriers.
+    if (!want.songs.some(s => s.knAll > s.kn.length))
+      thin.push('no song has outlived a carrier, so the living-only filter is untested');
+    if (thin.length) bad.push(`the run is too thin to prove anything (${thin.join('; ')}) — raise --days`);
+
+    eq('the title', got.title, want.title);
+    eq('the browser-tab title', got.docTitle, want.title);
+    eq('the entry count', got.entries, want.entries);
+    if (!got.sub || !got.sub.includes(`island ${want.seed36}`) || !got.sub.includes(`day ${want.day}`))
+      bad.push(`the subtitle does not name island ${want.seed36} on day ${want.day}: ${got.sub}`);
+
+    // the years, and their names, straight off the headings
+    eq('the year headings', got.years.map(y => y.head),
+      want.years.map(y => `year ${y.n}${y.name ? ' ' + y.name : ''}`));
+    eq('the entries under each year', got.years.map(y => y.days),
+      want.years.map(y => want.days.filter((d, i) => want.ys[i] === y.n).map(d => `day ${d}`)));
+
+    // grown stories, and the mark that says so
+    eq('the grown stories', got.grown.map(g => g.day), want.grownDays.map(d => `day ${d}`));
+    for (const g of got.grown) if (g.tl !== 'as it is told now') bad.push(`a grown story on ${g.day} is not marked: ${g.tl}`);
+
+    // songs: every carrier named, and nobody named who is not carrying it
+    eq('the songs', got.songs.map(s => s.day), want.songs.map(s => `day ${s.day}`));
+    got.songs.forEach((s, i) => {
+      const w = want.songs[i]; if (!w) return;
+      if (s.lost !== w.lost) bad.push(`the song on ${s.day} is ${s.lost ? '' : 'not '}marked lost, and the island says ${w.lost ? '' : 'not '}lost`);
+      if (w.lost) { if (!/^the song of it is lost/.test(s.line)) bad.push(`a lost song on ${s.day} reads: ${s.line}`); return }
+      const m = s.line.match(/^made into a song by (.+?) · carried by (.+)$/);
+      if (!m) { bad.push(`a song on ${s.day} does not say who made or carries it: ${s.line}`); return }
+      if (m[1] !== w.comp) bad.push(`the song on ${s.day} credits ${m[1]}, and the island says ${w.comp}`);
+      const named = m[2] === 'nobody now' ? [] : m[2].split(', ');
+      if (JSON.stringify(named) !== JSON.stringify(w.kn))
+        bad.push(`the song on ${s.day} is carried by [${named}], and the island says [${w.kn}]`);
+    });
+
+    // the four appendices
+    eq('the people', got.people, want.people);
+    if (want.gone.length && (!got.away || !want.gone.every(n => got.away.includes(n))))
+      bad.push(`the ones away over the water are missing: ${want.gone.join(', ')} vs ${got.away}`);
+    eq('the hill', got.hill.map(h => h.name), want.graves.map(g => g.name));
+    got.hill.forEach((h, i) => {
+      const g = want.graves[i]; if (!g) return;
+      const wantI = `year ${g.y2}, aged ${g.age} · ${g.vn ? `${g.vn} visit${g.vn === 1 ? '' : 's'}` : 'not visited yet'}`;
+      if (h.i !== wantI) bad.push(`the stone for ${h.name} reads "${h.i}", and the island says "${wantI}"`);
+    });
+    eq('the named ground', got.ground.map(g => g.l), want.ground.map(g => g.l));
+    got.ground.forEach((g, i) => {
+      const w = want.ground[i]; if (!w) return;
+      const wantI = w.n ? `${w.n} stone${w.n === 1 ? '' : 's'} on the cairn` : 'no cairn yet';
+      if (g.i !== wantI) bad.push(`${g.l} reads "${g.i}", and the island says "${wantI}"`);
+    });
+    eq('the things', got.things.map(t => t.full), want.things.map(t => t.full));
+    got.things.forEach((t, i) => {
+      const w = want.things[i]; if (!w) return;
+      if (t.hist !== w.hist) bad.push(`${t.full} shows ${t.hist} hands and the island says ${w.hist}`);
+      const wantI = w.holder ? `held by ${w.holder}` : 'on the shelf in the hall';
+      if (t.i !== wantI) bad.push(`${t.full} reads "${t.i}", and the island says "${wantI}"`);
+    });
+
+    // zero dependencies, and a way back to the island it came out of
+    if (got.scripts || got.offsite) bad.push(`the saga is not self-contained: ${got.scripts} scripts, ${got.offsite} external references`);
+    if (!got.href) bad.push('the saga carries no link back to the island');
+    else {
+      const back = await page.evaluate(h => {
+        const H = window.__hearth, i = h.indexOf('#');
+        if (i < 0) return { ok: false, why: 'no hash' };
+        try { const o = JSON.parse(H.lzDec(h.slice(i + 1))); return { ok: H.canLoad(o), day: o.d, seed: o.s } }
+        catch (e) { return { ok: false, why: e.message } }
+      }, got.href);
+      if (!back.ok) bad.push(`the link does not carry a loadable island: ${back.why || 'canLoad said no'}`);
+      else if (back.day !== want.day || back.seed !== seed) bad.push(`the link carries island ${back.seed} day ${back.day}, not ${seed} day ${want.day}`);
+    }
+
+    console.log(`seed ${seed} @ day ${want.day}: ${want.entries} entries over ${want.years.length} years, ${want.grownDays.length} grown, ` +
+      `${want.songs.length} song${want.songs.length === 1 ? '' : 's'} (${want.songs.filter(s => s.lost).length} lost)`);
+    console.log(`  appendices: ${want.people.length} people, ${want.graves.length} stones, ${want.ground.length} named places, ${want.things.length} things`);
+    console.log(`  the page: ${(html.length / 1024).toFixed(1)} KB, ${got.scripts} scripts, ${got.offsite} external references, link back ${got.href ? 'present' : 'MISSING'}`);
+    if (viol.length) { failed = true; console.log(`  FAIL: ${viol.length} audit violations:`); [...new Set(viol)].slice(0, 6).forEach(v => console.log('    ' + v)) }
+    if (warns.length) { failed = true; [...new Set(warns)].slice(0, 6).forEach(v => console.log('  WARN ' + v)) }
+    if (bad.length) { failed = true; bad.forEach(b => console.log('  FAIL ' + b)) }
+    await ctx.close();
+  }
+  console.log(failed ? '\nFAIL' : '\nPASS: the saga says exactly what the island says');
 }
 
 if (mode === 'determinism') {
