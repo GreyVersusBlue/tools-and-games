@@ -53,42 +53,55 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **the first increment of Hearth Phase 6, "The
-short winter" (PR #117)** — the first thing that has ever gone wrong on that
-island that is somebody's fault. At the turn of every winter whoever keeps the
-store counts it and says the number out loud, and if it will not cover the cold
-season the village goes onto rations: everyone works at `.85`, the store is
-drawn down at `.62`, and inside the famine one person takes more than a share
-out of the store in the dark and is seen, and an elder stands down from a
-measure and calls it not being hungry. At the thaw all of it comes off, on the
-first day of spring, whatever the store says. Save **v14**, one ladder hop with
-its inverse. A sixteenth harness mode, `strain`.
+The last thing that shipped is **the second increment of Hearth Phase 6,
+"Illness that walks the paths" (PR #119)**. `p.sick` had one setter and one
+clearer, both inside the fever arc, and a line at the top of `newDay` that
+healed everybody the moment the arc was over — a flag, not an illness: it could
+not start anywhere, could not go anywhere, and ended on a calendar the body had
+no say in. It is its own state now, on exactly the shape `want` already had: one
+door in (`takeSick`), one out (`wellAgain`), a `sickD` saying when somebody took
+it, a `wellD` saying when they shook it off, and an `ill` record for the wave.
+The first day of it you are up and out, which is how it travels; from the second
+you are in bed. Save **v15**, one ladder hop with its inverse, plus repair on
+every load for a v14 island carrying somebody in bed.
 
-**The threshold was the work, and it was measured twice.** The season line has
-quoted 13 measures a head as what a winter wants since sprint 2, and by that
-number the island is *never* short: at every one of thirty turns of winter
-across ten game-years on seeds 7, 20260819 and 42, the store stood at 1.32 to
-1.75 times it. A famine written against 13 could not have fired on any island —
-the Phase 2 failure again. The number the island's own consumption implies is 19
-a head, and at 19 the same three seeds are short about one winter in four (#68).
-Hunger was the second: unclamped, a seven-day cold season on rations reaches
-`.78`, past the `.7` that puts somebody in a boat, so a village that decided to
-eat less would lose more people than one that did nothing. It is capped at `.45`
-while the store is not actually empty (#69). Everything the famine turns on is
-turned off by the calendar rather than by a roll (#70).
+**Nearness is the whole mechanism, and that is the point (#75).** It is carried
+by being within 1.9 tiles of somebody who has it, at `.004` a step per source —
+so the fire, the market, the bell and the fire night already matter without the
+rule naming a building. The hall gets the other half, and it is a kindness: with
+a hall and more than one of them down, the sick are laid out along one wall of it
+where one person can sit with all of them. Somebody comes to sit with them, and
+**sitting up with somebody makes a friend of a stranger and turns a rival back
+into a friend on purpose**, which nothing else in this game does. Prayer's
+`heal` — top of its priority list and idle since sprint 11 — is finally worth
+`.2` on the roll to get up.
 
-**Two older checks went red on the shifted stream and neither was a bug** — the
-third and fourth instances of #66 in three sessions. `eleven` forced a fever
-arc, ran eight days, then read the *live* `arc`; the island had dealt itself a
-second fever on day 32 and the check called that a forced fever that never
-ended. It tells them apart by `d0` now. `saga` needs one song that has outlived
-a carrier or its living-only filter is untested, and this stream does not
-deliver one by day 400 on seed 7; it takes a carrier of a song that has others,
-the way `wider` forces its cargoes, and keeps the thinness guard for when there
-is none (#71). Both were verified green against `main`'s game code and red when
-the thing they guard is broken.
+**The ending is a number, not a hope (#73).** `SICKD` 6 days a person, `WAVED`
+12 days a wave, `WELLD` 14 days proof against it, so no wave can be more than 18
+days old on any island, ever — and `strain` asserts exactly that on every day of
+its forty, alongside three more. Measured there: seed 7 one wave over 40 days (8
+days with somebody in bed, 4 at once at the worst, 13 through it), 20260819 two
+(12 days, 4 at once, 16 through the biggest), out at 23 and 20 people with the
+store above 80.
 
-Before it: **Hearth Phase 5 (PR #115)**, **Hearth Phase 4 (PR #114)**, **Hearth Phases 2 and 3 (PR
+**Two guard-rails passed with the thing they guard deleted, and both were
+rewritten until they did not.** Disabling the spread left the travelling check
+green — a fever arc dealt during the run had made somebody ill for it; it runs
+inside a single day's steps now, where no `newDay` and so no arc can seed.
+Deleting the six-day cap left every check green, because seed 7 simply never ran
+a wave past six days; it now puts twelve people at the cap at once and requires
+all twelve up, which the roll alone does about one run in ninety thousand. This
+is #13 and #34 doing their job on checks that were a day old, and it is the
+thing most worth copying: break the new guard before believing it.
+
+**Nothing else moved off its stream, and that was designed for (#74).** The
+whole spread block sits behind `if(ill)`, so an island with nobody in bed draws
+the exact stream it drew before — which is why `soak`, `determinism`, `save`,
+`decade`, `saga`, `wider` and every sprint mode stayed on the islands they were
+checked against, after three sessions running of the opposite.
+
+Before it: **Hearth Phase 6's first increment, "The short winter" (PR #117)**,
+**Hearth Phase 5 (PR #115)**, **Hearth Phase 4 (PR #114)**, **Hearth Phases 2 and 3 (PR
 #112)**, **Bell to Bell Phase 8 and Hearth Phase 1 (PR #111)**, **Bell to
 Bell Phases 6 and 7 (PR #109)**, **Phases 4 and 5 (PR #108)**, **Phases 2 and 3 (PR #106)**,
 **Phase 1, the slot scheme and the 6th period (PR #104)**, **this backlog's own
@@ -97,10 +110,10 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**One line of shared tooling moved — `CLAUDE.md`'s locked-decision count, 67 to
-71 — and the same two site-wide checks are still red on `main` and were red
-before that branch existed** (verified again by stashing the branch's changes
-and re-running both: same counts, same lines)**:** `check-integrity.mjs` fails on
+**One line of shared tooling moved — `CLAUDE.md`'s locked-decision count, 71 to
+75 — and the same two site-wide checks are still red on `main` and were red
+before that branch existed** (re-run on this branch: same counts, same lines,
+and nothing in the diff goes near either file)**:** `check-integrity.mjs` fails on
 `Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
 inline `<script type="module">`, which is a syntax error in a module) and on
 `Tools/prompt-builder.html` (it references `fonts.googleapis.com` and
@@ -116,33 +129,33 @@ Bell to Bell has no ranked rows left: all eight of its phases have shipped, and
 what it wants next is the later arc at the bottom of its own `WISHLIST.md`.
 
 **Pick up rank 1 again: `Projects/hearth` Phase 6, "Scarcity that bites"
-(Fable 5.1). It is a 2+ and it is not finished** — one of its three systems is
-in and the row stays where it is. Take nothing else with it, do one increment,
-and leave the row standing again with its text rewritten. What is left:
-**illness that spreads on the paths** (`p.sick` is still set only by the fever
-arc and cleared only by it; let proximity carry it, let the chapel or the hall
-matter, let nursing become a relationship, and give prayer's `heal` — top of its
-priority list and idle since sprint 11 — something to do), and **a feud that is
-a system rather than a label** (two rivals whose work suffers, who avoid each
-other's spots, whose children inherit the distance). The raid already makes a
-rival pair and already ends it three ways at the thaw; a feud is that pair given
-somewhere to live in between, and `endWant()`'s three endings are the shape to
-copy. `strain` is built to take a section per system, and the forty-day audited
-run at the end of it picks up anything new for free.
+(Fable 5.1). It is a 2+ and it is still not finished** — two of its three
+systems are in and the row stays where it is. Take nothing else with it, do the
+last increment, and this time the row goes. What is left is **a feud that is a
+system rather than a label**: two rivals whose work suffers, who avoid each
+other's spots, whose children inherit the distance, and which ends at a fire
+night or a death or a walking of the bounds with a chronicle entry either way.
+The raid already makes a rival pair and already ends it three ways at the thaw;
+a feud is that pair given somewhere to live in between, and `endWant()`'s three
+endings are the shape to copy. `strain` has taken a section per system twice
+now and will take a third the same way.
 
-Both of those move people, which is what makes this the most dangerous row in
-Hearth's file: the soak invariants are the only thing between "a village under
-strain" and a broken island, so `soak --days 40`, `nan --days 400` and `strain`
-go after *each* piece rather than at the end.
+It moves people, which is what makes this the most dangerous row in Hearth's
+file: the soak invariants are the only thing between "a village under strain"
+and a broken island, so `soak --days 40`, `nan --days 400` and `strain` go after
+*each* piece rather than at the end.
 
-Three things this increment leaves for the next one. The `R()` stream has now
-moved three sessions running and all three times it put an older observational
-check red without there being a bug — budget for it, read #66, #67 and #71
-first, and do not treat a red check as a verdict. Seed 7 barely makes elders, so
-the elder-who-eats-last system fired zero times in ten game-years there against
-twice on 20260819; that is the same throttle Hearth's standing backlog names at
-the top and it is Phase 7's, not this row's. And `nan` is now a five-minute mode
-and `decade` a six-minute one, which is worth knowing before planning a session
+Four things this increment leaves for the next one. **A rival pair is now
+something nursing can un-make** (#75) — the only deliberate mender in the game —
+so a feud has to survive somebody sitting up with the other one, or say out loud
+that it does not. **The stream moves when somebody is ill and only then** (#74),
+so if an older check goes red, first ask whether that run had anybody in bed;
+then read #66, #67 and #71, and do not treat a red check as a verdict. Seed 7
+barely makes elders, so the elder-who-eats-last system fired zero times in ten
+game-years there against twice on 20260819; that is the same throttle Hearth's
+standing backlog names at the top and it is Phase 7's, not this row's. And `nan`
+is a five-minute mode and `decade` a six-minute one, and the full fifteen-mode
+sweep is about half an hour, which is worth knowing before planning a session
 around running everything.
 
 **Read this before trusting the order.** Two sources rank the same work
@@ -188,7 +201,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 6 — Scarcity that bites: the short winter is in, illness and the feud are not | `Projects/hearth` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-ntnfcr` | [WISHLIST.md Phase 6](Projects/hearth/WISHLIST.md#phase-6--scarcity-that-bites--two-of-three-systems-in) |
+| 1 | Phase 6 — Scarcity that bites: the short winter and the sickness are in, the feud is not | `Projects/hearth` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/hearth/WISHLIST.md#phase-6--scarcity-that-bites--two-of-three-systems-in) |
 | 2 | Phase 7 — Play that reads as play, and four other leftovers | `Projects/hearth` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/hearth/WISHLIST.md#phase-7--play-that-reads-as-play-and-four-other-leftovers) |
 | 3 | Phase 8 — Hearth gets a machine that watches it | `Projects/hearth` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/hearth/WISHLIST.md#phase-8--hearth-gets-a-machine-that-watches-it) |
 | 4 | Phase 1 — The rules core comes out of the page | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 1](Projects/torchbearer/WISHLIST.md#phase-1--the-rules-core-comes-out-of-the-page) |
