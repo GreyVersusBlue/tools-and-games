@@ -1,16 +1,19 @@
 # Hearth — Feature Wishlist
 
-**Status: sixteen sprints and Phases 1 through 4 are shipped. Phase 5 — *The
-far island becomes a place*, on Claude Opus 5 — is the next thing to build.**
-Phase 2 gave the island a generational speed and then found that three of the
-four systems it was meant to reach could not have fired at any length of run;
-Phase 3 turned eight versions of `||` defaults into one `migrate()` and one
-version gate; Phase 4 gave the chronicle a page to leave as. The harness has
-fourteen modes now: the eleven that were there, plus `decade` (35 game-years x
-2 seeds, ~40,000 audits, and the fast path asserted bit-identical to 1x),
-`migrate` (every save shape v5 through v12 forged out of one live island and
-walked back up) and `saga` (400 days on seed 7, the export generated and then
-read back off the DOM claim by claim).
+**Status: sixteen sprints and Phases 1 through 5 are shipped. Phase 6 —
+*Scarcity that bites*, on Claude Fable 5.1 — is the next thing to build, and it
+is a 2+: whoever takes it takes nothing else, does one increment, and leaves the
+row standing.** Phase 2 gave the island a generational speed and then found that
+three of the four systems it was meant to reach could not have fired at any
+length of run; Phase 3 turned eight versions of `||` defaults into one
+`migrate()` and one version gate; Phase 4 gave the chronicle a page to leave as;
+Phase 5 gave the horizon a seed, a name and a boat that goes both ways. The
+harness has fifteen modes now: the eleven that were there, plus `decade` (35
+game-years x 2 seeds, ~40,000 audits, and the fast path asserted bit-identical
+to 1x), `migrate` (every save shape v5 through v13 forged out of one live island
+and walked back up), `saga` (400 days on seed 7, the export generated and then
+read back off the DOM claim by claim) and `wider` (the far island, from the
+involution to a second tab opened at its own link).
 
 **What Phase 1 left:** the
 songs a sound — `songDegrees(ci)` derives a 6–10 note phrase from the island
@@ -217,8 +220,10 @@ wrong, and the handoff that names it is cited.
 - **The test invocation, in full.** From `Projects/hearth/test`, once
   `npm install`; then `node harness.mjs soak` (5 islands × 40 days, the
   standing gate), `determinism`, `save`, `depth --days 120`, `nan` (400 days
-  with starvation windows), `migrate` (every save shape v5–v12), `saga` (400
-  days, the chronicle export read back off the DOM, about a minute), `decade`
+  with starvation windows), `migrate` (every save shape v5–v13), `saga` (400
+  days, the chronicle export read back off the DOM, about a minute), `wider`
+  (the far island: four cargoes, a trade, a departure, a return, the hash and a
+  second tab opened at `#s=`, under a minute), `decade`
   (35 game-years × 2 seeds, ~4.5 minutes, and the generational speed asserted
   bit-identical to 1×), and the per-sprint regressions by name, `eleven`
   through `sixteen`. `package.json` scripts only the first four. `decade` is the
@@ -227,6 +232,18 @@ wrong, and the handoff that names it is cited.
   launches with `--autoplay-policy=no-user-gesture-required` always and falls
   back to `/opt/pw-browsers/chromium` when Playwright's own download is
   absent.
+- **The far island's seed is an involution, and that is load-bearing.**
+  `farSeed(s) = (s ^ 0x5f1a1e) >>> 0`, so island A's horizon is island B and
+  island B's is island A out of one constant and nothing stored in a pair. It is
+  derived in `newWorld()` with **no `R()` draw**, for the same reason `temper`
+  and the aurora are: an old link has to keep its exact terrain. `#s=<seed in
+  base 36>` opens a fresh island at a seed, and is checked before `loadHash()`'s
+  length gate, because a seed link is far shorter than a packed island and would
+  otherwise fall through to the autosave.
+- **`gone[]` carries `far` now, and the row is two slots wide.** `go` packs as
+  `[name, far]`; the v12→v13 hop widens it and its `down` narrows it again. A
+  gone person who does not know which way they went cannot be brought back by
+  the right boat.
 - **Every sprint ends with a handoff file in the project root** in the same
   five sections: a 5-line changelog, measured numbers, decisions made without
   asking, complications hit, and quality-bar leftovers for the next sprint.
@@ -268,6 +285,17 @@ migration ladder, the missing CI) are claimed by Phases 1–8. Pull from here,
 and add to this list rather than starting a new one.
 
 **The island's memory**
+- **The teller has to be an elder, and this island rarely makes one.** Phase 5
+  measured it while chasing a red `decade`: on seed 7, somebody aged sixty is
+  alive on **57 days out of 700**, and on `main`'s stream of the same seed, 255
+  — one to three individuals either way. "An elder who knew somebody under a
+  stone tells a child about them" is the only durable record that generation
+  leaves, and it fires about once per thirty-five game-years because its teller
+  pool is empty most of the time. The fix is not the 5% roll; it is who may
+  tell. A grown adult who knew the dead can do it, with an elder preferred.
+  Phase 5 did not take it — it is a behaviour change to a sprint-16 system and
+  would have shifted the stream a third time in one session — and `decade` now
+  states the opportunity count every run (#67) so it stays visible.
 - The recited names on the hill are a `say()` line only, never chronicled: a
   walk touching four stones leaves no record of *whose* names.
 - Only 8 of the 24 growable story kinds have ground under them
@@ -664,43 +692,127 @@ arc one: ranked by impact, order is the recommendation, the model convention
 above carries forward unchanged, and a phase is finished when its PR has
 merged with CI green and its handoff names the next phase and its model.
 
-## Phase 5 — The far island becomes a place
+## Phase 5 — The far island becomes a place — **SHIPPED**
 
 **There is a second island on every horizon, and the only thing that has ever
 happened there is that somebody didn't come back.**
 
-`farIsle` is `{x, w, h, lit, k}` — a silhouette, a one-way voyage roughly once
+`farIsle` was `{x, w, h, lit, k}` — a silhouette, a one-way voyage roughly once
 per island, and a light that comes on if the voyager stays.
-`LORE_PLACE.stayed` already names "the shore that faces the far island" on the
-near side. The trade boat comes once a season, is waved at, and leaves. Both
-are the same missing thing: the island has no elsewhere to be in relation to.
-This phase gives it one without letting the camera leave home — the far island
-stays a silhouette, and everything about it arrives by boat, in prose.
+`LORE_PLACE.stayed` already named "the shore that faces the far island" on the
+near side. The trade boat came once a season, was waved at, and left. Both were
+the same missing thing: the island had no elsewhere to be in relation to. This
+phase gives it one without letting the camera leave home — the far island is
+still a silhouette, and everything about it arrives by boat, in prose.
 
-- [ ] **The voyage comes back with something.** A returner already walks into
-  the hall before anywhere else (the heirloom rule); let them bring news, a
-  thing, a song the far island had, or a person. Each is an existing system
-  taking one new input.
-- [ ] **The trader trades.** Wood and the granary against something the island
-  cannot make. `granary`, `wood` and `things[]` are all there; the trade is
-  four numbers and a chronicle entry, and the wave already happens.
-- [ ] **Migration both ways.** `leave()` already puts a hungry person in
-  `gone[]` and drops their heirloom on the shelf. Let the far island be where
-  some of them go, and let `gone` people be who the returner brings.
-- [ ] **Two islands, linked by their hashes.** An additive `fi` record holding
-  the *other* island's seed, so island A's link can name island B and vice
-  versa. Deliberately not a simulation of the second island: a name, a seed,
-  and what came across the water.
-- [ ] **A `wider` harness mode.** Force a return with cargo, a trade, a
-  departure to the far island, and a hash round-trip of the link record — with
-  soak audits at zero throughout, since every one of these moves a person or a
-  boat.
+- [x] **The voyage comes back with something.** `farReturn()` runs off the
+  return boat with the voyage's own chronicle index in hand. One weighted draw
+  picks news, a thing, a tune or a passenger, and each is an existing system
+  taking one new input: the news is the name (`farLearn`), the thing is a
+  `things[]` row out of `FARGOODS`, the tune is a `songs[]` row against the
+  voyage's own entry with exactly one name in `kn`, and the passenger is
+  somebody already in `gone[]`. The tune is the good one: carried by one head,
+  it goes out in the boat when that head leaves and comes back in it when they
+  return, through sprint 16's machinery with nothing added.
+- [x] **The trader trades.** `farTrade()` is four numbers — ten of timber and
+  eight of meal out, one thing in, once a year at most — and the once-a-year
+  gate is asked of `things[]` itself rather than a new counter. The wave, the
+  talker who does the arguing and the store it is paid out of were all already
+  there. The trader can also be the one who names the far island, which matters
+  because the voyage happens once per island and may never happen at all.
+- [x] **Migration both ways.** `leave()` turns the boat for the far island when
+  the island knows its name and the person is brave, restless, or dreamt of it —
+  read off the person rather than rolled, so it costs no `R()` draw and the
+  character does the deciding. `p.far` packs, so the yearly kind-season return
+  and the voyage's passenger both know which way somebody went. `comeBack()` and
+  `comeBackKit()` came out of the old `return2` body unchanged, in that order,
+  because the chronicle has always had the arrival written down before the shelf
+  and the song.
+- [x] **Two islands, linked by their hashes.** `fi` holds the far island's seed,
+  the name this island calls it, whether that name has crossed, and up to 24
+  crossings. `farSeed(s) = (s ^ 0x5f1a1e) >>> 0` is an involution, so the island
+  the link opens has *this* one on its horizon and names it back — two islands
+  that name each other out of one constant and no stored pair. `#s=<seed in base
+  36>` is how it opens: a seed, not a save, because nothing over there has ever
+  been simulated (locked decision #64). The saga grew a fifth appendix, "Over the
+  water", carrying the name, the seed, the link and every crossing.
+- [x] **A `wider` harness mode.** Ten sections. The involution and the record's
+  shape; each of the four cargoes forced through `farReturn` by name and
+  asserted on durable state; a departure that takes a tune with it and a return
+  that brings it back; the trade refused 40 times inside its year and then made;
+  a real voyage driven end to end through the sim — decided, walked down, rowed
+  out, rowed back — to prove the boat is what calls `farReturn`; the whole
+  record through `pack`/`unpack` byte-identical; and finally a second tab opened
+  at `#s=`, which lands on the far island and finds this one on its horizon.
+  Every day it runs is audited, and the violations are carried to the end.
 
 *Leans on:* `js/life.js` (`voyage`, `boatArrive`, `leave`, `gone`, `things`),
-`js/watcher.js`'s chronicle entries, `js/save.js`. *Save:* an additive `fi`
-record on Phase 3's ladder; an island without one reads as it does today.
-*Model:* **Claude Opus 5** — existing systems taking new inputs, on a save
-ladder Phase 3 has already made safe.
+`js/watcher.js`'s chronicle entries, `js/save.js`. *Save:* **v13** — an additive
+`fi` record and a two-slot `go` row, one hop on Phase 3's ladder with its
+inverse; an island without either reads as a horizon nobody has a name for.
+*Model:* **Claude Opus 5**.
+
+**What fought back.** The `R()` stream moved, as it always does, and put three
+older checks red. All three were reading whatever the island happened to be
+doing, which is the failure mode the conventions above already name — and one of
+them was already red on `main`.
+
+- **`fourteen`** asserted the child on the walking of the bounds gets the line
+  "shown where everything happened". Sprint 15 gave the walk a second ending —
+  when there are stones on the hill the child is "told who is under every stone"
+  instead — and the check had been passing for two phases only because seed 7
+  reached the bounds before anybody died. It now asserts the line the child
+  always gets, with which of the two pinned to the hill **as `boundsOut()` saw
+  it at launch**, not as it stands after the walked day, and it looks for both
+  hist lines among the dead as well as the living: the elder the test forces to
+  66 in order to have a leader is exactly the age that dies. Locked decision #66.
+- **`sixteen`** looked for `year 1 — ` in the chronicle panel's HTML. That is the
+  `.txt` export's format; the panel has written the year's name into a `<span>`
+  since Phase 4 restyled it. **This one was already red on `main`** and was not in
+  the backlog header's list of standing reds. It reads the heading off the DOM now.
+- **`decade`**, twice, and the first time it was right. Its first red said no
+  child on seed 20260819 was ever told about somebody under a stone in 35
+  game-years. Measured, that was a real consequence of this phase: the trade's
+  original 14-timber floor was a tax on the housing stock, and the island built
+  24 houses instead of 28, sat at `popCap()` for 203 days of 700 with births shut
+  off, and ran out of children. The floor is 34 now (locked decision #65) and the
+  same island builds 31 houses and has children on 691 days of 700.
+
+  The second red was not. With housing healthy, seed 7 still told nobody, and the
+  measurement says why: **the island has anybody aged sixty alive on 57 days out
+  of 700**, against 255 on `main`'s stream — which is not 700 samples but a count
+  of how many individuals happened to live past sixty, so it swings wildly
+  between two streams of the same game. A 5%-a-day roll on 26 eligible days
+  produces nothing 26% of the time. `main` passes this seed with two tellings and
+  113 eligible days; one stream over it is zero and twenty-six. `decade` counts
+  the eligible days itself now and fails only when zero would have been a
+  one-in-twenty surprise, printing both numbers either way (locked decision #67).
+  Broken on purpose on seed 20260819, which gives it 171 eligible days: deleting
+  the child's history line fails it with `no child was ever told about somebody
+  under a stone, across 171 days that could have`.
+
+Two things came out of that chase and are worth the next phase's attention.
+`knewDead()` in `newDay` is one: "knew each other" was being asked of one side
+only — an elder counted only if the *dead* person's `rels` named them, and those
+lists cap at five or six entries — so the eligible-day count on seed 20260819
+went from 64 to 171 by asking both. It is also what stops `pick()` being handed
+an empty array, which the two hand-copied predicates it replaced were one edit
+away from. The other is not fixed and belongs to whoever takes Phase 7: **the
+teller has to be an elder, and this island rarely makes one.**
+
+Broken on purpose, four times, each break watched to fail and then put back:
+
+- packing `go` as `[name, 0]` instead of `[name, p.far]` — `wider` fails on
+  `the gone came back as [Marobel:0], not [Marobel:1]`;
+- packing `go` as a bare name again, one slot wide — `migrate` fails first on
+  `pack -> unpack -> pack is not byte-identical at the current version`;
+- making the v12→v13 `up` hop `o=>{}` — `migrate` fails on every shape below 13
+  with `rows came up go 15/2` (a name read as fifteen slots of letters), `the
+  ladder left fi missing`, and `a v12 save knew which way one of the gone had
+  gone`;
+- `farSeed` as `(s + FI_K) >>> 0` instead of `(s ^ FI_K) >>> 0` — `wider` fails
+  twice, at `farSeed is not an involution: 7 -> 6232613 -> 12465219` and again in
+  the second tab, where `the far island's far island is 12465219, not 7`.
 
 ## Phase 6 — Scarcity that bites
 

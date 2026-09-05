@@ -12,6 +12,7 @@
 //   node harness.mjs decade       [--years 25] [--seeds 7,20260819] [--audit 100] [--fastdays 12]
 //   node harness.mjs migrate
 //   node harness.mjs saga         [--days 400] [--seeds 7]
+//   node harness.mjs wider
 //
 // Checks, per sprint-8 lessons: audit EVERY species and people every N steps across MULTIPLE
 // seeds including random ones; a single healthy island at a polite interval proves nothing.
@@ -73,6 +74,15 @@ async function runDay(page, auditEvery) {
       if (out.steps % auditEvery === 0) audit();
     }
     audit();
+    // Could "an elder tells a child about one of the dead" have fired today at all? Written out here rather than asked of the game,
+    // so the check and the thing checked cannot agree by sharing a bug. `decade` counts these days; nothing else reads it.
+    out.tellDay = (() => {
+      if (!H.dead.length) return 0;
+      const alive = H.people.filter(p => !p.dead), age = p => (p.age0 || 0) + (H.dayCount - p.born) / 20;
+      if (!alive.some(p => p.child && age(p) >= 5)) return 0;
+      const knew = (p, d2) => !!(d2.rels && d2.rels.some(r => r.who === p.name)) || p.rels.some(r => r.who === d2.name);
+      return alive.some(p => age(p) >= 60 && H.dead.some(d2 => knew(p, d2))) ? 1 : 0;
+    })();
     out.day = H.dayCount; out.pop = H.people.length; out.food = H.food; out.granary = H.granary;
     out.houses = H.houses.length; out.bldg = H.bldg.map(b => b.kind).join(',');
     out.hasStream = H.stream.length > 0; out.bridgeUp = H.bridgeUp;
@@ -612,18 +622,28 @@ if (mode === 'fourteen') {
     const adults = h.people.filter(p => !p.child && !p.inBoat && !p.inside && !p.sick && p.task !== 'boat' && p.task !== 'voyage');
     adults[0].age0 = 66; adults[0].born = h.dayCount;                       /* an elder to lead */
     const k = adults[adults.length - 1]; k.age0 = 8; k.born = h.dayCount;   /* a child to be shown */
-    return h.boundsOut();
+    // which ending the walk gets is decided here, at launch, off the hill as it stands now — see the note below
+    return { led: h.boundsOut(), hill: h.graves.length > 0 };
   });
   await runDay(page, 1e9);
   const b = await H(() => {
     const h = window.__hearth;
+    // an elder forced to 66 to lead the walk can be under the hill by midnight, so the lines are looked for among the dead too
+    const who = h.people.concat(h.dead);
+    const line = t => who.some(p => p.hist && p.hist.some(x => x.s.includes(t)));
     return { ev: h.chron.some(e => e.kind === 'bounds'), loreN: { ...h.loreN },
-      led: h.people.some(p => p.hist.some(x => x.s.includes('walking of the bounds'))),
-      shown: h.people.some(p => p.hist.some(x => x.s.includes('shown where everything happened'))) };
+      led: line('walking of the bounds'), shown: line('was walked round the named places'),
+      told: line('told who is under every stone'), graves: h.graves.length };
   });
   const sum = o => Object.values(o).reduce((a, v) => a + v, 0);
-  console.log(`bounds walked: launched ${led}, chronicled ${b.ev}, stones ${JSON.stringify(n0)} -> ${JSON.stringify(b.loreN)}, leader hist ${b.led}, child hist ${b.shown}`);
-  if (!led || !b.ev || !b.led || !b.shown) { failed = true; console.log('FAIL: the bounds did not walk'); }
+  // The child's line has had two shapes since sprint 15 put the hill at the end of the walk: one for an island with stones on it and
+  // one for an island without. This check knew only the second, and passed for two phases because seed 7 happened to reach the bounds
+  // before anybody died. Phase 5 moved the stream and it stopped happening to. So: the child always gets a line, and which line is
+  // pinned to the hill *as boundsOut() saw it*, not as it stands after the day — a stone laid during the walked day would otherwise
+  // make the check demand an ending the walk could not have had. Both hist lines are looked for among the dead as well as the living,
+  // because the elder this test forces to 66 in order to have a leader is exactly the age that dies.
+  console.log(`bounds walked: launched ${led.led}, chronicled ${b.ev}, stones ${JSON.stringify(n0)} -> ${JSON.stringify(b.loreN)}, leader hist ${b.led}, child hist ${b.shown}, hill at launch ${led.hill} (named the dead ${b.told}), stones on it now ${b.graves}`);
+  if (!led.led || !b.ev || !b.led || !b.shown || led.hill !== b.told) { failed = true; console.log('FAIL: the bounds did not walk'); }
   if (sum(b.loreN) < sum(n0) + 2) { failed = true; console.log('FAIL: the leader did not leave a stone at each place'); }
 
   // cairns draw at every tier
@@ -871,10 +891,14 @@ if (mode === 'sixteen') {
     const b = h.yearName(1);
     const c = h.yearName(Math.floor((h.dayCount - 1) / 20) + 1); // the running year has no name yet
     h.renderChron();
-    const hdr = document.getElementById('chron-roll').innerHTML.includes('year 1 — ');
-    return { a, b, c: c === null ? 'null' : c, hdr };
+    // The panel writes the year's name into a <span> inside the heading; the em-dashed "year 1 — name" this used to look for is the
+    // .txt export's format, and has not been the panel's since phase 4 restyled it. Red on main before phase 5 touched anything.
+    const h4 = [...document.querySelectorAll('#chron-roll h4')].find(e => e.firstChild && e.firstChild.textContent.trim() === 'year 1');
+    const sp = h4 && h4.querySelector('span');
+    const hdr = !!(sp && sp.textContent.trim().length > 3);
+    return { a, b, c: c === null ? 'null' : c, hdr, head: h4 ? h4.textContent.trim() : null };
   });
-  console.log(`year names: forged fever "${yn.a}", plain year 1 "${yn.b}", unfinished ${yn.c}, header carries name ${yn.hdr}`);
+  console.log(`year names: forged fever "${yn.a}", plain year 1 "${yn.b}", unfinished ${yn.c}, header carries name ${yn.hdr} ("${yn.head}")`);
   if (yn.a !== 'the year of the fever' || !yn.b || yn.b === 'a quiet year' || yn.c !== 'null' || !yn.hdr) { failed = true; console.log('FAIL: yearName derivation is wrong'); }
 
   // ---- kin terms resolve one generation up, through the living and the dead ----
@@ -1008,11 +1032,11 @@ if (mode === 'decade') {
   for (const seed of seeds) {
     const warns = [];
     const { ctx, page } = await openIsland(browser, seed, warns);
-    let viol = [], audits = 0;
+    let viol = [], audits = 0, tellDays = 0;
     const t0 = Date.now();
     for (let d = 0; d < days; d++) {
       const r = await runDay(page, auditEvery);
-      viol = viol.concat(r.viol); audits += Math.floor(r.steps / auditEvery) + 1;
+      viol = viol.concat(r.viol); audits += Math.floor(r.steps / auditEvery) + 1; tellDays += r.tellDay;
     }
     const s = await page.evaluate(() => {
       const H = window.__hearth, firstOf = k => { const e = H.chron.find(e => e.kind === k); return e ? e.d : 0 };
@@ -1032,13 +1056,23 @@ if (mode === 'decade') {
     console.log(`seed ${seed} @ day ${s.day} (year ${Math.floor((s.day - 1) / 20) + 1}), ${mins} min: pop ${s.pop}, ${s.graves} stones, ${s.chron} things remembered`);
     console.log(`  stories grown ${s.grown}, named places ${s.places}, songs ${s.songs} (carried by ${s.carriers || 'nobody'})`);
     console.log(`  the four: bounds walked ${s.bounds} (first day ${s.boundsD || '—'}), heirlooms passed ${s.heir} (first day ${s.heirD || '—'}),` +
-      ` songs lost ${s.lost} (first day ${s.lostD || '—'}), children told of the dead ${s.told}`);
+      ` songs lost ${s.lost} (first day ${s.lostD || '—'}), children told of the dead ${s.told} on ${tellDays} days that could have`);
     console.log(`  bounds: stumps ${s.stumps} bytes, longest life-story ${s.hist} lines, save ${s.packLen} bytes`);
+    // The telling is a 5%-a-day roll on the days an eligible elder and an eligible child both exist, and that number is small and
+    // lumpy: it is really a count of how many individuals happened to live past sixty, so it swings between about 26 and 113 days in
+    // 700 between two streams of the same game. A flat "it must have happened once" therefore fails on the island rather than on the
+    // code — main passes seed 7 with two tellings and 113 such days, and one stream over produces zero and twenty-six. So: zero
+    // tellings across n opportunity days has probability 0.95^n, and this only counts as a defect when zero would have been a
+    // one-in-twenty surprise. Below that the island never gave the system a chance, and the two numbers say so out loud every run
+    // rather than the mode passing in silence. The other three have no such gate because nothing throttles them.
+    const tellOdds = Math.pow(0.95, tellDays);
     const missing = [];
     if (!s.bounds) missing.push('the bounds were never walked');
     if (!s.heir) missing.push('nothing was ever handed down');
     if (!s.lost) missing.push('no song was ever lost');
-    if (!s.told) missing.push('no child was ever told about somebody under a stone');
+    if (!s.told && tellOdds < 0.05) missing.push(`no child was ever told about somebody under a stone, across ${tellDays} days that could have`);
+    if (!s.told && tellOdds >= 0.05) console.log(`  NOTE: no child was told of the dead, and the island only gave it ${tellDays} days to happen on` +
+      ` (zero is a ${(tellOdds * 100).toFixed(0)}% outcome at that many) — not counted against the run, but the teller pool is thin`);
     // and the two lists that used to grow for as long as the island did stay where phase 2 put them. A 500-day island carried 1,102
     // stumps in 17,677 bytes before the cap; 240 of them pack into about 2,900.
     if (s.stumps > 3600) missing.push(`the stumps are unbounded again (${s.stumps} bytes)`);
@@ -1106,6 +1140,8 @@ if (mode === 'migrate') {
     h.graves.push({ x: 50, y: 20, name: 'A Forced Name', d: 2, y2: 1, age: 70, vn: 4 });
     for (const k of ['landing', 'rainscame']) if (!h.lorePl.includes(k)) { h.lorePl.push(k); h.setLoreN(k, 3); }
     h.setFaith(.5);
+    h.farRec.kn = 1; h.farCross('name', 'a forced crossing');            // v13: the far island's record, and a gone who knows which way they went
+    h.gone.push({ name: 'A Forced Leaver', far: 1 });
   });
 
   // A current island packs, unpacks and re-packs byte-identical: the ladder must not touch a save already at SAVE_V.
@@ -1134,8 +1170,8 @@ if (mode === 'migrate') {
       h.migrate(o);
       const wide = (rows, dflt) => rows && rows.length ? Math.min(...rows.map(a => a.length)) : dflt;
       const shape = { v: o.v, pe: wide(o.pe, 29), vo: o.vo && o.vo[5] ? o.vo[5].length : 29, gv: wide(o.gv, 7),
-        wk: wide(o.wk, 8), ch: wide(o.ch, 7),
-        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax'].filter(k => o[k] === undefined) };
+        wk: wide(o.wk, 8), ch: wide(o.ch, 7), go: wide(o.go, 2),
+        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi'].filter(k => o[k] === undefined) };
       try { h.unpack(o); } catch (e) { return { err: 'threw: ' + e.message } }
       try { h.pack(); } catch (e) { return { err: 'packs no more: ' + e.message } }
       return { shape,
@@ -1145,15 +1181,19 @@ if (mode === 'migrate') {
         loreN: Object.keys(h.loreN).length, lorePl: h.lorePl.length, spots: h.spots.filter(s => s.lore).length,
         things: h.things.length, wip: h.works.filter(w => !w.done).length, works: h.works.length, faith: h.faith,
         prog: h.works.map(w => w.prog).join('/'),
+        far: h.farRec ? (h.farRec.kn ? 1 : 0) + h.farRec.cr.length : -1, farGone: h.gone.filter(g => g.far).length, goneN: h.gone.length,
       };
     }, { cur, v });
     if (r.err) { failed = true; console.log(`  v${v}: FAIL — ${r.err}`); continue; }
     const bad = [], sh = r.shape;
     if (sh.v !== same.v) bad.push(`the ladder stopped at v${sh.v}`);
     if (sh.pe !== 29 || sh.vo !== 29) bad.push(`people came up ${sh.pe}/${sh.vo} slots wide, not 29`);
-    if (sh.gv !== 7 || sh.wk !== 8 || sh.ch !== 7) bad.push(`rows came up gv ${sh.gv}/7, wk ${sh.wk}/8, ch ${sh.ch}/7`);
+    if (sh.gv !== 7 || sh.wk !== 8 || sh.ch !== 7 || sh.go !== 2) bad.push(`rows came up gv ${sh.gv}/7, wk ${sh.wk}/8, ch ${sh.ch}/7, go ${sh.go}/2`);
     if (sh.gone.length) bad.push(`the ladder left ${sh.gone.join(', ')} missing`);
     if (!r.pop) bad.push('nobody loaded');
+    if (v <= 12 && r.far) bad.push('a far-island record came through a v12 save');
+    if (v <= 12 && r.farGone) bad.push('a v12 save knew which way one of the gone had gone');
+    if (v <= 12 && !r.goneN) bad.push('the ones who left did not come up the ladder at all');
     if (v <= 11 && (r.songs || r.snowmen || r.skipN || r.heard || r.fSk)) bad.push('v12 state came through a v11 save');
     if (v <= 10 && r.vn) bad.push(`graves came back with ${r.vn} visits`);
     if (v <= 10 && !r.graves) bad.push('the hill went with them');
@@ -1166,8 +1206,9 @@ if (mode === 'migrate') {
     if (v <= 9 && v > 8 && r.loreN) bad.push('walk counts came through a v9 save');
     if (v <= 6 && r.faith) bad.push('faith came through a v6 save');
     console.log(`  v${v}: pop ${r.pop}, songs ${r.songs}, snowmen ${r.snowmen}, skipN ${r.skipN}, grave-visits ${r.vn}, ` +
-      `loreN ${r.loreN}, places ${r.lorePl}, things ${r.things}, works ${r.works} (${r.wip} wip, prog ${r.prog || '-'}), faith ${r.faith}` +
-      `, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}` +
+      `loreN ${r.loreN}, places ${r.lorePl}, things ${r.things}, works ${r.works} (${r.wip} wip, prog ${r.prog || '-'}), faith ${r.faith}, ` +
+      `far ${r.far} (${r.goneN} gone, ${r.farGone} of them over the water)` +
+      `, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}/${r.shape.go}` +
       (bad.length ? `  !! ${bad.join('; ')}` : '  ok'));
     if (bad.length) failed = true;
   }
@@ -1175,16 +1216,18 @@ if (mode === 'migrate') {
   // and the range itself, by the one gate both readers now share. Not SAVE_MIN-1 and SAVE_V+1 — those are computed from the very
   // constants under test, so moving one moves the assertion with it and the check says nothing. Literals, and the ladder above is
   // what proves the range is one the ladder can actually walk.
+  // These two literals are moved by hand on every version bump, and that is the whole point: phase 5 bumped SAVE_V to 13 and this
+  // check went red on its own, which is what a computed bound would never have done.
   const gate = await H(() => {
     const h = window.__hearth, o = JSON.parse(JSON.stringify(h.pack()));
-    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 13 }), nope: h.canLoad({ ...o, pe: undefined }) };
+    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 14 }), nope: h.canLoad({ ...o, pe: undefined }) };
   });
-  console.log(`the gate: v4 ${gate.low}, v13 ${gate.high}, no people ${gate.nope} — all three must be false`);
+  console.log(`the gate: v4 ${gate.low}, v14 ${gate.high}, no people ${gate.nope} — all three must be false`);
   if (gate.low || gate.high || gate.nope) { failed = true; console.log('FAIL: canLoad accepts something it should not'); }
 
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
   await ctx.close();
-  console.log(failed ? '\nFAIL' : '\nPASS: every shape v5 through v12 comes up the ladder and reads empty where it should');
+  console.log(failed ? '\nFAIL' : `\nPASS: every shape v${same.min} through v${same.v} comes up the ladder and reads empty where it should`);
 }
 
 if (mode === 'saga') {
@@ -1351,6 +1394,205 @@ if (mode === 'saga') {
     await ctx.close();
   }
   console.log(failed ? '\nFAIL' : '\nPASS: the saga says exactly what the island says');
+}
+
+if (mode === 'wider') {
+  // Phase 5. Everything here moves a person or a boat, which is exactly what the soak invariants exist to catch, so every day this
+  // mode runs is audited and the violations are carried to the end rather than checked per section.
+  //
+  // Four of the five things under test cannot be waited for: the voyage happens once per island on a 9%-a-day roll from day 16, its
+  // cargo is then one of four, the trade needs a year's gap, and a departure needs a hungry island. So each cargo is forced through
+  // farReturn's own code path by name and asserted on durable state, and *then* a real voyage is driven end to end through the sim —
+  // decided, walked to the landing, rowed out, rowed back — to prove the boat is what calls it. The forced calls hang a tune on
+  // whatever entry is last rather than on a voyage's own, which is the one thing about them that is not what the island does.
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  const H = fn => page.evaluate(fn);
+  let viol = [], bad = [];
+  const check = (ok, msg) => { if (!ok) bad.push(msg); return ok };
+  for (let d = 0; d < 12; d++) { const r = await runDay(page, 25); viol = viol.concat(r.viol); }
+
+  // one: the horizon has a seed, and the seed is an involution — the island the link opens has this one on its horizon
+  const rec = await H(() => {
+    const h = window.__hearth, f = h.farRec;
+    return { seed: h.seed, s: f && f.s, n: f && f.n, kn: f && f.kn, cr: f ? f.cr.length : -1,
+      there: h.farSeed(h.seed), back: h.farSeed(h.farSeed(h.seed)), link: h.farLink(), lit: !!(h.farIsle && h.farIsle.lit) };
+  });
+  console.log(`the record: island ${rec.seed.toString(36)} faces ${rec.n} (island ${(rec.s || 0).toString(36)}), known ${rec.kn}, ${rec.cr} crossings`);
+  check(rec.s === rec.there, `farRec.s is ${rec.s}, not farSeed(seed) ${rec.there}`);
+  check(rec.back === rec.seed, `farSeed is not an involution: ${rec.seed} -> ${rec.there} -> ${rec.back}`);
+  check(rec.s !== rec.seed, 'the far island is this island');
+  check(typeof rec.n === 'string' && rec.n.length > 3, `the far island has no name: ${rec.n}`);
+  check(rec.kn === 0, 'the island already knows a name nobody has been out to fetch');
+  check(!!rec.link && rec.link.includes('#s=' + rec.s.toString(36)), `farLink() is ${rec.link}`);
+
+  // two: the news. The name crosses once, and after that everybody uses it.
+  const news = await H(() => {
+    const h = window.__hearth, p = h.people.find(q => !q.dead && !q.child), n0 = h.chron.length;
+    const k = h.farReturn(p, h.chron.length - 1, h.landings[0], 'news');
+    return { k, kn: h.farRec.kn, n: h.farRec.n, cr: h.farRec.cr.map(c => c.k),
+      kinds: h.chron.slice(n0).map(e => e.kind), said: document.getElementById('log').textContent.includes(h.farRec.n) };
+  });
+  console.log(`  news: kind ${news.k}, known now ${news.kn}, chronicle +[${news.kinds.join(',')}], crossings [${news.cr.join(',')}]`);
+  check(news.kn === 1, 'the name did not stick');
+  check(news.kinds.includes('farname'), 'the naming was not written down');
+  check(news.cr.includes('name'), 'the naming did not count as a crossing');
+  check(news.said, 'the name was never said out loud');
+
+  // three: a tune off the far island, carried by exactly one head — which is what makes it a tune that can be lost
+  const song = await H(() => {
+    const h = window.__hearth, p = h.people.find(q => !q.dead && !q.child), n0 = h.chron.length, s0 = h.songs.length;
+    const k = h.farReturn(p, h.chron.length - 1, h.landings[0], 'song');
+    const sg = h.songs[h.songs.length - 1];
+    return { k, made: h.songs.length - s0, comp: sg && sg.comp, kn: sg ? sg.kn.slice() : [], who: p.name,
+      ci: sg && sg.ci, entries: h.chron.length, kinds: h.chron.slice(n0).map(e => e.kind), cr: h.farRec.cr.map(c => c.k) };
+  });
+  console.log(`  song: kind ${song.k}, +${song.made} song by ${song.comp}, carried by [${song.kn.join(',')}]`);
+  check(song.k === 'song', `the song cargo fell through to ${song.k}`);
+  check(song.made === 1, `${song.made} songs were made, not 1`);
+  check(song.comp === rec.n, `the tune is credited to ${song.comp}, not ${rec.n}`);
+  check(song.kn.length === 1 && song.kn[0] === song.who, `the tune arrived in ${song.kn.length} heads, not one`);
+  check(song.ci >= 0 && song.ci < song.entries, 'the tune hangs on no story at all');
+  check(song.kinds.includes('farsong'), 'the tune was not written down');
+  check(song.cr.filter(k => k === 'song').length === 1, 'the tune did not count as a crossing');
+
+  // four: a thing nobody here could have made
+  const thing = await H(() => {
+    const h = window.__hearth, p = h.people.find(q => !q.dead && !q.child), n0 = h.chron.length, t0 = h.things.length;
+    const k = h.farReturn(p, h.chron.length - 1, h.landings[0], 'thing');
+    const t = h.things[h.things.length - 1];
+    return { k, made: h.things.length - t0, full: t && t.full, src: t && t.src, holder: t && t.holder, who: p.name,
+      known: h.FARGOODS.some(f => f[0] === (t && t.full)), kinds: h.chron.slice(n0).map(e => e.kind), cr: h.farRec.cr.map(c => c.k) };
+  });
+  console.log(`  thing: kind ${thing.k}, "${thing.full}" (src ${thing.src}) held by ${thing.holder}`);
+  check(thing.k === 'thing', `the thing cargo fell through to ${thing.k}`);
+  check(thing.made === 1, `${thing.made} things came ashore, not 1`);
+  check(thing.src === 'far' && thing.known, 'what came ashore is not one of the goods only the water brings');
+  check(thing.holder === thing.who, `the thing is held by ${thing.holder}, not the one who carried it`);
+  check(thing.cr.filter(k => k === 'thing').length === 1, 'the thing did not count as a crossing');
+
+  // five: migration out. The brave, the restless and the one who dreamt of it turn the boat for a place rather than for nowhere —
+  // and the one sent here is deliberately the head the tune came back in, because a song carried by one person leaves when they do.
+  const left = await H(() => {
+    const h = window.__hearth, n0 = h.chron.length;
+    const sg = h.songs.find(s => s.comp === h.farRec.n);
+    const p = h.people.find(q => !q.dead && !q.child && sg && sg.kn.includes(q.name)) || h.people.find(q => !q.dead && !q.child);
+    if (!p.tr.includes('brave')) p.tr = ['brave'].concat(p.tr.slice(1));
+    h.leave(p);
+    const g = h.gone[h.gone.length - 1];
+    return { name: p.name, far: g && g.far, still: h.people.some(q => q.name === p.name),
+      kinds: h.chron.slice(n0).map(e => e.kind), cr: h.farRec.cr.map(c => c.k),
+      lost: !!(sg && sg.lost), carried: !!sg };
+  });
+  console.log(`  left: ${left.name} sailed for ${rec.n} (far ${left.far}), chronicle +[${left.kinds.join(',')}]`);
+  check(left.far === 1, 'the departure did not go anywhere in particular');
+  check(!left.still, 'the one who sailed is still on the island');
+  check(left.kinds.includes('farleft'), 'the departure was not written down as one');
+  check(left.cr.includes('left'), 'the departure did not count as a crossing');
+  check(left.carried && left.lost, 'the tune that came across in one head did not go back out in it');
+  check(left.kinds.includes('songlost'), 'the losing of the tune was not written down');
+
+  // six: and migration back — the one the boat brings is the one the island already lost to the water, and the tune comes with them
+  const came = await H(() => {
+    const h = window.__hearth, p = h.people.find(q => !q.dead && !q.child), n0 = h.chron.length, g0 = h.gone.length;
+    const k = h.farReturn(p, h.chron.length - 1, h.landings[0], 'person');
+    const sg = h.songs.find(s => s.comp === h.farRec.n);
+    return { k, gone: h.gone.length, was: g0, back: h.people.map(q => q.name), lost: !!(sg && sg.lost),
+      kinds: h.chron.slice(n0).map(e => e.kind), cr: h.farRec.cr.map(c => c.k) };
+  });
+  console.log(`  came: kind ${came.k}, gone ${came.was} -> ${came.gone}, the tune ${came.lost ? 'stayed lost' : 'came back with them'}`);
+  check(came.k === 'person', `the passenger cargo fell through to ${came.k}`);
+  check(came.gone === came.was - 1, 'nobody came off the boat');
+  check(came.back.includes(left.name), `${left.name} did not come back`);
+  check(came.kinds.includes('farcame'), 'the crossing back was not written down');
+  check(came.cr.includes('came'), 'the crossing back did not count as one');
+  check(!came.lost && came.kinds.includes('songback'), 'the tune did not come back in the head it left in');
+
+  // seven: the trade. One far thing a year, from either route, and the gate is asked of the things themselves.
+  const trade = await H(() => {
+    const h = window.__hearth;
+    h.setWood(40); h.setGranary(40);
+    let held = 0; for (let i = 0; i < 40; i++) if (h.farTrade(null)) held++;      // a far thing landed this year already
+    for (const t of h.things) if (t.src === 'far') t.hist[0].d = h.dayCount - 40; // now it did not
+    const w0 = h.wood, g0 = h.granary, n0 = h.chron.length, t0 = h.things.length;
+    let got = null; for (let i = 0; i < 40 && !got; i++) got = h.farTrade(null);
+    const t = h.things[h.things.length - 1];
+    return { held, got, made: h.things.length - t0, wood: w0 - h.wood, meal: g0 - h.granary, src: t && t.src,
+      known: h.FARGOODS.some(f => f[1] === (t && t.n)), kinds: h.chron.slice(n0).map(e => e.kind), cr: h.farRec.cr.map(c => c.k) };
+  });
+  console.log(`  trade: refused ${trade.held === 0 ? 'all 40' : 'nothing'} inside the year; then "${trade.got}" for ${trade.wood} timber and ${trade.meal} meal`);
+  check(trade.held === 0, `the trader landed ${trade.held} far things inside one year of the last`);
+  check(!!trade.got && trade.made === 1, 'the trade brought nothing ashore');
+  check(trade.wood === 10 && trade.meal === 8, `the trade cost ${trade.wood} timber and ${trade.meal} meal, not 10 and 8`);
+  check(trade.src === 'far' && trade.known, 'what the trader landed is not one of the goods only the water brings');
+  check(trade.kinds.includes('fartrade'), 'the trade was not written down');
+  check(trade.cr.includes('trade'), 'the trade did not count as a crossing');
+
+  // eight: a real voyage, end to end through the sim — decided, walked down, rowed out, rowed back — and it comes back with cargo
+  await H(() => { const h = window.__hearth; h.setVoyage(null); h.setFood(60); h.setGranary(60);
+    const p = h.people.find(q => !q.dead && !q.child && q.task !== 'boat');
+    h.setVoyage({ name: p.name, st: 'decided', p, day: h.dayCount, back: true }); return p.name });
+  const before = await H(() => ({ cr: window.__hearth.farRec.cr.length, ch: window.__hearth.chron.length }));
+  let sailed = false, returned = false;
+  for (let d = 0; d < 14 && !returned; d++) {
+    const r = await runDay(page, 25); viol = viol.concat(r.viol);
+    const st = await H(() => { const v = window.__hearth.voyage; return v ? v.st : 'gone' });
+    if (st === 'away') sailed = true;
+    if (st === 'back') returned = true;
+  }
+  const trip = await H(() => {
+    const h = window.__hearth, f = h.farRec;
+    return { cr: f.cr.length, last: f.cr[f.cr.length - 1], ch: h.chron.length,
+      kinds: h.chron.map(e => e.kind).filter(k => k === 'returned' || k === 'voyage'), boats: h.boats.length };
+  });
+  console.log(`  voyage: sailed ${sailed}, came back ${returned}, crossings ${before.cr} -> ${trip.cr} (last: ${trip.last && trip.last.k})`);
+  check(sailed, 'the voyage never got out of the harbour');
+  check(returned, 'the boat never came back');
+  check(trip.kinds.includes('voyage') && trip.kinds.includes('returned'), 'the voyage is not in the chronicle');
+  check(trip.cr > before.cr, 'the boat came back empty — farReturn is not wired to the return boat');
+
+  // nine: all of it survives the address bar, and the gone still know which way they went. Somebody has to still be away for that
+  // last part to be worth asserting, and section six brought the only one back, so one more turns the boat for the far island first.
+  await H(() => { const h = window.__hearth;
+    const p = h.people.find(q => !q.dead && !q.child && q.task !== 'boat');
+    if (!p.tr.includes('restless')) p.tr = ['restless'].concat(p.tr.slice(1));
+    h.leave(p); return p.name });
+  const rt = await H(() => {
+    const h = window.__hearth, a = JSON.stringify(h.pack()), o = JSON.parse(a);
+    const was = { s: h.farRec.s, n: h.farRec.n, kn: h.farRec.kn, cr: h.farRec.cr.map(c => c.d + ':' + c.k + ':' + c.s),
+      gone: h.gone.map(g => g.name + ':' + (g.far || 0)), things: h.things.filter(t => t.src === 'far').length,
+      songs: h.songs.filter(s => s.comp === h.farRec.n).length };
+    h.unpack(o);
+    const now = { s: h.farRec.s, n: h.farRec.n, kn: h.farRec.kn, cr: h.farRec.cr.map(c => c.d + ':' + c.k + ':' + c.s),
+      gone: h.gone.map(g => g.name + ':' + (g.far || 0)), things: h.things.filter(t => t.src === 'far').length,
+      songs: h.songs.filter(s => s.comp === h.farRec.n).length };
+    return { v: h.SAVE_V, was, now, again: JSON.stringify(h.pack()) === a };
+  });
+  console.log(`  hash: v${rt.v}, ${rt.was.cr.length} crossings, gone [${rt.was.gone.join(', ')}], re-packs identical ${rt.again}`);
+  check(rt.again, 'pack -> unpack -> pack is not byte-identical with a far-island record in it');
+  for (const k of ['s', 'n', 'kn', 'things', 'songs'])
+    check(rt.was[k] === rt.now[k], `${k} came back as ${rt.now[k]}, not ${rt.was[k]}`);
+  check(rt.was.cr.join('|') === rt.now.cr.join('|'), 'the crossings did not survive the hash');
+  check(rt.was.gone.join('|') === rt.now.gone.join('|'), `the gone came back as [${rt.now.gone.join(', ')}], not [${rt.was.gone.join(', ')}]`);
+  check(rt.was.gone.some(g => g.endsWith(':1')), 'nobody in gone[] is recorded as having gone to the far island');
+
+  // ten: and the link on the horizon opens, and the island it opens has this one on its own horizon
+  const far = await ctx.newPage();
+  await far.goto(GAME + '#s=' + rec.s.toString(36));
+  await far.waitForFunction(() => !!window.__hearth);
+  const there = await far.evaluate(() => ({ seed: window.__hearth.seed, s: window.__hearth.farRec.s,
+    n: window.__hearth.farRec.n, kn: window.__hearth.farRec.kn, day: window.__hearth.dayCount }));
+  console.log(`  the far island opened: island ${there.seed.toString(36)}, day ${there.day}, and its own horizon is island ${there.s.toString(36)}`);
+  check(there.seed === rec.s, `#s= opened island ${there.seed}, not ${rec.s}`);
+  check(there.s === rec.seed, `the far island's far island is ${there.s}, not ${rec.seed}`);
+  check(there.kn === 0, 'a fresh island already knows its neighbour by name');
+  check(there.day === 1, `#s= opened an island on day ${there.day}, not a fresh one`);
+
+  if (viol.length) { bad.push(`${viol.length} soak violations`); [...new Set(viol)].slice(0, 8).forEach(v => console.log('  VIOL ' + v)); }
+  if (warns.length) { bad.push(`${warns.length} breadcrumbs`); [...new Set(warns)].slice(0, 8).forEach(v => console.log('  WARN ' + v)); }
+  await ctx.close();
+  if (bad.length) { failed = true; bad.forEach(b => console.log('  FAIL ' + b)) }
+  console.log(failed ? '\nFAIL' : `\nPASS: ${rec.n} is a place — four cargoes, a trade, a departure and a return, through the hash and out the other side`);
 }
 
 if (mode === 'determinism') {

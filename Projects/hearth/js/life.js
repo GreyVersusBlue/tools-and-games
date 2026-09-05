@@ -98,10 +98,17 @@ function newDay(){saidToday=new Set();
   // of the dead, so most days the roll landed on somebody with nothing to tell; the elders who knew somebody are the ones who get
   // picked now. And the telling was only written down three times in ten, which left the whole system with almost no durable trace —
   // thirty-five game-years on seed 20260819 produced not one. What the child keeps is the only record there is, so the child keeps it.
+  // Phase 5: knowing somebody is symmetric and this only ever asked one side of it — an elder counted only if the *dead* person's
+  // rels named them. Those lists cap at five or six entries, so on 543 to 618 days out of 700, measured on two seeds and unchanged by
+  // anything phase 5 did, there was no elder who qualified and the whole system fired about once per thirty-five game-years. A living
+  // person's rels keep pointing at the dead — nothing strips them when somebody dies — so the other half was there the whole time.
+  // knewDead() is what the filter and the pick both ask, which is also what stops pick() ever being handed an empty array: the two
+  // used to be hand-copied predicates, and one of them widening without the other is an undefined `d2` and a thrown newDay().
+  const knewDead=(p,d2)=>!!(d2.rels&&d2.rels.some(r=>r.who===p.name))||p.rels.some(r=>r.who===d2.name);
   if(dead.length&&R()<.05){const kds=alive.filter(p=>isKid(p)&&ageOf(p)>=5);
-    const elds=alive.filter(p=>isElder(p)&&dead.some(d2=>d2.rels&&d2.rels.some(r=>r.who===p.name)));
+    const elds=alive.filter(p=>isElder(p)&&dead.some(d2=>knewDead(p,d2)));
     if(elds.length&&kds.length){const el=pick(elds),kd=pick(kds);
-      const d2=pick(dead.filter(d2=>d2.rels&&d2.rels.some(r=>r.who===el.name)));
+      const d2=pick(dead.filter(d2=>knewDead(el,d2)));
       say(`${B(el)} tells ${B(kd)} about ${d2.name}, who is under one of the stones on the hill, and ${kd.name} repeats the name to get it right.`,false,'tolddead');
       kd.hist.push({d:dayCount,s:`was told about ${d2.name}, who died before ${kd.name} was born`})}}
   // partnerships
@@ -164,10 +171,19 @@ function remove(p){p.dead=true;p.alive=false;names.delete(p.name);people=people.
   if(p.home){p.home.owners=p.home.owners.filter(n=>n!==p.name)}
   if(p.tgt&&p.tgt.claimed)p.tgt.claimed=false;
   if(selected===p)showCard(null)}
-function leave(p){remove(p);gone.push(p);const s=sea();loseSongs(p,'left');
-  say(`${B(p)} takes the small boat at first light, quietly, so as not to be talked out of it. There was not enough to go round.`,true);addEvent('left',`the ${s} ${p.name} sailed away`,`${p.name} took the small boat and left in a hungry ${s}. There had not been enough to go round.`);
+// Phase 5: once there is a named place out there, the ones the island cannot feed have somewhere to go rather than only somewhere to
+// leave. Who turns the boat that way is read off the person, not off a roll — the brave, the restless and the one who dreamt of it —
+// so this costs no R() draw and the character does the deciding. p.far is what makes a returning boat able to bring somebody back.
+function leave(p){remove(p);const s=sea();
+  const far=!!(farIsle&&farKnown()&&(has(p,'brave')||has(p,'restless')||p.dreamFar));p.far=far?1:0;
+  gone.push(p);loseSongs(p,'left');
+  say(far?`${B(p)} takes the small boat at first light and turns it for ${farN()}, quietly, so as not to be talked out of it. There was not enough to go round.`
+        :`${B(p)} takes the small boat at first light, quietly, so as not to be talked out of it. There was not enough to go round.`,true);
+  if(far){addEvent('farleft',`the ${s} ${p.name} sailed for ${farN()}`,`${p.name} took the small boat in a hungry ${s} and turned it for ${farN()}, which at least is a place, and can be looked at from the shore afterwards.`);
+    farCross('left',`${p.name} sailed for ${farN()} in a hungry ${s}`)}
+  else addEvent('left',`the ${s} ${p.name} sailed away`,`${p.name} took the small boat and left in a hungry ${s}. There had not been enough to go round.`);
   for(const t of thingsOf(p.name)){t.holder=0;t.hist.push({d:dayCount,s:`left on the shelf in the hall the morning ${p.name} sailed, on purpose, where it would be found`})}
-  for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`watched ${p.name} sail away in a hungry ${s}`});if(r.k==='partner')q.partner=null}}
+  for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`watched ${p.name} sail ${far?'for '+farN():'away'} in a hungry ${s}`});if(r.k==='partner')q.partner=null}}
 function die(p){remove(p);dead.push(p);loseSongs(p,'died');
   // grave on the hill
   const k=graves.length,gx=hill.x+((k%4)-1.5)*1.6,gy=hill.y+Math.floor(k/4)*1.4;const gr={x:gx,y:gy,name:p.name,d:dayCount,y2:yearOf(dayCount),age:ageI(p),vn:0};graves.push(gr);trees=trees.filter(t=>Math.hypot(t.x-gx,t.y-gy)>1.6);
@@ -202,6 +218,88 @@ function finishBuilding(p,t){t.done=true;bldgTgt=null;bldg.push(t);craftUp(p,3);
   if(t.kind==='well')spots.push({l:'the well',x:t.x+.5,y:t.y+.8});if(t.kind==='light')spots.push({l:'the lighthouse',x:t.x+.5,y:t.y+.8});if(t.kind==='bridge'){spots.push({l:'the bridge',x:t.x+.5,y:t.y+.5});bridgeUp=true}
   if(t.kind==='hall')bell(1);}
 function bell(n){if(!AC||!audioOn)return;const m=storm?.3:rain?.6:wx==='fog'?.75:1;for(let i=0;i<n;i++){const t=AC.currentTime+i*1.6;for(const [f,v0] of [[880,.09],[1318,.04],[587,.03]]){const v=v0*m;const o=AC.createOscillator(),gn=AC.createGain();o.type='sine';o.frequency.value=f;gn.gain.setValueAtTime(v,t);gn.gain.exponentialRampToValueAtTime(.001,t+1.4);o.connect(gn).connect(sfxG||AC.destination);o.start(t);o.stop(t+1.5)}}}
+// One of the ones in gone[] walks back up the beach. The village never forgot them, so the memory is rewoven both ways — a partner
+// who waited years is a friend now, which is the honest version — and what they left on the shelf goes back in the pocket it knows,
+// and a tune that went out in a boat comes back in one. Phase 5 pulled this out of the yearly return so the boat from the far island
+// can bring somebody too; every line of it was already here, and the two callers write their own chronicle entry after.
+function comeBack(g,land){gone=gone.filter(x=>x!==g);
+  const aged=g.age0!==undefined?Math.min(72,(g.age0+(dayCount-g.born)/YEAR)|0):undefined;
+  const p=addPerson(land.x,land.y,{name:g.name,age:aged,how:'came back, older, in a kind season, and was given bread before any questions, the same as the first day'});
+  for(const q of people){if(q===p)continue;const r=q.rels.find(r=>r.who===p.name);if(!r)continue;
+    if(r.k==='partner')r.k='friend';
+    p.rels.push({who:q.name,k:{friend:'friend',rival:'rival',parent:'child',child:'parent'}[r.k]||'friend'})}
+  return p}
+// and what was waiting for them: the shelf in the hall, and a tune that went out in a boat and can come back in one. Called after the
+// arrival is said and written down, because that is the order the chronicle has always had these in.
+function comeBackKit(p){
+  for(const t of things){if(t.holder===0&&t.hist.some(h=>h.s.includes(p.name+' sailed'))){t.holder=p.name;
+    t.hist.push({d:dayCount,s:`came back off the shelf the day ${p.name} returned, from exactly where it was left`});
+    say(`${B(p)} goes into the hall before going anywhere else, and comes out with ${t.n}, which has been waiting the whole time.`,true)}}
+  for(const sg of songs){if(sg.lost&&sg.kn.includes(p.name)&&chron[sg.ci]){sg.lost=0;
+    say(`At the fire that night it turns out ${B(p)} still carries the tune of ${chron[sg.ci].label}, which everyone had agreed was gone. It is sung twice.`,true);
+    songTune(sg,sg.kn.length);
+    addEvent('songback',`the ${sea()} the song of ${chron[sg.ci].label} came back`,`The song of ${chron[sg.ci].label} came back the day ${p.name} did — it had been away, not lost, the whole time.`)}}}
+// ---------- phase 5: what crosses the water ----------
+// The one boat that has ever gone out and come back does not come back empty. Four cargoes, and every one of them is a system that
+// was already here taking a single new input: the news is the name, the thing is a things[] row, the tune is a songs[] row against the
+// voyage's own chronicle entry (so it can be forgotten and lost like any other), and the passenger is somebody this island already
+// lost to the water. One weighted draw; the passenger is only on the list when there is somebody out there to bring. `k` is forced
+// only by the harness — the `wider` mode cannot wait for a 3-in-11 roll four times over.
+function farReturn(p,ci,land,k){
+  if(!farRec)return null;
+  const backs=gone.filter(g=>g.far&&!names.has(g.name));
+  if(!k){const opts=[['news',3],['thing',3],['song',2],['person',backs.length?3:0]];
+    let sum=0;for(const o of opts)sum+=o[1];let r=R()*sum;k=opts[0][0];
+    for(const o of opts){r-=o[1];if(r<=0){k=o[0];break}}}
+  if(k==='person'&&!backs.length)k='news';
+  if(k==='news'){
+    if(!farLearn(`${p.name}, before the boat is even pulled up,`)){
+      say(`${B(p)} has been to ${farN()} and has news of it, and gets to the fire before the boat is properly tied.`,true);
+      addEvent('farnews',`the ${sea()} ${p.name} brought news of ${farN()}`,`${p.name} came back off ${farN()} with news of it, which is a thing this island has only ever had about itself.`);
+      farCross('news',`${p.name} brought news of ${farN()}`)}}
+  else if(k==='thing'){const av=FARGOODS.filter(f=>!things.some(t=>t.full===f[0]));
+    if(!av.length)return farReturn(p,ci,land,'news');
+    const f=av[(R()*av.length)|0];
+    things.push({n:f[1],full:f[0],holder:p.name,src:'far',hist:[{d:dayCount,s:`came across the water in ${p.name}'s boat, off ${farN()}`}]});
+    p.hist.push({d:dayCount,s:`brought ${f[1]} back over the water`});
+    say(`${B(p)} lifts ${f[0]} out of the bottom of the boat. Nothing on this island made that, and everyone gets to hold it once.`,true);
+    addEvent('fargood',`the ${sea()} ${f[1]} came across the water`,`${p.name} brought ${f[0]} back in the boat. It was the first thing in ${V()} that nobody here could have made, and it was handled by everybody before the day was out.`);
+    farCross('thing',`${f[1]} came across in ${p.name}'s boat`)}
+  else if(k==='song'){
+    if(ci<0||ci>=chron.length||songs.some(sg=>sg.ci===ci))return farReturn(p,ci,land,'thing');
+    songs.push({ci,comp:farN(),kn:[p.name],lost:0,d:dayCount});
+    p.hist.push({d:dayCount,s:`came back off ${farN()} with a tune from it, and is the only one who has it`});
+    say(`${B(p)} came back with a tune as well, off ${farN()}, and sings it at the fire that night. It is the only one of its kind here, and it is in one head.`,true);
+    songTune(songs[songs.length-1],1);
+    addEvent('farsong',`the ${sea()} a tune came across the water`,`${p.name} brought a tune back off ${farN()} and sang it at the fire. Nobody else had it. Whether it stays depends entirely on who learns it before ${p.name} stops being able to find the start of it.`);
+    farCross('song',`a tune of ${farN()} came across in ${p.name}'s head`)}
+  else{const g=backs[(R()*backs.length)|0],q=comeBack(g,land);
+    say(`There are two people in that boat. The second is ${B(q)}, who sailed for ${farN()} in a hungry year and has been on it ever since.`,true);
+    addEvent('farcame',`the ${sea()} ${q.name} came back off ${farN()}`,`${p.name} did not come back from ${farN()} alone. ${q.name}, who had sailed for it in a hungry year, came back in the same boat, older, and was given bread before any questions.`);
+    comeBackKit(q);farCross('came',`${q.name} came back off ${farN()} in ${p.name}'s boat`)}
+  return k}
+// The trader's boat has always come, been waved at, and gone. Sometimes now it has something aboard that this island could not make
+// at any price, and the trade is four numbers: ten of timber and eight of meal out, one thing in, once a year at most. The wave, the
+// talker, and the store it is paid out of were all already here.
+// The floor is 34 timber, not the 14 this was written with, and the reason is measured. Timber is houses, houses are `popCap()`, and
+// `popCap()` is the only thing standing between a village and no births at all. At a floor of 14 the trade was a tax on the housing
+// stock rather than a use for a surplus: 35 game-years on seed 20260819 built 24 houses instead of 28 and spent 203 days of 700 at or
+// over the cap with births shut off, which showed up two systems away as an island with no children in it for months at a time. The
+// existing timber trade below already uses 30 as the mark of a genuine surplus; this is that, plus the ten it is about to spend.
+function farTrade(talker){
+  if(!farRec||wood<34||granary<24||farRecent())return null;
+  const av=FARGOODS.filter(f=>!things.some(t=>t.full===f[0]));
+  if(!av.length||R()>=.4)return null;
+  wood-=10;granary-=8;
+  const f=av[(R()*av.length)|0];
+  const h=talker||people.filter(q=>!q.dead&&!isKid(q)).sort((a,c)=>(c.craft===4?1:0)-(a.craft===4?1:0))[0]||null;
+  things.push({n:f[1],full:f[0],holder:h?h.name:0,src:'far',hist:[{d:dayCount,s:`came off the trader's boat for ten lengths of timber and eight of meal`}]});
+  if(h)h.hist.push({d:dayCount,s:`took ${f[1]} off the trader, and had to be talked into keeping it`});
+  say(`The trader has ${f[0]} in the bottom of the boat, and will take timber and meal for it. ${h?B(h)+' does the arguing.':'Somebody does the arguing.'} It comes ashore.`,true);
+  addEvent('fartrade',`the ${sea()} ${f[1]} was traded for`,`The trader brought ${f[0]}, which nobody in ${V()} could have made, and went away with ten lengths of timber and eight of meal. Everyone agreed afterwards that it had been worth it, at different volumes.`);
+  farCross('trade',`${f[1]} was traded off the boat for timber and meal`);
+  if(!farKnown()&&R()<.6)farLearn('The trader, asked where the goods come from,');
+  return f[1]}
 function spawnBoat(kind,land,o){const b={kind,land,x:land.x+land.dx*17,y:land.y+land.dy*17,tx:land.x+land.dx*.9,ty:land.y+land.dy*.9,st:'in',t:0,...o};boats.push(b);return b}
 // ---------- the works (sprint 10): what a village wants once it has what it needs ----------
 const WORKS={
@@ -283,29 +381,23 @@ function boatArrive(b){
     say(`A trader's boat comes in to ${V()} and everyone who can finds a reason to be on the shore. The trader ${eff}.`,true);addEvent('trade',`the ${sea()} the trader came`,pick([`The trader's boat came in and everyone who could find a reason was on the shore for it.`,`The trader came, and went, and the store was a little different after.`,`A trading boat put in for a day and left news behind as well as goods.`]));
     const wav=people.filter(p=>!p.dead&&p.task!=='sleep'&&p.task!=='boat'&&p.task!=='voyage'&&p.task!=='build'&&p.task!=='bounds'&&!p.inside).sort(()=>R()-.5).slice(0,8); /* sprint 16: the procession does not break for the trader */
     for(const q of wav){const s=nearestShore(b.land.x+rnd(-3,3),b.land.y+rnd(-3,3))||b.land;goTo(q,s.x,s.y,'wave',rnd(12,30));if(q.tgt&&q.tgt.claimed)q.tgt.claimed=false;q.tgt=null}
-    if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}}
+    if(R()<.5&&wav.length){const q=pick(wav);q.hist.push({d:dayCount,s:pick(['bought a length of red cloth off the trader','traded a carved bird to the trader for a knife','asked the trader for news of home and got some'])})}
+    farTrade(talker)}                                                    /* phase 5: and once in a while the boat has something aboard that no hand here could make */
   else if(b.kind==='fish'){if(b.st==='in'){b.st='fishing';b.t=rnd(10,16)}else if(b.st==='back'){b.gone=true;const p=b.p;if(p){p.task='idle';p.t=1;p.inBoat=false;p.x=b.land.x;p.y=b.land.y;p.tx=p.x;p.ty=p.y;/* step ashore, not out at the mooring */const n=(sea()==='winter'?3:6)+(hasW('racks')?1:0)+(hasWay(0)?1:0)+(arcK()==='shoal'?5:0);if(hasB('smoke')&&(sea()==='autumn'||sea()==='winter'))granary+=n;else food+=n;craftUp(p,2);p.boats=(p.boats||0)+1;if(p.boats===1)p.hist.push({d:dayCount,s:'first took the boat out past the shallows'});if(R()<.3)say(`${B(p)} rows in with the bottom of the boat silver, and hands the fish up the beach.`,false,'boatin')}}}
-  else if(b.kind==='return2'&&b.st==='in'){b.gone=true;const g=b.ret;gone=gone.filter(x=>x!==g);
-    const aged=g.age0!==undefined?Math.min(72,(g.age0+(dayCount-g.born)/YEAR)|0):undefined;
-    const p=addPerson(b.land.x,b.land.y,{name:g.name,age:aged,how:'came back, older, in a kind season, and was given bread before any questions, the same as the first day'});
-    for(const q of people){if(q===p)continue;const r=q.rels.find(r=>r.who===p.name);if(!r)continue; // the village never forgot; now the memory runs both ways again
-      if(r.k==='partner')r.k='friend';
-      p.rels.push({who:q.name,k:{friend:'friend',rival:'rival',parent:'child',child:'parent'}[r.k]||'friend'})}
-    say(`A boat comes in that nobody sent for. It is ${B(p)}, older, asking if the house is still short a pair of hands.`,true);
-    addEvent('back',`the ${sea()} ${p.name} came back`,`${p.name}, who left in a hungry season, came back when the seasons turned kind, and was given bread before any questions.`);
-    for(const t of things){if(t.holder===0&&t.hist.some(h=>h.s.includes(p.name+' sailed'))){t.holder=p.name; // what was left on the shelf goes back into the pocket it knows
-      t.hist.push({d:dayCount,s:`came back off the shelf the day ${p.name} returned, from exactly where it was left`});
-      say(`${B(p)} goes into the hall before going anywhere else, and comes out with ${t.n}, which has been waiting the whole time.`,true)}}
-    for(const sg of songs){if(sg.lost&&sg.kn.includes(p.name)&&chron[sg.ci]){sg.lost=0; /* sprint 16: a tune that left in a boat can come back in one */
-      say(`At the fire that night it turns out ${B(p)} still carries the tune of ${chron[sg.ci].label}, which everyone had agreed was gone. It is sung twice.`,true);
-      songTune(sg,sg.kn.length); // phase 1: sung twice is exactly what songTune does — the returner alone, then the ones who still have it
-      addEvent('songback',`the ${sea()} the song of ${chron[sg.ci].label} came back`,`The song of ${chron[sg.ci].label} came back the day ${p.name} did — it had been away, not lost, the whole time.`)}}
+  else if(b.kind==='return2'&&b.st==='in'){b.gone=true;const g=b.ret;const p=comeBack(g,b.land);
+    say(g.far?`A boat comes in that nobody sent for. It is ${B(p)}, older, off ${farN()}, asking if the house is still short a pair of hands.`
+             :`A boat comes in that nobody sent for. It is ${B(p)}, older, asking if the house is still short a pair of hands.`,true);
+    if(g.far){addEvent('farcame',`the ${sea()} ${p.name} came back off ${farN()}`,`${p.name}, who sailed for ${farN()} in a hungry season, came back off it when the seasons turned kind, and was given bread before any questions.`);
+      farCross('came',`${p.name} came back off ${farN()}`)}
+    else addEvent('back',`the ${sea()} ${p.name} came back`,`${p.name}, who left in a hungry season, came back when the seasons turned kind, and was given bread before any questions.`);
+    comeBackKit(p);
     for(const q of people){if(q===p)continue;const r=q.rels.find(r=>r.who===p.name);if(r)q.hist.push({d:dayCount,s:`was on the shore the day ${p.name} came back`})}}
   else if(b.kind==='away'&&b.st==='out'){b.gone=true;const p=b.p;p.inBoat=false;people=people.filter(q=>q!==p);if(selected===p)showCard(null)}
-  else if(b.kind==='return'&&b.st==='in'){b.gone=true;const p=b.p;p.x=b.land.x;p.y=b.land.y;p.task='idle';p.t=2;p.inBoat=false;p.inside=false;p.tgt=null;people.push(p);voyage.st='back';farIsle.lit=false;
+  else if(b.kind==='return'&&b.st==='in'){b.gone=true;const p=b.p;p.x=b.land.x;p.y=b.land.y;p.task='idle';p.t=2;p.inBoat=false;p.inside=false;p.tgt=null;people.push(p);if(voyage)voyage.st='back';if(farIsle)farIsle.lit=false;
     const found=pick(['a stone in each pocket, and says there is nothing there but gulls and a wall, and will not say more','a bird\'s skull and a story about a cold fire pit, older than any of ours','less than went out, and says the far island is only rock, and does not sound sure','a bit of green glass and says the sea goes on past it, further than anyone thought']);
     say(`A boat comes in from the far island. It is ${B(p)}, back with ${found}.`,true);p.hist.push({d:dayCount,s:`came back from the far island with ${found.split(',')[0]}`});addEvent('returned',`the ${sea()} ${p.name} came back from the far island`,`${p.name} came back from the far island, with ${found.split(',')[0]}.`);
-    for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(r&&q!==p)q.hist.push({d:dayCount,s:`was on the shore when ${p.name} came back from the far island`})}}
+    for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(r&&q!==p)q.hist.push({d:dayCount,s:`was on the shore when ${p.name} came back from the far island`})}
+    farReturn(p,chron.length-1,b.land)}                                 /* phase 5: and what the boat had in it. chron.length-1 is the entry addEvent just pushed — the voyage's own story, which is what a tune brought back would be a tune of */
   else if(b.st==='out')b.gone=true}
 // ---------- wildlife (sprint 4) ----------
 const landAt=(x,y)=>{const t=at(x|0,y|0);return t===GRASS||t===SAND||t===ROCK||t===FARM};
