@@ -245,6 +245,11 @@ function draw(){
       if(sings&&songs.some(sg=>!sg.lost&&sg.kn.includes(p.name))){g.fillStyle='#f0d488';g.fillRect(x+3,y-10*k,1,1);g.fillRect(x+4,y-12*k,1,2);g.fillRect(x+4,y-12*k,2,1)}}}});
   ents.push({y:center.y,d:()=>{const x=center.x*T,y=center.y*T;g.fillStyle='#3a2a1a';g.fillRect(x-4,y-1,8,3);const fl=isNight()||L<.6;
     if(fl){for(let i=0;i<4;i++){g.fillStyle=i%2?'#ffb347':'#ff6a2b';const s=RM?2.2:2+Math.sin(time*10+i)*1.5;g.fillRect(x-1+(RM?0:Math.sin(time*7+i)*1.5),y-3-i*1.5-s,2,s)}}}});
+  /* phase 7: hands held between neighbours on the ring. Presentation only — reads the ring/rA the play case set, draws nothing from R().
+     A line at hand height from each child to the next one round the circle, only while the two are close enough to be holding on. */
+  for(const k of ['swing','ring']){const rg=people.filter(o=>o.ring===k&&o.task==='play'&&!o.inside&&!o.dead).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);if(rg.length<2)continue;
+    for(let i=0;i<(rg.length===2?1:rg.length);i++){const a=rg[i],b=rg[(i+1)%rg.length];if(Math.hypot(a.x-b.x,a.y-b.y)>2.8)continue;
+      ents.push({y:Math.min(a.y,b.y)-.001,d:()=>{const ka=.55+ageOf(a)/31,kb=.55+ageOf(b)/31;g.strokeStyle='rgba(241,207,165,.85)';g.lineWidth=1;g.beginPath();g.moveTo(a.x*T+.5,a.y*T-4*ka+.5);g.lineTo(b.x*T+.5,b.y*T-4*kb+.5);g.stroke()}})}}
   ents.sort((a,b)=>a.y-b.y).forEach(e=>e.d());
   for(const f of fx){if(f.rg){const k=1-f.l/f.l0;g.strokeStyle=`rgba(200,230,255,${(.55*(1-k)).toFixed(2)})`;g.lineWidth=1;g.beginPath();g.arc(f.x*T,f.y*T,1+k*9,0,6.283);g.stroke()}else{g.fillStyle=f.c;g.fillRect(f.x*T,f.y*T,2,2)}}
   for(const k of skips){g.fillStyle='#3a3a34';g.fillRect(k.x*T-1,k.y*T-2,2,2)}

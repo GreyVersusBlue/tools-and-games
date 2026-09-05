@@ -389,6 +389,10 @@ function walk(p,dt){
   else return blockedStop(p);
   const hi=idx(p.x|0,p.y|0);if(hi>=0&&hi<W*H)heat[hi]+=dt;return false}
 function popCap(){return 4+houses.length*2}
+/* Phase 7, decided out loud after six sprints noted it and six let it stand: a birth may overshoot the cap by one, and arrivals may not.
+   The cap counts beds, and a boat has to find one; a baby is born into its parents' house and takes nobody's. A rich island settling at
+   47–49 rather than 46–48 is that one baby, and it is kept. Change this and every island's stream moves for one person. */
+const BIRTH_OVER=1;
 const has=(p,t)=>p.tr.includes(t);
 // which craft a task teaches (and is sped by): field, wood, sea, frame, store
 const CRAFT_TASK={till:0,harvest:0,water:0,chop:1,fish:2,boat:2,build:3,carry:4};

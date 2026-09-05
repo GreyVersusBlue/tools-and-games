@@ -123,13 +123,16 @@ function newDay(){saidToday=new Set();
   // person's rels keep pointing at the dead — nothing strips them when somebody dies — so the other half was there the whole time.
   // knewDead() is what the filter and the pick both ask, which is also what stops pick() ever being handed an empty array: the two
   // used to be hand-copied predicates, and one of them widening without the other is an undefined `d2` and a thrown newDay().
-  const knewDead=(p,d2)=>!!(d2.rels&&d2.rels.some(r=>r.who===p.name))||p.rels.some(r=>r.who===d2.name);
-  if(dead.length&&R()<.05){const kds=alive.filter(p=>isKid(p)&&ageOf(p)>=5);
-    const elds=alive.filter(p=>isElder(p)&&dead.some(d2=>knewDead(p,d2)));
-    if(elds.length&&kds.length){const el=pick(elds),kd=pick(kds);
-      const d2=pick(dead.filter(d2=>knewDead(el,d2)));
-      say(`${B(el)} tells ${B(kd)} about ${d2.name}, who is under one of the stones on the hill, and ${kd.name} repeats the name to get it right.`,false,'tolddead');
-      kd.hist.push({d:dayCount,s:`was told about ${d2.name}, who died before ${kd.name} was born`})}}
+  // Phase 7: "knew" is "outlived". An elder has somebody to tell about if they were on the island the day that person was carried up
+  // the hill — the death day comes off the grave, which is packed; the dead pack as a name and a rels list — and the ones they actually
+  // knew are still told about first. Measured on the decade run against main's own islands, this widening is small: an elder with
+  // somebody to tell about on 92 days of the 92 with an elder and a child alive at all on seed 7 (90 under the rels rule), and 199 of
+  // 284 on 20260819 (168 before). Phase 5's symmetric rels had already done most of it, and "fired zero times in 240 days" was stale —
+  // main tells 3 and 4 children in 700 days. What throttles it is the island making an elder at all, and the roll stays .05.
+  // The child, for their part, has to have been unborn or under five on that day — five is the age a child can be told at all, so this is
+  // "somebody from before you can remember" — or the elder is telling them about somebody they carried up the hill themselves, which
+  // the old line ("who died before you were born") called a thing it was not. The line the child keeps says which side of the birth it fell.
+  tellOfDead(alive);
   // partnerships
   const single=alive.filter(p=>!p.partner&&!isKid(p)&&ageOf(p)>=18&&ageOf(p)<58);
   for(const a of single){if(a.partner)continue;const fr=a.rels.filter(r=>r.k==='friend').map(r=>byName(r.who)).filter(b=>b&&!b.partner&&!isKid(b)&&ageOf(b)>=18&&ageOf(b)<58&&!b.dead&&!a.parents.includes(b.name)&&!b.parents.includes(a.name));
@@ -140,7 +143,7 @@ function newDay(){saidToday=new Set();
       say(`${B(a)} and ${B(b)} have decided to build a house together. There is a lot of nodding around the fire.`);addEvent('partner',`the spring ${a.name} and ${b.name} built their house`.replace('the spring','the '+seasonOf(dayCount)),pick([`${a.name} and ${b.name} decided to build a house together, which surprised nobody.`,`${a.name} and ${b.name} paced out a plot for the two of them, and there was a lot of nodding about it.`,`${a.name} and ${b.name} stopped pretending and started building.`]))}}
   // births
   for(const a of alive){if(!a.partner||a.child)continue;const b=byName(a.partner);if(!b||b.dead||a.name>b.name)continue;
-    if(a.home&&a.home===b.home&&ageOf(a)<46&&ageOf(b)<46&&people.length<popCap()+1&&food>people.length*3&&R()<(people.length<28?.025:.01)){
+    if(a.home&&a.home===b.home&&ageOf(a)<46&&ageOf(b)<46&&people.length<popCap()+BIRTH_OVER&&food>people.length*3&&R()<(people.length<28?.025:.01)){
       const kids=people.filter(p=>p.parents.includes(a.name)&&!p.dead).length;if(kids>=3)continue;
       let nm=null;const anc=dead.filter(d=>d.rels.some(r=>r.who===a.name||r.who===b.name)&&!names.has(d.name));
       if(anc.length&&R()<.6)nm=pick(anc).name;
@@ -336,6 +339,19 @@ function leave(p){remove(p);const s=sea();
   else addEvent('left',`the ${s} ${p.name} sailed away`,`${p.name} took the small boat and left in a hungry ${s}. There had not been enough to go round.`);
   for(const t of thingsOf(p.name)){t.holder=0;t.hist.push({d:dayCount,s:`left on the shelf in the hall the morning ${p.name} sailed, on purpose, where it would be found`})}
   for(const q of people){const r=q.rels.find(r=>r.who===p.name);if(!r)continue;q.hist.push({d:dayCount,s:`watched ${p.name} sail ${far?'for '+farN():'away'} in a hungry ${s}`});if(r.k==='partner')q.partner=null}}
+// Phase 7: pulled out of newDay so the harness can roll it on its own, away from the old-age roll that takes a sixty-five-year-old one day in four.
+function tellOfDead(alive){
+  const knewDead=(p,d2)=>!!(d2.rels&&d2.rels.some(r=>r.who===p.name))||p.rels.some(r=>r.who===d2.name);
+  const graveOf=d2=>graves.find(g=>g.name===d2.name),bornOn=p=>p.born-(p.age0||0)*YEAR;
+  const outlived=(p,d2)=>{const g=graveOf(d2);return knewDead(p,d2)||(!!g&&g.d>p.born)};
+  const tooSmall=(kd,d2)=>{const g=graveOf(d2);return !!g&&g.d<bornOn(kd)+5*YEAR};
+  if(dead.length&&R()<.05){const kds=alive.filter(p=>isKid(p)&&ageOf(p)>=5);
+    const elds=alive.filter(p=>isElder(p)&&dead.some(d2=>outlived(p,d2)&&kds.some(kd=>tooSmall(kd,d2))));
+    if(elds.length){const el=pick(elds);const pool=dead.filter(d2=>outlived(el,d2)&&kds.some(kd=>tooSmall(kd,d2))),kn=pool.filter(d2=>knewDead(el,d2));
+      const d2=pick(kn.length?kn:pool),kd=pick(kds.filter(kd=>tooSmall(kd,d2))),g=graveOf(d2);
+      say(`${B(el)} tells ${B(kd)} about ${d2.name}, who is under one of the stones on the hill, and ${kd.name} repeats the name to get it right.`,false,'tolddead');
+      kd.hist.push({d:dayCount,s:`was told about ${d2.name}, who died ${g.d<bornOn(kd)?`before ${kd.name} was born`:`when ${kd.name} was too small to remember`}`})}}
+}
 function die(p){remove(p);dead.push(p);loseSongs(p,'died');
   // grave on the hill
   const k=graves.length,gx=hill.x+((k%4)-1.5)*1.6,gy=hill.y+Math.floor(k/4)*1.4;const gr={x:gx,y:gy,name:p.name,d:dayCount,y2:yearOf(dayCount),age:ageI(p),vn:0};graves.push(gr);trees=trees.filter(t=>Math.hypot(t.x-gx,t.y-gy)>1.6);
