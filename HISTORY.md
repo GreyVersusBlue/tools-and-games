@@ -844,6 +844,29 @@ Two of them have moved since they were written:
    re-noted; changing it moves every island's stream for one person.
    *Source: Hearth Phase 7, "Play that reads as play, and four other leftovers".*
 
+83. **Hearth's CI is two jobs, and the deep one never runs on a pull
+   request.** Q15 asked which shape. `hearth-ci.yml` gates every PR and
+   push to main on `determinism`, `save`, a twelve-day `soak` of the two
+   fixed seeds and `pinned` (about a minute of browser time after the
+   install); a nightly and on-demand `deep` job runs all fifteen modes as a
+   matrix, one job per mode, `fail-fast: false`, so a red one names itself.
+   The split is by clock: `nan` is five minutes, `decade` six and the sweep
+   about half an hour, and a PR gate that long gets skipped. The browser is
+   the lockfile's Playwright (1.62.1) and that version's own Chromium, so a
+   moved hash is a claim about the simulation and not about the runner.
+   *Source: Hearth Phase 8, "Hearth gets a machine that watches it".*
+
+84. **Hearth does not join the board's regression suite; its preview waits
+   for the social-tag cleanup.** Q14 asked whether the board wanted the
+   shallow smoke test anyway. No: `npm run games` runs headed, on a desk, and
+   a Hearth entry there would be a second, shallower copy of the harness's
+   `save` mode, which #83 now runs on every PR. The 330×200 preview is worth
+   having and is not a desk job (Hearth is a 2D canvas), but promoting one
+   touches `index.html`, `assets/og/` and a social block Hearth's page does
+   not yet have, on a board `social:check` already reports six pages out of
+   sync with; it goes with that cleanup, not with a CI phase. *Source:
+   Hearth Phase 8.*
+
 
 ---
 
@@ -1635,6 +1658,43 @@ miss on any stream; it rolls the rule by hand now. Four guard-rails in a new
 `leftovers` mode, each broken on purpose once (#34): the independent `.9`
 step, the rels-only elder, the priority list and the missing template each
 went red on its own line.
+
+**Phase 8 — Hearth gets a machine that watches it.** Seventeen sprints and
+seven phases of regressions had only ever run on a desk. `hearth-ci.yml` runs
+`determinism`, `save`, a twelve-day `soak` on seeds 7 and 20260819 and a new
+`pinned` mode on every pull request and push to main, and the other fifteen
+modes nightly and on demand, one matrix job each (#83). `pinned` reads
+`test/hashes.json`, runs each listed seed forty days and compares the `pack()`
+hash the handoffs used to paste by hand: `41eb3cb5:37275` on seed 7,
+`4ac7d23d:36964` on 20260819, the same pair the last four Hearth PRs reported.
+`--write` rewrites the file when the move was meant, so the diff is the record.
+Q14 answered no on the board suite and parked the preview with the social-tag
+cleanup (#84). *What was measured:* the gate is 12 s for `determinism`, 2 s
+for `save`, 5 s for the short soak and 16 s for `pinned` on this container;
+the whole sweep is about six and a half minutes of it outside `nan` and
+`decade`, and every one of the fifteen modes was green here before the
+workflow was written. *Broken on purpose (#34):* one extra `R()` at the
+day-20 boundary of `step()` moved seed 7 to `46e25568:37234` and 20260819 to
+`cae04c36:35918` and `pinned` exited 1 naming both; a one-digit edit to the
+file did the same for the one seed it touched. Save: none.
+
+---
+
+# The Fourth Quarter, Phase 5
+
+**Phase 5 — The suite runs on every pull request.** 393 assertions in
+`test/smoke-engine.mjs` and `test/smoke-campaign.mjs`, no browser, no
+dependency, both already exiting non-zero on a failed assertion, and until
+this phase they ran when somebody remembered. `fourth-quarter-ci.yml` is
+`school-generator-ci.yml`'s shape: Node 22, path-filtered on
+`Projects/fourth-quarter/**` and the workflow file, on pull requests and
+pushes to main, one concurrency group. The two suites are two named steps so
+a red job says which; a third step loops over every other `test/*.mjs`, so a
+suite a later phase adds runs from its first commit without an edit here.
+*Broken on purpose (#34):* the `ok` helper in `smoke-engine.mjs` was made to
+fail every assertion and the process exited 1; the loop over the other files,
+with none to run, exited 0. The path filter fires on the phase's own PR
+because `WISHLIST.md` under the folder changed in it.
 
 ---
 

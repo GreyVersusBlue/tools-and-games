@@ -189,7 +189,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 8 — Hearth gets a machine that watches it | `Projects/hearth` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/hearth/WISHLIST.md#phase-8--hearth-gets-a-machine-that-watches-it) |
+| 1 | Phase 8 — Hearth gets a machine that watches it | `Projects/hearth` | ½ | Opus 5 | `claude/backlog-ranked-batch-o5y92r` | [WISHLIST.md Phase 8](Projects/hearth/WISHLIST.md#phase-8--hearth-gets-a-machine-that-watches-it) |
 | 2 | Phase 1 — The rules core comes out of the page | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 1](Projects/torchbearer/WISHLIST.md#phase-1--the-rules-core-comes-out-of-the-page) |
 | 3 | Phase 2 — Combat comes out of the page | `Projects/torchbearer` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/torchbearer/WISHLIST.md#phase-2--combat-comes-out-of-the-page) |
 | 4 | Phase 3 — Reactions, reach, and an interrupt point | `Projects/torchbearer` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/torchbearer/WISHLIST.md#phase-3--reactions-reach-and-an-interrupt-point) |
@@ -210,7 +210,7 @@ after that branch merges.
 | 19 | Phase 2 — Four rooms, one ladder | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
 | 20 | Phase 3 — Feet that find the door | `Projects/fourth-quarter` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/fourth-quarter/WISHLIST.md#phase-3--feet-that-find-the-door) |
 | 21 | Phase 4 — The texture diet | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/fourth-quarter/WISHLIST.md#phase-4--the-texture-diet) |
-| 22 | Phase 5 — The suite runs on every pull request | `Projects/fourth-quarter` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Projects/fourth-quarter/WISHLIST.md#phase-5--the-suite-runs-on-every-pull-request) |
+| 22 | Phase 5 — The suite runs on every pull request | `Projects/fourth-quarter` | ½ | Opus 5 | `claude/backlog-ranked-batch-o5y92r` | [WISHLIST.md Phase 5](Projects/fourth-quarter/WISHLIST.md#phase-5--the-suite-runs-on-every-pull-request) |
 | 23 | Phase 6 — The league has a season | `Projects/fourth-quarter` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/fourth-quarter/WISHLIST.md#phase-6--the-league-has-a-season) |
 | 24 | Phase 7 — Regulars, and the bar across town | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/fourth-quarter/WISHLIST.md#phase-7--regulars-and-the-bar-across-town) |
 | 25 | Phase 8 — The night has moments | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/fourth-quarter/WISHLIST.md#phase-8--the-night-has-moments) |

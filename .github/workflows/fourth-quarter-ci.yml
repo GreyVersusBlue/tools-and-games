@@ -1,0 +1,65 @@
+# Checks for The Fourth Quarter. The two suites under Projects/fourth-quarter/
+# test/ are the cheapest CI in the repo — no browser, no dependency, no
+# package.json, two `node` invocations that already exit non-zero on a failed
+# assertion — and until this file they ran when somebody remembered. See
+# Projects/fourth-quarter/WISHLIST.md, Phase 5.
+#
+# Three steps. The first two name the suites that exist today, so a red job
+# says which one. The third runs whatever else is in test/*.mjs, so a suite a
+# later phase adds (smoke-layout.mjs and friends) is picked up without editing
+# this file — and it fails the job the same way, naming the file.
+
+name: Fourth Quarter CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/fourth-quarter/**"
+      - ".github/workflows/fourth-quarter-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Projects/fourth-quarter/**"
+      - ".github/workflows/fourth-quarter-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fourth-quarter-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: Projects/fourth-quarter
+
+jobs:
+  suite:
+    name: smoke-engine, smoke-campaign, and any other test/*.mjs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: smoke-engine
+        run: node test/smoke-engine.mjs
+
+      - name: smoke-campaign
+        run: node test/smoke-campaign.mjs
+
+      # Everything else under test/, one process each, so a suite that lands
+      # later runs here from its first commit. `set -e` is on by default in
+      # this shell; the loop makes the failing file's name the last line.
+      - name: every other suite in test/
+        run: |
+          failed=0
+          for f in test/*.mjs; do
+            case "$f" in test/smoke-engine.mjs|test/smoke-campaign.mjs) continue;; esac
+            echo "== $f"
+            node "$f" || { echo "FAIL $f"; failed=1; }
+          done
+          exit $failed

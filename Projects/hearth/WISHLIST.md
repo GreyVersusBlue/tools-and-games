@@ -262,18 +262,15 @@ wrong, and the handoff that names it is cited.
 
 ## Questions for Devon
 
-- **Should Hearth join the board's regression suite?** It is on the homepage
-  (`index.html:492`, tagged Sim, `data-new`) but has no entry in
-  `Tools/board-check/games.mjs` — thirteen games are described there, Hearth
-  is not one — and no `assets/previews/hearth.jpg`, so `npm run games` never
-  opens it and the card has no preview. Its own harness is far better than a
-  board-check `open()` recipe; the question is whether the board wants the
-  shallow smoke test anyway.
-- **Does Hearth get a CI workflow?** `.github/workflows/` carries
-  `school-generator-ci.yml` and `numina-ci.yml` and nothing for Hearth, so
-  sixteen sprints of regressions have only run on somebody's desk. The full
-  suite is eleven modes of headless Chromium; a PR gate of `soak --days 12` +
-  `determinism` + `save` is minutes. Which shape?
+- ~~**Should Hearth join the board's regression suite?**~~ Answered by
+  Phase 8 (#84): no. `npm run games` is a headed desk run and an entry there
+  would be a shallower copy of the harness's `save` mode, which CI now runs on
+  every PR. The preview image is still wanted; it is parked with the
+  social-tag cleanup, because promoting one touches `index.html`, `assets/og/`
+  and a social block this page does not yet have.
+- ~~**Does Hearth get a CI workflow?**~~ Answered by Phase 8 (#83):
+  `hearth-ci.yml`, a PR gate of `determinism` + `save` + a twelve-day `soak` +
+  `pinned`, and a nightly matrix of the other fifteen modes.
 - **Does the name-recycling quirk stay a feature?** Songs live on names
   (`songs[].kn` is a list of strings) and the ancestor-naming rule can hand a
   newborn a dead knower's name, so that child "knows" every song the ancestor
@@ -359,8 +356,9 @@ claims. Carried here when those handoffs were retired into `HISTORY.md`.
 **Format, tooling, and the machine**
 - There is no pure module and no unit suite; everything is tested by driving
   the real page, which means no test can say a function is wrong.
-- No preview image and no `Tools/board-check/games.mjs` entry, so `npm run
-  games` has never opened this project.
+- No preview image. Phase 8 decided against a `Tools/board-check/games.mjs`
+  entry (#84); the 330×200 capture waits for the social-tag cleanup, since
+  promoting one also writes `assets/og/hearth.jpg` and this page's og block.
 - `chron`, `events` and every person's `hist` grow without bound, and nobody
   has measured frame time past day 120.
 
@@ -1085,7 +1083,7 @@ its own line before any went green.
 `js/watcher.js`'s `faithDay`, `js/flavor.js`'s `G`, `js/render.js`. *Save:*
 none. *Model:* **Claude Opus 5** was named; *worked under Claude Fable 5.1.*
 
-## Phase 8 — Hearth gets a machine that watches it
+## Phase 8 — Hearth gets a machine that watches it — **SHIPPED**
 
 **Sixteen sprints of regressions have only ever run on somebody's desk.**
 
@@ -1094,22 +1092,25 @@ and nothing for Hearth. Every "harness green" claim in every handoff is a human
 having run eleven commands and pasted the output. The harness is excellent,
 completely unautomated, and the only test this project has.
 
-- [ ] **`hearth-ci.yml`, pathed to `Projects/hearth/**`.** Follow
-  `school-generator-ci.yml`'s shape: `on: pull_request` and `push: main`,
-  concurrency group, `defaults.run.working-directory`.
-- [ ] **A PR gate that finishes in minutes.** `determinism`, `save`, and
-  `soak --days 12 --seeds 7,20260819 --random 0`, on a pinned Playwright with
-  its own Chromium installed — the School Generator's CI comment on why a
-  pinned browser matters is worth reading before choosing the number.
-- [ ] **A nightly or on-demand deep run.** `soak` at full 40 days, `nan`,
-  `depth`, and every per-sprint mode, so the slow truth gets told without
-  holding a PR open.
-- [ ] **Determinism against a committed hash.** The handoffs record `pack()`
-  hashes per sprint; commit the current pair so a shifted `R()` draw is caught
-  by the machine rather than by the next sprint's regression.
-- [ ] **Answer the board questions while here** — a `hearth` entry in
-  `Tools/board-check/games.mjs` and an `assets/previews/hearth.jpg`, if Devon
-  wants them.
+- [x] **`hearth-ci.yml`, pathed to `Projects/hearth/**`.** In
+  `school-generator-ci.yml`'s shape: `on: pull_request` and `push: main`, a
+  concurrency group, `defaults.run.working-directory: Projects/hearth/test`,
+  plus `schedule` and `workflow_dispatch` for the deep job (#83).
+- [x] **A PR gate that finishes in minutes.** `determinism`, `save`,
+  `soak --days 12 --seeds 7,20260819 --random 0` and `pinned`: 12 s, 2 s, 5 s
+  and 16 s of browser time. The browser is the lockfile's Playwright (1.62.1,
+  `npm ci`) and that version's own Chromium, so a moved hash is about the
+  simulation, not the runner.
+- [x] **A nightly or on-demand deep run.** All fifteen modes as a matrix, one
+  job per mode with `fail-fast: false`, at 09:20 UTC daily and on
+  `workflow_dispatch`. Never on a pull request.
+- [x] **Determinism against a committed hash.** `test/hashes.json` carries
+  the forty-day `pack()` hashes of seeds 7 and 20260819, and a new `pinned`
+  mode runs each seed and compares; `--write` rewrites the file when the move
+  was meant. Broken on purpose with one extra `R()` at a day boundary and
+  with a one-digit edit to the file; both exited 1 naming the seed.
+- [x] **Answer the board questions while here.** No board-suite entry, and
+  the preview goes with the social-tag cleanup (#84).
 
 *Leans on:* `test/harness.mjs` unchanged, `.github/workflows/`,
 `Tools/board-check/`. *Save:* none. *Model:* **Claude Opus 5** — CI wiring
