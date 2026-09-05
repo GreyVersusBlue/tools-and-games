@@ -78,6 +78,25 @@ with a non-obvious form: `node --test 'test/*.test.mjs'` (quoted glob — plain
 browser windows.** Only one at a time — two will steal focus from each other
 and produce frame-motion and walk failures that look exactly like bugs.
 
+## How this repo is worked
+
+**The standing instruction is "work the next batch of ranked items in `BACKLOG.md`, open a
+PR, merge to `main`."** It runs unattended; Devon is not reviewing these rounds (2026-09-05).
+So: **never stop to ask.** If a row needs a judgement call, decide it, ship it, and record
+the call in `HISTORY.md` as a locked decision so it can be reversed cheaply. A row in
+`BACKLOG.md`'s "Questions for Devon" **no longer blocks its work** — but answer only the
+question actually standing in front of your row, not the list; Devon intends to work through
+the rest himself.
+
+**Size the batch by the Size column, never by a count:** up to 4 quarter-session rows (they
+may share one PR), 2–3 half-session rows, one 1-session row, or a single 2+ row on its own.
+A 2+ row will not finish in one session — do one increment, ship it, and leave the row in
+place with its text rewritten to say what is done. Never mix a 2+ row into a batch with
+others. `BACKLOG.md`'s "How this repo is worked" carries the table and the reasoning.
+
+Still not a session's call: **re-ranking the list wholesale**, and **overruling the
+Ownership table**.
+
 ## Ownership, and claiming a row
 
 The parallel-round system that used to keep sessions off each other's files is
@@ -110,4 +129,10 @@ your own branch, in the same commit, and say so in the PR body.
 6. **Update `BACKLOG.md` after your merge is confirmed** — its header (the
    last thing that shipped and its PR number, the ranked-item count, what to
    pick up next), the ranks if your work reordered anything, and the `Claimed`
-   column, which your row should no longer be in.
+   column, which your row should no longer be in. **This happens after *each*
+   merge, never saved for the end of a batch.** It is the rule most likely to
+   be dropped as batches grow, and its casualty is on record in the sibling
+   repo (`GreyVersusBlue/AI_Tools`): a session batched two phases, saved both
+   backlog rewrites for the end, and its first PR merged with the row still in
+   the ranked table — the next session spent an hour rebuilding what already
+   existed.
