@@ -14,6 +14,7 @@
 //   node harness.mjs saga         [--days 400] [--seeds 7]
 //   node harness.mjs wider
 //   node harness.mjs strain      [--days 40] [--seeds 7,20260819]
+//   node harness.mjs leftovers   (phase 7: the ring's shared phase, the widened elder roll, the weighted prayer, the most-visited stone)
 //
 // Checks, per sprint-8 lessons: audit EVERY species and people every N steps across MULTIPLE
 // seeds including random ones; a single healthy island at a polite interval proves nothing.
@@ -77,12 +78,20 @@ async function runDay(page, auditEvery) {
     audit();
     // Could "an elder tells a child about one of the dead" have fired today at all? Written out here rather than asked of the game,
     // so the check and the thing checked cannot agree by sharing a bug. `decade` counts these days; nothing else reads it.
+    out.elderDay = 0;
     out.tellDay = (() => {
+      // Phase 7 widened "knew" to "outlived": the elder was on the island the day the grave was dug (the death day lives on the grave —
+      // the dead pack as name and rels only), and the child was unborn or under five that day. Mirrored here, not imported.
       if (!H.dead.length) return 0;
-      const alive = H.people.filter(p => !p.dead), age = p => (p.age0 || 0) + (H.dayCount - p.born) / 20;
-      if (!alive.some(p => p.child && age(p) >= 5)) return 0;
+      const alive = H.people.filter(p => !p.dead), age = p => (p.age0 || 0) + (H.dayCount - p.born) / 20, bornOn = p => p.born - (p.age0 || 0) * 20;
+      const kids = alive.filter(p => age(p) >= 5 && age(p) < 14);
+      out.elderDay = kids.length && alive.some(p => age(p) >= 60) ? 1 : 0;   /* the throttle itself: an elder and a child at all, whatever the graves say */
+      if (!kids.length) return 0;
+      const grave = d2 => H.graves.find(g => g.name === d2.name);
       const knew = (p, d2) => !!(d2.rels && d2.rels.some(r => r.who === p.name)) || p.rels.some(r => r.who === d2.name);
-      return alive.some(p => age(p) >= 60 && H.dead.some(d2 => knew(p, d2))) ? 1 : 0;
+      const outlived = (p, d2) => { const g = grave(d2); return knew(p, d2) || (!!g && g.d > p.born); };
+      const tooSmall = (kd, d2) => { const g = grave(d2); return !!g && g.d < bornOn(kd) + 100; };
+      return alive.some(p => age(p) >= 60 && H.dead.some(d2 => outlived(p, d2) && kids.some(kd => tooSmall(kd, d2)))) ? 1 : 0;
     })();
     out.day = H.dayCount; out.pop = H.people.length; out.food = H.food; out.granary = H.granary;
     out.houses = H.houses.length; out.bldg = H.bldg.map(b => b.kind).join(',');
@@ -216,14 +225,17 @@ if (mode === 'eleven') {
   console.log(`quiet stone built: ${shrineDay !== null ? 'day ' + shrineDay : 'NO'} (faith ${await H(() => window.__hearth.faith.toFixed(2))})`);
   if (shrineDay === null) { failed = true; console.log('FAIL: shrine never built under sustained acts'); }
 
-  // prayer -> grant: hold the ground dry across dawns, wait for the rain-prayer, answer it with weather
-  let prayed = null;
-  for (let d = 0; d < 32 && prayed !== 'rain'; d++) {
-    await H(() => { window.__hearth.setDry(.9); if (window.__hearth.prayer && window.__hearth.prayer.k !== 'rain') window.__hearth.setWx('clear'); });
-    await runDay(page, 1e9);
-    prayed = await H(() => window.__hearth.prayer && window.__hearth.prayer.k) || prayed;
-  }
-  console.log(`prayer asked: ${prayed || 'NO'}`);
+  // prayer -> grant. This used to set the ground dry, run a day, and wait for a rain prayer; but the stone asks at midnight, after a day
+  // of weather has had its say, and on seed 7 the ground reads .34 at most midnights, which is below the old `.5` gate as well as
+  // the new one. It passed on the stream it was written on and on no other (#66). Phase 7's ask is a weighted draw (#81), so the
+  // stone is asked directly now, with the ground at .9 at the moment of asking, until it asks for rain; the grant then runs as before.
+  const pr = await H(() => {
+    const h = window.__hearth, asked = {}; let k = null;
+    for (let i = 0; i < 200 && k !== 'rain'; i++) { h.setDry(.9); h.setPrayer(null); h.faithDay(); k = h.prayer ? h.prayer.k : 'none'; asked[k] = (asked[k] || 0) + 1 }
+    return { k, asked };
+  });
+  const prayed = pr.k;
+  console.log(`prayer asked: ${prayed || 'NO'} (the stone, asked with the ground at .9: ${JSON.stringify(pr.asked)})`);
   if (prayed !== 'rain') { failed = true; console.log('FAIL: expected a rain prayer under dry ground'); }
   else {
     const f0 = await H(() => window.__hearth.faith);
@@ -273,12 +285,21 @@ if (mode === 'eleven') {
   }
   if (hutDay === null) console.log('  (no hut in 40 days; skipping way test on this seed)');
   else {
+    // wayDay rolls once a season, on its third day, at .3 — sixty days is three rolls, and three misses is a one-in-three outcome on
+    // any stream. It passed on the stream it was written on (#66). The rule is what is under test, so the roll is made by hand: walk to
+    // a season's third day, force the mastery, and call wayDay with a fresh year each time until the sail comes (forty rolls; three
+    // misses in forty is not a thing that happens).
     let way = 0;
-    for (let d = 0; d < 60 && !way; d++) {
-      await H(() => { for (const p of window.__hearth.people.filter(q => !q.child).slice(0, 3)) { p.craft = 2; p.cxp = 1; } });
-      await runDay(page, 1e9); way = await H(() => window.__hearth.ways & 1);
-    }
-    console.log(`the sail: ${way ? 'discovered' : 'NOT discovered in 60 days'}`);
+    for (let d = 0; d < 6 && await H(() => window.__hearth.seaDay() !== 3); d++) await runDay(page, 1e9);
+    const rolls = await H(() => {
+      const h = window.__hearth; for (const p of h.people.filter(q => !q.child).slice(0, 3)) { p.craft = 2; p.cxp = 1; }
+      if (h.seaDay() !== 3) return -1;
+      const yr = Math.floor((h.dayCount - 1) / 20) + 1; let n = 0;
+      while (n < 40 && !(h.ways & 1)) { h.wayDay(yr + 1 + n); n++ }
+      return n;
+    });
+    way = await H(() => window.__hearth.ways & 1);
+    console.log(`the sail: ${way ? `discovered on roll ${rolls}` : rolls < 0 ? 'never reached a season\'s third day' : 'NOT discovered in 40 rolls'}`);
     if (!way) { failed = true; console.log('FAIL: mastery + hut never produced the sail'); }
   }
 
@@ -1048,11 +1069,11 @@ if (mode === 'decade') {
   for (const seed of seeds) {
     const warns = [];
     const { ctx, page } = await openIsland(browser, seed, warns);
-    let viol = [], audits = 0, tellDays = 0;
+    let viol = [], audits = 0, tellDays = 0, elderDays = 0;
     const t0 = Date.now();
     for (let d = 0; d < days; d++) {
       const r = await runDay(page, auditEvery);
-      viol = viol.concat(r.viol); audits += Math.floor(r.steps / auditEvery) + 1; tellDays += r.tellDay;
+      viol = viol.concat(r.viol); audits += Math.floor(r.steps / auditEvery) + 1; tellDays += r.tellDay; elderDays += r.elderDay;
     }
     const s = await page.evaluate(() => {
       const H = window.__hearth, firstOf = k => { const e = H.chron.find(e => e.kind === k); return e ? e.d : 0 };
@@ -1061,7 +1082,7 @@ if (mode === 'decade') {
         bounds: H.chron.filter(e => e.kind === 'bounds').length, boundsD: firstOf('bounds'),
         heir: H.chron.filter(e => e.kind === 'heir').length, heirD: firstOf('heir'),
         lost: H.songs.filter(s => s.lost).length, lostD: firstOf('songlost'), songs: H.songs.length,
-        told: H.people.filter(p => p.hist.some(x => x.s.includes('who died before'))).length,
+        told: H.people.filter(p => p.hist.some(x => x.s.startsWith('was told about'))).length,
         grown: H.chron.filter(e => e.gr).length, places: H.lorePl.length,
         carriers: H.songs.filter(s => !s.lost).map(s => s.kn.filter(n => H.people.some(p => p.name === n)).length).join('/'),
         stumps: JSON.stringify(H.pack().su).length, hist: Math.max(...H.people.map(p => p.hist.length)),
@@ -1072,7 +1093,7 @@ if (mode === 'decade') {
     console.log(`seed ${seed} @ day ${s.day} (year ${Math.floor((s.day - 1) / 20) + 1}), ${mins} min: pop ${s.pop}, ${s.graves} stones, ${s.chron} things remembered`);
     console.log(`  stories grown ${s.grown}, named places ${s.places}, songs ${s.songs} (carried by ${s.carriers || 'nobody'})`);
     console.log(`  the four: bounds walked ${s.bounds} (first day ${s.boundsD || '—'}), heirlooms passed ${s.heir} (first day ${s.heirD || '—'}),` +
-      ` songs lost ${s.lost} (first day ${s.lostD || '—'}), children told of the dead ${s.told} on ${tellDays} days that could have`);
+      ` songs lost ${s.lost} (first day ${s.lostD || '—'}), children told of the dead ${s.told} on ${tellDays} days that could have (an elder and a child both alive on ${elderDays})`);
     console.log(`  bounds: stumps ${s.stumps} bytes, longest life-story ${s.hist} lines, save ${s.packLen} bytes`);
     // The telling is a 5%-a-day roll on the days an eligible elder and an eligible child both exist, and that number is small and
     // lumpy: it is really a count of how many individuals happened to live past sixty, so it swings between about 26 and 113 days in
@@ -1906,6 +1927,9 @@ if (mode === 'strain') {
 
     // what the quiet stone is finally for. `heal` has been top of prayer's list and idle since sprint 11: now it is worth something,
     // and it is worth it the way everything the stone does is — quietly, on the same roll the weather is on, indistinguishable.
+    // Phase 7 made the asking a weighted draw (#81), so the first thing asked is no longer necessarily heal: the stone is asked two
+    // hundred times with the prayer cleared between, heal for the one in bed has to be among the answers, and then the heal prayer
+    // is set by hand to measure what it is worth — the two questions used to share one draw, and now they do not.
     const pray = await page.evaluate(() => {
       const h = window.__hearth, p = h.people.find(x => x.sick);
       if (!p) return { skip: 1 };
@@ -1913,14 +1937,16 @@ if (mode === 'strain') {
       h.people.forEach(q => { if (q !== p) q.sick = 0 });
       const w = h.works.find(x => x.wk === 'shrine');
       h.setFaith(1); if (!w) h.works.push({ wk: 'shrine', x: 40, y: 30, y0: 1, done: true, prog: 99, paid: 1, said: 1 });
-      let asked = null; for (let i = 0; i < 200 && !asked; i++) { h.faithDay(); asked = h.prayer }
+      const asked = {}; let healFor = 0;
+      for (let i = 0; i < 200; i++) { h.setPrayer(null); h.faithDay(); const k = h.prayer ? h.prayer.k : 'none'; asked[k] = (asked[k] || 0) + 1; if (h.prayer && h.prayer.k === 'heal' && h.prayer.who === p.name) healFor++ }
+      h.setPrayer({ k: 'heal', d: h.dayCount, who: p.name });
       const with_ = h.illChanceOf(p);
-      return { skip: 0, k: asked && asked.k, who: asked && asked.who, name: p.name, none, with_ };
+      return { skip: 0, asked, healFor, name: p.name, none, with_ };
     });
     if (pray.skip) check(false, 'nobody was ill by the time the quiet stone was asked, so heal could not be tested');
     else {
-      console.log(`  the quiet stone: asked for ${pray.k}${pray.who ? ' for ' + pray.who : ''}; ${pray.name} at ${pray.none.toFixed(2)} without it, ${pray.with_.toFixed(2)} with`);
-      check(pray.k === 'heal' && pray.who === pray.name, `with somebody in bed the stone was asked for ${pray.k} for ${pray.who}, not heal for ${pray.name}`);
+      console.log(`  the quiet stone, asked 200 times: ${JSON.stringify(pray.asked)}, heal for ${pray.name} ${pray.healFor}x; ${pray.name} at ${pray.none.toFixed(2)} without it, ${pray.with_.toFixed(2)} with`);
+      check(pray.healFor > 0, `with somebody in bed the stone was never asked for heal for ${pray.name} in 200 asks: ${JSON.stringify(pray.asked)}`);
       check(pray.with_ > pray.none, `a prayer standing on somebody did nothing for them: ${pray.with_} against ${pray.none}`);
     }
 
@@ -2265,6 +2291,111 @@ if (mode === 'strain') {
   console.log(failed ? '\nFAIL' : `\nPASS: the short winter bites and lets go, the sickness travels and burns out, and the feud lives and ends — reckoning, raid, the one eating last, ` +
     `a thaw that is not optional, a wave with a clock on every person in it, nursing that costs a rivalry, and two who are not speaking until a fire or a walk or a death or the calendar ends it, ` +
     `over ${seeds.length * days + 86} audited sim-days (~${audits} full-cast audits), 0 violations`);
+}
+
+if (mode === 'leftovers') {
+  // Phase 7. Four small things five sprints each named and none fixed, each forced through its own door here and asserted on
+  // durable state (a target on a circle, a hist line, a prayer record, a line read the instant it is said — nothing steps in between).
+  // Every one of these went red on the code it replaces before it went green on this: the independent .9 step fails the phase check,
+  // the rels-only elder never tells, the priority list never asks for rain while somebody is sick, and the stone had no line.
+  const warns = [];
+  const { ctx, page } = await openIsland(browser, 7, warns);
+  for (let d = 0; d < 3; d++) await runDay(page, 1e9);
+  const H = f => page.evaluate(f);
+
+  // ---- 1. the ring turns as one ----
+  // Three adults are made children of eight and dropped at a finished fire ring with their timers spent; one step retargets all three
+  // at the same sim clock. Whoever took the ring anchor that step must sit at ringPhase() + slot * 2pi / n, slot by name order,
+  // to the last bit. The old code gave each its own angle off p.off and stepped it .9, which fails this on the first instant.
+  const ring = await H(() => {
+    const h = window.__hearth, c = h.people.filter(p => !p.dead).slice(0, 3);
+    if (c.length < 3) return { err: 'fewer than three people' };
+    h.works.push({ wk: 'ring', x: Math.floor(h.people[0].x) + 3, y: Math.floor(h.people[0].y), y0: 1, done: true, prog: 20, paid: 1, said: 1 });
+    const w = h.works.find(w => w.wk === 'ring' && w.done);
+    for (const p of c) { p.age0 = 8; p.born = h.dayCount; }
+    h.setTime(Math.floor(h.time / 140) * 140 + 70);   /* noon: runDay leaves the clock just past midnight, and children get sent to bed at night */
+    let instants = 0, bad = [], pairs = 0, drew = false;
+    for (let i = 0; i < 400 && instants < 6; i++) {
+      for (const p of c) { p.task = 'play'; p.t = 0; p.inside = false; p.x = w.x + .5 + (p.name.length % 3) * .4; p.y = w.y + .9; p.ring = null; }
+      h.step(0.05);
+      const on = c.filter(p => p.ring === 'ring');
+      if (on.length < 2) continue;
+      instants++;
+      const rg = h.ringOf(w).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0), n = rg.length, ph = h.ringPhase();
+      for (const p of on) {
+        const want = ph + rg.indexOf(p) * 6.2832 / n;
+        if (Math.abs(p.rA - want) > 1e-9) bad.push(`${p.name}: rA ${p.rA.toFixed(4)} wanted ${want.toFixed(4)} (slot ${rg.indexOf(p)} of ${n})`);
+        if (Math.abs(p.tx - (w.x + .5 + Math.cos(p.rA) * 2)) > 1e-9 || Math.abs(p.ty - (w.y + .9 + Math.sin(p.rA) * 1.4)) > 1e-9) bad.push(`${p.name}: target off the circle`);
+      }
+      pairs += on.length;
+      try { h.draw(); drew = true; } catch (e) { bad.push('draw threw with hands on the ring: ' + e.message); }
+    }
+    return { instants, pairs, bad, drew };
+  });
+  console.log(`ring: ${ring.instants} instants with two or more on it, ${ring.pairs} children placed, draw ran ${ring.drew}`);
+  if (ring.err || !ring.instants || ring.bad.length) { failed = true; console.log(`FAIL: ${ring.err || ring.bad.slice(0, 4).join('; ') || 'nobody ever took the ring'}`); }
+
+  // ---- 2. an elder with nobody on their list still has somebody to tell about ----
+  // A grave nobody living is related to, dug seventy days ago; an elder who arrived two hundred days ago; a child born a hundred days
+  // ago. The old rels-only predicate finds no elder and the roll never lands; the widened one lands inside three hundred rolls
+  // (zero is a 0.95^300 outcome). Nothing else in newDay runs, so the elder cannot die in the loop.
+  const told = await H(() => {
+    const h = window.__hearth, ad = h.people.filter(p => !p.dead && p.age0 >= 18);
+    if (ad.length < 2) return { err: 'fewer than two adults' };
+    const el = ad[0], kd = ad[1], name = 'Tamsin-of-the-hill';
+    el.age0 = 55; el.born = h.dayCount - 200;           /* 65: on the island since before the grave */
+    kd.age0 = 0; kd.born = h.dayCount - 100;            /* five, born thirty days after the death */
+    h.graves.push({ x: 1, y: 1, name, d: h.dayCount - 70, y2: 1, age: 71, vn: 0 });
+    h.dead.push({ name, rels: [], dead: true, hist: [], tr: [] });
+    const n0 = kd.hist.length;
+    let rolls = 0;
+    while (rolls < 300 && !kd.hist.some(x => x.s.includes(name))) { h.tellOfDead(); rolls++; }
+    const line = kd.hist.find(x => x.s.includes(name));
+    return { rolls, line: line ? line.s : null, elderKnew: el.rels.some(r => r.who === name), before: h.graves.find(g => g.name === name).d < kd.born };
+  });
+  console.log(`elder: ${told.line ? `"${told.line}" after ${told.rolls} rolls` : `nothing after ${told.rolls} rolls`} (elder's rels named them: ${told.elderKnew})`);
+  if (told.err || !told.line || told.elderKnew || (told.before && !told.line.includes('was born')) || (!told.before && !told.line.includes('too small'))) {
+    failed = true; console.log(`FAIL: ${told.err || 'the widened roll did not land, or the line does not say which side of the birth the death fell'}`);
+  }
+
+  // ---- 3. the stone hears more than the loudest need ----
+  // One person sick and the ground at .9 dry, four hundred asks with the prayer cleared between. The if/else could only ever ask for
+  // healing here; the weighted draw asks for both, healing most, and sometimes nothing.
+  const pray = await H(() => {
+    const h = window.__hearth, ad = h.people.filter(p => !p.dead && !p.sick && p.age0 >= 18);
+    if (!ad.length) return { err: 'nobody to make sick' };
+    h.works.push({ wk: 'shrine', x: 5, y: 5, y0: 1, done: true, prog: 20, paid: 1, said: 1 });
+    h.takeSick(ad[0]); h.setDry(.9); h.setFaith(.3);
+    const asked = {};
+    for (let i = 0; i < 400; i++) { h.setPrayer(null); h.faithDay(); const k = h.prayer ? h.prayer.k : 'none'; asked[k] = (asked[k] || 0) + 1; }
+    return { asked, sick: h.people.filter(p => p.sick).length };
+  });
+  console.log(`prayer: ${JSON.stringify(pray.asked)} with ${pray.sick} sick and the ground at .9`);
+  if (pray.err || !pray.asked.heal || !pray.asked.rain || pray.asked.rain >= pray.asked.heal) { failed = true; console.log(`FAIL: ${pray.err || 'the stone still only hears the loudest need'}`); }
+
+  // ---- 4. the most-visited stone has a line ----
+  // One grave at forty visits, a child as the speaker as often as the draw allows, and the log read the instant flavor() returns —
+  // nothing steps between the call and the read, which is what makes this read of the log safe (#39, and the sprint 15 lesson).
+  const stone = await H(() => {
+    const h = window.__hearth;
+    h.graves.push({ x: 2, y: 2, name: 'Old Wat', d: 1, y2: 1, age: 80, vn: 40 });
+    for (const p of h.people) { p.age0 = 9; p.born = h.dayCount; }   /* everyone a child, so {A} is a child every draw */
+    const log = document.getElementById('log');
+    let asks = 0, counts = 0;
+    for (let i = 0; i < 300; i++) {
+      h.flavor();
+      const t = log.lastElementChild ? log.lastElementChild.textContent : '';
+      if (t.includes("everyone stops at Old Wat's stone")) asks++;
+      if (t.includes("Old Wat's stone has been stood at 40 times")) counts++;
+    }
+    return { asks, counts };
+  });
+  console.log(`stone: the why-line ${stone.asks}x, the count-line ${stone.counts}x in 300 draws`);
+  if (!stone.asks || !stone.counts) { failed = true; console.log('FAIL: the most-visited stone still feeds nothing but pixels'); }
+
+  if (warns.length) { failed = true; [...new Set(warns)].slice(0, 6).forEach(v => console.log('  WARN ' + v)); }
+  console.log(failed ? '\nFAIL' : '\nPASS: the four leftovers, each through its own door');
+  await ctx.close();
 }
 
 if (mode === 'determinism') {

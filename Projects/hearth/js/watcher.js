@@ -262,12 +262,13 @@ function faithDay(){const yr=yearOf(dayCount);faith=Math.max(0,faith-.005);
     else if(dayCount>prayer.d+4){faith=Math.max(0,faith-.05);
       say('The stone keeps its own counsel this time. The offering is lifted off it gently, and eaten, because times are what they are.',false,'unanswered');prayer=null}}
   else if(hasW('shrine')&&R()<.3){let k=null,who=null;
-    const sickP=people.find(p=>p.sick),kid=people.find(p=>isKid(p)&&!p.dead);
-    if(sickP){k='heal';who=sickP.name}
-    else if(dry01>.5)k='rain';
-    else if(hunger>.25)k='food';
-    else if(dayCount-lastStormDay<=2&&hasB('hut'))k='calm';
-    else if(kid&&R()<.35){k='dream';who=kid.name}
+    /* Phase 7: not a priority list. This was heal > rain > food > calm > dream, so a fever meant the fields could crack and the stone
+       would never hear it. Each kind the island could ask for is weighted by how badly it wants it, "not today" carries a standing .3
+       against the weak wants (which keeps a dream about one day in ten in calm times, as before), and one draw picks. */
+    const sickP=people.find(p=>p.sick),kid=people.find(p=>isKid(p)&&!p.dead),sickN=people.filter(p=>p.sick).length;
+    const need=[['heal',sickN?.6+.4*sickN:0],['rain',dry01>.35?dry01:0],['food',hunger>.15?hunger*2:0],['calm',dayCount-lastStormDay<=2&&hasB('hut')?.5:0],['dream',kid?.15:0],[null,.3]];
+    let r=R()*need.reduce((s,n)=>s+n[1],0);for(const [kk,w] of need){r-=w;if(r<=0){k=kk;break}}
+    if(k==='heal')who=sickP.name;else if(k==='dream')who=kid.name;
     if(k){prayer={k,d:dayCount,who};const sw=works.find(w=>w.wk==='shrine'&&w.done);if(sw)stoneTap(sw.x,sw.y);
       say(`${B(pick(adults))} leaves ${pick(OFFER)} in the hollow at the foot of the quiet stone, and asks, not out loud, for ${k==='heal'&&who?`the fever to leave ${who}`:k==='dream'&&who?`a good dream for ${who}`:PRAYW[k]}.`,true)}}
   // too much, or exactly enough

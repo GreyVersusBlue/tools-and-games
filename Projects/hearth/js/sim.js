@@ -1,6 +1,10 @@
 // Hearth — step() — the simulation tick that moves everyone and everything.
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- simulation ----------
+/* Phase 7: the ring the children go round has one phase. It is a function of the sim clock and nothing else, so two children who
+   retarget at different moments still land on one turning circle, and a reload lands them on the same one (time is packed). */
+const ringPhase=()=>time*.3;
+const ringOf=w=>people.filter(o=>!o.dead&&!o.inside&&isKid(o)&&(o.task==='play'||o.task==='tag')&&Math.hypot(o.x-w.x,o.y-w.y)<4);
 function step(dt){
   const d0=Math.floor(time/dayLen);time+=dt;if(Math.floor(time/dayLen)>d0){dayCount++;newDay()} // > not !==: a backward wobble across a boundary must not run a day twice
   const s=sea();
@@ -161,9 +165,14 @@ function step(dt){
         if(hasW('swing')&&!anchor&&R()<.25){const sw=works.find(w=>w.wk==='swing');anchor=sw}
         if(hasW('ring')&&!anchor&&R()<.12)anchor=works.find(w=>w.wk==='ring');
         if(!anchor){const par=p.parents.map(byName).find(q=>q&&!q.dead);anchor=R()<.5&&par?par:(homeOf(p)?{x:homeOf(p).x+1,y:homeOf(p).y+2.5}:center)}
-        /* two or more children at the swing or the fire ring go round it instead of past it: each keeps an angle and walks it forward */
+        /* two or more children at the swing or the fire ring go round it instead of past it. Phase 7: they go round it *together*. Each used
+           to keep its own angle and step it .9 a turn, which is n children on n unrelated orbits; now the ring has one phase, read off the
+           sim clock, and each child holds the slot its name sorts into, so the whole ring turns as one and the hands can be drawn between
+           neighbours (render.js). `ring`/`rA` are the day's business, not saved, like walkP. No draw from R() in either branch's arithmetic. */
+        p.ring=null;
         if(anchor&&anchor.wk&&people.some(o=>o!==p&&!o.dead&&isKid(o)&&(o.task==='play'||o.task==='tag')&&Math.hypot(o.x-anchor.x,o.y-anchor.y)<4)){
-          p.rA=(p.rA===undefined?p.off:p.rA+.9);p.tx=anchor.x+.5+Math.cos(p.rA)*2;p.ty=anchor.y+.9+Math.sin(p.rA)*1.4}
+          const rg=ringOf(anchor);if(!rg.includes(p))rg.push(p);rg.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
+          p.ring=anchor.wk;p.rA=ringPhase()+rg.indexOf(p)*6.2832/rg.length;p.tx=anchor.x+.5+Math.cos(p.rA)*2;p.ty=anchor.y+.9+Math.sin(p.rA)*1.4}
         else{p.tx=anchor.x+rnd(-2.5,2.5);p.ty=anchor.y+rnd(-2,2)}}walk(p,dt);break}
       case 'tag':{const m=byName(p.tagW);
         if(!m||m.dead||m.task!=='tag'){p.task='play';p.t=rnd(.5,1.5);break}

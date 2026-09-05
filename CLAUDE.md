@@ -47,7 +47,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   rendered Chromium is inconclusive, not confirmed** (#53). Re-verify from a
   machine with real GPU compositing before trusting either a pass or a fail.
 
-`HISTORY.md` carries all 78 locked decisions in full, by number.
+`HISTORY.md` carries all 82 locked decisions in full, by number.
 
 ## Writing style
 

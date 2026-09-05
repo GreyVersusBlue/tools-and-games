@@ -143,9 +143,9 @@ is also the migration ladder.
 There is no pure module with its own unit suite anywhere. The only test is
 `test/harness.mjs`, which drives the real page in Playwright's Chromium through
 `window.__hearth`, pausing the RAF loop first so every `step()` comes from the
-test file. Sixteen modes live in it as top-level `if (mode === '…')` blocks:
+test file. Seventeen modes live in it as top-level `if (mode === '…')` blocks:
 `soak`, `nan`, `depth`, `determinism`, `save`, `decade`, `migrate`, `saga`,
-`wider`, `strain`, and one per sprint, `eleven` through `sixteen`. It is a good harness. It is not a
+`wider`, `strain`, `leftovers`, and one per sprint, `eleven` through `sixteen`. It is a good harness. It is not a
 fast one, and it cannot tell you a function is wrong, only that an island is.
 
 ## Conventions a new builder must know
@@ -231,7 +231,9 @@ wrong, and the handoff that names it is cited.
   second tab opened at `#s=`, under a minute), `strain` (the short winter,
   the sickness and the feud: each forced through its own doors, then forty
   audited days on two seeds with ten invariants held every day, about two
-  minutes), `decade`
+  minutes), `leftovers` (Phase 7: the ring's shared phase, the widened elder
+  roll, the weighted prayer and the most-visited stone's lines, each forced
+  through its own door, under a minute), `decade`
   (35 game-years × 2 seeds, ~6 minutes, and the generational speed asserted
   bit-identical to 1×), and the per-sprint regressions by name, `eleven`
   through `sixteen`. `package.json` scripts only the first four. `decade` and
@@ -277,12 +279,9 @@ wrong, and the handoff that names it is cited.
   newborn a dead knower's name, so that child "knows" every song the ancestor
   knew and can resurrect a lost one. Rare; reads as poetry; fixing it means
   packing knower identity beyond names. Keep, or pay for identity?
-- **Does the population cap overshoot actually grate?** Six sprints have noted
-  it and six have concluded it is not worth one: `popCap()` is
-  `4+houses.length*2`, arrivals respect it, and the birth rule
-  (`js/life.js:102`) allows `people.length<popCap()+1`, so rich islands settle
-  at 47–49 by day 121. The number is one character. Is 49 wrong, or just
-  noticed?
+- ~~**Does the population cap overshoot actually grate?**~~ Answered by
+  Phase 7 (#82): kept, and named `BIRTH_OVER` with the reason beside it. A
+  boat has to find a bed; a baby is born into its parents' house.
 
 ## The standing backlog
 
@@ -1024,37 +1023,67 @@ safety net is a headless soak, where a wrong answer looks like a village
 having a hard year. *The first two increments were worked under Claude Opus 5,
 the third under Claude Fable 5.1.*
 
-## Phase 7 — Play that reads as play, and four other leftovers
+## Phase 7 — Play that reads as play, and four other leftovers — **SHIPPED**
 
 **Five sprints have each ended by naming the same small things, and no sprint
-has ever been the one to fix them.**
+has ever been the one to fix them.** This one was. None of them was big enough
+to be a sprint and all of them were cheap; together they are the difference
+between an island that is correct and an island that looks correct.
 
-None of these is big enough to be a sprint and all of them are cheap. Together
-they are the difference between an island that is correct and an island that
-looks correct. Take them in one pass, with the harness modes they touch.
+- [x] **Ring-around that reads as a ring.** The ring has one phase, `time*.3`,
+  and each child's angle is that phase plus the slot their name sorts into
+  over the children on the ring, so the circle turns as one and a reload lands
+  it on the same turn (#79). A held-hands line is drawn between neighbours in
+  `render.js`, presentation only, off two fields that are not saved.
+- [x] **Elders and children, actually.** "Knew" is "outlived": an elder
+  qualifies for any grave dug after they came ashore, the death day read off
+  the grave, and the ones they actually knew are told about first (#80). The
+  child has to have been unborn or under two that day, and the line the child
+  keeps says which. The roll stays `.05`. Measured on the decade run against
+  main's own islands with the same harness, the elder-side widening is small
+  (92 of 92 elder-and-child days eligible on seed 7 against 90 under the rels
+  rule; 199 of 284 against 168 on 20260819): Phase 5's symmetric `rels` had
+  already done most of it, "zero in 240 days" was stale (main tells 3 and 4
+  children in 700 days), and the throttle is the island making an elder at
+  all — which the decade mode now prints beside the eligible-day count.
+- [x] **Prayer that is not a priority list.** The kinds the island could ask
+  for are weighted by how badly it wants each, "not today" is in the draw at
+  `.3`, and one draw picks (#81). One sick and the ground at `.9`: heal 54,
+  rain 46, dream 9, nothing 291 in four hundred asks, against heal 117 and
+  nothing else from the list it replaces.
+- [x] **The most-visited stone, and the pop cap decided out loud.** `gvn` is
+  in the flavour context and `{gv}`/`{gvn}` are slots: a child asks why
+  everyone stops at that stone first, and a child who has been keeping count
+  says the number as if it were a secret, at thirty visits and up. The birth
+  rule's `+1` is `BIRTH_OVER` in `core.js` with its reason beside it, kept
+  (#82); Q17 is closed.
+- [x] **Re-run everything.** The forty-day `pack()` hashes on seeds 7 and
+  20260819 are byte-identical to the commit before, so at forty days nothing
+  moved off its stream (#74). Green: `determinism` on both seeds, `save`,
+  `leftovers`, `soak`, `strain`, `eleven` through `sixteen`, `migrate`, `saga`,
+  `wider`, `decade` (the fast-path hash unchanged too) and `nan`. Two older
+  checks went red on the weighted draw and both were reading their own stream
+  (#66): `strain` required the first thing asked with somebody in bed to be
+  heal, and `eleven` set the ground dry, ran a day and waited for rain when
+  the stone asks at midnight and the ground reads .34 there on seed 7; both
+  ask the stone directly now. `eleven`'s sail check rolled `wayDay`'s `.3`
+  three times in sixty days and called a one-in-three miss a failure; it
+  rolls the rule by hand now.
 
-- [ ] **Ring-around that reads as a ring.** Children circling the swing or the
-  fire ring share an angle step of `.9` and nothing else says so. A
-  held-hands line between adjacent walkers, or a shared phase so they move
-  together rather than independently around one point.
-- [ ] **Elders and children, actually.** The `.05`/day roll wants an elder, a
-  child of five and a dead acquaintance, and fired zero times in 240
-  island-days. Raise it, or widen "acquaintance" to anyone the elder outlived
-  — then check it on a Phase 2 decade run rather than by feel.
-- [ ] **Prayer that is not a priority list.** Weight the eligible kinds by how
-  badly the island needs each and let the dice pick, instead of the
-  `heal > rain > food > calm > dream` if/else in `faithDay()`.
-- [ ] **The most-visited stone, and the pop cap decided out loud.** `gr.vn`
-  counts into the hundreds and feeds nothing but pixels — one flavor template
-  closes sprint 15's leftover; and `popCap()+1` in the birth rule either
-  changes or gets written down as deliberate, so it stops being re-noted.
-- [ ] **Re-run everything.** All of this touches `R()`: determinism on both
-  seeds, soak, and the affected sprint modes.
+**What fought back.** The first forced ring check found nobody ever taking
+the ring: `runDay` leaves the clock just past midnight, and the children were
+being sent to bed before the play case ran. It sets noon first now. The forced
+elder check could not loop `newDay()`, because the old-age roll takes a
+sixty-five-year-old one day in four and the elder kept dying before the
+five-per-cent roll landed; the telling is `tellOfDead` now, its own function,
+so the harness rolls it alone. The four guard-rails live in a new `leftovers`
+mode and each was broken on purpose once (#34): the independent `.9` step, the
+rels-only elder, the priority list and the missing template each went red on
+its own line before any went green.
 
-*Leans on:* `js/sim.js`'s `play` case, `js/life.js`'s `newDay`,
-`js/watcher.js`'s `faithDay`, `js/flavor.js`'s `G`. *Save:* none. *Model:*
-**Claude Opus 5** — small, local, well-described changes with existing tests
-around each.
+*Leans on:* `js/sim.js`'s `play` case, `js/life.js`'s `tellOfDead`,
+`js/watcher.js`'s `faithDay`, `js/flavor.js`'s `G`, `js/render.js`. *Save:*
+none. *Model:* **Claude Opus 5** was named; *worked under Claude Fable 5.1.*
 
 ## Phase 8 — Hearth gets a machine that watches it
 

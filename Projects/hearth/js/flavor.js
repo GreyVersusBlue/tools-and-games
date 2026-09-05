@@ -258,6 +258,8 @@ const G=[
   {c:x=>x.snowman,t:'The snowman has been given somebody\'s hat. Nobody has missed it yet, and everybody knows whose it is.',w:.7},
   {c:x=>x.snowman&&x.kid,t:'{A} reports to the snowman on the state of the village, which the snowman receives with composure.'},
   {c:x=>x.gravev&&x.elder,t:'{A} says the moss on the most-visited stone on the hill is the hill\'s own answer, and does not say to what.'},
+  {c:x=>x.gravev&&x.kid,t:'{A} asks why everyone stops at {gv}\'s stone before the others. Nobody has one answer, so {A} is given several.'},
+  {c:x=>x.gvn>=30&&x.kid,t:'{A} has been keeping count: {gv}\'s stone has been stood at {gvn} times that anyone saw. {A} says the number as if it were a secret.',w:.7},
 ];
 const ARRIVED=p=>pick([`${p.name} rowed in out of nowhere and asked to stay, and stayed.`,
   `${p.name} came ashore with everything ${p.name} owned in one bag, and was given bread before any questions.`,
@@ -269,7 +271,7 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
   const wts=cand.map(p=>has(p,'gossipy')?2.2:1);let s=wts.reduce((a,b)=>a+b,0),r=R()*s,a=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){a=cand[i];break}}
   const rel=a.rels.length&&R()<.75?a.rels[(R()*a.rels.length)|0]:null;const b=rel?byName(rel.who):(cand.length>1?pick(cand.filter(p=>p!==a)):null);
   const c=cand.length>2?pick(cand.filter(p=>p!==a&&p!==b)):null;
-  const td=tide();
+  const td=tide(),gvTop=graves.reduce((m,g2)=>(g2.vn||0)>(m?m.vn||0:0)?g2:m,null); /* phase 7: the most-visited stone, by count, so the number feeds a line and not only pixels */
   const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,farn:farKnown(),voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,spring:springs.length>0,story:storyDay===dayCount,dreamt:dreamAny===dayCount,cloudrain:clouds.some(c=>c.r>0),fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,rations:!!want,short:!!a.short,raided:!!(want&&want.raid),feudp:!!(b&&feudWith(a)===b),feudkid:!!(feud&&isKid(a)&&feudSide(a)),leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a),
     crf:a.craft,cxpv:a.cxp||0,orchard:hasW('orchard'),hives:hasW('hives'),swingw:hasW('swing'),ringw:hasW('ring'),bench:hasW('bench'),oldhouse:hasW('ruin3'),racks:hasW('racks'),boat2:hasW('boat2'),dryg:dry01>.6,
     drought:arcK()==='drought',hardw:arcK()==='longwinter',feverA:arcK()==='fever',shoalA:arcK()==='shoal',sick:!!a.sick,abed:a.task==='abed',illw:!!ill,nursed:a.nursed>=dayCount-1,wellp:wellNow(a),sail:hasWay(0),plough:hasWay(1),kiln:hasWay(2),book:hasWay(3),stone:hasW('shrine'),faithHi:faith>=.5,
@@ -277,12 +279,12 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
     yrname:(()=>{const yn=yearName(yearOf(dayCount)-1);return yn&&yn!=='a quiet year'?yn:null})(),
     knows:songs.some(sg=>!sg.lost&&sg.kn.includes(a.name)),songy:songs.some(sg=>!sg.lost),songlost:songs.some(sg=>sg.lost),
     news:!!(a.heard&&a.heard.d>=dayCount-3),starday:starDay===dayCount,aurora:auroraNight()&&wx==='clear',rb:rbUntil>time,
-    snowman:snowmen.length>0,gravev:graves.some(g2=>(g2.vn||0)>=12)};
+    snowman:snowmen.length>0,gravev:graves.some(g2=>(g2.vn||0)>=12),gvn:gvTop?gvTop.vn||0:0};
   for(const t of TRAITS)ctx[t]=has(a,t);
   const ka=thingsOf(a.name),grown=chron.filter(e=>e.gr),legLbl=grown.length?grown[(R()*grown.length)|0].label:null;
   const loreSp=spots.filter(s=>s.lore),loreL=loreSp.length?loreSp[(R()*loreSp.length)|0].l:null;
   const sgs=songs.filter(sg=>!sg.lost&&chron[sg.ci]),songL=sgs.length?chron[sgs[(R()*sgs.length)|0].ci].label:null;
   const ok=G.filter(t=>t.c(ctx)&&(usedTpl.get(t)||0)<dayCount);if(!ok.length)return;
   const wt=ok.map(t=>t.w||1);s=wt.reduce((x,y)=>x+y,0);r=R()*s;let tpl=ok[0];for(let i=0;i<ok.length;i++){r-=wt[i];if(r<=0){tpl=ok[i];break}}
-  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone').replace(/{farn}/g,farN()).replace(/{thing}/g,ka.length?ka[0].n:'a small thing').replace(/{leg}/g,legLbl||'the first landing').replace(/{lore}/g,loreL||'the shore').replace(/{song}/g,songL||'the landing').replace(/{yrname}/g,ctx.yrname||'the year that was');
+  const txt=tpl.t.replace(/{A}/g,B(a)).replace(/{B}/g,b?B(b):'someone').replace(/{C}/g,c?B(c):'someone').replace(/{spot}/g,a.spot.l).replace(/{sea}/g,ctx.sea).replace(/{wx}/g,WX()).replace(/{ev}/g,ctx.ev||'the first landing').replace(/{village}/g,V()).replace(/{voy}/g,voyage?voyage.name:'someone').replace(/{farn}/g,farN()).replace(/{thing}/g,ka.length?ka[0].n:'a small thing').replace(/{leg}/g,legLbl||'the first landing').replace(/{lore}/g,loreL||'the shore').replace(/{song}/g,songL||'the landing').replace(/{yrname}/g,ctx.yrname||'the year that was').replace(/{gv}/g,gvTop?gvTop.name:'someone').replace(/{gvn}/g,String(ctx.gvn));
   if(say(txt))usedTpl.set(tpl,dayCount)}

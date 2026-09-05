@@ -777,6 +777,73 @@ Two of them have moved since they were written:
    clock on it.
    *Source: Hearth Phase 6, "Scarcity that bites" — third increment.*
 
+79. **The ring the children go round has one phase, and it is the clock.**
+   Two or more children at the swing or the fire ring went round it, and each
+   kept an angle of their own off `p.off` and stepped it `.9` a turn — n
+   children on n unrelated orbits that happened to share a centre, which is
+   why five sprints said it did not read as a ring. `ringPhase()` is
+   `time*.3` and nothing else, and each child's angle is that phase plus the
+   slot their name sorts into over the children on the ring
+   (`ringOf(anchor)`), so the whole circle turns as one and a reload lands it
+   on the same turn (`time` is packed). A held-hands line between neighbours
+   is drawn in `render.js` off `p.ring` and `p.rA`, which are the day's
+   business and not saved, like `walkP`. The branch draws nothing from `R()`
+   that it did not before, and the forty-day hashes on both seeds are
+   byte-identical to the previous commit's. `leftovers` asserts the angle to
+   the last bit on every instant two children hold the ring.
+   *Source: Hearth Phase 7, "Play that reads as play, and four other leftovers".*
+
+80. **An elder has somebody to tell about if they outlived them, and the
+   ones they knew come first.** Phase 5 widened "knew" to both sides of a
+   `rels` list, and the wishlist still carried "fired zero times in 240
+   island-days" against it: those lists cap at five or six, and the worry was
+   that most of an island never makes anyone's. An elder now qualifies for any
+   grave dug after they came ashore — the death day lives on the grave, which
+   is packed; the dead pack as a name and a rels list — and the dead they
+   actually knew are picked ahead of the rest. The child has to have been
+   unborn or under five that day (five is the age a child can be told at
+   all), or the elder is telling them about somebody they carried up the hill
+   themselves, which the old line, "who died before you were born", called a
+   thing it was not; the line the child keeps says which side of the birth
+   the death fell. Measured on the decade run against main's own islands,
+   with the same harness, the elder-side widening is small: an elder with
+   somebody to tell about on 92 of the 92 days with an elder and a child alive
+   at all on seed 7 (90 under the rels rule), and 199 of 284 on 20260819 (168
+   before). Phase 5's symmetric `rels` had already done most of that work, and
+   the wishlist's "fired zero times in 240 island-days" was stale: main tells
+   3 and 4 children in 700 days. What throttles the system is the island
+   making an elder at all — 92 and 284 such days in 700 on main's streams, 138
+   and 108 on this branch's — so the roll stays `.05`, and the decade mode now
+   prints the elder-and-child day count beside the eligible one so the next
+   session does not have to re-derive this. `tellOfDead` is its own function
+   so the harness can roll it away from the old-age roll, which takes a
+   sixty-five-year-old one day in four.
+   *Source: Hearth Phase 7, "Play that reads as play, and four other leftovers".*
+
+81. **What is asked at the stone is a weighted draw, with "not today" in
+   the draw.** `faithDay` asked in a fixed order — heal, rain, food, calm,
+   dream — so a fever meant the fields could crack and the stone would never
+   hear it. Each kind the island could ask for now carries a weight for how
+   badly it wants it (a sick person `.6` plus `.4` a head, the ground's
+   dryness past `.35`, twice the hunger past `.15`, `.5` for a storm inside
+   two days with a hut standing, `.15` for a dream when there is a child) and
+   one draw picks. A standing `.3` for nothing is in the same draw, which is
+   what keeps a dream to about one asking day in ten in calm times, as the
+   old `R()<.35` did, instead of making the weakest want a certainty on a
+   quiet island. Forced with one sick and the ground at `.9`, four hundred
+   asks came out heal 54, rain 46, dream 9, nothing 291; the list it replaces
+   came out heal 117 and nothing else.
+   *Source: Hearth Phase 7, "Play that reads as play, and four other leftovers".*
+
+82. **A birth may overshoot the cap by one, and that is now written down.**
+   Six sprints noted that rich islands settle at 47–49 rather than 46–48
+   because the birth rule reads `popCap()+1`, and six let it stand; it was
+   Q17 in `BACKLOG.md`. Answered: the cap counts beds, and a boat has to find
+   one; a baby is born into its parents' house and takes nobody's. The one
+   is `BIRTH_OVER` in `core.js`, with the reason beside it, so it stops being
+   re-noted; changing it moves every island's stream for one person.
+   *Source: Hearth Phase 7, "Play that reads as play, and four other leftovers".*
+
 
 ---
 
@@ -1518,12 +1585,56 @@ read the *live* `arc`; the island had dealt itself a second fever on day 32 and
 the check called that a forced fever that never ended. It tells the two apart
 by `d0` now. And `saga`'s thinness guard is described in #71.
 
-Two things every sprint from 11 on repeated in its own leftovers, and both are
-now questions in `BACKLOG.md` rather than notes here: the rich-island
-population cap settling at 47–49 (`popCap()+1` in the birth rule), noted by six
-consecutive sprints and dismissed by all six; and prayer kinds being checked in
-a fixed priority (heal > rain > food > calm > dream), so the stone only hears
-the loudest of two live needs.
+Two things every sprint from 11 on repeated in its own leftovers, and both
+outlived the phase that was supposed to close them until Phase 7 did: the
+rich-island population cap settling at 47–49 (`popCap()+1` in the birth rule),
+noted by six consecutive sprints and dismissed by all six; and prayer kinds
+being checked in a fixed priority (heal > rain > food > calm > dream), so the
+stone only heard the loudest of two live needs.
+
+**Phase 7 — play that reads as play, and four other leftovers.** The small
+things five sprints each named and none fixed, in one pass: the ring the
+children go round has one phase off the sim clock and a held-hands line
+between neighbours (#79); an elder has somebody to tell a child about if they
+outlived them, not only if a capped `rels` list happened to name them (#80);
+the stone hears a weighted draw with "not today" in it instead of a priority
+list (#81); the most-visited stone's count, which fed nothing but pixels since
+sprint 15, feeds two lines a child can say; and the birth rule's `+1` is a
+named constant with its reason beside it (#82, and Q17 closed). *What was
+measured:* the forty-day `pack()` hashes on seeds 7 and 20260819 are
+byte-identical to the commit before, so at forty days nothing moved off its
+stream (#74); the decade run is where the elder change was supposed to show,
+and mostly did not — the elder-side widening reaches 92 of 92 elder-days on
+seed 7 against 90 under the rels rule, and 199 of 284 against 168 on
+20260819, on main's own islands with the same harness; the "zero in 240 days"
+the bullet was written against was already false on main, which tells 3 and 4
+children in 700 days, and the throttle is the island making an elder at all.
+The new rule's real change is on the child's side: a child told about
+somebody who died after they were five knew that person, and the old line
+said otherwise. On this branch's streams the decade tells 5 children on seed
+7 and 1 on 20260819, on 138 and 54 eligible days. The forty-day and the
+decade's twelve-day fast-path hashes are unchanged, and `soak`, `nan`,
+`strain`, `saga`, `wider`, `migrate`, `save` and `eleven` through `sixteen`
+are green. *What fought back:* the first forced ring check found nobody ever
+taking the ring, because `runDay` leaves the clock just past midnight and the
+children were being sent to bed before the play case ran; the check sets noon
+first now. And the forced elder check could not loop `newDay()`, because the
+old-age roll takes a sixty-five-year-old one day in four and the elder kept
+dying before the five-per-cent roll landed — the telling is its own function
+so the harness can roll it alone. Two older checks went red on the weighted
+draw and both were the check's fault (#66, a fifth and sixth time): `strain`
+took the first thing the stone asked with somebody in bed and required it to
+be heal, and `eleven` set the ground dry, ran a day, and waited for a rain
+prayer — but the stone asks at midnight after a day of weather, and on seed 7
+the ground reads .34 at most midnights, under the old `.5` gate as well as
+the new one, so that check had only ever passed on its own stream. Both ask
+the stone directly now, two hundred times with the prayer cleared between.
+`eleven`'s sail check was the same shape one layer down: `wayDay` rolls at
+`.3` on one day a season, so sixty days is three rolls and a one-in-three
+miss on any stream; it rolls the rule by hand now. Four guard-rails in a new
+`leftovers` mode, each broken on purpose once (#34): the independent `.9`
+step, the rels-only elder, the priority list and the missing template each
+went red on its own line.
 
 ---
 
