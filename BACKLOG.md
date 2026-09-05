@@ -3,6 +3,53 @@
 The single entry point for open work on greyversusblue.com. Two tiers: a
 ranked index you scan, and the ideas underneath it that have no other home.
 
+## How this repo is worked
+
+**The standing instruction is: "work the next batch of ranked items in `BACKLOG.md`, open a
+PR, merge to `main`."** It runs unattended — Devon is not reviewing these rounds (2026-09-05)
+— so three rules follow, and they override any older wording in this file.
+
+**1. Never stop to ask.** If a row needs a judgement call, make it: decide, ship, and record
+the call and its reasoning in `HISTORY.md` as a locked decision, so it can be reversed
+cheaply. That is what the "Questions for Devon" section below already says to do with an
+*answered* question; the change is that a session may answer one itself rather than wait. A
+question there **no longer blocks its work.** Devon still intends to work through that list
+himself, so do not pre-answer questions you did not need — only the one actually standing in
+front of the row you are on, and then write down what you decided and why.
+
+**2. Do not park work on a person.** A row only a human at a real device or a live deployment
+can do does not belong in the ranked table. Move it to a parked list with its context intact
+and renumber; parking is not the same as verifying, and the note should say which it is.
+
+**3. Size the batch by the Size column, not by a count.**
+
+| Size | Take | Why |
+|---|---|---|
+| ¼ | up to **4**, and they may share one PR when they are the same kind of work | CI is the bottleneck, not the model, so rows-per-PR is nearly free while PRs-per-session is not |
+| ½ | **2**, occasionally 3 | |
+| 1 | **one** | |
+| 2+ | **that row is the whole batch** | never pair it with anything |
+
+**A 2+ row will not finish in one session, and that is expected.** Do one increment, ship it,
+and **leave the row in place** with its Item text rewritten to say what is done and what is
+left. Do not delete a 2+ row until it is actually finished. Stalling on one and swallowing one
+whole are both worse than an honest increment. Do not mix sizes to fill a quota: a 2+ row will
+absorb whatever time the others leave and finish neither well.
+
+**Respect the Model column when you batch.** It is carried from each item's own source and is
+not re-decided here; rows naming different models are still one batch if the sizes allow, but
+say in the PR body which rows you took and under which model you actually worked.
+
+**Whatever the batch size, step 6 of the definition of done happens after each merge — never
+saved for the end.** This is the rule most likely to be dropped as batches grow. Its casualty
+is on record in the sibling repo (`GreyVersusBlue/AI_Tools`): a session batched two phases,
+saved both backlog rewrites for the end, and its first PR merged with the row still in the
+ranked table — the next session spent about an hour rebuilding something that already existed.
+
+The two things that are still not a session's call, because they change what the work *is*
+rather than how it is built: **re-ranking the list wholesale**, and **overruling the Ownership
+table** in Tier 2.
+
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
