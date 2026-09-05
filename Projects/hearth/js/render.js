@@ -95,7 +95,7 @@ function renderCard(full){const p=selected;if(!p||cardEl.hidden)return;
     document.getElementById('c-sub').textContent=`${ageI(p)} · ${isKid(p)?'a child':isElder(p)?'an elder':'grown'} · loves ${p.spot.l}`+(p.craft>=0&&p.cxp>=1?` · ${CRAFT_EPITHET[p.craft]}`:'');
     document.getElementById('c-traits').innerHTML=p.tr.length?p.tr.map(t=>`<span>${t}</span>`).join(''):'<span>still becoming someone</span>';
     document.getElementById('c-doing').textContent=whyText(p);
-    const RW={friend:'friend of',rival:'rival of',partner:'partner of',child:'parent of',parent:'child of'};const rels=p.rels.map(r=>{const q=byName(r.who);return`${RW[r.k]||r.k} ${q?`<button data-n="${r.who}">${r.who}</button>`:r.who+' (gone)'}`});
+    const RW={friend:'friend of',rival:'rival of',partner:'partner of',child:'parent of',parent:'child of'};const fw=feudWith(p);const rels=p.rels.map(r=>{const q=byName(r.who);return`${fw&&fw.name===r.who?'not speaking to':RW[r.k]||r.k} ${q?`<button data-n="${r.who}">${r.who}</button>`:r.who+' (gone)'}`});
     for(const gn of kinOf(p)){const q=byName(gn);rels.push(`grandchild of ${q?`<button data-n="${gn}">${gn}</button>`:gn}`)} /* sprint 16: the line above the parents shows too */
     document.getElementById('c-rels').innerHTML=rels.length?rels.join(' · '):'<i>knows no one well yet</i>';
     const kp=thingsOf(p.name); // what this one keeps, and where it has been (sprint 12)

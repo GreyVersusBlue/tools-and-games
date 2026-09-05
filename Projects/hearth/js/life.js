@@ -35,7 +35,7 @@ function newDay(){saidToday=new Set();
     if(cands.length){let sum=cands.reduce((a,c)=>a+c[1],0),r=R()*sum,c=cands[0];for(const cc of cands){r-=cc[1];if(r<=0){c=cc;break}}
       arcYr=yr;startArc(c[0],c[2]+((R()*(c[3]-c[2]+1))|0))}}
   arcDay();
-  illDay(); /* phase 6: the sickness has its own clock now, so a stray flag is not something the arc's ending sweeps up — see illDay */
+  illDay();feudDay(); /* phase 6: the sickness has its own clock now, so a stray flag is not something the arc's ending sweeps up — see illDay */
   if(!want&&people.some(p=>p.short))people.forEach(p=>p.short=0); // and no rations, nobody eating last: the off-ramp is unconditional, not a roll
   wayDay(yr);faithDay();
   // the morning after a fire night, someone may walk out to stand where a grown story happens — and the first walk names the ground (sprint 13).
@@ -107,7 +107,7 @@ function newDay(){saidToday=new Set();
   // grow up
   for(const p of alive)if(p.child&&!isKid(p)){p.child=false;p.tr=[];const par=p.parents.map(byName).filter(Boolean);
     if(par.length&&R()<.5)p.tr.push(pick(par[0].tr));while(p.tr.length<2){const t=pick(TRAITS);if(!p.tr.includes(t))p.tr.push(t)}
-    p.hist.push({d:dayCount,s:'grown now, and took up work beside the others'});meet(p,0,2);say(`${B(p)} is fourteen and grown, and no longer follows anyone around the fields.`);addEvent('grown',`the year ${p.name} came of age`,`${p.name} turned fourteen and went to work beside the others.`);
+    p.hist.push({d:dayCount,s:'grown now, and took up work beside the others'});meet(p,0,2);feudInherit(p);say(`${B(p)} is fourteen and grown, and no longer follows anyone around the fields.`);addEvent('grown',`the year ${p.name} came of age`,`${p.name} turned fourteen and went to work beside the others.`);
     const m0=p.shadN?byName(p.shadN):null; // the years of following someone around, asking why, were an apprenticeship all along
     if(m0&&m0.craft>=0){p.craft=m0.craft;p.cxp=.1;p.hist.push({d:dayCount,s:`took up ${CRAFT_WORK[m0.craft]}, the way ${m0.name} does it`});say(`${B(p)} goes first to ${m0.name}'s work, having watched it for years.`)}}
   // friendships drift into being
@@ -166,15 +166,25 @@ function declareWant(){const cand=people.filter(p=>!p.dead&&!isKid(p));if(!cand.
 // One person takes more than the share, in the dark, and one person sees it. What it costs is not the measures. A partner and
 // anyone in a parent-or-child line are out of the witness pool: turning either of those into a rival would break the kinship they are.
 function wantRaid(){if(!want)return;const cand=people.filter(p=>!p.dead&&!isKid(p));if(cand.length<2)return;
+  let p,w;
+  // a second short winter inside a feud is the same feud's doing: it is the same one at the store and the same one who sees, and
+  // nobody on the island is surprised. That is the raid attached to the feud that is already open rather than a second pair, so the
+  // chronicle's raids and its endings still account for each other (a raid labelled `again` is inside an open feud, not the start of one).
+  const again=!!feud;
+  if(again){p=byName(feud.rv[0]);w=byName(feud.rv[1]);if(!p||!w||p.dead||w.dead)return;feud.n++}
+  else{
   const wts=cand.map(p=>(people.some(k=>!k.dead&&isKid(k)&&k.parents.includes(p.name))?3:1)*(has(p,'restless')?1.5:1)*(has(p,'gentle')?.4:1)*(has(p,'patient')?.6:1));
-  let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}
+  let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum;p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}
   const kin=q=>p.parents.includes(q.name)||q.parents.includes(p.name);
   const pool=cand.filter(q=>q!==p&&q.name!==p.partner&&!kin(q));if(!pool.length)return;
   const keep=byName(want.by);
-  const w=(keep&&keep!==p&&!keep.dead&&keep.name!==p.partner&&!kin(keep)&&R()<.5)?keep:pool[(R()*pool.length)|0];
+  w=(keep&&keep!==p&&!keep.dead&&keep.name!==p.partner&&!kin(keep)&&R()<.5)?keep:pool[(R()*pool.length)|0]}
   const took=Math.min(granary,3+((R()*3)|0));granary-=took;want.raid=1;want.rv=[p.name,w.name];
-  const set=(a,b)=>{const r0=a.rels.find(r2=>r2.who===b.name);if(r0)r0.k='rival';else a.rels.push({who:b.name,k:'rival'})};
-  set(p,w);set(w,p);
+  if(!again)startFeud(p,w); /* phase 6, third increment: the pair has somewhere to live now, between this night and whatever ends it */
+  if(again){say(`Somebody has been at the store in the dark again, and again it is ${B(w)} who knows who. ${B(p)} came out of it carrying more than a measure, the same as last time, and the two of them go on not speaking about it, the same as last time.`,true);
+    addEvent('raid',`the ${sea()} ${p.name} went to the store in the dark again`,`In the short winter of year ${yearOf(dayCount)} ${p.name} went to the store at night a second time and took ${took} measures, and it was ${w.name} who saw it, a second time. Nobody in ${V()} was surprised, and that was its own kind of cost.`);
+    p.hist.push({d:dayCount,s:'went to the store in the dark a second winter, and was seen by the same person'});
+    w.hist.push({d:dayCount,s:`saw ${p.name} come out of the store at night a second winter, and said nothing a second time`});return}
   say(`Somebody has been at the store in the dark. ${B(w)} knows who, having seen ${B(p)} come out of it carrying more than a measure, and neither of them has said one word about it since.`,true);
   addEvent('raid',`the ${sea()} ${p.name} went to the store in the dark`,`In the short winter of year ${yearOf(dayCount)}, ${p.name} took ${took} measures out of the store at night, and ${w.name} saw it happen and said nothing. It cost the store ${took} measures and cost the two of them rather more, and only one of those was ever going to be got back.`);
   p.hist.push({d:dayCount,s:'took more than a share out of the store one night in the short winter, and was seen'});
@@ -192,23 +202,90 @@ function endWant(){if(!want)return;const w0=want;want=null;
   for(const p of people)if(p.short){p.short=0;p.hist.push({d:dayCount,s:'went back to a full measure at the thaw, and said nothing about that either'})}
   say(`The store is not empty and the winter is behind. ${V()} goes back to full measures, and the first meal of it is eaten far too fast by everybody.`,true);
   addEvent('thaw',`the end of the short winter of year ${yearOf(w0.d0)}`,`The short winter of year ${yearOf(w0.d0)} ended the way they do: the ground softened, the boats went out, and the store stopped being counted twice a day. ${V()} came out of it lean, and ${plural(people.length,'person','people')} still standing on it.`);
-  if(!w0.rv)return;
-  const a=byName(w0.rv[0]),b=byName(w0.rv[1]);
+  // no raid this winter — or the thing the raid made has already ended some other way, at a fire or a bedside, and was written down
+  // when it did (phase 6, third increment: the feud is the record now, and endFeud is its one door out)
+  if(!w0.rv||!feud)return;
+  const a=byName(feud.rv[0]),b=byName(feud.rv[1]);
   // three endings, not two: the third is that one of them is not here to square it with, and a village keeps that as a fact too
-  if(!a||!b||a.dead||b.dead){const g=a?w0.rv[1]:w0.rv[0];
-    say(`Whatever there had been between ${w0.rv[0]} and ${w0.rv[1]} since that night at the store ends here, and not by being settled.`,true);
-    addEvent('parted',`the ${sea()} it was left unsettled`,`${w0.rv[0]} and ${w0.rv[1]} never squared what happened at the store in the short winter. ${g} is not on the island to square it with any more, and whoever is left carries both halves of it.`);
+  if(!a||!b||a.dead||b.dead){endFeud('thawgone');return}
+  if(R()<.6)endFeud('thaw');
+  else{feud.kept=1;say(`The winter is over and ${B(a)} and ${B(b)} are still not speaking. It stopped being about the store some time ago.`,true);
+    addEvent('kept',`the ${sea()} it was not squared`,`The short winter ended and ${b.name} went on looking at ${a.name} a certain way across the fire. It had stopped being about the store well before that.`);
+    a.hist.push({d:dayCount,s:`came out of the short winter with ${b.name} still not speaking to them`});
+    b.hist.push({d:dayCount,s:`came out of the short winter still not speaking to ${a.name}`})}}
+// ---------- the feud: a rival pair given somewhere to live between the night at the store and whatever ends it (phase 6) ----------
+// Before this a rivalry was a label on two people that the flavour lines read and nothing else did. The raid made one on purpose and
+// the thaw ended it three ways, and between those two moments nothing on the island was any different for it. Now the pair has
+// somewhere to live. `feud` is the record, on the shape `want` and `ill` already have; while it lives the two work at .8 (workRate),
+// neither goes where the other is standing (`shunned`, read by the idle detours in sim.js), the two never stop to talk (`apart`),
+// and their children keep the distance without being told — and one who comes of age while it is still going takes it up
+// (`feudInherit`). One door in, which only the raid walks through, and one door out, and the endings copy endWant's three: squared,
+// at the thaw or a fire night or by somebody sitting up with the other one or in a dream; walked off at the walking of the bounds;
+// parted, because one of the two is not on the island to settle it with; and worn, at FEUDD days, which is the cap (#73). Every
+// ending is one chronicle entry, so the raids and the endings account for each other and `strain` can hold them to it.
+const feudWith=p=>{if(!feud||!p)return null;const o=p.name===feud.rv[0]?feud.rv[1]:p.name===feud.rv[1]?feud.rv[0]:null;return o?byName(o)||null:null};
+const feudSide=p=>!feud||!p?0:(p.name===feud.rv[0]||p.parents.includes(feud.rv[0]))?1:(p.name===feud.rv[1]||p.parents.includes(feud.rv[1]))?2:0;
+const apart=(p,q)=>{if(!feud)return false;const a=feudSide(p),b=feudSide(q);return !!(a&&b&&a!==b)};   /* the two, or their children, across the line from each other */
+const shunned=(p,x,y)=>{const o=feudWith(p);return !!(o&&!o.dead&&!o.inBoat&&Math.hypot(o.x-x,o.y-y)<FEUDR)};   /* would going there mean standing near the other one */
+function startFeud(a,b){if(feud||!a||!b||a===b)return false;feud={d0:dayCount,rv:[a.name,b.name],kept:0,n:1};
+  for(const [x,y] of [[a,b],[b,a]]){const r=x.rels.find(r2=>r2.who===y.name);if(r)r.k='rival';else x.rels.push({who:y.name,k:'rival'})}
+  return true}
+// How likely the two are to end it at a fire, as a number, for the reason illChance is one: the harness asserts on the rule itself.
+// Gentle helps, proud and stubborn hurt, and every year it has gone on makes the two of them a little more tired of it.
+function feudChance(a,b){const any=t=>has(a,t)||has(b,t);
+  return .4+(any('gentle')?.2:0)-((any('stubborn')||any('proud'))?.2:0)+Math.min(.2,(feud?dayCount-feud.d0:0)/YEAR*.1)}
+function feudDay(){if(!feud)return;const a=byName(feud.rv[0]),b=byName(feud.rv[1]);
+  if(!a||!b||a.dead||b.dead){endFeud('gone');return}
+  if(dayCount-feud.d0>=FEUDD)endFeud('worn')}
+// A child of one of them who comes of age while it is still going takes it up. Nobody asks them to. That is how these are inherited.
+function feudInherit(p){if(!feud)return false;const s=feudSide(p);if(!s||p.name===feud.rv[0]||p.name===feud.rv[1])return false;
+  const o=byName(feud.rv[2-s]);if(!o||o.dead)return false;
+  const r=p.rels.find(r2=>r2.who===o.name),r2=o.rels.find(x=>x.who===p.name);
+  if(r)r.k='rival';else p.rels.push({who:o.name,k:'rival'});if(r2)r2.k='rival';else o.rels.push({who:p.name,k:'rival'});
+  p.hist.push({d:dayCount,s:`grew up on one side of the thing between ${feud.rv[0]} and ${feud.rv[1]}, and took it up without being asked`});
+  o.hist.push({d:dayCount,s:`found ${p.name}, grown now, not speaking to them either, and understood exactly why`});
+  return true}
+function endFeud(how,who){if(!feud)return;const f=feud;feud=null;
+  const a=byName(f.rv[0]),b=byName(f.rv[1]),yrs=dayCount-f.d0,since=f.kept?'the short winter':'the night at the store';
+  const long=yrs>=YEAR?(yrs<YEAR*2?'a year and more':`${Math.floor(yrs/YEAR)} years`):'a season or two';
+  if(how==='gone'||how==='thawgone'){const g=a&&!a.dead?f.rv[1]:f.rv[0],h=g===f.rv[0]?f.rv[1]:f.rv[0],s=byName(h);
+    if(how==='thawgone'){say(`Whatever there had been between ${f.rv[0]} and ${f.rv[1]} since that night at the store ends here, and not by being settled.`,true);
+      addEvent('parted',`the ${sea()} it was left unsettled`,`${f.rv[0]} and ${f.rv[1]} never squared what happened at the store in the short winter. ${g} is not on the island to square it with any more, and whoever is left carries both halves of it.`)}
+    else{say(`Whatever there was between ${f.rv[0]} and ${f.rv[1]} ends this morning, with ${g} gone, and it does not end by being settled.`,true);
+      addEvent('parted',`the ${sea()} it was left unsettled`,`${f.rv[0]} and ${f.rv[1]} never settled what was between them since ${since}. ${g} is not on the island to settle it with any more, and ${h} carries both halves of it.`)}
+    if(s)s.hist.push({d:dayCount,s:`was left carrying both halves of the thing with ${g}, there being nobody to settle it with`});
     return}
-  const set=(x,y,k)=>{const r=x.rels.find(r2=>r2.who===y.name);if(r)r.k=k};
-  if(R()<.6){set(a,b,'friend');set(b,a,'friend');
+  if(how==='worn'){
+    say(`Nobody can say any more what ${B(a)} and ${B(b)} fell out over, the two of them included. It has stopped being a feud and become a habit, and the village stops counting it.`,true);
+    addEvent('worn',`the ${sea()} nobody could remember what it was about`,`After ${long} nobody in ${V()} could say what ${a.name} and ${b.name} had fallen out over, and neither could they. It was not settled. It was worn out, which is a different thing, and the village stopped counting it.`);
+    a.hist.push({d:dayCount,s:`stopped being able to say what the thing with ${b.name} had been about, and did not stop`});
+    b.hist.push({d:dayCount,s:`stopped being able to say what the thing with ${a.name} had been about, and did not stop`});return}
+  // everything else mends it, and the only difference is how
+  for(const [x,y] of [[a,b],[b,a]]){const r=x.rels.find(r2=>r2.who===y.name);if(r)r.k='friend'}
+  if(how==='thaw'){
     say(`${B(b)} says, out of nothing in particular, that a hungry winter is not a character. ${B(a)} does not answer, and the two of them stack wood together the whole afternoon.`,true);
     addEvent('squared',`the ${sea()} ${a.name} and ${b.name} squared it`,`What ${a.name} took out of the store in the short winter was never mentioned again, and by the thaw ${b.name} had decided that a hungry winter is not a character. They stacked wood together all one afternoon on it, and that was the whole of the conversation.`);
     a.hist.push({d:dayCount,s:`squared it with ${b.name} at the thaw, without either of them saying what it was about`});
     b.hist.push({d:dayCount,s:`squared it with ${a.name} at the thaw, without either of them saying what it was about`})}
-  else{say(`The winter is over and ${B(a)} and ${B(b)} are still not speaking. It stopped being about the store some time ago.`,true);
-    addEvent('kept',`the ${sea()} it was not squared`,`The short winter ended and ${b.name} went on looking at ${a.name} a certain way across the fire. It had stopped being about the store well before that.`);
-    a.hist.push({d:dayCount,s:`came out of the short winter with ${b.name} still not speaking to them`});
-    b.hist.push({d:dayCount,s:`came out of the short winter still not speaking to ${a.name}`})}}
+  else if(how==='fire'){
+    say(`Near the end of it ${B(a)} and ${B(b)} are on the same log, which nobody saw happen, and are passing the one cup between them.`,true);
+    addEvent('squared',`the night ${a.name} and ${b.name} sat on the same log`,`It was at a fire night, ${long} after ${since}, that ${a.name} and ${b.name} ended up on the same log. Nobody saw it happen and nobody mentioned it, and it was over.`);
+    a.hist.push({d:dayCount,s:`ended up on the same log as ${b.name} at a fire night, and let it stay ended`});
+    b.hist.push({d:dayCount,s:`ended up on the same log as ${a.name} at a fire night, and let it stay ended`})}
+  else if(how==='nursed'){const n=who===b?b:a,s=n===a?b:a;
+    say(`${B(n)} sits up with ${B(s)}, who has not had a word for ${n.name} since ${since}. Neither of them mentions that either, and by morning it is over.`,true);
+    addEvent('squared',`the ${sea()} ${n.name} sat up with ${s.name}`,`${s.name} took the sickness, and it was ${n.name} who sat up with them — the same ${n.name} who had not spoken to them since ${since}. Neither of them ever explained it, and neither of them went back to it afterwards.`);
+    n.hist.push({d:dayCount,s:`sat up with ${s.name}, who had not been speaking to them until that night`});
+    s.hist.push({d:dayCount,s:`was nursed through it by ${n.name}, of all people, and stopped not speaking to them`})}
+  else if(how==='dreamt'){
+    say(`${B(a)} and ${B(b)}, who have not spoken since ${since}, walk down to the fields together. Neither of them mentions a dream.`,true);
+    addEvent('squared',`the ${sea()} ${a.name} and ${b.name} made it up`,`${a.name} and ${b.name} stopped not speaking overnight, ${long} after ${since}, and neither would explain it.`);
+    a.hist.push({d:dayCount,s:`made it up with ${b.name}, and could not say why`});b.hist.push({d:dayCount,s:`made it up with ${a.name}, and could not say why`})}
+  else if(how==='bounds'){
+    say(`${B(a)} and ${B(b)} walk the bounds in the same line, at the same pace, because they were told to, and by the last stone it is not being kept up any more.`,true);
+    addEvent('walked',`the spring ${a.name} and ${b.name} walked the bounds`,`In the spring of year ${yearOf(dayCount)} the elder leading the walking of the bounds put ${a.name} and ${b.name} in the same line, behind the children, and walked them round every named place at the same pace. It was not discussed. By the last stone there was nothing left to keep up.`);
+    a.hist.push({d:dayCount,s:`was walked round the bounds in the same line as ${b.name}, and let it go somewhere along the way`});
+    b.hist.push({d:dayCount,s:`was walked round the bounds in the same line as ${a.name}, and let it go somewhere along the way`})}}
 // sprint 9: the island keeps itself. Written at each dawn; read back at boot when no link is pinned in the address bar.
 function autoSave(){try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
 // The LZ of a 500-day island measured 26 ms, and at the generational speed a day goes by in about half a second, so a dawn autosave
@@ -298,7 +375,8 @@ function sickBed(p){const hl=sickHall();
   const h=homeOf(p);return h?{x:h.x+1+rnd(-.4,.4),y:h.y+2.2,hall:0}:{x:center.x+rnd(-1.5,1.5),y:center.y+rnd(-1,1),hall:0}}
 // Sitting up with somebody is the one thing in this game that turns a rival back into a friend on purpose. Everything else that has
 // ever mended one was a dream (`mend`) or a thaw, and neither of those is a decision anybody made.
-function nursedBy(p,q){const r=p.rels.find(r2=>r2.who===q.name),r2=q.rels.find(x=>x.who===p.name);
+function nursedBy(p,q){if(feud&&feudWith(p)===q){endFeud('nursed',p);return} /* phase 6, third increment: the one deliberate mender takes the feud with it, and writes the one entry */
+  const r=p.rels.find(r2=>r2.who===q.name),r2=q.rels.find(x=>x.who===p.name);
   if(r&&r.k==='rival'){r.k='friend';if(r2)r2.k='friend';
     say(`${B(p)} sits up with ${B(q)}, who has not had a word for ${p.name} since whenever it was. Neither of them mentions that either.`,true);
     p.hist.push({d:dayCount,s:`sat up with ${q.name}, who was a rival until that night`});
