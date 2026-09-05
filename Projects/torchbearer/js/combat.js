@@ -1,4 +1,4 @@
-// combat.js — the half of Torchbearer's combat that is rules, not pixels.
+// combat.js — Torchbearer's combat engine, out of the page.
 //
 // `Combat` in torchbearer.html was 905 lines: Dijkstra movement and Bresenham
 // line of sight and `effAC` and `strike` interleaved with thirteen render
@@ -8,31 +8,42 @@
 // exactly once each, by a session clicking through a browser, and then never
 // again.
 //
-// This file is the first cut, split by dependency rather than by feature. What
-// moved is everything a Strike passes through: geometry, conditions, the AC and
-// attack math, damage, saves, and the two strike paths. What stayed in the page
-// is everything that needs a DOM or a clock — the turn loop, the enemy AI, the
-// action bar, the spell menu and `castAt`, and all rendering. Those are the
-// next increment.
+// It came out in two cuts, split by dependency rather than by feature. The
+// first took everything a Strike passes through: geometry, conditions, the AC
+// and attack math, damage, saves, and the two strike paths. The second took
+// everything else that is a rule: `start` and the turn loop, the player's
+// actions from the button id down, the spells, and the monster AI. What stays
+// in the page is exactly what needs a DOM — the thirteen render methods and the
+// spell menu's cards — and it reaches the engine through the hooks below.
 //
-// Two seams make the split possible:
+// The seams, all of them methods a test can leave alone and the page overrides:
 //
-//   1. **Events, not `App.log`.** Every line the engine used to write straight
-//      into the Chronicle is now `this.log(text)`, which pushes
-//      `{kind, text, cls}` onto `this.events` and hands it to `onEvent`. The
-//      page's `onEvent` calls `App.log`, so the Chronicle reads exactly as it
-//      did; a test reads the array instead. Dice rolls go through `this.seal`,
-//      which emits `{kind:"roll", ...}` with the d20, the arithmetic and the
-//      degree, and the page turns that back into `App.rollSeal`.
-//   2. **`floatText` is a no-op here.** The engine announces the number; the
-//      page decides whether it floats up the screen in orange. Nothing in this
-//      file knows a colour it did not already carry as data.
+//   1. **Events, not `App.log`.** Every line the engine writes to the Chronicle
+//      is `this.log(text)`, which pushes `{kind, text, cls}` onto `this.events`
+//      and hands it to `onEvent`. Dice go through `this.seal` and skill checks
+//      through `this.check`, both of which emit `{kind:"roll", ...}` with the
+//      d20, the arithmetic and the degree. The page turns those back into
+//      `App.log` and `App.rollSeal`, so the Chronicle reads exactly as it did;
+//      a test reads the array (locked #89).
+//   2. **`defer(fn, ms)` is the clock.** Everything that was `setTimeout` is
+//      `this.defer`. Here it calls `fn` at once, so a monster's whole turn — and
+//      every monster turn after it, until a player's comes round — resolves
+//      inside one call. The page overrides it with `setTimeout` and keeps its
+//      300–900ms pacing (locked #92).
+//   3. **`start` takes the party and the flags as arguments** rather than
+//      reading `App.party()` and `App.flags`. The flags object is mutated in
+//      place — `surprise-round` and `fatigued-start` are consumed — because the
+//      page relies on that.
+//   4. **The view hooks are no-ops.** `renderAll`, `hint`, `toast`, `mount`,
+//      `floatText` and `autosave` do nothing here. Nothing in this file knows a
+//      colour it did not already carry as data.
 //
 // The page's `Combat` is `newCombat()` with its view methods assigned over the
 // top, so `this` is one object and no call site changed. A test builds a bare
-// engine with `newCombat({cbs, order, ...})` and drives it directly.
+// engine with `newCombat({cbs, order, ...})`, or a real one with `start`.
 
-import { Dice } from "./rules.js";
+import { Registry } from "./registry.js";
+import { Dice, skillMod, CHAR_LEVEL } from "./rules.js";
 import { esc, cap } from "./text.js";
 
 export const CombatCore = {
@@ -44,8 +55,32 @@ export const CombatCore = {
   log(text,cls){ return this.emit({kind:"log",text,cls:cls||"combat"}); },
   /** A d20 result. The page renders this as the wax seal; a test reads `deg`. */
   seal(title,d20,math,deg){ return this.emit({kind:"roll",text:title,cls:"roll",d20,math,deg}); },
-  /** View-only. The page overrides this with the DOM version. */
+  /** A skill check against a DC — Demoralize, Feint, Battle Medicine. This is
+      what `App.rollCheck` was, routed through the seal. */
+  check(title,mod,dc){
+    const d20=Dice.d(20), total=d20+mod;
+    const deg=Dice.degree(d20,total,dc);
+    this.seal(title,d20,`${d20}${mod>=0?"+":""}${mod} = ${total} vs DC ${dc}`,deg);
+    return {d20,total,deg};
+  },
+
+  /* ---------- the view and clock seams: no-ops here, overridden by the page ---------- */
+  /** The number that floats up the screen. The engine announces it; the page decides. */
   floatText(){},
+  /** Redraw the tracker, the grid, the action bar and the party panel. */
+  renderAll(){},
+  /** The one-line prompt under the action bar. */
+  hint(){},
+  /** A transient message — "Not enough actions." */
+  toast(){},
+  /** Called once by `start`, after the intro line and before the first turn.
+      The page builds the combat DOM here. */
+  mount(){},
+  /** Called by `finish(true)` after the party is restored. The page writes the save slot. */
+  autosave(){},
+  /** The clock. `fn` is the next thing to happen; `ms` is how long the page
+      should wait before it. Here it happens now. */
+  defer(fn,ms){ fn(); },
 
   key(x,y){ return x+","+y; },
   cur(){ return this.order[this.turnIdx]; },
@@ -287,8 +322,579 @@ export const CombatCore = {
     const deg=Dice.degree(d20,total,dc);
     this.seal(`${t.name}: ${cap(save)} save vs ${label}`,d20,`${d20}${mod>=0?"+":""}${mod} = ${total} vs DC ${dc}`,deg);
     return deg;
+  },
+
+  /* ---------- the encounter, and the turn loop ---------- */
+  start(encId, adv, opts){
+    const enc = adv.encounters[encId];
+    this.enc=enc; this.round=1; this.turnIdx=0; this.active=true; this.events=[];
+    this.mapW=enc.w; this.mapH=enc.h;
+    this.walls=new Set((enc.terrain.walls||[]).map(w=>this.key(w[0],w[1])));
+    this.diff=new Set((enc.terrain.diff||[]).map(w=>this.key(w[0],w[1])));
+    const flags=opts.flags||{};
+    this.surprise=!!flags["surprise-round"]; delete flags["surprise-round"];
+    const fatigued=!!flags["fatigued-start"]; delete flags["fatigued-start"];
+    this.onVictory=opts.onVictory; this.onDefeat=opts.onDefeat;
+    // party
+    this.cbs=[];
+    const party=opts.party; // [heroCombatant, ...companionCombatants]
+    party.forEach((cb,i)=>{
+      const st=enc.pcStarts[i]||enc.pcStarts[0];
+      cb.x=st[0]; cb.y=st[1]; cb.dead=false; cb.dying=0; cb.conditions=cb.conditions||[]; cb.buffs=[];
+      if(fatigued) this.addCond(cb,"fatigued",1,99,true);
+      this.cbs.push(cb);
+    });
+    // foes (scaled by party size)
+    const n=party.length;
+    enc.foes.forEach((f,i)=>{
+      if(f.minParty&&n<f.minParty) return;
+      const m=Registry.monsters[f.monster];
+      const cb={id:"foe"+i, side:"foe", name:m.name, letter:m.name.match(/[A-Z]/g).slice(0,1)[0]+(i+1), monster:m,
+        x:f.x,y:f.y, hpMax:m.hp, hp:m.hp, tempHP:0, ac:m.ac, saves:{...m.saves}, perception:m.perception,
+        speed:Math.floor(m.speed/5), attacks:m.attacks, powers:(m.powers||[]).map(p=>({...p,cd:0})),
+        conditions:[], buffs:[], slowedBase:m.slowed||0, weaknesses:m.weaknesses||[], resistances:m.resistances||[], immunities:m.immunities||[], boss:m.boss};
+      this.cbs.push(cb);
+    });
+    // boss flags
+    if(enc.bossFlags){ Object.entries(enc.bossFlags).forEach(([flag,fx])=>{
+      if(flags[flag]){ const boss=this.cbs.find(c=>c.boss);
+        if(boss)(fx.applyToBoss||[]).forEach(c=>this.addCond(boss,c.c,c.v,c.dur,true));
+        if(fx.log) this.log(fx.log); } }); }
+    // initiative
+    this.cbs.forEach(cb=>{
+      const mod = cb.side==="pc"? (cb.char? cb.char.perception+cb.char.initBonus : cb.initSkill||cb.perception) : cb.perception;
+      cb.init=Dice.d(20)+mod;
+      if(this.surprise&&cb.side==="foe") cb.init-=100; // ambushed: act last
+    });
+    this.order=[...this.cbs].sort((a,b)=>b.init-a.init);
+    this.log(`<b>${enc.name}.</b> ${esc(enc.intro||"")}`);
+    this.mount();
+    this.beginTurn(0,true);
+  },
+
+  beginTurn(idx,first){
+    if(!this.active) return;
+    this.turnIdx=idx;
+    const cb=this.cur();
+    if(cb.dead){ return this.nextTurn(); }
+    // start-of-turn: persistent damage & recovery & cooldowns & buffs tick handled at end
+    cb.reactionUsed=false; cb.shieldRaised=false; cb.nimbleUsed=false; cb.mapCount=0; cb.flourishUsed=false; cb.hexUsed=false; cb.reloadedThisTurn=false;
+    if(cb.side==="pc"&&cb.dying>0){
+      const roll=Dice.d(20); const dc=10+cb.dying;
+      if(roll>=dc){ cb.dying=Math.max(0,cb.dying-(roll>=dc+10?2:1));
+        this.log(`${esc(cb.name)} fights toward the light (recovery ${roll} vs DC ${dc}). Dying ${cb.dying}.`);
+        if(cb.dying===0){ cb.hp=1; this.log(`<b>${esc(cb.name)} regains consciousness!</b>`); } }
+      else { cb.dying+= (roll<=dc-10?2:1);
+        this.log(`${esc(cb.name)} slips deeper (recovery ${roll} vs DC ${dc}). Dying ${cb.dying}.`);
+        if(cb.dying>= (cb.char&&cb.char.specials.includes("diehard")?5:4)){ this.kill(cb); return this.nextTurn(); } }
+      if(cb.dying>0){ this.renderAll(); return this.defer(()=>this.nextTurn(),700); }
+    }
+    // persistent damage
+    const pers=cb.conditions.filter(c=>c.c==="persistent");
+    pers.forEach(p=>{ const dmg=Dice.roll(p.formula).total;
+      this.applyDamage(cb,dmg,p.dtype,null,`persistent ${p.dtype}`);
+      if(Dice.d(20)>=15){ cb.conditions=cb.conditions.filter(x=>x!==p); this.log(`The ${p.dtype} afflicting ${esc(cb.name)} ends.`); }});
+    if(cb.dead) return this.nextTurn();
+    // actions
+    let acts=3;
+    const stun=this.condVal(cb,"stunned"); if(stun){ acts-=stun; this.decCond(cb,"stunned",stun); }
+    const slow=(cb.slowedBase||0)+this.condVal(cb,"slowed-feet");
+    acts-=slow;
+    this.actions=Math.max(0,acts);
+    (cb.powers||[]).forEach(p=>{ if(p.cd>0)p.cd--; });
+    this.armed=null; this.sel=null;
+    this.renderAll();
+    if(cb.side==="foe"){ this.defer(()=>this.aiTurn(cb),600); }
+  },
+
+  endTurn(){
+    const cb=this.cur();
+    // tick buffs & decrementing conditions
+    cb.buffs=cb.buffs.filter(b=>{ if(b.duration!==undefined){ b.duration--; return b.duration>0; } return true; });
+    ["frightened","sickened"].forEach(n=>{ const v=this.condVal(cb,n);
+      if(v){ const red = (n==="frightened"&&cb.char&&cb.char.specials.includes("bravery"))?2:1;
+        this.decCond(cb,n,red); } });
+    cb.conditions=cb.conditions.filter(c=>{
+      if(c.dur!==undefined&&c.dur<99){ c.dur--; return c.dur>0; } return true; });
+    this.nextTurn();
+  },
+  nextTurn(){
+    if(!this.active) return;
+    if(this.checkEnd()) return;
+    let idx=this.turnIdx;
+    for(let i=0;i<this.order.length;i++){
+      idx=(idx+1)%this.order.length;
+      if(idx===0){ this.round++; this.surprise=false; }
+      if(!this.order[idx].dead) break;
+    }
+    this.beginTurn(idx);
+  },
+  checkEnd(){
+    if(this.alive("foe").length===0){ this.finish(true); return true; }
+    const pcs=this.alive("pc");
+    if(pcs.length===0||pcs.every(c=>c.dying>0)){ this.finish(false); return true; }
+    return false;
+  },
+  finish(victory){
+    this.active=false;
+    if(victory){
+      this.log(`<b>Victory.</b> The ${esc(this.enc.name)} is yours. You bind wounds, steady breath, and refocus. (Half of missing HP recovered; focus restored.)`);
+      this.cbs.filter(c=>c.side==="pc").forEach(cb=>{
+        if(cb.dying>0){ cb.dying=0; cb.hp=1; }
+        cb.hp=Math.min(cb.hpMax, cb.hp+Math.ceil((cb.hpMax-cb.hp)/2));
+        cb.conditions=[]; cb.buffs=[];
+        if(cb.resources) cb.resources.focus=cb.char?cb.char.focusMax:0;
+      });
+      this.autosave();
+      this.defer(()=>this.onVictory(),900);
+    } else {
+      this.log(`<b>The line breaks.</b> Darkness takes the field.`);
+      this.defer(()=>this.onDefeat(),900);
+    }
+  },
+
+
+  /* ---------- the player's actions ---------- */
+  targets(a){
+    const cb=this.cur();
+    const side=a.friendly? "pc":"foe";
+    return this.cbs.filter(t=>t.side===side&&!t.dead&&(a.friendly||t.dying===0||true)
+      &&this.dist(cb,t)<=a.range&&(a.range<=1||this.losClear(cb,t))
+      &&(!a.friendly||t.dying===0||a.canDowned));
+  },
+  actionClick(id){
+    const cb=this.cur(); if(cb.side!=="pc") return;
+    this.sel=null;
+    const arm=(o,hint)=>{ this.armed={...o,btn:id}; this.hint(hint); this.renderAll(); };
+    if(id==="end") return this.endTurn();
+    if(id==="stride") return arm({kind:"move",budget:this.moveBudget(cb),cost:1},"Choose a highlighted square to Stride to.");
+    if(id==="step") return arm({kind:"move",budget:1,cost:1,step:true},"Step one square (no reactions).");
+    if(id==="raise"){ cb.shieldRaised=true; this.spend(1); this.log(`${esc(cb.name)} raises a shield (+2 AC).`); return this.renderAll(); }
+    if(id==="reload"){ cb.reloadedThisTurn=true; this.spend(1); this.log(`${esc(cb.name)} reloads.`); return this.renderAll(); }
+    if(id==="hunt") return arm({kind:"target",range:99,cost:1,mode:"hunt"},"Mark a foe as your hunted prey.");
+    if(id==="demoralize") return arm({kind:"target",range:6,cost:1,mode:"demoralize"},"Choose a foe within 30 ft to Demoralize.");
+    if(id==="feint") return arm({kind:"target",range:1,cost:1,mode:"feint"},"Feint: choose an adjacent foe.");
+    if(id==="battlemed") return arm({kind:"target",range:1,cost:1,mode:"battlemed",friendly:true,canDowned:true},"Choose an adjacent ally to treat.");
+    if(id.startsWith("strike")) return arm({kind:"target",range:cb.attacks[+id.slice(6)].range,cost:1,mode:"strike",atkIdx:+id.slice(6)},"Choose a target to Strike.");
+    if(id==="powerattack") return arm({kind:"target",range:1,cost:2,mode:"powerattack",atkIdx:this.meleeIdx(cb)},"Power Attack: choose an adjacent foe.");
+    if(id==="exacting") return arm({kind:"target",range:cb.attacks[this.meleeIdx(cb)].range,cost:1,mode:"exacting",atkIdx:this.meleeIdx(cb)},"Exacting Strike: a miss won't raise your MAP.");
+    if(id==="intstrike") return arm({kind:"target",range:1,cost:2,mode:"intstrike",atkIdx:this.meleeIdx(cb)},"Intimidating Strike: choose an adjacent foe.");
+    if(id==="brutish") return arm({kind:"target",range:1,cost:1,mode:"brutish",atkIdx:this.meleeIdx(cb)},"Brutish Shove.");
+    if(id==="charge") return arm({kind:"move",budget:this.moveBudget(cb)*2,cost:2,charge:true},"Sudden Charge: move up to double speed, then Strike free.");
+    if(id==="huntedshot") return arm({kind:"target",range:(cb.attacks.find(a=>a.ranged)||{range:12}).range,cost:1,mode:"huntedshot"},"Two shots at your prey.");
+    if(id==="twintake") return arm({kind:"target",range:1,cost:1,mode:"twintake"},"Both blades on your prey.");
+    if(id==="twinfeint") return arm({kind:"target",range:1,cost:2,mode:"twinfeint"},"Feint with the first, land the second.");
+    if(id==="cackle"){ cb.cackled=true; cb.resources.focus=Math.min(cb.char.focusMax,cb.resources.focus+1);
+      this.log(`${esc(cb.name)} <b>cackles</b>, and the patron leans closer. (+1 focus)`); return this.renderAll(); }
+    if(id==="potion") return arm({kind:"target",range:1,cost:1,mode:"potion",friendly:true,canDowned:true},"Drink or administer: choose yourself or an adjacent ally.");
+    if(id==="spells") return this.spellMenu(cb,false);
+    if(id==="focus") return this.spellMenu(cb,true);
+    if(id.startsWith("abil")) { const ab=cb.abilities[+id.slice(4)];
+      return arm({kind:"target",range:ab.range,cost:ab.cost,mode:"companion-abil",abil:ab,friendly:ab.type==="heal",canDowned:true},ab.flavor||ab.name); }
+  },
+
+  cellClick(x,y){
+    const a=this.armed; if(!a) return;
+    const cb=this.cur();
+    if(a.kind==="move"){
+      const reach=this.reachable(cb,a.budget); const k=this.key(x,y);
+      if(!reach[k]||this.occupied(x,y)) return;
+      this.doMove(cb,x,y,reach,a);
+    } else if(a.kind==="cell"){
+      if(Math.max(Math.abs(x-cb.x),Math.abs(y-cb.y))>a.range) return;
+      this.castAt(cb,a,{x,y});
+    }
+  },
+  tokenClick(t){
+    const a=this.armed; if(!a){ this.toast(`${t.name}: HP ${t.hp}/${t.hpMax} · AC ${t.ac}`); return; }
+    const cb=this.cur();
+    if(a.kind==="target"){
+      if(!this.targets(a).includes(t)) return;
+      this.sel=t;
+      this.resolveTargeted(cb,a,t);
+    } else if(a.kind==="cell"){ this.cellClick(t.x,t.y); }
+  },
+  doMove(cb,x,y,reach,a){
+    // provoke reactive strikes when leaving reach of enemy fighters (foes only trigger PC fighters)
+    const path=[]; let k=this.key(x,y);
+    while(k){ const [px,py]=k.split(",").map(Number); path.unshift({x:px,y:py}); k=reach[k].prev; }
+    if(!a.step) this.provokeAlong(cb,path);
+    cb.x=x; cb.y=y;
+    this.spend(a.cost); this.armed=null; this.hint("");
+    if(a.charge){ this.armed={kind:"target",range:1,cost:0,mode:"strike",atkIdx:this.meleeIdx(cb),btn:"charge2"};
+      this.hint("Now Strike an adjacent foe (free)."); }
+    this.renderAll();
+  },
+  provokeAlong(mover,path){
+    if(mover.side!=="foe") return;
+    const fighters=this.alive("pc").filter(p=>p.char&&p.char.specials.includes("reactive-strike")&&!p.reactionUsed&&p.dying===0);
+    for(const f of fighters){
+      for(let i=1;i<path.length;i++){
+        if(this.dist(f,path[i-1])<=1&&this.dist(f,path[i])>1){
+          f.reactionUsed=true;
+          this.log(`<b>Reactive Strike!</b> ${esc(f.name)} lashes out as ${esc(mover.name)} moves.`);
+          this.strike(f,mover,f.attacks[this.meleeIdx(f)],{noMAP:true});
+          break;
+        }
+      }
+      if(mover.dead) break;
+    }
+  },
+
+  resolveTargeted(cb,a,t){
+    const done=(cost)=>{ this.spend(cost!==undefined?cost:a.cost); this.armed=null; this.sel=null; this.hint(""); this.renderAll(); this.checkEnd(); };
+    switch(a.mode){
+      case "hunt": this.huntPreyId=t.id; this.log(`${esc(cb.name)} <b>Hunts Prey</b>: ${esc(t.name)}.`); return done();
+      case "demoralize": {
+        const ch=cb.char; let mod=skillMod(ch,"intimidation")-this.condVal(cb,"frightened")-this.condVal(cb,"sickened");
+        if(!ch.specials.includes("intimidating-glare")) mod-=4; // no shared language with the mindless dead
+        if(ch.specials.includes("edge-outwit")&&t.id===this.huntPreyId) mod+=2; // Outwit vs hunted prey
+        const dc=10+(t.saves.will||0)+CHAR_LEVEL;
+        const r=this.check(`${cb.name} Demoralizes ${t.name}`,mod,dc);
+        if(r.deg>=2){ this.addCond(t,"frightened",r.deg===3?2:1);
+          if(r.deg===3&&ch.specials.includes("terrified-retreat")&&(t.monster&&t.monster.level<CHAR_LEVEL)) this.addCond(t,"fleeing",1,1); }
+        t.demoralized=true; return done();
+      }
+      case "feint": {
+        const ch=cb.char; let mod=skillMod(ch,"deception")-this.condVal(cb,"frightened")-this.condVal(cb,"sickened");
+        if(ch.specials.includes("edge-outwit")&&t.id===this.huntPreyId) mod+=2; // Outwit vs hunted prey
+        const dc=10+(t.perception||0);
+        const r=this.check(`${cb.name} Feints ${t.name}`,mod,dc);
+        if(r.deg>=2){
+          const scoundrel=ch.specials.includes("racket-scoundrel");
+          t.feint={by:cb.id,round:this.round,turnIdx:this.turnIdx,usesLeft:scoundrel?Infinity:1};
+          this.log(`${esc(t.name)} is off-guard to ${scoundrel?"all of ":""}${esc(cb.name)}'s attacks${scoundrel?" this turn":" (next Strike)"}.`);
+        } else this.log(`${esc(cb.name)}'s Feint fails to fool ${esc(t.name)}.`);
+        return done();
+      }
+      case "battlemed": {
+        const ch=cb.char;
+        const r=this.check(`${cb.name}: Battle Medicine on ${t.name}`,skillMod(ch,ch.specials.includes("natural-medicine")&&ch.skills.nature!=="U"?"nature":"medicine"),15);
+        if(r.deg>=2) this.heal(t,Dice.roll(r.deg===3?"2d8+10":"2d8").total);
+        else if(r.deg===0) this.applyDamage(t,Dice.roll("1d8").total,"slashing",null,"botched surgery");
+        return done();
+      }
+      case "potion": {
+        const id=cb.resources.potions.pop();
+        const item=Registry.items[id];
+        const h=Dice.roll(item&&item.heal?item.heal:"1d8").total;
+        this.heal(t,h);
+        this.log(`${esc(t.name)} drinks ${esc(item?item.name:"a healing potion")} (+${h}).`);
+        return done();
+      }
+      case "strike": this.strike(cb,t,cb.attacks[a.atkIdx]); return done(a.btn==="charge2"?0:1);
+      case "exacting": this.strike(cb,t,cb.attacks[a.atkIdx],{exacting:true}); return done();
+      case "powerattack": { cb.mapCount++; this.strike(cb,t,cb.attacks[a.atkIdx],{extraDie:1}); return done(); }
+      case "intstrike": { const hit=this.strike(cb,t,cb.attacks[a.atkIdx]);
+        if(hit>=2) this.addCond(t,"frightened",hit===3?2:1); return done(); }
+      case "brutish": { const hit=this.strike(cb,t,cb.attacks[a.atkIdx]);
+        if(hit>=2){ t.offGuardUntil=this.round; this.addCond(t,"clumsy",1,1,true); this.log(`${esc(t.name)} is knocked off-balance (off-guard).`); } return done(); }
+      case "huntedshot": { if(t.id!==this.huntPreyId){ this.hint("Hunted Shot only works on your prey."); return; }
+        cb.flourishUsed=true; const w=cb.attacks.find(x=>x.ranged);
+        this.strike(cb,t,w); if(!t.dead) this.strike(cb,t,w); return done(); }
+      case "twintake": { if(t.id!==this.huntPreyId){ this.hint("Twin Takedown only works on your prey."); return; }
+        cb.flourishUsed=true; this.strike(cb,t,cb.attacks[0]); if(!t.dead) this.strike(cb,t,cb.attacks[1]); return done(); }
+      case "twinfeint": { this.strike(cb,t,cb.attacks[0]); if(!t.dead) this.strike(cb,t,cb.attacks[1],{forceOffGuard:true}); return done(); }
+      case "companion-abil": { const ab=a.abil;
+        if(ab.type==="heal"){ ab.uses--; const h=Dice.roll(ab.heal).total; this.heal(t,h);
+          this.log(`${esc(cb.name)}: <b>${ab.name}</b> — ${esc(t.name)} regains ${h} HP. <i>${esc(ab.flavor||"")}</i>`); }
+        return done(); }
+      case "spell-target": return this.castAt(cb,a,t);
+    }
+  },
+
+
+  /* ---------- spells ---------- */
+  /** The rows of the spell menu: everything this caster could cast right now,
+      each with `spent` (the pool is empty) and `hexBlocked` (a hex already
+      cast this turn). The page renders these as cards; `armSpell` takes one. */
+  spellRows(cb,focusOnly){
+    const ch=cb.char, res=cb.resources;
+    const rows=[];
+    const add=(sp,label,rank,pool)=>rows.push({sp,label,rank,pool});
+    if(focusOnly){
+      ch.focusSpells.forEach(id=>{ const sp=Registry.spells[id]; if(!sp) return;
+        add(sp,`${sp.name} ${sp.hex?"(hex — free, 1/turn)":"(1 focus)"}`,Math.ceil(CHAR_LEVEL/2),"focus"); });
+    } else {
+      ch.casting.cantrips.forEach(id=>{ const sp=Registry.spells[id]; if(sp) add(sp,`${sp.name} (cantrip)`,Math.ceil(CHAR_LEVEL/2),"cantrip"); });
+      ch.casting.r1.forEach(id=>{ const sp=Registry.spells[id]; if(sp) add(sp,`${sp.name} (rank 1)`,1,"r1"); });
+      ch.casting.r2.forEach(id=>{ const sp=Registry.spells[id]; if(sp) add(sp,`${sp.name} (rank 2)`,2,"r2"); });
+      if(res.font>0) add(Registry.spells.heal,`Heal — Divine Font (rank 2)`,2,"font");
+    }
+    rows.forEach(r=>{
+      r.spent = r.pool==="r1"? res.slots[1]<=0 : r.pool==="r2"? res.slots[2]<=0 : r.pool==="focus"? (!r.sp.hex&&res.focus<=0) : r.pool==="font"? res.font<=0 : false;
+      r.hexBlocked = !!(r.sp.hex&&cb.hexUsed);
+    });
+    return rows;
+  },
+  armSpell(cb,r){
+    const sp=r.sp; const cost=Math.min(3,sp.actions||2);
+    if(cost>this.actions){ this.toast("Not enough actions."); return; }
+    const a={kind:null,btn:"spell",mode:"spell-target",spell:sp,castRank:r.rank,pool:r.pool,cost};
+    const rangeCells=Math.floor((sp.range||0)/5);
+    if(sp.area&&sp.area.shape==="burst"){ a.kind="cell"; a.range=Math.max(1,rangeCells)||6; a.radius=Math.floor(sp.area.radius/5); }
+    else if(sp.area&&(sp.area.shape==="cone"||sp.area.shape==="line")){ a.kind="cell"; a.range=Math.floor(sp.area.length/5); a.wedge=sp.area.shape; }
+    else if(sp.area&&sp.area.shape==="emanation"){ this.armed=a; return this.castAt(cb,a,{x:cb.x,y:cb.y}); }
+    else if(sp.partyBuff||sp.selfBuff){ this.armed=a; return this.castAt(cb,a,cb); }
+    else { a.kind="target"; a.range=Math.max(1,rangeCells);
+      a.friendly=!!(sp.heal||sp.allyBuff||sp.rankEffects[r.rank]&&sp.rankEffects[r.rank].heal||sp.special==="stabilize"||Object.values(sp.rankEffects)[0].heal);
+      a.canDowned=true;
+      if(sp.healOrHarmUndead) a.friendly=true; }
+    this.armed=a; this.hint(`Casting ${sp.name} — choose ${a.kind==="cell"?"a point":"a target"}.`);
+    this.renderAll();
+  },
+  spendSpell(cb,a){
+    const res=cb.resources;
+    if(a.pool==="r1") res.slots[1]--;
+    else if(a.pool==="r2") res.slots[2]--;
+    else if(a.pool==="font") res.font--;
+    else if(a.pool==="focus"&&!a.spell.hex) res.focus--;
+    if(a.spell.hex) cb.hexUsed=true;
+  },
+  effectFor(sp,rank){
+    const keys=Object.keys(sp.rankEffects).map(Number).filter(k=>k<=rank).sort((a,b)=>b-a);
+    return sp.rankEffects[keys[0]]||sp.rankEffects[Object.keys(sp.rankEffects)[0]]||{};
+  },
+  castAt(cb,a,target){
+    const sp=a.spell, eff=this.effectFor(sp,a.castRank);
+    this.spendSpell(cb,a);
+    this.spend(a.cost);
+    this.log(`${esc(cb.name)} casts <b>${sp.name}</b>.`);
+    const dc=cb.char.casting? cb.char.casting.dc : 10;
+    const spellAtk=cb.char.casting? cb.char.casting.attack : 0;
+    let victims=[];
+    if(a.kind==="cell"){
+      if(a.wedge==="line"){
+        // all cells along Bresenham to target
+        let x0=cb.x,y0=cb.y; const x1=target.x,y1=target.y;
+        const dx=Math.abs(x1-x0),dy=Math.abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1; let err=dx-dy;
+        const cells=[];
+        while(!(x0===x1&&y0===y1)&&cells.length<=a.range){
+          const e2=2*err; if(e2>-dy){err-=dy;x0+=sx;} if(e2<dx){err+=dx;y0+=sy;}
+          cells.push({x:x0,y:y0});
+        }
+        victims=this.cbs.filter(c=>!c.dead&&c.side!==cb.side&&cells.some(p=>p.x===c.x&&p.y===c.y));
+      } else if(a.wedge==="cone"){
+        const dirx=Math.sign(target.x-cb.x), diry=Math.sign(target.y-cb.y);
+        victims=this.cbs.filter(c=>{ if(c.dead||c.side===cb.side) return false;
+          const rx=c.x-cb.x, ry=c.y-cb.y;
+          if(Math.max(Math.abs(rx),Math.abs(ry))>a.range||((rx===0)&&(ry===0))) return false;
+          const okx=dirx===0||Math.sign(rx)===dirx||rx===0;
+          const oky=diry===0||Math.sign(ry)===diry||ry===0;
+          return okx&&oky&&Math.abs(Math.abs(rx)-Math.abs(ry))<=Math.max(Math.abs(rx),Math.abs(ry));
+        });
+      } else { // burst
+        victims=this.cbs.filter(c=>!c.dead&&Math.max(Math.abs(c.x-target.x),Math.abs(c.y-target.y))<=a.radius);
+        if(!sp.friendlyFire) victims=victims.filter(c=>c.side!==cb.side);
+      }
+    } else if(sp.area&&sp.area.shape==="emanation"){
+      const rad=Math.floor(sp.area.radius/5);
+      victims=this.cbs.filter(c=>!c.dead&&c!==cb&&c.side!==cb.side&&this.dist(c,cb)<=rad);
+    } else victims=[target];
+
+    // Multi-target attack spells (electric arc style handled via save; blazing bolt & needle etc single unless maxTargets)
+    if(sp.maxTargets&&a.kind==="target"){
+      const extra=this.cbs.filter(c=>c!==target&&!c.dead&&c.side!==cb.side&&this.dist(cb,c)<=a.range&&this.losClear(cb,c))
+        .sort((x,y)=>this.dist(cb,x)-this.dist(cb,y)).slice(0,sp.maxTargets-1);
+      victims=[target,...extra];
+      if(extra.length) this.log(`The spell arcs to ${extra.map(e=>esc(e.name)).join(", ")} as well.`);
+    }
+
+    victims.forEach(t=>{
+      // Healing / friendly effects
+      if(eff.heal||sp.healOrHarmUndead){
+        const isUndead=t.monster&&(t.monster.traits||[]).includes("undead");
+        if(sp.healOrHarmUndead&&isUndead){
+          const dmg=Dice.roll(eff.heal).total;
+          const save=this.rollSave(t,"fortitude",dc,sp.name);
+          const mult=[2,1,0.5,0][save];
+          this.applyDamage(t,Math.floor(dmg*mult),"vitality",cb,sp.name);
+        } else if(eff.heal){
+          let formula=eff.heal;
+          if(cb.char.specials.includes("healing-hands")&&sp.id==="heal") formula=formula.replace(/d8/g,"d10");
+          const h=Dice.roll(formula).total; this.heal(t,h);
+          this.log(`${esc(t.name)} regains ${h} HP.`);
+        }
+        if(eff.tempHP){ t.tempHP=Math.max(t.tempHP||0,eff.tempHP); }
+        return;
+      }
+      if(sp.special==="stabilize"){ if(t.dying>0){ t.dying=0; t.hp=Math.max(t.hp,0); this.log(`${esc(t.name)} is stabilized.`); } return; }
+      // Attack roll spells
+      if(sp.attackRoll){
+        const {ac}=this.effAC(t,{ranged:true});
+        const d20=Dice.d(20), total=d20+spellAtk;
+        const deg=Dice.degree(d20,total,ac);
+        this.seal(`${sp.name} vs ${t.name}`,d20,`${d20}+${spellAtk} = ${total} vs AC ${ac}`,deg);
+        if(deg>=2){ let dmg=(eff.damage||[]).reduce((s,d)=>s+Dice.roll(d.formula).total,0);
+          if(cb.char.specials.includes("burn-it")&&(sp.traits||[]).includes("fire")) dmg+=1;
+          if(deg===3){ dmg*=2; if(eff.critPersistent) t.conditions.push({c:"persistent",formula:eff.critPersistent.formula,dtype:eff.critPersistent.type,dur:99}); }
+          (eff.damage||[]).length&&this.applyDamage(t,dmg,eff.damage[0].type,cb,sp.name);
+        }
+        cb.mapCount++; // attack trait
+        return;
+      }
+      // Auto-hit
+      if(sp.autoHit){ const dmg=(eff.damage||[]).reduce((s,d)=>s+Dice.roll(d.formula).total,0);
+        this.applyDamage(t,dmg,eff.damage[0].type,cb,sp.name); return; }
+      // Save spells
+      if(sp.save){
+        if(sp.livingOnly&&t.monster&&(t.monster.traits||[]).includes("undead")){
+          if(sp.healsUndead){ const h=Dice.roll((eff.damage||[{formula:"1d8"}])[0].formula).total; t.hp=Math.min(t.hpMax,t.hp+h); this.log(`${esc(t.name)} drinks the void and knits together (+${h}).`); }
+          else this.log(`${esc(t.name)} has no life to drain.`);
+          return; }
+        const deg=this.rollSave(t,sp.save,dc,sp.name);
+        if(sp.basic&&eff.damage){
+          let dmg=eff.damage.reduce((s,d)=>s+Dice.roll(d.formula).total,0);
+          if(cb.char.specials.includes("burn-it")&&(sp.traits||[]).includes("fire")) dmg+=1;
+          const mult=[2,1,0.5,0][deg];
+          if(mult>0) this.applyDamage(t,Math.floor(dmg*mult),eff.damage[0].type,cb,sp.name);
+          else this.log(`${esc(t.name)} evades entirely.`);
+        }
+        const bucket= deg===0? eff.onCritFail||eff.onFail : deg===1? eff.onFail : deg===2? eff.onSuccess:null;
+        (bucket||[]).forEach(c=>this.addCond(t,c.c==="bane"?"bane":c.c,c.v,c.dur));
+        if(eff.persistent&&deg<=1) t.conditions.push({c:"persistent",formula:eff.persistent.formula,dtype:eff.persistent.type,dur:99});
+        return;
+      }
+      // Buffs
+      if(sp.partyBuff){
+        const allies=this.cbs.filter(c=>c.side===cb.side&&!c.dead&&c.dying===0);
+        allies.forEach(al=>al.buffs.push({name:sp.name,bonuses:sp.partyBuff.bonuses,duration:sp.partyBuff.duration+ (al===cb?1:1)}));
+        this.log(`${sp.name} lifts the whole line (+1 for ${sp.partyBuff.duration} round${sp.partyBuff.duration>1?"s":""}).`); return;
+      }
+      if(sp.selfBuff){
+        const sb=sp.selfBuff;
+        if(sb.tempHP){ cb.tempHP=Math.max(cb.tempHP||0,sb.tempHP); this.log(`${esc(cb.name)} gains ${sb.tempHP} temporary HP.`); }
+        if(sb.fortune) cb.buffs.push({name:sp.name,fortune:true});
+        if(sb.bonus) cb.buffs.push({name:sp.name,bonuses:[sb.bonus],duration:sb.duration||1});
+        if(sb.grantStrike){ const g=sb.grantStrike;
+          cb.attacks=[{name:g.name,bonus:cb.attacks[0].bonus,die:g.damage,dmgMod:cb.char.abil.str+g.statusDmg,damageType:g.damageType,traits:g.traits,range:1,ranged:false},...cb.attacks.filter(x=>x.name!==g.name)];
+          this.log(`${esc(cb.name)}'s hands crack into ${g.name.toLowerCase()}s!`); }
+        return;
+      }
+      if(sp.allyBuff){
+        const ab=sp.allyBuff;
+        if(ab.fortune) t.buffs.push({name:sp.name,fortune:true});
+        if(ab.bonus) t.buffs.push({name:sp.name,bonuses:[{...ab.bonus,target:ab.bonus.target==="next-check"?"attack":ab.bonus.target}],duration:ab.duration||1});
+        if(ab.bonuses) t.buffs.push({name:sp.name,bonuses:ab.bonuses,duration:ab.duration||3});
+        if(ab.flag) t.buffs.push({name:sp.name,flag:ab.flag,duration:ab.duration||10});
+        if(ab.resistChoice){ t.resistances=[...(t.resistances||[]),{type:"fire",value:ab.resistChoice},{type:"cold",value:ab.resistChoice},{type:"electricity",value:ab.resistChoice},{type:"acid",value:ab.resistChoice},{type:"sonic",value:ab.resistChoice}];
+          this.log(`${esc(t.name)} is warded against the elements (resist 5).`); }
+        else this.log(`${esc(t.name)} is bolstered by ${sp.name}.`);
+        return;
+      }
+    });
+    this.armed=null; this.sel=null; this.hint("");
+    this.renderAll(); this.checkEnd();
+  },
+
+
+  /* ---------- enemy AI ---------- */
+  /**
+   * One action of a monster's turn. Returns `{action, wait}` when the foe did
+   * something and wants another step — `wait` is the pause the page puts
+   * before it, in ms — or `null` when its turn is over, because it ended its
+   * turn or the fight ended. Nothing in here waits; `aiTurn` decides how.
+   */
+  aiStep(foe){
+    if(!this.active||foe.dead||this.actions<=0){ if(this.active&&!foe.dead) this.endTurn(); return null; }
+    if(this.checkEnd()) return null;
+    const pcs=this.alive("pc").filter(p=>p.dying===0);
+    if(!pcs.length){ this.endTurn(); return null; }
+    if(this.condVal(foe,"fleeing")){ // run from nearest
+      const near=pcs.sort((a,b)=>this.dist(foe,a)-this.dist(foe,b))[0];
+      const reach=this.reachable(foe,this.moveBudget(foe));
+      let best=null,bd=-1;
+      Object.keys(reach).forEach(k=>{ const [x,y]=k.split(",").map(Number);
+        if(this.occupied(x,y)&&!(x===foe.x&&y===foe.y)) return;
+        const d=Math.max(Math.abs(x-near.x),Math.abs(y-near.y));
+        if(d>bd){bd=d;best={x,y};} });
+      if(best){ foe.x=best.x; foe.y=best.y; }
+      this.log(`${esc(foe.name)} flees in terror!`);
+      this.spend(this.actions); this.renderAll(); return {action:"flee",wait:450};
+    }
+    // power?
+    const pw=(foe.powers||[]).find(p=>p.cd<=0&&p.cost<=this.actions);
+    if(pw){ const inRad=pcs.filter(p=>this.dist(foe,p)<=pw.radius);
+      if(inRad.length>=Math.min(2,pcs.length)){
+        this.log(`<b>${esc(foe.name)}: ${pw.name}!</b> <i>${esc(pw.flavor||"")}</i>`);
+        inRad.forEach(t=>{
+          const deg=this.rollSave(t,pw.save,pw.dc,pw.name);
+          const mult=[2,1,0.5,0][deg];
+          if(mult>0) this.applyDamage(t,Math.floor(Dice.roll(pw.damage).total*mult),pw.damageType,foe,pw.name);
+          const bucket=deg===0?pw.onCritFail||pw.onFail:deg===1?pw.onFail:null;
+          (bucket||[]).forEach(c=>this.addCond(t,c.c,c.v,c.dur));
+        });
+        pw.cd=pw.cooldown; this.spend(pw.cost); this.renderAll(); return {action:"power",name:pw.name,wait:600};
+      } }
+    // target: nearest (prefer downed? no — nearest standing, prefer lowest HP among adjacent)
+    const adjacent=pcs.filter(p=>this.dist(foe,p)<=1);
+    if(adjacent.length){
+      const t=adjacent.sort((a,b)=>a.hp-b.hp)[0];
+      if(foe.mapCount>=2){ this.spend(this.actions); return {action:"pass",wait:300}; }
+      const atk=foe.attacks[foe.mapCount%foe.attacks.length]||foe.attacks[0];
+      const atkObj={...atk,traits:atk.traits||[],die:atk.damage,dmgMod:0,range:atk.range,ranged:atk.range>1,statusDmg:0};
+      this.strikeMonster(foe,t,atkObj);
+      this.spend(1); this.renderAll(); return {action:"strike",target:t.id,wait:550};
+    }
+    // ranged?
+    const ranged=foe.attacks.find(a=>a.range>1);
+    const seen=pcs.filter(p=>this.losClear(foe,p));
+    if(ranged&&seen.length&&foe.mapCount<2){
+      const t=seen.sort((a,b)=>this.dist(foe,a)-this.dist(foe,b))[0];
+      if(this.dist(foe,t)<=ranged.range){
+        this.strikeMonster(foe,t,{...ranged,traits:ranged.traits||[],die:ranged.damage,dmgMod:0,ranged:true,statusDmg:0});
+        this.spend(1); this.renderAll(); return {action:"shoot",target:t.id,wait:550};
+      }
+    }
+    // move toward nearest
+    const near=pcs.sort((a,b)=>this.dist(foe,a)-this.dist(foe,b))[0];
+    const reach=this.reachable(foe,this.moveBudget(foe));
+    let best=null,bd=1e9;
+    Object.keys(reach).forEach(k=>{ const [x,y]=k.split(",").map(Number);
+      if(this.occupied(x,y)&&!(x===foe.x&&y===foe.y)) return;
+      const d=Math.max(Math.abs(x-near.x),Math.abs(y-near.y));
+      if(d<bd||(d===bd&&reach[k].cost<((best&&reach[this.key(best.x,best.y)].cost)||1e9))){bd=d;best={x,y};} });
+    if(best&&!(best.x===foe.x&&best.y===foe.y)){
+      const path=[]; let k=this.key(best.x,best.y);
+      while(k){ const [px,py]=k.split(",").map(Number); path.unshift({x:px,y:py}); k=reach[k].prev; }
+      this.provokeAlong(foe,path);
+      if(!foe.dead){ foe.x=best.x; foe.y=best.y; }
+      this.spend(1); this.renderAll(); return {action:"move",to:{x:best.x,y:best.y},wait:450};
+    }
+    this.spend(this.actions); return {action:"pass",wait:300};
+  },
+  /** A monster's whole turn: step, wait, step, until `aiStep` says it is over.
+      With the page's `defer` that is one action every half-second or so; with
+      the engine's own it is one synchronous call. */
+  aiTurn(foe){
+    if(!this.active||foe.dead){ return this.nextTurn(); }
+    const step=()=>{ const r=this.aiStep(foe); if(r) this.defer(step,r.wait); };
+    step();
   }
 };
+
+/**
+ * The hero as a combatant — HP, saves, a copy of the attacks, and the pools
+ * (spell slots, focus, font, potions) a fight spends from. The page caches the
+ * result on `App.heroCb` so HP carries between fights; a test builds a fresh
+ * one per encounter.
+ */
+export function heroCombatant(ch){
+  return {id:"hero",side:"pc",name:ch.name,char:ch,hpMax:ch.hpMax,hp:ch.hpMax,tempHP:0,ac:ch.ac,
+    saves:{fort:ch.saves.fort,ref:ch.saves.ref,will:ch.saves.will},perception:ch.perception,
+    speed:Math.floor(ch.speed/5),attacks:ch.attacks.map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,
+    resources:{slots:ch.casting?{1:ch.casting.slots[1],2:ch.casting.slots[2]}:{1:0,2:0},
+      focus:ch.focusMax,font:ch.casting&&ch.casting.font?ch.casting.font.uses:0,
+      potions:Array((ch.consumables.find(c=>c.id==="healing-potion-minor")||{count:0}).count).fill("healing-potion-minor")}};
+}
+/** A companion as a combatant, from its Registry entry. */
+export function companionCombatant(id){
+  const c=Registry.companions[id];
+  return {id:"comp-"+id,side:"pc",name:c.name,subtitle:c.subtitle,hpMax:c.hp,hp:c.hp,tempHP:0,ac:c.ac,
+    saves:{...c.saves},perception:c.perception,initSkill:c.initSkill,speed:Math.floor(c.speed/5),
+    attacks:c.attacks.map(a=>({...a,die:a.damage,dmgMod:0,traits:a.traits||[],ranged:a.range>1})),
+    abilities:(c.abilities||[]).map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,resources:{slots:{1:0,2:0},focus:0,font:0,potions:[]}};
+}
 
 /**
  * A fresh engine. `over` patches any field, which is how a test stands up a
@@ -299,6 +905,7 @@ export function newCombat(over){
     active:false, cbs:[], order:[], turnIdx:0, round:1, enc:null,
     mapW:0, mapH:0, walls:new Set(), diff:new Set(),
     actions:0, armed:null, sel:null, huntPreyId:null, surprise:false,
+    onVictory:null, onDefeat:null,
     events:[], onEvent:null
   }, over||{});
 }
