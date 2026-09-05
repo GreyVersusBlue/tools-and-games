@@ -910,6 +910,42 @@ Two of them have moved since they were written:
    to 10, and adding a save bonus bag moved 9/9/6 to 10/10/7. Each failed the
    matching check and exited 1. *Source: Torchbearer Phase 1.*
 
+89. **The combat engine emits events; the page renders them.** `js/combat.js`
+   never calls `App.log` or `App.rollSeal`. Every Chronicle line is
+   `this.log(text)`, which pushes `{kind:"log", text, cls}` onto `this.events`
+   and hands it to `onEvent`; every d20 is `this.seal(title, d20, math, deg)`,
+   which pushes `{kind:"roll", ...}` with the arithmetic and the degree. The
+   page's `onEvent` turns a roll event back into `App.rollSeal` and everything
+   else into `App.log`, so the Chronicle reads exactly as it did. A test reads
+   the array. `floatText` is a no-op in the module and the page overrides it —
+   the engine announces the number, the page decides whether it floats up the
+   screen in orange. *Source: Torchbearer Phase 2, increment 1.*
+
+90. **Monsters do not flank the party, and this refactor did not change
+   that.** Two independent reasons, both from the day the game shipped: a foe
+   combatant is built in `Combat.start` with no `dying` field, so
+   `isFlanking`'s `a.dying===0` partner test is `undefined===0` and no foe
+   ever qualifies as a flanking partner; and `strikeMonster` hands `effAC` a
+   bare `{id, ranged}` with no `x` or `y`, so the geometry is `NaN` before the
+   partner test is even reached. PF2e's flanking rule is symmetric and this is
+   a real divergence. It is **pinned as-is**, with a test that says so and
+   names this decision, rather than fixed here: a refactor that also buffs
+   every monster in the game makes the next balance regression unattributable
+   to either change. The fix is a one-line addition in `start` plus passing
+   the real combatant into `effAC`, and it is in Torchbearer's standing
+   backlog with the balance pass it needs.
+   *Source: Torchbearer Phase 2, increment 1.*
+
+91. **`esc` and `cap` are `js/text.js`, imported by both sides.** The engine
+   builds HTML — every log line interpolates a combatant name, and a pack is a
+   file anyone can write — so it needs an escaper, and the page needs the same
+   one for its sheets and modals. Two copies of an escaper is how they drift.
+   This is not a cross-project hoist and #17 does not apply: `text.js` sits
+   inside `Projects/torchbearer/js/` with the rest of that project's modules
+   and nothing outside the project imports it. `cap3` and `ord` stayed in the
+   page, because only the page uses them.
+   *Source: Torchbearer Phase 2, increment 1.*
+
 
 ---
 

@@ -14,6 +14,10 @@
 //      checked against the numbers the Player Core prints, every row of the
 //      effects DSL in guide §6 pinned to what the engine actually does with it
 //      (including the three rows that do nothing), and Assurance's floor.
+//   4. The combat core in js/combat.js — the geometry, the AC and attack math,
+//      damage, and the two strike paths, driven headless. Everything in section
+//      9 had been verified exactly once each, by a session clicking through a
+//      browser, and never again.
 //
 // Nothing here needs a browser. Anything that only breaks in a browser is
 // verified by hand and written up in the session notes.
@@ -36,6 +40,7 @@ const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, Dice, setDiceSource, activeEffec
         finalizeCharacter, skillMod, assuranceFloor, assuranceDegree } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
+const { newCombat } = await mod("js/combat.js");
 
 /* ---------------- harness ---------------- */
 let pass = 0; const fails = [];
@@ -89,6 +94,8 @@ ok(html.includes('from "./torchbearer/js/registry.js"'), "imports registry.js");
 ok(html.includes('from "./torchbearer/js/rules.js"'), "imports rules.js");
 ok(html.includes('from "./torchbearer/js/save.js"'), "imports save.js");
 ok(html.includes('from "./torchbearer/js/library.js"'), "imports library.js");
+ok(html.includes('from "./torchbearer/js/combat.js"'), "imports combat.js");
+ok(html.includes('from "./torchbearer/js/text.js"'), "imports text.js");
 // The whole point of adopting gvb-save: one implementation of storage, in one
 // place. If a direct localStorage call reappears in the page, this fails.
 // Comments are stripped first — this file explains the adoption in prose, and
@@ -103,6 +110,13 @@ ok(!/const (Registry|Validator) = \{/.test(html), "Registry and Validator are no
 ok(!/^function (activeEffects|abilityMods|finalizeCharacter|skillMod)\(/m.test(html),
   "the rules core is not inlined again");
 ok(!/^const (Dice|PROF_VAL|SKILLS|CHAR_LEVEL) ?=/m.test(html), "the rules constants are not inlined again");
+// Same guard again for the combat core. A method left behind in the page would
+// shadow the prototype and section 9 would be testing a file nobody runs.
+ok(!/^  (strike|strikeMonster|effAC|applyDamage|reachable|losClear|isFlanking|mapPenalty|rollSave)\(/m.test(html),
+  "the combat core is not inlined again");
+ok(!/^function (esc|cap)\(/m.test(html), "esc and cap come from text.js, not a second copy in the page");
+// The engine's side of the seam is useless if the page stops listening.
+ok(/onEvent\(ev\)/.test(html), "the page listens for combat events");
 // Locked decision #31: never hand-edit between the gvb:social markers.
 ok(/<!-- gvb:social:start/.test(html) && /gvb:social:end -->/.test(html), "the social block is intact");
 
@@ -624,6 +638,367 @@ group("assurance and dice");
   eq(abilityMods({ boosts: { ancestry: ["con"], bgA: null, bgFree: null, key: null, free: [] }, ancestry: "dwarf" }),
     { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: -1 }, "an ancestry's fixed boosts and its flaw both apply");
 }
+
+/* ---------------- 9. the combat core (js/combat.js) ---------------- */
+/* Everything below was verified exactly once each, by a session clicking
+   through a browser, and then never again. `newCombat` stands up a board with
+   no pack, no adventure and no DOM, so these are now arithmetic. */
+group("combat core: the file itself");
+{
+  const src = fs.readFileSync(path.join(PROJECT, "js", "combat.js"), "utf8");
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  ok(!/\bdocument\b/.test(code), "js/combat.js never touches the DOM");
+  ok(!/\bsetTimeout\b/.test(code), "js/combat.js drives no clock");
+  ok(!/\bApp\./.test(code), "js/combat.js never reaches back into the page");
+  ok(!/\bwindow\b/.test(code), "js/combat.js has no window");
+}
+
+/** A combatant. Every field the core reads has a default; `over` sets the rest. */
+const mk = (over = {}) => ({
+  id: "c", name: "Someone", side: "foe", x: 0, y: 0,
+  hp: 40, hpMax: 40, tempHP: 0, ac: 18, dead: false, dying: 0, mapCount: 0,
+  saves: { fort: 8, ref: 8, will: 8 }, perception: 8,
+  conditions: [], buffs: [], attacks: [], ...over
+});
+/** A board. `cbs` doubles as the initiative order unless one is given. */
+const arena = (cbs, over = {}) => newCombat({
+  ...over,
+  active: true, cbs, order: over.order || [...cbs],
+  mapW: over.mapW ?? 6, mapH: over.mapH ?? 6,
+  walls: new Set(over.walls || []), diff: new Set(over.diff || [])
+});
+/** Pin the dice: `pin([20, 15], [10, 10])` is a d20 of 15, then a d10 of 10. */
+const pin = (...spec) => {
+  const q = spec.map(([sides, value]) => (value - 0.5) / sides);
+  setDiceSource(() => (q.length ? q.shift() : 0.5));
+};
+const weapon = (over = {}) => ({
+  name: "Longsword", bonus: 11, die: "1d8", dmgMod: 4, statusDmg: 0,
+  damageType: "slashing", traits: [], range: 1, ranged: false, ...over
+});
+
+group("combat core: geometry");
+{
+  // A 6x6 room with a pillar at (2,2) and a bog at (1,0).
+  const eng = arena([], { walls: ["2,2"], diff: ["1,0"] });
+  eq(eng.losClear({ x: 0, y: 0 }, { x: 4, y: 4 }), false, "line of sight stops at a wall on the diagonal");
+  eq(eng.losClear({ x: 0, y: 0 }, { x: 5, y: 0 }), true, "…and is clear along an open row");
+  eq(eng.losClear({ x: 2, y: 2 }, { x: 4, y: 2 }), true, "the wall a caster stands on does not block its own line");
+
+  const mover = mk({ side: "pc", x: 0, y: 3 });
+  const ally = mk({ side: "pc", x: 1, y: 3 });
+  const foe = mk({ id: "f", side: "foe", x: 0, y: 4 });
+  const e2 = arena([mover, ally, foe], { walls: ["2,2"] });
+  eq(e2.passable(-1, 3, mover), false, "off the west edge is not passable");
+  eq(e2.passable(6, 3, mover), false, "…nor off the east edge");
+  eq(e2.passable(2, 2, mover), false, "a wall is not passable");
+  eq(e2.passable(1, 3, mover), true, "an ally's square is passable");
+  eq(e2.passable(0, 4, mover), false, "an enemy's square is not");
+
+  // 5-10-5: the first diagonal costs 1, the second costs 2, and a bog costs
+  // one extra on entry.
+  const walker = mk({ side: "pc", x: 0, y: 0 });
+  const open = arena([walker]);
+  const r = open.reachable(walker, 4);
+  eq(r["1,1"].cost, 1, "the first diagonal step costs 1");
+  eq(r["2,2"].cost, 3, "the second costs 2 more — 5-10-5");
+  eq(r["3,3"].cost, 4, "and the third costs 1 again");
+  eq(r["4,0"].cost, 4, "a straight run costs one per square");
+  eq(r["5,0"], undefined, "…and nothing past the budget is reachable at all");
+  eq(open.reachable(walker, 0)["1,0"], undefined, "a budget of 0 reaches nowhere");
+  const bog = arena([walker], { diff: ["1,0"] });
+  eq(bog.reachable(walker, 4)["1,0"].cost, 2, "difficult terrain costs one extra to enter");
+}
+
+group("combat core: off-guard");
+{
+  // Flanking. Two allies on exactly opposite squares, target between them.
+  const a = mk({ id: "a", side: "pc", name: "Alis", x: 0, y: 1 });
+  const b = mk({ id: "b", side: "pc", name: "Bran", x: 2, y: 1 });
+  const t = mk({ id: "t", x: 1, y: 1, ac: 18 });
+  const eng = arena([a, b, t]);
+  eq(eng.isFlanking(a, t), true, "two allies on opposite sides of a target are flanking");
+  eq(eng.effAC(t, a).offGuard, true, "…so the target is off-guard");
+  eq(eng.effAC(t, a).ac, 16, "…and off-guard is exactly -2 AC");
+  b.x = 0; b.y = 0;
+  eq(eng.isFlanking(a, t), false, "two allies on the same side are not flanking");
+  b.x = 2; b.y = 1; b.dead = true;
+  eq(eng.isFlanking(a, t), false, "a dead ally does not flank");
+  b.dead = false; b.dying = 1;
+  eq(eng.isFlanking(a, t), false, "…nor a downed one");
+  b.dying = 0;
+  eq(eng.effAC(t, { ...a, ranged: true }).offGuard, false, "a ranged attacker gets no flanking");
+
+  // Monsters do not flank the party, and have not since the game shipped: a
+  // foe combatant is built without a `dying` field, so the `a.dying===0` test
+  // in isFlanking is `undefined===0`, and strikeMonster hands effAC a bare
+  // {id,ranged} with no x or y. Pinned as-is rather than fixed, because a
+  // refactor that also buffs every monster in the game makes the next
+  // balance regression unattributable. Locked decision #90; the fix is in
+  // the standing backlog.
+  const f1 = mk({ id: "f1", side: "foe", x: 0, y: 1 }); delete f1.dying;
+  const f2 = mk({ id: "f2", side: "foe", x: 2, y: 1 }); delete f2.dying;
+  const pc = mk({ id: "p", side: "pc", x: 1, y: 1 });
+  const e2 = arena([f1, f2, pc]);
+  eq(e2.isFlanking(f1, pc), false, "monsters do not flank today (#90) — foes carry no `dying` field");
+  eq(e2.effAC(pc, { id: "f1", ranged: false }).offGuard, false,
+    "…and strikeMonster's bare {id,ranged} has no square to flank from");
+
+  // Prone, deny-advantage, a raised shield.
+  const t2 = mk({ id: "t2", x: 4, y: 4, ac: 18 });
+  const far = mk({ id: "far", side: "pc", x: 0, y: 0 });
+  const e3 = arena([t2, far]);
+  eq(e3.effAC(t2, far).ac, 18, "an unmodified target is its own AC");
+  e3.addCond(t2, "prone", 1, undefined, true);
+  eq(e3.effAC(t2, far), { ac: 16, offGuard: true }, "prone is off-guard");
+  t2.conditions = [];
+  t2.shieldRaised = true;
+  eq(e3.effAC(t2, far).ac, 20, "a raised shield is +2 AC");
+  t2.shieldRaised = false;
+  t2.char = { specials: ["deny-advantage"] };
+  eq(e3.effAC(t2, far, { forceOffGuard: true }), { ac: 18, offGuard: true },
+    "Deny Advantage reports off-guard but keeps the -2");
+}
+
+group("combat core: Surprise Attack, Feint, Outwit");
+{
+  // Surprise Attack (Rogue 1): off-guard until the creature has acted, which
+  // is turn order in round 1 — not "the whole of round 1".
+  const rogue = mk({ id: "hero", side: "pc", name: "Vex", x: 0, y: 0, char: { specials: ["surprise-attack"] } });
+  const early = mk({ id: "e", x: 1, y: 0 });
+  const late = mk({ id: "l", x: 2, y: 0 });
+  const eng = arena([rogue, early, late], { order: [rogue, early, late], round: 1, turnIdx: 0 });
+  eq(eng.effAC(early, rogue).offGuard, true, "Surprise Attack: a foe that has not acted is off-guard");
+  eq(eng.effAC(late, rogue).offGuard, true, "…including one further down the order");
+  eng.turnIdx = 2;                       // `early` has taken its turn
+  eq(eng.effAC(early, rogue).offGuard, false, "…and stops the instant that foe has acted");
+  eq(eng.effAC(late, rogue).offGuard, true, "…while a foe still to act is off-guard on the same turn");
+  eng.turnIdx = 0; eng.round = 2;
+  eq(eng.effAC(early, rogue).offGuard, false, "Surprise Attack is round 1 only");
+
+  // Feint: this feinter's attacks only, this turn only.
+  const e2 = arena([rogue, early], { order: [rogue, early], round: 3, turnIdx: 1 });
+  early.feint = { by: "hero", round: 3, turnIdx: 1, usesLeft: 1 };
+  eq(e2.effAC(early, rogue).offGuard, true, "a plain Feint makes the next Strike off-guard");
+  eq(e2.effAC(early, rogue).offGuard, false, "…and exactly one: the second Strike is not");
+  early.feint = { by: "hero", round: 3, turnIdx: 1, usesLeft: Infinity };
+  eq([e2.effAC(early, rogue).offGuard, e2.effAC(early, rogue).offGuard, e2.effAC(early, rogue).offGuard],
+    [true, true, true], "a racket-scoundrel Feint holds for every attack this turn");
+  e2.turnIdx = 2;
+  eq(e2.effAC(early, rogue).offGuard, false, "…and expires when the turn does, not when the round does");
+  e2.turnIdx = 1;
+  eq(e2.effAC(early, { id: "someone-else", x: 1, y: 1 }).offGuard, false,
+    "…and never applies to anybody but the feinter");
+
+  // Outwit: +1 circumstance AC against your own hunted prey, and nobody else's.
+  const ranger = mk({ id: "hero", side: "pc", x: 0, y: 0, ac: 17, char: { specials: ["edge-outwit"] } });
+  const prey = mk({ id: "prey", x: 3, y: 3 });
+  const other = mk({ id: "other", x: 4, y: 4 });
+  const e3 = arena([ranger, prey, other], { huntPreyId: "prey" });
+  eq(e3.effAC(ranger, prey).ac, 18, "Outwit is +1 AC against the ranger's own hunted prey");
+  eq(e3.effAC(ranger, other).ac, 17, "…and nothing at all against anything else");
+  e3.huntPreyId = null;
+  eq(e3.effAC(ranger, prey).ac, 17, "…and nothing when no prey is marked");
+}
+
+group("combat core: MAP");
+{
+  const eng = arena([]);
+  const plain = { traits: [] }, agile = { traits: ["agile"] };
+  const cb = mk({ id: "hero", side: "pc" });
+  eq([0, 1, 2, 3].map(n => { cb.mapCount = n; return eng.mapPenalty(cb, plain); }),
+    [0, -5, -10, -10], "MAP is 0 / -5 / -10, and stops at -10");
+  eq([0, 1, 2, 3].map(n => { cb.mapCount = n; return eng.mapPenalty(cb, agile); }),
+    [0, -4, -8, -8], "agile MAP is 0 / -4 / -8");
+  // Flurry (Ranger edge): -3/-6, -2/-4 agile, against the hunted prey only.
+  const prey = mk({ id: "prey" });
+  cb.char = { specials: ["edge-flurry"] };
+  const e2 = arena([cb, prey], { huntPreyId: "prey", sel: prey });
+  eq([1, 2].map(n => { cb.mapCount = n; return e2.mapPenalty(cb, plain); }), [-3, -6], "Flurry MAP is -3 / -6");
+  eq([1, 2].map(n => { cb.mapCount = n; return e2.mapPenalty(cb, agile); }), [-2, -4], "…and -2 / -4 agile");
+  e2.sel = mk({ id: "not-the-prey" });
+  cb.mapCount = 1;
+  eq(e2.mapPenalty(cb, plain), -5, "Flurry does not apply to anything but the prey");
+}
+
+group("combat core: damage");
+{
+  const eng = arena([]);
+  const t = mk({ side: "pc", hp: 40, hpMax: 40, char: { resists: [] } });
+  eq(eng.applyDamage(t, 10, "slashing"), 10, "damage is damage");
+  eq(t.hp, 30, "…and comes off HP");
+  t.weaknesses = [{ type: "fire", value: 5 }];
+  eq(eng.applyDamage(t, 10, "fire"), 15, "a weakness adds its value");
+  t.resistances = [{ type: "cold", value: 4 }];
+  eq(eng.applyDamage(t, 10, "cold"), 6, "a resistance subtracts its value");
+  eq(eng.applyDamage(t, 2, "cold"), 0, "…and never below zero");
+  t.immunities = ["poison"];
+  const hpBefore = t.hp;
+  eq(eng.applyDamage(t, 99, "poison"), 0, "an immunity is a flat zero");
+  eq(t.hp, hpBefore, "…and does not touch HP");
+  t.tempHP = 6;
+  eng.applyDamage(t, 10, "slashing");
+  eq(t.tempHP, 0, "temporary HP absorbs first");
+  eq(t.hp, hpBefore - 4, "…and only the remainder lands");
+
+  // Physical resistance covers all three physical types; a named one does not.
+  const r = mk({ resistances: [{ type: "physical", value: 3 }], hp: 40, hpMax: 40 });
+  const e2 = arena([r]);
+  eq(["slashing", "piercing", "bludgeoning"].map(d => e2.applyDamage(r, 10, d)), [7, 7, 7],
+    "resist physical covers slashing, piercing and bludgeoning");
+  eq(e2.applyDamage(r, 10, "fire"), 10, "…and not fire");
+
+  // Dying, wounded, and the second fall.
+  const pc = mk({ side: "pc", hp: 5, hpMax: 40, char: { resists: [] } });
+  const e3 = arena([pc]);
+  e3.applyDamage(pc, 20, "slashing");
+  eq([pc.hp, pc.dying, pc.wounded], [0, 1, 1], "a PC at 0 HP is dying 1, wounded 1");
+  pc.hp = 5; pc.dying = 0;
+  e3.applyDamage(pc, 20, "slashing");
+  eq([pc.dying, pc.wounded], [2, 2], "…and falls at dying 2 the second time");
+  // A foe at 0 HP dies outright.
+  const foe = mk({ id: "f", side: "foe", hp: 3, hpMax: 20, name: "Ghoul" });
+  const e4 = arena([foe]);
+  e4.applyDamage(foe, 5, "slashing");
+  ok(foe.dead && foe.hp === 0, "a foe at 0 HP is destroyed");
+  ok(e4.events.some(ev => ev.text.includes("Ghoul") && ev.text.includes("destroyed")),
+    "…and says so in the Chronicle");
+
+  // heal caps at hpMax and pulls a dying character back.
+  const hurt = mk({ side: "pc", hp: 10, hpMax: 40, dying: 2 });
+  const e5 = arena([hurt]);
+  eq(e5.heal(hurt, 100), 30, "healing is capped at missing HP");
+  eq(hurt.dying, 0, "…and clears dying");
+}
+
+group("combat core: Shield Block");
+{
+  const pc = mk({ side: "pc", hp: 40, hpMax: 40, shieldRaised: true, reactionUsed: false,
+                  name: "Ward", char: { specials: ["shield-block"], resists: [] } });
+  const eng = arena([pc]);
+  eq(eng.applyDamage(pc, 12, "slashing"), 7, "Shield Block eats 5 of a physical hit");
+  eq(pc.reactionUsed, true, "…by spending the reaction");
+  eq(eng.applyDamage(pc, 12, "slashing"), 12, "…which is gone for the rest of the round: once only");
+  pc.reactionUsed = false;
+  eq(eng.applyDamage(pc, 3, "slashing"), 0, "a hit smaller than the block is absorbed whole");
+  pc.reactionUsed = false;
+  eq(eng.applyDamage(pc, 12, "fire"), 12, "Shield Block is physical damage only");
+  eq(pc.reactionUsed, false, "…and does not burn the reaction on fire");
+  const noShield = mk({ side: "pc", hp: 40, hpMax: 40, shieldRaised: false,
+                        char: { specials: ["shield-block"], resists: [] } });
+  const e2 = arena([noShield]);
+  eq(e2.applyDamage(noShield, 12, "slashing"), 12, "…and does nothing with the shield down");
+}
+
+group("combat core: strikes");
+{
+  // A plain hit: d20 of 15 against AC 5, then 1d8 of 6, +4 from the weapon.
+  const att = mk({ id: "hero", side: "pc", name: "Alis", x: 0, y: 0, char: { specials: [], resists: [] } });
+  const def = mk({ id: "t", name: "Ghoul", x: 3, y: 3, ac: 5, hp: 60, hpMax: 60 });
+  const eng = arena([att, def]);
+  pin([20, 15], [8, 6]);
+  eq(eng.strike(att, def, weapon()), 3, "a d20 of 15 at +11 against AC 5 is a critical success");
+  eq(def.hp, 60 - 20, "…and a crit doubles (6+4) to 20");
+  eq(att.mapCount, 1, "…and raises MAP");
+  const roll = eng.events.find(ev => ev.kind === "roll");
+  ok(roll && roll.d20 === 15 && roll.deg === 3, "the strike emits a roll event carrying its d20 and degree");
+  ok(roll.text.includes("Alis") && roll.text.includes("Ghoul"), "…naming both sides");
+
+  // A miss raises MAP; an Exacting Strike miss does not.
+  att.mapCount = 0; def.hp = 60;
+  pin([20, 2]);
+  eq(eng.strike(att, def, weapon({ bonus: 0 }), { exacting: true }), 1, "a d20 of 2 at +0 against AC 60 misses");
+  eq(att.mapCount, 0, "Exacting Strike: a miss does not raise MAP");
+  pin([20, 2]);
+  eng.strike(att, def, weapon({ bonus: 0 }));
+  eq(att.mapCount, 1, "…but a plain miss does");
+  att.mapCount = 0;
+  pin([20, 2]);
+  eng.strike(att, def, weapon({ bonus: 0 }), { noMAP: true });
+  eq(att.mapCount, 0, "…and a Reactive Strike never does");
+
+  // Crossbow Ace: 1d10 and +2, on prey or after reloading, and on neither
+  // otherwise. The die is pinned at its maximum so 1d10 and 1d8 differ.
+  const ace = mk({ id: "hero", side: "pc", x: 0, y: 0, char: { specials: ["crossbow-ace"], resists: [] } });
+  const prey = mk({ id: "prey", x: 3, y: 3, ac: 16, hp: 99, hpMax: 99 });
+  const e2 = arena([ace, prey], { huntPreyId: "prey" });
+  const bow = weapon({ name: "Crossbow", die: "1d8", dmgMod: 0, ranged: true, range: 12, traits: ["reload-1"] });
+  pin([20, 11], [10, 10]);
+  e2.strike(ace, prey, bow);
+  eq(prey.hp, 99 - 12, "Crossbow Ace against hunted prey: 1d10 and +2");
+  ace.mapCount = 0; prey.hp = 99; e2.huntPreyId = null; ace.reloadedThisTurn = true;
+  pin([20, 11], [10, 10]);
+  e2.strike(ace, prey, bow);
+  eq(prey.hp, 99 - 12, "…and the same after reloading, with no prey marked");
+  ace.mapCount = 0; prey.hp = 99; ace.reloadedThisTurn = false;
+  pin([20, 11], [8, 8]);
+  e2.strike(ace, prey, bow);
+  eq(prey.hp, 99 - 8, "…and neither trigger means a plain 1d8 with no +2");
+  ace.mapCount = 0; prey.hp = 99; ace.reloadedThisTurn = true;
+  pin([20, 11], [8, 8]);
+  e2.strike(ace, prey, weapon({ name: "Shortbow", die: "1d8", dmgMod: 0, ranged: true, range: 12 }));
+  eq(prey.hp, 99 - 8, "…and it never fires on a weapon without reload-1");
+
+  // Sneak attack needs off-guard AND a qualifying weapon.
+  const rogue = mk({ id: "hero", side: "pc", x: 0, y: 0, char: { specials: ["sneak-attack"], resists: [] } });
+  const mark = mk({ id: "m", x: 1, y: 0, ac: 16, hp: 99, hpMax: 99 });
+  const e3 = arena([rogue, mark]);
+  const dagger = weapon({ name: "Dagger", die: "1d4", dmgMod: 0, traits: ["agile", "finesse"] });
+  pin([20, 11], [4, 4]);
+  e3.strike(rogue, mark, dagger);
+  eq(mark.hp, 99 - 4, "no sneak attack against a target that is not off-guard");
+  rogue.mapCount = 0; mark.hp = 99;
+  pin([20, 11], [4, 4], [6, 6]);
+  e3.strike(rogue, mark, dagger, { forceOffGuard: true });
+  eq(mark.hp, 99 - 10, "…and 1d6 precision on top when it is");
+  rogue.mapCount = 0; mark.hp = 99;
+  pin([20, 11], [8, 8]);
+  e3.strike(rogue, mark, weapon({ die: "1d8", dmgMod: 0 }), { forceOffGuard: true });
+  eq(mark.hp, 99 - 8, "…and none at all on a weapon that is neither agile, finesse nor ranged");
+
+  // strikeMonster: MAP, the agile variant, and Nimble Dodge.
+  const foe = mk({ id: "f", side: "foe", name: "Ghast", x: 0, y: 0 });
+  const hero = mk({ id: "hero", side: "pc", name: "Alis", x: 1, y: 0, ac: 18, hp: 40, hpMax: 40,
+                    char: { specials: ["nimble-dodge"], resists: [] } });
+  const e4 = arena([foe, hero]);
+  pin([20, 10]);
+  e4.strikeMonster(foe, hero, { name: "Claw", bonus: 9, die: "1d6", traits: [], damageType: "slashing" });
+  ok(e4.events.some(ev => ev.text.includes("Nimbly Dodges")), "Nimble Dodge fires on the first attack");
+  eq([hero.nimbleUsed, hero.reactionUsed], [true, true], "…and spends both the use and the reaction");
+  const seal = e4.events.filter(ev => ev.kind === "roll").pop();
+  ok(seal.math.includes("vs AC 20"), "…which is +2 AC on the roll the player sees");
+  eq(foe.mapCount, 1, "a monster's Strike raises its own MAP");
+}
+
+group("combat core: saves and the event log");
+{
+  const t = mk({ id: "t", name: "Alis", saves: { fort: 9, ref: 7, will: 5 } });
+  const eng = arena([t]);
+  pin([20, 10]);
+  eq(eng.rollSave(t, "reflex", 17, "Fireball"), 2, "a d20 of 10 at +7 meets DC 17 — a success");
+  eng.addCond(t, "frightened", 2, undefined, true);
+  eq(eng.saveMod(t, "reflex"), 5, "frightened is a penalty to every save");
+  eng.addCond(t, "clumsy", 1, undefined, true);
+  eq(eng.saveMod(t, "reflex"), 4, "…and clumsy hits Reflex only");
+  eq(eng.saveMod(t, "will"), 3, "…which is why Will is still only down by the frightened 2");
+
+  // Every name the engine interpolates goes through esc, because a pack is a
+  // file anyone can write.
+  const nasty = mk({ id: "n", side: "foe", name: "<img src=x onerror=1>", hp: 1, hpMax: 1 });
+  const e2 = arena([nasty]);
+  e2.applyDamage(nasty, 5, "slashing");
+  ok(e2.events.every(ev => !ev.text.includes("<img")), "a combatant's name is escaped in every event it appears in");
+  ok(e2.events.some(ev => ev.text.includes("&lt;img")), "…and is still there, escaped");
+
+  // onEvent is the whole of the page's side of the seam.
+  const seen = [];
+  const e3 = arena([mk({ id: "x", name: "Bran" })], { onEvent: ev => seen.push(ev) });
+  e3.log("hello");
+  eq(seen.length, 1, "onEvent receives every event");
+  eq(seen[0], { kind: "log", text: "hello", cls: "combat" }, "…as {kind, text, cls}");
+  eq(e3.events.length, 1, "…and the engine keeps its own copy");
+}
+setDiceSource();
 
 /* ---------------- report ---------------- */
 console.log(`\n${pass} passed, ${fails.length} failed`);

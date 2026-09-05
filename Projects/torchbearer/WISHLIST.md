@@ -55,7 +55,12 @@ is the seven-check `torchbearer` entry in `Tools/board-check/play-games.mjs`.
   `PROF_VAL`, `SKILLS`, `CHAR_LEVEL`, `Dice` with an injectable source,
   `activeEffects`, `abilityMods`, `finalizeCharacter`, `skillMod`, and
   Assurance's floor. Imports `Registry` and nothing else.
-- **`test/smoke.mjs` (633, 227 checks)** — nine groups: page wiring, shipped
+- **`js/combat.js` (304)** — the rules half of combat, out of the page in
+  Phase 2 increment 1. Geometry, conditions, the AC and attack math, damage,
+  saves, `strike` and `strikeMonster`. No `document`, no `setTimeout`, no
+  `App.`; it emits `{kind, text, cls}` events the page renders (locked #89).
+- **`js/text.js` (10)** — `esc` and `cap`, imported by both sides (locked #91).
+- **`test/smoke.mjs` (1008, 335 checks)** — thirteen groups: page wiring, shipped
   content validates, the manifest matches what is on disk, the validator
   rejects deliberately broken packs, the save slot, repair, the eight core
   classes at level 3, the effects DSL row by row, Assurance and dice. It reads
@@ -70,9 +75,10 @@ And then the page, in one file, at the line numbers Phase 1 left behind:
 zero network requests; **1207–1229** what is left of the engine header, the
 display names and `newBuild`, the rules math itself having moved to
 `js/rules.js`; **1230–1731** `Builder` (502 lines), the nine-step forge;
-**1732–2636** `Combat` (905 lines), with Dijkstra movement, Bresenham line of
-sight, `effAC`, `strike`, `castAt` and `aiTurn` interleaved with thirteen
-render methods; **2637–3054** `App` (418).
+**1732–2397** `Combat` (666 lines), now the view half — `start`, the turn
+loop, the action bar, `castAt` and `aiTurn` and the thirteen render methods,
+with the geometry and the AC and damage math moved to `js/combat.js`;
+**2398–2815** `App` (418).
 
 The load-bearing habits are real and stated in the code. **Data, not code**: a
 new class is a JSON object, and 35 `specials.includes("…")` checks naming 31
@@ -166,6 +172,16 @@ Open and unclaimed. Add here rather than starting a new list.
   outside it can act between two of its steps.
 
 **Combat rules**
+- **Monsters cannot flank.** Foe combatants are built in `Combat.start` with no
+  `dying` field, so `isFlanking`'s `a.dying===0` partner test is
+  `undefined===0` and never passes; and `strikeMonster` hands `effAC` a bare
+  `{id, ranged}` with no `x` or `y`, so the geometry is `NaN` first. PF2e's
+  flanking rule is symmetric. Pinned as-is by Phase 2 increment 1 with a test
+  naming locked decision #90, because fixing it inside a refactor makes the
+  next balance regression unattributable. The fix is `dying:0` in the foe
+  literal plus passing the real combatant into `effAC`; it needs a balance pass
+  behind it, because it makes every paired melee encounter in every pack
+  meaningfully harder.
 - Bursts, emanations and cones never call `losClear`: a Fireball rounds a
   corner and goes through a wall.
 - `armSpell` gives `cone` and `line` the same `wedge`, and `castAt` resolves
@@ -263,44 +279,88 @@ into an 8.
 *Leaned on:* `js/registry.js`, `test/smoke.mjs`. *Save:* none. *Shipped under:*
 **Claude Opus 5**.
 
-## Phase 2 — Combat comes out of the page
+## Phase 2 — Combat comes out of the page — INCREMENT 1 SHIPPED
 
-**905 lines of rules engine and thirteen render methods are the same object.**
+**The half a Strike passes through is out. The half that needs a DOM or a clock
+is not.**
 
-`Combat` interleaves `strike`, `castAt` and `aiTurn` with `renderGrid`,
-`renderBar` and `paintHighlights`, calls `App.log` from inside damage
-resolution, and drives its own clock with `setTimeout`. Split it by dependency,
-not by feature: `js/combat.js` owns state and rules and returns *events*; the
-page owns the DOM and the clock. Largest and riskiest change in the project,
-and the reason to make it is that every phase after it is a rules change nobody
-can otherwise prove.
+`Combat` was 905 lines with the rules interleaved with thirteen render methods.
+Increment 1 cut it by dependency: `js/combat.js` (304 lines) owns geometry,
+conditions, the AC and attack math, damage, saves and both strike paths, and
+has no `document`, no `setTimeout` and no `App.` in it. The page is 3,056 lines
+down to 2,817, and `Combat` there is 666 lines. `test/smoke.mjs` goes from 227
+checks to 335.
 
-- [ ] **`js/combat.js`, DOM-free.** Grid, `reachable`, `losClear`, `passable`,
-  `effAC`, `isFlanking`, `applyDamage`, `addCond`/`decCond`, `strike`,
-  `strikeMonster`, `castAt`, `resolveTargeted`, `rollSave`, and the
-  `beginTurn`/`endTurn`/`nextTurn`/`checkEnd` loop. No `document`, no
-  `setTimeout`, no `App.` — `aiTurn` returns the next action it wants and the
-  page paces it with the same 300–600ms delays, so a test runs a monster's
-  whole turn in a millisecond.
-- [ ] **An event log instead of `App.log`.** Every call site pushes
-  `{kind, text, cls}` and the page renders them into the Chronicle exactly as
-  today. This is the seam a test reads its assertions off.
-- [ ] **A view adapter stays in the page:** `renderTracker`, `renderGrid`,
-  `renderBar`, `paintHighlights`, `floatText`, `hint`, `diceFlash`, all reading
-  the module's state. Nothing in `js/` knows a colour.
+**Done:**
+
+- [x] **`js/combat.js`, DOM-free.** `key`, `dist`, `occupied`, `passable`,
+  `losClear`, `reachable`, `cur`, `alive`, `spend`, `kill`, `condVal`,
+  `addCond`, `decCond`, `buffSum`, `atkMod`, `effAC`, `isFlanking`, `saveMod`,
+  `applyDamage`, `heal`, `meleeIdx`, `moveBudget`, `mapPenalty`, `strike`,
+  `strikeMonster` and `rollSave`, moved verbatim but for the two seams below.
+  The page's `Combat` is `newCombat()` with its view methods assigned over the
+  top, so `this` is still one object and not one call site changed.
+- [x] **An event log instead of `App.log`** (locked #89). `this.log(text)`
+  pushes `{kind, text, cls}` onto `this.events` and hands it to `onEvent`;
+  `this.seal(title, d20, math, deg)` pushes a `{kind:"roll"}` carrying the
+  arithmetic and the degree. The page's `onEvent` is four lines and turns both
+  back into `App.log` and `App.rollSeal`, so the Chronicle reads as it did.
+  `floatText` is a no-op in the module; the page overrides it. `start` clears
+  `events` per encounter.
+- [x] **The view adapter stayed in the page,** untouched: `renderAll`,
+  `renderTracker`, `renderGrid`, `renderBar`, `paintHighlights`, `targets`,
+  `floatText`, `hint`. Nothing in `js/` knows a colour.
+- [x] **`esc` and `cap` are `js/text.js`** (locked #91), imported by the module
+  and the page. `cap3` and `ord` stayed in the page.
+- [x] **Most of the by-hand list is pinned.** Off-guard from flanking, from
+  `surprise-attack` against turn order rather than round number, from a plain
+  Feint (one Strike) and a `racket-scoundrel` Feint (every attack, expiring on
+  `turnIdx`); `edge-outwit`'s +1 AC against its own prey and nothing else;
+  `crossbow-ace`'s 1d10 and +2 on either trigger and on neither otherwise, and
+  never without `reload-1`; MAP, its agile variant and Flurry's; Shield Block
+  once per turn, physical only, capped at 5; sneak attack needing both
+  off-guard and a qualifying weapon; 5-10-5 diagonals, difficult terrain and
+  walls. Twenty guard-rails were broken on purpose (#34) and each exited 1.
+
+**Left for increment 2:**
+
+- [ ] **The turn loop.** `beginTurn`, `endTurn`, `nextTurn`, `checkEnd` and
+  `finish` are still in the page, because `beginTurn` paces a recovery check
+  with `setTimeout` and `finish` calls `App.autosave` and the scene callbacks.
+  The rules half of each (the recovery roll, persistent damage, the action
+  budget, the buff and condition tick) is what moves.
+- [ ] **`aiTurn` returns the next action it wants** instead of chaining
+  `setTimeout(step, 450)` closures, so a test can run a monster's whole turn in
+  a millisecond and the page keeps the 300–600ms pacing.
+- [ ] **`resolveTargeted` and the spells.** `castAt`, `armSpell`, `spendSpell`,
+  `effectFor` and `spellMenu`; `resolveTargeted` still calls `App.rollCheck`
+  for Demoralize, Feint and Battle Medicine, which wants the same seam
+  `this.seal` already is.
 - [ ] **A headless encounter harness in `smoke.mjs`:** load `ADVENTURE_PACK`,
   build a hero through `rules.js`, start `barrowmoor`/`enc-moor`, drive it.
-- [ ] **Pin what three rounds found by hand.** Off-guard from flanking, from
-  `surprise-attack` (turn order, not round number), from a plain Feint and a
-  `racket-scoundrel` Feint (expiring on `turnIdx` change); `edge-outwit`'s +1 AC
-  against its own hunted prey only; `crossbow-ace`'s 1d10 and +2 on either
-  trigger; MAP and its agile variant; Shield Block granting once. Each was
-  verified once, in a browser, by a session that is over.
+  This needs `start` and the turn loop out first — `start` reads `App.party()`
+  and `App.flags` and writes the whole combat DOM.
+- [ ] The remaining by-hand row: off-guard from `surprise-attack` is pinned
+  against turn order, but the *scripted-ambush* `this.surprise` flag is only
+  covered incidentally. Pin it with the rest of `start`.
+
+**What it found.** Monsters cannot flank the party, and have not been able to
+since the game shipped — a foe combatant is built with no `dying` field, so
+`isFlanking`'s `a.dying===0` partner test is `undefined===0`, and
+`strikeMonster` hands `effAC` a bare `{id, ranged}` with no square to flank
+from. PF2e's rule is symmetric, so this is a real divergence; it is pinned
+as-is with a test that names locked decision #90 rather than fixed here,
+because a refactor that also buffs every monster in the game makes the next
+balance regression unattributable. The fix is in the standing backlog. The
+Thornwake bridge scene renders Sera Voss at AC 18 and 52 HP and Mercy Vane at
+AC 19 and 38/42 in a real headless Chromium, the Vanguard's Watch grid opens at
+91 cells and 5 tokens, and two full initiative passes of monster AI resolve
+through the new module with no page errors, before and after the cut.
 
 *Leans on:* Phase 1's `rules.js`. *Save:* none — combat state has never been
 serialized and is not starting now. *Model:* **Claude Fable 5.1** — a large
 refactor of entangled code whose only safety net today is a human clicking
-through a browser.
+through a browser. *Increment 1 shipped under:* **Claude Opus 5.**
 
 ## Phase 3 — Reactions, reach, and an interrupt point
 
