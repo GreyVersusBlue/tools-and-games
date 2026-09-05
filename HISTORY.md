@@ -946,6 +946,33 @@ Two of them have moved since they were written:
    page, because only the page uses them.
    *Source: Torchbearer Phase 2, increment 1.*
 
+92. **`defer(fn, ms)` is the combat engine's clock, and the page owns the
+   wait.** Every `setTimeout` the engine used to call — the recovery pause,
+   the 600ms before a monster's turn, the 300–600ms between its actions, the
+   900ms victory beat — is `this.defer(fn, ms)`. The module's `defer` calls
+   `fn` at once, so a monster's whole turn, and every monster turn after it
+   until a hero's comes round, resolves inside one synchronous call; the
+   page's is `setTimeout(fn, ms)`, and its pacing did not change. `aiStep`
+   returns `{action, wait}` rather than scheduling anything, so the pause is
+   a number the engine asks for and a test can assert (`600, 550, 550, 300`
+   per hound), not a side effect it takes. The alternative — a promise-based
+   turn loop — was rejected because it would have changed every call site in
+   the page and made the engine `async` for the sake of a test that does not
+   need to wait. *Source: Torchbearer Phase 2, increment 2.*
+
+93. **`start` takes the party and the flags as arguments; the party builders
+   are exported functions.** `Combat.start(encId, adv, {party, flags,
+   onVictory, onDefeat})` replaces reading `App.party()` and `App.flags`. The
+   flags object is passed by reference and mutated — `surprise-round` and
+   `fatigued-start` are deleted off it — because the page relies on a
+   consumed flag staying consumed across the scene graph, and copying it
+   would have silently changed that. `heroCombatant(ch)` and
+   `companionCombatant(id)` moved out of `App` into `js/combat.js` so a test
+   builds exactly the party the page does; `App.heroCombatant()` is a
+   three-line cache around the first. `start` still writes nothing to the
+   DOM: the grid markup it used to `setCenter` is the page's `mount()` hook.
+   *Source: Torchbearer Phase 2, increment 2.*
+
 
 ---
 

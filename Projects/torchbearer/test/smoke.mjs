@@ -14,10 +14,12 @@
 //      checked against the numbers the Player Core prints, every row of the
 //      effects DSL in guide §6 pinned to what the engine actually does with it
 //      (including the three rows that do nothing), and Assurance's floor.
-//   4. The combat core in js/combat.js — the geometry, the AC and attack math,
-//      damage, and the two strike paths, driven headless. Everything in section
-//      9 had been verified exactly once each, by a session clicking through a
-//      browser, and never again.
+//   4. The combat engine in js/combat.js — the geometry, the AC and attack math,
+//      damage, and the two strike paths (section 9), then the turn loop, `start`,
+//      the player's actions, the spells, the monster AI and two whole encounters
+//      played headless from the real packs (section 10). Everything in both had
+//      been verified exactly once each, by a session clicking through a browser,
+//      and never again.
 //
 // Nothing here needs a browser. Anything that only breaks in a browser is
 // verified by hand and written up in the session notes.
@@ -40,7 +42,7 @@ const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, Dice, setDiceSource, activeEffec
         finalizeCharacter, skillMod, assuranceFloor, assuranceDegree } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
-const { newCombat } = await mod("js/combat.js");
+const { newCombat, heroCombatant, companionCombatant } = await mod("js/combat.js");
 
 /* ---------------- harness ---------------- */
 let pass = 0; const fails = [];
@@ -114,6 +116,16 @@ ok(!/^const (Dice|PROF_VAL|SKILLS|CHAR_LEVEL) ?=/m.test(html), "the rules consta
 // shadow the prototype and section 9 would be testing a file nobody runs.
 ok(!/^  (strike|strikeMonster|effAC|applyDamage|reachable|losClear|isFlanking|mapPenalty|rollSave)\(/m.test(html),
   "the combat core is not inlined again");
+ok(!/^  (beginTurn|endTurn|nextTurn|checkEnd|aiTurn|aiStep|castAt|armSpell|spendSpell|effectFor|spellRows|resolveTargeted|doMove|provokeAlong|actionClick|cellClick|tokenClick|targets|check)\(/m.test(html)
+   && !/^  start\(encId/m.test(html) && !/^  finish\(victory\)/m.test(html),
+  "the turn loop, the actions, the spells and the AI are not inlined again");
+// What is left of Combat in the page is a view. If it rolls a die, applies
+// damage or reaches for the clock outside its two hooks, a rule has crept back.
+const pageCombat = html.slice(html.indexOf("const Combat = Object.assign(newCombat(), {"), html.indexOf("const App = {"));
+ok(pageCombat.length > 0 && !/\bDice\.|applyDamage|addCond|\.spend\(|strike\(/.test(pageCombat), "the page's Combat rolls no dice, deals no damage and spends no actions");
+eq((pageCombat.match(/setTimeout/g) || []).length, 2, "…and its only two setTimeouts are defer and the floating number");
+ok(!/\{id:"hero",side:"pc"/.test(html) && !/\{id:"comp-"\+id/.test(html), "the party builders come from combat.js, not a second copy in the page");
+ok(!/App\.rollCheck\(`\$\{cb\.name\}/.test(html), "no combat action rolls through App.rollCheck any more");
 ok(!/^function (esc|cap)\(/m.test(html), "esc and cap come from text.js, not a second copy in the page");
 // The engine's side of the seam is useless if the page stops listening.
 ok(/onEvent\(ev\)/.test(html), "the page listens for combat events");
@@ -998,6 +1010,925 @@ group("combat core: saves and the event log");
   eq(seen[0], { kind: "log", text: "hello", cls: "combat" }, "…as {kind, text, cls}");
   eq(e3.events.length, 1, "…and the engine keeps its own copy");
 }
+
+/* ---------------- 10. the combat engine, second cut ---------------- */
+/* Increment 2 took the turn loop, `start`, the player's actions, the spells
+   and the monster AI out of the page. The clock is `defer`, which here runs
+   its callback at once, so a monster's whole turn — and every monster turn
+   after it — resolves inside one synchronous call. */
+group("combat engine: the seams");
+{
+  const eng = arena([mk({ id: "t", side: "pc" })]);
+  const order = [];
+  eng.defer(() => order.push("ran"), 700);
+  eq(order, ["ran"], "the engine's own defer runs the callback at once, whatever the wait");
+  pin([20, 12]);
+  const r = eng.check("Someone Demoralizes Nobody", 3, 15);
+  eq(r, { d20: 12, total: 15, deg: 2 }, "check rolls one d20 against a DC and returns the degree");
+  eq(eng.events.at(-1).kind, "roll", "…and it goes through the seal like every other d20");
+  eq(eng.events.at(-1).math, "12+3 = 15 vs DC 15", "…with the arithmetic the page prints");
+  // The view hooks exist and do nothing. A test never has to stub them.
+  for (const h of ["renderAll", "hint", "toast", "mount", "autosave", "floatText"])
+    eq(eng[h]("x"), undefined, `${h} is a no-op the page overrides`);
+}
+
+group("combat engine: the turn loop");
+{
+  const hooks = () => { const h = { victory: 0, defeat: 0, saves: 0 };
+    return { h, enc: { name: "The Test" }, onVictory: () => h.victory++, onDefeat: () => h.defeat++, autosave: () => h.saves++ }; };
+  // A turn starts with a clean slate and three actions.
+  {
+    const pc = mk({ id: "p", side: "pc", reactionUsed: true, shieldRaised: true, nimbleUsed: true, mapCount: 2, flourishUsed: true, hexUsed: true, reloadedThisTurn: true });
+    const foe = mk({ id: "f" });
+    const eng = arena([pc, foe], hooks());
+    eng.beginTurn(0);
+    eq([pc.reactionUsed, pc.shieldRaised, pc.nimbleUsed, pc.mapCount, pc.flourishUsed, pc.hexUsed, pc.reloadedThisTurn],
+      [false, false, false, 0, false, false, false], "beginTurn resets every per-turn flag");
+    eq(eng.actions, 3, "…and deals three actions");
+    eq([eng.armed, eng.sel], [null, null], "…with nothing armed and nothing selected");
+  }
+  // Stunned eats actions and goes away; slowed just eats them.
+  {
+    const pc = mk({ id: "p", side: "pc", conditions: [{ c: "stunned", v: 2 }] });
+    const eng = arena([pc, mk({ id: "f" })], hooks());
+    eng.beginTurn(0);
+    eq(eng.actions, 1, "stunned 2 leaves one action");
+    eq(pc.conditions, [], "…and the stun is spent by taking them");
+    const zombie = mk({ id: "z", x: 5, y: 5, slowedBase: 1, conditions: [{ c: "slowed-feet", v: 1 }] });
+    const e3 = arena([zombie, mk({ id: "p", side: "pc" })], hooks());
+    e3.aiTurn = function(){ }; // hold the AI so the budget can be read
+    e3.beginTurn(0);
+    eq(e3.actions, 1, "a shambler (slowed 1) with slowed-feet 1 gets one action");
+    zombie.slowedBase = 3; e3.beginTurn(0);
+    eq(e3.actions, 0, "…and the budget never goes below zero");
+  }
+  // Recovery checks. DC is 10 + dying; a natural 1 slips two, and nothing here
+  // reads Dice.degree — a natural 20 is just a 20.
+  {
+    const down = mk({ id: "d", side: "pc", name: "Alis", hp: 0, dying: 1, wounded: 1 });
+    const up = mk({ id: "u", side: "pc", name: "Bran" });
+    const foe = mk({ id: "f" });
+    const eng = arena([down, up, foe], hooks());
+    pin([20, 11]); eng.beginTurn(0);
+    eq(down.dying, 0, "an 11 against DC 11 is a success: dying 1 becomes 0");
+    eq(down.hp, 1, "…and the hero wakes with 1 HP");
+    ok(eng.events.some(ev => /regains consciousness/.test(ev.text)), "…which the Chronicle announces");
+    eq(eng.cur(), down, "…and then takes the rest of the turn");
+    eq(eng.actions, 3, "…with all three actions");
+
+    down.hp = 0; down.dying = 2;
+    pin([20, 12]); eng.beginTurn(0);
+    eq(down.dying, 1, "a 12 against DC 12 is a success: dying 2 becomes 1");
+    eq(eng.cur(), up, "…and still dying, the turn passes on at once through defer");
+
+    down.dying = 1;
+    pin([20, 5]); eng.beginTurn(0);
+    eq(down.dying, 2, "a 5 against DC 11 is a failure: dying 1 becomes 2");
+    pin([20, 1]); eng.beginTurn(0);
+    eq(down.dying, 4 - 0, "a natural 1 slips two: dying 2 becomes 4…");
+    eq(down.dead, true, "…and dying 4 is death");
+    ok(eng.events.some(ev => /falls, and does not rise/.test(ev.text)), "…announced as the page always has");
+
+    const tough = mk({ id: "t", side: "pc", name: "Cass", hp: 0, dying: 3, char: { specials: ["diehard"] } });
+    const e2 = arena([tough, up, foe], hooks());
+    pin([20, 5]); e2.beginTurn(0);
+    eq([tough.dying, tough.dead], [4, false], "Diehard survives dying 4…");
+    pin([20, 5]); e2.beginTurn(0);
+    eq(tough.dead, true, "…and dies at 5");
+  }
+  // Persistent damage ticks at the start of the turn and ends on a 15.
+  {
+    const pc = mk({ id: "p", side: "pc", hp: 20, conditions: [{ c: "persistent", formula: "3", dtype: "fire", dur: 99 }] });
+    const eng = arena([pc, mk({ id: "f" })], hooks());
+    pin([20, 14]); eng.beginTurn(0);
+    eq(pc.hp, 17, "persistent fire 3 burns for 3 at the start of the turn");
+    eq(pc.conditions.length, 1, "…and a 14 on the flat check leaves it burning");
+    pin([20, 15]); eng.beginTurn(0);
+    eq(pc.hp, 14, "…it burns again");
+    eq(pc.conditions, [], "…and a 15 puts it out");
+    ok(eng.events.some(ev => /The fire afflicting/.test(ev.text)), "…with a line saying so");
+    const frail = mk({ id: "q", hp: 2, conditions: [{ c: "persistent", formula: "3", dtype: "fire", dur: 99 }] });
+    const e2 = arena([mk({ id: "p", side: "pc" }), frail, mk({ id: "g", x: 5, y: 5 })], hooks());
+    e2.aiTurn = function(){ }; // hold the AI: this is about the tick, not the turn
+    e2.beginTurn(1);
+    eq(frail.dead, true, "a foe that burns to death at the top of its turn never acts");
+    eq(e2.cur().id, "g", "…and the turn passes");
+  }
+  // The end of a turn ticks buffs and conditions.
+  {
+    const pc = mk({ id: "p", side: "pc",
+      buffs: [{ name: "Bless", duration: 2 }, { name: "Shield", duration: 1 }, { name: "Sure Strike", fortune: true }],
+      conditions: [{ c: "frightened", v: 2 }, { c: "sickened", v: 1 }, { c: "clumsy", v: 1, dur: 2 }, { c: "enfeebled", v: 1, dur: 1 }, { c: "fatigued", v: 1, dur: 99 }, { c: "prone", v: 1 }] });
+    const eng = arena([pc, mk({ id: "f" })], hooks());
+    eng.turnIdx = 0; eng.aiTurn = function(){ }; // stop at the foe
+    eng.endTurn();
+    eq(pc.buffs.map(b => b.name), ["Bless", "Sure Strike"], "a buff with a duration ticks down and leaves at 0; one without stays");
+    eq(pc.buffs[0].duration, 1, "…Bless has one round left");
+    eq(pc.conditions.map(c => c.c + c.v + (c.dur === undefined ? "" : "/" + c.dur)),
+      ["frightened1", "clumsy1/1", "fatigued1/99", "prone1"],
+      "frightened and sickened fall by 1, a timed condition ticks and leaves at 0, and 99 means the scene");
+    const brave = mk({ id: "b", side: "pc", char: { specials: ["bravery"] }, conditions: [{ c: "frightened", v: 2 }] });
+    const e2 = arena([brave, mk({ id: "f" })], hooks());
+    e2.aiTurn = function(){ }; e2.endTurn();
+    eq(brave.conditions, [], "Bravery shakes frightened off two at a time");
+  }
+  // The order wraps, skips the dead, and the ambush ends with round 1.
+  {
+    const a = mk({ id: "a", side: "pc" }), b = mk({ id: "b", side: "pc", dead: true }), f = mk({ id: "f" });
+    const eng = arena([a, b, f], { ...hooks(), surprise: true });
+    eng.aiTurn = function(){ };
+    eng.turnIdx = 0; eng.nextTurn();
+    eq(eng.turnIdx, 2, "the dead are skipped");
+    eq(eng.round, 1, "…without touching the round");
+    eng.nextTurn();
+    eq([eng.turnIdx, eng.round], [0, 2], "wrapping to the top of the order starts round 2");
+    eq(eng.surprise, false, "…and the scripted ambush is over");
+  }
+  // Victory and defeat.
+  {
+    const h = hooks();
+    const hero = mk({ id: "h", side: "pc", hp: 20, hpMax: 40, char: { focusMax: 2 }, resources: { focus: 0 }, conditions: [{ c: "frightened", v: 1 }], buffs: [{ name: "x" }] });
+    const down = mk({ id: "d", side: "pc", hp: 0, hpMax: 40, dying: 2 });
+    const foe = mk({ id: "f", dead: true });
+    const eng = arena([hero, down, foe], h);
+    eq(eng.checkEnd(), true, "no foe standing ends the fight");
+    eq(eng.active, false, "…and the engine goes inactive");
+    eq(hero.hp, 30, "victory heals half of what is missing: 20 of 40 becomes 30");
+    eq([down.dying, down.hp], [0, 21], "a dying hero gets up on 1 and then heals half of the rest");
+    eq([hero.conditions, hero.buffs], [[], []], "conditions and buffs are cleared");
+    eq(hero.resources.focus, 2, "focus is restored");
+    eq(h.h.saves, 1, "the save-slot hook fires once");
+    eq(h.h.victory, 1, "…and onVictory follows through defer");
+    ok(eng.events.some(ev => /<b>Victory\.<\/b> The The Test is yours/.test(ev.text)), "the victory line names the encounter");
+
+    const h2 = hooks();
+    const e2 = arena([mk({ id: "p", side: "pc", dying: 1 }), mk({ id: "f" })], h2);
+    eq(e2.checkEnd(), true, "every hero down ends the fight");
+    eq([h2.h.defeat, h2.h.victory, e2.active], [1, 0, false], "…as a defeat");
+    const e3 = arena([mk({ id: "p", side: "pc" }), mk({ id: "f" })], hooks());
+    eq(e3.checkEnd(), false, "one hero standing and one foe standing is still a fight");
+  }
+}
+
+group("combat engine: start");
+Registry.loadPack(advPack);
+ok(Registry.hasPack("barrowmoor") || Registry.adventures.barrowmoor, "the adventure pack is in the registry");
+const ADV = Registry.adventures.barrowmoor;
+/** A fighter with a longsword, a crossbow, a chain shirt and a shield. */
+const fighter = (over = {}) => forge("fighter", { gear: { weapon: "longsword", weapon2: null, ranged: "crossbow", armor: "chain-shirt", shield: true }, ...over });
+/** An engine with the hooks a fight needs to end, and counters on each. */
+const fight = (over = {}) => {
+  const h = { victory: 0, defeat: 0, saves: 0, mounts: 0, toasts: [], hints: [] };
+  const eng = newCombat({ ...over });
+  eng.autosave = () => h.saves++; eng.mount = () => h.mounts++;
+  eng.toast = m => h.toasts.push(m); eng.hint = t => h.hints.push(t);
+  eng.h = h;
+  return eng;
+};
+const begin = (eng, encId, party, flags = {}, adv = ADV) =>
+  eng.start(encId, adv, { party, flags, onVictory: () => eng.h.victory++, onDefeat: () => eng.h.defeat++ });
+{
+  const hero = heroCombatant(fighter());
+  eq([hero.id, hero.side, hero.hp, hero.hpMax, hero.ac, hero.dying, hero.wounded], ["hero", "pc", 44, 44, 19, 0, 0],
+    "heroCombatant carries the sheet's HP and AC and starts standing");
+  eq(hero.resources, { slots: { 1: 0, 2: 0 }, focus: 0, font: 0, potions: ["healing-potion-minor", "healing-potion-minor"] },
+    "a fighter has no slots, no focus, no font and the two potions every hero starts with");
+  eq(hero.attacks.length, 2, "…and a copy of each attack");
+  ok(hero.attacks[0] !== fighter().attacks[0], "…a copy, not the sheet's own object");
+  const cleric = heroCombatant(forge("cleric", { subclass: "cloistered-sarenrae", spells: { cantrips: ["divine-lance"], r1: ["heal"], r2: ["heal"] } }));
+  eq([cleric.resources.slots, cleric.resources.font, cleric.resources.focus], [{ 1: 3, 2: 2 }, 4, 1],
+    "a cloistered cleric brings 3/2 slots, four font heals and one focus point");
+  const wren = companionCombatant("wren");
+  eq([wren.id, wren.side, wren.hp, wren.initSkill], ["comp-wren", "pc", 38, 12], "a companion is built from its Registry entry");
+  eq(wren.attacks[0], { name: "Shortbow", bonus: 11, damage: "1d6", damageType: "piercing", range: 12, sneak: "1d6", die: "1d6", dmgMod: 0, traits: [], ranged: true },
+    "…with `die` and `ranged` derived the way strike wants them");
+  eq(companionCombatant("aldous").abilities[0].uses, 3, "…and its abilities copied with their uses");
+
+  // The Causeway Pack, party of two.
+  const eng = fight();
+  const party = [heroCombatant(fighter()), companionCombatant("aldous")];
+  // Initiative: hero (Perception 8), Aldous (initSkill 9), then the four foes.
+  pin([20, 20], [20, 1], [20, 10], [20, 10], [20, 10], [20, 5]);
+  begin(eng, "enc-moor", party);
+  eq(eng.cbs.length, 6, "two heroes and four foes: the fifth foe needs a party of three");
+  eq(eng.cbs.filter(c => c.side === "foe").map(c => c.id), ["foe0", "foe1", "foe2", "foe3"], "foe ids follow the encounter's own indices");
+  eq(eng.cbs.filter(c => c.side === "foe").map(c => c.letter), ["M1", "M2", "S3", "M4"], "…and each gets an initial and a number for the token");
+  eq([eng.mapW, eng.mapH, eng.walls.size, eng.diff.size], [13, 9, 6, 12], "the map, the walls and the bog come from the encounter");
+  eq([party[0].x, party[0].y, party[1].x, party[1].y], [1, 4, 1, 3], "the party stands on pcStarts in order");
+  eq([eng.cbs[2].x, eng.cbs[2].y, eng.cbs[2].hp, eng.cbs[2].ac, eng.cbs[2].speed], [8, 3, 24, 16, 7], "a hound stands where the encounter put it, with its stat block");
+  eq(eng.cbs[4].immunities, ["void", "mental", "poison"], "a skeleton's immunities are on the combatant");
+  eq(eng.cbs.map(c => c.init), [28, 10, 17, 17, 12, 12], "initiative is d20 + Perception (or initSkill)");
+  eq(eng.order.map(c => c.id), ["hero", "foe0", "foe1", "foe2", "foe3", "comp-aldous"], "…and the order sorts by it, ties in place");
+  eq([eng.round, eng.turnIdx, eng.active, eng.actions], [1, 0, true, 3], "the hero goes first with three actions");
+  ok(/^<b>The Causeway Pack\.<\/b> Peat-black hounds lope up the causeway/.test(eng.events[0].text), "the first line is the encounter's name and intro");
+  eq(eng.h.mounts, 1, "mount is called once, so the page can build the combat DOM");
+  eq(eng.enc, ADV.encounters["enc-moor"], "…and the encounter is kept for finish to name");
+  ok(eng.cbs[2].dying === undefined, "a foe still has no dying field (locked #90 — pinned, not fixed)");
+
+  // A scripted ambush.
+  const flags = { "surprise-round": true, "fatigued-start": true, other: true };
+  const e2 = fight();
+  const p2 = [heroCombatant(fighter()), companionCombatant("aldous")];
+  pin([20, 1], [20, 1], [20, 20], [20, 20], [20, 20], [20, 20]);
+  begin(e2, "enc-moor", p2, flags);
+  eq(e2.surprise, true, "the surprise-round flag sets the ambush");
+  eq(flags, { other: true }, "…and both start flags are consumed off the flags object, in place");
+  eq(e2.order.slice(0, 2).map(c => c.side), ["pc", "pc"], "every ambushed foe acts after every hero, whatever it rolled");
+  eq(e2.cbs[2].init, -73, "…because its initiative is docked 100: 20 + 7 − 100");
+  eq(p2.map(c => c.conditions), [[{ c: "fatigued", v: 1, dur: 99 }], [{ c: "fatigued", v: 1, dur: 99 }]], "fatigued-start fatigues the whole party for the scene");
+  ok(!e2.events.some(ev => /fatigued/.test(ev.text)), "…silently");
+  eq(e2.effAC(e2.cbs[2], p2[0]).offGuard, true, "in the surprise round every foe is off-guard");
+  // Play the round out: hero ends, Aldous ends, four foes act. Round 2.
+  e2.actionClick("end"); e2.actionClick("end");
+  eq(e2.round, 2, "two End Turns and four monster turns later it is round 2");
+  eq(e2.surprise, false, "…and the ambush is spent");
+  eq(e2.effAC(e2.cbs[2], p2[0]).offGuard, false, "…so the foes are no longer off-guard for free");
+  ok(e2.events.filter(ev => ev.kind === "roll").length >= 4, "the monsters rolled something on their way in");
+
+  // Boss flags.
+  const e3 = fight();
+  pin([20, 20]);
+  begin(e3, "enc-crypt", [heroCombatant(fighter())], { "knows-rite": true });
+  const boss = e3.cbs.find(c => c.boss);
+  eq(boss.name, "The Bell-Warden", "the crypt has a boss");
+  eq(boss.conditions, [{ c: "sickened", v: 1, dur: 99 }], "knowing the Rite sickens it for the scene");
+  ok(e3.events.some(ev => /the Bell-Warden STAGGERS/.test(ev.text)), "…with the scene's own line");
+  const e4 = fight(); pin([20, 20]);
+  begin(e4, "enc-crypt", [heroCombatant(fighter())], {});
+  eq(e4.cbs.find(c => c.boss).conditions, [], "…and not otherwise");
+  eq(e4.cbs.filter(c => c.side === "foe").length, 3, "a lone hero faces the Warden and two guards; the champion and the wisp need a bigger party");
+}
+setDiceSource();
+
+group("combat engine: the player's actions");
+/** A board with the hooks a fight needs to end, three actions, and counters. */
+const stage = (cbs, over = {}) => {
+  const eng = arena(cbs, { actions: 3, enc: { name: "The Test" }, mapW: 10, mapH: 10, ...over });
+  const h = { victory: 0, defeat: 0, saves: 0, toasts: [], hints: [] };
+  eng.onVictory = () => h.victory++; eng.onDefeat = () => h.defeat++; eng.autosave = () => h.saves++;
+  eng.toast = m => h.toasts.push(m); eng.hint = t => h.hints.push(t); eng.h = h;
+  eng.aiTurn = function(){ }; // these are about the hero's turn; the monsters wait
+  eng.beginTurn(0);           // per-turn flags (mapCount, reactionUsed…) come from here
+  return eng;
+};
+/** A moor hound, as `start` would build it, at (x, y). */
+const hound = (over = {}) => mk({ id: "f", name: "Hound", side: "foe", x: 2, y: 1, ac: 16, hp: 24, hpMax: 24, speed: 7,
+  saves: { fort: 7, ref: 9, will: 5 }, perception: 7, immunities: [],
+  attacks: [{ name: "Bite", bonus: 9, damage: "1d8+3", damageType: "piercing", range: 1 }],
+  monster: { level: 1, traits: ["beast"] }, ...over });
+/** The fighter at (1,1), a hound adjacent at (2,1), the fighter's turn. */
+const duel = (chOver = {}, foeOver = {}, over = {}) => {
+  const ch = fighter(chOver);
+  const hero = Object.assign(heroCombatant(ch), { x: 1, y: 1 });
+  const foe = hound(foeOver);
+  const eng = stage([hero, foe], over);
+  return { eng, hero, foe, ch };
+};
+const rolls = eng => eng.events.filter(ev => ev.kind === "roll");
+{
+  // Stride and Step.
+  const { eng, hero, foe } = duel();
+  eng.actionClick("stride");
+  eq(eng.armed, { kind: "move", budget: 5, cost: 1, btn: "stride" }, "Stride arms a move with the hero's speed in squares");
+  eq(eng.h.hints.at(-1), "Choose a highlighted square to Stride to.", "…and says what to do");
+  eng.cellClick(9, 9);
+  eq([hero.x, hero.y, eng.actions], [1, 1, 3], "a square past the budget is ignored");
+  eng.cellClick(2, 1);
+  eq([hero.x, hero.y, eng.actions], [1, 1, 3], "…as is the hound's own square");
+  eng.cellClick(1, 4);
+  eq([hero.x, hero.y, eng.actions, eng.armed], [1, 4, 2, null], "a reachable square moves the hero, costs one action and disarms");
+  eng.actionClick("step");
+  eq([eng.armed.budget, eng.armed.step], [1, true], "Step is a one-square move");
+  eng.cellClick(1, 6);
+  eq([hero.x, hero.y], [1, 4], "…so two squares is too far");
+  eng.cellClick(2, 5);
+  eq([hero.x, hero.y, eng.actions], [2, 5, 1], "…and one diagonal is fine");
+
+  // Raise a Shield, Reload.
+  const d2 = duel();
+  d2.eng.actionClick("raise");
+  eq([d2.hero.shieldRaised, d2.eng.actions], [true, 2], "Raise a Shield costs one action and raises it");
+  eq(d2.eng.effAC(d2.hero).ac, 21, "…for +2 AC");
+  ok(d2.eng.events.some(ev => /raises a shield/.test(ev.text)), "…and a Chronicle line");
+  d2.eng.actionClick("reload");
+  eq([d2.hero.reloadedThisTurn, d2.eng.actions], [true, 1], "Reload costs one action and marks the crossbow loaded");
+
+  // Strike, through the target flow.
+  const d3 = duel();
+  const far = hound({ id: "g", name: "Far Hound", x: 8, y: 8 });
+  d3.eng.cbs.push(far); d3.eng.order.push(far);
+  d3.eng.tokenClick(d3.foe);
+  eq(d3.eng.h.toasts, ["Hound: HP 24/24 · AC 16"], "clicking a token with nothing armed shows its stats");
+  d3.eng.actionClick("strike0");
+  eq(d3.eng.armed, { kind: "target", range: 1, cost: 1, mode: "strike", atkIdx: 0, btn: "strike0" }, "Strike arms a target within the weapon's range");
+  eq(d3.eng.targets(d3.eng.armed).map(t => t.id), ["f"], "…and only the adjacent hound qualifies");
+  d3.eng.tokenClick(far);
+  eq([d3.eng.actions, !!d3.eng.armed], [3, true], "clicking a foe out of range does nothing");
+  pin([20, 15], [8, 4]);
+  d3.eng.tokenClick(d3.foe);
+  eq(d3.foe.hp, 18, "15+10 vs AC 16 hits for 1d8+2 = 6");
+  eq([d3.eng.actions, d3.eng.armed, d3.eng.sel], [2, null, null], "…costs one action, and disarms");
+  d3.eng.actionClick("strike1");
+  eq(d3.eng.targets(d3.eng.armed).map(t => t.id), ["f", "g"], "the crossbow reaches both hounds");
+  const e2 = stage([Object.assign(heroCombatant(fighter()), { x: 1, y: 1 }), hound({ x: 5, y: 1 })], { walls: ["3,1"] });
+  e2.actionClick("strike1");
+  eq(e2.targets(e2.armed), [], "…but not through a wall");
+
+  // targets() and friendly fire.
+  const ally = mk({ id: "a", side: "pc", name: "Bran", x: 1, y: 2, dying: 1 });
+  const d4 = duel(); d4.eng.cbs.push(ally);
+  eq(d4.eng.targets({ kind: "target", range: 1, friendly: true }).map(t => t.id), ["hero"], "a friendly action skips a dying ally by default");
+  eq(d4.eng.targets({ kind: "target", range: 1, friendly: true, canDowned: true }).map(t => t.id), ["hero", "a"], "…unless it can reach the downed");
+
+  // Hunt Prey.
+  const d5 = duel();
+  d5.eng.actionClick("hunt"); d5.eng.tokenClick(d5.foe);
+  eq([d5.eng.huntPreyId, d5.eng.actions], ["f", 2], "Hunt Prey marks the target and costs an action");
+  ok(d5.eng.events.some(ev => /<b>Hunts Prey<\/b>: Hound/.test(ev.text)), "…and says so");
+}
+{
+  // Demoralize: Intimidation vs 10 + Will + level, −4 without a shared language.
+  const { eng, hero, foe, ch } = duel();
+  eq(skillMod(ch, "intimidation"), 1, "an untrained fighter's Intimidation is just Charisma");
+  eng.actionClick("demoralize");
+  eq(eng.armed.range, 6, "Demoralize reaches 30 feet");
+  pin([20, 20]); eng.tokenClick(foe);
+  eq(rolls(eng).at(-1).math, "20-3 = 17 vs DC 18", "a −4 for no shared language: 1 − 4 = −3 against DC 10 + 5 + 3");
+  eq(rolls(eng).at(-1).deg, 2, "…17 misses 18, and the natural 20 makes it a success");
+  eq(foe.conditions, [{ c: "frightened", v: 1, dur: undefined }], "…frightened 1");
+  eq([foe.demoralized, eng.actions], [true, 2], "…and the hound remembers, and it cost an action");
+  const d2 = duel({}, {}, {}); d2.ch.specials.push("intimidating-glare", "terrified-retreat");
+  d2.eng.actionClick("demoralize"); pin([20, 20]); d2.eng.tokenClick(d2.foe);
+  eq(rolls(d2.eng).at(-1).math, "20+1 = 21 vs DC 18", "Intimidating Glare drops the language penalty");
+  eq(d2.foe.conditions.map(c => c.c + c.v), ["frightened2", "fleeing1"], "a critical success is frightened 2, and Terrified Retreat sends a level-1 hound running");
+  const d3 = duel({}, { immunities: ["void", "mental", "poison"], name: "Skeleton" });
+  d3.eng.actionClick("demoralize"); pin([20, 20]); d3.eng.tokenClick(d3.foe);
+  eq(d3.foe.conditions, [], "a mindless skeleton cannot be frightened");
+  ok(d3.eng.events.some(ev => /Skeleton is immune \(mindless\)/.test(ev.text)), "…and the Chronicle says why");
+
+  // Feint: Deception vs 10 + Perception.
+  const d4 = duel();
+  d4.eng.actionClick("feint"); pin([20, 20]); d4.eng.tokenClick(d4.foe);
+  eq(rolls(d4.eng).at(-1).math, "20+1 = 21 vs DC 17", "Feint is Deception against 10 + the hound's Perception 7");
+  eq(d4.foe.feint, { by: "hero", round: 1, turnIdx: 0, usesLeft: 1 }, "a success is one off-guard Strike, this turn, from this feinter");
+  ok(d4.eng.events.some(ev => /off-guard to Testcase's attacks \(next Strike\)/.test(ev.text)), "…announced");
+  const d5 = duel(); d5.ch.specials.push("racket-scoundrel");
+  d5.eng.actionClick("feint"); pin([20, 20]); d5.eng.tokenClick(d5.foe);
+  ok(d5.foe.feint.usesLeft === Infinity, "a Scoundrel's Feint lasts the whole turn");
+  const d6 = duel();
+  d6.eng.actionClick("feint"); pin([20, 5]); d6.eng.tokenClick(d6.foe);
+  eq(d6.foe.feint, undefined, "a failed Feint leaves nothing");
+  ok(d6.eng.events.some(ev => /Feint fails to fool Hound/.test(ev.text)), "…but a line");
+
+  // Battle Medicine: Medicine vs DC 15.
+  const patient = () => mk({ id: "a", side: "pc", name: "Bran", x: 1, y: 2, hp: 20, hpMax: 44 });
+  const d7 = duel(); const p7 = patient(); d7.eng.cbs.push(p7);
+  d7.eng.actionClick("battlemed");
+  eq([d7.eng.armed.friendly, d7.eng.armed.canDowned], [true, true], "Battle Medicine targets an ally, downed or not");
+  pin([20, 14], [8, 3], [8, 4]); d7.eng.tokenClick(p7);
+  eq(rolls(d7.eng).at(-1).math, "14+1 = 15 vs DC 15", "…against a flat DC 15");
+  eq(p7.hp, 27, "a success heals 2d8: 3 + 4");
+  const d8 = duel(); const p8 = patient(); d8.eng.cbs.push(p8);
+  d8.eng.actionClick("battlemed"); pin([20, 20], [8, 3], [8, 4]); d8.eng.tokenClick(p8);
+  eq(p8.hp, 37, "a critical success heals 2d8+10");
+  const d9 = duel(); const p9 = patient(); d9.eng.cbs.push(p9);
+  d9.eng.actionClick("battlemed"); pin([20, 1], [8, 5]); d9.eng.tokenClick(p9);
+  eq(p9.hp, 15, "a critical failure cuts the patient for 1d8");
+
+  // A potion.
+  const d10 = duel();
+  d10.eng.actionClick("potion"); pin([8, 6]); d10.eng.tokenClick(d10.hero);
+  eq(d10.hero.resources.potions.length, 1, "drinking a potion spends it");
+  ok(d10.eng.events.some(ev => /Testcase drinks Minor Healing Potion \(\+6\)/.test(ev.text)), "…and names it");
+  eq(d10.eng.actions, 2, "…for one action");
+}
+{
+  // The fighter's feats.
+  const d1 = duel(); d1.ch.specials.push("power-attack");
+  d1.eng.actionClick("powerattack");
+  eq([d1.eng.armed.cost, d1.eng.armed.mode], [2, "powerattack"], "Power Attack costs two actions");
+  pin([20, 15], [8, 4], [8, 3]); d1.eng.tokenClick(d1.foe);
+  eq(rolls(d1.eng).at(-1).math, "15+5 = 20 vs AC 16", "…and counts as two attacks for MAP: −5 on the roll itself");
+  eq(d1.foe.hp, 15, "…hitting for two dice: 4 + 3 + 2");
+  eq([d1.hero.mapCount, d1.eng.actions], [2, 1], "…leaving the MAP at two attacks");
+
+  const d2 = duel(); d2.ch.specials.push("intimidating-strike");
+  d2.eng.actionClick("intstrike"); pin([20, 15], [8, 4]); d2.eng.tokenClick(d2.foe);
+  eq(d2.foe.conditions.map(c => c.c + c.v), ["frightened1"], "Intimidating Strike frightens on a hit");
+  eq(d2.eng.actions, 1, "…for two actions");
+
+  const d3 = duel(); d3.ch.specials.push("brutish-shove");
+  d3.eng.actionClick("brutish"); pin([20, 15], [8, 4]); d3.eng.tokenClick(d3.foe);
+  eq([d3.foe.offGuardUntil, d3.foe.conditions], [1, [{ c: "clumsy", v: 1, dur: 1 }]], "Brutish Shove leaves the target off-guard and clumsy for a round");
+  eq(d3.eng.effAC(d3.foe, d3.hero, { forceOffGuard: d3.foe.offGuardUntil === d3.eng.round }).ac, 13, "…AC 16 less clumsy 1 less off-guard 2");
+
+  const d4 = duel(); d4.ch.specials.push("exacting-strike");
+  d4.eng.actionClick("exacting"); pin([20, 2], [8, 4]); d4.eng.tokenClick(d4.foe);
+  eq(d4.hero.mapCount, 0, "an Exacting Strike that misses does not raise the MAP");
+
+  const d5 = duel(); d5.ch.specials.push("sudden-charge");
+  d5.eng.actionClick("charge");
+  eq([d5.eng.armed.budget, d5.eng.armed.cost, d5.eng.armed.charge], [10, 2, true], "Sudden Charge is a double-speed move for two actions");
+  d5.eng.cellClick(1, 2);
+  eq([d5.eng.actions, d5.eng.armed.mode, d5.eng.armed.btn], [1, "strike", "charge2"], "…and then arms a free Strike");
+  eq(d5.eng.h.hints.at(-1), "Now Strike an adjacent foe (free).", "…and says so");
+  pin([20, 15], [8, 4]); d5.eng.tokenClick(d5.foe);
+  eq([d5.foe.hp, d5.eng.actions], [18, 1], "…which costs nothing");
+}
+{
+  // The ranger's flourishes.
+  const ranger = () => forge("ranger", { subclass: "flurry", gear: { weapon: "shortsword", weapon2: "shortsword", ranged: "shortbow", armor: "studded-leather", shield: false } });
+  const r1 = ranger();
+  const hero = Object.assign(heroCombatant(r1), { x: 1, y: 1 });
+  const foe = hound();
+  const eng = stage([hero, foe]);
+  r1.specials.push("hunted-shot", "twin-takedown", "twin-feint");
+  eng.actionClick("huntedshot"); eng.tokenClick(foe);
+  eq([eng.actions, eng.h.hints.at(-1)], [3, "Hunted Shot only works on your prey."], "Hunted Shot without prey refuses, for free");
+  eng.huntPreyId = "f"; eng.armed = null;
+  eng.actionClick("huntedshot");
+  eq(eng.armed.range, 12, "…and reaches as far as the bow");
+  pin([20, 15], [6, 3], [20, 15], [6, 3]); eng.tokenClick(foe);
+  eq(rolls(eng).length, 2, "Hunted Shot is two Strikes");
+  eq(rolls(eng)[1].math.startsWith("15+"), true, "…the second under MAP");
+  eq([hero.flourishUsed, eng.actions], [true, 2], "…one flourish, one action");
+  const e2 = stage([Object.assign(heroCombatant(ranger()), { x: 1, y: 1 }), hound()], { huntPreyId: "f" });
+  e2.cur().char.specials.push("twin-takedown", "twin-feint");
+  e2.actionClick("twintake"); pin([20, 15], [6, 3], [20, 15], [6, 3]); e2.tokenClick(e2.cbs[1]);
+  eq(rolls(e2).map(r => r.text.split(":")[1].trim().split(" vs")[0]), ["Shortsword", "Shortsword"], "Twin Takedown swings both blades");
+  const e3 = stage([Object.assign(heroCombatant(ranger()), { x: 1, y: 1 }), hound()]);
+  e3.cur().char.specials.push("twin-feint");
+  e3.actionClick("twinfeint"); pin([20, 15], [6, 3], [20, 15], [6, 3]); e3.tokenClick(e3.cbs[1]);
+  eq(rolls(e3).map(r => /off-guard/.test(r.text)), [false, true], "Twin Feint lands the second blade off-guard");
+  eq(e3.actions, 1, "…for two actions");
+}
+{
+  // A companion's ability, Cackle, and End Turn.
+  const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1, hp: 10 });
+  const aldous = Object.assign(companionCombatant("aldous"), { x: 1, y: 2 });
+  const foe = hound();
+  const eng = stage([aldous, hero, foe]);
+  eng.actionClick("abil0");
+  eq([eng.armed.mode, eng.armed.cost, eng.armed.friendly, eng.armed.range], ["companion-abil", 2, true, 6], "Aldous's Heal arms a two-action friendly target");
+  pin([8, 3], [8, 4]); eng.tokenClick(hero);
+  eq(hero.hp, 33, "…and heals 2d8+16: 3 + 4 + 16");
+  eq([aldous.abilities[0].uses, eng.actions], [2, 1], "…spending one use and two actions");
+
+  const witch = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+  witch.char.focusMax = 2; witch.resources.focus = 0; witch.char.specials.push("cackle");
+  const e2 = stage([witch, hound()]);
+  e2.actionClick("cackle");
+  eq([witch.resources.focus, witch.cackled, e2.actions], [1, true, 3], "Cackle is a free action for one focus point");
+
+  const e3 = stage([Object.assign(heroCombatant(fighter()), { x: 1, y: 1 }), hound()]);
+  e3.actionClick("end");
+  eq([e3.turnIdx, e3.cur().id], [1, "f"], "End Turn hands the turn to the hound");
+}
+{
+  // Reactive Strike, through provokeAlong.
+  const knight = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+  const foe = hound();
+  const eng = stage([knight, foe]);
+  pin([20, 15], [8, 4]);
+  eng.provokeAlong(foe, [{ x: 2, y: 1 }, { x: 2, y: 2 }]);
+  eq(rolls(eng).length, 0, "a hound that stays in reach provokes nothing");
+  eng.provokeAlong(foe, [{ x: 4, y: 1 }, { x: 5, y: 1 }]);
+  eq(rolls(eng).length, 0, "…nor one that was never in reach");
+  eng.provokeAlong(foe, [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }]);
+  eq(rolls(eng).length, 1, "…one that leaves reach takes a Reactive Strike");
+  eq([foe.hp, knight.reactionUsed, knight.mapCount], [18, true, 0], "…which hits, spends the reaction, and does not touch the MAP");
+  ok(eng.events.some(ev => /<b>Reactive Strike!<\/b> Testcase lashes out as Hound moves/.test(ev.text)), "…with its line");
+  eng.provokeAlong(foe, [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }]);
+  eq(rolls(eng).length, 1, "…and the reaction is spent for the turn");
+  // Two fighters, one hound with 1 HP: the first kills it and the second has nothing to hit.
+  const k1 = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+  const k2 = Object.assign(heroCombatant(fighter()), { id: "hero2", x: 1, y: 2 });
+  const frail = hound({ hp: 1, x: 2, y: 1 });
+  const e2 = stage([k1, k2, frail]);
+  pin([20, 15], [8, 4]);
+  e2.provokeAlong(frail, [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }]);
+  eq([frail.dead, rolls(e2).length, k2.reactionUsed], [true, 1, undefined], "a hound killed mid-step stops there, and the second fighter keeps their reaction");
+  // The standing backlog's first row, pinned: only a foe can provoke.
+  const e3 = stage([Object.assign(heroCombatant(fighter()), { x: 5, y: 5 }), hound({ char: { specials: ["reactive-strike"] } })]);
+  e3.provokeAlong(e3.cbs[0], [{ x: 3, y: 1 }, { x: 4, y: 1 }, { x: 5, y: 1 }]);
+  eq(rolls(e3).length, 0, "a moving hero provokes nothing — pinned as-is; Phase 3's trigger bus changes this");
+}
+setDiceSource();
+
+group("combat engine: spells");
+const CLERIC = () => forge("cleric", { subclass: "cloistered-sarenrae", spells: { cantrips: ["divine-lance", "stabilize", "guidance"], r1: ["heal", "bless", "fear", "bane"], r2: ["heal", "resist-energy"] } });
+const WIZARD = () => forge("wizard", { subclass: "school-battle-magic", spells: { cantrips: ["electric-arc", "ignition", "frostbite", "shield"], r1: ["force-barrage", "grim-tendrils", "breathe-fire", "sure-strike"], r2: ["blazing-bolt", "false-life", "blur"] } });
+/** A caster at (2,2), an ally at (2,3) on 10 HP, a hound at (4,2) and a skeleton at (5,2). */
+const sanctum = (ch, over = {}) => {
+  const caster = Object.assign(heroCombatant(ch), { x: 2, y: 2 });
+  const ally = mk({ id: "a", side: "pc", name: "Bran", x: 2, y: 3, hp: 10, hpMax: 44 });
+  const foe = hound({ x: 4, y: 2 });
+  const skel = hound({ id: "s", name: "Skeleton Guard", x: 5, y: 2, hp: 8, hpMax: 8, saves: { fort: 2, ref: 8, will: 2 },
+    immunities: ["void", "mental", "poison"], resistances: [{ type: "cold", value: 1 }, { type: "electricity", value: 1 }, { type: "fire", value: 1 }, { type: "piercing", value: 1 }],
+    monster: { level: -1, traits: ["undead", "skeleton", "mindless"] } });
+  const eng = stage([caster, ally, foe, skel], over);
+  const arm = (id, rank, pool) => eng.armSpell(caster, { sp: Registry.spells[id], rank, pool });
+  return { eng, caster, ally, foe, skel, arm };
+};
+{
+  // The menu's rows.
+  const { eng, caster } = sanctum(CLERIC());
+  const rows = eng.spellRows(caster, false);
+  eq(rows.map(r => r.label), ["Divine Lance (cantrip)", "Stabilize (cantrip)", "Guidance (cantrip)", "Heal (rank 1)", "Bless (rank 1)", "Fear (rank 1)", "Bane (rank 1)", "Heal (rank 2)", "Resist Energy (rank 2)", "Heal — Divine Font (rank 2)"],
+    "the menu lists cantrips, rank 1, rank 2, then the font");
+  eq(rows.map(r => r.rank), [2, 2, 2, 1, 1, 1, 1, 2, 2, 2], "cantrips heighten to rank 2 at level 3");
+  eq(rows.map(r => r.pool), ["cantrip", "cantrip", "cantrip", "r1", "r1", "r1", "r1", "r2", "r2", "font"], "…each row knows which pool it spends");
+  eq(rows.every(r => !r.spent && !r.hexBlocked), true, "with full slots nothing is greyed out");
+  caster.resources.slots[1] = 0; caster.resources.font = 0;
+  const rows2 = eng.spellRows(caster, false);
+  eq(rows2.filter(r => r.spent).map(r => r.label), ["Heal (rank 1)", "Bless (rank 1)", "Fear (rank 1)", "Bane (rank 1)"], "empty rank-1 slots grey out every rank-1 row");
+  eq(rows2.some(r => r.pool === "font"), false, "…and a spent font has no row at all");
+  const focus = eng.spellRows(caster, true);
+  eq(focus.map(r => [r.label, r.pool, r.spent]), [["Fire Ray (1 focus)", "focus", false]], "the focus menu is the class's focus spell");
+  caster.resources.focus = 0;
+  eq(eng.spellRows(caster, true)[0].spent, true, "…greyed out with no focus left");
+  const witch = Object.assign(heroCombatant(forge("witch", { subclass: "wilding-steward" })), { x: 2, y: 2 });
+  const e2 = stage([witch, hound()]);
+  eq(e2.spellRows(witch, true).map(r => [r.label, r.spent, r.hexBlocked]), [["Wilding Word (Hex) (hex — free, 1/turn)", false, false]], "a hex is free");
+  witch.resources.focus = 0;
+  eq(e2.spellRows(witch, true)[0].spent, false, "…even with no focus");
+  witch.hexUsed = true;
+  eq(e2.spellRows(witch, true)[0].hexBlocked, true, "…but once per turn");
+
+  // effectFor picks the highest rank at or below the cast.
+  eq(eng.effectFor(Registry.spells.heal, 2), { heal: "2d8+16" }, "Heal at rank 2 is 2d8+16");
+  eq(eng.effectFor(Registry.spells.heal, 1), { heal: "1d8+8" }, "…and at rank 1, 1d8+8");
+  eq(eng.effectFor(Registry.spells["blazing-bolt"], 1).damage[0].formula, "2d6", "a spell with no entry that low falls back to its first");
+
+  // spendSpell.
+  const c3 = heroCombatant(CLERIC());
+  eng.spendSpell(c3, { pool: "r1", spell: Registry.spells.heal });
+  eng.spendSpell(c3, { pool: "r2", spell: Registry.spells.heal });
+  eng.spendSpell(c3, { pool: "font", spell: Registry.spells.heal });
+  eng.spendSpell(c3, { pool: "focus", spell: Registry.spells["fire-ray"] });
+  eq([c3.resources.slots, c3.resources.font, c3.resources.focus], [{ 1: 2, 2: 1 }, 3, 0], "each pool loses one");
+  const w3 = heroCombatant(forge("witch", { subclass: "wilding-steward" }));
+  eng.spendSpell(w3, { pool: "focus", spell: Registry.spells["wilding-word"] });
+  eq([w3.resources.focus, w3.hexUsed], [1, true], "a hex costs no focus and marks the turn");
+}
+{
+  // armSpell: what each shape arms.
+  const { eng, caster, arm } = sanctum(CLERIC());
+  arm("heal", 1, "r1");
+  eq(eng.armed, { kind: "target", btn: "spell", mode: "spell-target", spell: Registry.spells.heal, castRank: 1, pool: "r1", cost: 2, range: 6, friendly: true, canDowned: true },
+    "Heal arms a friendly target within 30 feet, downed or not");
+  eq(eng.h.hints.at(-1), "Casting Heal — choose a target.", "…and says so");
+  arm("divine-lance", 2, "cantrip");
+  eq([eng.armed.kind, eng.armed.friendly, eng.armed.range], ["target", false, 12], "Divine Lance arms an enemy target within 60 feet");
+  const { eng: w, arm: warm, caster: wiz } = sanctum(WIZARD());
+  warm("breathe-fire", 1, "r1");
+  eq([w.armed.kind, w.armed.range, w.armed.wedge], ["cell", 3, "cone"], "Breathe Fire arms a 15-foot cone");
+  warm("grim-tendrils", 1, "r1");
+  eq([w.armed.kind, w.armed.range, w.armed.wedge], ["cell", 6, "line"], "Grim Tendrils arms a 30-foot line");
+  const fireball = { id: "fireball", name: "Fireball", actions: 2, range: 500, area: { shape: "burst", radius: 20 }, save: "reflex", basic: true, rankEffects: { 3: { damage: [{ formula: "6d6", type: "fire" }] } } };
+  w.armSpell(wiz, { sp: fireball, rank: 3, pool: "r2" });
+  eq([w.armed.kind, w.armed.range, w.armed.radius], ["cell", 100, 4], "a burst arms a point within range, with its radius in squares");
+  w.actions = 1; w.armed = null;
+  w.armSpell(wiz, { sp: Registry.spells["force-barrage"], rank: 1, pool: "r1" });
+  eq([w.armed, w.h.toasts.at(-1)], [null, "Not enough actions."], "a two-action spell with one action left is refused with a toast");
+  eq(wiz.resources.slots[1], 3, "…and nothing is spent");
+}
+{
+  // Heal, in its three shapes.
+  const { eng, caster, ally, foe, skel, arm } = sanctum(CLERIC());
+  arm("heal", 1, "r1"); pin([8, 5]); eng.tokenClick(ally);
+  eq(ally.hp, 23, "Heal at rank 1 is 1d8+8: 5 + 8 = 13");
+  eq([caster.resources.slots[1], eng.actions, eng.armed], [2, 1, null], "…for a rank-1 slot and two actions, and disarms");
+  ok(eng.events.some(ev => /Testcase casts <b>Heal<\/b>/.test(ev.text)) && eng.events.some(ev => /Bran regains 13 HP/.test(ev.text)), "…with both lines");
+  const s2 = sanctum(CLERIC()); s2.caster.char.specials.push("healing-hands"); s2.eng.actions = 3;
+  s2.arm("heal", 2, "r2"); pin([10, 7], [10, 9]); s2.eng.tokenClick(s2.ally);
+  eq(s2.ally.hp, 42, "Healing Hands rolls d10s: 7 + 9 + 16 = 32");
+  const s3 = sanctum(CLERIC());
+  const zombie = hound({ id: "z", name: "Zombie", x: 3, y: 2, hp: 22, hpMax: 22, saves: { fort: 6, ref: 0, will: 2 }, weaknesses: [{ type: "vitality", value: 3 }], monster: { level: -1, traits: ["undead", "zombie"] } });
+  s3.eng.cbs.push(zombie);
+  s3.arm("heal", 1, "r1");
+  eq(s3.eng.targets(s3.eng.armed).map(t => t.id), ["hero", "a"], "a friendly Heal only lists allies…");
+  pin([8, 5], [20, 5]); s3.eng.castAt(s3.caster, s3.eng.armed, zombie);
+  eq(rolls(s3.eng).at(-1).text, "Zombie: Fortitude save vs Heal", "…but cast at undead it is a Fortitude save");
+  eq(zombie.hp, 6, "…a failed save takes the full 13 vitality, plus the zombie's weakness 3");
+  ok(s3.eng.events.some(ev => /Weakness to vitality! \+3/.test(ev.text)), "…which the Chronicle notes");
+  // Hymn's temporary HP, and Stabilize.
+  const s4 = sanctum(CLERIC());
+  pin([8, 2]); s4.eng.castAt(s4.caster, { kind: "target", spell: Registry.spells["hymn-of-healing"], castRank: 1, pool: "focus", cost: 2 }, s4.ally);
+  eq([s4.ally.hp, s4.ally.tempHP], [16, 2], "Hymn of Healing heals 1d8+4 and grants 2 temporary HP");
+  const s5 = sanctum(CLERIC()); s5.ally.hp = 0; s5.ally.dying = 2;
+  s5.arm("stabilize", 2, "cantrip"); s5.eng.tokenClick(s5.ally);
+  eq([s5.ally.dying, s5.ally.hp], [0, 0], "Stabilize ends dying without healing");
+  ok(s5.eng.events.some(ev => /Bran is stabilized/.test(ev.text)), "…and says so");
+}
+{
+  // Attack rolls, auto-hits and saves.
+  const { eng, caster, foe, arm } = sanctum(WIZARD());
+  arm("ignition", 2, "cantrip"); pin([20, 12], [4, 2], [4, 3], [4, 4]); eng.tokenClick(foe);
+  eq(rolls(eng).at(-1), { kind: "roll", text: "Ignition vs Hound", cls: "roll", d20: 12, math: "12+7 = 19 vs AC 16", deg: 2 }, "a spell attack is d20 + the casting attack bonus against AC");
+  eq(foe.hp, 15, "Ignition at rank 2 is 3d4 fire: 2 + 3 + 4 = 9");
+  eq(caster.mapCount, 1, "…and it counts toward the MAP");
+  const s2 = sanctum(WIZARD()); s2.caster.char.specials.push("burn-it");
+  s2.arm("ignition", 2, "cantrip"); pin([20, 20], [4, 2], [4, 3], [4, 4]); s2.eng.tokenClick(s2.foe);
+  eq(s2.foe.hp, 4, "a natural 20 doubles it, and Burn It! adds one first: (9 + 1) × 2");
+  const s3 = sanctum(CLERIC()); s3.eng.actions = 3;
+  pin([20, 20], [6, 3], [6, 3]); s3.eng.castAt(s3.caster, { kind: "target", spell: Registry.spells["fire-ray"], castRank: 2, pool: "focus", cost: 2 }, s3.foe);
+  eq(s3.foe.conditions, [{ c: "persistent", formula: "1d4", dtype: "fire", dur: 99 }], "Fire Ray's critical hit leaves persistent fire");
+  const s4 = sanctum(WIZARD());
+  s4.arm("force-barrage", 1, "r1"); pin([4, 2], [4, 3]); s4.eng.tokenClick(s4.foe);
+  eq([s4.foe.hp, rolls(s4.eng).length], [17, 0], "Force Barrage rolls nothing but damage: 2d4+2 = 7");
+
+  // Basic saves, all four degrees. Frostbite is 3d4 cold against Fortitude 7 vs DC 17.
+  const save = (d20, dice) => { const s = sanctum(WIZARD()); s.arm("frostbite", 2, "cantrip"); pin([20, d20], ...dice.map(v => [4, v])); s.eng.tokenClick(s.foe); return s; };
+  eq(save(1, [2, 2, 2]).foe.hp, 12, "a natural 1 (total 8, a failure) is a critical failure: double damage");
+  eq(save(5, [2, 2, 2]).foe.hp, 18, "a failure takes it all");
+  eq(save(10, [2, 2, 3]).foe.hp, 21, "a success halves it, rounding down: 7 → 3");
+  const s5 = save(20, [2, 2, 2]);
+  eq(s5.foe.hp, 24, "a critical success takes none");
+  ok(s5.eng.events.some(ev => /Hound evades entirely/.test(ev.text)), "…and the Chronicle says so");
+  // Fear: no damage, a condition per degree. Will 5 vs DC 17.
+  const fear = d20 => { const s = sanctum(CLERIC()); s.arm("fear", 1, "r1"); pin([20, d20]); s.eng.tokenClick(s.foe); return s.foe.conditions.map(c => c.c + c.v); };
+  eq(fear(12), ["frightened1"], "Fear on a success is frightened 1");
+  eq(fear(8), ["frightened2"], "…on a failure, frightened 2");
+  eq(fear(1), ["frightened3", "fleeing1"], "…and on a critical failure, frightened 3 and fleeing");
+  // Living only.
+  const s6 = sanctum(WIZARD());
+  s6.eng.castAt(s6.caster, { kind: "target", spell: Registry.spells["void-warp"], castRank: 2, pool: "cantrip", cost: 2 }, s6.skel);
+  eq([s6.skel.hp, rolls(s6.eng).length], [8, 0], "Void Warp has nothing to drain from a skeleton");
+  ok(s6.eng.events.some(ev => /Skeleton Guard has no life to drain/.test(ev.text)), "…and says so");
+}
+{
+  // Areas: a line, a cone, an emanation, a burst, and an arc.
+  const { eng, caster, ally, foe, skel, arm } = sanctum(WIZARD());
+  const inTheWay = mk({ id: "w", side: "pc", name: "Wren", x: 3, y: 2, hp: 30, hpMax: 38 }); eng.cbs.push(inTheWay);
+  arm("grim-tendrils", 1, "r1"); pin([20, 5], [4, 2], [4, 3]); eng.cellClick(6, 2);
+  eq(foe.hp, 19, "Grim Tendrils along the row catches the hound: a failed Reflex save, 2d4 void");
+  eq(foe.conditions, [{ c: "persistent", formula: "1", dtype: "bleed", dur: 99 }], "…and it bleeds");
+  eq(skel.hp, 8, "the skeleton on the same line has no life to drain");
+  eq([ally.hp, inTheWay.hp], [10, 30], "…the ally beside the caster is not on it, and the ally standing in it is not an enemy");
+  const s2 = sanctum(WIZARD());
+  const south = hound({ id: "south", name: "South Hound", x: 2, y: 4 }), behind = hound({ id: "behind", name: "Behind Hound", x: 0, y: 2 });
+  s2.eng.cbs.push(south, behind);
+  s2.arm("breathe-fire", 1, "r1"); pin([20, 5], [6, 2], [6, 2], [20, 5], [6, 2], [6, 2]); s2.eng.cellClick(4, 2);
+  eq([s2.foe.hp, behind.hp, s2.ally.hp], [20, 24, 10], "Breathe Fire east catches the hound ahead, not the one behind, and never an ally");
+  eq(south.hp, 20, "…and also a hound due south two squares away: the cone is a quadrant test (standing backlog, pinned as-is)");
+  const s3 = sanctum(CLERIC());
+  s3.arm("bane", 1, "r1");
+  eq(s3.eng.armed, null, "an emanation casts at once, centred on the caster");
+  eq(rolls(s3.eng).map(r => r.text), ["Hound: Will save vs Bane"], "…and the hound two squares off saves; the skeleton three off does not");
+  const s4 = sanctum(WIZARD());
+  const fireball = { id: "fireball", name: "Fireball", actions: 2, range: 500, area: { shape: "burst", radius: 20 }, save: "reflex", basic: true, rankEffects: { 3: { damage: [{ formula: "3", type: "fire" }] } } };
+  s4.eng.walls.add("3,2"); s4.eng.armSpell(s4.caster, { sp: fireball, rank: 3, pool: "r2" });
+  pin([20, 5], [20, 5]); s4.eng.cellClick(4, 2);
+  eq([s4.foe.hp, s4.skel.hp, s4.ally.hp, s4.caster.hp], [21, 6, 10, 32], "a burst hits every foe in its radius and no ally; the skeleton resists fire 1");
+  ok(s4.eng.walls.has("3,2") && s4.foe.hp === 21, "…through a wall: bursts never call losClear (standing backlog, pinned as-is)");
+  const s5 = sanctum(WIZARD());
+  s5.eng.armSpell(s5.caster, { sp: { ...fireball, friendlyFire: true }, rank: 3, pool: "r2" });
+  pin([20, 5], [20, 5], [20, 5], [20, 5]); s5.eng.cellClick(3, 2);
+  eq(rolls(s5.eng).length, 4, "…unless the spell says friendly fire, and then it hits the caster's side too");
+  const s6 = sanctum(WIZARD());
+  s6.eng.cbs.push(hound({ id: "third", name: "Third Hound", x: 6, y: 2 }));
+  s6.arm("electric-arc", 2, "cantrip"); pin([20, 5], [4, 2], [4, 2], [4, 2], [20, 5], [4, 2], [4, 2], [4, 2]); s6.eng.tokenClick(s6.foe);
+  eq(rolls(s6.eng).map(r => r.text), ["Hound: Reflex save vs Electric Arc", "Skeleton Guard: Reflex save vs Electric Arc"], "Electric Arc leaps to the next nearest foe, and only that one");
+  ok(s6.eng.events.some(ev => /The spell arcs to Skeleton Guard as well/.test(ev.text)), "…and says so");
+  eq(s6.skel.hp, 3, "…the skeleton takes 3d4 less its electricity resistance 1: 6 − 1 = 5");
+}
+{
+  // Buffs: party, self, ally.
+  const { eng, caster, ally, foe, arm } = sanctum(CLERIC());
+  const down = mk({ id: "d", side: "pc", x: 1, y: 1, dying: 1 }); eng.cbs.push(down);
+  arm("bless", 1, "r1");
+  eq([caster.buffs.length, ally.buffs.length, down.buffs.length], [1, 1, 0], "Bless lifts every standing ally at once");
+  eq(caster.buffs[0], { name: "Bless", bonuses: [{ target: "attack", value: 1, type: "status" }], duration: 4 }, "…+1 status to attack, three rounds plus this one");
+  ok(eng.events.some(ev => /Bless lifts the whole line \(\+1 for 3 rounds\)/.test(ev.text)), "…announced");
+  const w = sanctum(WIZARD());
+  w.arm("shield", 2, "cantrip");
+  eq(w.eng.effAC(w.caster).ac, 18, "Shield is +1 AC until next turn");
+  eq([w.eng.actions, w.eng.armed], [2, null], "…cast at once for one action");
+  w.arm("false-life", 2, "r2");
+  eq(w.caster.tempHP, 10, "False Life is 10 temporary HP");
+  w.eng.actions = 3; w.arm("sure-strike", 1, "r1");
+  eq(w.caster.buffs.some(b => b.fortune), true, "Sure Strike is a fortune buff on the next attack");
+  const d = sanctum(forge("druid", { subclass: "untamed" }));
+  d.eng.castAt(d.caster, { kind: "target", spell: Registry.spells["untamed-claw"], castRank: 1, pool: "focus", cost: 1 }, d.caster);
+  eq([d.caster.attacks[0].name, d.caster.attacks[0].die, d.caster.attacks[0].dmgMod, d.caster.attacks[0].traits], ["Wild Claw", "1d8", d.caster.char.abil.str + 2, ["agile", "finesse"]],
+    "Untamed Claw puts a 1d8 claw at the front of the attack list, Strength plus 2 to damage");
+  const g = sanctum(CLERIC());
+  g.arm("guidance", 2, "cantrip"); g.eng.tokenClick(g.ally);
+  eq(g.ally.buffs, [{ name: "Guidance", bonuses: [{ target: "attack", value: 1, type: "status" }], duration: 1 }], "Guidance's next-check bonus lands on attack rolls");
+  g.eng.actions = 3; g.arm("resist-energy", 2, "r2"); g.eng.tokenClick(g.ally);
+  eq(g.ally.resistances.map(r => r.type + r.value), ["fire5", "cold5", "electricity5", "acid5", "sonic5"], "Resist Energy grants 5 against every energy type at once");
+  ok(g.eng.events.some(ev => /Bran is warded against the elements \(resist 5\)/.test(ev.text)), "…announced");
+  const rw = sanctum(WIZARD());
+  rw.arm("runic-weapon", 1, "r1"); rw.eng.tokenClick(rw.ally);
+  eq(rw.ally.buffs[0].bonuses.map(b => b.target), ["attack", "bonus-die"], "Runic Weapon carries both its bonuses");
+  eq(rw.ally.buffs[0].duration, 3, "…for three rounds");
+  rw.eng.actions = 3; rw.arm("blur", 2, "r2"); rw.eng.tokenClick(rw.ally);
+  eq(rw.ally.buffs.some(b => b.flag === "blurred" && b.duration === 10), true, "Blur is a flag strike reads, for ten rounds");
+  ok(rw.eng.events.filter(ev => /Bran is bolstered by/.test(ev.text)).length === 2, "…each with the generic line");
+}
+setDiceSource();
+
+group("combat engine: the monster AI");
+/** A hound's turn, held before its first step: `aiTurn` is stubbed so `aiStep` can be driven by hand. */
+const kennel = (foeOver = {}, pcs = null, over = {}) => {
+  const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1, hp: 30 });
+  const ally = mk({ id: "a", side: "pc", name: "Bran", x: 1, y: 2, hp: 20, hpMax: 44 });
+  const foe = hound({ x: 2, y: 1, ...foeOver });
+  const eng = stage([foe, ...(pcs || [hero, ally])], { order: [foe, ...(pcs || [hero, ally])], ...over });
+  return { eng, hero, ally, foe };
+};
+{
+  // Adjacent: strike the lowest-HP neighbour, alternate attacks, stop at MAP 2.
+  const { eng, hero, ally, foe } = kennel({ attacks: [{ name: "Bite", bonus: 9, damage: "1d8+3", damageType: "piercing", range: 1 }, { name: "Claw", bonus: 9, damage: "1d4+3", damageType: "slashing", range: 1, traits: ["agile"] }] });
+  pin([20, 12], [8, 4]);
+  const r1 = eng.aiStep(foe);
+  eq(r1, { action: "strike", target: "a", wait: 550 }, "a hound with two neighbours bites the one with less HP, and asks for a 550ms beat");
+  eq(rolls(eng).at(-1).text, "Hound: Bite vs Bran", "…with its first attack");
+  eq([ally.hp, eng.actions], [13, 2], "12+9 vs AC 18 hits for 1d8+3 = 7, one action gone");
+  pin([20, 12], [4, 2]);
+  const r2 = eng.aiStep(foe);
+  eq(rolls(eng).at(-1).text, "Hound: Claw vs Bran", "the second attack is the second in the list");
+  eq(rolls(eng).at(-1).math, "12+5 = 17 vs AC 18", "…at −4 for an agile second attack");
+  eq([r2.action, eng.actions], ["strike", 1], "…one action left");
+  const r3 = eng.aiStep(foe);
+  eq(r3, { action: "pass", wait: 300 }, "at MAP 2 it stops swinging and passes the rest");
+  eq(eng.actions, 0, "…spending what is left");
+  eq(eng.aiStep(foe), null, "with no actions the turn is over");
+  eq(eng.cur().id, "hero", "…and it is the hero's turn");
+  eq(eng.actions, 3, "…with three actions");
+}
+{
+  // Nobody adjacent: close in, then bite. Speed 35 is 7 squares.
+  const { eng, hero, foe } = kennel({ x: 9, y: 1 }, null);
+  const r = eng.aiStep(foe);
+  eq([r.action, r.wait], ["move", 450], "a hound seven squares off closes to the nearest hero");
+  eq([eng.dist(foe, hero), eng.actions], [1, 2], "…and stands adjacent, one action spent");
+  pin([20, 12], [8, 4]);
+  eq(eng.aiStep(foe).action, "strike", "…then bites");
+  // Too far even to close: it walks and walks.
+  const far = kennel({ x: 9, y: 9 }, null, { mapW: 12, mapH: 12 });
+  far.eng.aiStep(far.foe);
+  eq([far.foe.x, far.foe.y, far.eng.dist(far.foe, far.hero)], [4, 4, 3], "a hound eight squares off on the diagonal gets five diagonals for its seven (5-10-5), to within three…");
+  eq(far.eng.aiStep(far.foe).action, "move", "…and keeps coming");
+  eq(far.eng.dist(far.foe, far.hero), 1, "…until it is adjacent");
+  // Nothing to do at all: pass, and the turn ends.
+  const pinned = kennel({ x: 5, y: 5 }, null, { walls: ["4,4", "4,5", "4,6", "5,4", "5,6", "6,4", "6,5", "6,6"] });
+  eq(pinned.eng.aiStep(pinned.foe), { action: "pass", wait: 300 }, "a hound walled in on every side passes");
+  eq(pinned.eng.aiStep(pinned.foe), null, "…and its turn is over");
+  // Downed heroes are not targets; when every hero is down the turn just ends.
+  const { eng: e3, foe: f3, hero: h3, ally: a3 } = kennel();
+  h3.dying = 1; a3.dying = 1;
+  eq(e3.aiStep(f3), null, "with every hero down there is nothing to bite");
+  eq(e3.h.defeat, 1, "…and the fight is over");
+}
+{
+  // Ranged: shoot the nearest hero it can see, in range; otherwise close.
+  const wisp = { name: "Grave Wisp", x: 6, y: 1, speed: 6, attacks: [{ name: "Corpse-Light Spark", bonus: 9, damage: "1d6+2", damageType: "electricity", range: 6 }] };
+  const { eng, hero, foe } = kennel(wisp);
+  pin([20, 12], [6, 3]);
+  const r = eng.aiStep(foe);
+  eq(r, { action: "shoot", target: "hero", wait: 550 }, "a wisp five squares off shoots");
+  eq(rolls(eng).at(-1).text, "Grave Wisp: Corpse-Light Spark vs Testcase", "…at the nearest hero");
+  eq(hero.hp, 25, "12+9 vs AC 19 hits for 1d6+2 = 5");
+  const blind = kennel(wisp, null, { walls: ["3,1", "3,2", "3,0"] });
+  eq(blind.eng.aiStep(blind.foe).action, "move", "…but not through a wall: with no line of sight it closes instead");
+  const outOfRange = kennel({ ...wisp, x: 9, y: 1 });
+  eq(outOfRange.eng.aiStep(outOfRange.foe).action, "move", "…and not from eight squares with a six-square spark");
+  eq(outOfRange.eng.dist(outOfRange.foe, outOfRange.hero), 2, "…so it comes forward");
+  pin([20, 12], [6, 3]);
+  eq(outOfRange.eng.aiStep(outOfRange.foe).action, "shoot", "…and shoots from there");
+}
+{
+  // Fleeing: run to the reachable square farthest from the nearest hero.
+  const { eng, hero, foe } = kennel({ conditions: [{ c: "fleeing", v: 1, dur: 1 }] });
+  const r = eng.aiStep(foe);
+  eq(r, { action: "flee", wait: 450 }, "a fleeing hound runs");
+  eq(eng.dist(foe, hero), 8, "…as far from the nearest hero as seven squares allow");
+  eq(eng.actions, 0, "…spending its whole turn");
+  ok(eng.events.some(ev => /Hound flees in terror!/.test(ev.text)), "…and the Chronicle says so");
+}
+{
+  // A power: Toll of the Deep, when two heroes stand inside it.
+  const toll = { name: "Toll of the Deep", cost: 2, cooldown: 3, type: "aoe", save: "will", dc: 21, radius: 3, damage: "2d6", damageType: "sonic", onFail: [{ c: "frightened", v: 1 }], onCritFail: [{ c: "frightened", v: 2 }], flavor: "It RINGS." };
+  const warden = () => ({ name: "The Bell-Warden", x: 2, y: 1, hp: 62, hpMax: 62, ac: 21, powers: [{ ...toll, cd: 0 }], attacks: [{ name: "Bite", bonus: 14, damage: "2d8+5", damageType: "piercing", range: 1 }] });
+  const { eng, hero, ally, foe } = kennel(warden());
+  pin([20, 8], [6, 3], [6, 4], [20, 1], [6, 3], [6, 4]);
+  const r = eng.aiStep(foe);
+  eq(r, { action: "power", name: "Toll of the Deep", wait: 600 }, "with both heroes in the bell's reach the Warden rings it");
+  eq(rolls(eng).map(x => x.text), ["Testcase: Will save vs Toll of the Deep", "Bran: Will save vs Toll of the Deep"], "…and both save");
+  eq([hero.hp, hero.conditions.map(c => c.c + c.v)], [23, ["frightened1"]], "a failure (8+6 vs 21) takes 2d6 sonic and frightened 1");
+  eq([ally.hp, ally.conditions.map(c => c.c + c.v)], [6, ["frightened2"]], "a critical failure takes double and frightened 2");
+  eq([foe.powers[0].cd, eng.actions], [3, 1], "…the power goes on cooldown and two actions are spent");
+  ok(eng.events.some(ev => /<b>The Bell-Warden: Toll of the Deep!<\/b> <i>It RINGS\.<\/i>/.test(ev.text)), "…announced with its flavour");
+  pin([20, 12], [8, 4], [8, 4]);
+  eq(eng.aiStep(foe).action, "strike", "…and with one action left it bites");
+  // One hero in reach of two is not worth the ring.
+  const solo = kennel(warden(), null); solo.ally.x = 8; solo.ally.y = 8;
+  pin([20, 12], [8, 4], [8, 4]);
+  eq(solo.eng.aiStep(solo.foe).action, "strike", "with only one hero in reach it bites instead");
+  eq(solo.foe.powers[0].cd, 0, "…and keeps the power");
+}
+{
+  // aiTurn runs the whole turn in one synchronous call through defer, and the
+  // next foe's turn after that, until a hero is up.
+  const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+  const h1 = hound({ id: "h1", name: "First", x: 2, y: 1 }), h2 = hound({ id: "h2", name: "Second", x: 2, y: 2 });
+  const eng = stage([hero, h1, h2]);
+  delete eng.aiTurn; // stage() holds the AI; this test wants it running
+  setDiceSource(() => 0.5); // every die lands in the middle: d20 = 11
+  const beats = []; eng.defer = function(fn, ms){ beats.push(ms); fn(); };
+  eng.actionClick("end");
+  eq(eng.cur().id, "hero", "End Turn: both hounds take a whole turn each and it is the hero's turn again");
+  eq(eng.round, 2, "…in round 2");
+  eq(rolls(eng).filter(r => /^First/.test(r.text)).length, 2, "the first hound bit twice…");
+  eq(rolls(eng).filter(r => /^Second/.test(r.text)).length, 2, "…and so did the second");
+  eq(beats, [600, 550, 550, 300, 600, 550, 550, 300], "the page would have paused 600ms before each turn and 550/550/300 between steps — the pacing the engine asks for, not the one it takes");
+  eq(eng.events.filter(ev => typeof ev.text === "string" && /undefined|NaN/.test(ev.text)).length, 0, "no line reads undefined or NaN");
+}
+setDiceSource();
+
+group("combat engine: a headless encounter");
+/**
+ * Play a fight to the end with a simple party policy: Strike an adjacent foe
+ * while there are actions, otherwise Stride toward the nearest one; Aldous
+ * heals a dying neighbour first. The monsters run themselves. Returns a
+ * summary; throws if the fight has not ended after `cap` hero turns.
+ */
+function play(eng, cap = 60) {
+  let heroTurns = 0; const squares = [];
+  while (eng.active) {
+    const cb = eng.cur();
+    if (cb.side !== "pc") throw new Error(`the engine stopped on ${cb.name}'s turn — a monster turn did not run through defer`);
+    if (++heroTurns > cap) throw new Error(`no result after ${cap} hero turns`);
+    // Occupancy: no two living combatants on one square.
+    const live = eng.cbs.filter(c => !c.dead).map(c => eng.key(c.x, c.y));
+    squares.push(new Set(live).size === live.length);
+    let guard = 0;
+    while (eng.active && eng.cur() === cb && eng.actions > 0 && guard++ < 6) {
+      const foes = eng.alive("foe");
+      const near = foes.slice().sort((a, b) => eng.dist(cb, a) - eng.dist(cb, b))[0];
+      const downed = eng.cbs.find(c => c.side === "pc" && !c.dead && c.dying > 0 && eng.dist(cb, c) <= 6);
+      if (cb.abilities?.[0]?.uses > 0 && downed && eng.actions >= 2) { eng.actionClick("abil0"); eng.tokenClick(downed); continue; }
+      if (near && eng.dist(cb, near) <= 1) { eng.actionClick("strike0"); eng.tokenClick(near); continue; }
+      if (near) {
+        eng.actionClick("stride");
+        const reach = eng.reachable(cb, eng.armed.budget);
+        let best = null, bd = 1e9;
+        for (const k of Object.keys(reach)) {
+          const [x, y] = k.split(",").map(Number);
+          if (eng.occupied(x, y) && !(x === cb.x && y === cb.y)) continue;
+          const d = eng.dist({ x, y }, near);
+          if (d < bd || (d === bd && reach[k].cost < reach[eng.key(best.x, best.y)].cost)) { bd = d; best = { x, y }; }
+        }
+        if (!best || (best.x === cb.x && best.y === cb.y)) { eng.armed = null; break; }
+        eng.cellClick(best.x, best.y); continue;
+      }
+      break;
+    }
+    if (eng.active && eng.cur() === cb) eng.actionClick("end");
+  }
+  return { heroTurns, rounds: eng.round, occupancyHeld: squares.every(Boolean),
+    foesLeft: eng.alive("foe").length, pcs: eng.cbs.filter(c => c.side === "pc").map(c => `${c.name} ${c.hp}/${c.hpMax}${c.dead ? " dead" : c.dying ? " dying " + c.dying : ""}`),
+    rolls: eng.events.filter(ev => ev.kind === "roll").length, lines: eng.events.length,
+    dirty: eng.events.filter(ev => /undefined|NaN|\[object/.test(String(ev.text)) || /undefined|NaN/.test(String(ev.math || ""))).length };
+}
+{
+  setDiceSource(() => 0.5); // every die lands mid-face: a d20 is always 11
+  const run = () => { const eng = fight(); begin(eng, "enc-moor", [heroCombatant(fighter()), companionCombatant("aldous")]); return { eng, ...play(eng) }; };
+  const a = run();
+  eq(a.eng.active, false, "The Causeway Pack, a fighter and Brother Aldous, every die an 11: the fight ends");
+  eq([a.eng.h.victory, a.eng.h.defeat, a.eng.h.saves], [1, 0, 1], "…in a victory, saved once");
+  eq(a.foesLeft, 0, "…with every hound and the skeleton down");
+  eq(a.pcs, ["Testcase 32/44", "Brother Aldous 23/44 dead"], "…the fighter on 32 after the victory heal, and Aldous dead");
+  // Aldous died at dying 4 and still left the field on 23 HP: `finish` restores
+  // every party member, dead or not, and `start` sets dead=false on the whole
+  // party at the next encounter. Pinned as-is; it is in the standing backlog.
+  ok(a.eng.cbs[1].dead && a.eng.cbs[1].hp === 23, "a dead companion is healed by the victory anyway (standing backlog, pinned as-is)");
+  eq([a.rounds, a.heroTurns], [6, 9], "it takes six rounds");
+  eq(a.dirty, 0, "no Chronicle line reads undefined or NaN");
+  eq(a.occupancyHeld, true, "no two living combatants ever shared a square at the top of a hero turn");
+  ok(a.rolls >= 12, `the monsters and heroes rolled ${a.rolls} d20s between them`);
+  const b = run();
+  eq(b.eng.events.map(ev => ev.text + (ev.math || "")), a.eng.events.map(ev => ev.text + (ev.math || "")), "the same die gives the same fight, line for line");
+}
+{
+  // The crypt: the Bell-Warden's Toll, a champion, and a wisp that shoots. Party of three.
+  setDiceSource(() => 0.5);
+  const eng = fight();
+  begin(eng, "enc-crypt", [heroCombatant(fighter()), companionCombatant("aldous"), companionCombatant("wren")], { "knows-rite": true });
+  eq(eng.cbs.filter(c => c.side === "foe").map(c => c.name), ["The Bell-Warden", "Skeleton Guard", "Skeleton Guard", "Skeletal Champion", "Grave Wisp"], "a party of three faces all five");
+  const r = play(eng);
+  eq(eng.active, false, "the crypt fight ends");
+  eq(r.dirty, 0, "…with no undefined or NaN in the Chronicle");
+  eq(r.occupancyHeld, true, "…and nobody ever stacked");
+  ok(eng.events.some(ev => /Toll of the Deep!/.test(ev.text)), "the Warden rang the bell at least once");
+  ok(eng.events.some(ev => /Grave Wisp: Corpse-Light Spark vs/.test(ev.text)), "the wisp shot at somebody");
+  eq([eng.h.victory + eng.h.defeat, r.rounds > 1], [1, true], "…it went more than one round and ended one way");
+  eq([eng.h.defeat, r.rounds, r.pcs], [1, 7, ["Testcase 0/44 dead", "Brother Aldous 0/44 dying 1", "Wren Thistledown 0/38 dead"]],
+    "…pinned: with average dice and no tactics, the Warden wins in seven rounds. A balance change moves this line on purpose");
+}
+setDiceSource();
 setDiceSource();
 
 /* ---------------- report ---------------- */
