@@ -602,6 +602,67 @@ Two of them have moved since they were written:
    The other three keep the flat rule, because nothing throttles them.
    *Source: Hearth Phase 5, "The far island becomes a place".*
 
+68. **A store is counted against the cold season, not against the winter.**
+   Hearth's season line has quoted 13 measures a head as what a winter wants
+   since sprint 2, and by that number the island is never short: measured at
+   every turn of winter across ten game-years on seeds 7, 20260819 and 42, the
+   store stands at **1.32 to 1.75 times it, every single year, on all three
+   seeds.** A famine written against that threshold could not have fired on any
+   island, which is the failure Phase 2 found in three systems at once. The
+   number that is honest is the one the island's own consumption implies:
+   `.02` a person a step and 140 steps to a day is 2.8 measures a head a day,
+   nothing grows between the first frost and several days into spring, and
+   seven such days want **19 a head** (`COLD` in `js/core.js`). At 19 the same
+   three seeds are short about one winter in four. The general form: a
+   threshold nobody has held a run against is a wish, and the run is what sets
+   the constant.
+   *Source: Hearth Phase 6, "Scarcity that bites".*
+
+69. **Rationing is the answer to scarcity, not the scarcity, and it may not be
+   allowed to read as starvation.** Hunger on this island had exactly one
+   source — an empty store — and exactly one consequence at `.7`, which is
+   somebody getting into a boat. The short winter adds a second, slower source
+   (`+.0008` a step against the empty store's `+.005`) and **caps it at .45**
+   while the store is not actually empty. Without the cap a seven-day cold
+   season on rations reaches `.78` and starts emptying the island, so a village
+   that decided to eat less would lose more people than one that did nothing —
+   which is not a decision, it is a punishment for making one. Rations cost
+   what a ration should cost: everyone works at `.85`, the one eating last at
+   `.9` of that, and the store lasts `1/.62` as long. The empty store stays the
+   only thing that puts anybody in a boat.
+   *Source: Hearth Phase 6, "Scarcity that bites".*
+
+70. **Every state a hardship turns on is turned off by the calendar, not by a
+   roll, and the turning-off is written down.** `endWant()` runs on the first
+   day of spring whatever the store says; the elders who stood down from a
+   measure are cleared there, and cleared again unconditionally at the top of
+   `newDay` whenever there is no famine, beside the line that heals stray
+   `sick` flags. There is no path on which a famine survives its winter, which
+   is why the `strain` mode can assert on *every day of a forty-day run* that
+   the island is off rations the moment the ground softens. The rivalry the
+   granary raid makes gets the same treatment and needs a third ending to do
+   it: squared, not squared, or **left unsettled because one of the two is not
+   on the island any more** — the third one was found by running the mode, not
+   by writing it, and a village that has no line for it silently loses a fact
+   about itself.
+   *Source: Hearth Phase 6, "Scarcity that bites".*
+
+71. **When the material a check needs is a matter of chance and the island can
+   be made to produce it, make it; keep the thinness guard for when it cannot
+   be.** #63 says a run refuses to pass when material an assertion needs is
+   missing, and #67 says a gate on a throttled system is sized against the
+   chances the run gave it. Between them sits a third case: `saga` needs one
+   song that has outlived one of its carriers, or the living-only filter on the
+   carriers line is untested and dropping it altogether still passes. Whether
+   that has happened by day 400 is a matter of who died. On Phase 6's shifted
+   stream seed 7 reached day 401 with seven songs and every carrier of every
+   one of them alive, and the mode went red as too thin for a reason that had
+   nothing to do with the export. It now takes one carrier of a song that has
+   others — which is a thing this island does to itself most years — the way
+   `wider` forces its four cargoes, and the thinness guard stays for the case
+   where there is no such carrier to take.
+   *Source: Hearth Phase 6, "Scarcity that bites".*
+
 
 ---
 
@@ -1327,6 +1388,21 @@ transient state** — the same lesson as sprint 15's log-scraping dead end, one
 layer down. And a caveat noted rather than fixed: names recycle, and songs live
 on names, so a child named for a dead knower technically "knows" every song the
 ancestor knew.
+
+**Phase 6, first increment — the short winter.** The first of the three systems
+in "Scarcity that bites": a reckoning at the turn of winter, rations, a granary
+raid that costs a relationship, an elder who eats last, and a thaw that is not
+optional — plus save v14 and a `strain` harness mode. *What went wrong:* the
+threshold, twice. The first version counted the store against the season line's
+13 a head and would never have fired on any island (#68); the second let hunger
+climb on rations until the island emptied itself (#69). Both were found by
+measuring rather than by reasoning, and the measurements are in the decisions.
+*What fought back:* two older checks went red on the shifted stream and **both
+were the check's fault, not the code's** — the third and fourth instances of
+#66 in three sessions. `eleven` forced a fever arc, ran eight days, and then
+read the *live* `arc`; the island had dealt itself a second fever on day 32 and
+the check called that a forced fever that never ended. It tells the two apart
+by `d0` now. And `saga`'s thinness guard is described in #71.
 
 Two things every sprint from 11 on repeated in its own leftovers, and both are
 now questions in `BACKLOG.md` rather than notes here: the rich-island

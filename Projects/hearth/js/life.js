@@ -36,6 +36,7 @@ function newDay(){saidToday=new Set();
       arcYr=yr;startArc(c[0],c[2]+((R()*(c[3]-c[2]+1))|0))}}
   arcDay();
   if(arcK()!=='fever'&&people.some(p=>p.sick))people.forEach(p=>p.sick=0); // no fever, no fevered: stray flags heal
+  if(!want&&people.some(p=>p.short))people.forEach(p=>p.short=0); // and no rations, nobody eating last: the off-ramp is unconditional, not a roll
   wayDay(yr);faithDay();
   // the morning after a fire night, someone may walk out to stand where a grown story happens — and the first walk names the ground (sprint 13).
   // walkP only queues the errand; step() launches it once the light is up. An unnamed place is walked for certain; a named one, sometimes, again.
@@ -75,6 +76,24 @@ function newDay(){saidToday=new Set();
   // what the orchard and the hives give
   if(hasW('orchard')&&s==='autumn'){food+=1;if(seaDay()===0)say('The orchard lets go of its first windfalls, and the ground under the three trees is suddenly a place worth checking every morning.',false,'windfall')}
   if(hasW('hives')&&s==='summer'&&seaDay()===2){food+=3;say('The hives are opened, carefully, by whoever has the steadiest nerves this year. There is honey on the bread by evening.',false,'honey')}
+  // ---------- the short winter (phase 6) ----------
+  // Everything that has ever gone wrong on this island was weather, and weather is nobody's fault. This is the one that is somebody's.
+  // When the store will not cover the winter a person counts it and says the number out loud, and after that every measure is a
+  // decision: rations on everyone, one who takes more than a share in the dark and is seen, and an elder who quietly takes less.
+  // Two doors, once a year at most. The reckoning is held at the turn of winter, where the village already counts the store out loud,
+  // and it is measured against the cold season rather than against winter: nothing grows between the first frost and several days
+  // into spring, and the island eats 2.8 measures a head a day (`.02` a step, 140 steps to the day), so a store that has to cover
+  // about seven such days wants 19 a head — not the 13 the season line quotes for the five days of winter by themselves. Measured at
+  // every turn of winter across ten game-years on seeds 7, 20260819 and 42, the store stands at 1.32 to 1.75 times that 13: never
+  // once short by the old number, and short about one winter in four by this one. The second door is for a store that empties later
+  // however it got that way, which is also the door the harness's starvation windows come through.
+  if(!want&&wantYr!==yr&&people.length>=5&&
+     ((s==='winter'&&seaDay()===0&&granary+food<people.length*COLD)||(s!=='spring'&&s!=='summer'&&granary+food<people.length*4)))declareWant();
+  if(want){
+    if(!want.raid&&granary>=4&&dayCount>want.d0&&R()<.16)wantRaid();
+    if(want.gave<3&&R()<.2)wantShort()}
+  // and the thaw, which is not a roll and not conditional on the store: spring comes whether the counting worked or not
+  if(want&&(s==='spring'||s==='summer'||granary+food>=people.length*COLD))endWant();
   // hunger drives people away
   if(hunger>.7&&R()<hunger*.4){const cand=people.filter(p=>!p.dead&&!isKid(p)&&!people.some(k=>k.parents.includes(p.name)));if(cand.length>1){const wts=cand.map(p=>(has(p,'restless')?2.5:1)*(has(p,'homesick')?2.5:1)*(p.partner?.4:1));let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}leave(p)}}
   if(yr!==lastYear){lastYear=yr;const oldest=people.filter(p=>!p.dead).sort((a,b)=>ageOf(b)-ageOf(a))[0];say(`A new year begins. ${oldest?B(oldest)+' is the eldest now, at '+ageI(oldest)+'.':''}`,true);
@@ -134,6 +153,62 @@ function newDay(){saidToday=new Set();
   for(const p of people)trimHist(p); /* a long life earns more lines than anyone reads; the first one and the last HIST_MAX-1 keep */
   autoSaveTick();
 }
+// ---------- the short winter: the reckoning, the raid, the one who eats last, and the thaw (phase 6) ----------
+// Whoever keeps the store counts it. If nobody keeps the store the eldest does, because somebody has to, and the saying of the number
+// out loud is the whole point: hunger on this island used to be a stat that went up.
+function declareWant(){const cand=people.filter(p=>!p.dead&&!isKid(p));if(!cand.length)return;
+  const keep=cand.filter(p=>p.craft===4).sort((a,b)=>b.cxp-a.cxp)[0]||cand.slice().sort((a,b)=>ageOf(b)-ageOf(a))[0];
+  const need=people.length*COLD,have=granary+food,yr=yearOf(dayCount);
+  wantYr=yr;want={d0:dayCount,by:keep.name,gave:0,raid:0,rv:0};
+  say(`${B(keep)} counts the store twice, and out loud the second time: ${have} against a cold season that wants ${need}. From tonight everyone eats a little less, and everyone knows exactly why.`,true);
+  addEvent('want',`the short winter of year ${yr}`,`In year ${yr} ${keep.name} counted the store against the cold season and found ${have} where ${need} was wanted. ${V()} went onto rations that night, and every measure taken out of the store after that was a decision somebody had made.`);
+  keep.hist.push({d:dayCount,s:'counted the store against the cold season and said the number out loud'})}
+// One person takes more than the share, in the dark, and one person sees it. What it costs is not the measures. A partner and
+// anyone in a parent-or-child line are out of the witness pool: turning either of those into a rival would break the kinship they are.
+function wantRaid(){if(!want)return;const cand=people.filter(p=>!p.dead&&!isKid(p));if(cand.length<2)return;
+  const wts=cand.map(p=>(people.some(k=>!k.dead&&isKid(k)&&k.parents.includes(p.name))?3:1)*(has(p,'restless')?1.5:1)*(has(p,'gentle')?.4:1)*(has(p,'patient')?.6:1));
+  let sum=wts.reduce((a,b)=>a+b,0),r=R()*sum,p=cand[0];for(let i=0;i<cand.length;i++){r-=wts[i];if(r<=0){p=cand[i];break}}
+  const kin=q=>p.parents.includes(q.name)||q.parents.includes(p.name);
+  const pool=cand.filter(q=>q!==p&&q.name!==p.partner&&!kin(q));if(!pool.length)return;
+  const keep=byName(want.by);
+  const w=(keep&&keep!==p&&!keep.dead&&keep.name!==p.partner&&!kin(keep)&&R()<.5)?keep:pool[(R()*pool.length)|0];
+  const took=Math.min(granary,3+((R()*3)|0));granary-=took;want.raid=1;want.rv=[p.name,w.name];
+  const set=(a,b)=>{const r0=a.rels.find(r2=>r2.who===b.name);if(r0)r0.k='rival';else a.rels.push({who:b.name,k:'rival'})};
+  set(p,w);set(w,p);
+  say(`Somebody has been at the store in the dark. ${B(w)} knows who, having seen ${B(p)} come out of it carrying more than a measure, and neither of them has said one word about it since.`,true);
+  addEvent('raid',`the ${sea()} ${p.name} went to the store in the dark`,`In the short winter of year ${yearOf(dayCount)}, ${p.name} took ${took} measures out of the store at night, and ${w.name} saw it happen and said nothing. It cost the store ${took} measures and cost the two of them rather more, and only one of those was ever going to be got back.`);
+  p.hist.push({d:dayCount,s:'took more than a share out of the store one night in the short winter, and was seen'});
+  w.hist.push({d:dayCount,s:`saw ${p.name} come out of the store at night, and said nothing, which was its own decision`})}
+// The same winter decided the other way. An elder stands down from their measure and calls it not being hungry, which fools nobody.
+function wantShort(){if(!want)return;const eld=people.filter(p=>!p.dead&&isElder(p)&&!p.short);
+  if(!eld.length||!people.some(p=>!p.dead&&isKid(p)))return;
+  const e=eld[(R()*eld.length)|0];e.short=1;want.gave++;
+  say(`${B(e)} has taken to eating after everyone else, and less, and calling it not being hungry. Nobody is fooled and nobody says so.`,true);
+  e.hist.push({d:dayCount,s:'ate last and ate less through the short winter, so that the children would not have to'});
+  if(want.gave===1)addEvent('gave',`the short winter ${e.name} ate last`,`Through the short winter of year ${yearOf(dayCount)}, ${e.name} took to eating after everyone else and taking less, and called it not being hungry. The children ate what was not taken. The whole of ${V()} knew, and nobody made ${e.name} stop.`)}
+// The thaw. Every state the famine turned on turns off here — the rations, the elders eating last, and the rivalry the raid made,
+// which mends more often than it does not and is written down either way, because a thing that did not mend is a fact about a village too.
+function endWant(){if(!want)return;const w0=want;want=null;
+  for(const p of people)if(p.short){p.short=0;p.hist.push({d:dayCount,s:'went back to a full measure at the thaw, and said nothing about that either'})}
+  say(`The store is not empty and the winter is behind. ${V()} goes back to full measures, and the first meal of it is eaten far too fast by everybody.`,true);
+  addEvent('thaw',`the end of the short winter of year ${yearOf(w0.d0)}`,`The short winter of year ${yearOf(w0.d0)} ended the way they do: the ground softened, the boats went out, and the store stopped being counted twice a day. ${V()} came out of it lean, and ${plural(people.length,'person','people')} still standing on it.`);
+  if(!w0.rv)return;
+  const a=byName(w0.rv[0]),b=byName(w0.rv[1]);
+  // three endings, not two: the third is that one of them is not here to square it with, and a village keeps that as a fact too
+  if(!a||!b||a.dead||b.dead){const g=a?w0.rv[1]:w0.rv[0];
+    say(`Whatever there had been between ${w0.rv[0]} and ${w0.rv[1]} since that night at the store ends here, and not by being settled.`,true);
+    addEvent('parted',`the ${sea()} it was left unsettled`,`${w0.rv[0]} and ${w0.rv[1]} never squared what happened at the store in the short winter. ${g} is not on the island to square it with any more, and whoever is left carries both halves of it.`);
+    return}
+  const set=(x,y,k)=>{const r=x.rels.find(r2=>r2.who===y.name);if(r)r.k=k};
+  if(R()<.6){set(a,b,'friend');set(b,a,'friend');
+    say(`${B(b)} says, out of nothing in particular, that a hungry winter is not a character. ${B(a)} does not answer, and the two of them stack wood together the whole afternoon.`,true);
+    addEvent('squared',`the ${sea()} ${a.name} and ${b.name} squared it`,`What ${a.name} took out of the store in the short winter was never mentioned again, and by the thaw ${b.name} had decided that a hungry winter is not a character. They stacked wood together all one afternoon on it, and that was the whole of the conversation.`);
+    a.hist.push({d:dayCount,s:`squared it with ${b.name} at the thaw, without either of them saying what it was about`});
+    b.hist.push({d:dayCount,s:`squared it with ${a.name} at the thaw, without either of them saying what it was about`})}
+  else{say(`The winter is over and ${B(a)} and ${B(b)} are still not speaking. It stopped being about the store some time ago.`,true);
+    addEvent('kept',`the ${sea()} it was not squared`,`The short winter ended and ${b.name} went on looking at ${a.name} a certain way across the fire. It had stopped being about the store well before that.`);
+    a.hist.push({d:dayCount,s:`came out of the short winter with ${b.name} still not speaking to them`});
+    b.hist.push({d:dayCount,s:`came out of the short winter still not speaking to ${a.name}`})}}
 // sprint 9: the island keeps itself. Written at each dawn; read back at boot when no link is pinned in the address bar.
 function autoSave(){try{store('auto',lzEnc(JSON.stringify(pack())))}catch(e){}}
 // The LZ of a 500-day island measured 26 ms, and at the generational speed a day goes by in about half a second, so a dawn autosave

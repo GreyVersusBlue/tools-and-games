@@ -1,19 +1,23 @@
 # Hearth — Feature Wishlist
 
-**Status: sixteen sprints and Phases 1 through 5 are shipped. Phase 6 —
-*Scarcity that bites*, on Claude Fable 5.1 — is the next thing to build, and it
-is a 2+: whoever takes it takes nothing else, does one increment, and leaves the
-row standing.** Phase 2 gave the island a generational speed and then found that
+**Status: sixteen sprints, Phases 1 through 5, and the first increment of Phase
+6 are shipped. Phase 6 is a 2+ and is still open: the short winter is in, and
+the illness that spreads and the feud that is a system are not.** Whoever takes
+it next takes nothing else with it, does one increment, and leaves the row
+standing again. Phase 2 gave the island a generational speed and then found that
 three of the four systems it was meant to reach could not have fired at any
 length of run; Phase 3 turned eight versions of `||` defaults into one
 `migrate()` and one version gate; Phase 4 gave the chronicle a page to leave as;
-Phase 5 gave the horizon a seed, a name and a boat that goes both ways. The
-harness has fifteen modes now: the eleven that were there, plus `decade` (35
+Phase 5 gave the horizon a seed, a name and a boat that goes both ways; Phase
+6's first increment gave the island a winter it can be short of. The
+harness has sixteen modes now: the eleven that were there, plus `decade` (35
 game-years x 2 seeds, ~40,000 audits, and the fast path asserted bit-identical
-to 1x), `migrate` (every save shape v5 through v13 forged out of one live island
+to 1x), `migrate` (every save shape v5 through v14 forged out of one live island
 and walked back up), `saga` (400 days on seed 7, the export generated and then
-read back off the DOM claim by claim) and `wider` (the far island, from the
-involution to a second tab opened at its own link).
+read back off the DOM claim by claim), `wider` (the far island, from the
+involution to a second tab opened at its own link) and `strain` (the short
+winter, forced through each of its own entry points and then lived through
+unforced for forty audited days on two seeds).
 
 **What Phase 1 left:** the
 songs a sound — `songDegrees(ci)` derives a 6–10 note phrase from the island
@@ -90,41 +94,41 @@ and the chronicle panel — everything else is drawn.
 The nine scripts, in the order they load, which is the order the original
 single file's sections sat in and is load-bearing:
 
-- **`js/core.js`** (341) — the seeded rng (`mulberry`, `R`, `rnd`, `pick`,
+- **`js/core.js`** (392) — the seeded rng (`mulberry`, `R`, `rnd`, `pick`,
   `hash`, `noise2`), every world constant (`W=110,H=70,T=8,YEAR=20`), every
   piece of top-level mutable state, `newWorld()`, terrain painting, the
   `say()` log, the people primitives, and the tables everything else reads:
   `GROW` (24 story kinds that can grow), `LORE_PLACE` (8 kinds with ground
   under them), `BLD`, `TRAITS`, `MADEV`/`MADE`, `yearName()`.
-- **`js/flavor.js`** (265) — the log grammar. `G` is **216** condition/template
+- **`js/flavor.js`** (276) — the log grammar. `G` is **226** condition/template
   pairs; `flavor()` builds a ~90-key context per call, filters, weights,
   picks, and refuses a template already used today.
-- **`js/life.js`** (342) — `newDay()` (the once-a-day roll for arcs, births,
+- **`js/life.js`** (543) — `newDay()` (the once-a-day roll for arcs, births,
   partnerships, deaths, the bounds, elders telling children of the dead),
   `die`/`leave`/`remove`, `loseSongs`, `chatNews`, the building ladder, boats,
   `WORKS`, and the wildlife.
-- **`js/watcher.js`** (272) — clouds, the blessings, dreams, `tellStory()`
+- **`js/watcher.js`** (290) — clouds, the blessings, dreams, `tellStory()`
   (the fire night, where stories grow and songs are composed), `boundsOut()`
   (the rite), the year's fortunes (`arc`), the four `WAYS`, the faith/prayer
   account, and the weather machine.
-- **`js/sim.js`** (278) — one function, `step(dt)`: weather, snow, drought,
+- **`js/sim.js`** (284) — one function, `step(dt)`: weather, snow, drought,
   crops, arrivals, and the per-person task switch (chop, till, harvest, fish,
   build, carry, gather, play, tag, snowman, bounds, pilgrim, mourn, …).
 - **`js/render.js`** (297) — `drawFace()` (the 16×16 procedural portrait), the
   person card, and `draw()`: one 880×560 canvas, a terrain layer repainted
   only when `paintedKey` changes, a painter's-algorithm `ents[]` sorted by y.
-- **`js/audio.js`** (126) — the graph, built once in `startAudio()`:
+- **`js/audio.js`** (153) — the graph, built once in `startAudio()`:
   `master → {ambG, sfxG, musG}` with wind, waves, rain (straight to master,
   because it is what everything ducks under), a spring, crickets, and a
   two-oscillator pad retuned by season. `note(f,dur,vol,type,pan,bus,when)` is
   the one-note primitive; `knock()` is the one-shot primitive.
-- **`js/save.js`** (123) — the chronicle panel and `.txt` export, the LZ codec,
+- **`js/save.js`** (304) — the chronicle panel and `.txt` export, the LZ codec,
   and `pack()`/`unpack()`/`loadHash()`/`saveHash()`.
-- **`js/main.js`** (152) — time controls, hints, input and the view, the boot
+- **`js/main.js`** (174) — time controls, hints, input and the view, the boot
   sequence, the RAF loop, and `window.__hearth`, the object the harness drives
   the game through.
 
-That is ~2,196 lines of JavaScript. The load-bearing habits: **there is no
+That is 2,713 lines of JavaScript. The load-bearing habits: **there is no
 module system and no `"use strict"`** — every top-level `let`/`const` shares
 one global lexical scope across the nine files, so a duplicated name silently
 shadows, and boot-time execution belongs only in `main.js`. **The rng is the
@@ -139,9 +143,9 @@ is also the migration ladder.
 There is no pure module with its own unit suite anywhere. The only test is
 `test/harness.mjs`, which drives the real page in Playwright's Chromium through
 `window.__hearth`, pausing the RAF loop first so every `step()` comes from the
-test file. Fourteen modes live in it as top-level `if (mode === '…')` blocks:
-`soak`, `nan`, `depth`, `determinism`, `save`, `decade`, `migrate`, `saga`, and
-one per sprint, `eleven` through `sixteen`. It is a good harness. It is not a
+test file. Sixteen modes live in it as top-level `if (mode === '…')` blocks:
+`soak`, `nan`, `depth`, `determinism`, `save`, `decade`, `migrate`, `saga`,
+`wider`, `strain`, and one per sprint, `eleven` through `sixteen`. It is a good harness. It is not a
 fast one, and it cannot tell you a function is wrong, only that an island is.
 
 ## Conventions a new builder must know
@@ -220,15 +224,18 @@ wrong, and the handoff that names it is cited.
 - **The test invocation, in full.** From `Projects/hearth/test`, once
   `npm install`; then `node harness.mjs soak` (5 islands × 40 days, the
   standing gate), `determinism`, `save`, `depth --days 120`, `nan` (400 days
-  with starvation windows), `migrate` (every save shape v5–v13), `saga` (400
-  days, the chronicle export read back off the DOM, about a minute), `wider`
+  with starvation windows, ~5 minutes), `migrate` (every save shape v5–v14),
+  `saga` (400 days, the chronicle export read back off the DOM, about a minute),
+  `wider`
   (the far island: four cargoes, a trade, a departure, a return, the hash and a
-  second tab opened at `#s=`, under a minute), `decade`
-  (35 game-years × 2 seeds, ~4.5 minutes, and the generational speed asserted
+  second tab opened at `#s=`, under a minute), `strain` (the short winter:
+  reckoning, raid, the one eating last, the thaw, and forty audited days on two
+  seeds, about 20 seconds), `decade`
+  (35 game-years × 2 seeds, ~6 minutes, and the generational speed asserted
   bit-identical to 1×), and the per-sprint regressions by name, `eleven`
-  through `sixteen`. `package.json` scripts only the first four. `decade` is the
-  slow one and the one to run after any change to `step()`, `newDay()` or
-  `tellStory()`; everything else is under a minute. Chromium
+  through `sixteen`. `package.json` scripts only the first four. `decade` and
+  `nan` are the slow ones and `decade` is the one to run after any change to
+  `step()`, `newDay()` or `tellStory()`; everything else is under a minute. Chromium
   launches with `--autoplay-policy=no-user-gesture-required` always and falls
   back to `/opt/pw-browsers/chromium` when Playwright's own download is
   absent.
@@ -814,49 +821,87 @@ Broken on purpose, four times, each break watched to fail and then put back:
   twice, at `farSeed is not an involution: 7 -> 6232613 -> 12465219` and again in
   the second tab, where `the far island's far island is 12465219, not 7`.
 
-## Phase 6 — Scarcity that bites
+## Phase 6 — Scarcity that bites — **THE SHORT WINTER IS IN; TWO SYSTEMS LEFT**
 
-**Nothing on this island is ever really at stake, and everyone is unfailingly
-nice about it.**
+**Nothing on this island was ever really at stake, and everyone was unfailingly
+nice about it.** One third of that is fixed. This is a 2+ and it stays on the
+list until the other two thirds are.
 
-Hunger slows work and eventually puts somebody in a boat. Fever is an arc that
-makes people `sick` and sometimes kills them. Storms flatten a field and take a
-tree. That is the whole of adversity and it is all weather — nothing is
-anyone's *fault* and nothing anyone does makes it worse. Rivalry is a
-relationship label with three flavor lines attached. This phase gives the
-island failure modes with people in them, and it is the most dangerous phase
-here: every one of these moves people, and the soak invariants (nobody in the
-water, nobody NaN, every mover on land) are the only thing between "a village
-under strain" and a broken island.
+**What shipped, in the first increment.** The store is counted against the cold
+season now, not against winter — the season line's 13 measures a head is what
+five days of winter want, and nothing grows between the first frost and several
+days into spring, so a store that has to cover the gap wants 19 (`COLD` in
+`js/core.js`, and decision #68 for why the old number could never have fired).
+At the turn of every winter, whoever keeps the store — the store-craft master if
+there is one, the eldest if there is not — counts it, says the number out loud,
+and the island goes onto rations: everyone works at `.85`, the store is drawn
+down at `.62`, hunger creeps up and is capped at `.45` so a village that decided
+to eat less does not lose more people than one that did nothing (#69). Inside
+the famine two things can happen and both are somebody's doing rather than the
+weather's. One person takes more than a share out of the store in the dark and
+one person sees it, which costs four to six measures and costs the two of them a
+great deal more; and an elder stands down from a measure, calls it not being
+hungry, works at `.9` of the ration rate and fools nobody. At the thaw all of it
+comes off — unconditionally, on the first day of spring, whatever the store says
+— and the rivalry the raid made is squared, not squared, or left unsettled
+because one of the two is no longer on the island, with a chronicle entry every
+way (#70). Save is **v14**: one ladder hop with its inverse, `wa`/`wy` for the
+famine and a thirtieth person slot for the one eating last. A short winter earns
+the year its name. Eight new flavour templates, a `· rations` on the HUD, and
+three new `GROW` entries so the fire can tell the story afterwards.
 
-- [ ] **A famine with decisions in it.** When the store will not last the
-  winter, somebody has to say so. Rationing that slows everyone, a granary
-  raid that costs a relationship, an elder who eats less on purpose — each a
-  state change with a chronicle entry, all of them reversible in spring.
-- [ ] **Illness that spreads on the paths.** `p.sick` exists and is set by the
-  fever arc; let proximity carry it, let the chapel or the hall matter, let
-  nursing become a relationship. Prayer already has `heal` at the top of its
-  priority list and nothing to do.
+Measured: on seeds 7, 20260819 and 42 the store stood at 1.32–1.75 times the old
+threshold at every one of thirty turns of winter and was never once short by it;
+against the cold season's 19 it is short about one winter in four. Ten
+game-years on seeds 7 and 20260819 give two short winters each, with raids and
+elders eating last inside them, and pop 50/53 at day 201 against 52/48 before —
+the island is leaner, not emptier.
+
+- [x] **A famine with decisions in it.** Rationing that slows everyone, a
+  granary raid that costs a relationship, an elder who eats less on purpose,
+  each a state change with a chronicle entry, all reversible in spring.
+- [x] **Every new state packs, and every new state has an off-ramp.** v14, and
+  the off-ramp is the calendar rather than a roll.
+- [x] **Soak first, then features.** `soak`, `nan` (5 islands, 2,000 sim-days,
+  ~225,860 audits) and every other mode green after each piece, not at the end.
+- [x] **A `strain` harness mode.** Each system forced through its own entry
+  point and asserted on durable state, then a real reckoning at a real turn of
+  winter, then forty audited days on two seeds with the thaw asserted on every
+  single day.
+- [ ] **Illness that spreads on the paths.** `p.sick` is still set only by the
+  fever arc and cleared only by it. Let proximity carry it, let the chapel or
+  the hall matter, let nursing become a relationship. Prayer still has `heal` at
+  the top of its priority list and nothing to do. Note before starting: the
+  `eleven` mode now tells the arc it forced from the one the island dealt itself
+  by `d0`, and anything that moves `p.sick` should keep that distinction.
 - [ ] **A feud that is a system, not a label.** Two rivals whose work suffers,
-  who avoid each other's spots, whose children inherit the distance — and
-  which ends, at a fire night or a death or a walking of the bounds, with a
-  chronicle entry either way.
-- [ ] **Every new state packs, and every new state has an off-ramp.** No
-  permanent debuff; the island's register is that things pass. A famine that
-  never ends is a bug.
-- [ ] **Soak first, then features.** `soak --days 40` and `nan --days 400`
-  after each of these, not at the end. The nan mode's starvation windows exist
-  for exactly this phase and have never had a real customer.
-- [ ] **A `strain` harness mode.** Force each system, assert its chronicle
-  entry and its recovery, and assert zero water/NaN violations across a 40-day
-  famine on two seeds.
+  who avoid each other's spots, whose children inherit the distance — and which
+  ends, at a fire night or a death or a walking of the bounds, with a chronicle
+  entry either way. The raid already makes a rival pair and already ends it
+  three ways at the thaw; a feud is that pair given somewhere to live in between,
+  and `endWant`'s three endings are the shape to copy.
+- [ ] **`strain` grows with them.** The mode is built to take more sections:
+  each new system forces through its own entry point, asserts its chronicle
+  entry and its off-ramp, and the forty-day audited run at the end picks it up
+  for free.
+
+**What the next increment should know.** The stream has now moved three sessions
+running, and all three times it put an older observational check red without
+there being a bug: budget for it, read #66, #67 and #71 first, and do not treat
+a red check as a verdict. This time it was `eleven` reading the live `arc`
+instead of the one it forced, and `saga` waiting on a song outliving a carrier
+that this stream does not deliver by day 400. Both are fixed in the harness and
+neither was a change to the game. Also: seed 7 barely makes elders, so the
+elder-who-eats-last system fired zero times in ten game-years there and twice on
+20260819 — that is the same throttle the wishlist's standing backlog names at the
+top, and it is Phase 7's, not this row's.
 
 *Leans on:* `js/sim.js`'s task switch, `js/life.js`'s `newDay` and arcs,
 `js/watcher.js`'s `faithDay`, `js/flavor.js`'s grammar. *Save:* additive
 fields for the new person and village states, on Phase 3's ladder. *Model:*
 **Claude Fable 5.1** — new rules moving people through a simulation whose only
 safety net is a headless soak, where a wrong answer looks like a village
-having a hard year.
+having a hard year. *This increment was worked under Claude Opus 5.*
 
 ## Phase 7 — Play that reads as play, and four other leftovers
 
