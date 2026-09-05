@@ -292,6 +292,6 @@ function draw(){
   for(const st of shoots){const x=st.x*T,y=st.y*T,a=Math.min(1,st.l/.7);g.fillStyle=`rgba(255,255,255,${(a*.9).toFixed(2)})`;g.fillRect(x,y,2,1);
     g.fillStyle=`rgba(255,255,255,${(a*.3).toFixed(2)})`;g.fillRect(x-st.vx*.03*T,y-st.vy*.03*T,2,1);g.fillRect(x-st.vx*.06*T,y-st.vy*.06*T,1,1)}
   document.getElementById('s-pop').textContent=people.length;document.getElementById('s-wood').textContent=wood;document.getElementById('s-food').textContent=food;document.getElementById('s-store').textContent=granary;
-  const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(hunger>.3?' · hungry':'');
+  const lbl=f<e[0]?'night':f<e[0]+.1?'dawn':f<.5?'morning':f<e[1]-.1?'afternoon':f<e[1]?'dusk':'night';const wxl={clear:'',overcast:' · overcast',rain:' · rain',thunder:' · storm',fog:' · fog',snow:' · snow'}[wx]+(want?' · rations':hunger>.3?' · hungry':'');
   document.getElementById('s-time').textContent=`year ${yearOf(dayCount)} · day ${dayCount} · ${s} · ${lbl}${wxl}`;document.getElementById('s-time-s').textContent=`d${dayCount} · ${s} · ${lbl}${wxl}`;
 }

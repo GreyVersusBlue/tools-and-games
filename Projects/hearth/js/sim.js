@@ -263,14 +263,20 @@ function step(dt){
           p.task='idle';p.t=2}}break;
     }
   }
-  people.forEach(p=>{if(people.length>1&&R()<dt*(arcK()==='longwinter'?.027:.02)){if(food>0)food-=1;else if(granary>0)granary-=1}});
+  /* phase 6: rations are the whole of the decision — the store lasts longer and the work goes slower (workRate), and the elder who
+     stood down from a measure draws half as often. One R() draw per person per step either way, so a village not on rations is on
+     exactly the stream it was on before. */
+  people.forEach(p=>{if(people.length>1&&R()<dt*(arcK()==='longwinter'?.027:.02)*(want?.62:1)*(p.short?.5:1)){if(food>0)food-=1;else if(granary>0)granary-=1}});
   if(food>40&&R()<dt*food*.0025*(hasWay(2)?.5:1))food-=1; // fresh food does not keep — though fired pots slow the damp's stealing
   // once, in the first year only: the boat they came in had one more sack in it
   if(food<=0&&granary<=0&&people.length>1&&!sackUsed&&dayCount<=YEAR){sackUsed=true;food+=10;
     say('The bottom of the boat turns out to hold one more sack, kept against exactly this, and nobody asks why it was not mentioned before.',true);
     addEvent('sack','the sack from the boat','The store ran out in the first year, and the last sack from the boat, kept against exactly this, was opened.')}
   const starving=food<=0&&granary<=0&&people.length>1;
-  hunger=Math.max(0,Math.min(1,hunger+dt*(starving?.005:-.004)));
+  hunger=Math.max(0,Math.min(1,hunger+dt*(starving?.005:want?.0008:-.004)));
+  /* a lean winter is not starvation, and must not read as it: hunger climbs on rations, and stops well under the .7 that puts
+     somebody in a boat. The empty store is still the only thing that empties the island. */
+  if(want&&!starving)hunger=Math.min(hunger,.45);
   if(starving&&R()<dt*.02)say(hunger>.6?'The store is empty. Nobody says so at the fire, which is how everyone knows.':'The store is empty. Whatever the sea gives today is dinner.',false,'empty');
   food=Math.max(0,food);
   trees=trees.filter(t=>t.hp>0);

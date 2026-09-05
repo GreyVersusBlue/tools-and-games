@@ -80,6 +80,15 @@ const G=[
   {c:x=>x.hungry&&x.gossipy,t:'{A} has worked out exactly how many days the store will last, and tells everyone.'},
   {c:x=>x.hungry&&x.patient,t:'{A} makes the thin soup last by stirring it for a long time.'},
   {c:x=>x.hungry&&x.kid&&x.b,t:'{B} gives {A} the larger half and says it was the smaller.'},
+  // phase 6: the short winter, from the inside
+  {c:x=>x.rations,t:'{A} eats the ration and then sits on with the empty bowl a while, out of habit rather than hope.'},
+  {c:x=>x.rations&&x.night,t:'The store gets counted again after dark. Nobody asked {A} to; {A} would rather know than sleep.'},
+  {c:x=>x.rations&&x.kid,t:'{A} has worked out that the grown ones are eating less than they say, and has not worked out what to do about it.'},
+  {c:x=>x.rations&&x.b&&x.gossipy,t:'{A} tells {B} what the store was at this time last year. {B} did not ask and does not want to know.'},
+  {c:x=>x.short&&x.b,t:'{A} says old people do not need much, without being asked. {B} does not believe a word of it.',w:1.6},
+  {c:x=>x.short&&x.night,t:'{A} takes the plate last and takes the least off it, and has an answer ready that nobody uses.'},
+  {c:x=>x.raided&&x.rel==='rival',t:'{A} and {B} pass each other at the store and neither of them looks up.',w:1.6},
+  {c:x=>x.rations&&x.stone,t:'{A} stands at the quiet stone a long time and asks it for nothing in particular, which is new.'},
   {c:x=>x.sea==='autumn'&&x.b&&!x.night,t:'{A} and {B} carry the last baskets to the store and stand looking at it, weighing the winter.'},
   {c:x=>x.sea==='autumn'&&x.leaves,t:'{A} walks through the fallen leaves on purpose, for the sound.'},
   {c:x=>x.sea==='winter'&&!x.night,t:'{A} feeds the fire and looks at the woodpile and does the arithmetic.'},
@@ -249,7 +258,7 @@ function flavor(){const cand=people.filter(p=>!p.dead);if(!cand.length)return;
   const rel=a.rels.length&&R()<.75?a.rels[(R()*a.rels.length)|0]:null;const b=rel?byName(rel.who):(cand.length>1?pick(cand.filter(p=>p!==a)):null);
   const c=cand.length>2?pick(cand.filter(p=>p!==a&&p!==b)):null;
   const td=tide();
-  const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,farn:farKnown(),voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,spring:springs.length>0,story:storyDay===dayCount,dreamt:dreamAny===dayCount,cloudrain:clouds.some(c=>c.r>0),fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a),
+  const ctx={a,b,c,rel:rel?rel.k:null,night:isNight(),dusk:isDusk(),rain,storm,thunder:storm,market:hasB('market'),mill:hasB('mill'),well:hasB('well'),hall:hasB('hall'),light:hasB('light'),hut:hasB('hut'),smoke:hasB('smoke'),bridge:hasB('bridge'),trader:!!trader,road:roadV>0,named:!!village,deer:wild.some(w=>w.k==='deer'),rabbits:wild.some(w=>w.k==='rabbit'),farms:farms.length>0,fox:wild.some(w=>w.k==='fox'),gulls:gulls.length>0,fireflies:flies.length>0,geese:geeseDay===dayCount,whale:!!whale||whaleDay===dayCount,fish:fishSh.length>0&&!frozen,far:!!farIsle,farn:farKnown(),voyaged:!!voyage,away:!!voyage&&voyage.st==='away',stayed:!!voyage&&voyage.st==='stayed',ruin:!!ruin&&ruinSeen>0,spring:springs.length>0,story:storyDay===dayCount,dreamt:dreamAny===dayCount,cloudrain:clouds.some(c=>c.r>0),fog:wx==='fog',snow:wx==='snow',overcast:wx==='overcast',ice:frozen,hungry:hunger>.25,rations:!!want,short:!!a.short,raided:!!(want&&want.raid),leaves:seaDay()>=2,blossom:seaDay()<=3,lowtide:td<-.6,hightide:td>.6,sea:seasonOf(dayCount),ev:eventLabel(),graves:graves.length>0,elder:isElder(a),kid:isKid(a),
     crf:a.craft,cxpv:a.cxp||0,orchard:hasW('orchard'),hives:hasW('hives'),swingw:hasW('swing'),ringw:hasW('ring'),bench:hasW('bench'),oldhouse:hasW('ruin3'),racks:hasW('racks'),boat2:hasW('boat2'),dryg:dry01>.6,
     drought:arcK()==='drought',hardw:arcK()==='longwinter',feverA:arcK()==='fever',shoalA:arcK()==='shoal',sick:!!a.sick,sail:hasWay(0),plough:hasWay(1),kiln:hasWay(2),book:hasWay(3),stone:hasW('shrine'),faithHi:faith>=.5,
     keeps:thingsOf(a.name).length>0,shelf:hasB('hall')&&things.some(t=>!t.holder),legend:chron.some(e=>e.gr),lore:spots.some(s=>s.lore),cairn:spots.some(s=>s.lore&&(loreN[s.k]||0)>=2),

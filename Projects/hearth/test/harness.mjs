@@ -13,6 +13,7 @@
 //   node harness.mjs migrate
 //   node harness.mjs saga         [--days 400] [--seeds 7]
 //   node harness.mjs wider
+//   node harness.mjs strain      [--days 40] [--seeds 7,20260819]
 //
 // Checks, per sprint-8 lessons: audit EVERY species and people every N steps across MULTIPLE
 // seeds including random ones; a single healthy island at a polite interval proves nothing.
@@ -237,12 +238,21 @@ if (mode === 'eleven') {
   }
 
   // arcs, forced: fever runs its course; drought cranks the dry ground and breaks in a storm
-  await H(() => window.__hearth.startArc('fever', 5));
+  // The forced arc is told apart by the day it started, not by "is there an arc at all". A year turns inside these eight days and the
+  // island deals its own fortune card: on phase 6's shifted stream it dealt a second fever on day 32, and a check reading the live
+  // `arc` and the live sick count called that a forced fever that never ended. What is under test is the arc this line started (#66).
+  const arc0 = await H(() => { const h = window.__hearth; h.startArc('fever', 5); return { d0: h.arc.d0, end: h.arc.end } });
   const sick0 = await H(() => window.__hearth.sickCount);
   for (let d = 0; d < 8; d++) await runDay(page, 1e9);
-  const fever = await H(() => ({ sick: window.__hearth.sickCount, arcGone: !window.__hearth.arc, chr: window.__hearth.chron.some(e => e.kind === 'fever') }));
-  console.log(`fever: ${sick0} taken, ${fever.sick} still sick after, arc cleared ${fever.arcGone}, chronicled ${fever.chr}`);
-  if (sick0 < 1 || fever.sick > 0 || !fever.arcGone || !fever.chr) { failed = true; console.log('FAIL: fever arc misbehaved'); }
+  const fever = await H(() => {
+    const h = window.__hearth, a = h.arc;
+    return { sick: h.sickCount, arcK: a ? a.k : null, arcD0: a ? a.d0 : -1, chr: h.chron.some(e => e.kind === 'fever') };
+  });
+  const mine = fever.arcD0 === arc0.d0;                 // the arc this check started, told apart by the day it started on
+  const strays = (fever.arcK === 'fever' && !mine) ? 0 : fever.sick;   // a fever dealt after the forced one owns its own patients
+  console.log(`fever: ${sick0} taken, ${fever.sick} still sick after, the forced arc (day ${arc0.d0}) still running ${mine}, ` +
+    `the island's arc now ${fever.arcK ? fever.arcK + ' from day ' + fever.arcD0 : 'none'}, chronicled ${fever.chr}`);
+  if (sick0 < 1 || strays > 0 || mine || !fever.chr) { failed = true; console.log('FAIL: fever arc misbehaved'); }
   await H(() => { window.__hearth.setDry(.1); window.__hearth.startArc('drought', 3); });
   for (let d = 0; d < 5; d++) await runDay(page, 1e9);
   const dr = await H(() => ({ dry: window.__hearth.dry01, now: window.__hearth.arc ? window.__hearth.arc.k : 'none', broke: window.__hearth.chron.some(e => e.kind === 'rainscame') }));
@@ -1142,6 +1152,7 @@ if (mode === 'migrate') {
     h.setFaith(.5);
     h.farRec.kn = 1; h.farCross('name', 'a forced crossing');            // v13: the far island's record, and a gone who knows which way they went
     h.gone.push({ name: 'A Forced Leaver', far: 1 });
+    h.declareWant(); h.people[0].short = 1;                              // v14: the short winter, and the one eating last through it
   });
 
   // A current island packs, unpacks and re-packs byte-identical: the ladder must not touch a save already at SAVE_V.
@@ -1169,9 +1180,9 @@ if (mode === 'migrate') {
       if (!h.canLoad(o)) return { err: 'canLoad refused a shape the ladder claims to accept' };
       h.migrate(o);
       const wide = (rows, dflt) => rows && rows.length ? Math.min(...rows.map(a => a.length)) : dflt;
-      const shape = { v: o.v, pe: wide(o.pe, 29), vo: o.vo && o.vo[5] ? o.vo[5].length : 29, gv: wide(o.gv, 7),
+      const shape = { v: o.v, pe: wide(o.pe, 30), vo: o.vo && o.vo[5] ? o.vo[5].length : 30, gv: wide(o.gv, 7),
         wk: wide(o.wk, 8), ch: wide(o.ch, 7), go: wide(o.go, 2),
-        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi'].filter(k => o[k] === undefined) };
+        gone: ['lp', 'ln', 'by', 'sg', 'sm', 'ss', 'hl', 'hy', 'fa', 'fs', 'ay', 'ax', 'fi', 'wa', 'wy'].filter(k => o[k] === undefined) };
       try { h.unpack(o); } catch (e) { return { err: 'threw: ' + e.message } }
       try { h.pack(); } catch (e) { return { err: 'packs no more: ' + e.message } }
       return { shape,
@@ -1182,15 +1193,17 @@ if (mode === 'migrate') {
         things: h.things.length, wip: h.works.filter(w => !w.done).length, works: h.works.length, faith: h.faith,
         prog: h.works.map(w => w.prog).join('/'),
         far: h.farRec ? (h.farRec.kn ? 1 : 0) + h.farRec.cr.length : -1, farGone: h.gone.filter(g => g.far).length, goneN: h.gone.length,
+        want: h.want ? 1 : 0, short: h.people.filter(p => p.short).length,
       };
     }, { cur, v });
     if (r.err) { failed = true; console.log(`  v${v}: FAIL — ${r.err}`); continue; }
     const bad = [], sh = r.shape;
     if (sh.v !== same.v) bad.push(`the ladder stopped at v${sh.v}`);
-    if (sh.pe !== 29 || sh.vo !== 29) bad.push(`people came up ${sh.pe}/${sh.vo} slots wide, not 29`);
+    if (sh.pe !== 30 || sh.vo !== 30) bad.push(`people came up ${sh.pe}/${sh.vo} slots wide, not 30`);
     if (sh.gv !== 7 || sh.wk !== 8 || sh.ch !== 7 || sh.go !== 2) bad.push(`rows came up gv ${sh.gv}/7, wk ${sh.wk}/8, ch ${sh.ch}/7, go ${sh.go}/2`);
     if (sh.gone.length) bad.push(`the ladder left ${sh.gone.join(', ')} missing`);
     if (!r.pop) bad.push('nobody loaded');
+    if (v <= 13 && (r.want || r.short)) bad.push('a short winter came through a v13 save');
     if (v <= 12 && r.far) bad.push('a far-island record came through a v12 save');
     if (v <= 12 && r.farGone) bad.push('a v12 save knew which way one of the gone had gone');
     if (v <= 12 && !r.goneN) bad.push('the ones who left did not come up the ladder at all');
@@ -1207,7 +1220,7 @@ if (mode === 'migrate') {
     if (v <= 6 && r.faith) bad.push('faith came through a v6 save');
     console.log(`  v${v}: pop ${r.pop}, songs ${r.songs}, snowmen ${r.snowmen}, skipN ${r.skipN}, grave-visits ${r.vn}, ` +
       `loreN ${r.loreN}, places ${r.lorePl}, things ${r.things}, works ${r.works} (${r.wip} wip, prog ${r.prog || '-'}), faith ${r.faith}, ` +
-      `far ${r.far} (${r.goneN} gone, ${r.farGone} of them over the water)` +
+      `far ${r.far} (${r.goneN} gone, ${r.farGone} of them over the water), want ${r.want}/${r.short}` +
       `, shape ${r.shape.pe}/${r.shape.gv}/${r.shape.wk}/${r.shape.ch}/${r.shape.go}` +
       (bad.length ? `  !! ${bad.join('; ')}` : '  ok'));
     if (bad.length) failed = true;
@@ -1217,12 +1230,12 @@ if (mode === 'migrate') {
   // constants under test, so moving one moves the assertion with it and the check says nothing. Literals, and the ladder above is
   // what proves the range is one the ladder can actually walk.
   // These two literals are moved by hand on every version bump, and that is the whole point: phase 5 bumped SAVE_V to 13 and this
-  // check went red on its own, which is what a computed bound would never have done.
+  // check went red on its own, which is what a computed bound would never have done. Phase 6 bumped it to 14 and it did so again.
   const gate = await H(() => {
     const h = window.__hearth, o = JSON.parse(JSON.stringify(h.pack()));
-    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 14 }), nope: h.canLoad({ ...o, pe: undefined }) };
+    return { low: h.canLoad({ ...o, v: 4 }), high: h.canLoad({ ...o, v: 15 }), nope: h.canLoad({ ...o, pe: undefined }) };
   });
-  console.log(`the gate: v4 ${gate.low}, v14 ${gate.high}, no people ${gate.nope} — all three must be false`);
+  console.log(`the gate: v4 ${gate.low}, v15 ${gate.high}, no people ${gate.nope} — all three must be false`);
   if (gate.low || gate.high || gate.nope) { failed = true; console.log('FAIL: canLoad accepts something it should not'); }
 
   if (warns.length) { failed = true; [...new Set(warns)].slice(0, 10).forEach(v => console.log('  WARN ' + v)); }
@@ -1244,6 +1257,26 @@ if (mode === 'saga') {
     const { ctx, page } = await openIsland(browser, seed, warns);
     let viol = [];
     for (let d = 0; d < days; d++) { const r = await runDay(page, 100); viol = viol.concat(r.viol); }
+
+    // The living-only filter on the carriers line is the one claim that can be wrong while looking right, and whether a song has
+    // outlived one of its carriers by day 400 is a matter of who happened to die. Phase 6 shifted the stream and seed 7 reached day
+    // 401 with seven songs and every carrier of every one of them still alive: the run went red as too thin (#63) for a reason that
+    // had nothing to do with the export. So the material is made rather than waited for, the way `wider` forces its cargoes — one
+    // carrier of a song that has other carriers is taken, which is a thing this island does to itself most years, and `kn` keeps the
+    // name. If there is no such carrier the force does nothing and the thinness guard below still says so.
+    const forced = await page.evaluate(() => {
+      const h = window.__hearth, alive = n => h.people.some(q => !q.dead && q.name === n);
+      for (const sg of h.songs) {
+        if (sg.lost || sg.ci >= h.chron.length) continue;
+        const live = sg.kn.filter(alive);
+        if (live.length < 2) continue;
+        const p = h.people.find(q => !q.dead && q.name === live[0]);
+        if (p) { h.die(p); return p.name }
+      }
+      return null;
+    });
+    console.log(forced ? `  took ${forced}, one carrier of a song that has others, so the living-only filter has something to filter`
+                       : '  no song has two living carriers to take one of; the thinness guard below is what says so');
 
     // what the island actually holds, in its own terms
     const want = await page.evaluate(() => {
@@ -1593,6 +1626,235 @@ if (mode === 'wider') {
   await ctx.close();
   if (bad.length) { failed = true; bad.forEach(b => console.log('  FAIL ' + b)) }
   console.log(failed ? '\nFAIL' : `\nPASS: ${rec.n} is a place — four cargoes, a trade, a departure and a return, through the hash and out the other side`);
+}
+
+if (mode === 'strain') {
+  // Phase 6, first increment: the short winter. Everything here changes what people eat, how fast they work and who is speaking to
+  // whom, and the soak invariants are the only thing between "a village having a hard year" and a broken island — so every day this
+  // mode runs is audited and the violations are carried to the end.
+  //
+  // Three of the four things under test cannot be waited for on a given island. The reckoning is held once, at the turn of winter,
+  // and only when the store is short; the raid is a 16%-a-day roll inside a famine; and the elder who eats last needs an elder and a
+  // child alive at the same moment, which seed 7 mostly does not have. So each is forced through its own entry point and asserted on
+  // durable state — and then the two things that must be true whatever the island does are run rather than forced: a real reckoning
+  // at a real turn of winter, and the thaw arriving on its own with nobody touching anything.
+  //
+  // The season is re-derived here rather than asked of the game, so a check and the thing it checks cannot agree by sharing a bug.
+  const SEA = ['spring', 'summer', 'autumn', 'winter'];
+  const seaOf = d => SEA[Math.floor(((d - 1) % 20) / 5)];
+  const COLD = 19;                       // js/core.js's own constant, restated so a change to it fails here rather than passing quietly
+  const days = parseInt(arg('days', '40'));
+  const seeds = arg('seeds', '7,20260819').split(',').filter(Boolean).map(Number);
+  let bad = [], viol = [], warnAll = [];
+  const check = (ok, msg) => { if (!ok) bad.push(msg); return ok };
+
+  // ---- one: the reckoning. It is held at the turn of winter, against the cold season, and only when the store is short.
+  {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, 7, warns);
+    for (let d = 0; d < 14; d++) { const r = await runDay(page, 25); viol = viol.concat(r.viol) }   // to the end of day 15
+    // Wind the clock to the last moment of autumn's last day before setting the store: a whole day of fishing and harvest runs
+    // between here and the turn of winter otherwise, and it refills what the test just emptied. dayLen is 140, which the DT comment
+    // at the top of this file already leans on. The store is then set short by the cold-season number and long by the winter one —
+    // the exact band the reckoning exists to see and the season line's own 13 a head cannot.
+    const at = await page.evaluate(() => {
+      const h = window.__hearth, pop = h.people.length;
+      h.setTime(Math.ceil(h.time / 140) * 140 - 0.02);
+      h.setGranary(Math.round(pop * 15)); h.setFood(0);
+      return { day: h.dayCount, pop, have: h.granary + h.food };
+    });
+    check(at.day === 15 && seaOf(at.day + 1) === 'winter', `the run did not stop on the eve of winter: day ${at.day}`);
+    check(at.have < at.pop * COLD && at.have > at.pop * 13, `the forced store ${at.have} is not in the band between 13 and ${COLD} a head`);
+    const r0 = await runDay(page, 25); viol = viol.concat(r0.viol);
+    const w = await page.evaluate(() => {
+      const h = window.__hearth, e = h.chron.filter(x => x.kind === 'want');
+      return { day: h.dayCount, on: !!h.want, by: h.want && h.want.by, alive: !!(h.want && h.byName(h.want.by)),
+        entries: e.length, st: e.length ? e[e.length - 1].st : '', pop: h.people.length, wantYr: h.wantYr,
+        hud: (h.draw(), document.getElementById('s-time').textContent) };  // the RAF loop is paused, so the HUD is drawn on purpose to be read
+    });
+    console.log(`the reckoning: day ${w.day} (${seaOf(w.day)}), rations ${w.on}, counted by ${w.by}, chronicle entries ${w.entries}`);
+    check(w.on, 'a store short of the cold season at the turn of winter did not start a reckoning');
+    check(w.entries === 1, `the reckoning wrote ${w.entries} chronicle entries, not 1`);
+    check(w.alive, `the reckoning names ${w.by}, who is not on the island`);
+    check(w.st.includes(String(at.pop * COLD)), `the entry does not carry the cold-season number ${at.pop * COLD}: "${w.st}"`);
+    check(w.hud.includes('rations'), `the HUD does not say the island is on rations: "${w.hud}"`);
+
+    // Everything below forces a system that only exists inside a famine, so there is nothing to force if the reckoning did not fire.
+    // Saying that once beats six cascading failures that all mean the same thing.
+    if (!w.on) console.log('  the reckoning did not fire — the forced sections below have nothing to run against, and are skipped');
+    else {
+
+    // ---- two: rations slow the work, and the one eating last is slower again. Asserted against workRate itself, not against an outcome.
+    const rates = await page.evaluate(() => {
+      const h = window.__hearth, p = h.people.find(q => !q.dead && !q.child);
+      const on = h.workRateOf(p); p.short = 1; const shorted = h.workRateOf(p); p.short = 0;
+      const w0 = h.want; h.endWant(); const off = h.workRateOf(p);
+      h.setWantYr(0); h.declareWant();                        // and straight back onto rations for the sections below
+      return { name: p.name, on, shorted, off, back: !!h.want, was: !!w0 };
+    });
+    console.log(`  work: ${rates.name} at ${rates.off.toFixed(3)} off rations, ${rates.on.toFixed(3)} on, ${rates.shorted.toFixed(3)} eating last`);
+    check(rates.on < rates.off, `rations did not slow the work: ${rates.on} against ${rates.off}`);
+    check(rates.shorted < rates.on, `eating last did not slow the work further: ${rates.shorted} against ${rates.on}`);
+    check(rates.back, 'the island did not go back onto rations for the rest of this section');
+
+    // ---- three: the raid. It costs measures, and it costs a relationship, and neither of the two is the other's partner or kin.
+    const raid = await page.evaluate(() => {
+      const h = window.__hearth; h.setGranary(40);
+      const g0 = h.granary, n0 = h.chron.length;
+      h.wantRaid();
+      const rv = h.want && h.want.rv, a = rv && h.byName(rv[0]), b = rv && h.byName(rv[1]);
+      const relOf = (x, y) => { const r = x && y && x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      return { took: g0 - h.granary, rv, flag: h.want && h.want.raid,
+        ab: relOf(a, b), ba: relOf(b, a), partner: !!(a && a.partner === (b && b.name)),
+        kin: !!(a && b && (a.parents.includes(b.name) || b.parents.includes(a.name))),
+        kinds: h.chron.slice(n0).map(e => e.kind), st: h.chron.length > n0 ? h.chron[h.chron.length - 1].st : '',
+        hist: !!(a && a.hist.some(x => x.s.includes('more than a share')) && b && b.hist.some(x => x.s.includes('said nothing'))) };
+    });
+    console.log(`  the raid: ${raid.took} measures, ${raid.rv ? raid.rv.join(' / ') : 'nobody'}, now ${raid.ab}/${raid.ba}, chronicle +[${raid.kinds.join(',')}]`);
+    check(raid.took > 0, 'the raid took nothing out of the store');
+    check(raid.flag === 1, 'the raid did not mark itself, so it can happen twice in one winter');
+    check(raid.ab === 'rival' && raid.ba === 'rival', `the raid did not cost the relationship both ways: ${raid.ab}/${raid.ba}`);
+    check(!raid.partner && !raid.kin, 'the raid made a rival out of a partner or a parent');
+    check(raid.kinds.includes('raid'), 'the raid was not written down');
+    check(raid.st.includes(String(raid.took)), `the entry does not say how many measures went: "${raid.st}"`);
+    check(raid.hist, 'neither of the two carries the night in their own history');
+
+    // ---- four: the elder who eats less. Forced, because an elder and a child alive at once is what seed 7 mostly does not have.
+    const gave = await page.evaluate(() => {
+      const h = window.__hearth, ps = h.people.filter(q => !q.dead);
+      const e = ps[0], k = ps[1];
+      e.age0 = 66; e.born = h.dayCount; k.age0 = 8; k.born = h.dayCount; k.child = true;   // an elder, and a child to eat what is not taken
+      const n0 = h.chron.length, g0 = h.want.gave;
+      h.wantShort();
+      return { shorted: h.people.filter(p => p.short).map(p => p.name), who: e.name, elder: e.short === 1,
+        gave: h.want.gave - g0, kinds: h.chron.slice(n0).map(x => x.kind),
+        hist: e.hist.some(x => x.s.includes('ate last and ate less')) };
+    });
+    console.log(`  eating last: [${gave.shorted.join(', ')}], counted ${gave.gave}, chronicle +[${gave.kinds.join(',')}]`);
+    check(gave.elder, `${gave.who} was made an elder and still did not stand down from a measure`);
+    check(gave.shorted.length === 1, `${gave.shorted.length} people are eating last, expected 1`);
+    check(gave.gave === 1, 'the famine did not count the one who stood down');
+    check(gave.kinds.includes('gave'), 'the first one to eat last was not written down');
+    check(gave.hist, 'the elder does not carry it in their own history');
+
+    // ---- five: every new state has an off-ramp, and the off-ramp is one call.
+    const off = await page.evaluate(() => {
+      const h = window.__hearth, rv = h.want.rv, n0 = h.chron.length;
+      h.endWant();
+      const a = h.byName(rv[0]), b = h.byName(rv[1]);
+      const relOf = (x, y) => { const r = x && y && x.rels.find(r2 => r2.who === y.name); return r ? r.k : null };
+      return { on: !!h.want, short: h.people.filter(p => p.short).length, kinds: h.chron.slice(n0).map(e => e.kind),
+        ab: relOf(a, b), ba: relOf(b, a) };
+    });
+    console.log(`  the thaw: rations ${off.on}, still eating last ${off.short}, chronicle +[${off.kinds.join(',')}], the two now ${off.ab}/${off.ba}`);
+    check(!off.on, 'the thaw did not take the island off rations');
+    check(off.short === 0, `${off.short} people are still eating last after the thaw — that is a permanent debuff`);
+    check(off.kinds.includes('thaw'), 'the thaw was not written down');
+    check(off.kinds.includes('squared') || off.kinds.includes('kept'), 'the raid ended without the chronicle saying which way');
+    check(off.ab === off.ba && (off.ab === 'friend' || off.ab === 'rival'), `the two came out of it at ${off.ab}/${off.ba}`);
+
+    // ---- six: and all of it packs. A famine, a raid and somebody eating last, through pack -> unpack and back.
+    const rt = await page.evaluate(() => {
+      const h = window.__hearth;
+      h.setWantYr(0); h.setGranary(40); h.declareWant(); h.wantRaid(); h.people.find(p => !p.dead).short = 1;
+      const a = JSON.stringify(h.pack()), o = JSON.parse(a);
+      h.unpack(JSON.parse(a));
+      return { v: o.v, wa: o.wa, wy: o.wy, slots: Math.min(...o.pe.map(x => x.length)),
+        on: !!h.want, by: h.want && h.want.by, raid: h.want && h.want.raid, rv: h.want && h.want.rv,
+        gave: h.want && h.want.gave, short: h.people.filter(p => p.short).length, wantYr: h.wantYr,
+        again: JSON.stringify(h.pack()) === a };
+    });
+    console.log(`  round trip: pack v${rt.v}, wa=${JSON.stringify(rt.wa)} wy=${rt.wy}, ${rt.slots} slots a person; back: rations ${rt.on}, raid ${rt.raid}, eating last ${rt.short}`);
+    check(rt.v >= 14, `the short winter did not bump the save shape: v${rt.v}`);
+    check(rt.slots >= 30, `a packed person is ${rt.slots} slots wide, not 30`);
+    check(rt.on && rt.raid === 1 && rt.short === 1 && rt.gave === 0, 'the famine did not survive pack/unpack');
+    check(!!rt.rv && rt.rv.length === 2, 'the two the raid made rivals did not survive pack/unpack');
+    check(rt.wantYr > 0, 'the year of the reckoning did not survive pack/unpack');
+    check(rt.again, 're-packing after the round trip is not byte-identical');
+
+    }
+    warnAll = warnAll.concat(warns);
+    await ctx.close();
+  }
+
+  // ---- seven: the thaw is not optional. A real reckoning at a real turn of winter, then nobody touches anything until spring.
+  {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, 20260819, warns);
+    for (let d = 0; d < 14; d++) { const r = await runDay(page, 25); viol = viol.concat(r.viol) }
+    await page.evaluate(() => {
+      const h = window.__hearth;
+      h.setTime(Math.ceil(h.time / 140) * 140 - 0.02);
+      h.setGranary(Math.round(h.people.length * 15)); h.setFood(0);
+    });
+    const trail = [];
+    for (let d = 0; d < 8; d++) {
+      const r = await runDay(page, 25); viol = viol.concat(r.viol);
+      const st = await page.evaluate(() => ({ day: window.__hearth.dayCount, on: !!window.__hearth.want }));
+      trail.push(`${st.day}${seaOf(st.day)[0]}${st.on ? '!' : '.'}`);
+      if (seaOf(st.day) === 'spring' || seaOf(st.day) === 'summer')
+        check(!st.on, `day ${st.day} is ${seaOf(st.day)} and the island is still on rations — a famine has outlived its winter`);
+    }
+    const end = await page.evaluate(() => {
+      const h = window.__hearth;
+      return { on: !!h.want, thaw: h.chron.filter(e => e.kind === 'thaw').length, want: h.chron.filter(e => e.kind === 'want').length,
+        short: h.people.filter(p => p.short).length, yr: h.yearName(1) };
+    });
+    console.log(`the thaw, unforced: [${trail.join(' ')}] — reckonings ${end.want}, thaws ${end.thaw}, still eating last ${end.short}`);
+    check(end.want >= 1, 'the reckoning did not fire on the second island at all');
+    check(end.thaw === end.want, `${end.want} reckonings and ${end.thaw} thaws — they must come in pairs`);
+    check(!end.on && end.short === 0, 'spring came and the island is still on rations');
+    check(end.yr === 'the year of the short winter', `the year is called "${end.yr}", not "the year of the short winter"`);
+    warnAll = warnAll.concat(warns);
+    await ctx.close();
+  }
+
+  // ---- eight: and the whole of it under the soak invariants. On the eve of each winter the store is knocked down to four a head —
+  // low enough that a day of fishing and harvest cannot carry it to the cold season's nineteen, high enough that the island is on
+  // rations rather than starving, which is a different system. Nothing else is touched after that: the reckoning is held through its
+  // own door and the island lives the winter out. Every day is audited — nobody in the water, nobody NaN — and two invariants are
+  // asserted on every single day: no rations once the ground has softened, and nobody left eating last.
+  let audits = 0;
+  for (const seed of seeds) {
+    const warns = [];
+    const { ctx, page } = await openIsland(browser, seed, warns);
+    let famines = 0;
+    for (let d = 0; d < days; d++) {
+      await page.evaluate(() => {
+        const h = window.__hearth, d2 = h.dayCount;
+        if (Math.floor(((d2 - 1) % 20) / 5) !== 2 || ((d2 - 1) % 20) % 5 !== 4) return;   // autumn's last day, and only that
+        h.setGranary(Math.round(h.people.length * 4)); h.setFood(0);
+      });
+      const r = await runDay(page, 25); viol = viol.concat(r.viol); audits += Math.floor(r.steps / 25) + 1;
+      const st = await page.evaluate(() => ({ day: window.__hearth.dayCount, on: !!window.__hearth.want, short: window.__hearth.people.filter(p => p.short).length }));
+      if (st.on) famines++;
+      if (seaOf(st.day) === 'spring' || seaOf(st.day) === 'summer') {
+        check(!st.on, `seed ${seed} day ${st.day} is ${seaOf(st.day)} and the rations are still on`);
+        check(!st.short, `seed ${seed} day ${st.day} is ${seaOf(st.day)} and ${st.short} are still eating last`);
+      }
+    }
+    const s2 = await page.evaluate(() => {
+      const h = window.__hearth, c = {};
+      for (const e of h.chron) c[e.kind] = (c[e.kind] || 0) + 1;
+      return { pop: h.people.length, want: c.want | 0, raid: c.raid | 0, gave: c.gave | 0, thaw: c.thaw | 0,
+        squared: c.squared | 0, kept: c.kept | 0, parted: c.parted | 0, left: (c.left | 0) + (c.farleft | 0), store: h.granary, on: h.want ? 1 : 0 };
+    });
+    console.log(`seed ${seed}: ${days} days, ${famines} of them on rations — ${s2.want} reckonings, ${s2.raid} raids, ${s2.gave} eating last, ` +
+      `${s2.thaw} thaws (${s2.squared} squared, ${s2.kept} not, ${s2.parted} left unsettled), ${s2.left} sailed, pop ${s2.pop}, store ${s2.store}`);
+    check(s2.want > 0, `seed ${seed} went ${days} days with a short store at the turn of winter and never held a reckoning`);
+    check(s2.thaw === s2.want - s2.on, `seed ${seed}: ${s2.want} reckonings, ${s2.thaw} thaws, ${s2.on} still running — they must account for each other`);
+    check(s2.squared + s2.kept + s2.parted === s2.raid - (s2.on && s2.raid ? 1 : 0),
+      `seed ${seed}: ${s2.raid} raids but ${s2.squared + s2.kept + s2.parted} endings written down — every raid ends one of the three ways`);
+    check(s2.pop >= 4, `seed ${seed} came out of ${days} days at ${s2.pop} people: the famine emptied the island`);
+    warnAll = warnAll.concat(warns);
+    await ctx.close();
+  }
+
+  if (viol.length) { failed = true; console.log('VIOLATIONS:'); [...new Set(viol)].slice(0, 20).forEach(v => console.log('  ' + v)) }
+  if (warnAll.length) { failed = true; console.log('WARNINGS:'); [...new Set(warnAll)].slice(0, 20).forEach(v => console.log('  ' + v)) }
+  if (bad.length) { failed = true; console.log('FAILURES:'); bad.forEach(v => console.log('  ' + v)) }
+  console.log(failed ? '\nFAIL' : `\nPASS: the short winter bites and lets go — reckoning, raid, the one eating last, and a thaw that is not optional, ` +
+    `over ${seeds.length * days + 30} audited sim-days (~${audits} full-cast audits), 0 violations`);
 }
 
 if (mode === 'determinism') {
