@@ -852,8 +852,12 @@ Two of them have moved since they were written:
    matrix, one job per mode, `fail-fast: false`, so a red one names itself.
    The split is by clock: `nan` is five minutes, `decade` six and the sweep
    about half an hour, and a PR gate that long gets skipped. The browser is
-   the lockfile's Playwright (1.62.1) and that version's own Chromium, so a
-   moved hash is a claim about the simulation and not about the runner.
+   pinned to Playwright 1.56.1 and its Chromium 1194, the build the recorded
+   hashes were made on, because V8's Math library moves between releases and
+   the island's every distance and roll goes through it: the first run on
+   GitHub, on the lockfile's 1.62.1 and Chromium 1234, ran a different island
+   from day one and `pinned` failed on both seeds. Bumping the browser means
+   `pinned --write` on the new build, in the same PR.
    *Source: Hearth Phase 8, "Hearth gets a machine that watches it".*
 
 84. **Hearth does not join the board's regression suite; its preview waits
@@ -1669,7 +1673,18 @@ hash the handoffs used to paste by hand: `41eb3cb5:37275` on seed 7,
 `4ac7d23d:36964` on 20260819, the same pair the last four Hearth PRs reported.
 `--write` rewrites the file when the move was meant, so the diff is the record.
 Q14 answered no on the board suite and parked the preview with the social-tag
-cleanup (#84). *What was measured:* the gate is 12 s for `determinism`, 2 s
+cleanup (#84). *What fought back:* the first run on GitHub installed the
+lockfile's Playwright 1.62.1, whose Chromium 1234 (Chrome 151) ran a different
+island from day one: `determinism` passed against itself at `a563ebb1:29663`
+where this container's Chromium 1194 (Chrome 141) says `c89ba02c:32232`, and
+`pinned` failed on both seeds, `6639ed2c:35012` and `28e5d768:33650` against
+the recorded pair. Not the runner's OS: Node 22's V8 and Chrome 141's V8, on
+the same machine, agree on 200,000 `Math.hypot` results and disagree on
+`Math.pow` and `Math.sin`+`Math.cos` over the same inputs, so the Math
+library moves between V8 releases and the island's stream goes through it.
+The lockfile now pins 1.56.1 exactly, the build the hashes were made on and
+the one `school-generator-ci.yml` already pins; the workflow comment says
+what a bump costs. *What was measured:* the gate is 12 s for `determinism`, 2 s
 for `save`, 5 s for the short soak and 16 s for `pinned` on this container;
 the whole sweep is about six and a half minutes of it outside `nan` and
 `decade`, and every one of the fifteen modes was green here before the

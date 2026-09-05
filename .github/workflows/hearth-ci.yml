@@ -17,14 +17,23 @@
 #         mode so a red one names itself. Never on a pull request: the sweep
 #         is about half an hour end to end and would hold every PR open.
 #
-# The harness has no screenshots, so the browser pin is not about pixels. It is
-# about the hash: `pinned` fails when a pack() hash moves, and the pin is what
-# makes that a claim about the simulation rather than about which Chromium
-# happened to be on the runner. `npm ci` installs the Playwright the lockfile
-# names (1.62.1) and `playwright install` fetches that version's own Chromium,
-# so the browser is the same build every run. Bumping the lockfile is fine; do
-# it on purpose, and re-run `pinned` once on the new build before trusting a
-# red one after it.
+# The harness has no screenshots, so the browser pin is not about pixels. It
+# is about arithmetic. Every distance on the island goes through Math.hypot,
+# every roll through Math.pow and Math.sin, and V8 revises that library
+# between releases: on the machine that wrote this, Node 22's V8 and Chrome
+# 141's V8 agree on 200,000 hypot() results and disagree on pow() and
+# sin()+cos() over the same inputs. The first run of this job installed the
+# lockfile's Playwright 1.62.1, whose Chromium (build 1234, Chrome 151) ran a
+# different island from day one: `determinism` passed against itself and
+# `pinned` failed on both seeds, 6639ed2c:35012 against the recorded
+# 41eb3cb5:37275. The recorded hashes were made on Chromium 1194 (Chrome 141),
+# the build Playwright 1.56.1 ships, and the lockfile now pins exactly that
+# version, the same one school-generator-ci.yml pins for its screenshots.
+# `npm ci` installs it and `playwright install` fetches its Chromium, so a
+# moved hash is a claim about the simulation and not about the runner.
+# Bumping the lockfile is a deliberate act that comes with re-running
+# `node harness.mjs pinned --write` on the new build and committing the new
+# hashes in the same PR, never on a desk with a different browser.
 
 name: Hearth CI
 
@@ -77,7 +86,9 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       # Printed so a hash that moves with a browser bump is one line in the
-      # log rather than a week of "why did seed 7 drift".
+      # log rather than a week of "why did seed 7 drift". 1.56.1 is Chromium
+      # 1194; anything else and `pinned` is comparing two browsers, not two
+      # commits.
       - name: Say which browser is running the island
         run: npx playwright --version
 

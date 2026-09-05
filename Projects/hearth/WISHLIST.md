@@ -1098,9 +1098,11 @@ completely unautomated, and the only test this project has.
   plus `schedule` and `workflow_dispatch` for the deep job (#83).
 - [x] **A PR gate that finishes in minutes.** `determinism`, `save`,
   `soak --days 12 --seeds 7,20260819 --random 0` and `pinned`: 12 s, 2 s, 5 s
-  and 16 s of browser time. The browser is the lockfile's Playwright (1.62.1,
-  `npm ci`) and that version's own Chromium, so a moved hash is about the
-  simulation, not the runner.
+  and 16 s of browser time. The lockfile pins Playwright 1.56.1 exactly, and
+  `playwright install` fetches its Chromium 1194, the build the recorded
+  hashes were made on: V8's Math library moves between releases (the first
+  run on GitHub, on 1.62.1's Chromium 1234, ran a different island from day
+  one), so the pin is what makes a moved hash a claim about the simulation.
 - [x] **A nightly or on-demand deep run.** All fifteen modes as a matrix, one
   job per mode with `fail-fast: false`, at 09:20 UTC daily and on
   `workflow_dispatch`. Never on a pull request.
