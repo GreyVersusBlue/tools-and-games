@@ -1,4 +1,4 @@
-// Hearth — the chronicle panel, pack/unpack and the migration ladder — the whole island in the address bar (save v:12, back to v5).
+// Hearth — the chronicle panel, pack/unpack and the migration ladder — the whole island in the address bar (save v:13, back to v5).
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- the chronicle ----------
 const chronEl=document.getElementById('chron'),rollEl=document.getElementById('chron-roll');
@@ -39,6 +39,10 @@ const plural=(n,one,many)=>`${n} ${n===1?one:many}`;
 const SITE='https://greyversusblue.com/Projects/hearth/';
 function islandLink(){let h;try{h=islandHash()}catch(err){return null}
   const p=location.protocol;return((p==='http:'||p==='https:')?location.href.split('#')[0]:SITE)+'#'+h}
+// And where the island over the water is. It is a seed, not a save, because nothing over there has ever been simulated — the link
+// opens a fresh island at that seed, which has this one on *its* horizon by the same rule. Same protocol reasoning as islandLink.
+function farLink(){if(!farRec)return null;
+  const p=location.protocol;return((p==='http:'||p==='https:')?location.href.split('#')[0]:SITE)+'#s='+farRec.s.toString(36)}
 const SAGA_CSS=`:root{--ink:#e8dcc4;--dim:#9a8b6d;--gold:#f0b35a;--line:#3a3020}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0b0d12;color:var(--ink);font:16px/1.6 Georgia,'Iowan Old Style',serif;padding:40px 20px 80px}
@@ -68,7 +72,7 @@ footer{margin-top:44px;padding-top:14px;border-top:1px solid var(--line);font-si
  h1,h2,header .link a{color:#3a2a10}
  main p b,.app li b{color:#20180e}
  main p.sg em.s{color:#6a4a12}}`;
-// The saga itself: the years the island has finished, and then four appendices of things it already knows.
+// The saga itself: the years the island has finished, and then five appendices of things it already knows.
 function sagaHTML(){const SG=songAt(),link=islandLink(),T=`The chronicle of ${village||'an island with no name'}`,L=[];
   L.push('<!DOCTYPE html>','<html lang="en">','<head>','<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',`<title>${esc(T)}</title>`,
@@ -121,6 +125,17 @@ function sagaHTML(){const SG=songAt(),link=islandLink(),T=`The chronicle of ${vi
       L.push('</li>')}
     L.push('</ul>')}
   L.push('</section>');
+  // five: the island over the water, which is a place now, and everything that has crossed either way
+  L.push('<section class="app" id="app-far"><h2>Over the water</h2>');
+  if(!farRec||!farRec.kn)L.push('<p class="sub">There is an island on the horizon. Nobody here has been to it and come back with a name for it.</p>');
+  else{const fl=farLink();
+    L.push(`<p class="sub">The island over the water is <b>${esc(farRec.n)}</b> — island ${farRec.s.toString(36)}`+
+      (fl?`, <a href="${esc(fl)}">which can be opened from here</a>`:'')+`. This one is on its horizon, the way it is on this one's.</p>`);
+    if(farRec.cr.length){L.push('<ul>');
+      for(const c of farRec.cr)L.push(`<li><b>day ${c.d}</b> <i>${esc(c.s)}</i></li>`);
+      L.push('</ul>')}
+    else L.push('<p class="sub">Nothing has crossed yet but the name.</p>')}
+  L.push('</section>');
   L.push(`<footer>Written out of ${plural(chron.length,'thing','things')} remembered on island ${seed.toString(36)}, on day ${dayCount}. Hearth.</footer>`,
     '</body>','</html>');
   return L.join('\n')}
@@ -154,7 +169,7 @@ function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]
     fa:+faith.toFixed(2),fs:faithSt,py:prayer?[prayer.k,prayer.d,prayer.who||0]:0,ay:ways,ax:arc?[arc.k,arc.d0,arc.end]:0,az:arcYr,aw:wayYr,ab:bookYr,al:lastStormDay,am:rainedDay,an:wreckYr,af:famDone?1:0,
     wx,wt:+wxT.toFixed(1),sn:+snowD.toFixed(3),fz:frozen?1:0,fo:+fogA.toFixed(2),vn:village||0,rv:roadV,td:traderDay,be:belled,rs:ruinSeen,
     gd:geeseDay,wd:whaleDay,ar:+arrivalT.toFixed(1),sp:speed,wi:wind,sy:storyDay,sk:sackUsed?1:0,
-    pe:people.map(packP),de:dead.map(p=>[p.name,p.rels.map(r=>[r.who,r.k])]),go:gone.map(p=>p.name),
+    pe:people.map(packP),de:dead.map(p=>[p.name,p.rels.map(r=>[r.who,r.k])]),go:gone.map(p=>[p.name,p.far?1:0]),
     ho:houses.map(h=>[h.x,h.y,h.r,h.owners]),fm:farms.map(f=>[f.x,f.y,+f.g.toFixed(2)]),
     tr:trees.map(t=>[+t.x.toFixed(2),+t.y.toFixed(2),+t.s.toFixed(2),t.hp,t.b?1:0,+t.a.toFixed(2),t.o?1:0]),
     su:stumps.map(t=>[+t.x.toFixed(1),+t.y.toFixed(1)]),
@@ -163,12 +178,13 @@ function pack(){const rd=[];{let v=road[0],n=0;for(let i=0;i<W*H;i++){if(road[i]
     sr:springs.map(s=>[+s.x.toFixed(2),+s.y.toFixed(2),+s.r.toFixed(2),+s.ph.toFixed(2)]),
     ch:chron.map(e=>[e.d,e.y,e.kind,e.label,e.st||0,e.tl||0,e.gr?1:0]),ev:events.map(e=>[e.d,e.y,e.kind,e.label]),
     vo:voyage?[voyage.name,voyage.st,voyage.day,voyage.back?1:0,voyage.n||0,voyage.st==='away'?packP(voyage.p):0]:0,
-    rb:ruin&&ruin.built?1:0,fl:farIsle&&farIsle.lit?1:0,rd}}
+    rb:ruin&&ruin.built?1:0,fl:farIsle&&farIsle.lit?1:0,
+    fi:farRec?[farRec.s,farRec.n,farRec.kn?1:0,farRec.cr.map(c=>[c.d,c.k,c.s])]:0,rd}}   /* v13: the island over the water — its seed, the name this one calls it, whether that name has crossed, and what has */
 // ---------- the migration ladder ----------
 // SAVE_V is the shape pack() writes. SAVE_MIN is the oldest shape the ladder can still bring forward. Both readers — the link in the
 // address bar and the autosave at boot — used to carry their own copy of that range, and sprint 12 shipped with one of the two stale;
 // canLoad() is the only copy there is now.
-const SAVE_V=12, SAVE_MIN=5;
+const SAVE_V=13, SAVE_MIN=5;
 const canLoad=o=>!!(o&&o.v>=SAVE_MIN&&o.v<=SAVE_V&&o.pe);
 // One hop per version, in order. `up` takes a save shaped `from` and makes it shaped `to`, filling in exactly what unpack() used to
 // synthesize with a `||` at the point of reading; `down` is the same hop walked backwards, and is what the harness's `migrate` mode
@@ -192,7 +208,9 @@ const LADDER=[
  {from:9,to:10,up:o=>{if(!o.ln)o.ln=[];if(o.by===undefined)o.by=0},down:o=>{delete o.ln;delete o.by}},
  {from:10,to:11,up:o=>{o.gv=(o.gv||[]).map(a=>a.length>=7?a:a.concat([0]))},down:o=>{o.gv=(o.gv||[]).map(a=>a.slice(0,6))}},
  {from:11,to:12,up:o=>{if(!o.sg)o.sg=[];if(!o.sm)o.sm=[];if(o.ss===undefined)o.ss=0;growP(o,29)},
-              down:o=>{delete o.sg;delete o.sm;delete o.ss;cutP(o,27)}}];
+              down:o=>{delete o.sg;delete o.sm;delete o.ss;cutP(o,27)}},
+ {from:12,to:13,up:o=>{if(o.fi===undefined)o.fi=0;o.go=(o.go||[]).map(a=>Array.isArray(a)?a:[a,0])},
+              down:o=>{delete o.fi;o.go=(o.go||[]).map(a=>Array.isArray(a)?a[0]:a)}}];
 // Up the ladder, one hop at a time, in place. unpack() calls this first and then reads only the current shape, which is why there is
 // no `o.v` test left below this line. What a new field costs, in four lines: append the slot or key to pack(); add a hop here, with
 // its up and its down; add the version to FIXTURES in test/harness.mjs; bump SAVE_V.
@@ -239,12 +257,16 @@ function unpack(o){
     if(a[27])p.heard={l:a[27][0],d:a[27][1],f:a[27][2]||0};if(a[28]>=0)p.fSk=a[28];return p};
   names=new Set();people=o.pe.map(mk);people.forEach(p=>names.add(p.name));
   dead=o.de.map(a=>({name:a[0],rels:a[1].map(r=>({who:r[0],k:r[1]})),dead:true,hist:[],tr:[]}));
-  gone=o.go.map(n=>({name:n}));
+  gone=o.go.map(a=>({name:a[0],far:a[1]||0}));
   voyage=o.vo?{name:o.vo[0],st:o.vo[1],day:o.vo[2],back:!!o.vo[3],n:o.vo[4],p:o.vo[5]?mk(o.vo[5]):byName(o.vo[0])}:null;
   if(voyage&&!voyage.p)voyage=null;
   if(voyage&&voyage.st==='going')voyage.p.task='voyage';
   if(ruin&&o.rb)ruin.built=true;
   if(farIsle)farIsle.lit=!!o.fl;
+  // newWorld() has already re-derived the far island's record from the seed; the save carries the parts of it the island has lived
+  // through — the name it settled on, whether that name has crossed yet, and the crossings. A save with no fi reads as a horizon
+  // nobody has a name for, which is exactly what it was.
+  if(farRec&&o.fi)farRec={s:o.fi[0],n:o.fi[1],kn:o.fi[2]?1:0,cr:(o.fi[3]||[]).map(a=>({d:a[0],k:a[1],s:a[2]}))};
   for(const b of bldg){if(b.kind==='market')spots.push({l:'the market',x:b.x+1.5,y:b.y+1.5});
     else if(b.kind==='well')spots.push({l:'the well',x:b.x+.5,y:b.y+.8});
     else if(b.kind==='light')spots.push({l:'the lighthouse',x:b.x+.5,y:b.y+.8});
@@ -262,7 +284,13 @@ function unpack(o){
   selected=null;showCard(null);document.getElementById('log').innerHTML='';
   document.getElementById('seedlbl').textContent=(village?village+' · ':'')+'island '+seed.toString(36);
   say(`The island is as it was left. ${village?village+', year':'Year'} ${yearOf(dayCount)}, day ${dayCount}: ${people.length} people, ${houses.length} ${houses.length===1?'house':'houses'}, ${graves.length} ${graves.length===1?'stone':'stones'} on the hill.`,true)}
-function loadHash(){const h=(location.hash||'').replace(/^#/,'');if(h.length<40)return false;
+function loadHash(){const h=(location.hash||'').replace(/^#/,'');
+  // Phase 5: a short `#s=<seed in base 36>` opens a fresh island at that seed, and it is the only way the far island is reachable —
+  // the record on the horizon holds a seed, not a save, because nothing over there has been simulated. Checked before the length
+  // gate, since a seed link is far shorter than any packed island and would otherwise fall through to the autosave.
+  const m=/^s=([0-9a-z]+)$/i.exec(h);
+  if(m){const n=parseInt(m[1],36);if(isFinite(n)&&n>0){newWorld(n>>>0);return true}}
+  if(h.length<40)return false;
   const o=JSON.parse(lzDec(h));if(!canLoad(o))return false;unpack(o);return true}
 // The whole island as one hash string. Two callers now: the keep button, and the saga's way back (phase 4).
 const islandHash=()=>lzEnc(JSON.stringify(pack()));

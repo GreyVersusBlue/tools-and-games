@@ -53,7 +53,7 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-Sixty-three numbered decisions, accumulated across ten sessions and the project
+Sixty-seven numbered decisions, accumulated across ten sessions and the project
 phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -531,6 +531,76 @@ Two of them have moved since they were written:
    with the failure moved forward: not "watch it fail once", but "fail when
    there is nothing to check".
    *Source: Hearth Phase 4, "A saga somebody who wasn't watching can read".*
+
+64. **A link to a place nobody has simulated carries a seed, not a save, and
+   the two seeds are each other's.** Hearth's far island is a silhouette on the
+   horizon with nothing behind it, so its link cannot be an island in a hash
+   the way a shared island is. It is `#s=<seed in base 36>`, which opens a
+   fresh island at that seed, and the seed is `farSeed(s) = (s ^ 0x5f1a1e) >>>
+   0` — an involution, so the island the link opens has *this* one on its own
+   horizon and names it back, out of one constant with no stored pair and no
+   second simulation anywhere. It is derived in `newWorld()` with **zero
+   `R()` draws**, for the same reason `temper` and the aurora are: every old
+   share link has to keep its exact terrain. The alternative considered was
+   storing a neighbour seed drawn at worldgen, which would have shifted the
+   stream on every island ever shared, and would still have needed the second
+   island to store a matching one back.
+   *Source: Hearth Phase 5, "The far island becomes a place".*
+
+65. **A luxury bought off the trader comes out of a surplus, not out of the
+   housing stock.** The far-island trade was first written with a floor of 14
+   timber and a price of 10, which reads as cheap and is not: timber is
+   houses, houses are `popCap()`, and `popCap()` is the only thing standing
+   between a village and no births at all. Measured over 35 game-years on seed
+   20260819, the cheap version built 24 houses instead of 28 and spent **203
+   days out of 700 at or over the cap with births shut off**, which surfaced
+   two systems away as an island with no children in it for months at a time
+   and a `decade` mode red on a check about elders telling children of the
+   dead. The floor is 34 now — the 30 the existing timber trade already uses
+   as the mark of a real surplus, plus the ten it is about to spend — and the
+   same island builds 31 houses, spends zero days at the cap, and has children
+   on 691 days of 700. This is the population-cap question six consecutive
+   sprints noted and dismissed, arriving as a real failure: anything that
+   spends timber is spending headroom.
+   *Source: Hearth Phase 5, "The far island becomes a place".*
+
+66. **A check on a decision must read the state the decision was made from,
+   not the state left behind afterwards.** Hearth's `fourteen` mode asserts on
+   the walking of the bounds, which since sprint 15 has had two endings — a
+   child is "told who is under every stone" when there is a hill to finish on
+   and "shown where everything happened" when there is not, decided inside
+   `boundsOut()` at launch. The check read `graves.length` after the walked
+   day had finished, so an elder dying during the walk made it demand an
+   ending the walk could not have had; it also looked for the leader's own
+   history line among the living, and the elder it forces to 66 in order to
+   have a leader at all is exactly the age that dies. Both now read from the
+   launch moment, and both search the dead as well as the living. The general
+   form: when a check tests a branch, it captures the branch condition where
+   the branch was taken. Two versions of this check had been green for two
+   phases purely because seed 7 happened to reach the bounds before anybody
+   died — the same shape as #34, and as the `twelve` mode measuring its
+   one-shots in whatever weather was overhead.
+   *Source: Hearth Phase 5, "The far island becomes a place".*
+
+67. **A gate on a rare random event is sized against the chances the run gave
+   it, or it is a coin flip wearing a check's clothes.** Hearth's `decade` mode
+   requires each of four generational systems to fire on its own across 35
+   game-years. Three of them are reliable. The fourth — an elder telling a child
+   about somebody under a stone — is a 5%-a-day roll on the days when an
+   eligible elder and an eligible child both exist, and that day count is not
+   700 samples: it is a count of how many individuals happened to live past
+   sixty, so it swings between 26 and 171 days per run between two streams of
+   the same game. `main` passes seed 7 with two tellings on 113 such days; one
+   stream over the same seed gives zero on twenty-six, which is a 26% outcome
+   and says nothing about the code. The mode counts the eligible days itself now
+   and fails only when zero tellings would have been a one-in-twenty surprise
+   (`0.95^n < 0.05`), printing the count and the odds every run either way, so a
+   thin island is stated rather than silently tolerated. This does not soften
+   #63 — the run still refuses to pass when material an assertion needs is
+   missing — it sharpens what "missing" means for a throttled system: the
+   material here is the *opportunity*, and the opportunity is what gets counted.
+   The other three keep the flat rule, because nothing throttles them.
+   *Source: Hearth Phase 5, "The far island becomes a place".*
 
 
 ---

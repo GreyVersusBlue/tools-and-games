@@ -18,6 +18,8 @@ let wx='clear',wxT=0,fogA=0,flash=0,snowD=0,frozen=false,granary=0,hunger=0,last
 let bldg=[],bldgTgt=null,boats=[],heat,road,roadV=0,village=null,landings=[],lightSite=null,stream=[],bridgeSite=null,traderDay=0,belled=0,trader=null,smokeT=0;
 // sprint 4 state: wildlife, the far island and its voyage, ruins
 let deep=[],wild=[],flies=[],gulls=[],geese=null,geeseDay=0,whale=null,whaleT=0,whaleDay=0,farIsle=null,voyage=null,ruin=null,fishSh=[],ruinSeen=0;
+// phase 5 state: the far island as a place — the seed of the island out there, the name this one calls it, whether that name has crossed yet, and what has.
+let farRec=null;
 // sprint 5 state: the watcher's blessings, clouds, the chronicle, time
 let springs=[],clouds=[],cloudSp=[],gusts=[],skips=[],chron=[],wind=1,paused=false,storyDay=0,dreamAny=0;
 // sprint 7 state: the sack kept against the first hard year
@@ -85,6 +87,9 @@ const GROW={
   mastery:['In the story nobody ever taught them; the hands simply knew. There was teaching. The story has no room for it.'],
   bread:['Every winter the loaves in that story come out bigger, and the night outside them colder.'],
   place:['In the story the name was always there, the way the hill was, and the walk out to it only went to check.'],
+  farname:['In the telling now the name came across on its own, on the wind, and nobody had to be told it twice.'],
+  farcame:['The crossing gets longer in that story every year, and the boat in it smaller.'],
+  fartrade:['What came off that boat gets rarer every telling, and from further off than anywhere anyone has been.'],
   bounds:['Each spring the walk gets longer in the telling, and the stone in the pocket heavier, and the children better behaved than any children have ever been.']};
 // sprint 13: the ground under the big stories. When a story has grown, the place it happened can take a name and join the island's
 // geography for good. at() reads live world state and must stay rnd()-free — it is re-run at load to put the named places back.
@@ -115,6 +120,32 @@ const BLD={
 const hasB=k=>bldg.some(b=>b.kind===k), getB=k=>bldg.find(b=>b.kind===k);
 const NAME1=['Salt','Grey','Fen','Low','High','Bell','Stone','Ash','Wyn','Rook','Little','Hearth','Gull','Elm','Cold','Fair','Nether','Wend'],NAME2=['wick','ford','stead','holm','ness','mere','by','combe','stow','haven','strand','hollow','thorpe','sea','shaw'];
 const fogCv=document.createElement('canvas');fogCv.width=W*T;fogCv.height=H*T;const fg=fogCv.getContext('2d');
+// ---------- phase 5: the far island is a place ----------
+// The silhouette on the horizon gets a seed of its own, and it is this island's, flipped. seed^FI_K is an involution, so the island
+// the link opens has *this* one on its horizon and calls it back by the same rule — two islands that name each other, out of one
+// constant and no stored pair. Nothing over there is simulated: the record is a name, a seed, and a list of what has crossed. It is
+// derived from the seed alone with no R() draws, because worldgen's stream is the contract every old link is standing on.
+const FI_K=0x5f1a1e;
+const farSeed=s=>((s^FI_K)>>>0);
+const farNameOf=s=>NAME1[(s>>>5)%NAME1.length]+NAME2[(s>>>13)%NAME2.length];
+const farKnown=()=>!!(farRec&&farRec.kn);
+const farN=()=>farRec?farRec.n:'the far island';
+// What has crossed, in order, capped at 24: this rides in the address bar, and a hundred crossings would be a hundred lines of it.
+function farCross(k,st){if(!farRec)return;farRec.cr.push({d:dayCount,k,s:st});if(farRec.cr.length>24)farRec.cr.shift()}
+// The name comes across once, in somebody's mouth, and after that everyone uses it. Returns true the once.
+function farLearn(who){if(!farRec||farRec.kn)return false;farRec.kn=1;
+  say(`${who} says the place out there has a name, and the name is ${farRec.n}. By evening nobody is calling it the far island any more.`,true);
+  addEvent('farname',`the ${sea()} the far island turned out to be ${farRec.n}`,`The island on the horizon stopped being the far island and became ${farRec.n}, which is what the people on it have always called it. Nothing about the water changed. Everything about looking at it did.`);
+  farCross('name',`the name of ${farRec.n} came across the water`);return true}
+// Things this island cannot make, which is the whole of the point of them: they only ever arrive over water. [full description, the name it goes by]
+const FARGOODS=[['a copper pot, beaten thin and mended twice before it ever got here','the copper pot'],
+ ['a hand-mirror of bronze, spotted with age, that shows a face darker than it is','the bronze mirror'],
+ ['a roll of iron needles in oiled cloth, finer than anything the forge could draw','the needle-roll'],
+ ['a length of cloth dyed a red nothing on this island grows','the red cloth'],
+ ['a small brass bell with a crack in its voice','the cracked bell'],
+ ['a book of ruled paper, empty, that nobody here could make and everybody wanted','the empty book']];
+// One far thing a year, from either route, and it is asked of the things themselves rather than a counter — the store is already saved.
+const farRecent=()=>things.some(t=>t.src==='far'&&t.hist.length&&dayCount-t.hist[0].d<YEAR);
 const SEASONS=['spring','summer','autumn','winter'];
 const SEASON_LINE={spring:'The first green comes back to the trees, and somewhere on the island something is in blossom.',summer:'The days stretch long and gold. It is summer.',autumn:'The canopy turns. Leaves come down on the paths, and the store begins to matter.',winter:'The first hard frost. Winter has come to the island and the days are short.'};
 const WATER=0,SAND=1,GRASS=2,ROCK=3,FARM=4;
@@ -132,7 +163,7 @@ function yearName(yr){if(!yr||yr>=yearOf(dayCount))return null;const E=chron.fil
   if(k('hardwinter'))return 'the year of the long winter';
   if(k('shoal'))return 'the year the fish came in';
   if(n('death')>=2)return 'the year of the partings';
-  if(k('stayed')||k('voyage')||k('returned'))return 'the year of the far island';
+  if(k('stayed')||k('voyage')||k('returned')||k('farname')||k('farcame'))return 'the year of the far island';
   if(k('way')){const e=E.find(e=>e.kind==='way'),m=e.label.match(/^the year (.+?) came to /);if(m)return 'the year of '+m[1]}
   if(n('birth')>=2)return 'the year of the cradles';
   if(k('washed')||k('wreck'))return 'the year of the wreck';
@@ -152,7 +183,7 @@ function trimHist(p){if(p.hist.length>HIST_MAX)p.hist.splice(1,p.hist.length-HIS
 function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
-  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;songs=[];snowmen=[];skipN=0;rbUntil=0;shoots=[];starDay=0;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
+  wood=12;food=20;granary=0;hunger=0;time=dayLen*.22;dayCount=1;lastYear=1;lastSea='spring';rain=false;storm=false;wx='clear';wxT=rnd(60,180);fogA=0;flash=0;snowD=0;frozen=false;gone=[];paintedKey='';works=[];dry01=0;breadYr=0;retYr=0;bldg=[];bldgTgt=null;boats=[];heat=new Float32Array(W*H);road=new Uint8Array(W*H);roadV=0;village=null;landings=[];lightSite=null;stream=[];bridgeSite=null;traderDay=0;belled=0;trader=null;wild=[];flies=[];gulls=[];geese=null;geeseDay=0;whale=null;whaleT=rnd(60,200);farIsle=null;farRec=null;voyage=null;ruin=null;fishSh=[];ruinSeen=0;springs=[];clouds=[];gusts=[];skips=[];chron=[];storyDay=0;dreamAny=0;sackUsed=false;things=[];heirYr=0;lorePl=[];walkP=null;loreN={};boundsP=null;boundsYr=0;songs=[];snowmen=[];skipN=0;rbUntil=0;shoots=[];starDay=0;wind=R()<.5?-1:1;evT=14;arrivalT=90;names=new Set();saidToday=new Set();usedTpl=new Map();selected=null;
   faith=0;faithSt=0;acts=[];prayer=null;arc=null;arcYr=0;wayYr=0;bookYr=0;ways=0;lastStormDay=0;rainedDay=0;wreckYr=0;famDone=false;temper=TEMPERS[(seed>>>0)%5]; // temper from the seed alone: no rnd(), so old links keep their terrain
   const cx=W/2,cy=H/2;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){
@@ -194,6 +225,7 @@ function newWorld(s){
   // the far island: only ever a silhouette on the horizon (the top edge, over open water), on the side away from the hearth
   {const w=8+((R()*5)|0);let best=null,bs=-1;for(let x0=3;x0<W-w-3;x0++){let c=0;for(let i=0;i<w;i++)for(let j=0;j<7;j++)if(at(x0+i,j)===WATER)c++;const sc=c+Math.abs(x0+w/2-center.x)*.4+R()*3;if(c>=w*6&&sc>bs){bs=sc;best=x0}}
     if(best===null){best=center.x<W/2?W-w-4:4}farIsle={x:best,w,h:5+((R()*4)|0),lit:false,k:R()};
+    farRec={s:farSeed(seed),n:farNameOf(farSeed(seed)),kn:0,cr:[]};   /* phase 5: no R() draw — the neighbour is a function of the seed, so an old link keeps its exact terrain */
     // deep water for the whale: well out from any land
     deep=[];for(let y=6;y<H-6;y+=2)for(let x=6;x<W-6;x+=2){if(elev[idx(x,y)]<.02){let ok=true;for(let j=-6;j<=6&&ok;j+=2)for(let i=-6;i<=6;i+=2)if(at(x+i,y+j)!==WATER){ok=false;break}if(ok)deep.push({x,y})}}}
   // favourite spots
