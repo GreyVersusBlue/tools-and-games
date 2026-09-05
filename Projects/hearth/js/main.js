@@ -1,9 +1,17 @@
 // Hearth — time controls, hints, the view and input, the boot sequence, and window.__hearth for the harness. Loaded last.
 // Classic scripts sharing one global scope; the load order in index.html is the old single file’s order and it matters.
 // ---------- time ----------
-function syncCtl(){for(const [id,v] of [['b-s1',1],['b-s3',3],['b-s10',10]])document.getElementById(id).classList.toggle('on',!paused&&speed===v);
+// The generational speed (phase 2). Four systems the island has — heirlooms passing, the walking of the bounds, elders telling children
+// of the dead, a song being lost — want a generation, and at 10x a generation is forty minutes of sitting there. A 500-day island on
+// seed 7 measured 0.020 ms in step() and 9.2 ms in draw(): drawing is 450 times the cost of simulating, so the way to a decade is not
+// a faster simulation, it is a rarer paint. FAST steps 240 times between frames and paints every fourth one, which is about half a
+// second a day, or a decade in two minutes. Nothing skipped below draws from R() — draw() and audio.js have never touched the stream —
+// so the island it produces is the same island, which the harness's `decade` mode asserts by hash rather than by argument.
+const FAST=240;
+function syncCtl(){for(const [id,v] of [['b-s1',1],['b-s3',3],['b-s10',10],['b-sf',FAST]])document.getElementById(id).classList.toggle('on',!paused&&speed===v);
   const b=document.getElementById('b-pause');b.classList.toggle('on',paused);b.textContent=paused?'▶':'❚❚';b.setAttribute('aria-label',paused?'resume':'pause')}
-function setSpeed(v){speed=v;paused=false;syncCtl()}
+function setSpeed(v){const was=speed;speed=v;paused=false;syncCtl();
+  if(was>=FAST&&v<FAST)autoSave()} // the throttled autosave writes every tenth day up there; coming down, the island is put away as it stands
 function skipToMorning(){const e=edges(),f=dayFrac(),d0=Math.floor(time/dayLen);
   const tgt=(d0+(f<e[0]?0:1))*dayLen+(e[0]+.03)*dayLen;
   let n=0;while(time<tgt&&n<3400){step(.05);n++}
@@ -99,6 +107,7 @@ document.getElementById('b-pause').onclick=()=>{paused=!paused;syncCtl()};
 document.getElementById('b-s1').onclick=()=>setSpeed(1);
 document.getElementById('b-s3').onclick=()=>setSpeed(3);
 document.getElementById('b-s10').onclick=()=>setSpeed(10);
+document.getElementById('b-sf').onclick=()=>setSpeed(FAST);
 document.getElementById('b-morning').onclick=skipToMorning;
 document.getElementById('b-chron').onclick=()=>showChron(chronEl.hidden);
 document.getElementById('chron-x').onclick=()=>showChron(false);
@@ -116,7 +125,7 @@ document.getElementById('b-music').onclick=e=>{musOn=!musOn;e.target.textContent
 addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
   const k=e.key.toLowerCase();
   if(k===' '||e.code==='Space'){paused=!paused;syncCtl();e.preventDefault()}
-  else if(k==='1')setSpeed(1);else if(k==='3')setSpeed(3);else if(k==='0')setSpeed(10);
+  else if(k==='1')setSpeed(1);else if(k==='3')setSpeed(3);else if(k==='0')setSpeed(10);else if(k==='y')setSpeed(FAST);
   else if(k==='m')skipToMorning();
   else if(k==='c')showChron(chronEl.hidden);
   else if(k==='s')document.getElementById('b-audio').click();
@@ -136,17 +145,27 @@ addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;
       removeEventListener('pointerdown',kick,true);removeEventListener('keydown',kick,true)};
     addEventListener('pointerdown',kick,true);addEventListener('keydown',kick,true)}}
 {let ok=false;try{ok=loadHash()}catch(err){ok=false}
-  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(o&&o.v>=5&&o.v<=12&&o.pe){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
+  if(!ok){const a=pref('auto');if(a)try{const o=JSON.parse(lzDec(a));if(canLoad(o)){unpack(o);say('The island kept itself while you were away.',true);ok=true}}catch(err){ok=false}}
   if(!ok)newWorld(seed);syncCtl()}
-let last=performance.now();
-function loop(now){let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;if(!paused)for(let i=0;i<speed;i++)step(dt); // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
-  audioTick(dt);hintTick(dt);cardT-=dt;renderCard(false);draw();requestAnimationFrame(loop)}
+let last=performance.now(),frameN=0,genAcc=0;
+// One frame of the world: the steps, then everything that is only there to be seen or heard. Split out of loop() so the harness can
+// drive real frames at either speed and compare the two islands. The log and the chronicle are written inside step() and newDay(),
+// which is why the generational speed keeps them for nothing.
+function frame(dt,run){
+  if(run)for(let i=0;i<speed;i++)step(dt);
+  if(speed<FAST){audioTick(dt);hintTick(dt);cardT-=dt;renderCard(false);draw();return}
+  genAcc+=dt;
+  // at 240x a person crosses ten tiles between frames, so three paints in four buy nothing; the hints are for somebody who has just
+  // arrived, and this is not their speed. audioTick gets the whole accumulated dt, so its timers run at the wall clock they always did.
+  if((++frameN&3)===0){audioTick(genAcc);cardT-=genAcc;genAcc=0;renderCard(false);draw()}}
+function loop(now){let dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now; // clamped at 0: the first frame's timestamp can predate performance.now(), and time must never run backward
+  frame(dt,!paused);requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
 // exposed for headless testing only
-window.__hearth={step,draw,get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,canWalk,canWade,routeVia,autoSave,get wadeTiles(){return wadeTiles},get bridgeUp(){return bridgeUp},get bridgeSite(){return bridgeSite},get works(){return works},get dry01(){return dry01},setDry:v=>dry01=v,get breadYr(){return breadYr},WORKS,WORK_ORDER,hasW,get spots(){return spots},
+window.__hearth={step,draw,frame,FAST,get speed(){return speed},set speed(v){speed=v},get paused(){return paused},get trees(){return trees},get people(){return people},get graves(){return graves},get dead(){return dead},get gone(){return gone},get bldg(){return bldg},get boats(){return boats},get village(){return village},get road(){return road},get stream(){return stream},get landings(){return landings},get heat(){return heat},get bldgTgt(){return bldgTgt},get wild(){return wild},get gulls(){return gulls},get flies(){return flies},get geese(){return geese},get whale(){return whale},get farIsle(){return farIsle},get voyage(){return voyage},get ruin(){return ruin},get fishSh(){return fishSh},get events(){return events},get chron(){return chron},get springs(){return springs},get clouds(){return clouds},get skips(){return skips},get houses(){return houses},get farms(){return farms},get dayCount(){return dayCount},get food(){return food},get granary(){return granary},get hunger(){return hunger},get wx(){return wx},get snowD(){return snowD},get frozen(){return frozen},get wood(){return wood},get time(){return time},get seed(){return seed},setTime:t=>time=t,setWhaleT:v=>whaleT=v,setGeeseDay:v=>geeseDay=v,setWx,setSnow:v=>snowD=v,setSpeed,setFood:v=>food=v,setGranary:v=>granary=v,landAt,canWalk,canWade,routeVia,autoSave,get wadeTiles(){return wadeTiles},get bridgeUp(){return bridgeUp},get bridgeSite(){return bridgeSite},get works(){return works},get dry01(){return dry01},setDry:v=>dry01=v,get breadYr(){return breadYr},WORKS,WORK_ORDER,hasW,get spots(){return spots},
 get faith(){return faith},setFaith:v=>faith=v,get faithSt(){return faithSt},get prayer(){return prayer},get arc(){return arc},startArc,get ways(){return ways},setWays:v=>ways=v,hasWay,get temper(){return temper},noteAct,get acts(){return acts},get sickCount(){return people.filter(p=>p.sick).length},
 get things(){return things},get heirYr(){return heirYr},thingsOf,craftUp,finishWork,die,stoneTap,wayTune,wayN,
 get lorePl(){return lorePl},get walkP(){return walkP},madeOf:ci=>MADE(ci),LORE_PLACE,
 get loreN(){return loreN},setLoreN:(k,n)=>loreN[k]=n,boundsOut,get boundsYr(){return boundsYr},get boundsP(){return boundsP},
 get songs(){return songs},get snowmen(){return snowmen},get skipN(){return skipN},setSkipN:v=>skipN=v,yearName,musical,auroraNight,kinOf,skinOf,chatNews,loseSongs,get shoots(){return shoots},get starDay(){return starDay},get rbUntil(){return rbUntil},rbSet:v=>rbUntil=v,get storyDay(){return storyDay},
-setZoom,get zoom(){return zoom},get view(){return{zoom,camX,camY,dprE,fitS}},toWorld,fit,get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,songTune,songDegrees,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};
+migrate,forge,canLoad,SAVE_V,SAVE_MIN,setZoom,get zoom(){return zoom},get view(){return{zoom,camX,camY,dprE,fitS}},toWorld,fit,get sackUsed(){return sackUsed},get musOn(){return musOn},set musOn(v){musOn=v},newWorld,flavor,drawFace,byName,startAudio,audioTick,lullaby,thock,hammer,creak,gullCry,whoosh,splash,bell,chirp,plink,thunder,place,cur,songTune,songDegrees,get audioOn(){return audioOn},set audioOn(v){audioOn=v},get AC(){return AC},get buses(){return{master,ambG,sfxG,musG,windG,waveG,rainG,sprG,crickG,padG}},get RM(){return RM},get lastKnock(){return lastKnock},set RM(v){RM=v},tellStory,dreamOf,wakeDreams,makeSpring,skipStone,gustAt,rainOn,cloudAt,addCloud,skipToMorning,pack,unpack,lzEnc,lzDec,saveHash,loadHash,renderChron,exportChron,showChron};

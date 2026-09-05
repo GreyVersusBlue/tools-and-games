@@ -122,6 +122,13 @@ function tellStory(nat){if(storyDay===dayCount)return false;
     const last=src[src.length-1];if(!seen.has(last))ch.push(last);
     // the teller comes back around to a favorite, if the island has grown one (sprint 12)
     const leg=src.filter(e=>e.gr&&!seen.has(e));if(leg.length&&R()<.6){const e=leg[(R()*leg.length)|0];seen.add(e);ch.push(e)}
+    // and, phase 2, to the one the village has half-learned. The five picks above are spread by fraction across a chronicle that keeps
+    // getting longer, so every one of them except the first slides onto a different entry each time a new thing happens, and only the
+    // first — which sits at fraction zero and never moves — ever reached the three tellings a story needs to grow. Thirty-five
+    // game-years on seed 7 grew exactly one story. This is the counterpart of the line above it: the most-told story that has not
+    // grown yet gets finished rather than started over.
+    const near=src.filter(e=>!e.gr&&(e.tl||0)>0&&GROW[e.kind]&&!seen.has(e)).sort((a,b)=>(b.tl||0)-(a.tl||0))[0];
+    if(near&&R()<.45){seen.add(near);ch.push(near)}
     let grew=null,made=null;
     for(const e of ch){e.tl=(e.tl||0)+1; // every telling leaves a thumbprint on the story
       if(!grew&&!e.gr&&e.tl>=3&&GROW[e.kind]){e.gr=1;const g=GROW[e.kind];e.st=e.st+' '+g[(R()*g.length)|0];grew=e}
@@ -130,7 +137,9 @@ function tellStory(nat){if(storyDay===dayCount)return false;
         if(ci>=0&&!songs.some(sg=>sg.ci===ci)){
           let mus=grown.filter(q=>musical(q));if(!mus.length)mus=grown.filter(q=>has(q,'dreamy')||has(q,'funny'));
           if(mus.length){const cp=mus[(R()*mus.length)|0];
-            songs.push({ci,comp:cp.name,kn:cand.filter(q=>!isKid(q)||ageOf(q)>=5).map(q=>q.name),lost:0,d:dayCount});made=e;
+            // the ones with a tune in them, and whoever made it. Handing a song to every pair of ears on the island, which is what
+            // sprint 16 did, is the reason no song has ever been lost: see forgetSongs in life.js.
+            songs.push({ci,comp:cp.name,kn:cand.filter(q=>(!isKid(q)||ageOf(q)>=5)&&(musical(q)||q===cp)).map(q=>q.name),lost:0,d:dayCount});made=e;
             cp.hist.push({d:dayCount,s:`put the story of ${e.label} to a tune, and the tune stuck`});
             addEvent('song',`the making of the song of ${e.label}`,`After enough tellings the story of ${e.label} stopped fitting in plain words, and ${cp.name} put a tune under it, and by the end of that night everyone at the fire had the refrain.`)}}}
       L.push(`<i>year ${e.y}</i>${e.st}`)}
@@ -139,11 +148,16 @@ function tellStory(nat){if(storyDay===dayCount)return false;
       L.push(`Then ${B(byName(sg.comp)||teller)} does a thing that has not been done here before: sings it. By the second time through, everyone at the fire has the refrain, and the story of ${made.label} has a tune now, for good — or for as long as somebody still carries it.`);
       songTune(sg,sg.kn.length)}                                    // phase 1: and you hear it. Once, on the night it is made.
 
-    else{const known=songs.filter(sg=>!sg.lost&&chron[sg.ci]&&cand.some(q=>sg.kn.includes(q.name))); // an older song gets an airing, and everyone present leaves knowing it
+    else{const known=songs.filter(sg=>!sg.lost&&chron[sg.ci]&&cand.some(q=>sg.kn.includes(q.name))); // an older song gets an airing
       if(known.length&&R()<.6){const sg=known[(R()*known.length)|0],kk=cand.find(q=>sg.kn.includes(q.name));
-        L.push(`Near the end ${B(kk)} starts the song of ${chron[sg.ci].label}, and the ones who know it come in on the parts they know, and the ones who do not have it by the last verse.`);
+        L.push(`Near the end ${B(kk)} starts the song of ${chron[sg.ci].label}, and the ones who know it come in on the parts they know, and the ones with the ear for it have it by the last verse.`);
         songTune(sg,sg.kn.length);                                  // phase 1: the same phrase, in tonight's key
-        for(const q of cand)if((!isKid(q)||ageOf(q)>=5)&&!sg.kn.includes(q.name))sg.kn.push(q.name)}}
+        sg.d=dayCount;                                              // phase 2: sg.d is the night it was last sung, and it is what forgetSongs counts from
+        // and it is the children with the ear who leave the fire with it. An airing that topped the carriers back up with every musical
+        // adult on the island was the last thing keeping a song from ever being lost: forgetSongs would thin it for three or four years
+        // and one night at the fire would put all of them back. A song survives by being taught to the young, and one that stops being
+        // asked for stops being taught, and goes when its generation goes.
+        for(const q of cand)if(isKid(q)&&ageOf(q)>=5&&musical(q)&&!sg.kn.includes(q.name))sg.kn.push(q.name)}}
     L.push(pick(['Nobody corrects any of it. Most of it is true.','When it is done the fire has burned low, and somebody builds it up again anyway.','Then it is late, and nobody moves for a while.','The children have heard it before and listen anyway, in case it changes.']));
     if(R()<.5)teller.hist.push({d:dayCount,s:'told the whole story of the island at the fire, from the landing on'})}
   {const nw=cand.find(h=>h.heard&&h.heard.d>=dayCount-4); /* sprint 16: news that has been walking person to person reaches the fire, and stops being news */

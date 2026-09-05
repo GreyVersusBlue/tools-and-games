@@ -16,7 +16,7 @@ function step(dt){
   if(storm){thunderT-=dt;if(thunderT<=0){thunderT=rnd(1.5,7);flash=RM?.3:1;thunder(rnd(.3,3.2))}
     // storms flatten crops and take down the odd tree
     if(farms.length&&R()<dt*.02){const cand=farms.filter(f=>f.g>.3);if(cand.length){const f=pick(cand);f.g*=.2;say('The wind lays a field flat. Someone will have to start it again.',false,'flat')}}
-    if(trees.length>5&&R()<dt*.006){const cand=trees.filter(t=>t.s>.8&&t.hp>0);if(cand.length){const t=pick(cand);t.hp=0;stumps.push({x:t.x,y:t.y});wood+=3;say('A crack in the dark: the storm takes a tree down. In the morning there will be wood to gather.',false,'treefall')}}}
+    if(trees.length>5&&R()<dt*.006){const cand=trees.filter(t=>t.s>.8&&t.hp>0);if(cand.length){const t=pick(cand);t.hp=0;addStump(t.x,t.y);wood+=3;say('A crack in the dark: the storm takes a tree down. In the morning there will be wood to gather.',false,'treefall')}}}
   // snow lies, and melts
   if(wx==='snow')snowD=Math.min(1,snowD+dt*(arcK()==='longwinter'?.01:.006));else if(rain)snowD=Math.max(0,snowD-dt*.006);else if(s!=='winter')snowD=Math.max(0,snowD-dt*.0025*(temper==='cold'?.6:1));else snowD=Math.max(0,snowD-dt*.0002);
   const fr=snowD>.3;if(fr!==frozen){frozen=fr;if(fr)say('The shallows have frozen over. The water goes still and white at the edges.',true);else say('The ice goes out of the shallows with a sound like something breaking a long way off.',true)}
@@ -220,7 +220,7 @@ function step(dt){
         break}
       case 'chop': if(walk(p,dt)){if(!p.tgt||p.tgt.hp<=0){p.tgt=null;p.task='idle';p.t=1;break}p.work=(p.work||0)+dt*workRate(p);
         p.swing=(p.swing||0)+dt;if(p.swing>.58){p.swing=0;thock(p.x,p.y)}if(R()<dt*3)fx.push({x:p.tgt.x,y:p.tgt.y,vx:rnd(-1,1),vy:-rnd(.5,1.5),c:'#8a5a2b',l:.5});
-        if(p.work>4){p.work=0;p.tgt.hp=0;stumps.push({x:p.tgt.x,y:p.tgt.y});wood+=4;p.tgt=null;craftUp(p,1);p.task='idle';p.t=rnd(1,2)}}break;
+        if(p.work>4){p.work=0;p.tgt.hp=0;addStump(p.tgt.x,p.tgt.y);wood+=4;p.tgt=null;craftUp(p,1);p.task='idle';p.t=rnd(1,2)}}break;
       case 'till': if(walk(p,dt)){p.work=(p.work||0)+dt*workRate(p);if(p.work>2.5){p.work=0;const s=p.tgt;tiles[idx(s.x,s.y)]=FARM;farms.push({x:s.x,y:s.y,g:0});if(farms.length===1){say(`${B(p)} breaks the first ground for a field.`);p.hist.push({d:dayCount,s:'broke the first ground for a field'});addEvent('field','the day the first field was dug',`${p.name} broke the first ground for a field, which was the beginning of eating properly.`)}craftUp(p,0);p.task='idle';p.t=1}}break;
       case 'harvest': if(walk(p,dt)){p.work=(p.work||0)+dt*workRate(p);if(R()<dt*4)fx.push({x:p.x,y:p.y-.5,vx:rnd(-.5,.5),vy:-1,c:'#e8c86a',l:.6});
         if(p.work>2){p.work=0;p.tgt.g=0;p.tgt.claimed=false;const store=(s==='autumn'||(s==='summer'&&seaDay()>=4))&&granary<people.length*12;if(store)granary+=4;else food+=4;craftUp(p,0);p.tgt=null;

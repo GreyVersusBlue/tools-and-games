@@ -141,6 +141,14 @@ function yearName(yr){if(!yr||yr>=yearOf(dayCount))return null;const E=chron.fil
   if(k('landing'))return 'the year of the landing';
   return 'a quiet year'}
 const mkTree=(x,y,s,o)=>({x,y,s,hp:3,b:R()<.45,a:R(),o:o||0});
+/* Two lists that used to grow for as long as the island did. A 500-day island on seed 7 carried 1,102 stumps — 17,677 bytes, 12% of
+   the whole save — lying several deep on the same worked ground, and nothing in the simulation has ever read one: a stump is a 3x2
+   brown rectangle. The oldest go back to grass. A person's story is every line they ever earned, and a long life earns more than the
+   card can show; the first line, how they came to be here, stays, and the most recent HIST_MAX-1 stay with it. Both are trimmed where
+   the world changes rather than in pack(), so an island reloaded from a link looks like the one that ran straight through. */
+const STUMP_MAX=240, HIST_MAX=60;
+function addStump(x,y){stumps.push({x,y});if(stumps.length>STUMP_MAX)stumps.splice(0,stumps.length-STUMP_MAX)}
+function trimHist(p){if(p.hist.length>HIST_MAX)p.hist.splice(1,p.hist.length-HIST_MAX)}
 function newWorld(s){
   seed=s;R=mulberry(seed);document.getElementById('seedlbl').textContent='island '+seed.toString(36);
   const n1=noise2(),n2=noise2();tiles=new Uint8Array(W*H);elev=new Float32Array(W*H);trees=[];houses=[];farms=[];people=[];stumps=[];fx=[];fires=[];graves=[];dead=[];events=[];shore=[];
