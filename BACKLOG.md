@@ -53,65 +53,56 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Torchbearer Phase 5, "The rest of the action
-economy" (PR #137)**, and **its row is gone.** Arc one of that project is
-finished. The action bar is nine actions longer: Trip, Shove, Grapple, Disarm,
-Escape, Stand, Aid, Recall Knowledge, Delay and Ready. The four maneuvers are
-one action each, an Athletics check against `10 + the target's own Reflex or
-Fortitude`, and each carries the attack trait so it takes the MAP and raises
-it. `grabbed` is immobilized plus off-guard, and Escape rolls the better of
-Athletics and Acrobatics against the total that made the grab. Aid prepares on
-one turn and rolls on the ally's next check, which makes it the only action in
-the game that outlives the turn that spent it. Recall Knowledge prints a line
-of stat block against the GM Core's level-based DC. Delay moves a combatant
-down `Combat.order` and ticks nothing; Ready costs two actions and arms one
-Strike against the Phase 3 bus's `move-out-of-reach`, read backwards.
-`js/combat.js` goes from 1,309 lines to 1,731; `test/smoke.mjs` from 815 checks
-to 947. Save: none. No site version was bumped.
+The last thing that shipped is **Torchbearer Phase 6, increment 1, "Level is
+a field on the build" (PR #139)**, and **its row stays at rank 1**, a 2+ with
+its wishlist text rewritten to say what is done and what is left.
+`CHAR_LEVEL = 3` had eleven reads and every derived number hung off them; it
+has one now, the level a new hero is forged at. The level a sheet is computed
+from is `build.level`, read through `levelOf` and clamped to 1..10 by
+`repairBuild`, so every existing save reads back exactly as it did. HP per
+level, the proficiency bonus on every number, the half-level resist,
+Toughness, the cantrip rank, Demoralize's DC and Terrified Retreat all follow
+it, and a class feature's `special` waits for its level. The progression
+tables are data in `js/rules.js` with a check on every row: `FEAT_LEVELS`,
+`SKILL_INCREASE_LEVELS`, `BOOST_LEVELS`, `RANK_FLOOR`. `grantsAt(cls, level)`
+is the one answer the level-up screen will render. Save: **version 3**,
+additive — `build.level`, `build.advances` (the per-level choice map from 4
+up) and `xp` — with `migrate` doing real work for the first time.
+`test/smoke.mjs` goes from 947 checks to 1,027. No site version was bumped.
 
-**Five decisions are locked, 106 to 110.** A maneuver's DC is
-`10 + the target's save` and Demoralize keeps its extra `+ CHAR_LEVEL`, because
-Feint and Hide were already plain and moving Demoralize is a balance change to
-every fight in both shipped adventures (#106). Grapple's Escape DC is the total
-that made the grab rather than the grabber's Class DC — Phase 4's `hideDC`
-established that shape, and reusing it makes a critical Grapple harder to break
-without modelling `restrained` (#107). Aid rolls Athletics against a flat DC 15
-whatever it is aiding, because the engine cannot know which skill the ally's
-next check will use and the bonus is consumed from six call sites (#108). A
-readied action is deliberately not a `REACTIONS` id: putting it there would put
-it in `KNOWN_REACTIONS` too, and a monster's `"reactions": ["readied-action"]`
-would then validate and silently never fire (#109). And Torchbearer gets its
-own CI workflow while the site-wide row stays open (#110).
+**Five decisions are locked, 111 to 115.** The engine grows past level 3, to
+10, and the level is the hero's; this answers Q19, which stood in front of
+the row, and it is one constant to reverse (#111). A class's `featLevels`
+list is authoritative up to its highest entry and the Player Core's row takes
+over above it, so seven core classes needed no data change and the Rogue
+spells its every-level rows out to 20 (#112). `migrate` decides a version-2
+save's level and `repair` shapes a version-3 one — the only visible
+difference is a v2 blob claiming level 7, which loads at 3 (#113). Spell
+ranks 3 and up are not modelled; rank 2 grows to 3 slots at level 4 and
+stops (#114). Boosts past +4 are partial, the level-1 cap stays, and Master
+waits for 7 (#115).
 
-**Three more feats stopped being note text**, and two of them had to change in
-the pack to do it. `titan-wrestler` and `cooperative-nature` were `{"note": …}`
-entries in `CORE_PACK`, so no amount of engine code could have seen them; they
-are `special` ids now, and `bonus-dmg-vs-large` was already one and had simply
-never been read. Guide §8's working list is 45. `size` is read on both sides of
-a maneuver — off the sheet for a hero, off the Registry entry for a monster —
-and the validator rejects a size it does not know, because a misspelling reads
-as Medium and quietly makes a Gargantuan creature wrestleable. `bonus` on
-`save.all` became real: `rollSave` takes the traits the save is against, so
-Ancient-Blooded Dwarf's +1 vs magic and Gutsy Halfling's +1 vs emotion finally
-do something. `bonus` on `perception` still has exactly one reader, Seek, and
-the guide says so rather than pretending otherwise.
+Twelve guard-rails were broken on purpose (#34) and every one exited 1. The
+one worth knowing about is the migration's: both `migrate` and `repair`
+default a missing level to 3, so a check that only loaded the committed
+fixture would have stayed green with `migrate` unhooked. The check that
+fires is a `__v: 2` blob whose build says `level: 7` loading at 3.
 
-Fifty-one guard-rails were broken on purpose (#34) and every one exited 1. Two
-stayed green on the first pass and were tightened until they fired: a Delay
-test whose three engines shared one combatant, so `delayedRound` from the first
-refused the third Delay before it ran and the tick assertion was passing on a
-Delay that never happened; and a Ready test whose path had only one in-reach
-step either way, so dropping half the trigger was invisible.
+**`npm run games torchbearer` ran in the container this round, under
+`xvfb-run`**, and passed 9 of 9, importing the version-2 fixture through the
+page's own door. `npm install` in `Tools/board-check` is still required
+first — `puppeteer-core` is not vendored.
 
-**Torchbearer has CI now, and PR #137 is the sixth in a row to raise it — this
-one by adding it.** `.github/workflows/torchbearer-ci.yml` is one job, one
-`node` invocation, no browser and no dependency, on the shape
-`fourth-quarter-ci.yml` already uses; it went green on its first run. It does
-**not** close rank 77, the site-wide row about CI running almost nothing —
-`Tools/board-check`, `gvb-save.test.mjs` and the rest of the project suites
-still run nowhere.
+**What increment 2 is.** The level-up screen: offer only what `grantsAt`
+says the new level grants, reuse `Builder`'s own step components, and write
+into `build.advances[level]` — the slot keys are already the builder's own
+shape (`class4`, `skill4`, `ancestry5`, `general7`). Adventures declare
+`"awards"` and `finish(true)` credits them into `App.xp`, milestone by
+default. Then `minLevel`/`maxLevel` beside `minParty`, and guide §13's
+promise rewritten. The page's gear hint still says "a 3rd-level kit" and the
++1 rune is assumed at every level; both are in the row.
 
-Before that: **Torchbearer Phase 4 (PR #135)**, **Phase 3 (PR #133)**, **Phase 2, increment 2 (PR #131)**, **increment 1 (PR #129)**, **Torchbearer Phase 1 (PR #127)**, **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
+Before that: **Torchbearer Phase 5 (PR #137)**, **Phase 4 (PR #135)**, **Phase 3 (PR #133)**, **Phase 2, increment 2 (PR #131)**, **increment 1 (PR #129)**, **Torchbearer Phase 1 (PR #127)**, **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
 (PRs #117, #119 and #121)**,
 **Hearth Phase 5 (PR #115)**, **Hearth Phase 4 (PR #114)**, **Hearth Phases 2 and 3 (PR
 #112)**, **Bell to Bell Phase 8 and Hearth Phase 1 (PR #111)**, **Bell to
@@ -122,63 +113,34 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**Three shared things moved, all in the same commit as the project change —
-and the same two site-wide checks are still red on `main` and were red
-before that branch existed** (re-run on `main` from the same container: 1404
-units checked, 2 broken, both sides, and six social pages out of sync on both)**:**
-`check-integrity.mjs` fails on `Projects/school-generator/tools/walk-shell.html`
-(an HTML comment inside an inline `<script type="module">`, which is a syntax
-error in a module) and on `Tools/prompt-builder.html` (it references
-`fonts.googleapis.com` and `fonts.gstatic.com`, against the zero-offsite rule).
-`social:check` reports six pages out of sync with the board. None of the three
-is ranked below yet; all three are somebody's next quarter-session. The shared
-things that did move: `CLAUDE.md`'s locked-decision count, 105 to 110; the new
-`.github/workflows/torchbearer-ci.yml`; and
-`Tools/board-check/play-games.mjs`.
-
-`play-games.mjs`'s torchbearer entry needed work this round, and it is worth
-knowing why. The driver opened the grid and screenshotted it without ever
-touching the action bar, so `renderBar` — the only caller of half of Phase 5 —
-was invisible to 947 green assertions. The beat now ends the companion's turn
-if initiative gave it one, waits for the hero's, and asserts the eight new
-buttons are on the bar and that Escape and Stand are correctly not. Removing
-one button fails it with `missing trip`, which is how that was checked. Nine
-checks, 0 failed, run three times. `npm install` in `Tools/board-check` is
-required first — `puppeteer-core` is not vendored — and that is worth knowing
-before a session concludes the browser suite is broken.
+**None of the four shared things moved this round, and the same two
+site-wide checks are still red on `main` and were red before this branch
+existed** (re-run from the same container: 1404 units checked, 2 broken, and
+six social pages out of sync)**:** `check-integrity.mjs` fails on
+`Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
+inline `<script type="module">`, which is a syntax error in a module) and on
+`Tools/prompt-builder.html` (it references `fonts.googleapis.com` and
+`fonts.gstatic.com`, against the zero-offsite rule). `social:check` reports
+six pages out of sync with the board. None of the three is ranked below yet;
+all three are somebody's next quarter-session. What did move outside the
+project: `CLAUDE.md`'s locked-decision count, 110 to 115.
 
 **122 ranked items.** 60 of them are phases in one of the ten project
 `WISHLIST.md` files; the other 62 are standalone, and live in Tier 2 below.
 Beyond the ranked list there are 246 open bullets in the eleven wishlists'
-standing backlogs and 49 open questions for Devon — 417 open items in all. The
-five added this round are Torchbearer's, all from Phase 5: no monster uses an
-Athletics maneuver, because none carries an Athletics number (the same missing
-number as the Stealth one Phase 4 left, and the two want one schema change
-between them); `restrained` is not modelled, so a critical Grapple is only a
-harder Escape; Disarm's −2 lands on every attack the target has rather than on
-the weapon it was aimed at; Ready arms one thing against one of the bus's four
-triggers; and Aid rolls Athletics whatever it is aiding, so a wizard helping
-another wizard's Arcana check rolls the strongest arm in the party.
-Bell to Bell has no ranked rows left: all eight of its phases have shipped, and
-what it wants next is the later arc at the bottom of its own `WISHLIST.md`.
-Hearth now has none either: all eight of its phases have shipped. Torchbearer
-has three left, ranks 1 through 3.
+standing backlogs and 48 open questions for Devon — 416 open items in all.
+Nothing was added to a standing backlog this round; Q19 moved to the
+answered list. Bell to Bell has no ranked rows left: all eight of its phases
+have shipped, and what it wants next is the later arc at the bottom of its
+own `WISHLIST.md`. Hearth now has none either: all eight of its phases have
+shipped. Torchbearer has three left, ranks 1 through 3, and rank 1 is
+partly done.
 
-**Pick up rank 1: `Projects/torchbearer` Phase 6 — A hero who levels (Fable
-5.1, size 2+).** A 2+ row is the whole batch and will not finish in one
-session: do one increment, ship it, and leave the row in place with its Item
-text rewritten to say what is done. The wishlist row lists it: `CHAR_LEVEL = 3`
-has eleven reads and every derived number hangs off them — HP per level, the
-proficiency bonus, the resist that scales at half level, Toughness, the focus
-cap, the single skill increase, the spell ranks the builder offers. Level
-becomes `build.level`, defaulted to 3 by `repairBuild` so every existing save
-stays exactly as valid as it is today, and `CHAR_LEVEL` survives only as the
-default for a new hero. Then the progression tables: feats by level and class,
-skill increases at the levels that grant them, boosts at 5/10/15/20, and
-proficiency advances read off each class's own `features` array, which already
-carries `level` on every entry and already filters on it. The suite is 947
-checks and now runs in CI, which is the safety net that makes this row worth
-opening rather than deferring.
+**Pick up rank 1 again: `Projects/torchbearer` Phase 6 — A hero who levels,
+increment 2 (Fable 5.1, size 2+).** A 2+ row is the whole batch. Increment 1
+left the record and the arithmetic in place; increment 2 is the level-up
+screen and the `awards` that reach it, described under "What increment 2
+is" above. The suite is 1,027 checks and runs in CI.
 
 Two things the CI rows below now know that they did not: `hearth-ci.yml`,
 `fourth-quarter-ci.yml` and `torchbearer-ci.yml` are the third, fourth and
@@ -230,7 +192,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 6 — A hero who levels | `Projects/torchbearer` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-sswvpg` | [WISHLIST.md Phase 6](Projects/torchbearer/WISHLIST.md#phase-6--a-hero-who-levels) |
+| 1 | Phase 6 — A hero who levels | `Projects/torchbearer` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/torchbearer/WISHLIST.md#phase-6--a-hero-who-levels) |
 | 2 | Phase 7 — The campaign spine | `Projects/torchbearer` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/torchbearer/WISHLIST.md#phase-7--the-campaign-spine) |
 | 3 | Phase 8 — The contract, and its first new author | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/torchbearer/WISHLIST.md#phase-8--the-contract-and-its-first-new-author) |
 | 4 | Phase 1 — The interrupt point | `Projects/absalom-inheritance` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/absalom-inheritance/WISHLIST.md#phase-1--the-interrupt-point) |
