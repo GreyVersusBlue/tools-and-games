@@ -50,6 +50,8 @@ const { SCOPE, scopedFlag, isScoped, flagsSetBy, foldFlags, flagOk, entriesOf,
 const { COIN, parseCoins, coinText, priceOf, sellPrice, isPotion, TREASURE_BY_LEVEL,
         treasureBudget, treasureIn, buy, sell, addCoins } = await mod("js/shop.js");
 const { SCENE_KINDS, sceneEdges, sceneGraph } = await mod("js/registry.js");
+const { sliceLiteral, packsIn } = await mod("js/corepack.js");
+const { SCHEMA, COLLECTIONS, extraRequired, fieldsOf } = await mod("js/schema.js");
 const { OPENERS, OPENER_FLAGS, EXPLORATION, EXPLORATION_IDS, explorationById, activitiesFor, openerFor,
         DOWNTIME, downtimeById, restHP, TREAT_DC, TREAT_BONUS, treatWounds, treatDC,
         INCOME_BY_LEVEL, earnIncome, CRAFT_DAYS, craftCost, craftDaysToFree } = await mod("js/downtime.js");
@@ -72,28 +74,10 @@ function memStore() {
   };
 }
 
-/**
- * Pull a `const NAME = {...}` object literal out of the page and parse it.
- * The two inline packs are JSON with /* *\/ comments between the sections, so
- * strip those on the way past. Brace-counting, string-aware: a `{` inside a
- * description does not end the object.
- */
-function sliceLiteral(src, name) {
-  const at = src.indexOf(`const ${name} = {`);
-  if (at < 0) throw new Error(`${name} is not in torchbearer.html`);
-  const start = src.indexOf("{", at);
-  let depth = 0, inStr = false, esc = false, out = "";
-  for (let i = start; i < src.length; i++) {
-    const c = src[i];
-    if (inStr) { out += c; if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
-    if (c === "/" && src[i + 1] === "*") { const e = src.indexOf("*/", i + 2); i = e < 0 ? src.length : e + 1; continue; }
-    out += c;
-    if (c === '"') inStr = true;
-    else if (c === "{" || c === "[") depth++;
-    else if (c === "}" || c === "]") { depth--; if (depth === 0) return out; }
-  }
-  throw new Error(`${name} is unterminated`);
-}
+/* `sliceLiteral` used to live here. It is js/corepack.js now, because
+   authoring.html needs the same two packs for the same reason the suite does —
+   a pack leaning on core ids validates against nothing without them — and the
+   suite importing it is what keeps that page's reference content honest. */
 
 const html = fs.readFileSync(PAGE, "utf8");
 const readPack = f => JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", f), "utf8"));
@@ -175,7 +159,12 @@ group("packs/index.json");
 const manifest = JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", "index.json"), "utf8"));
 ok(Array.isArray(manifest.packs) && manifest.packs.length > 0, "the manifest lists packs");
 
-const onDisk = fs.readdirSync(path.join(PROJECT, "packs")).filter(f => f.endsWith(".json") && f !== "index.json").sort();
+/* Two files in packs/ are not packs: the manifest, and the contract. Naming
+   them once keeps the "everything on disk is on the shelf" check honest when a
+   later phase drops a third. */
+const NOT_A_PACK = ["index.json", "schema.json"];
+const packFiles = () => fs.readdirSync(path.join(PROJECT, "packs")).filter(f => f.endsWith(".json") && !NOT_A_PACK.includes(f));
+const onDisk = packFiles().sort();
 eq(manifest.packs.map(p => p.file).sort(), onDisk, "every pack file on disk is listed, and vice versa");
 
 for (const entry of manifest.packs) {
@@ -187,8 +176,13 @@ for (const entry of manifest.packs) {
   eq(pack.pack.type, entry.type, `${entry.file}: type matches the manifest`);
   eq(pack.pack.description, entry.description, `${entry.file}: description matches the manifest`);
   eq(Validator.validate(pack, reg), [], `${entry.file}: validates against core`);
-  // A shelf pack the player can't do anything with is a bad shelf pack.
-  ok((pack.adventures || []).length > 0, `${entry.file}: brings at least one adventure`);
+  /* A shelf pack the player can't do anything with is a bad shelf pack —
+     but "do something with" stopped meaning "play" in Phase 8, which put a
+     ten-monster bestiary on the shelf for other authors to build on. So: an
+     `"adventure"` pack owes an adventure, and a `"content"` pack owes at least
+     one object of some kind. An empty pack is still a bad shelf pack. */
+  if (pack.pack.type === "adventure") ok((pack.adventures || []).length > 0, `${entry.file}: an adventure pack brings an adventure`);
+  else ok(COLLECTIONS.some(k => (pack[k] || []).length > 0), `${entry.file}: a content pack brings content`);
 }
 ok(!onDisk.some(f => /[ ()]/.test(f)), "no pack filename has a space or a download suffix");
 
@@ -891,9 +885,9 @@ eq([canLevelUp({ level: 3 }, 999), canLevelUp({ level: 3 }, 1000), canLevelUp({ 
     "a negative, a non-number and a fraction read 0, 0 and the floor");
   eq(awardFor({ awards: {} }, "ending"), 0, "an empty map is not the milestone default: it pays nothing");
   eq([awardFor(null, "ending"), awardFor(undefined, "x")], [XP_PER_LEVEL, 0], "no adventure at all reads as the default");
-  const shipped = [advPack, ...fs.readdirSync(path.join(PROJECT, "packs")).filter(f => f.endsWith(".json") && f !== "index.json").map(f => JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", f), "utf8")))]
+  const shipped = [advPack, ...packFiles().map(f => JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", f), "utf8")))]
     .flatMap(pk => pk.adventures || []);
-  ok(shipped.length === 3 && shipped.every(a => a.awards === undefined), `every shipped adventure declares no awards, so finishing one is a level — ${shipped.map(a => a.id).join(", ")}`);
+  ok(shipped.length === 4 && shipped.every(a => a.awards === undefined), `every shipped adventure declares no awards, so finishing one is a level — ${shipped.map(a => a.id).join(", ")}`);
 }
 { // the kit follows the level
   eq([1, 2, 3, 4, 9, 10].map(l => kitAt(l)), [
@@ -4270,6 +4264,270 @@ group("the openers drive Combat.start");
 
   // A fresh engine starts with none.
   eq(newCombat().openers, [], "an engine that has not started a fight has consumed no openers");
+}
+
+/* ---------------- 15. Phase 8 — the contract, once ----------------
+   The pack contract used to exist twice: `Validator` enforced it with
+   hard-coded field lists and content-authoring-guide.md described it in prose,
+   and the two had drifted before. js/schema.js is the third thing and is meant
+   to be the only one that has to change; packs/schema.json is that document on
+   disk. Everything below is what makes "one contract" true rather than said. */
+group("the schema is the contract");
+{
+  const { staleReason, serialize } = await mod("tools/schema.mjs");
+  eq(staleReason(), null, "packs/schema.json is what js/schema.js makes — run tools/schema.mjs --write if this fails");
+  ok(serialize().length > 20000 && JSON.parse(serialize()).$defs, "…and what it makes is a parseable schema document");
+
+  // The generator's own guard: a schema.json edited by hand is caught.
+  const schemaPath = path.join(PROJECT, "packs", "schema.json");
+  const good = fs.readFileSync(schemaPath, "utf8");
+  fs.writeFileSync(schemaPath, good.replace('"title": "Torchbearer content pack"', '"title": "Torchbearer content packs"'));
+  ok(/line \d+ is/.test(staleReason() || ""), "…and a hand-edit of packs/schema.json is reported with its line");
+  fs.writeFileSync(schemaPath, good);
+  eq(staleReason(), null, "…and putting it back makes it current again");
+
+  // The validator reads the schema rather than carrying its own lists. Proved
+  // by the only thing that proves it: take a required field out and watch the
+  // error name it, for every collection at once.
+  const singleton = { ancestries: "ancestry", backgrounds: "background", classes: "class", feats: "feat",
+                      spells: "spell", items: "item", monsters: "monster", companions: "companion",
+                      adventures: "adventure", campaigns: "campaign" };
+  const missed = [];
+  for (const [coll, def] of Object.entries(singleton)) {
+    for (const field of extraRequired(def)) {
+      const one = { id: "x", name: "X" };
+      extraRequired(def).forEach(k => { if (k !== field) one[k] = k === "scenes" ? {} : k === "adventures" ? [] : 1; });
+      const errs = Validator.validate({ pack: { id: "p", name: "P" }, [coll]: [one] }, emptyRegistry());
+      if (!errs.some(e => e.includes(`is missing required field "${field}"`))) missed.push(`${coll}.${field}`);
+    }
+  }
+  eq(missed, [], "every required field in the schema is a field the validator actually demands");
+  ok(Object.values(singleton).every(d => extraRequired(d).length >= 0 && SCHEMA.$defs[d]), "…and every collection has a $defs entry to demand it from");
+  eq(extraRequired("monster"), ["ac", "hp", "attacks", "saves"], "extraRequired drops id and name, which get their own messages");
+
+  // The vocabularies are one list now, not one per file.
+  eq(SIZES, SCHEMA.$defs.monster.properties.size.enum, "the sizes the validator checks are the sizes the schema publishes");
+  eq(SCENE_KINDS, SCHEMA.$defs.scene.properties.kind.enum, "…and the scene kinds");
+  eq(KNOWN_REACTIONS, SCHEMA.$defs.monster.properties.reactions.items.enum, "…and the reaction ids");
+  eq(OPENER_FLAGS.length > 0 && SCHEMA.$defs.explore.properties.activities.items.enum, EXPLORATION_IDS,
+    "…and the exploration activities, which come from downtime.js rather than a copy");
+
+  /* A schema that documents a field the engine has never heard of is worse than
+     no schema: an author writes it, the tool says nothing, and the field does
+     nothing. Weak check on purpose — a name appearing anywhere in the source is
+     not proof it is read — but it catches an invented field, which is the
+     failure that actually happens. It caught `onEnter.hp` while this was
+     written. */
+  const engineSrc = html + ["combat", "rules", "registry", "shop", "campaign", "downtime", "save", "library", "text"]
+    .map(f => fs.readFileSync(path.join(PROJECT, "js", f + ".js"), "utf8")).join("\n");
+  const declared = new Set();
+  (function collect(o) { if (!o || typeof o !== "object") return; if (o.properties) Object.keys(o.properties).forEach(k => declared.add(k)); Object.values(o).forEach(collect); })(SCHEMA);
+  eq([...declared].filter(n => !new RegExp("\\b" + n + "\\b").test(engineSrc)), [],
+    `every one of the ${declared.size} fields the schema declares is named somewhere in the engine`);
+  ok(!declared.has("shieldHP") && !declared.has("perTarget") && !declared.has("composition"),
+    "and the three fields CORE_PACK carries that nothing reads are not in it");
+
+  eq(fieldsOf("nope"), [], "fieldsOf an unknown def is empty rather than a throw");
+  eq(extraRequired("damage"), ["formula"], "a $defs entry with no id/name still reports its own required list");
+}
+
+group("corepack slices the page");
+{
+  const [core2, adv2] = packsIn(html);
+  eq([core2.pack.id, adv2.pack.id], ["core", "bell-of-barrowmoor"], "packsIn returns both inline packs, in load order");
+  ok(sliceLiteral(html, "CORE_PACK").startsWith("{") && sliceLiteral(html, "CORE_PACK").endsWith("}"), "sliceLiteral returns one balanced object");
+  let threw = null;
+  try { sliceLiteral(html, "NO_SUCH_PACK"); } catch (e) { threw = e.message; }
+  ok(/NO_SUCH_PACK is not in torchbearer.html/.test(threw || ""), "a name that is not there throws rather than returning nothing");
+  threw = null;
+  try { sliceLiteral('const HALF_PACK = {"a":{', "HALF_PACK"); } catch (e) { threw = e.message; }
+  ok(/unterminated/.test(threw || ""), "an unterminated literal throws rather than returning half a pack");
+}
+
+group("the workbench's own arithmetic");
+{
+  const { lineIndex, lineFor, quotedIn, parsePack, unknownFields, nearestField, summarize, dryRunPack }
+    = await mod("js/inspect.js");
+
+  const text = '{\n  "pack": { "id": "p", "name": "P" },\n  "monsters": [\n    { "id": "rare-one", "name": "Rare", "text": 1 }\n  ]\n}\n';
+  const idx = lineIndex(text);
+  eq(idx.get("rare-one").line, 4, "lineIndex finds an id on its own line");
+  eq(idx.get("id").count, 2, "…and counts how often a token appears");
+  eq(quotedIn('Adventure "a": scene "b" needs "text".'), ["a", "b", "text"], "quotedIn reads the names out of a message in order");
+  eq(lineFor('The "id" of monster "rare-one" is wrong', idx), 4, "the rarest token wins wherever it sits in the message, so this lands on the object and not on the first \"id\" in the file");
+  eq(lineFor('Monster "rare-one" has a bad "id"', idx), 4, "…and the same message the other way round lands in the same place");
+  eq(lineFor("nothing quoted here", idx), null, "a message naming nothing gets no line rather than a wrong one");
+
+  const bad = parsePack('{ "a": 1,, }');
+  ok(!bad.ok && bad.line === 1, "a syntax error reports a line");
+  const bad2 = parsePack('{\n  "a": 1,\n  "b" 2\n}');
+  ok(!bad2.ok && bad2.line === 3, "…on the line it is actually on");
+  ok(parsePack('{"a":1}').ok, "and valid JSON parses");
+
+  const typo = { pack: { id: "p", name: "P" }, monsters: [{ id: "m", name: "M", ac: 1, hp: 1, attacks: [], saves: {}, tratis: ["x"] }] };
+  const unknown = unknownFields(typo);
+  eq(unknown.map(u => u.path), ["monsters[0].tratis"], "unknownFields finds a key the engine will ignore, with its path");
+  eq(unknown[0].near, "traits", "…and names the field it is one character from");
+  eq(unknownFields({ pack: { id: "p", name: "P" }, _comment: "hi" }), [], "a key starting with _ is a deliberate comment, not a mistake");
+  eq(nearestField("tratis", ["traits", "text"]), "traits", "a swapped pair of neighbours is the commonest typo and is caught");
+  eq(nearestField("hex", ["hp", "heal"]), null, "two characters out is a different word, not a suggestion");
+  eq(nearestField("dmg", ["damage", "damageType"]), null, "…and so is three");
+  eq(nearestField("traits", ["traits", "text"]), null, "…and a field spelled right suggests nothing");
+
+  eq(summarize({ pack: {}, monsters: [{ name: "A" }, { id: "b" }], items: [] }).map(r => `${r.collection}:${r.count}:${r.names}`),
+    ["monsters:2:A,b"], "summarize skips empty collections and falls back to an id when there is no name");
+
+  const walked = dryRunPack(JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", "cold-harrow.json"), "utf8")));
+  eq(walked.length, 1, "dryRunPack walks every adventure in the pack");
+  eq([walked[0].unreachable, walked[0].dangling, walked[0].halfChecks, walked[0].encountersUnstarted], [[], [], [], []],
+    "…and Cold Harrow has nothing unreachable, nothing dangling, no half-written check and no unfought map");
+}
+
+group("the walk found two more things worth rejecting");
+{
+  const base = (scenes, encounters) => ({
+    pack: { id: "p", name: "P" },
+    adventures: [{ id: "a", name: "A", start: "one", scenes, encounters }]
+  });
+  const twoScenes = () => ({
+    one: { title: "One", text: ["x"], choices: [{ text: "go", goto: "two" }] },
+    two: { title: "Two", text: ["x"], ending: true, choices: [] }
+  });
+
+  // A check with one branch. The engine sends the other half of the rolls to
+  // `undefined`, and the author sees a finished-looking choice.
+  const half = twoScenes();
+  half.one.choices = [{ text: "roll", check: { skill: "athletics", dc: 15, success: "two" } }];
+  const halfErrs = Validator.validate(base(half), emptyRegistry());
+  ok(halfErrs.some(e => e.includes('has no "failure" scene')), "a check with no failure branch is an error");
+  ok(!halfErrs.some(e => e.includes('has no "success" scene')), "…and the branch that is there is not reported");
+
+  const bothWays = twoScenes();
+  bothWays.one.choices = [{ text: "roll", check: { skill: "athletics", dc: 15, failure: "two" } }];
+  ok(Validator.validate(base(bothWays), emptyRegistry()).some(e => e.includes('has no "success" scene')),
+    "…and it fires the same way for a missing success");
+
+  const whole = twoScenes();
+  whole.one.choices = [{ text: "roll", check: { skill: "athletics", dc: 15, success: "two", failure: "two" } }];
+  eq(Validator.validate(base(whole), emptyRegistry()), [], "a check with both branches is fine");
+  const toEnd = twoScenes();
+  toEnd.one.choices = [{ text: "roll", check: { skill: "athletics", dc: 15, success: "END", failure: "two" } }];
+  eq(Validator.validate(base(toEnd), emptyRegistry()), [], "…and END is a destination, not a missing scene");
+
+  // An encounter nothing starts: a map, a foe list and starting squares that no
+  // player can reach. Cheaper to write than an orphaned scene and easier to
+  // leave behind, because nothing names an encounter except the choice that was
+  // deleted.
+  const orphanEnc = base(twoScenes(), { ghost: { name: "Ghost", w: 5, h: 5, foes: [] } });
+  ok(Validator.validate(orphanEnc, emptyRegistry()).some(e => e.includes('encounter "ghost" is never started')),
+    "an encounter no scene starts is an error");
+
+  const started = twoScenes();
+  started.one.choices.push({ text: "fight", combat: "ghost", victory: "two", defeat: "two" });
+  eq(Validator.validate(base(started, { ghost: { name: "Ghost", w: 5, h: 5, foes: [] } }), emptyRegistry()), [],
+    "…and one a scene does start is fine");
+
+  // Shared across a pack's adventures on purpose: the set is the pack's.
+  const shared = {
+    pack: { id: "p", name: "P" },
+    adventures: [
+      { id: "a", name: "A", start: "one", scenes: started, encounters: {} },
+      { id: "b", name: "B", start: "one", scenes: twoScenes(), encounters: { ghost: { name: "Ghost", w: 5, h: 5, foes: [] } } }
+    ]
+  };
+  eq(Validator.validate(shared, emptyRegistry()), [], "an encounter one adventure defines and another starts is not orphaned");
+
+  // Companions had no id/name check at all before Phase 8.
+  ok(Validator.validate({ pack: { id: "p", name: "P" }, companions: [{ name: "No Id" }] }, emptyRegistry())
+      .some(e => e.includes('companions[0] is missing an "id"')), "a companion with no id is an error now");
+}
+
+group("every shipped adventure survives the walk");
+{
+  const { dryRun, encountersStarted } = await mod("js/registry.js");
+  const all = [advPack, ...packFiles().map(f => JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", f), "utf8")))];
+  const problems = [];
+  all.forEach(pk => {
+    const started = [];
+    (pk.adventures || []).forEach(a => encountersStarted(a).forEach(id => { if (!started.includes(id)) started.push(id); }));
+    (pk.adventures || []).forEach(a => {
+      const w = dryRun(a, started);
+      if (w.unreachable.length) problems.push(`${a.id}: unreachable ${w.unreachable}`);
+      if (w.dangling.length) problems.push(`${a.id}: dangling ${JSON.stringify(w.dangling)}`);
+      if (w.halfChecks.length) problems.push(`${a.id}: half checks ${JSON.stringify(w.halfChecks)}`);
+      if (w.encountersUnstarted.length) problems.push(`${a.id}: unfought ${w.encountersUnstarted}`);
+      if (w.endings.length !== w.endingsReached.length) problems.push(`${a.id}: an ending nobody reaches`);
+    });
+  });
+  eq(problems, [], "every shipped adventure walks clean: reachable, wired, both branches, every map fought");
+}
+
+group("Cold Harrow, written only through the contract");
+{
+  const pack = JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", "cold-harrow.json"), "utf8"));
+  const adv = pack.adventures[0];
+  eq(Validator.validate(pack, reg), [], "the pack validates against everything already loaded");
+  const n = Object.keys(adv.scenes).length;
+  ok(n >= 12 && n <= 20, `${n} scenes, inside the 12–20 the phase asked for`);
+  eq(Object.keys(adv.encounters).length, 3, "three encounters");
+  eq(Object.keys(adv.scenes).filter(k => adv.scenes[k].ending).length, 3, "three endings, and the walk above proved all three reachable");
+  ok(Object.values(adv.scenes).some(sc => sc.kind === "shop"), "it uses the shop scene kind");
+  ok(Object.values(adv.scenes).some(sc => sc.kind === "explore"), "…and the explore scene kind");
+  ok(Object.values(adv.scenes).some(sc => sc.onEnter && sc.onEnter.flag === "hero-hidden"), "…and earns an opener from a skill check");
+  ok(Object.values(adv.encounters).some(e => e.bossFlags), "…and colours its boss fight with story flags");
+  ok(treasureIn(adv, id => (pack.items || []).find(i => i.id === id) || Registry.items[id]) <= treasureBudget(adv.level),
+    "…and stays inside a level-3 hero's treasure share");
+
+  /* The phase's own condition: "zero changes to torchbearer.html, or the phase
+     has failed." The proof that survives a rewrite is that nothing the pack
+     defines appears in the page — no id, no scene name, no special case. */
+  const ids = [];
+  COLLECTIONS.forEach(k => (pack[k] || []).forEach(o => ids.push(o.id)));
+  Object.keys(adv.scenes).forEach(k => ids.push(k));
+  Object.keys(adv.encounters).forEach(k => ids.push(k));
+  eq(ids.filter(id => id !== "gameover" && html.includes(`"${id}"`)), [],
+    `none of Cold Harrow's ${ids.length} ids is named in torchbearer.html — it needed no engine change`);
+
+  const bestiary = JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", "harrowmoor-bestiary.json"), "utf8"));
+  eq(bestiary.monsters.length, 10, "the bestiary is ten monsters");
+  eq([...new Set(bestiary.monsters.map(m => m.level))].sort((a, b) => a - b), [1, 2, 3, 4, 5, 6], "…across levels 1 to 6, every level filled");
+  ok(bestiary.monsters.every(m => typeof m.lore === "string" && m.lore.length > 20), "…every one carrying the line a critical Recall Knowledge prints");
+  ok(bestiary.monsters.some(m => m.reach > 1) && bestiary.monsters.some(m => (m.reactions || []).length),
+    "…and Phase 3's reach and reactions are both used");
+  ok(bestiary.monsters.every(m => (m.reactions || []).every(r => KNOWN_REACTIONS.includes(r))), "…with no reaction the engine does not implement");
+  eq(Validator.validate(bestiary, reg), [], "and the bestiary validates");
+}
+
+group("the workbench page is wired to the modules and to nothing offsite");
+{
+  const page = fs.readFileSync(path.join(PROJECT, "authoring.html"), "utf8");
+  ["./js/registry.js", "./js/corepack.js", "./js/library.js", "./js/inspect.js", "./js/text.js"].forEach(m =>
+    ok(page.includes(`from "${m}"`), `authoring.html imports ${m}`));
+  // The one allowed absolute URL is the SVG namespace in the inline favicon,
+  // which is an identifier rather than a request.
+  ok(!/https?:\/\//.test(page.replace(/http:\/\/www\.w3\.org\/2000\/svg/g, "")), "it requests nothing offsite");
+  ok(!/const (Validator|SCHEMA) ?=/.test(page), "it does not carry a second opinion about the contract");
+  // The courier key is frozen the way every storage key here is (locked #36).
+  const KEY = "torchbearer:workbench-pack";
+  ok(page.includes(KEY) && html.includes(KEY), "the workbench and the game agree on the handoff key");
+  ok(!/localStorage\s*\./.test(page), "the workbench writes no save data");
+  ok(/takeWorkbenchPack\(\)/.test(html) && html.indexOf("takeWorkbenchPack()") < html.indexOf("this.loadLibrary()"),
+    "the game takes the handoff before it renders the shelf, so a delivered pack shows as loaded");
+  ok(/sessionStorage\.removeItem\("torchbearer:workbench-pack"\)/.test(html), "…and clears it, so a refresh does not load the same pack twice");
+  /* Locked #132, and the only part of it Node can see. The browser recipe
+     measures the actual top of the title screen; this catches the word going
+     away in an edit that never opens a browser. */
+  ok(/#screen-title\{[^}]*justify-content:safe center/.test(html),
+    "the title screen centres with `safe`, so a Shelf taller than the window keeps its top reachable");
+}
+
+group("guide §15 exists and says the standing rule");
+{
+  const guide = fs.readFileSync(path.join(PROJECT, "content-authoring-guide.md"), "utf8");
+  ok(/^## 15\. /m.test(guide), "the guide has a §15");
+  ok(guide.includes("packs/schema.json"), "…and names the schema file");
+  ok(guide.includes("authoring.html"), "…and the workbench");
+  ok(/the schema, the validator and the guide in one commit,\s+> or in none/.test(guide), "…and states the one-commit rule for a new field");
 }
 
 setDiceSource();

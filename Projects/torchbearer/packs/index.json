@@ -1,5 +1,5 @@
 {
-  "_comment": "The bundled library, listed on Torchbearer's title screen. id / name / type / description are asserted against each pack's own `pack` block by test/smoke.mjs, so this file cannot drift from the JSON it describes. To add a pack: drop the .json in this folder and add an entry here. What a pack actually contains is counted from the pack itself on the load confirmation, not written down twice.",
+  "_comment": "The bundled library, listed on Torchbearer's title screen. id / name / type / description are asserted against each pack's own `pack` block by test/smoke.mjs, so this file cannot drift from the JSON it describes. To add a pack: drop the .json in this folder and add an entry here. What a pack actually contains is counted from the pack itself on the load confirmation, not written down twice. Two files in this folder are not packs and are not listed: index.json, and schema.json, which is the contract every pack here is validated against.",
   "packs": [
     {
       "file": "thornwake-vigil.json",
@@ -14,6 +14,20 @@
       "name": "Embers of the Hold (Sample Expansion)",
       "type": "content",
       "description": "A worked example of every pack collection: the orc ancestry, a background, shared feats, a new spell, a monster, a companion, and a two-battle mini-adventure."
+    },
+    {
+      "file": "cold-harrow.json",
+      "id": "cold-harrow",
+      "name": "The Quarter-Day at Cold Harrow",
+      "type": "adventure",
+      "description": "A level 3 one-shot about bookkeeping. Ninety years ago a lead mine drowned with sixty men in it, and the village wrote a contract with whatever answered from the water. The tithe has been paid three hundred and sixty times. Tonight's is short, and the village has decided you are the difference — unless you can read the ledger well enough to prove the debt was cleared in 1391 and nobody ever closed the account."
+    },
+    {
+      "file": "harrowmoor-bestiary.json",
+      "id": "harrowmoor-bestiary",
+      "name": "A Bestiary of the Harrowmoor",
+      "type": "content",
+      "description": "Ten monsters for levels 1 to 6, written for the wet lead country around Cold Harrow and usable anywhere. Every one of them carries the two fields Phase 3 added — reach in cells, and the reactions the engine actually implements — and every one has the lore line a critical Recall Knowledge prints, written as the thing a player could act on. No adventure, no scenes: this is stock for somebody else's encounters."
     }
   ]
 }

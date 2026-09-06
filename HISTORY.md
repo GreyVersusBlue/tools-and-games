@@ -1425,6 +1425,75 @@ Two of them have moved since they were written:
    Reversing it is one `forEach` in `registry.js`. *Source: Torchbearer
    Phase 7, increment 3.*
 
+129. **The pack contract has one source, and the servable copy is generated.**
+   Before Phase 8 the contract existed twice: `Validator` in `registry.js`
+   held hard-coded required-field lists, `content-authoring-guide.md`
+   described the same fields in prose, and the two had drifted — five
+   checks in `registry.js` are still marked "added session 8" because a
+   scene with no `text` validated fine and then threw
+   `sc.text.map is not a function`. The obvious fix, one `packs/schema.json`
+   read by both ends, is the one thing that cannot be done: the engine
+   imports `registry.js` at boot, and `js/library.js` already argues at
+   length that the title screen must not depend on a fetch that can fail.
+   So the source is **`js/schema.js`**, a module the engine imports; the
+   validator reads its `required` arrays through `extraRequired()`; and
+   **`packs/schema.json` is generated from it** by `node tools/schema.mjs
+   --write` and committed, the way Numina's build output is. `smoke.mjs`
+   fails on the line where the two disagree. Two checks keep the document
+   from becoming decoration: every required field in it is a field the
+   validator actually demands, and every field name it declares appears
+   somewhere in the engine's own source — the second caught an invented
+   `onEnter.hp` while the schema was being written. Reversing it is
+   deleting `js/schema.js` and pasting the ten arrays back into
+   `checkIds`. *Source: Torchbearer Phase 8.*
+
+130. **A check with one branch and an encounter nothing starts are validator
+   errors, not workbench notes.** Phase 8's wishlist put both in the
+   dry-run preview. They belong one level lower, for #128's reason: a check
+   that has to be run on purpose is a check that does not run. `App.choose`
+   runs `gotoScene(r.deg>=2 ? c.check.success : c.check.failure)` with no
+   guard, so a choice with only a `success` sends every failed roll to
+   `undefined` and the player meets "Missing scene", which reads as a
+   crash; and an encounter no scene names is a map, a foe list and a set of
+   starting squares that no player can reach, which is more expensive to
+   write than an orphaned scene and easier to leave behind when a branch is
+   cut. The encounter set is the **pack's**, not the adventure's, because
+   the validator has allowed one adventure to start a fight another defines
+   since Phase 2. All four shipped adventures pass both unchanged.
+   Reversing it is two `errs.push` lines. *Source: Torchbearer Phase 8.*
+
+131. **Unknown pack fields stay legal, and the tooling reports them anyway.**
+   Guide §1 makes an unknown field harmless on purpose: it is what lets a
+   pack carry notes, and what lets the engine grow a field without
+   rejecting packs written before it. It is also the single most common way
+   a pack looks finished and does nothing — `tratis` for `traits`, `dmg`
+   for `damage`. The call is that the **engine** keeps the promise and the
+   **workbench** does not: `authoring.html` lists every key no `$defs`
+   entry names, with the field it is one slip from, as a note rather than
+   an error, and a key starting with `_` is a deliberate comment and is
+   never reported. Run over `CORE_PACK` this reports six keys, three of
+   which turned out to be read (`effects[].skill`, the shield's `hardness`)
+   and three of which are read by nothing at all — `shieldHP`, `perTarget`
+   and `composition`. Those three are deliberately **left out of the
+   schema** so the tool keeps saying so. Reversing it is deleting
+   `unknownFields` from `js/inspect.js`. *Source: Torchbearer Phase 8.*
+
+132. **A scrollable flex column centres its children with `safe center` or not
+   at all.** Putting two more packs on Torchbearer's Shelf made the title
+   screen taller than an 800px window, and `#screen-title` is
+   `overflow-y:auto` with `justify-content:center` — which puts the
+   overflow *above* the scroll origin, where nothing can reach it. The
+   title, New Game and Begin Adventure sat at y = −47 with `scrollTop`
+   pinned at 0. No assertion under Node could see it; 1,531 of them were
+   green with the page in that state. It surfaced because
+   `npm run games torchbearer` clicked Begin Adventure and Chromium
+   answered "Node is either not clickable or not an Element". The fix is
+   one word, and `play-games.mjs` now measures the top of the title screen
+   with the whole Shelf loaded. **The general rule, for every page in this
+   repo:** a scroll container that centres its content needs `safe`, or a
+   day will come when the content is taller than the box and the top of it
+   is gone. *Source: Torchbearer Phase 8.*
+
 
 ---
 

@@ -14,6 +14,7 @@
 import { flagsSetBy, isScoped, SCOPE } from "./campaign.js";
 import { parseCoins, priceOf, treasureBudget, treasureIn, coinText } from "./shop.js";
 import { OPENER_FLAGS, EXPLORATION_IDS } from "./downtime.js";
+import { SCHEMA, SIZES, KNOWN_REACTIONS, SCENE_KINDS, extraRequired } from "./schema.js";
 
 /* ---------- Content Registry ---------- */
 export const Registry = {
@@ -44,37 +45,12 @@ export function emptyRegistry() {
   };
 }
 
-/**
- * Every reaction id a monster's `"reactions"` field may name.
- *
- * The source of truth is `REACTIONS` in js/combat.js; this is a copy, because
- * combat.js imports this file and the dependency cannot run both ways. A copy
- * that drifts is worse than no check at all, so `smoke.mjs` asserts the two
- * lists are identical and fails when either side grows without the other.
- */
-export const KNOWN_REACTIONS = ["reactive-strike", "shield-block", "nimble-dodge"];
-
-/**
- * PF2e's six sizes, smallest first, and the vocabulary a monster's or an
- * ancestry's `"size"` field is checked against.
- *
- * It lives here rather than in rules.js because the validator needs it and the
- * dependency runs one way — combat.js imports rules.js imports registry.js.
- * rules.js re-exports it so nothing outside has to know that, and there is one
- * copy rather than the KNOWN_REACTIONS arrangement of two kept honest by a
- * test.
- */
-export const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
-
-/**
- * Every value a scene's `"kind"` may take. A scene without one is prose and
- * choices, which is what every scene was before Phase 7's second increment.
- *
- * It is a closed list because the failure is silent: `"kind": "stop"` renders
- * a perfectly ordinary scene, the shop never appears, and the only symptom is
- * a player standing in a market with no way to buy anything.
- */
-export const SCENE_KINDS = ["shop", "explore"];
+/* The three closed vocabularies the validator checks against now live in
+   js/schema.js, so the schema on disk and the errors an author reads come from
+   one list rather than two. They are re-exported here because every caller in
+   the project already imports them from this file, and because rules.js
+   re-exports SIZES from here in turn. */
+export { SIZES, KNOWN_REACTIONS, SCENE_KINDS, SCHEMA };
 
 /* ---------- the scene graph ----------
    Phase 7's second increment shipped a shop the player could reach only
@@ -140,6 +116,50 @@ export function sceneGraph(adv) {
   };
 }
 
+/** Every encounter id any scene in `adv` can start a fight with. */
+export function encountersStarted(adv) {
+  const out = [];
+  Object.values((adv && adv.scenes) || {}).forEach(sc => {
+    ((sc && sc.choices) || []).forEach(c => {
+      if (c && typeof c.combat === "string" && c.combat && !out.includes(c.combat)) out.push(c.combat);
+    });
+  });
+  return out;
+}
+
+/**
+ * Walk one adventure and report everything a walk can find, for the dry-run
+ * panel in authoring.html and for the four checks below that turned into
+ * validator errors in Phase 8.
+ *
+ * `started` is the set of encounter ids scenes in *this* adventure point at.
+ * Pass the whole pack's set instead when one adventure's scene starts a fight
+ * defined on another — the validator has allowed that since Phase 2 and the
+ * unused-encounter report has to allow it too, or a shared boss fight reads as
+ * dead content.
+ */
+export function dryRun(adv, started) {
+  const graph = sceneGraph(adv);
+  const scenes = (adv && adv.scenes) || {};
+  const startedIds = started || encountersStarted(adv);
+  const halfChecks = [];
+  Object.entries(scenes).forEach(([sid, sc]) => {
+    ((sc && sc.choices) || []).forEach((c, i) => {
+      if (!c || !c.check || typeof c.check !== "object") return;
+      ["success", "failure"].forEach(k => {
+        if (!c.check[k]) halfChecks.push({ scene: sid, choice: i, missing: k, skill: c.check.skill || "?" });
+      });
+    });
+  });
+  return {
+    ...graph,
+    scenes: Object.keys(scenes).length,
+    encounters: Object.keys((adv && adv.encounters) || {}),
+    encountersUnstarted: Object.keys((adv && adv.encounters) || {}).filter(id => !startedIds.includes(id)),
+    halfChecks
+  };
+}
+
 /**
  * Is `wrote` a typo of `want`? One insertion, one deletion or one substitution,
  * case and punctuation ignored — which is the whole shape of the mistake this
@@ -181,20 +201,24 @@ export const Validator = {
         (req || []).forEach(k => { if (o[k] === undefined) errs.push(`${label} "${o.id || i}" is missing required field "${k}".`); });
       });
     };
-    checkIds(pack.ancestries, "ancestries", ["hp", "speed", "boosts", "heritages"]);
+    checkIds(pack.ancestries, "ancestries", extraRequired("ancestry"));
     (pack.ancestries || []).forEach(a => {
       if (a.size !== undefined && !SIZES.includes(a.size)) {
         errs.push(`Ancestry "${a.id}": unknown size "${a.size}" (known: ${SIZES.join(", ")}).`);
       }
     });
-    checkIds(pack.backgrounds, "backgrounds", ["boosts", "skills"]);
-    checkIds(pack.classes, "classes", ["hp", "keyAbility", "perception", "saves", "attacks", "defenses", "skillCount"]);
-    checkIds(pack.feats, "feats", ["type", "level"]);
-    checkIds(pack.spells, "spells", ["rank", "traditions", "actions", "rankEffects"]);
-    checkIds(pack.items, "items", ["category"]);
-    checkIds(pack.monsters, "monsters", ["ac", "hp", "attacks", "saves"]);
-    checkIds(pack.adventures, "adventures", ["start", "scenes"]);
-    checkIds(pack.campaigns, "campaigns", ["adventures"]);
+    checkIds(pack.backgrounds, "backgrounds", extraRequired("background"));
+    checkIds(pack.classes, "classes", extraRequired("class"));
+    checkIds(pack.feats, "feats", extraRequired("feat"));
+    checkIds(pack.spells, "spells", extraRequired("spell"));
+    checkIds(pack.items, "items", extraRequired("item"));
+    checkIds(pack.monsters, "monsters", extraRequired("monster"));
+    // added Phase 8. Companions were the one collection with no id/name check
+    // at all — the schema has a `companion` def like everything else, and a
+    // companion with no id renders a card for `undefined` on the offer screen.
+    checkIds(pack.companions, "companions", extraRequired("companion"));
+    checkIds(pack.adventures, "adventures", extraRequired("adventure"));
+    checkIds(pack.campaigns, "campaigns", extraRequired("campaign"));
 
     // added Phase 3: `reactions` and `reach` are the two fields §10 grew when
     // the trigger bus landed. An unknown reaction id is exactly as dead as an
@@ -355,7 +379,16 @@ export const Validator = {
           const dest = c.goto || (c.check && (c.check.success || c.check.failure)) || c.combat;
           if (!dest && !c.combat) errs.push(`Adventure "${a.id}" scene "${sid}" choice ${i} has no destination (goto/check/combat).`);
           if (c.goto && c.goto !== "END" && !scenes[c.goto]) errs.push(`Adventure "${a.id}": scene "${sid}" points to missing scene "${c.goto}".`);
-          if (c.check) ["success", "failure"].forEach(k => { if (c.check[k] && !scenes[c.check[k]]) errs.push(`Adventure "${a.id}": check in "${sid}" points to missing scene "${c.check[k]}".`); });
+          if (c.check) ["success", "failure"].forEach(k => {
+            if (c.check[k] && c.check[k] !== "END" && !scenes[c.check[k]]) errs.push(`Adventure "${a.id}": check in "${sid}" points to missing scene "${c.check[k]}".`);
+            /* added Phase 8: the half-written check. `App.choose` runs
+               `gotoScene(r.deg>=2 ? c.check.success : c.check.failure)` with no
+               guard, so a check with only a `success` sends every failed roll
+               to `undefined` and the player meets "Missing scene". It read as a
+               finished choice — a skill, a DC, a destination — and only the
+               half of the outcomes nobody tests was broken. */
+            if (!c.check[k]) errs.push(`Adventure "${a.id}": scene "${sid}" choice ${i} rolls ${c.check.skill || "a skill"} and has no "${k}" scene. Both branches are required — the engine sends the roll to whichever one came up, and an absent one is a "Missing scene" the player reads as a crash.`);
+          });
           if (c.combat && a.encounters && !a.encounters[c.combat] && !((pack.adventures || []).some(x => x.encounters && x.encounters[c.combat]))) errs.push(`Adventure "${a.id}": scene "${sid}" references missing encounter "${c.combat}".`);
           // added session 8: victory/defeat are gotos too, and were unchecked.
           ["victory", "defeat"].forEach(k => {
@@ -434,6 +467,21 @@ export const Validator = {
           errs.push(`Adventure "${a.id}": scene "${sid}" cannot be reached from "${a.start}". Nothing points at it, so no player will ever see it.`);
         });
       }
+
+      /* added Phase 8: the other half of the same walk. An unreachable scene is
+         prose nobody reads; an encounter no scene starts is a whole map, a foe
+         list and a set of starting squares nobody fights. It is the more
+         expensive of the two to write and the easier of the two to leave behind
+         when a branch is cut, because nothing points at an encounter by name
+         except the one `"combat"` that was deleted. Encounters are shared
+         across a pack's adventures on purpose, so the set is the pack's. */
+      const startedInPack = [];
+      (pack.adventures || []).forEach(x => encountersStarted(x).forEach(id => { if (!startedInPack.includes(id)) startedInPack.push(id); }));
+      Object.keys(a.encounters || {}).sort().forEach(eid => {
+        if (!startedInPack.includes(eid)) {
+          errs.push(`Adventure "${a.id}": encounter "${eid}" is never started. No scene in this pack has a choice with "combat": "${eid}", so the map, its foes and its starting squares are content no player can reach.`);
+        }
+      });
     });
 
     // added Phase 7: `campaigns` — an ordered list of adventures with gates on

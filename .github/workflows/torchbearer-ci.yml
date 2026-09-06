@@ -1,12 +1,12 @@
 # Checks for Torchbearer. Five phases shipped and each of their pull requests
 # said the same thing: none of the repo's workflows path-matches
 # Projects/torchbearer/**, so the suite ran in a session's terminal and nowhere
-# else. As of Phase 7 that is 1,439 assertions covering the pack validator, the
+# else. As of Phase 8 that is 1,531 assertions covering the pack validator, the
 # save slot, every core class's arithmetic from level 3 up, the combat engine,
-# two whole encounters played headless, the campaign record, the shop, and a
-# reachability walk of every shipped adventure — about a second of Node, no
-# browser, no dependency, and it already exits non-zero on a failed assertion
-# (locked #13).
+# two whole encounters played headless, the campaign record, the shop, a
+# reachability walk of every shipped adventure, and the schema the validator now
+# reads its required-field lists out of — about a second of Node, no browser, no
+# dependency, and it already exits non-zero on a failed assertion (locked #13).
 #
 # The page itself is in the path list because `test/smoke.mjs` slices CORE_PACK
 # and ADVENTURE_PACK straight out of Projects/torchbearer.html and validates

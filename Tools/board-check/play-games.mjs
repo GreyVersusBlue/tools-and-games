@@ -1347,6 +1347,104 @@ const SUITES = {
     await waitFor(p, () => !document.getElementById('modal-veil').classList.contains('open'), { timeout: 5000 });
     t.ok(/2 days of downtime spent/.test(await textContent(p, '#hero-status')),
       'the title screen keeps the calendar', await textContent(p, '#hero-status'));
+
+    /* Phase 8. Two things only a browser can say.
+
+       First: the title screen's own top. #screen-title is a scrollable flex
+       column, and a flex column that centres its children puts the overflow
+       ABOVE the scroll origin, where nothing can reach it. Four packs on the
+       Shelf is enough to overflow 800px, and before `justify-content: safe
+       center` the title, New Game and Begin Adventure sat at y = -47 with
+       scrollTop pinned at 0 — unclickable for a player and for this suite,
+       which is how it was found. Scroll to the top and measure. */
+    await p.evaluate(() => { document.getElementById('screen-title').scrollTop = 0; });
+    const topmost = await p.evaluate(() => {
+      const r = document.getElementById('btn-begin-adv').getBoundingClientRect();
+      const sec = document.getElementById('screen-title');
+      return { y: Math.round(r.y), cards: document.querySelectorAll('[data-shelf]').length,
+               overflows: sec.scrollHeight > sec.clientHeight };
+    });
+    t.ok(topmost.overflows && topmost.y >= 0,
+      'with the whole Shelf loaded the title screen still overflows, and its top is reachable',
+      `Begin Adventure at y=${topmost.y}, ${topmost.cards} shelf cards, overflowing: ${topmost.overflows}`);
+
+    /* Second: the pack workbench. smoke.mjs drives every function it calls;
+       what it cannot see is whether the page wires them to anything. */
+    await p.goto(new URL('/Projects/torchbearer/authoring.html', p.url()).href, { waitUntil: 'load' });
+    await waitFor(p, () => document.querySelectorAll('#ref-boxes [data-ref]').length > 0, { timeout: 10000 });
+    t.ok((await p.$$eval('#ref-boxes [data-ref]', els => els.length)) === 4,
+      'the workbench offers every Shelf pack as reference content');
+
+    const broken = JSON.stringify({
+      pack: { id: 'wb-test', name: 'Workbench Test' },
+      monsters: [{ id: 'wb-thing', name: 'Thing', ac: 16, hp: 10, saves: {}, tratis: ['undead'] }],
+      adventures: [{ id: 'wb-adv', name: 'Adv', start: 'one', scenes: {
+        one: { title: 'One', text: ['x'], choices: [{ text: 'roll', check: { skill: 'athletics', dc: 15, success: 'two' } }] },
+        two: { title: 'Two', text: ['x'], ending: true, choices: [] },
+        lost: { title: 'Lost', text: ['x'], choices: [] } } }]
+    }, null, 2);
+    await p.evaluate(text => {
+      const box = document.getElementById('paste');
+      box.value = text;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    }, broken);
+    await waitFor(p, () => /error/.test(document.querySelector('.verdict h3')?.textContent || ''), { timeout: 5000 });
+    const found = await p.evaluate(() => ({
+      verdict: document.querySelector('.verdict h3').textContent,
+      errors: [...document.querySelectorAll('.block')].find(b => /Errors/.test(b.querySelector('h3').textContent))
+        ?.querySelectorAll('li').length || 0,
+      lines: [...document.querySelectorAll('button.hit')].map(b => b.dataset.line),
+      note: [...document.querySelectorAll('.note-text')].map(e => e.textContent.trim()).join(' | '),
+      walk: [...document.querySelectorAll('.walk .bad')].map(e => e.textContent.trim())
+    }));
+    t.ok(found.errors >= 3 && found.lines.length >= 3,
+      'a broken pack reports its errors with line numbers to jump to',
+      `${found.verdict}: ${found.errors} errors, lines ${found.lines.join(',')}`);
+    t.ok(/tratis/.test(found.note) && /traits/.test(found.note),
+      'a misspelled key is a note, not an error, and names the field it is one slip from', found.note);
+    t.ok(found.walk.includes('unreachable') && found.walk.includes('check with no branch'),
+      'the dry run runs on a pack that does not validate, and names both faults',
+      found.walk.join(', ') || 'nothing reported');
+    t.ok(await p.$eval('#btn-play', e => e.disabled), 'and Load into the game is refused while it is broken');
+    await t.shot('workbench-broken-pack');
+
+    await p.evaluate(async url => {
+      const text = await (await fetch(url)).text();
+      const box = document.getElementById('paste');
+      box.value = text;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    }, new URL('/Projects/torchbearer/packs/cold-harrow.json', p.url()).href);
+    await waitFor(p, () => /Cold Harrow/.test(document.querySelector('.verdict h3')?.textContent || ''), { timeout: 8000 });
+    const good = await p.evaluate(() => ({
+      verdict: document.querySelector('.verdict h3').textContent,
+      stats: document.querySelector('.walk .stats')?.textContent || '',
+      faults: document.querySelectorAll('.walk .bad').length,
+      play: !document.getElementById('btn-play').disabled
+    }));
+    t.ok(good.play && good.faults === 0 && /20 scenes, 20 reachable/.test(good.stats),
+      'Cold Harrow validates in the workbench and walks clean', `${good.verdict} — ${good.stats}`);
+    await t.shot('workbench-cold-harrow');
+
+    // The courier. Clicking the button opens a second tab, which this suite has
+    // no business owning, so drive the same handoff the button drives.
+    const carried = await p.evaluate(() => {
+      const text = document.getElementById('paste').value;
+      sessionStorage.setItem('torchbearer:workbench-pack', text);
+      return sessionStorage.getItem('torchbearer:workbench-pack').length;
+    });
+    await p.goto(new URL('/Projects/torchbearer.html?pack=workbench', p.url()).href, { waitUntil: 'load' });
+    await waitFor(p, () => window.__torchbearer?.packs?.some?.(x => x.id === 'cold-harrow')
+      || document.getElementById('modal-veil')?.classList.contains('open'), { timeout: 10000 });
+    const delivered = await p.evaluate(() => ({
+      packs: [...document.querySelectorAll('#pack-list .pk')].map(e => e.textContent.trim()),
+      left: sessionStorage.getItem('torchbearer:workbench-pack'),
+      title: document.getElementById('modal-title')?.textContent || ''
+    }));
+    t.ok(carried > 1000 && delivered.packs.some(n => /Cold Harrow/.test(n)),
+      'the workbench hands a pack to the game and the game loads it',
+      `${delivered.title} — packs: ${delivered.packs.join(', ')}`);
+    t.ok(delivered.left === null, 'and the courier key is cleared, so a refresh does not load it twice');
+    await t.shot('workbench-handoff');
   },
 };
 

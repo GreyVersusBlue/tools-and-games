@@ -1,0 +1,2013 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greyversusblue.com/Projects/torchbearer/packs/schema.json",
+  "title": "Torchbearer content pack",
+  "description": "The contract every pack loaded by Projects/torchbearer.html is validated against. Prose for all of it is in Projects/torchbearer/content-authoring-guide.md; the enforcement is Validator in Projects/torchbearer/js/registry.js, which reads the required lists below. Unknown fields are ignored by the engine rather than rejected, so this document is the only place that says which keys are actually read.",
+  "type": "object",
+  "required": [
+    "pack"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "pack": {
+      "$ref": "#/$defs/packMeta"
+    },
+    "ancestries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ancestry"
+      },
+      "description": ""
+    },
+    "backgrounds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/background"
+      },
+      "description": ""
+    },
+    "classes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/class"
+      },
+      "description": ""
+    },
+    "feats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/feat"
+      },
+      "description": ""
+    },
+    "spells": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/spell"
+      },
+      "description": ""
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      },
+      "description": ""
+    },
+    "monsters": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/monster"
+      },
+      "description": ""
+    },
+    "companions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/companion"
+      },
+      "description": ""
+    },
+    "adventures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/adventure"
+      },
+      "description": ""
+    },
+    "campaigns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/campaign"
+      },
+      "description": ""
+    }
+  },
+  "$defs": {
+    "packMeta": {
+      "type": "object",
+      "description": "Pack metadata. The only required top-level key.",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id. Loading a pack whose id is already loaded is allowed; ids inside it replace what they collide with."
+        },
+        "name": {
+          "type": "string",
+          "description": "Shown on the load confirmation and the Shelf."
+        },
+        "version": {
+          "type": "string",
+          "description": "Free text."
+        },
+        "author": {
+          "type": "string",
+          "description": "Free text."
+        },
+        "type": {
+          "type": "string",
+          "description": "\"content\" or \"adventure\". Informational; a pack may carry both kinds of material."
+        },
+        "description": {
+          "type": "string",
+          "description": "One line shown on the load confirmation and the Shelf."
+        }
+      },
+      "additionalProperties": true
+    },
+    "ancestry": {
+      "type": "object",
+      "description": "An ancestry, with at least one heritage.",
+      "required": [
+        "id",
+        "name",
+        "hp",
+        "speed",
+        "boosts",
+        "heritages"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "hp": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Ancestry hit points."
+        },
+        "speed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Speed in feet."
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "Tiny",
+            "Small",
+            "Medium",
+            "Large",
+            "Huge",
+            "Gargantuan"
+          ],
+          "description": "Defaults to Medium."
+        },
+        "boosts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Attribute keys, and/or \"free\"."
+        },
+        "flaws": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Attribute keys."
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Display traits."
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Display languages."
+        },
+        "senses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "darkvision and low-light vision display with an icon; others are text."
+        },
+        "desc": {
+          "type": "string",
+          "description": "One or two sentences of flavor."
+        },
+        "heritages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/heritage"
+          },
+          "description": "At least one."
+        }
+      },
+      "additionalProperties": true
+    },
+    "heritage": {
+      "type": "object",
+      "description": "One heritage of an ancestry.",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "desc": {
+          "type": "string",
+          "description": "Player-facing rules text."
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "description": "Guide §6."
+        }
+      },
+      "additionalProperties": true
+    },
+    "background": {
+      "type": "object",
+      "description": "A background.",
+      "required": [
+        "id",
+        "name",
+        "boosts",
+        "skills"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "boosts": {
+          "type": "array",
+          "items": {},
+          "description": "boosts[0] is the two-way choice; [\"free\"] in slot 1 is the free boost."
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Skill ids trained."
+        },
+        "lore": {
+          "type": "string",
+          "description": "A Lore name."
+        },
+        "feat": {
+          "type": "string",
+          "description": "A skill feat id that exists once this pack loads."
+        },
+        "desc": {
+          "type": "string",
+          "description": "One sentence."
+        }
+      },
+      "additionalProperties": true
+    },
+    "class": {
+      "type": "object",
+      "description": "A class.",
+      "required": [
+        "id",
+        "name",
+        "hp",
+        "keyAbility",
+        "perception",
+        "saves",
+        "attacks",
+        "defenses",
+        "skillCount"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "hp": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Hit points per level."
+        },
+        "keyAbility": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "One or more attribute keys the player picks between."
+        },
+        "perception": {
+          "type": "string",
+          "enum": [
+            "U",
+            "T",
+            "E",
+            "M",
+            "L"
+          ],
+          "description": "Perception proficiency."
+        },
+        "saves": {
+          "type": "object",
+          "description": "Ranks for fort, ref and will.",
+          "required": [
+            "fort",
+            "ref",
+            "will"
+          ],
+          "properties": {
+            "fort": {
+              "type": "string",
+              "enum": [
+                "U",
+                "T",
+                "E",
+                "M",
+                "L"
+              ],
+              "description": ""
+            },
+            "ref": {
+              "type": "string",
+              "enum": [
+                "U",
+                "T",
+                "E",
+                "M",
+                "L"
+              ],
+              "description": ""
+            },
+            "will": {
+              "type": "string",
+              "enum": [
+                "U",
+                "T",
+                "E",
+                "M",
+                "L"
+              ],
+              "description": ""
+            }
+          },
+          "additionalProperties": true
+        },
+        "attacks": {
+          "type": "object",
+          "description": "Weapon proficiency ranks. attacks.martial also takes \"partial\" — the rogueOk list.",
+          "additionalProperties": true
+        },
+        "defenses": {
+          "type": "object",
+          "description": "Armor proficiency ranks by category.",
+          "additionalProperties": true
+        },
+        "classDC": {
+          "type": "string",
+          "enum": [
+            "U",
+            "T",
+            "E",
+            "M",
+            "L"
+          ],
+          "description": "Class DC proficiency."
+        },
+        "skillCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Base trained skills, before Int and extras."
+        },
+        "trainedSkills": {
+          "type": "array",
+          "items": {},
+          "description": "A skill id, or an array of ids for a +1 pick."
+        },
+        "desc": {
+          "type": "string",
+          "description": "Player-facing text."
+        },
+        "spellcasting": {
+          "$ref": "#/$defs/spellcasting"
+        },
+        "subclass": {
+          "type": "object",
+          "description": "The class's one choice.",
+          "required": [
+            "label",
+            "options"
+          ],
+          "properties": {
+            "label": {
+              "type": "string",
+              "description": "What the choice is called, e.g. Way or Doctrine."
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "One subclass.",
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Global id."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Display name."
+                  },
+                  "desc": {
+                    "type": "string",
+                    "description": "Player-facing text."
+                  },
+                  "effects": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/effect"
+                    },
+                    "description": "Guide §6."
+                  }
+                },
+                "additionalProperties": true
+              },
+              "description": "At least one."
+            }
+          },
+          "additionalProperties": true
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/classFeature"
+          },
+          "description": "Display-only unless they carry effects or a special."
+        },
+        "featLevels": {
+          "type": "object",
+          "description": "Levels this class gains a feat of each kind, authoritative up to its highest entry.",
+          "additionalProperties": true
+        },
+        "skillIncreases": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "description": "Levels this class gains a skill increase. Defaults to the standard row."
+        }
+      },
+      "additionalProperties": true
+    },
+    "spellcasting": {
+      "type": "object",
+      "description": "Omit or null for a martial class.",
+      "properties": {
+        "tradition": {
+          "type": "string",
+          "description": "arcane, divine, occult, primal, or patron."
+        },
+        "type": {
+          "type": "string",
+          "description": "prepared or spontaneous."
+        },
+        "ability": {
+          "type": "string",
+          "enum": [
+            "str",
+            "dex",
+            "con",
+            "int",
+            "wis",
+            "cha"
+          ],
+          "description": "The spellcasting attribute."
+        },
+        "cantrips": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of cantrip picks."
+        },
+        "slots": {
+          "type": "object",
+          "description": "Castable slots per rank at level 3. rules.js moves the row at other levels.",
+          "additionalProperties": true
+        },
+        "repertoire": {
+          "type": "object",
+          "description": "Spontaneous only: spells known per rank.",
+          "additionalProperties": true
+        },
+        "grantCantrips": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Auto-known cantrips, on top of the picks."
+        }
+      },
+      "additionalProperties": true
+    },
+    "classFeature": {
+      "type": "object",
+      "description": "A class feature, live once the hero's level reaches its own.",
+      "required": [
+        "level",
+        "name"
+      ],
+      "properties": {
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The level it arrives at."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "desc": {
+          "type": "string",
+          "description": "Player-facing text."
+        },
+        "special": {
+          "type": "string",
+          "description": "An engine hook id from guide §8."
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "description": "Guide §6."
+        }
+      },
+      "additionalProperties": true
+    },
+    "feat": {
+      "type": "object",
+      "description": "A feat.",
+      "required": [
+        "id",
+        "name",
+        "type",
+        "level"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "type": {
+          "type": "string",
+          "description": "ancestry, class, skill or general."
+        },
+        "ancestry": {
+          "type": "string",
+          "description": "Required when type is ancestry."
+        },
+        "classes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Required when type is class. A shared feat lists several."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The level slot that can take it."
+        },
+        "actions": {},
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Display traits."
+        },
+        "desc": {
+          "type": "string",
+          "description": "Player-facing text."
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "description": "Guide §6."
+        },
+        "prereq": {
+          "type": "object",
+          "description": "prereq.skill is the only enforced form.",
+          "properties": {
+            "skill": {
+              "type": "object",
+              "description": "Skill id to minimum rank.",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "spell": {
+      "type": "object",
+      "description": "A spell. Exactly one resolution model per spell — see guide §7.",
+      "required": [
+        "id",
+        "name",
+        "rank",
+        "traditions",
+        "actions",
+        "rankEffects"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0 for a cantrip."
+        },
+        "traditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "arcane, divine, occult, primal."
+        },
+        "actions": {},
+        "range": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Feet."
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Also read by save bonuses carrying a matching vs."
+        },
+        "desc": {
+          "type": "string",
+          "description": "Player-facing text."
+        },
+        "focus": {
+          "type": "boolean",
+          "description": "Costs one focus point."
+        },
+        "hex": {
+          "type": "boolean",
+          "description": "Free to cast, one per turn. Implies focus."
+        },
+        "attackRoll": {
+          "type": "boolean",
+          "description": "Spell attack vs AC."
+        },
+        "maxTargets": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Extra nearest targets included, blazing-bolt style."
+        },
+        "save": {
+          "type": "string",
+          "description": "reflex, fortitude or will, vs the caster DC."
+        },
+        "basic": {
+          "type": "boolean",
+          "description": "Basic-save damage."
+        },
+        "autoHit": {
+          "type": "boolean",
+          "description": "Damage just happens."
+        },
+        "area": {
+          "type": "object",
+          "description": "burst/radius, cone/length, line/length, or emanation/radius.",
+          "required": [
+            "shape"
+          ],
+          "properties": {
+            "shape": {
+              "type": "string",
+              "description": "burst, cone, line or emanation."
+            },
+            "radius": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Feet, for burst and emanation."
+            },
+            "length": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Feet, for cone and line."
+            }
+          },
+          "additionalProperties": true
+        },
+        "healOrHarmUndead": {
+          "type": "boolean",
+          "description": "The heal pattern: damages undead on a Fort save."
+        },
+        "livingOnly": {
+          "type": "boolean",
+          "description": "The void pattern: only the living are damaged."
+        },
+        "healsUndead": {
+          "type": "boolean",
+          "description": "The void pattern: undead in the area are healed."
+        },
+        "selfBuff": {
+          "type": "object",
+          "description": "See core shield and false-life.",
+          "additionalProperties": true
+        },
+        "allyBuff": {
+          "type": "object",
+          "description": "See core guidance and runic-weapon.",
+          "additionalProperties": true
+        },
+        "partyBuff": {
+          "type": "object",
+          "description": "See core bless and courageous-anthem.",
+          "additionalProperties": true
+        },
+        "utility": {
+          "type": "boolean",
+          "description": "No mechanical resolution; the Chronicle prints the description."
+        },
+        "special": {
+          "type": "string",
+          "description": "stabilize is the one implemented odd duck."
+        },
+        "rankEffects": {
+          "type": "object",
+          "description": "Keys are castable ranks. The engine uses the highest key ≤ the rank cast.",
+          "additionalProperties": {
+            "$ref": "#/$defs/rankEffect"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "rankEffect": {
+      "type": "object",
+      "description": "What the spell does when cast at this rank.",
+      "properties": {
+        "damage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/damage"
+          },
+          "description": "One entry per damage type."
+        },
+        "heal": {
+          "type": "string",
+          "description": "A dice formula."
+        },
+        "tempHP": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Temporary hit points."
+        },
+        "persistent": {
+          "$ref": "#/$defs/damage"
+        },
+        "critPersistent": {
+          "$ref": "#/$defs/damage"
+        },
+        "onCritFail": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          },
+          "description": ""
+        },
+        "onFail": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          },
+          "description": ""
+        },
+        "onSuccess": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          },
+          "description": ""
+        }
+      },
+      "additionalProperties": true
+    },
+    "item": {
+      "type": "object",
+      "description": "A weapon, armor, shield or consumable.",
+      "required": [
+        "id",
+        "name",
+        "category"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "category": {
+          "type": "string",
+          "description": "weapon, armor, shield, consumable or gear."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The item's level. Printed on the shop card."
+        },
+        "price": {
+          "type": "string",
+          "description": "Written the way the Player Core prints it: \"12 gp\", \"1 gp, 5 sp\". A bare number is rejected — twelve gold and twelve copper differ by a hundred. No price means it cannot be bought or sold."
+        },
+        "prof": {
+          "type": "string",
+          "description": "simple, martial or unarmed for weapons; unarmored, light, medium or heavy for armor."
+        },
+        "group": {
+          "type": "string",
+          "description": "Weapon group. Display only."
+        },
+        "hands": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1 or 2."
+        },
+        "damage": {
+          "type": "string",
+          "description": "A dice formula."
+        },
+        "damageType": {
+          "type": "string",
+          "description": "The damage type."
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "agile, finesse, deadly-dX, versatile-X, propulsive and two-hand-dX are read; the rest display."
+        },
+        "range": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Feet. Omit for melee."
+        },
+        "bulk": {
+          "type": "number",
+          "description": "Bulk. Display only."
+        },
+        "rogueOk": {
+          "type": "boolean",
+          "description": "Member of the \"partial martial\" list."
+        },
+        "acBonus": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Armor and shields."
+        },
+        "hardness": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Shields only, and display only — Shield Block reduces a flat 5 whatever this says."
+        },
+        "dexCap": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Armor only."
+        },
+        "speedPen": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Armor only: 0, 5 or 10."
+        },
+        "heal": {
+          "type": "string",
+          "description": "Consumable only. Drink Potion rolls this item's own formula."
+        },
+        "desc": {
+          "type": "string",
+          "description": "Player-facing text."
+        }
+      },
+      "additionalProperties": true
+    },
+    "monster": {
+      "type": "object",
+      "description": "A monster.",
+      "required": [
+        "id",
+        "name",
+        "ac",
+        "hp",
+        "attacks",
+        "saves"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Creature level."
+        },
+        "boss": {
+          "type": "boolean",
+          "description": "bossFlags in an encounter hit the first foe carrying this."
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The first trait naming a skill decides which skill Recall Knowledge uses."
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "Tiny",
+            "Small",
+            "Medium",
+            "Large",
+            "Huge",
+            "Gargantuan"
+          ],
+          "description": "Defaults to Medium. Decides which Athletics maneuvers reach it."
+        },
+        "lore": {
+          "type": "string",
+          "description": "The one line a critical Recall Knowledge prints."
+        },
+        "ac": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Armor class."
+        },
+        "hp": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hit points."
+        },
+        "speed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Feet."
+        },
+        "perception": {
+          "type": "integer",
+          "description": "Perception modifier."
+        },
+        "reach": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cells. Defaults to 1."
+        },
+        "reactions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "reactive-strike",
+              "shield-block",
+              "nimble-dodge"
+            ],
+            "description": ""
+          },
+          "description": "Reaction ids the engine implements. Any other id is rejected — a reaction the engine does not have is a monster that silently never reacts."
+        },
+        "saves": {
+          "type": "object",
+          "description": "Modifiers for fort, ref and will.",
+          "required": [
+            "fort",
+            "ref",
+            "will"
+          ],
+          "properties": {
+            "fort": {
+              "type": "integer",
+              "description": ""
+            },
+            "ref": {
+              "type": "integer",
+              "description": ""
+            },
+            "will": {
+              "type": "integer",
+              "description": ""
+            }
+          },
+          "additionalProperties": true
+        },
+        "immunities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "mental blocks fear and hex-type conditions."
+        },
+        "weaknesses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "",
+            "required": [
+              "type",
+              "value"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": ""
+              },
+              "value": {
+                "type": "integer",
+                "minimum": 1,
+                "description": ""
+              }
+            },
+            "additionalProperties": true
+          },
+          "description": ""
+        },
+        "resistances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "",
+            "required": [
+              "type",
+              "value"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": ""
+              },
+              "value": {
+                "type": "integer",
+                "minimum": 1,
+                "description": ""
+              }
+            },
+            "additionalProperties": true
+          },
+          "description": ""
+        },
+        "slowed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "1 is zombie-style: two actions a turn."
+        },
+        "attacks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/monsterAttack"
+          },
+          "description": "At least one."
+        },
+        "powers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/monsterPower"
+          },
+          "description": ""
+        },
+        "desc": {
+          "type": "string",
+          "description": "Player-facing text."
+        }
+      },
+      "additionalProperties": true
+    },
+    "monsterAttack": {
+      "type": "object",
+      "description": "One Strike.",
+      "required": [
+        "name",
+        "bonus",
+        "damage"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "bonus": {
+          "type": "integer",
+          "description": "Attack modifier."
+        },
+        "damage": {
+          "type": "string",
+          "description": "A dice formula."
+        },
+        "damageType": {
+          "type": "string",
+          "description": "The damage type."
+        },
+        "range": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cells. 1 is melee."
+        },
+        "traits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "agile and deadly-dX are read."
+        },
+        "sneak": {
+          "type": "string",
+          "description": "Companions only: precision damage against off-guard targets."
+        },
+        "onCrit": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          },
+          "description": "Conditions applied on a critical hit."
+        }
+      },
+      "additionalProperties": true
+    },
+    "monsterPower": {
+      "type": "object",
+      "description": "A monster power. Used when off cooldown and at least two PCs are in radius.",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "cost": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Actions."
+        },
+        "cooldown": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rounds before it can fire again."
+        },
+        "type": {
+          "type": "string",
+          "description": "aoe is the implemented type."
+        },
+        "save": {
+          "type": "string",
+          "description": "will, reflex or fortitude."
+        },
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The save DC."
+        },
+        "radius": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cells."
+        },
+        "damage": {
+          "type": "string",
+          "description": "A dice formula."
+        },
+        "damageType": {
+          "type": "string",
+          "description": "The damage type."
+        },
+        "onCritFail": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          },
+          "description": ""
+        },
+        "onFail": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          },
+          "description": ""
+        },
+        "onSuccess": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          },
+          "description": ""
+        },
+        "flavor": {
+          "type": "string",
+          "description": "The line the Chronicle prints when it fires."
+        }
+      },
+      "additionalProperties": true
+    },
+    "companion": {
+      "type": "object",
+      "description": "A pre-built ally: a flat stat block the player does not forge.",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "The line under the name on the card."
+        },
+        "ac": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Armor class."
+        },
+        "hp": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hit points."
+        },
+        "speed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Feet."
+        },
+        "perception": {
+          "type": "integer",
+          "description": "Perception modifier."
+        },
+        "initSkill": {
+          "type": "integer",
+          "description": "The modifier the companion rolls initiative with."
+        },
+        "saves": {
+          "type": "object",
+          "description": "Modifiers for fort, ref and will.",
+          "additionalProperties": true
+        },
+        "attacks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/monsterAttack"
+          },
+          "description": ""
+        },
+        "abilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/companionAbility"
+          },
+          "description": ""
+        },
+        "desc": {
+          "type": "string",
+          "description": "Player-facing text."
+        }
+      },
+      "additionalProperties": true
+    },
+    "companionAbility": {
+      "type": "object",
+      "description": "A companion ability. heal is the only implemented type.",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "cost": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Actions."
+        },
+        "type": {
+          "type": "string",
+          "description": "heal."
+        },
+        "heal": {
+          "type": "string",
+          "description": "A dice formula."
+        },
+        "range": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cells."
+        },
+        "uses": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Uses per fight."
+        },
+        "flavor": {
+          "type": "string",
+          "description": "The line the Chronicle prints."
+        }
+      },
+      "additionalProperties": true
+    },
+    "adventure": {
+      "type": "object",
+      "description": "One adventure: a scene graph, and the encounters its scenes point at.",
+      "required": [
+        "id",
+        "name",
+        "start",
+        "scenes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The level the DCs and the treasure budget are read against. No level means no budget check."
+        },
+        "start": {
+          "type": "string",
+          "description": "The scene the adventure opens on. It has to exist."
+        },
+        "blurb": {
+          "type": "string",
+          "description": "Shown on the adventure picker."
+        },
+        "companionsOffered": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Companion ids offered at a scene with companionChoice."
+        },
+        "awards": {
+          "type": "object",
+          "description": "Encounter id or \"ending\" to whole XP. Leave it out and the ending is worth a level.",
+          "additionalProperties": true
+        },
+        "scenes": {
+          "type": "object",
+          "description": "Scene id to scene. Every one has to be reachable from start.",
+          "additionalProperties": {
+            "$ref": "#/$defs/scene"
+          }
+        },
+        "encounters": {
+          "type": "object",
+          "description": "Encounter id to encounter.",
+          "additionalProperties": {
+            "$ref": "#/$defs/encounter"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "scene": {
+      "type": "object",
+      "description": "One node of the narrative graph.",
+      "required": [
+        "title",
+        "text"
+      ],
+      "properties": {
+        "kicker": {
+          "type": "string",
+          "description": "The small line above the title."
+        },
+        "title": {
+          "type": "string",
+          "description": "The scene's heading."
+        },
+        "text": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Paragraphs. The first gets the illuminated drop cap. Light HTML like <em> is allowed."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "shop",
+            "explore"
+          ],
+          "description": "Leave it out for an ordinary scene of prose and choices."
+        },
+        "onEnter": {
+          "$ref": "#/$defs/onEnter"
+        },
+        "companionChoice": {
+          "type": "boolean",
+          "description": "Offer the adventure's companions here."
+        },
+        "ending": {
+          "type": "boolean",
+          "description": "An epilogue. Its flags fold into the campaign record."
+        },
+        "gameover": {
+          "type": "boolean",
+          "description": "A death. Folds nothing and pays no XP."
+        },
+        "shopTitle": {
+          "type": "string",
+          "description": "Shop scenes: the heading over the buy side. Defaults to \"For Sale\"."
+        },
+        "stock": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Shop scenes: item ids for sale. Every one needs a price."
+        },
+        "exploreTitle": {
+          "type": "string",
+          "description": "Explore scenes: the heading over the cards. Defaults to \"How You Go On\"."
+        },
+        "explore": {
+          "$ref": "#/$defs/explore"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/choice"
+          },
+          "description": "Rendered under everything else. A shop or an explore scene still needs a way out."
+        }
+      },
+      "additionalProperties": true
+    },
+    "choice": {
+      "type": "object",
+      "description": "One link out of a scene.",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The line on the button."
+        },
+        "if": {
+          "type": "string",
+          "description": "A flag expression. A leading ! negates; a name with a / reads the campaign record."
+        },
+        "goto": {
+          "type": "string",
+          "description": "Scene id, or END to return to the title screen."
+        },
+        "check": {
+          "$ref": "#/$defs/check"
+        },
+        "once": {
+          "type": "boolean",
+          "description": "The choice disappears after it is taken."
+        },
+        "flagOnce": {
+          "type": "string",
+          "description": "A flag set the first time the choice is taken."
+        },
+        "combat": {
+          "type": "string",
+          "description": "An encounter id of this adventure."
+        },
+        "victory": {
+          "type": "string",
+          "description": "Where a won fight goes."
+        },
+        "defeat": {
+          "type": "string",
+          "description": "Where a lost fight goes. Defaults to a scene named \"gameover\"."
+        },
+        "combatLabel": {
+          "type": "string",
+          "description": "The label over the battle button."
+        }
+      },
+      "additionalProperties": true
+    },
+    "check": {
+      "type": "object",
+      "description": "A one-shot skill check on a choice.",
+      "required": [
+        "skill",
+        "dc"
+      ],
+      "properties": {
+        "skill": {
+          "type": "string",
+          "description": "A skill id, or perception."
+        },
+        "altSkill": {
+          "type": "string",
+          "description": "The engine rolls whichever modifier is better."
+        },
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "At level 3: easy 15, standard 17–18, hard 20, very hard 22."
+        },
+        "success": {
+          "type": "string",
+          "description": "Scene id, or END."
+        },
+        "failure": {
+          "type": "string",
+          "description": "Scene id, or END. Branch somewhere interesting rather than dead-ending."
+        }
+      },
+      "additionalProperties": true
+    },
+    "onEnter": {
+      "type": "object",
+      "description": "What happens the first time the hero walks in.",
+      "properties": {
+        "flag": {
+          "type": "string",
+          "description": "A flag set on entry. An opener flag name here is read by the next fight."
+        },
+        "gold": {
+          "type": "string",
+          "description": "Treasure, as a price string: \"40 gp\"."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Item ids put in the hero's hands. Every id has to exist."
+        }
+      },
+      "additionalProperties": true
+    },
+    "explore": {
+      "type": "object",
+      "description": "The exploration block of a \"kind\": \"explore\" scene.",
+      "required": [
+        "dc",
+        "goto"
+      ],
+      "properties": {
+        "dc": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The DC every activity here is rolled against."
+        },
+        "goto": {
+          "type": "string",
+          "description": "Where the hero goes once they have chosen, whatever the roll said."
+        },
+        "activities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "search",
+              "avoid-notice",
+              "defend"
+            ],
+            "description": ""
+          },
+          "description": "Narrows the offer, in the order written. Leave it out to offer all three."
+        }
+      },
+      "additionalProperties": true
+    },
+    "encounter": {
+      "type": "object",
+      "description": "One tactical map.",
+      "required": [
+        "name",
+        "w",
+        "h",
+        "foes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "w": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cells wide. Keep it to about 16."
+        },
+        "h": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cells tall. Keep it to about 12."
+        },
+        "terrain": {
+          "type": "object",
+          "description": "Cell lists.",
+          "properties": {
+            "walls": {
+              "type": "array",
+              "items": {},
+              "description": "[x,y] pairs that block movement and line of sight."
+            },
+            "diff": {
+              "type": "array",
+              "items": {},
+              "description": "[x,y] pairs of difficult terrain."
+            }
+          },
+          "additionalProperties": true
+        },
+        "pcStarts": {
+          "type": "array",
+          "items": {},
+          "description": "At least four [x,y] pairs."
+        },
+        "foes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/foe"
+          },
+          "description": "At least one."
+        },
+        "bossFlags": {
+          "type": "object",
+          "description": "Story flag id to {applyToBoss, log}. Effects hit the first foe whose monster is a boss.",
+          "additionalProperties": true
+        },
+        "intro": {
+          "type": "string",
+          "description": "One line of scene-setting printed at battle start."
+        }
+      },
+      "additionalProperties": true
+    },
+    "foe": {
+      "type": "object",
+      "description": "One monster placed on the map.",
+      "required": [
+        "monster",
+        "x",
+        "y"
+      ],
+      "properties": {
+        "monster": {
+          "type": "string",
+          "description": "A monster id from this pack or already loaded."
+        },
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0-indexed column."
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0-indexed row."
+        },
+        "minParty": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Only spawns at this party size or larger."
+        },
+        "minLevel": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Only spawns when the hero is at least this level."
+        },
+        "maxLevel": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Only spawns when the hero is at most this level."
+        }
+      },
+      "additionalProperties": true
+    },
+    "campaign": {
+      "type": "object",
+      "description": "A run of adventures with gates on the flags the earlier ones set.",
+      "required": [
+        "id",
+        "name",
+        "adventures"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Global id."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name."
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The level the campaign is written for. Shown on its card; it sets nothing."
+        },
+        "blurb": {
+          "type": "string",
+          "description": "Shown on the picker and at the top of the campaign board."
+        },
+        "adventures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/campaignEntry"
+          },
+          "description": "In order. The same adventure twice is rejected."
+        }
+      },
+      "additionalProperties": true
+    },
+    "campaignEntry": {
+      "type": "object",
+      "description": "One adventure in a campaign, in order. Always an object.",
+      "required": [
+        "adventure"
+      ],
+      "properties": {
+        "adventure": {
+          "type": "string",
+          "description": "An adventure id defined here or already loaded."
+        },
+        "if": {
+          "type": "string",
+          "description": "A scoped flag expression — \"earlier-adventure/some-flag\". It has to name an adventure listed earlier and a flag that adventure can actually set."
+        },
+        "locked": {
+          "type": "string",
+          "description": "The one line the board prints over a closed road."
+        }
+      },
+      "additionalProperties": true
+    },
+    "effect": {
+      "type": "object",
+      "description": "One entry of the effects DSL (guide §6). Exactly one key per entry.",
+      "additionalProperties": true,
+      "properties": {
+        "bonus": {
+          "type": "object",
+          "description": "A flat numeric bonus applied at finalize.",
+          "required": [
+            "target",
+            "value"
+          ],
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "speed, hp, initiative, perception, or save.all."
+            },
+            "value": {
+              "type": "integer",
+              "description": "How much."
+            },
+            "type": {
+              "type": "string",
+              "description": "status, circumstance, or untyped."
+            },
+            "vs": {
+              "type": "string",
+              "description": "What the bonus is against. Only speed keeps it off the flat number; every vs bonus is also collected as condBonuses."
+            }
+          },
+          "additionalProperties": true
+        },
+        "profUp": {
+          "type": "object",
+          "description": "Raise a proficiency if it is not already higher.",
+          "required": [
+            "target",
+            "rank"
+          ],
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "perception, save.fort, save.ref or save.will. save.all parses and does nothing."
+            },
+            "rank": {
+              "type": "string",
+              "enum": [
+                "U",
+                "T",
+                "E",
+                "M",
+                "L"
+              ],
+              "description": "The rank to raise to."
+            },
+            "ifSubclass": {
+              "type": "string",
+              "description": "Substring-matched against the chosen subclass id."
+            }
+          },
+          "additionalProperties": true
+        },
+        "attackProf": {
+          "type": "object",
+          "description": "Merged weapon proficiencies, e.g. {\"martial\":\"T\"}.",
+          "additionalProperties": true
+        },
+        "armorProf": {
+          "type": "object",
+          "description": "Merged armor proficiencies, e.g. {\"light\":\"T\"}.",
+          "additionalProperties": true
+        },
+        "trainSkill": {
+          "description": "A skill id, or \"choice\" for one more skill pick.",
+          "type": "string"
+        },
+        "grantLore": {
+          "type": "string",
+          "description": "A Lore name added to the sheet."
+        },
+        "rank": {
+          "type": "string",
+          "enum": [
+            "U",
+            "T",
+            "E",
+            "M",
+            "L"
+          ],
+          "description": "The rank a grantLore is added at."
+        },
+        "grantCantrip": {
+          "type": "object",
+          "description": "One more cantrip pick. The tradition field is not read.",
+          "additionalProperties": true
+        },
+        "grantFeat": {
+          "type": "string",
+          "description": "A feat id, or class-1 / general / skill for an extra slot of that kind."
+        },
+        "sense": {
+          "type": "string",
+          "description": "A sense added to the sheet. Cosmetic."
+        },
+        "grantFocusSpell": {
+          "type": "string",
+          "description": "A focus spell id — define it in spells with \"focus\": true."
+        },
+        "grantFocusSpellChoice": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Focus spell ids; the feats step renders a chooser."
+        },
+        "focusPoints": {
+          "type": "integer",
+          "description": "Grow the focus pool. Capped at 3."
+        },
+        "resist": {
+          "type": "object",
+          "description": "Resistance. value is a number or the string halfLevel.",
+          "required": [
+            "type",
+            "value"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "The damage type resisted."
+            },
+            "value": {}
+          },
+          "additionalProperties": true
+        },
+        "tradition": {
+          "type": "string",
+          "description": "Resolves a \"patron\" spellcasting tradition."
+        },
+        "font": {
+          "type": "string",
+          "description": "Cleric divine font: heal or harm."
+        },
+        "special": {
+          "type": "string",
+          "description": "An engine hook id from guide §8. Unknown ids display and do nothing."
+        },
+        "skill": {
+          "type": "string",
+          "description": "Which skill a {\"special\":\"assurance\"} floors. rules.js folds it into the hook id as assurance-<skill>."
+        },
+        "note": {
+          "type": "string",
+          "description": "Sheet note. Zero mechanics."
+        }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "description": "One condition applied by a spell, attack or power.",
+      "required": [
+        "c"
+      ],
+      "properties": {
+        "c": {
+          "type": "string",
+          "description": "The condition id. Guide §12 lists the ones the engine does math for."
+        },
+        "v": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The condition's value."
+        },
+        "dur": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Rounds. Omit for the standard decrement; 99 lasts the whole fight."
+        }
+      },
+      "additionalProperties": true
+    },
+    "damage": {
+      "type": "object",
+      "description": "One damage entry.",
+      "required": [
+        "formula"
+      ],
+      "properties": {
+        "formula": {
+          "type": "string",
+          "description": "A dice formula, e.g. 2d6+3."
+        },
+        "type": {
+          "type": "string",
+          "description": "The damage type."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$comment": "Written by Projects/torchbearer/tools/schema.mjs from js/schema.js. Edit the module, run `node tools/schema.mjs --write`, and commit both; test/smoke.mjs fails if they disagree."
+}

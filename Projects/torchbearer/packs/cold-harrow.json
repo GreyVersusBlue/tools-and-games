@@ -1,0 +1,483 @@
+{
+  "pack": {
+    "id": "cold-harrow",
+    "name": "The Quarter-Day at Cold Harrow",
+    "version": "1.0.0",
+    "author": "Devon",
+    "type": "adventure",
+    "description": "A level 3 one-shot about bookkeeping. Ninety years ago a lead mine drowned with sixty men in it, and the village wrote a contract with whatever answered from the water. The tithe has been paid three hundred and sixty times. Tonight's is short, and the village has decided you are the difference — unless you can read the ledger well enough to prove the debt was cleared in 1391 and nobody ever closed the account."
+  },
+
+  "items": [
+    { "id": "harrow-tally-knife", "name": "Tally-Knife", "level": 0, "price": "2 gp", "category": "weapon",
+      "prof": "simple", "group": "knife", "hands": 1, "rogueOk": true,
+      "damage": "1d4", "damageType": "piercing", "traits": ["agile", "finesse"], "bulk": 0.1,
+      "desc": "A short blade with a notched spine, for cutting tally-sticks. Cold Harrow settles its debts in wood before it settles them in anything else." },
+
+    { "id": "harrow-damp-lamp", "name": "Harrow Damp-Lamp", "level": 1, "price": "6 gp", "category": "gear",
+      "bulk": 0.5,
+      "desc": "A miner's lamp with a gauze chimney, made to burn in air that would take an open flame and everyone standing near it. It gives less light than a candle and it has never once killed anybody." },
+
+    { "id": "harrow-reeve-token", "name": "Reeve's Token", "level": 2, "price": "9 gp", "category": "gear",
+      "bulk": 0.1,
+      "desc": "A lead disc stamped with a quarter-day date and a number. Every household in Cold Harrow keeps a drawer of them. Nobody has ever been able to explain what the numbers count up to." }
+  ],
+
+  "monsters": [
+    { "id": "harrow-carrier", "name": "Tithe-Carrier", "level": 1,
+      "traits": ["undead", "humanoid"], "size": "Medium",
+      "lore": "It will not strike anyone holding a lead token, and it cannot tell a real one from a forgery.",
+      "ac": 16, "hp": 22, "speed": 25, "perception": 6,
+      "saves": { "fort": 8, "ref": 5, "will": 6 },
+      "immunities": ["void", "poison"],
+      "weaknesses": [ { "type": "vitality", "value": 3 } ],
+      "attacks": [ { "name": "Loaded Yoke", "bonus": 8, "damage": "1d8+3", "damageType": "bludgeoning", "range": 1 } ],
+      "desc": "A collier who went down in 1391 and has been coming back up every quarter-day since, with the buckets still on his shoulders. The buckets are the part he remembers." },
+
+    { "id": "harrow-sump-hound", "name": "Sump-Hound", "level": 1,
+      "traits": ["beast", "amphibious"], "size": "Medium",
+      "lore": "It hunts by the taste of lamp-oil in the water and will always close on the brightest thing in the room.",
+      "ac": 17, "hp": 18, "speed": 30, "perception": 9,
+      "saves": { "fort": 7, "ref": 9, "will": 4 },
+      "attacks": [ { "name": "Jaws", "bonus": 9, "damage": "1d6+3", "damageType": "piercing", "range": 1, "traits": ["agile"] } ],
+      "desc": "Something that was a dog when it went into the sump and has been improving on the design ever since. Cold Harrow does not name them and does not feed them." },
+
+    { "id": "harrow-serjeant", "name": "Carrier-Serjeant", "level": 3,
+      "traits": ["undead", "humanoid"], "size": "Medium",
+      "lore": "It counts the party before it swings, and it will not begin until the tally matches the one in its head.",
+      "ac": 19, "hp": 42, "speed": 25, "perception": 9,
+      "reactions": ["reactive-strike"],
+      "saves": { "fort": 11, "ref": 8, "will": 9 },
+      "immunities": ["void", "poison"],
+      "weaknesses": [ { "type": "vitality", "value": 3 } ],
+      "attacks": [ { "name": "Measuring Rod", "bonus": 12, "damage": "1d10+5", "damageType": "bludgeoning", "range": 2,
+                     "onCrit": [ { "c": "clumsy", "v": 1, "dur": 2 } ] } ],
+      "desc": "Ninety years of being the man who checks the load has left it very hard to walk past. It has a rod, it has a number, and it has all night." },
+
+    { "id": "harrow-drowned-collier", "name": "Drowned Collier", "level": 2,
+      "traits": ["undead", "humanoid"], "size": "Medium",
+      "lore": "Water pours out of it constantly, and the puddle is where it is strongest — it will not follow anyone onto dry stone.",
+      "ac": 17, "hp": 32, "speed": 20, "perception": 7, "slowed": 1,
+      "saves": { "fort": 10, "ref": 5, "will": 8 },
+      "immunities": ["void", "poison"],
+      "weaknesses": [ { "type": "vitality", "value": 4 } ],
+      "resistances": [ { "type": "physical", "value": 2 } ],
+      "attacks": [ { "name": "Drowning Grip", "bonus": 11, "damage": "1d8+4", "damageType": "bludgeoning", "range": 1,
+                     "onCrit": [ { "c": "sickened", "v": 1 } ] } ],
+      "desc": "Sixty went down. Not all sixty come up on the same night, which is the closest thing Cold Harrow has to good news." },
+
+    { "id": "harrow-deep-reeve", "name": "The Deep Reeve", "level": 4, "boss": true,
+      "traits": ["undead", "spirit"], "size": "Large",
+      "lore": "It is not cruel and it is not hungry. It is holding a contract, and everything it does is enforcement — including stopping, if the contract says to.",
+      "ac": 21, "hp": 62, "speed": 25, "perception": 12,
+      "reach": 2, "reactions": ["reactive-strike"],
+      "saves": { "fort": 12, "ref": 9, "will": 13 },
+      "immunities": ["void", "poison", "fear"],
+      "weaknesses": [ { "type": "vitality", "value": 5 } ],
+      "attacks": [ { "name": "Weighing Chain", "bonus": 14, "damage": "2d8+6", "damageType": "bludgeoning",
+                     "range": 2, "onCrit": [ { "c": "prone", "v": 1 } ] } ],
+      "powers": [ { "name": "Read the Account", "cost": 2, "cooldown": 3, "type": "aoe",
+                    "save": "will", "dc": 21, "radius": 3, "damage": "2d6", "damageType": "mental",
+                    "onFail": [ { "c": "frightened", "v": 1 } ],
+                    "onCritFail": [ { "c": "frightened", "v": 2 } ],
+                    "flavor": "It reads out what the village still owes, item by item, in a voice like a ledger closing." } ],
+      "desc": "Something answered when Cold Harrow shouted down the flooded shaft in 1391, and what answered wanted terms. It has kept them exactly. That is the problem." }
+  ],
+
+  "companions": [
+    { "id": "alder-quist", "name": "Alder Quist", "subtitle": "Human Tally-Keeper 3",
+      "ac": 19, "hp": 38, "speed": 25, "perception": 11, "initSkill": 11,
+      "saves": { "fort": 7, "ref": 11, "will": 8 },
+      "attacks": [ { "name": "Tally-Knife", "bonus": 11, "damage": "1d4+4", "damageType": "piercing",
+                     "range": 1, "traits": ["agile", "finesse"], "sneak": "1d6" } ],
+      "abilities": [ { "id": "aq-flask", "name": "Miner's Flask", "cost": 2, "type": "heal",
+                       "heal": "2d8+12", "range": 4, "uses": 2,
+                       "flavor": "He unstoppers something that smells like turpentine and honesty, and makes you drink it." } ],
+      "desc": "Keeps the village's books, which in Cold Harrow means he keeps the village. He has known for eleven years that the sums do not work and has not been able to get anyone to look at the column." }
+  ],
+
+  "adventures": [
+    { "id": "cold-harrow", "name": "The Quarter-Day at Cold Harrow", "level": 3, "start": "moor-road",
+      "blurb": "The tithe has been paid three hundred and sixty times and the mine has stayed shut. Tonight's is short. Somebody in this village can read, and it had better be you.",
+      "companionsOffered": ["alder-quist"],
+
+      "scenes": {
+
+        "moor-road": {
+          "kicker": "Quarter-Day · The Moor Road",
+          "title": "Sixty Feet of Standing Water",
+          "text": [
+            "Cold Harrow announces itself the way lead country always does: the grass gives up first, then the trees, and then you are walking on a moor the colour of a coin left out in the rain. The village is eleven roofs, a chapel with no bell, and a winding-house over a shaft that has been full of water since 1391.",
+            "It is the last evening of the quarter. Every door in Cold Harrow is open, which is not hospitality — it is so that nobody has to be seen answering a knock. On the green, somebody has set out a trestle table with a lead box on it and a lamp beside the box, and then gone indoors.",
+            "The box is not full. You can tell from the road."
+          ],
+          "companionChoice": true,
+          "choices": [
+            { "text": "Go into the inn. Somebody in there knows the arithmetic.", "goto": "drowned-ox" },
+            { "text": "Walk straight out to the green and look in the box.", "goto": "harrow-green" }
+          ]
+        },
+
+        "drowned-ox": {
+          "kicker": "Quarter-Day · The Drowned Ox",
+          "title": "A Room With Its Back to the Window",
+          "text": [
+            "The Drowned Ox has eleven people in it and no conversation. The landlord, a wide woman called Merrit Sawle, is polishing a glass that was clean when you came in and will be clean when you leave. Everyone is sitting on the side of the room away from the window, which they have arranged themselves into so naturally that they clearly do not know they have done it.",
+            "\"Ninety years back,\" Merrit says, before you have asked, \"the Harrow drowned with sixty men in it. Village shouted down the shaft for three days. On the fourth day something shouted back, and what it wanted was terms.\" She says <em>terms</em> the way other people say <em>tumour</em>. \"So we gave it terms. Every quarter-day, a tithe in the box, and the shaft stays shut. We have paid three hundred and sixty times and the shaft has stayed shut three hundred and sixty times.\"",
+            "\"And tonight?\"",
+            "\"Tonight the box is short by more than we have ever been short. Alder says the number has gone wrong somewhere, but Alder says a lot of things.\" She picks the glass back up. \"You look like somebody who can be spared.\"",
+            "In the corner, a thin man in a clerk's coat has a ledger open in front of him and is not reading it. He has the look of somebody who has read it enough."
+          ],
+          "onEnter": { "flag": "knows-the-terms" },
+          "choices": [
+            { "text": "Go and talk to the clerk about the number.", "goto": "tally-room" },
+            { "text": "Buy what the Ox has left before you go anywhere.", "goto": "ox-cupboard" },
+            { "text": "Enough talking. Out to the green.", "goto": "harrow-green" }
+          ]
+        },
+
+        "ox-cupboard": {
+          "kicker": "Quarter-Day · The Drowned Ox",
+          "kind": "shop",
+          "title": "What Is Not Spoken For",
+          "shopTitle": "Merrit's Back Shelf",
+          "text": [
+            "\"Spoken for\" turns out to have edges. Merrit unlocks a cupboard behind the taps and stands aside, arms folded, in the manner of a woman who would rather sell you a lamp tonight than dig you out of the sump next week.",
+            "\"Damp-lamps burn in bad air,\" she says. \"That's the whole of what they do. Anybody tells you different is selling you two of them.\""
+          ],
+          "stock": ["harrow-damp-lamp", "harrow-tally-knife", "healing-potion-minor", "healing-potion-lesser", "harrow-reeve-token"],
+          "choices": [
+            { "text": "Close the cupboard and go back to the room.", "goto": "drowned-ox" }
+          ]
+        },
+
+        "tally-room": {
+          "kicker": "Quarter-Day · The Drowned Ox",
+          "title": "The Man Who Has Read It Enough",
+          "text": [
+            "The clerk is Alder Quist and he keeps the village's books, which in Cold Harrow means he keeps the village. He turns the ledger around before you have finished sitting down.",
+            "\"Column four,\" he says. \"That's the tithe as paid. Column five is the tithe as owed, and it has gone up every quarter for ninety years, and nobody has ever asked why. Because it's not <em>interest</em>. There is no interest in the terms. I've read the terms.\"",
+            "The page is a wall of small brown numbers in nine different hands. Somewhere in ninety years of it there is one column that stops making sense, and Alder has been unable to make anyone stand still long enough to see it."
+          ],
+          "choices": [
+            { "text": "Read the ledger properly. All ninety years of it.",
+              "check": { "skill": "society", "altSkill": "occultism", "dc": 18,
+                         "success": "tally-read", "failure": "tally-torn" },
+              "once": true, "flagOnce": "read-the-ledger" },
+            { "text": "Take his word for it and go. The box is not going to fill itself.", "goto": "harrow-green" }
+          ]
+        },
+
+        "tally-read": {
+          "kicker": "Quarter-Day · The Drowned Ox",
+          "title": "Closed, 1391",
+          "text": [
+            "It takes an hour and a candle and it is not hidden at all. It is just boring, which is better than hidden.",
+            "The terms are for a debt: sixty men's worth of something, payable in quarter-day tithes until the debt is discharged. In the summer of 1391 the village paid it out in one lump — the whole of the winding-house silver, sold in Thrapp and carried back in a cart — and the entry is there in a hand that gave up halfway through the word <em>discharged</em>.",
+            "Nobody closed the account. The next quarter, out of habit and terror, Cold Harrow put a tithe in the box anyway. And the thing at the bottom of the shaft, which is honest, and which cannot count past what it was told, has been recording every one of them as an <em>overpayment on an open account</em> ever since.",
+            "\"Ninety years,\" says Alder, very quietly. \"We've been in credit for ninety years.\""
+          ],
+          "onEnter": { "flag": "debt-cleared", "items": ["harrow-tally-knife"] },
+          "choices": [
+            { "text": "Take the ledger. Take Alder. Go to the green.", "goto": "harrow-green" }
+          ]
+        },
+
+        "tally-torn": {
+          "kicker": "Quarter-Day · The Drowned Ox",
+          "title": "The Wrong Ninety Years",
+          "text": [
+            "You get most of the way through and realise you have been reading the wrong volume: this is the parish's, not the mine's, and the columns mean something else entirely. Alder is already reaching past you for the right one when the lamp in the window goes out.",
+            "Not blown out. Drowned — the flame goes down through green to nothing the way a light does underwater.",
+            "\"They're early,\" Alder says. He is not surprised, which is worse. \"They have never once been early.\""
+          ],
+          "onEnter": { "flag": "fatigued-start" },
+          "choices": [
+            { "text": "Out. Now, before they reach the door.", "goto": "harrow-green" }
+          ]
+        },
+
+        "harrow-green": {
+          "kicker": "Quarter-Day · The Green",
+          "title": "The Box and the Stone",
+          "text": [
+            "The trestle table stands in the middle of nine yards of wet grass with the lead box on it, open, holding four coins and a folded paper. Beside it, older than the village by the look of it, is a standing stone with the quarter-days cut into one face and something else cut into the other.",
+            "Behind the green the winding-house is a black shape with its wheel still. Water noise comes up out of it in a slow rhythm, like a room breathing in a house where nobody lives."
+          ],
+          "choices": [
+            { "text": "Read the far face of the stone.",
+              "check": { "skill": "religion", "altSkill": "arcana", "dc": 17,
+                         "success": "stone-read", "failure": "shaft-head" },
+              "once": true, "flagOnce": "read-the-stone" },
+            { "text": "Leave the stone. Go to the shaft-head.", "goto": "shaft-head" }
+          ]
+        },
+
+        "stone-read": {
+          "kicker": "Quarter-Day · The Green",
+          "title": "A Name Cut Backwards",
+          "text": [
+            "The near face is quarter-days, four a year, ninety years of them, and the cutting gets worse as it goes. The far face is one word, cut backwards, so it reads correctly to somebody standing on the other side of the stone — which is to say, to somebody coming up out of the shaft.",
+            "It is a name. It is the name the village gave the thing in 1391 so that the terms would have somebody's name on them, and it has been facing the wrong way for ninety years, and it has been read, every quarter-day, three hundred and sixty times, by the only reader who ever comes.",
+            "You can say it. It will not enjoy that."
+          ],
+          "onEnter": { "flag": "knows-name" },
+          "choices": [
+            { "text": "On to the shaft-head.", "goto": "shaft-head" }
+          ]
+        },
+
+        "shaft-head": {
+          "kicker": "Quarter-Day · The Winding-House",
+          "kind": "explore",
+          "title": "The Last Forty Yards",
+          "exploreTitle": "How You Cross the Green",
+          "explore": { "dc": 18, "goto": "first-blood" },
+          "text": [
+            "Between you and the winding-house there is nine yards of open grass, a table with a lead box on it, and the sound of something coming up a ladder that has been underwater since before your grandmother.",
+            "They come up in a line, the way they always have. Buckets first."
+          ],
+          "choices": []
+        },
+
+        "first-blood": {
+          "kicker": "Quarter-Day · The Green",
+          "title": "Three Hundred and Sixty-One",
+          "text": [
+            "The first one over the lip has his buckets on and his back bent under them, and he walks to the table the way a man walks to a table he has walked to three hundred and sixty times. He looks in the box. He counts the four coins, twice, with a finger.",
+            "Then he puts the buckets down, which — you will learn later, from Alder, who has watched this from a window every quarter-day of his life — has never happened before."
+          ],
+          "choices": [
+            { "text": "Stand between them and the box.",
+              "combat": "tithe-carriers", "victory": "pump-house", "defeat": "gameover",
+              "combatLabel": "⚔ Battle: The Tithe, Short" }
+          ]
+        },
+
+        "pump-house": {
+          "kicker": "Quarter-Day · The Winding-House",
+          "title": "What Was In The Buckets",
+          "text": [
+            "The last of them comes apart into wet coat and lead dust, and the green is quiet enough to hear the moor again. The buckets were not empty. Ninety years of tithes have been going down that shaft and something has been carrying the change back up, quarter after quarter, and setting it down where nobody would look — under the trestle, in the grass, in the dark. There is a great deal of it. Alder is on his knees in the wet with a handful of coin, saying a number out loud, and then saying it again.",
+            "The winding-house smells of iron and standing water. The shaft itself is a black circle with a wheel over it and no rope on the wheel, because Cold Harrow took the rope off in 1391 and has never once been tempted to put it back.",
+            "There is another way down: a pump-stair, cut for the men who worked the drainage engine, going down inside the wall in flights of eleven. The first flight is dry. The second is not. It is the sort of descent that goes badly for people who go down it quickly."
+          ],
+          "onEnter": { "gold": "18 gp" },
+          "choices": [
+            { "text": "Take the stair slowly, one flight at a time, listening.",
+              "check": { "skill": "stealth", "altSkill": "acrobatics", "dc": 18,
+                         "success": "stair-quiet", "failure": "flooded-drift" },
+              "once": true, "flagOnce": "took-the-stair" }
+          ]
+        },
+
+        "stair-quiet": {
+          "kicker": "Quarter-Day · The Pump-Stair",
+          "title": "Eleven, and Eleven, and Eleven",
+          "text": [
+            "You go down the way the drainage men went down: one flight, stop, listen, next flight. By the fourth the water is at the ankle and by the sixth it is at the knee and the sound of it moving is entirely your own.",
+            "Below, in the drift, there is a great deal of shuffling that has not once stopped or turned toward the stair. Whatever is down there does not know the stair is a thing that people use."
+          ],
+          "onEnter": { "flag": "hero-hidden" },
+          "choices": [
+            { "text": "Down into the drift.", "goto": "flooded-drift" }
+          ]
+        },
+
+        "flooded-drift": {
+          "kicker": "Quarter-Day · The Flooded Drift",
+          "title": "The Shift That Never Came Up",
+          "text": [
+            "The drift runs level and the water runs with it, thigh-deep and moving, and where the roof has come down there is nothing but a black seam and the smell of old lamp-oil.",
+            "They are working. That is the thing nobody in Cold Harrow says out loud and everybody in Cold Harrow knows: the shift that drowned in 1391 has never stopped, because nobody ever came down and told them the day was over.",
+            "One of them straightens up out of the water and looks at your lamp with the expression of a man on hour ninety-thousand of a twelve-hour shift."
+          ],
+          "choices": [
+            { "text": "Tell them the day is over.",
+              "combat": "drowned-shift", "victory": "reeve-door", "defeat": "gameover",
+              "combatLabel": "⚔ Battle: The Long Shift" }
+          ]
+        },
+
+        "reeve-door": {
+          "kicker": "Quarter-Day · The Tithe-House",
+          "title": "A Door Under Sixty Feet of Water",
+          "text": [
+            "At the end of the drift the water stops, and it stops the wrong way: a wall of it, standing on its edge, with a door in it. Behind the door there is a room with a table, a lead box very much larger than the one on the green, and a chair with something in it that is holding a paper.",
+            "It has been holding the paper for ninety years. It stands up when you come in, because the terms were agreed with somebody who stood up when people came in, and it has never seen a reason to stop.",
+            "\"The tithe,\" says the Deep Reeve, \"is short.\""
+          ],
+          "onEnter": { "items": ["healing-potion-lesser"] },
+          "choices": [
+            { "text": "\"The account was closed in 1391. Here is the entry.\"", "if": "debt-cleared", "goto": "the-audit" },
+            { "text": "Pay it. Everything you are carrying, into the box.", "goto": "ending-tithe" },
+            { "text": "Take the paper out of its hand.",
+              "combat": "the-deep-reeve", "victory": "ending-blade", "defeat": "gameover",
+              "combatLabel": "⚔ Battle: The Deep Reeve" }
+          ]
+        },
+
+        "the-audit": {
+          "kicker": "Quarter-Day · The Tithe-House",
+          "title": "Column Four Against Column Five",
+          "text": [
+            "You put the ledger on its table, open at the summer of 1391, and you read the entry out. Then you read out the three hundred and sixty entries after it, because the Deep Reeve is honest and slow and this is not a thing that can be summarised.",
+            "It follows. That is what is unbearable about it: it follows perfectly well. Somewhere around the fortieth quarter its hand begins to move down the column with you, and by the two hundredth it has stopped looking at the ledger and started looking at the very large lead box beside the table.",
+            "\"An overpayment,\" it says, \"on an account that was closed.\"",
+            "\"Ninety years of one.\"",
+            "It is quiet for long enough that Alder, behind you, stops breathing."
+          ],
+          "choices": [
+            { "text": "\"So the terms are discharged, and you are owed nothing, and neither are we.\"",
+              "check": { "skill": "diplomacy", "altSkill": "society", "dc": 20,
+                         "success": "ending-audit", "failure": "audit-refused" },
+              "once": true, "flagOnce": "put-the-case" }
+          ]
+        },
+
+        "audit-refused": {
+          "kicker": "Quarter-Day · The Tithe-House",
+          "title": "The Clause About Who May Close It",
+          "text": [
+            "\"No,\" the Deep Reeve says, and turns the paper round so that you can see the last line, which is in a different hand and was added after the signatures. <em>The account shall be closed by the reeve of Cold Harrow and by no other party.</em>",
+            "\"There has been no reeve of Cold Harrow since 1402,\" says Alder, from somewhere behind your left shoulder, in the voice of a man who has just heard the worst sentence of his professional life.",
+            "\"Then the account,\" says the thing at the table, \"remains open.\" It sets the paper down. It is not angry. It has never once been angry. It is simply, finally, out of procedure — and something has to happen now."
+          ],
+          "onEnter": { "flag": "reeve-doubting" },
+          "choices": [
+            { "text": "Then there is a reeve of Cold Harrow tonight. Take the paper.",
+              "combat": "the-deep-reeve", "victory": "ending-blade", "defeat": "gameover",
+              "combatLabel": "⚔ Battle: The Deep Reeve" },
+            { "text": "Pay the quarter, and let somebody else fix it in 1481.", "goto": "ending-tithe" }
+          ]
+        },
+
+        "ending-audit": {
+          "kicker": "Epilogue",
+          "title": "Discharged",
+          "ending": true,
+          "text": [
+            "Alder Quist is the reeve of Cold Harrow for about ninety seconds. It is enough. He signs where he is told to sign, in a hand that is shaking so badly that the Deep Reeve waits, politely, for him to finish.",
+            "Then the wall of water forgets it was ever standing up, and the drift, and the pump-stair, and the shaft, all quietly become sixty feet of ordinary flooded mine, the way they should have been since 1391.",
+            "The village finds out at dawn, from the fact that nobody has to keep the lamp in the window. Merrit Sawle opens the good stuff. Somebody has to be told what happened to the sixty men, and it turns out that somebody is you, and it turns out that the answer is: they were held over, and now they are not, and that is all anybody gets.",
+            "Alder walks you to the moor road with the ledger under his arm, still open at column five. \"Ninety years of credit,\" he says. \"I'm going to spend a decade arguing with Thrapp about it and I have never been happier.\""
+          ],
+          "onEnter": { "flag": "harrow-freed", "gold": "25 gp" },
+          "choices": [
+            { "text": "Take the moor road.", "goto": "END" }
+          ]
+        },
+
+        "ending-blade": {
+          "kicker": "Epilogue",
+          "title": "The Paper, and What Was Under It",
+          "ending": true,
+          "text": [
+            "It goes down holding the contract, which is exactly how it stood up, and the paper comes apart in the water before anyone can read the last line.",
+            "The wall of water falls. The tithe-house is a flooded chamber with a table in it and a very large lead box, and the box has ninety years of Cold Harrow's quarter-days in it, and Cold Harrow is going to be a long time deciding how it feels about that.",
+            "The shaft is quiet at dawn and quiet at noon and quiet the next quarter-day, which is the part the village will spend a year not quite believing. Merrit puts the trestle table out anyway that first time, with an empty box on it, and stands beside it all evening, and then carries it back in.",
+            "Alder Quist keeps the books. There is a column now that just stops, and he has written nothing under it, because he does not know what you would call it."
+          ],
+          "onEnter": { "flag": "harrow-freed", "gold": "40 gp" },
+          "choices": [
+            { "text": "Take the moor road.", "goto": "END" }
+          ]
+        },
+
+        "ending-tithe": {
+          "kicker": "Epilogue",
+          "title": "Three Hundred and Sixty-One",
+          "ending": true,
+          "text": [
+            "You put it in the box. All of it, and it is enough, and the Deep Reeve counts it twice with a finger and writes a line and sits back down.",
+            "The wall of water closes behind you as politely as it opened. You come up the pump-stair in the dark, eleven and eleven and eleven, and out through the winding-house onto a green where the sky is going the colour of a coin left out in the rain.",
+            "Cold Harrow is awake, all eleven roofs of it, and nobody comes out, and every door is open. They will pay again in three months. They know exactly how much they will be short by, because Alder Quist worked it out eleven years ago and nobody would look at the column.",
+            "He is standing in the inn doorway as you go past. He does not say anything. He has the ledger with him."
+          ],
+          "onEnter": { "flag": "harrow-paid" },
+          "choices": [
+            { "text": "Take the moor road.", "goto": "END" }
+          ]
+        },
+
+        "gameover": {
+          "kicker": "The Quarter-Day",
+          "title": "Recorded as Paid",
+          "gameover": true,
+          "text": [
+            "The last thing is not a blow. It is a hand, and a finger, and somebody counting.",
+            "Cold Harrow finds the trestle table upright at dawn and the lead box shut, and the shaft quiet, and it will be three months before anybody in the village lets themselves work out what made up the difference.",
+            "The entry is in column four, in a very old hand, and it is written the way every other entry in ninety years is written. Received. In full."
+          ],
+          "choices": [
+            { "text": "Back to the title screen.", "goto": "END" }
+          ]
+        }
+      },
+
+      "encounters": {
+
+        "tithe-carriers": {
+          "name": "The Tithe, Short",
+          "w": 13, "h": 9,
+          "terrain": {
+            "walls": [[0,0],[1,0],[11,0],[12,0],[0,8],[12,8],[6,0],[6,1]],
+            "diff": [[5,4],[6,4],[7,4],[5,5],[6,5],[7,5]]
+          },
+          "pcStarts": [[1,4],[1,3],[2,4],[1,5],[2,3]],
+          "foes": [
+            { "monster": "harrow-carrier", "x": 10, "y": 3 },
+            { "monster": "harrow-carrier", "x": 10, "y": 5 },
+            { "monster": "harrow-sump-hound", "x": 11, "y": 4, "minParty": 2 },
+            { "monster": "harrow-serjeant", "x": 9, "y": 7, "minLevel": 5 }
+          ],
+          "intro": "The trestle table stands between you and the shaft-head, with four coins in a lead box on it, and the line coming up the ladder does not break step."
+        },
+
+        "drowned-shift": {
+          "name": "The Long Shift",
+          "w": 14, "h": 8,
+          "terrain": {
+            "walls": [[0,0],[1,0],[2,0],[0,7],[1,7],[13,0],[13,7],[7,0],[7,7]],
+            "diff": [[4,3],[5,3],[6,3],[4,4],[5,4],[6,4],[8,3],[9,3],[8,4],[9,4]]
+          },
+          "pcStarts": [[1,3],[1,4],[2,3],[2,4],[1,2]],
+          "foes": [
+            { "monster": "harrow-drowned-collier", "x": 10, "y": 3 },
+            { "monster": "harrow-drowned-collier", "x": 11, "y": 5 },
+            { "monster": "harrow-drowned-collier", "x": 12, "y": 2, "minParty": 2 },
+            { "monster": "harrow-sump-hound", "x": 12, "y": 6, "minLevel": 4 }
+          ],
+          "intro": "The drift is thigh-deep and the water is moving, and every one of them straightens up at the same moment, which is not how a crowd of people does anything."
+        },
+
+        "the-deep-reeve": {
+          "name": "The Deep Reeve",
+          "w": 12, "h": 10,
+          "terrain": {
+            "walls": [[0,0],[11,0],[0,9],[11,9],[5,0],[6,0],[5,9],[6,9]],
+            "diff": [[5,4],[6,4],[5,5],[6,5]]
+          },
+          "pcStarts": [[2,4],[2,5],[1,4],[1,5],[3,4]],
+          "foes": [
+            { "monster": "harrow-deep-reeve", "x": 9, "y": 4 },
+            { "monster": "harrow-carrier", "x": 8, "y": 2, "minParty": 2 },
+            { "monster": "harrow-carrier", "x": 8, "y": 7, "minParty": 3 },
+            { "monster": "harrow-serjeant", "x": 10, "y": 7, "minLevel": 6 }
+          ],
+          "bossFlags": {
+            "knows-name": {
+              "applyToBoss": [ { "c": "sickened", "v": 1, "dur": 99 } ],
+              "log": "You say the name off the far side of the stone, and the thing at the table has to spend part of itself being the party to an agreement."
+            },
+            "reeve-doubting": {
+              "applyToBoss": [ { "c": "clumsy", "v": 1, "dur": 99 } ],
+              "log": "It keeps one hand on the ledger. Ninety years of arithmetic have gone somewhere it cannot follow, and it is fighting and checking the column at the same time."
+            }
+          },
+          "intro": "It sets the paper down on the table, squarely, the way you put down something you intend to pick back up."
+        }
+      }
+    }
+  ]
+}
