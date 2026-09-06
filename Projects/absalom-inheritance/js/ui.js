@@ -17,6 +17,7 @@
 import { mountSaveBar } from "../../../assets/js/gvb-save.js";
 import { DEG_NAME } from "./rules.js";
 import { TILE } from "./world.js";
+import { CONDITIONS, describe } from "./conditions.js";
 
 const $ = id => document.getElementById(id);
 
@@ -179,6 +180,7 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     $("hp-label").textContent = `${pc.hp} / ${max}`;
     $("hp-bar").style.width = Math.max(0, 100 * pc.hp / max) + "%";
     $("ac-val").textContent = game.pcAC() + (game.shielded ? " ▲" : "");
+    renderConditions();
 
     const inCombat = game.mode === "combat";
     const mine = game.isPCTurn();
@@ -221,6 +223,31 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     endBtn.disabled = !(inCombat && mine);
 
     $("hint").textContent = game.hint;
+  }
+
+  /**
+   * The chips.
+   *
+   * Rebuilt whole on every refresh rather than diffed: there are never more
+   * than a handful, and a diff is where "the chip that would not go away"
+   * comes from. A chip carries its own value in its text because "Frightened"
+   * and "Frightened 2" are different numbers on every roll the heir makes,
+   * and the tooltip carries the rule so the sheet does not have to be read
+   * next to the book.
+   */
+  const condRow = $("cond-row");
+  function renderConditions() {
+    condRow.innerHTML = "";
+    for (const c of game.conditionsOf("pc")) {
+      const def = CONDITIONS[c.id];
+      const el = document.createElement("span");
+      // Helpful and harmful chips read differently at a glance: the disc of
+      // force is the gold the rest of the sheet is, a debuff is not.
+      el.className = "chip" + (def && def.affects && def.affects.ac < 0 ? " bad" : "");
+      el.textContent = describe(c);
+      el.title = def ? def.note : "";
+      condRow.appendChild(el);
+    }
   }
 
   /* ------------------------------------------------------------------ *
@@ -563,7 +590,12 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     const key = x + "," + y;
     if (!game.explored.has(key)) { announce("Unexplored dark."); return; }
     const c = game.creatureAt(x, y);
-    if (c) { announce(`${game.def(c).name}, ${c.hp} of ${game.def(c).hp} HP, ${c.awake ? "awake" : "dormant"}.`); return; }
+    if (c) {
+      const bag = game.conditionsOf(c).map(describe).join(", ");
+      announce(`${game.def(c).name}, ${c.hp} of ${game.def(c).hp} HP, ` +
+        `${c.awake ? "awake" : "dormant"}${bag ? `, ${bag.toLowerCase()}` : ""}.`);
+      return;
+    }
     if (game.isPillar(x, y)) { announce("A carved pillar."); return; }
     const t = game.tileAt(x, y);
     if (t === TILE.WALL) { announce("Wall."); return; }
@@ -603,6 +635,19 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     if (ev.type === "end") showEnd();
     if (ev.type === "hint") $("hint").textContent = ev.text;
     if (ev.type === "woke" || ev.type === "slept" || ev.type === "gate") refresh();
+    if (ev.type === "condition") {
+      refresh();
+      // Out loud, both ways. A debuff a screen-reader user cannot hear is not
+      // a mechanic — the chip and the marker are both silent, and the log
+      // scrolls past. The creature's name rather than its key: "vault:
+      // vault-keeper@11,1 is frightened 1" is a line nobody can use.
+      const c = ev.actor === "pc" ? null : game.byKey(ev.actor);
+      const who = ev.actor === "pc" ? content.pc.name : (c ? game.def(c).name : ev.actor);
+      const what = CONDITIONS[ev.condition]?.name || ev.condition;
+      announce(ev.value > 0
+        ? `${who} is ${describe({ id: ev.condition, value: ev.value }).toLowerCase()}.`
+        : `${who} is no longer ${what.toLowerCase()}.`);
+    }
     if (ev.type === "area") {
       // A stairway swaps the whole board out from under the player. Any armed
       // command was aimed at the room they just left, and the keyboard cursor

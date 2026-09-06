@@ -13,10 +13,14 @@
 //      on a setTimeout, so nothing in the rules can be raced by one.
 
 import {
-  DEG, DEG_NAME, check, rollDamage, basicSaveDamage, mapPenalty,
+  DEG, DEG_NAME, check, die, rollDamage, basicSaveDamage, mapPenalty,
   feetBetween, isAdjacent, stridesFor,
 } from "./rules.js";
 import { makeWorld, TILE, packExplored, unpackExplored } from "./world.js";
+import {
+  CONDITIONS, modifiers, addCondition, removeCondition, hasCondition, valueOf,
+  makeCondition, persistentIn, tick, describe, packBag,
+} from "./conditions.js";
 
 export const LOG_MEMORY = 200;   // entries kept in RAM
 export const LOG_SAVED = 60;     // entries written to a save
@@ -59,6 +63,15 @@ export function createGame({ content, rng = Math.random, state = null }) {
   let area = content.areas[run.areaId] || content.areas[content.startArea];
   let world = makeWorld(area);
 
+  // A state handed straight in — a save this build wrote, or the hand-built
+  // ones test/smoke.mjs constructs — is not guaranteed to carry a condition
+  // bag: `conditions` is additive and absent from every save written before
+  // this phase. save.js's repair fills it for a loaded save; this fills it for
+  // the ones that never went through repair, so nothing below has to ask
+  // whether the array exists before reading it.
+  run.pc.conditions ??= [];
+  for (const c of run.creatures) c.conditions ??= [];
+
   function freshState() {
     const startArea = content.areas[content.startArea];
     return {
@@ -72,6 +85,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
       pc: {
         x: startArea.pcSpawn.x, y: startArea.pcSpawn.y,
         hp: content.pc.hp, slots: content.pc.slots, focus: content.pc.focus,
+        conditions: [],
       },
       // Every area's creatures exist in the state from the start, not just the
       // one the PC is standing in — a construct in a room you have not opened
@@ -79,7 +93,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
       creatures: allPlacements(content).map(pl => ({
         key: placementKey(pl.areaId, pl), area: pl.areaId, creature: pl.creature, wakesOn: pl.wakesOn,
         x: pl.x, y: pl.y, hp: content.creatures[pl.creature].hp,
-        awake: false, dead: false,
+        awake: false, dead: false, conditions: [],
       })),
       loreRead: [],
       gateOpen: false,
@@ -100,7 +114,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
     idx: 0,
     actions: 3,
     attacks: 0,              // this turn's Multiple Attack Penalty counter
-    shielded: false,         // Shield cantrip, until the start of your next turn
+    // Whose turn is actually in progress, which is not the same question as
+    // `queue[idx]`: the end-of-turn boundary has to know who is finishing, and
+    // by the time advance() has moved idx the answer is gone. Null between
+    // encounters and at the very first advance() of one.
+    acting: null,
     // The reaction budget: one per actor per round, and runtime-only. A save
     // never carries it, because a reaction is spent inside a turn and a reload
     // re-rolls initiative anyway (see begin()). `reaction` is the PC's;
@@ -151,8 +169,110 @@ export function createGame({ content, rng = Math.random, state = null }) {
     occupied: (x, y) => occupied(x, y, ignoreKey),
   });
 
-  /** Effective AC, including the Shield cantrip if it is up. */
-  const pcAC = () => content.pc.ac + (turn.shielded ? (content.commandById.shield?.acBonus || 0) : 0);
+  /* ------------------------------------------------------------------ *
+   * Conditions                                                         *
+   *                                                                    *
+   * `turn.shielded` used to be a boolean on the runtime turn object and *
+   * it was the whole of this engine's status-effect system: one buff,  *
+   * hardcoded at four call sites, with nowhere for a second one to go.  *
+   * A condition bag replaces it, and the Shield cantrip is now an       *
+   * ordinary entry in that bag with the pack's own acBonus as its       *
+   * value. The boolean is gone from `turn` entirely, which is the proof *
+   * the funnel below is real rather than a second path beside it.       *
+   *                                                                    *
+   * The bags live on the saved run — `run.pc.conditions` and a          *
+   * `conditions` array on each creature — because a condition is        *
+   * exactly the thing a reload has to survive, and that is the opposite *
+   * case from `turn.reaction`, which a reload re-rolls initiative past  *
+   * anyway. Additive: absent from a save with none (#37).               *
+   * ------------------------------------------------------------------ */
+
+  const bagOf = a => (a === "pc" ? run.pc : a).conditions;
+  const setBag = (a, bag) => { (a === "pc" ? run.pc : a).conditions = bag; };
+  const nameOf = a => (a === "pc" ? content.pc.name : def(a).name);
+  const actorKeyOf = a => (a === "pc" ? "pc" : a.key);
+
+  /**
+   * The funnel. Every modifier this engine applies to a number comes from
+   * here, for the four kinds conditions.js names, and there is no second way
+   * in: a bonus that is not in an actor's bag does not exist.
+   */
+  function modifiersFor(actor, kind) {
+    return modifiers(bagOf(actor), kind);
+  }
+
+  /**
+   * The only d20 in this file.
+   *
+   * Every check the engine rolls — an attack, a save, a Perception check for
+   * initiative, a reaction's Strike — goes through this one function so the
+   * modifier lookup cannot be forgotten at a call site. smoke.mjs reads this
+   * file's own source and fails if a second `check(` appears anywhere in it,
+   * the same drift guard the three trigger names already have, and for the
+   * same reason: the bug is silence, not a crash.
+   *
+   * The one d20 that deliberately does not come through here is the flat
+   * check that ends persistent damage. A flat check takes no modifiers at all
+   * (Player Core p.409), so it rolls a bare die rather than pretending the
+   * funnel applies and passing zero.
+   */
+  function roll(actor, kind, bonus, dc) {
+    return check(bonus + modifiersFor(actor, kind), dc, rng);
+  }
+
+  /** Effective AC for either side, conditions included. */
+  const acOf = actor =>
+    (actor === "pc" ? content.pc.ac : def(actor).ac) + modifiersFor(actor, "ac");
+  const pcAC = () => acOf("pc");
+
+  /** Note that a condition has come off, without touching the bag. */
+  function noteEnd(actor, id, why) {
+    info(`${nameOf(actor)} is no longer ${CONDITIONS[id].name.toLowerCase()}${why ? ` — ${why}` : ""}.`);
+    emit({ type: "condition", actor: actorKeyOf(actor), condition: id, value: 0 });
+  }
+
+  /**
+   * Put a condition on somebody. Returns whether anything changed — a second
+   * frightened 1 on an already-frightened 1 actor is not news.
+   */
+  function applyCondition(actor, id, value, until = null) {
+    const had = valueOf(bagOf(actor), id);
+    setBag(actor, addCondition(bagOf(actor), makeCondition(id, { value, until })));
+    const now = valueOf(bagOf(actor), id);
+    if (now === had) return false;
+    info(`${nameOf(actor)} is ${describe({ id, value: now }).toLowerCase()}.`);
+    emit({ type: "condition", actor: actorKeyOf(actor), condition: id, value: now });
+    return true;
+  }
+
+  function endCondition(actor, id, why) {
+    if (!hasCondition(bagOf(actor), id)) return false;
+    setBag(actor, removeCondition(bagOf(actor), id));
+    noteEnd(actor, id, why);
+    return true;
+  }
+
+  /** Everything on one actor, for the sheet, the renderer and the suite. */
+  const conditionsOf = actor => bagOf(actor).map(c => ({ ...c }));
+
+  /**
+   * A command or a creature's attack that leaves something behind.
+   *
+   * `deg` is the degree the *roller* got, which is the attacker for "hit" and
+   * "crit" and the target for "crit-fail" — an attack that lands and a save
+   * that is critically failed are the two shapes a pack can ask for, and each
+   * reads from the roll that already happened rather than a second one.
+   */
+  function applyInflict(spec, target, deg) {
+    if (!spec) return false;
+    if (target !== "pc" && (target.dead || !target.awake)) return false;
+    if (run.outcome) return false;
+    const fires = spec.on === "crit" ? deg === DEG.CRIT_SUCC
+      : spec.on === "hit" ? deg >= DEG.SUCC
+        : deg === DEG.CRIT_FAIL;
+    if (!fires) return false;
+    return applyCondition(target, spec.condition, spec.value);
+  }
 
   /* ------------------------------------------------------------------ *
    * Vision                                                             *
@@ -296,7 +416,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
     if (sideOf(who) === sideOf(ctx.actor)) return "ally";
     // The Shield cantrip is this engine's only shield, and blocking with it
     // ends it (Player Core: the force disc is destroyed). Only the PC has one.
-    if (cmd.requiresShield && !(who === "pc" && turn.shielded)) return "no-shield";
+    if (cmd.requiresShield && !(who === "pc" && hasCondition(bagOf("pc"), "shielded"))) return "no-shield";
 
     // Exactly one reach test per trigger, and the move trigger owns its own.
     // Both halves matter and they fail differently: without the first, a
@@ -330,7 +450,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
       const name = who === "pc" ? content.pc.name : def(who).name;
       info(`↺ ${name} — ${cmd.name}: ${blocked} damage stopped (hardness ${cmd.hardness}).`);
       // The disc is spent whether it soaked one point or five.
-      if (cmd.requiresShield) turn.shielded = false;
+      if (cmd.requiresShield) endCondition(who, "shielded", "the disc shatters");
       return;
     }
 
@@ -346,12 +466,12 @@ export function createGame({ content, rng = Math.random, state = null }) {
     const bonus = mine ? cmd.attackBonus : def(who).attackBonus;
     const dmgSpec = mine ? cmd.damage : def(who).damage;
     const dtype = mine ? cmd.damageType : def(who).damageType;
-    const ac = victim === "pc" ? pcAC() : def(victim).ac;
+    const ac = acOf(victim);
     const vname = victim === "pc" ? content.pc.name : def(victim).name;
     info(ctx.event === "move-out-of-reach"
       ? `↺ ${name} — ${cmd.name}, as ${vname} leaves reach.`
       : `↺ ${name} — ${cmd.name}, against ${vname}.`);
-    const r = check(bonus, ac, rng);
+    const r = roll(who, "attack", bonus, ac);
     dice(`${label} vs ${vname} (AC ${ac})`, r.math, r.deg);
     if (r.deg < DEG.SUCC) return;
     const dmg = rollDamage(dmgSpec, rng);
@@ -454,8 +574,8 @@ export function createGame({ content, rng = Math.random, state = null }) {
     narrative(def(c).wakeLine.replace("{name}", def(c).name));
     emit({ type: "woke", key: c.key });
     if (turn.mode === "combat") {
-      const roll = check(def(c).perception, 0, rng);
-      dice(`Initiative — ${def(c).name}`, `Perception: d20(${roll.natural}) +${def(c).perception} = ${roll.total}`, DEG.SUCC);
+      const r = roll(c, "perception", def(c).perception, 0);
+      dice(`Initiative — ${def(c).name}`, initiativeMath(r), DEG.SUCC);
       // Slot it in after whoever is acting, so a creature that wakes mid-round
       // does not get a free turn ahead of the PC who just walked past it.
       turn.queue.splice(turn.idx + 1, 0, c.key);
@@ -464,19 +584,27 @@ export function createGame({ content, rng = Math.random, state = null }) {
     }
   }
 
+  /**
+   * Initiative reads as a Perception check rather than a check against a DC,
+   * so it gets its own line rather than `r.math`'s "vs DC 0". `r.bonus` and
+   * not the creature's raw Perception: a frightened sentinel rolls initiative
+   * at its penalty, and a readout that showed the sheet number would be the
+   * one place in the log where the funnel is invisible.
+   */
+  const initiativeMath = r =>
+    `Perception: d20(${r.natural}) ${r.bonus >= 0 ? "+" : "-"}${Math.abs(r.bonus)} = ${r.total}`;
+
   function startCombat() {
     turn.mode = "combat";
     run.stats.rounds++;
     turn.reaction = 1; turn.reacted.clear();
     const rolls = [];
-    const pcRoll = check(content.pc.perception, 0, rng);
-    dice(`Initiative — ${content.pc.name}`,
-      `Perception: d20(${pcRoll.natural}) +${content.pc.perception} = ${pcRoll.total}`, DEG.SUCC);
+    const pcRoll = roll("pc", "perception", content.pc.perception, 0);
+    dice(`Initiative — ${content.pc.name}`, initiativeMath(pcRoll), DEG.SUCC);
     rolls.push({ key: "pc", total: pcRoll.total, isPC: true });
     for (const c of awake()) {
-      const r = check(def(c).perception, 0, rng);
-      dice(`Initiative — ${def(c).name}`,
-        `Perception: d20(${r.natural}) +${def(c).perception} = ${r.total}`, DEG.SUCC);
+      const r = roll(c, "perception", def(c).perception, 0);
+      dice(`Initiative — ${def(c).name}`, initiativeMath(r), DEG.SUCC);
       rolls.push({ key: c.key, total: r.total, isPC: false });
     }
     rolls.sort((a, b) => b.total - a.total || (a.isPC ? -1 : 1)); // PC wins ties
@@ -501,6 +629,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
       if (world.hasLoS(c.x, c.y, run.pc.x, run.pc.y, run.gateOpen)) continue;
       c.awake = false;
       c.hp = def(c).hp;
+      // It reknits to full HP; it reknits out of whatever was stuck to it too.
+      // A construct that walks away burning and comes back at full HP still
+      // burning is the one shape neither rule was arguing for.
+      for (const cond of c.conditions) noteEnd(c, cond.id, "it settles back into stone");
+      c.conditions = [];
       narrative(def(c).sleepLine.replace("{name}", def(c).name));
       emit({ type: "slept", key: c.key });
       any = true;
@@ -510,8 +643,20 @@ export function createGame({ content, rng = Math.random, state = null }) {
 
   function endCombat(why) {
     turn.mode = "explore";
-    turn.queue = []; turn.idx = 0; turn.actions = 3; turn.attacks = 0; turn.shielded = false;
+    turn.queue = []; turn.idx = 0; turn.actions = 3; turn.attacks = 0;
+    turn.acting = null;
     turn.reaction = 1; turn.reacted.clear();
+    // Every duration in this engine is measured in turn boundaries, and there
+    // are none outside an encounter: a frightened PC would stay frightened
+    // across the whole delve and a burning sentinel would burn forever, both
+    // because the clock they tick against stopped. So the encounter ending
+    // ends them, out loud (locked #137).
+    for (const cond of run.pc.conditions) noteEnd("pc", cond.id, "the encounter ends");
+    run.pc.conditions = [];
+    for (const c of living()) {
+      for (const cond of c.conditions) noteEnd(c, cond.id, "the encounter ends");
+      c.conditions = [];
+    }
     if (why === "cleared") narrative("Silence returns to the vault.");
     emit({ type: "mode", mode: "explore" });
     setHint(run.gateOpen ? content.gate.openHint : "The way is clear, for now.");
@@ -539,8 +684,69 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * things it did — strides with their squares, strikes with their rolls — for
    * the renderer to play back. Nothing here sleeps.
    */
+  /**
+   * Every actor's durations, at one boundary.
+   *
+   * `boundary` is whose turn is starting or ending; each bag is ticked as its
+   * own owner, because the two are different questions. A condition that
+   * expires "at the start of your next turn" names an actor, and it can be an
+   * actor other than the one wearing it — the Shield cantrip happens to be
+   * self-owned, and building only for that case is how the next one arrives
+   * broken. A value that wears off does so at the end of the afflicted
+   * actor's own turn and nowhere else.
+   */
+  function boundary(who, when) {
+    for (const actor of ["pc", ...living()]) {
+      const owner = actor === "pc" ? "pc" : actor.key;
+      const { bag, expired } = tick(bagOf(actor), owner, who, when);
+      // Unconditionally, not only when something expired: a value that decays
+      // from 2 to 1 produces a new bag and an empty `expired` list, and an
+      // assignment guarded on that list is a frightened 2 that never becomes a
+      // frightened 1. It read as working — the condition was there, the chip
+      // was there, the penalty was there — and only the number was frozen.
+      setBag(actor, bag);
+      for (const e of expired) noteEnd(actor, e.id, e.why === "decayed" ? null : "its duration runs out");
+    }
+  }
+
+  /**
+   * The end of one actor's turn: persistent damage, then durations.
+   *
+   * Persistent damage first because it can kill, and a creature that dies to
+   * the fire it is standing in should not first have the fire tick down. The
+   * flat check that ends it is the one d20 in this file that does not go
+   * through `roll` — a flat check takes no modifiers (Player Core p.409), and
+   * routing it through the funnel would let a frightened creature burn longer,
+   * which is not a rule anybody wrote.
+   */
+  function endOfTurn(who) {
+    const actor = who === "pc" ? "pc" : byKey(who);
+    if (!actor) return;
+    for (const p of persistentIn(bagOf(actor))) {
+      if (run.outcome || turn.mode !== "combat") break;
+      if (actor !== "pc" && actor.dead) break;
+      const dmg = rollDamage(p.damage, rng);
+      const name = CONDITIONS[p.id].name.toLowerCase();
+      if (actor === "pc") hurtPC(dmg.total, `${name}: ${dmg.math}`, p.dtype, null);
+      else hurtCreature(actor, dmg.total, `${name}: ${dmg.math}`, p.dtype, null);
+      if (actor !== "pc" && actor.dead) break;
+      const nat = die(20, rng);
+      const beat = nat >= p.flatDC;
+      dice(`${nameOf(actor)} — flat check to end ${name}`,
+        `d20(${nat}) vs DC ${p.flatDC}`, beat ? DEG.SUCC : DEG.FAIL);
+      if (beat) endCondition(actor, p.id, "the flames gutter out");
+    }
+    boundary(who, "end");
+  }
+
   function advance() {
     if (turn.mode !== "combat") return null;
+    // The turn that is finishing, before the one that is starting. This is the
+    // only place in the engine a duration moves, and `turn.acting` is the only
+    // reason it can be: by the time `idx` has moved, whose turn just ended is
+    // no longer a question the queue can answer.
+    if (turn.acting) { const done = turn.acting; turn.acting = null; endOfTurn(done); }
+    if (turn.mode !== "combat" || run.outcome) return null;
     if (!awake().length) { endCombat("cleared"); return null; }
 
     for (let guard = 0; guard <= turn.queue.length + 1; guard++) {
@@ -552,7 +758,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
         turn.actions = 3;
         turn.attacks = 0;
         turn.reaction = 1;          // one reaction, refreshed here and nowhere else
-        turn.shielded = false;      // Shield lapses at the start of your turn
+        turn.acting = "pc";
+        // Shield lapses here, but as a duration expiring rather than a field
+        // being cleared: it is `{ who: "pc", when: "start" }` on an ordinary
+        // condition, and this line no longer knows the cantrip exists.
+        boundary("pc", "start");
         emit({ type: "turn", actor: "pc" });
         setHint("Your turn: 3 actions. Stride, Strike, or cast.");
         return { actor: "pc" };
@@ -567,6 +777,8 @@ export function createGame({ content, rng = Math.random, state = null }) {
         continue;
       }
       turn.reacted.delete(key);   // this creature's reaction, refreshed
+      turn.acting = key;
+      boundary(key, "start");
       emit({ type: "turn", actor: key });
       return { actor: key, script: runCreatureTurn(c) };
     }
@@ -606,7 +818,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
         announceStrike(c, "pc");
         if (c.dead || run.outcome) return;
         const ac = pcAC();
-        const r = check(d.attackBonus - pen, ac, rng);
+        const r = roll(c, "attack", d.attackBonus - pen, ac);
         dice(`${d.name} — ${d.attackName} vs ${content.pc.name} (AC ${ac})`, r.math, r.deg);
         const step = { kind: "strike", target: "pc", deg: r.deg };
         if (r.deg >= DEG.SUCC) {
@@ -617,6 +829,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
           // once anything on incoming-damage has had its say.
           step.damage = hurtPC(total, math, d.damageType, c);
         }
+        applyInflict(d.inflicts, "pc", r.deg);
         yield step;
         continue;
       }
@@ -880,7 +1093,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
     if (cmd.kind === "reaction") {
       if (turn.mode !== "combat") return "explore";
       if (turn.reaction < 1) return "reaction-spent";
-      if (cmd.requiresShield && !turn.shielded) return "no-shield";
+      if (cmd.requiresShield && !hasCondition(bagOf("pc"), "shielded")) return "no-shield";
       return null;
     }
     if (turn.mode === "combat") {
@@ -930,14 +1143,16 @@ export function createGame({ content, rng = Math.random, state = null }) {
       // A reaction can end the swing before it is rolled — by killing its
       // target, or by killing you. The action is spent either way.
       if (run.outcome || c.dead) return after(cmd, { ok: true, interrupted: true });
-      const r = check(cmd.attackBonus - pen, def(c).ac, rng);
-      dice(`${cmd.name} vs ${def(c).name} (AC ${def(c).ac})`, r.math, r.deg);
+      const ac = acOf(c);
+      const r = roll("pc", "attack", cmd.attackBonus - pen, ac);
+      dice(`${cmd.name} vs ${def(c).name} (AC ${ac})`, r.math, r.deg);
       if (r.deg >= DEG.SUCC) {
         const dmg = rollDamage(cmd.damage, rng);
         let total = dmg.total, math = dmg.math;
         if (r.deg === DEG.CRIT_SUCC) { total *= 2; math += ` ×2 (crit) = ${total}`; }
         hurtCreature(c, total, math, cmd.damageType, "pc");
       }
+      applyInflict(cmd.inflicts, c, r.deg);
       return after(cmd, { ok: true, deg: r.deg });
     }
 
@@ -976,7 +1191,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
         hitAny = true;
         // A creature caught in a spell notices the caster, whatever it was doing.
         if (!c.awake) wake(c);
-        const r = check(def(c).saves[cmd.save], content.pc.spellDC, rng);
+        const r = roll(c, "save", def(c).saves[cmd.save], content.pc.spellDC);
         dice(`${def(c).name} — basic ${cmd.save === "ref" ? "Reflex" : cmd.save} save`, r.math, r.deg);
         const dealt = basicSaveDamage(r.deg, dmg.total);
         if (dealt > 0) {
@@ -984,6 +1199,10 @@ export function createGame({ content, rng = Math.random, state = null }) {
         } else {
           push("damage", `→ ${def(c).name} takes no damage`, "critical success on the save");
         }
+        // "crit-fail" reads the target's own save, not the caster's roll: this
+        // is the one shape where the degree that matters belongs to the
+        // creature the effect landed on.
+        applyInflict(cmd.inflicts, c, r.deg);
       }
       if (!hitAny) info("The flames scorch empty stone — no creature in the cone.");
       return after(cmd, { ok: true });
@@ -991,7 +1210,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
 
     if (cmd.kind === "self-buff") {
       spend(cmd);
-      turn.shielded = true;
+      // The value is the pack's own acBonus, so a pack that writes a +2 disc
+      // gets a +2 disc without this line or conditions.js knowing the number.
+      // `until` is the whole of "lasts until the start of your next turn" —
+      // the boundary code in advance() takes it from here.
+      applyCondition("pc", "shielded", cmd.acBonus || 1, { who: "pc", when: "start" });
       info(`Cast ${cmd.name} (${cmd.costGlyph}) — AC ${content.pc.ac} → ${pcAC()} until your next turn.`);
       return after(cmd, { ok: true });
     }
@@ -1092,7 +1315,8 @@ export function createGame({ content, rng = Math.random, state = null }) {
     get visible() { return visible; },
     get explored() { return explored; },
     get actionsLeft() { return turn.mode === "combat" ? turn.actions : 3; },
-    get shielded() { return turn.shielded; },
+    get shielded() { return hasCondition(bagOf("pc"), "shielded"); },
+    conditionsOf, modifiersFor,
     get reactionLeft() { return turn.reaction > 0; },
     lastTrigger: event => lastByEvent.get(event) || null,
     reachOf,
@@ -1109,11 +1333,20 @@ export function createGame({ content, rng = Math.random, state = null }) {
 
     // for the save layer
     snapshot() {
+      // packBag() drops an empty bag rather than writing `conditions: []`, so
+      // a run with nothing stuck to anybody writes the same save this game
+      // wrote before conditions existed. Additive means additive.
+      const packed = o => {
+        const out = { ...o };
+        const bag = packBag(o.conditions);
+        if (bag) out.conditions = bag; else delete out.conditions;
+        return out;
+      };
       return {
         ...run,
         log: run.log.slice(-LOG_SAVED),
-        creatures: run.creatures.map(c => ({ ...c })),
-        pc: { ...run.pc },
+        creatures: run.creatures.map(packed),
+        pc: packed(run.pc),
         inventory: run.inventory.map(i => ({ ...i })),
         stats: { ...run.stats },
         // A fresh object, not the live one — run.fog keeps mutating after this

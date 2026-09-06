@@ -1563,6 +1563,67 @@ Two of them have moved since they were written:
    applied one level up. Reversing it is one command in `vault.json`.
    *Source: Absalom Phase 1.*
 
+137. **The encounter ending ends every condition.** Every duration in this
+   engine is measured in turn boundaries, and there are no turn boundaries
+   outside an encounter: a frightened PC would stay frightened for the rest
+   of the delve and a burning sentinel would burn forever, both because the
+   clock they tick against stopped rather than because anything decided
+   they should. So `endCombat()` clears the PC's bag and every living
+   creature's, out loud, with a line each. `checkDisengage()` does the same
+   for one creature that settles while the fight goes on, which is the
+   narrow case `endCombat` cannot reach: a construct that walks out of
+   sight, reknits to full HP (the anti-cheese heal) and comes back still
+   burning is the one reading neither rule was arguing for. The rejected
+   alternative was a real clock — persistent damage continuing in
+   exploration on some tick of its own — which would need a timer, and
+   nothing in these rules ever waits on one. Reversing it is deleting two
+   loops. *Source: Absalom Phase 2, increment 1.*
+
+138. **`game.js` rolls exactly one d20, and `smoke.mjs` counts them.** Every
+   check the engine makes goes through `roll(actor, kind, bonus, dc)`,
+   which adds `modifiersFor(actor, kind)` before calling `check()`. The
+   suite reads `game.js`'s own source, strips its comments and fails if a
+   second `check(` appears anywhere in the file — the same drift guard the
+   three trigger names already have, and for the same reason: a raw
+   `check()` written at a call site rolls a d20 that no condition can ever
+   move, and nothing about the line looks wrong. The deliberate exception
+   is the flat check that ends persistent damage, which rolls a bare
+   `die(20, rng)`: a flat check takes no modifiers at all (Player Core
+   p.409), and routing it through a funnel that does not apply to it would
+   let a frightened creature burn longer. The deletion of `turn.shielded`
+   is the proof the funnel is the only path — if anything still read the
+   boolean, it would not compile. *Source: Absalom Phase 2, increment 1.*
+
+139. **The condition catalogue is closed, and `inflicts` is content's only
+   door into it.** `conditions.js` names three conditions; `content.js`
+   refuses a pack that names a fourth, exactly as it refuses an unknown
+   tile or an unknown trigger, because a condition that validates and never
+   fires is silence a content author cannot debug. A pack applies one by
+   hanging `{ condition, value, on }` off a command or a creature, where
+   `on` is `hit`, `crit` or `crit-fail` — the first two read the attacker's
+   own degree, the third reads the *target's* save, which is the shape a
+   basic save wants. Two homebrew sources ship with it and neither is in
+   the book: Breathe Fire sets a critical failure alight, and a critical
+   Basalt Fist leaves the heir frightened 1. They are here because a
+   condition system nothing in the adventure applies is a system nobody
+   plays, and they were measured rather than assumed — 64.5% → 65.3%
+   (wizard) and 79.8% → 79.3% (fighter) over 2,000 seeded runs each, both
+   inside the band. Reversing either is deleting one `inflicts` block from
+   `vault.json`. *Source: Absalom Phase 2, increment 1.*
+
+140. **The same-type bonus rule is written before anything needs it.**
+   Player Core p.443: bonuses and penalties of a type do not stack — the
+   best bonus and the worst penalty of each type apply, and untyped ones
+   stack with everything. Today's catalogue has one status penalty and one
+   circumstance bonus, so summing and the real rule agree on every bag the
+   game can build, and the four lines that implement it look like dead
+   weight. They are not: the first day two status penalties meet, the
+   difference is a number that is quietly twice what the book says, on
+   every roll, with nothing to notice it. It is asserted against a
+   hand-built bag holding two frightened, which is what a hand-edited save
+   can contain even though `addCondition` merges them. *Source: Absalom
+   Phase 2, increment 1.*
+
 
 ---
 

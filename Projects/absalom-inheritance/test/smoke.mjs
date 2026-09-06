@@ -14,7 +14,12 @@ import {
   feetBetween, isAdjacent, stridesFor,
 } from "../js/rules.js";
 import { makeWorld, TILE, packExplored, unpackExplored } from "../js/world.js";
-import { loadPack, selectPc, ContentError, REACTION_TRIGGERS, REACTION_EFFECTS } from "../js/content.js";
+import { loadPack, selectPc, ContentError, REACTION_TRIGGERS, REACTION_EFFECTS, INFLICT_ON } from "../js/content.js";
+import {
+  CONDITIONS, CONDITION_IDS, MODIFIER_KINDS, BONUS_TYPES, isCondition,
+  makeCondition, addCondition, removeCondition, hasCondition, valueOf,
+  modifiers, persistentIn, tick, describe, repairBag, packBag,
+} from "../js/conditions.js";
 import { createGame } from "../js/game.js";
 import { makeSaveSlot, makeRepair, validRun, freshRun, SAVE_KEY, SAVE_VERSION } from "../js/save.js";
 import { playThrough, travel, fight } from "./autopilot.mjs";
@@ -1096,6 +1101,475 @@ function keeperFight(buildId, seed, pcAt = [10, 4]) {
 /* ========================================================================= *
  * 6 — the save slot
  * ========================================================================= */
+/* ========================================================================= *
+ * 7 — conditions
+ *
+ * The pure layer first, then the funnel, then the tick, then what a save
+ * carries. Everything in the first block is a function of its arguments: the
+ * whole reason conditions.js exists as its own module is that the interesting
+ * invariants — the same-type rule, which boundary a duration answers to, what
+ * a value does when it reaches zero — can be pinned without building a fight.
+ * ========================================================================= *
+ */
+section("conditions");
+
+/* -- the catalogue ------------------------------------------------------- */
+{
+  for (const [key, def] of Object.entries(CONDITIONS)) {
+    eq(def.id, key, `the catalogue's "${key}" knows its own id`);
+    ok(Object.isFrozen(def), `"${key}" is frozen`);
+    for (const kind of Object.keys(def.affects || {})) {
+      ok(MODIFIER_KINDS.includes(kind), `"${key}" only affects known kinds (${kind})`);
+    }
+    if (def.affects) ok(BONUS_TYPES.includes(def.bonusType), `"${key}" names a real bonus type`);
+    if (def.persistent) {
+      ok(def.persistent.damage && def.persistent.damage.n > 0, `"${key}" carries a parsed damage spec`);
+      ok(def.persistent.flatDC > 0, `"${key}" carries a flat DC`);
+    }
+  }
+  eq(CONDITION_IDS.length, 3, "three conditions ship");
+  ok(isCondition("frightened"), "frightened is one of them");
+  ok(!isCondition("clumsy"), "clumsy is not — the catalogue is closed, like the tile names");
+}
+
+/* -- building one -------------------------------------------------------- */
+{
+  const c = makeCondition("frightened", { value: 2 });
+  eq(c.id, "frightened", "makeCondition keeps the id");
+  eq(c.value, 2, "and the value");
+  eq(c.until, null, "and defaults to no duration");
+  eq(makeCondition("frightened").value, 1, "value defaults to 1");
+  throws(() => makeCondition("clumsy"), "an unknown condition throws rather than becoming a NaN modifier");
+  throws(() => makeCondition("frightened", { value: 0 }), "value 0 throws — a condition at 0 is a condition that is gone");
+  throws(() => makeCondition("frightened", { value: 1.5 }), "a fractional value throws");
+  throws(() => makeCondition("shielded", { until: { who: "pc", when: "later" } }), "an unknown boundary throws");
+  throws(() => makeCondition("shielded", { until: { when: "start" } }), "an until with no actor throws");
+  const kept = makeCondition("shielded", { value: 1, until: { who: "pc", when: "start" } });
+  eq(kept.until.when, "start", "a well-formed until survives");
+}
+
+/* -- the bag ------------------------------------------------------------- */
+{
+  const empty = [];
+  const one = addCondition(empty, makeCondition("frightened", { value: 1 }));
+  eq(empty.length, 0, "addCondition does not mutate the bag it was given");
+  eq(one.length, 1, "it returns a new one with the condition in it");
+  eq(valueOf(one, "frightened"), 1, "and the value reads back");
+  eq(valueOf(one, "shielded"), 0, "a condition that is not there is worth 0, not undefined");
+
+  // Player Core p.444: a second instance of the same condition does not stack.
+  const worse = addCondition(one, makeCondition("frightened", { value: 3 }));
+  eq(worse.length, 1, "a second frightened does not become a second entry");
+  eq(valueOf(worse, "frightened"), 3, "the higher value wins");
+  const better = addCondition(worse, makeCondition("frightened", { value: 1 }));
+  eq(valueOf(better, "frightened"), 3, "and a lower one loses rather than replacing it");
+
+  const two = addCondition(worse, makeCondition("shielded", { value: 1 }));
+  eq(two.length, 2, "two different conditions coexist");
+  eq(removeCondition(two, "shielded").length, 1, "removeCondition takes one out");
+  ok(!hasCondition(removeCondition(two, "shielded"), "shielded"), "and it is gone");
+  eq(removeCondition(two, "clumsy").length, 2, "removing what was never there is not an error");
+}
+
+/* -- the same-type rule -------------------------------------------------- */
+{
+  eq(modifiers([], "attack"), 0, "an empty bag is worth nothing");
+  eq(modifiers(null, "ac"), 0, "and so is no bag at all");
+  const f2 = [makeCondition("frightened", { value: 2 })];
+  eq(modifiers(f2, "attack"), -2, "frightened 2 is -2 to attack");
+  eq(modifiers(f2, "save"), -2, "and -2 to saves");
+  eq(modifiers(f2, "perception"), -2, "and -2 to Perception");
+  eq(modifiers(f2, "ac"), -2, "and -2 to AC — a status penalty hits the DC too");
+
+  const disc = [makeCondition("shielded", { value: 1 })];
+  eq(modifiers(disc, "ac"), 1, "the disc is worth its own acBonus");
+  eq(modifiers(disc, "attack"), 0, "and nothing to anything else");
+  eq(modifiers([...f2, ...disc], "ac"), -1, "a circumstance bonus and a status penalty do stack with each other");
+
+  // Player Core p.443. Two penalties of the same type do not stack — the worst
+  // one applies. A bag cannot normally hold two frightened (addCondition
+  // merges them), but a hand-edited save can, and the rule has to hold there
+  // rather than quietly double the penalty.
+  const doubled = [
+    { id: "frightened", value: 2, until: null },
+    { id: "frightened", value: 1, until: null },
+  ];
+  eq(modifiers(doubled, "attack"), -2, "two status penalties do not stack: the worst one applies");
+  throws(() => modifiers(f2, "damage"), "an unknown modifier kind throws rather than silently returning 0");
+}
+
+/* -- persistent damage, as a spec rather than a roll ---------------------- */
+{
+  eq(persistentIn([makeCondition("frightened")]).length, 0, "frightened deals no damage");
+  const burn = persistentIn([makeCondition("persistent-fire")]);
+  eq(burn.length, 1, "burning does");
+  eq(burn[0].dtype, "fire", "and it is fire");
+  eq(burn[0].flatDC, 15, "with a DC 15 flat check to end it (Player Core p.409)");
+  eq(burn[0].damage.n, 1, "1d4, parsed once at module load rather than on every tick");
+  eq(burn[0].damage.s, 4, "1d4, on the die size too");
+}
+
+/* -- the boundary: whose turn, and whose condition ----------------------- */
+{
+  const disc = [makeCondition("shielded", { value: 1, until: { who: "pc", when: "start" } })];
+  eq(tick(disc, "pc", "keeper", "start").expired.length, 0,
+    "a duration that names the PC's turn does not expire at somebody else's");
+  eq(tick(disc, "pc", "pc", "end").expired.length, 0, "nor at the wrong end of the right turn");
+  const gone = tick(disc, "pc", "pc", "start");
+  eq(gone.expired.length, 1, "it expires at the start of the PC's turn, which is what it says");
+  eq(gone.expired[0].why, "duration", "and says why");
+  eq(gone.bag.length, 0, "and comes out of the bag");
+
+  // Decay answers to the afflicted actor's own turn and nobody else's. Fold
+  // the two questions together and a frightened creature loses a point every
+  // time anyone in the initiative order finishes a turn.
+  const f2 = [makeCondition("frightened", { value: 2 })];
+  eq(tick(f2, "keeper", "pc", "end").bag[0].value, 2,
+    "frightened does not decay at the end of somebody else's turn");
+  eq(tick(f2, "keeper", "keeper", "start").bag[0].value, 2, "nor at the start of its own");
+  const once = tick(f2, "keeper", "keeper", "end");
+  eq(once.bag[0].value, 1, "it decays by one at the end of its own turn");
+  eq(once.expired.length, 0, "and is still there at 1");
+  const twice = tick(once.bag, "keeper", "keeper", "end");
+  eq(twice.bag.length, 0, "the second tick takes it to 0, which is gone");
+  eq(twice.expired[0].why, "decayed", "for the other of the two reasons");
+  eq(tick([makeCondition("persistent-fire")], "pc", "pc", "end").bag.length, 1,
+    "burning does not decay — it ends on its flat check or not at all");
+}
+
+/* -- what a chip says ---------------------------------------------------- */
+{
+  eq(describe({ id: "frightened", value: 2 }), "Frightened 2", "a valued condition shows its value");
+  eq(describe({ id: "shielded", value: 1 }), "Shielded", "the disc does not — its value is an AC bonus, not a stack");
+  eq(describe({ id: "persistent-fire", value: 1 }), "Burning", "and burning reads as burning");
+}
+
+/* -- repairing a bag off a save ------------------------------------------ */
+{
+  eq(repairBag(undefined).length, 0, "a save with no conditions key repairs to an empty bag");
+  eq(repairBag(null).length, 0, "and so does a null one");
+  eq(repairBag("frightened").length, 0, "and so does a string where an array belongs");
+  eq(repairBag([{ id: "clumsy", value: 2 }]).length, 0,
+    "a condition this build no longer defines is dropped rather than added to every check as undefined");
+  eq(repairBag([{ id: "frightened", value: 0 }]).length, 0, "a value of 0 is dropped");
+  eq(repairBag([{ id: "frightened", value: "two" }]).length, 0, "a value that is not a number is dropped");
+  eq(repairBag([{ id: "frightened", value: 900 }])[0].value, 99, "an absurd value is clamped rather than kept");
+  eq(repairBag([{ id: "frightened", value: 2 }, { id: "frightened", value: 1 }]).length, 1,
+    "a duplicated id collapses");
+  eq(repairBag([{ id: "frightened", value: 1 }, { id: "frightened", value: 3 }])[0].value, 3,
+    "to its highest value");
+  eq(repairBag([{ id: "shielded", value: 1, until: { who: "pc", when: "nope" } }])[0].until, null,
+    "a malformed until is dropped, which makes the condition permanent rather than crashing the tick");
+  eq(repairBag([{ id: "shielded", value: 1, until: { who: "pc", when: "start" } }])[0].until.who, "pc",
+    "a good one survives");
+  eq(packBag([]), undefined, "an empty bag writes nothing to the save at all");
+  eq(packBag(undefined), undefined, "and neither does no bag");
+  eq(packBag([makeCondition("frightened", { value: 2 })])[0].value, 2, "a real one writes its value");
+}
+
+/* -- one funnel, and the proof it is the only one ------------------------ */
+{
+  // The drift guard, the same shape as the trigger-name one above and for the
+  // same reason: the failure mode is silence. A `check()` written straight at
+  // a call site rolls a d20 that no condition can ever move, and nothing about
+  // it looks wrong — the number is just quietly the sheet number forever.
+  // Broken on purpose by putting the PC's Strike back on a raw check().
+  const src = fs.readFileSync(path.join(HERE, "..", "js", "game.js"), "utf8");
+  // Comments stripped first. This is a claim about code, and a comment naming
+  // the call is not a second call site — the previous version of this guard
+  // failed on its own explanatory comment, which is a test that makes the file
+  // worse to read.
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  eq((code.match(/\bcheck\(/g) || []).length, 1,
+    "game.js rolls exactly one kind of d20, and it is the one that adds the modifiers");
+  ok(/function roll\(actor, kind, bonus, dc\) \{\s*return check\(bonus \+ modifiersFor\(actor, kind\), dc, rng\);\s*\}/.test(code),
+    "and that one call is the funnel itself");
+  ok(!/turn\.shielded/.test(code),
+    "turn.shielded is gone from game.js entirely — the deletion is the proof the funnel is real");
+  // The flat check is the deliberate exception: a flat check takes no
+  // modifiers (Player Core p.409), so it rolls a bare die rather than passing
+  // zero through a funnel that does not apply to it.
+  ok(/const nat = die\(20, rng\);/.test(code), "the flat check rolls a bare die, on purpose");
+}
+
+/* -- the second net, under the save layer -------------------------------- */
+{
+  // save.js's repair fills a missing bag on anything that came through the
+  // save layer. createGame fills one on anything that did not — a state handed
+  // straight in, which is every scenario this suite builds by hand. They are
+  // two different lines guarding the same absence, and the suite used to lean
+  // on the second while believing it was testing the first.
+  //
+  // Out of combat on purpose. The first turn boundary writes a bag back to
+  // every actor whether or not one expired, so any scenario that reaches an
+  // encounter has already been normalised by the time it can be asked — which
+  // is why the first version of this assertion stayed green with createGame's
+  // `??=` pair deleted. Exploration is where the line is actually load-bearing.
+  const bare = freshRun(content, "wizard");
+  delete bare.pc.conditions;
+  for (const c of bare.creatures) delete c.conditions;
+  const g = createGame({ content: resolved, rng: makeRng(1), state: bare });
+  g.begin();
+  eq(g.mode, "explore", "nothing is awake, so no boundary has run");
+  ok(Array.isArray(g.run.pc.conditions), "createGame gives a hand-built state a bag on the PC");
+  ok(g.run.creatures.every(c => Array.isArray(c.conditions)), "and one on every creature in it");
+  eq(g.conditionsOf("pc").length, 0, "and the sheet can be drawn before a single turn is taken");
+}
+
+/* -- the Shield cantrip, as an ordinary condition ------------------------ */
+{
+  const g = keeperFight("wizard", 1);
+  eq(g.conditionsOf("pc").length, 0, "a hand-built state with no conditions key boots with an empty bag");
+  eq(g.pcAC(), 15, "and the wizard's own AC");
+  ok(g.useCommand("shield").ok, "Vesper casts Shield");
+  eq(g.conditionsOf("pc").length, 1, "which puts one condition on her, not a boolean on the turn object");
+  eq(g.conditionsOf("pc")[0].id, "shielded", "and it is the disc");
+  eq(g.conditionsOf("pc")[0].value, content.commandById.shield.acBonus,
+    "carrying the pack's own acBonus as its value, so a +2 disc would be +2 here without a code change");
+  eq(g.conditionsOf("pc")[0].until.who, "pc", "until the start of her own next turn");
+  eq(g.modifiersFor("pc", "ac"), 1, "worth +1 through the funnel");
+  eq(g.pcAC(), 16, "which is the AC everything else in the engine reads");
+  ok(g.shielded, "and the getter the renderer uses still answers");
+
+}
+
+{
+  // The duration on its own, with nothing else in the fight touching it: a
+  // pack where Vesper has no Shield Block (so the disc is never spent
+  // blocking) and a Keeper that cannot land a fist (so nothing else moves her
+  // HP or her bag). All three are changed on purpose — the shipped fight ends the
+  // disc by blocking with it, which is a different line of code, and reading
+  // an expiry assertion against it would pass whether the duration worked or
+  // not.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.pcOptions.find(b => b.id === "wizard").commands =
+    p.pcOptions.find(b => b.id === "wizard").commands.filter(id => id !== "shield-block");
+  delete p.creatures["vault-keeper"].inflicts;
+  p.creatures["vault-keeper"].attackBonus = -50;   // it swings and never lands
+  const plain = loadPack(p);
+  const g = createGame({
+    content: selectPc(plain, "wizard"), rng: makeRng(1),
+    state: {
+      packId: plain.pack.id, buildId: "wizard", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 15, slots: 2, focus: 1 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  ok(g.useCommand("shield").ok, "Vesper casts Shield with nothing to block with it");
+  eq(g.pcAC(), 16, "AC 15 becomes 16");
+  // Round the initiative order back to the top of her own turn: the duration
+  // expires there, in advance(), and nowhere else. Broken on purpose by
+  // dropping the boundary("pc", "start") call, which left the disc up for the
+  // rest of the fight.
+  let r = g.endTurn();
+  while (r && r.actor !== "pc" && !g.run.outcome) r = g.advance();
+  ok(!g.run.outcome, "she survives the Keeper's round (seed 1)");
+  ok(!g.shielded, "the disc is gone at the top of her next turn");
+  eq(g.pcAC(), 15, "and her AC is her own again");
+  eq(g.conditionsOf("pc").length, 0, "with nothing left in the bag");
+  ok(g.run.log.some(e => e.text === "Vesper Quill is no longer shielded — its duration runs out."),
+    "and it said so on the way out rather than vanishing silently");
+}
+
+{
+  // The other way the disc ends: blocking with it. Same fight, same seed as
+  // the Shield Block test above, read through the bag rather than the getter.
+  const g = keeperFight("wizard", 1);
+  g.useCommand("shield");
+  eq(valueOf(g.conditionsOf("pc"), "shielded"), 1, "the disc is up");
+  g.endTurn();
+  ok(g.run.stats.reactions >= 1, "the Keeper's fist is blocked");
+  eq(valueOf(g.conditionsOf("pc"), "shielded"), 0, "and the disc is out of the bag, not merely false");
+  ok(g.run.log.some(e => e.text.includes("no longer shielded — the disc shatters")),
+    "with the reason it went");
+}
+
+/* -- frightened: a debuff on the PC, through every kind of number -------- */
+{
+  const g = keeperFight("fighter", 1);
+  const base = content.pcById.fighter;
+  eq(g.pcAC(), base.ac, "Kessa starts at her own AC");
+  // Hand-applied rather than played into: the Keeper only inflicts this on a
+  // critical hit, and waiting for one would make every assertion below depend
+  // on a seed rolling a 20.
+  g.run.pc.conditions = [{ id: "frightened", value: 2, until: null }];
+  eq(g.modifiersFor("pc", "attack"), -2, "frightened 2 is -2 on her attacks");
+  eq(g.modifiersFor("pc", "save"), -2, "-2 on her saves");
+  eq(g.modifiersFor("pc", "perception"), -2, "-2 on her Perception");
+  eq(g.pcAC(), base.ac - 2, "and -2 on the AC the Keeper rolls against");
+
+  // Decay happens at the end of her own turn. Broken on purpose by ticking
+  // decay at every boundary rather than the owner's: frightened 2 was gone
+  // before she acted twice.
+  let r = g.endTurn();
+  eq(valueOf(g.conditionsOf("pc"), "frightened"), 1, "it drops by one at the end of her own turn");
+  while (r && r.actor !== "pc" && !g.run.outcome) r = g.advance();
+  ok(!g.run.outcome, "she survives the round");
+  eq(valueOf(g.conditionsOf("pc"), "frightened"), 1,
+    "and does not drop again for the Keeper's turn ending — decay is the afflicted actor's own boundary");
+  g.endTurn();
+  eq(valueOf(g.conditionsOf("pc"), "frightened"), 0, "her second turn ending takes it off");
+  ok(g.run.log.some(e => e.text === "Kessa Vane is no longer frightened."),
+    "and the expiry is a log line, not an arithmetic change the player has to notice");
+}
+
+/* -- persistent damage: the tick path, at the right boundary ------------- */
+{
+  const g = keeperFight("fighter", 1);
+  const k = g.run.creatures[0];
+  k.conditions = [{ id: "persistent-fire", value: 1, until: null }];
+  const hp0 = k.hp;
+  ok(g.isPCTurn(), "the round opens on Kessa");
+  const r = g.endTurn();
+  eq(k.hp, hp0, "the fire does not land when her turn ends — it is not her fire");
+  ok(r && r.actor !== "pc", "the Keeper takes its turn, burning");
+  g.advance();
+  ok(k.hp < hp0, `the fire lands at the end of the Keeper's own turn (${hp0} -> ${k.hp})`);
+  ok(g.run.log.some(e => e.kind === "damage" && e.math && e.math.startsWith("burning: ")),
+    "and the damage line names what dealt it");
+  ok(g.run.log.some(e => e.text.includes("flat check to end burning")),
+    "then the DC 15 flat check that can end it");
+}
+
+{
+  // It ends, and it ends on the flat check rather than a counter. Twenty
+  // rounds of a d20 against DC 15 is a 0.3%-per-run chance of still burning,
+  // and the seed is fixed, so this is not a flake waiting to happen.
+  const g = keeperFight("fighter", 9);
+  const k = g.run.creatures[0];
+  k.conditions = [{ id: "persistent-fire", value: 1, until: null }];
+  k.hp = 999;                        // it is the fire under test, not the fight
+  let r = g.endTurn(), guard = 0;
+  while (hasCondition(k.conditions, "persistent-fire") && guard++ < 40 && !g.run.outcome) {
+    r = g.advance();
+  }
+  ok(!hasCondition(k.conditions, "persistent-fire"), `the fire went out (after ${guard} steps)`);
+  ok(g.run.log.some(e => e.text.includes("no longer burning — the flames gutter out")),
+    "on the flat check, and it said so");
+}
+
+/* -- the encounter ending is a clock stopping (locked #137) -------------- */
+{
+  const g = keeperFight("fighter", 1);
+  g.run.pc.conditions = [{ id: "frightened", value: 2, until: null }];
+  const k = g.run.creatures[0];
+  k.hp = 1;
+  // Kill the Keeper: nothing else is awake, so the encounter ends here.
+  let tries = 0;
+  while (!k.dead && tries++ < 40) {
+    if (g.isPCTurn() && g.actionsLeft > 0) g.useCommand("strike-sword", k.key);
+    else { let r = g.endTurn(); while (r && r.actor !== "pc" && !g.run.outcome) r = g.advance(); }
+    if (g.run.outcome) break;
+  }
+  ok(k.dead, "the Keeper falls");
+  eq(g.mode, "explore", "and the encounter is over");
+  eq(g.conditionsOf("pc").length, 0,
+    "which takes the fear with it — every duration here is measured in turn boundaries, and there are none out here");
+  ok(g.run.log.some(e => e.text.includes("no longer frightened — the encounter ends")),
+    "said out loud rather than silently dropped");
+}
+
+/* -- a creature that reknits, reknits clean ------------------------------ */
+{
+  // The other way a condition comes off a creature. A woken creature that
+  // loses sight of the PC settles and reknits to full HP (the anti-cheese
+  // heal); a construct that walks away burning and comes back at full HP
+  // still burning is the one reading neither rule was arguing for. The Keeper
+  // stays awake and adjacent, so the encounter does not end here — this is
+  // checkDisengage's own clearing, not endCombat's.
+  //
+  // (4,7) is a square in the vault with no line of sight to (10,4); the world
+  // was asked which ones there are rather than a coordinate being guessed.
+  const c = selectPc(content, "fighter");
+  const g = createGame({
+    content: c, rng: makeRng(4),
+    state: {
+      packId: content.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0 },
+      creatures: [
+        {
+          key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+          wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+        },
+        {
+          key: "vault:shattered-sentinel@4,7", area: "vault", creature: "shattered-sentinel",
+          wakesOn: "notice", x: 4, y: 7, hp: 4, awake: true, dead: false,
+          conditions: [{ id: "persistent-fire", value: 1, until: null }],
+        },
+      ],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  const lost = g.run.creatures[1];
+  eq(lost.conditions.length, 1, "the sentinel across the room is burning");
+  g.endTurn();
+  eq(lost.awake, false, "it loses the PC in the dark and settles");
+  eq(lost.hp, content.creatures["shattered-sentinel"].hp, "reknitting to full HP");
+  eq(lost.conditions.length, 0, "and out of the fire it was standing in");
+  eq(g.mode, "combat", "while the Keeper keeps the encounter going");
+  ok(g.run.log.some(e => e.text.includes("no longer burning — it settles back into stone")),
+    "said out loud, like every other way a condition ends");
+}
+
+/* -- what a pack is allowed to inflict ----------------------------------- */
+{
+  eq(JSON.stringify(INFLICT_ON), JSON.stringify(["hit", "crit", "crit-fail"]),
+    "three ways a pack can hang a condition off a roll");
+  eq(content.commandById.breathe.inflicts.condition, "persistent-fire",
+    "Breathe Fire sets a critical failure alight");
+  eq(content.commandById.breathe.inflicts.on, "crit-fail", "on the target's own save");
+  eq(content.commandById.strike.inflicts, null, "a command that inflicts nothing says so with null, not by omission");
+  eq(content.creatures["vault-keeper"].inflicts.condition, "frightened",
+    "a critical Basalt Fist frightens the heir");
+  eq(content.creatures["vault-keeper"].inflicts.value, 1, "by 1");
+  eq(content.creatures["shattered-sentinel"].inflicts, null, "a sentinel leaves nothing behind");
+
+  const bad = raw => { const p = JSON.parse(JSON.stringify(rawPack)); raw(p); return () => loadPack(p); };
+  throws(bad(p => { p.commands[0].inflicts = { condition: "clumsy", on: "hit" }; }),
+    "a pack naming a condition the catalogue does not have is refused at the door");
+  throws(bad(p => { p.commands[0].inflicts = { condition: "frightened", on: "critfail" }; }),
+    "and so is one naming a trigger point that does not exist");
+  throws(bad(p => { p.commands[0].inflicts = { condition: "frightened", on: "hit", value: 0 }; }),
+    "and so is a value of 0");
+  throws(bad(p => { p.creatures["vault-keeper"].inflicts = { condition: "frightened" }; }),
+    "a creature's inflicts is validated the same way a command's is");
+}
+
+{
+  // And it fires. The Keeper's crit is rare, so this is a pack whose fist
+  // frightens on every hit — the same code path, reached without begging a
+  // seed for a natural 20.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.creatures["vault-keeper"].inflicts = { condition: "frightened", value: 1, on: "hit" };
+  const jumpy = loadPack(p);
+  const c = selectPc(jumpy, "fighter");
+  const g = createGame({
+    content: c, rng: makeRng(1),
+    state: {
+      packId: jumpy.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  g.endTurn();                       // the Keeper's whole turn
+  eq(valueOf(g.conditionsOf("pc"), "frightened"), 1, "a fist that lands leaves her frightened 1");
+  ok(g.run.log.some(e => e.text === "Kessa Vane is frightened 1."), "and the log says so");
+}
+
 section("save");
 
 eq(SAVE_KEY, "absalom-inheritance-save-v1", "the storage key is the one that is now permanent");
@@ -1136,6 +1610,95 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   g2.begin();
   eq(g2.run.pc.hp, 9, "a game built on the loaded save has the right HP");
   ok(g2.explored.size > 1, "and remembers the map it had explored");
+}
+
+/* -- conditions in the save, additively ---------------------------------- */
+{
+  // The three claims the phase made about the save shape, in order: a run with
+  // nothing stuck to anybody writes no `conditions` key at all; a run with
+  // something writes it and gets it back; and a save written before any of
+  // this existed loads clean rather than booting a PC whose every check adds
+  // undefined.
+  const g = createGame({ content: resolved, rng: makeRng(11) });
+  g.begin();
+  const bare = g.snapshot();
+  eq("conditions" in bare.pc, false,
+    "a snapshot of a run with no conditions carries no conditions key on the PC");
+  eq(bare.creatures.some(c => "conditions" in c), false, "nor on any creature");
+  eq(JSON.stringify(bare) === JSON.stringify(g.snapshot()), true, "and it is stable across two calls");
+
+  g.run.pc.conditions = [{ id: "frightened", value: 2, until: null }];
+  g.run.creatures[0].conditions = [{ id: "persistent-fire", value: 1, until: null }];
+  const written = g.snapshot();
+  eq(written.pc.conditions.length, 1, "a run with a condition writes it");
+  eq(written.pc.conditions[0].value, 2, "with its value");
+  eq(written.creatures[0].conditions[0].id, "persistent-fire", "and a creature's travels with the creature");
+  // Aliasing: the snapshot is handed to the autosave layer and the run keeps
+  // moving. A shared array would let the next tick rewrite a save that has not
+  // been flushed, which is exactly the bug the fog copy in snapshot() exists
+  // for (v7, the aliased object).
+  g.run.pc.conditions[0].value = 1;
+  eq(written.pc.conditions[0].value, 2, "and the snapshot is a copy, not the live bag");
+
+  const store = memStore();
+  const slot = makeSaveSlot(content, store);
+  slot.save(g.snapshot());
+  const back = slot.load();
+  eq(valueOf(back.pc.conditions, "frightened"), 1, "conditions survive the round trip through storage");
+  eq(back.creatures.find(c => c.conditions && c.conditions.length).conditions[0].id, "persistent-fire",
+    "on both sides of the board");
+  const g3 = createGame({ content: resolved, rng: makeRng(12), state: back });
+  g3.begin();
+  eq(g3.modifiersFor("pc", "attack"), -1, "and the reloaded run rolls at the penalty it was saved with");
+}
+
+{
+  // A legacy save: every save this game ever wrote before this phase. No
+  // `conditions` key anywhere, and it has to load into a playable run rather
+  // than a PC with an undefined bag.
+  //
+  // Broken on purpose by deleting repair's `s.pc.conditions = repairBag(...)`
+  // line, and the first draft of this block named the wrong assertion for it:
+  // the boot checks below stayed green, because createGame fills a missing bag
+  // itself (`run.pc.conditions ??= []`) for the hand-built states the suite
+  // constructs, and that second net catches repair's absence too. What the
+  // break actually trips is the shape assertion on the loaded state, two lines
+  // down, which is the only one that reads what repair itself produced.
+  const legacy = freshRun(content, "wizard");
+  delete legacy.pc.conditions;
+  for (const c of legacy.creatures) delete c.conditions;
+  legacy.pc.hp = 12;
+  const store = memStore();
+  // Written the way localStorage actually holds one — a bare state blob — and
+  // with no `__v` at all, which reads as version 0 and comes through `repair`.
+  store.setItem(SAVE_KEY, JSON.stringify(legacy));
+  const slot = makeSaveSlot(content, store);
+  const back = slot.load();
+  ok(back, "a save with no conditions key anywhere still loads");
+  eq(back.pc.hp, 12, "with everything else intact");
+  eq(JSON.stringify(back.pc.conditions), "[]", "and an empty bag on the PC");
+  ok(back.creatures.every(c => Array.isArray(c.conditions)), "and one on every creature");
+  const g = createGame({ content: resolved, rng: makeRng(13), state: back });
+  g.begin();
+  eq(g.modifiersFor("pc", "ac"), 0, "the run boots with no modifiers rather than NaN");
+  eq(g.pcAC(), 15, "and its AC is a number");
+}
+
+{
+  // A save that names a condition this build no longer defines, and one whose
+  // creature is a corpse. Both are the same argument as the creature filter
+  // repair already runs: the alternative to dropping them is arithmetic on
+  // undefined.
+  const s = freshRun(content, "wizard");
+  s.pc.conditions = [{ id: "clumsy", value: 3 }, { id: "frightened", value: 2 }];
+  s.creatures[0].hp = 0;
+  s.creatures[0].dead = true;
+  s.creatures[0].conditions = [{ id: "persistent-fire", value: 1 }];
+  const repaired = makeRepair(content)(s);
+  eq(repaired.pc.conditions.length, 1, "the condition this build does not define is dropped");
+  eq(repaired.pc.conditions[0].id, "frightened", "and the one it does survives");
+  eq(repaired.creatures[0].conditions.length, 0,
+    "a corpse carries nothing — it will never take another turn for the fire to tick on");
 }
 
 {

@@ -100,7 +100,7 @@
       "kind": "self-heal",
       "healing": "1d4",
       "hint": "Rousing Splash (◆◆): a conjured wave crashes over you.",
-      "note": "Would also end persistent fire damage; nothing in this adventure applies it."
+      "note": "Would also end persistent fire damage. Breathe Fire now applies it, but only to creatures, and this cantrip only ever targets the caster \u2014 so there is still nothing for it to end. Either something has to set the heir alight or this needs a target other than herself; the wishlist's Phase 2 increment 2 carries it."
     },
     {
       "id": "breathe",
@@ -114,8 +114,9 @@
       "damage": "2d6",
       "damageType": "fire",
       "save": "ref",
-      "hint": "Breathe Fire (◆◆, spends a rank-1 slot): click a direction — 15-ft cone, basic Reflex DC 17.",
-      "note": "Burning Hands was renamed Breathe Fire in the Remaster. Implemented under its legal name."
+      "inflicts": { "condition": "persistent-fire", "value": 1, "on": "crit-fail" },
+      "hint": "Breathe Fire (◆◆, spends a rank-1 slot): click a direction — 15-ft cone, basic Reflex DC 17. A critical failure catches fire.",
+      "note": "Burning Hands was renamed Breathe Fire in the Remaster. Implemented under its legal name. The persistent fire on a critical failure is this pack's own addition, not the spell's: the Remaster spell leaves nothing behind. It is here because a condition system with nothing in the adventure that applies one is a system nobody plays, and a basic save that already rolls four degrees is the cheapest honest place to hang the fourth. Measured, not guessed — see the balance numbers in the phase handoff."
     },
     {
       "id": "fang",
@@ -204,10 +205,11 @@
       "attackName": "Basalt Fist",
       "damage": "1d6+2",
       "damageType": "bludgeoning",
+      "inflicts": { "condition": "frightened", "value": 1, "on": "crit" },
       "reactions": ["reactive-strike"],
       "deathLine": "The Keeper kneels, and does not rise. Gold dust settles over the casket.",
       "wakeLine": "The shape beside the casket was never rubble. {name} stands, and the chamber narrows.",
-      "note": "The statline the two sentinels originally shipped with (17 HP, AC 14, fist +6 for 1d6+2), promoted to the boss it was always sized for: 15 XP against a solo level-1 PC, and the only fight the PC arrives at with a full spell list, because opening the gate restores them. The number was never wrong; it was pointed at the wrong fight, twice over."
+      "note": "A critical Basalt Fist leaves the heir frightened 1 — the wake line already says the chamber narrows, and this is that sentence with a number on it. Frightened 1 is a −1 status penalty to every check and to AC, wearing off at the end of the heir's own turn, so it costs one turn of arithmetic rather than a spiral. It is the only thing in this pack that puts a condition on the PC, which is what makes it the one that exercises the check funnel from the defending side. The statline the two sentinels originally shipped with (17 HP, AC 14, fist +6 for 1d6+2), promoted to the boss it was always sized for: 15 XP against a solo level-1 PC, and the only fight the PC arrives at with a full spell list, because opening the gate restores them. The number was never wrong; it was pointed at the wrong fight, twice over."
     },
     "reliquary-warden": {
       "name": "Reliquary Warden",

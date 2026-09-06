@@ -16,18 +16,19 @@ absalom-inheritance/
   content-authoring-guide.md  how to write another one
   js/rules.js                 PF2e math. Pure, RNG injected.
   js/world.js                 grid, line of sight, A* with rules-legal diagonals
+  js/conditions.js            the condition catalogue, the modifier funnel, the tick. Pure, RNG-free.
   js/content.js               load and validate a pack; refuse a broken one
   js/game.js                  the run: state, turns, the reaction bus, commands. Headless.
   js/save.js                  the gvb-save slot, and repair
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              425 assertions
+  test/smoke.mjs              599 assertions
   test/balance.mjs            Monte Carlo playthroughs, exits non-zero out of band
   test/autopilot.mjs          a competent player, shared by both suites
 ```
 
-`rules.js`, `world.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
+`rules.js`, `world.js`, `conditions.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
 That is what makes the two suites possible, and it is why nothing in the rules waits on a timer:
 animation is `ui.js`'s problem, and a throttled or interrupted animation cannot desynchronise the
 game from its own state.

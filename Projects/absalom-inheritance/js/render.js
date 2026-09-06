@@ -18,6 +18,7 @@ const PALETTE = {
   gold: "#d4a843", goldDim: "#8a6f2e",
   fog: "rgba(12,11,16,.62)",
   hpBack: "#0c0b10", hpPC: "#4f9e5f", hpFoe: "#b03a48",
+  ember: "#e07a3a", afflicted: "#c26b78",
 };
 
 export function createRenderer(canvas, game) {
@@ -245,6 +246,7 @@ export function createRenderer(canvas, game) {
           ctx.lineWidth = 1;
         }
         bar(cx, cy - 38 * scale, game.run.pc.hp / game.content.pc.hp, PALETTE.hpPC, scale);
+        mark(cx, cy - 46 * scale, game.conditionsOf("pc"), scale);
         if (current === "pc") outline(s.x, s.y, PALETTE.gold, 1.5, 0.9);
       }
 
@@ -264,6 +266,7 @@ export function createRenderer(canvas, game) {
           ctx.beginPath(); ctx.arc(cx, cy - (boss ? 16 : 12) * scale, 2.6 * scale, 0, Math.PI * 2);
           ctx.fill();
           bar(cx, cy - (boss ? 40 : 34) * scale, c.hp / d.hp, PALETTE.hpFoe, scale);
+          mark(cx, cy - (boss ? 48 : 42) * scale, game.conditionsOf(c), scale);
         } else {
           ctx.strokeStyle = "rgba(140,130,150,.5)";
           ctx.beginPath(); ctx.arc(cx, cy - (boss ? 16 : 12) * scale, 2.6 * scale, 0, Math.PI * 2);
@@ -274,6 +277,24 @@ export function createRenderer(canvas, game) {
 
       ctx.globalAlpha = 1;
     }
+  }
+
+  /**
+   * One pip over an afflicted actor.
+   *
+   * Not one pip per condition: the sheet's chips are where a player reads
+   * what and how much, and a row of pips over a 34-pixel-wide creature is
+   * unreadable at every zoom the board has. This says only "something is
+   * stuck to this one", in ember if it is burning, because that is the one
+   * the player has to act on before the end of a turn. The Shield cantrip is
+   * already drawn as a disc and is not an affliction, so it is not counted.
+   */
+  function mark(cx, top, bag, scale) {
+    const real = bag.filter(c => c.id !== "shielded");
+    if (!real.length) return;
+    ctx.fillStyle = real.some(c => c.id === "persistent-fire") ? PALETTE.ember : PALETTE.afflicted;
+    diamond(cx, top, 8 * scale, 5 * scale);
+    ctx.fill();
   }
 
   function bar(cx, top, pct, colour, scale) {
