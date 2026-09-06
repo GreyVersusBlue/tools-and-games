@@ -1,6 +1,6 @@
 # Torchbearer — Content Authoring Guide
 
-**Audience:** a future Claude session (or a careful human) creating JSON content packs for `torchbearer.html`, a single-file Pathfinder 2e adventure engine. Characters are built at **level 3** under Remaster rules. Everything the engine knows — ancestries, backgrounds, classes, feats, spells, items, monsters, companions, and adventures — flows through one loader. The baked-in Player Core content and the baked-in adventure use **exactly the schema described here**, so the source of `torchbearer.html` (constants `CORE_PACK` and `ADVENTURE_PACK`) is always the authoritative worked example. When in doubt, imitate it.
+**Audience:** a future Claude session (or a careful human) creating JSON content packs for `torchbearer.html`, a single-file Pathfinder 2e adventure engine. Characters are forged at **level 3** under Remaster rules and level as far as 10 (Phase 6: `build.level` is the hero's, and the Player Core's advancement tables in `rules.js` say what each level grants). Everything the engine knows — ancestries, backgrounds, classes, feats, spells, items, monsters, companions, and adventures — flows through one loader. The baked-in Player Core content and the baked-in adventure use **exactly the schema described here**, so the source of `torchbearer.html` (constants `CORE_PACK` and `ADVENTURE_PACK`) is always the authoritative worked example. When in doubt, imitate it.
 
 Packs are loaded at runtime two ways: **The Shelf** on the title screen, which lists everything in `Projects/torchbearer/packs/` and loads it in one click, and **Load Content JSON** on the title bar, for a file on your own disk. A pack that fails validation is rejected with a list of errors; nothing is partially loaded.
 
@@ -283,8 +283,11 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 { "id": "my-adv", "name": "…", "level": 3, "start": "scene-one",
   "blurb": "Shown on the adventure picker.",
   "companionsOffered": ["aldous", "wren"],
+  "awards": { "enc-id": 80, "ending": 120 },
   "scenes": { … }, "encounters": { … } }
 ```
+
+* **`awards`** (optional) is the experience the adventure pays toward the hero's next level, in whole XP: one entry per encounter id, credited when that fight is won, and one under `"ending"`, credited the first time the hero reaches a scene marked `"ending": true` (a `"gameover"` scene pays nothing). Each key pays once per playthrough. A level is 1,000 XP, PF2e's flat rate, and the counter starts over at the new level. **Leave `awards` out and the adventure is a milestone: its ending is worth a whole level and its fights nothing** — every shipped adventure is a one-shot and works this way. An empty `{}` pays nothing at all. A key naming no encounter of this adventure is rejected by the validator.
 
 **Scenes** — the narrative graph:
 
@@ -308,7 +311,7 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 ```
 
 * `goto: "END"` returns to the title screen. Mark epilogues `"ending": true` and death `"gameover": true`.
-* Checks roll the **hero's** skill (`altSkill` auto-picks whichever modifier is better; `"skill":"perception"` works). DC guidance at level 3: easy 15 · standard 17–18 · hard 20 · very hard 22. Failure should branch somewhere *interesting*, not dead-end — cost HP, a flag, or a harder fight.
+* Checks roll the **hero's** skill (`altSkill` auto-picks whichever modifier is better; `"skill":"perception"` works). DC guidance at level 3: easy 15 · standard 17–18 · hard 20 · very hard 22. The GM Core's level-based DC is `14 + level + floor(level / 3)` (`levelDC` in `rules.js`): 18 at 3, 19 at 4, 20 at 5, 22 at 6, 23 at 7, 24 at 8, 26 at 9, 27 at 10 — an adventure's `level` field says which row its DCs were written against, and a hero two levels above it will find them easy. Failure should branch somewhere *interesting*, not dead-end — cost HP, a flag, or a harder fight.
 * Useful flag tricks the engine honors: setting `"surprise-round"` before a combat makes enemies off-guard and slow to act in round 1; `"fatigued-start"` applies fatigued to the party.
 
 **Encounters** — the tactical maps:
@@ -320,14 +323,16 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
   "pcStarts": [[1,4],[1,3],[2,4],[1,5]],
   "foes": [
     { "monster": "skeleton-guard", "x": 9, "y": 2 },
-    { "monster": "skeleton-guard", "x": 10, "y": 5, "minParty": 2 } ],
+    { "monster": "skeleton-guard", "x": 10, "y": 5, "minParty": 2 },
+    { "monster": "skeletal-champion", "x": 11, "y": 5, "minLevel": 5 },
+    { "monster": "moor-hound", "x": 3, "y": 6, "maxLevel": 4 } ],
   "bossFlags": { "knows-rite": { "applyToBoss": [ { "c": "sickened", "v": 1, "dur": 99 } ],
                                  "log": "Chronicle line when the flag fires." } },
   "intro": "One line of scene-setting printed at battle start." }
 ```
 
 * Coordinates are 0-indexed `[x, y]`; keep maps ≤ ~16×12. Provide at least 4 `pcStarts`.
-* **Scaling:** foes with `"minParty": 2` (or 3) only spawn at that party size. Budget roughly: solo hero ≈ 2 low-level foes + 1 mid; full party of 3 ≈ a Moderate/Severe encounter by Paizo XP budget.
+* **Scaling:** foes with `"minParty": 2` (or 3) only spawn at that party size; foes with `"minLevel"` or `"maxLevel"` only spawn when the hero's level is inside the range (both bounds inclusive, either alone is fine). All three are whole numbers of 1 or more, and a `minLevel` above its `maxLevel` is rejected. Budget roughly: solo hero ≈ 2 low-level foes + 1 mid; full party of 3 ≈ a Moderate/Severe encounter by Paizo XP budget. A hero who has played the three shipped one-shots is level 6 and will walk through a level-3 encounter unless something is gated on `minLevel`.
 * `bossFlags` keys are story flags; effects hit the first foe whose monster has `"boss": true`.
 
 ## 12. Conditions the engine implements
@@ -340,7 +345,7 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 
 ## 13. Known simplifications (don't "fix" these in data)
 
-Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school slots are folded into base slots; a combatant gets one reaction per turn and the first trigger it qualifies for takes it, and Ready arms exactly one thing — a Strike against a foe entering reach — rather than an arbitrary action against an arbitrary trigger; Aid rolls Athletics against a flat DC 15 whatever it is aiding, because the engine cannot know the skill the ally's next check will use; Grapple's Escape DC is the total that made the grab rather than the grabber's Class DC; Disarm's −2 lands on every attack the target has rather than on the weapon it was aimed at, and PF2e's `restrained` is not modelled — a critical Grapple is an ordinary grab with a higher DC; only heroes use Athletics maneuvers, because no monster in the game carries an Athletics number; Rock Dwarf's "+2 DC vs Shove/Trip/prone" therefore stays a note, since nothing can Shove or Trip a hero; there is no Sneak, so a hidden creature that moves is simply seen again; cover is read off the line to the attacker and never off a corner rule; only heroes Hide, because no monster in the game carries a Stealth number to Hide with; Demoralize takes a −4 language penalty vs. everything unless the hero has Intimidating Glare; victory grants a breather (half of missing HP + focus back); one skill increase at level 3 for every class; exact-opposite-square flanking. The design intent is **correct-feeling PF2e at level 3**, not a rules-complete VTT.
+Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school slots are folded into base slots; a combatant gets one reaction per turn and the first trigger it qualifies for takes it, and Ready arms exactly one thing — a Strike against a foe entering reach — rather than an arbitrary action against an arbitrary trigger; Aid rolls Athletics against a flat DC 15 whatever it is aiding, because the engine cannot know the skill the ally's next check will use; Grapple's Escape DC is the total that made the grab rather than the grabber's Class DC; Disarm's −2 lands on every attack the target has rather than on the weapon it was aimed at, and PF2e's `restrained` is not modelled — a critical Grapple is an ordinary grab with a higher DC; only heroes use Athletics maneuvers, because no monster in the game carries an Athletics number; Rock Dwarf's "+2 DC vs Shove/Trip/prone" therefore stays a note, since nothing can Shove or Trip a hero; there is no Sneak, so a hidden creature that moves is simply seen again; cover is read off the line to the attacker and never off a corner rule; only heroes Hide, because no monster in the game carries a Stealth number to Hide with; Demoralize takes a −4 language penalty vs. everything unless the hero has Intimidating Glare; victory grants a breather (half of missing HP + focus back); taking a level is a rest too (HP and pools refill; potions and the wounded value carry over); the kit's runes follow the level rather than gold — +1 potency from 2nd, striking from 4th, +2 potency from 10th, on every weapon the hero carries and on nothing a companion does; spell ranks stop at 2, so a caster's rank-2 slots grow to 3 at 4th and nothing grows after that, and no level-up step touches the spell list; every level-up feat slot draws on the loaded feats at or below its level, and the core pack's feats stop at 2nd, so a slot with nothing left to offer is left empty rather than blocking the level; XP is PF2e's flat 1,000 a level with no per-encounter budget arithmetic — an adventure pays what its `awards` say or a level at its ending; the level stops at 10; exact-opposite-square flanking. The design intent is **correct-feeling PF2e from level 3 to 10**, not a rules-complete VTT.
 
 ## 14. Workflow for a future Claude
 

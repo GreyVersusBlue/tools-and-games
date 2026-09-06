@@ -467,14 +467,17 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
       </svg>
       <div>
         <h1>Torchbearer</h1>
-        <div class="tagline">Forge a 3rd-level hero of the Remaster rules, then carry your light into the dark. New ancestries, classes, feats, spells, and whole adventures can be loaded from JSON.</div>
+        <div class="tagline">Forge a 3rd-level hero of the Remaster rules, carry your light into the dark, and level as far as 10th. New ancestries, classes, feats, spells, and whole adventures can be loaded from JSON.</div>
       </div>
       <div class="title-menu">
         <button class="title-btn primary" id="btn-new-hero">⚒ Forge a Hero</button>
         <button class="title-btn" id="btn-begin-adv" disabled>🗺 Begin Adventure</button>
         <button class="title-btn" id="btn-resume" disabled>🕯 Resume Journey</button>
         <button class="title-btn" id="btn-view-hero" disabled>📜 View Hero Sheet</button>
+        <button class="title-btn" id="btn-level-up" disabled>⬆ Level Up</button>
       </div>
+      <!-- The hero's name, level and XP toward the next one. Empty until a hero is forged. -->
+      <div id="hero-status" class="small" style="text-align:center;min-height:1.2em"></div>
       <div id="pack-list"></div>
       <section id="library" hidden aria-labelledby="library-head">
         <h2 id="library-head">The Shelf</h2>
@@ -527,8 +530,9 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
    torchbearer/packs/ is the only thing that fetches anything. */
 import { mountSaveBar } from "../assets/js/gvb-save.js";
 import { Registry } from "./torchbearer/js/registry.js";
-import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, levelOf, Dice, activeEffects, abilityMods,
-         finalizeCharacter, skillMod, assuranceFloor, assuranceDegree } from "./torchbearer/js/rules.js";
+import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, activeEffects, abilityMods,
+         finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, advancesUpTo, grantsAt,
+         XP_PER_LEVEL, canLevelUp, awardFor, featChoices, skillIncreaseOptions, advanceMissing } from "./torchbearer/js/rules.js";
 import { createTorchSlot } from "./torchbearer/js/save.js";
 import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, REACTIONS } from "./torchbearer/js/combat.js";
 import { esc, cap } from "./torchbearer/js/text.js";
@@ -1243,9 +1247,42 @@ function newBuild(){
    ============================================================ */
 const Builder = {
   build:null, step:0,
-  open(){ this.build=newBuild(); this.step=0; App.show("builder"); this.render(); },
+  /* "forge" builds a new hero from nothing; "levelup" takes the current hero
+     one level higher. Same screen, same rail, same step components. */
+  mode:"forge", target:null,
+  open(){ this.mode="forge"; this.target=null; this.build=newBuild(); this.step=0; App.show("builder"); this.render(); },
+  /* The level-up is a second mode of this screen, not a rebuild (locked
+     #117): the hero's build is cloned, its level set one higher, and every
+     step writes into `build.advances[level]` alone, so the preview sheet on
+     the right is already the level-L sheet. The rail shows only what
+     `grantsAt` says the level grants. Nothing touches App.hero until the
+     last step's button; the Title button abandons the clone. */
+  openLevelUp(){
+    const cur=App.hero&&App.hero.build;
+    if(!cur||!canLevelUp(cur,App.xp)) return;
+    const L=levelOf(cur)+1;
+    this.build=JSON.parse(JSON.stringify(cur));
+    this.build.level=L;
+    this.build.advances=this.build.advances||{};
+    this.build.advances[L]={feats:{},skillIncrease:null,boosts:[]};
+    this.mode="levelup"; this.target=L; this.step=0;
+    App.show("builder"); this.render();
+  },
+  /** The choice-map entry the level-up writes into. */
+  advance(){ return this.build.advances[this.target]; },
+  /** Where a feat pick goes: the flat map when forging, this level's entry when levelling. */
+  featPicks(){ return this.mode==="levelup"? this.advance().feats : this.build.feats; },
   steps(){
-    const b=this.build; const s=[
+    const b=this.build;
+    if(this.mode==="levelup"){
+      const g=grantsAt(Registry.classes[b.cls],this.target), s=[];
+      if(g.boosts) s.push({id:"attributes",label:"Boosts"});
+      if(g.skillIncrease) s.push({id:"skills",label:"Skill Increase"});
+      if(g.feats.length) s.push({id:"feats",label:"Feats"});
+      s.push({id:"review",label:"Review"});
+      return s;
+    }
+    const s=[
       {id:"origin",label:"Name & Ancestry"},
       {id:"heritage",label:"Heritage"},
       {id:"background",label:"Background"},
@@ -1276,6 +1313,7 @@ const Builder = {
     const cls=Registry.classes[b.cls];
     const sub=cls&&cls.subclass&&(cls.subclass.options||[]).find(o=>o.id===b.subclass); if(sub) scan(sub.name,sub.effects);
     Object.values(b.feats).flat().filter(Boolean).forEach(fid=>{ const f=Registry.feats[fid]; if(f) scan(f.name,f.effects); });
+    advancesUpTo(b).forEach(a=>Object.values(a.feats||{}).flat().filter(Boolean).forEach(fid=>{ const f=Registry.feats[fid]; if(f) scan(f.name,f.effects); }));
     return out;
   },
   fixedTrainedSkills(){
@@ -1315,7 +1353,7 @@ const Builder = {
     // footer
     document.getElementById("bld-back").disabled=this.step===0;
     const nextBtn=document.getElementById("bld-next");
-    nextBtn.textContent = cur.id==="review"? "⚒ Forge This Hero" : "Next ▸";
+    nextBtn.textContent = cur.id==="review"? (this.mode==="levelup"? `⬆ Take Level ${this.target}` : "⚒ Forge This Hero") : "Next ▸";
     nextBtn.disabled=!this.stepValid(cur.id);
     nextBtn.onclick=()=>{ if(cur.id==="review"){ this.finish(); } else { this.step++; this.render(); } };
     document.getElementById("bld-back").onclick=()=>{ this.step--; this.render(); };
@@ -1329,6 +1367,16 @@ const Builder = {
   },
   stepValid(id){
     const b=this.build;
+    if(this.mode==="levelup"){
+      // rules.js says what the level still lacks; each step owns its own key.
+      const miss=advanceMissing(b,this.target);
+      switch(id){
+        case "attributes": return !miss.includes("boosts");
+        case "skills": return !miss.includes("skillIncrease");
+        case "feats": return !miss.some(k=>k!=="boosts"&&k!=="skillIncrease");
+      }
+      return true;
+    }
     switch(id){
       case "origin": return !!(b.name.trim()&&b.ancestry);
       case "heritage": return !!b.heritage;
@@ -1425,6 +1473,20 @@ const Builder = {
     const mods=abilityMods(b);
     const chips=(picked,disabled,cb,group)=> ABILITIES.map(a=>
       `<button class="abil-chip ${picked===a?"picked":""}" data-g="${group}" data-a="${a}" ${disabled&&disabled.includes(a)?"disabled":""}>${a}</button>`).join("");
+    if(this.mode==="levelup"){
+      const e=this.advance(), L=this.target;
+      // The sheet without this level's boosts, so a chip can say whether it moved the number.
+      const base=abilityMods({...b,advances:{...b.advances,[L]:{...e,boosts:[]}}});
+      let rows="";
+      for(let i=0;i<4;i++){
+        rows+=`<div class="boost-row"><div class="boost-label">Level ${L} boost ${i+1}</div>
+          <div class="boost-choice">${chips(e.boosts[i],e.boosts.filter((x,k)=>k!==i),null,"adv"+i)}</div></div>`;
+      }
+      return `<div class="step-title">Attribute Boosts</div>
+      <div class="step-hint">Level ${L} grants four boosts, each to a different attribute. An attribute already at +4 takes a partial boost (½): the second partial boost on it gives the +1.</div>
+      <div class="abil-summary">${ABILITIES.map(a=>`<div class="abil-box ${b.boosts.key===a?"key":""}"><div class="an">${ABIL_NAME[a]}</div><div class="av">${mods[a]>=0?"+":""}${mods[a]}${e.boosts.includes(a)&&mods[a]===base[a]?" ½":""}</div></div>`).join("")}</div>
+      <div class="rule"></div>${rows}`;
+    }
     let rows="";
     for(let i=0;i<freeAnc;i++){
       rows+=`<div class="boost-row"><div class="boost-label">Ancestry free boost ${freeAnc>1?i+1:""}</div>
@@ -1452,6 +1514,7 @@ const Builder = {
       if(g==="bgA") b.boosts.bgA=b.boosts.bgA===a?null:a;
       else if(g==="bgFree") b.boosts.bgFree=b.boosts.bgFree===a?null:a;
       else if(g==="key") b.boosts.key=b.boosts.key===a?null:a;
+      else if(g.startsWith("adv")){ const i=+g.slice(3), e=this.advance(); e.boosts[i]=e.boosts[i]===a?null:a; }
       else if(g.startsWith("anc")){ const i=+g.slice(3); b.boosts.ancestry[i]=b.boosts.ancestry[i]===a?null:a; }
       else if(g.startsWith("free")){ const i=+g.slice(4); b.boosts.free[i]=b.boosts.free[i]===a?null:a; }
       if(b.boosts.bgA===b.boosts.bgFree) b.boosts.bgFree=null;
@@ -1460,7 +1523,27 @@ const Builder = {
   },
 
   ui_skills(){
-    const b=this.build, fixed=this.fixedTrainedSkills(), budget=this.skillBudget();
+    const b=this.build;
+    if(this.mode==="levelup"){
+      const e=this.advance(), L=this.target, opts=skillIncreaseOptions(b,L), abil=abilityMods(b);
+      // The sheet without this level's own increase, so the row shows where the skill stands before it.
+      const sheet=finalizeCharacter({...b,advances:{...b.advances,[L]:{...e,skillIncrease:null}}});
+      const rows=Object.keys(SKILLS).map(s=>{
+        const rank=sheet.skills[s]||"U", up=opts[s], picked=e.skillIncrease===s;
+        const shown=picked&&up?up:rank;
+        const mod=(shown==="U"?0:PROF_VAL[shown]+L)+abil[SKILLS[s]];
+        const why=rank==="E"?"Master waits for 7th":rank==="M"?"Legendary waits for 15th":"—";
+        return `<div class="skill-row"><div class="sk-name">${cap(s)}</div>
+          <span class="prof-pip ${shown}">${PROF_NAME[shown]}</span>
+          <div class="sk-mod">${mod>=0?"+":""}${mod}</div>
+          <div class="sk-pick">${up?`<button class="pick-btn ${picked?"picked":""}" data-s="${s}" data-k="inc">${picked?PROF_NAME[up]+" ✓":"Raise to "+PROF_NAME[up]}</button>`:`<span class="small">${why}</span>`}</div></div>`;
+      }).join("");
+      return `<div class="step-title">Skill Increase</div>
+      <div class="step-hint">Level ${L} grants one skill increase: train an untrained skill, or raise a trained one a rank. Master waits for 7th level and Legendary for 15th.</div>
+      <span class="counter-pill">Level ${L} increase: ${e.skillIncrease&&opts[e.skillIncrease]?cap(e.skillIncrease)+" → "+PROF_NAME[opts[e.skillIncrease]]:"unspent"}</span>
+      ${rows}`;
+    }
+    const fixed=this.fixedTrainedSkills(), budget=this.skillBudget();
     b.skills=b.skills.filter(s=>!fixed.has(s));
     const picked=b.skills.length;
     const rows=Object.keys(SKILLS).map(s=>{
@@ -1490,6 +1573,11 @@ const Builder = {
   },
   bind_skills(){
     const b=this.build;
+    if(this.mode==="levelup"){
+      const e=this.advance();
+      document.querySelectorAll("#builder-body .pick-btn").forEach(el=>el.onclick=()=>{ const s=el.dataset.s; e.skillIncrease=e.skillIncrease===s?null:s; this.render(); });
+      return;
+    }
     document.querySelectorAll("#builder-body .pick-btn").forEach(el=>el.onclick=()=>{
       const s=el.dataset.s;
       if(el.dataset.k==="train"){
@@ -1502,6 +1590,8 @@ const Builder = {
 
   featSlots(){
     const b=this.build, cls=Registry.classes[b.cls], ex=this.extras();
+    // Levelling: only the slots the new level grants, keyed the way grantsAt keys them.
+    if(this.mode==="levelup") return grantsAt(cls,this.target).feats.map(f=>({...f,label:`${cap(f.type)} Feat (${ord(f.level)})`}));
     const slots=[{key:"ancestry1",label:"Ancestry Feat (1st)",type:"ancestry",level:1}];
     slots.push({key:"class1",label:"Class Feat (1st)",type:"class",level:1});
     for(let i=0;i<ex.classFeat1;i++) slots.push({key:"class1x"+i,label:"Bonus Class Feat (1st)",type:"class",level:1});
@@ -1514,6 +1604,9 @@ const Builder = {
   },
   featOptions(slot){
     const b=this.build;
+    // Levelling: rules.js filters on the sheet the hero already has — taken feats
+    // at every level and a skill feat's prerequisite against the real ranks.
+    if(this.mode==="levelup") return featChoices(b,slot,this.featPicks()[slot.key]);
     return Registry.list(Registry.feats,f=>{
       if(f.type!==slot.type) return false;
       if(f.level>slot.level) return false;
@@ -1524,6 +1617,7 @@ const Builder = {
   },
   featPrereqOk(f){
     const b=this.build;
+    if(this.mode==="levelup") return true; // featChoices already applied it
     if(!f.prereq) return true;
     if(f.prereq.skill){ const fixed=this.fixedTrainedSkills();
       return Object.keys(f.prereq.skill).every(s=>fixed.has(s)||b.skills.includes(s)); }
@@ -1544,16 +1638,28 @@ const Builder = {
     return viaClass||viaSub;
   },
   ui_feats(){
-    const b=this.build, taken=new Set(Object.values(b.feats).flat().filter(Boolean));
+    const b=this.build, picks=this.featPicks(), taken=new Set(Object.values(b.feats).flat().filter(Boolean));
     const ex=this.extras();
-    let html=`<div class="step-title">Feats</div>
-    <div class="step-hint">Your tricks of the trade. Grayed feats have unmet prerequisites; a feat can be taken only once.</div>`;
+    let html=`<div class="step-title">Feats</div>`;
+    if(this.mode==="levelup"){
+      html+=`<div class="step-hint">Level ${this.target} grants ${this.featSlots().map(sl=>"a "+sl.type+" feat").join(" and ")}. Feats you already hold are not offered again.</div>`;
+    } else {
+      html+=`<div class="step-hint">Your tricks of the trade. Grayed feats have unmet prerequisites; a feat can be taken only once.</div>`;
+    }
     const shieldBlockGranted=this.classGrantsShieldBlock();
     this.featSlots().forEach(slot=>{
       const opts=this.featOptions(slot);
+      /* A slot nothing fits is satisfied empty (locked #117). The core pack's
+         feats stop at 2nd level, so a Fighter's fifth class feat has nothing
+         left to pick from by 10th; saying so beats a step that cannot be
+         finished. */
+      if(!opts.length){
+        html+=`<div class="section-sub">${slot.label}</div><div class="small" style="font-style:italic;margin-bottom:14px">Nothing in the loaded content fits this slot: every ${slot.type} feat you qualify for is already yours. Load a pack that adds more, or carry on without it.</div>`;
+        return;
+      }
       html+=`<div class="section-sub">${slot.label}</div><div class="card-grid">`+
         opts.map(f=>{
-          const sel=b.feats[slot.key]===f.id;
+          const sel=picks[slot.key]===f.id;
           const dup=taken.has(f.id)&&!sel;
           const redundant=slot.type==="general"&&f.id==="shield-block"&&shieldBlockGranted&&!sel;
           const ok=this.featPrereqOk(f)&&!dup&&!redundant;
@@ -1574,9 +1680,9 @@ const Builder = {
     return html;
   },
   bind_feats(){
-    const b=this.build;
+    const b=this.build, picks=this.featPicks();
     document.querySelectorAll("#builder-body .opt-card:not(.disabled)").forEach(el=>el.onclick=()=>{
-      const k=el.dataset.slot; b.feats[k]=b.feats[k]===el.dataset.id?null:el.dataset.id; this.render();
+      const k=el.dataset.slot; picks[k]=picks[k]===el.dataset.id?null:el.dataset.id; this.render();
     });
     document.querySelectorAll("#builder-body [data-fc]").forEach(el=>el.onclick=()=>{
       b.focusChoices[el.dataset.fc]=el.dataset.o; this.render();
@@ -1632,7 +1738,7 @@ const Builder = {
       <h3>${w.name}</h3><div class="meta">${w.damage} ${w.damageType}${w.range?" · range "+w.range+" ft":""}${w.hands===2?" · two hands":""}</div>
       <div class="tagrow">${(w.traits||[]).map(t=>`<span class="tag">${t}</span>`).join("")}</div></div>`;
     return `<div class="step-title">Equipment</div>
-    <div class="step-hint">A 3rd-level kit: your main weapon bears a +1 potency rune, and two minor healing potions ride in your pack.</div>
+    <div class="step-hint">A 3rd-level kit: your main weapon bears a +1 potency rune (a striking rune joins it at 4th, and +2 potency at 10th), and two minor healing potions ride in your pack.</div>
     <div class="section-sub">Main Weapon (+1 rune)</div><div class="card-grid">${weapons.map(w=>wcard(w,b.gear.weapon===w.id,"weapon")).join("")}</div>
     <div class="section-sub">Off-hand Weapon <span class="small">(optional — for twin-weapon tricks)</span></div>
     <div class="card-grid">${weapons.filter(w=>w.hands===1&&!w.range).map(w=>wcard(w,b.gear.weapon2===w.id,"weapon2")).join("")}</div>
@@ -1660,6 +1766,17 @@ const Builder = {
 
   ui_review(){
     const ch=finalizeCharacter(this.build);
+    if(this.mode==="levelup"){
+      const b=this.build, e=this.advance(), L=this.target, g=grantsAt(Registry.classes[b.cls],L), was=App.hero;
+      const lines=[];
+      g.feats.forEach(sl=>{ const id=e.feats[sl.key]; lines.push(`${cap(sl.type)} feat: <b>${id?esc((Registry.feats[id]||{name:id}).name):"none available"}</b>`); });
+      if(g.skillIncrease) lines.push(`Skill increase: <b>${cap(e.skillIncrease||"")}</b>`);
+      if(g.boosts) lines.push(`Boosts: <b>${e.boosts.filter(Boolean).map(a=>a.toUpperCase()).join(", ")}</b>`);
+      return `<div class="step-title">Level ${L}</div>
+      <div class="step-hint">${esc(ch.name)} goes from ${was.level} to ${L}: HP ${was.hpMax} → ${ch.hpMax}, AC ${was.ac} → ${ch.ac}. Taking the level spends ${XP_PER_LEVEL} XP.</div>
+      <div class="small" style="margin-bottom:12px">${lines.join(" · ")}</div>
+      <div class="parchment" style="padding:20px 24px">${sheetHTML(ch,true)}</div>`;
+    }
     return `<div class="step-title">Review</div>
     <div class="step-hint">Read the fine print. The moor certainly will.</div>
     <div class="parchment" style="padding:20px 24px">${sheetHTML(ch,true)}</div>`;
@@ -1672,6 +1789,7 @@ const Builder = {
     catch(e){ el.innerHTML=`<h2>— Preview —</h2><div class="small">${esc(e.message)}</div>`; }
   },
   finish(){
+    if(this.mode==="levelup"){ const b=this.build; this.mode="forge"; this.target=null; App.levelUp(b); return; }
     App.hero=finalizeCharacter(this.build);
     App.chronicle=[]; App.xp=0;
     App.log(`<b>${esc(App.hero.name)}</b>, ${App.hero.ancestry} ${App.hero.className} ${App.hero.level}, steps onto the page.`,"narr");
@@ -1701,7 +1819,8 @@ function miniSheetHTML(ch){
 function sheetHTML(ch,full){
   let h=miniSheetHTML(ch);
   if(full){
-    const featNames=Object.values(ch.build.feats).flat().filter(Boolean).map(id=>(Registry.feats[id]||{name:id}).name);
+    const featIds=[...Object.values(ch.build.feats).flat(),...advancesUpTo(ch.build).flatMap(a=>Object.values(a.feats||{}).flat())].filter(Boolean);
+    const featNames=featIds.map(id=>(Registry.feats[id]||{name:id}).name);
     h+=`<div class="sheet-block-title">Feats</div><div class="small">${featNames.join(" · ")||"—"}</div>`;
     if(ch.casting){
       const sp=ids=>ids.map(id=>(Registry.spells[id]||{name:id}).name).join(", ")||"—";
@@ -1943,6 +2062,7 @@ const App = {
     document.getElementById("btn-begin-adv").onclick=()=>this.chooseAdventure();
     document.getElementById("btn-view-hero").onclick=()=>this.modal("Hero Sheet",`<div class="parchment" style="padding:16px 20px">${sheetHTML(this.hero,true)}</div>`,[{label:"Close"}]);
     document.getElementById("btn-resume").onclick=()=>this.resume();
+    document.getElementById("btn-level-up").onclick=()=>Builder.openLevelUp();
     document.getElementById("btn-to-title").onclick=()=>this.toTitle();
     document.getElementById("btn-load-content").onclick=()=>document.getElementById("file-input").click();
     document.getElementById("file-input").onchange=(e)=>this.fileChosen(e);
@@ -2007,6 +2127,14 @@ const App = {
     /* load() rather than "is the key set": a save that fails validation now
        greys Resume out instead of offering a journey that dies on the click. */
     document.getElementById("btn-resume").disabled=!this.slot.load();
+    const ready=!!this.hero&&canLevelUp(this.hero.build,this.xp);
+    document.getElementById("btn-level-up").disabled=!ready;
+    const st=document.getElementById("hero-status");
+    if(!this.hero) st.textContent="";
+    else { const L=this.hero.level;
+      st.innerHTML=`<b>${esc(this.hero.name)}</b> · ${esc(this.hero.ancestry)} ${esc(this.hero.className)} ${L} · `+
+        (L>=MAX_LEVEL? `${this.xp} XP banked; the road ends at ${ord(MAX_LEVEL)} level`
+         : `${this.xp} / ${XP_PER_LEVEL} XP toward level ${L+1}`+(ready?" — <b>ready to level</b>":"")); }
     this.renderLibrary();
     const pl=document.getElementById("pack-list");
     pl.innerHTML="Loaded content: "+Registry.packs.map(p=>`<span class="pk">${esc(p.name)} <span class="small">v${esc(p.version||"1")}</span></span>`).join("")
@@ -2120,6 +2248,9 @@ const App = {
         this.log(`Gained: <b>${esc((Registry.items[it]||{name:it}).name)}</b>.`,"narr");
       });
     }
+    // An ending pays what the adventure awards for it — a level, unless the
+    // adventure says otherwise. A death scene is an ending too, and pays nothing.
+    if(sc.ending&&!sc.gameover) this.award("ending","finishing "+this.adv.name);
     this.renderGameChrome();
     const choiceHTML=(sc.choices||[]).map((c,i)=>{
       if(c.if&&!this.flagOk(c.if)) return "";
@@ -2167,7 +2298,9 @@ const App = {
     if(c.flagOnce) this.flags[c.flagOnce]=true;
     if(c.combat){
       this.log(`<i>${esc(c.text)}</i>`,"narr");
-      Combat.start(c.combat,this.adv,{party:this.party(),flags:this.flags,onVictory:()=>this.gotoScene(c.victory),onDefeat:()=>this.gotoScene(c.defeat||"gameover")});
+      Combat.start(c.combat,this.adv,{party:this.party(),flags:this.flags,
+        onVictory:()=>{ this.award(c.combat,(this.adv.encounters[c.combat]||{}).name||c.combat); this.gotoScene(c.victory); },
+        onDefeat:()=>this.gotoScene(c.defeat||"gameover")});
       return;
     }
     if(c.check){
@@ -2209,6 +2342,38 @@ const App = {
     }
     this.log(`<i>${esc(c.text)}</i>`,"narr");
     this.gotoScene(r.deg>=2? c.check.success:c.check.failure);
+  },
+  /* ---------- experience ----------
+     `awardFor` says what the adventure pays for a key — an encounter id on
+     victory, "ending" on the first ending scene — and the flags map remembers
+     what this run has already paid, under `awarded:<key>`, so a fight reached
+     twice pays once and a resumed save landing on its epilogue does not pay
+     again (locked #116). Flags reset with the adventure, so replaying a
+     one-shot is a level per run. */
+  award(key,label){
+    const flag="awarded:"+key;
+    if(!this.adv||!this.hero||this.flags[flag]) return 0;
+    const xp=awardFor(this.adv,key);
+    if(!xp) return 0;
+    this.flags[flag]=true; this.xp+=xp;
+    const ready=canLevelUp(this.hero.build,this.xp);
+    this.log(`<b>Experience.</b> +${xp} XP${label?" for "+esc(label):""}: ${this.xp} / ${XP_PER_LEVEL}.`+
+      (ready?` <b>${esc(this.hero.name)} can take level ${this.hero.level+1}</b> from the title screen.`:""),"narr");
+    this.autosave();
+    return xp;
+  },
+  /** Take the level the builder's level-up mode assembled. XP is spent here,
+      not in the builder. The hero's in-fight state survives the new sheet:
+      potions and the wounded value carry over, HP and pools refill, because
+      a level is a rest (locked #117). */
+  levelUp(build){
+    const was=this.hero, old=this.heroCb;
+    this.hero=finalizeCharacter(build); this.heroCb=null;
+    this.xp=Math.max(0,this.xp-XP_PER_LEVEL);
+    if(old){ const cb=this.heroCombatant(); cb.resources.potions=old.resources.potions; cb.wounded=old.wounded; }
+    this.log(`<b>${esc(this.hero.name)}</b> reaches level ${this.hero.level}: HP ${was.hpMax} → ${this.hero.hpMax}, AC ${was.ac} → ${this.hero.ac}.`,"narr");
+    this.toTitle(); this.toast(`${this.hero.name} is now level ${this.hero.level}`);
+    this.autosave();
   },
   resume(){
     const s=this.slot.load();

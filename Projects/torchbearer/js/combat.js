@@ -1050,10 +1050,15 @@ export const CombatCore = {
       if(fatigued) this.addCond(cb,"fatigued",1,99,true);
       this.cbs.push(cb);
     });
-    // foes (scaled by party size)
+    // foes (scaled by party size, and since Phase 6 by the hero's level —
+    // the highest level on a sheet in the party, which is the hero's, since
+    // companions carry no sheet)
     const n=party.length;
+    const lvl=Math.max(0,...party.filter(c=>c.char).map(c=>c.char.level));
     enc.foes.forEach((f,i)=>{
       if(f.minParty&&n<f.minParty) return;
+      if(f.minLevel&&lvl<f.minLevel) return;
+      if(f.maxLevel&&lvl>f.maxLevel) return;
       const m=Registry.monsters[f.monster];
       const cb={id:"foe"+i, side:"foe", name:m.name, letter:m.name.match(/[A-Z]/g).slice(0,1)[0]+(i+1), monster:m,
         x:f.x,y:f.y, hpMax:m.hp, hp:m.hp, tempHP:0, ac:m.ac, saves:{...m.saves}, perception:m.perception,

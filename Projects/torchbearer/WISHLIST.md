@@ -8,19 +8,22 @@ hooks; `cooperative-nature`'s +4 is the third. Saves read conditional `bonus`
 entries off the sheet by trait, so Ancient-Blooded Dwarf and Gutsy Halfling do
 something for the first time. `prone` could be applied by nothing and removed
 by nothing before this phase, and now Trip applies it and Stand takes it off.
-`node Projects/torchbearer/test/smoke.mjs` is green at **1,027 passed, 0
+`node Projects/torchbearer/test/smoke.mjs` is green at **1,093 passed, 0
 failed**, up from 947 — and it runs in CI, on
-`.github/workflows/torchbearer-ci.yml`. **Phase 6 — A hero who levels** is
-open with its first increment shipped: level is a field on the build, every
-derived number hangs off it, the progression tables are data with checks on
-them, and the save is at version 3 with `migrate` doing real work for the
-first time. What is left of it is the level-up screen, the `awards` an
-adventure credits, and encounter scaling. It stays a 2+ row on **Claude Fable
-5.1**, a batch of its own.
+`.github/workflows/torchbearer-ci.yml`. **Phase 6 — A hero who levels** has
+shipped in two increments: level is a field on the build, every derived
+number hangs off it, the progression tables are data with checks on them,
+the save is at version 3, and a hero with 1,000 XP banked takes the next
+level from the title screen through a second mode of the builder. An
+adventure pays XP through `awards`, or a whole level at its ending when it
+declares none. Foes scale by `minLevel`/`maxLevel` beside `minParty`, the
+kit's runes follow the level, and guide §13 now promises "correct-feeling
+PF2e from level 3 to 10". Arc two's next row is **Phase 7 — The campaign
+spine**, a 2+ on **Claude Opus 5**, a batch of its own.
 
 ## What it is
 
-A page at `Projects/torchbearer.html` — 2,333 lines since Phase 5, seven ES module
+A page at `Projects/torchbearer.html` — 2,502 lines since Phase 6, seven ES module
 imports, no build step, nothing the repo does not vendor. It is a Pathfinder 2e
 Remaster **adventure engine**: it forges a 3rd-level hero through a nine-step
 builder, drops that hero into a branching graph of scenes and skill checks, and
@@ -48,7 +51,9 @@ the level a new hero is forged at. The level a sheet is computed from is
 not a VTT in the other direction either: `App` — the scenes, the Chronicle,
 the saves, the Shelf — still lives in the `<script type="module">` inside the
 HTML file, and the only automated browser that ever drives it is the
-seven-check `torchbearer` entry in `Tools/board-check/play-games.mjs`.
+33-check `torchbearer` entry in `Tools/board-check/play-games.mjs`, which
+since Phase 6 takes the committed hero from 3rd to 5th level through the
+page's own buttons.
 
 ## The architecture that is there
 
@@ -184,6 +189,41 @@ because it could not.
 ## The standing backlog
 
 Open and unclaimed. Add here rather than starting a new list.
+
+**Levelling**
+- **No spell step at level-up.** A caster's rank-2 slots grow from 2 to 3 at
+  4th (`spellSlotsAt`), but the prepared list and the repertoire do not: a
+  level-4 wizard casts the two rank-2 spells it knows three times between
+  them, and a bard's repertoire never grows. `grantsAt` says nothing about
+  spells, so the flow offers nothing. A `spells` step in level-up mode that
+  adds one known spell when a rank's slot count rises is the shape; ranks 3
+  and up are locked #114 and a bigger job.
+- **The core pack's feats stop at 2nd level, so slots run dry.** A Fighter
+  has five class feats in the pack, holds two at 3rd, and has nothing left
+  for `class10`; a Rogue's every-level skill feat slot runs out of feats with
+  met prerequisites sooner. The flow reads any feat at or below the slot's
+  level, so a pack of level 4 to 10 feats is content work, not engine work.
+  Until then a slot with nothing to offer is satisfied empty (locked #117),
+  and the screen says so.
+- **The adventure picker says "Level 3 adventure" and compares it to
+  nothing.** A level-6 Sera walks into Barrowmoor at its level-3 DCs and
+  foes; `minLevel` on individual foes is the only scaling, and none of the
+  three shipped adventures uses it yet. The picker could warn when the hero
+  is two or more levels off, or an adventure's checks could read `levelDC`
+  relative to its `level`.
+- **Companions never level.** They are flat stat blocks at whatever number
+  they were written at, with no sheet for `minLevel` to read. By 6th the
+  hero has outgrown Brother Aldous. Phase 7's campaign record is where a
+  companion's level would live.
+- **XP past 10th goes nowhere.** `canLevelUp` stops at `MAX_LEVEL`, and the
+  counter keeps climbing with nothing to spend it on; the title screen says
+  "the road ends at 10th". Anything past 10 is the later arc.
+- **A level cannot be revisited.** An empty slot stays empty and nothing
+  lets a hero retrain; the flow writes `advances[L]` once. Fine for a
+  one-shot engine, wrong the day a feat pack arrives after the level did.
+- **The fist wears the potency rune.** `weaponAttack` applies `kitAt`'s
+  potency to whatever it is handed, the unarmed fallback included, as the
+  flat `+1` did before Phase 6. Pinned as-is.
 
 **Detection**
 - **No monster can Hide, because no monster carries a Stealth number.** The
@@ -654,11 +694,13 @@ prerequisite for Phase 7 and a headache after it, so it goes first or not at
 all. Same terms as arc one, model convention and definition of finished
 included.
 
-## Phase 6 — A hero who levels
+## Phase 6 — A hero who levels — SHIPPED
 
-**In progress — increment 1 shipped.** `const CHAR_LEVEL = 3` had eleven
-reads, and every derived number hung off them. It has one read now, and that
-one is the level a new hero is forged at.
+**Shipped in two increments.** `const CHAR_LEVEL = 3` had eleven reads, and
+every derived number hung off them. It has one read now, and that one is the
+level a new hero is forged at; the level a sheet is computed from is the
+hero's, and a hero with 1,000 XP banked takes the next one from the title
+screen.
 
 - [x] **Level becomes a build field.** `build.level`, defaulted to 3 and
   clamped to 1..10 by `repairBuild`, so every existing save reads back exactly
@@ -695,16 +737,35 @@ one is the level a new hero is forged at.
   `rules.js` already reads the map: feats chosen at 4 and up, the four boosts
   at 5 and 10 (partial past +4), and one skill increase per level at 5, 7
   and 9, with Master waiting for 7 and Legendary for 15 (locked #115).
-- [ ] **A level-up flow, not a rebuild:** a screen offering only what
-  `grantsAt` says the new level grants, reusing `Builder`'s own step
-  components and writing into `build.advances[level]`. Adventures declare
-  `"awards"`; `finish(true)` credits them into `App.xp`, milestone by
-  default, since every shipped adventure is a one-shot. The page's gear hint
-  still says "a 3rd-level kit", and the +1 potency rune is still assumed.
-- [ ] **Encounter scaling and the guide.** Add `minLevel`/`maxLevel` beside
-  the existing `minParty`, and rewrite guide §13's "correct-feeling PF2e at
-  level 3" — §4 already says a feature fires at its level and how
-  `featLevels` extends, but §13's promise stands until the flow ships.
+- [x] **A level-up flow, not a rebuild.** `Builder` has a second mode
+  (locked #117): `openLevelUp` clones the hero's build, sets its level one
+  higher, and every step writes into `build.advances[level]` alone, so the
+  preview sheet on the right is already the new level's. The rail shows only
+  what `grantsAt` grants — Boosts, Skill Increase, Feats, Review, each
+  present only when the level carries it — and the three step components
+  are the builder's own with a `mode` branch: the boost chips write to the
+  entry, the skill rows offer only what `skillIncreaseOptions` allows
+  (Master waits for 7th and the row says so), and the feat cards come from
+  `featChoices`, which excludes every feat the build holds at any level and
+  checks a skill feat's prerequisite against the sheet's real ranks. A slot
+  with nothing left to offer is satisfied empty and says why. `advanceMissing`
+  in `rules.js` is what the footer button reads, so the whole gate is pinned
+  under Node. "⬆ Take Level N" hands the build to `App.levelUp`, which spends
+  the 1,000 XP, rebuilds the hero, carries potions and the wounded value
+  over, refills HP and pools, and logs the change to the Chronicle. The title
+  screen has the button and a status line ("1000 / 1000 XP toward level 4 —
+  ready to level"). Adventures declare `"awards"` — whole XP per encounter id,
+  paid on victory, and under `"ending"`, paid on the first ending scene — and
+  an adventure that declares none is a milestone worth a level at its ending
+  (locked #116). Each key pays once per playthrough, remembered as
+  `awarded:<key>` in the flags map the save already carries. The kit's runes
+  follow the level (locked #118): +1 potency from 2nd, striking from 4th, +2
+  from 10th, and the gear hint says so.
+- [x] **Encounter scaling and the guide.** `minLevel`/`maxLevel` beside
+  `minParty`, read against the hero's level in `start` and typed by the
+  validator, which now also refuses a non-integer `minParty` (locked #119).
+  Guide §11 documents `awards` and the scaling fields with the level-based
+  DC row, and §13 promises "correct-feeling PF2e from level 3 to 10".
 
 **Increment 1's suite:** 947 → 1,027 checks. Twelve guard-rails were broken on
 purpose (#34) — the migration, the clamp, the level gate on a feature's
@@ -712,10 +773,24 @@ purpose (#34) — the migration, the clamp, the level gate on a feature's
 `featLevels` list, the level filter on the choice map, Toughness, the map's
 key filter, the cantrip rank and Demoralize's DC — and every one exited 1.
 
+**Increment 2's suite:** 1,027 → 1,093 checks, and 21 guard-rails broken on
+purpose — the milestone default, striking at the wrong level, potency never
+reaching +2, a striking rune that doubled the dice, `featChoices` ignoring
+taken feats and then prerequisites, `takenFeats` blind to the choice map,
+the Master floor and a pick raising itself off the list, an empty slot
+blocking the level, four boosts on three attributes, `canLevelUp` past 10,
+the kit never reaching the sheet, `minLevel` and `maxLevel` unread, four
+validator rules, the ending never paid, and a literal 1000 in the page — and
+every one exited 1. `npm run games torchbearer` grew from 7 checks to 33: it
+imports a version-3 save with 1,000 XP banked through the page's own Import
+button, takes Sera Voss to 4th and then to 5th through every step the flow
+has, and reads the level, the XP, `advances[4]` and `advances[5]` back out of
+the slot.
+
 *Leans on:* Phase 1's `rules.js`, `js/save.js`. *Save:* **version 3**, with
-`migrate` doing real work for the first time. *Model:* **Claude Fable 5.1** —
-a schema change every downstream number and every existing save inherits.
-Increment 1 worked under Claude Fable 5.1.
+`migrate` doing real work for the first time; increment 2 added no field.
+*Model:* **Claude Fable 5.1** — a schema change every downstream number and
+every existing save inherits. Both increments worked under Claude Fable 5.1.
 
 ## Phase 7 — The campaign spine
 

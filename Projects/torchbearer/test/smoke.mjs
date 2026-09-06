@@ -40,7 +40,8 @@ const { createTorchSlot, repairSnapshot, repairBuild, repairHero, repairAdvances
   = await mod("js/save.js");
 const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, setDiceSource, activeEffects, abilityMods,
         finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, SIZES, sizeIndex, levelDC,
-        FEAT_LEVELS, SKILL_INCREASE_LEVELS, BOOST_LEVELS, featLevelsFor, skillIncreaseLevels, grantsAt, spellSlotsAt } = {
+        FEAT_LEVELS, SKILL_INCREASE_LEVELS, BOOST_LEVELS, featLevelsFor, skillIncreaseLevels, grantsAt, spellSlotsAt,
+        XP_PER_LEVEL, canLevelUp, awardFor, kitAt, strikingDie, takenFeats, featChoices, skillIncreaseOptions, advanceMissing } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
 const { newCombat, heroCombatant, companionCombatant, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
@@ -132,6 +133,12 @@ ok(!/^function (esc|cap)\(/m.test(html), "esc and cap come from text.js, not a s
 ok(/onEvent\(ev\)/.test(html), "the page listens for combat events");
 // Locked decision #31: never hand-edit between the gvb:social markers.
 ok(/<!-- gvb:social:start/.test(html) && /gvb:social:end -->/.test(html), "the social block is intact");
+// Phase 6, increment 2: the level-up is reached from the title screen, XP is
+// credited under `awarded:` flags, and the number of XP in a level is the
+// module's, not a literal the page could drift from.
+ok(html.includes('id="btn-level-up"') && /Builder\.openLevelUp\(\)/.test(html), "the title screen has a Level Up button that opens the builder's level-up mode");
+ok(/"awarded:"\+key/.test(html) && /this\.award\(c\.combat/.test(html) && /this\.award\("ending"/.test(html), "the page credits an encounter on victory and the ending once, under awarded: flags");
+ok(!/\b1000\b/.test(codeOnly) && /XP_PER_LEVEL/.test(html), "the page reads XP_PER_LEVEL rather than carrying its own 1000");
 
 /* ---------------- 2. every pack that ships validates ---------------- */
 group("shipped content validates");
@@ -215,6 +222,24 @@ hits(p => { p.monsters[0].reach = 1.5; }, '"reach" is in cells', "…or half a s
   p.monsters[0].reactions = ["reactive-strike", "shield-block", "nimble-dodge"];
   p.monsters[0].reach = 2;
   eq(Validator.validate(p, emptyRegistry()), [], "every reaction the engine implements is accepted, and so is reach 2");
+}
+
+// Phase 6, increment 2: `awards`, and `minLevel`/`maxLevel` beside `minParty`.
+hits(p => { p.adventures[0].awards = [80]; }, '"awards" must be an object', "awards as an array");
+hits(p => { p.adventures[0].awards = { "e9": 80 }; }, 'awards names "e9"', "awards naming an encounter the adventure does not have");
+hits(p => { p.adventures[0].awards = { e1: "some" }; }, 'must be a whole number of XP', "an award that is not a number");
+hits(p => { p.adventures[0].awards = { ending: -1 }; }, 'must be a whole number of XP', "…or below zero");
+hits(p => { p.adventures[0].encounters.e1.foes[0].minLevel = "4"; }, '"minLevel" must be a whole number', "a minLevel that is a string");
+hits(p => { p.adventures[0].encounters.e1.foes[0].maxLevel = 0; }, '"maxLevel" must be a whole number', "a maxLevel of zero");
+hits(p => { p.adventures[0].encounters.e1.foes[0].minParty = true; }, '"minParty" must be a whole number', "a minParty of true (which used to spawn nothing, silently)");
+hits(p => { Object.assign(p.adventures[0].encounters.e1.foes[0], { minLevel: 6, maxLevel: 4 }); }, "can never spawn", "a minLevel above its maxLevel");
+{
+  const p = base();
+  p.adventures[0].awards = { e1: 80, ending: 120 };
+  Object.assign(p.adventures[0].encounters.e1.foes[0], { minParty: 2, minLevel: 4, maxLevel: 6 });
+  eq(Validator.validate(p, emptyRegistry()), [], "an awards map over the adventure's own encounters and \"ending\", and a foe scaled three ways, are accepted");
+  p.adventures[0].awards = {};
+  eq(Validator.validate(p, emptyRegistry()), [], "…and an empty awards map is legal: it means nothing is paid, not the milestone default");
 }
 
 // A cross-pack reference is legal — that is what "IDs are global" means.
@@ -718,6 +743,7 @@ eq(MAX_LEVEL, 10, "MAX_LEVEL is 10 — where the Player Core's tables stop being
   eq(forge("fighter", { level: 7, skillIncrease: "athletics", advances: { "7": { skillIncrease: "athletics" } } }).skills.athletics, "M", "at 7 the same choice is Master");
   eq(forge("fighter", { level: 5, advances: { "5": { skillIncrease: "occultism" } } }).skills.occultism, "T", "an increase on an untrained skill trains it");
   eq(forge("fighter", { level: 5, advances: { "5": { skillIncrease: "nonsense" } } }).skills, forge("fighter", { level: 5 }).skills, "a name that is not a skill changes nothing");
+  delete Registry.feats[id]; // section 8c counts the pack's own fighter feats
 }
 { // the progression tables
   const fighter = Registry.classes.fighter, rogue = Registry.classes.rogue;
@@ -749,6 +775,114 @@ eq(MAX_LEVEL, 10, "MAX_LEVEL is 10 — where the Player Core's tables stop being
   eq([s4.level, s4.hpMax], [4, 10 + 13 * 4 + 4], "…and at 4 she would have 66");
   eq(s4.ac, s3.ac + 1, "…one more AC");
   eq(s4.skills, s3.skills, "…and the same skills until an increase is chosen");
+}
+
+/* ---------------- 8c. the level-up (Phase 6, increment 2) ----------------
+   What the level-up screen renders and refuses lives in rules.js so it can
+   be pinned here: XP and the milestone default, the kit's runes by level,
+   which feats a slot may hold, which skills an increase may raise, and when
+   a level's entry in the choice map is complete. The page's Builder only
+   draws these answers. */
+group("the level-up (Phase 6, increment 2)");
+/** The section-10 fighter — longsword, crossbow, chain shirt, shield — defined
+    here as well because this group runs before that one. */
+const fighter = (over = {}) => forge("fighter", { gear: { weapon: "longsword", weapon2: null, ranged: "crossbow", armor: "chain-shirt", shield: true }, ...over });
+eq(XP_PER_LEVEL, 1000, "a level is 1,000 XP, PF2e's flat rate");
+eq([canLevelUp({ level: 3 }, 999), canLevelUp({ level: 3 }, 1000), canLevelUp({ level: 10 }, 5000), canLevelUp({}, "1000"), canLevelUp({}, undefined)],
+  [false, true, false, true, false], "canLevelUp: 1,000 banked and not yet at MAX_LEVEL; a string counts, nothing does not");
+{ // awards
+  eq(awardFor({}, "ending"), XP_PER_LEVEL, "an adventure with no awards is a milestone: its ending is worth a level");
+  eq(awardFor({}, "enc-moor"), 0, "…and its fights pay nothing");
+  const paid = { awards: { "enc-moor": 40, ending: 120 } };
+  eq([awardFor(paid, "enc-moor"), awardFor(paid, "ending"), awardFor(paid, "enc-crypt")], [40, 120, 0], "a declared awards map pays what it says and nothing for a key it does not name");
+  eq([awardFor({ awards: { ending: -5 } }, "ending"), awardFor({ awards: { ending: "lots" } }, "ending"), awardFor({ awards: { ending: 80.9 } }, "ending")], [0, 0, 80],
+    "a negative, a non-number and a fraction read 0, 0 and the floor");
+  eq(awardFor({ awards: {} }, "ending"), 0, "an empty map is not the milestone default: it pays nothing");
+  eq([awardFor(null, "ending"), awardFor(undefined, "x")], [XP_PER_LEVEL, 0], "no adventure at all reads as the default");
+  const shipped = [advPack, ...fs.readdirSync(path.join(PROJECT, "packs")).filter(f => f.endsWith(".json") && f !== "index.json").map(f => JSON.parse(fs.readFileSync(path.join(PROJECT, "packs", f), "utf8")))]
+    .flatMap(pk => pk.adventures || []);
+  ok(shipped.length === 3 && shipped.every(a => a.awards === undefined), `every shipped adventure declares no awards, so finishing one is a level — ${shipped.map(a => a.id).join(", ")}`);
+}
+{ // the kit follows the level
+  eq([1, 2, 3, 4, 9, 10].map(l => kitAt(l)), [
+    { potency: 0, striking: false }, { potency: 1, striking: false }, { potency: 1, striking: false },
+    { potency: 1, striking: true }, { potency: 1, striking: true }, { potency: 2, striking: true }],
+    "the kit's runes by level: +1 potency from 2, striking from 4, +2 potency from 10");
+  eq([strikingDie("1d8"), strikingDie("d6"), strikingDie("2d6"), strikingDie("1d12")], ["2d8", "2d6", "3d6", "2d12"], "a striking rune adds one weapon damage die");
+  const f1 = fighter({ level: 1 }), f3 = fighter(), f4 = fighter({ level: 4 }), f10 = fighter({ level: 10 });
+  eq(f3.attacks[0].die, "1d8", "at 3 the longsword is 1d8, as it always was");
+  eq(f4.attacks[0].die, "2d8", "at 4 the longsword has a striking rune: 2d8");
+  eq(f4.attacks[0].bonus, f3.attacks[0].bonus + 1, "…and the attack bonus climbed one, for the level alone");
+  eq(f10.attacks[0].bonus, f3.attacks[0].bonus + 7 + 1, "at 10 it climbed 7 for the level and 1 for the +2 rune");
+  eq(f1.attacks[0].bonus, f3.attacks[0].bonus - 2 - 1, "at 1 there is no rune yet: 2 for the level and 1 for the +1");
+  eq(f4.attacks[1].die, "2d8", "the crossbow got its striking rune too");
+}
+/** Every fighter class feat in the core pack, lowest level first. */
+const FIGHTER_FEATS = Registry.list(Registry.feats, f => f.type === "class" && (f.classes || []).includes("fighter")).sort((a, b) => a.level - b.level).map(f => f.id);
+eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
+{ // which feats a slot may hold
+  const b4 = fighter({ level: 4, feats: { class1: FIGHTER_FEATS[0], class2: FIGHTER_FEATS[1] } }).build;
+  const class4 = { key: "class4", type: "class", level: 4 };
+  eq(featChoices(b4, class4).map(f => f.id), FIGHTER_FEATS.slice(2), "a level-4 class slot offers the three fighter feats not yet taken");
+  eq(featChoices(b4, class4, FIGHTER_FEATS[0]).map(f => f.id), [FIGHTER_FEATS[0], ...FIGHTER_FEATS.slice(2)], "…plus the one already in the slot, so a pick can be changed");
+  eq(featChoices(b4, { key: "ancestry5", type: "ancestry", level: 5 }).length, 3, "an ancestry slot offers the hero's own ancestry's feats");
+  eq(featChoices(b4, { key: "ancestry5", type: "ancestry", level: 5 }).every(f => f.ancestry === "human"), true, "…and only those");
+  ok(!featChoices(b4, { key: "skill4", type: "skill", level: 4 }).some(f => f.id === "battle-medicine"), "a skill feat whose prerequisite is untrained is not offered");
+  ok(featChoices(b4, { key: "skill4", type: "skill", level: 4 }).some(f => f.id === "titan-wrestler"), "…and one whose prerequisite Soldier trains is");
+  const b6 = fighter({ level: 6, advances: { 5: { skillIncrease: "medicine" } } }).build;
+  ok(featChoices(b6, { key: "skill6", type: "skill", level: 6 }).some(f => f.id === "battle-medicine"), "a skill trained by a level-5 increase satisfies a level-6 skill feat's prerequisite");
+  ok(!featChoices(b4, { key: "class4", type: "class", level: 4 }).some(f => f.level > 4), "nothing above the slot's level is offered");
+  eq([...takenFeats({ feats: { class1: "a", x: null }, advances: { 6: { feats: { class6: "b" } }, 4: { feats: {} } } })], ["a", "b"], "takenFeats reads the flat map and the whole choice map, above the current level included");
+}
+{ // which skills an increase may raise
+  const o5 = skillIncreaseOptions(fighter({ level: 5 }).build, 5);
+  eq([o5.athletics, o5.occultism], ["E", "T"], "at 5 Soldier's trained Athletics may go to Expert and an untrained skill to Trained");
+  eq(skillIncreaseOptions(fighter({ level: 5, skillIncrease: "athletics" }).build, 5).athletics, undefined, "an Expert skill is not offered at 5: Master waits for 7");
+  eq(skillIncreaseOptions(fighter({ level: 7, skillIncrease: "athletics" }).build, 7).athletics, "M", "…and is offered at 7");
+  eq(skillIncreaseOptions(fighter({ level: 7, skillIncrease: "athletics", advances: { 7: { skillIncrease: "athletics" } } }).build, 7).athletics, "M",
+    "the level's own pick does not raise itself out of the list");
+  eq(skillIncreaseOptions(fighter({ level: 7, skillIncrease: "athletics", advances: { 5: { skillIncrease: "athletics" } } }).build, 7).athletics, "M",
+    "an increase wasted at 5 on an Expert skill (the page refuses it; the rules ignore it) leaves Athletics Expert, so 7 still offers Master");
+  eq(Object.keys(skillIncreaseOptions(fighter({ level: 5 }).build, 5)).length, Object.keys(SKILLS).length, "every skill is on the list at 5, nothing being past Expert");
+}
+{ // when a level's entry is complete
+  const b4 = fighter({ level: 4, feats: { class1: FIGHTER_FEATS[0], class2: FIGHTER_FEATS[1] } }).build;
+  eq(advanceMissing(b4, 4), ["class4", "skill4"], "a level-4 Fighter with nothing chosen is missing both feats");
+  b4.advances = { 4: { feats: { class4: FIGHTER_FEATS[2], skill4: "titan-wrestler" }, skillIncrease: null, boosts: [] } };
+  eq(advanceMissing(b4, 4), [], "…and with both picked is complete");
+  const b5 = fighter({ level: 5 }).build;
+  eq(advanceMissing(b5, 5), ["ancestry5", "skillIncrease", "boosts"], "level 5 wants an ancestry feat, a skill increase and the boosts");
+  b5.advances = { 5: { feats: { ancestry5: "cooperative-nature" }, skillIncrease: "athletics", boosts: ["str", "str", "dex", "con"] } };
+  eq(advanceMissing(b5, 5), ["boosts"], "four boosts with a repeat are not four boosts");
+  b5.advances[5].boosts = ["str", null, "dex", "con"];
+  eq(advanceMissing(b5, 5), ["boosts"], "…nor are three");
+  b5.advances[5].boosts = ["str", "dex", "con", "wis"];
+  eq(advanceMissing(b5, 5), [], "…four different attributes complete it");
+  // The empty slot: a fighter who has taken all five class feats by 8 has
+  // nothing to put in class10, and the level must not be stuck on it (#117).
+  const b10 = fighter({ level: 10, feats: { class1: FIGHTER_FEATS[0], class2: FIGHTER_FEATS[1] },
+    advances: { 4: { feats: { class4: FIGHTER_FEATS[2] } }, 6: { feats: { class6: FIGHTER_FEATS[3] } }, 8: { feats: { class8: FIGHTER_FEATS[4] } } } }).build;
+  eq(featChoices(b10, { key: "class10", type: "class", level: 10 }), [], "at 10 the fifth class slot has nothing left to offer");
+  const m10 = advanceMissing(b10, 10);
+  ok(!m10.includes("class10") && m10.includes("skill10") && m10.includes("boosts"), `…so it is satisfied empty, and the level still wants its skill feat and boosts — missing ${m10.join(", ")}`);
+}
+{ // the committed hero takes level 4, the way the page does it: clone, write advances[4], finalize, and the save survives
+  const slot = createTorchSlot(memStore());
+  const sera = slot.deserialize(fs.readFileSync(path.join(PROJECT, "test", "sera-voss.torchsave.json"), "utf8")).build;
+  const s3 = finalizeCharacter(sera);
+  const up = JSON.parse(JSON.stringify(sera)); up.level = 4; up.advances[4] = { feats: {}, skillIncrease: null, boosts: [] };
+  const choices = grantsAt(Registry.classes[up.cls], 4).feats.map(sl => [sl.key, featChoices(up, sl)[0]]);
+  ok(choices.length === 2 && choices.every(([, f]) => f), `level 4 offers Sera something in both slots — ${choices.map(([k, f]) => k + ": " + (f && f.id)).join(", ")}`);
+  choices.forEach(([k, f]) => { up.advances[4].feats[k] = f.id; });
+  eq(advanceMissing(up, 4), [], "…and with one pick in each the level is complete");
+  const s4 = finalizeCharacter(up);
+  eq([s4.level, s4.hpMax, s4.ac], [4, s3.hpMax + 14, s3.ac + 1], "Sera at 4: 14 more HP (10 + Con 3 + Toughness 1) and one more AC");
+  eq(s4.attacks[0].die, strikingDie(s3.attacks[0].die), "…and a striking rune on her weapon");
+  ok(takenFeats(up).has(choices[0][1].id), "…with the new feat on the build");
+  eq(featChoices(up, { key: "class6", type: "class", level: 6 }).some(f => f.id === choices[0][1].id), false, "…so level 6 will not offer it again");
+  const back = slot.deserialize(slot.serialize({ build: up, xp: 0 })).build;
+  eq(back.advances, up.advances, "the level-4 entry survives a save round trip as written");
+  eq(finalizeCharacter(back).hpMax, s4.hpMax, "…and the reloaded sheet is the same sheet");
 }
 
 /* ---------------- 9. Assurance, and a die a test can pin ---------------- */
@@ -1331,8 +1465,8 @@ group("combat engine: start");
 Registry.loadPack(advPack);
 ok(Registry.hasPack("barrowmoor") || Registry.adventures.barrowmoor, "the adventure pack is in the registry");
 const ADV = Registry.adventures.barrowmoor;
-/** A fighter with a longsword, a crossbow, a chain shirt and a shield. */
-const fighter = (over = {}) => forge("fighter", { gear: { weapon: "longsword", weapon2: null, ranged: "crossbow", armor: "chain-shirt", shield: true }, ...over });
+// `fighter` — a longsword, a crossbow, a chain shirt and a shield — is defined
+// in section 8c, which needs it first.
 /** An engine with the hooks a fight needs to end, and counters on each. */
 const fight = (over = {}) => {
   const h = { victory: 0, defeat: 0, saves: 0, mounts: 0, toasts: [], hints: [] };
@@ -1344,6 +1478,17 @@ const fight = (over = {}) => {
 };
 const begin = (eng, encId, party, flags = {}, adv = ADV) =>
   eng.start(encId, adv, { party, flags, onVictory: () => eng.h.victory++, onDefeat: () => eng.h.defeat++ });
+{ // Phase 6, increment 2: a foe scaled by the hero's level, beside minParty
+  const enc = { name: "Scaled", w: 8, h: 8, terrain: {}, pcStarts: [[0, 0], [1, 0]],
+    foes: [{ monster: "moor-hound", x: 4, y: 4 }, { monster: "moor-hound", x: 5, y: 4, minLevel: 5 }, { monster: "moor-hound", x: 6, y: 4, maxLevel: 3 }, { monster: "moor-hound", x: 7, y: 4, minLevel: 4, maxLevel: 4 }] };
+  const adv = { encounters: { scaled: enc } };
+  const foesAt = level => { const eng = fight(); begin(eng, "scaled", [heroCombatant(fighter({ level }))], {}, adv); return eng.cbs.filter(c => c.side === "foe").map(c => c.x); };
+  eq(foesAt(3), [4, 6], "a level-3 hero meets the unscaled hound and the maxLevel-3 one");
+  eq(foesAt(4), [4, 7], "a level-4 hero meets the unscaled one and the 4-to-4 one");
+  eq(foesAt(5), [4, 5], "a level-5 hero meets the unscaled one and the minLevel-5 one");
+  const eng = fight(); begin(eng, "scaled", [companionCombatant("aldous")], {}, adv);
+  eq(eng.cbs.filter(c => c.side === "foe").map(c => c.x), [4, 6], "a party with no sheet in it reads as level 0: the floor is the only hound above it");
+}
 {
   const hero = heroCombatant(fighter());
   eq([hero.id, hero.side, hero.hp, hero.hpMax, hero.ac, hero.dying, hero.wounded], ["hero", "pc", 44, 44, 19, 0, 0],
