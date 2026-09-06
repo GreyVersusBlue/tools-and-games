@@ -53,65 +53,66 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Torchbearer Phase 7, increment 1, "The
-campaign record and its gates" (PR #143)**, and **its row is still rank 1**:
-Phase 7 is a 2+ and this is one increment of it.
+The last thing that shipped is **Torchbearer Phase 7, increment 2, "Treasure,
+gold and the shop" (PR #145)**, and **its row is still rank 1**: Phase 7 is a
+2+ and this is its second increment.
 
-`campaigns` is a pack collection now — an ordered list of adventures, a
-starting level, per-adventure gates on the flags earlier ones set. The flag
-map got a second scope rather than a second map: a bare name like
-`met-maud` is the running adventure's, in the flat map that starts empty
-every time and dies with the adventure; a name carrying a slash, like
-`barrowmoor/bell-answered`, is the campaign record's, folded there when
-Barrowmoor ended. `flagOk(expr, local, campaign)` in the new
-`js/campaign.js` is the only place either is read, so a scene choice's
-`"if"` and a campaign entry's `"if"` are one grammar and two adventures
-that both use `knows-name` cannot collide. An ending that is not a gameover
-folds its flags into the record under `<advId>/<flag>`, minus the
-`awarded:` bookkeeping, and adds itself to `completed`; dying folds
-nothing. The save gained `campaignId`, `campaignFlags` and `completed`, and
-`SAVE_VERSION` did not move.
+**The hero can hold things now.** Before this, an adventure could hand over an
+item and `gotoScene` did `if(it.startsWith("healing-potion")) push` — anything
+else was one Chronicle line and then gone, which is why Thornwake's Vane Family
+Saber had been handed over on two different endings and had never once existed
+afterward. There was no money at all.
 
-**The validator proves a gate can open.** A campaign entry's `"if"` has to
-be scoped, has to name an adventure the campaign lists *earlier*, and has
-to name a flag that adventure's own scenes can actually set. A gate that
-can never open is a road the player sees and never walks, and its only
-symptom is a card that stays locked forever. Guide §11 grew a **Campaigns**
-subsection.
+`js/shop.js` is the new module, with no imports of its own, so registry.js can
+read a price to reject a bad one and `smoke.mjs` can drive a whole shop visit
+under Node. **Money is counted in copper, everywhere** (locked #124): gold as a
+fractional number drifts — `0.2 + 0.1` is `0.30000000000000004` — and a purse
+losing a hundredth of a coin per transaction is a bug nobody can reproduce.
+Authors never type copper. They write `"price": "12 gp"` or `"1 gp, 5 sp"`, the
+way the Player Core prints it, and `parseCoins` converts once. A bare number is
+rejected rather than guessed at: 12 could be twelve gold or twelve copper.
 
-**The shipped campaign is "The Bell and the Bridge"**, in
-`packs/thornwake-vigil.json`: Barrowmoor, then Thornwake behind
-`barrowmoor/bell-answered`. All three of Barrowmoor's non-gameover endings
-set that flag, so no real completion strands the hero, and the gameover
-sets nothing. Thornwake's opening scene gained one choice only a hero who
-came off the moor can see. `test/smoke.mjs` goes from 1,093 checks to
-1,159 and drives the campaign from an empty record to a finished one; the
-browser recipe from 33 to 42. No site version was bumped.
+`gold` and `inventory` joined the save, additive, and **`SAVE_VERSION` stayed at
+3 for the third time** on #122's argument. Neither is cleared by
+`startAdventure`: money is the hero's the way XP is, which is what a campaign is
+for. `"kind": "shop"` is a scene kind from a closed list, rendering the
+adventure's declared `stock` to buy and the hero's own pack to sell at half,
+rounded down. Two ship, one at each end of The Bell and the Bridge: **Maud's
+cupboard at the Drowned Lamp** and **Halloran's wagon at Thornwake bridgehead**.
+Lantern Cross pays 15 gp for the job, the vestry cache another 40, and
+Thornwake's midspan carries a burst company strongbox worth 35.
 
-**Four decisions are locked, 120 to 123.** A campaign entry is an object,
-never a bare id string (#120). Campaign flags are the same grammar in a
-second scope, keyed by `/`, rather than one flat map shared across a
-campaign (#121). `SAVE_VERSION` stayed at 3, because the three new fields
-are additive and their pre-Phase-7 value is the same "no campaign" `repair`
-computes, so a `migrate` branch would have nothing to do (#122). One
-campaign record per save, kept even when its pack is not loaded in this
-browser, so loading the pack resumes rather than restarts (#123).
+**An adventure may hand out one hero's quarter share of PF2e's Treasure by Level
+and no more** (locked #125) — 125 gp at level 3, where the published table's 500
+is for a party of four. The sum is taken across every scene rather than along one
+path, so it is a ceiling no playthrough can reach. An error and not a warning,
+because the symptom is silent: nothing throws, and two adventures later the hero
+is buying gear four levels above them. Barrowmoor hands out 79 gp of its 125,
+Thornwake 49. Five more validator checks landed with it, including the one that
+was already reachable before this branch: an `onEnter.items` id that does not
+exist used to print "Gained: healing-potion-lesserr" and hand over nothing.
 
-Thirty-five guard-rails were broken on purpose (#34) and every one exited
-1, plus one in the browser recipe. The one worth knowing about is the
-gate's reachability check: a campaign whose second entry gates on a flag
-the first adventure never sets validates fine and then shows a locked card
-that nothing can ever open. Proving the flag is one an `onEnter.flag` or a
-`flagOnce` actually writes is what turns that into a load-time error.
+**One bug only the browser could find.** `#toast` is a fixed strip 26px off the
+bottom with `z-index: 300`, up for 2.6 seconds after every save, load and
+purchase, and it swallowed the click on anything under it — `elementFromPoint`
+on a scene choice came back `DIV#toast`. It is `pointer-events: none` now.
 
-**`npm run games torchbearer` ran in the container this round, under
-`xvfb-run`**, and passed 42 of 42. `npm install` in `Tools/board-check` is
-still required first — `puppeteer-core` is not vendored.
+`smoke.mjs` goes from 1,159 checks to 1,278. **Twenty-eight guard-rails were
+broken on purpose** (#34) and every one exited 1 from a green baseline, two of
+them only after being tightened: a sell price that rounded identically at every
+shipped price until an odd-copper case was added, and a `snapshot()` regex that
+`holdings()` satisfied on its own with the snapshot line deleted.
 
-**No bullets went into a standing backlog this round, and no question was
-answered** — none stood in front of the row.
+**`npm run games torchbearer` ran in the container under `xvfb-run`** and passed
+49 of 49, up from 42: it walks the campaign board into Halloran's wagon, buys a
+2 sp dagger and sells the saber for 5 sp, and reads both back out of the real
+save. `npm install` in `Tools/board-check` is still required first —
+`puppeteer-core` is not vendored.
 
-Before that: **Torchbearer Phase 6, increment 2 (PR #141)**, **increment 1 (PR #139)**, **Phase 5 (PR #137)**, **Phase 4 (PR #135)**, **Phase 3 (PR #133)**, **Phase 2, increment 2 (PR #131)**, **increment 1 (PR #129)**, **Torchbearer Phase 1 (PR #127)**, **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
+**Two decisions are locked, 124 and 125**, and no question was answered — none
+stood in front of the row.
+
+Before that: **Torchbearer Phase 7, increment 1 (PR #143)**, **Phase 6, increment 2 (PR #141)**, **increment 1 (PR #139)**, **Phase 5 (PR #137)**, **Phase 4 (PR #135)**, **Phase 3 (PR #133)**, **Phase 2, increment 2 (PR #131)**, **increment 1 (PR #129)**, **Torchbearer Phase 1 (PR #127)**, **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
 (PRs #117, #119 and #121)**,
 **Hearth Phase 5 (PR #115)**, **Hearth Phase 4 (PR #114)**, **Hearth Phases 2 and 3 (PR
 #112)**, **Bell to Bell Phase 8 and Hearth Phase 1 (PR #111)**, **Bell to
@@ -124,17 +125,17 @@ board, tool or page change.
 
 **One of the four shared things moved this round, in the same commit as the
 project change: `Tools/board-check/play-games.mjs`, whose Torchbearer recipe
-grew from 33 checks to 42. The same two site-wide checks are still red on
+grew from 42 checks to 49. The same two site-wide checks are still red on
 `main` and were red before this branch existed** (re-run from the same
-container: 1,406 units checked, 2 broken, and six social pages out of
-sync)**:** `check-integrity.mjs` fails on
-`Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
-inline `<script type="module">`, which is a syntax error in a module) and on
-`Tools/prompt-builder.html` (it references `fonts.googleapis.com` and
-`fonts.gstatic.com`, against the zero-offsite rule). `social:check` reports
-six pages out of sync with the board. None of the three is ranked below yet;
-all three are somebody's next quarter-session. What else moved outside the
-project: `CLAUDE.md`'s locked-decision count, 119 to 123.
+container, and re-run again with the branch stashed to be sure: 1,412 units
+checked, 2 broken, and six social pages out of sync)**:** `check-integrity.mjs`
+fails on `Projects/school-generator/tools/walk-shell.html` (an HTML comment
+inside an inline `<script type="module">`, which is a syntax error in a module)
+and on `Tools/prompt-builder.html` (it references `fonts.googleapis.com` and
+`fonts.gstatic.com`, against the zero-offsite rule). `social:check` reports six
+pages out of sync with the board. None of the three is ranked below yet; all
+three are somebody's next quarter-session. What else moved outside the project:
+`CLAUDE.md`'s locked-decision count, 123 to 125.
 
 **121 ranked items.** 59 of them are phases in one of the ten project
 `WISHLIST.md` files; the other 62 are standalone, and live in Tier 2 below.
@@ -145,24 +146,24 @@ has no ranked rows left: all eight of its phases have shipped. Hearth has
 none either. Torchbearer has two left, ranks 1 and 2, and both are arc two.
 
 **Pick up rank 1 again: `Projects/torchbearer` Phase 7 — The campaign spine
-(Opus 5, size 2+), increment 2.** A 2+ row is the whole batch and will not
+(Opus 5, size 2+), increment 3.** A 2+ row is the whole batch and will not
 finish in one session: do one increment, ship it, and leave the row in place
 with its text rewritten. **Increment 1 shipped in PR #143** — the campaign
-record, the two-scope flag grammar and the gates, with `js/campaign.js`, the
-`campaigns` collection, three additive save fields and The Bell and the
-Bridge running Barrowmoor into Thornwake.
+record, the two-scope flag grammar and the gates. **Increment 2 shipped in PR
+#145** — item `level` and `price`, the purse and the pack in the save, the
+`"kind": "shop"` scene, and the treasure budget the validator enforces.
 
-**Increment 2 is treasure, gold and the shop:** an item `level` and `price`,
-a per-adventure budget following Paizo's table, gold that persists in the
-save beside `campaignId`, and a `"kind": "shop"` scene to spend it in — buy
-from a list the adventure declares, sell at half. Everything it leans on is
-in place: `build.level` and `kitAt` say what the kit already assumes for
-free, `App.flags` and the campaign record carry state between adventures,
-and the save's repair is where `gold` and `inventory` land. Downtime and
-exploration are the increment after that; at the checks end the phase still
-owes a scene-level walk of both adventures under Node and the browser recipe
-carried one beat past the fight it stops at. The suite is 1,159 checks and
-runs in CI.
+**Increment 3 is downtime and exploration, and it is the last one before the
+row can go.** Between adventures: a long rest, Treat Wounds, and a Craft or
+Earn Income roll against the level table — which now has somewhere to pay
+into, because `gold` exists. Within a scene: Search / Avoid Notice / Defend,
+each modifying the next encounter's opening state the way `surprise-round`
+does. That mechanism already exists and has exactly one hardcoded flag, so the
+work is generalising it rather than building it. **The one check the phase
+still owes is a scene-level walk of both adventures under Node** — every scene
+entered, every `goto` followed, every ending reached — which is the check that
+would have caught an unreachable shop without opening a browser. The suite is
+1,278 checks and runs in CI.
 
 Two things the CI rows below now know that they did not: `hearth-ci.yml`,
 `fourth-quarter-ci.yml` and `torchbearer-ci.yml` are the third, fourth and
@@ -214,7 +215,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 7 — The campaign spine — record and gates shipped (PR #143); treasure, gold and the shop are increment 2 | `Projects/torchbearer` | 2+ | Opus 5 | `claude/backlog-ranked-batch-dgu91e` | [WISHLIST.md Phase 7](Projects/torchbearer/WISHLIST.md#phase-7--the-campaign-spine) |
+| 1 | Phase 7 — The campaign spine — record and gates (PR #143) and treasure, gold and the shop (PR #145) have shipped; downtime, exploration and the scene-level walk are increment 3 | `Projects/torchbearer` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/torchbearer/WISHLIST.md#phase-7--the-campaign-spine) |
 | 2 | Phase 8 — The contract, and its first new author | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/torchbearer/WISHLIST.md#phase-8--the-contract-and-its-first-new-author) |
 | 3 | Phase 1 — The interrupt point | `Projects/absalom-inheritance` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/absalom-inheritance/WISHLIST.md#phase-1--the-interrupt-point) |
 | 4 | Phase 2 — Conditions that expire | `Projects/absalom-inheritance` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/absalom-inheritance/WISHLIST.md#phase-2--conditions-that-expire) |
