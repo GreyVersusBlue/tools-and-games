@@ -538,6 +538,15 @@ eq(withEffects([{ bonus: { target: "speed", value: 10, type: "status" } }]).spee
 eq(withEffects([{ bonus: { target: "speed", value: 10, vs: "seek" } }]).speed, 25, "bonus/speed with a `vs` is a note, not a number");
 eq(withEffects([{ bonus: { target: "hp", value: 5 } }]).hpMax, 49, "bonus/hp adds to max HP");
 eq(withEffects([{ bonus: { target: "hp", value: 5, vs: "seek" } }]).hpMax, 49, "a `vs` on hp is ignored and the bonus applies flatly (§6)");
+// Phase 4: a `vs` bonus is no longer dropped on the floor — it is collected on
+// the sheet as `condBonuses`, where a check site that knows the condition can
+// read it. Exactly one does today (Seek).
+eq(withEffects([{ bonus: { target: "perception", value: 2, type: "circumstance", vs: "seek" } }]).condBonuses,
+  [{ target: "perception", value: 2, type: "circumstance", vs: "seek" }],
+  "a conditional bonus lands on the sheet as condBonuses");
+eq(withEffects([{ bonus: { target: "perception", value: 2, type: "circumstance", vs: "seek" } }]).perception, 8,
+  "…and does not touch the flat Perception the sheet prints");
+eq(BASE.condBonuses, [], "a feat with no `vs` contributes nothing to condBonuses");
 eq(withEffects([{ bonus: { target: "initiative", value: 1 } }]).initBonus, 1, "bonus/initiative reaches the sheet");
 eq(withEffects([{ profUp: { target: "perception", rank: "M" } }]).perception, 10, "profUp/perception raises Perception");
 eq(withEffects([{ profUp: { target: "save.will", rank: "M" } }]).saves.will, 10, "profUp/save.will raises Will");
@@ -772,13 +781,13 @@ group("combat core: off-guard");
   const e3 = arena([t2, far]);
   eq(e3.effAC(t2, far).ac, 18, "an unmodified target is its own AC");
   e3.addCond(t2, "prone", 1, undefined, true);
-  eq(e3.effAC(t2, far), { ac: 16, offGuard: true }, "prone is off-guard");
+  eq(e3.effAC(t2, far), { ac: 16, offGuard: true, cover: 0 }, "prone is off-guard");
   t2.conditions = [];
   t2.shieldRaised = true;
   eq(e3.effAC(t2, far).ac, 20, "a raised shield is +2 AC");
   t2.shieldRaised = false;
   t2.char = { specials: ["deny-advantage"] };
-  eq(e3.effAC(t2, far, { forceOffGuard: true }), { ac: 18, offGuard: true },
+  eq(e3.effAC(t2, far, { forceOffGuard: true }), { ac: 18, offGuard: true, cover: 0 },
     "Deny Advantage reports off-guard but keeps the -2");
 }
 
@@ -815,7 +824,7 @@ group("combat core: Surprise Attack, Feint, Outwit");
   // Outwit: +1 circumstance AC against your own hunted prey, and nobody else's.
   const ranger = mk({ id: "hero", side: "pc", x: 0, y: 0, ac: 17, char: { specials: ["edge-outwit"] } });
   const prey = mk({ id: "prey", x: 3, y: 3 });
-  const other = mk({ id: "other", x: 4, y: 4 });
+  const other = mk({ id: "other", x: 0, y: 4 }); // off the prey's line, so no cover in the way
   const e3 = arena([ranger, prey, other], { huntPreyId: "prey" });
   eq(e3.effAC(ranger, prey).ac, 18, "Outwit is +1 AC against the ranger's own hunted prey");
   eq(e3.effAC(ranger, other).ac, 17, "…and nothing at all against anything else");
@@ -2105,6 +2114,455 @@ function play(eng, cap = 60) {
   eq([eng.h.defeat, r.rounds, r.pcs], [1, 7, ["Testcase 0/44 dead", "Brother Aldous 0/44 dying 1", "Wren Thistledown 0/38 dead"]],
     "…pinned: with average dice and no tactics, the Warden wins in seven rounds. A balance change moves this line on purpose");
 }
+setDiceSource();
+
+/* ---------------- 12. detection: Hide, Seek, cover, the flat check ----------------
+   Phase 4. Before this every combatant saw every other one, `losClear` was
+   consulted for ranged attacks and `maxTargets` and nothing else, and half the
+   Stealth feats in the pack described an action the engine did not have. */
+group("detection: the map");
+{
+  const seer = mk({ id: "o", side: "pc", name: "Alis", x: 0, y: 0 });
+  const quarry = mk({ id: "q", name: "Quarry", x: 3, y: 0 });
+  const other = mk({ id: "p", name: "Other", x: 0, y: 3 });
+  const eng = arena([seer, quarry, other]);
+  eq(eng.detectState(seer, quarry), "observed", "with nothing written down, everybody is observed");
+  eq(eng.flatCheckDC(seer, quarry), 0, "…and an observed target forces no flat check");
+  eq(eng.isHidden(seer, quarry), false, "…and is not hidden");
+
+  eng.setDetect(seer, quarry, "hidden");
+  eq([eng.detectState(seer, quarry), eng.flatCheckDC(seer, quarry), eng.isHidden(seer, quarry)], ["hidden", 11, true],
+    "a hidden target is DC 11");
+  eq(eng.detectState(other, quarry), "observed", "…to that observer only: the map is per pair");
+  eng.setDetect(seer, quarry, "observed");
+  eq(eng.detect.o, {}, "writing `observed` clears the override rather than pinning it");
+
+  // The two conditions are the base the map falls back to.
+  eng.addCond(quarry, "concealed", 1, undefined, true);
+  eq([eng.detectState(seer, quarry), eng.flatCheckDC(seer, quarry)], ["concealed", 5], "the `concealed` condition is DC 5, to everyone");
+  eng.setDetect(seer, quarry, "hidden");
+  eq(eng.detectState(seer, quarry), "hidden", "…and an override outranks it");
+  eng.reveal(quarry);
+  eq(eng.detectState(seer, quarry), "concealed", "…so dropping the override falls back to concealed, not to observed");
+  quarry.conditions = [];
+  eng.addCond(quarry, "invisible", 1, undefined, true);
+  eq([eng.detectState(seer, quarry), eng.flatCheckDC(seer, quarry), eng.isHidden(seer, quarry)], ["undetected", 11, true],
+    "the `invisible` condition is undetected, and undetected still rolls DC 11 for anyone who could target it");
+}
+
+group("detection: cover off the same Bresenham walk");
+{
+  const shooter = mk({ id: "s", side: "pc", x: 0, y: 0 });
+  const target = mk({ id: "t", x: 4, y: 0 });
+  const body = mk({ id: "b", x: 2, y: 0 });
+  const eng = arena([shooter, target, body], { mapW: 10, mapH: 10 });
+  eq(eng.coverBonus(shooter, target), 2, "a living body on the line is lesser cover, +2");
+  eq(eng.effAC(target, shooter).cover, 2, "…and effAC reports it");
+  eq(eng.effAC(target, shooter).ac, 20, "…as +2 on an AC of 18");
+  body.dead = true;
+  eq(eng.coverBonus(shooter, target), 0, "a corpse is not cover");
+  body.dead = false; body.y = 2;
+  eq(eng.coverBonus(shooter, target), 0, "…and neither is a body off the line");
+  eq(eng.coverBonus(shooter, { x: 1, y: 0 }), 0, "adjacent squares have nothing between them at all");
+
+  const wall = arena([shooter, target], { walls: ["2,0"], mapW: 10, mapH: 10 });
+  eq(wall.coverBonus(shooter, target), 4, "a wall on the line is greater cover, +4");
+  eq(wall.effAC(target, shooter).ac, 22, "…which is +4 on the roll the player sees");
+  eq(wall.losClear(shooter, target), false, "…and the same wall is what stops line of sight");
+
+  // Neither endpoint's own square is read. A caster standing on a wall does
+  // not block its own line (the same rule losClear already keeps), and a
+  // target standing on one is not behind it either.
+  const doorway = arena([shooter, target], { walls: ["0,0", "4,0"], mapW: 10, mapH: 10 });
+  eq(doorway.coverBonus(shooter, target), 0, "the square a shooter stands on is not its own cover");
+  eq(doorway.coverBonus(target, shooter), 0, "…and neither is the square the target stands on");
+}
+
+group("detection: Take Cover");
+{
+  const { eng, hero, foe } = duel({}, {}, { walls: ["1,0"] });
+  eq(eng.nearCover(hero), true, "a wall in one of the eight squares around you is something to duck behind");
+  eng.actionClick("takecover");
+  eq([hero.takingCover, eng.actions], [true, 2], "Take Cover is one action");
+  eq(eng.effAC(hero, foe).cover, 2, "…and +2 AC against an adjacent foe with nothing else in the way");
+  ok(eng.events.some(ev => /<b>Takes Cover<\/b>/.test(ev.text)), "…which the Chronicle says");
+
+  // Circumstance bonuses do not stack: the larger one is the whole of it.
+  const behind = arena([mk({ id: "s", side: "pc", x: 0, y: 0 }), mk({ id: "t", x: 4, y: 0, takingCover: true })],
+    { walls: ["2,0"], mapW: 10, mapH: 10 });
+  eq(behind.effAC(behind.cbs[1], behind.cbs[0]).cover, 4, "Take Cover behind a wall is +4, not +6");
+
+  // It ends on a move.
+  eng.actionClick("stride"); eng.cellClick(1, 2);
+  eq([hero.x, hero.y, hero.takingCover], [1, 2, false], "…and a Stride gives it up");
+
+  // It ends on a Strike, hit or miss.
+  const d2 = duel({}, {}, { walls: ["1,0"] });
+  d2.eng.actionClick("takecover");
+  pin([20, 1], [8, 1]);
+  d2.eng.actionClick("strike0"); d2.eng.tokenClick(d2.foe);
+  eq(d2.hero.takingCover, false, "…and so does swinging out of it, even on a miss");
+
+  // Nothing to duck behind.
+  const d3 = duel();
+  d3.eng.actionClick("takecover");
+  eq([d3.hero.takingCover, d3.eng.actions, d3.eng.h.toasts], [undefined, 3, ["Nothing here to duck behind."]],
+    "in the open it costs nothing and does nothing");
+}
+
+group("detection: Hide");
+{
+  /** A hero with trained Stealth at (0,0) and a hound at (4,0), wall between. */
+  const hidden = (chOver = {}, over = {}) => {
+    const ch = fighter({ skills: ["stealth"], ...chOver });
+    const hero = Object.assign(heroCombatant(ch), { x: 0, y: 0 });
+    const foe = hound({ x: 4, y: 0 });
+    const eng = stage([hero, foe], { walls: ["2,0"], ...over });
+    return { eng, hero, foe, ch };
+  };
+  {
+    const { eng, hero, foe } = hidden();
+    eq(eng.canHideFrom(hero, foe), true, "greater cover is something to hide behind");
+    pin([20, 15]);
+    eng.actionClick("hide");
+    eq(rolls(eng).at(-1).math, "15+7 = 22", "Hide is one Stealth roll: trained 7 at level 3, Dex +2");
+    eq([eng.detectState(foe, hero), hero.hideDC, eng.actions], ["hidden", 22, 2],
+      "…22 against the hound's Perception DC 17 hides, and the roll becomes the DC to find it");
+    ok(eng.events.some(ev => /slips out of Hound's sight/.test(ev.text)), "…and the Chronicle says so");
+  }
+  {
+    const { eng, hero, foe } = hidden();
+    pin([20, 1]);
+    eng.actionClick("hide");
+    eq([eng.detectState(foe, hero), hero.hideDC, eng.actions], ["observed", undefined, 2],
+      "1 + 7 = 8 against DC 17 is seen, and the action is spent anyway");
+    ok(eng.events.some(ev => /Hound keeps Testcase in view/.test(ev.text)), "…and the Chronicle says that too");
+  }
+  {
+    // Nothing to hide behind: no wall, no body, no concealment.
+    const ch = fighter({ skills: ["stealth"] });
+    const hero = Object.assign(heroCombatant(ch), { x: 0, y: 0 });
+    const foe = hound({ x: 4, y: 0 });
+    const eng = stage([hero, foe]);
+    eq(eng.canHideFrom(hero, foe), false, "an open floor is not cover");
+    eng.actionClick("hide");
+    eq([eng.actions, eng.h.toasts], [3, ["Nothing here to hide behind."]], "…so Hide costs nothing and does nothing");
+    eq(rolls(eng).length, 0, "…and never rolls");
+  }
+  {
+    // Per pair: the hound behind the wall loses you, the one with a clear line
+    // never had to look.
+    const ch = fighter({ skills: ["stealth"] });
+    const hero = Object.assign(heroCombatant(ch), { x: 0, y: 0 });
+    const blind = hound({ id: "f", name: "Hound", x: 4, y: 0 });
+    const watcher = hound({ id: "g", name: "Watcher", x: 0, y: 4 });
+    const eng = stage([hero, blind, watcher], { walls: ["2,0"] });
+    pin([20, 20]);
+    eng.actionClick("hide");
+    eq([eng.detectState(blind, hero), eng.detectState(watcher, hero)], ["hidden", "observed"],
+      "one roll, two answers: the foe you have cover from loses you and the other does not");
+    ok(!eng.events.some(ev => /Watcher keeps/.test(ev.text)), "…and the foe with no cover between you is never even rolled against");
+  }
+  {
+    // Outwit: +2 Stealth against your own hunted prey, and the guide has said
+    // for two sessions that this third of the feat went nowhere.
+    const { eng, hero, foe } = hidden({ feats: { "class-1": "outwit-probe" } });
+    eq(hero.char.specials.includes("edge-outwit"), false, "control: the plain fighter has no edge");
+    pin([20, 8]);
+    eng.actionClick("hide");
+    eq(eng.detectState(foe, hero), "observed", "8 + 7 = 15 against DC 17 is two short");
+
+    const o = hidden();
+    o.hero.char = { ...o.hero.char, specials: [...o.hero.char.specials, "edge-outwit"] };
+    o.eng.huntPreyId = o.foe.id;
+    pin([20, 8]);
+    o.eng.actionClick("hide");
+    eq(o.eng.detectState(o.foe, o.hero), "hidden", "…and Outwit's +2 against the hunted prey covers exactly that gap");
+    eq(rolls(o.eng).at(-1).math, "8+7 = 15", "…without touching the roll everyone sees");
+
+    const n = hidden();
+    n.hero.char = { ...n.hero.char, specials: [...n.hero.char.specials, "edge-outwit"] };
+    n.eng.huntPreyId = "somebody-else";
+    pin([20, 8]);
+    n.eng.actionClick("hide");
+    eq(n.eng.detectState(n.foe, n.hero), "observed", "…and nothing at all against anything that is not your prey");
+  }
+  {
+    // Take Cover is somewhere to hide even when the line to that foe is clear:
+    // the point of the action is that you have put something between you and
+    // the room by hand.
+    const ch = fighter({ skills: ["stealth"] });
+    const hero = Object.assign(heroCombatant(ch), { x: 0, y: 0 });
+    const foe = hound({ x: 4, y: 0 });
+    const eng = stage([hero, foe], { walls: ["0,1"] });
+    eq(eng.coverBonus(foe, hero), 0, "a wall beside you is not a wall on the line");
+    eq(eng.canHideFrom(hero, foe), false, "…so there is nothing to hide behind yet");
+    eng.actionClick("takecover");
+    eq(eng.canHideFrom(hero, foe), true, "…until you have Taken Cover behind it");
+    pin([20, 20]);
+    eng.actionClick("hide");
+    eq(eng.detectState(foe, hero), "hidden", "…and then the Hide is allowed to roll at all");
+  }
+  {
+    // Distracting Shadows: a body is lesser cover, which is not enough to hide
+    // behind unless the feat that says so is on the sheet.
+    const ch = fighter({ skills: ["stealth"] });
+    const hero = Object.assign(heroCombatant(ch), { x: 0, y: 0 });
+    const screen = companionCombatant("aldous"); screen.x = 2; screen.y = 0;
+    const foe = hound({ x: 4, y: 0 });
+    const eng = stage([hero, screen, foe]);
+    eq(eng.coverBonus(foe, hero), 2, "Brother Aldous in the way is lesser cover");
+    eq(eng.canHideFrom(hero, foe), false, "…which is not enough to hide behind");
+    hero.char = { ...hero.char, specials: [...hero.char.specials, "distracting-shadows"] };
+    eq(eng.canHideFrom(hero, foe), true, "…until Distracting Shadows says it is");
+  }
+  {
+    // Expiry. Hiding does not survive the hider moving, or striking out of it.
+    const { eng, hero, foe } = hidden();
+    pin([20, 20]);
+    eng.actionClick("hide");
+    eq(eng.detectState(foe, hero), "hidden", "hidden behind the wall");
+    eng.actionClick("stride"); eng.cellClick(0, 1);
+    eq(eng.detectState(foe, hero), "observed", "…and a Stride gives the place away");
+    ok(eng.events.some(ev => /gives the hiding place away, on the move/.test(ev.text)), "…with a line saying why");
+  }
+  {
+    // …and the fallback after a reveal is the condition, not `observed`.
+    const ch = fighter({ skills: ["stealth"] });
+    const hero = Object.assign(heroCombatant(ch), { x: 0, y: 0 });
+    const foe = hound({ x: 4, y: 0 });
+    const eng = stage([hero, foe]);
+    eng.addCond(hero, "concealed", 1, undefined, true);
+    eq(eng.canHideFrom(hero, foe), true, "concealment is something to hide in with no wall at all");
+    pin([20, 20]);
+    eng.actionClick("hide");
+    eq(eng.detectState(foe, hero), "hidden", "…and hiding in it beats being merely blurry");
+    pin([20, 20], [8, 5]);
+    eng.actionClick("strike1"); eng.tokenClick(foe);
+    eq(eng.detectState(foe, hero), "concealed", "a Strike gives the hiding place away, back to concealed and no further");
+    ok(eng.events.some(ev => /gives the hiding place away, striking out of it/.test(ev.text)), "…and says which it was");
+  }
+}
+
+group("detection: Seek");
+{
+  /** A hero at (0,0) and a hound at (3,0) already hidden from them at DC 15. */
+  const lost = (over = {}) => {
+    const hero = Object.assign(heroCombatant(fighter()), { x: 0, y: 0 });
+    const foe = hound({ x: 3, y: 0 });
+    const eng = stage([hero, foe], over);
+    eng.setDetect(hero, foe, "hidden"); foe.hideDC = 15;
+    return { eng, hero, foe };
+  };
+  {
+    const { eng, hero, foe } = lost();
+    pin([20, 10]);
+    eng.actionClick("seek"); eng.cellClick(3, 0);
+    eq(rolls(eng).at(-1).math, "10+8 = 18", "Seek is one Perception roll");
+    eq([eng.detectState(hero, foe), eng.actions], ["observed", 2], "…18 against a Stealth DC of 15 finds it, for one action");
+    ok(eng.events.some(ev => /<b>Testcase finds Hound<\/b>/.test(ev.text)), "…and the Chronicle names what turned up");
+  }
+  {
+    const { eng, hero, foe } = lost();
+    pin([20, 1]);
+    eng.actionClick("seek"); eng.cellClick(3, 0);
+    eq(eng.detectState(hero, foe), "hidden", "1 + 8 = 9 against DC 15 finds nothing");
+    ok(eng.events.some(ev => /searches, and turns up nothing/.test(ev.text)), "…and says so");
+  }
+  {
+    // The burst is three squares across. Two away from the point is outside it.
+    const { eng, hero, foe } = lost();
+    foe.x = 5;
+    pin([20, 20]);
+    eng.actionClick("seek"); eng.cellClick(3, 0);
+    eq(eng.detectState(hero, foe), "hidden", "a natural 20 two squares outside the burst still finds nothing");
+    foe.x = 4;
+    pin([20, 20]);
+    eng.actions = 3;
+    eng.actionClick("seek"); eng.cellClick(3, 0);
+    eq(eng.detectState(hero, foe), "observed", "…and one square outside the point is inside the burst");
+  }
+  {
+    // The DC to find a hider is the roll it Hid with, not a number off a stat
+    // block: a hound that never hid is found at 10 + its Stealth, and one that
+    // rolled 22 is found at 22.
+    const ch = fighter({ skills: ["stealth"] });
+    const hero = Object.assign(heroCombatant(ch), { x: 0, y: 0 });
+    const foe = hound({ x: 4, y: 0 });
+    const eng = stage([hero, foe], { walls: ["2,0"] });
+    pin([20, 15]);
+    eng.actionClick("hide");
+    eq([eng.detectState(foe, hero), hero.hideDC], ["hidden", 22], "the hero hides on a 22");
+    eq([eng.stealthDC(hero), eng.stealthDC(foe)], [22, 17], "…so 22 is the DC to find them, where the hound is 10 + Stealth 7");
+    pin([20, 12]);
+    eng.seek(foe, { x: 0, y: 0 }, 1);
+    eq(eng.detectState(foe, hero), "hidden", "12 + 7 = 19 clears 17 and is still under the 22 that matters");
+    pin([20, 15]);
+    eng.seek(foe, { x: 0, y: 0 }, 1);
+    eq(eng.detectState(foe, hero), "observed", "…and 15 + 7 = 22 is exactly enough");
+  }
+  {
+    // Range: the point has to be within 30 feet.
+    const { eng, hero, foe } = lost();
+    eng.actionClick("seek"); eng.cellClick(9, 9);
+    eq([eng.actions, rolls(eng).length], [3, 0], "a point past 30 ft is not a Seek at all");
+  }
+  {
+    // Invisibility survives being found. Seek beats the hiding place, not the
+    // spell.
+    const hero = Object.assign(heroCombatant(fighter()), { x: 0, y: 0 });
+    const foe = hound({ x: 1, y: 0 });
+    const eng = stage([hero, foe]);
+    eng.addCond(foe, "invisible", 1, undefined, true);
+    eq(eng.detectState(hero, foe), "undetected", "an invisible hound is undetected");
+    eq(eng.targets({ range: 1, mode: "strike" }).length, 0, "…and cannot be targeted at all, even from the next square over");
+    pin([20, 20]);
+    eng.actionClick("seek"); eng.cellClick(1, 0);
+    eq(eng.detectState(hero, foe), "hidden", "…and finding it makes it hidden, not observed");
+    ok(eng.events.some(ev => /an outline in the air/.test(ev.text)), "…which the Chronicle is explicit about");
+    eq(eng.flatCheckDC(hero, foe), 11, "…so it still costs a DC 11 flat check to hit");
+    eq(eng.targets({ range: 1, mode: "strike" }).length, 1, "…and it can be swung at now, at the price of that check");
+  }
+  {
+    // Sensate Gnome: the first conditional `bonus` anything in the engine reads.
+    // Two gnome heritages off the same build, so the only difference between
+    // the control and the subject is the one line of the DSL.
+    const GNOME = h => forge("fighter", { ancestry: "gnome", heritage: h });
+    eq([GNOME("umbral-gnome").perception, GNOME("sensate-gnome").perception], [8, 8],
+      "both gnomes print the same Perception on the sheet");
+    eq([GNOME("umbral-gnome").condBonuses, GNOME("sensate-gnome").condBonuses],
+      [[], [{ target: "perception", value: 2, type: "circumstance", vs: "seek" }]],
+      "…and only one of them carries a conditional bonus");
+
+    const plain = lost();
+    plain.foe.hideDC = 16;
+    plain.hero.char = GNOME("umbral-gnome");
+    pin([20, 7]);
+    plain.eng.actionClick("seek"); plain.eng.cellClick(3, 0);
+    eq(rolls(plain.eng).at(-1).math, "7+8 = 15", "7 + 8 = 15 against a Stealth DC of 16…");
+    eq(plain.eng.detectState(plain.hero, plain.foe), "hidden", "…is one short");
+
+    const keen = lost();
+    keen.foe.hideDC = 16;
+    keen.hero.char = GNOME("sensate-gnome");
+    pin([20, 7]);
+    keen.eng.actionClick("seek"); keen.eng.cellClick(3, 0);
+    eq(rolls(keen.eng).at(-1).math, "7+10 = 17", "…and Seek adds Sensate Gnome's +2: 8 + 2");
+    eq(keen.eng.detectState(keen.hero, keen.foe), "observed", "…which is exactly the square it was short by");
+  }
+}
+
+group("detection: the flat check");
+{
+  {
+    // Hidden: DC 11, and a failure costs the action and raises the MAP.
+    const { eng, hero, foe } = duel();
+    eng.setDetect(hero, foe, "hidden");
+    pin([20, 10]);
+    eng.actionClick("strike0"); eng.tokenClick(foe);
+    eq(rolls(eng).map(r => r.math), ["10 vs DC 11"], "a 10 against DC 11 is the only die the swing rolls");
+    eq([foe.hp, hero.mapCount, eng.actions], [24, 1, 2], "…no damage, but the action and the MAP are both spent");
+    ok(eng.events.some(ev => /finds only the empty air where Hound was/.test(ev.text)), "…and the Chronicle says where the blow went");
+  }
+  {
+    const { eng, hero, foe } = duel();
+    eng.setDetect(hero, foe, "hidden");
+    pin([20, 11], [20, 20], [8, 8]);
+    eng.actionClick("strike0"); eng.tokenClick(foe);
+    eq(rolls(eng).map(r => r.math), ["11 vs DC 11", "20+10 = 30 vs AC 16"], "…and an 11 lets the attack roll happen");
+    ok(foe.hp < 24, "…and land");
+  }
+  {
+    // Concealed: DC 5.
+    const { eng, hero, foe } = duel();
+    eng.addCond(foe, "concealed", 1, undefined, true);
+    pin([20, 4]);
+    eng.actionClick("strike0"); eng.tokenClick(foe);
+    eq(rolls(eng).map(r => r.math), ["4 vs DC 5"], "concealment is a DC 5 flat check");
+    eq(rolls(eng).at(-1).text, "Testcase: flat check vs concealed Hound", "…named for what is in the way");
+    pin([20, 5], [20, 20], [8, 8]);
+    eng.actions = 3;
+    eng.actionClick("strike0"); eng.tokenClick(foe);
+    eq(rolls(eng).length, 3, "…and a 5 goes through");
+  }
+  {
+    // A monster's attack rolls it too.
+    const { eng, hero, foe } = duel();
+    eng.setDetect(foe, hero, "hidden");
+    pin([20, 3]);
+    eng.strikeMonster(foe, hero, { name: "Bite", bonus: 9, die: "1d8+3", damageType: "piercing", traits: [], range: 1 });
+    eq([hero.hp, foe.mapCount], [44, 1], "a hidden hero takes nothing from a hound that rolled a 3");
+    eq(rolls(eng).map(r => r.math), ["3 vs DC 11"], "…because the flat check happens before the attack roll");
+  }
+  {
+    // …and so does a spell that names a creature.
+    const { eng, caster, foe, arm } = sanctum(WIZARD());
+    eng.setDetect(caster, foe, "hidden");
+    pin([20, 2]);
+    arm("ignition", 2, "cantrip");
+    eng.tokenClick(foe);
+    eq(rolls(eng).map(r => r.math), ["2 vs DC 11"], "a targeted spell rolls the same flat check");
+    eq(foe.hp, 24, "…and a failure is the whole of the spell");
+    eq(eng.actions, 1, "…which still cost the two actions to cast");
+  }
+  {
+    // An area spell names a square, not a creature, and asks nothing.
+    const { eng, caster, foe, skel, arm } = sanctum(WIZARD());
+    eng.setDetect(caster, foe, "hidden");
+    pin([20, 20], [20, 20], [4, 2], [4, 2], [4, 2]);
+    arm("breathe-fire", 1, "r1");
+    eng.cellClick(4, 2);
+    eq(eng.events.filter(ev => /flat check/.test(ev.text)).length, 0, "a cone rolls no flat check against anybody");
+  }
+}
+
+group("detection: the monster AI");
+{
+  {
+    // A monster cannot swing at what it cannot detect, so it Seeks instead.
+    const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+    const foe = hound({ x: 2, y: 1 });
+    const eng = stage([hero, foe]);
+    eng.addCond(hero, "invisible", 1, undefined, true);
+    eng.actions = 3;
+    pin([20, 1]);
+    const step = eng.aiStep(foe);
+    eq(step.action, "seek", "with every hero undetected the hound Seeks rather than biting the air");
+    eq(eng.detectState(foe, hero), "undetected", "…and a 1 finds nothing");
+    ok(eng.events.some(ev => /casts about for something it can no longer see/.test(ev.text)), "…with a line saying why");
+    eng.actions = 3;
+    pin([20, 20]);
+    eng.aiStep(foe);
+    eq(eng.detectState(foe, hero), "hidden", "…and a 20 turns the invisible hero into an outline it can target");
+  }
+  {
+    // A hidden hero is still a target; the hound just has to roll for it.
+    const hero = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+    const foe = hound({ x: 2, y: 1 });
+    const eng = stage([hero, foe]);
+    eng.setDetect(foe, hero, "hidden");
+    eng.actions = 3;
+    pin([20, 1]);
+    const step = eng.aiStep(foe);
+    eq(step.action, "strike", "a hidden hero is still something to bite at");
+    eq([hero.hp, rolls(eng).map(r => r.math)], [44, ["1 vs DC 11"]], "…and the flat check is the whole of the attempt");
+  }
+  {
+    // Cover reaches the monster's attack path too, which is the half of it a
+    // bare {id,ranged} stand-in would have silently dropped (locked #90).
+    const hero = Object.assign(heroCombatant(fighter()), { x: 0, y: 0 });
+    const screen = companionCombatant("aldous"); screen.x = 2; screen.y = 0;
+    const wisp = hound({ id: "w", name: "Grave Wisp", x: 4, y: 0,
+      attacks: [{ name: "Spark", bonus: 11, damage: "1d6", damageType: "electricity", range: 12 }] });
+    const eng = stage([hero, screen, wisp]);
+    eq(eng.effAC(hero, { id: "w", ranged: true }, { from: wisp }).cover, 2, "a body between the wisp and the hero is +2 AC");
+    pin([20, 8], [6, 3]);
+    eng.strikeMonster(wisp, hero, { name: "Spark", bonus: 11, die: "1d6", damageType: "electricity", traits: [], range: 12, ranged: true });
+    ok(rolls(eng).at(-1).math.includes("vs AC 21"), "…and it is on the roll the player sees: 19 + 2");
+    eq(hero.hp, 44, "…which is the difference between a hit and a miss here");
+  }
+}
+
 setDiceSource();
 
 /* ---------------- report ---------------- */

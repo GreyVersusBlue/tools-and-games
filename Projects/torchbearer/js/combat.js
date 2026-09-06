@@ -188,6 +188,194 @@ export const CombatCore = {
     return cost<=Math.floor(this.moveBudget(cb)/2);
   },
 
+  /* ---------- detection ---------- */
+  /**
+   * Detection is a per-pair state, `detect[observerId][targetId]`, and its
+   * absence means "whatever the target's own conditions say".
+   *
+   * Four states, and only the first three can be attacked:
+   *
+   *   observed   — the default, and what a cleared override falls back to.
+   *   concealed  — DC 5 flat check. The `concealed` condition, on everyone.
+   *   hidden     — DC 11. You know the square; you do not know the creature.
+   *   undetected — the `invisible` condition. Nothing can target it at all,
+   *                and a Seek that finds it only promotes it to hidden.
+   *
+   * The map holds only what an action put there, so a Hide against one foe is
+   * invisible to the next one, and clearing an override restores the base the
+   * conditions describe rather than flattening everything to observed.
+   */
+  detectState(obs,t){
+    if(!obs||!t) return "observed";
+    const row=this.detect[obs.id];
+    if(row&&row[t.id]) return row[t.id];
+    if(this.condVal(t,"invisible")) return "undetected";
+    if(this.condVal(t,"concealed")) return "concealed";
+    return "observed";
+  },
+  /** Write one pair. "observed" clears the override rather than pinning it,
+      so a creature that is also `concealed` goes back to concealed. */
+  setDetect(obs,t,state){
+    const row=this.detect[obs.id]||(this.detect[obs.id]={});
+    if(state==="observed") delete row[t.id]; else row[t.id]=state;
+  },
+  /** True when `obs` cannot see well enough to skip the flat check. */
+  isHidden(obs,t){ const s=this.detectState(obs,t); return s==="hidden"||s==="undetected"; },
+  /** The DC of the flat check `obs` rolls to affect `t`. 0 means no check. */
+  flatCheckDC(obs,t){ const s=this.detectState(obs,t); return s==="observed"?0:s==="concealed"?5:11; },
+  /**
+   * The expiry rule, and the only one there is: a hidden creature that moves or
+   * attacks gives the hiding place away. Every "hidden" override naming it is
+   * dropped — an invisible one falls back to undetected, a concealed one to
+   * concealed, everyone else to observed. Nothing else in the engine writes
+   * detection, so nothing else has to clean up after it.
+   */
+  reveal(cb,why){
+    let any=false;
+    for(const oid of Object.keys(this.detect)){
+      if(this.detect[oid][cb.id]==="hidden"){ delete this.detect[oid][cb.id]; any=true; }
+    }
+    if(any) this.log(`${esc(cb.name)} gives the hiding place away${why?", "+why:""}.`);
+    return any;
+  },
+  /** Every position change runs through here. Hiding does not survive a move,
+      and neither does Take Cover. */
+  afterMove(cb){ cb.takingCover=false; this.reveal(cb,"on the move"); },
+  /**
+   * The flat check a hidden or concealed target forces before an attack or a
+   * targeted spell resolves. True when the action goes through; false when it
+   * finds empty air, and the caller has already spent the action either way.
+   */
+  flatCheck(att,def){
+    const dc=this.flatCheckDC(att,def);
+    if(!dc) return true;
+    const d20=Dice.d(20);
+    this.seal(`${att.name}: flat check vs ${this.detectState(att,def)} ${def.name}`,d20,`${d20} vs DC ${dc}`,d20>=dc?2:1);
+    if(d20>=dc) return true;
+    this.log(`${esc(att.name)} finds only the empty air where ${esc(def.name)} was.`);
+    return false;
+  },
+  /**
+   * Cover between two combatants, in AC, off the same Bresenham walk `losClear`
+   * makes — reading what the line steps over rather than stopping at it. A wall
+   * is greater cover (+4), a living body is lesser cover (+2), and the greater
+   * wins: circumstance bonuses do not stack.
+   *
+   * Neither endpoint's own square is ever examined — the walk steps before it
+   * reads, and stops before the last square — so a shooter in a doorway is not
+   * its own cover and a target standing on a wall is not either. A wall
+   * short-circuits, because nothing beats +4.
+   */
+  coverBonus(a,b){
+    if(!a||!b||a.x===undefined||b.x===undefined) return 0;
+    let x0=a.x,y0=a.y; const x1=b.x,y1=b.y;
+    const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0), sx=x0<x1?1:-1, sy=y0<y1?1:-1;
+    let err=dx-dy, cover=0;
+    while(!(x0===x1&&y0===y1)){
+      const e2=2*err;
+      if(e2>-dy){ err-=dy; x0+=sx; }
+      if(e2<dx){ err+=dx; y0+=sy; }
+      if(x0===x1&&y0===y1) break;
+      if(this.walls.has(this.key(x0,y0))) return 4;
+      const occ=this.occupied(x0,y0);
+      if(occ) cover=Math.max(cover,2);
+    }
+    return cover;
+  },
+  /** Take Cover needs something to duck behind: a wall in one of the eight
+      squares around you. */
+  nearCover(cb){
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+      if(!dx&&!dy) continue;
+      if(this.walls.has(this.key(cb.x+dx,cb.y+dy))) return true;
+    }
+    return false;
+  },
+  /**
+   * Hide. One action, one Stealth roll, compared against each foe's Perception
+   * DC separately.
+   *
+   * It is not a `resolveTargeted` case the way Feint is, because there is
+   * nothing to point at: the tabletop action is one check against every
+   * observer at once, and the per-pair map is what makes the results able to
+   * differ. `edge-outwit`'s +2 finally has somewhere to go, and it lands on the
+   * comparison against the hunted prey only, not on the roll everyone sees.
+   */
+  doHide(cb){
+    const ch=cb.char; if(!ch) return;
+    const foes=this.cbs.filter(c=>c.side!==cb.side&&!c.dead);
+    const eligible=foes.filter(f=>this.canHideFrom(cb,f));
+    if(!eligible.length){ this.toast("Nothing here to hide behind."); return; }
+    this.spend(1);
+    const mod=skillMod(ch,"stealth");
+    const d20=Dice.d(20), total=d20+mod;
+    this.seal(`${cb.name} Hides`,d20,`${d20}${mod>=0?"+":""}${mod} = ${total}`,2);
+    let any=false;
+    eligible.forEach(f=>{
+      const bonus=(ch.specials.includes("edge-outwit")&&f.id===this.huntPreyId)?2:0;
+      const dc=10+(f.perception||0);
+      if(total+bonus>=dc){ this.setDetect(f,cb,"hidden"); any=true;
+        this.log(`${esc(cb.name)} slips out of ${esc(f.name)}'s sight.`); }
+      else this.log(`${esc(f.name)} keeps ${esc(cb.name)} in view.`);
+    });
+    if(any) cb.hideDC=total;
+    this.armed=null; this.hint(""); this.renderAll();
+  },
+  /**
+   * Whether `cb` has anything to hide behind, from `obs` specifically.
+   *
+   * Greater cover (a wall on the line) or concealment is enough on its own, and
+   * so is having Taken Cover. A body in the way is lesser cover and is not —
+   * unless the hero has `distracting-shadows`, whose whole text is "using
+   * Medium and larger creatures as cover to Hide".
+   */
+  canHideFrom(cb,obs){
+    if(this.condVal(cb,"concealed")||this.condVal(cb,"invisible")) return true;
+    if(cb.takingCover) return true;
+    const cover=this.coverBonus(obs,cb);
+    if(cover>=4) return true;
+    return cover>=2&&!!(cb.char&&cb.char.specials.includes("distracting-shadows"));
+  },
+  /** What a Seek rolls against. A creature that has Hidden is found at exactly
+      the total it Hid with; anything else at 10 + its Stealth. */
+  stealthDC(cb){
+    if(cb.hideDC) return cb.hideDC;
+    return 10+(cb.char? skillMod(cb.char,"stealth") : (cb.stealth!==undefined?cb.stealth:(cb.perception||0)));
+  },
+  /**
+   * Seek. One Perception roll against the Stealth DC of everything hidden in a
+   * burst of squares — `radius` 1 is the 15-foot burst the player's action
+   * uses, and the AI sweeps wider from where it stands.
+   *
+   * A found creature becomes observed, unless it is invisible, in which case
+   * finding it only makes it hidden: Seek beats the hiding place, not the
+   * invisibility. `sensate-gnome`'s +2 is a conditional `bonus` off the sheet
+   * (rules.js `condBonuses`), the first one anything reads.
+   */
+  seek(cb,pt,radius){
+    const ch=cb.char;
+    const mod=(ch? ch.perception : (cb.perception||0))+(ch? this.condBonus(ch,"perception","seek") : 0);
+    const d20=Dice.d(20), total=d20+mod;
+    this.seal(`${cb.name} Seeks`,d20,`${d20}${mod>=0?"+":""}${mod} = ${total}`,2);
+    let found=0;
+    this.cbs.filter(c=>c.side!==cb.side&&!c.dead&&this.isHidden(cb,c)
+      &&Math.max(Math.abs(c.x-pt.x),Math.abs(c.y-pt.y))<=radius).forEach(t=>{
+      if(total<this.stealthDC(t)) return;
+      found++;
+      const stillHidden=this.condVal(t,"invisible")>0;
+      this.setDetect(cb,t,stillHidden?"hidden":"observed");
+      this.log(`<b>${esc(cb.name)} finds ${esc(t.name)}</b>${stillHidden?" — an outline in the air, and no more":""}.`);
+    });
+    if(!found) this.log(`${esc(cb.name)} searches, and turns up nothing.`);
+    return found;
+  },
+  /** A conditional `bonus` off the sheet — `{"target":"perception","vs":"seek"}`.
+      Untyped stacking is not modelled; the largest one wins. */
+  condBonus(ch,target,vs){
+    return ((ch&&ch.condBonuses)||[]).filter(b=>b.target===target&&b.vs===vs)
+      .reduce((m,b)=>Math.max(m,b.value),0);
+  },
+
   /* ---------- the view and clock seams: no-ops here, overridden by the page ---------- */
   /** The number that floats up the screen. The engine announces it; the page decides. */
   floatText(){},
@@ -278,7 +466,15 @@ export const CombatCore = {
     }
     if(attacker&&!attacker.ranged&&this.isFlanking(attacker,target)) offGuard=true;
     if(offGuard&&!(target.char&&target.char.specials.includes("deny-advantage"))) ac-=2;
-    return {ac,offGuard};
+    /* Cover. `opts.from` names the body the line is drawn from, because
+       strikeMonster hands in a bare {id,ranged} stand-in with no coordinates
+       and locked #90 keeps that stub exactly as it is. Take Cover is the same
+       circumstance bonus as standing behind something, so the two do not stack
+       — the larger one is the whole of it. */
+    const shooter=(opts&&opts.from)||(attacker&&attacker.x!==undefined?attacker:null);
+    const cover=Math.max(shooter?this.coverBonus(shooter,target):0, target.takingCover?2:0);
+    ac+=cover;
+    return {ac,offGuard,cover};
   },
   isFlanking(attacker,target){
     if(this.dist(attacker,target)>1) return false;
@@ -379,6 +575,13 @@ export const CombatCore = {
   /* ---------- strikes ---------- */
   strike(att,def,wpn,opts){
     opts=opts||{};
+    // A hidden or concealed target forces a flat check before anything else.
+    // The action is spent and the MAP rises either way: the swing happened.
+    if(!this.flatCheck(att,def)){
+      if(!opts.exacting&&!opts.noMAP) att.mapCount++;
+      this.afterAttack(att);
+      return 1;
+    }
     const mapPen=opts.noMAP?0:(()=>{ const saveSel=this.sel; this.sel=def; const p=this.mapPenalty(att,wpn); this.sel=saveSel; return p; })();
     let mod=this.atkMod(att,wpn)+mapPen;
     const {ac,offGuard}=this.effAC(def,{...att,ranged:wpn.ranged},{forceOffGuard:opts.forceOffGuard||def.offGuardUntil===this.round});
@@ -420,13 +623,18 @@ export const CombatCore = {
       this.applyDamage(def,dmg,wpn.damageType,att);
       if(precision) this.log(`(${precision} precision damage within.)`);
     }
+    this.afterAttack(att);
     return deg;
   },
+  /** An attack gives the attacker's position away and ends Take Cover, whether
+      it landed, missed, or never found the target at all. */
+  afterAttack(att){ att.takingCover=false; this.reveal(att,"striking out of it"); },
   strikeMonster(foe,t,atk){
+    if(!this.flatCheck(foe,t)){ foe.mapCount++; this.afterAttack(foe); return; }
     let mod=atk.bonus - this.condVal(foe,"frightened")-this.condVal(foe,"sickened")-this.condVal(foe,"enfeebled")-this.condVal(foe,"hexed")-this.condVal(foe,"night-shrouded");
     mod+= foe.mapCount===0?0: (atk.traits.includes("agile")? (foe.mapCount===1?-4:-8):(foe.mapCount===1?-5:-10));
     foe.mapCount++;
-    const {ac,offGuard}=this.effAC(t,{id:foe.id,ranged:atk.ranged});
+    const {ac,offGuard}=this.effAC(t,{id:foe.id,ranged:atk.ranged},{from:foe});
     const acFinal=ac+this.trigger("incoming-attack",{actor:foe,target:t,ranged:atk.ranged,acBonus:0}).acBonus;
     const d20=Dice.d(20), total=d20+mod;
     const deg=Dice.degree(d20,total,acFinal);
@@ -437,6 +645,7 @@ export const CombatCore = {
       this.applyDamage(t,dmg,atk.damageType,foe);
       if(atk.sneak&&offGuard) this.applyDamage(t,Dice.roll(atk.sneak).total,atk.damageType,foe);
     }
+    this.afterAttack(foe);
   },
   rollSave(t,save,dc,label){
     const mod=this.saveMod(t,save);
@@ -451,7 +660,7 @@ export const CombatCore = {
   /* ---------- the encounter, and the turn loop ---------- */
   start(encId, adv, opts){
     const enc = adv.encounters[encId];
-    this.enc=enc; this.round=1; this.turnIdx=0; this.active=true; this.events=[];
+    this.enc=enc; this.round=1; this.turnIdx=0; this.active=true; this.events=[]; this.detect={};
     this.mapW=enc.w; this.mapH=enc.h;
     this.walls=new Set((enc.terrain.walls||[]).map(w=>this.key(w[0],w[1])));
     this.diff=new Set((enc.terrain.diff||[]).map(w=>this.key(w[0],w[1])));
@@ -585,6 +794,9 @@ export const CombatCore = {
     const side=a.friendly? "pc":"foe";
     return this.cbs.filter(t=>t.side===side&&!t.dead&&(a.friendly||t.dying===0||true)
       &&this.dist(cb,t)<=a.range&&(a.range<=1||this.losClear(cb,t))
+      // An undetected creature cannot be targeted at all — a hidden one can,
+      // and pays for it with the flat check inside the action.
+      &&(a.friendly||this.detectState(cb,t)!=="undetected")
       &&(!a.friendly||t.dying===0||a.canDowned));
   },
   actionClick(id){
@@ -594,6 +806,13 @@ export const CombatCore = {
     if(id==="end") return this.endTurn();
     if(id==="stride") return arm({kind:"move",budget:this.moveBudget(cb),cost:1},"Choose a highlighted square to Stride to.");
     if(id==="step") return arm({kind:"move",budget:1,cost:1,step:true},"Step one square (no reactions).");
+    if(id==="takecover"){
+      if(!this.nearCover(cb)){ this.toast("Nothing here to duck behind."); return; }
+      cb.takingCover=true; this.spend(1);
+      this.log(`${esc(cb.name)} <b>Takes Cover</b> (+2 AC until they move or strike).`);
+      return this.renderAll(); }
+    if(id==="hide") return this.doHide(cb);
+    if(id==="seek") return arm({kind:"cell",range:6,cost:1,mode:"seek",radius:1},"Seek: choose a point within 30 ft to search.");
     if(id==="raise"){ cb.shieldRaised=true; this.spend(1); this.log(`${esc(cb.name)} raises a shield (+2 AC).`); return this.renderAll(); }
     if(id==="reload"){ this.spend(1); this.log(`${esc(cb.name)} reloads.`);
       this.trigger("manipulate",{actor:cb});
@@ -630,6 +849,10 @@ export const CombatCore = {
       this.doMove(cb,x,y,reach,a);
     } else if(a.kind==="cell"){
       if(Math.max(Math.abs(x-cb.x),Math.abs(y-cb.y))>a.range) return;
+      if(a.mode==="seek"){
+        this.spend(a.cost); this.seek(cb,{x,y},a.radius);
+        this.armed=null; this.hint(""); this.renderAll(); return this.checkEnd();
+      }
       this.castAt(cb,a,{x,y});
     }
   },
@@ -658,6 +881,7 @@ export const CombatCore = {
     }
     if(cb.dead||(cb.dying||0)>0){ this.spend(a.cost); this.armed=null; this.hint(""); this.renderAll(); return this.checkEnd(); }
     cb.x=x; cb.y=y;
+    this.afterMove(cb);
     this.spend(a.cost); this.armed=null; this.hint("");
     if(a.charge){ this.armed={kind:"target",range:1,cost:0,mode:"strike",atkIdx:this.meleeIdx(cb),btn:"charge2"};
       this.hint("Now Strike an adjacent foe (free)."); }
@@ -848,6 +1072,9 @@ export const CombatCore = {
     }
 
     victims.forEach(t=>{
+      // A spell that names a creature needs the same flat check a Strike does.
+      // An area spell names a square instead, so it asks nothing.
+      if(a.kind==="target"&&t.side!==cb.side&&!this.flatCheck(cb,t)) return;
       // Healing / friendly effects
       if(eff.heal||sp.healOrHarmUndead){
         const isUndead=t.monster&&(t.monster.traits||[]).includes("undead");
@@ -868,7 +1095,7 @@ export const CombatCore = {
       if(sp.special==="stabilize"){ if(t.dying>0){ t.dying=0; t.hp=Math.max(t.hp,0); this.log(`${esc(t.name)} is stabilized.`); } return; }
       // Attack roll spells
       if(sp.attackRoll){
-        const {ac}=this.effAC(t,{ranged:true});
+        const {ac}=this.effAC(t,{ranged:true},{from:cb});
         const d20=Dice.d(20), total=d20+spellAtk;
         const deg=Dice.degree(d20,total,ac);
         this.seal(`${sp.name} vs ${t.name}`,d20,`${d20}+${spellAtk} = ${total} vs AC ${ac}`,deg);
@@ -930,6 +1157,7 @@ export const CombatCore = {
         return;
       }
     });
+    this.reveal(cb,"speaking the words");
     this.armed=null; this.sel=null; this.hint("");
     this.renderAll(); this.checkEnd();
   },
@@ -950,8 +1178,18 @@ export const CombatCore = {
     // party could not make a reaction.
     if(!this.active||foe.dead||this.actions<=0){ if(this.active) this.endTurn(); return null; }
     if(this.checkEnd()) return null;
-    const pcs=this.alive("pc").filter(p=>p.dying===0);
-    if(!pcs.length){ this.endTurn(); return null; }
+    const standing=this.alive("pc").filter(p=>p.dying===0);
+    if(!standing.length){ this.endTurn(); return null; }
+    // A monster cannot swing at what it cannot detect. When it has lost every
+    // hero it sweeps the three squares around itself for them instead, which is
+    // the only reason a hero who Hides gets found again without a Seek of their
+    // own on the other side.
+    const pcs=standing.filter(p=>this.detectState(foe,p)!=="undetected");
+    if(!pcs.length){
+      this.log(`${esc(foe.name)} casts about for something it can no longer see.`);
+      this.seek(foe,{x:foe.x,y:foe.y},3);
+      this.spend(1); this.renderAll(); return {action:"seek",wait:500};
+    }
     if(this.condVal(foe,"fleeing")){ // run from nearest
       const near=pcs.sort((a,b)=>this.dist(foe,a)-this.dist(foe,b))[0];
       const reach=this.reachable(foe,this.moveBudget(foe));
@@ -965,7 +1203,7 @@ export const CombatCore = {
         const path=[]; let pk=this.key(best.x,best.y);
         while(pk){ const [px,py]=pk.split(",").map(Number); path.unshift({x:px,y:py}); pk=reach[pk].prev; }
         this.provokeAlong(foe,path);
-        if(!foe.dead){ foe.x=best.x; foe.y=best.y; }
+        if(!foe.dead){ foe.x=best.x; foe.y=best.y; this.afterMove(foe); }
       }
       if(foe.dead){ this.spend(this.actions); this.renderAll(); this.endTurn(); return null; }
       this.log(`${esc(foe.name)} flees in terror!`);
@@ -1017,7 +1255,7 @@ export const CombatCore = {
       const path=[]; let k=this.key(best.x,best.y);
       while(k){ const [px,py]=k.split(",").map(Number); path.unshift({x:px,y:py}); k=reach[k].prev; }
       this.provokeAlong(foe,path);
-      if(!foe.dead){ foe.x=best.x; foe.y=best.y; }
+      if(!foe.dead){ foe.x=best.x; foe.y=best.y; this.afterMove(foe); }
       this.spend(1); this.renderAll(); return {action:"move",to:{x:best.x,y:best.y},wait:450};
     }
     this.spend(this.actions); return {action:"pass",wait:300};
@@ -1064,7 +1302,7 @@ export function newCombat(over){
   return Object.assign(Object.create(CombatCore), {
     active:false, cbs:[], order:[], turnIdx:0, round:1, enc:null,
     mapW:0, mapH:0, walls:new Set(), diff:new Set(),
-    actions:0, armed:null, sel:null, huntPreyId:null, surprise:false,
+    actions:0, armed:null, sel:null, huntPreyId:null, surprise:false, detect:{},
     onVictory:null, onDefeat:null,
     events:[], onEvent:null
   }, over||{});

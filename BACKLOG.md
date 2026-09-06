@@ -193,7 +193,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 4 — Detection: Hide, Seek, cover, invisibility | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/torchbearer/WISHLIST.md#phase-4--detection-hide-seek-cover-invisibility) |
+| 1 | Phase 4 — Detection: Hide, Seek, cover, invisibility | `Projects/torchbearer` | 1 | Opus 5 | `claude/backlog-ranked-batch-e6kdij` | [WISHLIST.md Phase 4](Projects/torchbearer/WISHLIST.md#phase-4--detection-hide-seek-cover-invisibility) |
 | 2 | Phase 5 — The rest of the action economy | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/torchbearer/WISHLIST.md#phase-5--the-rest-of-the-action-economy) |
 | 3 | Phase 6 — A hero who levels | `Projects/torchbearer` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/torchbearer/WISHLIST.md#phase-6--a-hero-who-levels) |
 | 4 | Phase 7 — The campaign spine | `Projects/torchbearer` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/torchbearer/WISHLIST.md#phase-7--the-campaign-spine) |
