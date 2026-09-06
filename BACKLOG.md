@@ -209,7 +209,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 5 — The rest of the action economy | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/torchbearer/WISHLIST.md#phase-5--the-rest-of-the-action-economy) |
+| 1 | Phase 5 — The rest of the action economy | `Projects/torchbearer` | 1 | Opus 5 | claude/backlog-ranked-batch-x7dgn4 | [WISHLIST.md Phase 5](Projects/torchbearer/WISHLIST.md#phase-5--the-rest-of-the-action-economy) |
 | 2 | Phase 6 — A hero who levels | `Projects/torchbearer` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/torchbearer/WISHLIST.md#phase-6--a-hero-who-levels) |
 | 3 | Phase 7 — The campaign spine | `Projects/torchbearer` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/torchbearer/WISHLIST.md#phase-7--the-campaign-spine) |
 | 4 | Phase 8 — The contract, and its first new author | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/torchbearer/WISHLIST.md#phase-8--the-contract-and-its-first-new-author) |
