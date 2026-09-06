@@ -15,10 +15,11 @@
 # band. A dice-math change that quietly makes the vault unwinnable is exactly
 # what it is for, and thirty seconds of CI is a cheap place to find that out.
 #
-# This is one project's job, not the site-wide row (BACKLOG rank 74) about CI
-# running almost nothing. That row is still open and is still larger than this:
-# nothing runs Tools/board-check or gvb-save.test.mjs, and the per-project
-# workflows are still six copies of each other rather than one template.
+# This is one project's job, not the site-wide "CI runs almost nothing" row in
+# BACKLOG.md (named rather than numbered, because its rank moves every time
+# something above it ships). That row is still open and is still larger than
+# this: nothing runs Tools/board-check or gvb-save.test.mjs, and the
+# per-project workflows are six copies of each other rather than one template.
 
 name: Absalom Inheritance CI
 
