@@ -43,6 +43,10 @@ Both exit non-zero on failure. `balance.mjs` fails if the adventure stops being 
 is not hypothetical — the build this replaced could not be finished on any seed. It now runs and
 reports every build in `pcOptions` separately, and fails if any one of them is out of band.
 
+Both also run in CI, on `.github/workflows/absalom-ci.yml`, against any commit that touches this
+folder, the shell page or `assets/js/gvb-save.js`. Before that they ran in a session's terminal
+and nowhere else.
+
 ## Character creation
 
 `content/vault.json`'s `pc` (one object) is `pcOptions` (an array) — a Wizard and a Fighter today,

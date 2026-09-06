@@ -1,0 +1,65 @@
+# Checks for The Absalom Inheritance. Three rounds and a phase shipped, and
+# each of their pull requests said the same thing: no workflow in this repo
+# path-matches Projects/absalom-inheritance/**, so both suites ran in a
+# session's terminal and nowhere else. That is 425 assertions and 4,000 seeded
+# playthroughs, about forty seconds of Node with no browser and no dependency,
+# and both already exit non-zero on a failure (locked #13).
+#
+# The shell page is in the path list because it carries the CSS and the element
+# ids ui.js reads, and a commit that edits it and not the folder still has to
+# run. gvb-save.js is there because save.js is a thin layer over it.
+#
+# balance.mjs is the one that matters most and the one most likely to be
+# skipped by hand: it is the file that found out the original single-file build
+# could not be won on any seed, and it fails if either build leaves the 45-90%
+# band. A dice-math change that quietly makes the vault unwinnable is exactly
+# what it is for, and thirty seconds of CI is a cheap place to find that out.
+#
+# This is one project's job, not the site-wide row (BACKLOG rank 78) about CI
+# running almost nothing. That row is still open and is still larger than this.
+
+name: Absalom Inheritance CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/absalom-inheritance/**"
+      - "Projects/absalom_inheritance.html"
+      - "assets/js/gvb-save.js"
+      - ".github/workflows/absalom-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Projects/absalom-inheritance/**"
+      - "Projects/absalom_inheritance.html"
+      - "assets/js/gvb-save.js"
+      - ".github/workflows/absalom-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: absalom-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: smoke.mjs and balance.mjs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Named separately so a red job says which one, rather than "the tests".
+      - name: smoke
+        run: node Projects/absalom-inheritance/test/smoke.mjs
+
+      # 2000 runs per build, which is what the project's own README tells a
+      # contributor to run. Fewer would widen the band's error bars for no
+      # saving worth having.
+      - name: balance
+        run: node Projects/absalom-inheritance/test/balance.mjs 2000

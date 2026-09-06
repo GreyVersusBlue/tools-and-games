@@ -9,8 +9,10 @@ Block, and the Vault Keeper answers a Stride out of its reach with a basalt
 fist. `test/smoke.mjs` reports **425 passed, 0 failed**, up from 308, and
 seventeen guard-rails were broken on purpose (#34) and each exited 1 from a
 green baseline. `test/balance.mjs` over 2000 seeded runs a build: **Wizard
-64.5%** (from 53.6%) and **Fighter 79.8%** (unchanged to the decimal). The next
-open phase is Phase 2 — conditions that expire — on Claude Fable 5.1.
+64.5%** (from 53.6%) and **Fighter 79.8%** (unchanged to the decimal). Both
+suites run in CI now, on `.github/workflows/absalom-ci.yml` — before this they
+ran in a session's terminal and nowhere else. The next open phase is Phase 2 —
+conditions that expire — on Claude Fable 5.1.
 
 Round one made an unwinnable vignette winnable and broke the single file into ES
 modules; round two added a second area and caught a stall bug with a Monte Carlo
