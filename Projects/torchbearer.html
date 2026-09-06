@@ -180,6 +180,10 @@ button{font-family:inherit;cursor:pointer}
 .tag{display:inline-block;font-size:10px;font-family:var(--mono);padding:1px 6px;border-radius:2px;background:var(--soot);color:var(--faded);border:1px solid var(--line);margin-right:4px;text-transform:uppercase;letter-spacing:.04em}
 .tag.t-trait{color:var(--ember-hi);border-color:#5A3226}
 .section-sub{margin-top:20px;margin-bottom:8px;font-size:17px;border-bottom:1px solid var(--line);padding-bottom:4px}
+/* The shop's purse line. Brass on leather like every other number the
+   game prints, and its own rule so it reads as a running total rather than
+   as one more paragraph of the scene. */
+.shop-purse{margin:0 0 10px;font-size:15px;letter-spacing:.02em;color:var(--brass-hi)}
 
 /* boosts */
 .boost-row{display:flex;align-items:center;gap:8px;margin:7px 0;flex-wrap:wrap}
@@ -392,7 +396,14 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
 @keyframes floatUp{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-40px);opacity:0}}
 
 /* toast */
-#toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--raised);border:1px solid var(--brass);color:var(--parch);padding:9px 20px;border-radius:4px;z-index:300;display:none;font-family:var(--serif-display);font-variant:small-caps;letter-spacing:.05em;box-shadow:0 4px 20px #000}
+/* pointer-events:none, and it is not cosmetic. The toast is a fixed strip
+   26px off the bottom of the window with a z-index of 300, and it sits there
+   for 2.6 seconds after every save, load and purchase. Anything under it was
+   unclickable for those 2.6 seconds: found when the browser recipe clicked a
+   scene choice that happened to land at that height and elementFromPoint came
+   back DIV#toast. A notification that eats a click is worse than no
+   notification. */
+#toast{pointer-events:none;position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--raised);border:1px solid var(--brass);color:var(--parch);padding:9px 20px;border-radius:4px;z-index:300;display:none;font-family:var(--serif-display);font-variant:small-caps;letter-spacing:.05em;box-shadow:0 4px 20px #000}
 
 @media (prefers-reduced-motion: reduce){
   *{animation-duration:.01ms !important;transition-duration:.01ms !important}
@@ -539,6 +550,8 @@ import { esc, cap } from "./torchbearer/js/text.js";
 import { fetchLibrary, fetchPack } from "./torchbearer/js/library.js";
 import { flagOk, foldFlags, progress as campaignRows, nextAdventure, isComplete as campaignDone }
   from "./torchbearer/js/campaign.js";
+import { parseCoins, coinText, priceOf, sellPrice, isPotion, buy, sell, addCoins }
+  from "./torchbearer/js/shop.js";
 
 /* ================= CORE CONTENT PACK =================
    This object uses the exact same schema as external JSON
@@ -962,33 +975,33 @@ const CORE_PACK = {
 /* ---------------- ITEMS ---------------- */
 "items":[
 {"id":"fist","name":"Fist","category":"weapon","prof":"unarmed","hands":1,"damage":"1d4","damageType":"bludgeoning","traits":["agile","finesse","nonlethal"],"bulk":0},
-{"id":"dagger","name":"Dagger","category":"weapon","prof":"simple","group":"knife","hands":1,"damage":"1d4","damageType":"piercing","traits":["agile","finesse","thrown-10","versatile-s"],"bulk":0.1},
-{"id":"club","name":"Club","category":"weapon","prof":"simple","group":"club","hands":1,"damage":"1d6","damageType":"bludgeoning","traits":["thrown-10"],"bulk":1},
+{"id":"dagger","name":"Dagger","level":0,"price":"2 sp","category":"weapon","prof":"simple","group":"knife","hands":1,"damage":"1d4","damageType":"piercing","traits":["agile","finesse","thrown-10","versatile-s"],"bulk":0.1},
+{"id":"club","name":"Club","level":0,"price":"1 sp","category":"weapon","prof":"simple","group":"club","hands":1,"damage":"1d6","damageType":"bludgeoning","traits":["thrown-10"],"bulk":1},
 {"id":"staff","name":"Staff","category":"weapon","prof":"simple","group":"club","hands":1,"damage":"1d4","damageType":"bludgeoning","traits":["two-hand-d8"],"bulk":1},
-{"id":"mace","name":"Mace","category":"weapon","prof":"simple","group":"club","hands":1,"damage":"1d6","damageType":"bludgeoning","traits":["shove"],"bulk":1},
-{"id":"spear","name":"Spear","category":"weapon","prof":"simple","group":"spear","hands":1,"damage":"1d6","damageType":"piercing","traits":["thrown-20"],"bulk":1},
-{"id":"sling","name":"Sling","category":"weapon","prof":"simple","group":"sling","hands":1,"damage":"1d6","damageType":"bludgeoning","traits":["propulsive"],"range":50,"bulk":0.1},
-{"id":"crossbow","name":"Crossbow","category":"weapon","prof":"simple","group":"crossbow","hands":2,"damage":"1d8","damageType":"piercing","traits":["reload-1"],"range":120,"bulk":1},
-{"id":"shortsword","name":"Shortsword","category":"weapon","prof":"martial","group":"sword","hands":1,"damage":"1d6","damageType":"piercing","traits":["agile","finesse","versatile-s"],"bulk":0.1,"rogueOk":true},
-{"id":"rapier","name":"Rapier","category":"weapon","prof":"martial","group":"sword","hands":1,"damage":"1d6","damageType":"piercing","traits":["deadly-d8","disarm","finesse"],"bulk":1,"rogueOk":true},
-{"id":"longsword","name":"Longsword","category":"weapon","prof":"martial","group":"sword","hands":1,"damage":"1d8","damageType":"slashing","traits":["versatile-p"],"bulk":1},
-{"id":"battle-axe","name":"Battle Axe","category":"weapon","prof":"martial","group":"axe","hands":1,"damage":"1d8","damageType":"slashing","traits":["sweep"],"bulk":1},
-{"id":"warhammer","name":"Warhammer","category":"weapon","prof":"martial","group":"hammer","hands":1,"damage":"1d8","damageType":"bludgeoning","traits":["shove"],"bulk":1},
-{"id":"greatsword","name":"Greatsword","category":"weapon","prof":"martial","group":"sword","hands":2,"damage":"1d12","damageType":"slashing","traits":["versatile-p"],"bulk":2},
-{"id":"greataxe","name":"Greataxe","category":"weapon","prof":"martial","group":"axe","hands":2,"damage":"1d12","damageType":"slashing","traits":["sweep"],"bulk":2},
-{"id":"shortbow","name":"Shortbow","category":"weapon","prof":"martial","group":"bow","hands":2,"damage":"1d6","damageType":"piercing","traits":["deadly-d10"],"range":60,"bulk":1,"rogueOk":true},
-{"id":"longbow","name":"Longbow","category":"weapon","prof":"martial","group":"bow","hands":2,"damage":"1d8","damageType":"piercing","traits":["deadly-d10","volley-30"],"range":100,"bulk":2},
-{"id":"explorers-clothing","name":"Explorer's Clothing","category":"armor","prof":"unarmored","acBonus":0,"dexCap":5,"speedPen":0,"bulk":0.1},
-{"id":"leather-armor","name":"Leather Armor","category":"armor","prof":"light","acBonus":1,"dexCap":4,"speedPen":0,"bulk":1},
-{"id":"studded-leather","name":"Studded Leather","category":"armor","prof":"light","acBonus":2,"dexCap":3,"speedPen":0,"bulk":1},
-{"id":"chain-shirt","name":"Chain Shirt","category":"armor","prof":"light","acBonus":2,"dexCap":3,"speedPen":0,"bulk":1},
-{"id":"hide-armor","name":"Hide Armor","category":"armor","prof":"medium","acBonus":3,"dexCap":2,"speedPen":5,"bulk":2},
-{"id":"breastplate","name":"Breastplate","category":"armor","prof":"medium","acBonus":4,"dexCap":1,"speedPen":5,"bulk":2},
-{"id":"half-plate","name":"Half Plate","category":"armor","prof":"heavy","acBonus":5,"dexCap":1,"speedPen":10,"bulk":3},
-{"id":"full-plate","name":"Full Plate","category":"armor","prof":"heavy","acBonus":6,"dexCap":0,"speedPen":10,"bulk":4},
-{"id":"steel-shield","name":"Steel Shield","category":"shield","acBonus":2,"hardness":5,"shieldHP":20,"bulk":1},
-{"id":"healing-potion-minor","name":"Minor Healing Potion","category":"consumable","desc":"A single mouthful of warm cinnamon light. Drink (1 action) to regain 1d8 HP.","heal":"1d8","bulk":0.1},
-{"id":"healing-potion-lesser","name":"Lesser Healing Potion","category":"consumable","desc":"Liquid dawn in a stoppered vial. Drink (1 action) to regain 2d8+5 HP.","heal":"2d8+5","bulk":0.1}
+{"id":"mace","name":"Mace","level":0,"price":"1 gp","category":"weapon","prof":"simple","group":"club","hands":1,"damage":"1d6","damageType":"bludgeoning","traits":["shove"],"bulk":1},
+{"id":"spear","name":"Spear","level":0,"price":"1 sp","category":"weapon","prof":"simple","group":"spear","hands":1,"damage":"1d6","damageType":"piercing","traits":["thrown-20"],"bulk":1},
+{"id":"sling","name":"Sling","level":0,"price":"1 sp","category":"weapon","prof":"simple","group":"sling","hands":1,"damage":"1d6","damageType":"bludgeoning","traits":["propulsive"],"range":50,"bulk":0.1},
+{"id":"crossbow","name":"Crossbow","level":0,"price":"3 gp","category":"weapon","prof":"simple","group":"crossbow","hands":2,"damage":"1d8","damageType":"piercing","traits":["reload-1"],"range":120,"bulk":1},
+{"id":"shortsword","name":"Shortsword","level":0,"price":"9 sp","category":"weapon","prof":"martial","group":"sword","hands":1,"damage":"1d6","damageType":"piercing","traits":["agile","finesse","versatile-s"],"bulk":0.1,"rogueOk":true},
+{"id":"rapier","name":"Rapier","level":0,"price":"2 gp","category":"weapon","prof":"martial","group":"sword","hands":1,"damage":"1d6","damageType":"piercing","traits":["deadly-d8","disarm","finesse"],"bulk":1,"rogueOk":true},
+{"id":"longsword","name":"Longsword","level":0,"price":"1 gp","category":"weapon","prof":"martial","group":"sword","hands":1,"damage":"1d8","damageType":"slashing","traits":["versatile-p"],"bulk":1},
+{"id":"battle-axe","name":"Battle Axe","level":0,"price":"1 gp","category":"weapon","prof":"martial","group":"axe","hands":1,"damage":"1d8","damageType":"slashing","traits":["sweep"],"bulk":1},
+{"id":"warhammer","name":"Warhammer","level":0,"price":"1 gp","category":"weapon","prof":"martial","group":"hammer","hands":1,"damage":"1d8","damageType":"bludgeoning","traits":["shove"],"bulk":1},
+{"id":"greatsword","name":"Greatsword","level":0,"price":"2 gp","category":"weapon","prof":"martial","group":"sword","hands":2,"damage":"1d12","damageType":"slashing","traits":["versatile-p"],"bulk":2},
+{"id":"greataxe","name":"Greataxe","level":0,"price":"2 gp","category":"weapon","prof":"martial","group":"axe","hands":2,"damage":"1d12","damageType":"slashing","traits":["sweep"],"bulk":2},
+{"id":"shortbow","name":"Shortbow","level":0,"price":"3 gp","category":"weapon","prof":"martial","group":"bow","hands":2,"damage":"1d6","damageType":"piercing","traits":["deadly-d10"],"range":60,"bulk":1,"rogueOk":true},
+{"id":"longbow","name":"Longbow","level":0,"price":"6 gp","category":"weapon","prof":"martial","group":"bow","hands":2,"damage":"1d8","damageType":"piercing","traits":["deadly-d10","volley-30"],"range":100,"bulk":2},
+{"id":"explorers-clothing","name":"Explorer's Clothing","level":0,"price":"1 sp","category":"armor","prof":"unarmored","acBonus":0,"dexCap":5,"speedPen":0,"bulk":0.1},
+{"id":"leather-armor","name":"Leather Armor","level":0,"price":"2 gp","category":"armor","prof":"light","acBonus":1,"dexCap":4,"speedPen":0,"bulk":1},
+{"id":"studded-leather","name":"Studded Leather","level":0,"price":"3 gp","category":"armor","prof":"light","acBonus":2,"dexCap":3,"speedPen":0,"bulk":1},
+{"id":"chain-shirt","name":"Chain Shirt","level":0,"price":"5 gp","category":"armor","prof":"light","acBonus":2,"dexCap":3,"speedPen":0,"bulk":1},
+{"id":"hide-armor","name":"Hide Armor","level":0,"price":"2 gp","category":"armor","prof":"medium","acBonus":3,"dexCap":2,"speedPen":5,"bulk":2},
+{"id":"breastplate","name":"Breastplate","level":0,"price":"8 gp","category":"armor","prof":"medium","acBonus":4,"dexCap":1,"speedPen":5,"bulk":2},
+{"id":"half-plate","name":"Half Plate","level":0,"price":"18 gp","category":"armor","prof":"heavy","acBonus":5,"dexCap":1,"speedPen":10,"bulk":3},
+{"id":"full-plate","name":"Full Plate","level":0,"price":"30 gp","category":"armor","prof":"heavy","acBonus":6,"dexCap":0,"speedPen":10,"bulk":4},
+{"id":"steel-shield","name":"Steel Shield","level":0,"price":"2 gp","category":"shield","acBonus":2,"hardness":5,"shieldHP":20,"bulk":1},
+{"id":"healing-potion-minor","name":"Minor Healing Potion","level":1,"price":"4 gp","category":"consumable","desc":"A single mouthful of warm cinnamon light. Drink (1 action) to regain 1d8 HP.","heal":"1d8","bulk":0.1},
+{"id":"healing-potion-lesser","name":"Lesser Healing Potion","level":3,"price":"12 gp","category":"consumable","desc":"Liquid dawn in a stoppered vial. Drink (1 action) to regain 2d8+5 HP.","heal":"2d8+5","bulk":0.1}
 ]
 };
 /* ================= ADVENTURE PACK =================
@@ -1068,11 +1081,12 @@ const ADVENTURE_PACK = {
  "choices":[
   {"text":"Speak with Maud Kessler, the innkeeper, about the bell.","goto":"maud"},
   {"text":"Press the room for rumors — someone here knows more than they're saying.","check":{"skill":"diplomacy","dc":17,"altSkill":"intimidation","success":"rumors-success","failure":"rumors-failure"},"once":true,"flagOnce":"tried-rumors"},
+  {"text":"Ask what the Lamp still has to sell.","goto":"lamp-stores"},
   {"text":"You've heard enough bells. Head for the moor at first light.","goto":"companions"}]},
 
 "maud":{"kicker":"Act I · Lantern Cross","title":"What Maud Remembers",
  "text":["Maud Kessler pours you something amber without being asked. Her hands are steady; her eyes are not.","\"Saint Verity's chapel,\" she says. \"Sank in my grandmother's time — the whole congregation at vespers, bell tower and all, straight down into the bog like the moor opened its mouth. Folk said the ground was judged unworthy of it.\" She snorts. \"Folk say things.\"","\"Three nights back it started tolling. Second night, old Harl's grave in the yard was open — from the inside, mind. Last night it was four graves. My gran used to say the bell called the faithful to service.\" She meets your eyes. \"I think it still does. I think it's taking attendance.\""],
- "onEnter":{"flag":"met-maud"},
+ "onEnter":{"flag":"met-maud","gold":"15 gp"},
  "choices":[
   {"text":"Ask what she knows about the chapel's layout.","goto":"maud-layout","if":"!knows-layout"},
   {"text":"Return to the common room.","goto":"arrival-return"}]},
@@ -1086,7 +1100,15 @@ const ADVENTURE_PACK = {
  "choices":[
   {"text":"Press the room for rumors.","check":{"skill":"diplomacy","dc":17,"altSkill":"intimidation","success":"rumors-success","failure":"rumors-failure"},"once":true,"flagOnce":"tried-rumors"},
   {"text":"Speak with Maud again.","goto":"maud","if":"!knows-layout"},
+  {"text":"Ask what the Lamp still has to sell.","goto":"lamp-stores"},
   {"text":"Rest tonight and head for the moor at first light.","goto":"companions"}]},
+
+"lamp-stores":{"kicker":"Act I · Lantern Cross","kind":"shop","title":"What the Lamp Has Left",
+ "shopTitle":"Maud's Cupboard",
+ "text":["Maud unlocks a cupboard behind the bar and stands back from it the way you would from a dog you did not raise. Inside is everything the Drowned Lamp has been paid in for two years: a pedlar's stock nobody came back for, a bundle of spears the militia never collected, two vials of something that glows faintly through the wax.","\"Coin's no good to us,\" she says. \"Nobody's coming up the road to spend it on. Take what you'll use and leave me the rest, and if you're going out there tonight, take the potions.\""],
+ "stock":["healing-potion-minor","healing-potion-lesser","dagger","spear","leather-armor","steel-shield"],
+ "choices":[
+  {"text":"Close the cupboard and go back to the fire.","goto":"arrival-return"}]},
 
 "rumors-success":{"kicker":"Act I · Lantern Cross","title":"What the Sexton Saw",
  "text":["Your patience — and a bought round — loosens the sexton, a knuckly old man named Pell who has been drinking with terrible efficiency.","\"I'll say what Maud won't,\" he mutters. \"The bell-ringer never drowned with the rest. Tomas Grell. They pulled him out three days after, still alive, still ringing a handbell, wouldn't stop. He died that winter and they buried him apart from the others, no rites, because Father said a man so devoted to the summons and so deaf to the sermon was no true parishioner.\" Pell drains his cup. \"His grave was the first one open.\"","Useful. A name is a handle, and handles are how you hold things — even dead things."],
@@ -1156,7 +1178,7 @@ const ADVENTURE_PACK = {
 
 "loot-success":{"kicker":"Act III · The Chapel","title":"The Vestry Cache",
  "text":["Behind a collapsed screen you find the vestry chest, its lead lining defeated by time but its contents defended by an inch of blessed wax: two vials of liquid dawn — lesser healing potions, still warm to the touch after forty years — and a silver bell-clapper the length of your forearm, etched with the saint's own sigil.","Wren weighs the clapper in both hands. \"That's the original,\" she says. \"They replaced it the year before the sinking. Da wrote about it.\" She looks up. \"Whatever's ringing that bell down there — it's ringing it wrong, with the wrong tongue. This one might have opinions about that.\""],
- "onEnter":{"flag":"has-clapper","items":["healing-potion-lesser","healing-potion-lesser"]},
+ "onEnter":{"flag":"has-clapper","gold":"40 gp","items":["healing-potion-lesser","healing-potion-lesser"]},
  "choices":[{"text":"Return to the nave.","goto":"nave"}]},
 
 "loot-failure":{"kicker":"Act III · The Chapel","title":"Silt and Nothing",
@@ -1833,6 +1855,12 @@ function sheetHTML(ch,full){
     if(ch.focusSpells.length) h+=`<div class="sheet-block-title">Focus Spells</div><div class="small">${ch.focusSpells.map(id=>(Registry.spells[id]||{name:id}).name).join(", ")}</div>`;
     if(ch.resists.length) h+=`<div class="sheet-block-title">Resistances</div><div class="small">${ch.resists.map(r=>r.type+" "+r.value).join(", ")}</div>`;
     if(ch.notes.length) h+=`<div class="sheet-block-title">Notes</div><div class="small">${ch.notes.map(esc).join("<br>")}</div>`;
+    /* The purse and the pack. Read off App rather than off the character,
+       because money and loose gear belong to the run and not to the build —
+       a level-up rebuilds `ch` from `build` and would drop both. */
+    h+=`<div class="sheet-block-title">Purse</div><div class="small">${esc(coinText(App.gold))}</div>`;
+    if(App.inventory.length) h+=`<div class="sheet-block-title">Carrying</div><div class="small">${
+      App.inventory.map(id=>esc((Registry.items[id]||{name:id}).name)).join(" · ")}</div>`;
   }
   return h;
 }
@@ -1857,6 +1885,19 @@ function makeCardsFocusable(root){
     // The chosen card is marked with a CSS ::after glyph, which is not text.
     el.setAttribute("aria-pressed",el.classList.contains("selected")?"true":"false");
   });
+}
+/**
+ * One line describing an item that carries no `desc` of its own — the shop is
+ * the first screen in the game that shows an arbitrary item to a player who is
+ * deciding whether to spend money on it, and "Longsword" alone is not a
+ * decision. Weapons read as their damage, armor as what it does to AC.
+ */
+function itemLine(it){
+  if(!it) return "";
+  if(it.category==="weapon") return `${it.damage} ${it.damageType}${it.range?` · range ${it.range} ft`:""}${it.hands===2?" · two hands":""}${(it.traits||[]).length?` · ${it.traits.join(", ")}`:""}`;
+  if(it.category==="armor") return `AC +${it.acBonus} · Dex cap +${it.dexCap}${it.speedPen?` · −${it.speedPen} ft speed`:""}`;
+  if(it.category==="shield") return `+${it.acBonus} AC when raised · Hardness ${it.hardness}`;
+  return "";
 }
 function cap3(s){ return cap(s).slice(0,4); }
 function ord(n){ return n+(["th","st","nd","rd"][((n%100)-20)%10]||["th","st","nd","rd"][n%100]||"th"); }
@@ -2055,6 +2096,12 @@ const App = {
      finished adventures left behind, under `<advId>/<flag>`; `completed` is
      which of them are done. `campaignRecord()` turns the id into the object. */
   campaignId:null, campaignFlags:{}, completed:[],
+  /* Phase 7, increment 2. `gold` is the purse in copper pieces (js/shop.js says
+     why the smallest coin is the unit), `inventory` is what the hero carries
+     loose. Neither is reset by `startAdventure`: money and gear are the hero's,
+     the way XP is, and carrying them from one adventure to the next is the
+     point of having a campaign at all. */
+  gold:0, inventory:[],
 
   init(){
     try{ Registry.loadPack(CORE_PACK); Registry.loadPack(ADVENTURE_PACK); }
@@ -2147,7 +2194,12 @@ const App = {
          : `${this.xp} / ${XP_PER_LEVEL} XP toward level ${L+1}`+(ready?" — <b>ready to level</b>":""));
       const road=this.campaignRecord();
       if(road){ const rows=campaignRows(road,this.campaignState());
-        st.innerHTML+=`<br>On the road: <b>${esc(road.name)}</b> — ${rows.filter(r=>r.done).length} of ${rows.length} finished`; } }
+        st.innerHTML+=`<br>On the road: <b>${esc(road.name)}</b> — ${rows.filter(r=>r.done).length} of ${rows.length} finished`; }
+      /* The purse only appears once there is one. A hero who has never found a
+         coin should not read a line saying they have none. */
+      if(this.gold||this.inventory.length){
+        st.innerHTML+=`<br>Purse: <b>${esc(coinText(this.gold))}</b>`+
+          (this.inventory.length?` · carrying ${this.inventory.length} item${this.inventory.length===1?"":"s"}`:""); } }
     document.getElementById("btn-begin-adv").textContent=this.campaignRecord()?"🗺 The Road":"🗺 Begin Adventure";
     this.renderLibrary();
     const pl=document.getElementById("pack-list");
@@ -2320,10 +2372,22 @@ const App = {
     // onEnter
     if(sc.onEnter){
       if(sc.onEnter.flag) this.flags[sc.onEnter.flag]=true;
+      /* Treasure. `onEnter.gold` is a price string — "45 gp" — parsed once
+         here, and the adventure's total across every scene is held to its
+         level's share of PF2e's Treasure by Level by the validator. */
+      const found=parseCoins(sc.onEnter.gold);
+      if(found){ this.setHoldings(addCoins(this.holdings(),found));
+        this.log(`Found: <b>${esc(coinText(found))}</b>. The purse holds ${esc(coinText(this.gold))}.`,"narr"); }
       (sc.onEnter.items||[]).forEach(it=>{
-        const hero=this.heroCombatant();
-        if(it.startsWith("healing-potion")) hero.resources.potions.push(it);
-        this.log(`Gained: <b>${esc((Registry.items[it]||{name:it}).name)}</b>.`,"narr");
+        const item=Registry.items[it];
+        /* Potions go on the stack Drink Potion pops; everything else goes into
+           the pack. Before this, the test was `it.startsWith("healing-potion")`
+           and anything that failed it was a Chronicle line and nothing else —
+           Thornwake's Vane Family Saber was handed over twice and never once
+           existed afterward. */
+        if(isPotion(item)) this.heroCombatant().resources.potions.push(it);
+        else if(item) this.inventory.push(it);
+        this.log(`Gained: <b>${esc((item||{name:it}).name)}</b>.`,"narr");
       });
     }
     // An ending pays what the adventure awards for it — a level, unless the
@@ -2345,10 +2409,12 @@ const App = {
       <h1 class="scene-title">${esc(sc.title)}</h1>
       <div class="scene-text">${sc.text.map(p=>`<p>${p}</p>`).join("")}</div>
       ${sc.companionChoice? this.companionPickerHTML():""}
+      ${sc.kind==="shop"? this.shopHTML(sc):""}
       <div class="choice-list">${choiceHTML}</div>
       ${sc.ending?`<div class="rule"></div><div class="small" style="text-align:center;font-style:italic">— end of chronicle —</div>`:""}
     </div></div>`);
     if(sc.companionChoice){ this.bindCompanionPicker(); makeCardsFocusable(document.getElementById("game-center")); }
+    if(sc.kind==="shop"){ this.bindShop(sc); makeCardsFocusable(document.getElementById("game-center")); }
     document.querySelectorAll(".choice-btn").forEach(el=>el.onclick=()=>this.choose(sc,+el.dataset.i));
     if(!sc.gameover) this.autosave();
   },
@@ -2356,6 +2422,58 @@ const App = {
      adventure's flag, and `some-adventure/its-flag` is the campaign record's.
      The arithmetic is in js/campaign.js so a test can reach it. */
   flagOk(expr){ return flagOk(expr,this.flags,this.campaignFlags); },
+
+  /* ---------- the purse, the pack and the shop (Phase 7, increment 2) ----------
+     The arithmetic is in js/shop.js, on a plain `{gold, inventory, potions}`
+     object, so `test/smoke.mjs` drives a whole shop visit under Node. These two
+     are the seam: they gather the three fields out of the three places the page
+     actually keeps them, and put them back. The potion stack is on the hero
+     combatant rather than on App, because Drink Potion pops one off it mid-fight. */
+  holdings(){ return {gold:this.gold, inventory:this.inventory, potions:this.heroCombatant().resources.potions}; },
+  setHoldings(h){
+    if(!h) return false;
+    this.gold=h.gold; this.inventory=h.inventory;
+    this.heroCombatant().resources.potions=h.potions;
+    return true;
+  },
+  /** One card per stocked item, plus one per thing in the pack, plus the purse. */
+  shopHTML(sc){
+    const purse=`<div class="shop-purse">Purse: <b>${esc(coinText(this.gold))}</b></div>`;
+    const stock=(sc.stock||[]).map(id=>Registry.items[id]).filter(Boolean)
+      .sort((a,b)=>(a.level||0)-(b.level||0)||(priceOf(a)||0)-(priceOf(b)||0));
+    const card=(it,i,kind,cp)=>{
+      const off=kind==="buy"&&cp>this.gold;
+      return `<div class="opt-card ${off?"disabled":""}" data-${kind}="${i}" aria-disabled="${off?"true":"false"}">
+        <h3>${esc(it.name)}</h3>
+        <div class="meta">${it.level!==undefined?`Level ${esc(String(it.level))} · `:""}${esc(coinText(cp))}${off?" · you cannot afford this":""}</div>
+        <div class="desc">${esc(it.desc||itemLine(it))}</div></div>`;
+    };
+    const buyHTML=stock.map((it,i)=>card(it,i,"buy",priceOf(it)||0)).join("");
+    const own=this.inventory.map((id,i)=>({it:Registry.items[id],i})).filter(r=>r.it&&sellPrice(r.it)!==null);
+    const sellHTML=own.map(r=>card(r.it,r.i,"sell",sellPrice(r.it))).join("");
+    return `<div class="section-sub" style="margin-top:18px">${esc(sc.shopTitle||"For Sale")}</div>
+      ${purse}<div class="card-grid">${buyHTML||`<div class="small">Nothing is for sale here.</div>`}</div>
+      <div class="section-sub" style="margin-top:18px">What You Are Carrying</div>
+      <div class="small" style="margin-bottom:8px">Sold at half, the way every merchant in the world buys.</div>
+      <div class="card-grid">${sellHTML||`<div class="small">Your pack holds nothing anyone here wants.</div>`}</div>`;
+  },
+  bindShop(sc){
+    const stock=(sc.stock||[]).map(id=>Registry.items[id]).filter(Boolean)
+      .sort((a,b)=>(a.level||0)-(b.level||0)||(priceOf(a)||0)-(priceOf(b)||0));
+    document.querySelectorAll("#game-center [data-buy]").forEach(el=>el.onclick=()=>{
+      const it=stock[+el.dataset.buy]; if(!it) return;
+      if(!this.setHoldings(buy(this.holdings(),it))){ this.toast("Not enough coin."); return; }
+      this.log(`Bought <b>${esc(it.name)}</b> for ${esc(coinText(priceOf(it)))}. The purse holds ${esc(coinText(this.gold))}.`,"narr");
+      this.autosave(); this.gotoScene(this.sceneId);
+    });
+    document.querySelectorAll("#game-center [data-sell]").forEach(el=>el.onclick=()=>{
+      const i=+el.dataset.sell, it=Registry.items[this.inventory[i]]; if(!it) return;
+      const paid=sellPrice(it);
+      if(!this.setHoldings(sell(this.holdings(),i,it))) return;
+      this.log(`Sold <b>${esc(it.name)}</b> for ${esc(coinText(paid))}. The purse holds ${esc(coinText(this.gold))}.`,"narr");
+      this.autosave(); this.gotoScene(this.sceneId);
+    });
+  },
   companionPickerHTML(){
     const offered=(this.adv.companionsOffered||[]);
     return `<div class="section-sub" style="margin-top:18px">Traveling Companions</div>
@@ -2498,6 +2616,7 @@ const App = {
     return {build:this.hero?this.hero.build:null,
       advId:this.adv?this.adv.id:null, sceneId:this.sceneId, flags:this.flags,
       campaignId:this.campaignId, campaignFlags:this.campaignFlags, completed:this.completed,
+      gold:this.gold, inventory:this.inventory,
       dailyLuckUsed:this.dailyLuckUsed, xp:this.xp,
       hero: this.heroCb? {hp:this.heroCb.hp,wounded:this.heroCb.wounded,resources:this.heroCb.resources}:null,
       companions:this.companions.map(c=>({id:c.id.replace("comp-",""),hp:c.hp})),
@@ -2550,6 +2669,7 @@ const App = {
          them here would turn "load the pack and pick the campaign again" into
          "start the campaign over". */
       this.campaignId=s.campaignId; this.campaignFlags=s.campaignFlags; this.completed=s.completed;
+      this.gold=s.gold; this.inventory=s.inventory;
       // A companion from an unloaded pack costs you that companion, not the save.
       const lostComps=[];
       this.companions=s.companions.map(c=>{

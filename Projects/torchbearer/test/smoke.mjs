@@ -47,6 +47,9 @@ const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, setDic
 const { newCombat, heroCombatant, companionCombatant, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
 const { SCOPE, scopedFlag, isScoped, flagsSetBy, foldFlags, flagOk, entriesOf,
         progress: campaignRows, nextAdventure, isComplete: campaignDone } = await mod("js/campaign.js");
+const { COIN, parseCoins, coinText, priceOf, sellPrice, isPotion, TREASURE_BY_LEVEL,
+        treasureBudget, treasureIn, buy, sell, addCoins } = await mod("js/shop.js");
+const { SCENE_KINDS } = await mod("js/registry.js");
 
 /* ---------------- harness ---------------- */
 let pass = 0; const fails = [];
@@ -1095,6 +1098,298 @@ group("the campaign record");
   eq(Object.keys(st.campaignFlags).sort(),
     ["barrowmoor/bell-answered", "barrowmoor/has-clapper", "barrowmoor/knows-rite", "barrowmoor/met-maud", "thornwake/knows-truth"],
     "and the record is everything both adventures left behind, each under its own adventure");
+}
+
+
+/* ---------------- 8b. treasure, gold and the shop (Phase 7, increment 2) ---------------- */
+group("coin, price and the treasure budget");
+{
+  eq(parseCoins("12 gp"), 1200, "a price reads as copper");
+  eq(parseCoins("2 sp"), 20, "…and so does silver");
+  eq(parseCoins("5 cp"), 5, "…and copper is itself");
+  eq(parseCoins("2 pp"), 2000, "…and platinum is accepted on the way in");
+  eq(parseCoins("1 gp, 5 sp"), 150, "a comma adds the parts");
+  eq(parseCoins(" 1 GP , 5 Sp "), 150, "…whitespace and case are the author's business, not the parser's");
+  eq(parseCoins("0 gp"), 0, "free is a price");
+  // The bare number is the one that matters: 12 could be twelve gold or twelve
+  // copper, they differ by a factor of a hundred, and guessing is the exact
+  // silent failure this file exists to prevent.
+  eq(parseCoins(12), null, "a bare number is not a price, because nobody can tell which coin it means");
+  eq(parseCoins("12"), null, "…nor a bare number in a string");
+  eq(parseCoins("12 gold"), null, "…nor a coin the table does not have");
+  eq(parseCoins("12.5 gp"), null, "…nor a fractional one, which is what sp and cp are for");
+  eq(parseCoins(""), null, "…nor nothing at all");
+  eq(parseCoins(undefined), null, "…nor an absent field");
+
+  eq(coinText(1250), "12 gp, 5 sp", "copper prints back as coins");
+  eq(coinText(5), "5 cp", "…smallest included");
+  eq(coinText(100), "1 gp", "…and a round sum drops the empty places");
+  eq(coinText(0), "0 cp", "an empty purse says so rather than printing nothing");
+  eq(coinText(-40), "0 cp", "…and a purse that somehow went negative still reads as empty");
+  eq(coinText(200000), "2000 gp", "big sums stay in gold rather than inventing platinum");
+  // Round-trip: every price the game ships has to survive print-then-parse, or
+  // the number on a shop card is not the number the purse is charged.
+  const shipped = ["2 sp", "9 sp", "1 gp", "12 gp", "1 gp, 5 sp", "30 gp"];
+  eq(shipped.filter(t => coinText(parseCoins(t)) === t).length, shipped.length,
+    "every price shape the packs use round-trips through coinText");
+
+  eq(COIN.gp, 100, "a gold piece is a hundred copper");
+  eq(TREASURE_BY_LEVEL[3], 500, "PF2e's Treasure by Level pays a level-3 party of four 500 gp");
+  eq(treasureBudget(3), 12500, "…so one hero's share of a level-3 adventure is 125 gp, in copper");
+  eq(treasureBudget(1), 4400, "level 1 is 44 gp");
+  eq(treasureBudget(10), 200000, "level 10 is 2,000 gp");
+  eq(treasureBudget(0), treasureBudget(1), "a level below the table clamps to its first row");
+  eq(treasureBudget(99), treasureBudget(10), "…and one above it to its last");
+  eq(treasureBudget("nonsense"), treasureBudget(1), "…and a level that is not a number does not become NaN gold");
+}
+
+group("what a price buys");
+{
+  const potion = { id: "p", category: "consumable", heal: "2d8+5", price: "12 gp" };
+  const sword = { id: "s", category: "weapon", price: "1 gp" };
+  const stick = { id: "k", category: "weapon" };
+  eq(priceOf(potion), 1200, "priceOf reads the field");
+  eq(priceOf(stick), null, "an item with no price has none, rather than a price of zero");
+  eq(priceOf({ id: "x", price: "nonsense" }), null, "…and neither does one whose price cannot be read");
+  eq(sellPrice(potion), 600, "a merchant pays half");
+  eq(sellPrice({ id: "y", price: "5 cp" }), 2, "…rounded down where half is not a whole coin, so the shop never pays more than half");
+  eq(sellPrice({ id: "y2", price: "9 sp" }), 45, "…and exactly half where it divides");
+  eq(sellPrice({ id: "z", price: "1 cp" }), 1, "…but never nothing for something that had a price");
+  eq(sellPrice(stick), null, "an item with no price cannot be sold either");
+  ok(isPotion(potion), "a consumable that heals is a potion");
+  ok(!isPotion(sword), "a sword is not");
+  // The id-prefix test this replaced is the reason Thornwake's saber was
+  // handed over twice and never once existed afterward.
+  ok(!isPotion({ id: "healing-potion-fake", category: "weapon" }),
+    "…and neither is a weapon whose id happens to start with healing-potion");
+  ok(isPotion({ id: "elixir-of-life", category: "consumable", heal: "3d8" }),
+    "…while a potion that is not called one still is");
+}
+
+group("the shop's arithmetic");
+{
+  const potion = { id: "potion", category: "consumable", heal: "2d8+5", price: "12 gp" };
+  const sword = { id: "sword", category: "weapon", price: "1 gp" };
+  const plate = { id: "plate", category: "armor", price: "30 gp" };
+  const stick = { id: "stick", category: "weapon" };
+  const start = { gold: 1500, inventory: [], potions: [] };
+
+  const a = buy(start, potion);
+  eq([a.gold, a.potions, a.inventory], [300, ["potion"], []], "a potion comes out of the purse and onto the stack");
+  eq([start.gold, start.potions.length], [1500, 0], "…and the holdings handed in are not touched");
+  const b = buy(a, sword);
+  eq([b.gold, b.inventory, b.potions], [200, ["sword"], ["potion"]], "a weapon goes into the pack instead");
+  eq(buy(b, plate), null, "what the purse cannot cover cannot be bought");
+  eq(buy(b, stick), null, "…and neither can something with no price at all");
+  eq(buy({ gold: 100, inventory: [], potions: [] }, sword).gold, 0,
+    "a purchase that empties the purse exactly is still a purchase");
+
+  const c = sell(b, 0, sword);
+  eq([c.gold, c.inventory], [250, []], "selling pays half and takes the item out of the pack");
+  eq(b.inventory, ["sword"], "…without mutating what it was handed");
+  eq(sell(b, 1, sword), null, "an index past the end of the pack sells nothing");
+  eq(sell(b, -1, sword), null, "…and neither does one below it");
+  eq(sell(b, 0, stick), null, "…and neither does an item with no price");
+  eq(sell({ gold: 0, inventory: ["sword"], potions: [] }, 0.5, sword), null, "…nor a fractional index");
+  // Potions are not sellable: they are on the resource stack Drink Potion pops
+  // from, not in the pack, and the shop only ever offers the pack.
+  eq(sell({ gold: 0, inventory: [], potions: ["potion"] }, 0, potion), null,
+    "a potion on the stack is not in the pack, so the shop cannot buy it back");
+
+  eq(addCoins(start, 4000).gold, 5500, "found coin lands in the purse");
+  eq(addCoins(start, -40).gold, 1500, "…and a negative find adds nothing rather than stealing");
+  eq(addCoins({}, 100).gold, 100, "holdings missing every field still add up");
+  eq(buy({ gold: "1500", inventory: null, potions: null }, sword).inventory, ["sword"],
+    "…and a purse read back off a hand-edited save is a number before it is spent");
+}
+
+group("the treasure a scene hands out");
+{
+  const items = { coin: { id: "coin" }, potion: { id: "potion", price: "12 gp" } };
+  const adv = {
+    level: 3,
+    scenes: {
+      one: { onEnter: { gold: "40 gp" } },
+      two: { onEnter: { items: ["potion", "potion"] } },
+      three: { onEnter: { flag: "x" } },
+      four: {}
+    }
+  };
+  eq(treasureIn(adv, id => items[id]), 6400, "every scene's gold and items, summed");
+  eq(treasureIn({}, () => null), 0, "an adventure with no scenes hands out nothing");
+  eq(treasureIn({ scenes: { a: { onEnter: { items: ["unknown"] } } } }, () => null), 0,
+    "…and an item the registry cannot find is worth nothing rather than NaN");
+  // The sum is across every scene, not along one path: a scene graph branches,
+  // so this is the ceiling no single playthrough can pass.
+  ok(treasureIn(adv, id => items[id]) < treasureBudget(3), "the example adventure is inside a level-3 hero's share");
+}
+
+group("the validator learned about money");
+{
+  const base = { pack: { id: "p", name: "P", type: "content" } };
+  const errs = s => Validator.validate(s, emptyRegistry());
+  const item = extra => ({ id: "thing", name: "Thing", category: "weapon", ...extra });
+  const scene = extra => ({ title: "T", text: ["x"], ...extra });
+  const adv = (scenes, extra) => ({ ...base, adventures: [{ id: "a", name: "A", level: 3, start: "one", scenes, ...extra }] });
+
+  eq(errs({ ...base, items: [item({ level: 2.5 })] }),
+    ['Item "thing": "level" is the item\'s level and must be a whole number of 0 or more.'],
+    "an item level that is not a whole number is rejected");
+  eq(errs({ ...base, items: [item({ level: -1 })] }).length, 1, "…and neither is a negative one");
+  eq(errs({ ...base, items: [item({ level: 0, price: "12 gp" })] }), [], "…while a real level and price pass");
+  eq(errs({ ...base, items: [item({ price: 12 })] }),
+    ['Item "thing": price 12 is not a price the engine can read. Write it the way the Player Core prints it: "12 gp", "2 sp", "5 cp", or "1 gp, 5 sp".'],
+    "a price with no coin named is rejected, because 12 gold and 12 copper differ by a hundred");
+
+  eq(errs(adv({ one: scene({ kind: "stop" }) })),
+    [`Adventure "a": scene "one" has unknown kind "stop" (known: ${SCENE_KINDS.join(", ")}; leave it out for an ordinary scene).`],
+    "a misspelled scene kind is an error, not a scene that silently renders as prose");
+  eq(errs(adv({ one: scene({}) })), [], "…and a scene with no kind at all is the ordinary case");
+
+  eq(errs(adv({ one: scene({ onEnter: { gold: "45 gold" } }) })),
+    ['Adventure "a": scene "one" onEnter.gold "45 gold" is not a price the engine can read. Write it like "45 gp".'],
+    "treasure the parser cannot read is an error rather than a purse that gains nothing");
+  eq(errs(adv({ one: scene({ onEnter: { items: ["healing-potion-lesserr"] } }) })),
+    ['Adventure "a": scene "one" onEnter.items grants unknown item "healing-potion-lesserr".'],
+    "a typo in a granted item is caught, where before it printed Gained: and handed over nothing");
+  eq(errs(adv({ one: scene({ onEnter: { items: "healing-potion-lesser" } }) })).length, 1,
+    "…and items has to be an array");
+
+  const shopBase = { ...base, items: [{ id: "thing", name: "Thing", category: "weapon", price: "1 gp" }, { id: "free", name: "Free", category: "weapon" }] };
+  const shopAdv = (sc) => ({ ...shopBase, adventures: [{ id: "a", name: "A", level: 3, start: "one", scenes: { one: scene(sc) } }] });
+  eq(Validator.validate(shopAdv({ kind: "shop" }), emptyRegistry()),
+    ['Adventure "a": shop scene "one" needs a "stock" array of item ids — a shop with nothing in it is a scene the player cannot leave anything in.'],
+    "a shop with no stock is an error");
+  eq(Validator.validate(shopAdv({ kind: "shop", stock: [] }), emptyRegistry()).length, 1, "…and so is an empty one");
+  eq(Validator.validate(shopAdv({ kind: "shop", stock: ["nothing"] }), emptyRegistry()),
+    ['Adventure "a": shop scene "one" stocks unknown item "nothing".'],
+    "…and stock naming an item that does not exist");
+  eq(Validator.validate(shopAdv({ kind: "shop", stock: ["free"] }), emptyRegistry()),
+    ['Adventure "a": shop scene "one" stocks "free", which has no "price", so nothing can buy it.'],
+    "…and stock the player could never buy, which reads as a broken button");
+  eq(Validator.validate(shopAdv({ kind: "shop", stock: ["thing"] }), emptyRegistry()), [],
+    "…while a shop stocking one priced item passes");
+  eq(Validator.validate(shopAdv({ stock: ["thing"] }), emptyRegistry()),
+    ['Adventure "a": scene "one" declares "stock" but is not a shop. Add "kind": "shop" or drop the stock.'],
+    "stock on a scene that is not a shop is the same mistake from the other end");
+
+  // The budget. Level 3 is 125 gp for one hero; 200 gp of coin in one scene is
+  // not a warning, because the symptom is a hero four levels of gear ahead and
+  // nothing anywhere saying why.
+  eq(errs(adv({ one: scene({ onEnter: { gold: "200 gp" } }) })),
+    ['Adventure "a": hands out 200 gp across its scenes, above the 125 gp one hero\'s share of a level-3 adventure is worth. Cut the treasure or raise the adventure\'s level.'],
+    "an adventure over its level's treasure budget is rejected");
+  eq(errs(adv({ one: scene({ onEnter: { gold: "125 gp" } }) })), [], "…and one exactly on it is fine");
+  eq(errs(adv({ one: scene({ onEnter: { gold: "200 gp" } }) }, { level: 6 })), [],
+    "…and raising the adventure's level is the other way to fix it");
+  eq(errs(adv({ one: scene({ onEnter: { gold: "9000 gp" } }) }, { level: undefined })), [],
+    "an adventure that names no level has no row to be checked against");
+  eq(errs(adv({ one: scene({}) }, { level: 0 })),
+    ['Adventure "a": "level" must be a whole number of 1 or more.'],
+    "…and a level that is not a level says so instead");
+}
+
+group("what the packs ship with a price on it");
+{
+  const creg = emptyRegistry();
+  creg.loadPack(core); creg.loadPack(advPack);
+  creg.loadPack(readPack("thornwake-vigil.json"));
+
+  const priced = Object.values(creg.items).filter(i => i.price !== undefined);
+  const unpriced = Object.values(creg.items).filter(i => i.price === undefined).map(i => i.id).sort();
+  // Two on purpose: a fist is not merchandise and the Player Core prints no
+  // price for a staff. Both are the "no price" path, shipped, so the shop's
+  // handling of it is exercised by real content and not only by a fixture.
+  eq(unpriced, ["fist", "staff"], "everything the core pack ships carries a price but the fist and the staff");
+  ok(priced.length >= 26, `${priced.length} items carry a price`);
+  eq(priced.filter(i => priceOf(i) === null).map(i => i.id), [], "every price that ships parses");
+  eq(priced.filter(i => i.level === undefined).map(i => i.id), [], "…and every priced item names its level");
+  eq(priceOf(creg.items["healing-potion-lesser"]), 1200, "a Lesser Healing Potion is 12 gp, as the Player Core prints it");
+  eq(creg.items["healing-potion-lesser"].level, 3, "…and it is a level-3 item");
+  eq(priceOf(creg.items["full-plate"]), 3000, "full plate is 30 gp");
+
+  // Every shipped adventure inside its own level's share.
+  Object.values(creg.adventures).forEach(a => {
+    const spent = treasureIn(a, id => creg.items[id]);
+    ok(spent <= treasureBudget(a.level), `${a.id} hands out ${coinText(spent)}, inside the ${coinText(treasureBudget(a.level))} its level allows`);
+  });
+  eq(treasureIn(creg.adventures.barrowmoor, id => creg.items[id]), 7900,
+    "Barrowmoor's 15 gp from the village, 40 gp from the vestry and two 12 gp potions come to 79 gp");
+  eq(treasureIn(creg.adventures.thornwake, id => creg.items[id]), 4900,
+    "Thornwake's 35 gp paychest, one potion and two sabers come to 49 gp");
+
+  // The two shipped shops.
+  const shops = [];
+  Object.values(creg.adventures).forEach(a => Object.entries(a.scenes).forEach(([sid, sc]) => {
+    if (sc.kind === "shop") shops.push([a.id, sid, sc]);
+  }));
+  eq(shops.map(r => `${r[0]}/${r[1]}`), ["barrowmoor/lamp-stores", "thornwake/wagon"],
+    "two adventures ship a shop, one on each side of the campaign");
+  eq(shops.filter(([, , sc]) => sc.stock.every(id => priceOf(creg.items[id]) !== null)).length, 2,
+    "…and every item either of them stocks has a price");
+  // A shop nothing reaches is a scene that exists and cannot be walked into.
+  shops.forEach(([aid, sid]) => {
+    const reachable = Object.values(creg.adventures[aid].scenes)
+      .some(sc => (sc.choices || []).some(c => c.goto === sid));
+    ok(reachable, `${aid}'s shop is reachable from a choice somewhere in the adventure`);
+  });
+  // And a shop the player cannot leave is worse.
+  shops.forEach(([aid, sid, sc]) => {
+    ok((sc.choices || []).some(c => c.goto && creg.adventures[aid].scenes[c.goto]),
+      `${aid}'s shop has a way out of it`);
+  });
+  ok(creg.adventures.barrowmoor.scenes["lamp-stores"].stock.includes("healing-potion-lesser"),
+    "Maud's cupboard sells the potion the moor is going to make the hero want");
+}
+
+group("the purse survives a save");
+{
+  const s = repairSnapshot({ build: { ancestry: "human", background: "hunter", cls: "fighter" } });
+  eq([s.gold, s.inventory], [0, []], "a save written before money existed is an empty purse and an empty pack");
+  eq(repairSnapshot({ gold: 4500, inventory: ["vane-saber"] }).gold, 4500, "a purse comes back as itself");
+  eq(repairSnapshot({ gold: -40 }).gold, 0, "a negative purse is repaired to empty rather than kept");
+  eq(repairSnapshot({ gold: "1250" }).gold, 1250, "…and a purse that arrived as a string is a number");
+  eq(repairSnapshot({ gold: 12.7 }).gold, 12, "…and a fractional one is whole copper");
+  eq(repairSnapshot({ gold: "nonsense" }).gold, 0, "…and one that is not a number at all is empty, not NaN");
+  eq(repairSnapshot({ inventory: "vane-saber" }).inventory, [], "an inventory that is not an array is an empty pack");
+  eq(repairSnapshot({ inventory: ["a", 7, null, "b"] }).inventory, ["a", "b"], "…and only the ids in it survive");
+  eq(SAVE_VERSION, 3, "SAVE_VERSION did not move for two more additive fields (locked #122, again)");
+
+  // Through the slot, the way a real save arrives.
+  const slot = createTorchSlot(memStore());
+  slot.save({ build: { ancestry: "human", background: "hunter", cls: "fighter" }, gold: 3300, inventory: ["hold-cleaver"] });
+  const back = slot.load();
+  eq([back.gold, back.inventory], [3300, ["hold-cleaver"]], "the purse and the pack round-trip through localStorage");
+}
+
+group("the page spends what it saves");
+{
+  // The seam smoke.mjs cannot import: the page's own wiring of the three
+  // fields. Each of these was a line that could be dropped without any test
+  // above noticing, and dropping it would silently lose the player's money.
+  ok(html.includes('from "./torchbearer/js/shop.js"'), "the page imports shop.js");
+  // Sliced out of snapshot() rather than matched against the whole page:
+  // `holdings()` builds an object with the same two fields in it, so a page-wide
+  // regex passed with the snapshot line deleted. Caught by breaking it (#34).
+  const snapAt = html.indexOf("snapshot(){");
+  const snapshot = html.slice(snapAt, html.indexOf("autosave(){", snapAt));
+  ok(/gold:this\.gold, inventory:this\.inventory/.test(snapshot), "snapshot() writes the purse and the pack");
+  ok(/this\.gold=s\.gold; this\.inventory=s\.inventory;/.test(html), "loadSave() reads them back");
+  ok(/holdings\(\)\{/.test(html) && /setHoldings\(h\)\{/.test(html), "the page has one seam onto shop.js, not three");
+  ok(/sc\.kind==="shop"\? this\.shopHTML\(sc\)/.test(html), "a shop scene renders a shop");
+  ok(/if\(sc\.kind==="shop"\)\{ this\.bindShop\(sc\)/.test(html), "…and binds its cards");
+  ok(html.includes("isPotion(item)"), "onEnter.items asks whether an item is a potion rather than what its id starts with");
+  // The toast is a fixed strip 26px off the bottom with z-index 300, up for 2.6
+  // seconds after every save and every purchase. Without this it swallowed the
+  // click on any scene choice that landed at that height, which is how the
+  // browser recipe found it: elementFromPoint on the button came back DIV#toast.
+  ok(/#toast\{pointer-events:none;/.test(html), "the toast cannot eat a click on whatever is under it");
+  ok(!/if\(it\.startsWith\(/.test(html), "…and the id-prefix test that lost the saber is gone");
+  // gold and inventory are deliberately NOT reset by startAdventure: money is
+  // the hero's, the way XP is, and carrying it between adventures is the point.
+  const startAdv = html.slice(html.indexOf("startAdventure(id,onRoad){"), html.indexOf("setCenter(html){"));
+  ok(!/this\.gold=/.test(startAdv) && !/this\.inventory=/.test(startAdv),
+    "starting an adventure empties the flags and not the purse");
 }
 
 /* ---------------- 9. Assurance, and a die a test can pin ---------------- */

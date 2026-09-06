@@ -1190,6 +1190,12 @@ const SUITES = {
     onRoad.state.campaignFlags = { 'barrowmoor/bell-answered': true };
     onRoad.state.advId = null;
     onRoad.state.sceneId = null;
+    // Phase 7, increment 2: the purse and the pack ride in the same file. 250
+    // copper is 2 gp 5 sp, chosen so the wagon below has three cards the hero
+    // can afford and two it cannot — the disabled state is the only part of
+    // the shop no assertion in smoke.mjs can see.
+    onRoad.state.gold = 250;
+    onRoad.state.inventory = ['vane-saber'];
     const onRoadFile = path.join(OUT, 'torchbearer-on-the-road.json');
     fs.writeFileSync(onRoadFile, JSON.stringify(onRoad));
     await setFiles(p, onRoadFile, () => p.click('#save-bar [data-gvb="import"]'));
@@ -1219,6 +1225,49 @@ const SUITES = {
     t.ok(choices.some(c => /Barrowmoor/.test(c)),
       'Thornwake offers the hero a line only the campaign record could have earned', choices.join(' | '));
     await t.shot('campaign-scoped-choice');
+
+    // Phase 7, increment 2: the shop, through the page's own doors. smoke.mjs
+    // pins every coin of the arithmetic; what only a browser can say is that a
+    // `"kind": "shop"` scene renders cards at all, that the ones the purse
+    // cannot cover come up disabled, and that a click on one moves real money
+    // in the real save.
+    const toWagon = await p.$$eval('.choice-btn', els => {
+      const at = els.findIndex(e => /selling/.test(e.textContent));
+      return at < 0 ? null : els[at].dataset.i;
+    });
+    t.ok(toWagon !== null, "the bridgehead has a road to Halloran's wagon", choices.join(' | '));
+    await p.click(`.choice-btn[data-i="${toWagon}"]`);
+    await waitFor(p, () => document.querySelector('.shop-purse') !== null, { timeout: 10000 });
+    t.ok(/2 gp, 5 sp/.test(await textContent(p, '.shop-purse')),
+      'the shop prints the purse the save carried in, in coins', await textContent(p, '.shop-purse'));
+
+    const cards = await p.$$eval('#game-center [data-buy]', els => els.map(e => ({
+      i: e.dataset.buy, name: e.querySelector('h3')?.textContent || '', off: e.classList.contains('disabled')
+    })));
+    t.ok(cards.length === 5, 'the wagon renders one card per stocked item', JSON.stringify(cards.map(c => c.name)));
+    t.ok(cards.filter(c => c.off).map(c => c.name).sort().join(', ') === 'Crossbow, Lesser Healing Potion, Minor Healing Potion',
+      'and greys out exactly what 2 gp 5 sp cannot buy', JSON.stringify(cards));
+    const forSale = await p.$$eval('#game-center [data-sell]', els => els.map(e => e.querySelector('h3')?.textContent || ''));
+    t.ok(forSale.join(', ') === 'Vane Family Saber', 'the sell side is the hero\'s own pack', forSale.join(', ') || 'nothing');
+    await t.shot('the-wagon-at-the-bridgehead');
+
+    const dagger = cards.find(c => c.name === 'Dagger');
+    await p.click(`#game-center [data-buy="${dagger.i}"]`);
+    await waitFor(p, () => /2 gp, 3 sp/.test(document.querySelector('.shop-purse')?.textContent || ''), { timeout: 10000 });
+    const bought = await savedState(p, 'torchbearer');
+    t.ok(bought?.gold === 230 && (bought?.inventory || []).includes('dagger'),
+      'buying a 2 sp dagger takes 2 sp out of the saved purse and puts the dagger in the saved pack',
+      `${bought?.gold} cp / ${JSON.stringify(bought?.inventory)}`);
+
+    // Half, rounded down, and the item leaves the pack. The saber is worth
+    // 1 gp, so the wagon pays 5 sp for it.
+    await p.click('#game-center [data-sell="0"]');
+    await waitFor(p, () => /2 gp, 8 sp/.test(document.querySelector('.shop-purse')?.textContent || ''), { timeout: 10000 });
+    const sold = await savedState(p, 'torchbearer');
+    t.ok(sold?.gold === 280 && !(sold?.inventory || []).includes('vane-saber'),
+      'and selling the saber pays half of its 1 gp and takes it out of the pack',
+      `${sold?.gold} cp / ${JSON.stringify(sold?.inventory)}`);
+    await t.shot('after-the-wagon');
   },
 };
 

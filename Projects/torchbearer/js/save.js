@@ -25,7 +25,10 @@ export const SAVE_KEY = "torchbearer-save";
  * Still 3 after Phase 7. `campaignId`, `campaignFlags` and `completed` are
  * additive too, and unlike `build.level` their pre-Phase-7 value is not a fact
  * `migrate` has to know — it is the same "no campaign" that `repair` fills in
- * for any save missing them (locked #122).
+ * for any save missing them (locked #122). `gold` and `inventory`, added by the
+ * phase's second increment, are the same argument again: a save written before
+ * money existed is a hero with an empty purse and nothing loose in their pack,
+ * which is exactly what the two lines in `repairSnapshot` compute.
  */
 export const SAVE_VERSION = 3;
 
@@ -155,6 +158,14 @@ export function repairSnapshot(state) {
   s.completed = Array.isArray(s.completed)
     ? s.completed.filter((id, i, a) => typeof id === "string" && a.indexOf(id) === i)
     : [];
+  /* Phase 7, increment 2. `gold` is the purse **in copper pieces** — see
+     js/shop.js for why money is counted in the smallest coin and never in
+     fractional gold. `inventory` is what the hero is carrying loose: bought
+     gear, and anything an `onEnter.items` handed over that was not a potion.
+     Potions are not here; they are a stack on the hero's resources, because
+     Drink Potion pops one off it in the middle of a fight. */
+  s.gold = Math.max(0, Math.floor(num(s.gold, 0)));
+  s.inventory = Array.isArray(s.inventory) ? s.inventory.filter(id => typeof id === "string") : [];
   s.hero = repairHero(s.hero);
   s.companions = Array.isArray(s.companions)
     ? s.companions.filter(c => obj(c) && typeof c.id === "string")

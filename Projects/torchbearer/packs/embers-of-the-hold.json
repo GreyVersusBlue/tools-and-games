@@ -73,7 +73,7 @@
   ],
 
   "items": [
-    { "id": "hold-cleaver", "name": "Hold Cleaver", "category": "weapon",
+    { "id": "hold-cleaver", "name": "Hold Cleaver", "level": 0, "price": "1 gp", "category": "weapon",
       "prof": "martial", "group": "axe", "hands": 1,
       "damage": "1d8", "damageType": "slashing", "traits": ["sweep", "thrown-10"], "bulk": 1 }
   ],
