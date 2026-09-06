@@ -527,7 +527,7 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
    torchbearer/packs/ is the only thing that fetches anything. */
 import { mountSaveBar } from "../assets/js/gvb-save.js";
 import { Registry } from "./torchbearer/js/registry.js";
-import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, Dice, activeEffects, abilityMods,
+import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, levelOf, Dice, activeEffects, abilityMods,
          finalizeCharacter, skillMod, assuranceFloor, assuranceDegree } from "./torchbearer/js/rules.js";
 import { createTorchSlot } from "./torchbearer/js/save.js";
 import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, REACTIONS } from "./torchbearer/js/combat.js";
@@ -697,7 +697,8 @@ const CORE_PACK = {
    {"level":1,"name":"Sneak Attack 1d6","desc":"Your Strikes against off-guard foes with agile, finesse, or ranged weapons deal +1d6 precision damage.","special":"sneak-attack"},
    {"level":1,"name":"Surprise Attack","desc":"On the first round of combat, creatures that haven't acted are off-guard to you.","special":"surprise-attack"},
    {"level":3,"name":"Deny Advantage","desc":"You aren't off-guard to hidden, undetected, or flanking creatures of your level or lower.","special":"deny-advantage"}],
- "featLevels":{"class":[1,2],"skill":[1,2,3],"general":[3],"ancestry":[1]}},
+ "featLevels":{"class":[1,2],"skill":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20],"general":[3],"ancestry":[1]},
+ "skillIncreases":[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]},
 
 {"id":"witch","name":"Witch","hp":6,"keyAbility":["int"],
  "perception":"T","saves":{"fort":"T","ref":"T","will":"E"},
@@ -1229,7 +1230,9 @@ const DEG_CLASS=["crit-failure","failure","success","crit-success"];
 
 /* ---------- Character (build → derived sheet) ---------- */
 function newBuild(){
-  return {name:"", ancestry:null, heritage:null, background:null, cls:null, subclass:null,
+  /* `level` is the hero's, not the file's, since Phase 6; `advances` is the
+     per-level choice map the level-up flow writes into from level 4 up. */
+  return {name:"", level:CHAR_LEVEL, advances:{}, ancestry:null, heritage:null, background:null, cls:null, subclass:null,
     boosts:{ancestry:[], bgA:null, bgFree:null, key:null, free:[]},
     skills:[], loreExtra:[], feats:{}, extraPicks:[], focusChoices:{},
     spells:{cantrips:[], r1:[], r2:[]}, gear:{weapon:null, weapon2:null, ranged:null, armor:null, shield:false}};
@@ -1481,7 +1484,8 @@ const Builder = {
   },
   previewSkillMod(s,trained,expert){
     const b=this.build, abil=abilityMods(b);
-    const pb= expert? PROF_VAL.E+CHAR_LEVEL : trained? PROF_VAL.T+CHAR_LEVEL : 0;
+    const lvl=levelOf(b);
+    const pb= expert? PROF_VAL.E+lvl : trained? PROF_VAL.T+lvl : 0;
     return pb+abil[SKILLS[s]];
   },
   bind_skills(){
@@ -1534,7 +1538,7 @@ const Builder = {
   classGrantsShieldBlock(){
     const b=this.build, cls=Registry.classes[b.cls];
     if(!cls) return false;
-    const viaClass=(cls.features||[]).some(f=>f.level<=CHAR_LEVEL&&(f.effects||[]).some(e=>e.grantFeat==="shield-block"));
+    const viaClass=(cls.features||[]).some(f=>f.level<=levelOf(b)&&(f.effects||[]).some(e=>e.grantFeat==="shield-block"));
     const sub=cls.subclass&&(cls.subclass.options||[]).find(o=>o.id===b.subclass);
     const viaSub=!!(sub&&(sub.effects||[]).some(e=>e.grantFeat==="shield-block"));
     return viaClass||viaSub;
@@ -1669,7 +1673,7 @@ const Builder = {
   },
   finish(){
     App.hero=finalizeCharacter(this.build);
-    App.chronicle=[];
+    App.chronicle=[]; App.xp=0;
     App.log(`<b>${esc(App.hero.name)}</b>, ${App.hero.ancestry} ${App.hero.className} ${App.hero.level}, steps onto the page.`,"narr");
     App.toTitle(); App.toast("Hero forged: "+App.hero.name);
     App.autosave();
@@ -1924,7 +1928,7 @@ const Combat = Object.assign(newCombat(), {
    ============================================================ */
 const App = {
   hero:null, heroCb:null, companions:[], adv:null, sceneId:null, flags:{}, chronicle:[],
-  dailyLuckUsed:false, slot:null, library:[],
+  dailyLuckUsed:false, xp:0, slot:null, library:[],
 
   init(){
     try{ Registry.loadPack(CORE_PACK); Registry.loadPack(ADVENTURE_PACK); }
@@ -2219,7 +2223,7 @@ const App = {
   snapshot(){
     return {build:this.hero?this.hero.build:null,
       advId:this.adv?this.adv.id:null, sceneId:this.sceneId, flags:this.flags,
-      dailyLuckUsed:this.dailyLuckUsed,
+      dailyLuckUsed:this.dailyLuckUsed, xp:this.xp,
       hero: this.heroCb? {hp:this.heroCb.hp,wounded:this.heroCb.wounded,resources:this.heroCb.resources}:null,
       companions:this.companions.map(c=>({id:c.id.replace("comp-",""),hp:c.hp})),
       chronicle:this.chronicle.slice(-80)};
@@ -2264,7 +2268,7 @@ const App = {
         cb.hp = s.hero.hp==null? cb.hpMax : Math.max(0,Math.min(cb.hpMax,s.hero.hp));
         cb.wounded=s.hero.wounded;
         cb.resources=s.hero.resources; }
-      this.flags=s.flags; this.dailyLuckUsed=s.dailyLuckUsed;
+      this.flags=s.flags; this.dailyLuckUsed=s.dailyLuckUsed; this.xp=s.xp;
       // A companion from an unloaded pack costs you that companion, not the save.
       const lostComps=[];
       this.companions=s.companions.map(c=>{

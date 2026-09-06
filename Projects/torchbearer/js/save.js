@@ -13,9 +13,16 @@
 // Imported RELATIVELY so test/smoke.mjs can load this under plain Node —
 // a leading slash is not resolvable there (v7 §7).
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
+import { CHAR_LEVEL, MAX_LEVEL } from "./rules.js";
 
 export const SAVE_KEY = "torchbearer-save";
-export const SAVE_VERSION = 2;
+/**
+ * 3 since Phase 6: `build.level`, `build.advances` (the per-level choice map)
+ * and `xp` on the snapshot. All three are additive. A version-2 save is a
+ * level-3 hero by definition — nothing before Phase 6 could forge anything
+ * else — so `migrate` stamps that rather than leaving `repair` to guess it.
+ */
+export const SAVE_VERSION = 3;
 
 const num = (v, fallback) => (Number.isFinite(+v) ? +v : fallback);
 const obj = v => (v && typeof v === "object" && !Array.isArray(v) ? v : null);
@@ -62,7 +69,32 @@ export function repairBuild(build) {
   b.spells.r1 = Array.isArray(b.spells.r1) ? b.spells.r1 : [];
   b.spells.r2 = Array.isArray(b.spells.r2) ? b.spells.r2 : [];
   b.gear = obj(b.gear) || { weapon: null, weapon2: null, ranged: null, armor: null, shield: false };
+  b.level = Math.max(1, Math.min(MAX_LEVEL, Math.floor(num(b.level, CHAR_LEVEL))));
+  b.advances = repairAdvances(b.advances);
   return b;
+}
+
+/**
+ * The per-level choice map: `{ "4": { feats: {class4: id}, skillIncrease: id|null,
+ * boosts: [abil…] }, … }`, one entry per level from 4 up, written by the
+ * level-up flow and read by `rules.js`. Keys that are not whole levels above
+ * 3 are dropped; an entry's three fields are shaped the way the builder's
+ * own `feats`, `skillIncrease` and `boosts.free` are.
+ */
+export function repairAdvances(advances) {
+  const out = {};
+  const a = obj(advances) || {};
+  for (const k of Object.keys(a)) {
+    const l = Number(k);
+    if (!Number.isInteger(l) || l < 4 || l > MAX_LEVEL || String(l) !== k) continue;
+    const e = obj(a[k]) || {};
+    out[k] = {
+      feats: obj(e.feats) || {},
+      skillIncrease: typeof e.skillIncrease === "string" ? e.skillIncrease : null,
+      boosts: Array.isArray(e.boosts) ? e.boosts.filter(b => typeof b === "string") : []
+    };
+  }
+  return out;
 }
 
 /**
@@ -102,6 +134,7 @@ export function repairSnapshot(state) {
   s.build = repairBuild(s.build);
   s.flags = obj(s.flags) || {};
   s.dailyLuckUsed = !!s.dailyLuckUsed;
+  s.xp = Math.max(0, num(s.xp, 0));
   s.advId = typeof s.advId === "string" ? s.advId : null;
   s.sceneId = typeof s.sceneId === "string" ? s.sceneId : null;
   s.hero = repairHero(s.hero);
@@ -145,7 +178,19 @@ export function createTorchSlot(storage) {
     validate: validateSnapshot,
     // Version drift only. v1 stamped its own `v: 1` inside the state; gvb-save
     // keeps the stamp in `__v` and strips it, so the old field is dead weight.
-    migrate: (s, from) => { if (from < 2) delete s.v; return s; },
+    // v3 added the level record: a v2 build is a level-3 hero with nothing
+    // chosen above 3 — its level-1-to-3 choices are already the flat `feats`,
+    // `skillIncrease` and `boosts` fields — and no experience banked.
+    // `validate` has not run yet here, so the build is only touched if it is
+    // an object at all.
+    migrate: (s, from) => {
+      if (from < 2) delete s.v;
+      if (from < 3) {
+        if (obj(s.build)) { s.build.level = CHAR_LEVEL; s.build.advances = {}; }
+        s.xp = 0;
+      }
+      return s;
+    },
     repair: repairSnapshot,
     // No `defaults`: a fresh Torchbearer state is "no hero yet", which the
     // title screen already represents by having nothing to resume. `reset()`

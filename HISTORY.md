@@ -1172,6 +1172,71 @@ Two of them have moved since they were written:
    inside the project it tests is not the re-ranking a session may not do.
    *Source: Torchbearer Phase 5.*
 
+111. **The engine grows past level 3, to 10, and the level is the hero's.**
+   This answers BACKLOG Q19 ("Does the engine grow past level 3?") for the
+   one row it stood in front of: yes, because Phase 7's campaign has nothing
+   to carry between adventures otherwise, and Phase 6 is a prerequisite for
+   it and a headache after it. `build.level` is the number every sheet is
+   computed from, read through `levelOf`; `CHAR_LEVEL` survives as the level
+   a new hero is forged at and nothing else; `MAX_LEVEL` is 10 and
+   `repairBuild` clamps into 1..10 rather than refusing, because refusing a
+   save abandons someone (#36) and clamping a number nothing can yet produce
+   costs nobody anything. Ten is where the wishlist's own later-arc note put
+   the stop — "where the Player Core's tables stop being the whole story" —
+   and where the engine's two spell ranks run out of headroom (#114).
+   Reversing it is one constant. *Source: Torchbearer Phase 6, increment 1.*
+
+112. **A class's `featLevels` list is authoritative up to its highest entry,
+   and the Player Core's standard row takes over above it.** Every core class
+   says `"class":[1,2],"skill":[2],"general":[3],"ancestry":[1]` — the rows
+   truncated at 3, because 3 was the whole game. Read as full tables they
+   would have starved a level-4 hero of feats; rewritten to 20 in eight
+   entries they would have said nothing a table in `rules.js` does not.
+   `extendTable` splices the two, so seven classes needed no data change and
+   a pack written against the level-3 guide keeps meaning what it meant. The
+   Rogue is the one class whose row is not the standard one — skill feats and
+   skill increases at every level — so its lists are spelled out to 20, and
+   `skillIncreases` is a new optional class field for exactly that. *Source:
+   Torchbearer Phase 6, increment 1.*
+
+113. **`migrate` decides a version-2 save's level; `repair` shapes a
+   version-3 one.** Both would default a missing level to 3, so the
+   difference is only visible on a save that claims otherwise: a `__v: 2`
+   blob whose build says `level: 7` loads at 3, and a `__v: 3` blob with the
+   same build loads at 7. That is the #37 split made literal — version drift
+   is a fact about when the file was written (nothing before Phase 6 could
+   forge a hero above 3), and repair is a guess about a malformed file. The
+   level-1-to-3 choices stay in the flat fields the builder already writes
+   (`feats`, `skillIncrease`, `boosts`); the per-level map `build.advances`
+   starts at 4, and a v2 save migrates to an empty one rather than to a map
+   restating what the flat fields say. The committed `sera-voss` fixture
+   stays a version-2 file so the migration has something real to run on.
+   *Source: Torchbearer Phase 6, increment 1.*
+
+114. **Spell ranks 3 and up are not modelled; slots are the class's level-3
+   row moved by the Player Core table.** `build.spells` has `r1` and `r2`,
+   every pool in `combat.js` is `slots[1]` and `slots[2]`, and the pack's 42
+   spells stop at rank 2. Adding a third rank is a builder step, an engine
+   pool, a heighten table and a content change at once, and none of it is
+   the level record. So `spellSlotsAt` grows rank 2 from 2 to 3 at level 4,
+   as the book does, and stops: a level-5 caster has 3/3 and no rank-3 slot.
+   The class's own `slots` field is still read — a class with a fatter row
+   keeps its extra — rather than replaced by the table, because guide §4
+   told authors that field is theirs. *Source: Torchbearer Phase 6,
+   increment 1.*
+
+115. **Boosts past +4 are partial, the level-1 cap stays, and Master waits
+   for 7.** `abilityMods` keeps its `Math.min(4, …)` on the level-1 set — a
+   test already asserts nothing climbs past +4 there, and the Remaster's
+   "no attribute above +4 at level 1" is that cap — and the boosts at 5, 10,
+   15 and 20 apply on top of it, one full point below +4 and one point per
+   two boosts above it, which is the Remaster's partial-boost rule. A skill
+   increase in the map raises one rank, and `RANK_FLOOR` holds Master to
+   level 7 and Legendary to 15, so an Expert skill named at 5 stays Expert
+   rather than jumping the queue; the level-up screen is expected not to
+   offer it, and the rules refuse it anyway. *Source: Torchbearer Phase 6,
+   increment 1.*
+
 
 ---
 

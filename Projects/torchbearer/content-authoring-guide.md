@@ -95,8 +95,8 @@ Key points:
 * **Proficiency ranks** are `"U" "T" "E" "M" "L"`, plus the special value `"partial"` for `attacks.martial` — it means "only weapons flagged `rogueOk: true` in items" (the rogue/bard weapon list).
 * `trainedSkills` entries may be a string (always trained) or an array like `[["acrobatics","athletics"]]` (grants +1 skill pick; the builder is deliberately liberal about which skill it's spent on).
 * `skillCount` is the class's base number **before** Int and extras.
-* Only feature levels ≤ 3 matter. Features are display-only unless they carry `effects` or a `special` (engine hook — see §8).
-* `featLevels.skill` controls how many skill-feat slots appear (rogue uses `[1,2,3]`).
+* A feature fires once the hero's level reaches its `level` — a new hero is forged at 3, and Phase 6 lets one climb to 10, so a level-5 feature is real content now. Features are display-only unless they carry `effects` or a `special` (engine hook — see §8).
+* `featLevels` lists the levels at which the class gains a feat of each type. A list is authoritative up to its highest entry and the Player Core's standard table (`FEAT_LEVELS` in `js/rules.js`: class feats at 1, 2, then every even level; skill feats at every even level; general at 3, 7, 11 …; ancestry at 1, 5, 9 …) takes over above it — so `"class":[1,2]` means the standard class-feat row, and the rogue spells its skill-feat list out to 20 because its row is every level. `skillIncreases` (optional) works the same way against the standard 3, 5, 7 … row; the rogue is the one core class that carries it.
 
 **Spellcasting block** (omit or `null` for martials):
 
@@ -106,13 +106,13 @@ Key points:
   "type": "prepared",             // or "spontaneous"
   "ability": "int",
   "cantrips": 5,                  // number of cantrip picks
-  "slots": { "1": 3, "2": 2 },    // castable slots per rank at level 3
+  "slots": { "1": 3, "2": 2 },    // castable slots per rank at level 3; rules.js moves this row by the Player Core table at other levels (3/3 from level 4)
   "repertoire": { "1": 4, "2": 2 },  // spontaneous only: spells known per rank
   "grantCantrips": ["courageous-anthem"]  // auto-known, on top of picks
 }
 ```
 
-The engine treats slots as a per-rank pool (prepared casting is simplified to "your list + a pool"). Cantrips auto-heighten to rank ⌈level/2⌉ = 2.
+The engine treats slots as a per-rank pool (prepared casting is simplified to "your list + a pool"), and runs ranks 1 and 2 only — a level-5 caster's rank-3 slots do not exist yet. Cantrips auto-heighten to rank ⌈level/2⌉, which is 2 for a new hero.
 
 ## 5. Feats
 

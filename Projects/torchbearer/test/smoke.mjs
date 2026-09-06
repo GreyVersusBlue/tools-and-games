@@ -36,10 +36,11 @@ const PAGE = path.join(PROJECT, "..", "torchbearer.html");
 // outright, so every dynamic import goes through pathToFileURL (v7 §7).
 const mod = p => import(pathToFileURL(path.join(PROJECT, p)).href);
 const { Validator, emptyRegistry, KNOWN_REACTIONS } = await mod("js/registry.js");
-const { createTorchSlot, repairSnapshot, repairBuild, repairHero, validateSnapshot, SAVE_KEY, SAVE_VERSION }
+const { createTorchSlot, repairSnapshot, repairBuild, repairHero, repairAdvances, validateSnapshot, SAVE_KEY, SAVE_VERSION }
   = await mod("js/save.js");
-const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, Dice, setDiceSource, activeEffects, abilityMods,
-        finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, SIZES, sizeIndex, levelDC } = {
+const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, setDiceSource, activeEffects, abilityMods,
+        finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, SIZES, sizeIndex, levelDC,
+        FEAT_LEVELS, SKILL_INCREASE_LEVELS, BOOST_LEVELS, featLevelsFor, skillIncreaseLevels, grantsAt, spellSlotsAt } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
 const { newCombat, heroCombatant, companionCombatant, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
@@ -256,6 +257,9 @@ const goodSnap = () => ({
   eq(back.build.name, "Wren", "the build survives a round trip");
   ok(!("__v" in back) && !("v" in back), "no version field leaks into game state");
   eq(JSON.parse(store._raw.get(SAVE_KEY)).__v, SAVE_VERSION, "the stored blob carries the version stamp");
+  eq(SAVE_VERSION, 3, "the save is at version 3 (Phase 6: level, the choice map, xp)");
+  eq([back.build.level, back.build.advances, back.xp], [3, {}, 0],
+    "a bare version-0 blob comes back as a level-3 hero with an empty choice map and no XP");
 }
 
 { // the export file, which is the only format that leaves the browser
@@ -282,6 +286,34 @@ const goodSnap = () => ({
   eq(state?.sceneId, "bridge-fog", "the committed save lands at the bridge-fog scene");
   eq(state?.hero?.resources?.potions, ["healing-potion-minor", "healing-potion-minor"],
     "the committed save's potions are already in the new stack shape");
+}
+
+{ // Phase 6: the v2 → v3 round trip, pinned against the same committed file.
+  // It stays a version-2 file on purpose — it is the migration's fixture now.
+  const slot = createTorchSlot(memStore());
+  const text = fs.readFileSync(path.join(PROJECT, "test", "sera-voss.torchsave.json"), "utf8");
+  eq(JSON.parse(text).version, 2, "the committed fixture is still a version-2 file");
+  ok(!("level" in JSON.parse(text).state.build) && !("xp" in JSON.parse(text).state), "…with no level and no xp in it");
+  const state = slot.deserialize(text);
+  eq([state.build.level, state.build.advances, state.xp], [3, {}, 0],
+    "migrate fills a v2 save with level 3, an empty choice map and 0 XP");
+  const again = JSON.parse(slot.serialize(state));
+  eq(again.version, 3, "…it re-exports as version 3");
+  eq(slot.deserialize(JSON.stringify(again)), state, "…and the version-3 file reloads identical");
+}
+
+{ // migrate, not repair, decides a version-2 save's level: nothing before
+  // Phase 6 could forge a hero above 3, whatever the fields say.
+  const v2 = goodSnap(); v2.build.level = 7; v2.build.advances = { "4": { feats: { class4: "power-attack" } } }; v2.xp = 40;
+  const store2 = memStore(); store2.setItem(SAVE_KEY, JSON.stringify({ ...v2, __v: 2 }));
+  const back2 = createTorchSlot(store2).load();
+  eq([back2.build.level, back2.build.advances, back2.xp], [3, {}, 0],
+    "a version-2 save is a level-3 hero with nothing chosen above 3 and no XP, whatever it claims");
+  const store3 = memStore(); store3.setItem(SAVE_KEY, JSON.stringify({ ...v2, __v: 3 }));
+  const back3 = createTorchSlot(store3).load();
+  eq([back3.build.level, back3.build.advances, back3.xp],
+    [7, { "4": { feats: { class4: "power-attack" }, skillIncrease: null, boosts: [] } }, 40],
+    "…while a version-3 save keeps all three, repaired into shape");
 }
 
 { // the corrupt-file cases, which used to reach finalizeCharacter
@@ -416,6 +448,21 @@ group("repair");
   ok(!validateSnapshot(null), "null does not");
 }
 
+{ // Phase 6's three fields, through repairBuild and repairSnapshot
+  eq(repairBuild({}).level, 3, "a build with no level is level 3");
+  eq(repairBuild({ level: "5" }).level, 5, "a numeric string is read as a level");
+  eq([repairBuild({ level: 0 }).level, repairBuild({ level: 99 }).level, repairBuild({ level: 4.7 }).level, repairBuild({ level: "x" }).level],
+    [1, 10, 4, 3], "level is a whole number clamped to 1..10, and garbage is 3");
+  eq(repairBuild({ advances: [] }).advances, {}, "an array of advances is an empty map");
+  eq(repairBuild({ advances: { "3": {}, "4": { feats: { class4: "x" } }, "5.5": {}, "11": {}, "04": {} } }).advances,
+    { "4": { feats: { class4: "x" }, skillIncrease: null, boosts: [] } },
+    "only whole levels 4..10 survive as keys, and each entry gets its three fields");
+  eq(repairAdvances({ "5": { feats: "no", skillIncrease: 3, boosts: ["str", 7, null] } })["5"],
+    { feats: {}, skillIncrease: null, boosts: ["str"] }, "an entry's fields are shaped, not trusted");
+  eq([repairSnapshot({ build: {} }).xp, repairSnapshot({ build: {}, xp: -5 }).xp, repairSnapshot({ build: {}, xp: "30" }).xp],
+    [0, 0, 30], "xp is a number, never negative, and 0 when missing");
+}
+
 /* ---------------- 7. the rules core, at level 3 ----------------
    Until this session `finalizeCharacter` could not be called from Node at all,
    so the numbers every sheet in the game is printed from had never once been
@@ -440,7 +487,7 @@ group("repair");
 group("core classes at level 3");
 Registry.loadPack(core);
 ok(Registry.hasPack("core"), "the rules-core registry has the core pack");
-eq(CHAR_LEVEL, 3, "CHAR_LEVEL is 3 (Phase 6 changes it here and nowhere else)");
+eq(CHAR_LEVEL, 3, "CHAR_LEVEL is 3, and since Phase 6 it is only the level a new hero is forged at");
 
 const KEY = { bard:"cha", cleric:"wis", druid:"wis", fighter:"str", ranger:"str", rogue:"dex", witch:"int", wizard:"int" };
 /** The one build shape above, for a class. `over` patches it for a targeted check. */
@@ -612,6 +659,97 @@ eq(withEffects([{ bonus: { target: "save.all", value: 1 } }]).saves, BASE.saves,
   "currently dropped: bonus on save.all");
 eq(withEffects([{ profUp: { target: "save.all", rank: "M" } }]).saves, BASE.saves,
   "currently dropped: profUp on save.all (§6 says list the three saves separately)");
+
+/* ---------------- 8b. a hero who levels (Phase 6) ----------------
+   The same build shape as section 7, at other levels. Each number is derived
+   by hand from the Player Core: a proficiency bonus is rank + level, HP is
+   ancestry + (class + Con) per level, the boosts at 5 and 10 are four each and
+   partial past +4, and a skill cannot reach Master before 7. */
+group("a hero who levels (Phase 6)");
+eq(levelOf({}), 3, "a build with no level is a level-3 hero");
+eq(levelOf({ level: 5 }), 5, "…and one with a level is at it");
+eq([levelOf({ level: 0 }), levelOf({ level: 40 }), levelOf({ level: "6" })], [1, MAX_LEVEL, 6], "levelOf clamps to 1..MAX_LEVEL and reads a string");
+eq(MAX_LEVEL, 10, "MAX_LEVEL is 10 — where the Player Core's tables stop being the whole story");
+{
+  const f3 = forge("fighter"), f4 = forge("fighter", { level: 4 });
+  eq(f3.level, 3, "a build with no level forges the level-3 sheet section 7 pins");
+  eq(f4.level, 4, "the sheet carries the build's level");
+  eq(f4.hpMax, 8 + (10 + 2) * 4, "HP at 4: 8 + (10 + 2) × 4 = 56");
+  eq(f4.ac, f3.ac + 1, "AC climbs one with the proficiency bonus");
+  eq(f4.saves, { fort: 10, ref: 10, will: 7 }, "every save climbs one");
+  eq([f4.classDC, f4.perception], [18, 9], "class DC and Perception climb one");
+  eq(f4.attacks[0].bonus, f3.attacks[0].bonus + 1, "the attack bonus climbs one");
+  eq(skillMod(f4, "athletics"), skillMod(f3, "athletics") + 1, "a trained skill climbs one");
+  eq(skillMod(f4, "occultism"), skillMod(f3, "occultism"), "…and an untrained one does not");
+  eq(assuranceFloor(f4, "athletics"), 10 + 2 + 4, "Assurance's floor climbs with it");
+  const f5 = forge("fighter", { level: 5, advances: { "5": { feats: {}, skillIncrease: null, boosts: ["str", "dex", "con", "wis"] } } });
+  eq(f5.abil, { str: 3, dex: 3, con: 3, int: 1, wis: 2, cha: 1 }, "the level-5 boosts land on four attributes");
+  eq(f5.hpMax, 8 + (10 + 3) * 5, "HP at 5 counts the new Con: 8 + 13 × 5 = 73");
+  eq(f5.ac, 10 + 2 + 5 + 3, "AC at 5: 10 + trained 7 + Dex 3 = 20");
+  eq(forge("fighter", { level: 4, advances: { "5": { boosts: ["str", "dex", "con", "wis"] } } }).abil.str, 2,
+    "a level-5 boost on a build read at 4 is carried, not applied");
+  const dex4 = { ancestry: ["dex", "con"], bgA: "con", bgFree: "dex", key: "dex", free: ["dex", "wis", "int", "cha"] };
+  eq(forge("rogue", { boosts: dex4 }).abil.dex, 4, "the level-1 set still caps at +4");
+  eq(forge("rogue", { level: 5, boosts: dex4, advances: { "5": { boosts: ["dex"] } } }).abil.dex, 4, "a boost past +4 is partial: the first gives nothing yet");
+  eq(forge("rogue", { level: 10, boosts: dex4, advances: { "5": { boosts: ["dex"] }, "10": { boosts: ["dex"] } } }).abil.dex, 5, "…and the second gives the +1");
+}
+{ // features, Toughness, resists and spell slots follow the level
+  eq(forge("bard", { subclass: "maestro", level: 2 }).saves.ref, 2 + 2 + 2, "at level 2 a Bard's Lightning Reflexes has not fired: Reflex is trained, 2 + 2 + 2");
+  eq(forge("bard", { subclass: "maestro", level: 3 }).saves.ref, 9, "…and at 3 it has");
+  ok(!activeEffects({ ...forge("fighter", { level: 2 }).build }).some(x => x.e.special === "bravery"), "a level-3 feature's special waits for level 3 too");
+  eq(withEffects([{ special: "toughness" }], { level: 6 }).hpMax, 8 + 12 * 6 + 6, "Toughness adds the level: +6 at level 6");
+  eq(withEffects([{ resist: { type: "fire", value: "halfLevel" } }], { level: 7 }).resists, [{ type: "fire", value: 3 }], "a halfLevel resist is 3 at level 7");
+  eq(spellSlotsAt({ 1: 3, 2: 2 }, 3), { 1: 3, 2: 2 }, "at 3 the slots are the class's own row");
+  eq(spellSlotsAt({ 1: 3, 2: 2 }, 4), { 1: 3, 2: 3 }, "at 4 rank 2 grows to 3");
+  eq(spellSlotsAt({ 1: 3, 2: 2 }, 10), { 1: 3, 2: 3 }, "…and holds there: ranks 3 and up are not modelled");
+  eq(spellSlotsAt({ 1: 3, 2: 2 }, 1), { 1: 2, 2: 0 }, "at 1 it is two rank-1 slots and no rank 2");
+  eq(spellSlotsAt({ 1: 4, 2: 2 }, 4), { 1: 4, 2: 3 }, "a class with a fatter row keeps its extra");
+  eq(forge("wizard", { subclass: "school-battle-magic", level: 4 }).casting.slots, { 1: 3, 2: 3 }, "a level-4 Wizard's sheet says 3/3");
+  eq(forge("wizard", { subclass: "school-battle-magic", level: 5 }).casting.dc, 10 + 2 + 5 + 2, "spell DC climbs with the level: 10 + trained 7 + Int 2");
+}
+{ // the per-level choice map: feats and skill increases
+  const id = "smoke-level-feat";
+  Registry.feats[id] = { id, name: "Probe L4", type: "class", level: 4, classes: ["fighter"], effects: [{ bonus: { target: "hp", value: 5 } }] };
+  const adv = { "4": { feats: { class4: id } } };
+  eq(forge("fighter", { level: 4, advances: adv }).hpMax, 56 + 5, "a feat chosen at 4 is on the level-4 sheet");
+  eq(forge("fighter", { level: 3, advances: adv }).hpMax, 44, "…and off the level-3 one");
+  eq(forge("fighter", { level: 5, advances: { "5": { skillIncrease: "athletics" } } }).skills.athletics, "E", "a level-5 increase raises Soldier's Athletics to Expert");
+  eq(forge("fighter", { level: 5, skillIncrease: "athletics", advances: { "5": { skillIncrease: "athletics" } } }).skills.athletics, "E", "…but not past Expert: Master waits for 7");
+  eq(forge("fighter", { level: 7, skillIncrease: "athletics", advances: { "7": { skillIncrease: "athletics" } } }).skills.athletics, "M", "at 7 the same choice is Master");
+  eq(forge("fighter", { level: 5, advances: { "5": { skillIncrease: "occultism" } } }).skills.occultism, "T", "an increase on an untrained skill trains it");
+  eq(forge("fighter", { level: 5, advances: { "5": { skillIncrease: "nonsense" } } }).skills, forge("fighter", { level: 5 }).skills, "a name that is not a skill changes nothing");
+}
+{ // the progression tables
+  const fighter = Registry.classes.fighter, rogue = Registry.classes.rogue;
+  eq(featLevelsFor(fighter, "class", 3), [1, 2], "a Fighter's class feats through 3 are the pack's own [1,2]");
+  eq(featLevelsFor(fighter, "class", 10), [1, 2, 4, 6, 8, 10], "…and the standard row takes over above the list");
+  eq(featLevelsFor(fighter, "skill", 10), [2, 4, 6, 8, 10], "skill feats at every even level");
+  eq(featLevelsFor(fighter, "general", 10), [3, 7], "general feats at 3 and 7");
+  eq(featLevelsFor(fighter, "ancestry", 10), [1, 5, 9], "ancestry feats at 1, 5 and 9");
+  eq(featLevelsFor(rogue, "skill", 6), [1, 2, 3, 4, 5, 6], "a Rogue's skill feats are every level, because its list says so to 20");
+  eq(featLevelsFor({ featLevels: { class: [1, 3] } }, "class", 6), [1, 3, 4, 6], "a class's own list is authoritative up to its top entry: [1,3], then 4 and 6");
+  eq(featLevelsFor({}, "class", 4), [1, 2, 4], "a class with no list gets the standard row");
+  eq(skillIncreaseLevels(fighter, 10), [3, 5, 7, 9], "skill increases at 3, 5, 7 and 9");
+  eq(skillIncreaseLevels(rogue, 6), [2, 3, 4, 5, 6], "a Rogue's are 2 and every level after");
+  eq([FEAT_LEVELS.general, SKILL_INCREASE_LEVELS.at(-1), BOOST_LEVELS], [[3, 7, 11, 15, 19], 19, [5, 10, 15, 20]], "the standard rows read as the Player Core prints them");
+  eq(grantsAt(fighter, 4), { level: 4, feats: [{ key: "class4", type: "class", level: 4 }, { key: "skill4", type: "skill", level: 4 }], skillIncrease: false, boosts: 0 },
+    "level 4 grants a Fighter a class feat and a skill feat");
+  eq(grantsAt(fighter, 5), { level: 5, feats: [{ key: "ancestry5", type: "ancestry", level: 5 }], skillIncrease: true, boosts: 4 },
+    "level 5 grants an ancestry feat, a skill increase and four boosts");
+  eq(grantsAt(fighter, 7).feats.map(f => f.key), ["general7"], "level 7 grants a general feat");
+  eq(grantsAt(rogue, 7).feats.map(f => f.key), ["skill7", "general7"], "…and a Rogue a skill feat with it");
+  ok([4, 5, 6, 7, 8, 9, 10].every(l => grantsAt(fighter, l).feats.length > 0 || grantsAt(fighter, l).skillIncrease), "every level from 4 to 10 grants something");
+}
+{ // the committed hero, at her own level and one up: the numbers a level-up would print
+  const slot = createTorchSlot(memStore());
+  const sera = slot.deserialize(fs.readFileSync(path.join(PROJECT, "test", "sera-voss.torchsave.json"), "utf8")).build;
+  const s3 = finalizeCharacter(sera);
+  eq([s3.level, s3.hpMax, s3.abil.con], [3, 52, 3], "Sera Voss at 3: 10 + (10 + 3) × 3 + Toughness 3 = 52, the HP her save records");
+  const s4 = finalizeCharacter({ ...sera, level: 4 });
+  eq([s4.level, s4.hpMax], [4, 10 + 13 * 4 + 4], "…and at 4 she would have 66");
+  eq(s4.ac, s3.ac + 1, "…one more AC");
+  eq(s4.skills, s3.skills, "…and the same skills until an increase is chosen");
+}
 
 /* ---------------- 9. Assurance, and a die a test can pin ---------------- */
 group("assurance and dice");
@@ -1373,6 +1511,8 @@ const rolls = eng => eng.events.filter(ev => ev.kind === "roll");
   eq(eng.armed.range, 6, "Demoralize reaches 30 feet");
   pin([20, 20]); eng.tokenClick(foe);
   eq(rolls(eng).at(-1).math, "20-3 = 17 vs DC 18", "a −4 for no shared language: 1 − 4 = −3 against DC 10 + 5 + 3");
+  const lv5 = duel({ level: 5 }); lv5.eng.actionClick("demoralize"); pin([20, 20]); lv5.eng.tokenClick(lv5.foe);
+  eq(rolls(lv5.eng).at(-1).math, "20-3 = 17 vs DC 20", "Phase 6: the DC's level is the hero's — 10 + 5 + 5 at level 5");
   eq(rolls(eng).at(-1).deg, 2, "…17 misses 18, and the natural 20 makes it a success");
   eq(foe.conditions, [{ c: "frightened", v: 1, dur: undefined }], "…frightened 1");
   eq([foe.demoralized, eng.actions], [true, 2], "…and the hound remembers, and it cost an action");
@@ -1724,6 +1864,11 @@ const sanctum = (ch, over = {}) => {
     "the menu lists cantrips, rank 1, rank 2, then the font");
   eq(rows.map(r => r.rank), [2, 2, 2, 1, 1, 1, 1, 2, 2, 2], "cantrips heighten to rank 2 at level 3");
   eq(rows.map(r => r.pool), ["cantrip", "cantrip", "cantrip", "r1", "r1", "r1", "r1", "r2", "r2", "font"], "…each row knows which pool it spends");
+  // Phase 6: the rank a cantrip or focus spell heightens to is the hero's, not the file's.
+  const five = sanctum(forge("cleric", { subclass: "cloistered-sarenrae", level: 5, spells: { cantrips: ["divine-lance"], r1: [], r2: [] } }));
+  eq(five.eng.spellRows(five.caster, false)[0].rank, 3, "at level 5 a cantrip heightens to rank 3");
+  eq(five.eng.spellRows(five.caster, true).map(r => r.rank), [3], "…and so does Fire Ray");
+  eq(five.caster.resources.slots, { 1: 3, 2: 3 }, "…and a level-5 caster walks in with 3/3 slots");
   eq(rows.every(r => !r.spent && !r.hexBlocked), true, "with full slots nothing is greyed out");
   caster.resources.slots[1] = 0; caster.resources.font = 0;
   const rows2 = eng.spellRows(caster, false);
