@@ -53,95 +53,107 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **The Absalom Inheritance Phase 1, "The
-interrupt point" (PR #151)**, and **its row is gone**. Absalom's arc has seven
-phases left, ranks 1 through 7, and rank 1 is a **2+** — which means it is a
-whole batch by itself and cannot be paired with anything.
+The last thing that shipped is **The Absalom Inheritance Phase 2, "Conditions
+that expire", increment 1 (PR #153)**, and **its row is still rank 1**,
+rewritten to say what is done and what is left. It was a **2+** row and one
+increment of it is the honest outcome; its size is now **1**, because the
+machinery is built and increment 2 is a session's work against an existing
+pattern rather than a second open-ended one. **When increment 2 ships, the row
+goes.** Absalom's arc has seven phases left, ranks 1 through 7.
 
-**The turn loop has a seam.** `Projects/absalom-inheritance/js/game.js` fires
-`fireTrigger(event, ctx)` at three named points and nowhere else:
-`incoming-attack` before a Strike is rolled, `move-out-of-reach` when somebody
-steps out of a square within a reactor's reach, `incoming-damage` when damage
-is resolved and about to land. One reaction per actor per round — `turn.reaction`
-for the PC, `turn.reacted` for creatures, both refreshed in `advance()` at the
-top of that actor's own turn and nowhere else, both runtime-only and unsaved.
-The creature turn is a generator the caller drains, so a Stride walks square by
-square and a reaction that kills the creature stops the turn there. `ui.js` reads
-nothing out of the playback script and did not have to change to *see* a
-reaction.
+**`turn.shielded` is gone.** It was a boolean on `game.js`'s runtime `turn`
+object and it was the whole of this engine's status-effect system: one buff,
+hardcoded at four call sites, with nowhere for a second one to go. In its place
+is `Projects/absalom-inheritance/js/conditions.js` — 270 lines, pure, RNG-free
+— holding a closed catalogue of three conditions, the modifier funnel, the
+same-type bonus rule (Player Core p.443) and the turn-boundary tick. Persistent
+damage hands back a spec and `game.js` rolls it, which is the line that keeps
+`balance.mjs` able to replay a run.
 
-**Q18 is answered, in favour of locked #17** (the answer is locked #133). It
-asked whether Torchbearer should be the site's PF2e rules engine or only its
-own. `Projects/torchbearer/js/combat.js` was read at length and
-**re-implemented, not imported**: what the two engines share is vocabulary, not
-code. Same three event names, same one-reaction-per-round rule, same refusal to
-let a trigger fire twice — because an engine that calls the moment
-"move-out-of-reach" and another that calls it "leaves-reach" makes every future
-comparison an act of translation for no benefit. The implementations differ
-where the engines do: Torchbearer's reactions are a table in `combat.js` with
-`qualifies`/`resolve` closures, Absalom's are ordinary pack `commands` with a
-`triggers` array and an `effect`, because Absalom's commands were already
-content and Torchbearer's feats were already code.
+**There is exactly one `check(` in `game.js` now**, inside
+`roll(actor, kind, bonus, dc)`, which adds `modifiersFor(actor, kind)` before
+rolling. `smoke.mjs` reads the file's own source, strips its comments and fails
+if a second appears — the same drift guard the three trigger names already
+have, because the failure mode is the same silence: a raw `check()` written at
+a call site rolls a d20 no condition can ever move, and nothing about the line
+looks wrong. The one deliberate exception is the flat check that ends
+persistent damage, which rolls a bare `die(20, rng)` because a flat check takes
+no modifiers (Player Core p.409). The deletion of `turn.shielded` is the proof
+the funnel is the only path: if anything still read the boolean, it would not
+compile.
 
-**Kessa's Reactive Strike fires zero times, and that is the interesting
-finding.** `world.planApproach` Strides a creature to the *cheapest* open square
-beside the PC, and an optimal path to the cheapest such square cannot cross
-another one on the way, because that crossing would itself have been cheaper.
-A creature therefore enters your reach and never leaves it: 0 leaves over 3,032
-planned Strides, 0 Reactive Strikes over 2,000 seeded playthroughs. **The Vault
-Keeper carries the same reaction** (locked #134), which is what makes the
-trigger fire in shipped play — walking away from the Keeper costs a basalt
-fist, which is a decision a player makes and the autopilot never does, so the
-measured balance is unchanged (79.8% before and after, to the decimal) while
-the fight is not. `smoke.mjs` **asserts** that zero, so **rank 3, Phase 4 —
-creatures that know what they are standing in** — is told the day it comes
-alive. Whoever takes that row should expect this assertion to fail and should
-be pleased when it does.
+**Durations tick in one place**, at the top of `advance()`, with a new
+`turn.acting` naming the turn that is finishing — by the time `idx` has moved,
+whose turn just ended is no longer a question the queue can answer. Each bag is
+ticked as its own owner against whoever's boundary it is, because "expires at
+the start of your next turn" can name an actor other than the one wearing it.
+**Conditions are in the save additively** (`pc.conditions`, per-creature
+`conditions`, repaired on every load, **absent entirely from a save with
+none**), a `repair` migration with no version bump (#37) and no key change
+(#36). The sheet grows chips, the board grows a pip over an afflicted creature,
+and every gain and loss is announced into the live region.
 
-**Shield Block moved the two builds toward each other.** Vesper blocks in 62%
-of runs at the force disc's Hardness 5, and the Wizard's win rate went 53.6% →
-**64.5%** against the Fighter's unchanged **79.8%**. That is half an answer to
-Absalom's own second open question — whether the split between the builds is
-design or tuning debt — and it was not the point of the phase, which is why it
-is worth writing down.
+**Two content sources ship with it, both homebrew and both measured.** Breathe
+Fire sets a critical failure alight (1d4 persistent fire, DC 15 flat check) and
+a critical Basalt Fist leaves the heir frightened 1. Neither is in the book;
+they are there because a condition system nothing in the adventure applies is a
+system nobody plays. Over 800 seeded playthroughs per build, 142 creatures
+caught fire and 97 heirs were frightened as the wizard, 112 as the fighter.
+Win rates moved **64.5% → 65.3%** (wizard) and **79.8% → 79.3%** (fighter),
+both inside the 45–90% band.
 
-**`smoke.mjs` goes from 308 checks to 425.** **Eighteen guard-rails were broken
-on purpose** (#34) and every one exited 1 from a green baseline. **Five found
-nothing on the first attempt** and the tests were rewritten until they fired,
-and one of the five is worth the next session's attention: the stride sweep had
-**re-implemented the planner it was checking** and went on passing against a
-deliberately inverted one. The planner moved to `world.planApproach` so the
-suite and the engine walk the same function. An earlier break-verification
-harness was also thrown away entirely: it ran against a copy of the project
-under `/tmp` and reported all twelve breaks "caught" when every one was dying
-of `ERR_MODULE_NOT_FOUND` on a relative import. `CLAUDE.md`'s #34 bullet
-carries both lessons now.
+**`smoke.mjs` goes from 425 checks to 599, and twenty guard-rails were broken
+on purpose** (#34) against the real project files, every one exiting 1 from a
+green baseline and every one checked against the assertion it was meant to trip
+rather than merely against a non-zero exit. **Three found nothing the first
+time**, and the third is the one the next session should carry:
 
-**A seventh workflow exists: `.github/workflows/absalom-ci.yml`.** The three
-sibling projects each got one with their own phase and this one never had one,
-so 425 assertions and 4,000 seeded playthroughs ran in a session's terminal and
-nowhere else. The whole job is 45 seconds. This is not the site-wide CI row
-(rank 73), which is still open and still larger: nothing runs
-`Tools/board-check` or `gvb-save.test.mjs`, and the six per-project files are
-copies of each other rather than a template — `absalom-ci.yml` arrived carrying
-`torchbearer-ci.yml`'s stale reference to that row's rank number, which is the
-argument for the template in one line.
+- The funnel guard failed on its own explanatory comment, which is a test that
+  makes the file worse to read. It strips comments before counting now.
+- `boundary()` had a real bug the suite caught rather than a hypothetical: it
+  assigned the ticked bag back only when something had *expired*, so a
+  frightened 2 decayed to a frightened 1 that was thrown away. The condition
+  was there, the chip was there, the penalty was there, and only the number was
+  frozen.
+- **An assertion stayed green with the line it guards deleted, twice over.**
+  `createGame`'s bag normalize is covered by `save.js`'s repair, and then again
+  by the first turn boundary, which writes a bag back to every actor whether or
+  not one expired — so any scenario that reaches an encounter has already been
+  normalised before it can be asked. It is asserted out of combat now, which is
+  the only place the line is load-bearing. **Two lines guarding the same
+  absence stay green when either is deleted**, and a test written against the
+  pair is testing neither. `CLAUDE.md`'s #34 bullet carries it.
 
-**Four decisions are locked, 133 through 136**, and Q18 is answered.
+**Four decisions are locked, 137 through 140**, and no question was answered —
+none stood in front of this row.
 
-**The two site-wide checks are still red on `main` and were red before this
-branch existed.** Re-run from a detached `origin/main` worktree in the same
-container: 1,423 units checked, the same 2 broken, and the same six social
-pages out of sync. `check-integrity.mjs` fails on
+**Rank 3 — Phase 4, creatures that know what they are standing in — still has
+its tripwire.** `smoke.mjs` asserts that no planned Stride leaves the PC's
+reach, over 3,032 of them, because with today's planner none can. Give a
+creature a reason to retreat or reposition and that assertion fails, and its
+message says so. That is the intended outcome, not a regression.
+
+**None of the four shared things was touched this round.** No `index.html`, no
+`assets/js/gvb-save.js`, no `Tools/board-check/**`, no generated previews or og
+images. **The two site-wide checks are still red on `main` and were red before
+this branch existed** — measured both ways in the same container: 1,423 units
+checked on a clean `main` and 1,425 with the branch, the same 2 broken, and the
+same six social pages out of sync. `check-integrity.mjs` fails on
 `Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
 inline `<script type="module">`, which is a syntax error in a module) and on
 `Tools/prompt-builder.html` (it references `fonts.googleapis.com` and
 `fonts.gstatic.com`, against the zero-offsite rule). `social:check` reports six
 pages out of sync with the board. None of the three is ranked below yet; all
 three are somebody's next quarter-session. What else moved outside the project:
-`CLAUDE.md`'s locked-decision count, 132 to 136, and a clause on the #34 bullet;
-`Projects/absalom_inheritance.html` took six lines of CSS for the reaction row.
-**None of the four shared things was touched.**
+`CLAUDE.md`'s locked-decision count, 136 to 140, and a clause on the #34 bullet
+about two lines guarding one absence; a stale assertion count in a header
+comment in `.github/workflows/absalom-ci.yml`; and eight lines of CSS plus one
+empty `div` in `Projects/absalom_inheritance.html` for the chip row.
+
+Before that: **Absalom Phase 1, "The interrupt point" (PR #151)**, which built
+the reaction bus this phase's turn boundaries hang off — three named trigger
+points, one reaction per actor per round, and a creature turn that is a
+generator the caller drains so a Stride can be interrupted between two squares.
 
 Before that: **Torchbearer Phase 8, "The contract, and its first new author"
 (PR #149)**, **Torchbearer Phase 7, increment 3 (PR #147)**, **increment 2 (PR #145)**, **increment 1 (PR #143)**, **Phase 6, increment 2 (PR #141)**, **increment 1 (PR #139)**, **Phase 5 (PR #137)**, **Phase 4 (PR #135)**, **Phase 3 (PR #133)**, **Phase 2, increment 2 (PR #131)**, **increment 1 (PR #129)**, **Torchbearer Phase 1 (PR #127)**, **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
@@ -155,48 +167,44 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**Two of the four shared things moved this round, in the same commit as the
-project change: `Tools/board-check/play-games.mjs`, whose Torchbearer recipe
-grew from 64 checks to 73, and `Projects/torchbearer.html`, which took the
-courier hook and the one-word CSS fix. The same two site-wide checks are still
-red on `main` and were red before this branch existed** (re-run from the same
-container: 1,427 units checked with the branch, 2 broken, and six social pages
-out of sync — the same two and the same six)**:** `check-integrity.mjs`
-fails on `Projects/school-generator/tools/walk-shell.html` (an HTML comment
-inside an inline `<script type="module">`, which is a syntax error in a module)
-and on `Tools/prompt-builder.html` (it references `fonts.googleapis.com` and
-`fonts.gstatic.com`, against the zero-offsite rule). `social:check` reports six
-pages out of sync with the board. None of the three is ranked below yet; all
-three are somebody's next quarter-session. What else moved outside the project:
-`CLAUDE.md`'s locked-decision count, 128 to 132, plus a new house-rule bullet
-for #132, and a stale assertion count in a header comment in
-`.github/workflows/torchbearer-ci.yml`.
+**The Torchbearer round before those two moved two of the four shared things**,
+in the same commit as the project change: `Tools/board-check/play-games.mjs`,
+whose Torchbearer recipe grew from 64 checks to 73, and
+`Projects/torchbearer.html`, which took the courier hook and the one-word CSS
+fix. The two site-wide checks below have been red across every one of these
+rounds and were red before any of their branches existed. (That paragraph used
+to open "this round" and had been describing a round two behind the header for
+two sessions; it says which round it means now.)
 
-**118 ranked items.** 56 of them are phases in one of the ten project
+**118 ranked items, unchanged** — rank 1 shipped an increment and stayed, which
+is what a 2+ row does. 56 of them are phases in one of the ten project
 `WISHLIST.md` files; the other 62 are standalone, and live in Tier 2 below.
 Beyond the ranked list there are 253 open bullets in the eleven wishlists'
 standing backlogs and 47 open questions for Devon — 418 open items in all.
-No bullet was added and **Q18 was answered** (locked #133). Bell to Bell,
-Hearth and Torchbearer all have no ranked rows left: every phase of all three
-has shipped.
+**No standing-backlog bullet was added or closed** — the five new bullets this
+round are Absalom Phase 2's own "increment 2" checklist, which is the ranked
+row itself and not a standing backlog — and no question was answered: none
+stood in front of this row. Q20's figures were
+restated because the phase moved them, which is not the same as answering it.
+Bell to Bell, Hearth and Torchbearer all have no ranked rows left: every phase
+of all three has shipped.
 
-**Pick up rank 1: `Projects/absalom-inheritance` Phase 2 — Conditions that
-expire (Fable 5.1, size 2+).** A 2+ row **is the whole batch** and cannot be
-paired with anything, and it will not finish in one session: do one increment,
-ship it, and leave the row in place with its Item text rewritten to say what is
-done and what is left. It is the natural next one — Phase 1 gave a turn interior
-structure and this gives it duration, and `turn.shielded` is still a boolean on
-a runtime object doing the entire job of a status-effect system. `turn.reaction`
-and `turn.reacted` now sit beside it and are the model for what "runtime-only,
-never saved" looks like in this engine; conditions are the opposite case and go
-into the save additively, as a `repair` migration and not a version bump (#37).
-
-**Rank 3 — Phase 4, creatures that know what they are standing in — has a
-tripwire waiting for it.** `smoke.mjs` asserts that no planned Stride leaves the
-PC's reach, over 3,032 of them, because with today's planner none can. Give a
-creature a reason to retreat or reposition and that assertion fails, and its
-message says so. That is the intended outcome, not a regression: it is the day
-the Fighter's Reactive Strike becomes live in shipped play.
+**Pick up rank 1 again: `Projects/absalom-inheritance` Phase 2, increment 2
+(Fable 5.1, size 1).** A size-1 row is still the whole batch. **This one is
+meant to close the row** — the pure model layer, the funnel, the tick and the
+save shape all exist, so what is left is content against an established
+pattern, and the size dropped from 2+ to 1 to say so. The five bullets are in
+the project's `WISHLIST.md` under "Increment 2 — what is left", and two of them
+are the honest gaps this increment left rather than new ideas: **`modifiersFor`
+covers four kinds of check and no damage roll at all**, so `enfeebled` cannot
+be written today — every `rollDamage` call site adds the weapon's own `plus`
+and nothing else, which is the same hardcoding `turn.shielded` was, one layer
+down; and **Rousing Splash's own note says it would end persistent fire**,
+which nothing now applies to the PC, so either something has to set the heir
+alight or the cantrip needs a target other than herself. The other three are a
+catalogue worth the funnel (`clumsy`, `enfeebled`, `stupefied`, `off-guard`), a
+condition that costs an action (`slowed`, the first one to touch the action
+economy rather than a number), and construct immunity to mental effects.
 
 Two things the CI rows below now know that they did not: `hearth-ci.yml`,
 `fourth-quarter-ci.yml`, `torchbearer-ci.yml` and `absalom-ci.yml` are the
@@ -249,7 +257,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 2 — Conditions that expire | `Projects/absalom-inheritance` | 2+ | Fable 5.1 | claude/backlog-ranked-batch-xxjxgx | [WISHLIST.md Phase 2](Projects/absalom-inheritance/WISHLIST.md#phase-2--conditions-that-expire) |
+| 1 | Phase 2, increment 2 — a catalogue worth the funnel. Increment 1 shipped (PR #153): `js/conditions.js`, the one-`check(` funnel, the boundary tick, conditions in the save, chips and announcements, three conditions. Left: four more conditions, a damage funnel (`enfeebled` is unwritable without one), `slowed` reading the action economy, something for Rousing Splash to end, and construct immunity to mental effects | `Projects/absalom-inheritance` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/absalom-inheritance/WISHLIST.md#phase-2--conditions-that-expire) |
 | 2 | Phase 3 — Templates, and line of effect | `Projects/absalom-inheritance` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/absalom-inheritance/WISHLIST.md#phase-3--templates-and-line-of-effect) |
 | 3 | Phase 4 — Creatures that know what they are standing in | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/absalom-inheritance/WISHLIST.md#phase-4--creatures-that-know-what-they-are-standing-in) |
 | 4 | Phase 5 — A harness that says which fight killed you | `Projects/absalom-inheritance` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Projects/absalom-inheritance/WISHLIST.md#phase-5--a-harness-that-says-which-fight-killed-you) |
@@ -1242,7 +1250,7 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q20 | **Is the split between builds the design, or a tuning debt?** Round 3 called the asymmetry deliberate at 53.6% / 79.8%. Phase 1 narrowed it to **64.5% / 79.8%** without meaning to — Shield Block is worth about eleven points to the Wizard and Reactive Strike is worth nothing measurable to the Fighter — so the gap is 15 points rather than 26 and the question is live rather than settled. If the two builds are meant to be comparable challenges, `balance.mjs` needs a band per build rather than one shared 45–90% window; if they are an easy mode and a hard mode, the picker should say so, since a player choosing Kessa Vane cannot tell. | 2 | `Projects/absalom-inheritance/WISHLIST.md`, PR #151 |
+| Q20 | **Is the split between builds the design, or a tuning debt?** Round 3 called the asymmetry deliberate at 53.6% / 79.8%. Phase 1 narrowed it to **64.5% / 79.8%** without meaning to — Shield Block is worth about eleven points to the Wizard and Reactive Strike is worth nothing measurable to the Fighter — and Phase 2's two condition sources moved it again, to **65.3% / 79.3%**, so the gap is 14 points rather than 26 and the question is live rather than settled. Neither phase was aimed at it; both narrowed it, which is itself an argument that the 26 points were tuning debt. If the two builds are meant to be comparable challenges, `balance.mjs` needs a band per build rather than one shared 45–90% window; if they are an easy mode and a hard mode, the picker should say so, since a player choosing Kessa Vane cannot tell. | 2 | `Projects/absalom-inheritance/WISHLIST.md`, PRs #151 and #153 |
 | Q21 | **Does the adventure grow, or does the engine deepen?** Twelve to sixteen minutes, two rooms, four fights. Arc one deepens the engine on the rooms that exist; arc two spends the same effort on more rooms. A taste question, not a technical one. | 1 | wishlist |
 
 ### The Fourth Quarter
