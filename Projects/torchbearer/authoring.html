@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Torchbearer — Pack Workbench</title>
+<meta name="description" content="Validate a Torchbearer content pack, walk its scene graph, and load it into the game.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%233B2A1A'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%237E2A20'/%3E%3Ccircle cx='13' cy='13' r='3.5' fill='%23A8443A'/%3E%3C/svg%3E">
+<style>
+:root{
+  --soot:#17130E; --leather:#241C12; --leather2:#2D2416; --raised:#372C1B;
+  --parch:#EADCB8; --parch-dim:#C9B98F; --faded:#A8977B;
+  --brass:#C79A4B; --brass-hi:#E8C270; --ember:#A5402D; --ember-hi:#D06A50;
+  --verdigris:#5E9C8F; --verdigris-hi:#8CC7BA;
+  --good:#7FA657; --bad:#C05B45;
+  --serif-display:'Palatino Linotype','Book Antiqua',Palatino,Georgia,serif;
+  --serif-body:Georgia,'Times New Roman',serif;
+  --mono:ui-monospace,'Cascadia Mono',Consolas,Menlo,monospace;
+  --line:#4A3A22;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--soot);
+  background-image:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(199,154,75,.07), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 85% 110%, rgba(165,64,45,.05), transparent 60%);
+  color:var(--parch); font-family:var(--serif-body); font-size:15px; line-height:1.5;
+  overflow:hidden;
+}
+h1,h2,h3{font-family:var(--serif-display);font-variant:small-caps;letter-spacing:.06em;font-weight:600;color:var(--brass-hi)}
+button{font-family:inherit;cursor:pointer}
+a{color:var(--verdigris-hi)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:var(--leather)}
+::-webkit-scrollbar-thumb{background:var(--raised);border-radius:5px;border:2px solid var(--leather)}
+::-webkit-scrollbar-thumb:hover{background:var(--line)}
+
+#app{display:flex;flex-direction:column;height:100vh}
+#topbar{
+  display:flex;align-items:center;gap:14px;padding:8px 16px;flex-wrap:wrap;
+  background:linear-gradient(180deg,var(--leather2),var(--leather));
+  border-bottom:2px solid var(--line);flex:0 0 auto;
+}
+#topbar .brand{font-family:var(--serif-display);font-variant:small-caps;letter-spacing:.12em;font-size:20px;color:var(--brass-hi);text-shadow:0 1px 0 #000}
+#topbar .brand .flame{color:var(--ember-hi)}
+#topbar .sub{color:var(--faded);font-size:12px;font-style:italic}
+#topbar .spacer{flex:1}
+.tb-btn{
+  background:var(--raised);color:var(--parch);border:1px solid var(--line);
+  padding:5px 12px;border-radius:3px;font-size:12.5px;font-variant:small-caps;letter-spacing:.05em;
+  font-family:var(--serif-display);
+}
+.tb-btn:hover:not(:disabled){background:var(--line);color:var(--brass-hi)}
+.tb-btn:disabled{opacity:.4;cursor:default}
+.tb-btn.primary{border-color:var(--ember);background:linear-gradient(180deg,#4A2A1C,#33201A)}
+.tb-btn.primary:hover:not(:disabled){border-color:var(--ember-hi);color:var(--ember-hi)}
+.tb-btn:focus-visible,#paste:focus-visible,.hit:focus-visible{outline:2px solid var(--brass-hi);outline-offset:2px}
+
+#main{flex:1;display:flex;min-height:0;gap:1px;background:var(--line)}
+#left,#right{background:var(--soot);display:flex;flex-direction:column;min-width:0}
+#left{flex:1 1 46%}
+#right{flex:1 1 54%;overflow-y:auto;padding:14px 16px 40px}
+
+#editor-head,#report-head{
+  display:flex;align-items:center;gap:10px;padding:7px 12px;flex:0 0 auto;
+  background:var(--leather);border-bottom:1px solid var(--line);
+}
+#editor-head h2,#report-head h2{font-size:15px;margin-right:auto}
+.tag{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--faded)}
+
+#editor-wrap{flex:1;display:flex;min-height:0;position:relative}
+#gutter{
+  flex:0 0 auto;padding:10px 8px 10px 12px;text-align:right;overflow:hidden;
+  font-family:var(--mono);font-size:12.5px;line-height:1.5;color:#6B5A3C;
+  background:var(--leather);border-right:1px solid var(--line);user-select:none;white-space:pre;
+}
+#gutter .g-err{color:var(--ember-hi);font-weight:700}
+#paste{
+  flex:1;resize:none;border:0;outline:0;padding:10px 12px;
+  background:transparent;color:var(--parch);caret-color:var(--brass-hi);
+  font-family:var(--mono);font-size:12.5px;line-height:1.5;tab-size:2;white-space:pre;overflow-wrap:normal;
+}
+#paste::placeholder{color:#6B5A3C}
+#drop-veil{
+  position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(23,19,14,.88);border:2px dashed var(--brass);z-index:5;
+  font-family:var(--serif-display);font-variant:small-caps;letter-spacing:.1em;font-size:22px;color:var(--brass-hi);
+}
+#drop-veil.on{display:flex}
+
+.verdict{border:1px solid var(--line);border-left-width:4px;border-radius:3px;padding:10px 12px;margin-bottom:14px;background:var(--leather)}
+.verdict.ok{border-left-color:var(--good)}
+.verdict.bad{border-left-color:var(--bad)}
+.verdict.idle{border-left-color:var(--line)}
+.verdict h3{font-size:17px;margin-bottom:2px}
+.verdict .small{font-size:12px;color:var(--faded)}
+
+.block{margin-bottom:16px}
+.block > h3{font-size:14px;border-bottom:1px solid var(--line);padding-bottom:3px;margin-bottom:7px;display:flex;gap:8px;align-items:baseline}
+.block > h3 .n{font-family:var(--mono);font-size:11px;color:var(--faded);letter-spacing:.04em;font-variant:normal}
+ul.rows{list-style:none}
+ul.rows li{padding:5px 0;border-bottom:1px dotted rgba(74,58,34,.7);font-size:13.5px}
+ul.rows li:last-child{border-bottom:0}
+.hit{
+  display:inline-block;min-width:52px;margin-right:9px;padding:0 6px;border:1px solid var(--line);border-radius:3px;
+  background:var(--leather2);color:var(--brass-hi);font-family:var(--mono);font-size:11px;text-align:center;
+}
+button.hit{cursor:pointer}
+button.hit:hover{border-color:var(--brass-hi);background:var(--raised)}
+.hit.none{color:#6B5A3C}
+.err-text{color:#F0D9AE}
+.note-text{color:var(--parch-dim)}
+.mono{font-family:var(--mono);font-size:12px}
+.pill{display:inline-block;margin:2px 4px 2px 0;padding:1px 8px;border:1px solid var(--line);border-radius:10px;background:var(--leather);font-size:11.5px;color:var(--parch-dim)}
+.walk{border:1px solid var(--line);border-radius:3px;background:var(--leather);padding:9px 11px;margin-bottom:9px}
+.walk h4{font-family:var(--serif-display);font-variant:small-caps;letter-spacing:.05em;color:var(--brass-hi);font-size:15px}
+.walk .stats{font-family:var(--mono);font-size:11.5px;color:var(--faded);margin:3px 0 5px;letter-spacing:.03em}
+.walk .bad{color:var(--ember-hi)}
+.walk .good{color:var(--good)}
+#refs{font-size:12px;color:var(--faded);padding:7px 12px;background:var(--leather);border-bottom:1px solid var(--line)}
+#refs label{margin-right:12px;white-space:nowrap;display:inline-block}
+#refs input{accent-color:var(--brass)}
+footer{padding:8px 16px;font-size:11.5px;color:#7A6748;border-top:1px solid var(--line);background:var(--leather);flex:0 0 auto}
+@media (max-width:900px){ body{overflow:auto} #main{flex-direction:column} #left{height:52vh} }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <span class="brand"><span class="flame">✦</span> Torchbearer</span>
+    <span class="sub">Pack Workbench</span>
+    <span class="spacer"></span>
+    <button class="tb-btn" id="btn-open">Open a .json</button>
+    <button class="tb-btn" id="btn-sample">Load a shipped pack</button>
+    <button class="tb-btn" id="btn-clear">Clear</button>
+    <button class="tb-btn primary" id="btn-play" disabled>Load into the game</button>
+    <input type="file" id="file" accept=".json,application/json" hidden>
+  </header>
+
+  <div id="main">
+    <section id="left">
+      <div id="editor-head">
+        <h2>The pack</h2>
+        <span class="tag" id="size-tag">empty</span>
+      </div>
+      <div id="editor-wrap">
+        <div id="gutter" aria-hidden="true">1</div>
+        <textarea id="paste" spellcheck="false" autocomplete="off" autocapitalize="off"
+          aria-label="Pack JSON"
+          placeholder="Paste a pack here, drop a .json file anywhere on this panel, or press Open a .json.
+
+The contract is packs/schema.json, the prose is content-authoring-guide.md, and every error below is the same validator the game runs before it loads anything."></textarea>
+        <div id="drop-veil">drop the pack</div>
+      </div>
+    </section>
+
+    <section id="right">
+      <div id="report">
+        <div class="verdict idle"><h3>Nothing loaded</h3>
+          <div class="small">Paste or drop a pack and this fills in as you type.</div></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="refs">Reference content: <span id="ref-boxes">loading…</span></div>
+  <footer>
+    A pack is validated against the reference content above, exactly as the game validates it at load.
+    Unknown keys are notes, not errors — the engine ignores them, which is why they are worth seeing here.
+  </footer>
+</div>
+
+<script type="module">
+import { Validator, emptyRegistry } from "./js/registry.js";
+import { fetchCorePacks } from "./js/corepack.js";
+import { fetchLibrary, fetchPack } from "./js/library.js";
+import { lineIndex, lineFor, parsePack, unknownFields, summarize, dryRunPack } from "./js/inspect.js";
+import { esc } from "./js/text.js";
+
+/* The handoff to the game. authoring.html writes the pack here and opens
+   torchbearer.html with ?pack=workbench; the page loads it once and clears the
+   key. sessionStorage rather than localStorage on purpose: this is a courier,
+   not a save, and it dies with the tab. The key name is frozen the way every
+   storage key in this repo is (locked #36). */
+const HANDOFF = "torchbearer:workbench-pack";
+
+const $ = id => document.getElementById(id);
+const paste = $("paste"), gutter = $("gutter"), report = $("report");
+
+/* ---------- reference content ---------- */
+// A pack leans on core ids by design (guide §1: ids are global), so validating
+// against nothing reports every core item, feat and monster as a broken
+// reference. The two inline packs come out of the page's own source — the same
+// slice test/smoke.mjs has used since session 8 — and everything on the Shelf
+// is offered as a toggle, off by default, for a pack that builds on one.
+const refs = { core: [], shelf: [], loaded: {}, on: new Set() };
+let errorLines = [];
+
+async function loadRefs() {
+  const box = $("ref-boxes");
+  try {
+    refs.core = await fetchCorePacks(new URL("../torchbearer.html", import.meta.url));
+  } catch (e) {
+    box.innerHTML = `<span style="color:var(--ember-hi)">could not read torchbearer.html — ${esc(e.message)}</span>`;
+    return;
+  }
+  refs.shelf = await fetchLibrary();
+  box.innerHTML =
+    `<label><input type="checkbox" checked disabled> core + The Bell of Barrowmoor</label>` +
+    refs.shelf.map(p => `<label><input type="checkbox" data-ref="${esc(p.id)}"> ${esc(p.name)}</label>`).join("");
+  box.querySelectorAll("[data-ref]").forEach(el => {
+    el.onchange = async () => {
+      const id = el.dataset.ref;
+      if (el.checked) {
+        try { refs.loaded[id] = await fetchPack(refs.shelf.find(p => p.id === id)); refs.on.add(id); }
+        catch (err) { el.checked = false; alert(err.message); return; }
+      } else refs.on.delete(id);
+      run();
+    };
+  });
+}
+
+/** A registry holding everything the toggles say, in load order. */
+function referenceRegistry() {
+  const reg = emptyRegistry();
+  const load = p => { try { reg.loadPack(p); } catch (e) { /* a reference pack that will not load is not this author's problem */ } };
+  refs.core.forEach(load);
+  refs.shelf.forEach(p => { if (refs.on.has(p.id) && refs.loaded[p.id]) load(refs.loaded[p.id]); });
+  return reg;
+}
+
+/* ---------- the gutter ---------- */
+function drawGutter(text) {
+  const n = text.length ? text.split("\n").length : 1;
+  const marked = new Set(errorLines);
+  let out = "";
+  for (let i = 1; i <= n; i++) out += (marked.has(i) ? `<span class="g-err">${i}</span>` : String(i)) + "\n";
+  gutter.innerHTML = out;
+  gutter.scrollTop = paste.scrollTop;
+}
+paste.addEventListener("scroll", () => { gutter.scrollTop = paste.scrollTop; });
+
+/** Put the caret on a line and scroll it into view. */
+function jumpTo(line) {
+  const lines = paste.value.split("\n");
+  let at = 0;
+  for (let i = 0; i < line - 1 && i < lines.length; i++) at += lines[i].length + 1;
+  paste.focus();
+  paste.setSelectionRange(at, at + (lines[line - 1] || "").length);
+  // Rough but reliable: no textarea API scrolls to an offset, so put the line a
+  // third of the way down the box by its own line height.
+  const lh = parseFloat(getComputedStyle(paste).lineHeight) || 19;
+  paste.scrollTop = Math.max(0, (line - 1) * lh - paste.clientHeight / 3);
+  gutter.scrollTop = paste.scrollTop;
+}
+
+/* ---------- rendering ---------- */
+const hit = line => line
+  ? `<button class="hit" data-line="${line}" title="Jump to line ${line}">line ${line}</button>`
+  : `<span class="hit none" title="Nothing in this message names a line">—</span>`;
+
+function block(title, count, body) {
+  return `<div class="block"><h3>${esc(title)}<span class="n">${esc(count)}</span></h3>${body}</div>`;
+}
+
+function walkHTML(w) {
+  const bits = [];
+  bits.push(`${w.scenes} scenes, ${w.reached.length} reachable`);
+  bits.push(`${w.encounters.length} encounters`);
+  bits.push(`${w.endingsReached.length}/${w.endings.length} endings reachable`);
+  const rows = [];
+  const listing = (label, arr, fmt) => {
+    if (!arr.length) return;
+    rows.push(`<li><span class="bad">${esc(label)}</span> — ${arr.map(fmt).join(", ")}</li>`);
+  };
+  listing("unreachable", w.unreachable, s => `<span class="mono">${esc(s)}</span>`);
+  listing("points at nothing", w.dangling, d => `<span class="mono">${esc(d.from)} → ${esc(d.to)}</span>`);
+  listing("check with no branch", w.halfChecks, c => `<span class="mono">${esc(c.scene)}#${c.choice} ${esc(c.missing)}</span>`);
+  listing("encounter nothing starts", w.encountersUnstarted, s => `<span class="mono">${esc(s)}</span>`);
+  const unreached = w.endings.filter(e => !w.endingsReached.includes(e));
+  listing("ending nobody reaches", unreached, s => `<span class="mono">${esc(s)}</span>`);
+  if (!w.start) rows.push(`<li><span class="bad">no start scene</span> — the adventure's "start" names nothing in "scenes".</li>`);
+  return `<div class="walk"><h4>${esc(w.name || w.id || "?")}</h4>
+    <div class="stats">${bits.join(" · ")}</div>
+    ${rows.length ? `<ul class="rows">${rows.join("")}</ul>`
+                  : `<div class="stats good">Every scene reachable, every edge lands, every fight has a way in.</div>`}</div>`;
+}
+
+function render(text) {
+  errorLines = [];
+  if (!text.trim()) {
+    report.innerHTML = `<div class="verdict idle"><h3>Nothing loaded</h3>
+      <div class="small">Paste or drop a pack and this fills in as you type.</div></div>`;
+    $("btn-play").disabled = true;
+    return;
+  }
+
+  const parsed = parsePack(text);
+  if (!parsed.ok) {
+    if (parsed.line) errorLines = [parsed.line];
+    report.innerHTML = `<div class="verdict bad"><h3>Not JSON yet</h3>
+      <div class="small">The file has to parse before anything can check it.</div></div>` +
+      block("Syntax", parsed.line ? `line ${parsed.line}` : "no position", `<ul class="rows"><li>${hit(parsed.line)}<span class="err-text">${esc(parsed.message)}</span></li></ul>`);
+    $("btn-play").disabled = true;
+    return;
+  }
+
+  const pack = parsed.pack;
+  const idx = lineIndex(text);
+  const errs = Validator.validate(pack, referenceRegistry());
+  const notes = unknownFields(pack);
+  const rows = summarize(pack);
+  const walks = dryRunPack(pack);
+
+  errorLines = errs.map(e => lineFor(e, idx)).filter(Boolean);
+
+  const meta = pack.pack || {};
+  const head = errs.length
+    ? `<div class="verdict bad"><h3>${errs.length} ${errs.length === 1 ? "error" : "errors"}</h3>
+        <div class="small">The game would refuse this pack. Nothing is partially loaded.</div></div>`
+    : `<div class="verdict ok"><h3>${esc(meta.name || meta.id || "Valid")}</h3>
+        <div class="small">Validates against the reference content. ${notes.length ? `${notes.length} key${notes.length === 1 ? "" : "s"} the engine will ignore, below.` : "No keys the engine ignores."}</div></div>`;
+
+  const errHTML = errs.length ? block("Errors", `${errs.length}`, `<ul class="rows">${
+    errs.map(e => `<li>${hit(lineFor(e, idx))}<span class="err-text">${esc(e)}</span></li>`).join("")
+  }</ul>`) : "";
+
+  const noteHTML = notes.length ? block("Keys the engine ignores", `${notes.length}`, `<ul class="rows">${
+    notes.map(n => `<li>${hit(lineFor(`"${n.key}"`, idx))}<span class="note-text"><span class="mono">${esc(n.path)}</span>${
+      n.near ? ` — nothing reads this. Did you mean <span class="mono">${esc(n.near)}</span>?` : " — nothing reads this."
+    }</span></li>`).join("")
+  }</ul>`) : "";
+
+  const sumHTML = block("Contents", rows.length ? `${rows.reduce((n, r) => n + r.count, 0)} objects` : "empty",
+    rows.length
+      ? `<ul class="rows">${rows.map(r => `<li><span class="hit">${r.count}</span><b>${esc(r.collection)}</b><div>${
+          r.names.map(n => `<span class="pill">${esc(n)}</span>`).join("")}</div></li>`).join("")}</ul>`
+      : `<div class="small">This pack declares no content. Only "pack" is required, so that is legal and useless.</div>`);
+
+  const walkHTMLAll = block("Dry run", walks.length ? `${walks.length} adventure${walks.length === 1 ? "" : "s"}` : "no adventures",
+    walks.length ? walks.map(walkHTML).join("")
+                 : `<div class="small">Nothing to walk. A content-only pack — an ancestry, a bestiary — has no scene graph.</div>`);
+
+  report.innerHTML = head + errHTML + noteHTML + sumHTML + walkHTMLAll;
+  report.querySelectorAll("[data-line]").forEach(b => { b.onclick = () => jumpTo(Number(b.dataset.line)); });
+  $("btn-play").disabled = errs.length > 0;
+}
+
+/* ---------- wiring ---------- */
+let timer = null;
+function run() {
+  const text = paste.value;
+  $("size-tag").textContent = text.trim() ? `${text.split("\n").length} lines · ${(text.length / 1024).toFixed(1)} KB` : "empty";
+  render(text);
+  drawGutter(text);
+}
+paste.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(run, 180); });
+
+$("btn-clear").onclick = () => { paste.value = ""; run(); paste.focus(); };
+$("btn-open").onclick = () => $("file").click();
+$("file").onchange = e => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ""; };
+
+function readFile(file) {
+  const r = new FileReader();
+  r.onload = () => { paste.value = String(r.result); run(); };
+  r.readAsText(file);
+}
+
+const veil = $("drop-veil"), wrap = $("editor-wrap");
+["dragenter", "dragover"].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); veil.classList.add("on"); }));
+["dragleave", "drop"].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); if (t === "drop" || e.target === veil) veil.classList.remove("on"); }));
+wrap.addEventListener("drop", e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
+
+$("btn-sample").onclick = async () => {
+  if (!refs.shelf.length) { alert("The Shelf could not be read — this page is probably open over file://."); return; }
+  const which = refs.shelf[0];
+  try {
+    const pack = await fetchPack(which);
+    paste.value = JSON.stringify(pack, null, 2);
+    run();
+  } catch (e) { alert(e.message); }
+};
+
+$("btn-play").onclick = () => {
+  try { sessionStorage.setItem(HANDOFF, paste.value); }
+  catch (e) { alert("This browser will not hold the pack between pages: " + e.message); return; }
+  window.open(new URL("../torchbearer.html?pack=workbench", import.meta.url), "_blank", "noopener");
+};
+
+await loadRefs();
+run();
+</script>
+</body>
+</html>

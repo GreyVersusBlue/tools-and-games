@@ -8,7 +8,7 @@ hooks; `cooperative-nature`'s +4 is the third. Saves read conditional `bonus`
 entries off the sheet by trait, so Ancient-Blooded Dwarf and Gutsy Halfling do
 something for the first time. `prone` could be applied by nothing and removed
 by nothing before this phase, and now Trip applies it and Stand takes it off.
-`node Projects/torchbearer/test/smoke.mjs` is green at **1,439 passed, 0
+`node Projects/torchbearer/test/smoke.mjs` is green at **1,531 passed, 0
 failed**, up from 947 — and it runs in CI, on
 `.github/workflows/torchbearer-ci.yml`. **Phase 6 — A hero who levels** has
 shipped in two increments: level is a field on the build, every derived
@@ -27,12 +27,21 @@ roads. Money is counted in copper everywhere; `"kind": "shop"` and
 `"kind": "explore"` are the two scene kinds; the state a fight opens in is a
 five-entry table instead of two hardcoded flags; there is a camp between the
 roads with a long rest, Treat Wounds, Earn Income and a Crafting bench in it;
-and an unreachable scene is a validator error. **Arc two has one phase left:
-Phase 8 — The contract, and its first new author.**
+and an unreachable scene is a validator error. **Phase 8 — The contract, and
+its first new author has shipped, and arc two is finished.** The pack contract
+is one machine-readable document, `packs/schema.json`, generated from
+`js/schema.js` and read by `Validator` for its required-field lists;
+`authoring.html` is a workbench that validates a pasted pack with line numbers,
+lists the keys the engine will ignore, walks every adventure's scene graph and
+hands a clean pack straight to the game; and `packs/cold-harrow.json` plus
+`packs/harrowmoor-bestiary.json` are 20 scenes, 3 encounters and 15 stat blocks
+written entirely through that contract with **zero changes to
+`torchbearer.html` for the content**. `smoke.mjs` is at **1,531 passed, 0
+failed** and the browser recipe at **73 of 73**.
 
 ## What it is
 
-A page at `Projects/torchbearer.html` — 2,987 lines since Phase 7, nine ES module
+A page at `Projects/torchbearer.html` — 3,022 lines since Phase 8, nine ES module
 imports, no build step, nothing the repo does not vendor. It is a Pathfinder 2e
 Remaster **adventure engine**: it forges a 3rd-level hero through a nine-step
 builder, drops that hero into a branching graph of scenes and skill checks, and
@@ -920,46 +929,69 @@ additive, and all six have shipped — `campaignId`, `campaignFlags`,
 *Model:* **Claude Opus 5** — scene kinds and content tables on top of a save
 record Phase 6 already designed.
 
-## Phase 8 — The contract, and its first new author
+## Phase 8 — The contract, and its first new author — SHIPPED
 
-**The pack contract exists twice and agrees by hand, and nobody has written
-against it since it was documented.**
+**The pack contract existed twice and agreed by hand, and nobody had written
+against it since it was documented.** It exists once now.
 
-`Validator` enforces the contract; the guide describes it in 361 lines of
-prose; the two have drifted before — five checks in `registry.js` are marked
-"added session 8" because a scene with no `text` validated fine and then threw
-`sc.text.map is not a function` when a player walked into it. One schema, read
-by both ends, ends that. Then use it: the best proof this is a platform is
-content written *only* through the contract by someone who changes no engine
-code, and the best test of the tooling is being its first user.
+- [x] **`packs/schema.json`** — one JSON Schema 2020-12 document, 29 `$defs`,
+  every collection and every shape inside one, with the required fields, the
+  four closed vocabularies and a line on each of the 196 fields the engine
+  actually reads. The source is `js/schema.js`, because the engine imports it
+  and the title screen must not depend on a fetch; `node tools/schema.mjs
+  --write` writes the JSON and `smoke.mjs` fails on the line where the two
+  disagree. `Validator` reads the required lists out of it — every `checkIds`
+  call is `extraRequired("<def>")` now — and keeps its own messages, which are
+  written to a person and asserted verbatim across the suite. Two checks keep
+  the document honest in both directions: every required field in the schema is
+  a field the validator demands, and every field the schema declares is named
+  somewhere in the engine's own source. The second one caught an invented
+  `onEnter.hp` while the schema was being written.
+- [x] **`Projects/torchbearer/authoring.html`.** Paste, drop or open a pack and
+  four panels fill in as you type: the validator's errors with the line of the
+  pasted text each one is about (click to jump), the keys no `$defs` entry
+  names with the field each is one slip from, what the pack contains, and a dry
+  run. Reference content is `CORE_PACK` and `ADVENTURE_PACK` sliced out of the
+  page's own source — the same slice `smoke.mjs` has used since session 8, now
+  `js/corepack.js` so both ends share it — plus every Shelf pack as a toggle.
+  **Load into the game** couriers a valid pack through `sessionStorage` to
+  `torchbearer.html?pack=workbench`, which reads it once and clears the key.
+- [x] **A dry-run preview.** `dryRun` in `registry.js` on top of Phase 7's
+  `sceneGraph`: unreachable scenes, dangling edges, endings nobody reaches,
+  checks with a branch missing, and encounters no scene starts. The last two
+  turned out to belong in the validator rather than the preview — a check with
+  only a `success` sends every failed roll to `undefined`, and an encounter
+  nothing starts is a map, a foe list and a set of starting squares no player
+  can reach. Both are errors now, and all four shipped adventures pass unchanged.
+- [x] **A second full adventure, written through the tool.**
+  `packs/cold-harrow.json` — level 3, 20 scenes, 3 encounters, three endings all
+  reachable, a shop, an exploration scene that earns `hero-hidden`, a boss fight
+  coloured by two story flags, and a third path that only opens for a hero who
+  read a ledger two acts earlier. 97 gp of a level-3 hero's 125 gp share. Not
+  one of its 33 ids appears in `torchbearer.html`, and the suite asserts that
+  rather than claiming it. With it `packs/harrowmoor-bestiary.json`: ten
+  monsters, levels 1 through 6 with every level filled, carrying Phase 3's
+  `reach` and `reactions` and a `lore` line each.
+- [x] **Guide §15, and an author's note.** §15 is the workbench, the schema and
+  the standing rule — *a new field lands in the schema, the validator and the
+  guide in one commit, or in none* — and the suite checks the guide states it.
+  `authors-note.md` is the honest page: what was easy, what needed the guide
+  open, the four things the tool caught (two of which became validator errors),
+  and the three fields `CORE_PACK` carries that nothing reads.
 
-- [ ] **`packs/schema.json`** — one JSON Schema for the envelope and every
-  collection, written from `Validator` and guide §§1–11. `Validator` reads it
-  for the required-field lists and keeps its friendly per-field messages, so a
-  new field lands in one place; `smoke.mjs` gains a drift check.
-- [ ] **`Projects/torchbearer/authoring.html`.** Paste or drop a pack, get the
-  validator's errors inline with line numbers, a summary of what it contains,
-  and a "load into the game" button. No build step, same leather and brass.
-- [ ] **A dry-run preview.** Walk the scene graph without playing it: which
-  scenes are unreachable, which `goto` targets nothing, which checks have no
-  failure branch, which encounters no scene starts — graph traversal over data
-  the validator already parses.
-- [ ] **A second full adventure, written through the tool.** Level 3, 12–20
-  scenes, three encounters, a branch that skill checks genuinely open, in the
-  established voice: concrete, wry, a little gothic. Zero changes to
-  `torchbearer.html`, or the phase has failed. With it, a bestiary pack: ten
-  monsters across levels 1–6 carrying Phase 3's reach and reactions, which is
-  also the shape the `Pathfinder/data/` answer takes if it comes back
-  "private".
-- [ ] **Guide §15, and an author's note.** How to use the tool, the standing
-  rule that a new field lands in schema, validator and guide in one commit or
-  in none, and one honest page on what was easy, what needed the guide open,
-  and what the tool caught.
+**What the browser found and no tool could.** Two new Shelf packs made the
+title screen taller than 800px, and `#screen-title` is a scrollable flex column
+that centres its children — so the overflow went *above* the scroll origin,
+where nothing can reach it. The title, New Game and Begin Adventure sat at
+y = −47 with `scrollTop` pinned at 0, unclickable for a player and for the
+suite, which is how it was found. One word fixes it, `justify-content: safe
+center`, and `play-games.mjs` measures the top of the title screen now.
 
-*Leans on:* `js/registry.js`, `content-authoring-guide.md`, `packs/`. *Save:*
-none. *Model:* **Claude Opus 5** — a schema transcribed from an existing
-validator, a page in an established style, and content that touches no engine
-code.
+*Landed in:* `js/schema.js`, `js/corepack.js`, `js/inspect.js`, `tools/schema.mjs`,
+`authoring.html`, `authors-note.md`, `packs/schema.json`, `packs/cold-harrow.json`,
+`packs/harrowmoor-bestiary.json`, `js/registry.js`, `content-authoring-guide.md`,
+`torchbearer.html`, `test/smoke.mjs`, `Tools/board-check/play-games.mjs`.
+*Save:* untouched — `SAVE_VERSION` stays at 3.
 
 ## What this leaves for a later arc
 

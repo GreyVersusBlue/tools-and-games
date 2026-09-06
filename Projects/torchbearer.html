@@ -102,7 +102,14 @@ button{font-family:inherit;cursor:pointer}
 .screen.active{display:flex}
 
 /* ---- Title screen ---- */
-#screen-title{flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;padding:20px;overflow-y:auto}
+/* `safe center` rather than `center`, and it is load-bearing. A scrollable flex
+   container that centres its children puts the overflow ABOVE the scroll
+   origin, where nothing can reach it: at 800px tall with four packs on the
+   Shelf the title, New Game and Begin Adventure sat at y = -47 with scrollTop
+   pinned at 0, and the only way to press them was to make the window taller.
+   `safe` falls back to flex-start the moment the content overflows. Phase 8's
+   two new shelf packs are what made the page tall enough to find this. */
+#screen-title{flex-direction:column;align-items:center;justify-content:safe center;gap:18px;text-align:center;padding:20px;overflow-y:auto}
 #screen-title .sigil{width:130px;height:130px;filter:drop-shadow(0 0 24px rgba(199,154,75,.35))}
 #screen-title h1{font-size:46px;letter-spacing:.16em;text-shadow:0 2px 8px #000}
 #screen-title .tagline{color:var(--faded);font-style:italic;max-width:520px}
@@ -2158,6 +2165,7 @@ const App = {
       onMessage:t=>this.toast(t)
     });
     this.refreshTitle();
+    this.takeWorkbenchPack();
     this.loadLibrary();
   },
 
@@ -2165,6 +2173,29 @@ const App = {
   async loadLibrary(){
     this.library=await fetchLibrary();
     this.renderLibrary();
+  },
+
+  /* ---------- the workbench courier (Phase 8) ----------
+     torchbearer/authoring.html validates a pack and then has to hand it over.
+     Downloading it and re-picking it through Load Content JSON is three steps
+     for something the author is going to do fifty times, so the tool writes the
+     text into sessionStorage and opens this page with ?pack=workbench.
+
+     sessionStorage, not the save: this is a courier, not a journey. It dies
+     with the tab, it never reaches gvb-save, and the key is read once and
+     removed so a refresh does not re-load the same pack twice. A pack that
+     fails is reported by applyPack exactly like any other rejected pack — the
+     workbench should have caught it, and if it did not, that is a bug worth
+     seeing on both ends. */
+  takeWorkbenchPack(){
+    if(new URLSearchParams(location.search).get("pack")!=="workbench") return;
+    let text=null;
+    try{ text=sessionStorage.getItem("torchbearer:workbench-pack"); sessionStorage.removeItem("torchbearer:workbench-pack"); }
+    catch(e){ return; }   // private mode, or storage refused outright
+    if(!text) return;
+    let data; try{ data=JSON.parse(text); }
+    catch(err){ this.modal("Invalid JSON",`<p>The workbench handed over something that isn't JSON:</p><p class="small">${esc(err.message)}</p>`,[{label:"Close"}]); return; }
+    this.applyPack(data);
   },
   renderLibrary(){
     const sec=document.getElementById("library"), list=document.getElementById("library-list");

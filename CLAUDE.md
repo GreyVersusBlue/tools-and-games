@@ -46,8 +46,13 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
 - **A real-time movement or physics assertion failing under a Linux/software-
   rendered Chromium is inconclusive, not confirmed** (#53). Re-verify from a
   machine with real GPU compositing before trusting either a pass or a fail.
+- **A scroll container that centres its content needs `safe`** (#132).
+  `overflow-y:auto` plus `justify-content:center` puts the overflow *above* the
+  scroll origin, where nothing can reach it. Torchbearer's title screen lost its
+  top three buttons to this the day it grew a fourth shelf card, with 1,531
+  Node assertions green.
 
-`HISTORY.md` carries all 128 locked decisions in full, by number.
+`HISTORY.md` carries all 132 locked decisions in full, by number.
 
 ## Writing style
 

@@ -449,3 +449,93 @@ Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school
    It does **not** check spell ids, item ids, `grantFeat` targets, `grantFocusSpell` targets, coordinates inside the map, or whether your numbers are sane. Those are step 4.
 4. Balance pass: compare every number to a core sibling of the same level (feat vs core feat, monster vs `bell-warden`, DC vs the table in §11).
 5. Deliver as a standalone `.json` file in `Projects/torchbearer/packs/`, and add it to `packs/index.json` so it appears on the Shelf. Run `node Projects/torchbearer/test/smoke.mjs` — it validates every pack in that folder against core and checks the manifest matches. If asked to add new *engine behavior* (a new `special`, condition, or ability type), that requires editing `torchbearer.html` itself — say so rather than inventing schema fields, because unknown fields are silently ignored.
+
+---
+
+## 15. The workbench, the schema, and the standing rule
+
+Everything above this section is prose, and prose drifts. §§1–11 describe the
+contract; `Validator` in `js/registry.js` enforces it; and the two disagreed for
+long enough that five checks in that file are still marked "added session 8"
+because a scene with no `text` validated fine and then threw
+`sc.text.map is not a function` when a player walked into it.
+
+**`packs/schema.json` is the contract in one machine-readable file.** It is a
+JSON Schema 2020-12 document: an entry under `$defs` for every collection and
+every shape inside one, with the required fields, the closed vocabularies
+(sizes, scene kinds, reaction ids, exploration activities) and one line on every
+field the engine actually reads. Point a JSON editor at it and you get
+completion; point a person at it and they get the field list without reading
+1,400 lines of Markdown.
+
+`Validator` reads its required-field lists out of that document rather than
+carrying copies. The source is `js/schema.js`, because the engine imports it and
+the title screen must not depend on a fetch (see `js/library.js` for why);
+`packs/schema.json` is written from the module by `node tools/schema.mjs
+--write`, and `test/smoke.mjs` fails if the two disagree by one line.
+
+### The standing rule
+
+> **A new field lands in the schema, the validator and the guide in one commit,
+> or in none.**
+
+Three places, one commit. The schema so the tool knows the field exists, the
+validator so a wrong one is caught before a player meets it, the guide so a
+person can find out what it is for. The order does not matter; the commit does.
+The suite enforces the first two — a required field in the schema that the
+validator does not demand is a failure, and so is a field name in the schema
+that no engine source file mentions.
+
+### The workbench
+
+`Projects/torchbearer/authoring.html` is the tool. Open it, paste or drop a
+pack, and it tells you four things as you type:
+
+* **Errors, with line numbers.** The same `Validator` the game runs — not a
+  second opinion — with each message matched to the line of the pasted text it
+  is about. Click the line number to jump there. Text that is not JSON yet gets
+  the parser's own message and the line it failed on, which is the error an
+  author actually hits most.
+* **Keys the engine ignores.** Not errors: §1 makes unknown fields harmless on
+  purpose, and that is what lets a pack carry notes and lets the engine grow a
+  field without rejecting older packs. It is also how a pack looks finished and
+  does nothing — `tratis` for `traits`, `dmg` for `damage`. The workbench lists
+  every key no `$defs` entry names and suggests the field it is one slip from.
+  A key starting with `_` is treated as a deliberate comment and never reported.
+* **What is in it.** One row per non-empty collection, with the names.
+* **A dry run.** Every adventure walked from its `start`: how many scenes are
+  reachable, which are not, which `goto` points at nothing, which check is
+  missing a branch, which encounter no scene starts, and whether every ending
+  can actually be reached. This is the pass that catches an orphaned shop
+  without opening a browser.
+
+A pack is validated against **reference content**, because ids are global (§1)
+and a pack that leans on core ids validates against nothing without them. The
+two inline packs — `CORE_PACK` and `ADVENTURE_PACK` — are read out of
+`torchbearer.html`'s own source, and everything on the Shelf is offered as a
+toggle, off by default.
+
+**Load into the game** hands a valid pack straight to `torchbearer.html`: the
+workbench writes it to `sessionStorage` and opens the page with
+`?pack=workbench`, which reads the key once, removes it, and runs the pack
+through the ordinary load path. It is a courier, not a save — it dies with the
+tab and never reaches storage the game reads.
+
+The page is static and needs no server beyond one that can serve the folder;
+opened over `file://` the reference content cannot be fetched and it says so
+rather than reporting every core id as missing.
+
+### Workflow, updated
+
+Step 3 of §14 — "self-check against the validator" — is now: paste the pack into
+the workbench and read the four panels. Everything §14 lists as *not* checked
+still is not checked, with one class of exception: a misspelled field name is
+now reported as a note, so "unknown fields are silently ignored" is true of the
+engine and no longer true of the tooling.
+
+`Projects/torchbearer/packs/cold-harrow.json` is the worked example of a pack
+written entirely this way, with zero engine changes; `harrowmoor-bestiary.json`
+is the worked example of a content-only pack that ships stat blocks and no
+scenes. `Projects/torchbearer/authors-note.md` is what writing them was actually
+like, including the four things the workbench caught and the three fields
+`CORE_PACK` carries that nothing reads.
