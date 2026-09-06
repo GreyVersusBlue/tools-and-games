@@ -12,7 +12,9 @@
 
 import { parseDamage } from "./rules.js";
 import { TILE } from "./world.js";
-import { CONDITION_IDS, isCondition } from "./conditions.js";
+import {
+  CONDITION_IDS, CONDITION_TRAITS, ATTACK_ABILITIES, SAVE_STATS, isCondition,
+} from "./conditions.js";
 
 const TILE_BY_NAME = {
   floor: TILE.FLOOR, wall: TILE.WALL, gate: TILE.GATE,
@@ -70,19 +72,85 @@ const KINDS = ["attack", "self-buff", "self-heal", "cone", "unerring", "consume"
  */
 export const INFLICT_ON = Object.freeze(["hit", "crit", "crit-fail"]);
 
-/** Validate an `inflicts` block off a command or a creature. */
+/**
+ * Validate an `inflicts` block off a command or a creature.
+ *
+ * One object or an array of them, and the result is always an array or null —
+ * the Keeper's fist leaves two things behind and a single-object shape would
+ * have made the second one a schema change instead of a comma. A pack that
+ * writes the old single object still validates, because every pack that
+ * already exists writes one.
+ */
 function readInflicts(raw, where) {
   if (raw === undefined || raw === null) return null;
-  need(raw && typeof raw === "object", `content: ${where} inflicts must be an object`);
+  const list = Array.isArray(raw) ? raw : [raw];
+  need(list.length > 0, `content: ${where} inflicts must not be an empty array`);
+  const seen = new Set();
+  const out = list.map(one => {
+    need(one && typeof one === "object", `content: ${where} inflicts must be an object or an array of them`);
+    need(isCondition(one.condition),
+      `content: ${where} inflicts names unknown condition "${one.condition}" ` +
+      `(known: ${CONDITION_IDS.join(", ")})`);
+    need(INFLICT_ON.includes(one.on),
+      `content: ${where} inflicts needs an "on" of ${INFLICT_ON.join(", ")}, got "${one.on}"`);
+    const value = one.value ?? 1;
+    need(Number.isInteger(value) && value >= 1,
+      `content: ${where} inflicts value must be an integer of 1 or more, got ${one.value}`);
+    // Two entries naming the same condition would race through addCondition's
+    // higher-value-wins merge and one of them would silently never apply.
+    need(!seen.has(one.condition),
+      `content: ${where} inflicts names "${one.condition}" twice`);
+    seen.add(one.condition);
+    return Object.freeze({ condition: one.condition, value, on: one.on });
+  });
+  return Object.freeze(out);
+}
+
+/**
+ * Validate an `ends` block — what a command takes *off*.
+ *
+ * `flatDC` is there because Rousing Splash does not simply end persistent
+ * fire: Player Core p.409 lets a particularly appropriate action lower the
+ * flat check, and this is the number it lowers it to. A block with no flatDC
+ * ends the condition outright.
+ */
+function readEnds(raw, where) {
+  if (raw === undefined || raw === null) return null;
+  need(raw && typeof raw === "object" && !Array.isArray(raw), `content: ${where} ends must be an object`);
   need(isCondition(raw.condition),
-    `content: ${where} inflicts names unknown condition "${raw.condition}" ` +
+    `content: ${where} ends names unknown condition "${raw.condition}" ` +
     `(known: ${CONDITION_IDS.join(", ")})`);
-  need(INFLICT_ON.includes(raw.on),
-    `content: ${where} inflicts needs an "on" of ${INFLICT_ON.join(", ")}, got "${raw.on}"`);
-  const value = raw.value ?? 1;
-  need(Number.isInteger(value) && value >= 1,
-    `content: ${where} inflicts value must be an integer of 1 or more, got ${raw.value}`);
-  return Object.freeze({ condition: raw.condition, value, on: raw.on });
+  const flatDC = raw.flatDC ?? null;
+  need(flatDC === null || (Number.isInteger(flatDC) && flatDC >= 2 && flatDC <= 20),
+    `content: ${where} ends flatDC must be an integer 2-20 when present, got ${raw.flatDC}`);
+  return Object.freeze({ condition: raw.condition, flatDC });
+}
+
+/**
+ * Which ability swings an attack.
+ *
+ * Defaulted rather than required, because every attack in every pack that
+ * predates the catalogue is a Strength attack and a required field would have
+ * been a migration. Finesse is the one that has to say so — and the dagger
+ * does, which is what makes clumsy and enfeebled different conditions instead
+ * of the same one twice.
+ */
+function readAbility(raw, where) {
+  const ability = raw || "str";
+  need(ATTACK_ABILITIES.includes(ability),
+    `content: ${where} ability must be one of ${ATTACK_ABILITIES.join(", ")}, got "${raw}"`);
+  return ability;
+}
+
+/** A closed list, like the trigger names: an unknown trait is a typo. */
+function readImmunities(raw, where) {
+  if (raw === undefined || raw === null) return Object.freeze([]);
+  need(Array.isArray(raw), `content: ${where} immunities must be an array`);
+  for (const t of raw) {
+    need(CONDITION_TRAITS.includes(t),
+      `content: ${where} names unknown immunity "${t}" (known: ${CONDITION_TRAITS.join(", ")})`);
+  }
+  return Object.freeze([...raw]);
 }
 
 class ContentError extends Error {}
@@ -129,6 +197,12 @@ export function loadPack(raw) {
       attackBonus: c.attackBonus, acBonus: c.acBonus,
       coneFeet: c.coneFeet, rangeFeet: c.rangeFeet,
       save: c.save || null, damageType: c.damageType || "damage",
+      // Which ability rolls this attack, and whether casting it is Casting a
+      // Spell. Both are flat defaults on every other kind rather than absent,
+      // so a consumer never has to ask whether the property exists first.
+      ability: readAbility(c.ability, `command "${c.id}"`),
+      spell: !!c.spell,
+      ends: readEnds(c.ends, `command "${c.id}"`),
       // Reaction fields. Null on every other kind rather than absent, so a
       // consumer never has to ask whether the property exists first.
       triggers: null, effect: null, hardness: null, damageTypes: null,
@@ -145,6 +219,8 @@ export function loadPack(raw) {
       `content: attack command "${c.id}" needs attackBonus and damage`);
     if (out.kind === "cone") need(out.coneFeet && out.damage && out.save,
       `content: cone command "${c.id}" needs coneFeet, damage and save`);
+    if (out.save) need(SAVE_STATS.includes(out.save),
+      `content: command "${c.id}" names unknown save "${out.save}" (want ${SAVE_STATS.join(", ")})`);
     if (out.kind === "unerring") need(out.rangeFeet && out.damage,
       `content: unerring command "${c.id}" needs rangeFeet and damage`);
     if (out.kind === "self-heal" || out.kind === "consume") need(out.healing,
@@ -213,6 +289,9 @@ export function loadPack(raw) {
       // move-out-of-reach trigger would follow it without another change.
       reachFeet: p.reachFeet || 5,
       perception: p.perception || 0, saves: { ...p.saves },
+      // The heir is flesh. It is here as an empty array rather than absent so
+      // game.js can ask either side the same question.
+      immunities: readImmunities(p.immunities, `pcOptions "${p.id}"`),
       spellDC: p.spellDC || 10, spellAttack: p.spellAttack || 0,
       slots: p.slots || 0, focus: p.focus || 0,
       commands: Object.freeze([...cmdIds]),
@@ -243,9 +322,15 @@ export function loadPack(raw) {
       attackName: c.attackName || "Strike",
       damage: parseDamage(c.damage),
       damageType: c.damageType || "damage",
+      ability: readAbility(c.ability, `creature "${id}"`),
       reachFeet: c.reachFeet || 5,
       // What this creature's Strike leaves behind, or null.
       inflicts: readInflicts(c.inflicts, `creature "${id}"`),
+      // What refuses to stick to it. Every creature in this pack is a
+      // construct and PF2e constructs are immune to mental effects, which is
+      // the difference between "nothing frightens a sentinel yet" and "nothing
+      // can".
+      immunities: readImmunities(c.immunities, `creature "${id}"`),
       // Which reaction commands this creature can fire. The ids are looked up
       // in the pack's whole command list, not the chosen build's slice — a
       // creature's feats have nothing to do with which heir walked in.

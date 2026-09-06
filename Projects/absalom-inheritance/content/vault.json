@@ -63,8 +63,10 @@
       "damage": "1d4",
       "damageType": "piercing",
       "agile": true,
-      "hint": "Strike (◆): choose an adjacent sentinel.",
-      "note": "Finesse, so the +5 is DEX 2 + Trained 3. Agile, so MAP is −4/−8 rather than −5/−10."
+      "ability": "dex",
+      "inflicts": { "condition": "clumsy", "value": 1, "on": "crit" },
+      "hint": "Strike (◆): choose an adjacent sentinel. A critical hit leaves it clumsy.",
+      "note": "Finesse, so the +5 is DEX 2 + Trained 3, and \"ability\" is dex: the one attack in this pack not swung by Strength, which is what makes clumsy and enfeebled two conditions rather than the same one twice. Agile, so MAP is −4/−8 rather than −5/−10. The clumsy on a critical hit is this pack's own addition, not the dagger's. Clumsy 1 is −1 to the target's AC and Reflex save, which is Breathe Fire getting easier: the catalogue needed a source the player aims rather than only sources aimed at her."
     },
     {
       "id": "strike-sword",
@@ -77,8 +79,10 @@
       "damage": "1d8+2",
       "damageType": "slashing",
       "agile": false,
-      "hint": "Strike (◆): choose an adjacent creature.",
-      "note": "STR 2 + Expert proficiency +5 (level 1 + 4) — Fighters start Expert with their trained weapon, unlike Vesper's Trained-only dagger. Not agile, so MAP is the standard −5/−10 rather than the dagger's −4/−8. STR 2, not the +4 a min-maxed build would carry — measured against balance.mjs, see the pcOptions note."
+      "ability": "str",
+      "inflicts": { "condition": "enfeebled", "value": 1, "on": "crit" },
+      "hint": "Strike (◆): choose an adjacent creature. A critical hit leaves it enfeebled.",
+      "note": "STR 2 + Expert proficiency +5 (level 1 + 4) — Fighters start Expert with their trained weapon, unlike Vesper's Trained-only dagger. Not agile, so MAP is the standard −5/−10 rather than the dagger's −4/−8. STR 2, not the +4 a min-maxed build would carry — measured against balance.mjs, see the pcOptions note. The enfeebled on a critical hit is this pack's own addition: −1 to the target's Strength attacks and −1 off every point of weapon damage it deals, which is the first thing in this engine to move a damage roll from outside the weapon's own line. Kessa's answer to the dagger's clumsy. She has no spell whose DC a debuff can help, so hers takes the incoming number down instead."
     },
     {
       "id": "shield",
@@ -87,6 +91,7 @@
       "cost": 1,
       "costGlyph": "◆",
       "kind": "self-buff",
+      "spell": true,
       "acBonus": 1,
       "hint": "Shield (◆): a disc of force, +1 AC until your next turn begins.",
       "note": "Player Core. The +1 is a circumstance bonus and lasts until the start of your next turn. Shield Block is not modelled — there are no reactions in this build."
@@ -98,9 +103,11 @@
       "cost": 2,
       "costGlyph": "◆◆",
       "kind": "self-heal",
+      "spell": true,
       "healing": "1d4",
-      "hint": "Rousing Splash (◆◆): a conjured wave crashes over you.",
-      "note": "Would also end persistent fire damage. Breathe Fire now applies it, but only to creatures, and this cantrip only ever targets the caster \u2014 so there is still nothing for it to end. Either something has to set the heir alight or this needs a target other than herself; the wishlist's Phase 2 increment 2 carries it."
+      "ends": { "condition": "persistent-fire", "flatDC": 10 },
+      "hint": "Rousing Splash (◆◆): a conjured wave crashes over you, and washes at any fire on you.",
+      "note": "Player Core p.409 lets a particularly appropriate action lower the flat check that ends persistent damage rather than end it outright, so this rolls DC 10 where the fire's own check is DC 15. Better odds, not a guarantee. It has something to end now: the Reliquary Warden's Cinder Fist sets the heir alight on a critical hit, and it is the only thing in the pack that puts persistent fire on the PC. The note this replaces described a rule written for a game that did not exist."
     },
     {
       "id": "breathe",
@@ -109,6 +116,7 @@
       "cost": 2,
       "costGlyph": "◆◆",
       "kind": "cone",
+      "spell": true,
       "spendSlot": true,
       "coneFeet": 15,
       "damage": "2d6",
@@ -125,12 +133,14 @@
       "cost": 1,
       "costGlyph": "◆",
       "kind": "unerring",
+      "spell": true,
       "spendFocus": true,
       "rangeFeet": 30,
       "damage": "1d4+1",
       "damageType": "force",
-      "hint": "Force Fang (◆, 1 Focus): click a sentinel within 30 ft — no attack roll, unerring force.",
-      "note": "Strictly a Magus focus spell (Secrets of Magic). Kept per the original design spec; it behaves like Magic Missile."
+      "inflicts": { "condition": "slowed", "value": 1, "on": "hit" },
+      "hint": "Force Fang (◆, 1 Focus): click a sentinel within 30 ft — no attack roll, unerring force, and it pins what it hits.",
+      "note": "Strictly a Magus focus spell (Secrets of Magic). Kept per the original design spec; it behaves like Magic Missile. The slowed 1 is this pack's own addition and the only source of slowed in it: a fang of force through the joint costs a construct one of its three actions until the end of its next turn. It is on an unerring command on purpose, because slowed is the one condition worth a whole focus point and an attack roll would make it a coin flip. Vesper has one focus point for the entire delve, so it fires at most once a run."
     },
     {
       "id": "potion",
@@ -155,6 +165,7 @@
       "attackBonus": 7,
       "damage": "1d8+2",
       "damageType": "slashing",
+      "ability": "str",
       "hint": "Reactive Strike (\u21ba): fires by itself when something leaves your reach. It is not a button.",
       "note": "Attack of Opportunity was renamed Reactive Strike in the Remaster, and Fighters have it at 1st level. Implemented under its legal name, the way Breathe Fire is. Kessa's longsword numbers: +7 and 1d8+2, with no multiple-attack penalty taken and none added, because the swing happens on somebody else's turn and MAP belongs to your own. A creature that lists this strikes with its own attack instead \u2014 a basalt fist is not a longsword whichever feat swings it."
     },
@@ -188,10 +199,12 @@
       "attackName": "Fist",
       "damage": "1d6",
       "damageType": "bludgeoning",
+      "immunities": ["mental"],
+      "inflicts": { "condition": "off-guard", "value": 1, "on": "crit" },
       "deathLine": "{name} shatters into gravel and gold dust.",
       "wakeLine": "Rubble shudders upright into a humanoid shape — {name} still keeps its post.",
       "sleepLine": "{name} loses you in the dark. The rubble settles, and reknits.",
-      "note": "Creature -1 on GM Core's Building Creatures benchmarks, and Low on every line except Fortitude: HP 11, AC 13, attack +4, damage 1d6, Fort +5 high because it is masonry, Will +0 low because it does not think. 10 XP each against a solo level-1 PC. The binding constraint is not the statline, it is that a level-1 wizard has two spell slots and one focus point for the whole delve — see the note on vault-keeper."
+      "note": "Creature -1 on GM Core's Building Creatures benchmarks, and Low on every line except Fortitude: HP 11, AC 13, attack +4, damage 1d6, Fort +5 high because it is masonry, Will +0 low because it does not think. 10 XP each against a solo level-1 PC. The binding constraint is not the statline, it is that a level-1 wizard has two spell slots and one focus point for the whole delve — see the note on vault-keeper. The off-guard on a critical hit is this pack's own addition: a fist of masonry puts the heir on the back foot, and she recovers it at the start of her next turn. Off-guard is a −2 circumstance penalty to AC, which is the first circumstance penalty in the pack and the reason Vesper's disc is worth casting into it rather than instead of it: a bonus and a penalty both apply whether or not they share a type, so the disc still buys its point back."
     },
     "vault-keeper": {
       "name": "The Vault Keeper",
@@ -205,11 +218,15 @@
       "attackName": "Basalt Fist",
       "damage": "1d6+2",
       "damageType": "bludgeoning",
-      "inflicts": { "condition": "frightened", "value": 1, "on": "crit" },
+      "immunities": ["mental"],
+      "inflicts": [
+        { "condition": "frightened", "value": 1, "on": "crit" },
+        { "condition": "stupefied", "value": 1, "on": "crit" }
+      ],
       "reactions": ["reactive-strike"],
       "deathLine": "The Keeper kneels, and does not rise. Gold dust settles over the casket.",
       "wakeLine": "The shape beside the casket was never rubble. {name} stands, and the chamber narrows.",
-      "note": "A critical Basalt Fist leaves the heir frightened 1 — the wake line already says the chamber narrows, and this is that sentence with a number on it. Frightened 1 is a −1 status penalty to every check and to AC, wearing off at the end of the heir's own turn, so it costs one turn of arithmetic rather than a spiral. It is the only thing in this pack that puts a condition on the PC, which is what makes it the one that exercises the check funnel from the defending side. The statline the two sentinels originally shipped with (17 HP, AC 14, fist +6 for 1d6+2), promoted to the boss it was always sized for: 15 XP against a solo level-1 PC, and the only fight the PC arrives at with a full spell list, because opening the gate restores them. The number was never wrong; it was pointed at the wrong fight, twice over."
+      "note": "A critical Basalt Fist leaves the heir frightened 1 and stupefied 1 — the wake line already says the chamber narrows, and this is that sentence with a number on it. Frightened 1 is a −1 status penalty to every check and to AC, wearing off at the end of the heir's own turn, so it costs one turn of arithmetic rather than a spiral. Stupefied 1 is −1 to her spell DC and a DC 6 flat check on every spell she casts until the end of her next turn, which is the only place in this engine a condition costs a caster the spell rather than a number. It costs Kessa nothing at all, because she casts nothing, and that is the clearest reading this pack has of how differently the two builds feel one fist. The statline the two sentinels originally shipped with (17 HP, AC 14, fist +6 for 1d6+2), promoted to the boss it was always sized for: 15 XP against a solo level-1 PC, and the only fight the PC arrives at with a full spell list, because opening the gate restores them. The number was never wrong; it was pointed at the wrong fight, twice over."
     },
     "reliquary-warden": {
       "name": "Reliquary Warden",
@@ -220,13 +237,15 @@
       "speed": 20,
       "saves": { "fort": 4, "ref": 0, "will": -1 },
       "attackBonus": 3,
-      "attackName": "Basalt Fist",
+      "attackName": "Cinder Fist",
       "damage": "1d4",
-      "damageType": "bludgeoning",
+      "damageType": "fire",
+      "immunities": ["mental"],
+      "inflicts": { "condition": "persistent-fire", "value": 1, "on": "crit" },
       "deathLine": "{name} folds at the joints and does not rise again.",
       "wakeLine": "A last construct rises between you and the reliquary — {name}.",
       "sleepLine": "{name} loses you in the dark and settles back to stone.",
-      "note": "Deliberately weaker than either sentinel (8 HP vs 11, AC 12 vs 13, +3 vs +4, 1d4 vs 1d6): the PC reaches it with whatever the Keeper fight left. Measured both ways over 2000 seeded runs: at full sentinel stats this creature measures 41.5% wins, just under the 45% floor; at these numbers it measures 53.6%. Neither is a small effect — a fourth mandatory fight moves the needle even weakened well below sentinel strength."
+      "note": "Deliberately weaker than either sentinel (8 HP vs 11, AC 12 vs 13, +3 vs +4, 1d4 vs 1d6): the PC reaches it with whatever the Keeper fight left. Measured both ways over 2000 seeded runs: at full sentinel stats this creature measures 41.5% wins, just under the 45% floor; at these numbers it measures 53.6%. Neither is a small effect — a fourth mandatory fight moves the needle even weakened well below sentinel strength. Its fist carries the reliquary's own ward: fire rather than bludgeoning, and a critical hit sets the heir alight for 1d4 a turn until a DC 15 flat check puts it out. It is the only thing in the pack that puts persistent fire on the PC, which is what gives Rousing Splash something to end, and Shield Block cannot soak it because the disc does nothing about fire and says so."
     }
   },
 

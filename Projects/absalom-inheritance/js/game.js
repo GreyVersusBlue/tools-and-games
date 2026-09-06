@@ -18,8 +18,9 @@ import {
 } from "./rules.js";
 import { makeWorld, TILE, packExplored, unpackExplored } from "./world.js";
 import {
-  CONDITIONS, modifiers, addCondition, removeCondition, hasCondition, valueOf,
-  makeCondition, persistentIn, tick, describe, packBag,
+  CONDITIONS, modifiers, damageModifiers, addCondition, removeCondition,
+  hasCondition, valueOf, makeCondition, persistentIn, tick, describe, packBag,
+  actionsFor, defaultUntilFor, immunityTo, saveKind, attackKind,
 } from "./conditions.js";
 
 export const LOG_MEMORY = 200;   // entries kept in RAM
@@ -220,10 +221,44 @@ export function createGame({ content, rng = Math.random, state = null }) {
     return check(bonus + modifiersFor(actor, kind), dc, rng);
   }
 
+  /**
+   * The only damage roll in this file.
+   *
+   * The same drift guard as `roll`, one layer down, and for the reason the
+   * funnel existed in the first place: every `rollDamage` call site used to
+   * add the weapon's own `plus` and nothing else, which left enfeebled
+   * unwritable and would have left the next damage condition unwritable too.
+   * `source` is not optional, because three of the four sources take no
+   * modifier at all and a caller allowed to omit it is a caller guessing.
+   *
+   * Damage floors at 0. A penalty larger than the dice is a Strike that does
+   * nothing, never a Strike that heals.
+   */
+  function damageFrom(actor, spec, source) {
+    const d = rollDamage(spec, rng);
+    const mod = damageModifiers(bagOf(actor), source);
+    if (!mod) return d;
+    const total = Math.max(0, d.total + mod);
+    return { total, math: `${d.math} ${mod < 0 ? "−" : "+"}${Math.abs(mod)} = ${total}` };
+  }
+
   /** Effective AC for either side, conditions included. */
   const acOf = actor =>
     (actor === "pc" ? content.pc.ac : def(actor).ac) + modifiersFor(actor, "ac");
   const pcAC = () => acOf("pc");
+
+  /**
+   * The heir's spell DC, which is a number somebody else rolls against and so
+   * moves the same way her AC does. Stupefied is the condition that cares.
+   */
+  const spellDC = () => content.pc.spellDC + modifiersFor("pc", "spell-dc");
+
+  /** What refuses to stick to this actor. */
+  const immunitiesOf = actor =>
+    (actor === "pc" ? content.pc.immunities : def(actor).immunities) || [];
+
+  /** How many actions this actor's turn starts with, slowed included. */
+  const actionsOf = actor => actionsFor(bagOf(actor), 3);
 
   /** Note that a condition has come off, without touching the bag. */
   function noteEnd(actor, id, why) {
@@ -236,6 +271,15 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * frightened 1 on an already-frightened 1 actor is not news.
    */
   function applyCondition(actor, id, value, until = null) {
+    // Immunity first, and out loud. Every creature in this pack is a construct
+    // and constructs are immune to mental effects, so a frightened sentinel is
+    // not a thing that can happen — and a player who is told why has learned a
+    // rule rather than watched a button do nothing.
+    const blocked = immunityTo(id, immunitiesOf(actor));
+    if (blocked) {
+      info(`${nameOf(actor)} is immune to ${blocked} effects — no ${CONDITIONS[id].name.toLowerCase()}.`);
+      return false;
+    }
     const had = valueOf(bagOf(actor), id);
     setBag(actor, addCondition(bagOf(actor), makeCondition(id, { value, until })));
     const now = valueOf(bagOf(actor), id);
@@ -263,15 +307,25 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * that is critically failed are the two shapes a pack can ask for, and each
    * reads from the roll that already happened rather than a second one.
    */
-  function applyInflict(spec, target, deg) {
-    if (!spec) return false;
+  function applyInflict(specs, target, deg) {
+    if (!specs || !specs.length) return false;
     if (target !== "pc" && (target.dead || !target.awake)) return false;
     if (run.outcome) return false;
-    const fires = spec.on === "crit" ? deg === DEG.CRIT_SUCC
-      : spec.on === "hit" ? deg >= DEG.SUCC
-        : deg === DEG.CRIT_FAIL;
-    if (!fires) return false;
-    return applyCondition(target, spec.condition, spec.value);
+    let any = false;
+    for (const spec of specs) {
+      const fires = spec.on === "crit" ? deg === DEG.CRIT_SUCC
+        : spec.on === "hit" ? deg >= DEG.SUCC
+          : deg === DEG.CRIT_FAIL;
+      if (!fires) continue;
+      // The duration comes off the catalogue rather than the pack. "Off-guard
+      // until the start of your next turn" is part of what off-guard *is* in
+      // this engine, and a pack that had to remember to write it would ship
+      // one that forgot and leave a −2 stapled to the heir for the rest of the
+      // delve.
+      const until = defaultUntilFor(spec.condition, actorKeyOf(target));
+      if (applyCondition(target, spec.condition, spec.value, until)) any = true;
+    }
+    return any;
   }
 
   /* ------------------------------------------------------------------ *
@@ -466,15 +520,16 @@ export function createGame({ content, rng = Math.random, state = null }) {
     const bonus = mine ? cmd.attackBonus : def(who).attackBonus;
     const dmgSpec = mine ? cmd.damage : def(who).damage;
     const dtype = mine ? cmd.damageType : def(who).damageType;
+    const ability = mine ? cmd.ability : def(who).ability;
     const ac = acOf(victim);
     const vname = victim === "pc" ? content.pc.name : def(victim).name;
     info(ctx.event === "move-out-of-reach"
       ? `↺ ${name} — ${cmd.name}, as ${vname} leaves reach.`
       : `↺ ${name} — ${cmd.name}, against ${vname}.`);
-    const r = roll(who, "attack", bonus, ac);
+    const r = roll(who, attackKind(ability), bonus, ac);
     dice(`${label} vs ${vname} (AC ${ac})`, r.math, r.deg);
     if (r.deg < DEG.SUCC) return;
-    const dmg = rollDamage(dmgSpec, rng);
+    const dmg = damageFrom(who, dmgSpec, "weapon");
     let total = dmg.total, math = dmg.math;
     if (r.deg === DEG.CRIT_SUCC) { total *= 2; math += ` ×2 (crit) = ${total}`; }
     if (victim === "pc") hurtPC(total, math, dtype, who);
@@ -725,7 +780,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
     for (const p of persistentIn(bagOf(actor))) {
       if (run.outcome || turn.mode !== "combat") break;
       if (actor !== "pc" && actor.dead) break;
-      const dmg = rollDamage(p.damage, rng);
+      const dmg = damageFrom(actor, p.damage, "persistent");
       const name = CONDITIONS[p.id].name.toLowerCase();
       if (actor === "pc") hurtPC(dmg.total, `${name}: ${dmg.math}`, p.dtype, null);
       else hurtCreature(actor, dmg.total, `${name}: ${dmg.math}`, p.dtype, null);
@@ -755,7 +810,6 @@ export function createGame({ content, rng = Math.random, state = null }) {
       const key = turn.queue[turn.idx];
       if (key === "pc") {
         if (run.outcome) return null;
-        turn.actions = 3;
         turn.attacks = 0;
         turn.reaction = 1;          // one reaction, refreshed here and nowhere else
         turn.acting = "pc";
@@ -763,8 +817,15 @@ export function createGame({ content, rng = Math.random, state = null }) {
         // being cleared: it is `{ who: "pc", when: "start" }` on an ordinary
         // condition, and this line no longer knows the cantrip exists.
         boundary("pc", "start");
+        // After the boundary, not before: a condition that expires at the
+        // start of this turn has to be gone before the turn counts what it
+        // costs. Slowed is `self-end` for the mirror-image reason — one that
+        // expired here would come off before it had taken anything.
+        turn.actions = actionsOf("pc");
         emit({ type: "turn", actor: "pc" });
-        setHint("Your turn: 3 actions. Stride, Strike, or cast.");
+        setHint(turn.actions
+          ? `Your turn: ${turn.actions} action${turn.actions === 1 ? "" : "s"}. Stride, Strike, or cast.`
+          : "Your turn, and slowed leaves you none of it. End the turn.");
         return { actor: "pc" };
       }
       const c = byKey(key);
@@ -805,7 +866,9 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * strides and strikes.
    */
   function* creatureTurn(c) {
-    let actions = 3, attacks = 0;
+    // Read after advance() has already run this creature's start boundary, so
+    // a slowed that expired there is not still charging it an action.
+    let actions = actionsOf(c), attacks = 0;
     const d = def(c);
 
     while (actions > 0 && !c.dead && !run.outcome) {
@@ -818,11 +881,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
         announceStrike(c, "pc");
         if (c.dead || run.outcome) return;
         const ac = pcAC();
-        const r = roll(c, "attack", d.attackBonus - pen, ac);
+        const r = roll(c, attackKind(d.ability), d.attackBonus - pen, ac);
         dice(`${d.name} — ${d.attackName} vs ${content.pc.name} (AC ${ac})`, r.math, r.deg);
         const step = { kind: "strike", target: "pc", deg: r.deg };
         if (r.deg >= DEG.SUCC) {
-          const dmg = rollDamage(d.damage, rng);
+          const dmg = damageFrom(c, d.damage, "weapon");
           let total = dmg.total, math = dmg.math;
           if (r.deg === DEG.CRIT_SUCC) { total *= 2; math += ` ×2 (crit) = ${total}`; }
           // What the defender actually took, which is not what was rolled
@@ -1108,6 +1171,48 @@ export function createGame({ content, rng = Math.random, state = null }) {
     return null;
   }
 
+  /**
+   * Stupefied's flat check, rolled once per Cast a Spell.
+   *
+   * DC 5 + the value (Player Core p.447). Like the flat check that ends
+   * persistent damage it rolls a bare die rather than going through `roll`,
+   * because a flat check takes no modifiers — routing it through the funnel
+   * would let a stupefied caster fail *harder* for being stupefied, which is
+   * the number counted twice.
+   */
+  function castFizzles() {
+    const v = valueOf(bagOf("pc"), "stupefied");
+    if (!v) return false;
+    const dc = CONDITIONS.stupefied.castFlatDC + v;
+    const nat = die(20, rng);
+    const beat = nat >= dc;
+    dice(`${content.pc.name} — flat check to Cast a Spell while stupefied`,
+      `d20(${nat}) vs DC ${dc}`, beat ? DEG.SUCC : DEG.FAIL);
+    return !beat;
+  }
+
+  /**
+   * A command that takes a condition off on purpose.
+   *
+   * Rousing Splash is the one that needed it, and the shape is the spell's
+   * own: Player Core p.409 lets a particularly appropriate action lower the
+   * flat check that ends persistent damage rather than end it outright, so
+   * the pack writes the DC it lowers it to and this rolls against that. A
+   * block with no flatDC ends the condition without asking.
+   */
+  function endOnPurpose(spec) {
+    if (!spec || !hasCondition(bagOf("pc"), spec.condition)) return false;
+    const name = CONDITIONS[spec.condition].name.toLowerCase();
+    if (spec.flatDC === null) return endCondition("pc", spec.condition, "the water does its work");
+    const nat = die(20, rng);
+    const beat = nat >= spec.flatDC;
+    dice(`${content.pc.name} — flat check to end ${name}`,
+      `d20(${nat}) vs DC ${spec.flatDC}`, beat ? DEG.SUCC : DEG.FAIL);
+    if (beat) return endCondition("pc", spec.condition, "the water does its work");
+    info(`The water hisses off her and the ${name} keeps hold.`);
+    return false;
+  }
+
   function spend(cmd) {
     if (turn.mode === "combat") turn.actions -= cmd.cost;
     if (cmd.spendSlot) run.pc.slots--;
@@ -1132,6 +1237,17 @@ export function createGame({ content, rng = Math.random, state = null }) {
     if (blocked) return { ok: false, reason: blocked };
     const cmd = content.commandById[id];
 
+    // Casting is one flat check before it is anything else. It is here rather
+    // than inside each of the four spell branches because a fizzle spends the
+    // actions and the slot exactly as casting does — the only difference is
+    // that nothing comes out — and four copies of that would be four chances
+    // to write one of them without the spend.
+    if (cmd.spell && castFizzles()) {
+      spend(cmd);
+      info(`${cmd.name} comes apart half-formed. The actions go with it.`);
+      return after(cmd, { ok: true, fizzled: true });
+    }
+
     if (cmd.kind === "attack") {
       const c = byKey(target);
       if (!c || c.dead) return { ok: false, reason: "no-target" };
@@ -1144,10 +1260,10 @@ export function createGame({ content, rng = Math.random, state = null }) {
       // target, or by killing you. The action is spent either way.
       if (run.outcome || c.dead) return after(cmd, { ok: true, interrupted: true });
       const ac = acOf(c);
-      const r = roll("pc", "attack", cmd.attackBonus - pen, ac);
+      const r = roll("pc", attackKind(cmd.ability), cmd.attackBonus - pen, ac);
       dice(`${cmd.name} vs ${def(c).name} (AC ${ac})`, r.math, r.deg);
       if (r.deg >= DEG.SUCC) {
-        const dmg = rollDamage(cmd.damage, rng);
+        const dmg = damageFrom("pc", cmd.damage, "weapon");
         let total = dmg.total, math = dmg.math;
         if (r.deg === DEG.CRIT_SUCC) { total *= 2; math += ` ×2 (crit) = ${total}`; }
         hurtCreature(c, total, math, cmd.damageType, "pc");
@@ -1166,8 +1282,14 @@ export function createGame({ content, rng = Math.random, state = null }) {
       }
       spend(cmd);
       info(`Cast ${cmd.name} (${cmd.costGlyph}${cmd.spendFocus ? ", 1 Focus Point" : ""}) — unerring.`);
-      const dmg = rollDamage(cmd.damage, rng);
+      const dmg = damageFrom("pc", cmd.damage, "spell");
       hurtCreature(c, dmg.total, dmg.math, cmd.damageType, "pc");
+      // An unerring effect rolls nothing, so there is no degree to read: it
+      // lands, and `on: "hit"` is what that means. Without this line an
+      // `inflicts` written on an unerring command validated at load and then
+      // did nothing at all, which is the exact silence the closed vocabulary
+      // was built to prevent one level up.
+      applyInflict(cmd.inflicts, c, DEG.SUCC);
       return after(cmd, { ok: true });
     }
 
@@ -1179,7 +1301,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
       // bearing. A true PF2e cone template is a different shape; this is close
       // enough on a 22-square grid and is documented rather than pretended.
       const ang = Math.atan2(target.y - run.pc.y, target.x - run.pc.x);
-      const dmg = rollDamage(cmd.damage, rng);
+      const dmg = damageFrom("pc", cmd.damage, "spell");
+      // One DC for the whole cone, read once: stupefied moves it, and a DC
+      // re-read per creature would be a spell that got easier halfway through
+      // the room the day anything changes a condition mid-resolution.
+      const dc = spellDC();
       let hitAny = false;
       for (const c of living()) {
         if (feetBetween(run.pc.x, run.pc.y, c.x, c.y) > cmd.coneFeet) continue;
@@ -1191,7 +1317,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
         hitAny = true;
         // A creature caught in a spell notices the caster, whatever it was doing.
         if (!c.awake) wake(c);
-        const r = roll(c, "save", def(c).saves[cmd.save], content.pc.spellDC);
+        const r = roll(c, saveKind(cmd.save), def(c).saves[cmd.save], dc);
         dice(`${def(c).name} — basic ${cmd.save === "ref" ? "Reflex" : cmd.save} save`, r.math, r.deg);
         const dealt = basicSaveDamage(r.deg, dmg.total);
         if (dealt > 0) {
@@ -1224,8 +1350,9 @@ export function createGame({ content, rng = Math.random, state = null }) {
       info(turn.mode === "combat" && cmd.kind === "consume"
         ? `Interact (${cmd.costGlyph}): ${cmd.name.toLowerCase()}.`
         : `${cmd.name}.`);
-      const h = rollDamage(cmd.healing, rng);
+      const h = damageFrom("pc", cmd.healing, "healing");
       healPC(h.total, h.math);
+      endOnPurpose(cmd.ends);
       return after(cmd, { ok: true });
     }
 
@@ -1316,7 +1443,8 @@ export function createGame({ content, rng = Math.random, state = null }) {
     get explored() { return explored; },
     get actionsLeft() { return turn.mode === "combat" ? turn.actions : 3; },
     get shielded() { return hasCondition(bagOf("pc"), "shielded"); },
-    conditionsOf, modifiersFor,
+    conditionsOf, modifiersFor, actionsOf,
+    get spellDC() { return spellDC(); },
     get reactionLeft() { return turn.reaction > 0; },
     lastTrigger: event => lastByEvent.get(event) || null,
     reachOf,

@@ -152,16 +152,70 @@ Costs and resources:
 * `consumes: "<item id>"` — unavailable when no such item is in the satchel.
 * `agile: true` — on an `attack`, uses the agile MAP of −4/−8 instead of −5/−10. The shipping
   dagger is agile and the original build was not modelling it.
+* `ability: "str" | "dex"` — which ability rolls this attack. Defaults to `str`, so no pack that
+  predates the field had to change; the shipping dagger is finesse and says `dex`. It decides
+  which of `enfeebled` (Strength) and `clumsy` (Dexterity) can touch the roll, and getting it
+  wrong is silent.
+* `spell: true` — this command is Casting a Spell. It is what the `stupefied` flat check keys
+  off, and nothing else reads it. A cantrip is a spell; a potion is not.
 
 `damage` and `healing` are stat-block strings: `"1d6"`, `"2d6"`, `"1d4+1"`, `"1d8-1"`. A string
 this engine cannot parse **throws at load**. That is the point; `"1d6+"` used to be a sentinel
 that hit for nothing.
 
-`save` is `"fort"`, `"ref"` or `"will"` and is read off the target creature's `saves`.
+`save` is `"fort"`, `"ref"` or `"will"` and is read off the target creature's `saves`. Anything
+else **throws at load** rather than rolling against `undefined`.
 
 The cone is an approximation: within `coneFeet`, and within ±45° of the bearing you clicked. A
 true PF2e cone template is a different shape. On a 22-square grid the difference is small, and
 the renderer paints the squares it will hit before you commit, so a player is never guessing.
+
+### Conditions a command leaves behind, and takes off
+
+`inflicts` hangs a condition off a roll that already happened. One object, or an array of them
+when a single swing leaves two things behind — the Vault Keeper's critical fist is `frightened`
+and `stupefied` together. Two entries naming the same condition are a load error, because the
+bag's higher-value-wins merge would silently drop one of them.
+
+```json
+"inflicts": [
+  { "condition": "frightened", "value": 1, "on": "crit" },
+  { "condition": "stupefied",  "value": 1, "on": "crit" }
+]
+```
+
+`condition` must be one the catalogue in `js/conditions.js` defines — `shielded`, `frightened`,
+`off-guard`, `clumsy`, `enfeebled`, `stupefied`, `slowed`, `persistent-fire` — and an unknown one
+throws at load, for the same reason an unknown tile name does. `value` defaults to 1 and must be a
+positive integer. `on` is one of exactly three:
+
+| `on` | fires when | reads whose roll |
+| --- | --- | --- |
+| `hit` | the attack succeeded or better | the attacker's |
+| `crit` | the attack critically succeeded | the attacker's |
+| `crit-fail` | the target critically failed | **the target's** — which is what a basic save wants |
+
+An `unerring` command rolls nothing, so it has no degree: it counts as a `hit`, always. Force Fang
+is the pack's one source of `slowed` for that reason — slowed is worth a whole focus point, and an
+attack roll would make it a coin flip.
+
+**You do not write the duration.** It comes off the catalogue: `off-guard` lasts until the start
+of the afflicted actor's next turn, `clumsy`, `enfeebled`, `stupefied` and `slowed` until the end
+of it, `frightened` decays by 1 at the end of each of the afflicted actor's turns, and
+`persistent-fire` ends on its own flat check or not at all. A pack that had to remember to write
+one would ship one that forgot, and a forgotten duration is a −2 stapled to the heir for the rest
+of the delve.
+
+`ends` is the other direction: a command that takes a condition off.
+
+```json
+"ends": { "condition": "persistent-fire", "flatDC": 10 }
+```
+
+With a `flatDC` it rolls that flat check and ends the condition on a success — which is Player
+Core p.409's "a particularly appropriate action lowers the check", and is why Rousing Splash
+rolls DC 10 where the fire's own check is DC 15. Without one it ends the condition outright.
+Only the PC's own bag is touched. `flatDC` outside 2–20 throws.
 
 ### Reactions
 
@@ -226,6 +280,9 @@ Keyed by id.
   "hp": 11, "ac": 13, "perception": 2, "speed": 20, "reachFeet": 5,
   "saves": { "fort": 5, "ref": 1, "will": 0 },
   "attackBonus": 4, "attackName": "Fist", "damage": "1d6", "damageType": "bludgeoning",
+  "ability": "str",
+  "immunities": ["mental"],
+  "inflicts": { "condition": "off-guard", "value": 1, "on": "crit" },
   "reactions": [],
   "deathLine": "{name} shatters into gravel and gold dust.",
   "wakeLine": "Rubble shudders upright into a humanoid shape — {name} still keeps its post.",
@@ -243,6 +300,15 @@ encounter budget was supposed to be.
 creature with no Speed paths zero feet and stands still forever, which is the same class of bug
 as The Fourth Quarter's staffer whose missing walking speed became a NaN (site session 7,
 §2). The smoke suite asserts the fallback is a usable number.
+
+`immunities` is a closed list — today only `"mental"` — and it refuses conditions carrying that
+trait, out loud, in the log. Every creature in the shipping pack is a construct and PF2e
+constructs are immune to mental effects, so nothing in this vault can be frightened. An unknown
+trait throws at load.
+
+`ability` works exactly as it does on a command and defaults to `"str"`, so a creature that says
+nothing swings with Strength. `inflicts` works exactly as it does on a command, and hangs off the
+creature's own Strike.
 
 `reachFeet` defaults to 5 and is how far this creature threatens for `move-out-of-reach`.
 `reactions` is an array of command ids, each of which must exist in the pack's `commands` and

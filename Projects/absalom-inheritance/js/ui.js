@@ -242,8 +242,10 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
       const def = CONDITIONS[c.id];
       const el = document.createElement("span");
       // Helpful and harmful chips read differently at a glance: the disc of
-      // force is the gold the rest of the sheet is, a debuff is not.
-      el.className = "chip" + (def && def.affects && def.affects.ac < 0 ? " bad" : "");
+      // force is the gold the rest of the sheet is, a debuff is not. The
+      // catalogue says which it is — this used to ask whether the condition
+      // moved AC downward, which read Burning and Slowed as good news.
+      el.className = "chip" + (def && def.helpful ? "" : " bad");
       el.textContent = describe(c);
       el.title = def ? def.note : "";
       condRow.appendChild(el);
