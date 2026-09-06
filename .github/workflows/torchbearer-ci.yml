@@ -1,0 +1,68 @@
+# Checks for Torchbearer. Five phases shipped and each of their pull requests
+# said the same thing: none of the repo's workflows path-matches
+# Projects/torchbearer/**, so the suite ran in a session's terminal and nowhere
+# else. As of Phase 5 that is 947 assertions covering the pack validator, the
+# save slot, every core class's level-3 arithmetic, the combat engine and two
+# whole encounters played headless — about a second of Node, no browser, no
+# dependency, and it already exits non-zero on a failed assertion (locked #13).
+#
+# The page itself is in the path list because `test/smoke.mjs` slices CORE_PACK
+# and ADVENTURE_PACK straight out of Projects/torchbearer.html and validates
+# them, and because the action bar it renders is the only caller of half the
+# engine. A commit that edits the page and not the folder still has to run.
+#
+# This is one project's job, not the site-wide row (BACKLOG rank 78) about CI
+# running almost nothing. That row is still open and is still larger than this.
+
+name: Torchbearer CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/torchbearer/**"
+      - "Projects/torchbearer.html"
+      - "assets/js/gvb-save.js"
+      - ".github/workflows/torchbearer-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Projects/torchbearer/**"
+      - "Projects/torchbearer.html"
+      - "assets/js/gvb-save.js"
+      - ".github/workflows/torchbearer-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: torchbearer-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: smoke.mjs, and any other test/*.mjs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Named on its own so a red job says "smoke" rather than "the loop".
+      - name: smoke
+        run: node Projects/torchbearer/test/smoke.mjs
+
+      # Everything else under test/, one process each, so a suite a later phase
+      # adds runs here from its first commit and names itself when it fails.
+      - name: every other suite in test/
+        working-directory: Projects/torchbearer
+        run: |
+          failed=0
+          for f in test/*.mjs; do
+            case "$f" in test/smoke.mjs) continue;; esac
+            echo "== $f"
+            node "$f" || { echo "FAIL $f"; failed=1; }
+          done
+          exit $failed

@@ -19,7 +19,7 @@
 // `CHAR_LEVEL` is exported rather than duplicated: Phase 6 (a hero who levels)
 // has one place to change.
 
-import { Registry } from "./registry.js";
+import { Registry, SIZES } from "./registry.js";
 
 export const PROF_VAL = {U:0,partial:1,T:2,E:4,M:6,L:8};
 export const ABILITIES = ["str","dex","con","int","wis","cha"];
@@ -136,9 +136,12 @@ export function finalizeCharacter(build){
   /* A `bonus` carrying a `vs` is conditional — it applies to one kind of check
      and nothing else, so there is no single number on the sheet to add it to.
      They are collected here rather than dropped, and the check sites that know
-     about a condition read them by name. Phase 4 wires exactly one: Sensate
-     Gnome's `{"target":"perception","vs":"seek"}`, which Combat.seek adds. The
-     rest stay collected and unread until the site that means them exists. */
+     about a condition read them by name. Two sites read them: Combat.seek adds
+     `{"target":"perception","vs":"seek"}` (Sensate Gnome), and Combat.rollSave
+     adds any `{"target":"save.all","vs":X}` whose X is one of the traits the
+     save is against — which is what finally makes Ancient-Blooded Dwarf's
+     "+1 vs magic" and Gutsy Halfling's "+1 vs emotion" do something. A `vs`
+     naming a trait nothing carries is still collected and still unread. */
   const condBonuses=[];
   effs.forEach(({src,e})=>{
     if(e.profUp){ const t=e.profUp.target;
@@ -235,6 +238,12 @@ export function finalizeCharacter(build){
   }
   return {
     name:build.name||"The Nameless", level:lvl, build,
+    /* `size` was on every ancestry in the pack and read by nothing. Phase 5's
+       Athletics maneuvers need it on both sides of the check — Titan Wrestler
+       is "up to two sizes larger than you", which is a sentence about the
+       hero's own size — so it comes onto the sheet here rather than being
+       looked up out of the Registry from inside combat.js. */
+    size:anc.size||"Medium",
     ancestry:anc.name, heritage:(anc.heritages.find(h=>h.id===build.heritage)||{}).name,
     background:bg.name, className:cls.name,
     subclassName: cls.subclass? ((cls.subclass.options.find(o=>o.id===build.subclass)||{}).name||"") : "",
@@ -244,6 +253,31 @@ export function finalizeCharacter(build){
     senses:[...new Set([...(anc.senses||[]),...sensesExtra])],
     consumables:[{id:"healing-potion-minor",count:2+(specials.has("cauldron")?2:0)}]
   };
+}
+
+/* ---------- size, and the level-based DC table ----------
+   Both are here rather than in combat.js because they are rules arithmetic
+   with no board in them, and a test can reach them without standing up an
+   engine. */
+
+/** PF2e's six sizes, smallest first — defined in registry.js, where the pack
+    validator can reach it, and re-exported here because this is where every
+    other piece of character arithmetic lives. */
+export { SIZES };
+/** The index of a size name; anything unrecognised reads as Medium. */
+export function sizeIndex(name){ const i=SIZES.indexOf(name); return i<0? SIZES.indexOf("Medium") : i; }
+
+/**
+ * The level-based DC table from the GM Core, as arithmetic rather than a map.
+ *
+ * 14 + level + floor(level / 3) reproduces the printed table exactly from
+ * level 0 to 20 — 0 is 14, 1 is 15, 2 is 16, 3 is 18, 4 is 19, 6 is 22, 9 is
+ * 26 — and level -1 is the one row the formula misses, so it is named.
+ * Recall Knowledge is the only caller today.
+ */
+export function levelDC(level){
+  const l = Number.isFinite(+level) ? +level : 0;
+  return l < 0 ? 13 : 14 + l + Math.floor(l / 3);
 }
 
 /* skill modifier for a finalized character */

@@ -1,22 +1,22 @@
 # Torchbearer — Feature Wishlist
 
-**Status: Phase 3 shipped.** Reactions run on a bus. `Combat.trigger(name,
-ctx)` in `js/combat.js` offers `move-out-of-reach`, `manipulate`,
-`incoming-damage` and `incoming-attack` to every combatant with a reaction
-left, in initiative order, and the reaction resolves before the triggering
-action completes. `provokeAlong` lost its `if(mover.side!=="foe") return;` and
-reads `reach` per combatant, so the party provokes and a Large monster with
-`"reach": 2` threatens the ring outside its own. `mobility` moved out of guide
-§8's inert table and is decided by the Stride's own path cost. Shield Block and
-Nimble Dodge came off the damage and attack paths onto the bus, and a combatant
-carrying more than one reaction is asked before one is spent — every fighter
-has both. `node Projects/torchbearer/test/smoke.mjs` is green at **706 passed,
-0 failed**, up from 663. Save: none. The next open phase is **Phase 4 —
-Detection: Hide, Seek, cover, invisibility**, on **Claude Opus 5**, a 1.
+**Status: Phase 5 shipped.** Arc one is finished. The action bar is nine
+actions longer: Trip, Shove, Grapple, Disarm, Escape, Stand, Aid, Recall
+Knowledge, Delay and Ready. `size` is read on both sides of a maneuver, which
+turned `titan-wrestler` and `bonus-dmg-vs-large` from note text into working
+hooks; `cooperative-nature`'s +4 is the third. Saves read conditional `bonus`
+entries off the sheet by trait, so Ancient-Blooded Dwarf and Gutsy Halfling do
+something for the first time. `prone` could be applied by nothing and removed
+by nothing before this phase, and now Trip applies it and Stand takes it off.
+`node Projects/torchbearer/test/smoke.mjs` is green at **947 passed, 0
+failed**, up from 815 — and it runs in CI now, on
+`.github/workflows/torchbearer-ci.yml`, after five phases of pull requests
+saying it did not. Save: none. The next open phase is **Phase 6 — A hero who
+levels**, on **Claude Fable 5.1**, a 2+ — which is a batch of its own.
 
 ## What it is
 
-A page at `Projects/torchbearer.html` — 2,304 lines since Phase 3, seven ES module
+A page at `Projects/torchbearer.html` — 2,333 lines since Phase 5, seven ES module
 imports, no build step, nothing the repo does not vendor. It is a Pathfinder 2e
 Remaster **adventure engine**: it forges a 3rd-level hero through a nine-step
 builder, drops that hero into a branching graph of scenes and skill checks, and
@@ -32,7 +32,7 @@ Player Core classes, 73 feats, 42 spells, 28 items; 6 monsters, 2 companions,
 the 25-scene Bell of Barrowmoor) and use the exact schema an external JSON pack
 uses. `packs/` ships two more — The Long Vigil at Thornwake Bridge (12 scenes,
 2 encounters) and Embers of the Hold, a worked example of every collection —
-loadable from The Shelf in one click. `content-authoring-guide.md` is 324 lines
+loadable from The Shelf in one click. `content-authoring-guide.md` is 361 lines
 of contract in fourteen sections, and §13 is titled "Known simplifications
 (don't 'fix' these in data)", the most useful heading in the project.
 
@@ -196,6 +196,34 @@ Open and unclaimed. Add here rather than starting a new list.
   this is deliberate — a corner rule is a VTT feature — but it is the thing a
   player will notice first.
 
+**The action economy**
+- **No monster uses an Athletics maneuver, because no monster carries an
+  Athletics number.** The four maneuvers are gated on `cb.char`, so a Trip is
+  something that happens *to* monsters and never *by* one — and Rock Dwarf's
+  "+2 DC vs Shove/Trip/prone" stays a note for exactly that reason. An
+  `"athletics"` field on the monster schema plus an AI that Trips the heaviest
+  armour in reach would make the ogre-shaped monsters play like ogres. It is
+  the same missing-number shape as the Stealth entry above, and the two want
+  one schema change between them.
+- **`restrained` is not modelled, so a critical Grapple is only a harder
+  Escape.** PF2e's crit clause is a condition that stops the target taking any
+  action but Escape, which is a real AI change and a real action-bar change, so
+  Phase 5 mapped the crit onto the higher Escape DC instead (locked #107). A
+  player who knows the book will notice.
+- **Disarm's −2 lands on every attack the target has.** The engine keeps one
+  weapon per attack entry and no notion of which one a maneuver was aimed at,
+  so a Skeletal Champion disarmed of its longsword also swings its gauntlet at
+  −2. Naming the attack would mean an index on the condition and a per-attack
+  read in `atkMod` and `strikeMonster`.
+- **Ready arms one thing: a Strike, against a foe entering reach.** The bus has
+  four triggers and Ready reads exactly one of them. "Ready a spell against the
+  next creature that opens the door" is the tabletop version, and it needs a
+  trigger picker in the UI more than it needs engine work.
+- **Aid rolls Athletics whatever it is aiding** (locked #108), so a wizard
+  helping another wizard's Arcana check rolls the strongest arm in the party.
+  Passing the skill through the six call sites that consume an Aid is the fix,
+  and it is worth doing the day a second thing wants the same plumbing.
+
 **Reactions and the turn loop**
 - **Only one monster in the whole game reacts, and it is in the sample pack.**
   The Forge-Tyrant in `packs/embers-of-the-hold.json` carries `"reach": 2` and
@@ -278,7 +306,7 @@ Open and unclaimed. Add here rather than starting a new list.
 - Torchbearer still has no CI. None of the five workflows path-matches
   `Projects/torchbearer/**`; `node Projects/torchbearer/test/smoke.mjs` takes
   about a second and exits non-zero. Three PRs in a row have said this.
-- The pack contract exists twice — as `Validator`, and as 324 lines of prose —
+- The pack contract exists twice — as `Validator`, and as 361 lines of prose —
   with nothing keeping them in step but attention, and no authoring tool: a
   pack author writes JSON blind and finds out at load.
 - `loadSave`'s "Content Missing" branch describes an import ordering
@@ -543,34 +571,71 @@ action pattern already in the file. Worked under Claude Opus 5.
 
 ## Phase 5 — The rest of the action economy
 
-**Titan Wrestler lets you Grapple creatures two sizes larger, in a game with no
-Grapple and no sizes.**
+**Shipped.** Titan Wrestler let you Grapple creatures two sizes larger, in a
+game with no Grapple and no sizes. There are both now.
 
-Athletics maneuvers, Aid, Escape, Recall Knowledge, Delay and Ready are the
-verbs a PF2e player reaches for and finds missing. Each is a skill check
-against a DC the engine can already compute, and most produce a condition it
-already implements. This phase makes the shipped feat text true.
+- [x] **Athletics maneuvers.** Trip (→ `prone`), Shove (→ forced movement),
+  Grapple (→ `grabbed`) and Disarm (→ `disarmed`), each one action, each an
+  Athletics check against `10 + the target's own save modifier` for Reflex or
+  Fortitude, and each carrying the attack trait so it takes the MAP and raises
+  it. That DC is the plain PF2e formula and not Demoralize's
+  `10 + save + level`; Feint and Hide were already plain, so Demoralize is the
+  one out of step and moving it is a balance change to every fight (locked
+  #106). `grabbed` is immobilized plus off-guard, and **Escape** rolls the
+  better of Athletics and Acrobatics against the total that made the grab —
+  the same shape Phase 4's `hideDC` uses, which is how a critical Grapple ends
+  up harder to break without a second condition value (locked #107). A grip
+  ends on its own when the grabber dies or walks off. **Stand** had to exist:
+  before this phase nothing in the engine removed `prone`, so Trip would have
+  been permanent, and the monster AI stands up before it swings.
+- [x] **Aid,** the only action in the game that outlives the turn that spent
+  it. One action on an adjacent ally, nothing rolled yet; the die comes out on
+  the ally's next Strike, maneuver, Escape or skill action, and a critical
+  success is +2, a success +1, a critical failure −1. The aider rolls Athletics
+  against a flat DC 15 whatever it is aiding, because the engine cannot know
+  which skill the ally's next check will use (locked #108).
+  `cooperative-nature`'s +4 lands there, and an unused Aid is dropped at the
+  start of the aider's next turn.
+- [x] **Recall Knowledge, Delay and Ready.** Recall Knowledge is one check
+  against the GM Core's level-based DC (`14 + level + floor(level / 3)`, 13 at
+  level −1, in `rules.js` with the table pinned row by row), on a skill chosen
+  off the creature's traits; a success prints AC and current HP, a critical
+  adds the saves, the weaknesses and the monster's new optional `"lore"`
+  string, and asking twice is +2 DC. Delay splices the combatant out of
+  `Combat.order` and onto the end of it, ticks nothing, and is once per round.
+  Ready costs two actions and arms one Strike against the same
+  `move-out-of-reach` trigger read backwards — it fires on entering reach.
+  A readied action is deliberately **not** a `REACTIONS` id, so content cannot
+  name it and `KNOWN_REACTIONS` is untouched (locked #109).
+- [x] **Creature size, and the two silent `bonus` targets.** `size` is on the
+  sheet now (`rules.js` reads the ancestry's) and off the Registry entry for a
+  monster; it gates which maneuvers reach a creature — one size up, or two with
+  `titan-wrestler` — and fires `bonus-dmg-vs-large` for Mountain Strategy and
+  Titan Slinger. The validator rejects a size it does not know, on monsters and
+  on ancestries both, because a misspelling reads as Medium and quietly makes a
+  Gargantuan creature wrestleable. `bonus` on `save.all` became real: `rollSave`
+  takes the traits the save is against and reads any matching `condBonuses`
+  entry, which is what finally makes Ancient-Blooded Dwarf's +1 vs magic and
+  Gutsy Halfling's +1 vs emotion do something. `bonus` on `perception` still has
+  exactly one reader — Seek — and the guide says so rather than pretending
+  otherwise.
 
-- [ ] **Athletics maneuvers.** Trip (→ prone), Shove (→ forced movement),
-  Grapple and Disarm, each against the target's Fortitude or Reflex DC and each
-  respecting MAP. `grabbed` is a new condition that blocks movement and costs an
-  action to Escape.
-- [ ] **Aid.** Prepare on one turn, roll on an ally's next check: the only one
-  here that persists across a turn boundary, and the first real use for
-  `cooperative-nature`'s +4.
-- [ ] **Recall Knowledge,** one check against a level-derived DC that prints a
-  line of stat block into the Chronicle (monsters gain an optional `"lore"`
-  string), plus **Delay** — a move within `Combat.order` — and **Ready**, one
-  action armed against a trigger from Phase 3's bus.
-- [ ] **Creature size, and the two silent `bonus` targets.** `size` is in the
-  monster schema and read by nothing — use it for maneuver DCs and for
-  `bonus-dmg-vs-large`, inert since it shipped. `bonus` on `perception` and
-  `save.all` becomes either a real conditional bonus the check sites consult or
-  a documented note; either way the guide and the code agree.
+**Two notes became specials**, and had to: `titan-wrestler` and
+`cooperative-nature` were `{"note": …}` entries in `CORE_PACK`, so no amount of
+engine code could have seen them. Guide §8's working list is 45.
+
+**What Phase 5 did not do.** PF2e's `restrained` is not modelled, so a critical
+Grapple is an ordinary grab with a higher DC. Disarm's −2 lands on every attack
+the target has rather than on the weapon it was aimed at, because the engine has
+one weapon per attack entry and no way to say "that one". Only heroes make
+maneuvers — no monster in the game carries an Athletics number — which is why
+Rock Dwarf's "+2 DC vs Shove/Trip/prone" is still a note: nothing can Shove or
+Trip a hero, so there is no DC for it to apply to. And Ready arms one Strike
+against one trigger rather than an arbitrary action against an arbitrary one.
 
 *Leans on:* Phases 2 and 3. *Save:* none. *Model:* **Claude Opus 5** — a table
 of skill checks against DCs the engine already computes, each a variation on an
-existing `resolveTargeted` case.
+existing `resolveTargeted` case. Worked under Claude Opus 5.
 
 ## Arc two — the campaign
 
@@ -657,7 +722,7 @@ record Phase 6 already designed.
 **The pack contract exists twice and agrees by hand, and nobody has written
 against it since it was documented.**
 
-`Validator` enforces the contract; the guide describes it in 324 lines of
+`Validator` enforces the contract; the guide describes it in 361 lines of
 prose; the two have drifted before — five checks in `registry.js` are marked
 "added session 8" because a scene with no `text` validated fine and then threw
 `sc.text.map is not a function` when a player walked into it. One schema, read

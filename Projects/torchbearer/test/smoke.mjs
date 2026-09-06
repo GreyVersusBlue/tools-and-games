@@ -39,10 +39,10 @@ const { Validator, emptyRegistry, KNOWN_REACTIONS } = await mod("js/registry.js"
 const { createTorchSlot, repairSnapshot, repairBuild, repairHero, validateSnapshot, SAVE_KEY, SAVE_VERSION }
   = await mod("js/save.js");
 const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, Dice, setDiceSource, activeEffects, abilityMods,
-        finalizeCharacter, skillMod, assuranceFloor, assuranceDegree } = {
+        finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, SIZES, sizeIndex, levelDC } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
-const { newCombat, heroCombatant, companionCombatant, REACTIONS } = await mod("js/combat.js");
+const { newCombat, heroCombatant, companionCombatant, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
 
 /* ---------------- harness ---------------- */
 let pass = 0; const fails = [];
@@ -2561,6 +2561,558 @@ group("detection: the monster AI");
     ok(rolls(eng).at(-1).math.includes("vs AC 21"), "…and it is on the roll the player sees: 19 + 2");
     eq(hero.hp, 44, "…which is the difference between a hit and a miss here");
   }
+}
+
+/* ---------------- 13. the rest of the action economy ----------------
+   Phase 5. Titan Wrestler let you Grapple creatures two sizes larger in a game
+   with no Grapple and no sizes; `size` was in the monster schema and on every
+   ancestry and read by nothing; `bonus-dmg-vs-large` and `cooperative-nature`
+   had been inert since they shipped; and nothing in the engine removed `prone`,
+   so the condition existed and could not have been applied by anything. */
+group("size, and the level-based DC");
+{
+  eq(SIZES, ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"], "six sizes, smallest first");
+  eq([sizeIndex("Medium"), sizeIndex("Large"), sizeIndex("Colossal"), sizeIndex(undefined)], [2, 3, 2, 2],
+    "…and anything the table does not name reads as Medium");
+  // The GM Core's level-based DC table, row for row, not a formula guessed at.
+  eq([-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(levelDC), [13, 14, 15, 16, 18, 19, 20, 22, 23, 24, 26, 27],
+    "the level-based DC table from -1 to 10");
+  eq(levelDC(20), 40, "…and level 20 is 40");
+
+  const ch = fighter();
+  eq(ch.size, "Medium", "a human hero's size is on the sheet now, off the ancestry");
+  eq(finalizeCharacter({ ...ch.build, ancestry: "gnome", heritage: "sensate-gnome" }).size, "Small",
+    "…and a gnome's is Small");
+}
+
+group("maneuvers: Trip");
+{
+  // Athletics 7 (trained 2 + level 3 + Str 2) against 10 + the hound's Reflex 9.
+  const { eng, hero, foe } = duel();
+  eng.actionClick("trip");
+  eq(eng.armed, { kind: "target", range: 1, cost: 1, mode: "trip", btn: "trip" }, "Trip arms an adjacent target");
+  eq(eng.targets(eng.armed).map(t => t.id), ["f"], "…and only the adjacent hound qualifies");
+  pin([20, 12]);
+  eng.tokenClick(foe);
+  eq(rolls(eng).at(-1).math, "12+7 = 19 vs DC 19", "Trip is Athletics against 10 + the target's Reflex");
+  eq(foe.conditions.map(c => c.c), ["prone"], "…and a success puts it on the floor");
+  eq([eng.actions, hero.mapCount], [2, 1], "…for one action, and it raises the MAP the way a Strike does");
+  eq(eng.effAC(foe, hero).offGuard, true, "…which leaves the hound off-guard");
+
+  // Critical success: prone and 1d6 bludgeoning.
+  const d2 = duel();
+  pin([20, 20], [6, 4]);
+  d2.eng.actionClick("trip"); d2.eng.tokenClick(d2.foe);
+  eq([d2.foe.hp, d2.foe.conditions.map(c => c.c)], [20, ["prone"]], "a critical Trip is prone plus 1d6 bludgeoning");
+
+  // Critical failure: you go down instead.
+  const d3 = duel();
+  pin([20, 1]);
+  d3.eng.actionClick("trip"); d3.eng.tokenClick(d3.foe);
+  eq([d3.foe.conditions, d3.hero.conditions.map(c => c.c)], [[], ["prone"]],
+    "a critical failure and the fighter overbalances instead");
+  ok(d3.eng.events.some(ev => /overbalances and goes down instead/.test(ev.text)), "…and the Chronicle says so");
+
+  // The MAP is taken as well as raised: a second maneuver is at -5.
+  const d4 = duel();
+  pin([20, 12], [20, 12]);
+  d4.eng.actionClick("trip"); d4.eng.tokenClick(d4.foe);
+  d4.eng.actionClick("trip"); d4.eng.tokenClick(d4.foe);
+  eq(rolls(d4.eng).at(-1).math, "12+2 = 14 vs DC 19", "…and the second one in a turn is at -5");
+}
+
+group("maneuvers: Shove");
+{
+  // 10 + the hound's Fortitude 7 = DC 17.
+  const { eng, foe } = duel();
+  pin([20, 12]);
+  eng.actionClick("shove"); eng.tokenClick(foe);
+  eq(rolls(eng).at(-1).math, "12+7 = 19 vs DC 17", "Shove is Athletics against 10 + Fortitude");
+  eq([foe.x, foe.y], [3, 1], "…and a success drives the hound one square straight back");
+  ok(eng.events.some(ev => /driven back 5 feet/.test(ev.text)), "…which the Chronicle measures in feet");
+
+  const d2 = duel();
+  pin([20, 20]);
+  d2.eng.actionClick("shove"); d2.eng.tokenClick(d2.foe);
+  eq([d2.foe.x, d2.foe.y], [4, 1], "a critical Shove is two squares");
+
+  // Nothing to give: a wall directly behind.
+  const d3 = duel({}, {}, { walls: ["3,1"] });
+  pin([20, 12]);
+  d3.eng.actionClick("shove"); d3.eng.tokenClick(d3.foe);
+  eq([d3.foe.x, d3.foe.y], [2, 1], "a target braced against a wall does not move");
+  ok(d3.eng.events.some(ev => /does not give an inch/.test(ev.text)), "…and the line says why");
+
+  // Forced movement is not a Stride: it provokes nothing.
+  const d4 = duel({}, { reactions: ["reactive-strike"] });
+  pin([20, 12]);
+  d4.eng.actionClick("shove"); d4.eng.tokenClick(d4.foe);
+  eq(rolls(d4.eng).length, 1, "being Shoved provokes no Reactive Strike — it is not a Stride");
+
+  // Brutish Shove's second half was text until there was a Shove to do it with.
+  const d5 = duel(); d5.ch.specials.push("brutish-shove");
+  pin([20, 18], [8, 5]);
+  d5.eng.actionClick("brutish"); d5.eng.tokenClick(d5.foe);
+  eq([d5.foe.x, d5.foe.y], [3, 1], "Brutish Shove actually Shoves now, free and without a second check");
+  eq(d5.foe.offGuardUntil, 1, "…and still leaves the target off-guard");
+}
+
+group("maneuvers: Grapple and Escape");
+{
+  const { eng, hero, foe } = duel();
+  pin([20, 12]);
+  eng.actionClick("grapple"); eng.tokenClick(foe);
+  eq(rolls(eng).at(-1).math, "12+7 = 19 vs DC 17", "Grapple is Athletics against 10 + Fortitude");
+  eq([foe.grabbedBy, foe.grabDC, eng.condVal(foe, "grabbed")], ["hero", 19, 1],
+    "…and the total that made the grab is the DC to break it");
+  eq(eng.effAC(foe, hero).offGuard, true, "grabbed is off-guard");
+  ok(eng.events.some(ev => /<b>Escape DC 19.<\/b>/.test(ev.text)), "…and the Chronicle prints the number");
+
+  // The grabbed creature cannot walk out of it.
+  const held = eng.cbs.find(c => c.id === "f");
+  eq(eng.condVal(held, "grabbed"), 1, "the hound is held");
+
+  // A grabbed hero's three ways to change square all refuse.
+  const d2 = duel();
+  d2.eng.grab(d2.foe, d2.hero, 18);
+  d2.eng.actionClick("stride");
+  eq([d2.eng.armed, d2.eng.h.toasts.at(-1)], [null, "You are grabbed — Escape first."], "a grabbed hero cannot Stride");
+  d2.eng.actionClick("step");
+  eq(d2.eng.armed, null, "…nor Step");
+  d2.eng.actionClick("charge");
+  eq([d2.eng.armed, d2.eng.actions], [null, 3], "…nor Sudden Charge, and none of them costs an action");
+
+  // Escape: the better of Athletics and Acrobatics, against that DC.
+  pin([20, 12]);
+  d2.eng.actionClick("escape");
+  eq(rolls(d2.eng).at(-1).math, "12+7 = 19 vs DC 18", "Escape rolls the better of Athletics and Acrobatics");
+  eq([d2.eng.condVal(d2.hero, "grabbed"), d2.hero.grabbedBy, d2.eng.actions], [0, null, 2],
+    "…and a success is free of it, for one action");
+  eq(d2.hero.mapCount, 1, "…and Escape has the attack trait, so it raises the MAP");
+
+  // A failed Escape stays held.
+  const d3 = duel();
+  d3.eng.grab(d3.foe, d3.hero, 25);
+  pin([20, 5]);
+  d3.eng.actionClick("escape");
+  eq(d3.eng.condVal(d3.hero, "grabbed"), 1, "a failed Escape is still held");
+  ok(d3.eng.events.some(ev => /strains against the grip and stays held/.test(ev.text)), "…and says so");
+
+  // The grip ends when the grabber dies, or walks off.
+  const d4 = duel();
+  pin([20, 12]);
+  d4.eng.actionClick("grapple"); d4.eng.tokenClick(d4.foe);
+  d4.eng.kill(d4.hero);
+  eq([d4.eng.condVal(d4.foe, "grabbed"), d4.foe.grabbedBy], [0, null], "a dead grabber lets go");
+  const d5 = duel();
+  pin([20, 12]);
+  d5.eng.actionClick("grapple"); d5.eng.tokenClick(d5.foe);
+  d5.eng.actionClick("stride"); d5.eng.cellClick(1, 4);
+  eq(d5.eng.condVal(d5.foe, "grabbed"), 0, "…and so does one that walks away from it");
+
+  // Critical failure: the grappler loses the footing too.
+  const d6 = duel();
+  pin([20, 1]);
+  d6.eng.actionClick("grapple"); d6.eng.tokenClick(d6.foe);
+  eq([d6.eng.condVal(d6.foe, "grabbed"), d6.hero.conditions.map(c => c.c)], [0, ["prone"]],
+    "a critical failure and the grappler ends up on the floor");
+}
+
+group("maneuvers: Disarm");
+{
+  // 10 + the hound's Reflex 9 = DC 19, and Disarm alone requires training.
+  const { eng, foe } = duel();
+  pin([20, 12]);
+  eng.actionClick("disarm"); eng.tokenClick(foe);
+  eq(rolls(eng).at(-1).math, "12+7 = 19 vs DC 19", "Disarm is Athletics against 10 + Reflex");
+  eq(foe.conditions.map(c => c.c + c.v), ["disarmed1"], "…and a success is disarmed 1");
+  pin([20, 10]);
+  eng.strikeMonster(foe, eng.cbs[0], { name: "Bite", bonus: 9, die: "1d8+3", damageType: "piercing", traits: [], range: 1 });
+  ok(rolls(eng).at(-1).math.startsWith("10+7 "), "…which is -2 on everything the hound swings: 9 becomes 7");
+
+  // Critical: the weapon is on the floor and costs an action to pick up.
+  const d2 = duel();
+  pin([20, 20]);
+  d2.eng.actionClick("disarm"); d2.eng.tokenClick(d2.foe);
+  eq(d2.foe.disarmDropped, true, "a critical Disarm drops the weapon");
+  d2.eng.order = [d2.foe, d2.hero]; d2.eng.aiTurn = function () { };
+  d2.eng.beginTurn(0);
+  eq([d2.eng.actions, d2.foe.disarmDropped], [2, false], "…and the hound's next turn spends one action retrieving it");
+  ok(d2.eng.events.some(ev => /snatches up its weapon/.test(ev.text)), "…which the Chronicle says once");
+}
+
+group("maneuvers: size, and Titan Wrestler");
+{
+  const large = hound({ id: "g", name: "Ogre", x: 2, y: 1, monster: { level: 3, traits: ["giant"], size: "Large" } });
+  const huge = hound({ id: "h", name: "Troll King", x: 1, y: 2, monster: { level: 5, traits: ["giant"], size: "Huge" } });
+  const ch = fighter();
+  const hero = Object.assign(heroCombatant(ch), { x: 1, y: 1 });
+  const eng = stage([hero, large, huge]);
+  eq([eng.sizeOf(hero), eng.sizeOf(large), eng.sizeOf(huge)], ["Medium", "Large", "Huge"],
+    "size comes off the sheet for a hero and off the Registry entry for a monster");
+  eq(eng.sizeOf(mk({})), "Medium", "…and anything that names none is Medium");
+  eq([eng.canWrestle(hero, large), eng.canWrestle(hero, huge)], [true, false],
+    "one size larger is fair game; two is not");
+  ch.specials.push("titan-wrestler");
+  eq(eng.canWrestle(hero, huge), true, "Titan Wrestler is exactly the second size, and nothing else");
+
+  // The action itself refuses, costs nothing, and stays armed.
+  const ch2 = fighter();
+  const hero2 = Object.assign(heroCombatant(ch2), { x: 1, y: 1 });
+  const e2 = stage([hero2, hound({ id: "h", name: "Troll King", x: 2, y: 1, monster: { level: 5, traits: ["giant"], size: "Huge" } })]);
+  e2.actionClick("grapple"); e2.tokenClick(e2.cbs[1]);
+  eq([e2.actions, e2.h.toasts.at(-1), !!e2.armed], [3, "Troll King is too big to grapple.", true],
+    "a maneuver against something too big costs nothing and leaves the action armed");
+
+  // bonus-dmg-vs-large: on the sheet and inert since it shipped.
+  const ch3 = fighter(); ch3.specials.push("bonus-dmg-vs-large");
+  const hero3 = Object.assign(heroCombatant(ch3), { x: 1, y: 1 });
+  const ogre = hound({ id: "g", name: "Ogre", x: 2, y: 1, hp: 99, hpMax: 99, monster: { level: 3, traits: ["giant"], size: "Large" } });
+  const e3 = stage([hero3, ogre]);
+  pin([20, 15], [8, 4]);
+  e3.actionClick("strike0"); e3.tokenClick(ogre);
+  eq(ogre.hp, 99 - 7, "Mountain Strategy is +1 damage against a Large foe: 1d8+2 becomes 7");
+  const medium = hound({ id: "m", x: 2, y: 1, hp: 99, hpMax: 99 });
+  const e4 = stage([Object.assign(heroCombatant(ch3), { x: 1, y: 1 }), medium]);
+  pin([20, 15], [8, 4]);
+  e4.actionClick("strike0"); e4.tokenClick(medium);
+  eq(medium.hp, 99 - 6, "…and nothing at all against a Medium one");
+}
+
+group("Stand, and a monster that gets back up");
+{
+  const { eng, hero } = duel();
+  eng.addCond(hero, "prone", 1);
+  eq(eng.atkMod(hero, hero.attacks[0]), hero.attacks[0].bonus - 2, "prone is -2 to your own attacks");
+  eng.actionClick("stand");
+  eq([eng.condVal(hero, "prone"), eng.actions], [0, 2], "Stand is one action and gets you back up");
+  eng.actionClick("stand");
+  eq([eng.actions, eng.h.toasts.at(-1)], [2, "You are already on your feet."], "…and costs nothing when you already are");
+
+  // Grabbed beats prone: you cannot stand out of a grip.
+  const d2 = duel();
+  d2.eng.addCond(d2.hero, "prone", 1);
+  d2.eng.grab(d2.foe, d2.hero, 18);
+  d2.eng.actionClick("stand");
+  eq([d2.eng.condVal(d2.hero, "prone"), d2.eng.actions, d2.eng.h.toasts.at(-1)], [1, 3, "You are grabbed — Escape first."],
+    "a grabbed hero cannot Stand either");
+
+  // The AI: before Phase 5 nothing removed prone, so a tripped monster fought
+  // the rest of the fight from the floor.
+  const d3 = duel();
+  d3.eng.addCond(d3.foe, "prone", 1);
+  d3.eng.order = [d3.foe, d3.hero];
+  d3.eng.turnIdx = 0; d3.eng.actions = 3;
+  const step = d3.eng.aiStep(d3.foe);
+  eq([step.action, d3.eng.condVal(d3.foe, "prone"), d3.eng.actions], ["stand", 0, 2], "a prone monster stands before it swings");
+
+  // …and a grabbed one breaks the grip rather than trying to walk.
+  const d4 = duel({}, { x: 6, y: 6 });
+  d4.eng.grab(d4.hero, d4.foe, 12);
+  d4.eng.order = [d4.foe, d4.hero];
+  d4.eng.turnIdx = 0; d4.eng.actions = 3;
+  pin([20, 20]);
+  const s4 = d4.eng.aiStep(d4.foe);
+  eq([s4.action, d4.eng.condVal(d4.foe, "grabbed"), d4.foe.x], ["escape", 0, 6],
+    "a grabbed monster Escapes instead of moving, and does not budge until it is free");
+}
+
+group("Aid");
+{
+  /** Two heroes and a hound. Bran is a second fighter one square south. */
+  const pair = (aiderOver = {}) => {
+    const ch = fighter(), ach = fighter(aiderOver);
+    const hero = Object.assign(heroCombatant(ch), { x: 1, y: 1 });
+    const bran = Object.assign(heroCombatant(ach), { id: "ally", name: "Bran", x: 1, y: 2 });
+    const foe = hound({ x: 2, y: 1 });
+    const eng = stage([hero, bran, foe]);
+    return { eng, hero, bran, foe, ch, ach };
+  };
+  const { eng, hero, bran, foe } = pair();
+  eng.actionClick("aid");
+  eq(eng.armed.friendly, true, "Aid arms a friendly target");
+  eq(eng.targets(eng.armed).map(t => t.id).sort(), ["ally", "hero"], "…reaching an adjacent ally");
+  eng.tokenClick(bran);
+  eq([bran.aidedBy, hero.aidPrepared, eng.actions], [{ by: "hero", round: 1 }, "ally", 2],
+    "preparing to Aid costs an action and is remembered at both ends");
+  eng.actionClick("aid"); eng.tokenClick(hero);
+  eq([eng.h.toasts.at(-1), eng.actions], ["You cannot Aid yourself.", 2], "…and you cannot prepare it on yourself");
+  eng.armed = null;
+
+  // The only action in the game that outlives the turn that spent it.
+  eng.endTurn();
+  eq(eng.cur().id, "ally", "Bran is up");
+  eq(bran.aidedBy, { by: "hero", round: 1 }, "…and the prepared Aid survived the turn boundary");
+  pin([20, 12], [20, 10], [8, 3]);
+  eng.actionClick("strike0"); eng.tokenClick(foe);
+  eq(rolls(eng)[0].math, "12+7 = 19 vs DC 15", "the Aid check is the aider's Athletics against a flat DC 15");
+  eq(rolls(eng)[1].math.startsWith("10+11 "), true, "…and a success is +1 on Bran's attack: 10 becomes 11");
+  eq(bran.aidedBy, null, "…spent, once");
+
+  // Cooperative Nature, inert since it shipped.
+  const p3 = pair();
+  p3.ch.specials.push("cooperative-nature");
+  p3.eng.actionClick("aid"); p3.eng.tokenClick(p3.bran);
+  p3.eng.endTurn();
+  pin([20, 14], [20, 10], [8, 3]);
+  p3.eng.actionClick("strike0"); p3.eng.tokenClick(p3.foe);
+  eq(rolls(p3.eng)[0].math, "14+11 = 25 vs DC 15", "Cooperative Nature is +4 on the Aid check");
+  eq(rolls(p3.eng)[1].math.startsWith("10+12 "), true, "…and a critical success is +2 rather than +1");
+
+  // A critical failure is -1, and it lands.
+  const p4 = pair();
+  p4.eng.actionClick("aid"); p4.eng.tokenClick(p4.bran);
+  p4.eng.endTurn();
+  pin([20, 1], [20, 10], [8, 3]);
+  p4.eng.actionClick("strike0"); p4.eng.tokenClick(p4.foe);
+  eq(rolls(p4.eng)[1].math.startsWith("10+9 "), true, "a critical failure gets in the way: -1");
+  ok(p4.eng.events.some(ev => /gets in the way/.test(ev.text)), "…and the Chronicle says whose fault it was");
+
+  // It expires at the start of the aider's next turn, used or not.
+  const p5 = pair();
+  p5.eng.actionClick("aid"); p5.eng.tokenClick(p5.bran);
+  p5.eng.endTurn(); p5.eng.endTurn(); p5.eng.endTurn();
+  eq([p5.eng.cur().id, p5.bran.aidedBy, p5.hero.aidPrepared], ["hero", null, null],
+    "an Aid nobody used is dropped when the aider's next turn starts");
+
+  // A maneuver reads it too.
+  const p6 = pair();
+  p6.eng.actionClick("aid"); p6.eng.tokenClick(p6.bran);
+  p6.eng.endTurn();
+  pin([20, 12], [20, 12]);
+  p6.eng.actionClick("trip"); p6.eng.tokenClick(p6.foe);
+  eq(rolls(p6.eng)[1].math, "12+8 = 20 vs DC 19", "…and an Athletics maneuver reads the same prepared Aid");
+}
+
+group("Recall Knowledge");
+{
+  // A level-1 beast is DC 15, and a fighter's Nature is untrained: Wisdom alone.
+  const { eng, foe } = duel({}, { monster: { level: 1, traits: ["beast"], lore: "They hunt by sound." } });
+  eq(eng.recallSkill(foe), "nature", "a beast is a Nature question");
+  eng.actionClick("recall");
+  eq(eng.armed.range, 6, "Recall Knowledge reaches 30 feet");
+  pin([20, 15]);
+  eng.tokenClick(foe);
+  eq(rolls(eng).at(-1).math, "15+1 = 16 vs DC 15", "…against the level-based DC for a level-1 creature");
+  ok(eng.events.some(ev => /<b>Hound<\/b> — AC 16, HP 24\/24\./.test(ev.text)), "a success is the AC and what is left of it");
+  ok(!eng.events.some(ev => /They hunt by sound/.test(ev.text)), "…and no more than that");
+  eq([foe.recalled, foe.recallTries, eng.actions], [true, 1, 2], "…for one action");
+
+  // A second attempt against the same creature is two harder.
+  pin([20, 15]);
+  eng.actionClick("recall"); eng.tokenClick(foe);
+  eq(rolls(eng).at(-1).math, "15+1 = 16 vs DC 17", "asking twice about the same creature is +2 DC");
+
+  // A critical success adds the saves, the weaknesses, and the monster's lore.
+  const d2 = duel({}, { monster: { level: 1, traits: ["beast"], lore: "They hunt by sound." },
+    weaknesses: [{ type: "fire", value: 3 }], immunities: ["poison"] });
+  pin([20, 20]);
+  d2.eng.actionClick("recall"); d2.eng.tokenClick(d2.foe);
+  ok(d2.eng.events.some(ev => /Fort \+7, Ref \+9, Will \+5 · weak to fire 3 · immune to poison\./.test(ev.text)),
+    "a critical success is the saves and what it is weak to");
+  ok(d2.eng.events.some(ev => /<i>They hunt by sound\.<\/i>/.test(ev.text)), "…plus the monster's own `lore` line");
+
+  // A critical failure says something, and all of it is wrong.
+  const d3 = duel();
+  pin([20, 1]);
+  d3.eng.actionClick("recall"); d3.eng.tokenClick(d3.foe);
+  ok(d3.eng.events.some(ev => /every word of it is wrong/.test(ev.text)), "a critical failure remembers the wrong thing");
+  eq(d3.foe.recalled, undefined, "…and learns nothing");
+
+  // The trait table, and its fallback.
+  eq(LORE_SKILL.undead, "religion", "undead is a Religion question");
+  eq(eng.recallSkill(mk({ monster: { traits: ["ooze"] } })), "occultism", "…and something nobody has a word for is Occultism");
+  eq(eng.recallSkill(mk({})), "occultism", "…as is a creature with no traits at all");
+}
+
+group("Delay");
+{
+  const a = mk({ id: "a", side: "pc", name: "Alis", x: 0, y: 0, char: { specials: [], resists: [] } });
+  const b = mk({ id: "b", name: "Bran", x: 2, y: 0 });
+  const c = mk({ id: "c", name: "Cass", x: 3, y: 0 });
+  const eng = stage([a, b, c], { order: [a, b, c] });
+  eq(eng.cur().id, "a", "Alis is up");
+  eng.doDelay();
+  eq(eng.order.map(x => x.id), ["b", "c", "a"], "Delay moves the delayer to the end of the initiative order");
+  eq([eng.cur().id, eng.round], ["b", 1], "…and the next combatant acts, in the same round");
+  eq(eng.turnIdx, 0, "…in the slot the delayer vacated");
+  ok(eng.events.some(ev => /<b>Alis Delays<\/b>/.test(ev.text)), "…and the Chronicle says so");
+
+  // Once per round: two Delays in one round is a combatant that never acts.
+  eng.endTurn(); eng.endTurn();
+  eq(eng.cur().id, "a", "the delayed turn comes round at the end");
+  eq(eng.doDelay(), false, "…and a second Delay in the same round is refused");
+  eq(eng.h.toasts.at(-1), "You have already Delayed this round.", "…out loud");
+
+  // A combatant already last has nothing to move past.
+  const e2 = stage([a, b, c], { order: [a, b, c] });
+  e2.turnIdx = 2;
+  const before = e2.order.map(x => x.id);
+  e2.doDelay();
+  eq(e2.order.map(x => x.id), before, "a combatant already last in the order stays where it is");
+  eq([e2.cur().id, e2.round], ["a", 2], "…and simply ends its turn, which ends the round");
+
+  // Conditions do not tick on a Delay: the turn has not happened yet. Fresh
+  // combatants, because `delayedRound` is written onto them and the two
+  // engines above have already used these three.
+  const a2 = mk({ id: "a", side: "pc", name: "Alis", x: 0, y: 0, char: { specials: [], resists: [] } });
+  const b2 = mk({ id: "b", name: "Bran", x: 2, y: 0 });
+  const c2 = mk({ id: "c", name: "Cass", x: 3, y: 0 });
+  const e3 = stage([a2, b2, c2], { order: [a2, b2, c2] });
+  e3.addCond(a2, "frightened", 2);
+  eq(e3.doDelay(), true, "a combatant that has not Delayed this round may");
+  eq(e3.condVal(a2, "frightened"), 2, "…and Delay is not End Turn: nothing ticks");
+  e3.endTurn(); e3.endTurn();
+  eq(e3.cur().id, "a", "the delayed turn is the last of the round");
+  e3.endTurn();
+  eq(e3.condVal(a2, "frightened"), 1, "…and it ticks when that turn ends, like anybody else's");
+}
+
+group("Ready");
+{
+  /** The fighter at (1,1) with a hound five squares east, the fighter's turn. */
+  const setup = () => {
+    const ch = fighter();
+    const hero = Object.assign(heroCombatant(ch), { x: 1, y: 1 });
+    const foe = hound({ x: 6, y: 1 });
+    const eng = stage([hero, foe]);
+    return { eng, hero, foe, ch };
+  };
+  const { eng, hero, foe } = setup();
+  eng.actionClick("ready");
+  eq([hero.readied, eng.actions], [{ kind: "strike" }, 1], "Ready is two actions and arms one Strike");
+  ok(eng.events.some(ev => /<b>Readies<\/b> a Strike/.test(ev.text)), "…and says what it is waiting for");
+
+  // It fires on the step that brings a foe into reach, not before.
+  pin([20, 15], [8, 4]);
+  eng.provokeAlong(foe, [{ x: 6, y: 1 }, { x: 5, y: 1 }, { x: 4, y: 1 }, { x: 3, y: 1 }, { x: 2, y: 1 }]);
+  eq(rolls(eng).length, 1, "a readied Strike fires exactly once, on the step that enters reach");
+  eq([foe.hp, hero.readied, hero.reactionUsed], [24 - 6, null, true],
+    "…it lands, it is spent, and it costs the hero its reaction for the round");
+  ok(eng.events.some(ev => /<b>Readied Strike!<\/b>/.test(ev.text)), "…and the Chronicle names it");
+
+  // A move that never enters reach leaves it armed.
+  const s2 = setup();
+  s2.eng.actionClick("ready");
+  s2.eng.provokeAlong(s2.foe, [{ x: 6, y: 1 }, { x: 6, y: 2 }, { x: 6, y: 3 }]);
+  eq([s2.hero.readied, s2.hero.reactionUsed], [{ kind: "strike" }, false], "a foe that stays out of reach does not set it off");
+
+  // Nor does one already inside it that merely shuffles: the trigger is
+  // entering reach, which is both halves of the comparison and not just the
+  // second one.
+  const s2b = setup();
+  s2b.foe.x = 2; s2b.foe.y = 1;
+  s2b.eng.actionClick("ready");
+  s2b.eng.provokeAlong(s2b.foe, [{ x: 2, y: 1 }, { x: 2, y: 2 }, { x: 1, y: 2 }]);
+  eq([s2b.hero.readied, s2b.foe.hp], [{ kind: "strike" }, 24],
+    "a foe already within reach that moves inside it does not set it off either");
+
+  // It is not a reaction id, so content cannot name it and the validator does
+  // not know it: the two lists stay exactly what Phase 3 made them.
+  eq(KNOWN_REACTIONS.includes("readied"), false, "a readied action is not a reaction id");
+
+  // It is dropped at the start of the readier's next turn, fired or not.
+  const s3 = setup();
+  s3.eng.actionClick("ready");
+  s3.eng.endTurn();
+  s3.eng.aiTurn = function () { };
+  s3.eng.beginTurn(0);
+  eq(s3.hero.readied, null, "a readied Strike nobody triggered is gone by your next turn");
+
+  // An ally moving past does not set it off.
+  const s4 = setup();
+  const ally = mk({ id: "a", side: "pc", name: "Bran", x: 6, y: 1 });
+  s4.eng.cbs.push(ally); s4.eng.order.push(ally);
+  s4.eng.actionClick("ready");
+  s4.eng.provokeAlong(ally, [{ x: 6, y: 1 }, { x: 5, y: 1 }, { x: 2, y: 1 }]);
+  eq(s4.hero.readied, { kind: "strike" }, "a readied Strike is aimed at the other side only");
+}
+
+group("conditional save bonuses off the sheet");
+{
+  // Two heritages carried `{"bonus":{"target":"save.all","vs":…}}` and nothing
+  // read them: they were collected onto the sheet and stopped there. The base
+  // save is read back off `saveMod` rather than hard-coded, because the claim
+  // here is "one more than it was", not "8".
+  const dwarf = forge("fighter", { ancestry: "dwarf", heritage: "ancient-blooded-dwarf" });
+  eq(dwarf.condBonuses, [{ target: "save.all", value: 1, type: "status", vs: "magic" }],
+    "Ancient-Blooded Dwarf's +1 vs magic is on the sheet");
+  const hero = Object.assign(heroCombatant(dwarf), { x: 0, y: 0 });
+  const eng = stage([hero, hound({ x: 2, y: 0 })]);
+  const will = eng.saveMod(hero, "will");
+  pin([20, 10]);
+  eng.rollSave(hero, "will", 20, "Fear", ["magic", "emotion", "mental"]);
+  eq(rolls(eng).at(-1).math, `10+${will + 1} = ${11 + will} vs DC 20`, "…and a save against a spell reads it: one more than the sheet");
+  pin([20, 10]);
+  eng.rollSave(hero, "will", 20, "Toll of the Deep", []);
+  eq(rolls(eng).at(-1).math, `10+${will} = ${10 + will} vs DC 20`, "…while a monster's power, which is not magic, does not");
+
+  const halfling = forge("fighter", { ancestry: "halfling", heritage: "gutsy-halfling" });
+  eq(halfling.condBonuses, [{ target: "save.all", value: 1, type: "circumstance", vs: "emotion" }],
+    "Gutsy Halfling's +1 vs emotion is on the sheet too");
+  const h2 = Object.assign(heroCombatant(halfling), { x: 0, y: 0 });
+  const e2 = stage([h2, hound({ x: 2, y: 0 })]);
+  const will2 = e2.saveMod(h2, "will");
+  pin([20, 10]);
+  e2.rollSave(h2, "will", 20, "Fear", ["magic", "emotion", "mental"]);
+  eq(rolls(e2).at(-1).math, `10+${will2 + 1} = ${11 + will2} vs DC 20`, "…and an emotion spell is what reads it");
+  pin([20, 10]);
+  e2.rollSave(h2, "will", 20, "Phantom Pain", ["magic", "mental"]);
+  eq(rolls(e2).at(-1).math, `10+${will2} = ${10 + will2} vs DC 20`, "…while a spell carrying neither trait does not");
+
+  // And it reaches the real spell path, not just a direct call.
+  const caster = Object.assign(heroCombatant(forge("wizard", { spells: { cantrips: [], r1: ["fear"], r2: [] } })), { x: 0, y: 0 });
+  const target = Object.assign(heroCombatant(dwarf), { id: "t", side: "foe", name: "Dwarf", x: 1, y: 0 });
+  const e3 = stage([caster, target]);
+  const fear = Registry.spells.fear;
+  ok(fear && (fear.traits || []).includes("emotion"), "the shipped Fear spell carries emotion, fear and mental");
+  const will3 = e3.saveMod(target, "will");
+  pin([20, 10]);
+  e3.castAt(caster, { spell: fear, castRank: 1, pool: "r1", cost: 2, kind: "target" }, target);
+  eq(rolls(e3).at(-1).math.startsWith(`10+${will3 + 1} `), true, "…and casting it at the dwarf reads the +1 through castAt");
+}
+
+group("three feats stopped being note text");
+{
+  // The three hooks Phase 5 wired reach `specials` from the shipped pack, not
+  // just from a test that pushes them on by hand. Two of them were `note`
+  // entries in CORE_PACK and had to become `special` ids for any of the code
+  // above to ever run: a feat whose effect is a note is a feat the engine
+  // cannot see.
+  const withFeat = id => forge("fighter", { feats: { skill: [id] } }).specials;
+  ok(withFeat("titan-wrestler").includes("titan-wrestler"),
+    "Titan Wrestler is a wired hook now, not a note reading 'Wrestle giants'");
+  ok(withFeat("cooperative-nature").includes("cooperative-nature"),
+    "…and so is Cooperative Nature, whose +4 to Aid was a note reading '+4 to Aid'");
+  ok(withFeat("mountain-strategy").includes("bonus-dmg-vs-large"),
+    "Mountain Strategy already carried `bonus-dmg-vs-large`; it just did nothing");
+  ok(withFeat("titan-slinger").includes("bonus-dmg-vs-large"), "…as did Titan Slinger");
+  // Rock Dwarf stays a note on purpose: nothing in the game can Shove or Trip
+  // a hero, so there is no DC for its +2 to apply to.
+  ok(forge("fighter", { ancestry: "dwarf", heritage: "rock-dwarf" }).notes
+      .some(n => /\+2 DC vs Shove\/Trip\/prone/.test(n)),
+    "Rock Dwarf is still a note, because only heroes make maneuvers");
+}
+
+group("the monster schema grew two fields");
+{
+  const base = { pack: { id: "p", name: "P", type: "content" } };
+  const errs = s => Validator.validate(s, emptyRegistry());
+  eq(errs({ ...base, monsters: [{ id: "m", name: "M", ac: 10, hp: 10, attacks: [], saves: {}, size: "Enormous" }] }),
+    ['Monster "m": unknown size "Enormous" (known: Tiny, Small, Medium, Large, Huge, Gargantuan).'],
+    "a misspelled size is rejected rather than silently reading as Medium");
+  eq(errs({ ...base, monsters: [{ id: "m", name: "M", ac: 10, hp: 10, attacks: [], saves: {}, size: "Huge" }] }), [],
+    "…and a real one passes");
+  eq(errs({ ...base, monsters: [{ id: "m", name: "M", ac: 10, hp: 10, attacks: [], saves: {}, lore: 7 }] }),
+    ['Monster "m": "lore" must be a string — the one line a critical Recall Knowledge prints.'],
+    "`lore` has to be the line it prints");
+  eq(errs({ ...base, ancestries: [{ id: "a", name: "A", hp: 8, speed: 25, boosts: [], heritages: [], size: "Enormous" }] }),
+    ['Ancestry "a": unknown size "Enormous" (known: Tiny, Small, Medium, Large, Huge, Gargantuan).'],
+    "…and an ancestry's size is checked the same way");
+  ok(Object.values(Registry.monsters).every(m => m.size === undefined || SIZES.includes(m.size)),
+    "every monster that ships names a size the table knows");
+  eq(Object.values(Registry.monsters).filter(m => typeof m.lore === "string").length, 6,
+    "…and the six core monsters carry a lore line for a critical Recall Knowledge");
 }
 
 setDiceSource();

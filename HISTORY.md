@@ -1119,6 +1119,59 @@ Two of them have moved since they were written:
    backwards. `trap-finder` stays inert for the same reason — there are no
    traps. *Source: Torchbearer Phase 4.*
 
+106. **A maneuver's DC is `10 + the target's save`, and Demoralize keeps its
+   extra `+ CHAR_LEVEL`.** Three skill DCs shipped before Phase 5 and they did
+   not agree: Feint and Hide use `10 + Perception`, Demoralize uses
+   `10 + Will + CHAR_LEVEL`. The plain form is the one PF2e prints, and it is
+   already the majority, so Trip, Shove, Grapple, Disarm and Escape all use it.
+   Demoralize was left alone: it is a level-3 game and its DC is three higher
+   than the book's against every foe in both shipped adventures, so correcting
+   it is a balance change to the Bell of Barrowmoor and Thornwake Vigil fights
+   and not a Phase 5 change. Reversing this means changing one line in
+   `MANEUVERS`' comment and one in `resolveTargeted`. *Source: Torchbearer
+   Phase 5.*
+
+107. **Grapple's Escape DC is the total that made the grab.** PF2e escapes
+   against the grabber's Class DC. Phase 4 already established the other
+   pattern — `stealthDC` reads back the total a Hide was made with, so a good
+   roll is a good hiding place — and reusing it means a critical Grapple is
+   genuinely harder to break out of without a second condition value carrying
+   the difference, and without `restrained`, which this engine does not model.
+   The number is stored as `grabDC` on the grabbed combatant and the Chronicle
+   prints it, so the player is never guessing. *Source: Torchbearer Phase 5.*
+
+108. **Aid rolls Athletics against a flat DC 15, whatever it is aiding.** The
+   preparation is one action and rolls nothing; the die comes out at the moment
+   the ally's next check does, which is the only way "on an ally's next check"
+   can work across a turn boundary. What it cannot do is know which skill that
+   check will use — the bonus is consumed from inside `strike`, from four skill
+   actions and from Escape — so rather than plumbing a skill name through six
+   call sites for a number that is +1 nearly always, one roll stands for
+   lending a hand. `cooperative-nature`'s +4 is on that roll, which is the
+   whole of the feat. Guide §13 names it as a simplification. *Source:
+   Torchbearer Phase 5.*
+
+109. **A readied action is not a reaction id.** Ready arms one Strike against
+   the Phase 3 bus's `move-out-of-reach` trigger, read backwards — it fires on
+   entering reach rather than leaving it — and it lives on the combatant as
+   `cb.readied` rather than in `REACTIONS`. Putting it in `REACTIONS` would
+   have put it in `KNOWN_REACTIONS` too (`smoke.mjs` asserts the two lists are
+   identical), and then a monster's `"reactions": ["readied-action"]` would
+   validate and silently never fire, because nothing in the content schema can
+   set `cb.readied`. It still spends the same one reaction per turn everything
+   else does. *Source: Torchbearer Phase 5.*
+
+110. **Torchbearer gets its own CI workflow, and the site-wide row stays
+   open.** Five pull requests in a row said no workflow path-matches
+   `Projects/torchbearer/**`, so 947 assertions ran in a session's terminal and
+   nowhere else. `.github/workflows/torchbearer-ci.yml` is one job, one `node`
+   invocation, no browser and no dependency, on the same shape
+   `fourth-quarter-ci.yml` already uses. This does not close BACKLOG rank 78,
+   the site-wide row about CI running almost nothing — that row is about the
+   suites this one does not touch — and adding a per-project workflow from
+   inside the project it tests is not the re-ranking a session may not do.
+   *Source: Torchbearer Phase 5.*
+
 
 ---
 
