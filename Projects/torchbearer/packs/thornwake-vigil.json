@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "author": "Devon",
     "type": "adventure",
-    "description": "A level 3 one-shot: two mercenary companies have refought the same five minutes on a haunted bridge for fifty years. A skill-driven investigation opens a genuine third option — end the vigil with a blade, or end it by finally being believed."
+    "description": "A level 3 one-shot: two mercenary companies have refought the same five minutes on a haunted bridge for fifty years. A skill-driven investigation opens a genuine third option — end the vigil with a blade, or end it by finally being believed. Also carries The Bell and the Bridge, the two-adventure campaign that runs it after the bundled Bell of Barrowmoor."
   },
 
   "items": [
@@ -73,12 +73,22 @@
             "At the bridgehead, cairns of dressed stone mark where someone once tried to bury the dead properly. Whoever they were, they gave up."],
           "companionChoice": true,
           "choices": [
+            { "text": "Tell the stones about Barrowmoor before you cross.",
+              "if": "barrowmoor/bell-answered", "once": true, "flagOnce": "spoke-of-barrowmoor",
+              "goto": "barrowmoor-echo" },
             { "text": "Read the marker stones before crossing.",
               "check": { "skill": "society", "altSkill": "religion", "dc": 16,
                          "success": "marker-good", "failure": "marker-bad" },
               "once": true, "flagOnce": "read-markers" },
             { "text": "Cross onto the bridge. The fog is thickest at the center — that's usually where the truth is too.",
               "goto": "bridge-fog" } ] },
+
+        "barrowmoor-echo": { "kicker": "The Bridge", "title": "What You Told the Stones",
+          "text": ["You say it out loud, to the cairns, the way you would to a sentry: your name, where you have come from, and what happened at Barrowmoor. The bell. The forty years of it. The congregation in the churchyard that was finally allowed to lie back down.",
+            "Nothing answers. Nothing was ever going to — these are stones, and the men under them have been busy for half a century. But the fog off the span moves a little differently afterward, the way a room does when someone in it has decided you are not a threat.",
+            "You have done this before. That is the only thing you are carrying tonight that Thornwake has not already killed a hundred men for."],
+          "choices": [
+            { "text": "Turn back to the bridgehead.", "goto": "start" } ] },
 
         "marker-good": { "kicker": "The Bridge", "title": "Two Names, One Order",
           "text": ["The stones aren't grave markers so much as a ledger of blame: Ashguard on the left face, Duskmantle on the right, and between them a single line cut deeper than the rest — <em>\"By order of Col. Y. Vane, both companies advanced.\"</em> Someone gave an order that killed everyone who heard it, on both sides, at once.",
@@ -180,6 +190,21 @@
             "log": "You say his name — Yorick Vane — and read back his own unsent confession. The Colonel's saber-arm falters, just slightly, under the weight of being known. (Enfeebled 1.)" } },
           "intro": "The Colonel's honor guard falls in around him out of habit. Somewhere below the fog, a bugle that hasn't existed in fifty years is still warm." }
       }
+    }
+  ],
+
+  "campaigns": [
+    {
+      "id": "bell-and-bridge",
+      "name": "The Bell and the Bridge",
+      "level": 3,
+      "blurb": "Two hauntings, forty miles and fifty years apart, and one torchbearer who walks out of the first carrying what they learned there. Barrowmoor first: Thornwake does not open its fog to a stranger.",
+      "adventures": [
+        { "adventure": "barrowmoor" },
+        { "adventure": "thornwake",
+          "if": "barrowmoor/bell-answered",
+          "locked": "The bell over Barrowmoor is still ringing, and word of you has not reached the bridge." }
+      ]
     }
   ]
 }

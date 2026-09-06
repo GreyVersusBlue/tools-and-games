@@ -21,6 +21,11 @@ export const SAVE_KEY = "torchbearer-save";
  * and `xp` on the snapshot. All three are additive. A version-2 save is a
  * level-3 hero by definition — nothing before Phase 6 could forge anything
  * else — so `migrate` stamps that rather than leaving `repair` to guess it.
+ *
+ * Still 3 after Phase 7. `campaignId`, `campaignFlags` and `completed` are
+ * additive too, and unlike `build.level` their pre-Phase-7 value is not a fact
+ * `migrate` has to know — it is the same "no campaign" that `repair` fills in
+ * for any save missing them (locked #122).
  */
 export const SAVE_VERSION = 3;
 
@@ -137,6 +142,19 @@ export function repairSnapshot(state) {
   s.xp = Math.max(0, num(s.xp, 0));
   s.advId = typeof s.advId === "string" ? s.advId : null;
   s.sceneId = typeof s.sceneId === "string" ? s.sceneId : null;
+  /* Phase 7's three fields, and the reason `SAVE_VERSION` did not move for
+     them (locked decision #122). A save written before campaigns existed is a
+     hero with no campaign, no folded flags and nothing finished — which is
+     exactly what these three lines compute for any save that omits them. A
+     `migrate` step would have nothing left to do, and #37 says migrate is for
+     version drift while repair runs on every load. `campaignFlags` is the
+     campaign-scoped half of the flag grammar in js/campaign.js; `completed`
+     is the adventures this campaign has finished, in the order they finished. */
+  s.campaignId = typeof s.campaignId === "string" ? s.campaignId : null;
+  s.campaignFlags = obj(s.campaignFlags) || {};
+  s.completed = Array.isArray(s.completed)
+    ? s.completed.filter((id, i, a) => typeof id === "string" && a.indexOf(id) === i)
+    : [];
   s.hero = repairHero(s.hero);
   s.companions = Array.isArray(s.companions)
     ? s.companions.filter(c => obj(c) && typeof c.id === "string")

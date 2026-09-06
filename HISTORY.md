@@ -1299,6 +1299,51 @@ Two of them have moved since they were written:
    encounter-budget arithmetic, and the stop at 10. *Source: Torchbearer
    Phase 6, increment 2.*
 
+120. **A campaign entry is an object, never a bare adventure id.**
+   `"adventures": [{"adventure": "barrowmoor"}, …]` rather than
+   `["barrowmoor", …]`, even for an ungated list where the string would read
+   better. One shape means one branch in the validator, one thing for
+   Phase 8's `packs/schema.json` to describe, and somewhere for `"if"` and
+   `"locked"` to live without a second parse. The cost is four extra
+   characters per entry in the one place an author types them. Reversing it
+   is a normalizer in `entriesOf` and one more accepted shape in the
+   validator. *Source: Torchbearer Phase 7, increment 1.*
+
+121. **Campaign flags are the same grammar in a second scope, not a second
+   grammar.** A flag name with a `/` in it — `barrowmoor/bell-answered` —
+   reads the campaign record; a name without one reads the running
+   adventure's flat map, exactly as it always did. `flagOk(expr, local,
+   campaign)` in the new `js/campaign.js` is the only place either is read,
+   so a scene choice's `"if"` and a campaign entry's `"if"` cannot drift
+   apart, and two adventures that both use `knows-name` cannot collide. The
+   alternative considered and rejected was one flat map shared across a
+   campaign: it makes the gate expression prettier and makes every flag name
+   in every adventure a global, which is the bug the scope exists to
+   prevent. An adventure's flags fold into the record under its own id when
+   it ends, minus the `awarded:` bookkeeping, which is one run's accounting
+   and not a story fact. *Source: Torchbearer Phase 7, increment 1.*
+
+122. **`SAVE_VERSION` stayed at 3 for Phase 7's three new fields.**
+   `campaignId`, `campaignFlags` and `completed` are additive, and unlike
+   Phase 6's `build.level` their pre-Phase-7 value is not a fact `migrate`
+   has to know: it is the same "no campaign" that `repair` computes for any
+   save that omits them. Locked #37 says migrate is for version drift and
+   repair runs on every load, so a version bump here would have bought a
+   `migrate` branch that does nothing and a number that documents nothing.
+   Reversing it costs a bump and an empty branch. *Source: Torchbearer
+   Phase 7, increment 1.*
+
+123. **One campaign record per save.** Starting a different campaign, or
+   picking a one-shot off the picker, forgets the current record after a
+   confirmation — the record is one `campaignId`, one folded flag map and
+   one finished list, not a keyed collection of them. Several
+   half-finished campaigns in one save means a UI that has to say which
+   campaign a folded flag belongs to and a `leaveCampaign` that cannot be a
+   confirm. The save keeps the record even when the campaign's pack is not
+   loaded in this browser, so loading the pack and picking the campaign
+   again resumes rather than restarts. *Source: Torchbearer Phase 7,
+   increment 1.*
+
 
 ---
 
