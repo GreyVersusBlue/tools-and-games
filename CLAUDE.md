@@ -44,7 +44,11 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   deliberately inverted planner because the sweep had re-implemented it. A test
   that re-implements the thing it checks is not a check. Watch it fail from a
   green baseline, and read the failure message: a suite that dies of
-  `ERR_MODULE_NOT_FOUND` is not catching your bug.
+  `ERR_MODULE_NOT_FOUND` is not catching your bug. And watch **which**
+  assertion fails: a break caught by a different assertion than the one whose
+  comment claims it means that comment is wrong. Two lines guarding the same
+  absence stay green when either is deleted, so a test written against the pair
+  is testing neither. Absalom's Phase 2 shipped that twice in one file.
 - **Assert against the DOM for anything that just happened, and against the
   save only for what a reload has to survive** (#39).
 - **A real-time movement or physics assertion failing under a Linux/software-
@@ -56,7 +60,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 136 locked decisions in full, by number.
+`HISTORY.md` carries all 140 locked decisions in full, by number.
 
 ## Writing style
 

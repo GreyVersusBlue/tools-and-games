@@ -65,28 +65,33 @@ test suites exist at all.
 - **`js/content.js` (330)** — `loadPack` parses and *refuses*: a broken pack
   throws a `ContentError` with a sentence. `selectPc(content, buildId)` resolves
   a many-build pack down to the one-PC shape every other module still reads.
-- **`js/game.js` (1,126)** — the run. Persistent `run` state, a runtime-only
+- **`js/conditions.js` (270)** — the condition catalogue, the modifier funnel,
+  the same-type rule and the turn-boundary tick. Pure and RNG-free: persistent
+  damage hands back a spec and `game.js` rolls it, which is what keeps
+  `balance.mjs` able to replay a run.
+- **`js/game.js` (1,359)** — the run. Persistent `run` state, a runtime-only
   `turn` object, the reaction bus, triggers, and every command the player can
   fire. Headless: an action resolves instantly and hands back a playback script.
-- **`js/save.js` (254)** — the gvb-save slot (`absalom-inheritance-save-v1`,
+- **`js/save.js` (271)** — the gvb-save slot (`absalom-inheritance-save-v1`,
   schema 1) plus `makeRepair`, which resolves and clamps every field on every
   load. `migrate` exists and is empty.
-- **`js/render.js` (301)** — isometric canvas from diamonds and prisms, no art
-  assets, one `requestAnimationFrame` loop. **`js/ui.js` (616)** — panels, log,
-  four modals, the keyboard cursor, the save bar, and `pickCharacter`, built
-  entirely from `content.pcOptions`. **`js/main.js` (101)** — boot: fetch the
-  pack unresolved, load a save or run the picker, `selectPc` once, autosave.
-- **`test/smoke.mjs` (1,490)** — 425 assertions across rules, world, content,
-  game, reactions and save. **`test/autopilot.mjs` (248)** — a competent player as code,
+- **`js/render.js` (322)** — isometric canvas from diamonds and prisms, no art
+  assets, one `requestAnimationFrame` loop. **`js/ui.js` (677)** — panels, log,
+  four modals, the keyboard cursor, the save bar, condition chips, and
+  `pickCharacter`, built entirely from `content.pcOptions`. **`js/main.js`
+  (101)** — boot: fetch the pack unresolved, load a save or run the picker,
+  `selectPc` once, autosave.
+- **`test/smoke.mjs` (2,053)** — 599 assertions across rules, world, content,
+  game, reactions, conditions and save. **`test/autopilot.mjs` (248)** — a competent player as code,
   generic over command *kind* rather than id. **`test/balance.mjs` (117)** — N
   seeded playthroughs per build, band-checked independently, non-zero exit if
   any build leaves the band.
 
 Where it breaks down: **`game.js` is still the only module without a seam,**
-and it is 1,126 lines now rather than 834. State, turn order, the bus,
+and it is 1,359 lines now rather than 834. State, turn order, the bus,
 movement, seven command kinds and the inventory all live in one closure. A turn
-has interior structure at last, which was the whole point of Phase 1; splitting
-the closure itself is still nobody's phase.
+has interior structure and duration at last, which was the whole point of
+Phases 1 and 2; splitting the closure itself is still nobody's phase.
 
 ## Conventions a new builder must know
 
@@ -132,6 +137,17 @@ or visible in the code.
 - **`repair` resolves before it clamps.** `buildId` and `areaId` first, because
   HP/slot/focus maxima are per-build and standable squares are per-area. A clamp
   against the wrong build or area is a PC inside masonry.
+- **There is exactly one `check(` in `game.js`** and it is inside
+  `roll(actor, kind, bonus, dc)` (#138). Every d20 the engine rolls goes
+  through it so a condition cannot be forgotten at a call site, and `smoke.mjs`
+  counts them in the file's own source. The flat check that ends persistent
+  damage is the one deliberate exception, and it rolls a bare `die(20, rng)`
+  because a flat check takes no modifiers.
+- **A condition is a saved field; a reaction budget is not.** `conditions` on
+  the PC and on every creature goes into the save additively and is absent
+  entirely from a save with none; `turn.reaction` and `turn.reacted` are
+  runtime-only, because a reload re-rolls initiative anyway. They are the two
+  halves of the same question and they answer it differently on purpose.
 - **Zero offsite requests, no build step, nothing shared across projects**
   (#17). `Pathfinder/data/` is read-only here and nothing may take a runtime
   dependency on it.
@@ -367,27 +383,90 @@ site passes a flat bonus with nowhere for a modifier to come from. Phase 1 gives
 a turn interior structure; this gives it duration. Everything after it —
 debuffs, smarter creatures, a Cleric — is a condition wearing a name.
 
-- [ ] **`js/conditions.js`, pure, with its suite.** A condition is
+- [x] **`js/conditions.js`, pure, with its suite.** A condition is
       `{ id, value, until }`; a bag of them answers three questions — what it
       does to a check, what it does to damage, what has expired. RNG-free.
-- [ ] **One funnel per modifier.** Every `check()` in `game.js` routes its bonus
+- [x] **One funnel per modifier.** Every `check()` in `game.js` routes its bonus
       through `modifiersFor(actor, "attack" | "save" | "ac" | "perception")`,
       and `turn.shielded` becomes an ordinary condition. That deletion is the
       proof the funnel is real.
-- [ ] **Durations that tick in exactly one place** in `advance()`, in the
+- [x] **Durations that tick in exactly one place** in `advance()`, in the
       actor's own turn boundaries, with an expiry writing a log line rather than
       vanishing silently. **Persistent damage** first, since it exercises the
       tick path harder than the static conditions do.
-- [ ] **Conditions in the save, additively.** `pc.conditions` and per-creature
+- [x] **Conditions in the save, additively.** `pc.conditions` and per-creature
       `conditions` arrays, dropped by `repair` if content no longer defines
       them, absent entirely from a save with none. A `repair` migration, not a
       version bump.
-- [ ] **On the sheet and in the live region.** Chips with their values, a
+- [x] **On the sheet and in the live region.** Chips with their values, a
       marker over an afflicted creature, an announcement on gain and loss — a
       debuff a screen-reader user cannot hear is not a mechanic.
-- [ ] **The test that pins it.** A condition at value 2 ticking to 0 and
+- [x] **The test that pins it.** A condition at value 2 ticking to 0 and
       expiring on the right boundary; a save round trip carrying conditions; a
       legacy save with no `conditions` key loading clean. Then `balance.mjs`.
+
+### Increment 1 — shipped
+
+The six boxes above are all ticked; this is a 2+ row and it stays, because what
+they bought is a *system with three conditions in it*, and the phase's own
+sentence — "everything after it is a condition wearing a name" — is only true
+once the catalogue can carry the names.
+
+`conditions.js` is 270 lines and pure. `game.js` 1,126 → 1,359; `smoke.mjs`
+425 → 599 checks. **Twenty guard-rails were broken on purpose (#34) and every
+one exited 1 from a green baseline**, run against the real files rather than a
+copy. Two of the twenty found nothing the first time and are worth the next
+session's attention:
+
+- The **funnel guard** is the useful one. `game.js` now contains exactly one
+  `check(` call, inside `roll(actor, kind, bonus, dc)`, and `smoke.mjs` reads
+  the file's own source and fails if a second appears — the same drift guard
+  the three trigger names already have, because the failure mode is identical:
+  a raw `check()` at a call site rolls a d20 no condition can ever move, and
+  nothing about it looks wrong. The first version of that guard failed on its
+  own explanatory comment, so the test strips comments before counting.
+- The **boundary write** was a real bug the suite caught rather than a
+  hypothetical: `boundary()` assigned the ticked bag back only when something
+  had expired, so a frightened 2 decayed to a frightened 1 that was thrown
+  away. The condition was there, the chip was there, the penalty was there, and
+  only the number was frozen.
+- The **`createGame` normalize** assertion was green with the line it guards
+  deleted, twice over. First because `save.js`'s repair covers the same
+  absence; then because the first turn boundary writes a bag back to every
+  actor whether or not one expired, so any scenario that reaches an encounter
+  has already been normalised before it can be asked. It is asserted out of
+  combat now, which is the only place the line is load-bearing.
+
+**Both content sources are measured, not asserted.** Breathe Fire sets a
+critical failure alight (1d4 persistent fire, DC 15 flat check) and a critical
+Basalt Fist leaves the heir frightened 1. Over 800 seeded playthroughs per
+build: 142 creatures caught fire and 97 heirs were frightened as the wizard,
+112 as the fighter. Win rates moved **64.5% → 65.3%** (wizard) and
+**79.8% → 79.3%** (fighter), both still inside the 45–90% band, which is the
+first evidence that the split between the two builds is tuning rather than
+design — the same question Shield Block half-answered in Phase 1.
+
+### Increment 2 — what is left
+
+- [ ] **A catalogue worth the funnel.** Three conditions is a system with no
+      content in it. `clumsy`, `enfeebled`, `stupefied` and `off-guard` are the
+      four that need nothing new; the same-type rule is already written and
+      untested against a second status penalty from a *different* condition.
+- [ ] **Damage is not funnelled.** `modifiersFor` covers four kinds of check
+      and no damage roll, so `enfeebled` cannot be written today: every
+      `rollDamage` call site adds the weapon's own `plus` and nothing else.
+      That is the same hardcoding `turn.shielded` was, one layer down.
+- [ ] **A condition that costs an action.** `slowed` needs `turn.actions = 3`
+      in `advance()` to read from the bag, which is the first time a condition
+      touches the action economy rather than a number.
+- [ ] **Ending one on purpose.** Rousing Splash's own note says it would end
+      persistent fire; nothing applies persistent fire to the *PC*, so there is
+      still nothing for it to end. Either something does, or the cantrip gets a
+      target other than the caster.
+- [ ] **Immunities.** Every creature in this pack is a construct, and PF2e
+      constructs are immune to mental effects. `frightened` only ever lands on
+      the PC today, so nothing is wrong yet — it will be the moment anything
+      frightens a sentinel.
 
 *Leans on:* `rules.js`, `game.js`'s check sites, `save.js`'s `repair`,
 `ui.js`'s `refresh`. *Save:* additive per-actor `conditions`, repaired against

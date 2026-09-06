@@ -12,6 +12,7 @@
 
 import { parseDamage } from "./rules.js";
 import { TILE } from "./world.js";
+import { CONDITION_IDS, isCondition } from "./conditions.js";
 
 const TILE_BY_NAME = {
   floor: TILE.FLOOR, wall: TILE.WALL, gate: TILE.GATE,
@@ -55,6 +56,34 @@ export const REACTION_EFFECTS = Object.freeze([
 ]);
 
 const KINDS = ["attack", "self-buff", "self-heal", "cone", "unerring", "consume", "reaction"];
+
+/**
+ * When something a pack writes leaves a condition behind.
+ *
+ * "hit" and "crit" read the attacker's own degree of success; "crit-fail"
+ * reads the *target's*, which is the shape a basic save wants — a creature
+ * that critically fails its Reflex save against a cone catches fire, and the
+ * roll that decides it is the creature's, not the caster's. One closed list,
+ * the way the trigger names and the tile names are closed, because an
+ * `inflicts` naming "critfail" would sit in the pack looking correct and
+ * never fire.
+ */
+export const INFLICT_ON = Object.freeze(["hit", "crit", "crit-fail"]);
+
+/** Validate an `inflicts` block off a command or a creature. */
+function readInflicts(raw, where) {
+  if (raw === undefined || raw === null) return null;
+  need(raw && typeof raw === "object", `content: ${where} inflicts must be an object`);
+  need(isCondition(raw.condition),
+    `content: ${where} inflicts names unknown condition "${raw.condition}" ` +
+    `(known: ${CONDITION_IDS.join(", ")})`);
+  need(INFLICT_ON.includes(raw.on),
+    `content: ${where} inflicts needs an "on" of ${INFLICT_ON.join(", ")}, got "${raw.on}"`);
+  const value = raw.value ?? 1;
+  need(Number.isInteger(value) && value >= 1,
+    `content: ${where} inflicts value must be an integer of 1 or more, got ${raw.value}`);
+  return Object.freeze({ condition: raw.condition, value, on: raw.on });
+}
 
 class ContentError extends Error {}
 
@@ -104,6 +133,9 @@ export function loadPack(raw) {
       // consumer never has to ask whether the property exists first.
       triggers: null, effect: null, hardness: null, damageTypes: null,
       requiresShield: !!c.requiresShield,
+      // What this command leaves behind, or null. Null rather than absent on
+      // every other command, so a consumer never has to ask first.
+      inflicts: readInflicts(c.inflicts, `command "${c.id}"`),
     };
     if (c.damage) out.damage = parseDamage(c.damage);
     if (c.healing) out.healing = parseDamage(c.healing);
@@ -212,6 +244,8 @@ export function loadPack(raw) {
       damage: parseDamage(c.damage),
       damageType: c.damageType || "damage",
       reachFeet: c.reachFeet || 5,
+      // What this creature's Strike leaves behind, or null.
+      inflicts: readInflicts(c.inflicts, `creature "${id}"`),
       // Which reaction commands this creature can fire. The ids are looked up
       // in the pack's whole command list, not the chosen build's slice — a
       // creature's feats have nothing to do with which heir walked in.

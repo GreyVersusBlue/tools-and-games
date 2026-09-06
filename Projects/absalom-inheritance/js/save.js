@@ -6,6 +6,7 @@
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 import { LOG_SAVED } from "./game.js";
 import { TILE } from "./world.js";
+import { repairBag } from "./conditions.js";
 
 /**
  * THE STORAGE KEY. Locked decision #36: this is the name it keeps forever.
@@ -101,6 +102,14 @@ export function makeRepair(content) {
       s.pc.x = homeSpawn.x;
       s.pc.y = homeSpawn.y;
     }
+    // Conditions arrived in the conditions-that-expire phase, additively. A
+    // save written before it has no `conditions` key on the PC or on any
+    // creature and comes through here as an empty bag — a repair, not a
+    // migration, and no version bump (#37). repairBag also drops a condition
+    // this build no longer defines, which is the same argument as the
+    // creature filter below: a bag naming "clumsy" after the catalogue lost
+    // it would otherwise add `undefined` to every check its owner makes.
+    s.pc.conditions = repairBag(s.pc.conditions);
     s.pc.hp = clampInt(s.pc.hp, 0, build.hp, build.hp);
     s.pc.slots = clampInt(s.pc.slots, 0, build.slots, build.slots);
     s.pc.focus = clampInt(s.pc.focus, 0, build.focus, build.focus);
@@ -132,6 +141,9 @@ export function makeRepair(content) {
       c.hp = clampInt(c.hp, 0, d.hp, d.hp);
       c.dead = !!c.dead || c.hp === 0;
       c.awake = !!c.awake && !c.dead;
+      // A corpse carries nothing: it cannot take its turn, so nothing it is
+      // wearing would ever tick down again.
+      c.conditions = c.dead ? [] : repairBag(c.conditions);
     }
     // A placement the save never mentioned — a creature added to the pack, or
     // a whole area added, after this run started — arrives dormant and at full
@@ -140,7 +152,7 @@ export function makeRepair(content) {
       if (s.creatures.some(c => c.key === key)) continue;
       s.creatures.push({
         key, area: p.areaId, creature: p.creature, wakesOn: p.wakesOn, x: p.x, y: p.y,
-        hp: content.creatures[p.creature].hp, awake: false, dead: false,
+        hp: content.creatures[p.creature].hp, awake: false, dead: false, conditions: [],
       });
     }
 
@@ -234,6 +246,7 @@ export function freshRun(content, buildId) {
         key: `${areaId}:${p.creature}@${p.x},${p.y}`, area: areaId,
         creature: p.creature, wakesOn: p.wakesOn,
         x: p.x, y: p.y, hp: content.creatures[p.creature].hp, awake: false, dead: false,
+        conditions: [],
       });
     }
   }
@@ -244,6 +257,7 @@ export function freshRun(content, buildId) {
     pc: {
       x: start.pcSpawn.x, y: start.pcSpawn.y,
       hp: build.hp, slots: build.slots, focus: build.focus,
+      conditions: [],
     },
     creatures,
     loreRead: [],
