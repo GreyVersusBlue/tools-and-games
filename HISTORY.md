@@ -1344,6 +1344,34 @@ Two of them have moved since they were written:
    again resumes rather than restarts. *Source: Torchbearer Phase 7,
    increment 1.*
 
+124. **Money is counted in copper pieces, and a price is a string.** The purse
+   in the save (`gold`), an item's `price` and every sum in `js/shop.js` are
+   integers of copper — the smallest coin — because gold as a fractional
+   number drifts: `0.2 + 0.1` is `0.30000000000000004`, and a purse that
+   loses a hundredth of a coin per transaction is a bug nobody can
+   reproduce. Authors never type copper. They write `"price": "12 gp"` or
+   `"1 gp, 5 sp"`, the way the Player Core prints it, and `parseCoins`
+   converts once at validation. A bare number is rejected rather than
+   guessed at: `"price": 12` could be twelve gold or twelve copper, the two
+   differ by a factor of a hundred, and a validator that picks one silently
+   is the failure mode the whole file is written against. Reversing it is a
+   unit change in one module and a re-price of 27 shipped items. *Source:
+   Torchbearer Phase 7, increment 2.*
+
+125. **An adventure may hand out one hero's quarter share of PF2e's Treasure
+   by Level, and the validator enforces it.** The published table is a
+   party of four; Torchbearer runs one hero, because companions are fixed
+   NPC stat blocks that buy nothing, so a level-3 adventure's ceiling is
+   125 gp rather than 500. The sum is taken **across every scene, not along
+   one path** — a scene graph branches, so the total is a ceiling no single
+   playthrough can reach, and an adventure inside it cannot break the curve
+   however it is played. It is an error and not a warning because the
+   symptom is silent: nothing throws, nothing looks wrong, and two
+   adventures later the hero is buying gear four levels above them. An
+   adventure that declares no `level` is not checked, because there is no
+   row to check it against. Reversing it is one `if` in `registry.js`.
+   *Source: Torchbearer Phase 7, increment 2.*
+
 
 ---
 

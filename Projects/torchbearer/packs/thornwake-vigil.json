@@ -9,7 +9,7 @@
   },
 
   "items": [
-    { "id": "vane-saber", "name": "Vane Family Saber", "category": "weapon",
+    { "id": "vane-saber", "name": "Vane Family Saber", "level": 0, "price": "1 gp", "category": "weapon",
       "prof": "martial", "group": "sword", "hands": 1,
       "damage": "1d8", "damageType": "slashing", "traits": ["agile", "versatile-p"], "bulk": 1,
       "desc": "Regimental issue, engraved with a name its last owner spent fifty years trying to live down." }
@@ -80,8 +80,17 @@
               "check": { "skill": "society", "altSkill": "religion", "dc": 16,
                          "success": "marker-good", "failure": "marker-bad" },
               "once": true, "flagOnce": "read-markers" },
+            { "text": "There is a lamp burning at the treeline. Someone is selling.", "goto": "wagon" },
             { "text": "Cross onto the bridge. The fog is thickest at the center — that's usually where the truth is too.",
               "goto": "bridge-fog" } ] },
+
+        "wagon": { "kicker": "The Bridge", "kind": "shop", "title": "The Wagon at the Bridgehead",
+          "shopTitle": "Halloran's Wagon",
+          "text": ["A wagon is parked at the treeline where the fog thins, tarpaulin down, and under the tarpaulin a woman is doing her accounts by lamplight. She has been here eleven years. She sells to the people walking onto the bridge and she buys from the ones who walk back off it, and she is entirely clear-eyed about the ratio.",
+            "\"I don't ask,\" Halloran says, without looking up. \"I don't come out at night and I don't ask. Prices are the prices — half of what a thing's worth if you're selling it, and don't tell me about sentimental value.\""],
+          "stock": ["healing-potion-minor", "healing-potion-lesser", "steel-shield", "dagger", "crossbow"],
+          "choices": [
+            { "text": "Shoulder your pack and go back to the cairns.", "goto": "start" } ] },
 
         "barrowmoor-echo": { "kicker": "The Bridge", "title": "What You Told the Stones",
           "text": ["You say it out loud, to the cairns, the way you would to a sentry: your name, where you have come from, and what happened at Barrowmoor. The bell. The forty years of it. The congregation in the churchyard that was finally allowed to lie back down.",
@@ -109,7 +118,9 @@
 
         "midspan": { "kicker": "The Bridge", "title": "What the Vanguard Carried",
           "text": ["The pickets go down for good this time — actually down, not just resting between shifts — and among the wreckage of coat and rust you find a locket, sealed shut with fifty years of verdigris, and a strip of paper gone soft as cloth.",
-            "It might be worth prying open. It might just be somebody's mother."],
+            "The company strongbox is here too, come apart under fifty years of the fog's weather, and the pay it was carrying has gone down between the flagstones. Two companies' wages, for two companies that did not live to draw them. Nobody has been up here to take it.",
+            "It might be worth prying the locket open. It might just be somebody's mother."],
+          "onEnter": { "gold": "35 gp" },
           "choices": [
             { "text": "Force the locket and read what's left of the paper.",
               "check": { "skill": "medicine", "altSkill": "society", "dc": 18,

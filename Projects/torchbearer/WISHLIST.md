@@ -823,23 +823,38 @@ one-shot and one that runs a table's year.
   `repair` computes anyway. One record per save (locked #123). Guide §11 grew
   a **Campaigns** subsection; `smoke.mjs` went 1,093 → 1,159 and drives the
   shipped campaign from an empty record to a finished one.
-- [ ] **Treasure by level.** An item `level` and `price`, a per-adventure budget
-  following Paizo's table, gold that persists in the save, and a
-  `"kind": "shop"` scene to spend it in — buy from a list the adventure
-  declares, sell at half.
+- [x] **Treasure by level.** Shipped as increment 2. Items carry a `level` and a
+  `price`, and a price is a string written the way the Player Core prints it —
+  `"12 gp"`, `"1 gp, 5 sp"` — parsed once into copper, because money counted in
+  fractional gold drifts by a hundredth of a coin per transaction (locked #124).
+  The purse and the pack are `gold` and `inventory` on the save, additive, and
+  `SAVE_VERSION` stayed at 3 for the third time (#122's argument, again).
+  Neither is cleared between adventures: money is the hero's the way XP is,
+  which is what a campaign is for. `js/shop.js` holds the arithmetic —
+  `parseCoins`, `coinText`, `buy`, `sell`, the Treasure by Level table — with no
+  imports at all, so registry.js can read a price to reject a bad one.
+  `"kind": "shop"` is a scene kind, from a closed list, that renders the
+  adventure's declared `stock` to buy and the hero's own pack to sell at half.
+  An adventure may hand out one hero's quarter share of PF2e's Treasure by
+  Level for its own level and no more (locked #125); the validator sums every
+  scene's `onEnter.gold` and granted items and rejects the rest. Two shops
+  ship, one at each end of The Bell and the Bridge. `smoke.mjs` goes 1,159 →
+  1,278 and the browser recipe 42 → 49.
 - [ ] **Downtime and exploration.** Between adventures: a long rest, Treat
   Wounds, a Craft or Earn Income roll against the level table. Within a scene:
   Search / Avoid Notice / Defend, each modifying the next encounter's opening
   state the way `surprise-round` does — that mechanism exists, it just has one
   hardcoded flag.
 - [ ] **Checks at both ends:** the campaign *record* is driven end to end in
-  `smoke.mjs` already (increment 1) and the `npm run games` recipe opens the
-  board and reads the locked road. What is still owed is a scene-level walk of
-  both adventures under Node, and the browser recipe carried one beat past the
-  fight it currently stops at.
+  `smoke.mjs` (increment 1), and the `npm run games` recipe now reads the locked
+  road, walks into a shop, buys and sells (increment 2). What is still owed is a
+  **scene-level walk of both adventures under Node** — every scene entered, every
+  `goto` followed, every ending reached — which is the check that would have
+  caught an unreachable shop without a browser.
 
 *Leans on:* Phase 6's level record, `App.gotoScene`, `resolveCheck`. *Save:*
-additive — `campaignId`, `gold`, `inventory`, completed-adventure list.
+additive, and all five have shipped — `campaignId`, `campaignFlags`,
+`completed`, `gold`, `inventory`.
 *Model:* **Claude Opus 5** — scene kinds and content tables on top of a save
 record Phase 6 already designed.
 

@@ -243,6 +243,8 @@ Unknown ids stay harmless — they render on the sheet and do nothing — so an 
 
 Weapons: `{"id","name","category":"weapon","prof":"simple|martial|unarmed","hands":1|2,"damage":"1d8","damageType":"slashing","traits":[…],"range":60,"bulk":1,"rogueOk":true}`. Recognized traits: `agile`, `finesse`, `deadly-dX`, `versatile-X`, `propulsive`, `two-hand-dX` (display), `sweep`/`shove`/etc. (display). `rogueOk` marks membership in the "partial martial" list. Every hero's main weapon automatically carries a +1 potency rune (level-3 kit).
 
+**`level` and `price`** (both optional, added Phase 7). `level` is the item's level as a whole number; the shop prints it on the card. `price` is a **string, written the way the Player Core prints it** — `"12 gp"`, `"2 sp"`, `"5 cp"`, `"1 gp, 5 sp"` — and the engine parses it once into copper. A bare number is rejected on purpose: `"price": 12` could be twelve gold or twelve copper and those differ by a factor of a hundred, so the validator asks rather than guesses. Fractions are rejected for the same reason; write `"5 sp"`, not `"0.5 gp"`. **An item with no `price` cannot be bought or sold** and cannot be stocked in a shop — the core pack ships two of those on purpose, the Fist (not merchandise) and the Staff (the Player Core prints no price for a stick).
+
 Armor: `{"category":"armor","prof":"unarmored|light|medium|heavy","acBonus":n,"dexCap":n,"speedPen":0|5|10}`.
 Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+5"}` — potions are the only consumable behaviour, and **the `heal` field is read now** (session 10; it wasn't before). Drink Potion pops the most-recently-picked-up potion off the hero's stack and rolls that specific item's `heal` formula, so a Minor (`1d8`) and a Lesser (`2d8+5`) in the same pack heal for different amounts, as their text has always promised. This was a real, reachable bug: Bell of Barrowmoor (the built-in adventure) hands out two Lesser Healing Potions, Thornwake Vigil hands out one, and every one of them used to heal a flat `1d8` regardless — silently shorting the player about 10 HP per potion (`2d8+5` averages ~14, `1d8` averages ~4.5). Write the `heal` value you mean; it now does what it says. A hero's starting two potions are always `healing-potion-minor` (the level-3 kit); anything else has to be granted by an adventure's own `onEnter.items`.
 
@@ -311,8 +313,31 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 ```
 
 * `goto: "END"` returns to the title screen. Mark epilogues `"ending": true` and death `"gameover": true`.
+* **`onEnter.gold`** is treasure, written as a price string: `"onEnter": { "gold": "40 gp" }` puts 40 gold in the hero's purse the first time they walk into that scene. **`onEnter.items`** puts things in their hands — a consumable with a `heal` goes on the potion stack Drink Potion pops from, and everything else goes into the pack, where the shop can sell it. Every id has to exist, which it did not have to before Phase 7: a typo used to print "Gained: healing-potion-lesserr" into the Chronicle and hand over nothing.
 * Checks roll the **hero's** skill (`altSkill` auto-picks whichever modifier is better; `"skill":"perception"` works). DC guidance at level 3: easy 15 · standard 17–18 · hard 20 · very hard 22. The GM Core's level-based DC is `14 + level + floor(level / 3)` (`levelDC` in `rules.js`): 18 at 3, 19 at 4, 20 at 5, 22 at 6, 23 at 7, 24 at 8, 26 at 9, 27 at 10 — an adventure's `level` field says which row its DCs were written against, and a hero two levels above it will find them easy. Failure should branch somewhere *interesting*, not dead-end — cost HP, a flag, or a harder fight.
 * Useful flag tricks the engine honors: setting `"surprise-round"` before a combat makes enemies off-guard and slow to act in round 1; `"fatigued-start"` applies fatigued to the party.
+
+**Shops** — a scene the hero can spend money in:
+
+```json
+"lamp-stores": { "kicker": "Act I · Lantern Cross", "kind": "shop",
+  "title": "What the Lamp Has Left", "shopTitle": "Maud's Cupboard",
+  "text": ["Maud unlocks a cupboard behind the bar…"],
+  "stock": ["healing-potion-minor", "healing-potion-lesser", "dagger", "leather-armor"],
+  "choices": [ { "text": "Close the cupboard.", "goto": "arrival-return" } ] }
+```
+
+* `"kind"` is the only scene kind there is so far, and it is a closed list: a typo like `"kind": "stop"` is a validator error rather than a scene that quietly renders as ordinary prose and leaves the player standing in a market with nothing to buy.
+* `stock` is what is for sale, by item id, and every one of them **must have a `price`** — a stocked item nobody can buy renders a card that reads as a broken button. `shopTitle` is the heading over the buy side, and defaults to "For Sale".
+* The sell side is automatic: everything in the hero's pack, **at half price, rounded down**. Potions are not in the pack — they are on the resource stack Drink Potion pops from — so the shop cannot buy them back.
+* A shop is still a scene. Give it a `choices` entry that leads out, or the hero is standing in it forever.
+
+**Treasure, and the budget** — how much an adventure may hand out:
+
+* PF2e's Treasure by Level is the curve the whole item economy assumes. Torchbearer runs one hero (companions are fixed NPC stat blocks that buy nothing), so **an adventure of level N may hand out a quarter of that row's total**: 44 gp at level 1, 75 at 2, **125 at 3**, 213 at 4, 338 at 5, 500 at 6, 725 at 7, 1,000 at 8, 1,425 at 9, 2,000 at 10.
+* The validator adds up every scene's `onEnter.gold` and the price of every `onEnter.items` entry and rejects an adventure over its level's share. The sum is taken **across every scene, not along one path** — a scene graph branches, so the total is the ceiling no single playthrough can reach, and an adventure inside it is safe however it is played. The two ways to fix an over-budget adventure are to cut treasure or to raise the adventure's `level`.
+* An adventure that declares no `level` is not budget-checked: there is no row to check it against.
+* The purse and the pack persist in the save and are **not** cleared between adventures — that is the point of a campaign. Money is the hero's, the way XP is.
 
 **Encounters** — the tactical maps:
 
@@ -354,7 +379,7 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 * **What gets folded into the record.** When an adventure reaches a scene marked `"ending": true` that is not a `"gameover"`, every flag it set is copied into the record as `<adventure-id>/<flag>` and its id joins the finished list. The `awarded:` keys the XP bookkeeping writes are dropped — they are one run's accounting, not a story fact. Dying folds nothing, so a gameover leaves the road exactly as it was.
 * **A gate must be provable.** `"if"` on a campaign entry has to be scoped, has to name an adventure this campaign lists *earlier*, and has to name a flag that adventure's own scenes can actually set (an `onEnter.flag` or a choice's `flagOnce`). All three are validator errors, because a gate that can never open is a road the player can see and never walk, and the only symptom is a card that stays locked forever. Write the `locked` line as the reason, in the player's language.
 * Give every ending that is not a death the flag your next entry gates on, or a player who finished the first adventure the "wrong" way is stranded. The Bell of Barrowmoor sets `bell-answered` on all three of its real endings for exactly this reason.
-* The save carries `campaignId`, the folded `campaignFlags` and the finished `completed` list. It holds **one** campaign at a time: starting a different campaign, or picking a one-shot off the picker, forgets the record after a confirmation.
+* The save carries `campaignId`, the folded `campaignFlags`, the finished `completed` list, the `gold` in the purse and the `inventory` in the pack. It holds **one** campaign at a time: starting a different campaign, or picking a one-shot off the picker, forgets the record after a confirmation.
 
 ## 12. Conditions the engine implements
 

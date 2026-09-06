@@ -12,6 +12,7 @@
 // afford to.
 
 import { flagsSetBy, isScoped, SCOPE } from "./campaign.js";
+import { parseCoins, priceOf, treasureBudget, treasureIn, coinText } from "./shop.js";
 
 /* ---------- Content Registry ---------- */
 export const Registry = {
@@ -63,6 +64,16 @@ export const KNOWN_REACTIONS = ["reactive-strike", "shield-block", "nimble-dodge
  * test.
  */
 export const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
+
+/**
+ * Every value a scene's `"kind"` may take. A scene without one is prose and
+ * choices, which is what every scene was before Phase 7's second increment.
+ *
+ * It is a closed list because the failure is silent: `"kind": "stop"` renders
+ * a perfectly ordinary scene, the shop never appears, and the only symptom is
+ * a player standing in a market with no way to buy anything.
+ */
+export const SCENE_KINDS = ["shop"];
 
 /* ---------- Pack validation (friendly errors for JSON authors) ----------
    Every check here is a promise the authoring guide makes. Five of them were
@@ -122,6 +133,19 @@ export const Validator = {
       }
     });
 
+    // added Phase 7 increment 2: `level` and `price`. Both are silent when
+    // wrong. A price the parser cannot read makes an item that cannot be
+    // bought or sold and says nothing about why; the shop just renders a card
+    // with no number on it.
+    (pack.items || []).forEach(it => {
+      if (it.level !== undefined && (!Number.isInteger(it.level) || it.level < 0)) {
+        errs.push(`Item "${it.id}": "level" is the item's level and must be a whole number of 0 or more.`);
+      }
+      if (it.price !== undefined && parseCoins(it.price) === null) {
+        errs.push(`Item "${it.id}": price ${JSON.stringify(it.price)} is not a price the engine can read. Write it the way the Player Core prints it: "12 gp", "2 sp", "5 cp", or "1 gp, 5 sp".`);
+      }
+    });
+
     // Everything the pack brings with it, plus everything already loaded.
     // A pack may lean on core ids (that is the whole point of §1's "IDs are
     // global"), so an id counts as real if either side has it.
@@ -153,6 +177,43 @@ export const Validator = {
         // added session 8: the engine does `sc.text.map(...)` with no guard.
         if (!Array.isArray(sc.text)) errs.push(`Adventure "${a.id}": scene "${sid}" needs "text" as an array of paragraphs.`);
         if (!sc.title) errs.push(`Adventure "${a.id}": scene "${sid}" is missing a "title".`);
+
+        // added Phase 7 increment 2: the scene kinds, the treasure a scene
+        // hands out, and the shop's stock. Every one of these is a failure the
+        // player meets and the author never sees.
+        if (sc.kind !== undefined && !SCENE_KINDS.includes(sc.kind)) {
+          errs.push(`Adventure "${a.id}": scene "${sid}" has unknown kind "${sc.kind}" (known: ${SCENE_KINDS.join(", ")}; leave it out for an ordinary scene).`);
+        }
+        if (sc.onEnter) {
+          if (sc.onEnter.gold !== undefined && parseCoins(sc.onEnter.gold) === null) {
+            errs.push(`Adventure "${a.id}": scene "${sid}" onEnter.gold ${JSON.stringify(sc.onEnter.gold)} is not a price the engine can read. Write it like "45 gp".`);
+          }
+          if (sc.onEnter.items !== undefined && !Array.isArray(sc.onEnter.items)) {
+            errs.push(`Adventure "${a.id}": scene "${sid}" onEnter.items must be an array of item ids.`);
+          }
+          // added Phase 7 increment 2, and it was reachable before it: a typo
+          // here printed "Gained: healing-potion-lesserr" into the Chronicle
+          // and handed over nothing.
+          (Array.isArray(sc.onEnter.items) ? sc.onEnter.items : []).forEach(id => {
+            if (!known("items", id)) errs.push(`Adventure "${a.id}": scene "${sid}" onEnter.items grants unknown item "${id}".`);
+          });
+        }
+        if (sc.kind === "shop") {
+          if (!Array.isArray(sc.stock) || !sc.stock.length) {
+            errs.push(`Adventure "${a.id}": shop scene "${sid}" needs a "stock" array of item ids — a shop with nothing in it is a scene the player cannot leave anything in.`);
+          } else {
+            sc.stock.forEach(id => {
+              const it = find("items", id);
+              if (!it) { errs.push(`Adventure "${a.id}": shop scene "${sid}" stocks unknown item "${id}".`); return; }
+              // A stocked item with no price renders a card that can never be
+              // bought, which reads as a broken button rather than as an
+              // authoring mistake.
+              if (priceOf(it) === null) errs.push(`Adventure "${a.id}": shop scene "${sid}" stocks "${id}", which has no "price", so nothing can buy it.`);
+            });
+          }
+        } else if (sc.stock !== undefined) {
+          errs.push(`Adventure "${a.id}": scene "${sid}" declares "stock" but is not a shop. Add "kind": "shop" or drop the stock.`);
+        }
 
         (sc.choices || []).forEach((c, i) => {
           const dest = c.goto || (c.check && (c.check.success || c.check.failure)) || c.combat;
@@ -200,6 +261,26 @@ export const Validator = {
             if (k !== "ending" && !(a.encounters && a.encounters[k])) errs.push(`Adventure "${a.id}": awards names "${k}", which is neither an encounter of this adventure nor "ending".`);
             if (!Number.isInteger(v) || v < 0) errs.push(`Adventure "${a.id}": awards "${k}" must be a whole number of XP, 0 or more.`);
           });
+        }
+      }
+
+      // added Phase 7 increment 2: the treasure budget.
+      //
+      // PF2e's Treasure by Level is the curve the whole item economy assumes,
+      // and an adventure that hands out five times its level's share breaks it
+      // invisibly: nothing errors, nothing looks wrong, and two adventures
+      // later the hero is buying gear four levels above them. The sum is taken
+      // across every scene rather than along one path, so it is the ceiling no
+      // playthrough can pass, and an adventure inside it is safe however it
+      // branches. An adventure that declares no `level` is not checked — there
+      // is no row to check it against.
+      if (a.level !== undefined && (!Number.isInteger(a.level) || a.level < 1)) {
+        errs.push(`Adventure "${a.id}": "level" must be a whole number of 1 or more.`);
+      } else if (Number.isInteger(a.level)) {
+        const budget = treasureBudget(a.level);
+        const total = treasureIn(a, id => find("items", id));
+        if (total > budget) {
+          errs.push(`Adventure "${a.id}": hands out ${coinText(total)} across its scenes, above the ${coinText(budget)} one hero's share of a level-${a.level} adventure is worth. Cut the treasure or raise the adventure's level.`);
         }
       }
     });
