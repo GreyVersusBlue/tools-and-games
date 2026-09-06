@@ -8,11 +8,15 @@ hooks; `cooperative-nature`'s +4 is the third. Saves read conditional `bonus`
 entries off the sheet by trait, so Ancient-Blooded Dwarf and Gutsy Halfling do
 something for the first time. `prone` could be applied by nothing and removed
 by nothing before this phase, and now Trip applies it and Stand takes it off.
-`node Projects/torchbearer/test/smoke.mjs` is green at **947 passed, 0
-failed**, up from 815 — and it runs in CI now, on
-`.github/workflows/torchbearer-ci.yml`, after five phases of pull requests
-saying it did not. Save: none. The next open phase is **Phase 6 — A hero who
-levels**, on **Claude Fable 5.1**, a 2+ — which is a batch of its own.
+`node Projects/torchbearer/test/smoke.mjs` is green at **1,027 passed, 0
+failed**, up from 947 — and it runs in CI, on
+`.github/workflows/torchbearer-ci.yml`. **Phase 6 — A hero who levels** is
+open with its first increment shipped: level is a field on the build, every
+derived number hangs off it, the progression tables are data with checks on
+them, and the save is at version 3 with `migrate` doing real work for the
+first time. What is left of it is the level-up screen, the `awards` an
+adventure credits, and encounter scaling. It stays a 2+ row on **Claude Fable
+5.1**, a batch of its own.
 
 ## What it is
 
@@ -37,8 +41,10 @@ of contract in fourteen sections, and §13 is titled "Known simplifications
 (don't 'fix' these in data)", the most useful heading in the project.
 
 What it is not: a VTT. The guide states the intent as "correct-feeling PF2e at
-level 3", and means *level 3* literally — `CHAR_LEVEL = 3`, exported from
-`js/rules.js` since Phase 1 so Phase 6 has one place to change it. It is also
+level 3", and until Phase 6 meant *level 3* literally — `CHAR_LEVEL = 3`,
+exported from `js/rules.js` since Phase 1, had eleven reads. It has one now:
+the level a new hero is forged at. The level a sheet is computed from is
+`build.level`, and a save clamps it to 1..10. It is also
 not a VTT in the other direction either: `App` — the scenes, the Chronicle,
 the saves, the Shelf — still lives in the `<script type="module">` inside the
 HTML file, and the only automated browser that ever drives it is the
@@ -650,39 +656,66 @@ included.
 
 ## Phase 6 — A hero who levels
 
-**`const CHAR_LEVEL = 3`.**
+**In progress — increment 1 shipped.** `const CHAR_LEVEL = 3` had eleven
+reads, and every derived number hung off them. It has one read now, and that
+one is the level a new hero is forged at.
 
-Eleven reads, and every derived number hangs off them: HP per level,
-proficiency bonus, the resist that scales at half level, Toughness, the focus
-cap, the single skill increase, the spell ranks the builder offers. Making
-level a property of the character rather than of the file is the change
-everything downstream inherits — worth doing once, with Phase 1's suite
-watching.
+- [x] **Level becomes a build field.** `build.level`, defaulted to 3 and
+  clamped to 1..10 by `repairBuild`, so every existing save reads back exactly
+  as it did; `finalizeCharacter` reads it through `levelOf`, and every derived
+  number hangs off it — HP per level, the proficiency bonus on AC, saves,
+  attacks, Perception, class DC, spell DC and every trained skill, Assurance's
+  floor, the resist that scales at half level, Toughness, and the rank
+  cantrips and focus spells heighten to. `combat.js` reads `ch.level` for
+  Demoralize's DC and Terrified Retreat; the page reads `levelOf(build)` for
+  the skill preview and the Shield Block redundancy check. A class feature and
+  its `special` now wait for their level, which no core content could tell
+  before because every feature sits at 1 or 3. `MAX_LEVEL` is 10 (locked
+  #111): the Player Core's tables past that are not the whole story, and the
+  engine runs two spell ranks.
+- [x] **The progression tables.** `FEAT_LEVELS`, `SKILL_INCREASE_LEVELS`,
+  `BOOST_LEVELS` and `RANK_FLOOR` in `rules.js`, pinned row by row.
+  `featLevelsFor` and `skillIncreaseLevels` read a class's own list first and
+  the Player Core's row above its highest entry (locked #112), so seven of the
+  eight core classes needed no data change and the Rogue spells its
+  every-level rows out to 20 in a new optional `skillIncreases` field.
+  `grantsAt(cls, level)` is the one answer the level-up screen will render:
+  the feat slots, keyed the way `Builder.featSlots` keys the level-1-to-3 ones
+  (`class4`, `skill4`, `ancestry5`, `general7`), whether the level carries a
+  skill increase, and how many boosts. `spellSlotsAt` moves the class's
+  level-3 row by the Player Core table for ranks 1 and 2 — 3/3 from level 4 —
+  and ranks 3 and up do not exist yet (locked #114).
+- [x] **Save version 3,** additive: `build.level`, `build.advances` — the
+  per-level choice map, one `{feats, skillIncrease, boosts}` entry per level
+  from 4 up — and `xp` on the snapshot. `migrate` stamps a version-2 save
+  level 3 with an empty map and no XP whatever its fields say, because
+  nothing before this phase could forge anything else, and `repair` shapes a
+  version-3 one (locked #113). `smoke.mjs` has the v2→v3 round trip against
+  the committed `sera-voss` fixture, which stays a version-2 file on purpose.
+  `rules.js` already reads the map: feats chosen at 4 and up, the four boosts
+  at 5 and 10 (partial past +4), and one skill increase per level at 5, 7
+  and 9, with Master waiting for 7 and Legendary for 15 (locked #115).
+- [ ] **A level-up flow, not a rebuild:** a screen offering only what
+  `grantsAt` says the new level grants, reusing `Builder`'s own step
+  components and writing into `build.advances[level]`. Adventures declare
+  `"awards"`; `finish(true)` credits them into `App.xp`, milestone by
+  default, since every shipped adventure is a one-shot. The page's gear hint
+  still says "a 3rd-level kit", and the +1 potency rune is still assumed.
+- [ ] **Encounter scaling and the guide.** Add `minLevel`/`maxLevel` beside
+  the existing `minParty`, and rewrite guide §13's "correct-feeling PF2e at
+  level 3" — §4 already says a feature fires at its level and how
+  `featLevels` extends, but §13's promise stands until the flow ships.
 
-- [ ] **Level becomes a build field.** `build.level`, defaulted to 3 by
-  `repairBuild` so every existing save stays exactly as valid as it is today;
-  `finalizeCharacter` reads it from the build and `CHAR_LEVEL` survives only as
-  the default for a new hero.
-- [ ] **The progression tables.** Feats by level and class, skill increases at
-  the levels that grant them, boosts at 5/10/15/20, proficiency advances from
-  each class's own `features` array — which already carries `level` on every
-  entry and already filters on it.
-- [ ] **A level-up flow, not a rebuild:** a screen offering only the choices the
-  new level grants, reusing `Builder`'s own step components and writing back
-  into the same `build`. Adventures declare `"awards"`; `finish(true)` credits
-  them, milestone by default, since every shipped adventure is a one-shot.
-- [ ] **Save version 3,** additive: `level`, `xp`, and the per-level choice map.
-  `migrate` fills a v2 save with level 3 and the choices its build implies;
-  `smoke.mjs` grows a v2→v3 round trip, pinned against the committed
-  `sera-voss` fixture.
-- [ ] **Encounter scaling and the guide.** Add `minLevel`/`maxLevel` beside the
-  existing `minParty`, and rewrite guide §13's "correct-feeling PF2e at level
-  3" — if this ships, the promise changes.
+**Increment 1's suite:** 947 → 1,027 checks. Twelve guard-rails were broken on
+purpose (#34) — the migration, the clamp, the level gate on a feature's
+`special`, partial boosts, the Master floor, slot growth, a class's own
+`featLevels` list, the level filter on the choice map, Toughness, the map's
+key filter, the cantrip rank and Demoralize's DC — and every one exited 1.
 
-*Leans on:* Phase 1's `rules.js`, `js/save.js`. *Save:* **a version bump to 3**,
-with `migrate` doing real work for the first time. *Model:* **Claude Fable
-5.1** — a schema change every downstream number and every existing save
-inherits.
+*Leans on:* Phase 1's `rules.js`, `js/save.js`. *Save:* **version 3**, with
+`migrate` doing real work for the first time. *Model:* **Claude Fable 5.1** —
+a schema change every downstream number and every existing save inherits.
+Increment 1 worked under Claude Fable 5.1.
 
 ## Phase 7 — The campaign spine
 

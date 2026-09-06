@@ -230,7 +230,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 6 — A hero who levels | `Projects/torchbearer` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/torchbearer/WISHLIST.md#phase-6--a-hero-who-levels) |
+| 1 | Phase 6 — A hero who levels | `Projects/torchbearer` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-sswvpg` | [WISHLIST.md Phase 6](Projects/torchbearer/WISHLIST.md#phase-6--a-hero-who-levels) |
 | 2 | Phase 7 — The campaign spine | `Projects/torchbearer` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/torchbearer/WISHLIST.md#phase-7--the-campaign-spine) |
 | 3 | Phase 8 — The contract, and its first new author | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/torchbearer/WISHLIST.md#phase-8--the-contract-and-its-first-new-author) |
 | 4 | Phase 1 — The interrupt point | `Projects/absalom-inheritance` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/absalom-inheritance/WISHLIST.md#phase-1--the-interrupt-point) |
@@ -1219,7 +1219,6 @@ live. Nothing in that column is a link to follow.
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
 | Q18 | **Should Torchbearer be the site's PF2e rules engine, or only its own?** The Absalom Inheritance's round-3 notes name "a real interrupt point in the turn loop that doesn't exist yet" as its number-one next item — the same mechanism Torchbearer's Phase 3 builds. Solving it once, in the project that already advertises itself as a platform, is the recommendation. Whether the two ever *share code* is tied to Q1: locked decision #17 says each project vendors its own copy, so a shared rules module would be a deliberate exception. | 2 | `Projects/torchbearer/WISHLIST.md`, `Projects/absalom-inheritance/WISHLIST.md` |
-| Q19 | **Does the engine grow past level 3?** The authoring guide §13 states the intent as "correct-feeling PF2e at level 3, not a rules-complete VTT", and Phase 6 contradicts it on purpose. Worth doing only if a campaign is wanted. | 1 | wishlist |
 
 ### The Absalom Inheritance
 
@@ -1291,6 +1290,11 @@ live. Nothing in that column is a link to follow.
 
 ### Answered, kept here so they are not re-asked
 
+- **Does the engine (Torchbearer) grow past level 3?** Answered by the
+  session that opened Phase 6, 2026-09-06: **yes, to 10** — locked decision
+  #111. The level is a field on the build, `MAX_LEVEL` is 10, and guide §13's
+  "correct-feeling PF2e at level 3" is rewritten when the level-up flow
+  ships, not before. Was Q19.
 - **Should `campaigns.html` and `characters.html`'s shared CSS and fonts be
   merged?** Answered round 2: **harmonize, don't share.** `[shared]` drift-guard
   comments mark every byte-identical rule; locked decision #17 stays in force

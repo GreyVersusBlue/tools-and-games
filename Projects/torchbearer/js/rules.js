@@ -16,8 +16,11 @@
 //      Story.choose and Story.resolveCheck. Two rounds found two bugs in that
 //      arithmetic, so it is a named function here with a check on it.
 //
-// `CHAR_LEVEL` is exported rather than duplicated: Phase 6 (a hero who levels)
-// has one place to change.
+// `CHAR_LEVEL` is the level a new hero is forged at, and since Phase 6 that is
+// all it is: the level a sheet is computed from is `build.level`, read through
+// `levelOf`, and every derived number — HP, the proficiency bonus, the resist
+// that scales at half level, Toughness, the rank cantrips heighten to — hangs
+// off that. The progression tables below say what each level grants.
 
 import { Registry, SIZES } from "./registry.js";
 
@@ -29,6 +32,85 @@ export const SKILLS = {
   performance:"cha", religion:"wis", society:"int", stealth:"dex", survival:"wis", thievery:"dex"
 };
 export const CHAR_LEVEL = 3;
+/** Phase 6 stops at 10, where the Player Core's tables stop being the whole
+    story (rank-3+ spells, the second ancestry paragon feats, item bonuses the
+    kit does not model). `repairBuild` clamps a save into [1, MAX_LEVEL]. */
+export const MAX_LEVEL = 10;
+/** The level a build is at. A build with no `level` — every save written
+    before version 3, and every hand-built test fixture — is a level-3 hero. */
+export function levelOf(build){
+  const l = build && Number.isFinite(+build.level) ? Math.floor(+build.level) : CHAR_LEVEL;
+  return Math.max(1, Math.min(MAX_LEVEL, l));
+}
+
+/* ---------- The progression tables ----------
+   The Player Core's class-advancement rows, as data a test can pin. A class
+   entry's own `featLevels` (and, for the Rogue, `skillIncreases`) is read
+   first: it is authoritative up to its highest entry, and the standard table
+   takes over above that. So the seven core classes that still say
+   `"class":[1,2]` gain a class feat at 4, 6, 8 … without a data change, and a
+   pack written against the level-3 guide keeps meaning what it meant. */
+export const FEAT_LEVELS = {
+  ancestry: [1, 5, 9, 13, 17],
+  class:    [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+  skill:    [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+  general:  [3, 7, 11, 15, 19]
+};
+export const SKILL_INCREASE_LEVELS = [3, 5, 7, 9, 11, 13, 15, 17, 19];
+export const BOOST_LEVELS = [5, 10, 15, 20];
+/** Skill rank → the lowest level at which an increase may raise a skill to it. */
+export const RANK_FLOOR = { E: 1, M: 7, L: 15 };
+const RANK_UP = { U: "T", T: "E", E: "M", M: "L" };
+
+/** A class's own list, then the standard one above its highest entry. */
+function extendTable(own, standard){
+  const list = Array.isArray(own) ? own.map(Number).filter(Number.isFinite) : [];
+  const top = list.length ? Math.max(...list) : 0;
+  return [...new Set([...list, ...standard.filter(l => l > top)])].sort((a, b) => a - b);
+}
+/** The levels at or below `level` at which `cls` gains a feat of `type`. */
+export function featLevelsFor(cls, type, level = MAX_LEVEL){
+  return extendTable(cls && cls.featLevels && cls.featLevels[type], FEAT_LEVELS[type] || []).filter(l => l <= level);
+}
+/** The levels at or below `level` at which `cls` gains a skill increase. */
+export function skillIncreaseLevels(cls, level = MAX_LEVEL){
+  return extendTable(cls && cls.skillIncreases, SKILL_INCREASE_LEVELS).filter(l => l <= level);
+}
+/**
+ * What reaching `level` grants a hero of `cls`: the feat slots, keyed the way
+ * `Builder.featSlots` keys the level-1-to-3 ones (`class4`, `skill4`,
+ * `general7`, `ancestry5`), whether it carries a skill increase, and how many
+ * attribute boosts. This is the one answer the level-up screen renders.
+ */
+export function grantsAt(cls, level){
+  const feats = [];
+  for (const type of ["ancestry", "class", "skill", "general"]) {
+    if (featLevelsFor(cls, type, level).includes(level)) feats.push({ key: type + level, type, level });
+  }
+  return { level, feats, skillIncrease: skillIncreaseLevels(cls, level).includes(level), boosts: BOOST_LEVELS.includes(level) ? 4 : 0 };
+}
+/**
+ * Spell slots at a level, for the two ranks the engine runs. A class's `slots`
+ * field is the level-3 row (guide §4), so the answer is that row moved by the
+ * Player Core table's growth from level 3: rank 1 is 2 at level 1 and 3 from
+ * level 2; rank 2 is 2 at level 3 and 3 from level 4. Ranks 3 and up are not
+ * modelled — `build.spells` has `r1` and `r2`, and so does every pool in
+ * `combat.js` — so a level-5 caster's third-rank slots do not exist yet.
+ */
+export const SLOT_TABLE = { 1: { 1: 2, 2: 0 }, 2: { 1: 3, 2: 0 }, 3: { 1: 3, 2: 2 }, 4: { 1: 3, 2: 3 } };
+export function spellSlotsAt(slots, level){
+  const row = SLOT_TABLE[Math.min(4, Math.max(1, Math.floor(level) || 1))];
+  const base = SLOT_TABLE[3];
+  const n = r => Math.max(0, (Number(slots && slots[r]) || 0) + row[r] - base[r]);
+  return { 1: n(1), 2: n(2) };
+}
+/** The per-level choice map entries at or below the build's level, lowest first. */
+export function advancesUpTo(build){
+  const lvl = levelOf(build), adv = build && build.advances;
+  if (!adv || typeof adv !== "object") return [];
+  return Object.keys(adv).map(Number).filter(l => Number.isFinite(l) && l <= lvl).sort((a, b) => a - b)
+    .map(l => ({ level: l, ...adv[l] }));
+}
 
 /* ---------- Dice ----------
    `d` is the only entry point that consumes randomness, so an injected source
@@ -63,12 +145,22 @@ export function activeEffects(build){
   const anc=Registry.ancestries[build.ancestry], her=anc&&(anc.heritages||[]).find(h=>h.id===build.heritage);
   if(her) push(her.name,her.effects);
   const cls=Registry.classes[build.cls];
-  if(cls){ (cls.features||[]).forEach(f=>{ if(f.level<=CHAR_LEVEL) push(f.name,f.effects); if(f.special) out.push({src:f.name,e:{special:f.special}}); }); }
+  const lvl=levelOf(build);
+  /* A feature's `special` used to fire at any level, because every one in
+     core content sits at 1 or 3 and nothing could be below 3. A level-5
+     feature is real content now, so the hook waits for the level too. */
+  if(cls){ (cls.features||[]).forEach(f=>{ if(f.level>lvl) return; push(f.name,f.effects); if(f.special) out.push({src:f.name,e:{special:f.special}}); }); }
   const sub=cls&&cls.subclass&&(cls.subclass.options||[]).find(o=>o.id===build.subclass);
   if(sub) push(sub.name,sub.effects);
   Object.values(build.feats).flat().filter(Boolean).forEach(fid=>{
     const f=Registry.feats[fid]; if(f) push(f.name,f.effects);
   });
+  /* Feats chosen at level 4 and up live in `build.advances[level].feats`, and
+     only the levels the hero has reached count — a level-6 choice on a build
+     read back at level 5 is carried, not applied. */
+  advancesUpTo(build).forEach(a=>Object.values(a.feats||{}).flat().filter(Boolean).forEach(fid=>{
+    const f=Registry.feats[fid]; if(f) push(f.name,f.effects);
+  }));
   /* `{"grantFeat":"shield-block"}` is documented in §6 of the authoring guide as
      "fixed feat by id", and three pieces of core content use it that way: the
      Fighter's level-1 Shield Block feature and both Warpriest Cleric doctrines.
@@ -101,6 +193,15 @@ export function abilityMods(build){
   if(build.boosts.key) mods[build.boosts.key]++;
   (build.boosts.free||[]).forEach(a=>{ if(a) mods[a]++; });
   ABILITIES.forEach(a=>{ mods[a]=Math.min(4,mods[a]); });
+  /* The four boosts at 5, 10, 15 and 20 come off the per-level map, on top of
+     the level-1 set and its +4 cap. Past +4 a boost is partial — the second
+     one on the same attribute gives the +1 — which is the Remaster rule. */
+  const partial={};
+  advancesUpTo(build).forEach(a=>(a.boosts||[]).forEach(b=>{
+    if(!b||mods[b]===undefined) return;
+    if(mods[b]<4) mods[b]++;
+    else { partial[b]=(partial[b]||0)+1; if(partial[b]%2===0) mods[b]++; }
+  }));
   return mods;
 }
 
@@ -108,6 +209,7 @@ export function finalizeCharacter(build){
   const anc=Registry.ancestries[build.ancestry];
   const cls=Registry.classes[build.cls];
   const bg=Registry.backgrounds[build.background];
+  const lvl=levelOf(build);
   const abil=abilityMods(build);
   const effs=activeEffects(build);
   /* `{"special":"assurance","skill":"athletics"}` carries which skill it floors, but a
@@ -161,7 +263,7 @@ export function finalizeCharacter(build){
       else if(b.target==="hp") hpBonus+=b.value;
       else if(b.target==="initiative") initBonus+=b.value;
     }
-    if(e.resist) resists.push({type:e.resist.type, value:e.resist.value==="halfLevel"?Math.max(1,Math.floor(CHAR_LEVEL/2)):e.resist.value});
+    if(e.resist) resists.push({type:e.resist.type, value:e.resist.value==="halfLevel"?Math.max(1,Math.floor(lvl/2)):e.resist.value});
     if(e.focusPoints) focusMax=Math.min(3,focusMax+e.focusPoints);
     if(e.grantFocusSpell) focusSpells.push(e.grantFocusSpell);
     if(e.grantFocusSpellChoice){ const pick=build.focusChoices[src]||e.grantFocusSpellChoice[0]; focusSpells.push(pick); }
@@ -170,7 +272,14 @@ export function finalizeCharacter(build){
     if(e.font) specials.add("font-"+e.font);
   });
   if(build.skillIncrease && skills[build.skillIncrease]==="T") skills[build.skillIncrease]="E";
-  if(specials.has("toughness")) hpBonus+=CHAR_LEVEL;
+  /* The increases at 5, 7, 9 … are one skill each in the per-level map, and
+     each raises its skill one rank: an untrained skill goes to trained, and
+     Master and Legendary wait for the levels the Player Core opens them at
+     (RANK_FLOOR), so an Expert skill named at level 5 stays Expert rather
+     than jumping the queue. */
+  advancesUpTo(build).forEach(a=>{ const s=a.skillIncrease; if(!s||!(s in skills)) return;
+    const up=RANK_UP[skills[s]]; if(up && (RANK_FLOOR[up]||1)<=a.level) skills[s]=up; });
+  if(specials.has("toughness")) hpBonus+=lvl;
 
   // gear
   const wep = Registry.items[build.gear.weapon]||Registry.items["fist"];
@@ -180,7 +289,6 @@ export function finalizeCharacter(build){
   // deadly simplicity: deity weapon die up one step (approx: apply to simple weapons)
   const dieUp=d=>({"1d4":"1d6","1d6":"1d8","1d8":"1d10","1d10":"1d12","1d12":"1d12"}[d]||d);
 
-  const lvl=CHAR_LEVEL;
   const profB=(rank)=> rank==="U"?0:PROF_VAL[rank]+lvl;
   const armorRank = prof.defenses[armor.prof]||"U";
   const dexToAC = Math.min(abil.dex, armor.dexCap!==undefined?armor.dexCap:5);
@@ -233,7 +341,7 @@ export function finalizeCharacter(build){
     cantrips=[...new Set(cantrips)];
     casting={tradition,type:sc.type,ability:sc.ability,dc,attack:atk,
       cantrips, r1:[...build.spells.r1], r2:[...build.spells.r2],
-      slots:{1:sc.slots["1"],2:sc.slots["2"]},
+      slots:spellSlotsAt(sc.slots,lvl),
       font: specials.has("font-heal")? {spell:"heal",uses:4}:null};
   }
   return {

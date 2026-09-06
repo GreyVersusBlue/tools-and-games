@@ -43,7 +43,7 @@
 // engine with `newCombat({cbs, order, ...})`, or a real one with `start`.
 
 import { Registry } from "./registry.js";
-import { Dice, skillMod, CHAR_LEVEL, SIZES, sizeIndex, levelDC } from "./rules.js";
+import { Dice, skillMod, SIZES, sizeIndex, levelDC } from "./rules.js";
 import { esc, cap } from "./text.js";
 
 /**
@@ -107,7 +107,7 @@ export const REACTIONS = {
  * Every one of them is `10 + the target's own save modifier` for the named
  * save, read through `saveMod` so a frightened or clumsy target is genuinely
  * easier to throw. That is the plain PF2e formula, and it is deliberately
- * *not* Demoralize's `10 + save + CHAR_LEVEL`: Feint and Hide already use the
+ * *not* Demoralize's `10 + save + the hero's level`: Feint and Hide already use the
  * plain form against Perception, so two of the three shipped skill DCs were
  * already right and Demoralize is the odd one out (locked #106). Changing
  * Demoralize is a balance change to every fight in the game and is not this
@@ -1317,10 +1317,10 @@ export const CombatCore = {
         const ch=cb.char; let mod=skillMod(ch,"intimidation")-this.condVal(cb,"frightened")-this.condVal(cb,"sickened");
         if(!ch.specials.includes("intimidating-glare")) mod-=4; // no shared language with the mindless dead
         if(ch.specials.includes("edge-outwit")&&t.id===this.huntPreyId) mod+=2; // Outwit vs hunted prey
-        const dc=10+(t.saves.will||0)+CHAR_LEVEL;
+        const dc=10+(t.saves.will||0)+ch.level;
         const r=this.check(`${cb.name} Demoralizes ${t.name}`,mod,dc);
         if(r.deg>=2){ this.addCond(t,"frightened",r.deg===3?2:1);
-          if(r.deg===3&&ch.specials.includes("terrified-retreat")&&(t.monster&&t.monster.level<CHAR_LEVEL)) this.addCond(t,"fleeing",1,1); }
+          if(r.deg===3&&ch.specials.includes("terrified-retreat")&&(t.monster&&t.monster.level<ch.level)) this.addCond(t,"fleeing",1,1); }
         t.demoralized=true; return done();
       }
       case "feint": {
@@ -1390,9 +1390,9 @@ export const CombatCore = {
     const add=(sp,label,rank,pool)=>rows.push({sp,label,rank,pool});
     if(focusOnly){
       ch.focusSpells.forEach(id=>{ const sp=Registry.spells[id]; if(!sp) return;
-        add(sp,`${sp.name} ${sp.hex?"(hex — free, 1/turn)":"(1 focus)"}`,Math.ceil(CHAR_LEVEL/2),"focus"); });
+        add(sp,`${sp.name} ${sp.hex?"(hex — free, 1/turn)":"(1 focus)"}`,Math.ceil(ch.level/2),"focus"); });
     } else {
-      ch.casting.cantrips.forEach(id=>{ const sp=Registry.spells[id]; if(sp) add(sp,`${sp.name} (cantrip)`,Math.ceil(CHAR_LEVEL/2),"cantrip"); });
+      ch.casting.cantrips.forEach(id=>{ const sp=Registry.spells[id]; if(sp) add(sp,`${sp.name} (cantrip)`,Math.ceil(ch.level/2),"cantrip"); });
       ch.casting.r1.forEach(id=>{ const sp=Registry.spells[id]; if(sp) add(sp,`${sp.name} (rank 1)`,1,"r1"); });
       ch.casting.r2.forEach(id=>{ const sp=Registry.spells[id]; if(sp) add(sp,`${sp.name} (rank 2)`,2,"r2"); });
       if(res.font>0) add(Registry.spells.heal,`Heal — Divine Font (rank 2)`,2,"font");
