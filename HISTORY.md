@@ -1494,6 +1494,75 @@ Two of them have moved since they were written:
    day will come when the content is taller than the box and the top of it
    is gone. *Source: Torchbearer Phase 8.*
 
+133. **Absalom writes its own reaction seam, using Torchbearer's names.** This
+   answers Q18, which asked whether Torchbearer should be the site's PF2e
+   rules engine or only its own. Locked #17 says each project vendors its
+   own copy and nothing is shared across projects, and nothing about a
+   turn-loop interrupt is special enough to overrule it:
+   `Projects/torchbearer/js/combat.js` was read at length and
+   re-implemented, not imported. What *is* shared is vocabulary — the two
+   engines fire `move-out-of-reach`, `incoming-damage` and
+   `incoming-attack`, spend one reaction per actor per round, and refuse a
+   trigger that has already fired, because an engine that calls the moment
+   "move-out-of-reach" and another that calls it "leaves-reach" makes every
+   future comparison between them an act of translation for no benefit. The
+   two implementations differ where the engines do: Torchbearer's reactions
+   are a table in `combat.js` keyed by id with `qualifies`/`resolve`
+   closures, and Absalom's are ordinary entries in the pack's `commands`
+   with a `triggers` array and an `effect`, because Absalom's commands were
+   already content and Torchbearer's feats were already code. Reversing it
+   means answering Q18 the other way, which is a much larger question than
+   this row. *Source: Absalom Phase 1.*
+
+134. **The Vault Keeper carries Reactive Strike, and the Fighter's own copy
+   fires zero times.** Kessa gets Reactive Strike because the phase said the
+   Fighter is its first owner, and it is correct, and it never goes off:
+   `world.planApproach` Strides a creature to the *cheapest* open square
+   beside the PC, and an optimal path to the cheapest such square cannot
+   cross another square beside the PC on the way, because that crossing
+   would itself have been cheaper. A creature therefore enters your reach
+   and never leaves it — 0 leaves over 3,032 planned Strides, and 0
+   Reactive Strikes over 2,000 seeded playthroughs. Giving the trigger a
+   **creature** owner is what makes it fire in shipped play: walking away
+   from the Keeper now costs a basalt fist, which is a decision a player
+   makes and the autopilot never does, so the measured balance is unchanged
+   (79.8% before and after, to the decimal) while the fight is not. The
+   zero is **asserted** rather than noted, so Phase 4 — creatures that know
+   what they are standing in — is told the day it comes alive. Two smaller
+   calls sit under this one: the planner moved to `world.planApproach` so
+   the suite walks the engine's own function rather than a second copy of
+   it (the sweep passed a deliberately inverted planner until it did, which
+   is #34's exact shape), and reach is `reachFeet` on both builds and
+   creatures, defaulting to 5. Reversing it is deleting one `reactions`
+   array from `content/vault.json`. *Source: Absalom Phase 1.*
+
+135. **A reaction fires without asking.** Torchbearer has `askReaction`, called
+   only when the combatant carries more than one reaction (locked #95).
+   Absalom has neither the prompt nor the need: each build owns exactly one
+   reaction, and for both of the ones that ship, declining is strictly
+   worse. Reactive Strike costs nothing and is refreshed next turn. Shield
+   Block's disc lapses at the start of your next turn whether or not it
+   blocks, so saving it saves nothing. A prompt would also have to be an
+   `await` inside a rules path, and this engine's load-bearing habit is
+   that nothing in the rules ever waits (README, "Running the tests"). The
+   first reaction that is a genuine choice needs the seam, and the standing
+   backlog now says so. Reversing it is `askReaction` beside `commandBlocked`
+   and an `onAsk` callback in `createGame`. *Source: Absalom Phase 1.*
+
+136. **`incoming-attack` ships with no owner, rather than an invented feat.**
+   The phase named three interrupt points and two of them have shipped
+   reactions. Nothing at 1st level gives a Fighter or a Wizard a reaction
+   on an incoming Strike — a dodge is a Rogue feat and neither build is one
+   — so the seat is left empty instead of writing a feat that is not in the
+   book to fill a table. The point is fired for real at both Strike sites,
+   the validator accepts a reaction that names it, and `smoke.mjs` proves
+   the engine honours one by hanging a synthetic `riposte` off it in a
+   cloned pack. The alternative considered and rejected was a third
+   `effect` (a `ward` adding to AC) with no shipped owner, which is the
+   same emptiness plus a vocabulary entry nothing reads — #131's argument,
+   applied one level up. Reversing it is one command in `vault.json`.
+   *Source: Absalom Phase 1.*
+
 
 ---
 

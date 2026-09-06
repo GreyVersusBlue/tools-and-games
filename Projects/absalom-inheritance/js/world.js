@@ -145,9 +145,39 @@ export function makeWorld(area) {
     return out;
   }
 
+  /**
+   * The leg a creature Strides toward `to`: the cheapest path to any open
+   * square beside it, cut to what `speed` feet will buy.
+   *
+   * This lives here rather than inside game.js's creature turn because the
+   * suite needs the *same* planner the engine walks, not a second copy of it.
+   * The reaction bus leans on a property of this function — a path to the
+   * cheapest square beside the target cannot cross a square beside the target
+   * on the way, because that crossing would have been cheaper — and a suite
+   * that re-implemented the planner to check that property would have gone on
+   * passing after the real one changed. Two versions of the line-of-sight
+   * check once did exactly that (locked #34).
+   *
+   * Returns the squares to walk, starting with the one the mover is standing
+   * on, or null if there is nowhere to go.
+   */
+  function planApproach(from, to, speed, opts) {
+    let best = null;
+    for (const sq of adjacentOpen(to.x, to.y, opts)) {
+      const p = findPath(from.x, from.y, sq.x, sq.y, opts);
+      if (p && (!best || p[p.length - 1].g < best[best.length - 1].g)) best = p;
+    }
+    if (!best || best.length < 2) return null;
+    let cut = best.length - 1;
+    while (cut > 0 && best[cut].g > speed) cut--;
+    if (cut === 0) return null;
+    return best.slice(0, cut + 1);
+  }
+
   return {
     width: W, height: H,
     inBounds, tileAt, blocksMove, blocksSight, hasLoS, fieldOfView, findPath, adjacentOpen,
+    planApproach,
   };
 }
 

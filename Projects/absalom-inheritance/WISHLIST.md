@@ -1,16 +1,22 @@
 # The Absalom Inheritance — Feature Wishlist
 
-**Status: three rounds are shipped and the engine is stable — `test/smoke.mjs`
-reports 308 passed, 0 failed, and `test/balance.mjs` puts both builds inside its
-declared 45–90% band (Wizard 53.6%, Fighter 79.8% over 2000 seeded runs each).
-Nothing is mid-flight. The first open phase is Phase 1 — the interrupt point —
-on Claude Fable 5.1.**
+**Status: Phase 1 — the interrupt point — has shipped.** The turn loop has a
+seam. `fireTrigger` is called at three named points, `content.js` validates a
+`reaction` command kind against those three names and two effects, and a
+creature turn is a generator the caller drains rather than one function that
+returns when it is over. Kessa carries Reactive Strike, Vesper carries Shield
+Block, and the Vault Keeper answers a Stride out of its reach with a basalt
+fist. `test/smoke.mjs` reports **425 passed, 0 failed**, up from 308, and
+seventeen guard-rails were broken on purpose (#34) and each exited 1 from a
+green baseline. `test/balance.mjs` over 2000 seeded runs a build: **Wizard
+64.5%** (from 53.6%) and **Fighter 79.8%** (unchanged to the decimal). The next
+open phase is Phase 2 — conditions that expire — on Claude Fable 5.1.
+
 Round one made an unwinnable vignette winnable and broke the single file into ES
 modules; round two added a second area and caught a stall bug with a Monte Carlo
 harness that a browser playthrough never would have; round three added character
-creation and a second build, tuned across three measured passes. What is left is
-what every round has deferred for the same reason: the turn loop has no point at
-which anything can interrupt anything else.
+creation and a second build, tuned across three measured passes; round four built
+the interrupt point every previous round had deferred.
 
 ## What it is
 
@@ -50,16 +56,16 @@ test suites exist at all.
 - **`js/rules.js` (145)** — the PF2e math and nothing else: `degreeOfSuccess`,
   `check`, `basicSaveDamage`, `mapPenalty`, `feetBetween`, `stridesFor`,
   `parseDamage`, `makeRng`. Pure, RNG injected.
-- **`js/world.js` (179)** — one area's grid. `TILE` (FLOOR, WALL, GATE, PILLAR,
+- **`js/world.js` (209)** — one area's grid. `TILE` (FLOOR, WALL, GATE, PILLAR,
   TREASURE, STAIRS), Bresenham `hasLoS`, `fieldOfView`, an eight-way `findPath`
-  whose node key carries a diagonal parity bit, and the fog bitfield the save
-  writes.
+  whose node key carries a diagonal parity bit, `planApproach` (the one creature
+  stride planner, shared with the suite), and the fog bitfield the save writes.
 - **`js/content.js` (330)** — `loadPack` parses and *refuses*: a broken pack
   throws a `ContentError` with a sentence. `selectPc(content, buildId)` resolves
   a many-build pack down to the one-PC shape every other module still reads.
-- **`js/game.js` (834)** — the run. Persistent `run` state, a runtime-only
-  `turn` object, triggers, and every command the player can fire. Headless: an
-  action resolves instantly and hands back a playback script.
+- **`js/game.js` (1,126)** — the run. Persistent `run` state, a runtime-only
+  `turn` object, the reaction bus, triggers, and every command the player can
+  fire. Headless: an action resolves instantly and hands back a playback script.
 - **`js/save.js` (254)** — the gvb-save slot (`absalom-inheritance-save-v1`,
   schema 1) plus `makeRepair`, which resolves and clamps every field on every
   load. `migrate` exists and is empty.
@@ -68,16 +74,17 @@ test suites exist at all.
   four modals, the keyboard cursor, the save bar, and `pickCharacter`, built
   entirely from `content.pcOptions`. **`js/main.js` (101)** — boot: fetch the
   pack unresolved, load a save or run the picker, `selectPc` once, autosave.
-- **`test/smoke.mjs` (944)** — 308 assertions across rules, world, content,
-  game and save. **`test/autopilot.mjs` (248)** — a competent player as code,
+- **`test/smoke.mjs` (1,490)** — 425 assertions across rules, world, content,
+  game, reactions and save. **`test/autopilot.mjs` (248)** — a competent player as code,
   generic over command *kind* rather than id. **`test/balance.mjs` (117)** — N
   seeded playthroughs per build, band-checked independently, non-zero exit if
   any build leaves the band.
 
-Where it breaks down: **`game.js` at 834 lines is the only module without a
-seam.** State, turn order, triggers, movement, six command kinds and the
-inventory all live in one closure — fine while a turn is a straight line, and
-the whole obstacle to a turn that can be interrupted.
+Where it breaks down: **`game.js` is still the only module without a seam,**
+and it is 1,126 lines now rather than 834. State, turn order, the bus,
+movement, seven command kinds and the inventory all live in one closure. A turn
+has interior structure at last, which was the whole point of Phase 1; splitting
+the closure itself is still nobody's phase.
 
 ## Conventions a new builder must know
 
@@ -135,7 +142,7 @@ or visible in the code.
   invocations that actually work:
 
 ```
-node Projects/absalom-inheritance/test/smoke.mjs        → 308 passed, 0 failed — SMOKE OK
+node Projects/absalom-inheritance/test/smoke.mjs        → 425 passed, 0 failed — SMOKE OK
 node Projects/absalom-inheritance/test/balance.mjs 2000 → BALANCE OK for both builds
 node Projects/absalom-inheritance/test/balance.mjs 400 --verbose   (a fast spot check)
 ```
@@ -165,12 +172,21 @@ Everything here is open and unclaimed. Add to this list rather than starting a
 new one.
 
 **The turn loop**
-- No reactions. Shield Block and Attack of Opportunity need an interrupt point
-  that does not exist — `runCreatureTurn()` resolves a whole creature turn
-  synchronously and `advance()` hands back a finished script.
+- Reactions exist and there are two of them. What there is not: **Step, Delay,
+  Ready, or declining a reaction.** Every reaction fires automatically, which is
+  right for the two that ship (Shield Block's disc lapses at the start of your
+  next turn either way, so declining only wastes it) and wrong for the first one
+  that is a real choice. Torchbearer's `askReaction` is the model.
+- **No creature ever provokes.** `world.planApproach` walks to the *cheapest*
+  square beside the PC, and a path to the cheapest such square cannot cross
+  another one on the way — so a creature can enter your reach and never leave
+  it. Kessa's Reactive Strike is correct and fires zero times in 2000 seeded
+  runs. Phase 4 is what changes that; `smoke.mjs` asserts the zero and will say
+  so when it does.
 - `turn.shielded` is a boolean on a runtime object, the engine's only status
-  effect, and deliberately not saved. Initiative is not saved either; a
-  mid-encounter reload re-rolls it. No Step, Delay, Ready, or declining.
+  effect, and deliberately not saved. `turn.reaction` and `turn.reacted` sit
+  beside it and are not saved either. Initiative is not saved; a mid-encounter
+  reload re-rolls it.
 
 **Rules and conditions**
 - No conditions at all: no frightened, off-guard, slowed, clumsy, enfeebled, no
@@ -246,7 +262,7 @@ names the **next open phase's number and its named model**, so whoever runs the
 arc next knows which session to open without reading this file.
 
 
-## Phase 1 — The interrupt point
+## Phase 1 — The interrupt point — SHIPPED
 
 **A creature walks past you with a longsword in your hand and nothing happens,
 because there is no moment in this engine at which anything can say "wait."**
@@ -264,32 +280,81 @@ Whichever ships first is the reference for the other: same event names, same
 Whether the two ever share *code* is the `Pathfinder/data/` question above,
 and this phase does not wait on it.
 
-- [ ] **A trigger bus in `game.js`.** One internal `fireTrigger(event, ctx)` at
-      named points — before a Strike resolves, when a creature leaves a square
-      adjacent to a reactor, when damage is about to land. Named points, not a
-      generic hook everywhere.
-- [ ] **`turn.reaction`, one per round**, refreshed alongside `turn.actions`;
-      a spent reaction refused with a reason string the way `commandBlocked()`
-      already refuses.
-- [ ] **Split the creature turn into steps.** `runCreatureTurn()` becomes a
-      generator or step list the caller drains, so a Stride is interruptible
-      between squares. The playback script keeps its shape — `ui.js` must not
-      have to change to *see* a reaction, only to animate one.
-- [ ] **Attack of Opportunity as a `reaction` command kind**, validated in
-      `content.js` with a `triggers` field, the Fighter as its first owner, and
-      **Shield Block** on the damage trigger — the case that proves the bus
-      fires *between* the attack roll and `hurtPC()`.
-- [ ] **The test that pins it.** A reaction fires once per round and not twice;
-      a creature stepping *toward* you provokes nothing; a Shield Block reduces
-      damage before `run.pc.hp` changes. Then `balance.mjs` at 2000 against both
-      builds — every balance number to date assumes reach costs nothing.
+**Shipped.** `game.js` 834 → 1,126 lines; `smoke.mjs` 308 → 425 checks.
+Seventeen guard-rails were broken on purpose (#34) and every one exited 1 from
+a green baseline. Three of them found nothing the first time and the tests were
+written until they fired: the `still-in-reach` half of the move trigger had no
+coverage at all; the sweep below tested a *copy* of the stride planner rather
+than the engine's; the `reduce` effect's target check was shadowed by tests
+that never damaged anything but the PC; the PC's own reaction refresh was
+asserted in a scenario that never spent it, so it could not tell a working
+refresh from a value nothing had touched; and the bus's refusal reason was
+first a single string and then a single ctx, both of which read as passing
+assertions that depended on initiative order rather than on the rule.
+
+Torchbearer shipped this seam first, so its event names are the ones used here:
+`move-out-of-reach`, `incoming-damage`, `incoming-attack`. Locked #17 keeps the
+two engines from sharing a line of code, and `Projects/torchbearer/js/combat.js`
+was read and re-implemented rather than imported (locked #133).
+
+- [x] **A trigger bus in `game.js`.** `fireTrigger(event, ctx)` at three named
+      points and nowhere else: before a Strike is rolled, when somebody steps
+      out of a square within a reactor's reach, and when damage is resolved and
+      about to land. `content.js`'s `REACTION_TRIGGERS` is the same three, and
+      `smoke.mjs` reads the string literals back out of `game.js`'s own source
+      and fails on the line where the two disagree — a pack naming a fourth
+      event would otherwise validate and never fire.
+- [x] **`turn.reaction`, one per round**, refreshed in `advance()` at the top of
+      the PC's own turn and nowhere else, with `turn.reacted` (a Set of creature
+      keys) doing the same job for creatures. Both are runtime-only, like
+      `turn.shielded`. `reactionBlocked()` refuses with a reason string —
+      `spent`, `ally`, `no-shield`, `not-in-reach`, `still-in-reach`,
+      `damage-type`, `not-the-target` — the way `commandBlocked()` already does,
+      and `commandBlocked()` itself answers `reaction-spent` and `no-shield` for
+      a reaction command so the panel can dim the row.
+- [x] **The creature turn is a generator the caller drains.** `creatureTurn(c)`
+      yields steps; `runCreatureTurn(c)` collects them into the same script
+      `advance()` always returned. A Stride walks square by square, so a
+      reaction fires in the square it is about to leave, and a reaction that
+      kills the creature stops the turn there with the stride step carrying only
+      the squares it actually crossed. `ui.js` reads nothing out of the script
+      and did not have to change to see any of it. The stride planner moved to
+      `world.planApproach` so the suite could walk the engine's own.
+- [x] **Reactive Strike, not Attack of Opportunity.** The Remaster renamed it,
+      and this pack already ships Breathe Fire under its legal name. Kessa is its
+      first owner at +7 / 1d8+2 with no MAP taken and none added; **the Vault
+      Keeper carries it too** (locked #134), which is what makes the trigger fire
+      in shipped play rather than only in the suite. **Shield Block** is Vesper's,
+      on `incoming-damage`, hardness 5, physical damage only, and blocking with
+      the Shield cantrip's disc destroys it. `content.js` validates `kind:
+      "reaction"` against `triggers` and an `effect` of `strike` or `reduce`, and
+      a creature's own `reactions` array against the pack's whole command list.
+- [x] **The test that pins it,** in `smoke.mjs` §5. A reaction fires once per
+      round and not twice; both halves of the move trigger, separately; a Shield
+      Block reduces damage before `run.pc.hp` changes and is logged before the
+      damage line; a walk interrupted mid-route stops on the square the reaction
+      caught it; nobody reacts to their own side. Then `balance.mjs` at 2000
+      against both builds, with a `reactions fired` line in the report.
+
+**What the balance harness said, and it is the interesting part.** Wizard
+53.6% → **64.5%**, blocking in 62% of runs — Shield Block is the first thing in
+three rounds to narrow the gap between the two builds, which is half an answer
+to this file's own second open question. Fighter 79.8% → **79.8%**, unchanged to
+the decimal, because **Reactive Strike fires zero times in 2000 runs**: a
+creature Strides to the *cheapest* open square beside the PC, and an optimal
+path to the cheapest such square cannot cross another one on the way, so a
+creature can enter your reach and never leave it. The Keeper's copy fires
+against a *player* who walks away, which the autopilot never does. `smoke.mjs`
+asserts the zero over 3,032 planned Strides so that Phase 4, the day it gives a
+creature a reason to reposition, is told the rule has come alive.
 
 *Leans on:* `game.js`'s `runCreatureTurn`/`advance`/`useCommand`,
-`content.js`'s command validator, `test/autopilot.mjs`. *Save:* none — a
-reaction is spent within a turn, and `turn` is deliberately not saved. *Model:*
+`content.js`'s command validator, `test/autopilot.mjs`. *Save:* none beyond an
+additive `stats.reactions`, repaired to 0 on a legacy save (#37) — a reaction is
+spent within a turn, and `turn` is deliberately not saved. *Model:*
 **Claude Fable 5.1** — a structural refactor of the one 834-line closure with no
 seam, where an off-by-one in when a trigger fires is a silent rules error the
-suite will happily pass.
+suite will happily pass. Worked under Claude Opus 5.
 
 ## Phase 2 — Conditions that expire
 

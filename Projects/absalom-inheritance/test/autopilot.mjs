@@ -241,6 +241,7 @@ function summarise(game, outcome) {
     gateOpen: game.run.gateOpen,
     slain: game.run.stats.slain,
     woken: game.run.stats.woken,
+    reactions: game.run.stats.reactions,
     rounds: game.run.stats.rounds,
     dealt: game.run.stats.dealt,
     taken: game.run.stats.taken,

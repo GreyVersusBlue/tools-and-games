@@ -18,6 +18,44 @@ const TILE_BY_NAME = {
   pillar: TILE.PILLAR, treasure: TILE.TREASURE, stairs: TILE.STAIRS,
 };
 
+/**
+ * The three points at which this engine's turn loop can be interrupted, and
+ * the two things a reaction is allowed to do when it is.
+ *
+ * These are closed vocabularies for the same reason the tile names are: a
+ * command whose `triggers` names a fourth event would sit in the pack looking
+ * correct and never fire, which is the kind of silence a content author cannot
+ * debug. `game.js` fires exactly these three names and nothing else, and
+ * `smoke.mjs` asserts the two lists match.
+ *
+ * The names are Torchbearer's. Its `js/combat.js` shipped the same seam first
+ * (its Phase 3), and the two projects agreed to spell the events the same way
+ * even though locked #17 keeps them from sharing a line of code — an engine
+ * that calls the moment "move-out-of-reach" and another that calls it
+ * "leaves-reach" makes every future comparison an act of translation.
+ */
+export const REACTION_TRIGGERS = Object.freeze([
+  // A Strike is about to be rolled. Fired from both sides of the board.
+  "incoming-attack",
+  // Someone has just stepped out of a square within the reactor's reach.
+  "move-out-of-reach",
+  // Damage is resolved and about to land. The last point at which it can be
+  // reduced, and the only one at which the number is known.
+  "incoming-damage",
+]);
+
+/** What a reaction does when it fires. */
+export const REACTION_EFFECTS = Object.freeze([
+  // A Strike back, at no MAP. The PC's numbers come from the command; a
+  // creature's come from its own stat block, because a basalt fist is not a
+  // longsword whichever feat swings it.
+  "strike",
+  // Reduce `ctx.dmg` by `hardness`, before a single hit point moves.
+  "reduce",
+]);
+
+const KINDS = ["attack", "self-buff", "self-heal", "cone", "unerring", "consume", "reaction"];
+
 class ContentError extends Error {}
 
 function need(cond, msg) {
@@ -47,11 +85,14 @@ export function loadPack(raw) {
   need(Array.isArray(raw.commands) && raw.commands.length, "content: commands must be a non-empty array");
   const commands = raw.commands.map(c => {
     need(c.id && c.name, "content: every command needs an id and a name");
-    need(typeof c.cost === "number" && c.cost >= 1 && c.cost <= 3,
-      `content: command "${c.id}" cost must be 1-3, got ${c.cost}`);
+    // A reaction costs a reaction, which is not one of the three actions, so
+    // it is the one kind allowed to cost 0. Everything else is 1-3.
+    const costFloor = c.kind === "reaction" ? 0 : 1;
+    need(typeof c.cost === "number" && c.cost >= costFloor && c.cost <= 3,
+      `content: command "${c.id}" cost must be ${costFloor}-3, got ${c.cost}`);
     const out = {
       id: c.id, name: c.name, flavour: c.flavour || "", cost: c.cost,
-      costGlyph: c.costGlyph || "◆".repeat(c.cost), kind: c.kind,
+      costGlyph: c.costGlyph || (c.kind === "reaction" ? "↺" : "◆".repeat(c.cost)), kind: c.kind,
       hint: c.hint || "", note: c.note || "",
       target: c.target || null, agile: !!c.agile,
       spendSlot: !!c.spendSlot, spendFocus: !!c.spendFocus,
@@ -59,10 +100,14 @@ export function loadPack(raw) {
       attackBonus: c.attackBonus, acBonus: c.acBonus,
       coneFeet: c.coneFeet, rangeFeet: c.rangeFeet,
       save: c.save || null, damageType: c.damageType || "damage",
+      // Reaction fields. Null on every other kind rather than absent, so a
+      // consumer never has to ask whether the property exists first.
+      triggers: null, effect: null, hardness: null, damageTypes: null,
+      requiresShield: !!c.requiresShield,
     };
     if (c.damage) out.damage = parseDamage(c.damage);
     if (c.healing) out.healing = parseDamage(c.healing);
-    need(["attack", "self-buff", "self-heal", "cone", "unerring", "consume"].includes(out.kind),
+    need(KINDS.includes(out.kind),
       `content: command "${c.id}" has unknown kind "${c.kind}"`);
     if (out.kind === "attack") need(typeof out.attackBonus === "number" && out.damage,
       `content: attack command "${c.id}" needs attackBonus and damage`);
@@ -72,6 +117,35 @@ export function loadPack(raw) {
       `content: unerring command "${c.id}" needs rangeFeet and damage`);
     if (out.kind === "self-heal" || out.kind === "consume") need(out.healing,
       `content: command "${c.id}" needs healing`);
+    if (out.kind === "reaction") {
+      need(Array.isArray(c.triggers) && c.triggers.length,
+        `content: reaction command "${c.id}" needs a non-empty triggers array`);
+      for (const t of c.triggers) {
+        need(REACTION_TRIGGERS.includes(t),
+          `content: reaction command "${c.id}" names unknown trigger "${t}" ` +
+          `(known: ${REACTION_TRIGGERS.join(", ")})`);
+      }
+      need(REACTION_EFFECTS.includes(c.effect),
+        `content: reaction command "${c.id}" needs an effect of ${REACTION_EFFECTS.join(" or ")}, got "${c.effect}"`);
+      out.triggers = Object.freeze([...c.triggers]);
+      out.effect = c.effect;
+      if (out.effect === "strike") {
+        need(typeof out.attackBonus === "number" && out.damage,
+          `content: strike reaction "${c.id}" needs attackBonus and damage (a creature using it strikes with its own attack instead)`);
+      }
+      if (out.effect === "reduce") {
+        need(typeof c.hardness === "number" && c.hardness > 0,
+          `content: reduce reaction "${c.id}" needs a positive hardness`);
+        out.hardness = c.hardness;
+        // Absent means "any damage". Present narrows it, which is what keeps
+        // Shield Block off a fire cone.
+        if (c.damageTypes) {
+          need(Array.isArray(c.damageTypes) && c.damageTypes.length,
+            `content: reduce reaction "${c.id}" damageTypes must be a non-empty array when present`);
+          out.damageTypes = Object.freeze([...c.damageTypes]);
+        }
+      }
+    }
     return Object.freeze(out);
   });
   const commandById = Object.fromEntries(commands.map(c => [c.id, c]));
@@ -102,6 +176,10 @@ export function loadPack(raw) {
       name: p.name || "The heir", title: p.title || "", note: p.note || "",
       blurb: p.blurb || "",
       hp: p.hp, ac: p.ac, acNote: p.acNote || "", speed: p.speed || 25,
+      // How far this build threatens, for the reaction bus. Every level-1
+      // weapon in this pack is 5 ft; a reach weapon would say 10 and the
+      // move-out-of-reach trigger would follow it without another change.
+      reachFeet: p.reachFeet || 5,
       perception: p.perception || 0, saves: { ...p.saves },
       spellDC: p.spellDC || 10, spellAttack: p.spellAttack || 0,
       slots: p.slots || 0, focus: p.focus || 0,
@@ -133,10 +211,23 @@ export function loadPack(raw) {
       attackName: c.attackName || "Strike",
       damage: parseDamage(c.damage),
       damageType: c.damageType || "damage",
+      reachFeet: c.reachFeet || 5,
+      // Which reaction commands this creature can fire. The ids are looked up
+      // in the pack's whole command list, not the chosen build's slice — a
+      // creature's feats have nothing to do with which heir walked in.
+      reactions: Object.freeze([...(c.reactions || [])]),
       deathLine: c.deathLine || "{name} falls.",
       wakeLine: c.wakeLine || "{name} stirs.",
       sleepLine: c.sleepLine || "{name} settles back into stillness.",
     });
+  }
+
+  for (const [id, c] of Object.entries(creatures)) {
+    for (const rid of c.reactions) {
+      need(commandById[rid], `content: creature "${id}" lists unknown reaction "${rid}"`);
+      need(commandById[rid].kind === "reaction",
+        `content: creature "${id}" lists "${rid}", which is a ${commandById[rid].kind} command, not a reaction`);
+    }
   }
 
   // ---- items ----------------------------------------------------------
@@ -275,6 +366,11 @@ export function loadPack(raw) {
     commandById: Object.freeze(commandById),
     creatures: Object.freeze(creatures),
     items: Object.freeze(items),
+    // Every command in the pack, by id, and it stays whole through selectPc()
+    // — which narrows `commands`/`commandById` to one build. A creature's
+    // reaction is looked up here for exactly that reason: the Vault Keeper
+    // does not stop having Reactive Strike because the Wizard was picked.
+    allCommandById: Object.freeze({ ...commandById }),
     startingInventory: Object.freeze(startingInventory),
     inventorySlots: raw.inventorySlots || 8,
     bulkLimit: raw.bulkLimit ?? 5,

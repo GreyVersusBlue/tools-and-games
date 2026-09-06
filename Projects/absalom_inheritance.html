@@ -101,6 +101,12 @@ button{
 button:hover:not(:disabled){border-color:var(--gold); background:#262233;}
 button:disabled{opacity:.35; cursor:not-allowed;}
 button.armed{border-color:var(--gold); background:#2b2412; box-shadow:inset 0 0 0 1px var(--gold);}
+/* A reaction row is never clickable — it fires from the trigger bus, not from
+   a press — so it does not read as a disabled action. It dims only when it is
+   actually spent or unavailable. */
+button.reaction{cursor:default;}
+button.reaction:disabled{opacity:1;}
+button.reaction.spent{opacity:.35;}
 button .cost{color:var(--gold); white-space:nowrap; font-size:11px; letter-spacing:.05em;}
 button:focus-visible, .inv-item:focus-visible, canvas:focus-visible{
   outline:2px solid var(--gold); outline-offset:2px;

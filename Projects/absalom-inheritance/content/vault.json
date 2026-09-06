@@ -30,7 +30,7 @@
       "spellAttack": 7,
       "slots": 2,
       "focus": 1,
-      "commands": ["strike", "shield", "splash", "breathe", "fang", "potion"]
+      "commands": ["strike", "shield", "splash", "breathe", "fang", "potion", "shield-block"]
     },
     {
       "id": "fighter",
@@ -46,7 +46,7 @@
       "saves": { "fort": 6, "ref": 4, "will": 1 },
       "slots": 0,
       "focus": 0,
-      "commands": ["strike-sword", "potion"],
+      "commands": ["strike-sword", "potion", "reactive-strike"],
       "reactionsNote": "No reactions modelled — same restraint as Vesper's Shield Block note. A Fighter's actual selling point (Attack of Opportunity) is exactly the priority-2 gap in the prompt, not something this build fakes with a wizard-shaped workaround."
     }
   ],
@@ -141,6 +141,36 @@
       "healing": "1d8",
       "hint": "Drink a Minor Healing Potion (◆).",
       "note": "Interact. The potion is treated as already drawn, so drawing it does not cost a second action."
+    },
+    {
+      "id": "reactive-strike",
+      "name": "Reactive Strike",
+      "flavour": "reaction",
+      "cost": 0,
+      "costGlyph": "\u21ba",
+      "kind": "reaction",
+      "effect": "strike",
+      "triggers": ["move-out-of-reach"],
+      "attackBonus": 7,
+      "damage": "1d8+2",
+      "damageType": "slashing",
+      "hint": "Reactive Strike (\u21ba): fires by itself when something leaves your reach. It is not a button.",
+      "note": "Attack of Opportunity was renamed Reactive Strike in the Remaster, and Fighters have it at 1st level. Implemented under its legal name, the way Breathe Fire is. Kessa's longsword numbers: +7 and 1d8+2, with no multiple-attack penalty taken and none added, because the swing happens on somebody else's turn and MAP belongs to your own. A creature that lists this strikes with its own attack instead \u2014 a basalt fist is not a longsword whichever feat swings it."
+    },
+    {
+      "id": "shield-block",
+      "name": "Shield Block",
+      "flavour": "reaction",
+      "cost": 0,
+      "costGlyph": "\u21ba",
+      "kind": "reaction",
+      "effect": "reduce",
+      "triggers": ["incoming-damage"],
+      "hardness": 5,
+      "damageTypes": ["slashing", "piercing", "bludgeoning"],
+      "requiresShield": true,
+      "hint": "Shield Block (\u21ba): while Shield is up, the disc soaks 5 physical damage and is spent doing it.",
+      "note": "Player Core. The Shield cantrip's force disc has Hardness 5 and can Shield Block; blocking destroys it, so the +1 AC goes with it. Physical damage only \u2014 the disc does nothing about fire. It fires without asking, because the disc lapses at the start of your next turn either way: declining it only wastes it."
     }
   ],
 
@@ -174,6 +204,7 @@
       "attackName": "Basalt Fist",
       "damage": "1d6+2",
       "damageType": "bludgeoning",
+      "reactions": ["reactive-strike"],
       "deathLine": "The Keeper kneels, and does not rise. Gold dust settles over the casket.",
       "wakeLine": "The shape beside the casket was never rubble. {name} stands, and the chamber narrows.",
       "note": "The statline the two sentinels originally shipped with (17 HP, AC 14, fist +6 for 1d6+2), promoted to the boss it was always sized for: 15 XP against a solo level-1 PC, and the only fight the PC arrives at with a full spell list, because opening the gate restores them. The number was never wrong; it was pointed at the wrong fight, twice over."
