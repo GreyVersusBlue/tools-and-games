@@ -327,7 +327,7 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
   "choices": [ { "text": "Close the cupboard.", "goto": "arrival-return" } ] }
 ```
 
-* `"kind"` is the only scene kind there is so far, and it is a closed list: a typo like `"kind": "stop"` is a validator error rather than a scene that quietly renders as ordinary prose and leaves the player standing in a market with nothing to buy.
+* `"kind"` is a **closed list** — `"shop"` and `"explore"` — because the failure is silent: a typo like `"kind": "stop"` would render a perfectly ordinary scene, and the only symptom is a player standing in a market with nothing to buy. It is a validator error instead.
 * `stock` is what is for sale, by item id, and every one of them **must have a `price`** — a stocked item nobody can buy renders a card that reads as a broken button. `shopTitle` is the heading over the buy side, and defaults to "For Sale".
 * The sell side is automatic: everything in the hero's pack, **at half price, rounded down**. Potions are not in the pack — they are on the resource stack Drink Potion pops from — so the shop cannot buy them back.
 * A shop is still a scene. Give it a `choices` entry that leads out, or the hero is standing in it forever.
@@ -359,6 +359,44 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 * Coordinates are 0-indexed `[x, y]`; keep maps ≤ ~16×12. Provide at least 4 `pcStarts`.
 * **Scaling:** foes with `"minParty": 2` (or 3) only spawn at that party size; foes with `"minLevel"` or `"maxLevel"` only spawn when the hero's level is inside the range (both bounds inclusive, either alone is fine). All three are whole numbers of 1 or more, and a `minLevel` above its `maxLevel` is rejected. Budget roughly: solo hero ≈ 2 low-level foes + 1 mid; full party of 3 ≈ a Moderate/Severe encounter by Paizo XP budget. A hero who has played the three shipped one-shots is level 6 and will walk through a level-3 encounter unless something is gated on `minLevel`.
 * `bossFlags` keys are story flags; effects hit the first foe whose monster has `"boss": true`.
+
+**Exploration** — a scene that decides how the next fight opens:
+
+```json
+"bridge-approach": { "kicker": "The Bridge", "kind": "explore",
+  "title": "The First Forty Feet", "exploreTitle": "How You Cross",
+  "explore": { "dc": 18, "goto": "bridge-fog" },
+  "text": ["The span goes out of the lamplight in about forty feet…"],
+  "choices": [] }
+```
+
+* The scene renders three cards — **Search** (`search`, Perception), **Avoid Notice** (`avoid-notice`, Stealth) and **Defend** (`defend`, no roll) — and picking one is picking not to do the other two. It is one check against `explore.dc`, and then the hero goes to `explore.goto` whatever the roll said.
+* On a success or better the activity sets an **opener flag** for the next encounter. A failure sets nothing: the punishment for creeping badly is the ordinary fight, not a worse one. If you want a botched approach to hurt, write an ordinary check-and-goto scene and set `fatigued-start` on the scene it fails into, where the player can read it.
+* `explore.dc` is a whole number and `explore.goto` names a real scene; both are required, because a scene that offers three activities and no way out strands the player. `explore.activities` (optional) narrows the offer to a subset, in the order you write them.
+* `exploreTitle` is the heading over the cards, and defaults to "How You Go On". Ordinary `choices` still render underneath, so a scene can offer "go back to the bridgehead" alongside the three activities.
+
+**Openers** — the state an encounter starts in:
+
+| Flag | What the engine does with it |
+| --- | --- |
+| `surprise-round` | Foes are off-guard for the first round and roll initiative last. |
+| `fatigued-start` | The whole party starts fatigued: −1 AC and −1 to every save. |
+| `scouted` | +2 circumstance bonus to the party's initiative. Nothing else. |
+| `hero-hidden` | The hero opens the fight Hidden from every foe, and stays hidden until they move or strike. |
+| `shield-braced` | The hero enters with their shield already raised, if they carry one. It lasts through their first turn, the way Raise Shield does. |
+
+* An opener is an ordinary flag with a reserved name, so **an author sets one the same way as any other flag**: `"onEnter": {"flag": "surprise-round"}` two scenes before the ambush. An exploration scene is the other way in, and hands the choice to the player instead.
+* Every opener is **consumed** by the fight that reads it: it colours one encounter and not every encounter after it.
+* Spell one wrong and it is a validator error, not a flag that sits in the map doing nothing. `suprise-round` used to be a scene that read as an ambush in the prose and played as an ordinary fight.
+
+**Downtime** — what a hero does between adventures:
+
+* Camp is reachable from the title screen, and only when no adventure is running. Four activities, and **every one of them costs exactly one day**: Long Rest, Treat Wounds, Earn Income and Craft. The day count lives on the save.
+* **Long Rest** restores Constitution modifier × level HP (minimum 1), every spell slot, the divine font, focus, and one step off Wounded — and turns the day over on Halfling Luck.
+* **Treat Wounds** rolls Medicine against the DC the hero's rank buys: 15 trained, 20 expert (+10 HP), 30 master (+30), 40 legendary (+50). Success is 2d8 plus that bonus, a critical success 4d8, a critical failure 1d8 damage. An untrained hero cannot attempt it.
+* **Earn Income** works the hero's best trained skill against their own level's DC and pays PF2e's Income Earned table: a critical success pays the row one level higher, a failure pays the failure column, a critical failure pays nothing.
+* **Craft** is half the price in materials, four days at the bench, and then either pay the rest or keep working — each extra day knocks a day's Earn Income off what is still owed. It only saves money by costing time, which is the whole rule.
+* None of this is authorable yet: there is no pack field that adds a downtime activity, and no scene kind for one. What content controls is the *money* the hero brings to it and the level the tables are read at.
 
 **Campaigns** — a run of adventures, in order:
 

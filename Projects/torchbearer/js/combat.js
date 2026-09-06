@@ -32,8 +32,9 @@
 //      300–900ms pacing (locked #92).
 //   3. **`start` takes the party and the flags as arguments** rather than
 //      reading `App.party()` and `App.flags`. The flags object is mutated in
-//      place — `surprise-round` and `fatigued-start` are consumed — because the
-//      page relies on that.
+//      place — every key of `OPENERS` in js/downtime.js is consumed, so an
+//      opening state colours one fight and not every fight after it — because
+//      the page relies on that.
 //   4. **The view hooks are no-ops.** `renderAll`, `hint`, `toast`, `mount`,
 //      `floatText` and `autosave` do nothing here. Nothing in this file knows a
 //      colour it did not already carry as data.
@@ -43,6 +44,7 @@
 // engine with `newCombat({cbs, order, ...})`, or a real one with `start`.
 
 import { Registry } from "./registry.js";
+import { OPENERS } from "./downtime.js";
 import { Dice, skillMod, SIZES, sizeIndex, levelDC } from "./rules.js";
 import { esc, cap } from "./text.js";
 
@@ -1038,8 +1040,22 @@ export const CombatCore = {
     this.walls=new Set((enc.terrain.walls||[]).map(w=>this.key(w[0],w[1])));
     this.diff=new Set((enc.terrain.diff||[]).map(w=>this.key(w[0],w[1])));
     const flags=opts.flags||{};
-    this.surprise=!!flags["surprise-round"]; delete flags["surprise-round"];
-    const fatigued=!!flags["fatigued-start"]; delete flags["fatigued-start"];
+    /* The opening state, and it is a table now (Phase 7, increment 3).
+       This used to be two lines naming two flags, which meant the only way an
+       encounter could start in any state but neutral was for combat.js to
+       carry a line for it — `surprise-round` since session 3 and
+       `fatigued-start` since session 6, and nothing else ever. Every key of
+       OPENERS is consumed the same way those two were: read, then deleted, so
+       a scene that sets one colours the next fight and not every fight after
+       it. js/downtime.js holds the table; registry.js validates against the
+       same keys, so a misspelled opener is an error at load rather than a flag
+       that sits in the map doing nothing. */
+    this.openers=Object.keys(OPENERS).filter(k=>flags[k]);
+    this.openers.forEach(k=>{ delete flags[k]; });
+    const opened=k=>this.openers.some(o=>OPENERS[o][k]);
+    this.surprise=opened("surprise");
+    const initBonus=this.openers.reduce((n,o)=>n+(OPENERS[o].initiative||0),0);
+    const startConds=this.openers.flatMap(o=>OPENERS[o].conditions||[]);
     this.onVictory=opts.onVictory; this.onDefeat=opts.onDefeat;
     // party
     this.cbs=[];
@@ -1047,7 +1063,13 @@ export const CombatCore = {
     party.forEach((cb,i)=>{
       const st=enc.pcStarts[i]||enc.pcStarts[0];
       cb.x=st[0]; cb.y=st[1]; cb.dead=false; cb.dying=0; cb.conditions=cb.conditions||[]; cb.buffs=[];
-      if(fatigued) this.addCond(cb,"fatigued",1,99,true);
+      startConds.forEach(c=>this.addCond(cb,c.c,c.v,c.dur,true));
+      /* Braced only means something with something to brace. `shieldRaised` is
+         +2 AC in effAC with no check of its own, and the Raise Shield button is
+         gated on `char.build.gear.shield` in the page — so a shieldless hero
+         who Defends gets the fight, not the bonus. */
+      cb.bracedOpener=!!(opened("shield")&&cb.char&&cb.char.build&&cb.char.build.gear&&cb.char.build.gear.shield);
+      cb.shieldRaised=cb.bracedOpener;
       this.cbs.push(cb);
     });
     // foes (scaled by party size, and since Phase 6 by the hero's level —
@@ -1072,14 +1094,23 @@ export const CombatCore = {
       if(flags[flag]){ const boss=this.cbs.find(c=>c.boss);
         if(boss)(fx.applyToBoss||[]).forEach(c=>this.addCond(boss,c.c,c.v,c.dur,true));
         if(fx.log) this.log(fx.log); } }); }
+    /* Unseen: the hero opens the fight Hidden from every foe, which Phase 4's
+       detection already knows how to spend — the first Strike out of it forces
+       the flat check and then gives the hiding place away. It is set here
+       rather than in the party loop because the foes do not exist yet up there. */
+    if(opened("hidden")){
+      const hero=this.cbs.find(c=>c.side==="pc"&&c.char);
+      if(hero) this.cbs.filter(c=>c.side==="foe").forEach(f=>this.setDetect(f,hero,"hidden"));
+    }
     // initiative
     this.cbs.forEach(cb=>{
       const mod = cb.side==="pc"? (cb.char? cb.char.perception+cb.char.initBonus : cb.initSkill||cb.perception) : cb.perception;
-      cb.init=Dice.d(20)+mod;
+      cb.init=Dice.d(20)+mod+(cb.side==="pc"?initBonus:0);
       if(this.surprise&&cb.side==="foe") cb.init-=100; // ambushed: act last
     });
     this.order=[...this.cbs].sort((a,b)=>b.init-a.init);
     this.log(`<b>${enc.name}.</b> ${esc(enc.intro||"")}`);
+    this.openers.forEach(o=>this.log(`<b>${OPENERS[o].name}.</b> ${esc(OPENERS[o].note)}`));
     this.mount();
     this.beginTurn(0,true);
   },
@@ -1090,7 +1121,11 @@ export const CombatCore = {
     const cb=this.cur();
     if(cb.dead){ return this.nextTurn(); }
     // start-of-turn: persistent damage & recovery & cooldowns & buffs tick handled at end
-    cb.reactionUsed=false; cb.shieldRaised=false; cb.nimbleUsed=false; cb.mapCount=0; cb.flourishUsed=false; cb.hexUsed=false; cb.reloadedThisTurn=false;
+    /* Raise Shield lasts "until the start of your next turn", and a shield
+       braced before initiative is raised from the fight's first frame — so the
+       one turn it must survive is the braced combatant's own first one.
+       `bracedOpener` is spent there and the clear is ordinary from then on. */
+    cb.reactionUsed=false; cb.shieldRaised=!!cb.bracedOpener; cb.bracedOpener=false; cb.nimbleUsed=false; cb.mapCount=0; cb.flourishUsed=false; cb.hexUsed=false; cb.reloadedThisTurn=false;
     // A readied action lasts until the start of your next turn, fired or not.
     cb.readied=null;
     // …and so does a prepared Aid, which is dropped from both ends here.
@@ -1729,7 +1764,7 @@ export function newCombat(over){
   return Object.assign(Object.create(CombatCore), {
     active:false, cbs:[], order:[], turnIdx:0, round:1, enc:null,
     mapW:0, mapH:0, walls:new Set(), diff:new Set(),
-    actions:0, armed:null, sel:null, huntPreyId:null, surprise:false, detect:{},
+    actions:0, armed:null, sel:null, huntPreyId:null, surprise:false, openers:[], detect:{},
     onVictory:null, onDefeat:null,
     events:[], onEvent:null
   }, over||{});

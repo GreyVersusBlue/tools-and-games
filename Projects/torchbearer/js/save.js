@@ -28,7 +28,9 @@ export const SAVE_KEY = "torchbearer-save";
  * for any save missing them (locked #122). `gold` and `inventory`, added by the
  * phase's second increment, are the same argument again: a save written before
  * money existed is a hero with an empty purse and nothing loose in their pack,
- * which is exactly what the two lines in `repairSnapshot` compute.
+ * which is exactly what the two lines in `repairSnapshot` compute. `days`, added
+ * by the third increment, is the same again: a save from before downtime is a
+ * hero who has spent none.
  */
 export const SAVE_VERSION = 3;
 
@@ -166,6 +168,12 @@ export function repairSnapshot(state) {
      Drink Potion pops one off it in the middle of a fight. */
   s.gold = Math.max(0, Math.floor(num(s.gold, 0)));
   s.inventory = Array.isArray(s.inventory) ? s.inventory.filter(id => typeof id === "string") : [];
+  /* Phase 7, increment 3. `days` is how much time the hero has spent between
+     adventures — one per downtime activity, and the only thing that makes an
+     extra day at a Crafting bench cost anything. A save written before downtime
+     existed is a hero who has spent no days, which is what this line computes,
+     so `SAVE_VERSION` stayed at 3 for the fourth time on #122's argument. */
+  s.days = Math.max(0, Math.floor(num(s.days, 0)));
   s.hero = repairHero(s.hero);
   s.companions = Array.isArray(s.companions)
     ? s.companions.filter(c => obj(c) && typeof c.id === "string")

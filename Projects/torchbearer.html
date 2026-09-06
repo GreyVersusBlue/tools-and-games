@@ -184,6 +184,10 @@ button{font-family:inherit;cursor:pointer}
    game prints, and its own rule so it reads as a running total rather than
    as one more paragraph of the scene. */
 .shop-purse{margin:0 0 10px;font-size:15px;letter-spacing:.02em;color:var(--brass-hi)}
+/* What the last downtime activity did, at the top of the camp modal, where the
+   line explaining the day just spent belongs. */
+.camp-report{margin:0 0 12px;padding:8px 10px;border-left:2px solid var(--brass);
+  background:rgba(199,154,75,.07);font-size:14px;line-height:1.5}
 
 /* boosts */
 .boost-row{display:flex;align-items:center;gap:8px;margin:7px 0;flex-wrap:wrap}
@@ -485,6 +489,7 @@ select,input[type=file]{background:var(--soot);color:var(--parch);border:1px sol
         <button class="title-btn" id="btn-begin-adv" disabled>🗺 Begin Adventure</button>
         <button class="title-btn" id="btn-resume" disabled>🕯 Resume Journey</button>
         <button class="title-btn" id="btn-view-hero" disabled>📜 View Hero Sheet</button>
+        <button class="title-btn" id="btn-camp" disabled>🔥 Make Camp</button>
         <button class="title-btn" id="btn-level-up" disabled>⬆ Level Up</button>
       </div>
       <!-- The hero's name, level and XP toward the next one. Empty until a hero is forged. -->
@@ -543,7 +548,7 @@ import { mountSaveBar } from "../assets/js/gvb-save.js";
 import { Registry } from "./torchbearer/js/registry.js";
 import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, activeEffects, abilityMods,
          finalizeCharacter, skillMod, assuranceFloor, assuranceDegree, advancesUpTo, grantsAt,
-         XP_PER_LEVEL, canLevelUp, awardFor, featChoices, skillIncreaseOptions, advanceMissing } from "./torchbearer/js/rules.js";
+         XP_PER_LEVEL, canLevelUp, awardFor, featChoices, skillIncreaseOptions, advanceMissing, levelDC } from "./torchbearer/js/rules.js";
 import { createTorchSlot } from "./torchbearer/js/save.js";
 import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, REACTIONS } from "./torchbearer/js/combat.js";
 import { esc, cap } from "./torchbearer/js/text.js";
@@ -552,6 +557,9 @@ import { flagOk, foldFlags, progress as campaignRows, nextAdventure, isComplete 
   from "./torchbearer/js/campaign.js";
 import { parseCoins, coinText, priceOf, sellPrice, isPotion, buy, sell, addCoins }
   from "./torchbearer/js/shop.js";
+import { OPENERS, EXPLORATION, activitiesFor, openerFor, DOWNTIME, restHP, treatWounds, treatDC,
+         earnIncome, craftCost, craftDaysToFree, CRAFT_DAYS }
+  from "./torchbearer/js/downtime.js";
 
 /* ================= CORE CONTENT PACK =================
    This object uses the exact same schema as external JSON
@@ -2102,6 +2110,12 @@ const App = {
      the way XP is, and carrying them from one adventure to the next is the
      point of having a campaign at all. */
   gold:0, inventory:[],
+  /* Phase 7, increment 3. The day count is the campaign's other currency: every
+     downtime activity costs exactly one, which is what stops Treat Wounds from
+     being free infinite healing and what makes an extra day at the bench a real
+     choice against the coin it saves (locked #127). Additive on the save, so
+     SAVE_VERSION did not move for it either. */
+  days:0,
 
   init(){
     try{ Registry.loadPack(CORE_PACK); Registry.loadPack(ADVENTURE_PACK); }
@@ -2120,6 +2134,7 @@ const App = {
     document.getElementById("btn-view-hero").onclick=()=>this.modal("Hero Sheet",`<div class="parchment" style="padding:16px 20px">${sheetHTML(this.hero,true)}</div>`,[{label:"Close"}]);
     document.getElementById("btn-resume").onclick=()=>this.resume();
     document.getElementById("btn-level-up").onclick=()=>Builder.openLevelUp();
+    document.getElementById("btn-camp").onclick=()=>this.showCamp();
     document.getElementById("btn-to-title").onclick=()=>this.toTitle();
     document.getElementById("btn-load-content").onclick=()=>document.getElementById("file-input").click();
     document.getElementById("file-input").onchange=(e)=>this.fileChosen(e);
@@ -2186,6 +2201,10 @@ const App = {
     document.getElementById("btn-resume").disabled=!this.slot.load();
     const ready=!!this.hero&&canLevelUp(this.hero.build,this.xp);
     document.getElementById("btn-level-up").disabled=!ready;
+    /* Camp is between the roads, never on one: `this.adv` is non-null for as
+       long as an adventure is running, and downtime measured in days is not
+       something a hero does two squares from the Bell-Warden. */
+    document.getElementById("btn-camp").disabled=!this.hero||!!this.adv;
     const st=document.getElementById("hero-status");
     if(!this.hero) st.textContent="";
     else { const L=this.hero.level;
@@ -2195,6 +2214,9 @@ const App = {
       const road=this.campaignRecord();
       if(road){ const rows=campaignRows(road,this.campaignState());
         st.innerHTML+=`<br>On the road: <b>${esc(road.name)}</b> — ${rows.filter(r=>r.done).length} of ${rows.length} finished`; }
+      /* Same rule for the calendar: a hero who has never made camp has no day
+         count worth printing. */
+      if(this.days) st.innerHTML+=`<br>${this.days} ${this.days===1?"day":"days"} of downtime spent`;
       /* The purse only appears once there is one. A hero who has never found a
          coin should not read a line saying they have none. */
       if(this.gold||this.inventory.length){
@@ -2410,11 +2432,13 @@ const App = {
       <div class="scene-text">${sc.text.map(p=>`<p>${p}</p>`).join("")}</div>
       ${sc.companionChoice? this.companionPickerHTML():""}
       ${sc.kind==="shop"? this.shopHTML(sc):""}
+      ${sc.kind==="explore"? this.exploreHTML(sc):""}
       <div class="choice-list">${choiceHTML}</div>
       ${sc.ending?`<div class="rule"></div><div class="small" style="text-align:center;font-style:italic">— end of chronicle —</div>`:""}
     </div></div>`);
     if(sc.companionChoice){ this.bindCompanionPicker(); makeCardsFocusable(document.getElementById("game-center")); }
     if(sc.kind==="shop"){ this.bindShop(sc); makeCardsFocusable(document.getElementById("game-center")); }
+    if(sc.kind==="explore"){ this.bindExplore(sc); makeCardsFocusable(document.getElementById("game-center")); }
     document.querySelectorAll(".choice-btn").forEach(el=>el.onclick=()=>this.choose(sc,+el.dataset.i));
     if(!sc.gameover) this.autosave();
   },
@@ -2473,6 +2497,227 @@ const App = {
       this.log(`Sold <b>${esc(it.name)}</b> for ${esc(coinText(paid))}. The purse holds ${esc(coinText(this.gold))}.`,"narr");
       this.autosave(); this.gotoScene(this.sceneId);
     });
+  },
+  /* ---------- exploration, inside a scene (Phase 7, increment 3) ----------
+     A `"kind": "explore"` scene is one decision with three answers and no way
+     back: Search, Avoid Notice or Defend, each a single check against the
+     scene's own DC, each leaving an opener behind for whatever fight comes
+     next. The table is js/downtime.js's, so registry.js validates the same
+     three ids and Combat.start consumes the same five flag names.
+
+     This generalises the one mechanism the game already had. `surprise-round`
+     had been hardcoded in Combat.start since session 3 and was the only opening
+     state any author could ever write; there are five now and a scene kind that
+     hands them to the player rather than to the author. */
+  exploreHTML(sc){
+    const ex=sc.explore||{};
+    const acts=activitiesFor(sc);
+    return `<div class="section-sub" style="margin-top:18px">${esc(sc.exploreTitle||"How You Go On")}</div>
+      <div class="small" style="margin-bottom:8px">One of the three. What you choose is how the next fight opens, and choosing one is choosing not to do the other two.</div>
+      <div class="card-grid">${acts.map((a,i)=>{
+        const op=OPENERS[a.opener]||{name:a.opener,note:""};
+        const mod=a.skill? this.skillModOf(a.skill) : null;
+        const line=a.skill? `${cap(a.skill)} · DC ${esc(String(ex.dc))} · ${mod>=0?"+":""}${mod}` : "No check — it simply works";
+        return `<div class="opt-card" data-explore="${i}"><h3>${esc(a.name)}</h3>
+          <div class="meta">${esc(line)}</div>
+          <div class="desc">${esc(a.desc)}</div>
+          <div class="desc small" style="margin-top:6px"><b>${esc(op.name)}:</b> ${esc(op.note)}</div></div>`;
+      }).join("")}</div>`;
+  },
+  /** Perception is not in the skills map; every other check goes through skillMod. */
+  skillModOf(skill){ return skill==="perception"? this.hero.perception : skillMod(this.hero,skill); },
+  bindExplore(sc){
+    const ex=sc.explore||{}, acts=activitiesFor(sc);
+    document.querySelectorAll("#game-center [data-explore]").forEach(el=>el.onclick=()=>{
+      const a=acts[+el.dataset.explore]; if(!a) return;
+      let deg=2;
+      if(a.skill) deg=this.rollCheck(`${this.hero.name}: ${a.name}`,this.skillModOf(a.skill),ex.dc).deg;
+      const opener=openerFor(a,deg);
+      if(opener){ this.flags[opener]=true;
+        this.log(`<b>${esc(OPENERS[opener].name)}.</b> ${esc(OPENERS[opener].note)}`,"narr"); }
+      else this.log(`<i>Nothing comes of it. Whatever waits ahead will find you as you are.</i>`,"narr");
+      this.gotoScene(ex.goto);
+    });
+  },
+
+  /* ---------- downtime, between adventures (Phase 7, increment 3) ----------
+     Camp is only open when no adventure is running, because that is what
+     downtime means: PF2e's downtime activities take days, and a day is not
+     something you spend standing in a crypt with the Bell-Warden two squares
+     away. Every activity costs exactly one day (locked #127) — that is what
+     keeps Treat Wounds from being free unlimited healing, and it is what makes
+     an extra day at a Crafting bench a real price against the coin it saves. */
+  campDays(n){ this.days+=n; },
+  campHeader(){
+    const cb=this.heroCombatant();
+    return `<div class="small" style="margin-bottom:10px">Day <b>${this.days+1}</b> · ${esc(this.hero.name)} ·
+      HP <b>${cb.hp} / ${cb.hpMax}</b>${cb.wounded?` · Wounded ${cb.wounded}`:""} · Purse <b>${esc(coinText(this.gold))}</b></div>`;
+  },
+  showCamp(report){
+    if(!this.hero){ this.toast("Forge a hero first."); return; }
+    if(this.adv){ this.toast("Downtime waits until the road does."); return; }
+    const medRank=this.hero.skills.medicine||"U", craftRank=this.hero.skills.crafting||"U";
+    const cards=DOWNTIME.map(a=>{
+      let meta="One day", off=false;
+      if(a.id==="rest") meta=`One day · restores ${restHP(this.hero.abil.con,this.hero.level)} HP, spells, focus, and one step off Wounded`;
+      if(a.id==="treat-wounds"){
+        const dc=treatDC(medRank);
+        if(dc===null){ meta="Needs training in Medicine"; off=true; }
+        else meta=`One day · Medicine DC ${dc} · ${this.skillModOf("medicine")>=0?"+":""}${this.skillModOf("medicine")}`;
+      }
+      if(a.id==="earn-income"){ const best=this.bestEarnSkill();
+        meta=`One day · ${cap(best.skill)} DC ${levelDC(this.hero.level)} · ${best.mod>=0?"+":""}${best.mod} · pays by the level table`; }
+      if(a.id==="craft"){
+        if(craftRank==="U"){ meta="Needs training in Crafting"; off=true; }
+        else meta=`${CRAFT_DAYS} days and up · half the price in materials, and every extra day pays down the rest`;
+      }
+      /* `data-downtime`, not `data-camp`: the campaign picker's cards already
+         use `data-camp` in the same #modal-body, and both selectors are
+         `#modal-body [data-…]`. Found by the browser recipe, which tried to
+         read the four activity cards and got the campaign board's. */
+      return `<div class="opt-card ${off?"disabled":""}" data-downtime="${esc(a.id)}" aria-disabled="${off?"true":"false"}">
+        <h3>${esc(a.name)}</h3><div class="meta">${esc(meta)}</div><div class="desc">${esc(a.desc)}</div></div>`;
+    }).join("");
+    this.modal("Camp",
+      `${this.campHeader()}${report?`<p class="camp-report">${report}</p>`:
+        `<p class="small">Time between the roads. Every one of these costs a day.</p>`}
+       <div class="card-grid">${cards}</div>`,
+      [{label:"Break camp"}]);
+    document.querySelectorAll("#modal-body [data-downtime]").forEach(el=>{
+      if(el.getAttribute("aria-disabled")==="true") return;
+      el.onclick=()=>this.doCamp(el.dataset.downtime);
+    });
+  },
+  /** The skill a day of Earn Income is worked with: the best one the hero is trained in. */
+  bestEarnSkill(){
+    const trained=Object.keys(SKILLS).filter(k=>(this.hero.skills[k]||"U")!=="U");
+    if(!trained.length) return {skill:"crafting",rank:"U",mod:skillMod(this.hero,"crafting")};
+    const best=trained.map(k=>({skill:k,rank:this.hero.skills[k],mod:skillMod(this.hero,k)}))
+      .sort((a,b)=>b.mod-a.mod||a.skill.localeCompare(b.skill))[0];
+    return best;
+  },
+  doCamp(id){
+    this.closeModal();
+    if(id==="rest") return this.campRest();
+    if(id==="treat-wounds") return this.campTreat();
+    if(id==="earn-income") return this.campEarn();
+    if(id==="craft") return this.campCraftPick();
+    this.showCamp();
+  },
+  campRest(){
+    const heal=restHP(this.hero.abil.con,this.hero.level);
+    const cb=this.heroCombatant();
+    this.party().forEach(c=>{
+      c.hp=Math.min(c.hpMax,c.hp+heal); c.conditions=[]; c.buffs=[]; c.dying=0; c.tempHP=0;
+      if(c.wounded) c.wounded=Math.max(0,c.wounded-1);
+    });
+    /* A rest is the daily reset the game never had. Spell slots, the divine
+       font and focus all come back, and so does Halfling Luck — `dailyLuckUsed`
+       is a daily resource whose day had never once turned over. */
+    const ch=this.hero;
+    cb.resources.slots={1:ch.casting?ch.casting.slots[1]:0, 2:ch.casting?ch.casting.slots[2]:0};
+    cb.resources.focus=ch.focusMax; cb.resources.font=ch.casting&&ch.casting.font?ch.casting.font.uses:0;
+    this.dailyLuckUsed=false;
+    this.campDays(1); this.autosave(); this.refreshTitle();
+    this.log(`<b>A long rest.</b> ${esc(ch.name)} sleeps, and wakes ${heal} HP the better for it.`,"narr");
+    this.showCamp(`<b>Rested.</b> ${esc(ch.name)} recovers ${heal} HP, and every spell, font and focus point is back.`);
+  },
+  campTreat(){
+    const rank=this.hero.skills.medicine||"U", dc=treatDC(rank);
+    if(dc===null){ this.showCamp("Nobody here knows one end of a bandage from the other."); return; }
+    const cb=this.heroCombatant();
+    const r=this.rollCheck(`${this.hero.name}: Treat Wounds`,this.skillModOf("medicine"),dc);
+    const out=treatWounds(rank,r.deg);
+    this.campDays(1);
+    let line;
+    if(out.harm){ const dmg=Dice.roll(out.formula).total;
+      cb.hp=Math.max(1,cb.hp-dmg);
+      line=`<b>A botch.</b> The wound reopens for ${dmg}. HP ${cb.hp} / ${cb.hpMax}.`; }
+    else if(!out.formula){ line=`<b>No change.</b> The bandages hold and nothing more.`; }
+    else { const healed=Math.min(cb.hpMax-cb.hp, Dice.roll(out.formula).total+out.bonus);
+      cb.hp+=healed;
+      line=`<b>Treated.</b> ${esc(this.hero.name)} recovers ${healed} HP. HP ${cb.hp} / ${cb.hpMax}.`; }
+    this.log(line,"narr");
+    this.autosave(); this.refreshTitle();
+    this.showCamp(line);
+  },
+  campEarn(){
+    const best=this.bestEarnSkill();
+    const dc=levelDC(this.hero.level);
+    const r=this.rollCheck(`${this.hero.name}: Earn Income (${cap(best.skill)})`,best.mod,dc);
+    const paid=earnIncome(this.hero.level,r.deg,best.rank);
+    if(paid) this.setHoldings(addCoins(this.holdings(),paid));
+    this.campDays(1); this.autosave(); this.refreshTitle();
+    const line=paid
+      ? `<b>A day's work.</b> ${esc(cap(best.skill))} earns ${esc(coinText(paid))}. The purse holds ${esc(coinText(this.gold))}.`
+      : `<b>Dismissed.</b> The day earns nothing at all.`;
+    this.log(line,"narr");
+    this.showCamp(line);
+  },
+  /** Everything the hero could plausibly make: priced, at or below their level. */
+  craftable(){
+    return Object.values(Registry.items)
+      .filter(it=>priceOf(it)!==null&&priceOf(it)>0&&(it.level||0)<=this.hero.level)
+      .sort((a,b)=>(a.level||0)-(b.level||0)||priceOf(a)-priceOf(b));
+  },
+  campCraftPick(){
+    const list=this.craftable();
+    if(!list.length){ this.showCamp("There is nothing here worth a bench."); return; }
+    const perDay=earnIncome(this.hero.level,2,this.hero.skills.crafting||"U");
+    this.modal("Craft",
+      `${this.campHeader()}<p class="small">Half the price in materials up front and ${CRAFT_DAYS} days at the bench.
+        After that you may pay the rest, or keep working — each extra day knocks ${esc(coinText(perDay))} off what is still owed.</p>
+       <div class="card-grid">${list.map((it,i)=>{
+         const c=craftCost(priceOf(it),0,perDay), off=c.materials>this.gold;
+         return `<div class="opt-card ${off?"disabled":""}" data-craft="${i}" aria-disabled="${off?"true":"false"}">
+           <h3>${esc(it.name)}</h3>
+           <div class="meta">Level ${esc(String(it.level||0))} · ${esc(coinText(priceOf(it)))} · materials ${esc(coinText(c.materials))}${off?" · you cannot afford the materials":""}</div>
+           <div class="desc">${esc(it.desc||itemLine(it))}</div></div>`;
+       }).join("")}</div>`,
+      [{label:"Back",fn:()=>this.showCamp()}]);
+    document.querySelectorAll("#modal-body [data-craft]").forEach(el=>{
+      if(el.getAttribute("aria-disabled")==="true") return;
+      el.onclick=()=>{ this.closeModal(); this.campCraftRoll(list[+el.dataset.craft]); };
+    });
+  },
+  campCraftRoll(item){
+    if(!item) return this.showCamp();
+    const dc=levelDC(item.level||0);
+    const r=this.rollCheck(`${this.hero.name}: Craft ${item.name}`,this.skillModOf("crafting"),dc);
+    if(r.deg<2){
+      this.campDays(1); this.autosave(); this.refreshTitle();
+      const line=`<b>Ruined.</b> A day and nothing to show for it: the ${esc(item.name)} is not made.`;
+      this.log(line,"narr"); this.showCamp(line); return;
+    }
+    const price=priceOf(item);
+    const perDay=earnIncome(this.hero.level,2,this.hero.skills.crafting||"U");
+    const extra=craftDaysToFree(price,perDay);
+    const now=craftCost(price,0,perDay), out=craftCost(price,extra,perDay);
+    const opts=[{label:`${now.days} days · ${coinText(now.total)}`,fn:()=>this.campCraftFinish(item,now)}];
+    /* The second option only exists when it is actually cheaper. A hero whose
+       Crafting rate is zero, or an item whose remainder is already nothing,
+       would otherwise be offered "spend four more days to save nothing". */
+    if(extra>0&&out.total<now.total) opts.push({label:`${out.days} days · ${coinText(out.total)}`,fn:()=>this.campCraftFinish(item,out)});
+    opts.push({label:"Put it down",fn:()=>{ this.campDays(1); this.autosave(); this.showCamp("The work is set aside, and the day is gone."); }});
+    this.modal("The Bench",
+      `<p>The ${esc(item.name)} comes together. ${esc(coinText(now.materials))} of it is materials, paid whatever you decide.</p>
+       <p class="small">Finish it now and you have paid its full price. Stay at the bench and every day takes
+       ${esc(coinText(perDay))} off the rest — ${extra} more ${extra===1?"day":"days"} and you owe nothing beyond the materials.</p>`,
+      opts);
+  },
+  campCraftFinish(item,cost){
+    if(cost.total>this.gold){ this.showCamp(`<b>Not enough coin.</b> That would take ${esc(coinText(cost.total))}.`); return; }
+    /* Through the same seam a shop uses. `buy` would charge the full price, and
+       the whole point of the bench is that this one costs less, so the coin
+       comes off with `addCoins` and the item goes on the same two piles the
+       shop puts it on. */
+    const h=this.holdings();
+    if(isPotion(item)) h.potions.push(item.id); else h.inventory.push(item.id);
+    this.setHoldings(addCoins({...h,gold:0},h.gold-cost.total));
+    this.campDays(cost.days); this.autosave(); this.refreshTitle();
+    const line=`<b>Made.</b> ${esc(item.name)}, in ${cost.days} days, for ${esc(coinText(cost.total))}${cost.total<priceOf(item)?` instead of ${esc(coinText(priceOf(item)))}`:""}. The purse holds ${esc(coinText(this.gold))}.`;
+    this.log(line,"narr");
+    this.showCamp(line);
   },
   companionPickerHTML(){
     const offered=(this.adv.companionsOffered||[]);
@@ -2616,7 +2861,7 @@ const App = {
     return {build:this.hero?this.hero.build:null,
       advId:this.adv?this.adv.id:null, sceneId:this.sceneId, flags:this.flags,
       campaignId:this.campaignId, campaignFlags:this.campaignFlags, completed:this.completed,
-      gold:this.gold, inventory:this.inventory,
+      gold:this.gold, inventory:this.inventory, days:this.days,
       dailyLuckUsed:this.dailyLuckUsed, xp:this.xp,
       hero: this.heroCb? {hp:this.heroCb.hp,wounded:this.heroCb.wounded,resources:this.heroCb.resources}:null,
       companions:this.companions.map(c=>({id:c.id.replace("comp-",""),hp:c.hp})),
@@ -2669,7 +2914,7 @@ const App = {
          them here would turn "load the pack and pick the campaign again" into
          "start the campaign over". */
       this.campaignId=s.campaignId; this.campaignFlags=s.campaignFlags; this.completed=s.completed;
-      this.gold=s.gold; this.inventory=s.inventory;
+      this.gold=s.gold; this.inventory=s.inventory; this.days=s.days;
       // A companion from an unloaded pack costs you that companion, not the save.
       const lostComps=[];
       this.companions=s.companions.map(c=>{
@@ -2681,6 +2926,14 @@ const App = {
       if(s.advId&&Registry.adventures[s.advId]&&s.sceneId&&Registry.adventures[s.advId].scenes[s.sceneId]){
         this.adv=Registry.adventures[s.advId]; this.show("game"); this.gotoScene(s.sceneId);
       } else {
+        /* A save with no adventure has to *clear* the one that was running,
+           not just show the title. Before this, importing a between-adventures
+           save left the previous `this.adv` and `this.sceneId` in place: the
+           next autosave wrote the old adventure's id back into the file, and
+           Make Camp — which is disabled while an adventure is running — stayed
+           greyed out for a hero who was demonstrably between two of them.
+           Found by the browser recipe (Phase 7, increment 3). */
+        this.adv=null; this.sceneId=null;
         this.toTitle();
       }
       /* Modal, not a toast, for the two cases the player has to act on.

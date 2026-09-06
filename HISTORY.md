@@ -1372,6 +1372,59 @@ Two of them have moved since they were written:
    row to check it against. Reversing it is one `if` in `registry.js`.
    *Source: Torchbearer Phase 7, increment 2.*
 
+126. **The state a fight opens in is a table, and the flags stay flags.**
+   `Combat.start` used to read two flag names by hand — `surprise-round`
+   since session 3 and `fatigued-start` since session 6 — so the only
+   opening state content could ever write was one the engine had a line
+   for. `OPENERS` in `js/downtime.js` is five entries now, keyed by the
+   flag that turns each on, and `combat.js` reads its fields while
+   `registry.js` validates its keys. It stayed a *flag* rather than
+   becoming a scene field for one reason: an author already writes
+   `"onEnter": {"flag": "surprise-round"}` two scenes before an ambush, and
+   every one of those keeps working untouched. Every opener is consumed off
+   the flag map the way the first two were, so it colours one encounter and
+   not every encounter after it. The price of the vocabulary is that a
+   near-miss is now an error: `suprise-round` used to be a scene that read
+   as an ambush in the prose and played as an ordinary fight, and the
+   validator names it. Reversing it is two lines back in `start`. *Source:
+   Torchbearer Phase 7, increment 3.*
+
+127. **A day is the unit of downtime, and every activity costs exactly one.**
+   PF2e prices its downtime activities in wildly different time — Treat
+   Wounds is ten minutes, Earn Income is a day, Craft is four days and up —
+   and carrying that honestly would need a clock the game does not have.
+   One day each is the call. It is what stops Treat Wounds from being free
+   unlimited healing between adventures, and it is what makes an extra day
+   at a Crafting bench a real price against the coin it saves, which is the
+   only thing that makes Craft a decision rather than a worse shop.
+   Crafting is the one exception and stays honest about it: four days
+   minimum, plus whatever you choose to spend. The count lives on the save
+   as `days`, additive, so **`SAVE_VERSION` stayed at 3 for the fourth
+   time** on #122's argument — a save from before downtime is a hero who
+   has spent none, which is what `repairSnapshot` computes. Downtime is
+   also **between adventures only**: Camp is disabled while `App.adv` is
+   set, because a day is not something you spend two squares from the
+   Bell-Warden. Reversing it is a per-activity cost in `DOWNTIME`. *Source:
+   Torchbearer Phase 7, increment 3.*
+
+128. **An unreachable scene is a validator error, and the walk lives in the
+   validator.** Every edge was already checked one at a time — a `goto`
+   points at a real scene, a check's two branches exist, victory and defeat
+   exist — and none of that says whether a player can ever stand there. An
+   orphaned scene is the most expensive authoring mistake because it looks
+   finished: the prose is written, the choices are wired, the shop is
+   stocked, and the only symptom is that nobody sees it. `sceneGraph` in
+   `registry.js` walks from `start` and every unreachable scene is one
+   error line, named. It went in the validator rather than in a separate
+   dry-run tool (which is where Phase 8's wishlist puts one) because a
+   check that has to be run on purpose is a check that does not run. The
+   walk follows what the *engine* follows, which is one edge more than an
+   author writes: `App.choose` runs `gotoScene(c.defeat||"gameover")`, so
+   every combat choice without an explicit `defeat` is an edge to a scene
+   called "gameover". All three shipped adventures pass it unchanged.
+   Reversing it is one `forEach` in `registry.js`. *Source: Torchbearer
+   Phase 7, increment 3.*
+
 
 ---
 
