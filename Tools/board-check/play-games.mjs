@@ -965,6 +965,16 @@ const SUITES = {
   // save; it lands on bridge-fog and stops there, per that project's own
   // recipe — everything past that point is this suite's to assert on.
   'torchbearer': async (p, t) => {
+    // Phase 3 gave the page a reaction prompt: a combatant carrying more than
+    // one reaction (every fighter does — Reactive Strike and Shield Block) is
+    // asked before one is spent, and a reaction resolves inside the action that
+    // triggered it, so the ask is a synchronous confirm. Sera Voss is a fighter
+    // and the Vanguard's Watch is a real fight, so one can land mid-beat.
+    // Accepting keeps the behaviour these assertions were written against;
+    // without a listener both drivers auto-dismiss, which would silently turn
+    // every reaction off instead.
+    p.on('dialog', d => d.accept());
+
     const state = await savedState(p, 'torchbearer');
     t.ok(state?.sceneId === 'bridge-fog', 'the imported save landed on the committed checkpoint',
       `sceneId ${state?.sceneId}`);

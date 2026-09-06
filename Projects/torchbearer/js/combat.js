@@ -46,6 +46,61 @@ import { Registry } from "./registry.js";
 import { Dice, skillMod, CHAR_LEVEL } from "./rules.js";
 import { esc, cap } from "./text.js";
 
+/**
+ * The reactions the engine implements, and the triggers each answers to.
+ *
+ * This table IS the contract for a monster's `"reactions": [...]` field, the
+ * same way the validator is the contract for everything else content can say.
+ * `registry.js` keeps its own copy of the ids because the dependency runs the
+ * other way (combat imports registry, never the reverse); `smoke.mjs` asserts
+ * the two lists are identical, which is the only thing keeping them honest.
+ *
+ * `qualifies` and `resolve` are called with the engine as `this`. `ctx` is the
+ * trigger's payload, and a `resolve` that changes the outcome does it by
+ * mutating `ctx` — `dmg` for Shield Block, `acBonus` for Nimble Dodge — which
+ * the triggering action reads back before it completes.
+ */
+export const REACTIONS = {
+  "reactive-strike": {
+    name: "Reactive Strike",
+    triggers: ["move-out-of-reach", "manipulate"],
+    qualifies(cb, ctx){
+      if(!ctx.actor || ctx.actor.side===cb.side) return false;
+      if(!cb.attacks || !cb.attacks.length) return false;
+      const R=this.reachOf(cb);
+      // A manipulate action provokes from anyone already within reach; a move
+      // provokes only from the square where it leaves that reach.
+      if(!ctx.from) return this.dist(cb,ctx.actor)<=R;
+      return this.dist(cb,ctx.from)<=R && this.dist(cb,ctx.to)>R;
+    },
+    resolve(cb, ctx){
+      this.log(`<b>Reactive Strike!</b> ${esc(cb.name)} lashes out as ${esc(ctx.actor.name)} ${ctx.from?"moves":"fumbles with something"}.`);
+      this.reactiveStrike(cb, ctx.actor);
+    }
+  },
+  "shield-block": {
+    name: "Shield Block",
+    triggers: ["incoming-damage"],
+    qualifies(cb, ctx){
+      return cb===ctx.target && cb.shieldRaised && ctx.dmg>0
+        && ["slashing","piercing","bludgeoning"].includes(ctx.dtype);
+    },
+    resolve(cb, ctx){
+      const blocked=Math.min(5,ctx.dmg); ctx.dmg-=blocked;
+      this.log(`${esc(cb.name)} <b>Shield Blocks</b>: ${blocked} damage rings off steel.`);
+    }
+  },
+  "nimble-dodge": {
+    name: "Nimble Dodge",
+    triggers: ["incoming-attack"],
+    qualifies(cb, ctx){ return cb===ctx.target && !cb.nimbleUsed; },
+    resolve(cb, ctx){
+      ctx.acBonus+=2; cb.nimbleUsed=true;
+      this.log(`${esc(cb.name)} <b>Nimbly Dodges</b> (+2 AC).`);
+    }
+  }
+};
+
 export const CombatCore = {
 
   /* ---------- the event seam ---------- */
@@ -64,6 +119,75 @@ export const CombatCore = {
     return {d20,total,deg};
   },
 
+  /* ---------- the reaction bus ---------- */
+  /**
+   * Offer `name` to everyone who could react to it, in initiative order.
+   *
+   * Before Phase 3 the three reactions fired from wherever they happened to be
+   * reachable: Shield Block and Nimble Dodge from inside the damage and the
+   * attack path, Reactive Strike from a `provokeAlong` that refused any mover
+   * that was not a foe. They are all here now, and a reaction resolves before
+   * the action that triggered it completes — the caller passes what it is
+   * about to do in `ctx`, and reads `ctx` back afterwards.
+   *
+   * One reaction per combatant per trigger, and `reactionUsed` is the whole
+   * budget: it is set false at the start of that combatant's turn and nowhere
+   * else. A reaction that drops the actor ends the offer — two fighters do not
+   * both get to strike a hound the first one killed. `ctx.dryRun` walks the
+   * same list and resolves nothing, which is how Mobility knows whether it
+   * saved the mover from anything.
+   */
+  trigger(name, ctx){
+    ctx=ctx||{}; ctx.fired=[];
+    const line=this.order.length? this.order : this.cbs;
+    for(const cb of line){
+      if(cb.dead||(cb.dying||0)>0||cb.reactionUsed) continue;
+      if(cb===ctx.actor) continue;
+      for(const rid of this.reactionsOf(cb)){
+        const r=REACTIONS[rid];
+        if(!r||!r.triggers.includes(name)) continue;
+        if(!r.qualifies.call(this,cb,ctx)) continue;
+        if(ctx.dryRun){ ctx.fired.push({cb,rid}); break; }
+        if(this.reactionsOf(cb).length>1&&!this.askReaction(cb,rid,ctx)) continue;
+        cb.reactionUsed=true; ctx.fired.push({cb,rid});
+        r.resolve.call(this,cb,ctx);
+        break;
+      }
+      // A reaction that puts the actor down ends the offer: there is no longer
+      // an action in progress for anyone else to interrupt.
+      if(ctx.actor&&(ctx.actor.dead||(ctx.actor.dying||0)>0)) break;
+    }
+    return ctx;
+  },
+  /** What `cb` can react with: a hero's feats, a companion's or a monster's data. */
+  reactionsOf(cb){
+    const src=(cb.char&&cb.char.specials)||cb.reactions||[];
+    return src.filter(id=>REACTIONS[id]);
+  },
+  /** Reach in cells. Monster data may say `reach: 2`; everyone else threatens one. */
+  reachOf(cb){ return cb.reach||1; },
+  /**
+   * A Reactive Strike, from either side of the board. A monster's attacks are
+   * flat data and go through `strikeMonster`; a hero's are weapons and go
+   * through `strike`. Neither raises the striker's MAP: the reaction happens on
+   * somebody else's turn, and `mapCount` belongs to the striker's own.
+   */
+  reactiveStrike(cb,target){
+    const atk=cb.attacks[this.meleeIdx(cb)];
+    if(!atk) return;
+    if(cb.side==="foe"){
+      const map=cb.mapCount; cb.mapCount=0;
+      this.strikeMonster(cb,target,{...atk,traits:atk.traits||[],die:atk.die||atk.damage,dmgMod:atk.dmgMod||0,
+        range:atk.range,ranged:atk.range>1,statusDmg:0});
+      cb.mapCount=map;
+    } else this.strike(cb,target,atk,{noMAP:true});
+  },
+  /** True when Mobility covers a Stride that cost `cost` squares of `cb`'s speed. */
+  mobilityCovers(cb,cost){
+    if(!(cb.char&&cb.char.specials.includes("mobility"))) return false;
+    return cost<=Math.floor(this.moveBudget(cb)/2);
+  },
+
   /* ---------- the view and clock seams: no-ops here, overridden by the page ---------- */
   /** The number that floats up the screen. The engine announces it; the page decides. */
   floatText(){},
@@ -78,6 +202,10 @@ export const CombatCore = {
   mount(){},
   /** Called by `finish(true)` after the party is restored. The page writes the save slot. */
   autosave(){},
+  /** Asked before a reaction fires, and only when the choice is real: the
+      combatant carries more than one reaction, so spending it here is spending
+      it. Yes here, so a test sees the bus and not a stub; the page asks. */
+  askReaction(cb,rid,ctx){ return true; },
   /** The clock. `fn` is the next thing to happen; `ms` is how long the page
       should wait before it. Here it happens now. */
   defer(fn,ms){ fn(); },
@@ -172,12 +300,9 @@ export const CombatCore = {
     if(w){ dmg+=w.value; this.log(`Weakness to ${w.type}! +${w.value}.`); }
     const r=(target.resistances||[]).concat(target.char? target.char.resists:[]).find(x=>x&&(x.type===dtype||(x.type==="physical"&&["slashing","piercing","bludgeoning"].includes(dtype))));
     if(r){ dmg=Math.max(0,dmg-r.value); }
-    // shield block
-    if(target.side==="pc"&&target.shieldRaised&&!target.reactionUsed&&target.char&&target.char.specials.includes("shield-block")
-       &&["slashing","piercing","bludgeoning"].includes(dtype)&&dmg>0){
-      target.reactionUsed=true; const blocked=Math.min(5,dmg); dmg-=blocked;
-      this.log(`${esc(target.name)} <b>Shield Blocks</b>: ${blocked} damage rings off steel.`);
-    }
+    // Shield Block, on the bus: the reaction resolves against `ctx.dmg` before
+    // temporary HP and the hit point total ever see the number.
+    dmg=this.trigger("incoming-damage",{actor:attacker,target,dtype,dmg}).dmg;
     if(target.tempHP>0){ const t=Math.min(target.tempHP,dmg); target.tempHP-=t; dmg-=t; }
     target.hp=Math.max(0,target.hp-dmg);
     this.floatText(target,"-"+dmg, dtype==="fire"?"#E8845A":dtype==="cold"?"#8CC7E8":"#E86A5A");
@@ -262,9 +387,11 @@ export const CombatCore = {
     if(fortune){ const d2=Dice.d(20); d20=Math.max(d20,d2); att.buffs=att.buffs.filter(b=>!b.fortune); }
     // blur on defender
     if(def.buffs.some(b=>b.flag==="blurred")){ if(Dice.d(20)<=4){ this.log(`The blur swallows the blow — a clean miss.`); if(!opts.exacting&&!opts.noMAP) att.mapCount++; return 1; } }
+    // The defender's own reaction, on the same bus a monster's attack uses.
+    const acFinal=ac+this.trigger("incoming-attack",{actor:att,target:def,ranged:wpn.ranged,acBonus:0}).acBonus;
     const total=d20+mod;
-    const deg=Dice.degree(d20,total,ac);
-    this.seal(`${att.name}: ${wpn.name} vs ${def.name}${offGuard?" (off-guard)":""}`,d20,`${d20}${mod>=0?"+":""}${mod} = ${total} vs AC ${ac}`,deg);
+    const deg=Dice.degree(d20,total,acFinal);
+    this.seal(`${att.name}: ${wpn.name} vs ${def.name}${offGuard?" (off-guard)":""}`,d20,`${d20}${mod>=0?"+":""}${mod} = ${total} vs AC ${acFinal}`,deg);
     if(!opts.noMAP&&!(opts.exacting&&deg<2)) att.mapCount++;
     if(deg>=2){
       /* Crossbow Ace: "against your hunted prey, or after reloading" — die
@@ -300,10 +427,7 @@ export const CombatCore = {
     mod+= foe.mapCount===0?0: (atk.traits.includes("agile")? (foe.mapCount===1?-4:-8):(foe.mapCount===1?-5:-10));
     foe.mapCount++;
     const {ac,offGuard}=this.effAC(t,{id:foe.id,ranged:atk.ranged});
-    // nimble dodge
-    let acFinal=ac;
-    if(t.char&&t.char.specials.includes("nimble-dodge")&&!t.nimbleUsed&&!t.reactionUsed){ acFinal+=2; t.nimbleUsed=true; t.reactionUsed=true;
-      this.log(`${esc(t.name)} <b>Nimbly Dodges</b> (+2 AC).`); }
+    const acFinal=ac+this.trigger("incoming-attack",{actor:foe,target:t,ranged:atk.ranged,acBonus:0}).acBonus;
     const d20=Dice.d(20), total=d20+mod;
     const deg=Dice.degree(d20,total,acFinal);
     this.seal(`${foe.name}: ${atk.name} vs ${t.name}`,d20,`${d20}+${mod} = ${total} vs AC ${acFinal}`,deg);
@@ -352,7 +476,8 @@ export const CombatCore = {
       const cb={id:"foe"+i, side:"foe", name:m.name, letter:m.name.match(/[A-Z]/g).slice(0,1)[0]+(i+1), monster:m,
         x:f.x,y:f.y, hpMax:m.hp, hp:m.hp, tempHP:0, ac:m.ac, saves:{...m.saves}, perception:m.perception,
         speed:Math.floor(m.speed/5), attacks:m.attacks, powers:(m.powers||[]).map(p=>({...p,cd:0})),
-        conditions:[], buffs:[], slowedBase:m.slowed||0, weaknesses:m.weaknesses||[], resistances:m.resistances||[], immunities:m.immunities||[], boss:m.boss};
+        conditions:[], buffs:[], slowedBase:m.slowed||0, weaknesses:m.weaknesses||[], resistances:m.resistances||[], immunities:m.immunities||[], boss:m.boss,
+        reach:m.reach||1, reactions:m.reactions||[]};
       this.cbs.push(cb);
     });
     // boss flags
@@ -470,7 +595,10 @@ export const CombatCore = {
     if(id==="stride") return arm({kind:"move",budget:this.moveBudget(cb),cost:1},"Choose a highlighted square to Stride to.");
     if(id==="step") return arm({kind:"move",budget:1,cost:1,step:true},"Step one square (no reactions).");
     if(id==="raise"){ cb.shieldRaised=true; this.spend(1); this.log(`${esc(cb.name)} raises a shield (+2 AC).`); return this.renderAll(); }
-    if(id==="reload"){ cb.reloadedThisTurn=true; this.spend(1); this.log(`${esc(cb.name)} reloads.`); return this.renderAll(); }
+    if(id==="reload"){ this.spend(1); this.log(`${esc(cb.name)} reloads.`);
+      this.trigger("manipulate",{actor:cb});
+      if(!cb.dead&&(cb.dying||0)===0) cb.reloadedThisTurn=true;
+      this.renderAll(); return this.checkEnd(); }
     if(id==="hunt") return arm({kind:"target",range:99,cost:1,mode:"hunt"},"Mark a foe as your hunted prey.");
     if(id==="demoralize") return arm({kind:"target",range:6,cost:1,mode:"demoralize"},"Choose a foe within 30 ft to Demoralize.");
     if(id==="feint") return arm({kind:"target",range:1,cost:1,mode:"feint"},"Feint: choose an adjacent foe.");
@@ -518,27 +646,42 @@ export const CombatCore = {
     // provoke reactive strikes when leaving reach of enemy fighters (foes only trigger PC fighters)
     const path=[]; let k=this.key(x,y);
     while(k){ const [px,py]=k.split(",").map(Number); path.unshift({x:px,y:py}); k=reach[k].prev; }
-    if(!a.step) this.provokeAlong(cb,path);
+    // Mobility: "your movement at half Speed never provokes reactions." The
+    // path's own cost decides it, so a Stride that starts short stays safe and
+    // one square further is not. Nothing else in the game reads the special.
+    const cost=(reach[this.key(x,y)]||{cost:0}).cost;
+    if(!a.step){
+      if(this.mobilityCovers(cb,cost)){
+        if(this.provokeAlong(cb,path,{dryRun:true}).length)
+          this.log(`${esc(cb.name)} moves at half speed. <b>Mobility</b> gives nothing away.`);
+      } else this.provokeAlong(cb,path);
+    }
+    if(cb.dead||(cb.dying||0)>0){ this.spend(a.cost); this.armed=null; this.hint(""); this.renderAll(); return this.checkEnd(); }
     cb.x=x; cb.y=y;
     this.spend(a.cost); this.armed=null; this.hint("");
     if(a.charge){ this.armed={kind:"target",range:1,cost:0,mode:"strike",atkIdx:this.meleeIdx(cb),btn:"charge2"};
       this.hint("Now Strike an adjacent foe (free)."); }
     this.renderAll();
   },
-  provokeAlong(mover,path){
-    if(mover.side!=="foe") return;
-    const fighters=this.alive("pc").filter(p=>p.char&&p.char.specials.includes("reactive-strike")&&!p.reactionUsed&&p.dying===0);
-    for(const f of fighters){
-      for(let i=1;i<path.length;i++){
-        if(this.dist(f,path[i-1])<=1&&this.dist(f,path[i])>1){
-          f.reactionUsed=true;
-          this.log(`<b>Reactive Strike!</b> ${esc(f.name)} lashes out as ${esc(mover.name)} moves.`);
-          this.strike(f,mover,f.attacks[this.meleeIdx(f)],{noMAP:true});
-          break;
-        }
-      }
-      if(mover.dead) break;
+  /**
+   * Walk a move square by square and offer `move-out-of-reach` at each step.
+   *
+   * This used to open with `if(mover.side!=="foe") return;`, so a reaction
+   * could only ever fire against a moving foe and the party was never once
+   * threatened by one. It is symmetric now, and reach is read per combatant
+   * rather than assumed to be one cell, so a Large monster with `"reach": 2`
+   * threatens the ring outside the one it stands in. Pass `{dryRun:true}` to
+   * find out who would strike without anyone striking.
+   */
+  provokeAlong(mover,path,opts){
+    const fired=[];
+    for(let i=1;i<path.length;i++){
+      const ctx=this.trigger("move-out-of-reach",
+        {actor:mover,from:path[i-1],to:path[i],dryRun:!!(opts&&opts.dryRun)});
+      fired.push(...ctx.fired);
+      if(mover.dead||(mover.dying||0)>0) break;
     }
+    return fired;
   },
 
   resolveTargeted(cb,a,t){
@@ -575,6 +718,10 @@ export const CombatCore = {
         return done();
       }
       case "potion": {
+        // Drink or administer is a manipulate action, and manipulate provokes.
+        // The reaction resolves first; a hero cut down mid-swig keeps the potion.
+        this.trigger("manipulate",{actor:cb});
+        if(cb.dead||(cb.dying||0)>0) return done();
         const id=cb.resources.potions.pop();
         const item=Registry.items[id];
         const h=Dice.roll(item&&item.heal?item.heal:"1d8").total;
@@ -796,7 +943,12 @@ export const CombatCore = {
    * turn or the fight ended. Nothing in here waits; `aiTurn` decides how.
    */
   aiStep(foe){
-    if(!this.active||foe.dead||this.actions<=0){ if(this.active&&!foe.dead) this.endTurn(); return null; }
+    // A foe can now die between two of its own actions — a Reactive Strike as
+    // it Strides out of reach — and a dead foe's turn has to be ended by
+    // somebody or the loop stalls with nobody left to act. Before Phase 3 this
+    // returned null and did nothing, which was unreachable only because the
+    // party could not make a reaction.
+    if(!this.active||foe.dead||this.actions<=0){ if(this.active) this.endTurn(); return null; }
     if(this.checkEnd()) return null;
     const pcs=this.alive("pc").filter(p=>p.dying===0);
     if(!pcs.length){ this.endTurn(); return null; }
@@ -808,7 +960,14 @@ export const CombatCore = {
         if(this.occupied(x,y)&&!(x===foe.x&&y===foe.y)) return;
         const d=Math.max(Math.abs(x-near.x),Math.abs(y-near.y));
         if(d>bd){bd=d;best={x,y};} });
-      if(best){ foe.x=best.x; foe.y=best.y; }
+      if(best){
+        // Running away is still a Stride, and a Stride out of reach provokes.
+        const path=[]; let pk=this.key(best.x,best.y);
+        while(pk){ const [px,py]=pk.split(",").map(Number); path.unshift({x:px,y:py}); pk=reach[pk].prev; }
+        this.provokeAlong(foe,path);
+        if(!foe.dead){ foe.x=best.x; foe.y=best.y; }
+      }
+      if(foe.dead){ this.spend(this.actions); this.renderAll(); this.endTurn(); return null; }
       this.log(`${esc(foe.name)} flees in terror!`);
       this.spend(this.actions); this.renderAll(); return {action:"flee",wait:450};
     }
@@ -880,7 +1039,7 @@ export const CombatCore = {
  * one per encounter.
  */
 export function heroCombatant(ch){
-  return {id:"hero",side:"pc",name:ch.name,char:ch,hpMax:ch.hpMax,hp:ch.hpMax,tempHP:0,ac:ch.ac,
+  return {id:"hero",side:"pc",name:ch.name,char:ch,hpMax:ch.hpMax,hp:ch.hpMax,tempHP:0,ac:ch.ac,reach:1,
     saves:{fort:ch.saves.fort,ref:ch.saves.ref,will:ch.saves.will},perception:ch.perception,
     speed:Math.floor(ch.speed/5),attacks:ch.attacks.map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,
     resources:{slots:ch.casting?{1:ch.casting.slots[1],2:ch.casting.slots[2]}:{1:0,2:0},
@@ -891,6 +1050,7 @@ export function heroCombatant(ch){
 export function companionCombatant(id){
   const c=Registry.companions[id];
   return {id:"comp-"+id,side:"pc",name:c.name,subtitle:c.subtitle,hpMax:c.hp,hp:c.hp,tempHP:0,ac:c.ac,
+    reach:c.reach||1,reactions:c.reactions||[],
     saves:{...c.saves},perception:c.perception,initSkill:c.initSkill,speed:Math.floor(c.speed/5),
     attacks:c.attacks.map(a=>({...a,die:a.damage,dmgMod:0,traits:a.traits||[],ranged:a.range>1})),
     abilities:(c.abilities||[]).map(a=>({...a})),conditions:[],buffs:[],dying:0,wounded:0,resources:{slots:{1:0,2:0},focus:0,font:0,potions:[]}};

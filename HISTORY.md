@@ -973,6 +973,71 @@ Two of them have moved since they were written:
    DOM: the grid markup it used to `setCenter` is the page's `mount()` hook.
    *Source: Torchbearer Phase 2, increment 2.*
 
+94. **Reactions run on one bus, and it is called `trigger`, not `emit`.**
+   `Combat.trigger(name, ctx)` offers a trigger to every combatant in
+   initiative order that still has `reactionUsed === false`, and the reaction
+   resolves before the action that triggered it completes. Four triggers exist:
+   `move-out-of-reach`, `manipulate` (Drink Potion and Reload), `incoming-damage`
+   and `incoming-attack`. Phase 3's wishlist row asked for `emit(trigger, ctx)`;
+   that name was already the event seam (#89), and two `emit`s meaning two
+   different things in one file is how a session six months from now writes the
+   wrong one. A reaction that changes an outcome does it by mutating `ctx` —
+   `dmg` for Shield Block, `acBonus` for Nimble Dodge — which is what lets the
+   bus stay synchronous inside `applyDamage` and `strike`.
+   *Source: Torchbearer Phase 3.*
+
+95. **A combatant carrying more than one reaction is asked; one reaction is not
+   a choice.** `askReaction(cb, id, ctx)` is a seam beside `defer` and the
+   render hooks: yes in the module, a `confirm` in the page, and the bus only
+   calls it when `reactionsOf(cb).length > 1`. Every fighter has exactly this
+   problem — Reactive Strike and Shield Block off the same reaction — and
+   auto-firing whichever triggered first is the thing guide §13 had been
+   apologising for since session 1. The ask has to be synchronous, because a
+   reaction resolves inside the action that triggered it; making the turn loop
+   promise-based to get a nicer modal was rejected for the same reason #92
+   rejected it. `play-games.mjs` accepts the dialog rather than letting the
+   driver auto-dismiss it, so the browser suite keeps testing a reaction that
+   fires.
+   *Source: Torchbearer Phase 3.*
+
+96. **`reach` and `reactions` are monster data, and the validator rejects an
+   unknown reaction id.** `"reach": 2` is in cells and defaults to 1;
+   `"reactions": ["reactive-strike"]` names ids from the bus. An unknown id is
+   an error, not an inert hook, which is the opposite of how `special` ids work
+   (§8: unknown ones render and do nothing). The difference is that a `special`
+   is content saying something about itself, and a reaction is content saying
+   the engine will do something — a monster whose reaction never fires is a
+   fight that is quietly easier than the author wrote. The ids live in two
+   files, because `combat.js` imports `registry.js` and the dependency cannot
+   run both ways; `smoke.mjs` asserts `Object.keys(REACTIONS)` equals
+   `KNOWN_REACTIONS`, which is the only thing keeping the copies honest.
+   *Source: Torchbearer Phase 3.*
+
+97. **The Forge-Tyrant is the first monster to threaten a square, and it is
+   the only one.** Phase 3's row named the guide's `hold-breaker` example,
+   which is an example and not a monster any pack ships. The Large boss of
+   `packs/embers-of-the-hold.json` got `"reach": 2` and
+   `"reactions": ["reactive-strike"]` instead, and the guide's example carries
+   both fields so a new author copies them. Bell of Barrowmoor and Thornwake
+   Vigil were left alone deliberately: giving the party's two real adventures
+   a reaction is a balance change, and it belongs to a session that can measure
+   it rather than to the one that built the mechanism. The consequence is that
+   a player who never loads the sample pack still never sees a monster react,
+   and that is in Torchbearer's standing backlog.
+   *Source: Torchbearer Phase 3.*
+
+98. **A foe can die between two of its own actions, so `aiStep` ends a dead
+   foe's turn.** The top guard used to read `if(this.active && !foe.dead)
+   this.endTurn()`, which meant a monster killed mid-turn returned `null` and
+   `aiTurn` stopped with nobody's turn beginning — the fight simply stood
+   still. It was unreachable only because the party could not make a reaction
+   against a mover. Phase 3 makes it reachable twice over (a Stride and a
+   flee), so the guard is now `if(this.active) this.endTurn()`, and the flee
+   branch provokes like every other Stride. A monster's Reactive Strike also
+   zeroes its `mapCount` for the duration and puts it back: the reaction is
+   off-turn, and the MAP belongs to the monster's own turn.
+   *Source: Torchbearer Phase 3.*
+
 
 ---
 

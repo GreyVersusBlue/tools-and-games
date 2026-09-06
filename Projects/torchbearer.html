@@ -527,7 +527,7 @@ import { Registry } from "./torchbearer/js/registry.js";
 import { PROF_VAL, ABILITIES, SKILLS, CHAR_LEVEL, Dice, activeEffects, abilityMods,
          finalizeCharacter, skillMod, assuranceFloor, assuranceDegree } from "./torchbearer/js/rules.js";
 import { createTorchSlot } from "./torchbearer/js/save.js";
-import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion } from "./torchbearer/js/combat.js";
+import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, REACTIONS } from "./torchbearer/js/combat.js";
 import { esc, cap } from "./torchbearer/js/text.js";
 import { fetchLibrary, fetchPack } from "./torchbearer/js/library.js";
 
@@ -1753,6 +1753,17 @@ const Combat = Object.assign(newCombat(), {
   /* The clock. The engine says what happens next and how long to wait; this is
      the wait. Every recovery pause, AI step and victory beat runs through here. */
   defer(fn,ms){ setTimeout(fn,ms); },
+
+  /* The reaction prompt. The engine only calls this when the choice is real —
+     the combatant carries more than one reaction, so spending it on this
+     trigger is not spending it on the next. A reaction resolves inside the
+     action that triggered it, so the ask has to be synchronous; confirm is the
+     only synchronous ask a page has. Companions and monsters are not asked. */
+  askReaction(cb,rid,ctx){
+    if(cb.id!=="hero") return true;
+    const r=REACTIONS[rid];
+    return confirm(`${cb.name}: use your reaction for ${r?r.name:rid}? You have one per turn.`);
+  },
   autosave(){ App.autosave(); },
   toast(msg){ App.toast(msg); },
 
