@@ -43,7 +43,7 @@
 // engine with `newCombat({cbs, order, ...})`, or a real one with `start`.
 
 import { Registry } from "./registry.js";
-import { Dice, skillMod, CHAR_LEVEL } from "./rules.js";
+import { Dice, skillMod, CHAR_LEVEL, SIZES, sizeIndex, levelDC } from "./rules.js";
 import { esc, cap } from "./text.js";
 
 /**
@@ -101,6 +101,41 @@ export const REACTIONS = {
   }
 };
 
+/**
+ * The four Athletics maneuvers, and the DC each is measured against.
+ *
+ * Every one of them is `10 + the target's own save modifier` for the named
+ * save, read through `saveMod` so a frightened or clumsy target is genuinely
+ * easier to throw. That is the plain PF2e formula, and it is deliberately
+ * *not* Demoralize's `10 + save + CHAR_LEVEL`: Feint and Hide already use the
+ * plain form against Perception, so two of the three shipped skill DCs were
+ * already right and Demoralize is the odd one out (locked #106). Changing
+ * Demoralize is a balance change to every fight in the game and is not this
+ * phase's business.
+ *
+ * All four have the attack trait: each takes the MAP penalty already on the
+ * actor and raises it afterwards, exactly as a Strike does.
+ */
+export const MANEUVERS = {
+  trip:    { name: "Trip",    save: "reflex",    hint: "Trip: choose an adjacent foe." },
+  shove:   { name: "Shove",   save: "fortitude", hint: "Shove: choose an adjacent foe." },
+  grapple: { name: "Grapple", save: "fortitude", hint: "Grapple: choose an adjacent foe." },
+  disarm:  { name: "Disarm",  save: "reflex",    hint: "Disarm: choose an adjacent foe.", trained: true }
+};
+
+/**
+ * Which skill a Recall Knowledge check about a creature uses, by the first of
+ * its traits that names one. Occultism is the fallback, the same way it is at
+ * the table for something nobody has a category for.
+ */
+export const LORE_SKILL = {
+  undead: "religion", spirit: "religion", fiend: "religion", celestial: "religion",
+  beast: "nature", animal: "nature", fey: "nature", plant: "nature",
+  humanoid: "society", orc: "society", giant: "society", goblin: "society", dwarf: "society",
+  construct: "crafting", elemental: "arcana", dragon: "arcana", monitor: "arcana",
+  aberration: "occultism", incorporeal: "occultism"
+};
+
 export const CombatCore = {
 
   /* ---------- the event seam ---------- */
@@ -143,6 +178,17 @@ export const CombatCore = {
     for(const cb of line){
       if(cb.dead||(cb.dying||0)>0||cb.reactionUsed) continue;
       if(cb===ctx.actor) continue;
+      // A readied action goes first and is not a reaction id: it lives on the
+      // combatant rather than in REACTIONS, so content cannot name it, but it
+      // spends the same one reaction per turn everything else does.
+      if(this.readyFires(cb,name,ctx)){
+        if(ctx.dryRun){ ctx.fired.push({cb,rid:"readied"}); continue; }
+        cb.reactionUsed=true; cb.readied=null; ctx.fired.push({cb,rid:"readied"});
+        this.log(`<b>Readied Strike!</b> ${esc(cb.name)} was waiting for ${esc(ctx.actor.name)}.`);
+        this.reactiveStrike(cb,ctx.actor);
+        if(ctx.actor.dead||(ctx.actor.dying||0)>0) break;
+        continue;
+      }
       for(const rid of this.reactionsOf(cb)){
         const r=REACTIONS[rid];
         if(!r||!r.triggers.includes(name)) continue;
@@ -240,7 +286,7 @@ export const CombatCore = {
   },
   /** Every position change runs through here. Hiding does not survive a move,
       and neither does Take Cover. */
-  afterMove(cb){ cb.takingCover=false; this.reveal(cb,"on the move"); },
+  afterMove(cb){ cb.takingCover=false; this.reveal(cb,"on the move"); this.releaseHeldBy(cb,"as the grip is dragged off"); },
   /**
    * The flat check a hidden or concealed target forces before an attack or a
    * targeted spell resolves. True when the action goes through; false when it
@@ -375,6 +421,310 @@ export const CombatCore = {
     return ((ch&&ch.condBonuses)||[]).filter(b=>b.target===target&&b.vs===vs)
       .reduce((m,b)=>Math.max(m,b.value),0);
   },
+  /** The same, against a list of traits rather than one name: a save carries
+      several (`magic`, `emotion`, `mental`), and any of them may match. */
+  condBonusAny(ch,target,tags){
+    const list=tags||[];
+    return ((ch&&ch.condBonuses)||[]).filter(b=>b.target===target&&list.includes(b.vs))
+      .reduce((m,b)=>Math.max(m,b.value),0);
+  },
+
+  /* ---------- size ---------- */
+  /**
+   * A combatant's size. It was in the monster schema and on every ancestry in
+   * the pack, and until this phase nothing anywhere read either one.
+   *
+   * A hero's comes off the sheet (`rules.js` puts the ancestry's there), a
+   * monster's off its Registry entry, and anything that names no size at all
+   * is Medium — which is what every creature in both shipped adventures is.
+   */
+  sizeOf(cb){ return (cb&&((cb.char&&cb.char.size)||(cb.monster&&cb.monster.size)||cb.size))||"Medium"; },
+  sizeIdx(cb){ return sizeIndex(this.sizeOf(cb)); },
+  /**
+   * Whether `cb` may wrestle `t` at all. One size larger is the rule; Titan
+   * Wrestler — "you can Disarm, Grapple, Shove, or Trip creatures up to two
+   * sizes larger than you", a note until now — makes it two.
+   */
+  canWrestle(cb,t){
+    const reach=(cb.char&&cb.char.specials.includes("titan-wrestler"))?2:1;
+    return this.sizeIdx(t)-this.sizeIdx(cb)<=reach;
+  },
+
+  /* ---------- Athletics maneuvers ---------- */
+  /**
+   * Trip, Shove, Grapple and Disarm: one Athletics check, one DC off the
+   * target's own save, and the MAP before and after.
+   *
+   * The four outcomes are the Player Core's, mapped onto conditions the engine
+   * already has. Trip and Grapple share the critical-failure clause — you go
+   * down yourself — because the book's "your target can grab you or force you
+   * to fall prone" has no engine for the first half and the second half is
+   * already implemented.
+   *
+   * Grapple's Escape DC is the total that made the grab, exactly the way
+   * Hide's DC is the total that made the hiding place (Phase 4's `hideDC`).
+   * It is not PF2e's "the grabber's Class DC", and it is the reason a critical
+   * Grapple is harder to break than an ordinary one without needing a second
+   * condition value to carry the difference (locked #107).
+   */
+  maneuver(cb,t,kind){
+    const m=MANEUVERS[kind], ch=cb.char;
+    if(!m||!ch) return 1;
+    if(!this.canWrestle(cb,t)){
+      this.toast(`${t.name} is too big to ${m.name.toLowerCase()}.`);
+      this.hint(`${t.name} is too big to ${m.name.toLowerCase()}.`);
+      return null;
+    }
+    const mapPen=this.mapPenalty(cb,{traits:[]});
+    const mod=skillMod(ch,"athletics")+mapPen+this.consumeAid(cb)
+      -this.condVal(cb,"frightened")-this.condVal(cb,"sickened")-this.condVal(cb,"enfeebled");
+    const dc=10+this.saveMod(t,m.save);
+    const r=this.check(`${cb.name}: ${m.name} vs ${t.name}`,mod,dc);
+    cb.mapCount++;
+    if(kind==="trip"){
+      if(r.deg>=2){ this.addCond(t,"prone",1);
+        if(r.deg===3) this.applyDamage(t,Dice.roll("1d6").total,"bludgeoning",cb,"Trip"); }
+      else if(r.deg===0){ this.addCond(cb,"prone",1); this.log(`${esc(cb.name)} overbalances and goes down instead.`); }
+    } else if(kind==="shove"){
+      if(r.deg>=2) this.push(cb,t,r.deg===3?2:1);
+    } else if(kind==="grapple"){
+      if(r.deg>=2){ this.grab(cb,t,r.total); }
+      else if(r.deg===0){ this.addCond(cb,"prone",1); this.log(`${esc(cb.name)} loses the grip and the footing with it.`); }
+    } else if(kind==="disarm"){
+      if(r.deg>=2){ this.addCond(t,"disarmed",1,2);
+        if(r.deg===3){ t.disarmDropped=true; this.log(`${esc(t.name)}'s weapon skitters away — it will cost an action to get back.`); } }
+    }
+    this.afterAttack(cb);
+    return r.deg;
+  },
+  /**
+   * Forced movement, in a straight line directly away from `shover`. It stops
+   * at a wall, an edge or an occupied square, and it provokes nothing: being
+   * shoved is not a Stride. It still counts as moving for everything else —
+   * Take Cover ends, and a hiding place is given away.
+   */
+  push(shover,t,cells){
+    const dx=Math.sign(t.x-shover.x), dy=Math.sign(t.y-shover.y);
+    if(!dx&&!dy) return 0;
+    let moved=0;
+    for(let i=0;i<cells;i++){
+      const nx=t.x+dx, ny=t.y+dy;
+      if(!this.passable(nx,ny,t)||this.occupied(nx,ny)) break;
+      t.x=nx; t.y=ny; moved++;
+    }
+    if(moved){ this.afterMove(t); this.log(`${esc(t.name)} is driven back ${moved*5} feet.`); }
+    else this.log(`${esc(t.name)} is braced against something and does not give an inch.`);
+    return moved;
+  },
+  /** Take hold. `dc` is the total that made the grab, and is what an Escape
+      is rolled against. */
+  grab(grabber,t,dc){
+    t.grabbedBy=grabber.id; t.grabDC=dc;
+    this.addCond(t,"grabbed",1);
+    this.log(`${esc(grabber.name)} has ${esc(t.name)} fast. <b>Escape DC ${dc}.</b>`);
+  },
+  /** Let go, from either end. Safe to call on a combatant nothing is holding. */
+  release(t,why){
+    if(!this.condVal(t,"grabbed")&&!t.grabbedBy) return false;
+    t.conditions=t.conditions.filter(c=>c.c!=="grabbed");
+    t.grabbedBy=null; t.grabDC=0;
+    this.log(`${esc(t.name)} is free${why?", "+why:""}.`);
+    return true;
+  },
+  /** Everything `cb` is holding lets go — because `cb` died, or moved away. */
+  releaseHeldBy(cb,why){
+    this.cbs.filter(c=>c.grabbedBy===cb.id).forEach(c=>this.release(c,why));
+  },
+  /**
+   * Escape, one action, against the DC the grab was made with. Athletics or
+   * Acrobatics, whichever the hero is better at; a companion or a monster uses
+   * its own Perception, which is the only general number a flat stat block has.
+   * Escape has the attack trait, so it takes and raises the MAP.
+   */
+  doEscape(cb){
+    if(!this.condVal(cb,"grabbed")){ this.toast("Nothing has hold of you."); return null; }
+    const ch=cb.char;
+    const base=ch? Math.max(skillMod(ch,"athletics"),skillMod(ch,"acrobatics")) : (cb.perception||0);
+    const mod=base+this.mapPenalty(cb,{traits:[]})+this.consumeAid(cb);
+    const dc=cb.grabDC||15;
+    this.spend(1);
+    const r=this.check(`${cb.name} Escapes`,mod,dc);
+    cb.mapCount++;
+    if(r.deg>=2) this.release(cb,"and out of reach of the grip");
+    else this.log(`${esc(cb.name)} strains against the grip and stays held.`);
+    this.armed=null; this.hint(""); this.renderAll();
+    return r.deg;
+  },
+  /** Stand, one action. Trip needs an answer or prone is permanent, and until
+      this phase nothing in the game removed the condition at all. */
+  doStand(cb){
+    if(!this.condVal(cb,"prone")){ this.toast("You are already on your feet."); return false; }
+    if(this.condVal(cb,"grabbed")){ this.toast("You are grabbed — Escape first."); return false; }
+    this.spend(1);
+    cb.conditions=cb.conditions.filter(c=>c.c!=="prone");
+    this.log(`${esc(cb.name)} gets back up.`);
+    this.armed=null; this.hint(""); this.renderAll();
+    return true;
+  },
+
+  /* ---------- Aid ---------- */
+  /**
+   * Prepare to Aid an ally, and the only action in the game that persists past
+   * the end of the turn that spent it.
+   *
+   * The preparation is stored on both ends — `ally.aidedBy` so the ally's next
+   * check can find it, `cb.aidPrepared` so the start of the aider's next turn
+   * can drop it — and the die is rolled at the moment it is used, not now,
+   * because that is where the ally's check is.
+   */
+  prepareAid(cb,t){
+    if(t.aidedBy&&t.aidedBy.by!==cb.id) this.log(`${esc(t.name)} already has help coming.`);
+    if(cb.aidPrepared){ const old=this.cbs.find(c=>c.id===cb.aidPrepared); if(old) old.aidedBy=null; }
+    t.aidedBy={by:cb.id,round:this.round};
+    cb.aidPrepared=t.id;
+    this.log(`${esc(cb.name)} <b>prepares to Aid</b> ${esc(t.name)}.`);
+  },
+  /**
+   * Spend a prepared Aid on the check `cb` is about to make, and return the
+   * circumstance bonus it is worth: +1 on a success, +2 on a critical success,
+   * −1 on a critical failure, 0 on a failure or when nobody is helping.
+   *
+   * The aider rolls Athletics against a flat DC 15 whatever the ally is doing.
+   * The engine cannot know which skill the ally's next check will use — the
+   * bonus is consumed from inside `strike`, from four skill actions and from
+   * Escape — so one number stands for "lending a hand", and the guide says so
+   * (locked #108). `cooperative-nature`'s +4 is the whole point of the feat
+   * and finally has somewhere to land.
+   */
+  consumeAid(cb){
+    const a=cb&&cb.aidedBy;
+    if(!a) return 0;
+    cb.aidedBy=null;
+    const helper=this.cbs.find(c=>c.id===a.by);
+    if(!helper) return 0;
+    if(helper.aidPrepared===cb.id) helper.aidPrepared=null;
+    if(helper.dead||(helper.dying||0)>0) return 0;
+    const ch=helper.char;
+    let mod=ch? skillMod(ch,"athletics") : (helper.initSkill!==undefined?helper.initSkill:(helper.perception||0));
+    if(ch&&ch.specials.includes("cooperative-nature")) mod+=4;
+    const r=this.check(`${helper.name} Aids ${cb.name}`,mod,15);
+    const bonus=r.deg===3?2:r.deg===2?1:r.deg===0?-1:0;
+    this.log(bonus>0? `${esc(helper.name)} lends a hand: <b>+${bonus}</b> to ${esc(cb.name)}.`
+      : bonus<0? `${esc(helper.name)} gets in the way: <b>−1</b> to ${esc(cb.name)}.`
+      : `${esc(helper.name)} cannot find an opening to help.`);
+    return bonus;
+  },
+
+  /* ---------- Recall Knowledge ---------- */
+  /** The skill a check about `t` uses, off the first trait that names one. */
+  recallSkill(t){
+    const traits=(t.monster&&t.monster.traits)||[];
+    for(const tr of traits) if(LORE_SKILL[tr]) return LORE_SKILL[tr];
+    return "occultism";
+  },
+  /**
+   * Recall Knowledge: one check against the level-based DC, printing a line of
+   * stat block into the Chronicle.
+   *
+   * A success is the two numbers a player is actually deciding on — AC and how
+   * much of the creature is left. A critical success adds the saves, whatever
+   * it is weak or immune to, and the monster's own optional `"lore"` string,
+   * which is the one new field this phase adds to the content schema.
+   *
+   * Repeating it against the same creature is allowed and gets harder: +2 DC
+   * per attempt already made, which is how the tabletop handles a player who
+   * wants to keep rolling.
+   */
+  recallKnowledge(cb,t){
+    const ch=cb.char; if(!ch) return 1;
+    const skill=this.recallSkill(t);
+    const tries=t.recallTries||0;
+    const lvl=(t.monster&&t.monster.level!==undefined)? t.monster.level : 1;
+    const dc=levelDC(lvl)+2*tries;
+    t.recallTries=tries+1;
+    const r=this.check(`${cb.name}: Recall Knowledge (${cap(skill)}) about ${t.name}`,
+      skillMod(ch,skill)+this.consumeAid(cb),dc);
+    const sign=n=>(n>=0?"+":"")+n;
+    if(r.deg>=2){
+      t.recalled=true;
+      this.log(`<b>${esc(t.name)}</b> — AC ${t.ac}, HP ${t.hp}/${t.hpMax}.`);
+      if(r.deg===3){
+        const parts=[`Fort ${sign(t.saves.fort||0)}, Ref ${sign(t.saves.ref||0)}, Will ${sign(t.saves.will||0)}`];
+        (t.weaknesses||[]).forEach(w=>parts.push(`weak to ${w.type} ${w.value}`));
+        (t.resistances||[]).forEach(x=>parts.push(`resists ${x.type} ${x.value}`));
+        if((t.immunities||[]).length) parts.push(`immune to ${t.immunities.join(", ")}`);
+        this.log(parts.join(" · ") + ".");
+        const lore=t.monster&&t.monster.lore;
+        if(lore) this.log(`<i>${esc(lore)}</i>`);
+      }
+    } else if(r.deg===0) this.log(`${esc(cb.name)} remembers something about ${esc(t.name)}, and every word of it is wrong.`);
+    else this.log(`${esc(cb.name)} comes up empty.`);
+    return r.deg;
+  },
+
+  /* ---------- Delay and Ready ---------- */
+  /**
+   * Delay: a move within `this.order`, and nothing else.
+   *
+   * The combatant is spliced out of the initiative array and pushed onto the
+   * end of it, so the rest of the round happens first and the delayed turn is
+   * the last of it. Conditions do **not** tick — this is not `endTurn`, the
+   * turn has not happened yet, and it ticks when the delayed turn ends like
+   * anybody else's.
+   *
+   * Once per round, because two Delays in one round is a combatant that never
+   * has to act. A combatant already last in the order has nothing to move past
+   * and simply ends its turn.
+   */
+  doDelay(){
+    const cb=this.cur();
+    if(cb.delayedRound===this.round){ this.toast("You have already Delayed this round."); return false; }
+    cb.delayedRound=this.round;
+    this.log(`<b>${esc(cb.name)} Delays</b>, and waits for a better moment.`);
+    if(this.turnIdx>=this.order.length-1){ this.endTurn(); return true; }
+    this.order.splice(this.turnIdx,1); this.order.push(cb);
+    if(this.checkEnd()) return true;
+    // The slot the delayer vacated now holds the next combatant, so the index
+    // stays where it is rather than advancing.
+    let idx=this.turnIdx;
+    while(this.order[idx]&&this.order[idx].dead){
+      idx++;
+      if(idx>=this.order.length){ idx=0; this.round++; this.surprise=false; break; }
+    }
+    this.beginTurn(idx);
+    return true;
+  },
+  /**
+   * Ready: two actions to arm one Strike against a trigger from the Phase 3
+   * bus. The trigger is the same `move-out-of-reach` every Reactive Strike
+   * answers to, read the other way round — a readied Strike fires when a foe
+   * steps *into* reach, not out of it.
+   *
+   * A readied action is not a feat, so it is not in `REACTIONS` and not part of
+   * the content contract a monster's `"reactions"` field names. It lives on the
+   * combatant, it spends the same one reaction per turn everything else does,
+   * and it is dropped at the start of the readier's next turn whether it fired
+   * or not.
+   */
+  doReady(cb){
+    if(this.actions<2){ this.toast("Ready takes two actions."); return false; }
+    if(!cb.attacks||!cb.attacks.length){ this.toast("Nothing to Ready a Strike with."); return false; }
+    this.spend(2);
+    cb.readied={kind:"strike"};
+    this.log(`${esc(cb.name)} <b>Readies</b> a Strike, and waits for something to come within reach.`);
+    this.armed=null; this.hint(""); this.renderAll();
+    return true;
+  },
+  /** True when `cb`'s readied Strike answers this trigger: an enemy that was
+      outside reach at `ctx.from` and is inside it at `ctx.to`. */
+  readyFires(cb,name,ctx){
+    if(!cb.readied||name!=="move-out-of-reach") return false;
+    if(!ctx.actor||ctx.actor.side===cb.side||!ctx.from||!ctx.to) return false;
+    if(!cb.attacks||!cb.attacks.length) return false;
+    const R=this.reachOf(cb);
+    return this.dist(cb,ctx.from)>R&&this.dist(cb,ctx.to)<=R;
+  },
+
 
   /* ---------- the view and clock seams: no-ops here, overridden by the page ---------- */
   /** The number that floats up the screen. The engine announces it; the page decides. */
@@ -405,6 +755,7 @@ export const CombatCore = {
 
   kill(cb){
     cb.dead=true; cb.hp=0;
+    this.releaseHeldBy(cb,"as the grip goes slack");
     this.log(`<b>${esc(cb.name)} ${cb.side==="foe"?"is destroyed":"falls, and does not rise"}.</b>`);
   },
 
@@ -433,6 +784,10 @@ export const CombatCore = {
     if(!attack.ranged) m-=this.condVal(cb,"enfeebled");
     m-=this.condVal(cb,"bane")+this.condVal(cb,"hexed")+this.condVal(cb,"night-shrouded");
     if(this.condVal(cb,"prone")) m-=2;
+    // Disarm's success clause: -2 with the weapon it was aimed at. The engine
+    // has one weapon per attack entry and no way to say "that one", so it is
+    // -2 on everything the target swings until the condition runs out.
+    m-=2*this.condVal(cb,"disarmed");
     m+=this.buffSum(cb,"attack");
     return m;
   },
@@ -447,6 +802,9 @@ export const CombatCore = {
     if(attacker&&target.char&&target.char.specials.includes("edge-outwit")&&this.huntPreyId===attacker.id) ac+=1;
     let offGuard=false;
     if(this.condVal(target,"prone")) offGuard=true;
+    // Grabbed is immobilized plus off-guard; the immobilized half is enforced
+    // by the action bar and the AI refusing to move, not here.
+    if(this.condVal(target,"grabbed")) offGuard=true;
     if(opts&&opts.forceOffGuard) offGuard=true;
     if(this.surprise&&target.side==="foe") offGuard=true;
     /* Surprise Attack (Rogue, level 1): "creatures that haven't acted [in round 1]
@@ -583,7 +941,9 @@ export const CombatCore = {
       return 1;
     }
     const mapPen=opts.noMAP?0:(()=>{ const saveSel=this.sel; this.sel=def; const p=this.mapPenalty(att,wpn); this.sel=saveSel; return p; })();
-    let mod=this.atkMod(att,wpn)+mapPen;
+    // A prepared Aid resolves here, on the ally's next check, and the die that
+    // decides it is rolled now rather than when the Aid was prepared.
+    let mod=this.atkMod(att,wpn)+mapPen+this.consumeAid(att);
     const {ac,offGuard}=this.effAC(def,{...att,ranged:wpn.ranged},{forceOffGuard:opts.forceOffGuard||def.offGuardUntil===this.round});
     const fortune=att.buffs.some(b=>b.fortune);
     let d20=Dice.d(20);
@@ -605,6 +965,11 @@ export const CombatCore = {
       let dice=craceOn?"1d10":wpn.die; const extra=opts.extraDie||0;
       let dmg=Dice.roll(dice).total+(extra?Dice.roll(dice).total:0)+ (wpn.dmgMod||0)+(wpn.statusDmg||0)+(craceOn?2:0);
       dmg+=this.buffSum(att,"damage");
+      /* Mountain Strategy and Titan Slinger both carry `bonus-dmg-vs-large`,
+         which has been on the sheet and inert since it shipped. +1 circumstance
+         damage against anything Large or bigger, which is a size the engine can
+         finally read. */
+      if(att.char&&att.char.specials.includes("bonus-dmg-vs-large")&&this.sizeIdx(def)>=SIZES.indexOf("Large")) dmg+=1;
       if(!wpn.ranged&&this.condVal(att,"enfeebled")) dmg=Math.max(1,dmg-this.condVal(att,"enfeebled"));
       // precision: sneak attack / precision edge / companion sneak
       let precision=0;
@@ -631,7 +996,7 @@ export const CombatCore = {
   afterAttack(att){ att.takingCover=false; this.reveal(att,"striking out of it"); },
   strikeMonster(foe,t,atk){
     if(!this.flatCheck(foe,t)){ foe.mapCount++; this.afterAttack(foe); return; }
-    let mod=atk.bonus - this.condVal(foe,"frightened")-this.condVal(foe,"sickened")-this.condVal(foe,"enfeebled")-this.condVal(foe,"hexed")-this.condVal(foe,"night-shrouded");
+    let mod=atk.bonus - this.condVal(foe,"frightened")-this.condVal(foe,"sickened")-this.condVal(foe,"enfeebled")-this.condVal(foe,"hexed")-this.condVal(foe,"night-shrouded")-2*this.condVal(foe,"disarmed");
     mod+= foe.mapCount===0?0: (atk.traits.includes("agile")? (foe.mapCount===1?-4:-8):(foe.mapCount===1?-5:-10));
     foe.mapCount++;
     const {ac,offGuard}=this.effAC(t,{id:foe.id,ranged:atk.ranged},{from:foe});
@@ -647,8 +1012,16 @@ export const CombatCore = {
     }
     this.afterAttack(foe);
   },
-  rollSave(t,save,dc,label){
-    const mod=this.saveMod(t,save);
+  /**
+   * A save, with `tags` naming what it is against — a spell hands in `magic`
+   * plus its own traits, a monster power hands in its own. That list is what a
+   * conditional `{"target":"save.all","vs":X}` off the sheet is matched
+   * against, which is the second reader `condBonuses` has ever had: Ancient-
+   * Blooded Dwarf's +1 vs magic and Gutsy Halfling's +1 vs emotion were both
+   * collected and unread until this phase.
+   */
+  rollSave(t,save,dc,label,tags){
+    const mod=this.saveMod(t,save)+(t.char? this.condBonusAny(t.char,"save.all",tags):0);
     let d20=Dice.d(20);
     if(t.buffs&&t.buffs.some(b=>b.fortune)){ d20=Math.max(d20,Dice.d(20)); t.buffs=t.buffs.filter(b=>!b.fortune); }
     const total=d20+mod;
@@ -713,6 +1086,10 @@ export const CombatCore = {
     if(cb.dead){ return this.nextTurn(); }
     // start-of-turn: persistent damage & recovery & cooldowns & buffs tick handled at end
     cb.reactionUsed=false; cb.shieldRaised=false; cb.nimbleUsed=false; cb.mapCount=0; cb.flourishUsed=false; cb.hexUsed=false; cb.reloadedThisTurn=false;
+    // A readied action lasts until the start of your next turn, fired or not.
+    cb.readied=null;
+    // …and so does a prepared Aid, which is dropped from both ends here.
+    if(cb.aidPrepared){ const al=this.cbs.find(c=>c.id===cb.aidPrepared); if(al&&al.aidedBy&&al.aidedBy.by===cb.id) al.aidedBy=null; cb.aidPrepared=null; }
     if(cb.side==="pc"&&cb.dying>0){
       const roll=Dice.d(20); const dc=10+cb.dying;
       if(roll>=dc){ cb.dying=Math.max(0,cb.dying-(roll>=dc+10?2:1));
@@ -734,6 +1111,9 @@ export const CombatCore = {
     const stun=this.condVal(cb,"stunned"); if(stun){ acts-=stun; this.decCond(cb,"stunned",stun); }
     const slow=(cb.slowedBase||0)+this.condVal(cb,"slowed-feet");
     acts-=slow;
+    // A critical Disarm put the weapon on the floor: picking it up is the
+    // Interact action the book charges for it, spent before anything else.
+    if(cb.disarmDropped){ cb.disarmDropped=false; acts-=1; this.log(`${esc(cb.name)} snatches up its weapon.`); }
     this.actions=Math.max(0,acts);
     (cb.powers||[]).forEach(p=>{ if(p.cd>0)p.cd--; });
     this.armed=null; this.sel=null;
@@ -804,14 +1184,23 @@ export const CombatCore = {
     this.sel=null;
     const arm=(o,hint)=>{ this.armed={...o,btn:id}; this.hint(hint); this.renderAll(); };
     if(id==="end") return this.endTurn();
+    if(id==="delay") return this.doDelay();
+    // Grabbed is immobilized: the three ways to change square all refuse.
+    if(["stride","step","charge"].includes(id)&&this.condVal(cb,"grabbed")){ this.toast("You are grabbed — Escape first."); return; }
     if(id==="stride") return arm({kind:"move",budget:this.moveBudget(cb),cost:1},"Choose a highlighted square to Stride to.");
     if(id==="step") return arm({kind:"move",budget:1,cost:1,step:true},"Step one square (no reactions).");
+    if(id==="escape") return this.doEscape(cb);
+    if(id==="stand") return this.doStand(cb);
+    if(id==="ready") return this.doReady(cb);
     if(id==="takecover"){
       if(!this.nearCover(cb)){ this.toast("Nothing here to duck behind."); return; }
       cb.takingCover=true; this.spend(1);
       this.log(`${esc(cb.name)} <b>Takes Cover</b> (+2 AC until they move or strike).`);
       return this.renderAll(); }
     if(id==="hide") return this.doHide(cb);
+    if(MANEUVERS[id]) return arm({kind:"target",range:1,cost:1,mode:id},MANEUVERS[id].hint);
+    if(id==="aid") return arm({kind:"target",range:1,cost:1,mode:"aid",friendly:true,canDowned:true},"Aid: choose an adjacent ally to help on their next check.");
+    if(id==="recall") return arm({kind:"target",range:6,cost:1,mode:"recall"},"Recall Knowledge: choose a foe to remember something about.");
     if(id==="seek") return arm({kind:"cell",range:6,cost:1,mode:"seek",radius:1},"Seek: choose a point within 30 ft to search.");
     if(id==="raise"){ cb.shieldRaised=true; this.spend(1); this.log(`${esc(cb.name)} raises a shield (+2 AC).`); return this.renderAll(); }
     if(id==="reload"){ this.spend(1); this.log(`${esc(cb.name)} reloads.`);
@@ -912,6 +1301,18 @@ export const CombatCore = {
     const done=(cost)=>{ this.spend(cost!==undefined?cost:a.cost); this.armed=null; this.sel=null; this.hint(""); this.renderAll(); this.checkEnd(); };
     switch(a.mode){
       case "hunt": this.huntPreyId=t.id; this.log(`${esc(cb.name)} <b>Hunts Prey</b>: ${esc(t.name)}.`); return done();
+      case "trip": case "shove": case "grapple": case "disarm": {
+        // A maneuver the hero is too small to attempt costs nothing and leaves
+        // the action armed, the same way an out-of-range Strike does.
+        const deg=this.maneuver(cb,t,a.mode);
+        if(deg===null){ this.sel=null; return; }
+        return done();
+      }
+      case "aid": {
+        if(t===cb){ this.toast("You cannot Aid yourself."); this.sel=null; return; }
+        this.prepareAid(cb,t); return done();
+      }
+      case "recall": this.recallKnowledge(cb,t); return done();
       case "demoralize": {
         const ch=cb.char; let mod=skillMod(ch,"intimidation")-this.condVal(cb,"frightened")-this.condVal(cb,"sickened");
         if(!ch.specials.includes("intimidating-glare")) mod-=4; // no shared language with the mindless dead
@@ -959,7 +1360,11 @@ export const CombatCore = {
       case "intstrike": { const hit=this.strike(cb,t,cb.attacks[a.atkIdx]);
         if(hit>=2) this.addCond(t,"frightened",hit===3?2:1); return done(); }
       case "brutish": { const hit=this.strike(cb,t,cb.attacks[a.atkIdx]);
-        if(hit>=2){ t.offGuardUntil=this.round; this.addCond(t,"clumsy",1,1,true); this.log(`${esc(t.name)} is knocked off-balance (off-guard).`); } return done(); }
+        /* "…and you may Shove it." The Shove half of Brutish Shove was text
+           until Phase 5 gave the engine a Shove — it is the free one the feat
+           promises, so it costs no action and rolls no second check. */
+        if(hit>=2){ t.offGuardUntil=this.round; this.addCond(t,"clumsy",1,1,true); this.log(`${esc(t.name)} is knocked off-balance (off-guard).`);
+          if(!t.dead&&this.canWrestle(cb,t)) this.push(cb,t,1); } return done(); }
       case "huntedshot": { if(t.id!==this.huntPreyId){ this.hint("Hunted Shot only works on your prey."); return; }
         cb.flourishUsed=true; const w=cb.attacks.find(x=>x.ranged);
         this.strike(cb,t,w); if(!t.dead) this.strike(cb,t,w); return done(); }
@@ -1028,6 +1433,9 @@ export const CombatCore = {
   },
   castAt(cb,a,target){
     const sp=a.spell, eff=this.effectFor(sp,a.castRank);
+    // What a save against this spell is *against*, for a sheet's conditional
+    // `save.all` bonuses. Every spell is magic; the rest are its own traits.
+    const saveTags=["magic",...(sp.traits||[])];
     this.spendSpell(cb,a);
     this.spend(a.cost);
     this.log(`${esc(cb.name)} casts <b>${sp.name}</b>.`);
@@ -1080,7 +1488,7 @@ export const CombatCore = {
         const isUndead=t.monster&&(t.monster.traits||[]).includes("undead");
         if(sp.healOrHarmUndead&&isUndead){
           const dmg=Dice.roll(eff.heal).total;
-          const save=this.rollSave(t,"fortitude",dc,sp.name);
+          const save=this.rollSave(t,"fortitude",dc,sp.name,saveTags);
           const mult=[2,1,0.5,0][save];
           this.applyDamage(t,Math.floor(dmg*mult),"vitality",cb,sp.name);
         } else if(eff.heal){
@@ -1116,7 +1524,7 @@ export const CombatCore = {
           if(sp.healsUndead){ const h=Dice.roll((eff.damage||[{formula:"1d8"}])[0].formula).total; t.hp=Math.min(t.hpMax,t.hp+h); this.log(`${esc(t.name)} drinks the void and knits together (+${h}).`); }
           else this.log(`${esc(t.name)} has no life to drain.`);
           return; }
-        const deg=this.rollSave(t,sp.save,dc,sp.name);
+        const deg=this.rollSave(t,sp.save,dc,sp.name,saveTags);
         if(sp.basic&&eff.damage){
           let dmg=eff.damage.reduce((s,d)=>s+Dice.roll(d.formula).total,0);
           if(cb.char.specials.includes("burn-it")&&(sp.traits||[]).includes("fire")) dmg+=1;
@@ -1215,7 +1623,7 @@ export const CombatCore = {
       if(inRad.length>=Math.min(2,pcs.length)){
         this.log(`<b>${esc(foe.name)}: ${pw.name}!</b> <i>${esc(pw.flavor||"")}</i>`);
         inRad.forEach(t=>{
-          const deg=this.rollSave(t,pw.save,pw.dc,pw.name);
+          const deg=this.rollSave(t,pw.save,pw.dc,pw.name,pw.traits||[]);
           const mult=[2,1,0.5,0][deg];
           if(mult>0) this.applyDamage(t,Math.floor(Dice.roll(pw.damage).total*mult),pw.damageType,foe,pw.name);
           const bucket=deg===0?pw.onCritFail||pw.onFail:deg===1?pw.onFail:null;
@@ -1223,6 +1631,16 @@ export const CombatCore = {
         });
         pw.cd=pw.cooldown; this.spend(pw.cost); this.renderAll(); return {action:"power",name:pw.name,wait:600};
       } }
+    /* Standing up, and getting out of a grip. Before Phase 5 nothing in the
+       engine removed either condition, so a tripped monster fought the rest of
+       the fight from the floor and a grabbed one would have been held forever.
+       Standing comes first, because prone is -2 to its attacks and off-guard to
+       everyone; a grip is only worth an action when it wants to move, so the
+       Escape sits down in the movement branch. `doStand` refuses while grabbed
+       and spends nothing, so the `if` is what keeps the turn loop moving. */
+    if(this.condVal(foe,"prone")&&!this.condVal(foe,"grabbed")&&this.doStand(foe)){
+      this.renderAll(); return {action:"stand",wait:400};
+    }
     // target: nearest (prefer downed? no — nearest standing, prefer lowest HP among adjacent)
     const adjacent=pcs.filter(p=>this.dist(foe,p)<=1);
     if(adjacent.length){
@@ -1243,7 +1661,11 @@ export const CombatCore = {
         this.spend(1); this.renderAll(); return {action:"shoot",target:t.id,wait:550};
       }
     }
-    // move toward nearest
+    // move toward nearest — unless something has hold of it, in which case
+    // breaking the grip is the move.
+    if(this.condVal(foe,"grabbed")){
+      this.doEscape(foe); this.renderAll(); return {action:"escape",wait:500};
+    }
     const near=pcs.sort((a,b)=>this.dist(foe,a)-this.dist(foe,b))[0];
     const reach=this.reachable(foe,this.moveBudget(foe));
     let best=null,bd=1e9;

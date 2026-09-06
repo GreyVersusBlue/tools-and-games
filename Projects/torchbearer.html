@@ -751,7 +751,7 @@ const CORE_PACK = {
 {"id":"titan-slinger","name":"Titan Slinger","type":"ancestry","ancestry":"halfling","level":1,"desc":"David had the right idea. +1 damage die size step... rather, +1 circumstance damage with slings against Large or larger foes — doubled the way your grandmother taught you.","effects":[{"special":"bonus-dmg-vs-large"}]},
 {"id":"natural-ambition","name":"Natural Ambition","type":"ancestry","ancestry":"human","level":1,"desc":"You were born hungry for more. You gain an additional 1st-level class feat.","effects":[{"grantFeat":"class-1"}]},
 {"id":"general-training","name":"General Training","type":"ancestry","ancestry":"human","level":1,"desc":"Broad practice makes broad talent. You gain an additional general feat.","effects":[{"grantFeat":"general"}]},
-{"id":"cooperative-nature","name":"Cooperative Nature","type":"ancestry","ancestry":"human","level":1,"desc":"Teamwork comes naturally. +4 circumstance bonus when you Aid another.","effects":[{"note":"+4 to Aid"}]},
+{"id":"cooperative-nature","name":"Cooperative Nature","type":"ancestry","ancestry":"human","level":1,"desc":"Teamwork comes naturally. +4 circumstance bonus when you Aid another.","effects":[{"special":"cooperative-nature"}]},
 
 /* --- Class feats: Fighter --- */
 {"id":"power-attack","name":"Power Attack","type":"class","classes":["fighter"],"level":1,"actions":2,"traits":["flourish"],"desc":"Two actions: make a melee Strike that counts as two attacks for your multiple attack penalty and deals an extra damage die on a hit.","effects":[{"special":"power-attack"}]},
@@ -809,7 +809,7 @@ const CORE_PACK = {
 {"id":"streetwise","name":"Streetwise","type":"skill","level":1,"prereq":{"skill":{"society":"T"}},"desc":"Use Society to Gather Information anywhere you know the streets, and to Recall Knowledge about local goings-on.","effects":[{"note":"City knowledge"}]},
 {"id":"student-of-the-canon","name":"Student of the Canon","type":"skill","level":1,"prereq":{"skill":{"religion":"T"}},"desc":"You know every psalm and its three variant readings. Critical failures to Recall Knowledge about religion become failures.","effects":[{"note":"Canon mastery"}]},
 {"id":"experienced-tracker","name":"Experienced Tracker","type":"skill","level":1,"prereq":{"skill":{"survival":"T"}},"desc":"You Track at full Speed without penalty.","effects":[{"note":"Fast tracking"}]},
-{"id":"titan-wrestler","name":"Titan Wrestler","type":"skill","level":1,"prereq":{"skill":{"athletics":"T"}},"desc":"You can Disarm, Grapple, Shove, or Trip creatures up to two sizes larger than you.","effects":[{"note":"Wrestle giants"}]},
+{"id":"titan-wrestler","name":"Titan Wrestler","type":"skill","level":1,"prereq":{"skill":{"athletics":"T"}},"desc":"You can Disarm, Grapple, Shove, or Trip creatures up to two sizes larger than you.","effects":[{"special":"titan-wrestler"}]},
 {"id":"terrified-retreat","name":"Terrified Retreat","type":"skill","level":1,"prereq":{"skill":{"intimidation":"T"}},"desc":"When you critically Demoralize a lower-level foe, it flees for 1 round.","effects":[{"special":"terrified-retreat"}]},
 {"id":"group-impression","name":"Group Impression","type":"skill","level":1,"prereq":{"skill":{"diplomacy":"T"}},"desc":"Your first impressions land on whole rooms: Make an Impression on multiple targets at once.","effects":[{"note":"Crowd charmer"}]},
 
@@ -995,27 +995,32 @@ const ADVENTURE_PACK = {
 {"id":"moor-hound","name":"Moor Hound","level":1,"traits":["beast"],"size":"Medium",
  "ac":16,"hp":24,"speed":35,"perception":7,"saves":{"fort":7,"ref":9,"will":5},
  "attacks":[{"name":"Bite","bonus":9,"damage":"1d8+3","damageType":"piercing","range":1}],
+ "lore":"They hunt by sound, not scent — the moor took their noses long ago. Stand still and they lose you.",
  "desc":"Gaunt hounds with peat-black coats and too many teeth, run feral since their masters drowned."},
 {"id":"skeleton-guard","name":"Skeleton Guard","level":-1,"traits":["undead","skeleton","mindless"],"size":"Medium",
  "ac":16,"hp":8,"speed":25,"perception":2,"saves":{"fort":2,"ref":8,"will":2},
  "immunities":["void","mental","poison"],"resistances":[{"type":"cold","value":1},{"type":"electricity","value":1},{"type":"fire","value":1},{"type":"piercing","value":1}],
  "attacks":[{"name":"Rusted Scimitar","bonus":6,"damage":"1d6+2","damageType":"slashing","range":1},{"name":"Claw","bonus":6,"damage":"1d4+2","damageType":"slashing","range":1,"traits":["agile"]}],
+ "lore":"Bog-iron makes brittle bone. A hard enough blow shatters what a blade only scratches, and they have no wits to guard their flanks.",
  "desc":"Chapel soldiery still at their posts, mail rusted to lace, sockets full of bog-water."},
 {"id":"zombie-shambler","name":"Zombie Shambler","level":-1,"traits":["undead","zombie","mindless"],"size":"Medium",
  "ac":12,"hp":22,"speed":25,"perception":0,"saves":{"fort":6,"ref":0,"will":2},
  "immunities":["void","mental","poison"],"weaknesses":[{"type":"slashing","value":3},{"type":"vitality","value":3}],
  "slowed":1,
  "attacks":[{"name":"Fist","bonus":7,"damage":"1d6+3","damageType":"bludgeoning","range":1}],
+ "lore":"The bloat is water, not muscle. Open it and it goes down; it also never gets more than two things done in a breath.",
  "desc":"The moor gives up its drowned reluctantly, and what it returns walks slowly."},
 {"id":"grave-wisp","name":"Grave Wisp","level":1,"traits":["undead","incorporeal"],"size":"Small",
  "ac":17,"hp":18,"speed":30,"perception":8,"saves":{"fort":4,"ref":9,"will":8},
  "immunities":["void","poison"],"resistances":[{"type":"physical","value":2}],
  "attacks":[{"name":"Corpse-Light Spark","bonus":9,"damage":"1d6+2","damageType":"electricity","range":6}],
+ "lore":"It is the bell's own note given a body. Nothing solid touches it cleanly, and it will not come to you — it will hang at the edge and spark.",
  "desc":"A knot of blue-green corpse-light that hums at the same pitch as the bell."},
 {"id":"skeletal-champion","name":"Skeletal Champion","level":2,"traits":["undead","skeleton"],"size":"Medium",
  "ac":19,"hp":25,"speed":25,"perception":8,"saves":{"fort":6,"ref":11,"will":8},
  "immunities":["void","mental","poison"],"resistances":[{"type":"cold","value":2},{"type":"electricity","value":2},{"type":"fire","value":2},{"type":"piercing","value":2}],
  "attacks":[{"name":"Blackened Longsword","bonus":11,"damage":"1d8+4","damageType":"slashing","range":1},{"name":"Gauntlet","bonus":11,"damage":"1d4+4","damageType":"bludgeoning","range":1,"traits":["agile"]}],
+ "lore":"The tabard is a garrison officer's. It still keeps the drill: guard, riposte, guard. Break the rhythm and the drill has no answer.",
  "desc":"An officer of the drowned garrison, tabard still legible: a bell above three waves."},
 {"id":"bell-warden","name":"The Bell-Warden","level":4,"traits":["undead","ghast"],"size":"Medium","boss":true,
  "ac":21,"hp":62,"speed":30,"perception":12,"saves":{"fort":10,"ref":11,"will":13},
@@ -1025,6 +1030,7 @@ const ADVENTURE_PACK = {
  "powers":[{"name":"Toll of the Deep","cost":2,"cooldown":3,"type":"aoe","save":"will","dc":21,"radius":3,
    "damage":"2d6","damageType":"sonic","onFail":[{"c":"frightened","v":1}],"onCritFail":[{"c":"frightened","v":2}],
    "flavor":"The Warden seizes its own ribcage and RINGS it, and the sound is the bell's sound."}],
+ "lore":"The ribs are the bell and the bell is the ribs. It cannot ring while it is on the floor, and it has never once in four hundred years let anyone behind it.",
  "desc":"Once the chapel's bell-ringer; now a gaunt gray thing whose ribs have fused into a bronze curve. It kept ringing. It never understood that everyone else stopped listening."}
 ],
 
@@ -1845,7 +1851,7 @@ const Combat = Object.assign(newCombat(), {
     const cb=this.cur();
     st.innerHTML=`<b>${esc(cb.name)}</b> — HP ${cb.hp}/${cb.hpMax}${cb.tempHP?" (+"+cb.tempHP+" temp)":""}<br>
       MAP: ${cb.mapCount===0?"none":cb.mapCount===1?"–5 (–4 agile)":"–10 (–8 agile)"}${this.huntPreyId&&cb.char?"<br>Prey: "+esc((this.cbs.find(c=>c.id===this.huntPreyId)||{}).name||""):""}
-      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
+      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.condVal(cb,"grabbed")?"<br>grabbed — Escape DC "+(cb.grabDC||15):""}${cb.readied?"<br>Strike readied":""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
       ${cb.conditions.length?"<br>"+cb.conditions.map(c=>c.c+(c.v>1?" "+c.v:"")).join(", "):""}`;
     if(cb.side!=="pc"){ bar.innerHTML=`<div class="small" style="padding:8px">${esc(cb.name)} acts…</div>`; return; }
     const B=[]; const btn=(id,label,cost,disabled,cls)=>B.push(`<button class="act-btn ${cls||""} ${this.armed&&this.armed.btn===id?"armed":""}" data-act="${id}" ${disabled?"disabled":""}>${label}${cost?` <span class="cost">${cost}</span>`:""}</button>`);
@@ -1859,10 +1865,21 @@ const Combat = Object.assign(newCombat(), {
     btn("takecover","🧱 Take Cover","◆",no||cb.takingCover||!this.nearCover(cb));
     if(cb.char) btn("hide","👤 Hide","◆",no);
     btn("seek","👁 Seek","◆",no);
+    if(this.condVal(cb,"grabbed")) btn("escape","🪢 Escape","◆",no);
+    if(this.condVal(cb,"prone")) btn("stand","🧍 Stand","◆",no||this.condVal(cb,"grabbed")>0);
+    btn("ready","⏳ Ready a Strike","◆◆",no||this.actions<2||!(cb.attacks||[]).length);
     if(cb.char&&cb.char.build.gear.shield) btn("raise","🛡 Raise Shield","◆",no||cb.shieldRaised);
     if(cb.attacks.some(a=>a.ranged&&(a.traits||[]).includes("reload-1"))) btn("reload","🔃 Reload","◆",no||cb.reloadedThisTurn);
     if(cb.char){
       const ch=cb.char;
+      /* The four Athletics maneuvers. Trip, Shove and Grapple are untrained
+         actions and everyone gets them; Disarm's own text requires training. */
+      btn("trip","🦵 Trip","◆",no);
+      btn("shove","🖐 Shove","◆",no);
+      btn("grapple","🤼 Grapple","◆",no);
+      if(ch.skills.athletics!=="U") btn("disarm","🗡 Disarm","◆",no);
+      btn("aid","🤝 Aid","◆",no||!this.cbs.some(c=>c!==cb&&c.side===cb.side&&!c.dead&&this.dist(cb,c)<=1));
+      btn("recall","📖 Recall Knowledge","◆",no);
       if(ch.specials.includes("hunt-prey")) btn("hunt","🎯 Hunt Prey","◆",no);
       if(ch.skills.intimidation!=="U") btn("demoralize","😱 Demoralize","◆",no);
       if(ch.skills.deception!=="U") btn("feint","🎭 Feint","◆",no);
@@ -1884,6 +1901,7 @@ const Combat = Object.assign(newCombat(), {
       }
     }
     if(cb.abilities) cb.abilities.forEach((ab,i)=>{ if(ab.uses>0) btn("abil"+i,`✚ ${ab.name} ×${ab.uses}`,"◆".repeat(ab.cost),no||this.actions<ab.cost); });
+    btn("delay","⏱ Delay","",cb.delayedRound===this.round||this.turnIdx>=this.order.length-1);
     btn("end","⏭ End Turn","", false,"end-turn");
     bar.innerHTML=B.join("");
     bar.querySelectorAll(".act-btn").forEach(el=>el.onclick=()=>this.actionClick(el.dataset.act));

@@ -990,6 +990,35 @@ const SUITES = {
       `${cells} cells, ${tokens} tokens`);
     await t.shot('vanguards-watch');
 
+    // Phase 5 put nine more actions on the bar, and renderBar is the only
+    // caller of half of them. smoke.mjs drives the engine and never sees this
+    // function, so a button whose handler was never attached — or a renderBar
+    // that throws on `this.condVal` — is invisible to 947 green assertions.
+    // Wait for Sera's own turn: a companion's bar has no maneuvers on it,
+    // because it has no character sheet to roll Athletics off, and initiative
+    // decides which of the two comes first. End the companion's turn if it is
+    // up — nothing else will, and the monsters' turns run themselves.
+    for (let i = 0; i < 4; i++) {
+      await waitFor(p, () => !!document.querySelector('#action-bar .act-btn'), { timeout: 25000 });
+      // `hide` is the probe rather than one of the buttons asserted below, so
+      // a missing maneuver is named by the assertion instead of hanging here.
+      const isHero = await p.$$eval('#action-bar .act-btn', els => els.some(e => e.dataset.act === 'hide'));
+      if (isHero) break;
+      await p.click('#action-bar [data-act="end"]');
+      await wait(400);
+    }
+    const acts = await p.$$eval('#action-bar .act-btn', els => els.map(e => e.dataset.act));
+    const wanted = ['trip', 'shove', 'grapple', 'disarm', 'aid', 'recall', 'ready', 'delay'];
+    const missing = wanted.filter(a => !acts.includes(a));
+    t.ok(missing.length === 0, "the hero's action bar carries Phase 5's actions",
+      missing.length ? `missing ${missing.join(', ')}` : `${acts.length} buttons`);
+    // Escape and Stand are conditional and correctly absent on a standing,
+    // ungrabbed hero — their presence here would mean the gate is not read.
+    t.ok(!acts.includes('escape') && !acts.includes('stand'),
+      'Escape and Stand stay off the bar until something is holding you or you are down',
+      acts.filter(a => a === 'escape' || a === 'stand').join(', ') || 'neither');
+    await t.shot('action-bar-phase-5');
+
     // Corrupt-file-rejected: a build naming a class/background this page never
     // loaded. Thornwake is already loaded from the beat above, so this
     // exercises loadSave's ancestry/background/class check specifically, not

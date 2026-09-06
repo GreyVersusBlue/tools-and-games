@@ -50,6 +50,18 @@ export function emptyRegistry() {
  */
 export const KNOWN_REACTIONS = ["reactive-strike", "shield-block", "nimble-dodge"];
 
+/**
+ * PF2e's six sizes, smallest first, and the vocabulary a monster's or an
+ * ancestry's `"size"` field is checked against.
+ *
+ * It lives here rather than in rules.js because the validator needs it and the
+ * dependency runs one way — combat.js imports rules.js imports registry.js.
+ * rules.js re-exports it so nothing outside has to know that, and there is one
+ * copy rather than the KNOWN_REACTIONS arrangement of two kept honest by a
+ * test.
+ */
+export const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
+
 /* ---------- Pack validation (friendly errors for JSON authors) ----------
    Every check here is a promise the authoring guide makes. Five of them were
    promises the guide made and this file did not keep — a scene with no `text`
@@ -68,6 +80,11 @@ export const Validator = {
       });
     };
     checkIds(pack.ancestries, "ancestries", ["hp", "speed", "boosts", "heritages"]);
+    (pack.ancestries || []).forEach(a => {
+      if (a.size !== undefined && !SIZES.includes(a.size)) {
+        errs.push(`Ancestry "${a.id}": unknown size "${a.size}" (known: ${SIZES.join(", ")}).`);
+      }
+    });
     checkIds(pack.backgrounds, "backgrounds", ["boosts", "skills"]);
     checkIds(pack.classes, "classes", ["hp", "keyAbility", "perception", "saves", "attacks", "defenses", "skillCount"]);
     checkIds(pack.feats, "feats", ["type", "level"]);
@@ -89,6 +106,16 @@ export const Validator = {
       }
       if (m.reach !== undefined && (!Number.isInteger(m.reach) || m.reach < 1)) {
         errs.push(`Monster "${m.id}": "reach" is in cells and must be a whole number of 1 or more.`);
+      }
+      // added Phase 5: `size` was in the schema and in every shipped monster
+      // and read by nothing. Athletics maneuvers read it now, so a misspelled
+      // one silently reads as Medium and a Huge creature becomes wrestleable.
+      if (m.size !== undefined && !SIZES.includes(m.size)) {
+        errs.push(`Monster "${m.id}": unknown size "${m.size}" (known: ${SIZES.join(", ")}).`);
+      }
+      // added Phase 5: `lore` is the line a critical Recall Knowledge prints.
+      if (m.lore !== undefined && typeof m.lore !== "string") {
+        errs.push(`Monster "${m.id}": "lore" must be a string — the one line a critical Recall Knowledge prints.`);
       }
     });
 
