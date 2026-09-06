@@ -1038,6 +1038,87 @@ Two of them have moved since they were written:
    off-turn, and the MAP belongs to the monster's own turn.
    *Source: Torchbearer Phase 3.*
 
+99. **Hide and Seek are their own verbs, not `resolveTargeted` cases.** Phase
+   4's wishlist row asked for both "as two more `resolveTargeted` cases in the
+   pattern Feint set", and neither fits that pattern. Hide is one Stealth roll
+   compared against *every* observer's Perception DC — there is nothing to
+   point at, and making the player spend an action per foe would have been
+   three actions to hide from three hounds. Seek is a Perception roll over a
+   burst of squares, which the same row says in its own next clause; it is
+   armed as `kind:"cell"` like a fireball and handled in `cellClick` before
+   `castAt` sees it. What makes one Hide roll produce different answers per foe
+   is the per-pair map, not three actions: the roll is shown once, and the
+   comparison happens per observer. *Source: Torchbearer Phase 4.*
+
+100. **Detection is four states, and the two conditions are the base under the
+   map rather than entries in it.** `detect[observerId][targetId]` holds
+   `"concealed"`, `"hidden"` or `"undetected"`; its *absence* means "whatever
+   the target's own conditions say" — `invisible` reads as undetected,
+   `concealed` as concealed, everything else as observed. Writing `"observed"`
+   deletes the override rather than pinning it, so a Seek that finds a
+   concealed hider drops them back to concealed and not to fully seen. The
+   alternative — writing the condition into every observer's row when the
+   condition lands — was rejected because it needs a sweep on every add and
+   every expiry, and gets it wrong the first time a `dur` runs out.
+   `undetected` cannot be targeted at all, by the action bar or by the AI;
+   `hidden` can, and pays DC 11; `concealed` pays DC 5. A failed flat check
+   spends the action and raises the MAP: the swing happened.
+   *Source: Torchbearer Phase 4.*
+
+101. **Cover is +4 or +2, off the same Bresenham walk, and it does not stack
+   with Take Cover.** `coverBonus(a, b)` re-walks `losClear`'s line and reads
+   what it steps over: a wall is greater cover (+4 AC), a living body is lesser
+   (+2), a corpse is neither, and neither endpoint's own square is read — a
+   caster standing on a wall is not its own cover, which is the rule `losClear`
+   already kept. There is no corner rule and no "which corner do you measure
+   from": that is a VTT feature and guide §13 says what this engine is. Take
+   Cover is the same circumstance bonus by hand, so `effAC` takes the larger of
+   the two rather than the sum — behind a wall it is +4, not +6. The raised
+   shield's +2 was left stacking with both, because it always has, and changing
+   it is a balance change to every fight in the game rather than a Phase 4
+   rule. *Source: Torchbearer Phase 4.*
+
+102. **A monster's attack gets cover through `opts.from`, and locked #90 stays
+   pinned.** `strikeMonster` hands `effAC` a bare `{id, ranged}` stand-in with
+   no coordinates, which is why monsters have never flanked (#90, pinned rather
+   than fixed so a balance regression stays attributable). Cover needs real
+   coordinates, and giving `effAC` the whole foe would have silently turned
+   monster flanking on in the same commit. So `effAC(target, attacker, opts)`
+   reads `opts.from` for geometry and the stub for everything else: the wisp
+   behind a body now shoots at +2 AC, and no monster flanks anybody.
+   *Source: Torchbearer Phase 4.*
+
+103. **A `bonus` carrying a `vs` is collected as `condBonuses`, and exactly one
+   site reads it.** `finalizeCharacter` used to drop conditional bonuses on the
+   floor (guide §6 said so, and `smoke.mjs` pinned it). They are now a list on
+   the sheet, and `Combat.seek` reads `{"target":"perception","vs":"seek"}` —
+   Sensate Gnome's +2, the third of the Stealth-and-Seek feats Phase 4 was
+   about. Everything else in that list is still collected and unread on
+   purpose: turning `bonus` on `perception` and `save.all` into a general
+   conditional-bonus mechanism is Phase 5's own row, and doing it here would
+   have moved the row without moving the rank. The seam is built; the wiring
+   is not. *Source: Torchbearer Phase 4.*
+
+104. **Hiding survives nothing, because there is no Sneak.** A hidden creature
+   that moves or attacks drops every `"hidden"` naming it — `afterMove` on
+   every position change (Stride, Step, the AI's close, a flee) and
+   `afterAttack` on every Strike, hit or miss. PF2e's answer to "move while
+   hidden" is the Sneak action, and Sneak is not in this engine; the honest
+   simplification is that a mover is seen again, said in guide §13, rather than
+   a half-Sneak nobody can predict. The reveal falls back to the condition base
+   (#100), so an invisible hero who Strikes is undetected again a beat later
+   and a concealed one is merely blurry. *Source: Torchbearer Phase 4.*
+
+105. **`distracting-shadows` becomes a wired hook; `very-sneaky` stays a
+   note.** Lesser cover — a body in the way — is not enough to Hide behind,
+   which is the tabletop rule and also the only thing that makes Distracting
+   Shadows ("using Medium and larger creatures as cover to Hide") worth a feat
+   slot. It moved from `{"note": ...}` to `{"special":"distracting-shadows"}`
+   and into guide §8's working list, taking it to 42. `very-sneaky` did not:
+   its text is about Sneak, and inventing a Sneak action to justify a feat is
+   backwards. `trap-finder` stays inert for the same reason — there are no
+   traps. *Source: Torchbearer Phase 4.*
+
 
 ---
 

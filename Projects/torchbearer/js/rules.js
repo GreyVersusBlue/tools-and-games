@@ -133,6 +133,13 @@ export function finalizeCharacter(build){
   // apply effects
   let tradition = cls.spellcasting? cls.spellcasting.tradition : null;
   let focusMax=0; const focusSpells=[]; const resists=[]; let hpBonus=0, speedBonus=0, initBonus=0; const sensesExtra=[];
+  /* A `bonus` carrying a `vs` is conditional — it applies to one kind of check
+     and nothing else, so there is no single number on the sheet to add it to.
+     They are collected here rather than dropped, and the check sites that know
+     about a condition read them by name. Phase 4 wires exactly one: Sensate
+     Gnome's `{"target":"perception","vs":"seek"}`, which Combat.seek adds. The
+     rest stay collected and unread until the site that means them exists. */
+  const condBonuses=[];
   effs.forEach(({src,e})=>{
     if(e.profUp){ const t=e.profUp.target;
       if(e.profUp.ifSubclass && !(build.subclass||"").includes(e.profUp.ifSubclass)) return;
@@ -146,6 +153,7 @@ export function finalizeCharacter(build){
     if(e.trainSkill && e.trainSkill!=="choice"){ if(skills[e.trainSkill]==="U") skills[e.trainSkill]="T"; }
     if(e.grantLore) lores.push({name:e.grantLore,rank:e.rank||"T"});
     if(e.bonus){ const b=e.bonus;
+      if(b.vs) condBonuses.push({target:b.target,value:b.value,type:b.type||"untyped",vs:b.vs});
       if(b.target==="speed"&&!b.vs) speedBonus+=b.value;
       else if(b.target==="hp") hpBonus+=b.value;
       else if(b.target==="initiative") initBonus+=b.value;
@@ -231,7 +239,7 @@ export function finalizeCharacter(build){
     background:bg.name, className:cls.name,
     subclassName: cls.subclass? ((cls.subclass.options.find(o=>o.id===build.subclass)||{}).name||"") : "",
     abil, keyAbil, classDC, hpMax:hp, ac, speed, saves, perception, initBonus,
-    skills, lores, prof, specials:[...specials], notes, resists,
+    skills, lores, prof, specials:[...specials], notes, resists, condBonuses,
     attacks:attacks.filter(Boolean), casting, focusMax, focusSpells:[...new Set(focusSpells)],
     senses:[...new Set([...(anc.senses||[]),...sensesExtra])],
     consumables:[{id:"healing-potion-minor",count:2+(specials.has("cauldron")?2:0)}]

@@ -340,6 +340,9 @@ input[type=text].name-input:focus{outline:none;border-color:var(--brass)}
 .token.foe{background:radial-gradient(circle at 35% 30%,#7E352A,#4C1E16);border-color:var(--ember-hi);color:#F5D9CE}
 .token.turn-glow{box-shadow:0 0 0 3px rgba(199,154,75,.55),0 0 16px rgba(199,154,75,.5)}
 .token.dead{opacity:.25;filter:grayscale(1);cursor:default}
+/* Concealed, hidden or undetected to whoever is acting: the token is still
+   there and still clickable, it just does not read as a clean target. */
+.token.unseen{opacity:.55;filter:blur(.6px)}
 .token .mini-hp{position:absolute;bottom:-6px;left:4px;right:4px;height:4px;background:#000;border-radius:2px;overflow:hidden}
 .token .mini-hp i{display:block;height:100%;background:var(--good)}
 .token.selected-target{box-shadow:0 0 0 3px var(--ember-hi),0 0 14px rgba(208,106,80,.6)}
@@ -744,7 +747,7 @@ const CORE_PACK = {
 {"id":"goblin-scuttle","name":"Goblin Scuttle","type":"ancestry","ancestry":"goblin","level":1,"desc":"Reaction: when an ally ends a move adjacent to you, Step to keep your relative position or slip away.","effects":[{"note":"Reaction reposition"}]},
 {"id":"very-sneaky","name":"Very Sneaky","type":"ancestry","ancestry":"goblin","level":1,"desc":"So sneaky. +5 feet when you Sneak, and you can Sneak between cover.","effects":[{"note":"Sneak +5 ft"}]},
 {"id":"halfling-luck","name":"Halfling Luck","type":"ancestry","ancestry":"halfling","level":1,"desc":"Free action, once per day: reroll a failed skill check or saving throw and take the new result.","effects":[{"special":"halfling-luck"}]},
-{"id":"distracting-shadows","name":"Distracting Shadows","type":"ancestry","ancestry":"halfling","level":1,"desc":"You vanish behind bigger folk, using Medium and larger creatures as cover to Hide and Sneak.","effects":[{"note":"Use creatures as cover"}]},
+{"id":"distracting-shadows","name":"Distracting Shadows","type":"ancestry","ancestry":"halfling","level":1,"desc":"You vanish behind bigger folk, using Medium and larger creatures as cover to Hide and Sneak.","effects":[{"special":"distracting-shadows"}]},
 {"id":"titan-slinger","name":"Titan Slinger","type":"ancestry","ancestry":"halfling","level":1,"desc":"David had the right idea. +1 damage die size step... rather, +1 circumstance damage with slings against Large or larger foes — doubled the way your grandmother taught you.","effects":[{"special":"bonus-dmg-vs-large"}]},
 {"id":"natural-ambition","name":"Natural Ambition","type":"ancestry","ancestry":"human","level":1,"desc":"You were born hungry for more. You gain an additional 1st-level class feat.","effects":[{"grantFeat":"class-1"}]},
 {"id":"general-training","name":"General Training","type":"ancestry","ancestry":"human","level":1,"desc":"Broad practice makes broad talent. You gain an additional general feat.","effects":[{"grantFeat":"general"}]},
@@ -1788,8 +1791,12 @@ const Combat = Object.assign(newCombat(), {
     }
     this.cbs.forEach(c=>{
       const turn=c===this.cur()&&!c.dead;
-      html+=`<div class="token ${c.side} ${turn?"turn-glow":""} ${c.dead?"dead":""} ${this.sel===c?"selected-target":""}"
-        data-cb="${c.id}" style="left:${c.x*S}px;top:${c.y*S}px" title="${esc(c.name)} — HP ${c.hp}/${c.hpMax}${c.dying?" (dying "+c.dying+")":""}">
+      // What the combatant whose turn it is can see of this one. Observed is
+      // the default and says nothing; anything else is worth a word, because
+      // it is the difference between a Strike and a flat check.
+      const seen=(this.cur()&&this.cur()!==c&&!c.dead)? this.detectState(this.cur(),c) : "observed";
+      html+=`<div class="token ${c.side} ${turn?"turn-glow":""} ${c.dead?"dead":""} ${seen!=="observed"?"unseen":""} ${this.sel===c?"selected-target":""}"
+        data-cb="${c.id}" style="left:${c.x*S}px;top:${c.y*S}px" title="${esc(c.name)} — HP ${c.hp}/${c.hpMax}${c.dying?" (dying "+c.dying+")":""}${seen!=="observed"?" · "+seen:""}">
         ${c.side==="pc"? esc(c.name[0]) : esc(c.letter||c.name[0])}
         <div class="mini-hp"><i style="width:${Math.round(100*c.hp/c.hpMax)}%;background:${c.hp/c.hpMax>.5?"#7FA657":c.hp/c.hpMax>.25?"#C79A4B":"#C05B45"}"></i></div></div>`;
     });
@@ -1838,6 +1845,7 @@ const Combat = Object.assign(newCombat(), {
     const cb=this.cur();
     st.innerHTML=`<b>${esc(cb.name)}</b> — HP ${cb.hp}/${cb.hpMax}${cb.tempHP?" (+"+cb.tempHP+" temp)":""}<br>
       MAP: ${cb.mapCount===0?"none":cb.mapCount===1?"–5 (–4 agile)":"–10 (–8 agile)"}${this.huntPreyId&&cb.char?"<br>Prey: "+esc((this.cbs.find(c=>c.id===this.huntPreyId)||{}).name||""):""}
+      ${cb.takingCover?"<br>taking cover (+2 AC)":""}${this.cbs.some(f=>f.side!==cb.side&&!f.dead&&this.isHidden(f,cb))?"<br>hidden from at least one foe":""}
       ${cb.conditions.length?"<br>"+cb.conditions.map(c=>c.c+(c.v>1?" "+c.v:"")).join(", "):""}`;
     if(cb.side!=="pc"){ bar.innerHTML=`<div class="small" style="padding:8px">${esc(cb.name)} acts…</div>`; return; }
     const B=[]; const btn=(id,label,cost,disabled,cls)=>B.push(`<button class="act-btn ${cls||""} ${this.armed&&this.armed.btn===id?"armed":""}" data-act="${id}" ${disabled?"disabled":""}>${label}${cost?` <span class="cost">${cost}</span>`:""}</button>`);
@@ -1848,6 +1856,9 @@ const Combat = Object.assign(newCombat(), {
     });
     btn("stride","➤ Stride","◆",no);
     btn("step","⋆ Step","◆",no);
+    btn("takecover","🧱 Take Cover","◆",no||cb.takingCover||!this.nearCover(cb));
+    if(cb.char) btn("hide","👤 Hide","◆",no);
+    btn("seek","👁 Seek","◆",no);
     if(cb.char&&cb.char.build.gear.shield) btn("raise","🛡 Raise Shield","◆",no||cb.shieldRaised);
     if(cb.attacks.some(a=>a.ranged&&(a.traits||[]).includes("reload-1"))) btn("reload","🔃 Reload","◆",no||cb.reloadedThisTurn);
     if(cb.char){

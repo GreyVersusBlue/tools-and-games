@@ -179,6 +179,23 @@ because it could not.
 
 Open and unclaimed. Add here rather than starting a new list.
 
+**Detection**
+- **No monster can Hide, because no monster carries a Stealth number.** The
+  schema has `perception` and nothing else, so `stealthDC` falls back to
+  `10 + perception` for a foe and the Hide action is gated on `cb.char`. A
+  `"stealth"` field on the monster schema plus an AI that Hides when it is
+  losing would make ambush creatures play like ambush creatures; today they
+  walk at you in the open like everything else.
+- **The AI never Takes Cover and never Hides.** It Seeks, which is the only
+  half of Phase 4 it uses, and only when it has lost every hero. A wisp that
+  put a body between itself and the archer would be reading `coverBonus`
+  backwards from what the archer reads it for, and nothing does that yet.
+- **Cover has no corner rule.** It is read off the one Bresenham line between
+  two squares, so a creature diagonally behind a pillar sometimes has +4 and
+  sometimes nothing depending on which way the line rounds. Locked #101 says
+  this is deliberate — a corner rule is a VTT feature — but it is the thing a
+  player will notice first.
+
 **Reactions and the turn loop**
 - **Only one monster in the whole game reacts, and it is in the sample pack.**
   The Forge-Tyrant in `packs/embers-of-the-hold.json` carries `"reach": 2` and
@@ -459,40 +476,70 @@ standing backlog.
 **Claude Fable 5.1** — turn-loop interrupt ordering, where a wrong answer
 produces a plausible battle log and no error. Worked under Claude Opus 5.
 
-## Phase 4 — Detection: Hide, Seek, cover, invisibility
+## Phase 4 — Detection: Hide, Seek, cover, invisibility — SHIPPED
 
-**Half the Stealth feats in the file describe an action the engine does not
+**Half the Stealth feats in the file described an action the engine did not
 have.**
 
-`edge-outwit` grants +2 Stealth and the guide admits it goes nowhere.
-`distracting-shadows` and `very-sneaky` describe Hiding behind cover.
-`sensate-gnome` grants +2 to Seek; `trap-finder` finds traps without Searching.
-All of it is note text, because detection state does not exist: every combatant
-sees every other one, and `losClear` is consulted only for ranged attacks and
-`maxTargets`. Detection is a per-pair state and a flat check — small once
-combat is a module, and it unlocks content the engine already advertises.
+`edge-outwit` granted +2 Stealth and the guide admitted it went nowhere.
+`distracting-shadows` and `very-sneaky` described Hiding behind cover.
+`sensate-gnome` granted +2 to Seek. All of it was note text, because detection
+state did not exist: every combatant saw every other one, and `losClear` was
+consulted only for ranged attacks and `maxTargets`.
 
-- [ ] **A detection map.** `detect[observerId][targetId]` defaulting to
-  observed; `isHidden(a,b)` and `flatCheckDC(a,b)` (DC 5 concealed, DC 11
-  hidden), with expiry rules that survive a move.
-- [ ] **Cover from geometry.** Reuse `losClear`'s Bresenham walk: a wall on the
-  line is greater cover (+4 AC), a creature on it lesser cover (+2), both fed
-  into `effAC`. Take Cover as a one-action button.
-- [ ] **Hide and Seek as actions** — Stealth vs Perception DC (needs cover or
-  concealment) and Perception vs Stealth DC over a burst of squares — as two
-  more `resolveTargeted` cases in the pattern Feint set. `edge-outwit`'s +2
-  finally has somewhere to go.
-- [ ] **The flat check in `strike` and `castAt`.** A hidden target's attacker
-  rolls it, the Chronicle prints it, and a failure costs the action.
-  `concealed` and `invisible` join guide §12 on the existing chip machinery.
-- [ ] **The AI respects it,** filtering `aiTurn`'s target list on what the
-  monster can detect and Seeking when it loses one. Suite checks: Hide then
-  Strike from hiding, a Seek that finds, a flat check that misses, cover at +2
-  when the thing in the way is a person.
+**Shipped.** `js/combat.js` 1,071 → 1,309 lines; `smoke.mjs` 706 → 815 checks.
+Thirty-one guard-rails were broken on purpose (#34) and each exited 1; three
+stayed green on the first pass — the endpoint exemption in `coverBonus`, a Hide
+roll being the DC to find it, and an undetected creature being untargetable —
+and the tests were tightened until all three fired. The two shipped adventures
+play line-for-line as they did: the pinned crypt fight is still the Warden
+winning in seven rounds, because nothing in Bell of Barrowmoor or Thornwake
+Vigil hides, conceals or stands in anybody's way.
+
+- [x] **A detection map.** `detect[observerId][targetId]`, four states, with
+  the `concealed` and `invisible` conditions as the base *under* the map rather
+  than entries in it — clearing an override falls back to the condition, not to
+  observed (locked #100). `isHidden(a,b)` and `flatCheckDC(a,b)` are DC 5
+  concealed, DC 11 hidden. The expiry rule is `afterMove` and `afterAttack`:
+  hiding survives neither, because there is no Sneak (locked #104).
+- [x] **Cover from geometry.** `coverBonus` re-walks `losClear`'s Bresenham
+  line: a wall is +4, a living body +2, a corpse nothing, and neither endpoint's
+  own square is read. `effAC` takes the larger of that and Take Cover rather
+  than the sum, because circumstance bonuses do not stack (locked #101). Take
+  Cover is a one-action button that needs a wall in one of the eight squares
+  around you and ends when you move or Strike. A monster's attack reaches the
+  geometry through `opts.from`, so the wisp shoots at +2 AC and locked #90's
+  no-monster-flanking stays pinned (locked #102).
+- [x] **Hide and Seek as actions** — but not as `resolveTargeted` cases, which
+  neither of them fits (locked #99). Hide is one Stealth roll compared against
+  every foe's Perception DC separately, and it needs greater cover or
+  concealment; `edge-outwit`'s +2 lands on the comparison against the hunted
+  prey alone and is out of guide §8's it-goes-nowhere paragraph. Seek is a
+  Perception roll over a 15-foot burst picked within 30 feet; a found creature
+  becomes observed, a found *invisible* one only becomes hidden.
+  `sensate-gnome`'s +2 arrives through a new `condBonuses` list on the sheet,
+  the first conditional `bonus` anything reads (locked #103).
+- [x] **The flat check in `strike`, `strikeMonster` and `castAt`.** One
+  `flatCheck(att, def)`, called by all three; the Chronicle prints it through
+  the same seal every other d20 uses, and a failure spends the action and
+  raises the MAP. An area spell names a square and asks nothing. `concealed`
+  and `invisible` are in guide §12 on the existing chip machinery.
+- [x] **The AI respects it.** `aiStep` filters its target list on what the
+  monster can detect and spends an action Seeking the three squares around
+  itself when every hero has gone undetected — which is the only way a hero who
+  hides gets found again without Seeking on their own side. Suite checks
+  include Hide then Strike from hiding, a Seek that finds and one that misses
+  by a square, a flat check that misses, and cover at +2 when the thing in the
+  way is a person.
+
+**What Phase 4 did not do**, and left where it found it: `very-sneaky` and
+`trap-finder` stay inert notes (no Sneak action, no traps — locked #105); no
+monster Hides, because none carries a Stealth number; and the general wiring of
+`bonus` on `perception` and `save.all` is still Phase 5's row, not this one.
 
 *Leans on:* Phase 2's module, `losClear`. *Save:* none. *Model:* **Claude Opus
 5** — new rules, but they ride the module Phase 2 made testable and follow an
-action pattern already in the file.
+action pattern already in the file. Worked under Claude Opus 5.
 
 ## Phase 5 — The rest of the action economy
 
