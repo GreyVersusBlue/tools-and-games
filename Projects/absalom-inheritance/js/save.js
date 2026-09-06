@@ -180,7 +180,10 @@ export function makeRepair(content) {
     s.log = Array.isArray(s.log)
       ? s.log.filter(e => e && typeof e.text === "string").slice(-LOG_SAVED)
       : [];
-    s.stats = { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, ...(s.stats || {}) };
+    // `reactions` joined this list in the interrupt-point phase. A save
+    // written before it has no such key and comes through here as 0 —
+    // additive, repaired on every load, no version bump (#37).
+    s.stats = { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, ...(s.stats || {}) };
     if (!["victory", "defeat", null, undefined].includes(s.outcome)) s.outcome = null;
     s.outcome ??= null;
     // Dead is dead: a save at 0 HP with no outcome would boot into a playable
@@ -248,7 +251,7 @@ export function freshRun(content, buildId) {
     fog: {},
     inventory: content.startingInventory.map((item, slot) => ({ item, slot })),
     log: [],
-    stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0 },
+    stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 },
     outcome: null,
   };
 }

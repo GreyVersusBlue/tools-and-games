@@ -86,7 +86,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
       fog: {},
       inventory: content.startingInventory.map((item, slot) => ({ item, slot })),
       log: [],
-      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0 },
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 },
       outcome: null,
     };
   }
@@ -101,6 +101,13 @@ export function createGame({ content, rng = Math.random, state = null }) {
     actions: 3,
     attacks: 0,              // this turn's Multiple Attack Penalty counter
     shielded: false,         // Shield cantrip, until the start of your next turn
+    // The reaction budget: one per actor per round, and runtime-only. A save
+    // never carries it, because a reaction is spent inside a turn and a reload
+    // re-rolls initiative anyway (see begin()). `reaction` is the PC's;
+    // `reacted` holds the keys of creatures that have spent theirs, and an
+    // actor's is refreshed in advance() at the top of its own turn.
+    reaction: 1,
+    reacted: new Set(),
   };
 
   let explored = unpackExplored(run.fog[run.areaId], area.width, area.height);
@@ -159,7 +166,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
   /* ------------------------------------------------------------------ *
    * Damage and healing                                                 *
    * ------------------------------------------------------------------ */
-  function hurtCreature(c, amount, math, type) {
+  function hurtCreature(c, amount, math, type, from) {
+    // The last point at which a number can still be changed, and the only one
+    // at which it is known — so this is where "damage is about to land" fires,
+    // rather than at each of the four call sites that can produce damage.
+    amount = softenedBy({ actor: from, target: c, dmg: amount, dtype: type });
     c.hp = Math.max(0, c.hp - amount);
     run.stats.dealt += amount;
     push("damage", `→ ${def(c).name} takes ${amount} ${type}`,
@@ -176,14 +187,17 @@ export function createGame({ content, rng = Math.random, state = null }) {
       // charged as Strides.
       if (turn.mode === "combat" && !run.outcome && !awake().length) endCombat("cleared");
     }
+    return amount;
   }
 
-  function hurtPC(amount, math, type) {
+  function hurtPC(amount, math, type, from) {
+    amount = softenedBy({ actor: from, target: "pc", dmg: amount, dtype: type });
     run.pc.hp = Math.max(0, run.pc.hp - amount);
     run.stats.taken += amount;
     push("damage", `→ ${content.pc.name} takes ${amount} ${type}`,
       `${math}  |  HP ${run.pc.hp}/${content.pc.hp}`);
     if (run.pc.hp === 0) finish("defeat");
+    return amount;
   }
 
   function healPC(amount, math) {
@@ -199,6 +213,217 @@ export function createGame({ content, rng = Math.random, state = null }) {
     turn.mode = "over";
     const block = outcome === "victory" ? content.treasure : content.defeat;
     emit({ type: "end", outcome, title: block.title, body: block.body });
+  }
+
+  /* ------------------------------------------------------------------ *
+   * The reaction bus                                                   *
+   *                                                                    *
+   * Everything above this line resolves in a straight line: an action  *
+   * starts, finishes, and nothing speaks in between. This is the seam. *
+   *                                                                    *
+   * There are exactly three named points at which the engine asks "does *
+   * anyone want to interrupt this", and each is a string literal at a   *
+   * fireTrigger() call below. content.js's REACTION_TRIGGERS is the     *
+   * same three; smoke.mjs reads the literals back out of this file's    *
+   * own source and fails on the line where the two lists disagree, so   *
+   * a pack naming a fourth event cannot validate and then never fire.   *
+   *                                                                    *
+   * The three rules are Torchbearer's — its js/combat.js shipped this   *
+   * seam first — so the two engines can be read against each other:     *
+   *                                                                    *
+   *   1. One reaction per actor per round. `turn.reaction` for the PC,  *
+   *      `turn.reacted` for creatures; both refreshed at the top of     *
+   *      that actor's own turn in advance(), and nowhere else.          *
+   *   2. A reaction resolves *before* the action that triggered it      *
+   *      completes. The caller hands over what it is about to do in     *
+   *      `ctx` and reads `ctx` back afterwards.                         *
+   *   3. Nobody reacts to their own side, which is also what stops      *
+   *      anyone reacting to themselves. The offer walks initiative.     *
+   *                                                                    *
+   * A reaction can kill the actor mid-action. Every fire site checks    *
+   * for that afterwards, which is what makes a Stride interruptible     *
+   * between two squares rather than merely observable.                  *
+   * ------------------------------------------------------------------ */
+
+  const sideOf = a => (a === "pc" ? "pc" : a ? "foe" : null);
+  const posOf = a => (a === "pc" ? run.pc : a);
+  const keyOf = a => (a === "pc" ? "pc" : a.key);
+  const reachOf = a => (a === "pc" ? content.pc.reachFeet : def(a).reachFeet);
+
+  /** Everyone who could react, in initiative order, the PC included. */
+  function reactors() {
+    const line = turn.queue.length ? turn.queue : ["pc", ...awake().map(c => c.key)];
+    const out = [];
+    for (const key of line) {
+      if (key === "pc") { if (!run.outcome) out.push("pc"); continue; }
+      const c = byKey(key);
+      if (c && c.awake && !c.dead) out.push(c);
+    }
+    return out;
+  }
+
+  /** The reaction commands `who` owns that answer to `event`. */
+  function reactionsFor(who, event) {
+    const ids = who === "pc"
+      ? content.pc.commands            // already narrowed to this build
+      : def(who).reactions;
+    const table = who === "pc" ? content.commandById : content.allCommandById;
+    const out = [];
+    for (const id of ids) {
+      const cmd = table[id];
+      if (cmd && cmd.kind === "reaction" && cmd.triggers.includes(event)) out.push(cmd);
+    }
+    return out;
+  }
+
+  const reactionSpent = who => (who === "pc" ? turn.reaction < 1 : turn.reacted.has(who.key));
+
+  function spendReaction(who) {
+    if (who === "pc") turn.reaction = 0;
+    else turn.reacted.add(who.key);
+    run.stats.reactions++;
+  }
+
+  /**
+   * Why `cmd` cannot fire for `who` right now, or null if it can.
+   *
+   * A reason string, the way commandBlocked() already refuses an action, and
+   * for the same reason: "it did not happen" is not a debuggable answer when
+   * the question is why a longsword stayed still.
+   */
+  function reactionBlocked(who, cmd, ctx) {
+    if (reactionSpent(who)) return "spent";
+    if (sideOf(who) === sideOf(ctx.actor)) return "ally";
+    // The Shield cantrip is this engine's only shield, and blocking with it
+    // ends it (Player Core: the force disc is destroyed). Only the PC has one.
+    if (cmd.requiresShield && !(who === "pc" && turn.shielded)) return "no-shield";
+
+    // Exactly one reach test per trigger, and the move trigger owns its own.
+    // Both halves matter and they fail differently: without the first, a
+    // creature crossing the room provokes from anywhere; without the second,
+    // shuffling from one square beside a foe to another provokes, which is a
+    // free hit every time a player repositions in melee.
+    const here = posOf(who), R = reachOf(who);
+    if (ctx.event === "move-out-of-reach") {
+      if (feetBetween(here.x, here.y, ctx.from.x, ctx.from.y) > R) return "not-in-reach";
+      if (feetBetween(here.x, here.y, ctx.to.x, ctx.to.y) <= R) return "still-in-reach";
+    } else if (cmd.effect === "strike") {
+      // Everything else is measured from where the actor actually stands.
+      const at = posOf(ctx.actor);
+      if (!at) return "no-target";
+      if (feetBetween(here.x, here.y, at.x, at.y) > R) return "out-of-reach";
+    }
+
+    if (cmd.effect === "reduce") {
+      if (who !== ctx.target) return "not-the-target";
+      if (!(ctx.dmg > 0)) return "no-damage";
+      if (cmd.damageTypes && !cmd.damageTypes.includes(ctx.dtype)) return "damage-type";
+    }
+    return null;
+  }
+
+  /** Fire one reaction that has already been paid for. */
+  function resolveReaction(who, cmd, ctx) {
+    if (cmd.effect === "reduce") {
+      const blocked = Math.min(cmd.hardness, ctx.dmg);
+      ctx.dmg -= blocked;
+      const name = who === "pc" ? content.pc.name : def(who).name;
+      info(`↺ ${name} — ${cmd.name}: ${blocked} damage stopped (hardness ${cmd.hardness}).`);
+      // The disc is spent whether it soaked one point or five.
+      if (cmd.requiresShield) turn.shielded = false;
+      return;
+    }
+
+    // effect === "strike". The victim is whoever set the trigger off.
+    const victim = ctx.actor;
+    if (!victim || (victim !== "pc" && (victim.dead || !victim.awake))) return;
+    const mine = who === "pc";
+    const name = mine ? content.pc.name : def(who).name;
+    const label = mine ? cmd.name : `${def(who).name} — ${cmd.name}`;
+    // A reaction happens on somebody else's turn, so it is not part of the
+    // reactor's own action sequence: no MAP is applied and none is added.
+    // turn.attacks belongs to the PC's own turn and is deliberately untouched.
+    const bonus = mine ? cmd.attackBonus : def(who).attackBonus;
+    const dmgSpec = mine ? cmd.damage : def(who).damage;
+    const dtype = mine ? cmd.damageType : def(who).damageType;
+    const ac = victim === "pc" ? pcAC() : def(victim).ac;
+    const vname = victim === "pc" ? content.pc.name : def(victim).name;
+    info(ctx.event === "move-out-of-reach"
+      ? `↺ ${name} — ${cmd.name}, as ${vname} leaves reach.`
+      : `↺ ${name} — ${cmd.name}, against ${vname}.`);
+    const r = check(bonus, ac, rng);
+    dice(`${label} vs ${vname} (AC ${ac})`, r.math, r.deg);
+    if (r.deg < DEG.SUCC) return;
+    const dmg = rollDamage(dmgSpec, rng);
+    let total = dmg.total, math = dmg.math;
+    if (r.deg === DEG.CRIT_SUCC) { total *= 2; math += ` ×2 (crit) = ${total}`; }
+    if (victim === "pc") hurtPC(total, math, dtype, who);
+    else hurtCreature(victim, total, math, dtype, who);
+  }
+
+  /**
+   * Offer `event` to everyone who could answer it.
+   *
+   * Returns the ctx, mutated: `fired` lists what went off and `refusals` lists
+   * what did not, each with the reason. The ctx is also parked under its event
+   * name and readable as `game.lastTrigger(event)`, which is how the suite
+   * tells "nothing happened" apart from "nothing happened for the right
+   * reason" — the two look identical from outside, and only the second is
+   * worth shipping. Two shapes here were wrong before this one: a single
+   * last-reason string, which depended on whose refusal came last in
+   * initiative, and a single last-ctx, which depended on which trigger fired
+   * last in the turn. Both read as passing tests that were asserting nothing.
+   */
+  const lastByEvent = new Map();
+  function fireTrigger(event, ctx) {
+    ctx = ctx || {};
+    ctx.event = event;
+    ctx.fired = [];
+    ctx.refusals = [];
+    lastByEvent.set(event, ctx);
+    if (turn.mode !== "combat" || run.outcome) return ctx;
+    for (const who of reactors()) {
+      // Nobody reacts to themselves, and nobody reacts to their own side —
+      // both of which are the one sideOf() test in reactionBlocked(), since an
+      // actor is always on its own side. A second self-check here would be a
+      // guard nothing can break, which is a guard nothing tests.
+      for (const cmd of reactionsFor(who, event)) {
+        const why = reactionBlocked(who, cmd, ctx);
+        if (why) { ctx.refusals.push({ actor: keyOf(who), command: cmd.id, why }); continue; }
+        spendReaction(who);
+        ctx.fired.push({ actor: keyOf(who), command: cmd.id });
+        emit({ type: "reaction", actor: keyOf(who), command: cmd.id, event });
+        resolveReaction(who, cmd, ctx);
+        break;                     // one reaction per actor per trigger
+      }
+      // A reaction that put the actor down ends the offer: there is no longer
+      // an action in progress for anyone else to interrupt.
+      if (run.outcome) break;
+      if (ctx.actor && ctx.actor !== "pc" && ctx.actor.dead) break;
+    }
+    return ctx;
+  }
+
+  /** `incoming-damage`, folded down to the number that actually lands. */
+  function softenedBy(ctx) {
+    const before = ctx.dmg;
+    if (!(before > 0)) return before;
+    fireTrigger("incoming-damage", ctx);
+    return Math.max(0, ctx.dmg);
+  }
+
+  /** `incoming-attack`: fired before a Strike is rolled, from either side. */
+  function announceStrike(attacker, target) {
+    return fireTrigger("incoming-attack", { actor: attacker, target });
+  }
+
+  /**
+   * Somebody has just stepped from `from` to `to`. Anyone who threatened the
+   * square they left and does not threaten the one they arrived at gets the
+   * offer.
+   */
+  function announceStep(mover, from, to) {
+    return fireTrigger("move-out-of-reach", { actor: mover, from, to });
   }
 
   /* ------------------------------------------------------------------ *
@@ -242,6 +467,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
   function startCombat() {
     turn.mode = "combat";
     run.stats.rounds++;
+    turn.reaction = 1; turn.reacted.clear();
     const rolls = [];
     const pcRoll = check(content.pc.perception, 0, rng);
     dice(`Initiative — ${content.pc.name}`,
@@ -285,6 +511,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
   function endCombat(why) {
     turn.mode = "explore";
     turn.queue = []; turn.idx = 0; turn.actions = 3; turn.attacks = 0; turn.shielded = false;
+    turn.reaction = 1; turn.reacted.clear();
     if (why === "cleared") narrative("Silence returns to the vault.");
     emit({ type: "mode", mode: "explore" });
     setHint(run.gateOpen ? content.gate.openHint : "The way is clear, for now.");
@@ -324,6 +551,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
         if (run.outcome) return null;
         turn.actions = 3;
         turn.attacks = 0;
+        turn.reaction = 1;          // one reaction, refreshed here and nowhere else
         turn.shielded = false;      // Shield lapses at the start of your turn
         emit({ type: "turn", actor: "pc" });
         setHint("Your turn: 3 actions. Stride, Strike, or cast.");
@@ -338,15 +566,33 @@ export function createGame({ content, rng = Math.random, state = null }) {
         if (!turn.queue.length || !awake().length) { endCombat("cleared"); return null; }
         continue;
       }
+      turn.reacted.delete(key);   // this creature's reaction, refreshed
       emit({ type: "turn", actor: key });
       return { actor: key, script: runCreatureTurn(c) };
     }
     return null;
   }
 
-  /** Resolve one creature's whole turn. Returns a playback script. */
-  function runCreatureTurn(c) {
-    const script = [];
+  /**
+   * One creature's turn, as steps a caller drains rather than one function
+   * that returns when it is over.
+   *
+   * This is the shape change the reaction bus needed. A Stride used to assign
+   * the creature's final square in one statement, which left no instant at
+   * which anything could say "wait": the creature was beside you, then it was
+   * across the room, and the two facts had no moment between them. It walks
+   * square by square now, and every square is a point at which the bus can
+   * fire and, if the reaction kills it, the turn stops there — with the stride
+   * step carrying only the squares it actually crossed.
+   *
+   * The script keeps its old shape on purpose. ui.js reads nothing out of it
+   * (it paces a redraw and reads the log), and the phase's rule was that the
+   * renderer must not have to change to *see* a reaction, only to animate one.
+   * A renderer that later wants to animate one has the `{type:"reaction"}`
+   * listener event, which carries the actor and the command; the script stays
+   * strides and strikes.
+   */
+  function* creatureTurn(c) {
     let actions = 3, attacks = 0;
     const d = def(c);
 
@@ -355,36 +601,55 @@ export function createGame({ content, rng = Math.random, state = null }) {
         actions--;
         const pen = mapPenalty(attacks, false);
         attacks++;
-        const r = check(d.attackBonus - pen, pcAC(), rng);
-        dice(`${d.name} — ${d.attackName} vs ${content.pc.name} (AC ${pcAC()})`, r.math, r.deg);
+        // Before the roll, not after: a reaction on this trigger is answering
+        // the swing, and it has to land while the swing is still in the air.
+        announceStrike(c, "pc");
+        if (c.dead || run.outcome) return;
+        const ac = pcAC();
+        const r = check(d.attackBonus - pen, ac, rng);
+        dice(`${d.name} — ${d.attackName} vs ${content.pc.name} (AC ${ac})`, r.math, r.deg);
         const step = { kind: "strike", target: "pc", deg: r.deg };
         if (r.deg >= DEG.SUCC) {
           const dmg = rollDamage(d.damage, rng);
           let total = dmg.total, math = dmg.math;
           if (r.deg === DEG.CRIT_SUCC) { total *= 2; math += ` ×2 (crit) = ${total}`; }
-          step.damage = total;
-          hurtPC(total, math, d.damageType);
+          // What the defender actually took, which is not what was rolled
+          // once anything on incoming-damage has had its say.
+          step.damage = hurtPC(total, math, d.damageType, c);
         }
-        script.push(step);
+        yield step;
         continue;
       }
 
-      // Stride toward the closest open square beside the PC.
-      let best = null;
-      for (const sq of world.adjacentOpen(run.pc.x, run.pc.y, pathOpts(c.key))) {
-        const p = world.findPath(c.x, c.y, sq.x, sq.y, pathOpts(c.key));
-        if (p && (!best || p[p.length - 1].g < best[best.length - 1].g)) best = p;
-      }
-      if (!best || best.length < 2) break;   // boxed in: end the turn
-      let cut = best.length - 1;
-      while (cut > 0 && best[cut].g > d.speed) cut--;
-      if (cut === 0) break;
+      // Stride toward the closest open square beside the PC. The planner is
+      // world.planApproach so that the suite walks the engine's own, not a copy.
+      const leg = world.planApproach(c, run.pc, d.speed, pathOpts(c.key));
+      if (!leg) break;                       // boxed in: end the turn
       actions--;
-      const leg = best.slice(0, cut + 1);
-      c.x = leg[leg.length - 1].x; c.y = leg[leg.length - 1].y;
-      info(`${d.name} Strides ${leg[leg.length - 1].g} ft.`);
-      script.push({ kind: "stride", path: leg.map(n => ({ x: n.x, y: n.y })) });
+
+      // Square by square. The creature's own position is the truth at every
+      // step, so a reaction that fires halfway across the floor is measured
+      // against where it actually stands.
+      const walked = [{ x: c.x, y: c.y }];
+      let cutShort = false;
+      for (let i = 1; i < leg.length; i++) {
+        const from = { x: c.x, y: c.y };
+        c.x = leg[i].x; c.y = leg[i].y;
+        walked.push({ x: c.x, y: c.y });
+        announceStep(c, from, { x: c.x, y: c.y });
+        if (c.dead || run.outcome) { cutShort = true; break; }
+      }
+      const feet = leg[walked.length - 1].g;
+      info(`${d.name} Strides ${feet} ft.`);
+      yield { kind: "stride", path: walked };
+      if (cutShort) return;
     }
+  }
+
+  /** Drain a creature's turn into the playback script advance() hands back. */
+  function runCreatureTurn(c) {
+    const script = [];
+    for (const step of creatureTurn(c)) script.push(step);
     return script;
   }
 
@@ -437,8 +702,14 @@ export function createGame({ content, rng = Math.random, state = null }) {
     const walked = [{ x: run.pc.x, y: run.pc.y }];
     let stoppedBy = null;
     for (let i = 1; i < path.length; i++) {
+      const from = { x: run.pc.x, y: run.pc.y };
       run.pc.x = path[i].x; run.pc.y = path[i].y;
       walked.push({ x: path[i].x, y: path[i].y });
+      // Leaving a square something threatened is a trigger, and it fires here
+      // rather than at the end of the walk: which square the PC left is the
+      // whole question, and the end of a three-square Stride has forgotten it.
+      announceStep("pc", from, { x: run.pc.x, y: run.pc.y });
+      if (run.outcome) { stoppedBy = "interrupted"; break; }
       recomputeVision();
       const trig = checkTriggers();
       if (trig) { stoppedBy = trig; break; }
@@ -603,6 +874,15 @@ export function createGame({ content, rng = Math.random, state = null }) {
     const cmd = content.commandById[id];
     if (!cmd) return "unknown";
     if (run.outcome) return "over";
+    // A reaction is spent on somebody else's turn, so it answers to none of
+    // the action-economy rules below: not your turn is exactly when it is
+    // useful, and it costs no action. What it can run out of is itself.
+    if (cmd.kind === "reaction") {
+      if (turn.mode !== "combat") return "explore";
+      if (turn.reaction < 1) return "reaction-spent";
+      if (cmd.requiresShield && !turn.shielded) return "no-shield";
+      return null;
+    }
     if (turn.mode === "combat") {
       if (!isPCTurn()) return "not-your-turn";
       if (turn.actions < cmd.cost) return "actions";
@@ -630,6 +910,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * for a cone. Returns { ok, reason } — a refusal never mutates anything.
    */
   function useCommand(id, target) {
+    // A reaction is not an action, and there is no button that spends one. It
+    // fires from the bus at one of the three named points or it does not fire,
+    // which is what stops a player Reactive Striking on their own turn.
+    const known = content.commandById[id];
+    if (known && known.kind === "reaction") return { ok: false, reason: "reaction-only" };
     const blocked = commandBlocked(id);
     if (blocked) return { ok: false, reason: blocked };
     const cmd = content.commandById[id];
@@ -641,13 +926,17 @@ export function createGame({ content, rng = Math.random, state = null }) {
       spend(cmd);
       const pen = mapPenalty(turn.attacks, cmd.agile);
       turn.attacks++;
+      announceStrike("pc", c);
+      // A reaction can end the swing before it is rolled — by killing its
+      // target, or by killing you. The action is spent either way.
+      if (run.outcome || c.dead) return after(cmd, { ok: true, interrupted: true });
       const r = check(cmd.attackBonus - pen, def(c).ac, rng);
       dice(`${cmd.name} vs ${def(c).name} (AC ${def(c).ac})`, r.math, r.deg);
       if (r.deg >= DEG.SUCC) {
         const dmg = rollDamage(cmd.damage, rng);
         let total = dmg.total, math = dmg.math;
         if (r.deg === DEG.CRIT_SUCC) { total *= 2; math += ` ×2 (crit) = ${total}`; }
-        hurtCreature(c, total, math, cmd.damageType);
+        hurtCreature(c, total, math, cmd.damageType, "pc");
       }
       return after(cmd, { ok: true, deg: r.deg });
     }
@@ -663,7 +952,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
       spend(cmd);
       info(`Cast ${cmd.name} (${cmd.costGlyph}${cmd.spendFocus ? ", 1 Focus Point" : ""}) — unerring.`);
       const dmg = rollDamage(cmd.damage, rng);
-      hurtCreature(c, dmg.total, dmg.math, cmd.damageType);
+      hurtCreature(c, dmg.total, dmg.math, cmd.damageType, "pc");
       return after(cmd, { ok: true });
     }
 
@@ -691,7 +980,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
         dice(`${def(c).name} — basic ${cmd.save === "ref" ? "Reflex" : cmd.save} save`, r.math, r.deg);
         const dealt = basicSaveDamage(r.deg, dmg.total);
         if (dealt > 0) {
-          hurtCreature(c, dealt, `${dmg.math} → ${DEG_NAME[r.deg]} → ${dealt}`, cmd.damageType);
+          hurtCreature(c, dealt, `${dmg.math} → ${DEG_NAME[r.deg]} → ${dealt}`, cmd.damageType, "pc");
         } else {
           push("damage", `→ ${def(c).name} takes no damage`, "critical success on the save");
         }
@@ -804,6 +1093,9 @@ export function createGame({ content, rng = Math.random, state = null }) {
     get explored() { return explored; },
     get actionsLeft() { return turn.mode === "combat" ? turn.actions : 3; },
     get shielded() { return turn.shielded; },
+    get reactionLeft() { return turn.reaction > 0; },
+    lastTrigger: event => lastByEvent.get(event) || null,
+    reachOf,
     get currentActor() { return turn.mode === "combat" ? turn.queue[turn.idx] : null; },
     pcAC, isPCTurn, creatureAt, byKey, def, living, awake, occupied,
     potionCount, bulkCarried, commandBlocked,

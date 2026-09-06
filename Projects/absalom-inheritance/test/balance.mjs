@@ -50,7 +50,7 @@ export function runBatch(content, runs, { verbose = false } = {}) {
     try {
       r = playThrough(game);
     } catch (e) {
-      r = { outcome: "error:" + e.message, hp: 0, rounds: 0, dealt: 0, taken: 0, slain: 0, woken: 0, lore: 0, potions: 0, slots: 0, focus: 0, gateOpen: false };
+      r = { outcome: "error:" + e.message, hp: 0, rounds: 0, dealt: 0, taken: 0, slain: 0, woken: 0, reactions: 0, lore: 0, potions: 0, slots: 0, focus: 0, gateOpen: false };
     }
     r.seed = 0x5EED + i;
     results.push(r);
@@ -86,6 +86,11 @@ function report(content, results) {
   console.log(`  creatures slain      mean ${mean(results, r => r.slain).toFixed(2)} of ${totalPlacements}`);
   console.log(`  encounter rounds     median ${median(results.map(r => r.rounds))}`);
   console.log(`  damage dealt / taken mean ${mean(results, r => r.dealt).toFixed(1)} / ${mean(results, r => r.taken).toFixed(1)}`);
+  // Reactions, measured rather than asserted. A build whose reaction never
+  // fires under the autopilot is a rule the engine implements and this
+  // adventure's creatures never provoke, and that is worth reading off a
+  // number instead of arguing about.
+  console.log(`  reactions fired      mean ${mean(results, r => r.reactions).toFixed(2)}  (in ${(100 * results.filter(r => r.reactions > 0).length / n).toFixed(1)}% of runs)`);
   if (wins.length) {
     console.log(`  on a win: HP left    mean ${mean(wins, r => r.hp).toFixed(1)} of ${content.pc.hp}, median ${median(wins.map(r => r.hp))}`);
     console.log(`            potions left mean ${mean(wins, r => r.potions).toFixed(2)}`);

@@ -131,9 +131,9 @@ shipped bug as the original single build being unwinnable was.
 An array, in the order they appear in the panel. The number key that fires a command is its
 position in this array, so reordering changes the hotkeys.
 
-Every command needs `id`, `name`, `cost` (1–3) and `kind`. `flavour` renders in parentheses,
-`costGlyph` defaults to that many `◆`, `hint` is shown when the command is armed, and `note` is
-the button's tooltip.
+Every command needs `id`, `name`, `cost` (1–3, or 0 for a `reaction`) and `kind`. `flavour`
+renders in parentheses, `costGlyph` defaults to that many `◆` (`↺` for a reaction), `hint` is
+shown when the command is armed, and `note` is the button's tooltip.
 
 | `kind` | Needs | Does |
 | --- | --- | --- |
@@ -143,6 +143,7 @@ the button's tooltip.
 | `self-buff` | `acBonus` | Circumstance bonus to AC until the start of your next turn. |
 | `self-heal` | `healing` | Heals the PC. |
 | `consume` | `healing`, `consumes` | Heals, and destroys one matching item. The only kind usable outside an encounter. |
+| `reaction` | `triggers`, `effect` | Fires by itself at one of three named points. Costs 0. See below. |
 
 Costs and resources:
 
@@ -162,6 +163,57 @@ The cone is an approximation: within `coneFeet`, and within ±45° of the bearin
 true PF2e cone template is a different shape. On a 22-square grid the difference is small, and
 the renderer paints the squares it will hit before you commit, so a player is never guessing.
 
+### Reactions
+
+A reaction is not a button. There is no way for a player to spend one by hand — `useCommand`
+refuses a `reaction` with `reaction-only` — and no way for content to make it cost an action.
+It fires from the trigger bus in `game.js` at one of exactly three named points, or it does not
+fire. One reaction per actor per round, refreshed at the top of that actor's own turn.
+
+```json
+{
+  "id": "reactive-strike", "name": "Reactive Strike", "flavour": "reaction",
+  "cost": 0, "costGlyph": "↺",
+  "kind": "reaction", "effect": "strike", "triggers": ["move-out-of-reach"],
+  "attackBonus": 7, "damage": "1d8+2", "damageType": "slashing"
+}
+```
+
+`triggers` is a non-empty array drawn from this list, and nothing else. A fourth name is a load
+error rather than a reaction that sits in the pack looking correct and never fires:
+
+| trigger | fires | `ctx` carries |
+| --- | --- | --- |
+| `incoming-attack` | before a Strike is rolled, from either side of the board | `actor`, `target` |
+| `move-out-of-reach` | when somebody steps out of a square within the reactor's reach | `actor`, `from`, `to` |
+| `incoming-damage` | when damage is resolved and about to land | `actor`, `target`, `dmg`, `dtype` |
+
+`effect` is `strike` or `reduce`, and nothing else.
+
+* **`strike`** needs `attackBonus` and `damage`. It Strikes whoever set the trigger off, at no
+  multiple-attack penalty, and adds none — the swing happens on somebody else's turn, and MAP
+  belongs to your own. **A creature using a `strike` reaction Strikes with its own stat block's
+  `attackBonus` and `damage`, not the command's:** a basalt fist is not a longsword whichever
+  feat swings it. The command's numbers are the PC's.
+* **`reduce`** needs a positive `hardness`, and takes an optional `damageTypes` array that
+  narrows what it works against (absent means everything). It subtracts from `ctx.dmg` before a
+  single hit point moves. It only ever protects its own owner.
+
+`requiresShield: true` on a `reduce` reaction means it needs the Shield cantrip up — the engine's
+only shield — and that using it ends the cantrip, which is what Player Core says about the force
+disc. Only the PC can have one.
+
+**Reach.** `reachFeet` on a build or a creature is how far it threatens, and it drives the
+`move-out-of-reach` test on both halves: the mover must have been inside it and must have left
+it. It defaults to 5. A reach weapon would say 10 and nothing else would need to change.
+
+**A caution about the shipped creature AI.** A creature Strides to the *cheapest* open square
+beside the PC, and an optimal path to the cheapest such square cannot cross another one on the
+way — so a creature enters your reach and never leaves it. A `move-out-of-reach` reaction on a
+*build* therefore fires only when the engine grows a creature that retreats or repositions.
+Given to a *creature*, it fires today, against a player who walks away. `smoke.mjs` asserts the
+zero over 3,032 planned Strides and will say so when that changes.
+
 ---
 
 ## 5. `creatures`
@@ -171,9 +223,10 @@ Keyed by id.
 ```json
 "shattered-sentinel": {
   "name": "Shattered Sentinel", "level": -1,
-  "hp": 11, "ac": 13, "perception": 2, "speed": 20,
+  "hp": 11, "ac": 13, "perception": 2, "speed": 20, "reachFeet": 5,
   "saves": { "fort": 5, "ref": 1, "will": 0 },
   "attackBonus": 4, "attackName": "Fist", "damage": "1d6", "damageType": "bludgeoning",
+  "reactions": [],
   "deathLine": "{name} shatters into gravel and gold dust.",
   "wakeLine": "Rubble shudders upright into a humanoid shape — {name} still keeps its post.",
   "sleepLine": "{name} loses you in the dark. The rubble settles, and reknits."
@@ -191,11 +244,19 @@ creature with no Speed paths zero feet and stands still forever, which is the sa
 as The Fourth Quarter's staffer whose missing walking speed became a NaN (site session 7,
 §2). The smoke suite asserts the fallback is a usable number.
 
+`reachFeet` defaults to 5 and is how far this creature threatens for `move-out-of-reach`.
+`reactions` is an array of command ids, each of which must exist in the pack's `commands` and
+be `kind: "reaction"` — the lookup is against the whole pack rather than the chosen build's
+slice, because a creature's feats have nothing to do with which heir walked in. The Vault Keeper
+ships with `["reactive-strike"]`, which is what makes walking away from it a decision.
+
 ### Creature AI
 
 There is one behaviour and it is not configurable: Stride toward the nearest open square beside
-the PC, Strike when adjacent, three actions a turn, MAP applied. If you want something that
-casts, retreats or calls for help, that is engine work in `runCreatureTurn`, not a content field.
+the PC, Strike when adjacent, three actions a turn, MAP applied. The turn is a generator now, so
+a Stride is resolved square by square and can be interrupted between two of them; what it
+chooses is unchanged. If you want something that casts, retreats or calls for help, that is
+engine work in `creatureTurn`, not a content field.
 
 ---
 

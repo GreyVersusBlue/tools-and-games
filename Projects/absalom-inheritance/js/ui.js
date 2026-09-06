@@ -119,12 +119,17 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     b.type = "button";
     b.dataset.cmd = cmd.id;
     b.id = "cmd-" + cmd.id;
-    const key = i + 1;
-    b.innerHTML = `<span><kbd>${key}</kbd> ${escape(cmd.name)}` +
+    // A reaction has no number key, because there is nothing to press: it
+    // fires from the trigger bus on somebody else's turn or it does not fire.
+    // The row is here so a player can see what they own and whether it is
+    // still up, which is the whole of what the panel can say about it.
+    const reaction = cmd.kind === "reaction";
+    if (reaction) b.classList.add("reaction");
+    b.innerHTML = `<span>${reaction ? "" : `<kbd>${i + 1}</kbd> `}${escape(cmd.name)}` +
       (cmd.flavour ? ` <i class="subtle">(${escape(cmd.flavour)})</i>` : "") +
       `</span><span class="cost">${escape(cmd.costGlyph)}</span>`;
     b.title = cmd.note || cmd.hint;
-    b.addEventListener("click", () => pickCommand(cmd.id));
+    if (!reaction) b.addEventListener("click", () => pickCommand(cmd.id));
     cmdCol.appendChild(b);
     cmdButtons.set(cmd.id, b);
   });
@@ -196,9 +201,19 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
 
     for (const [id, b] of cmdButtons) {
       const why = game.commandBlocked(id);
-      b.disabled = !!why;
-      b.classList.toggle("armed", armed === id);
       const cmd = content.commandById[id];
+      if (cmd.kind === "reaction") {
+        // Never clickable, and never greyed out for the ordinary reason an
+        // action is: "not your turn" is exactly when a reaction is useful.
+        // It dims only when it is genuinely unavailable — spent, or the disc
+        // it needs is down.
+        b.disabled = true;
+        b.classList.toggle("spent", !!why);
+        b.querySelector(".cost").textContent = why === "reaction-spent" ? "spent" : cmd.costGlyph;
+      } else {
+        b.disabled = !!why;
+      }
+      b.classList.toggle("armed", armed === id);
       if (cmd.consumes === "potion") {
         b.querySelector(".cost").textContent = `${cmd.costGlyph} ×${game.potionCount()}`;
       }
@@ -504,7 +519,8 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     const n = Number(ev.key);
     if (n >= 1 && n <= content.commands.length) {
       ev.preventDefault();
-      pickCommand(content.commands[n - 1].id);
+      const cmd = content.commands[n - 1];
+      if (cmd.kind !== "reaction") pickCommand(cmd.id);
       return;
     }
     if (ev.key === "e" || ev.key === "E") { ev.preventDefault(); doEndTurn(); return; }

@@ -14,7 +14,7 @@ import {
   feetBetween, isAdjacent, stridesFor,
 } from "../js/rules.js";
 import { makeWorld, TILE, packExplored, unpackExplored } from "../js/world.js";
-import { loadPack, selectPc, ContentError } from "../js/content.js";
+import { loadPack, selectPc, ContentError, REACTION_TRIGGERS, REACTION_EFFECTS } from "../js/content.js";
 import { createGame } from "../js/game.js";
 import { makeSaveSlot, makeRepair, validRun, freshRun, SAVE_KEY, SAVE_VERSION } from "../js/save.js";
 import { playThrough, travel, fight } from "./autopilot.mjs";
@@ -169,12 +169,12 @@ eq(content.pc.id, "wizard", "content.pc defaults to the first build");
 ok(Object.isFrozen(content.pcOptions[0]), "each build is frozen");
 eq(content.pcById.fighter.name, "Kessa Vane", "pcById looks builds up by id");
 eq(resolved.pc.id, "wizard", "selectPc resolves the requested build");
-eq(resolved.commands.length, 6, "selectPc narrows commands to the wizard's own list");
+eq(resolved.commands.length, 7, "selectPc narrows commands to the wizard's own list");
 ok(!resolved.commandById["strike-sword"], "a build cannot see a command outside its own list");
 ok(!!resolved.commandById.breathe, "but every command the build lists is there");
 const fighterContent = selectPc(content, "fighter");
 eq(fighterContent.pc.name, "Kessa Vane", "selectPc resolves a different build by id");
-eq(fighterContent.commands.length, 2, "the fighter's command list is exactly its own two");
+eq(fighterContent.commands.length, 3, "the fighter's command list is exactly its own three");
 ok(!fighterContent.commandById.breathe, "the fighter cannot see the wizard's cone spell");
 ok(!!fighterContent.commandById["strike-sword"], "and can see its own Strike");
 eq(selectPc(content, "nope-not-a-build").pc.id, "wizard",
@@ -210,6 +210,43 @@ throws(() => {
   p.areas.vault.rows = p.areas.vault.rows.map(r => r.replace("@", "."));
   loadPack(p);
 }, "content: the start area with no PC spawn is refused");
+
+// Reactions, new in the interrupt-point phase. A reaction that names an event
+// the engine does not fire would validate and then sit in the pack doing
+// nothing forever, which is the kind of silence an author cannot debug — so
+// the triggers and the effects are both closed vocabularies.
+throws(() => { const p = clone(); p.commands.find(c => c.id === "reactive-strike").triggers = ["on-tuesday"]; loadPack(p); },
+  "content: a reaction naming an unknown trigger is refused");
+throws(() => { const p = clone(); delete p.commands.find(c => c.id === "reactive-strike").triggers; loadPack(p); },
+  "content: a reaction with no triggers is refused");
+throws(() => { const p = clone(); p.commands.find(c => c.id === "reactive-strike").triggers = []; loadPack(p); },
+  "content: a reaction with an empty triggers array is refused");
+throws(() => { const p = clone(); p.commands.find(c => c.id === "reactive-strike").effect = "explode"; loadPack(p); },
+  "content: a reaction with an unknown effect is refused");
+throws(() => { const p = clone(); delete p.commands.find(c => c.id === "reactive-strike").effect; loadPack(p); },
+  "content: a reaction with no effect is refused");
+throws(() => { const p = clone(); delete p.commands.find(c => c.id === "reactive-strike").attackBonus; loadPack(p); },
+  "content: a strike reaction with no attackBonus is refused");
+throws(() => { const p = clone(); delete p.commands.find(c => c.id === "shield-block").hardness; loadPack(p); },
+  "content: a reduce reaction with no hardness is refused");
+throws(() => { const p = clone(); p.commands.find(c => c.id === "shield-block").hardness = 0; loadPack(p); },
+  "content: a reduce reaction with zero hardness is refused");
+throws(() => { const p = clone(); p.commands.find(c => c.id === "shield-block").damageTypes = []; loadPack(p); },
+  "content: a reduce reaction with an empty damageTypes is refused");
+throws(() => { const p = clone(); p.commands.find(c => c.id === "reactive-strike").cost = 4; loadPack(p); },
+  "content: a reaction costing four actions is refused");
+throws(() => { const p = clone(); p.creatures["vault-keeper"].reactions = ["nope"]; loadPack(p); },
+  "content: a creature listing an unknown reaction is refused");
+throws(() => { const p = clone(); p.creatures["vault-keeper"].reactions = ["potion"]; loadPack(p); },
+  "content: a creature listing a command that is not a reaction is refused");
+{
+  // Zero is the one cost a reaction is allowed, and the one every other kind
+  // is not: a reaction spends a reaction, which is not one of the three
+  // actions. This was `cost >= 1` for two rounds and refused the whole kind.
+  const p = clone();
+  p.commands.find(c => c.id === "strike").cost = 0;
+  throws(() => loadPack(p), "content: a non-reaction command costing zero actions is refused");
+}
 
 // Multi-area and stairs, new in round two.
 throws(() => { const p = clone(); delete p.areas; loadPack(p); }, "content: a pack with no areas is refused");
@@ -548,7 +585,516 @@ function toPCTurn(g, limit = 40) {
 }
 
 /* ========================================================================= *
- * 5 — the save slot
+ * 5 — reactions, and the three points a turn can be interrupted at
+ *
+ * Every assertion below was watched failing first (#34); where the break was
+ * not obvious, the comment says what was broken to produce it.
+ * ========================================================================= */
+section("reactions");
+
+/* -- the contract ------------------------------------------------------- */
+{
+  const rs = content.commandById["reactive-strike"];
+  eq(rs.kind, "reaction", "Reactive Strike is a reaction");
+  eq(rs.cost, 0, "and costs no action");
+  eq(rs.effect, "strike", "with a strike effect");
+  eq(JSON.stringify(rs.triggers), JSON.stringify(["move-out-of-reach"]),
+    "answering the move trigger and only that one");
+  const sb = content.commandById["shield-block"];
+  eq(sb.effect, "reduce", "Shield Block reduces");
+  eq(sb.hardness, 5, "by the force disc's Hardness 5");
+  eq(sb.requiresShield, true, "and needs the Shield cantrip up");
+  ok(sb.damageTypes.includes("bludgeoning"), "physical damage is blockable");
+  ok(!sb.damageTypes.includes("fire"), "fire is not — a disc of force does nothing about heat");
+
+  ok(fighterContent.commandById["reactive-strike"], "the fighter carries Reactive Strike");
+  ok(!fighterContent.commandById["shield-block"], "and not the wizard's Shield Block");
+  ok(resolved.commandById["shield-block"], "the wizard carries Shield Block");
+  ok(!resolved.commandById["reactive-strike"], "and not the fighter's Reactive Strike");
+
+  eq(JSON.stringify(content.creatures["vault-keeper"].reactions), JSON.stringify(["reactive-strike"]),
+    "the Vault Keeper has Reactive Strike");
+  eq(content.creatures["shattered-sentinel"].reactions.length, 0, "a sentinel has none");
+  // selectPc narrows the build's commands; a creature's feats have nothing to
+  // do with which heir walked in, so they are looked up in the whole pack.
+  ok(resolved.allCommandById["reactive-strike"],
+    "a creature's reaction is still findable once selectPc has narrowed to the wizard");
+  eq(content.pcOptions[0].reachFeet, 5, "a level-1 weapon threatens 5 feet");
+  eq(content.creatures["vault-keeper"].reachFeet, 5, "and so does a basalt fist");
+}
+
+/* -- the vocabulary is the engine's, not a parallel list ------------------ */
+{
+  // The drift check. content.js declares three trigger names and game.js fires
+  // three string literals, and nothing but this connects them: a fourth name
+  // in either list is a reaction that validates and never fires, or an event
+  // no pack is allowed to name. Broken on purpose by adding a fourth entry to
+  // REACTION_TRIGGERS, and again by renaming one fireTrigger() call.
+  const src = fs.readFileSync(path.join(HERE, "..", "js", "game.js"), "utf8");
+  const fired = [...src.matchAll(/fireTrigger\("([a-z-]+)"/g)].map(m => m[1]);
+  eq(fired.length, 3, "game.js fires exactly three named triggers");
+  eq(JSON.stringify([...fired].sort()), JSON.stringify([...REACTION_TRIGGERS].sort()),
+    "the events game.js fires are exactly the ones content.js lets a pack name");
+  eq(JSON.stringify(REACTION_EFFECTS), JSON.stringify(["strike", "reduce"]),
+    "and a reaction does one of two things");
+}
+
+/**
+ * A scenario builder: the PC standing next to the Vault Keeper, gate open,
+ * the Keeper awake, in the upper chamber. Hand-built rather than played into,
+ * because the interesting cases are all about which square somebody left and
+ * walking there first would spend the round getting into position.
+ */
+function keeperFight(buildId, seed, pcAt = [10, 4]) {
+  const c = selectPc(content, buildId);
+  const build = content.pcById[buildId];
+  const state = {
+    packId: content.pack.id, buildId, areaId: "vault",
+    pc: { x: pcAt[0], y: pcAt[1], hp: build.hp, slots: build.slots, focus: build.focus },
+    creatures: [{
+      key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+      wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+    }],
+    loreRead: [], gateOpen: true, fog: {},
+    inventory: [], log: [],
+    stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 },
+    outcome: null,
+  };
+  const g = createGame({ content: c, rng: makeRng(seed), state });
+  g.begin();
+  return g;
+}
+
+/* -- move-out-of-reach: the trigger the whole phase is named after -------- */
+{
+  // Seed 1 puts Kessa first in the initiative order, so this is her turn with
+  // three actions and a Keeper standing beside her.
+  const g = keeperFight("fighter", 1);
+  eq(g.mode, "combat", "the hand-built state boots straight into the encounter");
+  ok(g.isPCTurn(), "and on the PC's turn");
+  eq(g.run.stats.reactions, 0, "nothing has reacted yet");
+  eq(g.turn.reaction, 1, "the PC's reaction is up");
+  ok(!g.turn.reacted.has("vault:vault-keeper@11,1"), "and so is the Keeper's");
+
+  const hp0 = g.run.pc.hp;
+  // (10,4) to (9,3) is one diagonal step. The Keeper at (11,4) threatens the
+  // square she left and not the one she lands on.
+  ok(g.walkTo(9, 3).ok, "Kessa Strides out of the Keeper's reach");
+  eq(g.run.stats.reactions, 1, "the Keeper Reactive Strikes as she goes");
+  ok(g.turn.reacted.has("vault:vault-keeper@11,1"), "and its reaction is spent");
+  ok(g.run.pc.hp < hp0, "the swing connected (seed 1 is a hit)");
+  ok(g.run.log.some(e => e.text.includes("Reactive Strike, as Kessa Vane leaves reach")),
+    "the log says why it happened, in the square it happened in");
+
+  // One per round. Walking back in provokes nothing — the trigger is leaving
+  // reach, not being near — and walking out again finds the reaction spent.
+  ok(g.walkTo(10, 4).ok, "she Strides back in");
+  eq(g.run.stats.reactions, 1, "stepping *toward* the Keeper provokes nothing");
+  ok(g.walkTo(9, 3).ok, "and out again, in the same round");
+  eq(g.run.stats.reactions, 1, "a reaction fires once per round and not twice");
+  eq(g.lastTrigger("move-out-of-reach").refusals.find(r => r.actor === "vault:vault-keeper@11,1").why, "spent",
+    "refused because it is spent, not because it did not qualify");
+  eq(g.actionsLeft, 0, "three Strides, three actions");
+}
+
+{
+  // Both halves of the move trigger, on their own.
+  //
+  // "Left a square inside my reach" and "arrived at one outside it" fail
+  // differently, and the round-budget tests above hide both: once a reaction
+  // has been spent, every later refusal looks the same. Drop the first half
+  // and a creature crossing the room provokes from anywhere. Drop the second
+  // and shuffling from one square beside a foe to another provokes — a free
+  // hit every time a player repositions in melee, which is not the rule.
+  //
+  // The second half genuinely had no coverage when it was written: it was
+  // removed on purpose and all 394 other assertions stayed green.
+  const inside = keeperFight("fighter", 1);
+  // (10,4) and (11,3) are both adjacent to the Keeper standing at (11,4).
+  ok(inside.walkTo(11, 3).ok, "Kessa shuffles from one square beside the Keeper to another");
+  eq(inside.run.stats.reactions, 0, "moving within reach provokes nothing");
+  eq(inside.lastTrigger("move-out-of-reach").refusals.find(r => r.actor === "vault:vault-keeper@11,1").why, "still-in-reach",
+    "and the Keeper's offer was refused for that reason");
+  ok(!inside.turn.reacted.has("vault:vault-keeper@11,1"), "and the Keeper's reaction is still up");
+
+  const outside = keeperFight("fighter", 1, [9, 3]);
+  ok(outside.isPCTurn(), "the second scenario also opens on the PC's turn");
+  // (9,3) and (9,2) are both out of the Keeper's reach at (11,4).
+  ok(outside.walkTo(9, 2).ok, "Kessa walks from one square out of reach to another");
+  eq(outside.run.stats.reactions, 0, "moving outside reach provokes nothing either");
+  eq(outside.lastTrigger("move-out-of-reach").refusals.find(r => r.actor === "vault:vault-keeper@11,1").why, "not-in-reach",
+    "and that offer was refused for its own reason");
+}
+
+{
+  // The refresh. A reaction spent on round one is back on round two, and it is
+  // refreshed at the top of the reactor's own turn — nowhere else. Broken on
+  // purpose by deleting the turn.reacted.delete(key) line in advance(), which
+  // left the Keeper unable to react for the rest of the fight.
+  const g = keeperFight("fighter", 1);
+  g.walkTo(9, 3);
+  eq(g.run.stats.reactions, 1, "it fires on round one");
+  let r = g.endTurn();
+  while (r && r.actor !== "pc") r = g.advance();
+  ok(!g.run.outcome, "Kessa survives the Keeper's round (seed 1)");
+  ok(!g.turn.reacted.has("vault:vault-keeper@11,1"), "the Keeper's reaction came back on its own turn");
+  eq(g.turn.reaction, 1, "and so did the PC's, at the top of hers");
+}
+
+{
+  // A reaction is not a button. It has no action cost, it fires on somebody
+  // else's turn, and there is no way for a player to spend one by hand — which
+  // is what stops Kessa Reactive Striking on her own turn for a free attack.
+  const g = keeperFight("fighter", 1);
+  eq(g.useCommand("reactive-strike", null).reason, "reaction-only",
+    "a reaction cannot be fired by hand");
+  eq(g.actionsLeft, 3, "and refusing it costs nothing");
+  eq(g.commandBlocked("reactive-strike"), null, "it reads as available while it is unspent");
+  g.walkTo(9, 3);
+  eq(g.commandBlocked("reactive-strike"), null, "the Keeper spending its reaction is not Kessa spending hers");
+}
+
+/* -- incoming-damage: Shield Block, before a hit point moves -------------- */
+{
+  const g = keeperFight("wizard", 1);
+  eq(g.commandBlocked("shield-block"), "no-shield", "Shield Block is unavailable with no Shield up");
+  ok(g.useCommand("shield").ok, "Vesper casts Shield");
+  eq(g.commandBlocked("shield-block"), null, "and now the disc can block");
+  eq(g.pcAC(), 16, "AC 15 becomes 16 while it is up");
+
+  const hp0 = g.run.pc.hp;
+  const before = g.run.log.length;
+  // One step only. Advancing all the way back round to the PC would reach the
+  // top of her turn, where Shield lapses on its own — and an assertion about
+  // the disc being gone would then pass whether it blocked anything or not.
+  const r = g.endTurn();
+  ok(r && r.actor !== "pc", "the Keeper takes its turn");
+  const fresh = g.run.log.slice(before);
+  const blockAt = fresh.findIndex(e => e.text.includes("Shield Block: 5 damage stopped"));
+  ok(blockAt >= 0, "the Keeper's fist rings off the disc");
+  eq(g.run.stats.reactions, 1, "one block, not one per attack — the disc is spent doing it");
+  const dmgAt = fresh.findIndex((e, i) => i > blockAt && e.kind === "damage");
+  ok(dmgAt > blockAt, "the block is logged before the damage, because it happened before it");
+
+  // The number in the damage line is the number that reached the wizard, and
+  // it is what run.pc.hp actually lost. Broken on purpose by moving the
+  // softenedBy() call in hurtPC() to after the subtraction: the log still read
+  // "5 damage stopped" and the HP bar dropped the full amount anyway.
+  const took = Number(/takes (\d+) /.exec(fresh[dmgAt].text)[1]);
+  eq(hp0 - g.run.pc.hp, took, "the damage that landed is the damage the log shows");
+  ok(!g.shielded, "and the disc is gone — blocking with it destroys it (Player Core)");
+}
+
+{
+  // No Shield, no block: the same fight, the same seed, the full damage.
+  const shielded = keeperFight("wizard", 1);
+  shielded.useCommand("shield");
+  let a = shielded.endTurn();
+  while (a && a.actor !== "pc" && !shielded.run.outcome) a = shielded.advance();
+
+  const bare = keeperFight("wizard", 1);
+  let b = bare.endTurn();
+  while (b && b.actor !== "pc" && !bare.run.outcome) b = bare.advance();
+  eq(bare.run.stats.reactions, 0, "with no Shield up nothing blocks");
+  ok(bare.run.pc.hp < shielded.run.pc.hp,
+    `the blocked run keeps more HP (${shielded.run.pc.hp} vs ${bare.run.pc.hp})`);
+}
+
+{
+  // A disc of force does nothing about heat. Same fight, same seed, the
+  // Keeper's fist retyped as fire — the reaction is offered and refused on the
+  // damage type rather than fired and wasted.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.creatures["vault-keeper"].damageType = "fire";
+  const hot = loadPack(p);
+  const c = selectPc(hot, "wizard");
+  const g = createGame({
+    content: c, rng: makeRng(1),
+    state: {
+      packId: hot.pack.id, buildId: "wizard", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 15, slots: 2, focus: 1 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  ok(g.useCommand("shield").ok, "Vesper casts Shield against a Keeper that burns");
+  g.endTurn();                       // the Keeper's whole turn, and no further
+  ok(g.run.pc.hp < 15, "the fire lands");
+  eq(g.run.stats.reactions, 0, "Shield Block does not fire against fire damage");
+  eq(g.lastTrigger("incoming-damage").refusals.find(r => r.command === "shield-block").why, "damage-type",
+    "the disc was offered the hit and refused it on its type");
+  ok(g.shielded, "and the disc is still up, unspent, because it was never offered");
+}
+
+/* -- incoming-attack: the third named point, and a PC reactor ------------- */
+{
+  // No shipped build owns a reaction on this trigger — at level 1 neither a
+  // Fighter nor a Wizard has one, and inventing a feat to fill the table would
+  // be worse than an empty seat. The engine fires it anyway, at both Strike
+  // sites, and this is the proof it is a real point rather than a comment: a
+  // pack that hangs a strike reaction off it gets one.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.commands.push({
+    id: "riposte", name: "Riposte", cost: 0, kind: "reaction", effect: "strike",
+    triggers: ["incoming-attack"], attackBonus: 7, damage: "1d8+2", damageType: "slashing",
+  });
+  p.pcOptions.find(b => b.id === "fighter").commands.push("riposte");
+  const fenced = loadPack(p);
+  const c = selectPc(fenced, "fighter");
+  const g = createGame({
+    content: c, rng: makeRng(1),
+    state: {
+      packId: fenced.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  g.endTurn();                       // the Keeper's whole turn: three fists
+  eq(g.run.stats.reactions, 1, "Kessa Ripostes the first fist that comes at her, once");
+  eq(g.run.log.filter(e => e.kind === "dice" && e.text.startsWith("Riposte vs")).length, 1,
+    "one Riposte was rolled, not one per fist");
+  const riposteAt = g.run.log.findIndex(e => e.text.startsWith("Riposte vs"));
+  const firstFist = g.run.log.findIndex(e => e.text.includes("Basalt Fist vs"));
+  ok(riposteAt >= 0 && riposteAt < firstFist,
+    "and it resolved before the fist that triggered it was rolled");
+  // A reaction happens on somebody else's turn, so it is no part of her own
+  // action sequence: it takes no multiple-attack penalty and adds none. Broken
+  // on purpose by routing resolveReaction's strike through turn.attacks, which
+  // gave her a −5 on the first Strike of her *next* turn.
+  eq(g.turn.attacks, 0, "a reaction Strike leaves the PC's own MAP counter alone");
+
+  // And it comes back at the top of her own turn, and not a moment sooner.
+  // The other refresh test above never spends the PC's reaction, so it cannot
+  // tell a working refresh from a value that was simply never touched: this
+  // one watches 0 become 1. Broken on purpose by deleting the
+  // `turn.reaction = 1` line in advance(), which left Kessa able to Riposte
+  // exactly once per fight.
+  eq(g.turn.reaction, 0, "her reaction is spent while the Keeper's turn is still resolving");
+  let r = g.advance();
+  while (r && r.actor !== "pc" && !g.run.outcome) r = g.advance();
+  ok(!g.run.outcome, "she survives the Keeper's round");
+  eq(g.turn.reaction, 1, "and her reaction is back at the top of her own turn");
+}
+
+/* -- a walk that is interrupted between two squares ----------------------- */
+{
+  // The structural claim of this phase, on the side of the board where it can
+  // actually happen: a move is resolved square by square, and a reaction that
+  // lands mid-walk stops it where it landed rather than after the fact.
+  //
+  // Kessa at 1 HP asks for a three-square walk out of the Keeper's reach. The
+  // Reactive Strike fires on the square where the route actually leaves that
+  // reach, and kills her standing on it. Before this phase the whole path was
+  // assigned in one statement and she would have died on the far end of it.
+  const c = selectPc(content, "fighter");
+  const g = createGame({
+    content: c, rng: makeRng(1),
+    state: {
+      packId: content.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 1, slots: 0, focus: 0 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  ok(g.isPCTurn(), "Kessa opens the round on 1 HP");
+  const full = g.world.findPath(10, 4, 9, 1, { gateOpen: true, occupied: () => false });
+  const r = g.walkTo(9, 1);
+  eq(r.stoppedBy, "interrupted", "the walk reports that something stopped it");
+  ok(r.path.length < full.length,
+    `it stopped short of the route it was given (${r.path.length} squares of ${full.length})`);
+  ok(!(g.run.pc.x === 9 && g.run.pc.y === 1), "she never reached the square she asked for");
+  eq(`${g.run.pc.x},${g.run.pc.y}`, `${r.path.at(-1).x},${r.path.at(-1).y}`,
+    "and the path it reports ends where she actually stands");
+  eq(g.run.outcome, "defeat", "the Keeper's Reactive Strike finished her");
+  eq(g.run.stats.reactions, 1, "one reaction did it");
+}
+
+/* -- who is allowed to react to what -------------------------------------- */
+{
+  // Nobody reacts to their own side. Two Keepers standing beside each other,
+  // both carrying a reaction on incoming-attack: when the first swings at
+  // Vesper, the second is offered the trigger and refused, because a reaction
+  // is for interrupting an enemy and not for stabbing a colleague.
+  //
+  // Broken on purpose by deleting the sideOf() test, at which point the second
+  // Keeper opened the fight by punching the first one.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.commands.push({
+    id: "riposte", name: "Riposte", cost: 0, kind: "reaction", effect: "strike",
+    triggers: ["incoming-attack"], attackBonus: 7, damage: "1d8+2", damageType: "slashing",
+  });
+  p.creatures["vault-keeper"].reactions = ["reactive-strike", "riposte"];
+  const mutual = loadPack(p);
+  const twin = (key, x, y) => ({
+    key, area: "vault", creature: "vault-keeper", wakesOn: "gate-opened",
+    x, y, hp: 18, awake: true, dead: false,
+  });
+  const g = createGame({
+    content: selectPc(mutual, "wizard"), rng: makeRng(1),
+    state: {
+      packId: mutual.pack.id, buildId: "wizard", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 15, slots: 2, focus: 1 },
+      creatures: [twin("vault:vault-keeper@11,1", 11, 4), twin("vault:vault-keeper@11,3", 11, 3)],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  g.endTurn();                          // one Keeper's whole turn, three fists
+  eq(g.run.stats.reactions, 0, "the other Keeper does not Riposte its own side");
+  eq(g.lastTrigger("incoming-attack").refusals.find(r => r.command === "riposte").why, "ally",
+    "refused because it is an ally, which is the rule being tested");
+  eq(g.run.creatures[0].hp, 18, "the Keeper that swung is untouched");
+  eq(g.run.creatures[1].hp, 18, "and so is the one that watched");
+  ok(g.run.pc.hp < 15, "the fists landed on Vesper, which is who they were aimed at");
+}
+
+{
+  // The budget is per actor, not per trigger. Two Keepers, both threatening the
+  // square Kessa leaves: both get their own swing, and both are then spent for
+  // the round. Broken on purpose by hoisting the spent check out of the loop,
+  // which let one Keeper's reaction pay for the other's.
+  const c = selectPc(content, "fighter");
+  const twin = (key, x, y) => ({
+    key, area: "vault", creature: "vault-keeper", wakesOn: "gate-opened",
+    x, y, hp: 18, awake: true, dead: false,
+  });
+  const g = createGame({
+    content: c, rng: makeRng(1),
+    state: {
+      packId: content.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0 },
+      creatures: [twin("vault:vault-keeper@11,1", 11, 4), twin("vault:vault-keeper@11,3", 11, 3)],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  while (!g.isPCTurn() && !g.run.outcome) g.advance();
+  ok(!g.run.outcome, "Kessa reaches her turn with two Keepers on her");
+  const at = g.run.stats.reactions;
+  // (9,3) is out of reach of (11,4) and of (11,3); (10,4) was inside both.
+  ok(g.walkTo(9, 3).ok, "she Strides out of reach of both");
+  eq(g.run.stats.reactions, at + 2, "both Keepers react, each spending its own");
+  ok(g.turn.reacted.has("vault:vault-keeper@11,1") && g.turn.reacted.has("vault:vault-keeper@11,3"),
+    "and both are spent for the round");
+  ok(g.walkTo(10, 4).ok, "she steps back between them");
+  ok(g.walkTo(9, 3).ok, "and back out");
+  eq(g.run.stats.reactions, at + 2, "neither gets a second swing this round");
+}
+
+{
+  // A reduce reaction protects its owner and nobody else. The bystander here
+  // is a Reliquary Warden with a hardness reaction, standing next to the
+  // sentinel Vesper is actually shooting: it is offered the trigger, because
+  // the bus offers everyone, and it is refused because the damage is not
+  // coming at it. Broken on purpose by deleting the `who !== ctx.target`
+  // test, at which point the Warden soaked a spell aimed at its neighbour.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.commands.push({
+    id: "stoneskin", name: "Stoneskin", cost: 0, kind: "reaction", effect: "reduce",
+    triggers: ["incoming-damage"], hardness: 3,
+  });
+  p.creatures["reliquary-warden"].reactions = ["stoneskin"];
+  const warded = loadPack(p);
+  const g = createGame({
+    content: selectPc(warded, "wizard"), rng: makeRng(1),
+    state: {
+      packId: warded.pack.id, buildId: "wizard", areaId: "vault",
+      pc: { x: 10, y: 8, hp: 15, slots: 2, focus: 1 },
+      creatures: [
+        { key: "a", area: "vault", creature: "shattered-sentinel", wakesOn: "notice", x: 11, y: 8, hp: 11, awake: true, dead: false },
+        { key: "b", area: "vault", creature: "reliquary-warden", wakesOn: "notice", x: 12, y: 8, hp: 8, awake: true, dead: false },
+      ],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  while (!g.isPCTurn() && !g.run.outcome) g.advance();
+  ok(!g.run.outcome, "Vesper reaches her turn");
+  const hp0 = g.byKey("a").hp;
+  ok(g.useCommand("fang", "a").ok, "she puts a Force Fang into the sentinel");
+  eq(g.run.stats.reactions, 0, "the Warden standing beside it does not soak the hit");
+  eq(g.lastTrigger("incoming-damage").refusals.find(r => r.command === "stoneskin").why, "not-the-target",
+    "because the damage was not coming at it");
+  ok(!g.turn.reacted.has("b"), "and its reaction is still its own");
+  const line = g.run.log.filter(e => e.kind === "damage").at(-1);
+  eq(hp0 - g.byKey("a").hp, Number(/takes (\d+) /.exec(line.text)[1]),
+    "the sentinel took the whole of what was rolled");
+}
+
+/* -- the shipped creature AI cannot provoke, and that is measurable ------- */
+{
+  // A creature in this engine Strides to the *nearest* open square beside the
+  // PC, and findPath is optimal, so a ring square it crossed on the way would
+  // have been a cheaper destination than the one it chose. It therefore cannot
+  // enter the PC's reach and leave it again: Kessa's own Reactive Strike is a
+  // rule the engine implements correctly and the shipped creatures never give
+  // her. This is the number, over every open square of both maps.
+  //
+  // It is asserted rather than noted because it is exactly what Phase 4
+  // ("creatures that know what they are standing in") changes: the day a
+  // creature is given a reason to retreat or reposition, this fails, and the
+  // message says what to do about it.
+  //
+  // Every open square of both maps as the PC, against a fixed stride through
+  // the same list as the creature. The full cross product is 96,000 planned
+  // Strides and eight A* runs each, which is a ninety-second unit suite and
+  // therefore a unit suite nobody runs; the sampled version is a couple of
+  // thousand and still finds thousands of leaves the moment the planner is
+  // inverted, which is the check being made.
+  let leaves = 0, strides = 0;
+  for (const areaId of content.areaOrder) {
+    const a = content.areas[areaId];
+    const w = makeWorld(a);
+    const opts = { gateOpen: true, occupied: () => false };
+    const open = [];
+    for (let y = 0; y < a.height; y++) {
+      for (let x = 0; x < a.width; x++) if (!w.blocksMove(x, y, true)) open.push({ x, y });
+    }
+    for (let i = 0; i < open.length; i++) {
+      const pc = open[i];
+      for (let j = i % 29; j < open.length; j += 29) {
+        const c = open[j];
+        if (feetBetween(pc.x, pc.y, c.x, c.y) <= 5) continue;   // adjacent creatures Strike
+        // world.planApproach is the function the creature turn actually calls.
+        // Re-implementing it here would be a sweep that kept passing after the
+        // planner changed under it, which is the exact shape of locked #34.
+        const leg = w.planApproach(c, pc, 25, opts);
+        if (!leg) continue;
+        strides++;
+        for (let k = 1; k < leg.length; k++) {
+          if (feetBetween(pc.x, pc.y, leg[k - 1].x, leg[k - 1].y) <= 5 &&
+              feetBetween(pc.x, pc.y, leg[k].x, leg[k].y) > 5) leaves++;
+        }
+      }
+    }
+  }
+  ok(strides > 1500, `the sweep actually planned strides (${strides})`);
+  eq(leaves, 0,
+    `no planned Stride leaves the PC's reach (${leaves} of ${strides}) — if this fails, ` +
+    `a creature can now provoke and the Fighter's Reactive Strike is live in shipped play`);
+}
+
+/* ========================================================================= *
+ * 6 — the save slot
  * ========================================================================= */
 section("save");
 
