@@ -696,7 +696,7 @@ included.
 
 ## Phase 6 — A hero who levels — SHIPPED
 
-**Shipped in two increments.** `const CHAR_LEVEL = 3` had eleven reads, and
+**Shipped in two increments (PRs #139 and #141).** `const CHAR_LEVEL = 3` had eleven reads, and
 every derived number hung off them. It has one read now, and that one is the
 level a new hero is forged at; the level a sheet is computed from is the
 hero's, and a hero with 1,000 XP banked takes the next one from the title
