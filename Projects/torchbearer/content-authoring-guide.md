@@ -184,9 +184,9 @@ Areas: `"area": {"shape":"burst","radius":20}` (pick a point) · `{"shape":"cone
 
 ## 8. Engine hooks (`special` ids the combat/build engine implements)
 
-**These 40 are wired to code.** Reusing them on new feats and classes is encouraged (a new class can carry `{"special":"sneak-attack"}` and it will work):
+**These 41 are wired to code.** Reusing them on new feats and classes is encouraged (a new class can carry `{"special":"sneak-attack"}` and it will work):
 
-`reactive-strike` (fighter reaction on enemy movement) · `bravery` · `sneak-attack` · `deny-advantage` · `racket-thief` · `racket-ruffian` · `hunt-prey` · `edge-flurry` · `edge-precision` · `power-attack` · `sudden-charge` · `exacting-strike` · `intimidating-strike` · `brutish-shove` · `hunted-shot` · `twin-takedown` · `twin-feint` · `nimble-dodge` · `cackle` · `witchs-armaments` · `cauldron` · `healing-hands` · `deadly-simplicity` · `emblazon` · `natural-medicine` · `intimidating-glare` · `terrified-retreat` · `shield-block` · `toughness` · `diehard` · `halfling-luck` · `reduce-frightened` · `burn-it` · `ignore-armor-speed` · `font-heal` · `assurance` · `surprise-attack` · `edge-outwit` · `racket-scoundrel` · `crossbow-ace`.
+`reactive-strike` (a reaction on an enemy's move or manipulate, from either side of the board) · `mobility` · `bravery` · `sneak-attack` · `deny-advantage` · `racket-thief` · `racket-ruffian` · `hunt-prey` · `edge-flurry` · `edge-precision` · `power-attack` · `sudden-charge` · `exacting-strike` · `intimidating-strike` · `brutish-shove` · `hunted-shot` · `twin-takedown` · `twin-feint` · `nimble-dodge` · `cackle` · `witchs-armaments` · `cauldron` · `healing-hands` · `deadly-simplicity` · `emblazon` · `natural-medicine` · `intimidating-glare` · `terrified-retreat` · `shield-block` · `toughness` · `diehard` · `halfling-luck` · `reduce-frightened` · `burn-it` · `ignore-armor-speed` · `font-heal` · `assurance` · `surprise-attack` · `edge-outwit` · `racket-scoundrel` · `crossbow-ace`.
 
 Two more work through a different route: `cantrip-expansion` is read by the builder (+2 cantrip picks, never reaches the sheet's `specials`), and `battle-medicine` is checked against `build.feats` by name rather than through `specials` — so putting `{"special":"battle-medicine"}` on a *class feature* does nothing; only the feat with that id works.
 
@@ -202,13 +202,14 @@ Two more work through a different route: `cantrip-expansion` is read by the buil
 
 **`crossbow-ace` is wired through the new Reload action.** A "🔃 Reload" button (1 action) appears whenever the combatant has a ranged weapon carrying the `reload-1` trait (currently only the Crossbow) and sets a per-turn `reloadedThisTurn` flag, reset at the start of every turn. `strike()` checks `crossbow-ace` against that same trait: if the attacker's target is their hunted prey, **or** they reloaded this turn, the crossbow's damage die becomes `1d10` (from `1d8`) and the hit gets +2 circumstance damage — matching the feat's own "against your hunted prey, or after reloading" wording exactly, rather than shipping only the hunted-prey half. Reloading doesn't gate whether you *can* Strike (a loaded crossbow still fires every turn, same as before this session) — it only unlocks this one feat's bonus, so no other crossbow user's turn economy changes.
 
-**`mobility` is still inert, and still not just unwired — it's currently unwireable.** `provokeAlong()` (the only reactive-strike trigger in the engine) has `if(mover.side!=="foe") return;` at the top — reactions only ever fire against a moving *foe*, never against the hero or a companion. No monster in the Registry carries `reactive-strike` either. Mobility exists to protect a mover from a reaction that, as shipped, nothing in this game can ever make against the party. Wiring the special up today would be a flag nothing reads; the real prerequisite is giving at least one monster a reach reaction, which is a monster-data question, not an engine one.
+**Reactions run on a trigger bus, and `mobility` is wired to it.** `Combat.trigger(name, ctx)` in `js/combat.js` offers a trigger to every combatant in initiative order that still has `reactionUsed === false`, and the reaction resolves *before* the action that triggered it completes. Four triggers exist: `move-out-of-reach` (a Stride that leaves a threatened square), `manipulate` (Drink Potion and Reload), `incoming-damage` (before temporary HP or the HP total sees the number) and `incoming-attack` (before the attack roll is compared to AC). `provokeAlong` no longer refuses a mover that is not a foe, so the hero provokes exactly as a monster does, and reach is read per combatant rather than assumed to be one cell. `mobility` — "your movement at half Speed never provokes reactions" — is decided by the Stride's own path cost against `floor(speed / 2)`, so a short Stride is safe and one square further is not; the Chronicle says so only when the move would otherwise have drawn a reaction.
+
+**A combatant spends one reaction per turn, and the player is asked when the choice is real.** `reactionUsed` is the entire budget and is cleared only at the start of that combatant's own turn. When a combatant carries more than one reaction, `Combat.askReaction(cb, id, ctx)` runs first and a "no" leaves the reaction unspent — the page puts a confirm in front of the player, and the engine's own default is yes so a test sees the bus rather than a stub. A combatant with exactly one reaction is never asked, because there is nothing to weigh it against.
 
 **These are inert.** They appear on core content, they display on the sheet, and no code reads them.
 
 | Hook | On | Status |
 |---|---|---|
-| `mobility` | Mobility feat | See above — currently unwireable, not just unwired. |
 | `bonus-dmg-vs-large`, `bonus-rest-heal`, `drain-bonded`, `ignore-difficult`, `reach-spell`, `trap-finder`, `widen-spell` | various | Flavour only; never claimed otherwise. |
 
 Unknown ids stay harmless — they render on the sheet and do nothing — so an inert hook is a missing feature, not a bug. But **do not add a `special` to new content expecting behaviour unless it is in the working list above.** Use `note` and the declarative effects instead, and if the behaviour genuinely needs code, say so rather than inventing a hook id (§14 step 5).
@@ -226,6 +227,7 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 { "id": "hold-breaker", "name": "Hold-Breaker", "level": 4, "boss": true,
   "traits": ["orc","humanoid"], "size": "Large",
   "ac": 21, "hp": 60, "speed": 30, "perception": 11,
+  "reach": 2, "reactions": ["reactive-strike"],
   "saves": { "fort": 12, "ref": 8, "will": 9 },
   "immunities": ["fear"], "weaknesses": [ { "type": "fire", "value": 3 } ],
   "resistances": [ { "type": "physical", "value": 2 } ], "slowed": 0,
@@ -238,6 +240,8 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 ```
 
 * `range` on attacks is in **cells** (5-ft squares): 1 = melee.
+* `reach` is in **cells** too and defaults to 1 — the eight squares around the creature. A Large creature with `"reach": 2` threatens the ring outside that, and its Reactive Strike fires when a hero leaves it.
+* `reactions` names reaction ids from §8's bus: `reactive-strike`, `shield-block`, `nimble-dodge`. **The validator rejects any other id**, the same way it rejects an unknown monster id in an encounter, because a reaction the engine does not implement is a monster that silently never reacts. Omit the field for a creature with no reaction; the shipped Forge-Tyrant in `packs/embers-of-the-hold.json` is the worked example of one carrying both fields.
 * `slowed: 1` = zombie-style 2 actions per turn.
 * AI: uses a `power` when off cooldown and ≥2 PCs are in radius; otherwise Strikes adjacent targets (max 2/turn), uses ranged attacks with line of sight, else closes on the nearest hero. `mental` immunity blocks fear/hex-type conditions.
 * Balance for a party of 1–3 at level 3: follow Paizo's monster-building numbers for the creature's level (a level 4 boss ≈ AC 21, HP 60, attack +14, DC 21). Use `minParty` in encounters (§11) to scale.
@@ -303,7 +307,7 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 
 ## 13. Known simplifications (don't "fix" these in data)
 
-Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school slots are folded into base slots; shield block auto-triggers; Demoralize takes a −4 language penalty vs. everything unless the hero has Intimidating Glare; victory grants a breather (half of missing HP + focus back); one skill increase at level 3 for every class; exact-opposite-square flanking. The design intent is **correct-feeling PF2e at level 3**, not a rules-complete VTT.
+Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school slots are folded into base slots; a combatant gets one reaction per turn and the first trigger it qualifies for takes it, with no Ready and no delayed reactions; Demoralize takes a −4 language penalty vs. everything unless the hero has Intimidating Glare; victory grants a breather (half of missing HP + focus back); one skill increase at level 3 for every class; exact-opposite-square flanking. The design intent is **correct-feeling PF2e at level 3**, not a rules-complete VTT.
 
 ## 14. Workflow for a future Claude
 

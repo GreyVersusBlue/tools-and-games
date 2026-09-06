@@ -93,6 +93,7 @@
     { "id": "forge-tyrant", "name": "The Forge-Tyrant", "level": 4, "boss": true,
       "traits": ["undead", "fire"], "size": "Large",
       "ac": 21, "hp": 58, "speed": 25, "perception": 11,
+      "reach": 2, "reactions": ["reactive-strike"],
       "saves": { "fort": 12, "ref": 8, "will": 11 },
       "immunities": ["void", "poison"],
       "weaknesses": [ { "type": "cold", "value": 5 } ],

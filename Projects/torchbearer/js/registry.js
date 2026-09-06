@@ -40,6 +40,16 @@ export function emptyRegistry() {
   };
 }
 
+/**
+ * Every reaction id a monster's `"reactions"` field may name.
+ *
+ * The source of truth is `REACTIONS` in js/combat.js; this is a copy, because
+ * combat.js imports this file and the dependency cannot run both ways. A copy
+ * that drifts is worse than no check at all, so `smoke.mjs` asserts the two
+ * lists are identical and fails when either side grows without the other.
+ */
+export const KNOWN_REACTIONS = ["reactive-strike", "shield-block", "nimble-dodge"];
+
 /* ---------- Pack validation (friendly errors for JSON authors) ----------
    Every check here is a promise the authoring guide makes. Five of them were
    promises the guide made and this file did not keep — a scene with no `text`
@@ -65,6 +75,22 @@ export const Validator = {
     checkIds(pack.items, "items", ["category"]);
     checkIds(pack.monsters, "monsters", ["ac", "hp", "attacks", "saves"]);
     checkIds(pack.adventures, "adventures", ["start", "scenes"]);
+
+    // added Phase 3: `reactions` and `reach` are the two fields §10 grew when
+    // the trigger bus landed. An unknown reaction id is exactly as dead as an
+    // unknown monster id and gets the same treatment — a reaction the engine
+    // does not implement is a monster that silently never reacts.
+    (pack.monsters || []).forEach(m => {
+      if (m.reactions !== undefined) {
+        if (!Array.isArray(m.reactions)) errs.push(`Monster "${m.id}": "reactions" must be an array of reaction ids.`);
+        else m.reactions.forEach(r => {
+          if (!KNOWN_REACTIONS.includes(r)) errs.push(`Monster "${m.id}": unknown reaction "${r}" (known: ${KNOWN_REACTIONS.join(", ")}).`);
+        });
+      }
+      if (m.reach !== undefined && (!Number.isInteger(m.reach) || m.reach < 1)) {
+        errs.push(`Monster "${m.id}": "reach" is in cells and must be a whole number of 1 or more.`);
+      }
+    });
 
     // Everything the pack brings with it, plus everything already loaded.
     // A pack may lean on core ids (that is the whole point of §1's "IDs are

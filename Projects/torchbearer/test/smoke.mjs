@@ -35,14 +35,14 @@ const PAGE = path.join(PROJECT, "..", "torchbearer.html");
 // Windows: a bare `C:\...` is read by Node as URL scheme `c:` and refused
 // outright, so every dynamic import goes through pathToFileURL (v7 §7).
 const mod = p => import(pathToFileURL(path.join(PROJECT, p)).href);
-const { Validator, emptyRegistry } = await mod("js/registry.js");
+const { Validator, emptyRegistry, KNOWN_REACTIONS } = await mod("js/registry.js");
 const { createTorchSlot, repairSnapshot, repairBuild, repairHero, validateSnapshot, SAVE_KEY, SAVE_VERSION }
   = await mod("js/save.js");
 const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, Dice, setDiceSource, activeEffects, abilityMods,
         finalizeCharacter, skillMod, assuranceFloor, assuranceDegree } = {
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
-const { newCombat, heroCombatant, companionCombatant } = await mod("js/combat.js");
+const { newCombat, heroCombatant, companionCombatant, REACTIONS } = await mod("js/combat.js");
 
 /* ---------------- harness ---------------- */
 let pass = 0; const fails = [];
@@ -205,6 +205,16 @@ hits(p => { delete p.monsters[0].ac; }, 'missing required field "ac"', "a monste
 hits(p => {
   p.backgrounds = [{ id: "b", name: "B", boosts: [["str"], ["free"]], skills: ["crafting"], feat: "no-such-feat" }];
 }, 'feat "no-such-feat" does not exist', "a background granting a feat nobody defined");
+hits(p => { p.monsters[0].reactions = ["counterspell"]; }, 'unknown reaction "counterspell"', "a monster claiming a reaction the engine does not implement");
+hits(p => { p.monsters[0].reactions = "reactive-strike"; }, '"reactions" must be an array', "a monster whose reactions field is a bare string");
+hits(p => { p.monsters[0].reach = 0; }, '"reach" is in cells', "a monster with a reach of zero");
+hits(p => { p.monsters[0].reach = 1.5; }, '"reach" is in cells', "…or half a square");
+{
+  const p = base();
+  p.monsters[0].reactions = ["reactive-strike", "shield-block", "nimble-dodge"];
+  p.monsters[0].reach = 2;
+  eq(Validator.validate(p, emptyRegistry()), [], "every reaction the engine implements is accepted, and so is reach 2");
+}
 
 // A cross-pack reference is legal — that is what "IDs are global" means.
 {
@@ -1508,10 +1518,177 @@ const rolls = eng => eng.events.filter(ev => ev.kind === "roll");
   pin([20, 15], [8, 4]);
   e2.provokeAlong(frail, [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }]);
   eq([frail.dead, rolls(e2).length, k2.reactionUsed], [true, 1, undefined], "a hound killed mid-step stops there, and the second fighter keeps their reaction");
-  // The standing backlog's first row, pinned: only a foe can provoke.
-  const e3 = stage([Object.assign(heroCombatant(fighter()), { x: 5, y: 5 }), hound({ char: { specials: ["reactive-strike"] } })]);
-  e3.provokeAlong(e3.cbs[0], [{ x: 3, y: 1 }, { x: 4, y: 1 }, { x: 5, y: 1 }]);
-  eq(rolls(e3).length, 0, "a moving hero provokes nothing — pinned as-is; Phase 3's trigger bus changes this");
+  // Phase 3: the side check is gone. A hero who Strides out of a monster's
+  // reach provokes exactly as a monster does.
+  const e3 = stage([Object.assign(heroCombatant(fighter()), { x: 2, y: 1 }), hound({ x: 1, y: 1, reactions: ["reactive-strike"] })]);
+  pin([20, 15], [8, 4]);
+  e3.provokeAlong(e3.cbs[0], [{ x: 2, y: 1 }, { x: 3, y: 1 }, { x: 4, y: 1 }]);
+  eq(rolls(e3).length, 1, "a moving hero provokes a monster that carries the reaction");
+  ok(e3.events.some(ev => /<b>Reactive Strike!<\/b> Hound lashes out as Testcase moves/.test(ev.text)), "…with the same line, the other way round");
+}
+setDiceSource();
+
+/* ---------------- 11. the reaction bus ---------------- */
+/* Phase 3. Three reactions used to fire from wherever they happened to be
+   reachable — two from inside the damage path, the third from a provokeAlong
+   that refused any mover that was not a foe. They are on one bus now. */
+group("combat engine: the reaction bus");
+{
+  // registry.js cannot import combat.js, because combat.js imports registry.js.
+  // So the reaction ids live in two files, and this is the only thing that
+  // notices when one of them grows and the other does not.
+  eq(Object.keys(REACTIONS).sort(), [...KNOWN_REACTIONS].sort(),
+    "js/combat.js and js/registry.js name the same reactions");
+  for (const [id, r] of Object.entries(REACTIONS)) {
+    ok(Array.isArray(r.triggers) && r.triggers.length > 0, `${id} answers at least one trigger`);
+    ok(typeof r.qualifies === "function" && typeof r.resolve === "function", `${id} brings both halves`);
+  }
+  eq(REACTIONS["reactive-strike"].triggers, ["move-out-of-reach", "manipulate"],
+    "Reactive Strike answers a move and a manipulate, as the feat text says");
+}
+{
+  // Reach, read per combatant.
+  const tyrant = hound({ id: "t", name: "Tyrant", x: 2, y: 2, reach: 2, reactions: ["reactive-strike"] });
+  const runner = Object.assign(heroCombatant(fighter()), { x: 4, y: 2 });
+  const eng = stage([runner, tyrant]);
+  eq([eng.reachOf(tyrant), eng.reachOf(runner)], [2, 1],
+    "reach comes off the combatant in cells, and defaults to the eight squares around it");
+  pin([20, 15], [8, 4]);
+  eng.provokeAlong(runner, [{ x: 4, y: 2 }, { x: 5, y: 2 }]);
+  eq(rolls(eng).length, 1, "leaving the second ring of a reach-2 monster provokes");
+  tyrant.reactionUsed = false; eng.events.length = 0;
+  eng.provokeAlong(runner, [{ x: 3, y: 2 }, { x: 4, y: 2 }]);
+  eq(rolls(eng).length, 0, "…and moving from its first ring to its second does not");
+
+  // One reaction per turn, whatever the trigger.
+  tyrant.reactionUsed = false; eng.events.length = 0;
+  pin([20, 15], [8, 4], [20, 15], [8, 4]);
+  eng.provokeAlong(runner, [{ x: 4, y: 2 }, { x: 5, y: 2 }]);
+  eng.trigger("manipulate", { actor: runner });
+  eq(rolls(eng).length, 1, "a second trigger in the same round finds the reaction already spent");
+  tyrant.reactionUsed = false; eng.events.length = 0;
+  pin([20, 15], [8, 4]);
+  eng.trigger("manipulate", { actor: runner });
+  eq(rolls(eng).length, 1, "…and on a fresh reaction, a manipulate provokes from anyone already within reach");
+}
+{
+  // Mobility, which had never been readable by any code at all.
+  const walker = Object.assign(heroCombatant(fighter()), { x: 2, y: 1 });
+  walker.char = { ...walker.char, specials: [...walker.char.specials, "mobility"] };
+  const guard = hound({ x: 1, y: 1, reactions: ["reactive-strike"] });
+  const eng = stage([walker, guard]);
+  eq(eng.moveBudget(walker), 5, "the fighter Strides five squares, so Mobility covers two");
+  pin([20, 18], [8, 8]);
+  eng.actionClick("stride");
+  eng.cellClick(4, 1);
+  eq([walker.x, rolls(eng).length], [4, 0], "a Stride of half speed draws nothing");
+  ok(eng.events.some(ev => /<b>Mobility<\/b> gives nothing away/.test(ev.text)), "…and the Chronicle says why");
+  walker.x = 2; walker.y = 1; guard.reactionUsed = false; eng.events.length = 0; eng.actions = 3;
+  pin([20, 18], [8, 8]);
+  eng.actionClick("stride");
+  eng.cellClick(5, 1);
+  eq([walker.x, rolls(eng).length], [5, 1], "one square further than half speed does not");
+
+  // Without the feat, the same two squares provoke.
+  const plain = Object.assign(heroCombatant(fighter()), { x: 2, y: 1 });
+  const g2 = hound({ x: 1, y: 1, reactions: ["reactive-strike"] });
+  const e2 = stage([plain, g2]);
+  pin([20, 18], [8, 8]);
+  e2.actionClick("stride");
+  e2.cellClick(4, 1);
+  eq(rolls(e2).length, 1, "…and a hero without Mobility is struck for the same short walk");
+}
+{
+  // A foe that dies to a Reactive Strike mid-move stops where it fell, and its
+  // turn ends rather than stalling the loop.
+  const knight = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+  const frail = hound({ hp: 1, hpMax: 24, x: 2, y: 1 });
+  const eng = stage([knight, frail], { order: null });
+  eng.addCond(frail, "fleeing", 1, 2, true);
+  eng.turnIdx = 1; eng.actions = 3;
+  pin([20, 18], [8, 8]);
+  const step = eng.aiStep(frail);
+  eq([frail.dead, frail.x, frail.y], [true, 2, 1], "a hound cut down as it flees never reaches the square it ran to");
+  eq(step, null, "…and its turn is over");
+  eq([eng.active, eng.h.victory], [false, 1], "…ended rather than stalled: the last foe is down, so the fight is won");
+
+  // And the same thing one step later: a foe killed by a reaction during its
+  // own move finds itself dead when `aiStep` comes round again, which is the
+  // only place left that can hand the turn on.
+  const knight2 = Object.assign(heroCombatant(fighter()), { x: 1, y: 1 });
+  const gone = hound({ x: 4, y: 4, dead: true });
+  const second = hound({ id: "f2", name: "Second", x: 5, y: 5 });
+  const e2 = stage([knight2, gone, second], { order: null });
+  e2.turnIdx = 1; e2.actions = 2;
+  eq(e2.aiStep(gone), null, "a foe already dead when its next step comes round takes no action");
+  eq(e2.turnIdx, 2, "…and its turn is handed on rather than stalling the loop");
+}
+{
+  // The ask, and what a "no" costs. Only a combatant carrying more than one
+  // reaction is asked, because one reaction is not a choice.
+  const ward = mk({ id: "w", side: "pc", name: "Ward", hp: 40, hpMax: 40, shieldRaised: true, reactionUsed: false,
+                    char: { specials: ["shield-block", "nimble-dodge"], resists: [] } });
+  const eng = arena([ward]);
+  const asked = [];
+  eng.askReaction = (cb, rid) => { asked.push(rid); return false; };
+  eq(eng.applyDamage(ward, 12, "slashing"), 12, "a refused Shield Block does not eat the hit");
+  eq([asked, ward.reactionUsed], [["shield-block"], false], "…and leaves the reaction unspent for the next trigger");
+  eng.askReaction = () => true;
+  eq(eng.applyDamage(ward, 12, "slashing"), 7, "…which a yes then spends");
+
+  const solo = mk({ id: "s", side: "pc", name: "Solo", hp: 40, hpMax: 40, shieldRaised: true, reactionUsed: false,
+                    char: { specials: ["shield-block"], resists: [] } });
+  const e2 = arena([solo]);
+  let count = 0; e2.askReaction = () => { count++; return true; };
+  eq(e2.applyDamage(solo, 12, "slashing"), 7, "one reaction in the kit still fires");
+  eq(count, 0, "…without asking, because there is nothing to weigh it against");
+}
+{
+  // Drink Potion and Reload are manipulate actions, and manipulate provokes.
+  const drinker = Object.assign(heroCombatant(fighter()), { x: 2, y: 2, hp: 20 });
+  const watcher = hound({ x: 3, y: 2, reactions: ["reactive-strike"] });
+  const eng = stage([drinker, watcher]);
+  pin([20, 3], [8, 6]);
+  eng.actionClick("potion");
+  eng.tokenClick(drinker);
+  eq(rolls(eng).length, 1, "drinking a potion provokes from an adjacent foe");
+  eq([drinker.resources.potions.length, drinker.hp], [1, 26], "…and the potion is still drunk when the strike misses");
+
+  watcher.reactionUsed = false; eng.events.length = 0; eng.actions = 3;
+  pin([20, 3]);
+  eng.actionClick("reload");
+  eq([rolls(eng).length, drinker.reloadedThisTurn], [1, true], "Reload provokes too, and still reloads");
+}
+{
+  // start reads both new fields off the monster, and defaults them.
+  Registry.monsters["reach-test"] = {
+    id: "reach-test", name: "Long-Arm", ac: 18, hp: 30, speed: 25, perception: 8,
+    saves: { fort: 8, ref: 8, will: 8 }, reach: 2, reactions: ["reactive-strike"],
+    attacks: [{ name: "Halberd", bonus: 12, damage: "1d10+4", damageType: "slashing", range: 1 }]
+  };
+  const adv = { encounters: { e: { name: "Reach", w: 8, h: 8, terrain: {}, pcStarts: [[0, 0]],
+    foes: [{ monster: "reach-test", x: 4, y: 4 }, { monster: "moor-hound", x: 5, y: 5 }] } } };
+  const eng = fight();
+  eng.aiTurn = function(){ };
+  begin(eng, "e", [heroCombatant(fighter())], {}, adv);
+  const [longArm, plain] = eng.cbs.filter(c => c.side === "foe");
+  eq([longArm.reach, longArm.reactions], [2, ["reactive-strike"]], "start carries reach and reactions off the monster");
+  eq([plain.reach, plain.reactions], [1, []], "…and a monster that declares neither threatens one square and reacts to nothing");
+  eq(eng.reactionsOf(longArm), ["reactive-strike"], "reactionsOf reads a monster's data");
+  eq(eng.reactionsOf(eng.cbs[0]).includes("shield-block"), true, "…and a hero's feats");
+  delete Registry.monsters["reach-test"];
+}
+{
+  // A monster's Reactive Strike is off-turn, so it must not spend the MAP its
+  // own turn is counting.
+  const knight = Object.assign(heroCombatant(fighter()), { x: 2, y: 1 });
+  const guard = hound({ x: 1, y: 1, reactions: ["reactive-strike"], mapCount: 1 });
+  const eng = stage([knight, guard]);
+  pin([20, 15], [8, 4]);
+  eng.provokeAlong(knight, [{ x: 2, y: 1 }, { x: 3, y: 1 }]);
+  eq([rolls(eng).length, guard.mapCount], [1, 1], "a monster's Reactive Strike leaves its own MAP where it was");
+  const seal = rolls(eng)[0];
+  ok(seal && seal.math.startsWith("15+9"), "…and is rolled at the flat attack bonus, not the second-attack penalty");
 }
 setDiceSource();
 
@@ -1928,7 +2105,6 @@ function play(eng, cap = 60) {
   eq([eng.h.defeat, r.rounds, r.pcs], [1, 7, ["Testcase 0/44 dead", "Brother Aldous 0/44 dying 1", "Wren Thistledown 0/38 dead"]],
     "…pinned: with average dice and no tactics, the Warden wins in seven rounds. A balance change moves this line on purpose");
 }
-setDiceSource();
 setDiceSource();
 
 /* ---------------- report ---------------- */
