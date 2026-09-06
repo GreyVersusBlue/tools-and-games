@@ -1196,6 +1196,9 @@ const SUITES = {
     // the shop no assertion in smoke.mjs can see.
     onRoad.state.gold = 250;
     onRoad.state.inventory = ['vane-saber'];
+    // Phase 7, increment 3: a hero who walked off the moor hurt, so the long
+    // rest below has something to put back and the number on screen is real.
+    if (onRoad.state.hero) onRoad.state.hero.hp = 12;
     const onRoadFile = path.join(OUT, 'torchbearer-on-the-road.json');
     fs.writeFileSync(onRoadFile, JSON.stringify(onRoad));
     await setFiles(p, onRoadFile, () => p.click('#save-bar [data-gvb="import"]'));
@@ -1268,6 +1271,82 @@ const SUITES = {
       'and selling the saber pays half of its 1 gp and takes it out of the pack',
       `${sold?.gold} cp / ${JSON.stringify(sold?.inventory)}`);
     await t.shot('after-the-wagon');
+
+    /* Phase 7, increment 3: the exploration scene, and the flag it leaves for
+       the fight in the fog. The whole point of the scene kind is that the
+       player picks the opening state, so the browser is the only place the
+       three cards and the click on one of them exist at all. */
+    const toCairns = await p.$$eval('.choice-btn', els => {
+      const at = els.findIndex(e => /back to the cairns/.test(e.textContent));
+      return at < 0 ? null : els[at].dataset.i;
+    });
+    t.ok(toCairns !== null, 'the wagon has a way back to the bridgehead');
+    await p.click(`.choice-btn[data-i="${toCairns}"]`);
+    await waitFor(p, () => /Where the Fog Never Lifts/.test(document.querySelector('.scene-title')?.textContent || ''), { timeout: 10000 });
+    const onward = await p.$$eval('.choice-btn', els => {
+      const at = els.findIndex(e => /Cross onto the bridge/.test(e.textContent));
+      return at < 0 ? null : els[at].dataset.i;
+    });
+    t.ok(onward !== null, 'and the bridgehead leads onto the span');
+    await p.click(`.choice-btn[data-i="${onward}"]`);
+    await waitFor(p, () => document.querySelectorAll('#game-center [data-explore]').length > 0, { timeout: 10000 });
+    const explores = await p.$$eval('#game-center [data-explore]', els => els.map(e => ({
+      i: e.dataset.explore, name: e.querySelector('h3')?.textContent || '', meta: e.querySelector('.meta')?.textContent || ''
+    })));
+    t.ok(explores.map(a => a.name).join(', ') === 'Search, Avoid Notice, Defend',
+      'the approach offers all three exploration activities', JSON.stringify(explores.map(a => a.name)));
+    t.ok(/Perception · DC 18/.test(explores[0].meta), 'Search prints the skill, the DC and the hero\'s modifier', explores[0].meta);
+    t.ok(/No check/.test(explores[2].meta), 'and Defend says it does not roll', explores[2].meta);
+    await t.shot('how-you-cross');
+    // Defend has no roll, so this assertion cannot come down to a die.
+    await p.click('#game-center [data-explore="2"]');
+    await waitFor(p, () => /The Fog Remembers Marching/.test(document.querySelector('.scene-title')?.textContent || ''), { timeout: 10000 });
+    const braced = await savedState(p, 'torchbearer');
+    t.ok(braced?.flags?.['shield-braced'] === true,
+      'choosing Defend leaves the opener the next fight will consume, in the real save',
+      JSON.stringify(Object.keys(braced?.flags || {})));
+    t.ok(/Braced/.test(await p.evaluate(() => document.getElementById('chronicle').textContent)),
+      'and the Chronicle says what it bought');
+
+    /* Phase 7, increment 3: downtime, and it goes last because Earn Income
+       moves the purse by a rolled amount — every shop assertion above is
+       pinned to a coin. Camp is between the roads, and the fog is not between
+       the roads: back to the title first, and the button is still greyed,
+       because `this.adv` is Thornwake until something clears it. */
+    await p.click('#btn-to-title');
+    await waitFor(p, () => document.getElementById('screen-title').classList.contains('active'), { timeout: 5000 });
+    t.ok(await p.$eval('#btn-camp', e => e.disabled), 'Make Camp is greyed with an adventure still running');
+    await setFiles(p, onRoadFile, () => p.click('#save-bar [data-gvb="import"]'));
+    await waitFor(p, () => window.__torchbearer?.adv === null, { timeout: 10000 });
+    t.ok(!(await p.$eval('#btn-camp', e => e.disabled)),
+      'and live again once a between-adventures save clears the adventure that was running');
+
+    await p.click('#btn-camp');
+    await waitFor(p, () => /Camp/.test(document.getElementById('modal-title')?.textContent || ''), { timeout: 5000 });
+    const dtCards = await p.$$eval('#modal-body [data-downtime]', els => els.map(e => ({
+      id: e.dataset.downtime, name: e.querySelector('h3')?.textContent || '', off: e.getAttribute('aria-disabled') === 'true'
+    })));
+    t.ok(dtCards.map(c => c.id).join(',') === 'rest,treat-wounds,earn-income,craft',
+      'camp offers the four downtime activities', JSON.stringify(dtCards.map(c => c.id)));
+    await t.shot('camp-between-the-roads');
+    const hurtHP = await p.evaluate(() => window.__torchbearer.heroCombatant().hp);
+    await p.click('#modal-body [data-downtime="rest"]');
+    await waitFor(p, () => /Rested/.test(document.querySelector('.camp-report')?.textContent || ''), { timeout: 5000 });
+    const restedHP = await p.evaluate(() => window.__torchbearer.heroCombatant().hp);
+    t.ok(restedHP > hurtHP, 'a long rest puts HP back', `${hurtHP} -> ${restedHP}`);
+    const afterRest = await savedState(p, 'torchbearer');
+    t.ok(afterRest?.days === 1, 'and the day it cost is in the save', String(afterRest?.days));
+    const purseBefore = afterRest?.gold;
+    await p.click('#modal-body [data-downtime="earn-income"]');
+    await waitFor(p, () => /day's work|Dismissed/.test(document.querySelector('.camp-report')?.textContent || ''), { timeout: 5000 });
+    const afterWork = await savedState(p, 'torchbearer');
+    t.ok(afterWork?.days === 2, 'a second activity is a second day', String(afterWork?.days));
+    t.ok(afterWork?.gold >= purseBefore, 'and a day of Earn Income never costs the hero money',
+      `${purseBefore} -> ${afterWork?.gold}`);
+    await p.click('#modal-foot button');
+    await waitFor(p, () => !document.getElementById('modal-veil').classList.contains('open'), { timeout: 5000 });
+    t.ok(/2 days of downtime spent/.test(await textContent(p, '#hero-status')),
+      'the title screen keeps the calendar', await textContent(p, '#hero-status'));
   },
 };
 

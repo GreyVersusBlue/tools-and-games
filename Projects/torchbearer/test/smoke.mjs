@@ -49,7 +49,10 @@ const { SCOPE, scopedFlag, isScoped, flagsSetBy, foldFlags, flagOk, entriesOf,
         progress: campaignRows, nextAdventure, isComplete: campaignDone } = await mod("js/campaign.js");
 const { COIN, parseCoins, coinText, priceOf, sellPrice, isPotion, TREASURE_BY_LEVEL,
         treasureBudget, treasureIn, buy, sell, addCoins } = await mod("js/shop.js");
-const { SCENE_KINDS } = await mod("js/registry.js");
+const { SCENE_KINDS, sceneEdges, sceneGraph } = await mod("js/registry.js");
+const { OPENERS, OPENER_FLAGS, EXPLORATION, EXPLORATION_IDS, explorationById, activitiesFor, openerFor,
+        DOWNTIME, downtimeById, restHP, TREAT_DC, TREAT_BONUS, treatWounds, treatDC,
+        INCOME_BY_LEVEL, earnIncome, CRAFT_DAYS, craftCost, craftDaysToFree } = await mod("js/downtime.js");
 
 /* ---------------- harness ---------------- */
 let pass = 0; const fails = [];
@@ -1355,11 +1358,18 @@ group("the purse survives a save");
   eq(repairSnapshot({ inventory: ["a", 7, null, "b"] }).inventory, ["a", "b"], "…and only the ids in it survive");
   eq(SAVE_VERSION, 3, "SAVE_VERSION did not move for two more additive fields (locked #122, again)");
 
+  // Phase 7, increment 3: the day count is the same argument a fourth time.
+  eq(s.days, 0, "a save written before downtime existed is a hero who has spent no days");
+  eq(repairSnapshot({ days: 17 }).days, 17, "a day count comes back as itself");
+  eq(repairSnapshot({ days: -3 }).days, 0, "…a negative one is repaired to none");
+  eq(repairSnapshot({ days: 4.8 }).days, 4, "…a fractional one is whole days");
+  eq(repairSnapshot({ days: "nonsense" }).days, 0, "…and one that is not a number is 0, not NaN");
+
   // Through the slot, the way a real save arrives.
   const slot = createTorchSlot(memStore());
-  slot.save({ build: { ancestry: "human", background: "hunter", cls: "fighter" }, gold: 3300, inventory: ["hold-cleaver"] });
+  slot.save({ build: { ancestry: "human", background: "hunter", cls: "fighter" }, gold: 3300, inventory: ["hold-cleaver"], days: 9 });
   const back = slot.load();
-  eq([back.gold, back.inventory], [3300, ["hold-cleaver"]], "the purse and the pack round-trip through localStorage");
+  eq([back.gold, back.inventory, back.days], [3300, ["hold-cleaver"], 9], "the purse, the pack and the calendar round-trip through localStorage");
 }
 
 group("the page spends what it saves");
@@ -1390,6 +1400,287 @@ group("the page spends what it saves");
   const startAdv = html.slice(html.indexOf("startAdventure(id,onRoad){"), html.indexOf("setCenter(html){"));
   ok(!/this\.gold=/.test(startAdv) && !/this\.inventory=/.test(startAdv),
     "starting an adventure empties the flags and not the purse");
+}
+
+
+/* ---------------- 8c. downtime, exploration and the walk (Phase 7, increment 3) ---------------- */
+group("downtime: a long rest, a day's work and a bench");
+{
+  // The Player Core's rest: Constitution modifier times level, minimum 1 HP.
+  eq(restHP(3, 3), 9, "a +3 Constitution at level 3 sleeps off 9 HP");
+  eq(restHP(1, 10), 10, "…and a +1 at level 10 sleeps off 10");
+  eq(restHP(0, 5), 1, "a +0 Constitution still gets the floor of 1");
+  eq(restHP(-2, 4), 1, "…and a penalty does not heal backwards");
+  eq(restHP(2, 0), 2, "a level below 1 reads as level 1 rather than as no healing at all");
+
+  // Treat Wounds: the DC your rank buys, and the bonus that DC pays for.
+  eq(Object.keys(TREAT_DC).sort(), ["E", "L", "M", "T"], "four ranks can Treat Wounds, and Untrained is not one of them");
+  eq(treatDC("T"), 15, "trained attempts DC 15");
+  eq(treatDC("L"), 40, "…and legendary attempts DC 40");
+  eq(treatDC("U"), null, "an untrained hero cannot Treat Wounds at all");
+  eq(treatWounds("U", 3), null, "…and gets no result rather than a free 4d8");
+  eq(treatWounds("T", 2), { formula: "2d8", bonus: 0, harm: false }, "a trained success is 2d8");
+  eq(treatWounds("T", 3), { formula: "4d8", bonus: 0, harm: false }, "…a critical success is 4d8");
+  eq(treatWounds("E", 2), { formula: "2d8", bonus: 10, harm: false }, "expert buys +10 on top of the same dice");
+  eq(treatWounds("M", 3), { formula: "4d8", bonus: 30, harm: false }, "master buys +30");
+  eq(treatWounds("L", 2), { formula: "2d8", bonus: 50, harm: false }, "legendary buys +50");
+  eq(treatWounds("T", 1), { formula: null, bonus: 0, harm: false }, "a failure rolls nothing, rather than rolling 0d8");
+  eq(treatWounds("L", 0), { formula: "1d8", bonus: 0, harm: true }, "a botch is 1d8 damage, and the rank's bonus does not soften it");
+
+  // Earn Income: the table, and what a degree of success does to it.
+  eq(INCOME_BY_LEVEL[3].T, 50, "a trained level-3 task pays 5 sp a day");
+  eq(earnIncome(3, 2, "T"), 50, "…which is what a success pays");
+  eq(earnIncome(3, 3, "T"), INCOME_BY_LEVEL[4].T, "a critical success pays the row one level higher");
+  eq(earnIncome(3, 1, "T"), INCOME_BY_LEVEL[3].F, "a failure pays the failure column, not nothing");
+  eq(earnIncome(3, 0, "T"), 0, "…and a critical failure pays nothing, because the job is over");
+  eq(earnIncome(6, 2, "E"), 200, "rank matters from level 4 up: expert beats trained at a level-6 task");
+  eq(earnIncome(6, 2, "T"), 150, "…which is the whole reason the columns differ");
+  eq(earnIncome(3, 2, "U"), INCOME_BY_LEVEL[3].F, "an untrained hero earns the failure column however well they roll");
+  eq(earnIncome(10, 3, "L"), INCOME_BY_LEVEL[11].L, "a legendary crit at the top of the game has a row to read");
+  ok(Object.keys(INCOME_BY_LEVEL).map(Number).includes(11), "…which is the only reason row 11 exists");
+  eq(earnIncome(99, 2, "T"), INCOME_BY_LEVEL[11].T, "a task level past the table clamps rather than reading undefined");
+
+  // Craft: half up front, four days, and every day after that pays down the rest.
+  eq(CRAFT_DAYS, 4, "the bench takes four days before anything can be finished");
+  const dagger = 200;                       // 2 gp, the shipped dagger
+  eq(craftCost(dagger, 0, 50), { materials: 100, owed: 100, remainder: 100, total: 200, days: 4 },
+    "finishing at four days costs the item's whole price — Crafting only saves money by costing time");
+  eq(craftCost(dagger, 1, 50), { materials: 100, owed: 100, remainder: 50, total: 150, days: 5 },
+    "one extra day knocks a day's Earn Income off what is still owed");
+  eq(craftCost(dagger, 2, 50), { materials: 100, owed: 100, remainder: 0, total: 100, days: 6 },
+    "…and two clears it: the materials are all it ever cost");
+  eq(craftCost(dagger, 9, 50).total, 100, "more days than that buy nothing back, and never go negative");
+  eq(craftCost(5, 0, 50).materials, 3, "rounding goes against the hero: 5 cp is 3 in materials and 2 owed");
+  eq(craftDaysToFree(dagger, 50), 2, "two days is what it takes to owe nothing");
+  eq(craftDaysToFree(dagger, 0), 0, "a hero who earns nothing a day can never work it down");
+  eq(craftCost(dagger, 4, 0).total, 200, "…and spending days at that rate changes nothing");
+
+  eq(DOWNTIME.map(a => a.id), ["rest", "treat-wounds", "earn-income", "craft"], "four downtime activities, in the order camp renders them");
+  eq(downtimeById("rest").skill, null, "a long rest rolls nothing");
+  eq(downtimeById("treat-wounds").skill, "medicine", "…Treat Wounds rolls Medicine");
+  eq(downtimeById("nap"), null, "…and an id nobody defined is null rather than undefined");
+}
+
+group("exploration: three activities, five openers");
+{
+  eq(EXPLORATION_IDS, ["search", "avoid-notice", "defend"], "the three activities a scene may offer");
+  eq(EXPLORATION.map(a => a.skill), ["perception", "stealth", null], "…two roll, and Defend does not");
+  eq(EXPLORATION.map(a => a.opener), ["scouted", "hero-hidden", "shield-braced"], "…and each leaves one opener behind");
+  ok(EXPLORATION.every(a => OPENERS[a.opener]), "every activity's opener is a real one");
+  eq(explorationById("search").name, "Search", "an activity is reachable by id");
+  eq(explorationById("sneak"), null, "…and an unknown id is null");
+
+  // The vocabulary the validator and Combat.start share.
+  eq(OPENER_FLAGS, ["surprise-round", "fatigued-start", "scouted", "hero-hidden", "shield-braced"],
+    "five opening states, and the two the engine hardcoded before this are the first two");
+  ok(OPENER_FLAGS.every(f => OPENERS[f].name && OPENERS[f].note), "every opener names itself and says what it does");
+
+  /* The guide's opener table is the third copy of this vocabulary — the engine
+     reads OPENERS, the validator reads its keys, and an author reads §11. Two
+     of those are one object; the third is prose, and prose is what drifts. An
+     opener the guide does not list is one nobody will ever write. */
+  const guide = fs.readFileSync(path.join(PROJECT, "content-authoring-guide.md"), "utf8");
+  const tableAt = guide.indexOf("**Openers** — the state an encounter starts in:");
+  ok(tableAt > 0, "the guide has an opener table at all");
+  const table = guide.slice(tableAt, guide.indexOf("\n\n**", tableAt + 1));
+  const listed = [...table.matchAll(/^\| `([a-z-]+)` \| /gm)].map(m => m[1]);
+  eq(listed, OPENER_FLAGS, "guide §11's opener table is exactly the openers the engine implements, in order");
+  eq(EXPLORATION_IDS.filter(id => !guide.includes(id)), [], "…and every exploration activity is named in the guide too");
+
+  // What a scene offers: all three, or the subset it names.
+  eq(activitiesFor({}).map(a => a.id), EXPLORATION_IDS, "a scene that names no subset offers all three");
+  eq(activitiesFor({ explore: { activities: ["defend", "search"] } }).map(a => a.id), ["defend", "search"],
+    "…and one that does offers them in the order it wrote");
+  eq(activitiesFor({ explore: { activities: ["defend", "nonsense"] } }).map(a => a.id), ["defend"],
+    "an id the table does not know is dropped rather than rendered as an empty card");
+
+  // The degree of success, and what it earns.
+  const search = explorationById("search"), defend = explorationById("defend");
+  eq(openerFor(search, 3), "scouted", "a critical success earns the opener");
+  eq(openerFor(search, 2), "scouted", "…and so does a plain success");
+  eq(openerFor(search, 1), null, "a failure earns nothing");
+  eq(openerFor(search, 0), null, "…and a critical failure earns nothing rather than something worse");
+  eq(openerFor(defend, 0), "shield-braced", "Defend has no roll, so it cannot fail");
+  eq(openerFor(null, 3), null, "…and no activity earns nothing at all");
+}
+
+group("the validator learned about exploration");
+{
+  const errs = pack => Validator.validate(pack, reg);
+  const scene = (over) => ({
+    pack: { id: "t", name: "T", type: "adventure" },
+    adventures: [{ id: "ex", name: "Ex", start: "s", scenes: {
+      // `next` is reachable through an ordinary choice as well, so a broken
+      // explore block reports its own error and not also an orphan.
+      s: { title: "S", text: ["x"], kind: "explore", explore: { dc: 18, goto: "next" }, choices: [{ text: "on", goto: "next" }], ...over },
+      next: { title: "N", text: ["x"], choices: [] }
+    } }]
+  });
+  eq(errs(scene({})), [], "a well-formed explore scene validates");
+  eq(errs(scene({ explore: undefined })),
+    ['Adventure "ex": explore scene "s" needs an "explore" object, as {"dc": 18, "goto": "next-scene"}.'],
+    "…and one with no explore block does not");
+  eq(errs(scene({ explore: { goto: "next" } })),
+    ['Adventure "ex": explore scene "s" needs "explore.dc" as a whole number of 1 or more — the DC every activity here is rolled against.'],
+    "a missing DC is an error, not a default");
+  eq(errs(scene({ explore: { dc: "18", goto: "next" } })).length, 1, "…and a DC written as a string is the same error");
+  eq(errs(scene({ explore: { dc: 18 } })),
+    ['Adventure "ex": explore scene "s" needs "explore.goto" — where the hero goes once they have chosen an activity.'],
+    "an explore scene with nowhere to go strands the player, so it is rejected");
+  eq(errs(scene({ explore: { dc: 18, goto: "nowhere" } })),
+    ['Adventure "ex": explore scene "s" goes to missing scene "nowhere".'],
+    "…and so does one that goes somewhere that does not exist");
+  eq(errs(scene({ explore: { dc: 18, goto: "next", activities: ["search", "sneak"] } })),
+    ['Adventure "ex": explore scene "s" offers unknown activity "sneak" (known: search, avoid-notice, defend).'],
+    "an activity id nobody implements is named in the error");
+  eq(errs(scene({ explore: { dc: 18, goto: "next", activities: [] } })).length, 1, "an empty activity list is an error, not all three");
+  eq(errs(scene({ explore: { dc: 18, goto: "next", activities: ["defend"] } })), [], "…and a real subset passes");
+  eq(errs(scene({ kind: undefined })),
+    ['Adventure "ex": scene "s" declares "explore" but is not an explore scene. Add "kind": "explore" or drop it.'],
+    "an explore block on an ordinary scene renders nothing, so it is an error");
+  eq(errs(scene({ kind: "explor" })).length, 2, "…and a misspelled kind is caught by the closed list");
+  ok(SCENE_KINDS.includes("explore") && SCENE_KINDS.includes("shop"), "both scene kinds are in the closed list");
+
+  // The opener near-miss. This is the failure the vocabulary exists to catch:
+  // the flag sets, nothing consumes it, the ambush is an ordinary fight.
+  const flagScene = flag => ({
+    pack: { id: "t", name: "T", type: "adventure" },
+    adventures: [{ id: "f", name: "F", start: "s", scenes: { s: { title: "S", text: ["x"], onEnter: { flag }, choices: [] } } }]
+  });
+  eq(errs(flagScene("suprise-round")),
+    ['Adventure "f": scene "s" sets flag "suprise-round", which is one character from the encounter opener "surprise-round" and does nothing. Spell it "surprise-round" or rename it so it reads as an ordinary flag.'],
+    "a near-miss of an opener is named, and so is the opener it missed");
+  eq(errs(flagScene("surprise_round")).length, 1, "…an underscore for a hyphen is the same mistake");
+  eq(errs(flagScene("SURPRISE-ROUND")).length, 1, "…and so is shouting it");
+  eq(errs(flagScene("surprise-round")), [], "the opener spelled right is fine");
+  eq(errs(flagScene("met-maud")), [], "…and so is an ordinary flag that looks nothing like one");
+}
+
+group("the scene graph, walked");
+{
+  // The edges the *engine* follows, which is more than the edges an author writes.
+  eq(sceneEdges({ choices: [{ goto: "a" }] }), ["a"], "a goto is an edge");
+  eq(sceneEdges({ choices: [{ check: { success: "a", failure: "b" } }] }), ["a", "b"], "…both branches of a check are edges");
+  eq(sceneEdges({ choices: [{ combat: "e", victory: "a", defeat: "b" }] }), ["a", "b"], "…victory and defeat are edges");
+  eq(sceneEdges({ choices: [{ combat: "e", victory: "a" }] }), ["a", "gameover"],
+    "a battle with no declared defeat still leads to gameover, because App.choose supplies it");
+  eq(sceneEdges({ explore: { goto: "a" } }), ["a"], "an explore scene's goto is an edge");
+  eq(sceneEdges({ choices: [{ goto: "a" }, { goto: "a" }] }), ["a"], "the same target twice is one edge");
+  eq(sceneEdges({}), [], "a scene with no choices leads nowhere");
+  eq(sceneEdges(null), [], "…and neither does no scene at all");
+
+  const walk = sceneGraph({ start: "s", scenes: {
+    s: { choices: [{ goto: "a" }] },
+    a: { ending: true, choices: [{ goto: "END" }] },
+    orphan: { choices: [] },
+    dead: { choices: [{ goto: "nowhere" }] }
+  } });
+  eq(walk.reached, ["s", "a"], "the walk reaches what the start scene leads to");
+  eq(walk.unreachable, ["orphan", "dead"], "…and names what it does not");
+  eq(walk.endings, ["a"], "endings are the scenes flagged as one");
+  eq(walk.endingsReached, ["a"], "…and this one is reachable");
+  eq(sceneGraph({ start: "nope", scenes: { s: {} } }).start, null, "a start scene that does not exist reaches nothing");
+  eq(sceneGraph({ start: "s", scenes: { s: { choices: [{ goto: "gone" }] } } }).dangling, [{ from: "s", to: "gone" }],
+    "an edge naming a scene that is not there is reported with the scene it came from");
+  // A cycle is a graph, not a hang.
+  eq(sceneGraph({ start: "s", scenes: { s: { choices: [{ goto: "t" }] }, t: { choices: [{ goto: "s" }] } } }).unreachable, [],
+    "two scenes pointing at each other terminate");
+
+  // The check the phase actually owed: every scene of every shipped adventure,
+  // entered, and every ending reached. This is what would have caught an
+  // unreachable shop without opening a browser.
+  const walkReg = emptyRegistry();
+  walkReg.loadPack(core); walkReg.loadPack(advPack);
+  walkReg.loadPack(readPack("thornwake-vigil.json"));
+  walkReg.loadPack(readPack("embers-of-the-hold.json"));
+  const shipped = Object.values(walkReg.adventures);
+  eq(shipped.map(a => a.id).sort(), ["barrowmoor", "embers", "thornwake"], "three adventures ship");
+  for (const a of shipped) {
+    const g = sceneGraph(a);
+    eq(g.unreachable, [], `${a.id}: every scene can be reached from "${a.start}"`);
+    eq(g.dangling, [], `${a.id}: every edge names a scene that exists`);
+    eq(g.endingsReached.length, g.endings.length, `${a.id}: every ending can be reached`);
+    ok(g.endings.length > 0, `${a.id}: has an ending at all`);
+    ok(g.reached.length === Object.keys(a.scenes).length, `${a.id}: the walk covers all ${Object.keys(a.scenes).length} scenes`);
+    // Every shop and every explore scene is somewhere the player can stand.
+    Object.entries(a.scenes).filter(([, sc]) => sc.kind).forEach(([sid, sc]) => {
+      ok(g.reached.includes(sid), `${a.id}: the ${sc.kind} scene "${sid}" is reachable`);
+    });
+  }
+  // Thornwake's exploration scene, and the fight it colours.
+  const tw = walkReg.adventures.thornwake;
+  const app = tw.scenes["bridge-approach"];
+  eq(app.kind, "explore", "Thornwake's approach to the span is an explore scene");
+  eq(app.explore.goto, "bridge-fog", "…and it leads into the fight in the fog");
+  eq(app.explore.dc, 18, "…against the level-based DC for a level-3 adventure");
+  eq(Object.entries(tw.scenes).filter(([, sc]) => (sc.choices || []).some(c => c.goto === "bridge-fog")).map(([id]) => id), [],
+    "…and nothing walks straight into the fog past it any more");
+  eq(sceneGraph(tw).unreachable, [], "the repointed adventure still reaches every scene");
+}
+
+group("the validator rejects an adventure nobody can finish walking");
+{
+  const orphan = {
+    pack: { id: "t", name: "T", type: "adventure" },
+    adventures: [{ id: "o", name: "O", start: "s", scenes: {
+      s: { title: "S", text: ["x"], choices: [{ text: "on", goto: "b" }] },
+      b: { title: "B", text: ["x"], ending: true, choices: [] },
+      shop: { title: "Shop", text: ["x"], kind: "shop", stock: ["healing-potion-minor"], choices: [] },
+      alsoOrphan: { title: "A", text: ["x"], choices: [] }
+    } }]
+  };
+  eq(Validator.validate(orphan, reg), [
+    'Adventure "o": scene "alsoOrphan" cannot be reached from "s". Nothing points at it, so no player will ever see it.',
+    'Adventure "o": scene "shop" cannot be reached from "s". Nothing points at it, so no player will ever see it.'
+  ], "an unreachable shop is an error, one line per scene, sorted");
+  orphan.adventures[0].scenes.s.choices.push({ text: "shop", goto: "shop" }, { text: "a", goto: "alsoOrphan" });
+  eq(Validator.validate(orphan, reg), [], "…and wiring them up clears it");
+  // A scene reachable only as the default defeat of a battle is still reachable.
+  const onlyDefeat = {
+    pack: { id: "t2", name: "T", type: "adventure" },
+    adventures: [{ id: "d", name: "D", start: "s", scenes: {
+      s: { title: "S", text: ["x"], choices: [{ text: "fight", combat: "e", victory: "w" }] },
+      w: { title: "W", text: ["x"], ending: true, choices: [] },
+      gameover: { title: "G", text: ["x"], ending: true, gameover: true, choices: [] }
+    }, encounters: { e: { name: "E", w: 4, h: 4, terrain: {}, pcStarts: [[0, 0]], foes: [{ monster: "moor-hound", x: 2, y: 2 }] } } }]
+  };
+  eq(Validator.validate(onlyDefeat, reg), [], "a gameover scene nothing names explicitly is still reachable, because the page supplies it");
+}
+
+group("the page camps and explores");
+{
+  ok(html.includes('from "./torchbearer/js/downtime.js"'), "the page imports downtime.js");
+  ok(/sc\.kind==="explore"\? this\.exploreHTML\(sc\)/.test(html), "an explore scene renders its activities");
+  ok(/if\(sc\.kind==="explore"\)\{ this\.bindExplore\(sc\)/.test(html), "…and binds their cards");
+  ok(/this\.flags\[opener\]=true/.test(html), "choosing one sets the opener flag the next fight consumes");
+  ok(/openerFor\(a,deg\)/.test(html), "…and which opener that is comes from downtime.js, not from a branch in the page");
+  ok(html.includes('id="btn-camp"') && /showCamp\(\)/.test(html), "the title screen has a Make Camp button");
+  // The campaign picker's cards are `data-camp` and live in the same
+  // #modal-body. The browser recipe read four downtime cards and got the
+  // campaign board's, so the downtime cards are `data-downtime`.
+  ok(/data-downtime="\$\{esc\(a\.id\)\}"/.test(html) && !/data-camp="\$\{esc\(a\.id\)\}"/.test(html),
+    "the downtime cards do not reuse the campaign picker's attribute");
+  ok(/document\.getElementById\("btn-camp"\)\.disabled=!this\.hero\|\|!!this\.adv/.test(html),
+    "…disabled without a hero, and disabled while an adventure is running");
+  // …which is only true if a save with no adventure actually clears the one
+  // that was running. It did not: `advId: null` showed the title and left
+  // `this.adv` pointing at the last adventure, so the next autosave wrote its
+  // id straight back into the file. Found by the browser recipe.
+  ok(/this\.adv=null; this\.sceneId=null;\n        this\.toTitle\(\);/.test(html),
+    "loading a between-adventures save drops the adventure that was running");
+  // Sliced, not matched page-wide: `days` appears in half a dozen strings.
+  const snapAt = html.indexOf("snapshot(){");
+  const snapshot = html.slice(snapAt, html.indexOf("autosave(){", snapAt));
+  ok(/days:this\.days/.test(snapshot), "snapshot() writes the day count");
+  ok(/this\.days=s\.days;/.test(html), "loadSave() reads it back");
+  ok(/campDays\(n\)\{ this\.days\+=n; \}/.test(html), "there is one place that spends a day");
+  const camp = html.slice(html.indexOf("campRest(){"), html.indexOf("companionPickerHTML(){"));
+  ok(/restHP\(this\.hero\.abil\.con,this\.hero\.level\)/.test(camp), "a long rest heals what downtime.js says it heals");
+  ok(/this\.dailyLuckUsed=false/.test(camp), "…and turns the day over on Halfling Luck, which had never once reset");
+  ok(/treatWounds\(rank,r\.deg\)/.test(camp), "Treat Wounds reads the table rather than carrying 2d8 inline");
+  ok(/earnIncome\(this\.hero\.level,r\.deg,best\.rank\)/.test(camp), "Earn Income is paid from the level table");
+  ok(/craftCost\(price,extra,perDay\)/.test(camp), "…and the bench's arithmetic is craftCost");
+  ok(!/2d8|4d8/.test(camp), "no healing formula is written out in the page");
 }
 
 /* ---------------- 9. Assurance, and a die a test can pin ---------------- */
@@ -2045,7 +2336,12 @@ const begin = (eng, encId, party, flags = {}, adv = ADV) =>
   eq(e2.order.slice(0, 2).map(c => c.side), ["pc", "pc"], "every ambushed foe acts after every hero, whatever it rolled");
   eq(e2.cbs[2].init, -73, "…because its initiative is docked 100: 20 + 7 − 100");
   eq(p2.map(c => c.conditions), [[{ c: "fatigued", v: 1, dur: 99 }], [{ c: "fatigued", v: 1, dur: 99 }]], "fatigued-start fatigues the whole party for the scene");
-  ok(!e2.events.some(ev => /fatigued/.test(ev.text)), "…silently");
+  // Phase 7 increment 3 reversed this one deliberately. It used to be applied
+  // *silently*, which is -1 AC and -1 to every save with nothing in the
+  // Chronicle to explain a run of near-misses. Every opener names itself now.
+  ok(e2.events.some(ev => /<b>Fatigued\.<\/b>/.test(ev.text)), "…and says so, under its own name");
+  ok(e2.events.some(ev => /<b>Surprise\.<\/b>/.test(ev.text)), "…as does the ambush");
+  eq(e2.openers, ["surprise-round", "fatigued-start"], "…and the engine holds the openers it consumed, in table order");
   eq(e2.effAC(e2.cbs[2], p2[0]).offGuard, true, "in the surprise round every foe is off-guard");
   // Play the round out: hero ends, Aldous ends, four foes act. Round 2.
   e2.actionClick("end"); e2.actionClick("end");
@@ -3910,6 +4206,70 @@ group("the monster schema grew two fields");
     "every monster that ships names a size the table knows");
   eq(Object.values(Registry.monsters).filter(m => typeof m.lore === "string").length, 6,
     "…and the six core monsters carry a lore line for a critical Recall Knowledge");
+}
+
+group("the openers drive Combat.start");
+{
+  /* Before this increment `start` read two flag names, by hand, and there was
+     no way for content to open a fight in any other state. Each of the three
+     new openers is checked here for the thing the engine actually does with
+     it, not for the flag being set. */
+  const enc = { name: "Openers", w: 8, h: 8, terrain: {}, pcStarts: [[0, 0]],
+    foes: [{ monster: "moor-hound", x: 4, y: 4 }, { monster: "moor-hound", x: 5, y: 4 }] };
+  const adv = { encounters: { op: enc } };
+  const open = (flags, over) => {
+    const eng = fight(); pin([20, 10], [20, 10], [20, 10]);
+    const party = [heroCombatant(fighter(over || {}))];
+    begin(eng, "op", party, flags, adv);
+    return { eng, hero: party[0] };
+  };
+
+  // Scouted: the party's initiative, and nothing else.
+  const plain = open({});
+  const scout = open({ scouted: true });
+  eq(scout.hero.init - plain.hero.init, 2, "scouted is +2 on the hero's initiative");
+  eq(scout.eng.cbs.filter(c => c.side === "foe").map(c => c.init),
+     plain.eng.cbs.filter(c => c.side === "foe").map(c => c.init),
+     "…and leaves the foes' initiative exactly where it was");
+  eq(scout.eng.surprise, false, "…and is not a free ambush");
+
+  // Unseen: Phase 4's detection, set from the encounter's first frame.
+  const unseen = open({ "hero-hidden": true });
+  const foes = unseen.eng.cbs.filter(c => c.side === "foe");
+  eq(foes.map(f => unseen.eng.detectState(f, unseen.hero)), ["hidden", "hidden"],
+    "hero-hidden opens the fight Hidden from every foe");
+  eq(foes.map(f => plain.eng.detectState(f, plain.hero)), ["observed", "observed"], "…which is not the default");
+  ok(unseen.eng.isHidden(foes[0], unseen.hero), "…and the engine's own predicate agrees");
+  // Hidden is spent the way Hide's is: moving gives the hiding place away.
+  unseen.eng.reveal(unseen.hero, "on the move");
+  eq(foes.map(f => unseen.eng.detectState(f, unseen.hero)), ["observed", "observed"],
+    "…and it expires through the same path a Hide does, not a second rule");
+
+  // Braced: only with something to brace.
+  const braced = open({ "shield-braced": true });
+  eq(braced.hero.shieldRaised, true, "shield-braced raises the shield before initiative");
+  eq(braced.eng.effAC(braced.hero, braced.eng.cbs[1]).ac - plain.eng.effAC(plain.hero, plain.eng.cbs[1]).ac, 2,
+    "…which is worth the same +2 AC that Raise Shield is");
+  const noShield = open({ "shield-braced": true }, { gear: { weapon: "longsword", weapon2: null, ranged: null, armor: "chain-shirt", shield: false } });
+  ok(!noShield.hero.shieldRaised, "a hero with no shield gets the fight and not the bonus");
+  // Raise Shield lasts until the start of your next turn, and a braced shield
+  // is raised before initiative — so it has to survive exactly one turn start,
+  // the braced hero's own. beginTurn(0, true) has already run inside `begin`.
+  eq(braced.hero.bracedOpener, false, "the braced flag is spent on the hero's first turn");
+  braced.eng.beginTurn(braced.eng.order.indexOf(braced.hero));
+  eq(braced.hero.shieldRaised, false, "…and the hero's second turn drops it, the way every other turn does");
+
+  // Every opener is consumed, so it colours one fight and not every fight after.
+  const flags = { scouted: true, "hero-hidden": true, "shield-braced": true, "fatigued-start": true, "surprise-round": true, keep: true };
+  const all = fight(); pin([20, 10]);
+  begin(all, "op", [heroCombatant(fighter())], flags, adv);
+  eq(flags, { keep: true }, "all five openers are deleted off the flags object in place, and an ordinary flag is not");
+  eq(all.openers, OPENER_FLAGS, "…and the engine holds every one it consumed");
+  eq(OPENER_FLAGS.filter(f => !all.events.some(ev => ev.text.includes(OPENERS[f].name + "."))), [],
+    "…and each names itself in the Chronicle");
+
+  // A fresh engine starts with none.
+  eq(newCombat().openers, [], "an engine that has not started a fight has consumed no openers");
 }
 
 setDiceSource();

@@ -82,7 +82,7 @@
               "once": true, "flagOnce": "read-markers" },
             { "text": "There is a lamp burning at the treeline. Someone is selling.", "goto": "wagon" },
             { "text": "Cross onto the bridge. The fog is thickest at the center — that's usually where the truth is too.",
-              "goto": "bridge-fog" } ] },
+              "goto": "bridge-approach" } ] },
 
         "wagon": { "kicker": "The Bridge", "kind": "shop", "title": "The Wagon at the Bridgehead",
           "shopTitle": "Halloran's Wagon",
@@ -103,11 +103,18 @@
           "text": ["The stones aren't grave markers so much as a ledger of blame: Ashguard on the left face, Duskmantle on the right, and between them a single line cut deeper than the rest — <em>\"By order of Col. Y. Vane, both companies advanced.\"</em> Someone gave an order that killed everyone who heard it, on both sides, at once.",
             "You have names now. Names are a start. (Found: a lesser healing potion, tucked in the cairn by whoever carved the last line.)"],
           "onEnter": { "flag": "knows-truth", "items": ["healing-potion-lesser"] },
-          "choices": [ { "text": "Cross onto the bridge.", "goto": "bridge-fog" } ] },
+          "choices": [ { "text": "Cross onto the bridge.", "goto": "bridge-approach" } ] },
 
         "marker-bad": { "kicker": "The Bridge", "title": "Weather and Argument",
           "text": ["Fifty years of fog has worn the lettering to guesswork. You can tell two companies fought here, and that somebody, later, felt strongly enough about it to carve their opinion into stone. That's most of what history usually gives you anyway."],
-          "choices": [ { "text": "Cross onto the bridge.", "goto": "bridge-fog" } ] },
+          "choices": [ { "text": "Cross onto the bridge.", "goto": "bridge-approach" } ] },
+
+        "bridge-approach": { "kicker": "The Bridge", "kind": "explore", "title": "The First Forty Feet",
+          "exploreTitle": "How You Cross",
+          "explore": { "dc": 18, "goto": "bridge-fog" },
+          "text": ["The span goes out of the lamplight in about forty feet and after that it is fog and the sound of your own boots. Somewhere ahead of you, at a distance the fog will not let you judge, something is dressing ranks.",
+            "There is time to decide how you do this. There will not be time later."],
+          "choices": [] },
 
         "bridge-fog": { "kicker": "The Bridge", "title": "The Fog Remembers Marching",
           "text": ["Halfway across, the fog thickens past reason and the temperature drops the way it does near old grief. Shapes resolve out of the grey: soldiers in rotted coats, dressing ranks with the patient precision of men who have had fifty years to get the drill right.",

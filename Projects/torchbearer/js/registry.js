@@ -13,6 +13,7 @@
 
 import { flagsSetBy, isScoped, SCOPE } from "./campaign.js";
 import { parseCoins, priceOf, treasureBudget, treasureIn, coinText } from "./shop.js";
+import { OPENER_FLAGS, EXPLORATION_IDS } from "./downtime.js";
 
 /* ---------- Content Registry ---------- */
 export const Registry = {
@@ -73,7 +74,95 @@ export const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
  * a perfectly ordinary scene, the shop never appears, and the only symptom is
  * a player standing in a market with no way to buy anything.
  */
-export const SCENE_KINDS = ["shop"];
+export const SCENE_KINDS = ["shop", "explore"];
+
+/* ---------- the scene graph ----------
+   Phase 7's second increment shipped a shop the player could reach only
+   because a session opened a browser and walked into it. Nothing under Node
+   knew what a scene pointed at, so an adventure could carry a scene nothing
+   ever reached — a shop, an ending, a whole branch — and every check in the
+   suite would pass.
+
+   These two functions are that walk. `sceneEdges` is the one list of every way
+   out of a scene, and it is the list the *engine* actually follows, which is
+   why the implicit one is in it: `App.choose` runs `this.gotoScene(c.defeat||
+   "gameover")`, so every combat choice without an explicit `defeat` is an edge
+   to a scene named "gameover" whether the author wrote one or not. */
+
+/** Every scene id one scene can lead to, including "END". Duplicates kept out. */
+export function sceneEdges(sc) {
+  const out = [];
+  const add = id => { if (typeof id === "string" && id && !out.includes(id)) out.push(id); };
+  ((sc && sc.choices) || []).forEach(c => {
+    if (!c || typeof c !== "object") return;
+    add(c.goto);
+    if (c.check && typeof c.check === "object") { add(c.check.success); add(c.check.failure); }
+    add(c.victory);
+    // The default the page supplies when a battle is lost and the author said
+    // nothing. A scene reachable only this way is still reachable.
+    if (c.combat) add(c.defeat || "gameover");
+  });
+  if (sc && sc.explore && typeof sc.explore === "object") add(sc.explore.goto);
+  return out;
+}
+
+/**
+ * Walk one adventure from its start scene and report what the walk found:
+ * every scene it reached, every scene it did not, every edge naming a scene
+ * that does not exist, and every ending — reachable or not.
+ *
+ * The whole graph, not one path: a branch is walked down both sides, so this
+ * is what the player *could* see rather than what any one playthrough does.
+ */
+export function sceneGraph(adv) {
+  const scenes = (adv && adv.scenes) || {};
+  const start = adv && adv.start;
+  const reached = [];
+  const dangling = [];
+  const queue = scenes[start] ? [start] : [];
+  if (queue.length) reached.push(start);
+  while (queue.length) {
+    const id = queue.shift();
+    sceneEdges(scenes[id]).forEach(to => {
+      if (to === "END") return;
+      if (!scenes[to]) { if (!dangling.some(d => d.from === id && d.to === to)) dangling.push({ from: id, to }); return; }
+      if (!reached.includes(to)) { reached.push(to); queue.push(to); }
+    });
+  }
+  const all = Object.keys(scenes);
+  return {
+    start: scenes[start] ? start : null,
+    reached,
+    unreachable: all.filter(id => !reached.includes(id)),
+    dangling,
+    endings: all.filter(id => scenes[id] && scenes[id].ending),
+    endingsReached: all.filter(id => scenes[id] && scenes[id].ending && reached.includes(id))
+  };
+}
+
+/**
+ * Is `wrote` a typo of `want`? One insertion, one deletion or one substitution,
+ * case and punctuation ignored — which is the whole shape of the mistake this
+ * exists to catch: `suprise-round`, `surprise_round`, `Surprise-Round`.
+ *
+ * Deliberately narrow. Two characters out is a different word, and a validator
+ * that guesses at those starts rejecting flags an author meant to write.
+ */
+function nearMiss(want, wrote) {
+  const a = String(want).toLowerCase().replace(/[^a-z]/g, "");
+  const b = String(wrote).toLowerCase().replace(/[^a-z]/g, "");
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, slips = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++slips > 1) return false;
+    if (a.length === b.length) { i++; j++; }
+    else if (a.length > b.length) i++;
+    else j++;
+  }
+  return slips + (a.length - i) + (b.length - j) <= 1;
+}
 
 /* ---------- Pack validation (friendly errors for JSON authors) ----------
    Every check here is a promise the authoring guide makes. Five of them were
@@ -197,6 +286,15 @@ export const Validator = {
           (Array.isArray(sc.onEnter.items) ? sc.onEnter.items : []).forEach(id => {
             if (!known("items", id)) errs.push(`Adventure "${a.id}": scene "${sid}" onEnter.items grants unknown item "${id}".`);
           });
+          /* added Phase 7 increment 3. An `onEnter.flag` may be anything the
+             author likes — that is the whole point of the flag map — except a
+             near-miss of an opener. `Combat.start` consumes the five names in
+             OPENERS exactly; `"surprise_round"` sets a flag nothing ever reads,
+             the ambush is an ordinary fight, and nothing anywhere says so. */
+          if (typeof sc.onEnter.flag === "string" && !OPENER_FLAGS.includes(sc.onEnter.flag)) {
+            const near = OPENER_FLAGS.find(f => nearMiss(f, sc.onEnter.flag));
+            if (near) errs.push(`Adventure "${a.id}": scene "${sid}" sets flag "${sc.onEnter.flag}", which is one character from the encounter opener "${near}" and does nothing. Spell it "${near}" or rename it so it reads as an ordinary flag.`);
+          }
         }
         if (sc.kind === "shop") {
           if (!Array.isArray(sc.stock) || !sc.stock.length) {
@@ -213,6 +311,44 @@ export const Validator = {
           }
         } else if (sc.stock !== undefined) {
           errs.push(`Adventure "${a.id}": scene "${sid}" declares "stock" but is not a shop. Add "kind": "shop" or drop the stock.`);
+        }
+
+        /* added Phase 7 increment 3: the exploration scene, and the opener
+           vocabulary it writes into.
+
+           An opener is a flag with a reserved name, so the two failures are
+           both silent. A scene that offers exploration with nowhere to go
+           renders three cards and then strands the player; a flag spelled
+           `suprise-round` sits in the map forever, is never consumed by
+           `Combat.start`, and the ambush the author wrote is an ordinary fight
+           with no error anywhere. */
+        if (sc.kind === "explore") {
+          const ex = sc.explore;
+          if (!ex || typeof ex !== "object" || Array.isArray(ex)) {
+            errs.push(`Adventure "${a.id}": explore scene "${sid}" needs an "explore" object, as {"dc": 18, "goto": "next-scene"}.`);
+          } else {
+            if (!Number.isInteger(ex.dc) || ex.dc < 1) {
+              errs.push(`Adventure "${a.id}": explore scene "${sid}" needs "explore.dc" as a whole number of 1 or more — the DC every activity here is rolled against.`);
+            }
+            if (typeof ex.goto !== "string" || !ex.goto) {
+              errs.push(`Adventure "${a.id}": explore scene "${sid}" needs "explore.goto" — where the hero goes once they have chosen an activity.`);
+            } else if (ex.goto !== "END" && !scenes[ex.goto]) {
+              errs.push(`Adventure "${a.id}": explore scene "${sid}" goes to missing scene "${ex.goto}".`);
+            }
+            if (ex.activities !== undefined) {
+              if (!Array.isArray(ex.activities) || !ex.activities.length) {
+                errs.push(`Adventure "${a.id}": explore scene "${sid}" "explore.activities" must be a non-empty array of activity ids (known: ${EXPLORATION_IDS.join(", ")}). Leave it out to offer all three.`);
+              } else {
+                ex.activities.forEach(id => {
+                  if (!EXPLORATION_IDS.includes(id)) {
+                    errs.push(`Adventure "${a.id}": explore scene "${sid}" offers unknown activity "${id}" (known: ${EXPLORATION_IDS.join(", ")}).`);
+                  }
+                });
+              }
+            }
+          }
+        } else if (sc.explore !== undefined) {
+          errs.push(`Adventure "${a.id}": scene "${sid}" declares "explore" but is not an explore scene. Add "kind": "explore" or drop it.`);
         }
 
         (sc.choices || []).forEach((c, i) => {
@@ -282,6 +418,21 @@ export const Validator = {
         if (total > budget) {
           errs.push(`Adventure "${a.id}": hands out ${coinText(total)} across its scenes, above the ${coinText(budget)} one hero's share of a level-${a.level} adventure is worth. Cut the treasure or raise the adventure's level.`);
         }
+      }
+
+      /* added Phase 7 increment 3: the walk.
+         Every edge above is checked one at a time — a `goto` points at a real
+         scene, a check's two branches exist, victory and defeat exist. None of
+         that says anything about whether the player can ever stand there. An
+         orphaned scene is the most expensive kind of authoring mistake because
+         it looks finished: the prose is written, the choices are wired, the
+         shop is stocked, and the only symptom is that nobody ever sees it.
+         Reported one scene at a time, sorted, because "3 scenes are
+         unreachable" sends an author looking and a name does not. */
+      if (a.start && scenes[a.start]) {
+        sceneGraph(a).unreachable.sort().forEach(sid => {
+          errs.push(`Adventure "${a.id}": scene "${sid}" cannot be reached from "${a.start}". Nothing points at it, so no player will ever see it.`);
+        });
       }
     });
 

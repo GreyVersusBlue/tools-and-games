@@ -8,7 +8,7 @@ hooks; `cooperative-nature`'s +4 is the third. Saves read conditional `bonus`
 entries off the sheet by trait, so Ancient-Blooded Dwarf and Gutsy Halfling do
 something for the first time. `prone` could be applied by nothing and removed
 by nothing before this phase, and now Trip applies it and Stand takes it off.
-`node Projects/torchbearer/test/smoke.mjs` is green at **1,159 passed, 0
+`node Projects/torchbearer/test/smoke.mjs` is green at **1,439 passed, 0
 failed**, up from 947 — and it runs in CI, on
 `.github/workflows/torchbearer-ci.yml`. **Phase 6 — A hero who levels** has
 shipped in two increments: level is a field on the build, every derived
@@ -18,16 +18,21 @@ level from the title screen through a second mode of the builder. An
 adventure pays XP through `awards`, or a whole level at its ending when it
 declares none. Foes scale by `minLevel`/`maxLevel` beside `minParty`, the
 kit's runes follow the level, and guide §13 now promises "correct-feeling
-PF2e from level 3 to 10". **Phase 7 — The campaign spine** has shipped its
-first increment: `campaigns` is a pack collection, a save carries
-`campaignId`, `campaignFlags` and `completed`, and "The Bell and the Bridge"
-runs Barrowmoor into Thornwake behind a gate the validator proves can open.
-What is left of Phase 7 is treasure, gold and a shop scene, and downtime and
-exploration — still a 2+ on **Claude Opus 5**, still a batch of its own.
+PF2e from level 3 to 10". **Phase 7 — The campaign spine has shipped, in
+three increments.** `campaigns` is a pack collection, "The Bell and the
+Bridge" runs Barrowmoor into Thornwake behind a gate the validator proves can
+open, and a save carries `campaignId`, `campaignFlags`, `completed`, the
+`gold` in the purse, the `inventory` in the pack and the `days` spent between
+roads. Money is counted in copper everywhere; `"kind": "shop"` and
+`"kind": "explore"` are the two scene kinds; the state a fight opens in is a
+five-entry table instead of two hardcoded flags; there is a camp between the
+roads with a long rest, Treat Wounds, Earn Income and a Crafting bench in it;
+and an unreachable scene is a validator error. **Arc two has one phase left:
+Phase 8 — The contract, and its first new author.**
 
 ## What it is
 
-A page at `Projects/torchbearer.html` — 2,502 lines since Phase 6, seven ES module
+A page at `Projects/torchbearer.html` — 2,987 lines since Phase 7, nine ES module
 imports, no build step, nothing the repo does not vendor. It is a Pathfinder 2e
 Remaster **adventure engine**: it forges a 3rd-level hero through a nine-step
 builder, drops that hero into a branching graph of scenes and skill checks, and
@@ -91,6 +96,21 @@ page's own buttons.
   `companionCombatant(id)` are exported so a test builds the same party the
   page does.
 - **`js/text.js` (10)** — `esc` and `cap`, imported by both sides (locked #91).
+- **The three leaf modules, added by arc two.** Each imports *nothing*, because
+  `registry.js` is the bottom of the dependency stack and its validator has to
+  read all three, and because `test/smoke.mjs` drives every one of them under
+  plain Node with no page, no Registry and no dice.
+  - **`js/campaign.js`** (Phase 7, increment 1) — the flag grammar and its two
+    scopes, the fold into the record, and the gates a campaign board reads.
+  - **`js/shop.js`** (increment 2) — coin, price, the Treasure by Level table,
+    and the arithmetic of buying and selling. Money is copper (locked #124).
+  - **`js/downtime.js`** (increment 3) — `OPENERS`, the five states an encounter
+    can begin in (locked #126); `EXPLORATION`, the three activities a
+    `"kind": "explore"` scene offers; and `DOWNTIME` with the Player Core tables
+    behind a rest, Treat Wounds, Earn Income and a Crafting bench. Nothing here
+    rolls: `treatWounds` returns the formula and the bonus and lets the caller
+    roll them, which is what makes "a critical success at Expert is 4d8 + 10" a
+    thing a test can pin exactly rather than a distribution.
 - **`test/smoke.mjs` (2,115, 706 checks)** — twenty-six groups: page wiring,
   shipped content validates, the manifest matches what is on disk, the
   validator rejects deliberately broken packs, the save slot, repair, the eight
@@ -796,10 +816,10 @@ the slot.
 *Model:* **Claude Fable 5.1** — a schema change every downstream number and
 every existing save inherits. Both increments worked under Claude Fable 5.1.
 
-## Phase 7 — The campaign spine
+## Phase 7 — The campaign spine — SHIPPED
 
-**Between two fights there is a scene, and between two adventures there is
-nothing.**
+**Shipped in three increments (PRs #143, #145 and this one).** Between two
+fights there is a scene, and between two adventures there was nothing.
 
 `snapshot()` holds one `advId` and one `sceneId`, and finishing an adventure
 calls `toTitle()`. No gold, no treasure, no shop, no rest but the half-HP
@@ -840,21 +860,63 @@ one-shot and one that runs a table's year.
   scene's `onEnter.gold` and granted items and rejects the rest. Two shops
   ship, one at each end of The Bell and the Bridge. `smoke.mjs` goes 1,159 →
   1,278 and the browser recipe 42 → 49.
-- [ ] **Downtime and exploration.** Between adventures: a long rest, Treat
-  Wounds, a Craft or Earn Income roll against the level table. Within a scene:
-  Search / Avoid Notice / Defend, each modifying the next encounter's opening
-  state the way `surprise-round` does — that mechanism exists, it just has one
-  hardcoded flag.
-- [ ] **Checks at both ends:** the campaign *record* is driven end to end in
-  `smoke.mjs` (increment 1), and the `npm run games` recipe now reads the locked
-  road, walks into a shop, buys and sells (increment 2). What is still owed is a
-  **scene-level walk of both adventures under Node** — every scene entered, every
-  `goto` followed, every ending reached — which is the check that would have
-  caught an unreachable shop without a browser.
+- [x] **Downtime and exploration.** Shipped as increment 3. `js/downtime.js` is
+  the third module with no imports of its own, beside `campaign.js` and
+  `shop.js`, so `registry.js` can validate against its tables and `smoke.mjs`
+  can pin every number under Node with no dice. Two halves.
+
+  *Within a scene:* `"kind": "explore"` is the second scene kind, offering
+  Search (Perception), Avoid Notice (Stealth) and Defend (no roll) against the
+  scene's own DC. Picking one is picking not to do the other two, and a success
+  leaves an **opener** for the next fight. The openers are a table now (locked
+  #126): `surprise-round` and `fatigued-start` had been hardcoded by name in
+  `Combat.start` since sessions 3 and 6 and were the only opening state content
+  could ever write; `OPENERS` has five, and `scouted` is +2 to the party's
+  initiative, `hero-hidden` opens the fight Hidden from every foe through Phase
+  4's own detection, and `shield-braced` enters with the shield up if the hero
+  carries one — surviving exactly one turn start, the way Raise Shield does.
+  They stayed flags, so every `"onEnter": {"flag": "surprise-round"}` already
+  written keeps working, and a near-miss like `suprise-round` is now a validator
+  error rather than a scene that reads as an ambush and plays as an ordinary
+  fight. Thornwake's `bridge-approach` ships the scene kind.
+
+  *Between adventures:* Make Camp on the title screen, live only when no
+  adventure is running. Long Rest (Constitution modifier × level HP, every slot,
+  the font, focus, one step off Wounded — and Halfling Luck's day, which had
+  never once turned over), Treat Wounds against the DC the Medicine rank buys,
+  Earn Income on the Player Core's table by task level and degree, and Craft:
+  half the price in materials, four days, and every extra day knocks a day's
+  Earn Income off what is still owed. **Every activity costs exactly one day**
+  (locked #127), which is what stops Treat Wounds being free unlimited healing
+  and what makes a day at the bench a price against the coin it saves. `days`
+  joined the save, additive, and **`SAVE_VERSION` stayed at 3 for the fourth
+  time**.
+- [x] **Checks at both ends.** Shipped as increment 3. `sceneGraph` in
+  `registry.js` walks an adventure from its `start` and **an unreachable scene
+  is a validator error** (locked #128) — the check that would have caught an
+  unreachable shop without a browser, and it walks the edge the engine follows
+  rather than the one the author wrote: a combat choice with no `defeat` is an
+  edge to "gameover". All three shipped adventures pass it with 26, 14 and 7
+  scenes reached and every ending reachable. `smoke.mjs` goes 1,278 → 1,439 and
+  the browser recipe 49 → 64.
+
+**Increment 3's suite:** 1,278 → 1,439 checks, and 48 guard-rails were broken
+on purpose (#34) — the rest floor, four Treat Wounds rows, three Earn Income
+rows, four craft-cost rules, the opener a failed check must not earn, the
+opener table's own keys, six things `Combat.start` does with them, seven
+validator rules, four `sceneEdges` cases, the walk itself, two `days` repairs,
+seven page seams, two lines of shipped content and both guide drift checks —
+and every one exited 1 from a green baseline. `npm run games torchbearer` went
+49 → 64 and found two bugs no assertion under Node could: the downtime cards
+were `data-camp`, which is the campaign picker's attribute in the same
+`#modal-body`, and loading a save with `advId: null` left `App.adv` pointing at
+the adventure that had been running — so the next autosave wrote its id back
+into the file, and Make Camp stayed greyed for a hero demonstrably between two
+adventures.
 
 *Leans on:* Phase 6's level record, `App.gotoScene`, `resolveCheck`. *Save:*
-additive, and all five have shipped — `campaignId`, `campaignFlags`,
-`completed`, `gold`, `inventory`.
+additive, and all six have shipped — `campaignId`, `campaignFlags`,
+`completed`, `gold`, `inventory`, `days`.
 *Model:* **Claude Opus 5** — scene kinds and content tables on top of a save
 record Phase 6 already designed.
 
