@@ -16,37 +16,117 @@
 
 import { parseDamage } from "./rules.js";
 
+/** The three saving throws, exactly as a stat block writes them. */
+export const SAVE_STATS = Object.freeze(["fort", "ref", "will"]);
+
+/** `saveKind("ref")` → `"save-ref"`. One spelling, in one place. */
+export function saveKind(stat) {
+  if (!SAVE_STATS.includes(stat)) {
+    throw new Error(`conditions: unknown save "${stat}" (want ${SAVE_STATS.join(", ")})`);
+  }
+  return `save-${stat}`;
+}
+
 /**
- * The four things a condition can move.
+ * Every number a condition is allowed to move.
  *
- * `attack` and `perception` and `save` are the actor's own d20 checks;
- * `ac` is the DC somebody else rolls against. AC is in the same list rather
- * than in a list of its own because in PF2e a status penalty hits both — a
- * frightened creature is worse at hitting and easier to hit, and modelling
- * that as two systems is how the two drift apart.
+ * One entry per number this engine actually rolls or sets, because the whole
+ * point of the funnel is that a condition cannot half-apply. The list is finer
+ * than increment 1's four:
+ *
+ * - **`attack-str` and `attack-dex`** are separate because PF2e's two most
+ *   ordinary debuffs disagree about which one they hit. Enfeebled is a penalty
+ *   to Strength-based attacks and clumsy to Dexterity-based ones, and a single
+ *   `attack` kind makes Vesper's finesse dagger and Kessa's longsword the same
+ *   weapon. A command says which ability swings it.
+ * - **`damage`** is the hole increment 1 left. Every `rollDamage` call site
+ *   added the weapon's own `plus` and nothing else, which is the same
+ *   hardcoding `turn.shielded` was, one layer down. Enfeebled is unwritable
+ *   without it.
+ * - **The three saves are separate** because clumsy is Reflex and stupefied is
+ *   Will, and folding them into one `save` makes both of them frightened with
+ *   a different name.
+ * - **`ac` and `spell-dc`** are DCs somebody else rolls against, not checks.
+ *   They are in the same list rather than a list of their own because in PF2e
+ *   a status penalty hits both directions from one number — a frightened
+ *   creature is worse at hitting, easier to hit, and worse at being resisted —
+ *   and modelling that as two systems is how the two drift apart.
  */
-export const MODIFIER_KINDS = Object.freeze(["attack", "save", "ac", "perception"]);
+export const MODIFIER_KINDS = Object.freeze([
+  "attack-str", "attack-dex", "damage",
+  "save-fort", "save-ref", "save-will",
+  "ac", "perception", "spell-dc",
+]);
+
+/** Which ability an attack roll uses. A pack says so per command. */
+export const ATTACK_ABILITIES = Object.freeze(["str", "dex"]);
+
+/** `attackKind("dex")` → `"attack-dex"`. */
+export function attackKind(ability) {
+  if (!ATTACK_ABILITIES.includes(ability)) {
+    throw new Error(`conditions: unknown attack ability "${ability}" (want ${ATTACK_ABILITIES.join(", ")})`);
+  }
+  return `attack-${ability}`;
+}
+
+/**
+ * Where a damage roll came from.
+ *
+ * The funnel needs this because enfeebled moves weapon damage and nothing
+ * else: a spell's damage comes off the caster's proficiency, persistent damage
+ * is the condition itself ticking, and healing is not damage at all. A caller
+ * that had to guess would guess wrong once and then be wrong forever, so every
+ * `rollDamage` in game.js names its source out loud.
+ */
+export const DAMAGE_SOURCES = Object.freeze(["weapon", "spell", "persistent", "healing"]);
+
+/** The only source a condition can move. */
+const MODIFIED_DAMAGE = "weapon";
+
+/**
+ * Traits a condition carries, for immunity.
+ *
+ * Closed, the way the tile names and the trigger names are closed. Every
+ * creature in this pack is a construct and PF2e constructs are immune to
+ * mental effects, so `frightened` is the one that can bounce.
+ */
+export const CONDITION_TRAITS = Object.freeze(["mental"]);
 
 /**
  * Bonus types — Player Core p.443.
  *
  * Two bonuses of the same type do not stack: you take the highest bonus and
  * the worst penalty of each type, and untyped ones stack with everything. It
- * matters the first time two things want to move the same number, and this
- * catalogue is one condition away from that, which is why the rule is here
- * now rather than the day something breaks quietly.
+ * mattered the first time two things wanted to move the same number, which is
+ * now: off-guard is a circumstance penalty to AC and the Shield cantrip is a
+ * circumstance bonus to it, and clumsy and frightened are both status
+ * penalties to AC from two different conditions.
  */
 export const BONUS_TYPES = Object.freeze(["status", "circumstance", "item"]);
 
 /**
+ * How long a condition lasts when whatever applied it did not say.
+ *
+ * `"self-start"` is "until the start of your next turn" and `"self-end"` is
+ * "until the end of it"; both name the afflicted actor's own turn, which is
+ * what "self" means here. The difference is not cosmetic for anything that
+ * costs an action: a slowed that expired at the start of your turn would come
+ * off before the turn had any actions to take away from it, so slowed is
+ * `self-end` and off-guard — which is about footing you recover — is
+ * `self-start`.
+ */
+export const DEFAULT_UNTILS = Object.freeze({ "self-start": "start", "self-end": "end" });
+
+/**
  * The catalogue.
  *
- * A definition says what a condition is worth per point of value, what type
- * of bonus that is, whether its value wears off at the end of the afflicted
- * actor's turn, and whether it deals damage there. Content names these ids;
- * content.js refuses a pack that names one that is not here, for the same
- * reason it refuses an unknown tile: a condition that validates and never
- * fires is silence a content author cannot debug.
+ * A definition says what a condition is worth per point of value, what type of
+ * bonus that is, whether its value wears off at the end of the afflicted
+ * actor's turn, whether it deals damage there, what it costs in actions, what
+ * traits it carries, and how long it lasts when nothing says otherwise.
+ * Content names these ids; content.js refuses a pack that names one that is not
+ * here, for the same reason it refuses an unknown tile: a condition that
+ * validates and never fires is silence a content author cannot debug.
  */
 export const CONDITIONS = Object.freeze({
   shielded: Object.freeze({
@@ -56,6 +136,11 @@ export const CONDITIONS = Object.freeze({
     // pack's own acBonus, not a stack count, and showing it would invite a
     // player to read it as one.
     showsValue: false,
+    // The one condition in the catalogue anybody wants. ui.js and render.js
+    // ask this rather than naming the id, which is what stops the marker over
+    // an afflicted creature from turning on for a buff the day a second one
+    // exists.
+    helpful: true,
     bonusType: "circumstance",
     affects: Object.freeze({ ac: 1 }),
     note: "The Shield cantrip's disc of force. Ends at the start of your next turn, or when you block with it.",
@@ -66,10 +151,79 @@ export const CONDITIONS = Object.freeze({
     showsValue: true,
     bonusType: "status",
     // Player Core p.446: a status penalty equal to the value, to every check
-    // and to every DC. Both directions, from the one number.
-    affects: Object.freeze({ attack: -1, save: -1, perception: -1, ac: -1 }),
+    // and to every DC. Both directions, from the one number — which is why it
+    // is the only entry that names all nine kinds.
+    affects: Object.freeze({
+      "attack-str": -1, "attack-dex": -1,
+      "save-fort": -1, "save-ref": -1, "save-will": -1,
+      ac: -1, perception: -1, "spell-dc": -1,
+    }),
     decays: 1,
-    note: "Player Core p.446. Reduces by 1 at the end of each of your turns.",
+    traits: Object.freeze(["mental"]),
+    note: "Player Core p.446. A status penalty to every check and every DC. Reduces by 1 at the end of each of your turns. Mental — a construct cannot be frightened.",
+  }),
+  "off-guard": Object.freeze({
+    id: "off-guard",
+    name: "Off-Guard",
+    // Off-guard has no value in PF2e: it is a flat −2 and there is no such
+    // thing as off-guard 2. The chip says so by not showing a number.
+    showsValue: false,
+    bonusType: "circumstance",
+    affects: Object.freeze({ ac: -2 }),
+    defaultUntil: "self-start",
+    note: "Player Core p.446. A −2 circumstance penalty to AC. Circumstance, like the Shield cantrip's disc — the disc's +1 and this −2 do not add up to −1 by stacking, they resolve to −1 because the best bonus and the worst penalty of a type are what count.",
+  }),
+  clumsy: Object.freeze({
+    id: "clumsy",
+    name: "Clumsy",
+    showsValue: true,
+    bonusType: "status",
+    // Player Core p.444: a status penalty to Dexterity-based checks and DCs.
+    // In this engine that is AC, Reflex saves and a finesse attack, and it is
+    // exactly why `attack` had to split in two.
+    affects: Object.freeze({ "attack-dex": -1, "save-ref": -1, ac: -1 }),
+    defaultUntil: "self-end",
+    note: "Player Core p.444. A status penalty to Dexterity-based checks and DCs: AC, Reflex saves, and an attack made with a finesse weapon.",
+  }),
+  enfeebled: Object.freeze({
+    id: "enfeebled",
+    name: "Enfeebled",
+    showsValue: true,
+    bonusType: "status",
+    // Player Core p.444: Strength-based rolls, which is where the damage kind
+    // earns its place. A finesse weapon still adds Strength to damage even
+    // when Dexterity swung it, so this hits the dagger's damage and not the
+    // dagger's attack roll.
+    affects: Object.freeze({ "attack-str": -1, damage: -1 }),
+    defaultUntil: "self-end",
+    note: "Player Core p.444. A status penalty to Strength-based attack rolls and to melee weapon damage — including a finesse weapon's, because finesse changes what swings the blade and not what puts weight behind it.",
+  }),
+  stupefied: Object.freeze({
+    id: "stupefied",
+    name: "Stupefied",
+    showsValue: true,
+    bonusType: "status",
+    // Player Core p.447: Intelligence-, Wisdom- and Charisma-based checks and
+    // DCs, which here is Will saves and the heir's spell DC.
+    affects: Object.freeze({ "save-will": -1, "spell-dc": -1 }),
+    // And the part that actually hurts: a flat check to cast at all, DC 5 plus
+    // the value. A flat check takes no modifiers (Player Core p.409), so
+    // game.js rolls it as a bare die rather than through the funnel.
+    castFlatDC: 5,
+    defaultUntil: "self-end",
+    note: "Player Core p.447. A status penalty to Will saves and to your spell DC, and a DC 5 + value flat check every time you Cast a Spell. Fail it and the spell is lost along with the actions.",
+  }),
+  slowed: Object.freeze({
+    id: "slowed",
+    name: "Slowed",
+    showsValue: true,
+    // No bonusType and no `affects`: slowed moves no number at all. It is the
+    // first condition in this catalogue that touches the action economy
+    // instead, which is why it is the one that proves the bag is read
+    // somewhere other than the modifier funnel.
+    costsActions: 1,
+    defaultUntil: "self-end",
+    note: "Player Core p.446. You lose this many actions at the start of your turn. Nothing else about you changes.",
   }),
   "persistent-fire": Object.freeze({
     id: "persistent-fire",
@@ -83,7 +237,7 @@ export const CONDITIONS = Object.freeze({
       // d20 in this engine that does not go through the condition funnel.
       flatDC: 15,
     }),
-    note: "Player Core p.409, persistent damage. 1d4 fire at the end of your turn, then a DC 15 flat check to put it out.",
+    note: "Player Core p.409, persistent damage. 1d4 fire at the end of your turn, then a DC 15 flat check to put it out. A particularly appropriate action — Rousing Splash — lowers that check to DC 10.",
   }),
 });
 
@@ -91,6 +245,36 @@ export const CONDITION_IDS = Object.freeze(Object.keys(CONDITIONS));
 
 export const isCondition = id => Object.prototype.hasOwnProperty.call(CONDITIONS, id);
 export const defOf = id => CONDITIONS[id] || null;
+
+/**
+ * The duration a condition carries when whatever applied it did not say one.
+ *
+ * `whoKey` is the afflicted actor's key, because "self" is a sentence about
+ * the wearer and `tick` only understands actor keys. A condition with no
+ * default — frightened, which decays, and persistent fire, which ends on a
+ * flat check — comes back null, and null means "until something takes it off".
+ */
+export function defaultUntilFor(id, whoKey) {
+  const def = CONDITIONS[id];
+  if (!def || !def.defaultUntil) return null;
+  const when = DEFAULT_UNTILS[def.defaultUntil];
+  if (!when) return null;
+  return { who: whoKey, when };
+}
+
+/**
+ * Which trait of `id` this list of immunities blocks, or null.
+ *
+ * Returns the trait rather than a boolean so the log line can say *why*: "the
+ * sentinel is immune to mental effects" is a rule a player can learn, and
+ * "nothing happens" is a bug report.
+ */
+export function immunityTo(id, immunities) {
+  const def = CONDITIONS[id];
+  if (!def || !def.traits || !immunities || !immunities.length) return null;
+  for (const t of def.traits) if (immunities.includes(t)) return t;
+  return null;
+}
 
 /** When a duration can end: at the start or the end of some actor's turn. */
 const WHENS = ["start", "end"];
@@ -177,6 +361,39 @@ export function modifiers(bag, kind) {
   let total = untyped;
   for (const slot of best.values()) total += slot.up + slot.down;
   return total;
+}
+
+/**
+ * What this bag is worth to a damage roll from `source`.
+ *
+ * Separate from `modifiers` because the answer is "nothing" for three of the
+ * four sources and the caller must not be the one deciding that: a spell's
+ * damage, a persistent condition's own tick and a healing roll are all
+ * `rollDamage` calls that enfeebled has no business touching, and a funnel
+ * that let each site guess would be the hardcoding it replaced.
+ */
+export function damageModifiers(bag, source) {
+  if (!DAMAGE_SOURCES.includes(source)) {
+    throw new Error(`conditions: unknown damage source "${source}" (want ${DAMAGE_SOURCES.join(", ")})`);
+  }
+  if (source !== MODIFIED_DAMAGE) return 0;
+  return modifiers(bag, "damage");
+}
+
+/**
+ * How many actions this bag leaves of `base`.
+ *
+ * The one place the bag is read outside the modifier funnel, because slowed is
+ * not a number on a roll: it is a turn with fewer things in it. Floored at 0 —
+ * slowed 4 is slowed 3, not a turn that owes actions back.
+ */
+export function actionsFor(bag, base = 3) {
+  let lost = 0;
+  for (const c of bag || []) {
+    const def = CONDITIONS[c.id];
+    if (def && def.costsActions) lost += def.costsActions * c.value;
+  }
+  return Math.max(0, base - lost);
 }
 
 /** The persistent damage in this bag, as specs for the caller to roll. */

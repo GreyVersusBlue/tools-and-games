@@ -48,7 +48,10 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   assertion fails: a break caught by a different assertion than the one whose
   comment claims it means that comment is wrong. Two lines guarding the same
   absence stay green when either is deleted, so a test written against the pair
-  is testing neither. Absalom's Phase 2 shipped that twice in one file.
+  is testing neither. Absalom's Phase 2 shipped that twice in one file. And when
+  a break leaves the suite green, ask whether the assertion's *comment* is the
+  thing that is wrong: a claim the arithmetic cannot distinguish is worth
+  keeping only if it says so out loud (#147).
 - **Assert against the DOM for anything that just happened, and against the
   save only for what a reload has to survive** (#39).
 - **A real-time movement or physics assertion failing under a Linux/software-
@@ -60,7 +63,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 140 locked decisions in full, by number.
+`HISTORY.md` carries all 147 locked decisions in full, by number.
 
 ## Writing style
 

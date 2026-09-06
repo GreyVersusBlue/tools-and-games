@@ -11,8 +11,8 @@ seventeen guard-rails were broken on purpose (#34) and each exited 1 from a
 green baseline. `test/balance.mjs` over 2000 seeded runs a build: **Wizard
 64.5%** (from 53.6%) and **Fighter 79.8%** (unchanged to the decimal). Both
 suites run in CI now, on `.github/workflows/absalom-ci.yml` — before this they
-ran in a session's terminal and nowhere else. The next open phase is Phase 2 —
-conditions that expire — on Claude Fable 5.1.
+ran in a session's terminal and nowhere else. Phase 2 is closed. The next open
+phase is Phase 3 — templates, and line of effect — on Claude Fable 5.1.
 
 Round one made an unwinnable vignette winnable and broke the single file into ES
 modules; round two added a second area and caught a stall bug with a Monte Carlo
@@ -44,10 +44,12 @@ roll goes through an injected RNG, which is what makes 2000 headless seeded
 playthroughs possible in a few seconds.
 
 What it is not: it is twelve to sixteen minutes long. Two rooms, four mandatory
-fights, three lore pieces, one rest, one casket. No conditions, no reactions, no
-templates, no ranged attack that can miss, and no creature intelligence beyond
-"walk at the PC and swing." A creature's whole turn resolves inside one
-synchronous function with nothing able to say "wait."
+fights, three lore pieces, one rest, one casket. Written before arc one started,
+when there were no conditions, no reactions, no templates, no ranged attack that
+could miss and no creature intelligence beyond "walk at the PC and swing."
+Phases 1 and 2 have since closed the first two. What is still true: no
+templates, no ranged attack that can miss, and a creature policy that is one
+line long.
 
 ## The architecture that is there
 
@@ -62,14 +64,14 @@ test suites exist at all.
   TREASURE, STAIRS), Bresenham `hasLoS`, `fieldOfView`, an eight-way `findPath`
   whose node key carries a diagonal parity bit, `planApproach` (the one creature
   stride planner, shared with the suite), and the fog bitfield the save writes.
-- **`js/content.js` (330)** — `loadPack` parses and *refuses*: a broken pack
+- **`js/content.js` (545)** — `loadPack` parses and *refuses*: a broken pack
   throws a `ContentError` with a sentence. `selectPc(content, buildId)` resolves
   a many-build pack down to the one-PC shape every other module still reads.
-- **`js/conditions.js` (270)** — the condition catalogue, the modifier funnel,
-  the same-type rule and the turn-boundary tick. Pure and RNG-free: persistent
-  damage hands back a spec and `game.js` rolls it, which is what keeps
-  `balance.mjs` able to replay a run.
-- **`js/game.js` (1,359)** — the run. Persistent `run` state, a runtime-only
+- **`js/conditions.js` (487)** — eight conditions, the modifier funnel and the
+  damage funnel, the same-type rule, immunity traits, default durations and the
+  turn-boundary tick. Pure and RNG-free: persistent damage hands back a spec and
+  `game.js` rolls it, which is what keeps `balance.mjs` able to replay a run.
+- **`js/game.js` (1,481)** — the run. Persistent `run` state, a runtime-only
   `turn` object, the reaction bus, triggers, and every command the player can
   fire. Headless: an action resolves instantly and hands back a playback script.
 - **`js/save.js` (271)** — the gvb-save slot (`absalom-inheritance-save-v1`,
@@ -81,8 +83,8 @@ test suites exist at all.
   `pickCharacter`, built entirely from `content.pcOptions`. **`js/main.js`
   (101)** — boot: fetch the pack unresolved, load a save or run the picker,
   `selectPc` once, autosave.
-- **`test/smoke.mjs` (2,053)** — 599 assertions across rules, world, content,
-  game, reactions, conditions and save. **`test/autopilot.mjs` (248)** — a competent player as code,
+- **`test/smoke.mjs` (2,610)** — 787 assertions across rules, world, content,
+  game, reactions, conditions and save. **`test/autopilot.mjs` (261)** — a competent player as code,
   generic over command *kind* rather than id. **`test/balance.mjs` (117)** — N
   seeded playthroughs per build, band-checked independently, non-zero exit if
   any build leaves the band.
@@ -207,12 +209,16 @@ new one.
   reload re-rolls it.
 
 **Rules and conditions**
-- No conditions at all: no frightened, off-guard, slowed, clumsy, enfeebled, no
-  persistent damage, no dying/wounded. Every `check()` call site takes a flat
-  bonus with nowhere for a condition's modifier to come from. No flanking, cover
-  or concealment either — `hasLoS` answers yes or no.
+- Conditions exist and there are eight, through two funnels (Phase 2). What
+  there is not: **no dying/wounded, and no flanking, cover or concealment** —
+  `hasLoS` still answers yes or no, so there is nowhere for a circumstance
+  modifier from the *board* to come from, which is the half of the same-type
+  rule nothing in the catalogue can currently exercise.
 - Six command kinds: `attack`, `self-buff`, `self-heal`, `cone`, `unerring`,
-  `consume`. No heal-another, no debuff, no ranged attack that rolls to hit.
+  `consume`. A command can inflict a condition and end one, but there is still
+  **no heal-another, no command whose whole purpose is a debuff, and no ranged
+  attack that rolls to hit** — every condition in the pack rides a Strike or a
+  save that was happening anyway.
 - Damage types are strings printed in the log; nothing reads them for
   resistance, weakness or immunity.
 
@@ -407,10 +413,10 @@ debuffs, smarter creatures, a Cleric — is a condition wearing a name.
 
 ### Increment 1 — shipped
 
-The six boxes above are all ticked; this is a 2+ row and it stays, because what
-they bought is a *system with three conditions in it*, and the phase's own
-sentence — "everything after it is a condition wearing a name" — is only true
-once the catalogue can carry the names.
+The six boxes above are all ticked, and the row stayed for one more increment,
+because what they bought is a *system with three conditions in it*, and the
+phase's own sentence — "everything after it is a condition wearing a name" — is
+only true once the catalogue can carry the names.
 
 `conditions.js` is 270 lines and pure. `game.js` 1,126 → 1,359; `smoke.mjs`
 425 → 599 checks. **Twenty guard-rails were broken on purpose (#34) and every
@@ -446,27 +452,92 @@ build: 142 creatures caught fire and 97 heirs were frightened as the wizard,
 first evidence that the split between the two builds is tuning rather than
 design — the same question Shield Block half-answered in Phase 1.
 
-### Increment 2 — what is left
+### Increment 2 — shipped, and the phase is closed
 
-- [ ] **A catalogue worth the funnel.** Three conditions is a system with no
-      content in it. `clumsy`, `enfeebled`, `stupefied` and `off-guard` are the
-      four that need nothing new; the same-type rule is already written and
-      untested against a second status penalty from a *different* condition.
-- [ ] **Damage is not funnelled.** `modifiersFor` covers four kinds of check
-      and no damage roll, so `enfeebled` cannot be written today: every
-      `rollDamage` call site adds the weapon's own `plus` and nothing else.
-      That is the same hardcoding `turn.shielded` was, one layer down.
-- [ ] **A condition that costs an action.** `slowed` needs `turn.actions = 3`
-      in `advance()` to read from the bag, which is the first time a condition
-      touches the action economy rather than a number.
-- [ ] **Ending one on purpose.** Rousing Splash's own note says it would end
-      persistent fire; nothing applies persistent fire to the *PC*, so there is
-      still nothing for it to end. Either something does, or the cantrip gets a
-      target other than the caster.
-- [ ] **Immunities.** Every creature in this pack is a construct, and PF2e
-      constructs are immune to mental effects. `frightened` only ever lands on
-      the PC today, so nothing is wrong yet — it will be the moment anything
-      frightens a sentinel.
+- [x] **A catalogue worth the funnel.** Eight conditions: `clumsy`, `enfeebled`, `stupefied`,
+      `off-guard` and `slowed` joined the three. The same-type rule is tested against a second
+      status penalty from a *different* condition at last, which is frightened plus clumsy.
+- [x] **Damage is funnelled.** `damageFrom(actor, spec, source)` is the only `rollDamage(` in
+      `game.js`, guarded the way the one `check(` is.
+- [x] **A condition that costs an action.** `slowed`, read in `advance()` and in `creatureTurn`.
+- [x] **Ending one on purpose.** The Reliquary Warden's Cinder Fist sets the heir alight; Rousing
+      Splash rolls Player Core p.409's DC 10 to put it out.
+- [x] **Immunities.** `immunities` on a creature, traits on a condition, refused out loud.
+
+The one thing this increment found that the plan had not is that `modifiersFor`'s four kinds were
+three separate approximations rather than one:
+
+- **Nine modifier kinds, not four.** `attack` split into `attack-str` and `attack-dex` because
+  enfeebled is a Strength penalty and clumsy a Dexterity one, and one kind makes Vesper's finesse
+  dagger and Kessa's longsword the same weapon. `save` split into `save-fort`/`save-ref`/
+  `save-will` because clumsy is Reflex and stupefied is Will, and one kind makes both of them
+  frightened with another name. `spell-dc` is new because a stupefied caster's DC moves and
+  nothing was reading it. A command names the ability that swings it; `str` is the default, so no
+  existing pack had to change.
+- **`source` on the damage funnel is not optional** — `weapon`, `spell`, `persistent` or
+  `healing` — because three of the four take no modifier at all, and a caller allowed to omit it
+  is a caller guessing.
+- **The `slowed` ordering is the whole of it.** Both action counts are read *after* that actor's
+  start boundary. Slowed is `self-end` because a slowed that expired at the start of your turn
+  would come off before the turn had any actions to take away; off-guard is `self-start` for the
+  mirror-image reason. A break that swapped them is one of the thirty-five.
+- **`autopilot.mjs` had no `self-heal` branch at all**, so Rousing Splash had never been cast in a
+  single one of the balance numbers this project has ever quoted. `combatPolicy` reads `ends`
+  rather than the command id, the way the rest of it reads `kind`.
+- **A condition applied by content gets its duration from the catalogue, not the pack**
+  (`defaultUntil`). A pack that had to remember to write one would ship one that forgot, and a
+  forgotten duration is a −2 stapled to the heir for the rest of the delve.
+
+**Six content sources, one per new condition, all measured over 2,000 seeded runs per build.** A
+critical dagger leaves a construct clumsy (1,059 times), a critical longsword leaves it enfeebled
+(1,026), Force Fang slows whatever it hits (3,545), a critical sentinel fist leaves the heir
+off-guard (533 as Vesper, 398 as Kessa), a critical Basalt Fist leaves her frightened *and*
+stupefied (239 and 239 as Vesper, 272 and 272 as Kessa), and the Warden's Cinder Fist sets her
+alight (193 and 72). Stupefied cost Vesper **39 spells** to its flat check and Kessa nothing,
+because she casts none. Rousing Splash was cast on a burning heir **238 times and put the fire out
+129** of them. Nothing frightens a construct yet, exactly as the plan said, so the suite is what
+exercises immunity.
+
+**Slowed's source found a bug rather than needing one.** `inflicts` on an unerring command
+validated at load and then did nothing at all — the unerring branch never called `applyInflict`,
+because it rolls no attack and so has no degree to read. It passes `DEG.SUCC` now: an unerring
+effect lands, and `on: "hit"` is what that means. Force Fang is the only source of slowed in the
+pack, and Vesper has one focus point plus whatever the gate's rest gives back, so it fires about
+twice a run.
+
+**Win rates moved 65.3% → 60.8% (wizard) and 79.3% → 80.8% (fighter)**, both at 2,000 runs and
+both measured against a clean checkout of the previous commit in the same container. Both are
+inside the 45–90% band. The split widened rather than closed, and this time the reason is legible
+rather than a shrug: the same critical fist costs a caster a spell and a fighter nothing.
+
+**`smoke.mjs` goes from 599 checks to 787, and thirty-seven guard-rails were broken on purpose**
+(#34) against the real project files, every one exiting 1 from a green baseline and every one
+checked against the assertion whose comment claims it rather than merely against a non-zero exit.
+**Four found nothing useful the first time.** Three are the same failure the last increment
+logged, an assertion that could not see the thing its comment claimed, and they are now locked
+decision #147:
+
+- **The splash test counted a refused command as "the fire held."** One seed out of forty refused
+  the cantrip, and that single refusal was the whole of its evidence that the DC 10 check ever
+  fails: deleting the check left the suite green. It skips refusals now and wants at least three
+  of each outcome.
+- **The stupefied test never checked the DC.** It asserted at stupefied 19 that the cast fizzled,
+  which stayed true when the base DC was broken from 5 to 0, because DC 19 is also unbeatable. It
+  reads the logged `vs DC 6` and `vs DC 8` now, which is the formula rather than a number that
+  happens to be hard.
+- **The disc's bonus *type* is not observable, and the test's comment said it was.** Player Core
+  p.443 bites when a type holds two bonuses or two penalties; one of each sums identically whether
+  they share a type or not. Changing the Shield cantrip to an item bonus left the suite green. The
+  same-type rule is really pinned by frightened-plus-clumsy, two status penalties from two
+  different conditions, and the assertion says so now instead of claiming the off-guard pair
+  proves it. The note in `vault.json` claimed it too, and no longer does.
+
+The fourth is smaller and worth writing down anyway: **the off-guard duration assertion crashed
+instead of failing.** Breaking `applyInflict`'s `defaultUntil` lookup left `until` null, and
+`.until.when` threw a TypeError, so the run exited 1 with no `FAIL` line at all — a non-zero exit
+that says nothing about which guard caught it, which is the failure mode #34's "read the failure
+message" clause is about. It reads `until?.when` now and fails with the sentence it was written
+with.
 
 *Leans on:* `rules.js`, `game.js`'s check sites, `save.js`'s `repair`,
 `ui.js`'s `refresh`. *Save:* additive per-actor `conditions`, repaired against

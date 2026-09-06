@@ -4,6 +4,7 @@
 // Reads game state and draws it. Never writes to it.
 
 import { TILE } from "./world.js";
+import { CONDITIONS } from "./conditions.js";
 
 const PALETTE = {
   floorA: "#241f2e", floorB: "#282334",
@@ -290,7 +291,10 @@ export function createRenderer(canvas, game) {
    * already drawn as a disc and is not an affliction, so it is not counted.
    */
   function mark(cx, top, bag, scale) {
-    const real = bag.filter(c => c.id !== "shielded");
+    // Everything the catalogue does not call helpful. Naming "shielded" here
+    // was a marker that would have turned on for the second buff this pack
+    // ever grows, and nothing about the line would have looked wrong.
+    const real = bag.filter(c => !CONDITIONS[c.id]?.helpful);
     if (!real.length) return;
     ctx.fillStyle = real.some(c => c.id === "persistent-fire") ? PALETTE.ember : PALETTE.afflicted;
     diamond(cx, top, 8 * scale, 5 * scale);

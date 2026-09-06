@@ -79,6 +79,18 @@ export function combatPolicy(game) {
     return game.useCommand("potion").ok;
   }
 
+  // On fire, with something in the kit that puts it out. Rousing Splash heals
+  // a little and rolls a better flat check than standing there does, and it is
+  // the only command in this pack whose worth a policy reading HP alone could
+  // never see: the heir is not low, she is burning, and the two are different
+  // reasons to spend two actions. Read off `ends` rather than the id, the same
+  // way everything else here reads off `kind`.
+  const dousing = findUsable(game, "self-heal");
+  if (dousing && dousing.ends
+      && game.conditionsOf("pc").some(c => c.id === dousing.ends.condition)) {
+    return game.useCommand(dousing.id).ok;
+  }
+
   // A cone command, if this build has one. Aim at the closest target in
   // range; anything else inside the cone is a bonus.
   const cone = findUsable(game, "cone");

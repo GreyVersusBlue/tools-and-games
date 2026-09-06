@@ -17,12 +17,14 @@ import { makeWorld, TILE, packExplored, unpackExplored } from "../js/world.js";
 import { loadPack, selectPc, ContentError, REACTION_TRIGGERS, REACTION_EFFECTS, INFLICT_ON } from "../js/content.js";
 import {
   CONDITIONS, CONDITION_IDS, MODIFIER_KINDS, BONUS_TYPES, isCondition,
+  CONDITION_TRAITS, DEFAULT_UNTILS, DAMAGE_SOURCES, damageModifiers,
+  actionsFor, defaultUntilFor, immunityTo, saveKind, attackKind,
   makeCondition, addCondition, removeCondition, hasCondition, valueOf,
   modifiers, persistentIn, tick, describe, repairBag, packBag,
 } from "../js/conditions.js";
 import { createGame } from "../js/game.js";
 import { makeSaveSlot, makeRepair, validRun, freshRun, SAVE_KEY, SAVE_VERSION } from "../js/save.js";
-import { playThrough, travel, fight } from "./autopilot.mjs";
+import { playThrough, travel, fight, combatPolicy } from "./autopilot.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACK_PATH = path.join(HERE, "..", "content", "vault.json");
@@ -1127,9 +1129,24 @@ section("conditions");
       ok(def.persistent.flatDC > 0, `"${key}" carries a flat DC`);
     }
   }
-  eq(CONDITION_IDS.length, 3, "three conditions ship");
+  eq(CONDITION_IDS.length, 8, "eight conditions ship");
   ok(isCondition("frightened"), "frightened is one of them");
-  ok(!isCondition("clumsy"), "clumsy is not — the catalogue is closed, like the tile names");
+  ok(!isCondition("petrified"), "petrified is not — the catalogue is closed, like the tile names");
+  // Every entry has to do something, or it is a chip that means nothing. The
+  // three ways: move a number, cost an action, or deal damage.
+  for (const [key, def] of Object.entries(CONDITIONS)) {
+    ok(def.affects || def.costsActions || def.persistent,
+      `"${key}" changes something — a condition that moves no number, costs no action and deals no damage is a chip`);
+    if (def.defaultUntil) ok(DEFAULT_UNTILS[def.defaultUntil],
+      `"${key}" names a default duration the tick understands (${def.defaultUntil})`);
+    for (const t of def.traits || []) {
+      ok(CONDITION_TRAITS.includes(t), `"${key}" carries a known trait (${t})`);
+    }
+  }
+  eq(CONDITIONS.slowed.affects, undefined,
+    "slowed moves no number at all — it is the one that proves the bag is read outside the modifier funnel");
+  eq(CONDITIONS["off-guard"].showsValue, false,
+    "off-guard has no value in PF2e: there is no such thing as off-guard 2");
 }
 
 /* -- building one -------------------------------------------------------- */
@@ -1139,7 +1156,7 @@ section("conditions");
   eq(c.value, 2, "and the value");
   eq(c.until, null, "and defaults to no duration");
   eq(makeCondition("frightened").value, 1, "value defaults to 1");
-  throws(() => makeCondition("clumsy"), "an unknown condition throws rather than becoming a NaN modifier");
+  throws(() => makeCondition("petrified"), "an unknown condition throws rather than becoming a NaN modifier");
   throws(() => makeCondition("frightened", { value: 0 }), "value 0 throws — a condition at 0 is a condition that is gone");
   throws(() => makeCondition("frightened", { value: 1.5 }), "a fractional value throws");
   throws(() => makeCondition("shielded", { until: { who: "pc", when: "later" } }), "an unknown boundary throws");
@@ -1168,23 +1185,72 @@ section("conditions");
   eq(two.length, 2, "two different conditions coexist");
   eq(removeCondition(two, "shielded").length, 1, "removeCondition takes one out");
   ok(!hasCondition(removeCondition(two, "shielded"), "shielded"), "and it is gone");
-  eq(removeCondition(two, "clumsy").length, 2, "removing what was never there is not an error");
+  eq(removeCondition(two, "petrified").length, 2, "removing what was never there is not an error");
 }
 
 /* -- the same-type rule -------------------------------------------------- */
 {
-  eq(modifiers([], "attack"), 0, "an empty bag is worth nothing");
+  eq(modifiers([], "attack-str"), 0, "an empty bag is worth nothing");
   eq(modifiers(null, "ac"), 0, "and so is no bag at all");
   const f2 = [makeCondition("frightened", { value: 2 })];
-  eq(modifiers(f2, "attack"), -2, "frightened 2 is -2 to attack");
-  eq(modifiers(f2, "save"), -2, "and -2 to saves");
-  eq(modifiers(f2, "perception"), -2, "and -2 to Perception");
-  eq(modifiers(f2, "ac"), -2, "and -2 to AC — a status penalty hits the DC too");
+  for (const kind of MODIFIER_KINDS) {
+    if (kind === "damage") continue;
+    eq(modifiers(f2, kind), -2, `frightened 2 is -2 to ${kind} — every check and every DC (Player Core p.446)`);
+  }
+  eq(modifiers(f2, "damage"), 0,
+    "and 0 to damage, which is neither: a frightened creature swings worse, it does not swing lighter");
 
   const disc = [makeCondition("shielded", { value: 1 })];
   eq(modifiers(disc, "ac"), 1, "the disc is worth its own acBonus");
-  eq(modifiers(disc, "attack"), 0, "and nothing to anything else");
+  eq(modifiers(disc, "attack-str"), 0, "and nothing to anything else");
   eq(modifiers([...f2, ...disc], "ac"), -1, "a circumstance bonus and a status penalty do stack with each other");
+
+  // The two the catalogue grew for: a status penalty from a *different*
+  // condition, and a circumstance penalty against a circumstance bonus. Both
+  // were unwritable with three conditions, which is why increment 1 shipped
+  // the rule untested against either.
+  const clumsy = [makeCondition("clumsy", { value: 1 })];
+  eq(modifiers(clumsy, "ac"), -1, "clumsy 1 is -1 to AC");
+  eq(modifiers(clumsy, "save-ref"), -1, "and -1 to Reflex");
+  eq(modifiers(clumsy, "save-will"), 0, "and nothing to Will — the saves are three kinds because these two disagree");
+  eq(modifiers(clumsy, "attack-dex"), -1, "it hits a finesse attack");
+  eq(modifiers(clumsy, "attack-str"), 0, "and not a Strength one");
+  eq(modifiers([...f2, ...clumsy], "ac"), -2,
+    "frightened 2 and clumsy 1 are two status penalties from two conditions: -2, the worst one, not -3");
+  eq(modifiers([...f2, ...clumsy], "save-ref"), -2, "on Reflex too");
+
+  const guard = [makeCondition("off-guard")];
+  eq(modifiers(guard, "ac"), -2, "off-guard is a flat -2");
+  eq(modifiers([...guard, ...disc], "ac"), -1,
+    "the disc's +1 and off-guard's -2 both apply, and the disc is worth having anyway");
+  eq(modifiers([...guard, ...disc, ...f2], "ac"), -3,
+    "frightened 2 on top is a status penalty, a second type, and it stacks with both of them");
+  // Honest about what this cannot see. Player Core p.443's rule bites when a
+  // type has two *bonuses* or two *penalties* in it; one of each, same type or
+  // not, sums to the same number either way. So the frightened-plus-clumsy
+  // pair above is the whole of the evidence that the rule is implemented, and
+  // the disc's bonus *type* is a claim about the rules with no arithmetic in
+  // this catalogue that can currently distinguish it. It will the day a second
+  // circumstance bonus exists, which is what this assertion is holding the
+  // place for. (Written after a break that changed the disc to an item bonus
+  // and the suite stayed green.)
+  eq(CONDITIONS.shielded.bonusType, "circumstance", "the disc is a circumstance bonus, per the cantrip");
+  eq(CONDITIONS["off-guard"].bonusType, "circumstance", "and off-guard a circumstance penalty");
+  eq(CONDITION_IDS.filter(id => {
+    const a = CONDITIONS[id].affects;
+    return a && Object.values(a).some(v => v > 0);
+  }).length, 1, "and there is exactly one condition in the catalogue that grants a bonus of any type");
+
+  const weak = [makeCondition("enfeebled", { value: 2 })];
+  eq(modifiers(weak, "damage"), -2, "enfeebled 2 takes 2 off a damage roll");
+  eq(modifiers(weak, "attack-str"), -2, "and 2 off a Strength attack");
+  eq(modifiers(weak, "attack-dex"), 0, "and nothing off a finesse one");
+  const dull = [makeCondition("stupefied", { value: 1 })];
+  eq(modifiers(dull, "spell-dc"), -1, "stupefied lowers the DC the heir's spells are rolled against");
+  eq(modifiers(dull, "save-will"), -1, "and her Will save");
+  eq(modifiers(dull, "save-ref"), 0, "and nothing else");
+  eq(modifiers([makeCondition("slowed", { value: 1 })], "attack-str"), 0,
+    "slowed is worth nothing to every kind — it costs actions, not numbers");
 
   // Player Core p.443. Two penalties of the same type do not stack — the worst
   // one applies. A bag cannot normally hold two frightened (addCondition
@@ -1194,8 +1260,12 @@ section("conditions");
     { id: "frightened", value: 2, until: null },
     { id: "frightened", value: 1, until: null },
   ];
-  eq(modifiers(doubled, "attack"), -2, "two status penalties do not stack: the worst one applies");
-  throws(() => modifiers(f2, "damage"), "an unknown modifier kind throws rather than silently returning 0");
+  eq(modifiers(doubled, "attack-str"), -2, "two status penalties do not stack: the worst one applies");
+  throws(() => modifiers(f2, "morale"), "an unknown modifier kind throws rather than silently returning 0");
+  throws(() => saveKind("reflex"), "and so does a save spelled the way a person would spell it");
+  throws(() => attackKind("wis"), "and an ability no attack rolls off");
+  eq(saveKind("ref"), "save-ref", "the two spellings meet in one place");
+  eq(attackKind("dex"), "attack-dex", "and so do the two abilities");
 }
 
 /* -- persistent damage, as a spec rather than a roll ---------------------- */
@@ -1249,7 +1319,7 @@ section("conditions");
   eq(repairBag(undefined).length, 0, "a save with no conditions key repairs to an empty bag");
   eq(repairBag(null).length, 0, "and so does a null one");
   eq(repairBag("frightened").length, 0, "and so does a string where an array belongs");
-  eq(repairBag([{ id: "clumsy", value: 2 }]).length, 0,
+  eq(repairBag([{ id: "petrified", value: 2 }]).length, 0,
     "a condition this build no longer defines is dropped rather than added to every check as undefined");
   eq(repairBag([{ id: "frightened", value: 0 }]).length, 0, "a value of 0 is dropped");
   eq(repairBag([{ id: "frightened", value: "two" }]).length, 0, "a value that is not a number is dropped");
@@ -1399,8 +1469,8 @@ section("conditions");
   // critical hit, and waiting for one would make every assertion below depend
   // on a seed rolling a 20.
   g.run.pc.conditions = [{ id: "frightened", value: 2, until: null }];
-  eq(g.modifiersFor("pc", "attack"), -2, "frightened 2 is -2 on her attacks");
-  eq(g.modifiersFor("pc", "save"), -2, "-2 on her saves");
+  eq(g.modifiersFor("pc", "attack-str"), -2, "frightened 2 is -2 on her attacks");
+  eq(g.modifiersFor("pc", "save-fort"), -2, "-2 on her saves");
   eq(g.modifiersFor("pc", "perception"), -2, "-2 on her Perception");
   eq(g.pcAC(), base.ac - 2, "and -2 on the AC the Keeper rolls against");
 
@@ -1523,17 +1593,21 @@ section("conditions");
 {
   eq(JSON.stringify(INFLICT_ON), JSON.stringify(["hit", "crit", "crit-fail"]),
     "three ways a pack can hang a condition off a roll");
-  eq(content.commandById.breathe.inflicts.condition, "persistent-fire",
+  eq(content.commandById.breathe.inflicts[0].condition, "persistent-fire",
     "Breathe Fire sets a critical failure alight");
-  eq(content.commandById.breathe.inflicts.on, "crit-fail", "on the target's own save");
-  eq(content.commandById.strike.inflicts, null, "a command that inflicts nothing says so with null, not by omission");
-  eq(content.creatures["vault-keeper"].inflicts.condition, "frightened",
+  eq(content.commandById.breathe.inflicts[0].on, "crit-fail", "on the target's own save");
+  eq(content.commandById.shield.inflicts, null, "a command that inflicts nothing says so with null, not by omission");
+  eq(content.creatures["vault-keeper"].inflicts[0].condition, "frightened",
     "a critical Basalt Fist frightens the heir");
-  eq(content.creatures["vault-keeper"].inflicts.value, 1, "by 1");
-  eq(content.creatures["shattered-sentinel"].inflicts, null, "a sentinel leaves nothing behind");
+  eq(content.creatures["vault-keeper"].inflicts[0].value, 1, "by 1");
+  eq(content.creatures["vault-keeper"].inflicts[1].condition, "stupefied",
+    "and stupefies her in the same swing — one entry could not have said both");
+  eq(content.creatures["vault-keeper"].inflicts.length, 2, "two entries off one roll");
+  eq(content.commandById.strike.inflicts.length, 1,
+    "a single object in the pack still reads back as a list of one, so no existing pack had to change");
 
   const bad = raw => { const p = JSON.parse(JSON.stringify(rawPack)); raw(p); return () => loadPack(p); };
-  throws(bad(p => { p.commands[0].inflicts = { condition: "clumsy", on: "hit" }; }),
+  throws(bad(p => { p.commands[0].inflicts = { condition: "petrified", on: "hit" }; }),
     "a pack naming a condition the catalogue does not have is refused at the door");
   throws(bad(p => { p.commands[0].inflicts = { condition: "frightened", on: "critfail" }; }),
     "and so is one naming a trigger point that does not exist");
@@ -1541,6 +1615,13 @@ section("conditions");
     "and so is a value of 0");
   throws(bad(p => { p.creatures["vault-keeper"].inflicts = { condition: "frightened" }; }),
     "a creature's inflicts is validated the same way a command's is");
+  throws(bad(p => {
+    p.creatures["vault-keeper"].inflicts = [
+      { condition: "frightened", value: 1, on: "crit" },
+      { condition: "frightened", value: 2, on: "hit" },
+    ];
+  }), "and two entries naming one condition are refused: addCondition would merge them and one would never fire");
+  throws(bad(p => { p.creatures["vault-keeper"].inflicts = []; }), "an empty array is refused too");
 }
 
 {
@@ -1549,6 +1630,7 @@ section("conditions");
   // seed for a natural 20.
   const p = JSON.parse(JSON.stringify(rawPack));
   p.creatures["vault-keeper"].inflicts = { condition: "frightened", value: 1, on: "hit" };
+  p.creatures["vault-keeper"].immunities = [];
   const jumpy = loadPack(p);
   const c = selectPc(jumpy, "fighter");
   const g = createGame({
@@ -1568,6 +1650,482 @@ section("conditions");
   g.endTurn();                       // the Keeper's whole turn
   eq(valueOf(g.conditionsOf("pc"), "frightened"), 1, "a fist that lands leaves her frightened 1");
   ok(g.run.log.some(e => e.text === "Kessa Vane is frightened 1."), "and the log says so");
+}
+
+/* ========================================================================= *
+ * increment 2 — the catalogue, the damage funnel, and a turn with fewer
+ * actions in it
+ * ========================================================================= */
+
+/* -- damage, funnelled by source ----------------------------------------- */
+{
+  const weak = [makeCondition("enfeebled", { value: 2 })];
+  eq(damageModifiers(weak, "weapon"), -2, "enfeebled moves a weapon damage roll");
+  eq(damageModifiers(weak, "spell"), 0, "and not a spell's, which comes off proficiency and not a shoulder");
+  eq(damageModifiers(weak, "persistent"), 0, "nor the fire the condition itself is ticking");
+  eq(damageModifiers(weak, "healing"), 0, "nor a healing roll, which is not damage at all");
+  throws(() => damageModifiers(weak, "falling"),
+    "an unknown source throws rather than quietly returning 0 for it");
+  eq(DAMAGE_SOURCES.length, 4, "four sources, and every rollDamage in the engine names one");
+  eq(damageModifiers([], "weapon"), 0, "an empty bag moves nothing");
+}
+
+/* -- the second drift guard: one rollDamage ------------------------------ */
+{
+  // The same shape as the `check(` guard above and for the same reason. Every
+  // rollDamage call site used to add the weapon's own `plus` and nothing else,
+  // which is the hardcoding `turn.shielded` was, one layer down — and the
+  // failure mode is identical: a raw rollDamage rolls dice no condition can
+  // ever move, and nothing about the line looks wrong.
+  //
+  // Broken on purpose by putting the creature's Strike back on
+  // `rollDamage(d.damage, rng)`.
+  const src = fs.readFileSync(path.join(HERE, "..", "js", "game.js"), "utf8");
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  eq((code.match(/\browDamage\(/g) || []).length, 0, "no typo of the funnel's own name is in the file");
+  eq((code.match(/\brollDamage\(/g) || []).length, 1,
+    "game.js rolls damage in exactly one place, and it is the one that adds the modifiers");
+  ok(/function damageFrom\(actor, spec, source\) \{\s*const d = rollDamage\(spec, rng\);/.test(code),
+    "and that one call is the funnel itself");
+}
+
+/* -- enfeebled, on a fist that actually swings --------------------------- */
+{
+  // A pack whose Keeper is enfeebled from the first instant, against the same
+  // pack whose Keeper is not, on the same seed. Same dice, one number apart —
+  // which is the only way to tell a modifier that applied from a d20 that
+  // rolled low.
+  //
+  // Broken on purpose by returning `d` unmodified from damageFrom.
+  const hits = (bag) => {
+    const g = keeperFight("fighter", 1);
+    g.run.creatures[0].conditions = bag;
+    const hp0 = g.run.pc.hp;
+    g.endTurn();                     // the Keeper's whole turn, three fists
+    return hp0 - g.run.pc.hp;
+  };
+  const clean = hits([]);
+  const weak = hits([{ id: "enfeebled", value: 1, until: null }]);
+  ok(clean > 0, `the Keeper lands something on seed 1 (${clean} damage)`);
+  ok(weak < clean, `and less of it while enfeebled 1 (${weak} vs ${clean})`);
+  ok(clean - weak >= 1, "by at least a point per fist that landed");
+}
+
+{
+  // Floored at 0. A penalty larger than the dice is a Strike that does
+  // nothing, never a Strike that heals — and the number the log prints is the
+  // number the target took.
+  const g = keeperFight("fighter", 1);
+  g.run.creatures[0].conditions = [{ id: "enfeebled", value: 40, until: null }];
+  const hp0 = g.run.pc.hp;
+  g.endTurn();
+  eq(g.run.pc.hp, hp0, "enfeebled 40 is a fist that cannot hurt her");
+  ok(g.run.pc.hp <= 18, "and never a fist that heals her");
+}
+
+/* -- clumsy, on the DC a spell is rolled against ------------------------- */
+{
+  const g = keeperFight("wizard", 3);
+  const k = g.run.creatures[0];
+  eq(g.spellDC, content.pcById.wizard.spellDC, "Vesper's spell DC starts at her own");
+  eq(g.modifiersFor(k, "save-ref"), 0, "and the Keeper saves at its own Reflex");
+  k.conditions = [{ id: "clumsy", value: 1, until: null }];
+  eq(g.modifiersFor(k, "save-ref"), -1, "clumsy 1 takes a point off that Reflex save");
+  eq(g.modifiersFor(k, "save-will"), 0, "and leaves Will alone");
+  eq(g.modifiersFor(k, "ac"), -1, "and a point off its AC");
+}
+
+/* -- stupefied: the spell DC, and the flat check to cast at all ---------- */
+{
+  const g = keeperFight("wizard", 3);
+  g.run.pc.conditions = [{ id: "stupefied", value: 1, until: null }];
+  eq(g.spellDC, content.pcById.wizard.spellDC - 1,
+    "stupefied 1 takes a point off the DC her cone is rolled against");
+  eq(g.pcAC(), content.pcById.wizard.ac, "and nothing off her AC — it is not frightened with another name");
+}
+
+{
+  // The flat check, which is the part that costs the spell rather than a
+  // number. Stupefied 19 makes the DC 24 on a d20, so it cannot be beaten:
+  // the assertion is about the branch, not about a seed rolling low.
+  //
+  // Broken on purpose by returning false from castFizzles().
+  const g = keeperFight("wizard", 3);
+  g.run.pc.conditions = [{ id: "stupefied", value: 19, until: null }];
+  const slots = g.run.pc.slots, actions = g.actionsLeft;
+  const r = g.useCommand("shield");
+  ok(r.ok, "the cast is attempted");
+  eq(r.fizzled, true, "and comes apart on the flat check");
+  eq(g.conditionsOf("pc").some(c => c.id === "shielded"), false, "no disc");
+  eq(g.actionsLeft, actions - 1, "and the action is gone with it");
+  eq(g.run.pc.slots, slots, "a cantrip spends no slot either way");
+  ok(g.run.log.some(e => e.text.includes("flat check to Cast a Spell while stupefied")),
+    "the flat check is in the log, with its DC");
+}
+
+{
+  // And the DC is the formula rather than a number that happens to be hard.
+  // Stupefied 1 is DC 6 (Player Core p.447: 5 + the value), which the first
+  // version of this block never checked — a break that set the base to 0 left
+  // an unbeatable DC 19 on the seed under test and the suite stayed green.
+  const g = keeperFight("wizard", 3);
+  g.run.pc.conditions = [{ id: "stupefied", value: 1, until: null }];
+  g.useCommand("shield");
+  const line = g.run.log.find(e => e.text && e.text.includes("flat check to Cast a Spell"));
+  ok(line, "stupefied 1 rolls the check too");
+  ok(/vs DC 6$/.test(line.math), `at DC 5 + 1 (${line.math})`);
+  const g2 = keeperFight("wizard", 3);
+  g2.run.pc.conditions = [{ id: "stupefied", value: 3, until: null }];
+  g2.useCommand("shield");
+  ok(/vs DC 8$/.test(g2.run.log.find(e => e.text && e.text.includes("flat check to Cast a Spell")).math),
+    "and DC 5 + 3 at stupefied 3, which is the formula and not a constant");
+}
+
+{
+  // And the other side of it: stupefied 0 is not stupefied, so nothing rolls.
+  const g = keeperFight("wizard", 3);
+  const r = g.useCommand("shield");
+  ok(r.ok && !r.fizzled, "an unstupefied cast does not roll a flat check at all");
+  ok(!g.run.log.some(e => e.text.includes("flat check to Cast a Spell")), "and nothing about one is logged");
+  ok(g.shielded, "the disc is up");
+}
+
+{
+  // A Strike is not Casting a Spell. Broken on purpose by dropping the
+  // `cmd.spell` test from the fizzle branch, which stops Kessa swinging.
+  const g = keeperFight("fighter", 1);
+  g.run.pc.conditions = [{ id: "stupefied", value: 19, until: null }];
+  const r = g.useCommand("strike-sword", g.run.creatures[0].key);
+  ok(r.ok && !r.fizzled, "Kessa's longsword swings while stupefied 19 — it is a sword");
+  eq(content.commandById["strike-sword"].spell, false, "because the pack does not call it a spell");
+  eq(content.commandById.breathe.spell, true, "and does call Breathe Fire one");
+}
+
+/* -- slowed: a turn with fewer actions in it ----------------------------- */
+{
+  eq(actionsFor([], 3), 3, "an empty bag leaves all three");
+  eq(actionsFor([makeCondition("slowed", { value: 1 })], 3), 2, "slowed 1 leaves two");
+  eq(actionsFor([makeCondition("slowed", { value: 2 })], 3), 1, "slowed 2 leaves one");
+  eq(actionsFor([makeCondition("slowed", { value: 9 })], 3), 0,
+    "and slowed 9 leaves none rather than a turn that owes actions back");
+  eq(actionsFor([makeCondition("frightened", { value: 2 })], 3), 3,
+    "a condition that is not slowed costs no action");
+}
+
+{
+  // On the PC, through advance(). Broken on purpose by putting
+  // `turn.actions = 3` back in advance().
+  const g = keeperFight("fighter", 1);
+  eq(g.actionsLeft, 3, "Kessa's turn opens with three actions");
+  g.run.pc.conditions = [{ id: "slowed", value: 1, until: null }];
+  let r = g.endTurn();
+  while (r && r.actor !== "pc" && !g.run.outcome) r = g.advance();
+  ok(!g.run.outcome, "she comes back round to her own turn");
+  eq(g.actionsLeft, 2, "and it opens with two");
+  ok(g.hint.includes("2 action"), "the hint says two, rather than promising three");
+}
+
+{
+  // The ordering that makes it work at all: slowed is `self-end`, so the start
+  // boundary that runs immediately before the action count does not take it
+  // off first. Broken on purpose by giving slowed `defaultUntil: "self-start"`
+  // in the catalogue — the count reads 3 and the condition is already gone.
+  eq(CONDITIONS.slowed.defaultUntil, "self-end",
+    "slowed lasts to the end of the turn it costs, not the start of it");
+  eq(defaultUntilFor("slowed", "pc").when, "end", "which is what the tick is handed");
+  eq(defaultUntilFor("off-guard", "pc").when, "start",
+    "off-guard is the mirror image: footing you get back at the start of your turn");
+  eq(defaultUntilFor("off-guard", "vault:x@1,1").who, "vault:x@1,1",
+    "and it names the afflicted actor, not the one that applied it");
+  eq(defaultUntilFor("frightened", "pc"), null, "frightened has none — it decays instead");
+  eq(defaultUntilFor("persistent-fire", "pc"), null, "and burning ends on its flat check or not at all");
+}
+
+{
+  // On a creature, through creatureTurn's own counter. A Keeper slowed to one
+  // action swings once rather than three times. Broken on purpose by putting
+  // `let actions = 3` back in creatureTurn.
+  const swings = (bag) => {
+    const g = keeperFight("fighter", 1);
+    g.run.creatures[0].conditions = bag;
+    const before = g.run.log.length;
+    g.endTurn();
+    return g.run.log.slice(before).filter(e => e.kind === "dice" && e.text.includes("Basalt Fist")).length;
+  };
+  const full = swings([]);
+  const slow = swings([{ id: "slowed", value: 2, until: null }]);
+  eq(full, 3, "an unslowed Keeper standing beside her swings three times");
+  eq(slow, 1, "slowed 2 leaves it one swing");
+}
+
+/* -- off-guard, and the duration it carries without being told ----------- */
+{
+  // A pack whose sentinel fist knocks the heir off-guard on every hit, so the
+  // path is reached without begging a seed for a natural 20.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.creatures["vault-keeper"].inflicts = { condition: "off-guard", value: 1, on: "hit" };
+  const pack = loadPack(p);
+  const g = createGame({
+    content: selectPc(pack, "fighter"), rng: makeRng(1),
+    state: {
+      packId: pack.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  const ac0 = g.pcAC();
+  let r = g.endTurn();
+  ok(hasCondition(g.run.pc.conditions, "off-guard"), "a fist that lands leaves her off-guard");
+  eq(g.pcAC(), ac0 - 2, "which is -2 on the AC everything rolls against");
+  eq(g.conditionsOf("pc").find(c => c.id === "off-guard").until?.when, "start",
+    "carrying the catalogue's own duration, which the pack never had to write");
+  while (r && r.actor !== "pc" && !g.run.outcome) r = g.advance();
+  ok(!g.run.outcome, "she reaches her own turn");
+  ok(!hasCondition(g.run.pc.conditions, "off-guard"), "and gets her footing back at the start of it");
+  eq(g.pcAC(), ac0, "AC back where it was");
+}
+
+/* -- immunity: a construct cannot be frightened -------------------------- */
+{
+  eq(immunityTo("frightened", ["mental"]), "mental", "frightened is a mental effect and a construct is immune");
+  eq(immunityTo("frightened", []), null, "nothing is immune to nothing");
+  eq(immunityTo("clumsy", ["mental"]), null, "clumsy is not mental — a statue can still be off balance");
+  eq(immunityTo("slowed", ["mental"]), null, "nor slowed");
+  eq(immunityTo("petrified", ["mental"]), null, "and a condition that does not exist bounces off nothing");
+  for (const id of Object.keys(content.creatures)) {
+    eq(JSON.stringify(content.creatures[id].immunities), JSON.stringify(["mental"]),
+      `${id} is a construct, and every construct in this pack says so`);
+  }
+  eq(content.pcById.wizard.immunities.length, 0, "the heir is flesh");
+}
+
+{
+  // Through the engine, out loud. A pack whose Basalt Fist frightens on every hit, aimed the other way: the
+  // Keeper hits the *heir*, who is flesh, and it lands. The same pack's cone
+  // frightens the Keeper, which is a construct, and it does not.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.commands.find(c => c.id === "breathe").inflicts =
+    { condition: "frightened", value: 1, on: "crit-fail" };
+  p.commands.find(c => c.id === "breathe").damage = "1d1";
+  p.creatures["vault-keeper"].saves.ref = -20;   // it will critically fail
+  const pack = loadPack(p);
+  const g = createGame({
+    content: selectPc(pack, "wizard"), rng: makeRng(3),
+    state: {
+      packId: pack.pack.id, buildId: "wizard", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 15, slots: 2, focus: 1 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  const k = g.run.creatures[0];
+  ok(g.useCommand("breathe", { x: 11, y: 4 }).ok, "Vesper breathes fire at the Keeper");
+  ok(g.run.log.some(e => e.text.includes("critical failure") || e.deg === 0), "which it critically fails");
+  eq(hasCondition(k.conditions, "frightened"), false,
+    "and it is not frightened, because it is a construct and constructs are immune to mental effects");
+  ok(g.run.log.some(e => e.text.includes("immune to mental effects")),
+    "said out loud, with the reason — a button that does nothing is a bug report");
+}
+
+/* -- Rousing Splash, with something to end ------------------------------- */
+{
+  eq(content.commandById.splash.ends.condition, "persistent-fire", "the cantrip names what it takes off");
+  eq(content.commandById.splash.ends.flatDC, 10,
+    "at DC 10, which is Player Core p.409's appropriate action rather than an automatic end");
+  eq(content.creatures["reliquary-warden"].inflicts[0].condition, "persistent-fire",
+    "and the Cinder Fist is what puts it on her");
+  eq(content.creatures["reliquary-warden"].damageType, "fire", "its fist is fire now, so the disc cannot soak it");
+}
+
+{
+  // Cast it forty times over a burning heir on forty seeds and count. DC 10 on
+  // a d20 is 55%, so "it sometimes ends it and sometimes does not" is the
+  // assertion, and both halves have to be seen or the branch is untested.
+  //
+  // Broken on purpose by deleting the `endOnPurpose(cmd.ends)` call.
+  let ended = 0, held = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const g = keeperFight("wizard", seed);
+    g.run.pc.conditions = [{ id: "persistent-fire", value: 1, until: null }];
+    if (!g.isPCTurn() || g.actionsLeft < 2) continue;
+    // A refusal is neither outcome. Counting one as "the fire held" is how the
+    // first version of this block stayed green with the flat check deleted:
+    // one refused seed was the whole of its evidence that the check ever fails.
+    if (!g.useCommand("splash").ok) continue;
+    if (hasCondition(g.run.pc.conditions, "persistent-fire")) held++; else ended++;
+  }
+  ok(ended >= 3, `the splash puts the fire out sometimes (${ended} of ${ended + held})`);
+  ok(held >= 3, `and fails the DC 10 flat check the rest of the time (${held} of ${ended + held})`);
+}
+
+{
+  // And the log says which. One seed, forced: with no fire on her the cantrip
+  // rolls nothing at all, which is what stops the log filling with flat checks
+  // against a condition nobody has.
+  const g = keeperFight("wizard", 3);
+  ok(g.useCommand("splash").ok, "she casts it unburnt");
+  ok(!g.run.log.some(e => e.text.includes("flat check to end burning")),
+    "and no flat check is rolled for a fire that is not there");
+}
+
+/* -- an unerring effect lands, and what it leaves behind lands with it --- */
+{
+  // Force Fang rolls nothing, so there is no degree for applyInflict to read
+  // and `on: "hit"` is what "it landed" means. Before this, an `inflicts`
+  // written on an unerring command validated at load and then did nothing at
+  // all — the exact silence the closed vocabulary exists to prevent one level
+  // up, one branch deeper.
+  //
+  // Broken on purpose by deleting the applyInflict call from the unerring
+  // branch.
+  eq(content.commandById.fang.inflicts[0].condition, "slowed",
+    "the pack's one source of slowed is on its one unerring command");
+  eq(content.commandById.fang.inflicts[0].on, "hit", "which always lands");
+  const g = keeperFight("wizard", 3);
+  const k = g.run.creatures[0];
+  ok(g.useCommand("fang", k.key).ok, "Vesper spends her focus point on it");
+  eq(valueOf(k.conditions, "slowed"), 1, "and the Keeper is slowed 1");
+  eq(k.conditions.find(c => c.id === "slowed").until.when, "end",
+    "to the end of its own next turn, off the catalogue rather than the pack");
+  // And it costs the Keeper a swing, which is the only reason to spend a focus
+  // point on it.
+  const swings = () => g.run.log.filter(e => e.kind === "dice" && e.text.includes("Basalt Fist")).length;
+  const before = swings();
+  g.endTurn();
+  eq(swings() - before, 2, "so its next turn is two fists rather than three");
+}
+
+/* -- and a player who knows to use it ------------------------------------ */
+{
+  // The half that makes the cantrip measurable at all. combatPolicy had no
+  // self-heal branch, so balance.mjs had never cast Rousing Splash in any of
+  // the numbers this project has quoted — the spell was dead in the harness
+  // as well as dead in the rules. It reads `ends` rather than the command id,
+  // the same way the rest of the policy reads `kind`.
+  //
+  // Broken on purpose by deleting the dousing branch from combatPolicy.
+  const g = keeperFight("wizard", 3);
+  g.run.pc.conditions = [{ id: "persistent-fire", value: 1, until: null }];
+  ok(combatPolicy(g), "a burning heir spends an action");
+  ok(g.run.log.some(e => e.text.includes("Rousing Splash")),
+    "and spends it on the cantrip that ends fire, with a Keeper standing next to her");
+  const dry = keeperFight("wizard", 3);
+  ok(combatPolicy(dry), "an unburnt heir acts too");
+  ok(!dry.run.log.some(e => e.text.includes("Rousing Splash")),
+    "and does not spend two actions on a wave she has no use for");
+}
+
+/* -- what content is allowed to say now ---------------------------------- */
+{
+  const bad = raw => { const p = JSON.parse(JSON.stringify(rawPack)); raw(p); return () => loadPack(p); };
+  eq(content.commandById.strike.ability, "dex", "the dagger is finesse, and the pack says so");
+  eq(content.commandById["strike-sword"].ability, "str", "the longsword is not");
+  eq(content.creatures["vault-keeper"].ability, "str",
+    "and a creature that says nothing is Strength, so no pack that predates the field had to change");
+  throws(bad(p => { p.commands[0].ability = "wis"; }), "an ability no attack rolls off is refused");
+  throws(bad(p => { p.creatures["vault-keeper"].ability = "cha"; }), "on a creature too");
+  throws(bad(p => { p.creatures["vault-keeper"].immunities = ["fire"]; }),
+    "an immunity that is not a condition trait is refused — the list is closed like the tile names");
+  throws(bad(p => { p.creatures["vault-keeper"].immunities = "mental"; }),
+    "and so is a bare string where an array belongs");
+  throws(bad(p => { p.commands.find(c => c.id === "splash").ends = { condition: "petrified" }; }),
+    "an ends block naming an unknown condition is refused");
+  throws(bad(p => { p.commands.find(c => c.id === "splash").ends = { condition: "persistent-fire", flatDC: 44 }; }),
+    "and a flat DC no d20 can reach");
+  throws(bad(p => { p.commands.find(c => c.id === "breathe").save = "reflex"; }),
+    "a save spelled the way a person would spell it is refused rather than rolling against undefined");
+}
+
+/* -- the two inflicts off one roll, both landing ------------------------- */
+{
+  // The Keeper's fist leaves two things behind, and a loop that applied only
+  // the first would look exactly like a Keeper that frightens. Broken on
+  // purpose by `return applyCondition(...)` inside applyInflict's loop.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.creatures["vault-keeper"].inflicts = [
+    { condition: "frightened", value: 1, on: "hit" },
+    { condition: "stupefied", value: 2, on: "hit" },
+  ];
+  const pack = loadPack(p);
+  const g = createGame({
+    content: selectPc(pack, "fighter"), rng: makeRng(1),
+    state: {
+      packId: pack.pack.id, buildId: "fighter", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 18, slots: 0, focus: 0 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  g.endTurn();
+  eq(valueOf(g.run.pc.conditions, "frightened"), 1, "one fist, and the first of its two conditions lands");
+  eq(valueOf(g.run.pc.conditions, "stupefied"), 2, "and the second, at its own value");
+}
+
+/* -- which ability swings it, at the call site rather than in the bag ----- */
+{
+  // modifiersFor already knows clumsy is Dexterity and enfeebled is Strength.
+  // This is the other half: that `roll` is handed the right one of the two at
+  // the dagger's own call site. Vesper's dagger is finesse, so enfeebled
+  // cannot stop it landing and clumsy can — and the values are absurd on
+  // purpose, because the assertion is about which kind was asked for and not
+  // about a seed.
+  //
+  // Broken on purpose by hardcoding attackKind("str") at the PC's Strike.
+  const swing = (bag) => {
+    const g = keeperFight("wizard", 3);
+    g.run.pc.conditions = bag;
+    const k = g.run.creatures[0];
+    const hp0 = k.hp;
+    g.useCommand("strike", k.key);
+    return { landed: k.hp < hp0, dealt: hp0 - k.hp, log: g.run.log };
+  };
+  const clean = swing([]);
+  ok(clean.landed, `an unencumbered dagger lands on seed 3 (${clean.dealt} damage)`);
+  const weak = swing([{ id: "enfeebled", value: 40, until: null }]);
+  ok(weak.log.some(e => e.kind === "dice" && e.text.includes("Strike — Dagger")),
+    "enfeebled 40 still rolls the attack");
+  eq(weak.dealt, 0, "and lands for nothing, because enfeebled is on the damage and not on a finesse attack roll");
+  const clumsy = swing([{ id: "clumsy", value: 40, until: null }]);
+  eq(clumsy.landed, false, "clumsy 40 is what stops a finesse blade landing at all");
+}
+
+/* -- the chip and the marker read the catalogue, not an id --------------- */
+{
+  // ui.js and render.js both used to name "shielded" or read `affects.ac < 0`
+  // to decide whether a condition was good news. Both were right for a
+  // catalogue of three and wrong for this one: Burning and Slowed move no AC
+  // at all and would have drawn as buffs, and the marker over an afflicted
+  // creature would have switched on for the second helpful condition this
+  // pack ever grows. Neither file is importable under Node, so this asserts
+  // against their source the way the two funnel guards do.
+  //
+  // Broken on purpose by putting `c.id !== "shielded"` back in render.js.
+  const read = f => fs.readFileSync(path.join(HERE, "..", "js", f), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const rend = read("render.js"), ui = read("ui.js");
+  ok(!/"shielded"/.test(rend), "render.js names no condition id at all");
+  ok(/helpful/.test(rend), "it asks the catalogue which ones are good news");
+  ok(!/affects\s*&&\s*def\.affects\.ac/.test(ui), "ui.js no longer decides by whether AC moved downward");
+  ok(/def\.helpful/.test(ui), "it asks the same flag");
+  eq(CONDITION_IDS.filter(id => CONDITIONS[id].helpful).length, 1,
+    "exactly one condition in the catalogue is worth having");
+  eq(CONDITIONS.shielded.helpful, true, "and it is the disc");
 }
 
 section("save");
@@ -1649,7 +2207,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
     "on both sides of the board");
   const g3 = createGame({ content: resolved, rng: makeRng(12), state: back });
   g3.begin();
-  eq(g3.modifiersFor("pc", "attack"), -1, "and the reloaded run rolls at the penalty it was saved with");
+  eq(g3.modifiersFor("pc", "attack-str"), -1, "and the reloaded run rolls at the penalty it was saved with");
 }
 
 {
@@ -1690,7 +2248,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   // repair already runs: the alternative to dropping them is arithmetic on
   // undefined.
   const s = freshRun(content, "wizard");
-  s.pc.conditions = [{ id: "clumsy", value: 3 }, { id: "frightened", value: 2 }];
+  s.pc.conditions = [{ id: "petrified", value: 3 }, { id: "frightened", value: 2 }];
   s.creatures[0].hp = 0;
   s.creatures[0].dead = true;
   s.creatures[0].conditions = [{ id: "persistent-fire", value: 1 }];

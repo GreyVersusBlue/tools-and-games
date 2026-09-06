@@ -16,14 +16,14 @@ absalom-inheritance/
   content-authoring-guide.md  how to write another one
   js/rules.js                 PF2e math. Pure, RNG injected.
   js/world.js                 grid, line of sight, A* with rules-legal diagonals
-  js/conditions.js            the condition catalogue, the modifier funnel, the tick. Pure, RNG-free.
+  js/conditions.js            the condition catalogue, the two funnels, the tick. Pure, RNG-free.
   js/content.js               load and validate a pack; refuse a broken one
   js/game.js                  the run: state, turns, the reaction bus, commands. Headless.
   js/save.js                  the gvb-save slot, and repair
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              599 assertions
+  test/smoke.mjs              787 assertions
   test/balance.mjs            Monte Carlo playthroughs, exits non-zero out of band
   test/autopilot.mjs          a competent player, shared by both suites
 ```
@@ -84,7 +84,52 @@ autopilot is not. `smoke.mjs` asserts the zero over 3,032 planned Strides so the
 gives a creature a reason to reposition is told the rule has come alive.
 
 Shield Block is the first thing in three rounds to move the two builds toward each other: the
-Wizard's win rate went 53.6% → 64.5% against the Fighter's unchanged 79.8%.
+Wizard's win rate went 53.6% → 64.5% against the Fighter's unchanged 79.8%. The condition
+catalogue moved them apart again — 65.3% → 60.8% against 79.3% → 80.8% — and the reason is
+legible: over 2,000 seeded runs per build the Keeper's critical fist stupefied the heir 239 times
+as Vesper and 272 as Kessa, and cost Vesper 39 spells to the flat check and Kessa nothing at all.
+
+## Conditions
+
+Eight of them, in `js/conditions.js`: `shielded`, `frightened`, `off-guard`, `clumsy`,
+`enfeebled`, `stupefied`, `slowed` and `persistent-fire`. The module is pure and RNG-free — a bag
+is an ordinary array of `{ id, value, until }` on the saved run, and persistent damage hands back
+a spec for `game.js` to roll rather than rolling it, which is what keeps `balance.mjs` able to
+replay a run.
+
+**Two funnels, and nothing goes round either.** `roll(actor, kind, bonus, dc)` is the only `check(`
+in `game.js`, and `damageFrom(actor, spec, source)` is the only `rollDamage(`. `smoke.mjs` reads
+the file's own source, strips its comments and fails if a second of either appears, because the
+failure mode is silence rather than a crash: a raw call rolls dice no condition can ever move and
+nothing about the line looks wrong. The two deliberate exceptions are flat checks — the one that
+ends persistent damage, the one Rousing Splash rolls to end it early, and the one stupefied
+charges to Cast a Spell — because a flat check takes no modifiers at all (Player Core p.409).
+
+**Nine modifier kinds**, one per number the engine actually rolls or sets: `attack-str`,
+`attack-dex`, `damage`, `save-fort`, `save-ref`, `save-will`, `ac`, `perception` and `spell-dc`.
+The splits are not decoration. Enfeebled is a Strength penalty and clumsy a Dexterity one, so a
+single `attack` kind makes Vesper's finesse dagger and Kessa's longsword the same weapon; clumsy
+is Reflex and stupefied is Will, so a single `save` kind makes both of them frightened with
+another name. A command says which ability swings it (`"ability": "dex"` on the dagger; `str` is
+the default, so no pack that predates the field had to change).
+
+**Slowed is the one that reads the bag outside the funnel.** It moves no number: it takes actions
+off the top of a turn, in `advance()` for the PC and in `creatureTurn` for a creature, both read
+*after* that actor's start boundary so a condition expiring there is not still charging for it.
+
+**Immunities are content.** A creature lists them (`"immunities": ["mental"]`), a condition
+carries traits, and every construct in this pack refuses `frightened` out loud — a button that
+does nothing is a bug report, and a rule the player is told is a rule they can use.
+
+Durations tick in exactly one place, at the top of `advance()`, each bag as its own owner against
+whoever's boundary it is, because "expires at the start of your next turn" can name an actor other
+than the one wearing it. A condition applied by content gets its duration from the catalogue
+rather than from the pack (`defaultUntil`), which is what stops a pack that forgot to write one
+from stapling a −2 to the heir for the rest of the delve. Conditions are in the save additively:
+`pc.conditions` and a per-creature `conditions`, repaired on every load, absent entirely from a
+save with none (#36, #37).
+
+See the content-authoring guide's §5 for `inflicts`, `ends`, `ability` and `immunities`.
 
 ## The save
 
@@ -126,6 +171,13 @@ Two knowing departures, both flagged in `content/vault.json`:
   original design spec.
 * **The cone** is "within range and within ±45° of the bearing you clicked", not a true PF2e cone
   template. The renderer paints the affected squares before you commit.
+
+Six conditions in this pack are hung off rolls the book leaves bare, and all six are flagged in
+`content/vault.json` and measured rather than guessed: a critical dagger leaves a construct
+clumsy, a critical longsword leaves it enfeebled, Force Fang slows whatever it hits, a critical
+sentinel fist leaves the heir off-guard, a critical Basalt Fist leaves her frightened *and*
+stupefied, and the Reliquary Warden's fist is fire that can set her alight. A condition system
+nothing in the adventure applies is a system nobody plays.
 
 ## Accessibility
 

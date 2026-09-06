@@ -1624,6 +1624,113 @@ Two of them have moved since they were written:
    can contain even though `addCondition` merges them. *Source: Absalom
    Phase 2, increment 1.*
 
+141. **Nine modifier kinds, one per number the engine rolls or sets.**
+   Increment 1 shipped four — `attack`, `save`, `ac`, `perception` — and
+   three of them were approximations wearing one name. `attack` is now
+   `attack-str` and `attack-dex`, because enfeebled is a Strength penalty
+   and clumsy a Dexterity one, and a single kind makes Vesper's finesse
+   dagger and Kessa's longsword the same weapon. `save` is now
+   `save-fort`, `save-ref` and `save-will`, because clumsy is Reflex and
+   stupefied is Will, and a single kind makes both of them frightened with
+   another name. `damage` and `spell-dc` are new: the first is the hole
+   increment 1 left, and the second is a DC nothing was reading. A command
+   or a creature names the ability that swings its attack, defaulting to
+   `str` so no pack that predates the field had to change. The rejected
+   alternative was passing a context object to `modifiersFor` — one kind
+   plus `{ ability }` — which keeps the list short and moves the same
+   distinction into a shape no `MODIFIER_KINDS.includes()` can validate.
+   Reversing it is collapsing five entries back into two.
+   *Source: Absalom Phase 2, increment 2.*
+
+142. **`game.js` rolls damage in exactly one place too, and the source is
+   not optional.** `damageFrom(actor, spec, source)` is the only
+   `rollDamage(` in the file and `smoke.mjs` counts them the way it counts
+   `check(`, comments stripped first. `source` is one of `weapon`, `spell`,
+   `persistent` or `healing`, and only `weapon` takes a modifier: a spell's
+   damage comes off proficiency, persistent damage is the condition itself
+   ticking, and healing is not damage at all. It is required rather than
+   defaulted because three of the four answers are "nothing", and a caller
+   allowed to omit it is a caller guessing — which is exactly how every
+   `rollDamage` call site came to add the weapon's own `plus` and nothing
+   else. Damage floors at 0: a penalty larger than the dice is a Strike
+   that does nothing, never one that heals. *Source: Absalom Phase 2,
+   increment 2.*
+
+143. **A condition applied by content gets its duration from the
+   catalogue, not from the pack.** `off-guard` lasts until the start of the
+   afflicted actor's next turn and `clumsy`, `enfeebled`, `stupefied` and
+   `slowed` until the end of it, and `applyInflict` reads that off
+   `defaultUntil` rather than off `inflicts`. A pack that had to write the
+   duration would ship one that forgot, and a forgotten duration is not a
+   visible error — it is a −2 stapled to the heir for the rest of the
+   delve. The ordering inside that is load-bearing and was got right by
+   breaking it: slowed is `self-end` because a slowed that expired at the
+   *start* of your turn would come off before the turn had any actions to
+   take away, and off-guard is `self-start` because footing is what you get
+   back when your turn comes round. Both action counts — `advance()` for
+   the PC, `creatureTurn` for a creature — are read after that actor's
+   start boundary for the same reason. Reversing it is letting `inflicts`
+   carry an `until`. *Source: Absalom Phase 2, increment 2.*
+
+144. **Immunity is a content list against a condition trait, and a refusal
+   is a log line.** A creature says `"immunities": ["mental"]`, a condition
+   carries `traits`, and `applyCondition` refuses before it touches the bag
+   — naming the trait, out loud, because a rule the player is told is a
+   rule they can use and a button that does nothing is a bug report. Every
+   creature in this pack is a construct and PF2e constructs are immune to
+   mental effects, so nothing in this vault can be frightened. Nothing in
+   the pack tries, which is why the suite is what exercises it: a pack
+   whose cone frightens on a critical failure, aimed at a construct. The
+   trait list is closed at one entry, which looks like over-engineering
+   until the second trait arrives as a typo instead of a load error.
+   *Source: Absalom Phase 2, increment 2.*
+
+145. **`inflicts` may be a list, and two entries naming one condition are
+   a load error.** The Vault Keeper's critical fist leaves the heir
+   frightened *and* stupefied, and a single-object schema would have made
+   the second one a code change instead of a comma. A bare object still
+   validates and reads back as a list of one, so no pack that already
+   existed had to change. Two entries naming the same condition are refused
+   at the door because `addCondition`'s higher-value-wins merge would apply
+   one and silently drop the other, which is a content bug with no symptom.
+   *Source: Absalom Phase 2, increment 2.*
+
+146. **A command may end a condition, and Rousing Splash rolls for it.**
+   `ends: { condition, flatDC }` on a command takes that condition off the
+   PC — outright with no `flatDC`, or on that flat check with one. Rousing
+   Splash rolls DC 10 where persistent fire's own check is DC 15, which is
+   Player Core p.409's "a particularly appropriate action lowers the
+   check" rather than the automatic end the cantrip's old note implied. It
+   has something to end because the Reliquary Warden's fist is fire now and
+   sets the heir alight on a critical hit, which is the only thing in the
+   pack that puts persistent fire on the PC. The second half of making it
+   real was `autopilot.mjs`: `combatPolicy` had no `self-heal` branch at
+   all, so Rousing Splash had never been cast in a single one of the
+   balance numbers this project has quoted. It now casts it when the heir
+   is wearing what the command's `ends` names — read off the content, not
+   off the id, the way the rest of the policy reads `kind`. Over 2,000
+   seeded runs the wizard casts it on a burning heir 222 times and puts the
+   fire out 115 of them. *Source: Absalom Phase 2, increment 2.*
+
+147. **An assertion whose comment claims more than its arithmetic can see
+   is a failed guard-rail, and the fix is the comment as often as the
+   test.** Three of this increment's thirty-five deliberate breaks left the
+   suite green, and all three were this: a splash test that counted a
+   refused command as evidence the flat check can fail (one refusal out of
+   forty seeds was its whole case); a stupefied test that asserted an
+   unbeatable DC 24 fizzled and stayed true when the base DC broke from 5
+   to 0, because DC 19 is also unbeatable; and an off-guard-plus-Shield
+   assertion claiming to prove the same-type rule when a bonus and a
+   penalty sum identically whether or not they share a type. The first two
+   were bad tests. **The third was a true statement the catalogue cannot
+   currently observe**, and the honest fix was to say so in the assertion
+   rather than delete it or pretend: Player Core p.443 bites only when a
+   type holds two bonuses or two penalties, the rule is really pinned by
+   frightened-plus-clumsy, and the disc's bonus type becomes observable the
+   day a second circumstance bonus exists. The pack's own note claimed it
+   too, and no longer does. This extends #34 rather than replacing it.
+   *Source: Absalom Phase 2, increment 2.*
+
 
 ---
 
