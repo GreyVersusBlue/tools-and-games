@@ -53,51 +53,65 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Torchbearer Phase 6, increment 2, "The
-level-up screen, awards, and encounter scaling" (PR #141)**, and **its row is
-gone**: the 2+ row is finished after two increments. A hero with 1,000 XP
-banked takes the next level from the title screen through a second mode of
-the builder — `openLevelUp` clones the build, sets its level one higher, and
-every step writes into `build.advances[level]` alone, showing only what
-`grantsAt` grants. The feat cards, the skill rows and the footer's gate come
-from `featChoices`, `skillIncreaseOptions` and `advanceMissing` in
-`rules.js`, so the whole thing is pinned under Node. Adventures declare
-`"awards"` — whole XP per encounter id on victory, and under `"ending"` — or
-pay a level at their ending when they declare none; paid keys are
-`awarded:<key>` flags in the map the save already carries, so the save shape
-did not move. The kit's runes follow the level, `minLevel`/`maxLevel` sit
-beside `minParty`, and guide §13 promises "correct-feeling PF2e from level 3
-to 10". `test/smoke.mjs` goes from 1,027 checks to 1,093; the browser
-recipe from 7 to 33, and it takes Sera Voss to 5th through the page's own
-buttons. No site version was bumped.
+The last thing that shipped is **Torchbearer Phase 7, increment 1, "The
+campaign record and its gates" (PR #143)**, and **its row is still rank 1**:
+Phase 7 is a 2+ and this is one increment of it.
 
-**Four decisions are locked, 116 to 119.** A level is 1,000 XP, the counter
-starts over, and an adventure with no `awards` is a milestone worth a level
-at its ending (#116). The level-up is a mode of the builder, not a rebuild,
-and a slot with nothing to offer is satisfied empty, because the core pack's
-feats stop at 2nd level (#117). The kit's runes follow the level — +1
-potency from 2nd, striking from 4th, +2 from 10th — and the level-3 sheet
-is unchanged (#118). Encounter scaling reads the hero's level, and the
-guide's promise is rewritten (#119).
+`campaigns` is a pack collection now — an ordered list of adventures, a
+starting level, per-adventure gates on the flags earlier ones set. The flag
+map got a second scope rather than a second map: a bare name like
+`met-maud` is the running adventure's, in the flat map that starts empty
+every time and dies with the adventure; a name carrying a slash, like
+`barrowmoor/bell-answered`, is the campaign record's, folded there when
+Barrowmoor ended. `flagOk(expr, local, campaign)` in the new
+`js/campaign.js` is the only place either is read, so a scene choice's
+`"if"` and a campaign entry's `"if"` are one grammar and two adventures
+that both use `knows-name` cannot collide. An ending that is not a gameover
+folds its flags into the record under `<advId>/<flag>`, minus the
+`awarded:` bookkeeping, and adds itself to `completed`; dying folds
+nothing. The save gained `campaignId`, `campaignFlags` and `completed`, and
+`SAVE_VERSION` did not move.
 
-Twenty-one guard-rails were broken on purpose (#34) and every one exited 1.
-The one worth knowing about is the empty slot's: a Fighter holds two of the
-pack's five class feats by 3rd, so a level-10 build with the other three
-chosen at 4, 6 and 8 has nothing for `class10`, and `advanceMissing` has to
-say the level is complete without it. Demanding a pick there strands the
-hero one screen from the level.
+**The validator proves a gate can open.** A campaign entry's `"if"` has to
+be scoped, has to name an adventure the campaign lists *earlier*, and has
+to name a flag that adventure's own scenes can actually set. A gate that
+can never open is a road the player sees and never walks, and its only
+symptom is a card that stays locked forever. Guide §11 grew a **Campaigns**
+subsection.
+
+**The shipped campaign is "The Bell and the Bridge"**, in
+`packs/thornwake-vigil.json`: Barrowmoor, then Thornwake behind
+`barrowmoor/bell-answered`. All three of Barrowmoor's non-gameover endings
+set that flag, so no real completion strands the hero, and the gameover
+sets nothing. Thornwake's opening scene gained one choice only a hero who
+came off the moor can see. `test/smoke.mjs` goes from 1,093 checks to
+1,159 and drives the campaign from an empty record to a finished one; the
+browser recipe from 33 to 42. No site version was bumped.
+
+**Four decisions are locked, 120 to 123.** A campaign entry is an object,
+never a bare id string (#120). Campaign flags are the same grammar in a
+second scope, keyed by `/`, rather than one flat map shared across a
+campaign (#121). `SAVE_VERSION` stayed at 3, because the three new fields
+are additive and their pre-Phase-7 value is the same "no campaign" `repair`
+computes, so a `migrate` branch would have nothing to do (#122). One
+campaign record per save, kept even when its pack is not loaded in this
+browser, so loading the pack resumes rather than restarts (#123).
+
+Thirty-five guard-rails were broken on purpose (#34) and every one exited
+1, plus one in the browser recipe. The one worth knowing about is the
+gate's reachability check: a campaign whose second entry gates on a flag
+the first adventure never sets validates fine and then shows a locked card
+that nothing can ever open. Proving the flag is one an `onEnter.flag` or a
+`flagOnce` actually writes is what turns that into a load-time error.
 
 **`npm run games torchbearer` ran in the container this round, under
-`xvfb-run`**, and passed 33 of 33. `npm install` in `Tools/board-check` is
+`xvfb-run`**, and passed 42 of 42. `npm install` in `Tools/board-check` is
 still required first — `puppeteer-core` is not vendored.
 
-**Seven bullets went into Torchbearer's standing backlog,** under a new
-**Levelling** heading: no spell step at level-up, the core pack's feats
-running dry, the adventure picker comparing its "Level 3" to nothing,
-companions that never level, XP past 10th, a level that cannot be
-revisited, and the fist wearing the potency rune.
+**No bullets went into a standing backlog this round, and no question was
+answered** — none stood in front of the row.
 
-Before that: **Torchbearer Phase 6, increment 1 (PR #139)**, **Phase 5 (PR #137)**, **Phase 4 (PR #135)**, **Phase 3 (PR #133)**, **Phase 2, increment 2 (PR #131)**, **increment 1 (PR #129)**, **Torchbearer Phase 1 (PR #127)**, **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
+Before that: **Torchbearer Phase 6, increment 2 (PR #141)**, **increment 1 (PR #139)**, **Phase 5 (PR #137)**, **Phase 4 (PR #135)**, **Phase 3 (PR #133)**, **Phase 2, increment 2 (PR #131)**, **increment 1 (PR #129)**, **Torchbearer Phase 1 (PR #127)**, **Hearth Phase 8 and Fourth Quarter Phase 5 (PR #125)**, **Hearth Phase 7 (PR #123)**, **the three increments of Hearth Phase 6, "Scarcity that bites"
 (PRs #117, #119 and #121)**,
 **Hearth Phase 5 (PR #115)**, **Hearth Phase 4 (PR #114)**, **Hearth Phases 2 and 3 (PR
 #112)**, **Bell to Bell Phase 8 and Hearth Phase 1 (PR #111)**, **Bell to
@@ -110,9 +124,9 @@ board, tool or page change.
 
 **One of the four shared things moved this round, in the same commit as the
 project change: `Tools/board-check/play-games.mjs`, whose Torchbearer recipe
-grew from 7 checks to 33. The same two site-wide checks are still red on
+grew from 33 checks to 42. The same two site-wide checks are still red on
 `main` and were red before this branch existed** (re-run from the same
-container: 1407 units checked, 2 broken, and six social pages out of
+container: 1,406 units checked, 2 broken, and six social pages out of
 sync)**:** `check-integrity.mjs` fails on
 `Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
 inline `<script type="module">`, which is a syntax error in a module) and on
@@ -120,29 +134,35 @@ inline `<script type="module">`, which is a syntax error in a module) and on
 `fonts.gstatic.com`, against the zero-offsite rule). `social:check` reports
 six pages out of sync with the board. None of the three is ranked below yet;
 all three are somebody's next quarter-session. What else moved outside the
-project: `CLAUDE.md`'s locked-decision count, 115 to 119.
+project: `CLAUDE.md`'s locked-decision count, 119 to 123.
 
 **121 ranked items.** 59 of them are phases in one of the ten project
 `WISHLIST.md` files; the other 62 are standalone, and live in Tier 2 below.
 Beyond the ranked list there are 253 open bullets in the eleven wishlists'
 standing backlogs and 48 open questions for Devon — 422 open items in all.
-Seven bullets were added to Torchbearer's standing backlog this round; no
-question was answered, because none stood in front of the row. Bell to Bell
+No bullet was added and no question answered this round. Bell to Bell
 has no ranked rows left: all eight of its phases have shipped. Hearth has
 none either. Torchbearer has two left, ranks 1 and 2, and both are arc two.
 
-**Pick up rank 1: `Projects/torchbearer` Phase 7 — The campaign spine (Opus
-5, size 2+).** A 2+ row is the whole batch and will not finish in one
-session: do one increment, ship it, and leave the row in place with its text
-rewritten. The wishlist row is a campaign record as a new pack collection
-(an ordered list of adventure ids, a starting level, per-adventure gates on
-flags earlier ones set), treasure by level with gold in the save and a
-`"kind": "shop"` scene, downtime and exploration between and within
-adventures, and a two-adventure campaign driven end to end in `smoke.mjs`.
-Phase 6 left it everything it leans on: `build.level`, `App.xp` and the
-`awards` an adventure pays, `App.flags` as a flat saved map, and
-`levelDC`. The first increment is the campaign record and the gates; gold
-and the shop are the second. The suite is 1,093 checks and runs in CI.
+**Pick up rank 1 again: `Projects/torchbearer` Phase 7 — The campaign spine
+(Opus 5, size 2+), increment 2.** A 2+ row is the whole batch and will not
+finish in one session: do one increment, ship it, and leave the row in place
+with its text rewritten. **Increment 1 shipped in PR #143** — the campaign
+record, the two-scope flag grammar and the gates, with `js/campaign.js`, the
+`campaigns` collection, three additive save fields and The Bell and the
+Bridge running Barrowmoor into Thornwake.
+
+**Increment 2 is treasure, gold and the shop:** an item `level` and `price`,
+a per-adventure budget following Paizo's table, gold that persists in the
+save beside `campaignId`, and a `"kind": "shop"` scene to spend it in — buy
+from a list the adventure declares, sell at half. Everything it leans on is
+in place: `build.level` and `kitAt` say what the kit already assumes for
+free, `App.flags` and the campaign record carry state between adventures,
+and the save's repair is where `gold` and `inventory` land. Downtime and
+exploration are the increment after that; at the checks end the phase still
+owes a scene-level walk of both adventures under Node and the browser recipe
+carried one beat past the fight it stops at. The suite is 1,159 checks and
+runs in CI.
 
 Two things the CI rows below now know that they did not: `hearth-ci.yml`,
 `fourth-quarter-ci.yml` and `torchbearer-ci.yml` are the third, fourth and
@@ -194,7 +214,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 7 — The campaign spine | `Projects/torchbearer` | 2+ | Opus 5 | `claude/backlog-ranked-batch-x4dlj6` | [WISHLIST.md Phase 7](Projects/torchbearer/WISHLIST.md#phase-7--the-campaign-spine) |
+| 1 | Phase 7 — The campaign spine — record and gates shipped (PR #143); treasure, gold and the shop are increment 2 | `Projects/torchbearer` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/torchbearer/WISHLIST.md#phase-7--the-campaign-spine) |
 | 2 | Phase 8 — The contract, and its first new author | `Projects/torchbearer` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/torchbearer/WISHLIST.md#phase-8--the-contract-and-its-first-new-author) |
 | 3 | Phase 1 — The interrupt point | `Projects/absalom-inheritance` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/absalom-inheritance/WISHLIST.md#phase-1--the-interrupt-point) |
 | 4 | Phase 2 — Conditions that expire | `Projects/absalom-inheritance` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/absalom-inheritance/WISHLIST.md#phase-2--conditions-that-expire) |
