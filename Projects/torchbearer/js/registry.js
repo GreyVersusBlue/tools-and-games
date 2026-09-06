@@ -11,10 +11,12 @@
 // can fail; the bundled library in ../packs/ is progressive enhancement and can
 // afford to.
 
+import { flagsSetBy, isScoped, SCOPE } from "./campaign.js";
+
 /* ---------- Content Registry ---------- */
 export const Registry = {
   packs: [], ancestries: {}, backgrounds: {}, classes: {}, feats: {}, spells: {}, items: {},
-  monsters: {}, companions: {}, adventures: {},
+  monsters: {}, companions: {}, adventures: {}, campaigns: {},
   loadPack(pack) {
     const errs = Validator.validate(pack, this);
     if (errs.length) throw new Error("Content pack rejected:\n• " + errs.join("\n• "));
@@ -22,7 +24,7 @@ export const Registry = {
     put(this.ancestries, pack.ancestries); put(this.backgrounds, pack.backgrounds);
     put(this.classes, pack.classes); put(this.feats, pack.feats); put(this.spells, pack.spells);
     put(this.items, pack.items); put(this.monsters, pack.monsters); put(this.companions, pack.companions);
-    put(this.adventures, pack.adventures);
+    put(this.adventures, pack.adventures); put(this.campaigns, pack.campaigns);
     this.packs.push(pack.pack);
     return pack.pack;
   },
@@ -36,7 +38,7 @@ export function emptyRegistry() {
   return {
     ...Registry,
     packs: [], ancestries: {}, backgrounds: {}, classes: {}, feats: {}, spells: {},
-    items: {}, monsters: {}, companions: {}, adventures: {}
+    items: {}, monsters: {}, companions: {}, adventures: {}, campaigns: {}
   };
 }
 
@@ -92,6 +94,7 @@ export const Validator = {
     checkIds(pack.items, "items", ["category"]);
     checkIds(pack.monsters, "monsters", ["ac", "hp", "attacks", "saves"]);
     checkIds(pack.adventures, "adventures", ["start", "scenes"]);
+    checkIds(pack.campaigns, "campaigns", ["adventures"]);
 
     // added Phase 3: `reactions` and `reach` are the two fields §10 grew when
     // the trigger bus landed. An unknown reaction id is exactly as dead as an
@@ -122,12 +125,14 @@ export const Validator = {
     // Everything the pack brings with it, plus everything already loaded.
     // A pack may lean on core ids (that is the whole point of §1's "IDs are
     // global"), so an id counts as real if either side has it.
-    const known = (collection, id) => {
-      if (!id) return false;
-      if ((pack[collection] || []).some(o => o.id === id)) return true;
+    const find = (collection, id) => {
+      if (!id) return null;
+      const mine = (pack[collection] || []).find(o => o.id === id);
+      if (mine) return mine;
       const map = registry && registry[collection];
-      return !!(map && map[id]);
+      return (map && map[id]) || null;
     };
+    const known = (collection, id) => !!find(collection, id);
 
     (pack.adventures || []).forEach(a => {
       const scenes = a.scenes || {};
@@ -197,6 +202,69 @@ export const Validator = {
           });
         }
       }
+    });
+
+    // added Phase 7: `campaigns` — an ordered list of adventures with gates on
+    // the flags earlier ones set. Every check here exists because the failure
+    // it prevents is silent rather than loud: a campaign whose gate names a
+    // flag nothing sets is not an error at load, it is a road the player can
+    // see and can never walk, and the only symptom is a locked card that never
+    // unlocks.
+    (pack.campaigns || []).forEach(c => {
+      if (c.level !== undefined && (!Number.isInteger(c.level) || c.level < 1)) {
+        errs.push(`Campaign "${c.id}": "level" is the level heroes start it at and must be a whole number of 1 or more.`);
+      }
+      if (c.adventures !== undefined && !Array.isArray(c.adventures)) {
+        errs.push(`Campaign "${c.id}": "adventures" must be an array of {"adventure": id} entries, in order.`);
+        return;
+      }
+      // Array-or-nothing rather than `c.adventures || []`: the validator's job
+      // is to report a malformed pack, never to throw on one, and `{}.forEach`
+      // is not a function.
+      const list = Array.isArray(c.adventures) ? c.adventures : [];
+      if (Array.isArray(c.adventures) && list.length === 0) {
+        errs.push(`Campaign "${c.id}": "adventures" is empty, so the campaign has nothing to play.`);
+      }
+      const seen = [];
+      list.forEach((e, i) => {
+        if (!e || typeof e !== "object" || Array.isArray(e) || typeof e.adventure !== "string") {
+          errs.push(`Campaign "${c.id}": adventures[${i}] must be an object naming one adventure, as {"adventure": "some-id"}.`);
+          return;
+        }
+        const adv = find("adventures", e.adventure);
+        if (!adv) {
+          errs.push(`Campaign "${c.id}": adventures[${i}] names unknown adventure "${e.adventure}".`);
+        }
+        if (seen.includes(e.adventure)) {
+          errs.push(`Campaign "${c.id}": adventure "${e.adventure}" is listed twice, so "finished" could not mean one of them.`);
+        }
+        if (e.locked !== undefined && typeof e.locked !== "string") {
+          errs.push(`Campaign "${c.id}": adventures[${i}] "locked" must be a string — the one line the board prints over a closed road.`);
+        }
+        if (e.if !== undefined) {
+          if (typeof e.if !== "string" || !e.if) {
+            errs.push(`Campaign "${c.id}": adventures[${i}] "if" must be a flag expression, e.g. "some-adventure/some-flag".`);
+          } else {
+            const name = e.if.startsWith("!") ? e.if.slice(1) : e.if;
+            if (!isScoped(name)) {
+              errs.push(`Campaign "${c.id}": adventures[${i}] gate "${e.if}" is unscoped. A campaign gate reads the record, so it names the adventure too: "earlier-adventure${SCOPE}some-flag".`);
+            } else {
+              const at = name.indexOf(SCOPE);
+              const fromId = name.slice(0, at), flag = name.slice(at + SCOPE.length);
+              if (!seen.includes(fromId)) {
+                errs.push(`Campaign "${c.id}": adventures[${i}] gate "${e.if}" reads adventure "${fromId}", which this campaign does not list before it, so the gate can never open.`);
+              } else {
+                const from = find("adventures", fromId);
+                const can = from ? flagsSetBy(from) : [];
+                if (!can.includes(flag)) {
+                  errs.push(`Campaign "${c.id}": adventures[${i}] gate "${e.if}" reads a flag "${fromId}" never sets (it sets: ${can.join(", ") || "nothing"}).`);
+                }
+              }
+            }
+          }
+        }
+        if (typeof e.adventure === "string") seen.push(e.adventure);
+      });
     });
 
     // added session 8: a background's `feat` is documented in §3 as "must be

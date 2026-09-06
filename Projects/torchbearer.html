@@ -537,6 +537,8 @@ import { createTorchSlot } from "./torchbearer/js/save.js";
 import { newCombat, heroCombatant as buildHero, companionCombatant as buildCompanion, REACTIONS } from "./torchbearer/js/combat.js";
 import { esc, cap } from "./torchbearer/js/text.js";
 import { fetchLibrary, fetchPack } from "./torchbearer/js/library.js";
+import { flagOk, foldFlags, progress as campaignRows, nextAdventure, isComplete as campaignDone }
+  from "./torchbearer/js/campaign.js";
 
 /* ================= CORE CONTENT PACK =================
    This object uses the exact same schema as external JSON
@@ -1172,15 +1174,15 @@ const ADVENTURE_PACK = {
   {"text":"Fit the saint's original clapper and ring the bell once, correctly — a true end of service.","if":"has-clapper","goto":"ending-toll"},
   {"text":"Climb the tower and cut the bell down into the mere, where it can call no one.","goto":"ending-silence"}]},
 
-"ending-dawn":{"kicker":"Epilogue","title":"The Quiet Passage","ending":true,
+"ending-dawn":{"kicker":"Epilogue","title":"The Quiet Passage","ending":true,"onEnter":{"flag":"bell-answered"},
  "text":["You speak the old dismissal into the crypt's dark — the call, the response, the naming, the release — and the chapel exhales. It is nothing you can see, exactly; it is more that the water stops feeling like held breath. Out in the yard, the open graves have gone still. The moor begins, quietly, to sound like a moor again: rain, reeds, one unbothered heron.","In Lantern Cross they take the salt off the thresholds within the week. Maud stands you drinks you never manage to pay for; Pell the sexton tells everyone he told you everything. Brother Aldous stays a month to reconsecrate the yard, and Wren nails her father's map above the bar, where it belongs.","They still hear the bell sometimes, villagers will tell you, years later. But only on feast days, only at dawn, and only ever one warm toll — the sound of a service ending exactly as it should.","⭐ THE BEST ENDING — the parish laid to rest with its own words."],
  "choices":[{"text":"Finish the chronicle.","goto":"END"}]},
 
-"ending-toll":{"kicker":"Epilogue","title":"One True Toll","ending":true,
+"ending-toll":{"kicker":"Epilogue","title":"One True Toll","ending":true,"onEnter":{"flag":"bell-answered"},
  "text":["It takes both companions and an hour of profanity to hang the silver clapper, and then you ring the bell of Saint Verity once, properly, for the first time in forty years. The sound is nothing like the summons that haunted the moor — that was a hungry sound, and this is a full one. It rolls across Barrowmoor like light. In the yard below, the risen dead — those still standing — simply lie back down, unhurried, like a congregation that has finally, finally been told it may go.","The bell will ring true or not at all now, and something in the moor knows it. Lantern Cross sleeps soundly. But the mere keeps the chapel, and Maud still lays a line of salt on her sill each autumn — not from fear, she insists. From respect.","🔔 A GOOD ENDING — the summons answered with the right voice."],
  "choices":[{"text":"Finish the chronicle.","goto":"END"}]},
 
-"ending-silence":{"kicker":"Epilogue","title":"The Drowned Voice","ending":true,
+"ending-silence":{"kicker":"Epilogue","title":"The Drowned Voice","ending":true,"onEnter":{"flag":"bell-answered"},
  "text":["You take an axe to forty years of rope and rotted beam, and the bell of Saint Verity goes down into the black mere with a sound like a struck jaw — one enormous, strangled clang, then water, then nothing. The tower stands mute. The graves in the yard stay shut, because nothing calls them.","It works. Everyone in Lantern Cross agrees it worked, in the flat voices of people who have chosen not to discuss the alternative. The moor is quiet now — genuinely quiet, quieter than moors are — and on still nights, villagers walking the causeway report a pressure on the ear, as if something very deep beneath the water is tolling with all its strength and cannot make itself heard.","Maud doubles the salt. It's probably nothing. It is, everyone agrees, probably nothing.","🌑 AN ENDING — silence purchased, not earned."],
  "choices":[{"text":"Finish the chronicle.","goto":"END"}]},
 
@@ -2048,6 +2050,11 @@ const Combat = Object.assign(newCombat(), {
 const App = {
   hero:null, heroCb:null, companions:[], adv:null, sceneId:null, flags:{}, chronicle:[],
   dailyLuckUsed:false, xp:0, slot:null, library:[],
+  /* Phase 7, and the save's three new fields. `campaignId` names the record
+     the hero is walking, or null for a one-shot; `campaignFlags` is what its
+     finished adventures left behind, under `<advId>/<flag>`; `completed` is
+     which of them are done. `campaignRecord()` turns the id into the object. */
+  campaignId:null, campaignFlags:{}, completed:[],
 
   init(){
     try{ Registry.loadPack(CORE_PACK); Registry.loadPack(ADVENTURE_PACK); }
@@ -2059,7 +2066,10 @@ const App = {
        with no explanation. */
     this.slot=createTorchSlot();
     document.getElementById("btn-new-hero").onclick=()=>Builder.open();
-    document.getElementById("btn-begin-adv").onclick=()=>this.chooseAdventure();
+    /* Mid-campaign the button is the board, not the picker: the road the hero
+       is already on is what "begin" means then, and the picker is one button
+       further in. */
+    document.getElementById("btn-begin-adv").onclick=()=>{ if(this.campaignRecord()) this.showCampaign(); else this.chooseAdventure(); };
     document.getElementById("btn-view-hero").onclick=()=>this.modal("Hero Sheet",`<div class="parchment" style="padding:16px 20px">${sheetHTML(this.hero,true)}</div>`,[{label:"Close"}]);
     document.getElementById("btn-resume").onclick=()=>this.resume();
     document.getElementById("btn-level-up").onclick=()=>Builder.openLevelUp();
@@ -2134,7 +2144,11 @@ const App = {
     else { const L=this.hero.level;
       st.innerHTML=`<b>${esc(this.hero.name)}</b> · ${esc(this.hero.ancestry)} ${esc(this.hero.className)} ${L} · `+
         (L>=MAX_LEVEL? `${this.xp} XP banked; the road ends at ${ord(MAX_LEVEL)} level`
-         : `${this.xp} / ${XP_PER_LEVEL} XP toward level ${L+1}`+(ready?" — <b>ready to level</b>":"")); }
+         : `${this.xp} / ${XP_PER_LEVEL} XP toward level ${L+1}`+(ready?" — <b>ready to level</b>":""));
+      const road=this.campaignRecord();
+      if(road){ const rows=campaignRows(road,this.campaignState());
+        st.innerHTML+=`<br>On the road: <b>${esc(road.name)}</b> — ${rows.filter(r=>r.done).length} of ${rows.length} finished`; } }
+    document.getElementById("btn-begin-adv").textContent=this.campaignRecord()?"🗺 The Road":"🗺 Begin Adventure";
     this.renderLibrary();
     const pl=document.getElementById("pack-list");
     pl.innerHTML="Loaded content: "+Registry.packs.map(p=>`<span class="pk">${esc(p.name)} <span class="small">v${esc(p.version||"1")}</span></span>`).join("")
@@ -2199,15 +2213,79 @@ const App = {
   party(){ return [this.heroCombatant(),...this.companions]; },
 
   /* ---------- adventure flow ---------- */
+  /* The record the save names, or null — including when the save names a
+     campaign whose pack is not loaded here. `campaignId` is the field; the
+     record is looked up every time rather than cached, so loading the pack
+     later is all it takes to get the road back. */
+  campaignRecord(){ return this.campaignId? (Registry.campaigns[this.campaignId]||null) : null; },
+  /** The two saved fields js/campaign.js reads, and nothing else. */
+  campaignState(){ return {completed:this.completed, campaignFlags:this.campaignFlags}; },
   chooseAdventure(){
+    const camps=Registry.list(Registry.campaigns);
     const advs=Registry.list(Registry.adventures);
+    const campHTML=!camps.length?"":`<div class="section-sub">Campaigns</div>
+      <div class="small" style="margin-bottom:8px">A run of adventures in order. What one leaves behind, the next can read.</div>
+      <div class="card-grid">${camps.map(c=>{
+        const rows=campaignRows(c,this.campaignState());
+        const here=this.campaignId===c.id;
+        const done=here?rows.filter(r=>r.done).length:0;
+        return `<div class="opt-card" data-camp="${esc(c.id)}"><h3>${esc(c.name)}</h3>
+          <div class="meta">${rows.length} adventures · starts at level ${esc(String(c.level||CHAR_LEVEL))}${here?` · ${done} of ${rows.length} finished`:""}</div>
+          <div class="desc">${esc(c.blurb||"")}</div></div>`;}).join("")}</div>
+      <div class="section-sub" style="margin-top:18px">One-shots</div>`;
     const body=advs.map(a=>`<div class="opt-card" data-id="${a.id}"><h3>${esc(a.name)}</h3>
       <div class="meta">Level ${a.level} adventure</div><div class="desc">${esc(a.blurb||"")}</div></div>`).join("");
-    this.modal("Choose an Adventure",`<div class="card-grid">${body}</div>
+    this.modal("Choose a Road",`${campHTML}<div class="card-grid">${body}</div>
       <div class="small" style="margin-top:10px;font-style:italic">More adventures are on The Shelf, at the bottom of the title screen.</div>`,[{label:"Cancel"}]);
-    document.querySelectorAll("#modal-body .opt-card").forEach(el=>el.onclick=()=>{ this.closeModal(); this.startAdventure(el.dataset.id); });
+    document.querySelectorAll("#modal-body [data-camp]").forEach(el=>el.onclick=()=>{ this.closeModal(); this.startCampaign(el.dataset.camp); });
+    document.querySelectorAll("#modal-body [data-id]").forEach(el=>el.onclick=()=>{ this.closeModal(); this.startAdventure(el.dataset.id); });
   },
-  startAdventure(id){
+  /* One campaign record at a time (locked decision #123). Picking a different
+     campaign, or a one-shot, throws the current one away — the alternative is a
+     save carrying several half-finished campaigns and a UI that has to explain
+     which one a folded flag belongs to. Confirm first, because the record is
+     the only thing that remembers a finished adventure. */
+  leaveCampaign(){
+    if(!this.campaignId&&!this.completed.length) return true;
+    const c=this.campaignRecord();
+    if(this.completed.length&&!confirm(`Leave ${c?`"${c.name}"`:"the campaign in progress"}? What its finished adventures left behind is forgotten.`)) return false;
+    this.campaignId=null; this.campaignFlags={}; this.completed=[];
+    return true;
+  },
+  startCampaign(id){
+    if(!Registry.campaigns[id]) return;
+    if(this.campaignId!==id&&!this.leaveCampaign()) return;
+    this.campaignId=id;
+    this.autosave();
+    this.showCampaign();
+  },
+  /** The campaign board: every road, in order, with why a closed one is closed. */
+  showCampaign(){
+    const c=this.campaignRecord(); if(!c) return;
+    const rows=campaignRows(c,this.campaignState());
+    const body=rows.map(r=>{
+      const a=Registry.adventures[r.advId]||{name:r.advId,blurb:""};
+      const walkable=r.open&&!r.done;
+      const state=r.done?"✦ finished":r.open?"▸ take this road":"🔒 closed";
+      const desc=r.done?"This one is behind you. What you did in it, the roads after it can read."
+        :r.open?(a.blurb||""):(r.locked||"Something earlier on this road has to happen first.");
+      return `<div class="opt-card ${walkable?"":"disabled"}" ${walkable?`data-road="${esc(r.advId)}"`:""} aria-disabled="${walkable?"false":"true"}">
+        <h3>${esc(a.name)}</h3><div class="meta">${state}</div><div class="desc">${esc(desc)}</div></div>`;
+    }).join("");
+    const finished=campaignDone(c,this.campaignState());
+    this.modal(esc(c.name),
+      `<p class="small">${esc(c.blurb||"")}</p><div class="card-grid">${body}</div>
+       ${finished?`<div class="rule"></div><p style="text-align:center;font-style:italic">— ${esc(c.name)} is finished —</p>`:""}`,
+      [{label:"Another road",fn:()=>this.chooseAdventure()},{label:"Close"}]);
+    document.querySelectorAll("#modal-body [data-road]").forEach(el=>el.onclick=()=>{ this.closeModal(); this.startAdventure(el.dataset.road,true); });
+  },
+  /**
+   * `onRoad` is true only when the campaign board sent us here. A one-shot
+   * picked off the picker leaves the campaign first, so the record and
+   * `this.adv` can never disagree about which campaign an ending folds into.
+   */
+  startAdventure(id,onRoad){
+    if(!onRoad&&!this.leaveCampaign()) return;
     this.adv=Registry.adventures[id];
     this.flags={}; this.companions=[]; this.heroCb=null; this.dailyLuckUsed=false;
     this.chronicle=[];
@@ -2235,7 +2313,7 @@ const App = {
     }).join("");
   },
   gotoScene(id){
-    if(id==="END"){ this.toTitle(); return; }
+    if(id==="END"){ this.leaveAdventure(); return; }
     const sc=this.adv.scenes[id];
     if(!sc){ this.toast("Missing scene: "+id); return; }
     this.sceneId=id;
@@ -2250,7 +2328,7 @@ const App = {
     }
     // An ending pays what the adventure awards for it — a level, unless the
     // adventure says otherwise. A death scene is an ending too, and pays nothing.
-    if(sc.ending&&!sc.gameover) this.award("ending","finishing "+this.adv.name);
+    if(sc.ending&&!sc.gameover){ this.award("ending","finishing "+this.adv.name); this.finishOnRoad(); }
     this.renderGameChrome();
     const choiceHTML=(sc.choices||[]).map((c,i)=>{
       if(c.if&&!this.flagOk(c.if)) return "";
@@ -2274,7 +2352,10 @@ const App = {
     document.querySelectorAll(".choice-btn").forEach(el=>el.onclick=()=>this.choose(sc,+el.dataset.i));
     if(!sc.gameover) this.autosave();
   },
-  flagOk(expr){ return expr.startsWith("!")? !this.flags[expr.slice(1)] : !!this.flags[expr]; },
+  /* One expression language, two scopes (locked #121): a bare name is this
+     adventure's flag, and `some-adventure/its-flag` is the campaign record's.
+     The arithmetic is in js/campaign.js so a test can reach it. */
+  flagOk(expr){ return flagOk(expr,this.flags,this.campaignFlags); },
   companionPickerHTML(){
     const offered=(this.adv.companionsOffered||[]);
     return `<div class="section-sub" style="margin-top:18px">Traveling Companions</div>
@@ -2362,6 +2443,34 @@ const App = {
     this.autosave();
     return xp;
   },
+  /* ---------- the campaign record ----------
+     An adventure that ends inside a campaign writes itself into the record:
+     its flags fold in under `<advId>/<flag>` with the `awarded:` bookkeeping
+     dropped, and its id joins `completed`. A gameover never reaches here —
+     gotoScene tests `!sc.gameover` — so dying on a road leaves the road
+     exactly as it was. */
+  finishOnRoad(){
+    const c=this.campaignRecord();
+    if(!c||!this.adv) return;
+    const rows=campaignRows(c,this.campaignState());
+    if(!rows.some(r=>r.advId===this.adv.id)) return;
+    this.campaignFlags=foldFlags(this.adv.id,this.flags,this.campaignFlags);
+    if(!this.completed.includes(this.adv.id)) this.completed.push(this.adv.id);
+    if(campaignDone(c,this.campaignState())){ this.log(`<b>${esc(c.name)}</b> is finished.`,"narr"); return; }
+    const next=nextAdventure(c,this.campaignState());
+    if(next) this.log(`The road goes on: <b>${esc((Registry.adventures[next]||{name:next}).name)}</b> is open.`,"narr");
+  },
+  /* `goto: "END"` was `toTitle()` and nothing else. On a campaign road it drops
+     the finished adventure and reopens the board, so the next one is one click
+     away instead of three. */
+  leaveAdventure(){
+    const c=this.campaignRecord();
+    this.adv=null; this.sceneId=null;
+    /* Save before toTitle: refreshTitle reads the slot to decide whether Resume
+       is live, so saving after it would grey the button against the old scene. */
+    this.autosave(); this.toTitle();
+    if(c) this.showCampaign();
+  },
   /** Take the level the builder's level-up mode assembled. XP is spent here,
       not in the builder. The hero's in-fight state survives the new sheet:
       potions and the wounded value carry over, HP and pools refill, because
@@ -2388,6 +2497,7 @@ const App = {
   snapshot(){
     return {build:this.hero?this.hero.build:null,
       advId:this.adv?this.adv.id:null, sceneId:this.sceneId, flags:this.flags,
+      campaignId:this.campaignId, campaignFlags:this.campaignFlags, completed:this.completed,
       dailyLuckUsed:this.dailyLuckUsed, xp:this.xp,
       hero: this.heroCb? {hp:this.heroCb.hp,wounded:this.heroCb.wounded,resources:this.heroCb.resources}:null,
       companions:this.companions.map(c=>({id:c.id.replace("comp-",""),hp:c.hp})),
@@ -2434,6 +2544,12 @@ const App = {
         cb.wounded=s.hero.wounded;
         cb.resources=s.hero.resources; }
       this.flags=s.flags; this.dailyLuckUsed=s.dailyLuckUsed; this.xp=s.xp;
+      /* The campaign record survives a browser that has not loaded its pack:
+         the id, the folded flags and the finished list all come back, and
+         `campaignRecord()` simply reads null until the pack arrives. Wiping
+         them here would turn "load the pack and pick the campaign again" into
+         "start the campaign over". */
+      this.campaignId=s.campaignId; this.campaignFlags=s.campaignFlags; this.completed=s.completed;
       // A companion from an unloaded pack costs you that companion, not the save.
       const lostComps=[];
       this.companions=s.companions.map(c=>{
@@ -2473,7 +2589,7 @@ const App = {
       this.refreshTitle();
       this.modal("Content Loaded",`<p><b>${esc(meta.name)}</b> v${esc(meta.version||"1")} loaded successfully.</p>
         <p class="small">${esc(meta.description||"")}</p>
-        <p class="small">Added: ${["ancestries","backgrounds","classes","feats","spells","items","monsters","companions","adventures"].map(k=>data[k]&&data[k].length?data[k].length+" "+k:null).filter(Boolean).join(", ")||"nothing (empty pack)"}.</p>`,[{label:"Splendid"}]);
+        <p class="small">Added: ${["ancestries","backgrounds","classes","feats","spells","items","monsters","companions","adventures","campaigns"].map(k=>data[k]&&data[k].length?data[k].length+" "+k:null).filter(Boolean).join(", ")||"nothing (empty pack)"}.</p>`,[{label:"Splendid"}]);
       return true;
     }catch(err){
       this.modal("Content Rejected",`<p>The pack failed validation:</p><pre class="small" style="white-space:pre-wrap">${esc(err.message)}</pre>

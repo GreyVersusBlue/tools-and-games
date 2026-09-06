@@ -8,7 +8,7 @@ hooks; `cooperative-nature`'s +4 is the third. Saves read conditional `bonus`
 entries off the sheet by trait, so Ancient-Blooded Dwarf and Gutsy Halfling do
 something for the first time. `prone` could be applied by nothing and removed
 by nothing before this phase, and now Trip applies it and Stand takes it off.
-`node Projects/torchbearer/test/smoke.mjs` is green at **1,093 passed, 0
+`node Projects/torchbearer/test/smoke.mjs` is green at **1,159 passed, 0
 failed**, up from 947 — and it runs in CI, on
 `.github/workflows/torchbearer-ci.yml`. **Phase 6 — A hero who levels** has
 shipped in two increments: level is a field on the build, every derived
@@ -18,8 +18,12 @@ level from the title screen through a second mode of the builder. An
 adventure pays XP through `awards`, or a whole level at its ending when it
 declares none. Foes scale by `minLevel`/`maxLevel` beside `minParty`, the
 kit's runes follow the level, and guide §13 now promises "correct-feeling
-PF2e from level 3 to 10". Arc two's next row is **Phase 7 — The campaign
-spine**, a 2+ on **Claude Opus 5**, a batch of its own.
+PF2e from level 3 to 10". **Phase 7 — The campaign spine** has shipped its
+first increment: `campaigns` is a pack collection, a save carries
+`campaignId`, `campaignFlags` and `completed`, and "The Bell and the Bridge"
+runs Barrowmoor into Thornwake behind a gate the validator proves can open.
+What is left of Phase 7 is treasure, gold and a shop scene, and downtime and
+exploration — still a 2+ on **Claude Opus 5**, still a batch of its own.
 
 ## What it is
 
@@ -803,10 +807,22 @@ breather `finish(true)` grants, and nothing an author can write that spends
 time rather than actions. This is the difference between an engine that runs a
 one-shot and one that runs a table's year.
 
-- [ ] **A campaign record.** `campaigns` as a new pack collection: an ordered
-  list of adventure ids, a starting level, per-adventure gates on flags earlier
-  ones set. `App.flags` is already a flat saved map; scope it so a campaign can
-  read what a previous adventure wrote. Validator and guide §11 grow with it.
+- [x] **A campaign record.** Shipped as increment 1. `campaigns` is a pack
+  collection: `{"id","name","level","blurb","adventures":[{"adventure","if",
+  "locked"}]}`, entries always objects (locked #120). The flag map got a second
+  scope rather than a second map (locked #121): a bare name is the running
+  adventure's flag, `barrowmoor/bell-answered` is the campaign record's, and
+  `flagOk` in the new `js/campaign.js` reads whichever the name asks for — so a
+  campaign entry's gate and a scene choice's `"if"` are one grammar and two
+  adventures using `knows-name` cannot collide. An ending that is not a
+  gameover folds its flags into the record under `<advId>/<flag>`, minus the
+  `awarded:` bookkeeping, and adds itself to `completed`. The validator proves
+  a gate can open: scoped, naming an adventure listed earlier, naming a flag
+  that adventure's own scenes set. `SAVE_VERSION` stayed at 3 (locked #122) —
+  the three new fields are additive and their pre-Phase-7 value is what
+  `repair` computes anyway. One record per save (locked #123). Guide §11 grew
+  a **Campaigns** subsection; `smoke.mjs` went 1,093 → 1,159 and drives the
+  shipped campaign from an empty record to a finished one.
 - [ ] **Treasure by level.** An item `level` and `price`, a per-adventure budget
   following Paizo's table, gold that persists in the save, and a
   `"kind": "shop"` scene to spend it in — buy from a list the adventure
@@ -816,9 +832,11 @@ one-shot and one that runs a table's year.
   Search / Avoid Notice / Defend, each modifying the next encounter's opening
   state the way `surprise-round` does — that mechanism exists, it just has one
   hardcoded flag.
-- [ ] **Checks at both ends:** a two-adventure campaign driven end to end in
-  `smoke.mjs`, and the `npm run games` recipe extended one beat past the fight
-  it currently stops at.
+- [ ] **Checks at both ends:** the campaign *record* is driven end to end in
+  `smoke.mjs` already (increment 1) and the `npm run games` recipe opens the
+  board and reads the locked road. What is still owed is a scene-level walk of
+  both adventures under Node, and the browser recipe carried one beat past the
+  fight it currently stops at.
 
 *Leans on:* Phase 6's level record, `App.gotoScene`, `resolveCheck`. *Save:*
 additive — `campaignId`, `gold`, `inventory`, completed-adventure list.

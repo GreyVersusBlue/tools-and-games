@@ -25,7 +25,7 @@ Every pack is one JSON object. Only `pack` is required; include whichever collec
     "description": "One line shown on the load confirmation and title screen."
   },
   "ancestries": [], "backgrounds": [], "classes": [], "feats": [],
-  "spells": [], "items": [], "monsters": [], "companions": [], "adventures": []
+  "spells": [], "items": [], "monsters": [], "companions": [], "adventures": [], "campaigns": []
 }
 ```
 
@@ -335,6 +335,27 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 * **Scaling:** foes with `"minParty": 2` (or 3) only spawn at that party size; foes with `"minLevel"` or `"maxLevel"` only spawn when the hero's level is inside the range (both bounds inclusive, either alone is fine). All three are whole numbers of 1 or more, and a `minLevel` above its `maxLevel` is rejected. Budget roughly: solo hero ≈ 2 low-level foes + 1 mid; full party of 3 ≈ a Moderate/Severe encounter by Paizo XP budget. A hero who has played the three shipped one-shots is level 6 and will walk through a level-3 encounter unless something is gated on `minLevel`.
 * `bossFlags` keys are story flags; effects hit the first foe whose monster has `"boss": true`.
 
+**Campaigns** — a run of adventures, in order:
+
+```json
+"campaigns": [
+  { "id": "bell-and-bridge", "name": "The Bell and the Bridge", "level": 3,
+    "blurb": "Shown on the picker and at the top of the campaign board.",
+    "adventures": [
+      { "adventure": "barrowmoor" },
+      { "adventure": "thornwake",
+        "if": "barrowmoor/bell-answered",
+        "locked": "The bell over Barrowmoor is still ringing." } ] } ]
+```
+
+* An entry is always an **object**, never a bare id string, so it has somewhere to put an `if` and a `locked` line. `adventure` names an adventure defined in this pack or already loaded. The same adventure twice in one campaign is rejected: "finished" could not mean one of them.
+* `level` is the level the campaign is written for, shown on its card. It sets nothing — the hero is whatever level they are.
+* **Flags have two scopes, and one grammar.** `"met-maud"` is the *running adventure's* flag, in the flat map that starts empty every time an adventure begins and dies with it. `"barrowmoor/met-maud"` is the *campaign record's*, written when Barrowmoor ended. Anywhere the engine takes a flag expression — a scene choice's `"if"`, a campaign entry's `"if"` — a name with a `/` reads the record and a name without one reads the running adventure. A leading `!` negates either. So two adventures can both use `knows-name` and never collide, and an adventure in a campaign can offer a choice only a hero who did something forty miles ago can see.
+* **What gets folded into the record.** When an adventure reaches a scene marked `"ending": true` that is not a `"gameover"`, every flag it set is copied into the record as `<adventure-id>/<flag>` and its id joins the finished list. The `awarded:` keys the XP bookkeeping writes are dropped — they are one run's accounting, not a story fact. Dying folds nothing, so a gameover leaves the road exactly as it was.
+* **A gate must be provable.** `"if"` on a campaign entry has to be scoped, has to name an adventure this campaign lists *earlier*, and has to name a flag that adventure's own scenes can actually set (an `onEnter.flag` or a choice's `flagOnce`). All three are validator errors, because a gate that can never open is a road the player can see and never walk, and the only symptom is a card that stays locked forever. Write the `locked` line as the reason, in the player's language.
+* Give every ending that is not a death the flag your next entry gates on, or a player who finished the first adventure the "wrong" way is stranded. The Bell of Barrowmoor sets `bell-answered` on all three of its real endings for exactly this reason.
+* The save carries `campaignId`, the folded `campaignFlags` and the finished `completed` list. It holds **one** campaign at a time: starting a different campaign, or picking a one-shot off the picker, forgets the record after a confirmation.
+
 ## 12. Conditions the engine implements
 
 `frightened`, `sickened`, `enfeebled`, `clumsy`, `stunned`, `prone`, `fatigued`, `fleeing`, `off-guard` (situational, incl. flanking on exact-opposite squares), `concealed`, `invisible`, `grabbed`, `disarmed`, `dying`/`wounded` (heroes), persistent damage, temp HP, plus custom-but-mechanical `bane`, `hexed`, `night-shrouded`, `slowed-feet`, `gripped`.
@@ -345,7 +366,7 @@ Shields: see `steel-shield`. Consumables: `{"category":"consumable","heal":"2d8+
 
 ## 13. Known simplifications (don't "fix" these in data)
 
-Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school slots are folded into base slots; a combatant gets one reaction per turn and the first trigger it qualifies for takes it, and Ready arms exactly one thing — a Strike against a foe entering reach — rather than an arbitrary action against an arbitrary trigger; Aid rolls Athletics against a flat DC 15 whatever it is aiding, because the engine cannot know the skill the ally's next check will use; Grapple's Escape DC is the total that made the grab rather than the grabber's Class DC; Disarm's −2 lands on every attack the target has rather than on the weapon it was aimed at, and PF2e's `restrained` is not modelled — a critical Grapple is an ordinary grab with a higher DC; only heroes use Athletics maneuvers, because no monster in the game carries an Athletics number; Rock Dwarf's "+2 DC vs Shove/Trip/prone" therefore stays a note, since nothing can Shove or Trip a hero; there is no Sneak, so a hidden creature that moves is simply seen again; cover is read off the line to the attacker and never off a corner rule; only heroes Hide, because no monster in the game carries a Stealth number to Hide with; Demoralize takes a −4 language penalty vs. everything unless the hero has Intimidating Glare; victory grants a breather (half of missing HP + focus back); taking a level is a rest too (HP and pools refill; potions and the wounded value carry over); the kit's runes follow the level rather than gold — +1 potency from 2nd, striking from 4th, +2 potency from 10th, on every weapon the hero carries and on nothing a companion does; spell ranks stop at 2, so a caster's rank-2 slots grow to 3 at 4th and nothing grows after that, and no level-up step touches the spell list; every level-up feat slot draws on the loaded feats at or below its level, and the core pack's feats stop at 2nd, so a slot with nothing left to offer is left empty rather than blocking the level; XP is PF2e's flat 1,000 a level with no per-encounter budget arithmetic — an adventure pays what its `awards` say or a level at its ending; the level stops at 10; exact-opposite-square flanking. The design intent is **correct-feeling PF2e from level 3 to 10**, not a rules-complete VTT.
+Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school slots are folded into base slots; a combatant gets one reaction per turn and the first trigger it qualifies for takes it, and Ready arms exactly one thing — a Strike against a foe entering reach — rather than an arbitrary action against an arbitrary trigger; Aid rolls Athletics against a flat DC 15 whatever it is aiding, because the engine cannot know the skill the ally's next check will use; Grapple's Escape DC is the total that made the grab rather than the grabber's Class DC; Disarm's −2 lands on every attack the target has rather than on the weapon it was aimed at, and PF2e's `restrained` is not modelled — a critical Grapple is an ordinary grab with a higher DC; only heroes use Athletics maneuvers, because no monster in the game carries an Athletics number; Rock Dwarf's "+2 DC vs Shove/Trip/prone" therefore stays a note, since nothing can Shove or Trip a hero; there is no Sneak, so a hidden creature that moves is simply seen again; cover is read off the line to the attacker and never off a corner rule; only heroes Hide, because no monster in the game carries a Stealth number to Hide with; Demoralize takes a −4 language penalty vs. everything unless the hero has Intimidating Glare; victory grants a breather (half of missing HP + focus back); taking a level is a rest too (HP and pools refill; potions and the wounded value carry over); the kit's runes follow the level rather than gold — +1 potency from 2nd, striking from 4th, +2 potency from 10th, on every weapon the hero carries and on nothing a companion does; spell ranks stop at 2, so a caster's rank-2 slots grow to 3 at 4th and nothing grows after that, and no level-up step touches the spell list; every level-up feat slot draws on the loaded feats at or below its level, and the core pack's feats stop at 2nd, so a slot with nothing left to offer is left empty rather than blocking the level; XP is PF2e's flat 1,000 a level with no per-encounter budget arithmetic — an adventure pays what its `awards` say or a level at its ending; the level stops at 10; exact-opposite-square flanking; a save holds one campaign record, so a second campaign forgets the first; a campaign gate is one flag expression with a `!` and no `and`/`or`, so "either ending opens this" is written by giving both endings the same flag rather than by a bigger grammar; and a campaign carries flags between its adventures and nothing else yet — no gold, no shop, no downtime, and no treasure that survives an ending. The design intent is **correct-feeling PF2e from level 3 to 10**, not a rules-complete VTT.
 
 ## 14. Workflow for a future Claude
 
@@ -358,6 +379,7 @@ Prepared casters use per-rank slot pools; divine font is a flat 4; wizard school
    * every `goto`, `check.success`, `check.failure`, `victory` and `defeat` names a real scene, or `"END"`;
    * every `combat` names a real encounter;
    * every encounter foe names a monster that exists, in this pack **or already loaded**;
+   * a campaign's entries are objects naming adventures that exist, no adventure listed twice, and every `"if"` scoped to an adventure listed earlier and to a flag that adventure can actually set;
    * every `companionsOffered` id names a companion that exists;
    * a background's `feat` names a feat that exists.
 

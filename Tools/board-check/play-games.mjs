@@ -1151,6 +1151,74 @@ const SUITES = {
     const hero5 = await p.evaluate(() => { const h = window.__torchbearer.hero; return { level: h.level, str: h.abil.str, dex: h.abil.dex, intim: h.skills.intimidation, hp: h.hpMax }; });
     t.ok(hero5.level === 5 && hero5.str === 4 && hero5.dex === 2 && hero5.intim === 'E' && hero5.hp === 85,
       'the live sheet is level 5: Str +4, Dex +2, Intimidation Expert, 85 HP', JSON.stringify(hero5));
+
+    // Phase 7, increment 1: the campaign record, through the page's own doors.
+    // smoke.mjs pins the gate arithmetic and the fold; what only a browser can
+    // say is that the picker renders campaigns, that the board reads the gate,
+    // and that a save carrying a finished road comes back as an open one.
+    // Thornwake was Shelf-loaded by games.mjs's open(), so its campaign is here.
+    await p.click('#btn-begin-adv');
+    await waitFor(p, () => document.getElementById('modal-veil')?.classList.contains('open'), { timeout: 5000 });
+    t.ok(/Choose a Road/.test(await textContent(p, '#modal-title')), 'the picker is a road picker once a campaign is loaded',
+      await textContent(p, '#modal-title'));
+    const campCards = await p.$$eval('#modal-body [data-camp]', els => els.map(e => e.dataset.camp));
+    t.ok(campCards.includes('bell-and-bridge'), 'and The Bell and the Bridge is on it', campCards.join(', ') || 'no campaign cards');
+
+    await p.click('#modal-body [data-camp="bell-and-bridge"]');
+    await waitFor(p, () => /Bell and the Bridge/.test(document.getElementById('modal-title')?.textContent || ''), { timeout: 5000 });
+    const fresh = await p.$$eval('#modal-body .opt-card', els => els.map(e => ({
+      road: e.dataset.road || null, disabled: e.classList.contains('disabled'), meta: e.querySelector('.meta')?.textContent || ''
+    })));
+    t.ok(fresh.length === 2 && fresh[0].road === 'barrowmoor' && !fresh[0].disabled && fresh[1].road === null && fresh[1].disabled,
+      'a fresh record opens Barrowmoor and closes the bridge', JSON.stringify(fresh));
+    t.ok(/closed/.test(fresh[1].meta), 'and the closed road says so', fresh[1].meta);
+    await t.shot('campaign-board-locked');
+    await p.click('#modal-foot button:last-child');
+    const picked = await savedState(p, 'torchbearer');
+    t.ok(picked?.campaignId === 'bell-and-bridge' && (picked?.completed || []).length === 0,
+      'picking a campaign writes campaignId into the save with nothing finished yet',
+      `${picked?.campaignId} / ${JSON.stringify(picked?.completed)}`);
+
+    // A save that says Barrowmoor is behind you, in through Import. Every field
+    // goes through repair, so this is also the only place the three Phase 7
+    // fields are read from a file rather than written to one.
+    const onRoad = JSON.parse(fs.readFileSync(
+      path.join(HERE, '..', '..', 'Projects', 'torchbearer', 'test', 'sera-voss.torchsave.json'), 'utf8'));
+    onRoad.version = 3;
+    onRoad.state.campaignId = 'bell-and-bridge';
+    onRoad.state.completed = ['barrowmoor'];
+    onRoad.state.campaignFlags = { 'barrowmoor/bell-answered': true };
+    onRoad.state.advId = null;
+    onRoad.state.sceneId = null;
+    const onRoadFile = path.join(OUT, 'torchbearer-on-the-road.json');
+    fs.writeFileSync(onRoadFile, JSON.stringify(onRoad));
+    await setFiles(p, onRoadFile, () => p.click('#save-bar [data-gvb="import"]'));
+    await waitFor(p, () => window.__torchbearer?.campaignId === 'bell-and-bridge'
+      && window.__torchbearer?.completed?.length === 1, { timeout: 10000 });
+    const status = await textContent(p, '#hero-status');
+    t.ok(/1 of 2 finished/.test(status), 'the title screen says how far down the road the hero is', status);
+    t.ok(/The Road/.test(await textContent(p, '#btn-begin-adv')), 'and the Begin button is the board now',
+      await textContent(p, '#btn-begin-adv'));
+
+    await p.click('#btn-begin-adv');
+    await waitFor(p, () => /Bell and the Bridge/.test(document.getElementById('modal-title')?.textContent || ''), { timeout: 5000 });
+    const open = await p.$$eval('#modal-body .opt-card', els => els.map(e => ({
+      road: e.dataset.road || null, meta: e.querySelector('.meta')?.textContent || ''
+    })));
+    t.ok(open.length === 2 && open[0].road === null && /finished/.test(open[0].meta) && open[1].road === 'thornwake',
+      'a folded bell-answered opens the bridge and marks Barrowmoor finished', JSON.stringify(open));
+    await t.shot('campaign-board-open');
+
+    // And the payoff: a choice in Thornwake's opening scene that only exists
+    // for a hero who walked out of Barrowmoor. `flagOk` reads it off the
+    // campaign record, not off the flags this adventure has set — which are
+    // empty, because the adventure just started.
+    await p.click('#modal-body [data-road="thornwake"]');
+    await waitFor(p, () => document.querySelectorAll('.choice-btn').length > 0, { timeout: 10000 });
+    const choices = await p.$$eval('.choice-btn', els => els.map(e => e.textContent.trim()));
+    t.ok(choices.some(c => /Barrowmoor/.test(c)),
+      'Thornwake offers the hero a line only the campaign record could have earned', choices.join(' | '));
+    await t.shot('campaign-scoped-choice');
   },
 };
 

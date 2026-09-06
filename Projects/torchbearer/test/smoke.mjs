@@ -45,6 +45,8 @@ const { Registry, PROF_VAL, SKILLS, CHAR_LEVEL, MAX_LEVEL, levelOf, Dice, setDic
   ...await mod("js/registry.js"), ...await mod("js/rules.js")
 };
 const { newCombat, heroCombatant, companionCombatant, REACTIONS, MANEUVERS, LORE_SKILL } = await mod("js/combat.js");
+const { SCOPE, scopedFlag, isScoped, flagsSetBy, foldFlags, flagOk, entriesOf,
+        progress: campaignRows, nextAdventure, isComplete: campaignDone } = await mod("js/campaign.js");
 
 /* ---------------- harness ---------------- */
 let pass = 0; const fails = [];
@@ -139,6 +141,17 @@ ok(/<!-- gvb:social:start/.test(html) && /gvb:social:end -->/.test(html), "the s
 ok(html.includes('id="btn-level-up"') && /Builder\.openLevelUp\(\)/.test(html), "the title screen has a Level Up button that opens the builder's level-up mode");
 ok(/"awarded:"\+key/.test(html) && /this\.award\(c\.combat/.test(html) && /this\.award\("ending"/.test(html), "the page credits an encounter on victory and the ending once, under awarded: flags");
 ok(!/\b1000\b/.test(codeOnly) && /XP_PER_LEVEL/.test(html), "the page reads XP_PER_LEVEL rather than carrying its own 1000");
+// Phase 7, increment 1: the campaign record. The flag grammar and the gate
+// arithmetic live in js/campaign.js, the page holds three saved fields, and an
+// ending folds into the record — but only an ending that is not a gameover.
+ok(html.includes('from "./torchbearer/js/campaign.js"'), "imports campaign.js");
+ok(!/flagOk\(expr\)\{ return expr\.startsWith/.test(html), "the page's flagOk is campaign.js's, not the old one-scope copy");
+ok(/campaignId:this\.campaignId, campaignFlags:this\.campaignFlags, completed:this\.completed/.test(html),
+  "the snapshot carries campaignId, campaignFlags and completed");
+ok(/if\(sc\.ending&&!sc\.gameover\)\{ this\.award\("ending".*this\.finishOnRoad\(\); \}/.test(html),
+  "an ending folds into the campaign record, and a gameover does not");
+ok(/this\.campaignFlags=foldFlags\(this\.adv\.id,this\.flags,this\.campaignFlags\)/.test(html),
+  "the fold goes through campaign.js rather than a second copy in the page");
 
 /* ---------------- 2. every pack that ships validates ---------------- */
 group("shipped content validates");
@@ -242,6 +255,61 @@ hits(p => { Object.assign(p.adventures[0].encounters.e1.foes[0], { minLevel: 6, 
   eq(Validator.validate(p, emptyRegistry()), [], "…and an empty awards map is legal: it means nothing is paid, not the milestone default");
 }
 
+// Phase 7: `campaigns`. The control is a two-adventure campaign whose second
+// entry gates on a flag the first one's data can actually set; every case below
+// is that pack with exactly one thing wrong, and each one is a road the player
+// could otherwise see and never walk.
+const campBase = () => {
+  const p = base();
+  p.adventures[0].scenes.s1.choices[0].flagOnce = "did-the-thing";
+  p.adventures.push({
+    id: "b", name: "B", start: "t1",
+    scenes: { t1: { title: "T", text: ["p"], choices: [{ text: "go", goto: "t1" }] } }
+  });
+  p.campaigns = [{
+    id: "camp", name: "Camp", level: 3,
+    adventures: [{ adventure: "a" }, { adventure: "b", if: "a/did-the-thing", locked: "Not yet." }]
+  }];
+  return p;
+};
+eq(Validator.validate(campBase(), emptyRegistry()), [], "the control campaign is clean");
+const chits = (mutate, needle, label) => {
+  const p = campBase(); mutate(p);
+  const errs = Validator.validate(p, emptyRegistry());
+  ok(errs.some(e => e.includes(needle)), `${label} — errors were ${JSON.stringify(errs)}`);
+};
+chits(p => { delete p.campaigns[0].adventures; }, 'missing required field "adventures"', "a campaign with no adventure list");
+chits(p => { p.campaigns[0].adventures = {}; }, '"adventures" must be an array', "an adventure list that is an object");
+chits(p => { p.campaigns[0].adventures = []; }, "is empty", "an empty adventure list");
+chits(p => { p.campaigns[0].adventures[0] = "a"; }, 'must be an object naming one adventure', "a bare id string where an entry belongs (locked #120)");
+chits(p => { p.campaigns[0].adventures[0].adventure = "gone"; }, 'unknown adventure "gone"', "an entry naming an adventure nobody defines");
+chits(p => { p.campaigns[0].adventures[1].adventure = "a"; }, "listed twice", "the same adventure listed twice");
+chits(p => { p.campaigns[0].level = 0; }, '"level"', "a starting level of zero");
+chits(p => { p.campaigns[0].adventures[1].locked = 3; }, '"locked" must be a string', "a locked line that is a number");
+chits(p => { p.campaigns[0].adventures[1].if = "did-the-thing"; }, "is unscoped", "a gate that forgot to name the adventure it reads");
+chits(p => { p.campaigns[0].adventures[1].if = "b/did-the-thing"; }, "does not list before it", "a gate reading an adventure that comes later");
+chits(p => { p.campaigns[0].adventures[1].if = "a/never-set"; }, "reads a flag", "a gate on a flag the earlier adventure never sets");
+chits(p => { p.campaigns[0].adventures[1].if = ""; }, '"if" must be a flag expression', "an empty gate");
+{
+  const p = campBase();
+  p.adventures[0].scenes.s2.onEnter = { flag: "went-there" };
+  p.campaigns[0].adventures[1].if = "!a/went-there";
+  eq(Validator.validate(p, emptyRegistry()), [], "a negated gate on an onEnter flag is accepted");
+}
+{
+  // A campaign may gate on an adventure an earlier pack loaded, the same way an
+  // encounter may name a monster it did not bring.
+  const host = emptyRegistry();
+  host.loadPack({
+    pack: { id: "host", name: "Host" },
+    adventures: [{ id: "first", name: "First", start: "x",
+      scenes: { x: { title: "X", text: ["p"], choices: [{ text: "on", goto: "x", flagOnce: "done-first" }] } } }]
+  });
+  const p = base();
+  p.campaigns = [{ id: "c2", name: "C2", adventures: [{ adventure: "first" }, { adventure: "a", if: "first/done-first" }] }];
+  eq(Validator.validate(p, host), [], "a campaign spanning an already-loaded adventure is accepted");
+}
+
 // A cross-pack reference is legal — that is what "IDs are global" means.
 {
   const host = emptyRegistry();
@@ -285,6 +353,10 @@ const goodSnap = () => ({
   eq(SAVE_VERSION, 3, "the save is at version 3 (Phase 6: level, the choice map, xp)");
   eq([back.build.level, back.build.advances, back.xp], [3, {}, 0],
     "a bare version-0 blob comes back as a level-3 hero with an empty choice map and no XP");
+  // Phase 7 added three fields and did not move the version, because their
+  // pre-Phase-7 value is the same "no campaign" repair computes (locked #122).
+  eq([back.campaignId, back.campaignFlags, back.completed], [null, {}, []],
+    "a save written before campaigns existed comes back with no campaign, no folded flags and nothing finished");
 }
 
 { // the export file, which is the only format that leaves the browser
@@ -386,8 +458,22 @@ group("repair");
   const slot = createTorchSlot(store);
   eq(slot.load().hero.resources.potions, [], "load() repairs a save missing potions");
   eq(slot.load().flags, {}, "load() repairs a save missing flags");
+  eq(slot.load().completed, [], "load() repairs a save missing the finished-adventure list");
   eq(slot.deserialize(JSON.stringify(thin)).hero.resources.potions, [], "deserialize() repairs a pasted blob");
   eq(slot.deserialize(slot.serialize(thin)).hero.resources.potions, [], "deserialize() repairs an exported file");
+}
+{
+  // Phase 7's three fields, each handed something it should refuse. A campaign
+  // record that comes back as a string, a number or a list of nulls is a board
+  // that throws on render, and it can arrive through Import from any file.
+  const bad = repairSnapshot({ ...goodSnap(), campaignId: 7, campaignFlags: ["a"], completed: "barrowmoor" });
+  eq([bad.campaignId, bad.campaignFlags, bad.completed], [null, {}, []],
+    "repair refuses a numeric campaignId, an array of campaignFlags and a string completed list");
+  const dupes = repairSnapshot({ ...goodSnap(), completed: ["a", "a", 3, null, "b"] });
+  eq(dupes.completed, ["a", "b"], "…and the finished list keeps its strings once each, in order");
+  const real = repairSnapshot({ ...goodSnap(), campaignId: "bell-and-bridge", campaignFlags: { "barrowmoor/x": true }, completed: ["barrowmoor"] });
+  eq([real.campaignId, real.completed], ["bell-and-bridge", ["barrowmoor"]], "a real campaign record survives repair");
+  eq(real.campaignFlags["barrowmoor/x"], true, "…and so do its folded flags");
 }
 {
   /* Same wiring question for the validator: loadPack has to reject, not just
@@ -883,6 +969,132 @@ eq(FIGHTER_FEATS.length, 5, "the core pack has five fighter class feats");
   const back = slot.deserialize(slot.serialize({ build: up, xp: 0 })).build;
   eq(back.advances, up.advances, "the level-4 entry survives a save round trip as written");
   eq(finalizeCharacter(back).hpMax, s4.hpMax, "…and the reloaded sheet is the same sheet");
+}
+
+/* ---------------- 8d. the campaign record (Phase 7, increment 1) ----------------
+   Two scopes, one grammar. A bare flag name is the running adventure's and dies
+   with it; a name carrying a `/` is the campaign's and was folded there when an
+   adventure ended. Everything below is js/campaign.js under plain Node, and the
+   last block drives the shipped two-adventure campaign from an empty record to
+   a finished one. */
+group("the campaign record");
+
+// The grammar, both scopes, and the collision it exists to prevent.
+{
+  const local = { "knows-name": true }, camp = { "barrowmoor/knows-name": true, "barrowmoor/bell-answered": true };
+  ok(flagOk(undefined, {}, {}), "an absent expression is an open gate");
+  ok(flagOk("knows-name", local, {}), "a bare name reads the running adventure");
+  ok(!flagOk("knows-name", {}, camp), "…and never the campaign record, even when the record has that name folded in");
+  ok(flagOk("barrowmoor/knows-name", {}, camp), "a scoped name reads the campaign record");
+  ok(!flagOk("barrowmoor/knows-name", local, {}), "…and never the running adventure");
+  ok(!flagOk("!knows-name", local, {}) && flagOk("!knows-name", {}, {}), "a leading ! negates in the local scope");
+  ok(!flagOk("!barrowmoor/bell-answered", {}, camp) && flagOk("!barrowmoor/nope", {}, camp), "…and in the campaign scope");
+  ok(isScoped("a/b") && !isScoped("b"), "isScoped is the separator and nothing else");
+  eq(scopedFlag("barrowmoor", "bell-answered"), "barrowmoor" + SCOPE + "bell-answered", "scopedFlag builds the key the fold writes");
+}
+
+// The fold: what goes into the record, and what is deliberately left out.
+{
+  const run = { "met-maud": true, "knows-rite": true, "tried-loot": false, "awarded:ending": true, "awarded:bell-warden": true };
+  const folded = foldFlags("barrowmoor", run, { "earlier/x": true });
+  eq(Object.keys(folded).sort(), ["barrowmoor/knows-rite", "barrowmoor/met-maud", "earlier/x"],
+    "the fold namespaces every set flag, keeps what was already there, and drops a false one");
+  ok(!Object.keys(folded).some(k => k.includes("awarded:")),
+    "…and drops the awarded: bookkeeping, which is one run's accounting and not a story fact");
+  eq(run["met-maud"], true, "the fold does not mutate the adventure's own flags");
+  // Two adventures that both use `knows-name` is the whole reason for the scope.
+  const both = foldFlags("thornwake", { "knows-name": true }, foldFlags("barrowmoor", { "knows-name": true }, {}));
+  eq(Object.keys(both).sort(), ["barrowmoor/knows-name", "thornwake/knows-name"],
+    "two adventures using the same flag name land in the record as two different flags");
+}
+
+// `flagsSetBy` is what the validator proves a gate against.
+{
+  const adv = {
+    scenes: {
+      one: { onEnter: { flag: "went-there" }, choices: [{ flagOnce: "tried-it" }, { goto: "two" }] },
+      two: { choices: [{ flagOnce: "tried-it" }] },
+      three: {}
+    }
+  };
+  eq(flagsSetBy(adv), ["tried-it", "went-there"], "every onEnter.flag and flagOnce, once each, sorted");
+  eq(flagsSetBy({}), [], "an adventure with no scenes sets nothing");
+}
+
+// Entries are objects (locked #120), and a malformed one is skipped rather than
+// crashing the board it renders.
+{
+  const c = { adventures: [{ adventure: "a" }, "b", null, { name: "no adventure key" }, { adventure: "c" }] };
+  eq(entriesOf(c).map(e => e && e.adventure), ["a", "c"], "entriesOf keeps the entries that name an adventure");
+  eq(entriesOf({}), [], "a campaign with no list has no entries");
+}
+
+// A branch the run never opened is not a debt. `isComplete` says so.
+{
+  const c = { adventures: [{ adventure: "a" }, { adventure: "b", if: "a/left" }, { adventure: "c", if: "a/right" }] };
+  const st = { completed: ["a", "b"], campaignFlags: { "a/left": true } };
+  ok(campaignDone(c, st), "a campaign whose other branch never opened is finished when the open one is");
+  eq(nextAdventure(c, st), null, "…and has no next road");
+  ok(!campaignDone(c, { completed: [], campaignFlags: {} }), "an untouched campaign is not finished");
+  ok(!campaignDone({ adventures: [] }, { completed: [], campaignFlags: {} }), "and neither is one with nothing in it");
+}
+
+// The shipped campaign, from an empty record to a finished one.
+{
+  const creg = emptyRegistry();
+  creg.loadPack(core); creg.loadPack(advPack);
+  creg.loadPack(readPack("thornwake-vigil.json"));
+  // `|| {}` on the lookups below, not defensiveness for its own sake: without
+  // it, deleting the campaign turns every assertion in this block into one
+  // TypeError and the report says nothing about which guard-rail moved.
+  const camp = creg.campaigns["bell-and-bridge"];
+  ok(!!camp, "The Bell and the Bridge registers as a campaign");
+  eq(entriesOf(camp).map(e => e.adventure), ["barrowmoor", "thornwake"], "…over the two shipped adventures, in order");
+
+  // Barrowmoor's three real endings all set the flag the gate reads, so no
+  // completion of the first adventure can strand the hero on a closed road.
+  const bm = creg.adventures.barrowmoor;
+  const endings = Object.entries(bm.scenes).filter(([, sc]) => sc.ending && !sc.gameover);
+  eq(endings.length, 3, "Barrowmoor has three endings that are not a gameover");
+  eq(endings.filter(([, sc]) => sc.onEnter && sc.onEnter.flag === "bell-answered").length, 3,
+    "…and every one of them sets bell-answered, so any real ending opens the bridge");
+  ok(!(bm.scenes.gameover.onEnter && bm.scenes.gameover.onEnter.flag === "bell-answered"),
+    "…while dying on the moor sets nothing");
+
+  const st = { completed: [], campaignFlags: {} };
+  eq(campaignRows(camp, st).map(r => [r.advId, r.done, r.open]), [["barrowmoor", false, true], ["thornwake", false, false]],
+    "an empty record opens Barrowmoor and closes Thornwake");
+  eq((campaignRows(camp, st)[1] || {}).locked, "The bell over Barrowmoor is still ringing, and word of you has not reached the bridge.",
+    "…and the board has a line saying why");
+  eq(nextAdventure(camp, st), "barrowmoor", "the next road is Barrowmoor");
+
+  // Dying there folds nothing: the page only calls the fold on `ending && !gameover`.
+  eq(campaignRows(camp, st).map(r => r.done), [false, false], "a run that ends in the gameover scene leaves the record untouched");
+
+  // One real ending, with a run's worth of flags behind it.
+  const run = { "met-maud": true, "knows-rite": true, "has-clapper": true, "bell-answered": true, "awarded:ending": true };
+  st.campaignFlags = foldFlags("barrowmoor", run, st.campaignFlags);
+  st.completed.push("barrowmoor");
+  eq(campaignRows(camp, st).map(r => [r.advId, r.done, r.open]), [["barrowmoor", true, true], ["thornwake", false, true]],
+    "finishing Barrowmoor opens Thornwake");
+  eq(nextAdventure(camp, st), "thornwake", "…and the next road is the bridge");
+  ok(!campaignDone(camp, st), "the campaign is not finished with one adventure left open");
+
+  // And Thornwake can read what Barrowmoor wrote, in its own scene graph.
+  const gated = creg.adventures.thornwake.scenes.start.choices.filter(c => c.if && isScoped(c.if));
+  eq(gated.length, 1, "Thornwake's opening scene has one campaign-scoped choice");
+  const gate = gated[0] || {};
+  ok(gate.if && flagOk(gate.if, {}, st.campaignFlags), "…which is offered to a hero who came off the moor");
+  ok(gate.if && !flagOk(gate.if, {}, {}), "…and hidden from one playing Thornwake as a one-shot");
+  ok(!!creg.adventures.thornwake.scenes[gate.goto], "…and it goes somewhere that exists");
+
+  st.campaignFlags = foldFlags("thornwake", { "knows-truth": true }, st.campaignFlags);
+  st.completed.push("thornwake");
+  ok(campaignDone(camp, st), "finishing the bridge finishes the campaign");
+  eq(nextAdventure(camp, st), null, "…and there is no next road");
+  eq(Object.keys(st.campaignFlags).sort(),
+    ["barrowmoor/bell-answered", "barrowmoor/has-clapper", "barrowmoor/knows-rite", "barrowmoor/met-maud", "thornwake/knows-truth"],
+    "and the record is everything both adventures left behind, each under its own adventure");
 }
 
 /* ---------------- 9. Assurance, and a die a test can pin ---------------- */
