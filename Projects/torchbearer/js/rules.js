@@ -112,6 +112,111 @@ export function advancesUpTo(build){
     .map(l => ({ level: l, ...adv[l] }));
 }
 
+/* ---------- Experience, and the level-up ----------
+   PF2e's flat rate: a level every 1,000 XP, and the counter starts over at
+   the new level (locked #116). `App.xp` is XP toward the next level, never a
+   lifetime total. */
+export const XP_PER_LEVEL = 1000;
+/** Whether a hero with `xp` banked can take the next level. Stops at MAX_LEVEL. */
+export function canLevelUp(build, xp){
+  return levelOf(build) < MAX_LEVEL && (Number(xp) || 0) >= XP_PER_LEVEL;
+}
+/**
+ * The XP an adventure credits for `key` — an encounter id on victory, or
+ * "ending" on the first ending scene. An adventure that declares `awards`
+ * pays exactly what it says and nothing for a key it does not name. One that
+ * declares none is a milestone: the ending is worth a level, the fights
+ * nothing, because every shipped adventure is a one-shot and finishing one is
+ * the milestone (locked #116).
+ */
+export function awardFor(adv, key){
+  const a = adv && adv.awards;
+  if (!a || typeof a !== "object") return key === "ending" ? XP_PER_LEVEL : 0;
+  const v = Number(a[key]);
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+}
+/**
+ * The runes the kit assumes at a level, by the Player Core's item levels:
+ * a +1 potency rune is a level-2 item, striking is level 4, +2 potency is
+ * level 10 (locked #118). The level-3 sheet reads exactly as it did.
+ */
+export function kitAt(level){
+  const l = levelOf({ level });
+  return { potency: l >= 10 ? 2 : l >= 2 ? 1 : 0, striking: l >= 4 };
+}
+/** "1d8" with a striking rune is "2d8": one more weapon damage die. */
+export function strikingDie(die){
+  return String(die).replace(/^(\d*)d/, (m, n) => ((parseInt(n || "1", 10) || 1) + 1) + "d");
+}
+/** Every feat id on the build, at every level it carries — the builder's flat
+    map and the whole choice map, chosen-above-current-level included, so a
+    level-6 pick cannot be taken again at 5 after a clamp. */
+export function takenFeats(build){
+  const out = new Set();
+  Object.values((build && build.feats) || {}).flat().filter(Boolean).forEach(id => out.add(id));
+  Object.values((build && build.advances) || {}).forEach(e => Object.values((e && e.feats) || {}).flat().filter(Boolean).forEach(id => out.add(id)));
+  return out;
+}
+/**
+ * The feats a slot may hold on this build: the slot's type, at or below its
+ * level, the hero's own ancestry or class, not already taken, and — for a
+ * skill feat — with its prerequisite skill trained on the sheet the hero has
+ * *before* this level's choices. `except` is the pick already in the slot,
+ * which stays offered so the player can change their mind.
+ */
+export function featChoices(build, slot, except){
+  const taken = takenFeats(build);
+  const sheet = finalizeCharacter(build);
+  return Registry.list(Registry.feats, f => {
+    if (f.type !== slot.type || f.level > slot.level) return false;
+    if (slot.type === "ancestry" && f.ancestry !== build.ancestry) return false;
+    if (slot.type === "class" && !(f.classes || []).includes(build.cls)) return false;
+    if (taken.has(f.id) && f.id !== except) return false;
+    if (f.prereq && f.prereq.skill && !Object.keys(f.prereq.skill).every(s => (sheet.skills[s] || "U") !== "U")) return false;
+    return true;
+  });
+}
+/**
+ * What this level's skill increase may raise, and to what: `{ skill: rank }`
+ * for every skill whose next rank the level allows (RANK_FLOOR — Master waits
+ * for 7, Legendary for 15). Computed on the sheet without this level's own
+ * increase, so a pick can be changed without raising itself out of the list.
+ */
+export function skillIncreaseOptions(build, level){
+  const adv = { ...((build && build.advances) || {}) };
+  adv[level] = { ...(adv[level] || {}), skillIncrease: null };
+  const skills = finalizeCharacter({ ...build, level, advances: adv }).skills;
+  const out = {};
+  for (const s of Object.keys(SKILLS)) {
+    const up = RANK_UP[skills[s] || "U"];
+    if (up && (RANK_FLOOR[up] || 1) <= level) out[s] = up;
+  }
+  return out;
+}
+/**
+ * Whether the choice map's entry for `level` answers everything `grantsAt`
+ * says the level grants: a feat in every slot that has anything to offer (a
+ * slot with no eligible feat in the loaded content is satisfied empty —
+ * locked #117), the skill increase if there is one, and four boosts on four
+ * different attributes if there are boosts. Returns the list of what is still
+ * missing, so an empty list is "complete".
+ */
+export function advanceMissing(build, level){
+  const cls = Registry.classes[build.cls], g = grantsAt(cls, level);
+  const e = (build.advances && build.advances[level]) || {};
+  const missing = [];
+  g.feats.forEach(slot => {
+    const pick = e.feats && e.feats[slot.key];
+    if (!pick && featChoices(build, slot).length) missing.push(slot.key);
+  });
+  if (g.skillIncrease && !e.skillIncrease) missing.push("skillIncrease");
+  if (g.boosts) {
+    const b = (e.boosts || []).filter(Boolean);
+    if (b.length !== g.boosts || new Set(b).size !== b.length) missing.push("boosts");
+  }
+  return missing;
+}
+
 /* ---------- Dice ----------
    `d` is the only entry point that consumes randomness, so an injected source
    pins every roll in the game: Dice.roll, Combat's strikes, everything. */
@@ -290,6 +395,7 @@ export function finalizeCharacter(build){
   const dieUp=d=>({"1d4":"1d6","1d6":"1d8","1d8":"1d10","1d10":"1d12","1d12":"1d12"}[d]||d);
 
   const profB=(rank)=> rank==="U"?0:PROF_VAL[rank]+lvl;
+  const kit=kitAt(lvl);
   const armorRank = prof.defenses[armor.prof]||"U";
   const dexToAC = Math.min(abil.dex, armor.dexCap!==undefined?armor.dexCap:5);
   const ac = 10 + profB(armorRank==="U"?"U":armorRank) + dexToAC + armor.acBonus;
@@ -319,7 +425,10 @@ export function finalizeCharacter(build){
     if(!isRanged && finesse && specials.has("racket-thief") && abil.dex>abil.str) dmgAbil=abil.dex;
     let die=item.damage;
     if(specials.has("deadly-simplicity") && item.prof==="simple") die=dieUp(die);
-    const itemAtk = 1; // +1 weapon potency rune, standard 3rd-level kit
+    /* The kit's runes follow the level (kitAt): +1 potency from 2, striking
+       from 4, +2 from 10. At 3 that is the +1 rune the kit always assumed. */
+    if(kit.striking) die=strikingDie(die);
+    const itemAtk = kit.potency;
     return {name:item.name, id:item.id, bonus:profB(rank)+abil[atkAbil]+itemAtk, die,
       dmgMod:typeof dmgAbil==="number"?dmgAbil:0, damageType:item.damageType,
       traits:item.traits||[], range:item.range?Math.floor(item.range/5):1, ranged:isRanged,

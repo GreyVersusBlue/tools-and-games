@@ -1038,6 +1038,119 @@ const SUITES = {
     const stillHere = await savedState(p, 'torchbearer');
     t.ok(stillHere?.sceneId === 'bridge-fog', 'and the live journey survives the rejected import',
       `sceneId ${stillHere?.sceneId}`);
+
+    // Phase 6, increment 2: the level-up, through the page's own doors. A copy
+    // of the committed save at version 3 with 1,000 XP banked goes in through
+    // Import (a version-2 file would have its xp zeroed by `migrate`, which is
+    // the point of that migration); the title screen's Level Up button opens
+    // the builder in its level-up mode; one pick per slot; Take Level 4; and
+    // the slot then holds a level-4 Sera with the XP spent and both picks
+    // under advances[4]. smoke.mjs pins every number this produces; what only
+    // a browser can say is that the buttons are wired to them.
+    const ready = JSON.parse(fs.readFileSync(
+      path.join(HERE, '..', '..', 'Projects', 'torchbearer', 'test', 'sera-voss.torchsave.json'), 'utf8'));
+    ready.version = 3;
+    ready.state.xp = 1000;
+    ready.state.build.level = 3;
+    ready.state.build.advances = {};
+    const readyFile = path.join(OUT, 'torchbearer-ready-to-level.json');
+    fs.writeFileSync(readyFile, JSON.stringify(ready));
+    await setFiles(p, readyFile, () => p.click('#save-bar [data-gvb="import"]'));
+    await waitFor(p, () => window.__torchbearer?.xp === 1000, { timeout: 10000 });
+    // The import lands on bridge-fog with the Vanguard's Watch still flagged
+    // active from the beat above, so Title asks to abandon it; the dialog
+    // listener at the top of this suite accepts.
+    await p.click('#btn-to-title');
+    await waitFor(p, () => document.getElementById('screen-title')?.classList.contains('active'), { timeout: 5000 });
+    t.ok((await p.$eval('#btn-level-up', el => el.disabled)) === false, 'with 1,000 XP banked the title screen offers Level Up');
+    const status3 = await textContent(p, '#hero-status');
+    t.ok(/Fighter 3/.test(status3) && /1000 \/ 1000/.test(status3) && /ready to level/.test(status3),
+      'and the status line says so', status3);
+    await p.click('#btn-level-up');
+    await waitFor(p, () => document.getElementById('screen-builder')?.classList.contains('active'), { timeout: 5000 });
+    const rail = await p.$$eval('#builder-steps .bstep', els => els.map(e => e.textContent.replace(/^[\d✓]+/, '').trim()));
+    t.ok(rail.join('|') === 'Feats|Review', 'level 4 offers a Fighter two steps: the feats it grants, then the review', rail.join(' | '));
+    const slots = await p.$$eval('#builder-body .opt-card:not(.disabled)', els => [...new Set(els.map(e => e.dataset.slot))]);
+    t.ok(slots.join('|') === 'class4|skill4', 'the feat step shows a class slot and a skill slot, each with something to pick', slots.join(' | '));
+    t.ok(await p.$eval('#bld-next', el => el.disabled), 'Next waits for both');
+    for (const slot of slots) {
+      await p.click(`#builder-body .opt-card:not(.disabled)[data-slot="${slot}"]`);
+      await wait(150);
+    }
+    t.ok(!(await p.$eval('#bld-next', el => el.disabled)), 'one pick in each and Next is live');
+    await p.click('#bld-next');
+    await wait(200);
+    const take = await textContent(p, '#bld-next');
+    t.ok(/Take Level 4/.test(take), "the review step's button takes the level", take);
+    const review = await textContent(p, '#builder-body');
+    t.ok(/goes from 3 to 4/.test(review) && /HP 52 → 66/.test(review), 'the review names the change: HP 52 to 66', review.slice(0, 120));
+    await t.shot('level-up-review');
+    await p.click('#bld-next');
+    await waitFor(p, () => document.getElementById('screen-title')?.classList.contains('active'), { timeout: 5000 });
+    const after = await savedState(p, 'torchbearer');
+    t.ok(after?.build?.level === 4 && after?.xp === 0, 'the slot holds a level-4 hero with the XP spent',
+      `level ${after?.build?.level}, xp ${after?.xp}`);
+    const picks = after?.build?.advances?.['4']?.feats || {};
+    t.ok(!!picks.class4 && !!picks.skill4, 'and both picks under advances[4]', JSON.stringify(picks));
+    const status4 = await textContent(p, '#hero-status');
+    t.ok(/Fighter 4/.test(status4) && /0 \/ 1000/.test(status4), 'the status line reads Fighter 4, 0 of 1000', status4);
+    t.ok(await p.$eval('#btn-level-up', el => el.disabled), 'and Level Up is greyed again');
+    await t.shot('level-4');
+
+    // Level 5 is the level that grants everything the flow can render: four
+    // boosts, a skill increase and an ancestry feat. The level-4 state the
+    // page just saved goes back in with another 1,000 XP, and the three
+    // other step components get driven once each.
+    const ready5 = { ...ready, state: { ...after, xp: 1000 } };
+    const ready5File = path.join(OUT, 'torchbearer-ready-for-5.json');
+    fs.writeFileSync(ready5File, JSON.stringify(ready5));
+    await setFiles(p, ready5File, () => p.click('#save-bar [data-gvb="import"]'));
+    await waitFor(p, () => window.__torchbearer?.xp === 1000 && window.__torchbearer?.hero?.level === 4, { timeout: 10000 });
+    await p.click('#btn-to-title');
+    await waitFor(p, () => document.getElementById('screen-title')?.classList.contains('active'), { timeout: 5000 });
+    await p.click('#btn-level-up');
+    await waitFor(p, () => document.getElementById('screen-builder')?.classList.contains('active'), { timeout: 5000 });
+    const rail5 = await p.$$eval('#builder-steps .bstep', els => els.map(e => e.textContent.replace(/^[\d✓]+/, '').trim()));
+    t.ok(rail5.join('|') === 'Boosts|Skill Increase|Feats|Review', 'level 5 offers boosts, a skill increase, feats and the review', rail5.join(' | '));
+    t.ok(await p.$eval('#bld-next', el => el.disabled), 'the boosts step waits for four');
+    for (const [i, a] of ['str', 'dex', 'con', 'wis'].entries()) {
+      await p.click(`#builder-body .abil-chip[data-g="adv${i}"][data-a="${a}"]`);
+      await wait(120);
+    }
+    // Sera is Str +3, so every one of the four is a full boost and nothing reads as partial.
+    const boxes = await p.$$eval('#builder-body .abil-box', els => els.map(e => e.textContent.trim()));
+    t.ok(boxes.some(x => /Str.*\+4/.test(x)) && boxes.some(x => /Dex.*\+2/.test(x)) && !boxes.some(x => /½/.test(x)),
+      'the summary moves Str to +4 and Dex to +2, and no boost is partial', boxes.join(' '));
+    await t.shot('level-5-boosts');
+    t.ok(!(await p.$eval('#bld-next', el => el.disabled)), 'four different attributes and Next is live');
+    await p.click('#bld-next');
+    await wait(200);
+    const noMaster = await p.$$eval('#builder-body .skill-row', els => els.filter(e => /Master waits/.test(e.textContent)).length);
+    t.ok(noMaster === 1, "Sera's one Expert skill says Master waits for 7th, and every other skill can rise", `${noMaster} row(s)`);
+    t.ok((await p.$('#builder-body .pick-btn[data-s="athletics"]')) === null, "…and Athletics, her Expert skill, has no button to press");
+    await p.click('#builder-body .pick-btn[data-s="intimidation"]');
+    await wait(150);
+    const pill = await textContent(p, '#builder-body .counter-pill');
+    t.ok(/Intimidation → Expert/.test(pill), 'raising Intimidation reads as Trained to Expert', pill);
+    await p.click('#bld-next');
+    await wait(200);
+    const slots5 = await p.$$eval('#builder-body .opt-card:not(.disabled)', els => [...new Set(els.map(e => e.dataset.slot))]);
+    t.ok(slots5.join('|') === 'ancestry5', 'the feat step offers the ancestry slot alone', slots5.join(' | '));
+    await p.click('#builder-body .opt-card:not(.disabled)[data-slot="ancestry5"]');
+    await wait(150);
+    await p.click('#bld-next');
+    await wait(200);
+    t.ok(/Take Level 5/.test(await textContent(p, '#bld-next')), 'the review offers level 5');
+    await p.click('#bld-next');
+    await waitFor(p, () => document.getElementById('screen-title')?.classList.contains('active'), { timeout: 5000 });
+    const after5 = await savedState(p, 'torchbearer');
+    const adv5 = after5?.build?.advances?.['5'] || {};
+    t.ok(after5?.build?.level === 5 && after5?.xp === 0, 'the slot holds a level-5 hero with the XP spent', `level ${after5?.build?.level}, xp ${after5?.xp}`);
+    t.ok((adv5.boosts || []).join(',') === 'str,dex,con,wis' && adv5.skillIncrease === 'intimidation' && !!(adv5.feats || {}).ancestry5,
+      'and advances[5] carries the boosts, the increase and the feat', JSON.stringify(adv5));
+    const hero5 = await p.evaluate(() => { const h = window.__torchbearer.hero; return { level: h.level, str: h.abil.str, dex: h.abil.dex, intim: h.skills.intimidation, hp: h.hpMax }; });
+    t.ok(hero5.level === 5 && hero5.str === 4 && hero5.dex === 2 && hero5.intim === 'E' && hero5.hp === 85,
+      'the live sheet is level 5: Str +4, Dex +2, Intimidation Expert, 85 HP', JSON.stringify(hero5));
   },
 };
 

@@ -168,8 +168,35 @@ export const Validator = {
       Object.entries(a.encounters || {}).forEach(([eid, enc]) => {
         (enc.foes || []).forEach((f, i) => {
           if (!known("monsters", f.monster)) errs.push(`Adventure "${a.id}": encounter "${eid}" foe ${i} references unknown monster "${f.monster}".`);
+          // added Phase 6: `minLevel`/`maxLevel` beside `minParty`. All three
+          // are read with `&&`, so a string "2" would compare as a number by
+          // accident and a typo like `"minParty": true` would spawn nothing.
+          ["minParty", "minLevel", "maxLevel"].forEach(k => {
+            if (f[k] !== undefined && (!Number.isInteger(f[k]) || f[k] < 1)) {
+              errs.push(`Adventure "${a.id}": encounter "${eid}" foe ${i} "${k}" must be a whole number of 1 or more.`);
+            }
+          });
+          if (Number.isInteger(f.minLevel) && Number.isInteger(f.maxLevel) && f.minLevel > f.maxLevel) {
+            errs.push(`Adventure "${a.id}": encounter "${eid}" foe ${i} has minLevel ${f.minLevel} above maxLevel ${f.maxLevel}, so it can never spawn.`);
+          }
         });
       });
+
+      // added Phase 6: `awards` is what an adventure credits toward the next
+      // level — a whole number of XP per encounter id, paid on victory, and
+      // one under "ending", paid on the first ending scene. Absent, the
+      // ending is a milestone worth a level (rules.js `awardFor`). A key
+      // naming no encounter is XP nothing can ever earn, so it is an error.
+      if (a.awards !== undefined) {
+        if (!a.awards || typeof a.awards !== "object" || Array.isArray(a.awards)) {
+          errs.push(`Adventure "${a.id}": "awards" must be an object of {encounterId or "ending": xp}.`);
+        } else {
+          Object.entries(a.awards).forEach(([k, v]) => {
+            if (k !== "ending" && !(a.encounters && a.encounters[k])) errs.push(`Adventure "${a.id}": awards names "${k}", which is neither an encounter of this adventure nor "ending".`);
+            if (!Number.isInteger(v) || v < 0) errs.push(`Adventure "${a.id}": awards "${k}" must be a whole number of XP, 0 or more.`);
+          });
+        }
+      }
     });
 
     // added session 8: a background's `feat` is documented in §3 as "must be

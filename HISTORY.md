@@ -1237,6 +1237,68 @@ Two of them have moved since they were written:
    offer it, and the rules refuse it anyway. *Source: Torchbearer Phase 6,
    increment 1.*
 
+116. **A level is 1,000 XP, the counter starts over, and an adventure that
+   declares no `awards` is a milestone worth a level at its ending.** PF2e's
+   flat rate, so `App.xp` is XP toward the next level and never a lifetime
+   total; `levelUp` subtracts 1,000 and keeps the rest. An adventure's
+   `awards` map pays whole XP per encounter id on victory and under
+   `"ending"` on the first ending scene, and pays nothing for a key it does
+   not name — an empty `{}` is "nothing", not the default, because a
+   declared map is the author's word. Absent, the ending is worth
+   `XP_PER_LEVEL` and the fights nothing: every shipped adventure is a
+   level-3 one-shot, finishing one is the milestone, and three of them make a
+   6th-level hero. What has been paid is remembered as `awarded:<key>` in
+   the flags map the save already carries rather than in a new field, so a
+   resumed save landing on its epilogue does not pay twice, a fight reached
+   by two routes pays once, and the save shape did not move. A `gameover`
+   scene is an ending that pays nothing. *Source: Torchbearer Phase 6,
+   increment 2.*
+
+117. **The level-up is a mode of the builder, not a rebuild, and a slot with
+   nothing to offer is satisfied empty.** `Builder.openLevelUp` clones the
+   hero's build, sets its level one higher and writes only
+   `build.advances[level]`; the rail, the three step components and the
+   preview sheet are the forge's own with a `mode` branch, the Title button
+   abandons the clone, and `App.hero` is untouched until the last button.
+   XP is spent in `App.levelUp`, not in the builder, and a level is a rest:
+   HP, slots and focus refill, potions and the wounded value carry over. The
+   empty slot: the core pack's feats stop at 2nd level, a Fighter holds two
+   of its five class feats by 3rd, and `class10` has nothing left, so a step
+   that demanded a pick would strand the hero one screen from the level. A
+   placeholder "no feat" id in the map and an automatic grant of whatever
+   was left were both rejected — the first is a lie in the save, the second
+   a choice the player did not make. `advanceMissing` ignores a slot whose
+   `featChoices` is empty and the screen says why. Reversing it is one
+   condition in `advanceMissing`. *Source: Torchbearer Phase 6, increment 2.*
+
+118. **The kit's runes follow the level: +1 potency from 2nd, striking from
+   4th, +2 potency from 10th, and the level-3 sheet is unchanged.** The
+   Player Core's item levels, applied by `kitAt` to every weapon the hero
+   carries — the ranged sidearm too, and the unarmed fallback, which wore
+   the flat `+1` before and is pinned as-is — and to nothing a companion
+   swings. There is no gold and no shop until Phase 7, so the alternative
+   was a 10th-level hero swinging a 3rd-level sword; the row said "the +1
+   rune is assumed at every level" and this is the smallest thing that
+   stops assuming it. `kitAt(3)` is `{potency: 1, striking: false}`, which is
+   exactly what the flat constant said, so every Phase 1 pin holds and the
+   attack bonus at 4 climbs by the level alone. *Source: Torchbearer Phase
+   6, increment 2.*
+
+119. **Encounter scaling reads the hero's level, and the guide's promise is
+   "correct-feeling PF2e from level 3 to 10".** `minLevel` and `maxLevel`
+   sit beside `minParty` on a foe, both inclusive, either alone; `start`
+   reads the highest level on a sheet in the party, which is the hero's
+   since companions carry none, and a party with no sheet reads 0. The
+   validator types all three as whole numbers of 1 or more — `minParty` was
+   unchecked before, and `"minParty": true` spawned nothing, silently — and
+   refuses a `minLevel` above its `maxLevel`. An adventure's own `level`
+   is still compared to nothing (standing backlog); scaling is the author's
+   per-foe call for now. Guide §13's "at level 3" was the last place the
+   old promise stood, and it is rewritten with the simplifications the
+   level-up adds: no spell step, an empty slot, runes by level, XP with no
+   encounter-budget arithmetic, and the stop at 10. *Source: Torchbearer
+   Phase 6, increment 2.*
+
 
 ---
 
