@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { NightEngine, hourName } from "./engine.js";
 import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats, currentLayout } from "./world.js";
-import { cookSpot, crewHome } from "./layout.js";
+import { cookSpot, crewHome, standPointsFor } from "./layout.js";
 import { Patron, Server, itemMesh, personMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
@@ -68,11 +68,11 @@ player.onInteract = () => {
 const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight, mountBar });
 
 /** Put the camera on the room's own spawn point (layout.js `stations.spawn`),
- *  eye height 1.62 — the literal (0, 1.62, 3.4) was the Corner Tap's, and a
- *  28 m room's door is somewhere else. */
+ *  eye height 1.62 over the floor there — the literal (0, 1.62, 3.4) was the
+ *  Corner Tap's, and a 28 m room's door is somewhere else. */
 function spawnCamera() {
-  const sp = currentLayout().stations.spawn;
-  camera.position.set(sp.x, 1.62, sp.z);
+  const sp = standPointsFor(currentLayout()).spawn;
+  camera.position.set(sp.x, sp.y + 1.62, sp.z);
 }
 
 function setLighting(night) {
@@ -157,7 +157,7 @@ function beginNight() {
   cookMeshes = campaign.staff.filter(s => s.role === "cook").map((s, i) => {
     const m = personMesh(0x8a6a42, true);
     const c = cookSpot(room, i);
-    m.position.set(c.x, 0, c.z);
+    m.position.set(c.x, c.y, c.z);
     m.rotation.y = Math.PI;
     scene.add(m);
     return m;

@@ -4,8 +4,10 @@
 // description; day.js places its station rings from the same one; the tests
 // ask this file the questions world.js could never answer (is every stool
 // reachable, does the corridor still join the two rooms). Everything a wall,
-// a stool or a stand-point decides lives here, in metres, floor y=0, x east,
-// z south. Nothing in here may decide a colour.
+// a stool or a stand-point decides lives here, in metres, x east, z south,
+// and the floor at y=0 everywhere a description does not say otherwise —
+// floorYAt() is the one place that says otherwise. Nothing in here may decide
+// a colour.
 //
 // Shape of a description:
 //   id        matches a VENUES key in campaign.js
@@ -24,6 +26,17 @@
 //             replaces. Its own `h` is its ceiling, which need not be the
 //             hall's. The walkable band through the gap is derived, not
 //             authored — annexBand().
+//   mezzanines [{ id, x0, x1, z0, z1, y, stair: { x0, x1, z0, z1, rise } }]
+//             raised floor rectangles inside the hall, the first floors in
+//             this file that are not at y = 0. The deck stands at `y`; the
+//             ground under it is closed, and its edges that are not the
+//             hall's walls are a rail. `stair` is a rectangle on the hall
+//             floor that climbs from 0 to `y` in the direction `rise` (east |
+//             west | north | south), its high end flush against the deck's
+//             edge. floorYAt() reads both; a table on the deck is lifted with
+//             it, and a body may only step where the floor under it changes
+//             by MAX_SLOPE per metre or less, which is the rail, the facade
+//             under the deck and the stair's sides in one rule — levelOpen().
 //   windows   [{ x0, x1, y0, y1 }]  pass-through openings in the north wall
 //   bar       { len, x, z, stools: n, stoolZ, approachZ, x0, pitch, taps }
 //   tables    [{ x, z }]           four-tops, four stools on a 0.95 m ring
@@ -207,7 +220,11 @@ export const MIDTOWN = Object.freeze({
 });
 
 /** The Fourth Quarter: twelve stools on a twelve-metre bar with eight taps,
- *  sixteen four-tops, three stoves on a three-prep line. 76 seats. */
+ *  sixteen four-tops, three stoves on a three-prep line. 76 seats. Three of
+ *  the four-tops stand on the mezzanine, a 1.6 m deck over the hall's
+ *  south-east corner reached by a 2.6 m stair beside the door — the first
+ *  floor in this file that is not at y = 0. The three that went up are the
+ *  three that stood on that corner, so the count is still the ladder's 76. */
 export const FLAGSHIP = Object.freeze({
   id: "flagship",
   room: { x: 14, z: 9, h: 3.8 },
@@ -218,9 +235,13 @@ export const FLAGSHIP = Object.freeze({
   bar: { len: 12, x: -7.4, z: -7.3, depth: 0.75, pad: 0.1,
          stools: 12, x0: -12.9, pitch: 1.04, stoolZ: -6.55, approachZ: -5.9,
          taps: 8, tapX0: -10.7, tapPitch: 0.5 },
+  mezzanines: [{ id: "mezzanine", x0: 5.5, x1: 14, z0: 3.0, z1: 9, y: 1.6,
+                 stair: { x0: 2.9, x1: 5.5, z0: 7.6, z1: 9, rise: "east" } }],
   tables: [{ x: -11.0, z: -2.0 }, { x: -7.6, z: -2.0 }, { x: -4.2, z: -2.0 }, { x: 3.0, z: -2.0 }, { x: 6.4, z: -2.0 }, { x: 9.8, z: -2.0 },
-           { x: -11.0, z: 1.2 },  { x: -7.6, z: 1.2 },  { x: -4.2, z: 1.2 },  { x: 3.0, z: 1.2 },  { x: 6.4, z: 1.2 },  { x: 9.8, z: 1.2 },
-           { x: -11.0, z: 4.4 },  { x: -7.6, z: 4.4 },  { x: 6.4, z: 4.4 },   { x: 9.8, z: 4.4 }],
+           { x: -11.0, z: 1.2 },  { x: -7.6, z: 1.2 },  { x: -4.2, z: 1.2 },  { x: 3.0, z: 1.2 },  { x: 6.4, z: 1.2 },
+           { x: -11.0, z: 4.4 },  { x: -7.6, z: 4.4 },
+           // the mezzanine, up the stair
+           { x: 8.0, z: 4.8 }, { x: 11.6, z: 4.8 }, { x: 9.8, z: 7.4 }],
   fitout: [
     { id: "prep",   kind: "prep",      x: 3.0,   z: -11.7,  w: 2.4,  d: 0.9,  h: 0.95, rotY: 0,   pad: 0.08 },
     { id: "prep2",  kind: "prep",      x: 5.8,   z: -11.7,  w: 2.4,  d: 0.9,  h: 0.95, rotY: 0,   pad: 0.08 },
@@ -231,11 +252,12 @@ export const FLAGSHIP = Object.freeze({
     { id: "crate1", kind: "crate",     x: -13.3, z: -5.0,   w: 0.7,  d: 0.6,  h: 0.6,  rotY: 0,   pad: 0.06 },
     { id: "crate2", kind: "crateWood", x: -12.75, z: -4.85, w: 0.55, d: 0.55, h: 0.5,  rotY: 0.3, pad: 0.06 },
   ],
+  // the two TVs on the mezzanine's walls hang 1.5 m over its deck, not the hall's floor
   tvs: [{ wall: "north", at: -10.5, y: 2.7 }, { wall: "north", at: -4.5, y: 2.7 },
-        { wall: "east", at: -5.0, y: 2.5 }, { wall: "east", at: 3.0, y: 2.5 },
-        { wall: "west", at: -1.0, y: 2.5 }, { wall: "west", at: 5.0, y: 2.5 }, { wall: "south", at: 6.0, y: 2.6 }],
+        { wall: "east", at: -5.0, y: 2.5 }, { wall: "east", at: 6.0, y: 3.1 },
+        { wall: "west", at: -1.0, y: 2.5 }, { wall: "west", at: 5.0, y: 2.5 }, { wall: "south", at: 9.0, y: 3.1 }],
   pendants: [{ x: -11, z: -0.4 }, { x: -7.6, z: -0.4 }, { x: -4.2, z: -0.4 }, { x: 3, z: -0.4 }, { x: 6.4, z: -0.4 }, { x: 9.8, z: -0.4 },
-             { x: -9.3, z: 4.4 }, { x: 0, z: 4.4 }, { x: 8.1, z: 4.4 },
+             { x: -9.3, z: 4.4 }, { x: 0, z: 4.4 }, { x: 8.0, z: 4.8 }, { x: 11.6, z: 4.8 }, { x: 9.8, z: 7.4 },
              { x: -10, z: -6.6 }, { x: -5, z: -6.6 }, { x: 0, z: -6.6 }, { x: 7.5, z: -8 }],
   stations: {
     door:           { x: 0,      z: 8.7 },
@@ -276,7 +298,7 @@ export function layoutFor(venueId) {
  *  plain {x,y,z} objects — world.js turns them into Vector3 at the boundary. */
 export function standPointsFor(desc) {
   const out = {};
-  for (const [k, p] of Object.entries(desc.stations)) out[k] = { x: p.x, y: p.y ?? 0, z: p.z };
+  for (const [k, p] of Object.entries(desc.stations)) out[k] = { x: p.x, y: p.y ?? floorYAt(desc, p.x, p.z), z: p.z };
   return out;
 }
 
@@ -285,19 +307,20 @@ export const RING_IDS = ["stock", "crew", "promo", "doorRing", "upgrades", "real
 
 /** Seats in the order world.js has always added them: bar stools west to
  *  east, then each four-top's four stools starting at 45° and going round.
- *  Ids restart at 1 per call, matching the old module counter. */
+ *  Ids restart at 1 per call, matching the old module counter. `y` is the
+ *  floor under the stool — a four-top on the mezzanine is lifted with it. */
 export function seatsFor(desc) {
   const seats = [];
   const b = desc.bar;
   for (let i = 0; i < b.stools; i++) {
     const x = b.x0 + i * b.pitch;
-    seats.push({ id: seats.length + 1, x, z: b.stoolZ, ax: x, az: b.approachZ, kind: "bar" });
+    seats.push({ id: seats.length + 1, x, y: floorYAt(desc, x, b.stoolZ), z: b.stoolZ, ax: x, az: b.approachZ, kind: "bar" });
   }
   for (const t of desc.tables) {
     for (let i = 0; i < 4; i++) {
       const a = (Math.PI / 2) * i + Math.PI / 4;
       const sx = t.x + Math.cos(a) * TABLE_SEAT_R, sz = t.z + Math.sin(a) * TABLE_SEAT_R;
-      seats.push({ id: seats.length + 1, x: sx, z: sz,
+      seats.push({ id: seats.length + 1, x: sx, y: floorYAt(desc, sx, sz), z: sz,
         ax: t.x + Math.cos(a) * (TABLE_SEAT_R + TABLE_APPROACH),
         az: t.z + Math.sin(a) * (TABLE_SEAT_R + TABLE_APPROACH), kind: "table" });
     }
@@ -306,12 +329,13 @@ export function seatsFor(desc) {
 }
 
 /** Axis-aligned box of a w×d block centred at (x,z), turned rotY about y,
- *  padded — the same box THREE.Box3.setFromObject() reads off the mesh. */
-export function blockBox({ x, z, w, d, rotY = 0, pad = 0 }) {
+ *  padded — the same box THREE.Box3.setFromObject() reads off the mesh. It
+ *  stands on the floor under its centre, COLLIDER_H tall. */
+export function blockBox({ x, z, w, d, rotY = 0, pad = 0 }, y = 0) {
   const c = Math.abs(Math.cos(rotY)), s = Math.abs(Math.sin(rotY));
   const hx = (w / 2) * c + (d / 2) * s + pad;
   const hz = (w / 2) * s + (d / 2) * c + pad;
-  return { min: { x: x - hx, y: 0, z: z - hz }, max: { x: x + hx, y: COLLIDER_H, z: z + hz } };
+  return { min: { x: x - hx, y, z: z - hz }, max: { x: x + hx, y: y + COLLIDER_H, z: z + hz } };
 }
 
 /** Everything the player slides against, in the order world.js has always
@@ -320,11 +344,12 @@ const KITCHEN_KINDS = ["prep", "stove"];
 export function collidersFor(desc) {
   const out = [];
   const push = (id, box) => out.push({ id, ...box });
-  for (const f of desc.fitout) if (KITCHEN_KINDS.includes(f.kind)) push(f.id, blockBox(f));
-  push("bar", blockBox({ x: desc.bar.x, z: desc.bar.z, w: desc.bar.len, d: desc.bar.depth, pad: desc.bar.pad }));
+  const on = b => blockBox(b, floorYAt(desc, b.x, b.z));
+  for (const f of desc.fitout) if (KITCHEN_KINDS.includes(f.kind)) push(f.id, on(f));
+  push("bar", on({ x: desc.bar.x, z: desc.bar.z, w: desc.bar.len, d: desc.bar.depth, pad: desc.bar.pad }));
   desc.tables.forEach((t, i) => push(`table${i + 1}`,
-    blockBox({ x: t.x, z: t.z, w: TABLE_TOP_R * 2, d: TABLE_TOP_R * 2, pad: TABLE_PAD })));
-  for (const f of desc.fitout) if (!KITCHEN_KINDS.includes(f.kind)) push(f.id, blockBox(f));
+    on({ x: t.x, z: t.z, w: TABLE_TOP_R * 2, d: TABLE_TOP_R * 2, pad: TABLE_PAD })));
+  for (const f of desc.fitout) if (!KITCHEN_KINDS.includes(f.kind)) push(f.id, on(f));
   return out;
 }
 
@@ -446,9 +471,112 @@ export function annexWalls(desc, a) {
   return Object.entries(all).filter(([side]) => side !== shared).map(([side, b]) => ({ side, ...b }));
 }
 
+// ------------------------------------------------- a floor that is not flat
+//
+// Every rectangle above is at y = 0, and everything that walks was written as
+// if the floor could be nothing else: Route, stepToward(), the grid's cells,
+// seatsFor(), the camera and the player's ground plane were all (x, z). The
+// flagship's mezzanine is the one floor that is not, so the height under a
+// point is now a question this file answers — floorYAt() — and one rule
+// decides where a body may step: between two points the floor may change by
+// one step (STEP_H), or by MAX_SLOPE per metre, whichever is more. A stair is
+// a floor that changes by less than that; its side near the foot is a kerb a
+// body steps up. The deck's edge, the panelling under it and the stair's
+// sides higher up all change by the whole height of the deck in no distance,
+// so a body that is r wide is kept r off every one of them without any of the
+// three being a collider. The rule is stated for two points and a distance,
+// so the grid's neighbours, the string-pull's 10 cm samples and the level test
+// at r all give the same answer — the first draft compared per sample and A*
+// took a diagonal onto the stair's side that the string-pull then refused.
+
+/** The tallest single step a body takes: one stair riser. The stair itself
+ *  is a ramp, so this only ever happens stepping onto its side near the foot,
+ *  and a body's y is read off the floor, so that step is one frame's pop. */
+export const STEP_H = 0.18;
+/** The steepest continuous floor a body walks: rise per metre of run. A 1.6 m
+ *  deck up a 2.6 m stair is 0.62; the deck's own edge is 1.6 m in no run. */
+export const MAX_SLOPE = 0.75;
+const RISE_EPS = 1e-6;
+
+/** May a body step from a floor at ya to one at yb, `dist` apart? */
+export function stepOK(ya, yb, dist) {
+  return Math.abs(ya - yb) <= Math.max(STEP_H, MAX_SLOPE * dist) + RISE_EPS;
+}
+
+/** May a body step from a to b? stepOK() over each half of the span, so a
+ *  kerb in the middle of a hop is judged as the kerb it is and not as slope:
+ *  two grid cells 0.35 m apart on the diagonal may not hide a 0.26 m drop
+ *  between them that a 10 cm sample of the same line would refuse. */
+export function stepBetween(desc, ax, az, bx, bz) {
+  const h = Math.hypot(bx - ax, bz - az) / 2;
+  const ya = floorYAt(desc, ax, az), yb = floorYAt(desc, bx, bz);
+  const ym = floorYAt(desc, (ax + bx) / 2, (az + bz) / 2);
+  return stepOK(ya, ym, h) && stepOK(ym, yb, h);
+}
+
+/** 0 at the foot of a stair, 1 at its top. */
+function stairT(s, x, z) {
+  switch (s.rise) {
+    case "east":  return (x - s.x0) / (s.x1 - s.x0);
+    case "west":  return (s.x1 - x) / (s.x1 - s.x0);
+    case "south": return (z - s.z0) / (s.z1 - s.z0);
+    case "north": return (s.z1 - z) / (s.z1 - s.z0);
+    default: return 0;
+  }
+}
+
+/** The floor under a point: 0 everywhere but a mezzanine, the deck's height
+ *  on one, and the interpolated height on its stair. A point on both the deck
+ *  and the stair (their shared edge) is the deck's. */
+export function floorYAt(desc, x, z) {
+  for (const m of desc.mezzanines ?? []) {
+    if (x >= m.x0 && x <= m.x1 && z >= m.z0 && z <= m.z1) return m.y;
+    const s = m.stair;
+    if (s && x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1) return m.y * stairT(s, x, z);
+  }
+  return 0;
+}
+
+/** A body of radius r stands on one floor: the floor r away in each of the
+ *  four directions is within a step of the floor under its centre. This is
+ *  the rail along the deck, the panelling under it and the stair's sides,
+ *  without any of them being a collider — and on the stair itself it is what
+ *  lets a body climb, because the rise across r is under the slope. */
+export function levelOpen(desc, x, z, r) {
+  if (!(desc.mezzanines?.length) || r <= 0) return true;
+  return stepBetween(desc, x, z, x + r, z) && stepBetween(desc, x, z, x - r, z) &&
+         stepBetween(desc, x, z, x, z + r) && stepBetween(desc, x, z, x, z - r);
+}
+
+/** The deck's edges that are not the hall's walls, in world coordinates, as
+ *  { side, a0, a1 } along that side (x for north/south, z for east/west) —
+ *  the spans world.js rails and panels. The span the stair lands on is left
+ *  out: the stair is what closes it. */
+export function mezzanineEdges(desc, m) {
+  const R = desc.room, s = m.stair, out = [];
+  const sides = { north: [m.z0, -R.z], south: [m.z1, R.z], west: [m.x0, -R.x], east: [m.x1, R.x] };
+  for (const [side, [at, wall]] of Object.entries(sides)) {
+    if (Math.abs(at - wall) < 1e-9) continue;
+    const along = side === "north" || side === "south";
+    let spans = [[along ? m.x0 : m.z0, along ? m.x1 : m.z1]];
+    // the stair's top is flush against the side it rises toward
+    const lands = s && { east: "west", west: "east", north: "south", south: "north" }[s.rise] === side;
+    if (lands) {
+      const lo = along ? s.x0 : s.z0, hi = along ? s.x1 : s.z1;
+      spans = spans.flatMap(([a, b]) => [[a, Math.min(b, lo)], [Math.max(a, hi), b]]).filter(([a, b]) => b - a > 1e-9);
+    }
+    for (const [a0, a1] of spans) out.push({ side, a0, a1 });
+  }
+  return out;
+}
+
 /** Walkable test: hall ∪ kitchen ∪ each doorway's corridor band ∪ each annex
- *  and the band through its doorway. */
+ *  and the band through its doorway — and, where the floor is not flat, on
+ *  one floor (levelOpen). */
 export function inBounds(desc, x, z, r = 0.3) {
+  return inRects(desc, x, z, r) && levelOpen(desc, x, z, r);
+}
+function inRects(desc, x, z, r) {
   const R = desc.room, K = desc.kitchen;
   if (x > -R.x + r && x < R.x - r && z > -R.z + r && z < R.z - r) return true;
   for (const d of desc.doorways) {
@@ -481,14 +609,14 @@ export const CREW_SPREAD = [0.4, -3.4, 2.6];   // main.js's idle-server offsets
 
 /** Where the i-th cook stands: the cook line runs east from stations.cooks. */
 export function cookSpot(desc, i) {
-  const c = desc.stations.cooks;
-  return { x: c.x + i * COOK_PITCH, z: c.z };
+  const c = desc.stations.cooks, x = c.x + i * COOK_PITCH;
+  return { x, y: floorYAt(desc, x, c.z), z: c.z };
 }
 
 /** Where the i-th floor staffer idles between tickets. */
 export function crewHome(desc, i) {
-  const h = desc.stations.crewHome;
-  return { x: h.x + CREW_SPREAD[i % CREW_SPREAD.length], z: h.z };
+  const h = desc.stations.crewHome, x = h.x + CREW_SPREAD[i % CREW_SPREAD.length];
+  return { x, y: floorYAt(desc, x, h.z), z: h.z };
 }
 
 const TV_INSET = 0.06;
@@ -550,6 +678,7 @@ export function unreachable(desc, r = 0.3) {
   const W = x1 - x0 + 1;
   const key = (xi, zi) => (zi - z0) * W + (xi - x0);
   const open = new Uint8Array(W * (z1 - z0 + 1));
+  const flat = !(desc.mezzanines?.length);
   for (let zi = z0; zi <= z1; zi++) for (let xi = x0; xi <= x1; xi++) {
     if (walkable(desc, xi * GRID, zi * GRID, r, cols)) open[key(xi, zi)] = 1;
   }
@@ -567,7 +696,9 @@ export function unreachable(desc, r = 0.3) {
       const nx = xi + dx, nz = zi + dz;
       if (nx < x0 || nx > x1 || nz < z0 || nz > z1) continue;
       const k = key(nx, nz);
-      if (open[k] && !seen[k]) { seen[k] = 1; queue.push([nx, nz]); }
+      // the next cell has to be a step away, not a climb: the deck's edge is
+      // a whole floor's rise in one cell, and the stair is not
+      if (open[k] && !seen[k] && (flat || stepBetween(desc, xi * GRID, zi * GRID, nx * GRID, nz * GRID))) { seen[k] = 1; queue.push([nx, nz]); }
     }
   }
   const reached = (x, z) => {
@@ -622,7 +753,8 @@ let navCache = new WeakMap();
 export function clearNavCache() { navCache = new WeakMap(); }
 
 /** The rasterised floor: `open[zi * W + xi]` for cells on the same 0.25 m
- *  lattice unreachable() floods, spanning the room and the kitchen. */
+ *  lattice unreachable() floods, spanning every floor rectangle, and
+ *  `y[...]` the floor under each open cell. */
 export function navGrid(desc, r = WALKER_R) {
   let byR = navCache.get(desc);
   if (!byR) navCache.set(desc, (byR = new Map()));
@@ -634,12 +766,14 @@ export function navGrid(desc, r = WALKER_R) {
   const z0 = Math.floor(fb.z0 / GRID), z1 = Math.ceil(fb.z1 / GRID);
   const W = x1 - x0 + 1, H = z1 - z0 + 1;
   const open = new Uint8Array(W * H);
+  const y = new Float32Array(W * H);   // the floor under each open cell
   for (let zi = 0; zi < H; zi++) {
     for (let xi = 0; xi < W; xi++) {
-      if (navOpen(desc, (x0 + xi) * GRID, (z0 + zi) * GRID, r, cols)) open[zi * W + xi] = 1;
+      const px = (x0 + xi) * GRID, pz = (z0 + zi) * GRID;
+      if (navOpen(desc, px, pz, r, cols)) { open[zi * W + xi] = 1; y[zi * W + xi] = floorYAt(desc, px, pz); }
     }
   }
-  const g = { desc, r, x0, z0, W, H, open, cols };
+  const g = { desc, r, x0, z0, W, H, open, y, cols, flat: !(desc.mezzanines?.length) };
   byR.set(r, g);
   return g;
 }
@@ -652,7 +786,11 @@ export function cellPoint(g, i) { return { x: cellX(g, i), z: cellZ(g, i) }; }
  *  Pass Infinity to accept whatever the floor does have. */
 export function nearestCell(g, x, z, within = SNAP_R) {
   const cx = Math.round(x / GRID) - g.x0, cz = Math.round(z / GRID) - g.z0;
-  if (cx >= 0 && cx < g.W && cz >= 0 && cz < g.H && g.open[cz * g.W + cx]) return cz * g.W + cx;
+  // a target on the deck snaps to a cell on the deck, never to the hall floor
+  // under its rail: the cell has to be a step from the point, not a climb
+  const py = floorYAt(g.desc, x, z);
+  const fits = i => stepOK(py, g.y[i], Math.hypot(cellX(g, i) - x, cellZ(g, i) - z));
+  if (cx >= 0 && cx < g.W && cz >= 0 && cz < g.H && g.open[cz * g.W + cx] && fits(cz * g.W + cx)) return cz * g.W + cx;
   const rad = Number.isFinite(within) ? Math.ceil(within / GRID) : Math.max(g.W, g.H);
   let best = -1, bestD = Infinity;
   for (let dz = -rad; dz <= rad; dz++) {
@@ -664,14 +802,16 @@ export function nearestCell(g, x, z, within = SNAP_R) {
       const i = zi * g.W + xi;
       if (!g.open[i]) continue;
       const d = Math.hypot(cellX(g, i) - x, cellZ(g, i) - z);
-      if (d < bestD && d <= within) { bestD = d; best = i; }
+      if (d < bestD && d <= within && fits(i)) { bestD = d; best = i; }
     }
   }
   return best;
 }
 
 const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-/** Eight neighbours, minus the two diagonals that would cut a corner. */
+/** Eight neighbours, minus the two diagonals that would cut a corner, and
+ *  minus any cell more than a stride's rise above or below this one — a body
+ *  walks up the stair, not off the deck's edge. */
 function eachNeighbour(g, i, fn) {
   const xi = i % g.W, zi = (i - xi) / g.W;
   for (let k = 0; k < 8; k++) {
@@ -681,7 +821,9 @@ function eachNeighbour(g, i, fn) {
     const n = nz * g.W + nx;
     if (!g.open[n]) continue;
     if (dx && dz && !(g.open[zi * g.W + nx] && g.open[nz * g.W + xi])) continue;
-    fn(n, dx && dz ? DIAG : 1);
+    const w = dx && dz ? DIAG : 1;
+    if (!g.flat && !stepBetween(g.desc, cellX(g, i), cellZ(g, i), cellX(g, n), cellZ(g, n))) continue;
+    fn(n, w);
   }
 }
 
@@ -767,14 +909,20 @@ function trace(came, s, t) {
   return out.reverse();
 }
 
-/** Every 10 cm of a→b is open for a body of radius r. */
+/** Every 10 cm of a→b is open for a body of radius r, and no 10 cm of it
+ *  rises more than a stride: the string-pull may not shortcut from the stair's
+ *  foot to the deck across the edge of the deck. */
 export function clearLine(desc, a, b, r = WALKER_R, cols = collidersFor(desc)) {
   const dx = b.x - a.x, dz = b.z - a.z;
   const d = Math.hypot(dx, dz);
   const n = Math.max(1, Math.ceil(d / LINE_STEP));
+  let py = floorYAt(desc, a.x, a.z);
   for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    if (!navOpen(desc, a.x + dx * t, a.z + dz * t, r, cols)) return false;
+    const t = i / n, x = a.x + dx * t, z = a.z + dz * t;
+    if (!navOpen(desc, x, z, r, cols)) return false;
+    const y = floorYAt(desc, x, z);
+    if (!stepOK(py, y, d / n)) return false;
+    py = y;
   }
   return true;
 }
@@ -975,6 +1123,40 @@ export function validate(desc) {
     }
     if (!joined) bad.push(`${name}'s doorway at ${fmt(mid)} does not join it to the hall`);
   }
+  // mezzanines: a raised floor inside the hall. Everything here is what makes
+  // the one step rule enough — the deck inside the hall's walls, the stair
+  // flush against the deck's edge and no steeper than a body climbs, and
+  // nothing under the deck that anybody needs to reach.
+  const seenMezz = new Set();
+  for (const [i, m] of (desc.mezzanines ?? []).entries()) {
+    const R = desc.room, name = `mezzanine ${m.id ?? i}`;
+    if (!m.id || seenMezz.has(m.id)) bad.push(`${name} has no unique id`);
+    seenMezz.add(m.id);
+    if (!(m.x1 > m.x0 && m.z1 > m.z0)) { bad.push(`${name} is not a rectangle`); continue; }
+    if (!(m.y > 0)) bad.push(`${name} at y=${fmt(m.y ?? 0)} is a floor, not a mezzanine`);
+    if (m.x0 < -R.x || m.x1 > R.x || m.z0 < -R.z || m.z1 > R.z) bad.push(`${name} runs outside the hall`);
+    if (R.h - m.y < 2.0) bad.push(`${name} leaves ${fmt(R.h - m.y)} m of headroom under the hall's ceiling`);
+    const s = m.stair;
+    if (!s) { bad.push(`${name} has no stair`); continue; }
+    if (!(s.x1 > s.x0 && s.z1 > s.z0)) { bad.push(`${name}'s stair is not a rectangle`); continue; }
+    if (!["east", "west", "north", "south"].includes(s.rise)) { bad.push(`${name}'s stair rises nowhere (${s.rise})`); continue; }
+    if (s.x0 < -R.x || s.x1 > R.x || s.z0 < -R.z || s.z1 > R.z) bad.push(`${name}'s stair runs outside the hall`);
+    const along = s.rise === "east" || s.rise === "west";
+    const run = along ? s.x1 - s.x0 : s.z1 - s.z0, width = along ? s.z1 - s.z0 : s.x1 - s.x0;
+    if (m.y / run > MAX_SLOPE) bad.push(`${name}'s stair climbs ${fmt(m.y)} m in ${fmt(run)} m, steeper than a body walks (${MAX_SLOPE})`);
+    if (width < 0.9) bad.push(`${name}'s stair is ${fmt(width)} m wide, too narrow for a body and its shoulders`);
+    const top = { east: [s.x1, m.x0], west: [s.x0, m.x1], south: [s.z1, m.z0], north: [s.z0, m.z1] }[s.rise];
+    if (Math.abs(top[0] - top[1]) > 1e-9) bad.push(`${name}'s stair tops out at ${fmt(top[0])}, not against the deck's edge at ${fmt(top[1])}`);
+    const lo = along ? s.z0 : s.x0, hi = along ? s.z1 : s.x1, dlo = along ? m.z0 : m.x0, dhi = along ? m.z1 : m.x1;
+    if (lo < dlo || hi > dhi) bad.push(`${name}'s stair lands past the deck's edge`);
+    if (s.x0 < m.x1 && s.x1 > m.x0 && s.z0 < m.z1 && s.z1 > m.z0) bad.push(`${name}'s stair overlaps its deck`);
+    // nothing anybody has to reach may stand under the deck or the stair:
+    // the bar, a stove, a crate — a table on the deck is lifted with it
+    const under = (x, z) => (x > m.x0 && x < m.x1 && z > m.z0 && z < m.z1) || (x > s.x0 && x < s.x1 && z > s.z0 && z < s.z1);
+    if (under(desc.bar.x, desc.bar.z)) bad.push(`${name} stands on the bar`);
+    for (const f of desc.fitout) if (under(f.x, f.z)) bad.push(`${name} stands on ${f.id}`);
+    for (const t of desc.tables) if (under(t.x, t.z) && floorYAt(desc, t.x, t.z) < m.y) bad.push(`a table at (${fmt(t.x)}, ${fmt(t.z)}) stands on ${name}'s stair`);
+  }
   // no two things the player interacts with by proximity within one
   // interaction radius of each other: day.js's nearest() takes the closest
   // ring inside 1.6 m, and player.js answers nearStove()/nearTap() at 1.6 m
@@ -995,7 +1177,10 @@ export function validate(desc) {
     const sideways = tv.wall === "north" || tv.wall === "south";
     const lo = sideways ? rc.x0 : rc.z0, hi = sideways ? rc.x1 : rc.z1;
     if (tv.at < lo + 1 || tv.at > hi - 1) bad.push(`tv ${i} at ${fmt(tv.at)} runs off the ${tv.wall} wall`);
-    if (tv.y < 1.2 || tv.y > rc.h - 0.6) bad.push(`tv ${i} at y=${fmt(tv.y)} is not on the wall`);
+    // measured from the floor under the mount: a TV on the mezzanine's wall
+    // hangs over the deck, not the hall floor
+    const over = tv.y - floorYAt(desc, m.x, m.z);
+    if (over < 1.2 || tv.y > rc.h - 0.6) bad.push(`tv ${i} at y=${fmt(tv.y)} is not on the wall`);
     if (!tv.area) for (const a of desc.annexes ?? []) {
       if (a.wall === tv.wall && tv.at > a.gap.a0 - 1 && tv.at < a.gap.a1 + 1) {
         bad.push(`tv ${i} at ${fmt(tv.at)} hangs over the ${a.id} doorway`);

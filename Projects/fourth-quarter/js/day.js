@@ -5,6 +5,7 @@
 
 import * as THREE from "three";
 import { stationRing, currentLayout } from "./world.js";
+import { standPointsFor } from "./layout.js";
 import { MENU } from "./engine.js";
 import * as C from "./campaign.js";
 import * as audio from "./audio.js";
@@ -42,7 +43,7 @@ export class DayPhase {
     this.group = new THREE.Group();
     for (const st of this.stations) {
       st.ring = stationRing(st.color);
-      st.ring.position.x = st.pos.x; st.ring.position.z = st.pos.z;
+      st.ring.position.set(st.pos.x, st.pos.y + 0.03, st.pos.z);
       this.group.add(st.ring);
     }
     this.scene = scene;   // rebuildStations() needs it if the group ever detaches
@@ -60,12 +61,13 @@ export class DayPhase {
   setVisible(v) { this.group.visible = v; }
   panelOpen() { return $("#panelOverlay").style.display === "flex"; }
 
-  /** Read each station's stand-point off the room world.js last built. */
+  /** Read each station's stand-point off the room world.js last built — with
+   *  the floor under it, so a ring on a raised floor sits on that floor. */
   placeStations() {
-    const pts = currentLayout().stations;
+    const pts = standPointsFor(currentLayout());
     for (const st of this.stations) {
       const p = pts[st.point ?? st.id]; // `ring` is the mesh
-      st.pos.set(p.x, 0, p.z);
+      st.pos.set(p.x, p.y, p.z);
     }
   }
 
@@ -86,8 +88,7 @@ export class DayPhase {
   rebuildStations() {
     this.placeStations();
     for (const st of this.stations) {
-      st.ring.position.x = st.pos.x;
-      st.ring.position.z = st.pos.z;
+      st.ring.position.set(st.pos.x, st.pos.y + 0.03, st.pos.z);
     }
     if (!this.group.parent) this.scene.add(this.group);
   }

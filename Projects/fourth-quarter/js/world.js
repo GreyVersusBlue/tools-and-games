@@ -1,5 +1,7 @@
 // world.js — the room, built in metres from a description in layout.js.
-// Floor y=0. Every room shares one plan: door mid-south (+z); the bar along
+// Floor y=0 except where layout.floorYAt() says otherwise — the flagship's
+// mezzanine is a deck at 1.6 m, and every stool, table and collider on it is
+// lifted with it. Every room shares one plan: door mid-south (+z); the bar along
 // the north wall with a service lane behind it; behind the north wall the
 // KITCHEN, reached through a doorway east of the bar, with a pass-through
 // window where food lands. A room may also carry annexes — further floor
@@ -43,13 +45,22 @@ export const UPGRADES_STATION = new THREE.Vector3();
 export const seats = [];
 export const colliders = [];
 
+// the mezzanine's joinery: deck thickness, panelling, rail height, riser
+const DECK_T = 0.22, PANEL_T = 0.08, RAIL_H = 1.0, STEP_RISE = 0.18;
+
 let current = L.CORNER_TAP;
 /** The description the room on screen was built from. */
 export function currentLayout() { return current; }
 
-/** Walkable test: main room ∪ kitchen ∪ the doorway corridor joining them. */
+/** Walkable test: main room ∪ kitchen ∪ the doorway corridor joining them,
+ *  on one floor (a body r wide is kept off the mezzanine's edge). */
 export function inBounds(x, z, r = 0.3) {
   return L.inBounds(current, x, z, r);
+}
+
+/** The floor under a point in the room on screen: 0, or the mezzanine's. */
+export function floorY(x, z) {
+  return L.floorYAt(current, x, z);
 }
 
 /** Point the exported constants at a description. Called at the top of
@@ -70,7 +81,8 @@ export function adoptLayout(desc) {
   // way, and patrons.js's freeSeat() refuses to offer one of those.
   const reach = L.reachableSeats(desc);
   L.seatsFor(desc).forEach((s, i) => {
-    seats.push({ id: s.id, pos: new THREE.Vector3(s.x, 0, s.z), approach: new THREE.Vector3(s.ax, 0, s.az),
+    seats.push({ id: s.id, pos: new THREE.Vector3(s.x, s.y, s.z),
+      approach: new THREE.Vector3(s.ax, L.floorYAt(desc, s.ax, s.az), s.az),
       taken: false, reachable: reach[i] });
   });
   colliders.length = 0;
@@ -123,6 +135,70 @@ export function buildWorld(scene, venueId) {
     const aCeil = new THREE.Mesh(plane(aw, ad, 16, 11), mat("ceiling"));
     aCeil.rotation.x = Math.PI / 2; aCeil.position.set(ax, a.h, az);
     g.add(aCeil);
+  }
+
+  // ---- mezzanines: a deck, the panelling under it, a rail, and a stair ----
+  // The deck is the hall's boards at the hall's texel density, standing on
+  // dark panelling that closes the ground under it; every edge that is not a
+  // hall wall carries a rail, except the span the stair lands on. The stair
+  // is solid steps, 18 cm risers or as near as divides the rise, so its sides
+  // are closed by the steps themselves. None of it is a collider: layout.js's
+  // one step rule keeps every body off the edge, the panelling and the sides.
+  const railM = flat(0x2a1d12, 0.6), panelM = flat(0x2e2016, 0.85);
+  for (const m of desc.mezzanines ?? []) {
+    const mw = m.x1 - m.x0, md = m.z1 - m.z0, mx = (m.x0 + m.x1) / 2, mz = (m.z0 + m.z1) / 2;
+    const deck = new THREE.Mesh(plane(mw, md, 16, 11), mat("floorWood"));
+    deck.rotation.x = -Math.PI / 2; deck.position.set(mx, m.y, mz);
+    deck.receiveShadow = true; g.add(deck);
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(mw, DECK_T, md), panelM);
+    lip.position.set(mx, m.y - DECK_T / 2, mz); lip.castShadow = true; g.add(lip);
+    for (const e of L.mezzanineEdges(desc, m)) {
+      const along = e.side === "north" || e.side === "south";
+      const len = e.a1 - e.a0, mid = (e.a0 + e.a1) / 2;
+      const at = { north: [mid, m.z0], south: [mid, m.z1], west: [m.x0, mid], east: [m.x1, mid] }[e.side];
+      const ry = along ? 0 : Math.PI / 2;
+      // the panelling under the deck, and a top rail on posts a metre up
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(len, m.y - DECK_T, PANEL_T), panelM);
+      panel.position.set(at[0], (m.y - DECK_T) / 2, at[1]); panel.rotation.y = ry;
+      panel.receiveShadow = true; g.add(panel);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.06, 0.06), railM);
+      rail.position.set(at[0], m.y + RAIL_H, at[1]); rail.rotation.y = ry; rail.castShadow = true; g.add(rail);
+      const posts = Math.max(2, Math.round(len / 1.2) + 1);
+      for (let i = 0; i < posts; i++) {
+        const u = e.a0 + 0.04 + (len - 0.08) * i / (posts - 1);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, RAIL_H, 0.05), railM);
+        post.position.set(along ? u : at[0], m.y + RAIL_H / 2, along ? at[1] : u); g.add(post);
+      }
+    }
+    // the stair: n solid steps from the foot to the deck's edge
+    const s = m.stair, alongX = s.rise === "east" || s.rise === "west";
+    const run = alongX ? s.x1 - s.x0 : s.z1 - s.z0, width = alongX ? s.z1 - s.z0 : s.x1 - s.x0;
+    const n = Math.max(1, Math.ceil(m.y / STEP_RISE)), tread = run / n, rise = m.y / n;
+    for (let i = 0; i < n; i++) {
+      // step i occupies the i-th tread from the foot, and is (i+1) risers tall
+      const u0 = (s.rise === "east" || s.rise === "south") ? i * tread : run - (i + 1) * tread;
+      const cu = (alongX ? s.x0 : s.z0) + u0 + tread / 2, h = (i + 1) * rise;
+      const step = new THREE.Mesh(new THREE.BoxGeometry(alongX ? tread : width, h, alongX ? width : tread), mat("barTop"));
+      step.position.set(alongX ? cu : (s.x0 + s.x1) / 2, h / 2, alongX ? (s.z0 + s.z1) / 2 : cu);
+      step.castShadow = true; step.receiveShadow = true; g.add(step);
+    }
+    // a handrail up each side of the stair that is not a hall wall
+    for (const side of alongX ? ["north", "south"] : ["west", "east"]) {
+      const edge = { north: s.z0, south: s.z1, west: s.x0, east: s.x1 }[side];
+      const wall = { north: -ROOM.z, south: ROOM.z, west: -ROOM.x, east: ROOM.x }[side];
+      if (Math.abs(edge - wall) < 1e-9) continue;
+      const len = Math.hypot(run, m.y), tilt = Math.atan2(m.y, run);
+      const up = (s.rise === "east" || s.rise === "south") ? 1 : -1;
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(alongX ? len : 0.06, 0.06, alongX ? 0.06 : len), railM);
+      beam.position.set(alongX ? (s.x0 + s.x1) / 2 : edge, m.y / 2 + RAIL_H, alongX ? edge : (s.z0 + s.z1) / 2);
+      if (alongX) beam.rotation.z = up * tilt; else beam.rotation.x = -up * tilt;
+      g.add(beam);
+      for (const [u, y] of [[0, 0], [run, m.y]]) {
+        const uu = up > 0 ? u : run - u;
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, RAIL_H, 0.05), railM);
+        post.position.set(alongX ? s.x0 + uu : edge, y + RAIL_H / 2, alongX ? edge : s.z0 + uu); g.add(post);
+      }
+    }
   }
 
   // ---- main room walls ----
@@ -291,17 +367,17 @@ export function buildWorld(scene, venueId) {
 
   // stools: one mesh per derived seat (bar stools first, then each table's
   // four) — the seat list itself was filled by adoptLayout() above
-  for (const s of seats) stool(g, s.pos.x, s.pos.z);
+  for (const s of seats) stool(g, s.pos.x, s.pos.z, s.pos.y);
 
   const stoveRing = stationRing(0xff5a2b);
-  stoveRing.position.set(STOVE_STATION.x, 0.02, STOVE_STATION.z); stoveRing.scale.setScalar(0.7);
+  stoveRing.position.set(STOVE_STATION.x, STOVE_STATION.y + 0.02, STOVE_STATION.z); stoveRing.scale.setScalar(0.7);
   g.add(stoveRing);
   const tapRing = stationRing(0x5aa7d6);
-  tapRing.position.set(TAP_STATION.x, 0.02, TAP_STATION.z); tapRing.scale.setScalar(0.7);
+  tapRing.position.set(TAP_STATION.x, TAP_STATION.y + 0.02, TAP_STATION.z); tapRing.scale.setScalar(0.7);
   g.add(tapRing);
 
-  // ---- tables ----
-  for (const t of desc.tables) table4(g, t.x, t.z);
+  // ---- tables, each on the floor under it ----
+  for (const t of desc.tables) table4(g, t.x, t.z, L.floorYAt(desc, t.x, t.z));
 
   // ---- TVs with live scoreboard canvases, hung where the description says ----
   const tvs = desc.tvs.map(tv => { const m = L.tvMount(desc, tv); return tvScreen(g, m.x, m.y, m.z, m.ry); });
@@ -385,24 +461,24 @@ function plane(w, h, refW, refH) {
   return geo;
 }
 
-function stool(g, x, z) {
+function stool(g, x, z, y = 0) {
   const s = new THREE.Group();
   const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.07, 14), mat("leather"));
   top.position.y = 0.72; top.castShadow = true; s.add(top);
   const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.7, 8), flat(0x2a2a2e, 0.4, 0.8));
   leg.position.y = 0.36; s.add(leg);
-  s.position.set(x, 0, z); g.add(s);
+  s.position.set(x, y, z); g.add(s);
 }
 
 /** A four-top's top and leg. Its stools and their seats come from the
  *  description (layout.seatsFor), and its collider from layout.collidersFor. */
-function table4(g, x, z) {
+function table4(g, x, z, y = 0) {
   const t = new THREE.Group();
   const top = new THREE.Mesh(new THREE.CylinderGeometry(L.TABLE_TOP_R, L.TABLE_TOP_R, 0.06, 20), mat("tableTop"));
   top.position.y = 0.92; top.castShadow = true; t.add(top);
   const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, 0.9, 10), flat(0x1c130b, 0.5));
   leg.position.y = 0.45; t.add(leg);
-  t.position.set(x, 0, z); g.add(t);
+  t.position.set(x, y, z); g.add(t);
 }
 
 // ---- canvas helpers ----

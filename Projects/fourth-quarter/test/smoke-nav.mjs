@@ -44,6 +44,25 @@ function clearance(desc, pts, from = 0, to = Infinity) {
   }
   return min;
 }
+/** The biggest rise in the floor over any 5 cm of a route. 0 on a flat
+ *  floor, 3 cm on the stair, a kerb's worth stepping onto the stair's low
+ *  side, and the deck's whole 1.6 m on a route that walks off its edge. */
+function biggestStep(desc, pts) {
+  let worst = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const d = Math.hypot(b.x - a.x, b.z - a.z);
+    if (d < 1e-9) continue;
+    const n = Math.max(1, Math.ceil(d / 0.05));
+    let py = L.floorYAt(desc, a.x, a.z);
+    for (let k = 1; k <= n; k++) {
+      const t = k / n, y = L.floorYAt(desc, a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t);
+      worst = Math.max(worst, Math.abs(y - py));
+      py = y;
+    }
+  }
+  return worst;
+}
 // a fixed stream, so a failing pair is the same pair next run
 function rng(seed) {
   let s = seed >>> 0;
@@ -145,7 +164,7 @@ for (const id of LADDER) {
   const desc = L.layoutFor(id), g = L.navGrid(desc);
   const rand = rng(0x5eed + id.length);
   const fb = L.floorBounds(desc);
-  let planned = 0, complete = 0, bad = 0, tight = Infinity;
+  let planned = 0, complete = 0, bad = 0, tight = Infinity, steepest = 0;
   for (let n = 0; n < 200; n++) {
     const from = { x: fb.x0 + rand() * (fb.x1 - fb.x0), z: fb.z0 + rand() * (fb.z1 - fb.z0) };
     const to = { x: fb.x0 + rand() * (fb.x1 - fb.x0), z: fb.z0 + rand() * (fb.z1 - fb.z0) };
@@ -158,11 +177,15 @@ for (const id of LADDER) {
       if (res.pts.at(-1).x !== to.x || res.pts.at(-1).z !== to.z) bad++;
       // both ends may be inside inflated geometry; the middle never is
       if (res.pts.length > 3) tight = Math.min(tight, clearance(desc, res.pts, 1, res.pts.length - 3));
+      // and no 5 cm of any of them rises more than a body steps: a route
+      // that walks off the flagship's deck would show here as a 1.6 m rise
+      steepest = Math.max(steepest, biggestStep(desc, res.pts));
     }
   }
   ok(planned === 200 && bad === 0, `${id}: 200 random pairs all return a finite route from the point asked for (${bad} did not)`);
   ok(complete >= 150, `${id}: most of them reach the point asked for (${complete}/200 complete)`);
   ok(tight >= R, `${id}: no middle leg of any of them is inside the furniture (tightest ${tight.toFixed(3)} m)`);
+  ok(steepest <= L.STEP_H + 1e-6, `${id}: no 5 cm of any of them rises more than a ${L.STEP_H} m step (biggest ${steepest.toFixed(3)})`);
 }
 
 // --- (5) the back room, on the far side of a doorway ---
@@ -214,6 +237,96 @@ for (const id of LADDER) {
   const nb = L.navProblems(blocked);
   ok(nb.length === 12 && nb.every(msg => /^seat \d+ \(table\) approach has no route from the door$/.test(msg)),
     `…and navProblems() names those twelve stools and nothing else (${nb.length}: ${nb.slice(0, 2).join("; ")})`);
+}
+
+// --- (5b) the mezzanine, up a stair ---
+// The back room is behind a wall; the flagship's deck is 1.6 m up. Every cell
+// carries the floor under it now, and a neighbour more than a stride's rise
+// away is not a neighbour, so a body walks up the stair and not off the
+// edge -- and the string-pull cannot shortcut across it either.
+{
+  const f = L.FLAGSHIP, m = f.mezzanines[0], s = m.stair;
+  const g = L.navGrid(f);
+  const onDeck = i => { const p = L.cellPoint(g, i); return p.x >= m.x0 && p.x <= m.x1 && p.z >= m.z0 && p.z <= m.z1; };
+  const onStair = p => p.x >= s.x0 && p.x < s.x1 && p.z >= s.z0 && p.z <= s.z1;
+  const deckCells = [...g.open].map((o, i) => o && onDeck(i) ? i : -1).filter(i => i >= 0);
+  const stairCells = [...g.open].map((o, i) => o && onStair(L.cellPoint(g, i)) ? i : -1).filter(i => i >= 0);
+  ok(g.y.length === g.open.length && deckCells.length > 300 && deckCells.every(i => Math.abs(g.y[i] - m.y) < 1e-6),
+    `every open cell on the deck carries the deck's height (${deckCells.length} cells)`);
+  ok(stairCells.length >= 20 && stairCells.every(i => g.y[i] > 0 && g.y[i] < m.y),
+    `and every open cell on the stair is somewhere between (${stairCells.length} cells)`);
+  ok([...g.open].every((o, i) => !o || onDeck(i) || onStair(L.cellPoint(g, i)) || g.y[i] === 0), "and every other open cell is at 0");
+  // the deck's edge is not a neighbour
+  const seats = L.seatsFor(f);
+  const up = seats.filter(st => st.y > 0);
+  ok(up.length === 12, `twelve stools are on the deck (${up.length})`);
+  const reach = L.reachableSeats(f);
+  ok(up.every(st => reach[st.id - 1]), "every one of them is offered");
+  let missing = 0, viaStair = 0, steepest = 0, worst = Infinity, worstSeat = null, endsUp = 0;
+  for (const st of up) {
+    const p = L.pathBetween(f, f.stations.door, { x: st.ax, z: st.az });
+    if (!p) { missing++; continue; }
+    // somewhere along it the route is on the stair, 5 cm at a time
+    let stair = false;
+    for (let i = 0; i < p.length - 1 && !stair; i++) {
+      const a = p[i], b = p[i + 1], d = Math.hypot(b.x - a.x, b.z - a.z), n = Math.max(1, Math.ceil(d / 0.05));
+      for (let k = 0; k <= n && !stair; k++) if (onStair({ x: a.x + (b.x - a.x) * k / n, z: a.z + (b.z - a.z) * k / n })) stair = true;
+    }
+    if (stair) viaStair++;
+    steepest = Math.max(steepest, biggestStep(f, p));
+    if (Math.abs(L.floorYAt(f, p.at(-1).x, p.at(-1).z) - m.y) < 1e-6) endsUp++;
+    const c = clearance(f, p, 0, p.length - 3);
+    if (c < worst) { worst = c; worstSeat = st.id; }
+  }
+  ok(missing === 0, `every deck stool has a route from the door (${missing} do not)`);
+  ok(viaStair === up.length, `and every one of those routes climbs the stair (${viaStair}/${up.length})`);
+  ok(steepest <= L.STEP_H + 1e-6, `and no 5 cm of any of them rises more than a step (biggest ${steepest.toFixed(3)} m)`);
+  ok(endsUp === up.length, "and every one of them ends on the deck");
+  ok(worst >= R, `the tightest of them clears the furniture by ${worst.toFixed(3)} m (seat ${worstSeat})`);
+  for (const k of ["passFood", "passDrink"]) {
+    let miss = 0;
+    for (const st of up) if (!L.pathBetween(f, f.stations[k], { x: st.ax, z: st.az })) miss++;
+    ok(miss === 0, `a server at ${k} has a route up to every deck stool (${miss} do not)`);
+  }
+  // a hall-floor point under the north rail and a deck point 1.8 m south of
+  // it: 3.3 m apart in a straight line, and the route is nothing like it
+  const around = L.pathBetween(f, { x: 9, z: 1.5 }, { x: 9, z: 4.8 });
+  const len = pts => pts.reduce((n, p, i) => i ? n + Math.hypot(p.x - pts[i - 1].x, p.z - pts[i - 1].z) : 0, 0);
+  ok(around && len(around) > 12, `from under the rail to over it is a walk round to the stair (${around && len(around).toFixed(1)} m for 3.3 m as the crow flies)`);
+  // for a point-sized body, which the level test does nothing for, so it is
+  // clearLine's own rule refusing this and not the cells near the rail
+  ok(!L.clearLine(f, { x: 2.5, z: 8.3 }, { x: 6.5, z: 5 }, 0), "the string-pull refuses the straight line from the stair's foot across the deck's edge, on its own rule");
+  ok(L.clearLine(f, { x: 2.5, z: 8.3 }, { x: 6.0, z: 8.3 }, 0), "and allows the one straight up the stair");
+  // a target on the hall floor 10 cm from the panelling snaps to the hall
+  // floor, not to the deck cell 35 cm away on the other side of it
+  const toPanel = L.pathToward(f, f.stations.door, { x: 5.4, z: 5.0 });
+  ok(toPanel.complete && toPanel.pts.every(p => L.floorYAt(f, p.x, p.z) === 0),
+    `a target against the panelling is reached along the floor, never via the deck (${toPanel.pts.length} points)`);
+  const fromPanel = L.pathToward(f, { x: 5.4, z: 5.0 }, f.stations.door);
+  ok(fromPanel.complete && fromPanel.pts.every(p => L.floorYAt(f, p.x, p.z) === 0), "…and so is the way back");
+  // a point-sized walker gets no help from the level test (levelOpen is
+  // r-wide), so for it the grid's own neighbour rule is the only thing
+  // between the deck and the floor: the route from the deck to the door still
+  // climbs down the stair rather than stepping off the edge
+  const g0 = L.navGrid(f, 0);
+  const off = L.pathBetween(f, { x: 9, z: 4.8 }, { x: 9, z: 1.5 }, 0);
+  ok(g0 !== g && off && len(off) > 12 && biggestStep(f, off) <= L.STEP_H + 1e-6,
+    `a point-sized walker leaves the deck by the stair too (${off && len(off).toFixed(1)} m, biggest step ${off && biggestStep(f, off).toFixed(3)})`);
+  // a crate across the stair's foot takes the deck out of the offer
+  const blocked = clone(f);
+  blocked.fitout.push({ id: "block", kind: "crate", x: s.x0 + 0.2, z: (s.z0 + s.z1) / 2, w: 1.2, d: s.z1 - s.z0 + 0.6, h: 1, rotY: 0, pad: 0 });
+  const br = L.reachableSeats(blocked);
+  ok(up.every(st => br[st.id - 1] === false), "a crate across the stair's foot takes all twelve out of the offer");
+  ok(br.filter(Boolean).length === seats.length - 12, `…and leaves the floor's sixty-four (${br.filter(Boolean).length})`);
+  const nb = L.navProblems(blocked);
+  ok(nb.length === 12 && nb.every(msg => /^seat \d+ \(table\) approach has no route from the door$/.test(msg)),
+    `…and navProblems() names those twelve stools and nothing else (${nb.length}: ${nb.slice(0, 2).join("; ")})`);
+  // a walker on the deck with the stair gone still gets a route: to the
+  // nearest deck cell to the door, and not one step further down
+  const noStair = clone(f); delete noStair.mezzanines[0].stair;
+  const stranded = L.pathToward(noStair, { x: 9, z: 5 }, noStair.stations.door);
+  ok(!stranded.complete && stranded.pts.every(p => Math.abs(L.floorYAt(noStair, p.x, p.z) - m.y) < 1e-6),
+    `with the stair gone a body on the deck is told so, and its partial route never leaves the deck (${stranded.pts.length} points)`);
 }
 
 // --- (6) a failed path is a real answer ---
