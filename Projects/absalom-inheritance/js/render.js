@@ -12,7 +12,9 @@ const PALETTE = {
   wallTop: "#3a3448", wallLeft: "#231f2d", wallRight: "#2c2738",
   doorTop: "#4a3b18", doorLeft: "#332a12", doorRight: "#3d3115",
   pillarTop: "#4d4560", pillarLeft: "#312b40", pillarRight: "#3b3450",
-  pcTop: "#3f6ea8", pcLeft: "#26456b", pcRight: "#315687",
+  // No pc faces here. The heir's three are a property of the build the player
+  // chose, not of the room, and they come off `content.pc.palette` — see the
+  // "pc" branch of drawFrame and content.js's readPalette.
   foeTop: "#8a3a46", foeLeft: "#57242c", foeRight: "#6e2e38",
   bossTop: "#6f4a8a", bossLeft: "#422b52", bossRight: "#573a6e",
   stairs: "#1c2c22",
@@ -241,7 +243,11 @@ export function createRenderer(canvas, game) {
 
       if (s.kind === "pc") {
         const cx = isoX(s.x, s.y), cy = isoY(s.x, s.y);
-        prism(s.x, s.y, 20 * scale, PALETTE.pcTop, PALETTE.pcLeft, PALETTE.pcRight, 0.55);
+        // The build, on the board. A wizard and a fighter drew the same blue
+        // prism for two rounds; the colours are content now, required of every
+        // build in the pack, so a third one cannot arrive without deciding.
+        const pal = game.content.pc.palette;
+        prism(s.x, s.y, 20 * scale, pal.top, pal.left, pal.right, 0.55);
         ctx.fillStyle = PALETTE.gold;
         diamond(cx, cy - 27 * scale, 10 * scale, 5 * scale); ctx.fill();
         if (game.shielded) {

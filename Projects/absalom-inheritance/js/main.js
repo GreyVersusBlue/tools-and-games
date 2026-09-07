@@ -75,6 +75,14 @@ const boot = async () => {
     ui.replayLog();
     ui.announce("Save loaded.");
     document.getElementById("save-msg").textContent = "Save loaded.";
+    // A loaded save used to come back with an empty hint bar: nothing set one,
+    // and the only thing that would was the first turn of an encounter. The
+    // area's own hint is the right line for a save reopened in the room it
+    // was written in — and the start area is allowed not to have one, because
+    // `intro.hint` is the line for the room you have not left yet. `begin()`
+    // runs after this and overwrites it with the turn hint if the save landed
+    // mid-encounter, which is the more specific thing to say.
+    game.setHint(content.areas[state.areaId]?.hint || content.intro.hint);
   } else {
     if (content.intro.narrative) game.run.log.push({ kind: "narrative", text: content.intro.narrative });
     if (content.intro.goal) game.run.log.push({ kind: "info", text: content.intro.goal });

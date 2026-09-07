@@ -160,6 +160,14 @@ export function createGame({ content, rng = Math.random, state = null }) {
   const narrative = t => push("narrative", t);
   const info = t => push("info", t);
   const dice = (t, math, deg) => push("dice", t, math, deg);
+  // Two kinds of their own, so the log can show them apart. A reaction and a
+  // condition are the two things arc one added that happen *to* you rather
+  // than because you clicked, and both were landing as unmarked `info` lines
+  // in a column where the dice rolls are the only thing with a colour. The
+  // kind is a display hint carried in the saved log; an entry written before
+  // this phase reads "info" and renders the way it always did.
+  const reactionLog = t => push("reaction", t);
+  const conditionLog = t => push("condition", t);
 
   /* ------------------------------------------------------------------ *
    * Actors                                                             *
@@ -275,7 +283,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
 
   /** Note that a condition has come off, without touching the bag. */
   function noteEnd(actor, id, why) {
-    info(`${nameOf(actor)} is no longer ${CONDITIONS[id].name.toLowerCase()}${why ? ` — ${why}` : ""}.`);
+    conditionLog(`${nameOf(actor)} is no longer ${CONDITIONS[id].name.toLowerCase()}${why ? ` — ${why}` : ""}.`);
     emit({ type: "condition", actor: actorKeyOf(actor), condition: id, value: 0 });
   }
 
@@ -290,14 +298,14 @@ export function createGame({ content, rng = Math.random, state = null }) {
     // rule rather than watched a button do nothing.
     const blocked = immunityTo(id, immunitiesOf(actor));
     if (blocked) {
-      info(`${nameOf(actor)} is immune to ${blocked} effects — no ${CONDITIONS[id].name.toLowerCase()}.`);
+      conditionLog(`${nameOf(actor)} is immune to ${blocked} effects — no ${CONDITIONS[id].name.toLowerCase()}.`);
       return false;
     }
     const had = valueOf(bagOf(actor), id);
     setBag(actor, addCondition(bagOf(actor), makeCondition(id, { value, until })));
     const now = valueOf(bagOf(actor), id);
     if (now === had) return false;
-    info(`${nameOf(actor)} is ${describe({ id, value: now }).toLowerCase()}.`);
+    conditionLog(`${nameOf(actor)} is ${describe({ id, value: now }).toLowerCase()}.`);
     emit({ type: "condition", actor: actorKeyOf(actor), condition: id, value: now });
     return true;
   }
@@ -515,7 +523,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
       const blocked = Math.min(cmd.hardness, ctx.dmg);
       ctx.dmg -= blocked;
       const name = who === "pc" ? content.pc.name : def(who).name;
-      info(`↺ ${name} — ${cmd.name}: ${blocked} damage stopped (hardness ${cmd.hardness}).`);
+      reactionLog(`↺ ${name} — ${cmd.name}: ${blocked} damage stopped (hardness ${cmd.hardness}).`);
       // The disc is spent whether it soaked one point or five.
       if (cmd.requiresShield) endCondition(who, "shielded", "the disc shatters");
       return;
@@ -536,7 +544,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
     const ability = mine ? cmd.ability : def(who).ability;
     const ac = acOf(victim);
     const vname = victim === "pc" ? content.pc.name : def(victim).name;
-    info(ctx.event === "move-out-of-reach"
+    reactionLog(ctx.event === "move-out-of-reach"
       ? `↺ ${name} — ${cmd.name}, as ${vname} leaves reach.`
       : `↺ ${name} — ${cmd.name}, against ${vname}.`);
     const r = roll(who, attackKind(ability), bonus, ac);
@@ -1238,7 +1246,16 @@ export function createGame({ content, rng = Math.random, state = null }) {
 
     narrative(`— ${area.name} —`);
     recomputeVision();
+    // The hint bar is the one line on the page that says what to do next, and
+    // a stairway swaps the whole board out from under it. Without this it went
+    // on describing the room the heir just left — named in every set of notes
+    // since round two. No fallback: content.js refuses a pack whose stairway
+    // leads somewhere with no hint, so an area you can arrive in always has
+    // one.
+    setHint(area.hint);
     emit({ type: "area", areaId: area.id });
+    // After the hint, not before: standing on the guarded casket is a more
+    // specific thing to say than "you are in the reliquary", and it wins.
     checkTreasure();
   }
 
