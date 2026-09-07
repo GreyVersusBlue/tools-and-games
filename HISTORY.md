@@ -2274,6 +2274,56 @@ Two of them have moved since they were written:
    leaves a kitchen no cook can walk into. Proven by reintroducing it.
    *Source: Fourth Quarter Phase 3.*
 
+194. **A room is a list of rectangles, and nothing may name the hall and the
+   kitchen by hand any more.** `areasOf(desc)` returns every walkable
+   rectangle — the hall, the kitchen, and each entry in the new optional
+   `annexes` — and `inBounds()`, `unreachable()`, `navGrid()`, the shadow
+   cameras, `floorBounds()`, `floorArea()` and `ceilingAt()` all read it. Four
+   separate places used to spell out `room` and `kitchen`; a second room would
+   have had to be added to each of them, and the one that got missed would
+   have been silent — a nav grid that stops at the hall's east wall does not
+   throw, it just stops offering twelve stools. An annex carries its own
+   ceiling height, so a pendant hangs 40 cm under the ceiling it is actually
+   under rather than the hall's. A description with no annexes comes out of
+   every one of those calls as exactly the two rectangles it was, which is why
+   the Corner Tap's 5,037-sample fixture still matches to 1e-9.
+   *Source: Fourth Quarter Phase 2, increment 2.*
+
+195. **An annex's shared edge sits exactly one wall thickness outside the
+   hall, and the walkable band through its doorway is derived rather than
+   authored.** The hall's other three walls are planes on the room's own line;
+   a wall with a room on both sides has to be a box, so it is built half a
+   thickness outside, and its inner face lands where the plane was. That fixes
+   the annex's near edge at `room.x + wallT` (or the matching number on the
+   other three walls) and `validate()` refuses anything else by name — a hair
+   either way is a gap you can see through or a slab standing inside the
+   annex. The doorway band then follows from the wall and the gap
+   (`annexBand()`), which is one fewer number to get wrong than the north
+   doorway's hand-written `corridor`. The band overhangs 0.5 m each side,
+   enough for every walker radius the game has.
+   *Source: Fourth Quarter Phase 2, increment 2.*
+
+196. **The hall's north wall is the kitchen's, and an annex may not open
+   through it.** That wall carries the kitchen doorway, the pass-through
+   window, the back bar's shelf and the bottles, and `world.js` draws it as
+   brick boxes rather than from `wallSegments()`. An annex behind it would
+   have to share all four. `annexBand()` still computes a north band, so the
+   day a north annex is genuinely wanted the refusal is the only line to
+   delete; until then `validate()` says so out loud rather than letting a
+   description through to a wall that never gets drawn.
+   *Source: Fourth Quarter Phase 2, increment 2.*
+
+197. **A second room is furnished by moving tables into it, not by adding
+   them.** `VENUES[].seats` is `seatsFor(LAYOUTS[id]).length` (#185's
+   derivation), the ladder is asserted at 30 / 44 / 58 / 76 in two suites, and
+   those four numbers are what the Real Estate card promises and what
+   `beginNight()` caps arrivals at. Midtown's back room took the three
+   four-tops that stood on the hall's east side, which left the lane to its
+   doorway open and kept the tier at 58. A room that adds seats is a balance
+   change wearing a floor plan's clothes; if a tier should seat more, move the
+   number and say so.
+   *Source: Fourth Quarter Phase 2, increment 2.*
+
 ---
 
 # The site sessions, 1–10
@@ -3141,6 +3191,44 @@ by name (undefined)`). A Fieldhouse table at (2.9, −5.0) meant as a doorway
 block did not fail the suite, and on inspection stops 1 cm short of the
 corridor — the suite was right. *Left:* Midtown's second room and the
 flagship's mezzanine, after Phase 3.
+
+**Phase 2, increment 2 — A room that is more than one rectangle (PR #TBD).**
+A description carries `annexes`, a list of further floor rectangles, each with
+its own ceiling height and the hall wall it opens through; `areasOf()` is what
+`inBounds()`, `unreachable()`, `navGrid()`, `floorBounds()`, `floorArea()`,
+`ceilingAt()` and the shadow cameras read, instead of four separate places
+spelling out the hall and the kitchen (#194). The shared edge sits one wall
+thickness outside the hall so the wall's inner face is the plane it replaces,
+and the walkable band through the doorway is derived from the wall and the gap
+rather than authored (#195). `wallSegments()` gives `world.js` the hall wall
+as spans plus a header over each gap — a wall with no gap comes back as the
+one full-height span that is still drawn as a plane, so three of the four
+rooms are byte-identical geometry — and `annexWalls()` gives the annex its own
+three. The north wall stays the kitchen's (#196). **Midtown's back room** is
+6×8 m under a 3.2 m ceiling off the east wall, through a 1.7 m doorway, with
+its own TV and three pendants; the three four-tops that stood on the hall's
+east side **moved** into it rather than being added, so the ladder is still
+30 / 44 / 58 / 76 (#197). *Counts:* `smoke-layout.mjs` 103 → 140,
+`smoke-nav.mjs` 89 → 103, Node total 598 → 649; `tools/browser-check.mjs`
+89 → 105, run on real Chrome. Measured: Midtown's nav grid is 122×83 = 10,126
+cells against 97×83 before, 5,620 of them open, and a server carries a ticket
+from the pass through the doorway to the back room's furthest stool in 668
+steps at 0.000 m of penetration. *Broken on purpose (#34), each caught by the
+assertion whose comment claims it, from a green baseline:* the doorway band
+deleted from `inBounds()` (14 fail, "the back room's doorway is walkable
+through the wall" first); annexes dropped from `areasOf()` (13, across
+`areasOf`, `ceilingAt`, `floorBounds`, `floorArea` and the TV); the header
+flattened in `wallSegments()` (1); `ceilingAt()` returning the hall's height
+(1); `tvArea()` ignoring `area` (3); the nav grid back on the hall-and-kitchen
+bounds (12); the north refusal deleted (1); the shared-edge check deleted (1);
+the shared wall left in `annexWalls()` (1); the annex walls' half-thickness
+offset deleted (1); and in the browser, annex ceilings drawn at the hall's
+height (2), pendants back on the hall's height (2), the gapped-wall branch
+removed (1), and the shadow box back on `ROOM.x` (1). *Left:* the flagship's
+mezzanine, which is the piece that needs a floor at a height other than zero
+— an annex has a ceiling height and no floor height, and `Route`,
+`stepToward()`, the nav grid's cells, `seatsFor()`, the camera and
+`player.js`'s ground plane are all two-dimensional.
 
 **Phase 3 — Feet that find the door (PR #TBD).** Everything that walks now
 plans. `layout.js` gained a nav grid: the sweep's 0.25 m lattice again, with

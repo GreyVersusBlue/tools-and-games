@@ -54,8 +54,11 @@ function rng(seed) {
 for (const id of LADDER) {
   const desc = L.layoutFor(id), g = L.navGrid(desc);
   const open = g.open.reduce((a, b) => a + b, 0);
-  ok(g.W === Math.ceil(Math.max(desc.room.x, desc.kitchen.x1) / L.GRID) - Math.floor(Math.min(-desc.room.x, desc.kitchen.x0) / L.GRID) + 1,
-    `${id}: the grid spans the room and the kitchen in x`);
+  const fb = L.floorBounds(desc);
+  ok(g.W === Math.ceil(fb.x1 / L.GRID) - Math.floor(fb.x0 / L.GRID) + 1,
+    `${id}: the grid spans every floor rectangle in x`);
+  ok(g.H === Math.ceil(fb.z1 / L.GRID) - Math.floor(fb.z0 / L.GRID) + 1,
+    `${id}: and every one of them in z`);
   ok(g.open.length === g.W * g.H, `${id}: grid is W×H cells`);
   ok(open > 0.25 * g.open.length, `${id}: a quarter of the bounding box is open floor (${open}/${g.open.length})`);
   ok(L.navGrid(desc) === g, `${id}: the grid is built once and memoised`);
@@ -141,11 +144,11 @@ for (const id of LADDER) {
 for (const id of LADDER) {
   const desc = L.layoutFor(id), g = L.navGrid(desc);
   const rand = rng(0x5eed + id.length);
-  const X = Math.max(desc.room.x, desc.kitchen.x1), Z0 = desc.kitchen.z0, Z1 = desc.room.z;
+  const fb = L.floorBounds(desc);
   let planned = 0, complete = 0, bad = 0, tight = Infinity;
   for (let n = 0; n < 200; n++) {
-    const from = { x: -X + rand() * 2 * X, z: Z0 + rand() * (Z1 - Z0) };
-    const to = { x: -X + rand() * 2 * X, z: Z0 + rand() * (Z1 - Z0) };
+    const from = { x: fb.x0 + rand() * (fb.x1 - fb.x0), z: fb.z0 + rand() * (fb.z1 - fb.z0) };
+    const to = { x: fb.x0 + rand() * (fb.x1 - fb.x0), z: fb.z0 + rand() * (fb.z1 - fb.z0) };
     const res = L.pathToward(desc, from, to);
     planned++;
     if (!res.pts.length || res.pts.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.z))) { bad++; continue; }
@@ -162,7 +165,58 @@ for (const id of LADDER) {
   ok(tight >= R, `${id}: no middle leg of any of them is inside the furniture (tightest ${tight.toFixed(3)} m)`);
 }
 
-// --- (5) a failed path is a real answer ---
+// --- (5) the back room, on the far side of a doorway ---
+// Everything above this was one open rectangle plus a kitchen nobody drinks
+// in. Midtown's back room is the first place a patron is sent that has a wall
+// between it and the door, which is the thing Phase 3's planner was built for
+// and the reason this room waited for it.
+{
+  const m = L.MIDTOWN, a = m.annexes[0];
+  const seats = L.seatsFor(m);
+  const back = seats.filter(s => s.ax > a.x0);
+  ok(back.length === 12, `twelve stools sit behind the back room's doorway (${back.length})`);
+  const reach = L.reachableSeats(m);
+  ok(back.every(s => reach[s.id - 1]), "every one of them is offered");
+  let worst = Infinity, worstSeat = null, missing = 0, throughDoor = 0;
+  for (const s of back) {
+    const p = L.pathBetween(m, m.stations.door, { x: s.ax, z: s.az });
+    if (!p) { missing++; continue; }
+    const c = clearance(m, p, 0, p.length - 3);
+    if (c < worst) { worst = c; worstSeat = s.id; }
+    // wherever the route first crosses the hall's east wall line, it is inside
+    // the gap -- if it were not, the planner would be routing through masonry
+    let crossed = false;
+    for (let i = 0; i < p.length - 1 && !crossed; i++) {
+      const A = p[i], B = p[i + 1];
+      if ((A.x - m.room.x) * (B.x - m.room.x) > 0) continue;
+      const z = A.z + (B.z - A.z) * ((m.room.x - A.x) / (B.x - A.x));
+      if (z > a.gap.a0 && z < a.gap.a1) throughDoor++;
+      crossed = true;
+    }
+  }
+  ok(missing === 0, `every back-room stool has a route from the door (${missing} do not)`);
+  ok(throughDoor === back.length, `and every one of those routes crosses the hall's east wall inside the doorway (${throughDoor}/${back.length})`);
+  ok(worst >= R, `the tightest of them clears the furniture by ${worst.toFixed(3)} m (seat ${worstSeat})`);
+  // a server carries from the pass, the length of the hall and through the gap
+  for (const k of ["passFood", "passDrink"]) {
+    let miss = 0;
+    for (const s of back) if (!L.pathBetween(m, m.stations[k], { x: s.ax, z: s.az })) miss++;
+    ok(miss === 0, `a server at ${k} has a route to every back-room stool (${miss} do not)`);
+  }
+  // and a crate in the gap takes the whole room out of the offer, while the
+  // hall keeps every one of its own stools
+  const blocked = clone(m);
+  blocked.fitout.push({ id: "block", kind: "crate", x: a.x0, z: (a.gap.a0 + a.gap.a1) / 2,
+    w: 0.6, d: a.gap.a1 - a.gap.a0 + 0.6, h: 1, rotY: 0, pad: 0 });
+  const br = L.reachableSeats(blocked);
+  ok(back.every(s => br[s.id - 1] === false), "a crate in the doorway takes all twelve out of the offer");
+  ok(br.filter(Boolean).length === seats.length - 12, `…and leaves the hall's forty-six (${br.filter(Boolean).length})`);
+  const nb = L.navProblems(blocked);
+  ok(nb.length === 12 && nb.every(msg => /^seat \d+ \(table\) approach has no route from the door$/.test(msg)),
+    `…and navProblems() names those twelve stools and nothing else (${nb.length}: ${nb.slice(0, 2).join("; ")})`);
+}
+
+// --- (6) a failed path is a real answer ---
 {
   // wall a flagship four-top in on all four sides: its seats stop being offered
   const boxed = clone(L.FLAGSHIP);
@@ -194,7 +248,7 @@ for (const id of LADDER) {
   ok(L.validate(pinched).some(m => m === "cook 1 has no route from the door"), "…and validate() carries it");
 }
 
-// --- (6) reintroduce the bug (#34) ---
+// --- (7) reintroduce the bug (#34) ---
 {
   const t = L.CORNER_TAP;
   const a = { x: -6.6, z: 0.9 }, b = { x: -3.2, z: 0.9 };
