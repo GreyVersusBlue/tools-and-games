@@ -3,20 +3,22 @@
 **Status: nothing is open and nothing is broken.** Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
-with `test/smoke-layout.mjs`); **Phase 2's first increment authored the other
-three rooms** — 30, 44, 58 and 76 seats up the ladder, every one validated
-before a mesh exists. Three suites are green as of this file —
-`node test/smoke-campaign.mjs` 216 passed, `node test/smoke-engine.mjs` 190
-passed, `node test/smoke-layout.mjs` 103 passed — and the hand-run
-`node tools/browser-check.mjs` 58 passed in real Chromium. Round 3's site-wide
+with `test/smoke-layout.mjs`); Phase 2's first increment authored the other
+three rooms — 30, 44, 58 and 76 seats up the ladder, every one validated
+before a mesh exists; **Phase 3 gave everything that walks a nav grid and a
+planner**, so no patron and no server walks through a four-top any more. Four
+suites are green as of this file — `node test/smoke-campaign.mjs` 216 passed,
+`node test/smoke-engine.mjs` 190 passed, `node test/smoke-layout.mjs` 103
+passed, `node test/smoke-nav.mjs` 89 passed — and the hand-run
+`node tools/browser-check.mjs` 89 passed in real Chromium. Round 3's site-wide
 `npm run games` reported 146 checks, 0 failed across three independent runs on
 a real-Chrome environment, including this project's own 45-check Real Estate
 beat. The first open phase is still **Phase 2 — Four rooms, one ladder**,
 named model **Claude Opus 5**, a 2+ row with one increment shipped: what is
-left is Midtown's second room and the flagship's mezzanine, both of which need
-the description format to grow past one rectangle. What follows is nine phases
-across two arcs, the conventions three rounds learned the hard way, and the
-backlog nobody has claimed.
+left is Midtown's second room and the flagship's mezzanine, and the thing that
+was blocking them — a wall between the door and half the seats — is what Phase
+3 just removed. What follows is nine phases across two arcs, the conventions
+three rounds learned the hard way, and the backlog nobody has claimed.
 
 ## What it is
 
@@ -69,7 +71,7 @@ comment saying why). Honest is not built.
 - **`test/smoke-campaign.mjs` (458 lines, 203 assertions)** and
   **`test/smoke-engine.mjs` (155 lines, 190 assertions)** — Node only, no
   runner, no dependency: a `pass`/`fail` counter and an `ok()`.
-- **`js/layout.js` (476)** — a room as data, pure, zero imports. One
+- **`js/layout.js` (794)** — a room as data, pure, zero imports. One
   description per venue tier (`LAYOUTS`: the Corner Tap, the Fieldhouse,
   Midtown, the flagship): room, kitchen, doorways with their corridor band,
   windows, bar, tables, fit-out blocks by `kind` (prep, stove, crate), TV
@@ -78,11 +80,16 @@ comment saying why). Honest is not built.
   `collidersFor()` as plain `{min,max}` boxes, `inBounds()`, `walkable()`,
   `tvMount()`, `cookSpot()`, `crewHome()`, `unreachable()` (a flood fill from
   the door on a 0.25 m grid) and `validate()` — the walkability invariant
-  plus reachability, station spacing and wall-mounted TVs. **`test/
-  smoke-layout.mjs` (103 assertions)** compares the Corner Tap's derivation
-  against `test/fixtures/corner-tap.json`, dumped from the old `world.js` in
-  Chromium before this file existed, and pins every room on the ladder.
-- **`js/world.js` (400)** — the room in meshes, built from a description.
+  plus reachability, station spacing and wall-mounted TVs. It also holds the
+  **nav grid and the planner**: the same 0.25 m lattice with every collider
+  inflated by `WALKER_R` (0.25 m), A* over eight neighbours with no corner
+  cutting, a string-pull that collapses a clear run to its two endpoints, and
+  `pathBetween()` / `pathToward()` / `reachableSeats()` / `navProblems()` on
+  top. **`test/smoke-layout.mjs` (103 assertions)** compares the Corner Tap's
+  derivation against `test/fixtures/corner-tap.json`, dumped from the old
+  `world.js` in Chromium before this file existed, and pins every room on the
+  ladder; **`test/smoke-nav.mjs` (89 assertions)** holds the planner.
+- **`js/world.js` (405)** — the room in meshes, built from a description.
   `buildWorld(scene, venueId)` adopts `layoutFor(venueId)`: refills the
   exported `seats[]`/`colliders[]` (`THREE.Box3` at the boundary), aims the
   exported stand-point `Vector3`s, then draws walls, bar, tables, every
@@ -95,7 +102,9 @@ comment saying why). Honest is not built.
 - **`js/materials.js` (95)** — nine texture sets keyed by surface, ARM maps
   wired to three material slots each, a 404 falling back to a placeholder
   colour.
-- **`js/patrons.js` (258)** — `Patron`/`Server` state machines and the meshes.
+- **`js/patrons.js` (350)** — `Patron`/`Server` state machines, the meshes,
+  and `Route`: a queue of waypoints from the nav grid, replanned when the
+  target moves 0.6 m, walked leg by leg with `stepToward()`.
   **`js/player.js` (215)** — hand-rolled pointer-lock camera, collision,
   pick-up/deliver, the timing bar. **`js/day.js` (348)** — six station rings and
   every management panel. **`js/main.js` (477)** — loop, HUD, box score,
@@ -104,15 +113,15 @@ comment saying why). Honest is not built.
   twelve one-shots and three loops with a mute toggle.
 
 The load-bearing habit is **pure module plus its suite**: three files hold
-every number the game decides, they import no three.js, and 448 assertions sit
+every number the game decides, they import no three.js, and 598 assertions sit
 on them. Everything visual is downstream, and `tools/browser-check.mjs` is the
-one hand-run check that looks at it.
+one hand-run check that looks at it — 89 assertions, four of which step a
+patron to every fourth stool in every room at a fixed dt and measure how far
+inside the furniture it ever got.
 
-Where it still breaks down: nothing that walks consults the colliders —
-`stepToward()` moves a mesh along the straight line to its target, every patron
-and every server uses it, so they already walk through the four-tops today. In
-one open 16×11 m room that reads as a stylisation. It stops reading that way
-the moment there is a wall between the door and the stool. That is Phase 3.
+Where it still breaks down: `freeSeat()` picks uniformly at random among the
+stools with a route, so the room fills in no particular order, and a server
+picks the oldest ready ticket regardless of how far it has to carry it.
 
 ## Conventions a new builder must know
 
@@ -213,15 +222,27 @@ starting a new list.
 - Every room is one rectangle plus a kitchen rectangle behind its north wall.
   Midtown's "second room off the main floor" and the flagship's mezzanine
   need `layout.js` to grow a second floor region (and, for the mezzanine, a
-  height), with `inBounds()`, `unreachable()` and `world.js`'s wall drawing
-  following. Phase 2's second increment; it should land after Phase 3, since
-  a wall between the door and a stool is exactly what a straight-line walker
-  cannot handle.
-- Every NPC walks a straight line (`stepToward`), consulting neither
-  `colliders` nor `inBounds`. Patrons already clip the four-tops.
+  height), with `inBounds()`, `unreachable()`, the nav grid and `world.js`'s
+  wall drawing following. Phase 2's second increment, and no longer blocked:
+  Phase 3 gave NPCs a planner, so a wall between the door and half the seats
+  is a routing problem rather than a room full of stuck patrons.
+- Two bodies never see each other. `Route` plans against the furniture and
+  nothing else, so two patrons walking opposite ways down the same lane pass
+  through one another, and a server delivering to a seated patron stops
+  0.75 m short of a body it cannot feel. Local avoidance is its own phase.
+- The nav grid is rebuilt from scratch per room and memoised per
+  `(description, radius)` pair, and `navProblems()` runs inside `validate()`,
+  which makes `smoke-layout.mjs` do the work twice. Nothing is slow enough to
+  care yet: the flagship's grid is 113×95 = 10,735 cells and costs 1.2 ms to
+  build, a typical plan is 0.45 ms, the worst plan measured (flagship, corner
+  to corner) is 3.9 ms, `reachableSeats()` on a cold grid is 12 ms once per
+  venue build, and `smoke-nav.mjs` runs in 0.74 s. A server chasing a walking
+  patron replans about 2.6 times a second, which is the only thing here that
+  happens every night rather than once.
 - The Corner Tap's five probe points in `tools/browser-check.mjs` are the
   Corner Tap's; the other rooms are checked for seats, colliders, stand-points,
-  spawn and rings but not for `inBounds()` at named coordinates.
+  spawn, rings and a stepped walk to every fourth stool, but not for
+  `inBounds()` at named coordinates.
 - Nothing is ever occluded: three TVs, five pendants and a key light render
   every frame regardless of where you stand. `velLook` in `patrons.js` is
   written by `stepToward()` and read by nothing.
@@ -358,10 +379,10 @@ and none of them exist.
   door and a stool before Phase 3 gives NPCs a path.
 - [ ] **Midtown's second room and the flagship's mezzanine.** Both need the
   description to hold more than one floor rectangle (the mezzanine a height
-  too), and `inBounds()`, `unreachable()`, the wall drawing and the shadow
-  cameras to follow. Deliberately after Phase 3: a second room is a wall
-  between the door and half the seats, and today's patrons walk through
-  masonry and stop.
+  too), and `inBounds()`, `unreachable()`, the nav grid, the wall drawing and
+  the shadow cameras to follow. Was deliberately parked behind Phase 3, which
+  has now shipped: a second room is a wall between the door and half the
+  seats, and everything that walks now plans round walls.
 - [x] **`VENUES[].seats` is derived.** `seatsFor(LAYOUTS[id]).length`, so the
   Real Estate card and `beginNight()`'s cap read the same list. 30, 44, 58,
   76, asserted monotonic in both suites.
@@ -406,38 +427,55 @@ and none of them exist.
 *Save:* none — `c.venue` already selects the room. *Model:* **Claude Opus 5**
 named; increment 1 worked under Claude Fable 5.1.
 
-## Phase 3 — Feet that find the door
+## Phase 3 — Feet that find the door — **SHIPPED**
 
-**Patrons walk through the tables today, and in one open room nobody notices.**
+**Patrons walked through the tables, and in one open room nobody noticed.**
 
-`stepToward()` moves a mesh along the straight line to its target and consults
-nothing. There are colliders; the player collides with them; no NPC ever has.
-Phase 2's rooms put a wall between the door and half the seats, at which point
-every patron walks into masonry and stops forever.
+`stepToward()` moved a mesh along the straight line to its target and consulted
+nothing. There were colliders; the player collided with them; no NPC ever had.
+Phase 2's rooms were kept to one rectangle each for exactly this reason.
 
-- [ ] **A nav grid in `layout.js`.** Rasterise the walkable area at ~0.25 m,
-  mark cells blocked by colliders inflated by the walker radius, expose
-  `pathBetween(desc, from, to)`. A grid, not a hand-cut mesh: the rooms are
-  rectilinear and a grid is testable. String-pull the result so nobody walks a
-  staircase, and assert that a straight shot across an empty room collapses to
-  exactly two points.
-- [ ] **`Patron` and `Server` follow a path.** Both keep `stepToward` for the
-  leg between waypoints; a target becomes a queue, recomputed when the target
-  moves (a server chasing a patron who has not sat down yet).
-- [ ] **A failed path is a real answer.** No route to a seat means that seat is
-  not offered by `freeSeat()`; no route to the door means the patron leaves by
-  the nearest reachable exit. Nothing may silently freeze on the floor.
-- [ ] **The pathological cases, in the suite.** A path into a walled-off region
-  returns null; a path from inside a collider returns a route out; every seat
-  in every phase-2 room is reachable from the door and both pass points; two
-  hundred random pairs per room all terminate.
-- [ ] **Reintroduce the bug.** Delete the collider inflation and watch a patron
-  clip a table corner; block the doorway and watch the "no route" assertions
-  fire.
+- [x] **A nav grid in `layout.js`.** `navGrid(desc, r)` rasterises the floor on
+  `unreachable()`'s 0.25 m lattice with every collider inflated by `WALKER_R`
+  (0.25 m — a patron mesh is a 0.2 m cylinder), memoised per description and
+  radius. A* over eight neighbours, a diagonal refused unless both its
+  orthogonals are open, then a string-pull that drops every waypoint the walker
+  can already see past: a straight shot across open floor comes back as exactly
+  its two endpoints, asserted. `pathBetween(desc, from, to)` is the wishlist's
+  name for it; `pathToward()` is the same planner with the honest answer.
+- [x] **`Patron` and `Server` follow a path.** `Route` in `patrons.js` holds
+  the queue, `aim()` replans when the target has moved 0.6 m (a server chasing
+  a patron who has not sat down yet), and `step()` walks each leg with
+  `stepToward()`, spilling what is left of a step into the next leg so a corner
+  does not cost a frame. Both classes face their current waypoint rather than
+  their target.
+- [x] **A failed path is a real answer.** `world.js` hangs `reachable` on every
+  seat from `reachableSeats(desc)`, and `freeSeat()` refuses to offer a false.
+  `pathToward()` never returns nothing: when the floor does not join the two
+  points it reports `complete: false` and a route to the nearest point it does
+  reach, so a patron with no route to the door leaves by the nearest exit
+  instead of standing on the floor all night. A patron whose stool goes
+  unreachable mid-walk hands the stool back and leaves (`strand()`).
+- [x] **The pathological cases, in the suite.** `test/smoke-nav.mjs`, 89
+  assertions: a path into a walled-off region is null; a path from inside a
+  table's box is a leg out and then a route; every stool in every room has a
+  route from the door and from both passes; the flood and the planner agree on
+  every stool; 200 seeded random pairs per room all return a finite route from
+  the point asked for, and no middle leg of any of them is inside the
+  furniture. `navProblems(desc)` is folded into `validate()`, so a new floor
+  plan is authored against the walker and not only against the geometry.
+- [x] **Reintroduce the bug.** Five breaks, each caught by the assertion whose
+  comment claims it, from a green baseline of 598 Node assertions: the collider
+  inflation deleted (12 fail, the route shaves a four-top by 0.088 m); the
+  diagonal corner rule deleted (3 fail, the random-pair clearance in three
+  rooms); the string-pull deleted (2 fail, the straight shot comes back as 11
+  points); `complete` forced true (5 fail, every "no route" assertion); the nav
+  check dropped from `validate()` (1 fail). In the browser, `Patron` put back
+  on `stepToward()` fails the four walk checks at 0.66–0.74 m of penetration —
+  a body through the middle of a table.
 
 *Leans on:* phase 1's `layout.js`, `patrons.js`, `world.js`'s colliders.
-*Save:* none. *Model:* **Claude Fable 5.1** — pathing over derived geometry,
-where the failure mode is an NPC quietly standing in a wall all night.
+*Save:* none. *Model:* **Claude Fable 5.1** named; worked under Claude Opus 5.
 
 ## Phase 4 — The texture diet
 

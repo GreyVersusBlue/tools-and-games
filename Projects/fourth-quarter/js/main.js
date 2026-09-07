@@ -469,9 +469,11 @@ $("#wipeBtn").addEventListener("click", () => {
 enterDay();
 
 // For tools/browser-check.mjs only: the camera and the day phase, so a check
-// can ask where the spawn and the six rings landed after a rebuild. Nothing
-// in the game reads this.
-window.__fq = { camera, day, player };
+// can ask where the spawn and the six rings landed after a rebuild, and the
+// two crowds, so it can ask whether anybody is standing in a table. Getters
+// because both arrays are replaced on every night. Nothing in the game reads
+// this.
+window.__fq = { camera, day, player, get patrons() { return patrons; }, get servers() { return servers; } };
 let last = performance.now();
 let hudT = 0;
 renderer.setAnimationLoop(() => {
