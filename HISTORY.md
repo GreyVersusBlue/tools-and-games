@@ -2324,6 +2324,43 @@ Two of them have moved since they were written:
    number and say so.
    *Source: Fourth Quarter Phase 2, increment 2.*
 
+198. **A mezzanine is its own list on a description, not an annex with a
+   floor height.** An annex is a rectangle behind one of the hall's walls,
+   reached through a gap in it; a mezzanine is a rectangle *inside* the hall
+   that overlooks it, so its edges are a rail rather than walls, the ground
+   under it is closed and panelled, and its stair stands on the hall floor.
+   `floorYAt(desc, x, z)` is single-valued — one floor per point — which is
+   what lets the nav grid, the sweep and the player's slide stay keyed by
+   (x, z). A deck high enough to walk under would need two floors at one
+   point, and nothing wants that until a room is authored that needs it.
+   *Source: Fourth Quarter Phase 2, increment 3.*
+
+199. **One step rule, stated for two points and a distance, is the rail,
+   the panelling and the stair's sides — none of them is a collider.**
+   Between two points the floor may change by one riser (`STEP_H`, 0.18 m)
+   or by `MAX_SLOPE` (0.75) per metre, whichever is more, and `stepBetween()`
+   checks it over both halves of the span so a kerb in the middle of a hop
+   is judged as a kerb and not as slope. `inBounds()` applies it at the
+   body's radius in four directions (`levelOpen()`), and the grid's
+   neighbours, the sweep's flood, the string-pull's 10 cm samples and
+   `nearestCell()` apply the same function, so every consumer gives one
+   answer. The first draft compared per sample and A* took a diagonal onto
+   the stair's side that the string-pull then refused. At a walker's radius
+   the level test shadows the grid's and the sweep's own rules (cells within
+   r of an edge are closed on both sides), so the suite checks both with a
+   point-sized walker, and says so (#147).
+   *Source: Fourth Quarter Phase 2, increment 3.*
+
+200. **A body's y is never integrated; it is read off the floor after every
+   step.** `stepToward()` sets a patron's or a server's y from `floorY()`
+   after moving x and z, the player's `slide()` sets the eye from the floor
+   under the camera, and a stool's, a table's and a ring's y are the floor's.
+   Nothing can be in the air and nothing can be under a floor, and a step
+   onto the stair's low side is one frame's pop of at most a riser, which is
+   why `STEP_H` is a riser and not the 0.25 m the first draft used: a server
+   popped 22 cm in one frame and the browser check saw it.
+   *Source: Fourth Quarter Phase 2, increment 3.*
+
 ---
 
 # The site sessions, 1–10
@@ -3192,7 +3229,7 @@ block did not fail the suite, and on inspection stops 1 cm short of the
 corridor — the suite was right. *Left:* Midtown's second room and the
 flagship's mezzanine, after Phase 3.
 
-**Phase 2, increment 2 — A room that is more than one rectangle (PR #TBD).**
+**Phase 2, increment 2 — A room that is more than one rectangle (PR #174).**
 A description carries `annexes`, a list of further floor rectangles, each with
 its own ceiling height and the hall wall it opens through; `areasOf()` is what
 `inBounds()`, `unreachable()`, `navGrid()`, `floorBounds()`, `floorArea()`,
@@ -3230,7 +3267,7 @@ mezzanine, which is the piece that needs a floor at a height other than zero
 `stepToward()`, the nav grid's cells, `seatsFor()`, the camera and
 `player.js`'s ground plane are all two-dimensional.
 
-**Phase 3 — Feet that find the door (PR #TBD).** Everything that walks now
+**Phase 3 — Feet that find the door (PR #172).** Everything that walks now
 plans. `layout.js` gained a nav grid: the sweep's 0.25 m lattice again, with
 every collider inflated by `WALKER_R` (0.25 m, against a patron mesh's 0.2 m
 cylinder), memoised per description and radius (#189). A* over eight
@@ -3263,6 +3300,45 @@ collider box by construction (0.95 / √2 against 0.62 + 0.12), so the walk
 check samples before each step and never after the last, and the fact is
 written into the check rather than tuned around.
 
+**Phase 2, increment 3 — The flagship's mezzanine (PR #176).** The first
+floor in the project that is not at `y = 0`, and the increment that closes
+Phase 2. A description carries `mezzanines`, raised rectangles inside the
+hall with a deck height and a stair rectangle that climbs to it, kept apart
+from `annexes` (#198); `floorYAt()` is the one place the floor stops being 0,
+and seats, colliders, stand-points, the crew's homes and the cook line carry
+the floor under them. One step rule — a riser or `MAX_SLOPE` per metre over
+both halves of a span — is the rail, the panelling under the deck and the
+stair's sides at the body's radius, and the same function decides the grid's
+neighbours, the sweep, the string-pull and `nearestCell()` (#199). Every
+walker and the player's eye read their y off the floor after every step
+(#200). `world.js` draws the deck, the panelling, a rail on each open edge
+with the stair's landing span left out, nine solid steps and a handrail. The
+flagship's deck is 1.6 m over the hall's south-east corner up a 2.6 m stair
+beside the door; the three four-tops that stood on that corner moved up, so
+the ladder is still 30 / 44 / 58 / 76 (#197), and its two TVs hang 1.5 m
+over the deck rather than 0.9. *Counts:* `smoke-layout.mjs` 140 → 188,
+`smoke-nav.mjs` 103 → 129, Node total 649 → 734; `tools/browser-check.mjs`
+105 → 137, run on Chromium. Measured: the flagship's grid is 113×95 with 524
+open cells on the deck and 31 on the stair; every route from the door to a
+deck stool climbs the stair; a server carries a ticket from the pass up to
+the deck's furthest stool in 1,072 steps at 0.000 m of penetration, biggest
+single-frame rise 0.113 m; the player's camera stops 0.30 m short of the
+panelling and of the rail, and lands on the deck at 3.22 m. *Broken on
+purpose (#34), each caught by the assertion whose comment claims it, from a
+green baseline:* `stepOK` always true (9 + 10); `floorYAt` always 0
+(21 + 10); the level test dropped from `inBounds()` (5 + 2, "stops 0.3 m
+short of the panelling" first); the grid's neighbour rule deleted (1, the
+point-sized walker); the sweep's rule deleted (1, the point-sized sweep);
+the string-pull's rule deleted (2, after that assertion was re-aimed at
+r = 0 because the level test shadowed it at 0.25); `nearestCell()`'s level
+check deleted (3, "a target against the panelling" among them); the midpoint
+dropped from `stepBetween()` (1, a 0.29 m kerb); seats at 0 (3); colliders
+at 0 (2); the stair-flush, slope, headroom and under-the-deck checks deleted
+(1, 1, 1, 2); the TV measured from 0 (1); the stair's span kept in
+`mezzanineEdges()` (1); the stair a step rather than a ramp (7 + 16); and in
+the browser, a walker's y not read off the floor (2, biggest rise 1.6 m),
+the eye not re-read (3), stools at the hall's height (2), the deck drawn at
+0 (1). *Left:* nothing in Phase 2.
 
 **Phase 5 — The suite runs on every pull request.** 393 assertions in
 `test/smoke-engine.mjs` and `test/smoke-campaign.mjs`, no browser, no

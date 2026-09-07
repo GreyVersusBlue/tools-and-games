@@ -4,13 +4,16 @@
 // E at the highlighted patron: hand it over — boss deliveries tip better.
 
 import * as THREE from "three";
-import { colliders, inBounds, PASS_FOOD, PASS_DRINK, STOVE_STATION, TAP_STATION } from "./world.js";
+import { colliders, inBounds, floorY, PASS_FOOD, PASS_DRINK, STOVE_STATION, TAP_STATION } from "./world.js";
 import { glow } from "./materials.js";
 import { itemMesh } from "./patrons.js";
 import { MENU } from "./engine.js";
 import * as audio from "./audio.js";
 
-const EYE = 1.62, RADIUS = 0.3, SPEED = 3.1, SPRINT = 4.6;
+export const EYE = 1.62;
+const RADIUS = 0.3, SPEED = 3.1, SPRINT = 4.6;
+// a point on the floor, at eye height over it: what the camera is compared to
+const eye = p => new THREE.Vector3(p.x, (p.y ?? 0) + EYE, p.z);
 
 export class Player {
   constructor(camera, dom, engine) {
@@ -49,13 +52,13 @@ export class Player {
 
   nearPass() {
     const p = this.pos;
-    if (p.distanceTo(new THREE.Vector3(PASS_FOOD.x, EYE, PASS_FOOD.z)) < 1.7) return "food";
-    if (p.distanceTo(new THREE.Vector3(PASS_DRINK.x, EYE, PASS_DRINK.z)) < 1.7) return "drink";
+    if (p.distanceTo(eye(PASS_FOOD)) < 1.7) return "food";
+    if (p.distanceTo(eye(PASS_DRINK)) < 1.7) return "drink";
     return null;
   }
 
-  nearStove() { return this.pos.distanceTo(new THREE.Vector3(STOVE_STATION.x, EYE, STOVE_STATION.z)) < 1.6; }
-  nearTap()   { return this.pos.distanceTo(new THREE.Vector3(TAP_STATION.x, EYE, TAP_STATION.z)) < 1.6; }
+  nearStove() { return this.pos.distanceTo(eye(STOVE_STATION)) < 1.6; }
+  nearTap()   { return this.pos.distanceTo(eye(TAP_STATION)) < 1.6; }
 
   // ---------------------------------------------------------------- stove/tap minigame
   startQte(station, tk) {
@@ -123,7 +126,8 @@ export class Player {
     // carrying: deliver if close to the right patron
     const p = patronsById.get(this.ticket.patronId);
     if (!p || p.state === "gone" || p.state === "leaving") { this.clearCarry(); return { msg: "They didn't stick around. Order's dead." }; }
-    const d = this.pos.distanceTo(new THREE.Vector3(p.pos.x, EYE, p.pos.z));
+    // a patron on the mezzanine is compared at the deck's eye height, not the hall's
+    const d = this.pos.distanceTo(eye(p.pos));
     if (d > 1.5) return { msg: "Get it to the marked customer." };
     const res = this.engine.deliver(this.ticket.id, true);
     if (res) {
@@ -147,7 +151,7 @@ export class Player {
     if (this.qte) return "E — HIT IT!";
     if (this.ticket) {
       const p = patronsById.get(this.ticket.patronId);
-      if (p && this.pos.distanceTo(new THREE.Vector3(p.pos.x, EYE, p.pos.z)) < 1.5)
+      if (p && this.pos.distanceTo(eye(p.pos)) < 1.5)
         return "E — hand it over";
       return `Carrying ${MENU[this.ticket.itemId].name} → marked customer`;
     }
@@ -198,7 +202,11 @@ export class Player {
   }
 
   slide(move) {
-    // axis-separated so you slide along counters instead of sticking
+    // axis-separated so you slide along counters instead of sticking. The
+    // ground plane is not flat: inBounds() refuses a step that would put the
+    // mezzanine's edge, the panelling under it or the stair's side inside
+    // RADIUS, and the eye is re-read off the floor after every step, so the
+    // camera climbs the stair and stops at the rail.
     const p = this.cam.position;
     const tryAxis = (dx, dz) => {
       const nx = p.x + dx, nz = p.z + dz;
@@ -211,5 +219,6 @@ export class Player {
     };
     tryAxis(move.x, 0);
     tryAxis(0, move.z);
+    p.y = EYE + floorY(p.x, p.z);
   }
 }

@@ -6,7 +6,7 @@
 
 import * as THREE from "three";
 import { flat, glow } from "./materials.js";
-import { seats, DOOR, DOOR_OUT, PASS_FOOD, PASS_DRINK, currentLayout } from "./world.js";
+import { seats, DOOR, DOOR_OUT, PASS_FOOD, PASS_DRINK, currentLayout, floorY } from "./world.js";
 import { pathToward, WALKER_R, SNAP_R } from "./layout.js";
 import { MENU } from "./engine.js";
 import * as audio from "./audio.js";
@@ -217,7 +217,7 @@ export class Server {
     this.role = role;
     this.speed = speed;
     this.mesh = personMesh(role === "bartender" ? 0x2f4a5a : 0x2f2a24, true);
-    this.home = new THREE.Vector3(home.x, 0, home.z); // layout.js crewHome(desc, i)
+    this.home = new THREE.Vector3(home.x, home.y ?? floorY(home.x, home.z), home.z); // layout.js crewHome(desc, i)
     this.mesh.position.copy(this.home);
     scene.add(this.mesh);
     this.state = "idle";
@@ -336,6 +336,10 @@ export class Route {
 }
 
 // ---------------------------------------------------------------- movement
+// A body's y is never integrated: after every step it is read off the floor
+// under the body (world.floorY), so a patron climbing the flagship's stair
+// rises with the treads and one sitting down on the deck sits at the deck's
+// height. The planner already refuses any leg that is not a step.
 const velLook = new THREE.Vector3(0, 0, 1);
 const _dir = new THREE.Vector3();
 export function stepToward(pos, target, step, arrive = 0.12) {
@@ -343,8 +347,9 @@ export function stepToward(pos, target, step, arrive = 0.12) {
   const d = _dir.length();
   if (d <= arrive) return true;
   _dir.multiplyScalar(step / d);
-  if (step >= d) { pos.x = target.x; pos.z = target.z; return true; }
+  if (step >= d) { pos.x = target.x; pos.z = target.z; pos.y = floorY(pos.x, pos.z); return true; }
   pos.x += _dir.x; pos.z += _dir.z;
+  pos.y = floorY(pos.x, pos.z);
   velLook.copy(_dir);
   return false;
 }

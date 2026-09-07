@@ -9,17 +9,17 @@ before a mesh exists; **Phase 3 gave everything that walks a nav grid and a
 planner**, so no patron and no server walks through a four-top any more;
 **Phase 2's second increment made a room more than one rectangle**, and
 Midtown now has a back room off its east wall that a patron has to find a
-doorway to get into. Four suites are green as of this file —
-`node test/smoke-campaign.mjs` 216 passed, `node test/smoke-engine.mjs` 190
-passed, `node test/smoke-layout.mjs` 140 passed, `node test/smoke-nav.mjs` 103
-passed — and the hand-run `node tools/browser-check.mjs` 105 passed in real
-Chromium on real Chrome. Round 3's site-wide `npm run games` reported 146
-checks, 0 failed across three independent runs on a real-Chrome environment,
-including this project's own 45-check Real Estate beat. The first open phase
-is still **Phase 2 — Four rooms, one ladder**, named model **Claude Opus 5**,
-a 2+ row with two increments shipped: what is left is the flagship's
-mezzanine, which is the one piece of it that needs a floor at a height other
-than zero and so needs everything that walks to grow a y. What follows is
+doorway to get into; **its third and last increment gave the flagship a
+mezzanine**, the first floor in the project that is not at `y = 0`, and
+everything that walks a y read off the floor under it. Four suites are green
+as of this file — `node test/smoke-campaign.mjs` 216 passed,
+`node test/smoke-engine.mjs` 190 passed, `node test/smoke-layout.mjs` 188
+passed, `node test/smoke-nav.mjs` 129 passed — and the hand-run
+`node tools/browser-check.mjs` 137 passed in Chromium. Round 3's site-wide
+`npm run games` reported 146 checks, 0 failed across three independent runs
+on a real-Chrome environment, including this project's own 45-check Real
+Estate beat. Phase 2 is closed. The first open phase is **Phase 4 — The
+texture diet**, named model **Claude Opus 5**, size 1. What follows is
 nine phases across two arcs, the conventions three rounds learned the hard
 way, and the backlog nobody has claimed.
 
@@ -222,13 +222,19 @@ Open and unclaimed. Pull from here for a phase, and add here rather than
 starting a new list.
 
 **The room**
-- Every floor rectangle is at `y = 0`. `annexes` gave a room more than one of
-  them and Midtown has its back room, but an annex carries a ceiling height
-  and no floor height, so the flagship's mezzanine still cannot be authored.
-  What it needs is on Phase 2's list; the short version is that `Route`,
-  `stepToward()`, the nav grid's cells, `seatsFor()`, the camera and
-  `player.js`'s ground plane are all two-dimensional, and a mezzanine is the
-  thing that makes them not.
+- `floorYAt()` is single-valued: one floor per (x, z), so the ground under
+  the flagship's mezzanine is closed and panelled rather than walkable. A
+  deck high enough to walk under (2.2 m up, under a taller ceiling) would
+  need two floors at one point, which is the nav grid keyed by (x, z),
+  `levelOpen()`, the sweep and the player's slide all growing a level, and
+  none of them wants to. Not needed until a room is authored that needs it.
+- A body's y is read off the floor after every step and never integrated
+  (#200), so stepping onto the stair's low side is one frame's pop of up to a
+  riser. Nothing animates a step; if a walk cycle ever lands, the pop is the
+  place to spend it.
+- `STEP_H` (0.18) and `MAX_SLOPE` (0.75) are one pair of numbers for every
+  walker and the player alike. A wheeled thing, if one is ever authored,
+  wants a `STEP_H` of 0.
 - The doorway band's overhang is a flat 0.5 m either side of the shared wall
   (`DOOR_REACH` in `layout.js`), which covers every walker radius the game
   uses and would stop covering one at 0.5 m. It is a constant because no
@@ -371,7 +377,7 @@ module.
 *Left as literals in `world.js`:* TV, pendant, corkboard, neon and kitchen
 shelf positions, relative to `ROOM` — none has a collider or a stand-point.
 
-## Phase 2 — Four rooms, one ladder
+## Phase 2 — Four rooms, one ladder — **SHIPPED**
 
 **Thirty-four thousand dollars buys you the same six four-tops.**
 
@@ -382,8 +388,7 @@ the fit-out its `VENUES` blurb already promises. The Fieldhouse's second stove,
 Midtown's three-tap wall and the flagship's three stoves are all written down
 and none of them exist.
 
-**Increments 1 and 2 shipped (PRs #170 and this one).** What they did, and
-what is left:
+**Shipped in three increments (PRs #170, #174 and #176).** What each did:
 
 - [x] **Three of the four descriptions.** `FIELDHOUSE` (20×13 m, 8 stools,
   9 four-tops, 2 stoves, 4 taps, 44 seats), `MIDTOWN` (24×15 m, 10 stools,
@@ -402,17 +407,25 @@ what is left:
   north wall stays the kitchen's (#196). Midtown's back room is 6×8 m under a
   3.2 m ceiling off the east wall, with three four-tops **moved** into it
   rather than added, so the ladder is still 30 / 44 / 58 / 76 (#197).
-- [ ] **The flagship's mezzanine.** This is the increment left, and it is not
-  more of the same: an annex is a rectangle at floor `y = 0`, and a mezzanine
-  is one that is not. Everything that walks is two-dimensional — `Route`,
-  `stepToward()`, the nav grid's cells, `seatsFor()`, the camera and
-  `player.js`'s ground plane all assume `y = 0`, and `world.js` draws every
-  stool, table and collider from the floor up. So the work is a `floorY` on an
-  area and a stair or ramp rectangle that interpolates between two of them; a
-  `floorYAt(desc, x, z)`; a nav grid that refuses a step between two cells
-  more than a stride's rise apart, so a body walks up the stair and not off
-  the edge; and `Patron`, `Server` and the player reading their y off the
-  floor under them. Do not ship a flat rectangle called a mezzanine.
+- [x] **The flagship's mezzanine (increment 3).** A description carries
+  `mezzanines`: raised rectangles inside the hall, each with a deck height
+  and a stair rectangle that climbs to it, kept out of `annexes` because an
+  annex is behind a wall and a mezzanine overlooks the room (#198).
+  `floorYAt(desc, x, z)` is the one place the floor stops being 0, and
+  seats, colliders, stand-points, the crew's homes and the cook line carry
+  the floor under them. One step rule — a riser (`STEP_H`) or `MAX_SLOPE`
+  per metre, whichever is more, over both halves of a span — is the rail,
+  the panelling under the deck and the stair's sides, applied at the body's
+  radius by `inBounds()` and by the grid's neighbours, the sweep, the
+  string-pull and `nearestCell()` alike (#199). Every walker and the
+  player's eye read their y off the floor after every step (#200). The deck
+  is 1.6 m over the hall's south-east corner up a 2.6 m stair beside the
+  door; the three four-tops that stood on that corner moved up, so the
+  ladder is still 76 (#197). *Reintroduced the bug*, 21 ways, listed in
+  `HISTORY.md`'s entry; the two that taught something were the rule
+  compared per sample (A* took a diagonal onto the stair's side that the
+  string-pull refused) and a 0.25 m `STEP_H` (a server popped 22 cm in one
+  frame).
 - [x] **`VENUES[].seats` is derived.** `seatsFor(LAYOUTS[id]).length`, so the
   Real Estate card and `beginNight()`'s cap read the same list. 30, 44, 58,
   76, asserted monotonic in both suites.
@@ -469,7 +482,7 @@ what is left:
 *Leans on:* phase 1's `layout.js`, `campaign.js`'s `VENUES`, `day.js`.
 *Save:* none — `c.venue` already selects the room. *Model:* **Claude Opus 5**
 named; increment 1 worked under Claude Fable 5.1, increment 2 under Claude
-Opus 5.
+Opus 5, increment 3 under Claude Fable 5.1.
 
 ## Phase 3 — Feet that find the door — **SHIPPED**
 

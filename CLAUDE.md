@@ -63,7 +63,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 197 locked decisions in full, by number.
+`HISTORY.md` carries all 200 locked decisions in full, by number.
 
 ## Writing style
 

@@ -265,7 +265,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 2 — Four rooms, one ladder. **Increment 1 (PR #170):** four rooms, derived seats, tier gates, the door-flood invariant. **Increment 2 (PR #174):** a description holds more than one floor rectangle, and Midtown has its back room. **Left:** the flagship's mezzanine, which needs a floor at a height other than zero and so needs everything that walks to grow a y | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
+| 1 | Phase 2 — Four rooms, one ladder. **Increment 1 (PR #170):** four rooms, derived seats, tier gates, the door-flood invariant. **Increment 2 (PR #174):** a description holds more than one floor rectangle, and Midtown has its back room. **Left:** the flagship's mezzanine, which needs a floor at a height other than zero and so needs everything that walks to grow a y | `Projects/fourth-quarter` | 2+ | Opus 5 | `claude/backlog-ranked-batch-wsza75` | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
 | 2 | Phase 4 — The texture diet | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/fourth-quarter/WISHLIST.md#phase-4--the-texture-diet) |
 | 3 | Phase 6 — The league has a season | `Projects/fourth-quarter` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/fourth-quarter/WISHLIST.md#phase-6--the-league-has-a-season) |
 | 4 | Phase 7 — Regulars, and the bar across town | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/fourth-quarter/WISHLIST.md#phase-7--regulars-and-the-bar-across-town) |

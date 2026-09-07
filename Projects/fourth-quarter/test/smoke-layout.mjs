@@ -202,8 +202,78 @@ ok(!L.walkable(tap, 6.4, -8.45), "…the stove is not");
     "the back room's TV hangs on its own north wall, six centimetres off it, not on the hall's");
 }
 
-// --- reintroduce the bug (the two the wishlist names) ---
 const clone = d => JSON.parse(JSON.stringify(d));
+
+// --- (5) a floor that is not flat ---
+// The flagship's mezzanine is the first floor in the file that is not at
+// y = 0. floorYAt() is the one place that says so; seats, colliders and
+// stand-points carry the floor under them; and one rule -- the floor under a
+// body changes by MAX_SLOPE per metre or less -- is the rail, the panelling
+// under the deck and the stair's sides at once.
+{
+  const f = L.FLAGSHIP, m = f.mezzanines[0], s = m.stair;
+  ok(["cornerTap", "fieldhouse", "midtown"].every(id => (L.layoutFor(id).mezzanines ?? []).length === 0),
+    "only the flagship has a floor that is not at y = 0");
+  ok(m.y > 1 && s.rise === "east" && near(s.x1, m.x0), `the deck is ${m.y} m up, and the stair tops out against its west edge`);
+  ok(L.floorYAt(f, 0, 0) === 0 && L.floorYAt(f, 9, 6) === m.y, "the hall floor is at 0 and the deck at its height");
+  ok(L.floorYAt(f, s.x0, 8.3) === 0 && near(L.floorYAt(f, s.x1, 8.3), m.y), "the stair is at 0 at its foot and the deck's height at its top");
+  ok(near(L.floorYAt(f, (s.x0 + s.x1) / 2, 8.3), m.y / 2), "and half way up half way along");
+  ok(near(L.floorYAt(f, s.x0 + 0.65, 8.3), m.y / 4), "a quarter of the way along is a quarter of the way up: a ramp, not a step");
+  ok(L.floorYAt(f, 4, 5) === 0, "beside the stair, on the hall floor, is 0");
+  ok(L.floorYAt(L.CORNER_TAP, 0, 0) === 0 && L.floorYAt(L.MIDTOWN, 15, 0) === 0, "a room with no mezzanine is 0 everywhere, the back room included");
+  ok(L.stepOK(0, 0.15, 0.25) && L.stepOK(0, L.STEP_H, 0.05) && !L.stepOK(0, 0.25, 0.25) && !L.stepOK(0, m.y, 0.25) && L.stepOK(0, 0.6, 1) && !L.stepOK(0, 0.8, 1),
+    `a body steps up one riser (${L.STEP_H} m) in one stride and climbs ${L.MAX_SLOPE} per metre: 25 cm in a cell is neither, and the deck's edge is not`);
+  // the one rule, from four sides
+  ok(L.inBounds(f, 5.1, 5, 0.3) && !L.inBounds(f, 5.3, 5, 0.3), "a 0.3 m body on the hall floor stops 0.3 m short of the panelling under the deck");
+  ok(L.inBounds(f, 5.85, 5, 0.3) && !L.inBounds(f, 5.7, 5, 0.3), "and on the deck stops 0.3 m short of the rail");
+  ok(L.inBounds(f, 9, 3.35, 0.3) && !L.inBounds(f, 9, 3.2, 0.3), "the deck's north rail too");
+  ok(L.inBounds(f, 4.2, 8.3, 0.3), "the middle of the stair takes a body");
+  ok(!L.inBounds(f, 4.8, 7.4, 0.3) && L.inBounds(f, 3.0, 7.4, 0.3), "the hall floor beside the stair is closed near the top, where the side is a drop, and open at the foot, where it is a step");
+  ok(L.inBounds(f, 5.3, 5, 0) && L.inBounds(f, 5.7, 5, 0), "a point-sized body is on the floor either side of the edge: the rule is about width");
+  // what carries the floor's height
+  const seats = L.seatsFor(f);
+  const up = seats.filter(st => st.y > 0);
+  ok(seats.length === 76, `the flagship still seats the ladder's 76 with a mezzanine (${seats.length})`);
+  ok(up.length === 12 && up.every(st => near(st.y, m.y)), `twelve of them are on the deck, at its height (${up.length})`);
+  ok(seats.filter(st => st.y === 0).length === 64, "and the other sixty-four are on the floor");
+  ok(up.every(st => near(L.floorYAt(f, st.ax, st.az), m.y)), "every deck stool's approach is on the deck too");
+  ok(f.tables.filter(t => L.floorYAt(f, t.x, t.z) > 0).length === 3, "three four-tops moved up, not four");
+  const cols = L.collidersFor(f);
+  const lifted = cols.filter(c => c.min.y > 0);
+  ok(lifted.length === 3 && lifted.every(c => near(c.min.y, m.y) && near(c.max.y, m.y + L.COLLIDER_H)),
+    `the three tables' colliders stand on the deck, COLLIDER_H tall (${lifted.length})`);
+  ok(cols.filter(c => c.min.y === 0).length === cols.length - 3, "and every other collider stands on the floor");
+  const pts = L.standPointsFor(f);
+  ok(Object.values(pts).every(p => near(p.y, f.stations[Object.keys(pts).find(k => pts[k] === p)].y ?? L.floorYAt(f, p.x, p.z))),
+    "every stand-point carries the floor under it");
+  ok([0, 1, 2].every(i => L.crewHome(f, i).y === 0 && L.cookSpot(f, i).y === 0), "the crew's homes and the cook line carry theirs");
+  ok(L.seatsFor(L.CORNER_TAP).every(st => st.y === 0) && L.collidersFor(L.CORNER_TAP).every(c => c.min.y === 0),
+    "the Corner Tap's seats and colliders are at 0, as the fixture already says");
+  // the walls and edges world.js draws
+  const edges = L.mezzanineEdges(f, m);
+  ok(edges.length === 2 && edges.some(e => e.side === "north" && near(e.a0, m.x0) && near(e.a1, m.x1)),
+    `the deck rails its north edge end to end (${JSON.stringify(edges)})`);
+  ok(edges.some(e => e.side === "west" && near(e.a0, m.z0) && near(e.a1, s.z0)), "and its west edge down to where the stair lands, and no further");
+  ok(!edges.some(e => e.side === "east" || e.side === "south"), "the east and south edges are the hall's walls and get no rail");
+  const deckTv = f.tvs.filter(tv => L.floorYAt(f, L.tvMount(f, tv).x, L.tvMount(f, tv).z) > 0);
+  ok(deckTv.length === 2 && deckTv.every(tv => tv.y - m.y >= 1.2), `two TVs hang on the mezzanine's walls, measured from the deck (${deckTv.map(t => t.y).join(",")})`);
+  ok(near(L.floorArea(f), f.room.x * f.room.z * 4), "the deck is over the hall, so the floor a patron drinks on does not double count it");
+  // the sweep climbs the stair, and only the stair
+  ok(L.unreachable(f).length === 0, "every deck stool's approach is reached from the door");
+  const footBlocked = clone(f);
+  // the crate covers the foot and the first 80 cm of the stair, because a
+  // stair's side is a step near its foot -- the rule says so, and it is right
+  footBlocked.fitout.push({ id: "block", kind: "crate", x: s.x0 + 0.2, z: (s.z0 + s.z1) / 2, w: 1.2, d: s.z1 - s.z0 + 0.6, h: 1, rotY: 0, pad: 0 });
+  const ub = L.unreachable(footBlocked);
+  ok(ub.length === 12 && ub.every(n => /^seat (6[5-9]|7[0-6]) \(table\) approach$/.test(n)),
+    `a crate across the stair's foot strands the twelve deck stools and nothing else (${ub.length}: ${ub[0]})`);
+  // a point-sized sweep gets no help from the level test, so only the flood's
+  // own step rule keeps it off the stair's side above the crate and off the
+  // deck's edge -- and it agrees
+  ok(L.unreachable(footBlocked, 0).length === 12, `and a point-sized sweep, kept off the stair's side by nothing but the step rule, agrees (${L.unreachable(footBlocked, 0).length})`);
+}
+
+// --- reintroduce the bug (the two the wishlist names) ---
 const tableOnStool = clone(tap);
 tableOnStool.tables.push({ x: seats[0].ax, z: seats[0].az }); // a table on stool 1's approach
 const b1 = L.validate(tableOnStool);
@@ -289,6 +359,42 @@ ok(L.validate(cookInStove).some(m => m.startsWith("cook 2 ")), "a cook line that
   const dropped = clone(m); dropped.annexes = [];
   const dm = L.validate(dropped).filter(msg => msg.includes("is not walkable"));
   ok(dm.length === 12, `with the annex dropped, its twelve stool approaches are off the floor (${dm.length})`);
+}
+// the mezzanine checks, each broken on its own
+{
+  const f = L.FLAGSHIP;
+  const has = (d, text) => L.validate(d).some(msg => msg.includes(text));
+  const noStair = clone(f); delete noStair.mezzanines[0].stair;
+  const ns = L.validate(noStair);
+  ok(ns.some(msg => msg === "mezzanine mezzanine has no stair") && ns.filter(msg => msg.endsWith("cannot be reached from the door")).length === 12,
+    `a deck with no stair is refused by name, and its twelve stools are unreachable (${ns.length} problems)`);
+  const steep = clone(f); steep.mezzanines[0].stair.x0 = 4.0; // 1.5 m of run for 1.6 m of rise
+  ok(has(steep, "steeper than a body walks"), "a stair steeper than MAX_SLOPE is refused");
+  const short = clone(f); short.mezzanines[0].stair.x1 = 5.3; // stops 20 cm short of the deck
+  ok(has(short, "tops out at 5.3, not against the deck's edge at 5.5"), "a stair that stops short of the deck is refused, and named");
+  const narrow = clone(f); narrow.mezzanines[0].stair.z0 = 8.4; // 0.6 m wide
+  ok(has(narrow, "too narrow for a body"), "a stair 0.6 m wide is refused");
+  const outside = clone(f); outside.mezzanines[0].x1 = 15;
+  ok(has(outside, "mezzanine mezzanine runs outside the hall"), "a deck past the hall's east wall is refused");
+  const flat = clone(f); flat.mezzanines[0].y = 0;
+  ok(has(flat, "is a floor, not a mezzanine"), "a deck at y = 0 is refused: do not ship a flat rectangle called a mezzanine");
+  const tall = clone(f); tall.mezzanines[0].y = 2.5;
+  ok(has(tall, "1.3 m of headroom"), "a deck 1.3 m under the ceiling is refused");
+  const onBar = clone(f); onBar.mezzanines[0].x0 = -14; onBar.mezzanines[0].z0 = -9; onBar.mezzanines[0].z1 = -5;
+  ok(has(onBar, "stands on the bar"), "a deck over the bar is refused");
+  const onCrate = clone(f); onCrate.fitout.push({ id: "keg", kind: "crate", x: 8, z: 6, w: 0.6, d: 0.6, h: 0.6, rotY: 0, pad: 0.06 });
+  ok(has(onCrate, "stands on keg"), "a crate under the deck is refused by name");
+  const onStair = clone(f); onStair.tables.push({ x: 4.2, z: 8.3 });
+  ok(has(onStair, "stands on mezzanine mezzanine's stair"), "a table on the stair is refused");
+  const twins = clone(f); twins.mezzanines.push(clone(f.mezzanines[0]));
+  ok(has(twins, "has no unique id"), "two mezzanines with one id are refused");
+  const lowTv = clone(f); lowTv.tvs[3].y = 2.5; // the deck's east TV, 90 cm over the deck
+  ok(has(lowTv, "tv 3 at y=2.5 is not on the wall"), "a TV 90 cm over the deck is refused: the wall is measured from the floor under it");
+  ok(!has(f, "not on the wall"), "…and at 3.1 it is on the wall");
+  // the stair's sides are a drop, and the rule is what closes them
+  const wide = clone(f); wide.mezzanines[0].stair.z0 = 5.0; // 4 m wide, still on the hall floor
+  ok(L.validate(wide).length === 0, "a wider stair still validates (the check below is about what it changes)");
+  ok(L.inBounds(wide, 4.8, 7.4, 0.3) && !L.inBounds(f, 4.8, 7.4, 0.3), "and the hall floor beside the old stair's side, closed before, is stair now");
 }
 const kind = clone(tap); kind.fitout[1].kind = "crate"; // the stove is a crate now
 ok(L.collidersFor(kind).map(c => c.id).join(",") === "prep,bar,table1,table2,table3,table4,table5,table6,stove,crate1,crate2", "collider order follows fitout kind, not id: a stove marked crate drops behind the tables");
