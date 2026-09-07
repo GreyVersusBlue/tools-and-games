@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "default": "vault-beneath-the-court",
+  "packs": [
+    {
+      "id": "vault-beneath-the-court",
+      "file": "vault.json",
+      "name": "The Vault Beneath the Ascendant Court",
+      "blurb": "Three rooms, four stat blocks, one casket. The adventure this engine was built around."
+    },
+    {
+      "id": "proving-ground",
+      "file": "proving-ground.json",
+      "name": "The Proving Ground",
+      "blurb": "One room, one recruit, one straw golem. The smallest pack that is a whole adventure — a fixture the suite is free to break."
+    }
+  ],
+  "note": "Which packs this game ships and which one boots. main.js reads it; content.js's loadManifest validates it; ?pack=<id> picks a different one. A pack's own file may not live outside this folder — see loadManifest."
+}

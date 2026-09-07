@@ -2,10 +2,12 @@
 
 **Audience:** a future session, or a careful human, writing a new area for this engine.
 
-Everything the game knows about the world is in `content/vault.json`. The engine has no
-hardcoded map, no hardcoded statblock and no hardcoded spell. `content/vault.json` is the
-shipping adventure and is always the authoritative worked example — when this document and
-that file disagree, the file is right and this document has a bug.
+Everything the game knows about the world is in `content/`. The engine has no hardcoded map, no
+hardcoded statblock and no hardcoded spell, and since this round it does not hardcode which pack
+it plays either: `content/packs.json` is the manifest, and it names two — `vault.json`, the
+shipping adventure, and `proving-ground.json`, the smallest thing this engine accepts that is
+still a whole adventure (§13). `content/vault.json` is always the authoritative worked example —
+when this document and that file disagree, the file is right and this document has a bug.
 
 A pack that fails validation is **rejected whole**, with a message naming the field. Nothing is
 partially loaded. That is deliberate: the failure mode this engine is built against is a missing
@@ -40,22 +42,43 @@ shipping pack and they are the best documentation the balance work has.
 
 ---
 
-## 2. `tuning`
+## 2. `tuning`, at the pack and at the room
 
 ```json
-"tuning": { "visionFeet": 30, "noticeFeet": 30, "standardDC": 15 }
+"tuning": { "visionFeet": 30, "noticeFeet": 30 }
 ```
 
 | Key | Does |
 | --- | --- |
 | `visionFeet` | How far the PC sees. Fog of war beyond it; explored squares stay dimly drawn. |
 | `noticeFeet` | How close the PC gets before a dormant creature with line of sight wakes. |
-| `standardDC` | The level-appropriate standard DC. Not currently read by any command — see the warning below. |
 
-**A knob nobody reads is worse than no knob.** Torchbearer's guide audit next door found six
-documented engine hooks that did nothing. `standardDC` is the one field here in that category:
-it is loaded and defaulted but no command consumes it yet. It is kept because the first skill
-check added to this engine will want it. Everything else in this document is wired.
+**Two keys, and the list is closed.** A third, `standardDC: 15`, sat here from the pack's first
+commit and nothing ever read it; the guide's own warning said so and kept it anyway "because the
+first skill check will want it". It is gone. The one DC 15 in the engine is the persistent-damage
+flat check in `conditions.js`, which is Player Core p.409 rather than a knob a room turns, and
+per-area overrides would have turned one dead key into one per area. A pack that writes a key
+this table does not list is now **refused at load, with the legal keys in the message** — which
+is the thing that stops the next `standardDC` from being written in the first place.
+
+**An area may override either key.** `areas.<id>.tuning` layers on the pack's, key by key, so a
+dark room writes the one number it cares about:
+
+```json
+"areas": {
+  "undercroft": {
+    "tuning": { "visionFeet": 20, "noticeFeet": 20 },
+    "…": "…"
+  }
+}
+```
+
+`game.js` reads `area.tuning`, never `content.tuning`, and `area` is reassigned by
+`transitionTo()` — so the fog shrinks the moment the heir arrives and grows again when she
+leaves. The shipping pack's undercroft is the worked example, and its `noticeFeet` is load-bearing
+rather than atmosphere: at the vault's 30 ft its sentinel notices a heir crossing the south hall
+through the west doorway, and the fight stops being optional. `test/smoke.mjs` asserts exactly
+that, square by square.
 
 ---
 
@@ -451,6 +474,31 @@ that power.
 A pillar is a map square whose legend entry names a lore id (§8). Reading one is an Interact at
 5 ft. Each can be read once.
 
+**A pillar may also hand something back.** Three optional keys, and they are the *same three* the
+gate has always carried, read by the same `applyRestore` in `game.js`:
+
+```json
+"mason-mark": {
+  "title": "The Mason's Mark",
+  "body": ["…"],
+  "logLine": "…",
+  "restore": ["hp", "slots", "focus"],
+  "restoreHp": 8,
+  "restoreNarrative": "You drink, and sit as long as the basin takes to still."
+}
+```
+
+`restore` is a closed list — `hp`, `slots`, `focus` — and a name outside it is refused rather than
+ignored, because before that check existed `restore: ["spells"]` loaded and did nothing.
+`restoreHp` caps the heal; omit it for a full one, which is what the gate does. `restoreNarrative`
+only prints when something actually moved, so a heir who reads the pillar at full health does not
+get told she was healed.
+
+**This is the whole mechanism a pack has for rewarding an optional fight**, and it is deliberately
+not a new tile kind. A tile that yields an item would cost `render.js` a colour and `ui.js` a
+sentence, and a room would stop being a content file — which is the one property §12 exists to
+protect (locked decision #175).
+
 ---
 
 ## 8. `areas`, `startArea`, `areaOrder`
@@ -462,7 +510,7 @@ a session or a test walking the whole adventure should expect to visit them in.
 
 ```json
 "startArea": "vault",
-"areaOrder": ["vault", "sanctum"],
+"areaOrder": ["vault", "undercroft", "sanctum"],
 "areas": {
   "vault": {
     "name": "The Vault Beneath the Ascendant Court",
@@ -488,8 +536,27 @@ a session or a test walking the whole adventure should expect to visit them in.
 ```
 
 `tile` is `floor`, `wall`, `gate`, `pillar`, `treasure` or `stairs`. Walls and pillars block
-movement and sight; a gate blocks both until it opens; treasure and stairs are both walkable and
-sight-transparent — a stairway is a floor tile with a destination attached, nothing more.
+movement, sight and effect; a gate blocks movement and effect until it opens and never blocks
+sight (it is a portcullis); treasure and stairs are walkable and transparent to all three — a
+stairway is a floor tile with a destination attached, nothing more.
+
+**Those six live in one table**, `TILE_KINDS` at the top of `js/world.js`, and it is the only
+place any of it is written down: `world.js`'s three barrier predicates read it, `content.js`'s
+legend parser reads it to turn a name into a tile, and `save.js`'s `repair` reads it to decide
+where a body may stand. There used to be three lists, and a kind added to one and missed in
+another was a pack that either refused to load or loaded with a hole in a wall.
+
+Adding a seventh kind is one row, appended (the id is the index, and `render.js` and `ui.js`
+switch on `TILE.WALL` and friends, so reordering repaints the board). Each row declares
+`blocksMove`, `blocksSight` and `blocksEffect`, and **all three default to `true`** — you opt out
+of solidity, never into it. That direction is the point: a kind whose author forgot to say what it
+blocks becomes a square nobody can walk into, which is visible in the first ten seconds of play;
+the other default is a wall you walk through, which reads as a rendering bug and gets found much
+later. `"unless-open"` is the one conditional answer and it is the gate's.
+
+Note what the registry does **not** buy you: a new kind is still a code change, one row in
+`world.js` plus whatever colour `render.js` gives it and whatever sentence `ui.js` announces for
+it. A new *area* is a content change. Those are different claims and §12 is about the second one.
 
 A legend entry may also carry:
 
@@ -507,6 +574,9 @@ A legend entry may also carry:
   destination area and the exact square the PC arrives on there. The destination area does not
   need to exist earlier in the file — validated in a pass after every area is parsed, so a
   stairway is free to point forward.
+
+An area may also carry a **`tuning`** block (§2), overriding the pack's `visionFeet` and
+`noticeFeet` for that room alone.
 
 An area may also carry a **`hint`**: the line the hint bar shows on arrival. A stairway swaps the
 whole board out from under it, and without one the bar goes on describing the room you left.
@@ -711,5 +781,111 @@ disagree the file is right.
 conditions are already keyed by id and reusable across areas with zero modification — a second
 area's guardian is a normal entry in `creatures`, not a new kind of thing.
 
-A third area would cost the same six items above and nothing more structural — there is no per-area
-count baked in anywhere that a third area would have to unwind.
+---
+
+## 12. A third area, worked: the undercroft — and what it actually cost
+
+The paragraph that used to end §11 said a third area would cost the same six items above. **It
+cost none of them.** The undercroft — `areas.undercroft` in the shipping pack, between the vault
+and the sanctum — is a diff to `content/vault.json` and this document, and nothing else:
+
+* one legend, one grid, one `hint`, one `tuning` block;
+* one placement of a creature that already existed (`shattered-sentinel`);
+* one `lore` entry, carrying the boon of §7;
+* two edits to squares that already existed: the vault's `V` now points at it, and its own `A`
+  points on to the sanctum.
+
+That is the claim this phase was written to make good on, and the six items above are why: they
+were about the engine learning that "more than one area" is a shape, and that work was already
+paid for. What the third area *did* need that the six did not provide was a way for a pack to
+hand out a reward, which is why `restore` moved from a gate-only field to a shape a `lore` entry
+carries too (§7). One room's worth of engine change, once, for every room after it.
+
+**Three things a third area teaches that a second one cannot.**
+
+1. **A stairway you land on is a stairway you immediately take again.** The undercroft's arrival
+   square is `1,9`, plain floor, and the room's own exit is at `14,3`. Point a `to` at a `stairs`
+   tile and `checkTriggers` fires `checkStairs` on arrival and sends the heir straight back, for
+   ever. The vault→sanctum pair never showed this because the sanctum has no stairway at all.
+2. **A room in the middle moves the dice under every room after it.** The undercroft's fight
+   consumes RNG, so the warden fight downstream rolls differently and ends with the heir standing
+   somewhere else. That alone dropped "read the reliquary plaque" from 64% of runs to 5.3% —
+   because the plaque sat directly behind the casket from the stairway's landing, so the walk to
+   read it crossed the casket lid and won the run first. It had *always* been that fragile; the
+   third area is only what made it visible. The plaque moved west, and it reads 74.6% now. If you
+   add a room, re-read the optional-pillar lines in `balance.mjs`'s report, not just the win rate.
+3. **An optional fight has to be measurably optional.** `test/smoke.mjs` asserts, square by
+   square, that nothing on the route from the arrival to the exit is within the room's own
+   `noticeFeet` of the sentinel with a line of sight to it, and that stepping into the west
+   doorway is. The 20 ft in that room's `tuning` is what makes that true.
+
+**Is it neither free nor a wall?** `balance.mjs` at 2000, per area and per encounter:
+
+| | reached | died there | share of all damage |
+| --- | --- | --- | --- |
+| Vesper Quill (wizard) | 84.5% | 4.9% | 16.8% |
+| Kessa Vane (fighter) | 75.5% | 6.1% | 12.1% |
+
+And what the boon is worth, measured with `--variant no-boon='{"lore":{"mason-mark":{"restore":[]}}}'`:
+**+5.2 points to the wizard, +1.4 to the fighter.** The room costs a wizard 4.5 points of win rate
+and pays her 5.2; it costs the fighter 6.3 and pays her 1.4. That is the honest reading and it is
+worth writing down: **the mason's mark is a caster's boon, and Kessa should walk past it.**
+Raising `restoreHp` from 8 to 12, or to a full heal, moves neither build by a measurable amount —
+the fight that kills after the mark is not one HP decides. Optional content that one build should
+decline is content doing its job; optional content nobody can tell apart is not.
+
+The autopilot has no such choice — it walks to every pillar — so the shipped win rates
+(**79.5% wizard, 69.3% fighter**, from 81.4% and 75.1% before this room existed) are the floor of
+"always take the fight", not the ceiling of playing well.
+
+---
+
+## 13. More than one pack: the manifest, and `packId`
+
+`main.js` used to `fetch("../content/vault.json")` by a literal URL, so "a second adventure" was a
+code change. It reads `content/packs.json` now:
+
+```json
+{
+  "schema": 1,
+  "default": "vault-beneath-the-court",
+  "packs": [
+    { "id": "vault-beneath-the-court", "file": "vault.json", "name": "…", "blurb": "…" },
+    { "id": "proving-ground", "file": "proving-ground.json", "name": "…", "blurb": "…" }
+  ]
+}
+```
+
+* `?pack=<id>` picks one. An id the manifest does not list falls back to the default rather than
+  failing — a query string is a thing a player can mistype, and the adventure is what they came
+  for.
+* `file` is a **bare filename**, resolved beside the manifest. A path is refused, not resolved:
+  packs are content, they live in one folder, and a manifest that can climb out of it is a
+  manifest that can be pointed at anything the host serves.
+* A pack file whose own `pack.id` disagrees with the manifest's name for it is refused at fetch.
+  That id is what the save layer keys a slot on, and two names for one adventure is how a vault
+  save ends up in another slot.
+
+**`content/proving-ground.json` is the second pack**: one room, one build, one creature, two
+commands, one pillar, one strongbox. It exists to prove a pack is portable — nothing in `js/`
+names any of its ids — and to give `test/smoke.mjs` a fixture it can break in ways it would never
+break the shipping pack. If you are writing a third pack, copy that one, not the vault.
+
+There is exactly one content id the engine knows by name: **`potion`**, which `game.js`'s
+`potionCount()` counts for the inventory panel and the autopilot's drink-when-low branch. A pack
+that calls its healing item something else still works and still heals; that one branch goes
+quiet. The proving ground uses the id on purpose and says so in its `startingInventoryNote`.
+
+**Saves do not cross packs, and each pack has its own key.** `save.js`:
+
+* `absalom-inheritance-save-v1` is and remains the vault's key — locked decision #36 is about what
+  is already on somebody's disk, not about what the string looks like. Every other pack gets
+  `absalom-inheritance-save-v1:<packId>`. One shared key would mean opening the proving ground
+  overwrites a vault run the first time the autosave ticks.
+* A save whose `packId` names a different adventure is **refused**, and the slot carries the
+  sentence explaining it (`slot.refusedBecause`), which `main.js` puts in the save bar and which
+  replaces gvb-save's generic "that is not a valid save" on an import. `repair` is built to
+  survive a pack that *lost* an area or a creature; handed a whole different adventure it would do
+  all of that at once and hand back a technically valid run with nothing in it.
+* A save with **no** `packId` predates the field and means the pack that existed then — the same
+  argument `repair`'s `buildId` fallback makes.

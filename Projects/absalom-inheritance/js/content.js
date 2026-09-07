@@ -11,16 +11,11 @@
 // browser can fetch() it and a Node test can readFileSync it.
 
 import { parseDamage } from "./rules.js";
-import { TILE } from "./world.js";
+import { TILE_ID_BY_NAME, TILE_NAMES } from "./world.js";
 import {
   CONDITION_IDS, CONDITION_TRAITS, ATTACK_ABILITIES, SAVE_STATS, isCondition,
 } from "./conditions.js";
 import { AI_KINDS } from "./ai.js";
-
-const TILE_BY_NAME = {
-  floor: TILE.FLOOR, wall: TILE.WALL, gate: TILE.GATE,
-  pillar: TILE.PILLAR, treasure: TILE.TREASURE, stairs: TILE.STAIRS,
-};
 
 /**
  * The three points at which this engine's turn loop can be interrupted, and
@@ -194,6 +189,62 @@ function readPalette(raw, where) {
   return Object.freeze(out);
 }
 
+/**
+ * How far the heir sees, and how far a dormant creature notices her.
+ *
+ * Two keys, not three. `standardDC: 15` sat in this table from the pack's
+ * first commit and nothing has ever read it — the one DC 15 in the engine is
+ * the persistent-damage flat check in `conditions.js`, which is Player Core
+ * p.409 and not a knob a room gets to turn. A tuning key nothing reads is a
+ * promise to a content author the engine does not keep, and per-area overrides
+ * would have made one dead key into one per area (locked decision #173). The
+ * closed key list below is what catches the next one: a room that writes
+ * `standardDC` now gets a refusal naming what it may write instead.
+ */
+const TUNING_DEFAULTS = Object.freeze({ visionFeet: 30, noticeFeet: 30 });
+const TUNING_KEYS = Object.freeze(Object.keys(TUNING_DEFAULTS));
+
+/**
+ * A tuning block, layered on a base. The pack's layers on the defaults; an
+ * area's layers on the pack's, so a dark room writes `visionFeet` alone and
+ * inherits the rest rather than restating a table it does not care about.
+ */
+function readTuning(raw, base, where) {
+  if (raw === undefined || raw === null) return base;
+  need(raw && typeof raw === "object" && !Array.isArray(raw),
+    `content: ${where} tuning must be an object`);
+  const out = { ...base };
+  for (const [k, v] of Object.entries(raw)) {
+    need(TUNING_KEYS.includes(k),
+      `content: ${where} tuning has unknown key "${k}" (known: ${TUNING_KEYS.join(", ")})`);
+    need(typeof v === "number" && Number.isFinite(v) && v > 0,
+      `content: ${where} tuning.${k} must be a positive number, got ${JSON.stringify(v)}`);
+    out[k] = v;
+  }
+  return Object.freeze(out);
+}
+
+/**
+ * What a boon can hand back.
+ *
+ * Closed, like the trigger names and the tile names, and for the same reason:
+ * `restore: ["spells"]` validated and did nothing before this list existed,
+ * because the three branches in game.js's applyRestore read the array by
+ * membership and a name none of them tests for is silence.
+ */
+export const RESTORABLE = Object.freeze(["hp", "slots", "focus"]);
+
+function readRestore(raw, where) {
+  if (raw === undefined || raw === null) return Object.freeze([]);
+  need(Array.isArray(raw), `content: ${where} restore must be an array`);
+  for (const k of raw) {
+    need(RESTORABLE.includes(k),
+      `content: ${where} restore names unknown resource "${k}" (known: ${RESTORABLE.join(", ")})`);
+  }
+  need(new Set(raw).size === raw.length, `content: ${where} restore names the same resource twice`);
+  return Object.freeze([...raw]);
+}
+
 class ContentError extends Error {}
 
 function need(cond, msg) {
@@ -212,10 +263,7 @@ export function loadPack(raw) {
   need(raw.pack && raw.pack.id, "content: pack.id is required");
   need(raw.pack.schema === 1, `content: pack.schema must be 1, got ${raw.pack.schema}`);
 
-  const tuning = {
-    visionFeet: 30, noticeFeet: 30, standardDC: 15,
-    ...(raw.tuning || {}),
-  };
+  const tuning = readTuning(raw.tuning, TUNING_DEFAULTS, "pack");
 
   // ---- commands -------------------------------------------------------
   // Parsed before pcOptions because each build's own `commands` list is
@@ -464,7 +512,17 @@ export function loadPack(raw) {
   const lore = {};
   for (const [id, l] of Object.entries(raw.lore || {})) {
     need(l.title && Array.isArray(l.body), `content: lore "${id}" needs a title and a body array`);
-    lore[id] = Object.freeze({ id, title: l.title, body: [...l.body], logLine: l.logLine || "" });
+    lore[id] = Object.freeze({
+      id, title: l.title, body: [...l.body], logLine: l.logLine || "",
+      // A pillar may hand something back, in exactly the shape the gate's
+      // seal-release already had. That is the whole mechanism a pack has for
+      // rewarding an optional fight: the alternative was a tile kind that
+      // yields an item, which costs render.js a colour and ui.js a sentence
+      // and would have made a room stop being a content file (#175).
+      restore: readRestore(l.restore, `lore "${id}"`),
+      restoreHp: typeof l.restoreHp === "number" ? l.restoreHp : null,
+      restoreNarrative: l.restoreNarrative || "",
+    });
   }
 
   // ---- areas ------------------------------------------------------------
@@ -499,8 +557,10 @@ export function loadPack(raw) {
         const ch = a.rows[y][x];
         const def = a.legend[ch];
         need(def, `content: area "${areaId}" row ${y} column ${x} uses "${ch}", which is not in the legend`);
-        const t = TILE_BY_NAME[def.tile];
-        need(t !== undefined, `content: area "${areaId}" legend "${ch}" has unknown tile "${def.tile}"`);
+        const t = TILE_ID_BY_NAME[def.tile];
+        need(t !== undefined,
+          `content: area "${areaId}" legend "${ch}" has unknown tile "${def.tile}" ` +
+          `(known: ${TILE_NAMES.join(", ")})`);
         row.push(t);
         if (def.lore) {
           need(lore[def.lore], `content: area "${areaId}" legend "${ch}" points at unknown lore "${def.lore}"`);
@@ -532,6 +592,10 @@ export function loadPack(raw) {
 
     areas[areaId] = Object.freeze({
       id: areaId, name: a.name || areaId, hint: a.hint || "", width, height,
+      // The pack's tuning, with this room's overrides on top. game.js reads
+      // `area.tuning`, never `content.tuning`, so a stairway into a dark room
+      // changes what the heir can see the moment she arrives.
+      tuning: readTuning(a.tuning, tuning, `area "${areaId}"`),
       tiles: Object.freeze(tiles.map(r => Object.freeze(r))),
       pillars: Object.freeze(pillars),
       placements: Object.freeze(placements.map(Object.freeze)),
@@ -564,7 +628,10 @@ export function loadPack(raw) {
     "content: areaOrder must list only defined area ids");
 
   // ---- gate and treasure ----------------------------------------------
-  const gate = { requiresLore: [], restore: [], ...(raw.gate || {}) };
+  const gate = { requiresLore: [], ...(raw.gate || {}) };
+  gate.restore = readRestore(gate.restore, "gate");
+  gate.restoreHp = typeof gate.restoreHp === "number" ? gate.restoreHp : null;
+  gate.restoreNarrative = gate.restoreNarrative || "";
   for (const id of gate.requiresLore) {
     need(lore[id], `content: gate.requiresLore names unknown lore "${id}"`);
   }
@@ -638,11 +705,61 @@ export function selectPc(content, buildId) {
   });
 }
 
-/** Browser door: fetch and parse. Relative so it works from any host path. */
-export async function fetchPack(url) {
+/**
+ * The pack manifest: which packs this game ships, and which one boots.
+ *
+ * `main.js` fetched `content/vault.json` by a literal URL, so "more than one
+ * adventure" was a code change rather than a content one. This is the list,
+ * and it is validated at the door on exactly the same argument the pack
+ * validator is: a manifest naming a file that is not there fails at fetch
+ * with a 404 nobody can read, and one naming a pack id that disagrees with
+ * the file's own is a switch that quietly boots the wrong adventure.
+ *
+ * `file` is a bare filename, resolved beside the manifest. A path is refused
+ * rather than resolved: the packs are content, they live in one folder, and a
+ * manifest that can reach out of it is a manifest that can be pointed at
+ * anything the host serves.
+ */
+export function loadManifest(raw) {
+  need(raw && typeof raw === "object", "manifest: not an object");
+  need(raw.schema === 1, `manifest: schema must be 1, got ${raw.schema}`);
+  need(Array.isArray(raw.packs) && raw.packs.length, "manifest: packs must be a non-empty array");
+  const packs = raw.packs.map(p => {
+    need(p && typeof p.id === "string" && p.id, "manifest: every pack needs an id");
+    need(typeof p.file === "string" && /^[\w.-]+\.json$/.test(p.file),
+      `manifest: pack "${p.id}" needs a "file" naming a .json beside this manifest, got ${JSON.stringify(p.file)}`);
+    return Object.freeze({ id: p.id, file: p.file, name: p.name || p.id, blurb: p.blurb || "" });
+  });
+  need(new Set(packs.map(p => p.id)).size === packs.length, "manifest: pack ids must be unique");
+  const byId = Object.freeze(Object.fromEntries(packs.map(p => [p.id, p])));
+  const startId = raw.default ?? packs[0].id;
+  need(byId[startId],
+    `manifest: default names "${startId}", which is not one of ${packs.map(p => p.id).join(", ")}`);
+  return Object.freeze({ schema: 1, default: startId, packs: Object.freeze(packs), byId });
+}
+
+/**
+ * Browser door: fetch and parse. Relative so it works from any host path.
+ *
+ * `expectId` is the manifest's name for this pack. A file whose own `pack.id`
+ * disagrees is refused, because that id is what the save layer keys a slot on
+ * and what it refuses a foreign save by — two names for one adventure is how
+ * a player's vault save ends up in the proving ground's slot.
+ */
+export async function fetchPack(url, expectId = null) {
   const res = await fetch(url);
   if (!res.ok) throw new ContentError(`content: ${url} returned ${res.status}`);
-  return loadPack(await res.json());
+  const pack = loadPack(await res.json());
+  need(expectId === null || pack.pack.id === expectId,
+    `content: the manifest calls ${url} "${expectId}" and the file says "${pack.pack.id}"`);
+  return pack;
+}
+
+/** The same door, for the manifest. */
+export async function fetchManifest(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new ContentError(`content: ${url} returned ${res.status}`);
+  return loadManifest(await res.json());
 }
 
 export { ContentError };

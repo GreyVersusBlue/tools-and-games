@@ -1,0 +1,131 @@
+{
+  "pack": {
+    "id": "proving-ground",
+    "name": "The Proving Ground",
+    "version": "1.0.0",
+    "schema": 1,
+    "description": "The smallest thing this engine will accept that is still a whole adventure: one room, one recruit, one straw golem, one chalk mark on the wall, and a strongbox you win by opening. It exists to prove a pack is portable — nothing in js/ names it, and the suite is free to break it in ways it would never break the vault."
+  },
+  "commands": [
+    {
+      "id": "strike",
+      "name": "Strike",
+      "kind": "attack",
+      "cost": 1,
+      "costGlyph": "◆",
+      "attackBonus": 6,
+      "damage": "1d8+3",
+      "damageType": "slashing",
+      "flavour": "A drill-yard swing, and the only one you were taught.",
+      "hint": "Click an adjacent target."
+    },
+    {
+      "id": "potion",
+      "name": "Field Poultice",
+      "kind": "consume",
+      "cost": 1,
+      "costGlyph": "◆",
+      "consumes": "potion",
+      "healing": "1d8+2",
+      "flavour": "Cloth, tallow and a great deal of optimism."
+    }
+  ],
+  "pcOptions": [
+    {
+      "id": "recruit",
+      "name": "The Recruit",
+      "title": "Absalom Levy 1",
+      "blurb": "One sword, one poultice, no spells. There is nothing here to choose between; the picker still runs, which is the point.",
+      "hp": 20,
+      "ac": 16,
+      "acNote": "10 + scale mail 3 + DEX 1 + Trained armor +2",
+      "speed": 25,
+      "perception": 4,
+      "saves": { "fort": 5, "ref": 3, "will": 2 },
+      "palette": { "top": "#8a7a45", "left": "#544a29", "right": "#6d6036" },
+      "paletteNote": "Brass, so nothing in this pack reads as the vault's blue wizard or green fighter at a glance."
+    }
+  ],
+  "creatures": {
+    "straw-golem": {
+      "name": "Straw Golem",
+      "level": -1,
+      "hp": 9,
+      "ac": 13,
+      "perception": 2,
+      "speed": 20,
+      "saves": { "fort": 4, "ref": 1, "will": 0 },
+      "attackBonus": 4,
+      "attackName": "Bundled Fist",
+      "damage": "1d4+1",
+      "damageType": "bludgeoning",
+      "immunities": ["mental"],
+      "deathLine": "{name} comes apart into loose straw.",
+      "wakeLine": "{name} straightens on its pole.",
+      "sleepLine": "{name} sags back against its pole.",
+      "note": "A training dummy that hits back, deliberately weaker than anything in the vault: this pack is a fixture, and a fixture that is hard to win is a fixture whose failures are ambiguous."
+    }
+  },
+  "items": [
+    { "id": "potion", "name": "Field Poultice", "glyph": "✚", "bulk": "L" }
+  ],
+  "startingInventory": ["potion", "potion"],
+  "startingInventoryNote": "The item id is \"potion\" because game.js's potionCount() knows that one id by name — the only content id the engine hardcodes. A pack that calls its healing item anything else still works and still heals; the autopilot's drink-when-low branch is the one thing that goes quiet. See the guide's §11.",
+  "inventorySlots": 6,
+  "bulkLimit": 4,
+  "lore": {
+    "chalk-mark": {
+      "title": "The Chalk Mark",
+      "body": [
+        "Chalked on the post, in a drill sergeant's hand: \"Hit it until it stops. If it stops you first, that was also the lesson.\"",
+        "Below that, a tally of scratches somebody gave up counting."
+      ],
+      "logLine": "You read the chalk mark on the post. It is not encouraging."
+    }
+  },
+  "startArea": "yard",
+  "areaOrder": ["yard"],
+  "areas": {
+    "yard": {
+      "name": "The Proving Yard",
+      "hint": "Read the post, put the golem down, and open the strongbox.",
+      "legend": {
+        "#": { "tile": "wall" },
+        ".": { "tile": "floor" },
+        "P": { "tile": "pillar", "lore": "chalk-mark" },
+        "T": { "tile": "treasure" },
+        "@": { "tile": "floor", "spawn": "pc" },
+        "g": { "tile": "floor", "creature": "straw-golem" }
+      },
+      "rows": [
+        "############",
+        "#..........#",
+        "#..P.......#",
+        "#..........#",
+        "#......g...#",
+        "#..........#",
+        "#.@......T.#",
+        "#..........#",
+        "############"
+      ]
+    }
+  },
+  "treasure": {
+    "requiresDown": ["straw-golem"],
+    "blockedHint": "The golem is still on its feet.",
+    "title": "The Strongbox",
+    "body": [
+      "Inside: a levy's pay chit, a spare bootlace, and the sergeant's signature.",
+      "You have proved the ground."
+    ]
+  },
+  "defeat": {
+    "title": "Down in the Yard",
+    "body": ["The straw golem stands over you, unbothered. They will chalk another scratch on the post."]
+  },
+  "intro": {
+    "narrative": "A drill yard under the Ascendant Court, swept, chalked, and entirely without ceremony.",
+    "goal": "Read the post, put the golem down, and open the strongbox.",
+    "hint": "Click a lit tile to walk, or use the arrow keys."
+  }
+}

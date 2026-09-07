@@ -13,9 +13,15 @@ import {
   DEG, degreeOfSuccess, check, basicSaveDamage, mapPenalty,
   feetBetween, isAdjacent, stridesFor,
 } from "../js/rules.js";
-import { makeWorld, TILE, packExplored, unpackExplored } from "../js/world.js";
+import {
+  makeWorld, TILE, TILE_KINDS, TILE_ID_BY_NAME, TILE_NAMES, BARRIERS, tileBlocks,
+  packExplored, unpackExplored,
+} from "../js/world.js";
 import { coneSquares, burstSquares, emanationSquares, octantToward, OCTANTS } from "../js/templates.js";
-import { loadPack, selectPc, ContentError, REACTION_TRIGGERS, REACTION_EFFECTS, INFLICT_ON, AREA_KINDS } from "../js/content.js";
+import {
+  loadPack, loadManifest, fetchPack, fetchManifest, selectPc, ContentError,
+  REACTION_TRIGGERS, REACTION_EFFECTS, INFLICT_ON, AREA_KINDS, RESTORABLE,
+} from "../js/content.js";
 import {
   CONDITIONS, CONDITION_IDS, MODIFIER_KINDS, BONUS_TYPES, isCondition,
   CONDITION_TRAITS, DEFAULT_UNTILS, DAMAGE_SOURCES, damageModifiers,
@@ -25,7 +31,10 @@ import {
 } from "../js/conditions.js";
 import { createGame } from "../js/game.js";
 import { AI_KINDS, chooseAction } from "../js/ai.js";
-import { makeSaveSlot, makeRepair, validRun, freshRun, SAVE_KEY, SAVE_VERSION } from "../js/save.js";
+import {
+  makeSaveSlot, makeRepair, validRun, freshRun, packRefusal, keyFor,
+  SAVE_KEY, SAVE_VERSION, LEGACY_PACK_ID,
+} from "../js/save.js";
 import { playThrough, travel, fight, combatPolicy } from "./autopilot.mjs";
 import {
   BAND, DRIFT, runBatch, summarise, encounterRows, areaRows,
@@ -35,6 +44,13 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACK_PATH = path.join(HERE, "..", "content", "vault.json");
 const rawPack = JSON.parse(fs.readFileSync(PACK_PATH, "utf8"));
+// The second pack, and the manifest that names them both. Read here rather
+// than inside the packs section so that a missing file fails at startup with
+// a path in the message, not two thousand assertions later.
+const MANIFEST_PATH = path.join(HERE, "..", "content", "packs.json");
+const SMALL_PATH = path.join(HERE, "..", "content", "proving-ground.json");
+const rawManifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
+const rawSmall = JSON.parse(fs.readFileSync(SMALL_PATH, "utf8"));
 
 let passed = 0;
 const failures = [];
@@ -161,7 +177,8 @@ const content = loadPack(rawPack);
 const resolved = selectPc(content, "wizard");
 eq(content.pack.id, "vault-beneath-the-court", "the shipping pack loads");
 eq(content.startArea, "vault", "the pack starts in the vault");
-eq(JSON.stringify(content.areaOrder), JSON.stringify(["vault", "sanctum"]), "the area order is vault then sanctum");
+eq(JSON.stringify(content.areaOrder), JSON.stringify(["vault", "undercroft", "sanctum"]),
+  "the area order is vault, undercroft, sanctum");
 eq(content.areas.vault.width, 22, "the vault is 22 squares wide");
 eq(content.areas.vault.height, 22, "the vault is 22 squares tall");
 eq(content.areas.vault.placements.length, 3, "the vault places three creatures");
@@ -169,7 +186,19 @@ eq(Object.keys(content.areas.vault.pillars).length, 2, "the vault has two lore p
 eq(content.areas.sanctum.placements.length, 1, "the sanctum places one creature");
 ok(content.areas.sanctum.pcSpawn === null, "the sanctum has no pc spawn — it is only ever reached by stairs");
 eq(Object.keys(content.areas.vault.stairs).length, 2, "the vault has two stairway squares");
-eq(content.areas.vault.stairs["10,2"].area, "sanctum", "the vault stairway leads to the sanctum");
+eq(content.areas.vault.stairs["10,2"].area, "undercroft", "the vault stairway leads to the undercroft");
+eq(content.areas.undercroft.stairs["14,3"].area, "sanctum", "and the undercroft's leads on to the sanctum");
+eq(content.areas.undercroft.placements.length, 1, "the undercroft places one creature — the optional one");
+eq(Object.keys(content.areas.undercroft.pillars).length, 1, "and holds one lore pillar");
+ok(content.areas.undercroft.pcSpawn === null, "the undercroft has no pc spawn either");
+// The first per-area tuning in the pack. The room is cut rather than built and
+// has no seal-light, and the 10 ft it takes off `noticeFeet` is what makes its
+// sentinel avoidable: at the vault's 30 it would notice a heir crossing the
+// south hall through the doorway at 5,7.
+eq(content.areas.undercroft.tuning.visionFeet, 20, "the undercroft is darker than the pack default");
+eq(content.areas.undercroft.tuning.noticeFeet, 20, "and its sentinel notices from less far");
+eq(content.areas.vault.tuning.visionFeet, 30, "a room that overrides nothing keeps the pack's own tuning");
+eq(content.tuning.visionFeet, 30, "which is the pack default itself");
 eq(content.startingInventory.filter(i => i === "potion").length, 3, "the PC starts with three potions");
 ok(Object.isFrozen(content), "content is frozen — a run cannot edit the pack it is playing");
 ok(Object.isFrozen(content.creatures["shattered-sentinel"]), "creature definitions are frozen");
@@ -343,10 +372,148 @@ throws(() => {
   ok(loaded.creatures["shattered-sentinel"].speed > 0, "the fallback Speed is usable");
 }
 
+/* -- per-area tuning --------------------------------------------------- */
+
+{
+  // The pack's tuning is a floor an area layers on, so a dark room writes the
+  // one key it cares about rather than restating a table it does not.
+  const p = clone();
+  p.areas.vault.tuning = { visionFeet: 12 };
+  const loaded = loadPack(p);
+  eq(loaded.areas.vault.tuning.visionFeet, 12, "an area's override wins");
+  eq(loaded.areas.vault.tuning.noticeFeet, loaded.tuning.noticeFeet,
+    "and the key it did not write is inherited, not defaulted back to 30");
+}
+{
+  const p = clone();
+  p.tuning = { visionFeet: 45 };
+  const loaded = loadPack(p);
+  eq(loaded.areas.sanctum.tuning.visionFeet, 45, "an area with no tuning of its own takes the pack's");
+  eq(loaded.tuning.noticeFeet, 30, "and a key the pack does not write takes the engine default");
+}
+{
+  const p = clone();
+  p.tuning = { standardDC: 15 };
+  const e = throws(() => loadPack(p), "a tuning key nothing reads is refused rather than ignored");
+  ok(e && /standardDC/.test(e.message) && /visionFeet/.test(e.message),
+    "and the refusal names both the bad key and the legal ones");
+}
+{
+  const p = clone();
+  p.areas.sanctum.tuning = { visionFeet: 0 };
+  throws(() => loadPack(p), "a vision radius of zero is refused — a room nobody can see in is a bug, not a room");
+  const q = clone();
+  q.areas.sanctum.tuning = { noticeFeet: "far" };
+  throws(() => loadPack(q), "and a tuning value that is not a number is refused");
+}
+{
+  // What the override is actually for. Same board, same standing position,
+  // fewer squares lit. Broken on purpose by pointing recomputeVision() back at
+  // `content.tuning`: this went equal and the undercroft went as bright as the
+  // vault, which nothing else in the suite would have said.
+  const p = clone();
+  p.areas.undercroft.tuning = { visionFeet: 30 };
+  const bright = selectPc(loadPack(p), "wizard");
+  // Same square in the same room, one pack apart. Standing in the middle of
+  // the undercroft's south hall, where nothing but the room's own walls is in
+  // the way.
+  const standing = c => {
+    const state = freshRun(c, "wizard");
+    state.areaId = "undercroft";
+    state.pc.x = 8; state.pc.y = 9;
+    const g = createGame({ content: c, rng: makeRng(7), state });
+    g.begin();
+    return g.visible.size;
+  };
+  const dim = standing(resolved), lit = standing(bright);
+  ok(lit > dim, `a darker room lights fewer squares from the same square (${dim} vs ${lit})`);
+}
+
+/* -- restore: what a boon may hand back -------------------------------- */
+
+{
+  eq(RESTORABLE.join(","), "hp,slots,focus", "three resources, and the list is closed");
+  const p = clone();
+  p.lore["mason-mark"].restore = ["spells"];
+  const e = throws(() => loadPack(p), "a boon naming a resource nothing restores is refused");
+  ok(e && /spells/.test(e.message), "and says which one");
+  const q = clone();
+  q.lore["mason-mark"].restore = ["hp", "hp"];
+  throws(() => loadPack(q), "and one naming the same resource twice is refused");
+  const r = clone();
+  r.gate.restore = ["stamina"];
+  throws(() => loadPack(r), "the gate's own restore goes through the same validator");
+}
+{
+  const loaded = loadPack(clone());
+  eq(loaded.lore.bequest.restore.length, 0, "a pillar with no boon carries an empty list, not undefined");
+  ok(loaded.lore.bequest.restoreHp === null, "and a null cap rather than a missing key");
+  eq(loaded.lore["mason-mark"].restoreHp, 8, "the mason's mark caps its heal at 8");
+}
+
 /* ========================================================================= *
  * 3 — world geometry
  * ========================================================================= */
 section("world");
+
+/* -- the tile-kind registry ------------------------------------------- */
+
+{
+  // One table, three readers: world.js's own three predicates, content.js's
+  // legend parser, and save.js's standable(). Before this there were three
+  // lists of what is solid, and adding a kind meant remembering all of them.
+  eq(TILE_KINDS.length, TILE_NAMES.length, "every kind has a name");
+  ok(TILE_KINDS.every((k, i) => k.id === i), "a kind's id is its index in the table");
+  ok(TILE_KINDS.every(k => Object.isFrozen(k)), "and each kind is frozen");
+  eq(TILE.WALL, TILE_ID_BY_NAME.wall, "TILE and the legend map are two views of the one table");
+  eq(TILE_NAMES.join(","), "floor,wall,gate,pillar,treasure,stairs", "the names, in id order");
+  // The ids the rest of the engine switches on. Pinned because render.js and
+  // ui.js compare against TILE.WALL and friends, and reordering the table
+  // silently repaints the board.
+  eq(TILE.FLOOR, 0, "floor is 0");
+  eq(TILE.WALL, 1, "wall is 1");
+  eq(TILE.STAIRS, 5, "stairs is 5");
+
+  // The direction of the default, asserted against the one row in the table
+  // that declares nothing: `{ name: "wall" }`. Every other kind writes its own
+  // three answers, so `wall` is the default, and a new kind whose author
+  // forgot to say what it blocks gets exactly what `wall` gets. Broken on
+  // purpose by spreading OPEN rather than SOLID into world.js's map callback:
+  // these three went false first, and 26 more followed as every wall and
+  // pillar in the pack became something you could walk through.
+  const wall = TILE_KINDS[TILE.WALL];
+  ok(wall.blocksMove, "a kind that declares nothing blocks movement");
+  ok(wall.blocksSight, "and sight");
+  ok(wall.blocksEffect, "and effect — you opt out of solidity, never into it");
+}
+
+{
+  // The three barriers, off the table rather than out of a switch.
+  ok(!tileBlocks(TILE.FLOOR, "blocksMove"), "floor stops nothing");
+  ok(tileBlocks(TILE.WALL, "blocksMove") && tileBlocks(TILE.WALL, "blocksSight")
+    && tileBlocks(TILE.WALL, "blocksEffect"), "a wall stops all three");
+  ok(!tileBlocks(TILE.TREASURE, "blocksMove"), "you can stand on the casket");
+  ok(!tileBlocks(TILE.STAIRS, "blocksMove"), "and on a stairway");
+
+  // The one conditional answer in the table. A portcullis stops a body and a
+  // spell and does not stop an eye, and opening it changes two of those three.
+  ok(tileBlocks(TILE.GATE, "blocksMove", false), "a shut gate stops a body");
+  ok(!tileBlocks(TILE.GATE, "blocksMove", true), "an open one does not");
+  ok(tileBlocks(TILE.GATE, "blocksEffect", false), "a shut gate stops a spell");
+  ok(!tileBlocks(TILE.GATE, "blocksEffect", true), "an open one does not");
+  ok(!tileBlocks(TILE.GATE, "blocksSight", false), "and it never stops an eye, shut or open");
+  ok(!tileBlocks(TILE.GATE, "blocksSight", true), "which is what line of effect is for");
+
+  ok(tileBlocks(999, "blocksMove"), "a tile id off the end of the table reads as solid");
+
+  // The guard that matters most, because its failure mode is silence: a
+  // misspelled barrier reads `undefined` off the kind, which is falsy, which
+  // is "nothing blocks". Broken on purpose by dropping the BARRIERS check —
+  // `tileBlocks(TILE.WALL, "blocksMoves")` came back false and the wall
+  // stopped being a wall.
+  throws(() => tileBlocks(TILE.WALL, "blocksMoves"), "an unknown barrier name throws rather than answering");
+  eq(BARRIERS.length, 3, "there are exactly three barriers");
+}
 
 const world = makeWorld(content.areas.vault);
 eq(world.tileAt(0, 0), TILE.WALL, "the border is wall");
@@ -777,6 +944,80 @@ function toPCTurn(g, limit = 40) {
   eq(fought, 40, "the fighter build actually reaches and fights the sentinels, every seed");
   ok(wins > 0, `the fighter build's adventure is winnable (${wins}/40 seeds)`);
   ok(wins < 40, `and losable (${40 - wins}/40 seeds lost)`);
+}
+
+/* -- the undercroft: a third room, and the boon it is worth ------------ */
+
+{
+  // The phase's own test: the new room is on the route and gets played, not
+  // just declared. Every area in areaOrder appears in the per-run report,
+  // which watchRun() builds off the engine's `area` events rather than off
+  // the goal list — so this says the heir was there, not that she meant to be.
+  const seen = new Set();
+  let victories = 0;
+  for (let i = 0; i < 20; i++) {
+    const g = createGame({ content: resolved, rng: makeRng(3100 + i) });
+    const r = playThrough(g);
+    for (const a of r.areas) seen.add(a.area);
+    if (r.outcome === "victory") victories++;
+  }
+  eq([...content.areaOrder].filter(id => seen.has(id)).length, 3,
+    "playThrough reaches all three areas");
+  ok(victories > 0, `and still finishes the adventure (${victories}/20 seeds)`);
+}
+
+{
+  // The reward for the optional fight, and the reason a room can be a content
+  // file: `restore` is the gate's own three keys on a lore entry. Broken on
+  // purpose by dropping applyRestore's call out of readPillar — the HP line
+  // and both resource lines went flat, and nothing else in the suite moved.
+  const state = freshRun(content, "wizard");
+  state.areaId = "undercroft";
+  state.pc.x = 2; state.pc.y = 3;         // beside the mark at 2,2
+  state.pc.hp = 4; state.pc.slots = 0; state.pc.focus = 0;
+  const g = createGame({ content: resolved, rng: makeRng(11), state });
+  g.begin();
+  const r = g.readPillar(2, 2);
+  ok(r.ok, "the mark reads");
+  eq(g.run.pc.hp, 12, "and hands back exactly restoreHp, not a full heal");
+  eq(g.run.pc.slots, content.pc.slots, "the spell slots come back whole");
+  eq(g.run.pc.focus, content.pc.focus, "and so does the focus point");
+  eq(r.restored.join(","), "slots,focus,hp", "and the call says what it gave");
+  ok(g.run.log.some(e => e.text === content.lore["mason-mark"].restoreNarrative),
+    "the basin's line is in the log");
+}
+{
+  // The other half: a pillar with no boon hands back nothing, which is what
+  // keeps `restore: []` from being a promise the engine breaks quietly.
+  const state = freshRun(content, "wizard");
+  state.pc.x = 4; state.pc.y = 12;        // beside the bequest pillar at 3,12
+  state.pc.hp = 4; state.pc.slots = 0;
+  const g = createGame({ content: resolved, rng: makeRng(11), state });
+  g.begin();
+  const r = g.readPillar(3, 12);
+  ok(r.ok, "the bequest pillar reads");
+  eq(g.run.pc.hp, 4, "and changes no hit points");
+  eq(g.run.pc.slots, 0, "and no slots");
+  eq(r.restored.length, 0, "and says it gave nothing");
+}
+{
+  // What makes the undercroft's fight optional rather than compulsory: the
+  // route from the arrival square to the stairway out never comes within the
+  // room's own noticeFeet of the sentinel with a line of sight to it. The
+  // detour through the west doorway at 5,7 does. Broken on purpose by putting
+  // the undercroft's noticeFeet back to the pack's 30 — 5,8 and 6,8 started
+  // waking it, and the fight stopped being a choice.
+  const area = content.areas.undercroft;
+  const w = makeWorld(area);
+  const sentinel = area.placements[0];
+  const notices = (x, y) =>
+    feetBetween(sentinel.x, sentinel.y, x, y) <= area.tuning.noticeFeet
+    && w.hasLoS(sentinel.x, sentinel.y, x, y);
+  ok(!notices(1, 9), "the arrival square is not noticed");
+  ok(!notices(5, 8), "nor the square below the west doorway");
+  ok(!notices(10, 8), "nor the way up into the east chamber");
+  ok(!notices(14, 3), "nor the stairway out");
+  ok(notices(5, 7), "and stepping into the west doorway is what wakes it");
 }
 
 /* -- areas: the cone, the burst and the emanation, as the engine casts them */
@@ -3045,9 +3286,9 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   ok(exploredBefore > 1, "arriving already sees a chunk of the boss chamber");
 
   g.walkTo(10, 2);                     // onto a stairway square
-  eq(g.run.areaId, "sanctum", "walking onto a stairway changes the area");
-  eq(g.run.pc.x, 6, "the PC lands on the stairway's declared x");
-  eq(g.run.pc.y, 8, "the PC lands on the stairway's declared y");
+  eq(g.run.areaId, "undercroft", "walking onto a stairway changes the area");
+  eq(g.run.pc.x, 1, "the PC lands on the stairway's declared x");
+  eq(g.run.pc.y, 9, "the PC lands on the stairway's declared y");
   eq(g.mode, "explore", "arriving does not itself start an encounter");
 
   eq(g.run.fog.vault.length, 484, "the vault's fog was banked under its own id");
@@ -3056,13 +3297,14 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   // itself reveals a few more squares along the way.
   ok(vaultFog.size >= exploredBefore, "and it remembers what had been explored there, not less");
   ok(vaultFog.has("9,3"), "including the square the walk to the stairs started from");
-  ok(g.explored.size >= 1, "the sanctum starts with at least its arrival square explored");
-  ok(!g.explored.has("10,19"), "the sanctum's fog does not carry over the vault's spawn square");
+  ok(g.explored.size >= 1, "the undercroft starts with at least its arrival square explored");
+  ok(!g.explored.has("10,19"), "the undercroft's fog does not carry over the vault's spawn square");
 
   // A creature in the vault cannot be woken, targeted, or collided with from
   // the sanctum — living()/awake() are scoped to the area the PC stands in.
-  ok(g.living().every(c => c.area === "sanctum"), "living() only returns creatures in the current area");
-  ok(!g.awake().some(c => c.creature === "shattered-sentinel"), "a vault sentinel cannot be awake while the PC is in the sanctum");
+  ok(g.living().every(c => c.area === "undercroft"), "living() only returns creatures in the current area");
+  ok(g.living().length === 1, "and the undercroft holds exactly the one it places");
+  ok(!g.awake().some(c => c.key.startsWith("vault:")), "a vault sentinel cannot be awake while the PC is below it");
 }
 
 {
@@ -3265,9 +3507,33 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
     sentinel.key = legacyKey;
     delete sentinel.area;
     const r = repair(s);
-    eq(r.creatures.filter(c => c.creature === "shattered-sentinel").length, 2,
+    eq(r.creatures.filter(c => c.creature === "shattered-sentinel").length, 3,
       "repair: a legacy key migrates onto the real placement rather than duplicating it");
     ok(sentinelIn(r).key.startsWith("vault:"), "repair: the migrated key carries the area prefix now");
+  }
+  {
+    // The gate branch of standable(). A save written while the heir stood in
+    // the open gateway, reopened with the gate shut — which is what a pack
+    // edit to `gate.requiresLore` does — leaves her inside a portcullis, and a
+    // PC inside solid terrain can never path anywhere again. Broken on purpose
+    // by passing `true` for gateOpen in standable: she stayed in the gateway.
+    const s = base();
+    s.gateOpen = false;
+    s.loreRead = [];
+    s.pc.x = 10; s.pc.y = 5;             // a gate square in the vault
+    const r = repair(s);
+    ok(r.pc.x !== 10 || r.pc.y !== 5, "repair: a PC standing in a gate that is now shut goes back to the spawn");
+    eq(r.pc.x, content.areas.vault.pcSpawn.x, "repair: and the spawn is where she lands");
+  }
+  {
+    // The same square with the gate open is somewhere she may legally stand,
+    // so nothing moves. Without this the assertion above passes just as well
+    // against a repair that walks her home from every square.
+    const s = base();
+    s.gateOpen = true;
+    s.pc.x = 10; s.pc.y = 5;
+    const r = repair(s);
+    eq(r.pc.x + "," + r.pc.y, "10,5", "repair: and stays put when the gate is open");
   }
   {
     const s = base(); delete sentinelIn(s).hp;
@@ -3292,7 +3558,7 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   }
   {
     const s = base(); s.creatures = [];
-    eq(repair(s).creatures.length, 4, "repair: creatures the save never mentioned arrive dormant at full HP");
+    eq(repair(s).creatures.length, 5, "repair: creatures the save never mentioned arrive dormant at full HP");
     ok(repair(base()).creatures.every(c => typeof c.hp === "number" && c.hp > 0),
       "repair: every creature ends with usable HP");
   }
@@ -3372,6 +3638,200 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   eq(picked.pc.hp, 18, "at that build's own starting HP");
 }
 
+/* ========================================================================= *
+ * 8 — packs: the manifest, a second adventure, and a save that cannot cross
+ * ========================================================================= */
+section("packs");
+
+const cloneManifest = () => JSON.parse(JSON.stringify(rawManifest));
+
+{
+  const m = loadManifest(rawManifest);
+  eq(m.schema, 1, "the shipped manifest loads");
+  eq(m.default, "vault-beneath-the-court", "and boots the vault");
+  eq(m.packs.length, 2, "it lists two packs");
+  ok(m.byId["proving-ground"], "indexed by id, which is how ?pack= resolves");
+  ok(Object.isFrozen(m) && Object.isFrozen(m.packs), "and it is frozen");
+  // Every file it names is one this repo actually ships. A manifest entry that
+  // 404s reaches a player as "The vault's records are unreadable" with a
+  // status code in it, which is a sentence nobody can act on.
+  for (const entry of m.packs) {
+    ok(fs.existsSync(path.join(HERE, "..", "content", entry.file)),
+      `the manifest's "${entry.id}" names a file that exists (${entry.file})`);
+  }
+}
+{
+  const m = cloneManifest(); m.schema = 2;
+  throws(() => loadManifest(m), "a manifest of an unknown schema is refused");
+}
+{
+  const m = cloneManifest(); m.packs = [];
+  throws(() => loadManifest(m), "a manifest with no packs is refused");
+}
+{
+  const m = cloneManifest(); m.default = "nowhere";
+  const e = throws(() => loadManifest(m), "a default naming a pack that is not listed is refused");
+  ok(e && /nowhere/.test(e.message) && /proving-ground/.test(e.message),
+    "and the refusal lists what it could have named");
+}
+{
+  const m = cloneManifest(); m.packs[1].id = m.packs[0].id;
+  throws(() => loadManifest(m), "two packs with the same id are refused — byId would silently keep one");
+}
+{
+  // The file is resolved against the manifest's own URL, so a path is a way
+  // out of the content folder. Broken on purpose by relaxing the pattern to
+  // /\.json$/: both of these loaded, and "../../../assets/js/gvb-save.js.json"
+  // became a thing a manifest could ask the browser to fetch as a pack.
+  const a = cloneManifest(); a.packs[0].file = "../secrets.json";
+  throws(() => loadManifest(a), "a pack file that climbs out of the content folder is refused");
+  const b = cloneManifest(); b.packs[0].file = "sub/dir.json";
+  throws(() => loadManifest(b), "and so is one in a subfolder");
+  const c = cloneManifest(); c.packs[0].file = "vault.txt";
+  throws(() => loadManifest(c), "and one that is not a .json");
+}
+{
+  const m = cloneManifest(); delete m.default;
+  eq(loadManifest(m).default, m.packs[0].id, "a manifest with no default boots its first pack");
+}
+
+{
+  // `fetchPack` is the browser's door and the only place the manifest's name
+  // for a pack meets the pack's own. They have to agree, because that id is
+  // what save.js keys a slot on and what it refuses a foreign save by: two
+  // names for one adventure is how a vault save ends up in another slot.
+  // Stubbed `fetch` rather than a server, the same way the rest of this suite
+  // stubs localStorage. Broken on purpose by dropping the expectId check —
+  // the mismatched pack loaded and `keyFor` started writing under the wrong
+  // key, which nothing else here would have said.
+  const serve = body => async () => ({ ok: true, json: async () => body });
+  const realFetch = globalThis.fetch;
+  const run = async () => {
+    globalThis.fetch = serve(rawSmall);
+    const good = await fetchPack("proving-ground.json", "proving-ground");
+    eq(good.pack.id, "proving-ground", "fetchPack loads a pack the manifest agrees with");
+    let threw = null;
+    try { await fetchPack("proving-ground.json", "vault-beneath-the-court"); }
+    catch (e) { threw = e; }
+    ok(threw && /proving-ground/.test(threw.message),
+      "and refuses one whose own id disagrees with the manifest's");
+    globalThis.fetch = serve(rawManifest);
+    const m = await fetchManifest("packs.json");
+    eq(m.packs.length, 2, "fetchManifest validates what it fetched");
+    globalThis.fetch = async () => ({ ok: false, status: 404 });
+    let missing = null;
+    try { await fetchManifest("packs.json"); } catch (e) { missing = e; }
+    ok(missing && /404/.test(missing.message), "and a manifest that is not there says so with its status");
+  };
+  await run().finally(() => { globalThis.fetch = realFetch; });
+}
+
+/* -- the second pack: a whole adventure, and a fixture ----------------- */
+
+const small = loadPack(rawSmall);
+const smallResolved = selectPc(small, "recruit");
+
+{
+  eq(small.pack.id, "proving-ground", "the second pack loads through the same loadPack the vault does");
+  eq(small.areaOrder.length, 1, "one area");
+  eq(Object.keys(small.creatures).length, 1, "one creature");
+  eq(small.pcOptions.length, 1, "one build");
+  eq(small.tuning.visionFeet, 30, "and no tuning of its own, so it takes the engine's defaults");
+  ok(small.pack.id !== content.pack.id, "the two packs are different adventures");
+  ok(!small.areas.yard.stairs || !Object.keys(small.areas.yard.stairs).length,
+    "a pack with one room needs no stairway, and content.js does not insist on one");
+}
+{
+  // The point of a second pack: nothing in js/ names an area, a creature, a
+  // lore id or an item of the vault's. Played end to end by the same
+  // autopilot, against the same engine, with no argument saying which pack it
+  // is. Broken on purpose by hardcoding "vault" as game.js's fallback area id
+  // — every seed threw instead of winning.
+  let wins = 0, fought = 0;
+  for (let i = 0; i < 20; i++) {
+    const g = createGame({ content: smallResolved, rng: makeRng(9000 + i) });
+    const r = playThrough(g);
+    if (g.run.stats.rounds > 0) fought++;
+    if (r.outcome === "victory") wins++;
+  }
+  eq(fought, 20, "the proving ground's one fight happens on every seed");
+  eq(wins, 20, "and the smallest whole adventure is winnable end to end");
+}
+{
+  // The fixture half of its job: things the suite would never do to the vault.
+  const broken = JSON.parse(JSON.stringify(rawSmall));
+  broken.areas.yard.rows[4] = "#......G...#";
+  throws(() => loadPack(broken), "a row that names a legend character the area does not define is refused");
+  const wide = JSON.parse(JSON.stringify(rawSmall));
+  wide.areas.yard.rows[4] = "#......g....#";
+  throws(() => loadPack(wide), "and a row of the wrong width is refused");
+  const empty = JSON.parse(JSON.stringify(rawSmall));
+  empty.areas.yard.legend.g = { tile: "floor" };
+  throws(() => loadPack(empty), "and an area that places no creatures is refused");
+}
+
+/* -- packId with teeth ------------------------------------------------- */
+
+{
+  // Locked #36 is about what is already on somebody's disk. The vault keeps
+  // the bare key it has always written to; a second adventure gets its own,
+  // because one key would mean opening the proving ground overwrites a vault
+  // run the first time the autosave ticks.
+  eq(keyFor(LEGACY_PACK_ID), SAVE_KEY, "the pack that has always used this key keeps it");
+  eq(keyFor("proving-ground"), SAVE_KEY + ":proving-ground", "every other pack gets its own");
+  eq(LEGACY_PACK_ID, content.pack.id, "and the legacy id is the shipping pack's");
+}
+{
+  const mine = freshRun(content, "wizard");
+  ok(packRefusal(content, mine) === null, "a save from this pack is not refused");
+  const theirs = freshRun(small, "recruit");
+  const why = packRefusal(content, theirs);
+  ok(why, "a save from another pack is");
+  ok(why.includes("proving-ground") && why.includes(content.pack.id),
+    "and the sentence names both adventures, which is what makes it actionable");
+  const ancient = freshRun(content, "wizard");
+  delete ancient.packId;
+  ok(packRefusal(content, ancient) === null,
+    "a save from before the field existed means the pack that existed then, not a foreign one");
+}
+{
+  // The whole path, through gvb-save: validate says no, load() returns null,
+  // and the slot says why. Broken on purpose by leaving `validate: validRun`
+  // alone: the foreign save came through repair, got walked back to the vault
+  // spawn with its creatures dropped, and loaded as a playable run of an
+  // adventure it was never written for.
+  const store = memStore();
+  const slot = makeSaveSlot(content, store);
+  eq(slot.key, SAVE_KEY, "the vault's slot writes to the legacy key");
+  const foreign = freshRun(small, "recruit");
+  store.setItem(SAVE_KEY, JSON.stringify({ ...foreign, __v: SAVE_VERSION }));
+  ok(slot.load() === null, "a foreign save does not load");
+  ok(slot.refusedBecause && slot.refusedBecause.includes("proving-ground"),
+    "and the slot carries the sentence a player reads instead of an empty picker");
+
+  const own = makeSaveSlot(small, store);
+  eq(own.key, SAVE_KEY + ":proving-ground", "the proving ground's slot is a different key");
+  ok(own.load() === null, "so the vault's key is not even looked at");
+  own.save(foreign);
+  ok(!!store.getItem(SAVE_KEY + ":proving-ground"), "it writes to its own");
+  ok(JSON.parse(store.getItem(SAVE_KEY)).packId === "proving-ground",
+    "and the vault's key still holds exactly what was put there");
+  const back = own.load();
+  ok(back && back.packId === "proving-ground", "and its own save loads");
+  ok(own.refusedBecause === null, "with nothing refused");
+
+  // The sentence belongs to the call that produced it. `validate` is not
+  // reached on every path in — an empty key returns before it, and a file that
+  // is not JSON fails in gvb-save's deserialize — so without a reset at the
+  // door the last true refusal gets attached to the next unrelated failure.
+  // Broken on purpose by dropping the reset from the wrapped load: a corrupt
+  // file imported after a foreign save was reported as a foreign save.
+  ok(slot.refusedBecause !== null, "the vault's slot is still holding its refusal");
+  store.removeItem(SAVE_KEY);
+  ok(slot.load() === null, "an empty key loads nothing");
+  ok(slot.refusedBecause === null, "and nothing was refused to produce it");
+}
+
 section("the surface");
 
 /**
@@ -3402,8 +3862,8 @@ section("the surface");
   order.length = 0;
   const r = g2.walkTo(10, 2);
   ok(r.ok, "the heir walks onto the stairway");
-  eq(g2.run.areaId, "sanctum", "and the stairway takes her to the sanctum");
-  eq(g2.hint, content.areas.sanctum.hint, "the hint bar reads the room she is standing in, not the one she left");
+  eq(g2.run.areaId, "undercroft", "and the stairway takes her to the undercroft");
+  eq(g2.hint, content.areas.undercroft.hint, "the hint bar reads the room she is standing in, not the one she left");
   ok(g2.hint !== before, "which is not the line it was showing before the stairs");
   // Order matters and nothing else pins it: `checkTreasure()` runs after the
   // transition and sets its own hint when the casket is guarded, so the area's
@@ -3763,6 +4223,22 @@ const enc = (area, starter, ended, taken = 0, rounds = 1, dealt = 0) => ({ area,
   const shielded = s.conditionsBy.find(r => r.key === "pc shielded").count;
   const casts = s.commands.find(c => c.name === "Shield").count;
   eq(shielded, casts, "a condition is counted when it goes on, not when it comes off");
+}
+
+{
+  // The optional-pillar report, off a real batch. `lore` is a count and
+  // `loreRead` is the ids, and the count alone stood in for "read the
+  // reliquary plaque" only while the plaque was the third pillar; the
+  // undercroft's mark made it the fourth and the old number went on printing
+  // the win rate. Broken on purpose by returning [] from summarise()'s
+  // loreRead in autopilot.mjs — both shares went to 0.0%, and nothing else in
+  // the suite moved, which is exactly why this assertion had to be written.
+  const s = summarise(resolved, runBatch(resolved, 40));
+  eq(s.optional.length, 2, "two of the pack's four pillars gate nothing");
+  ok(s.optional.every(o => o.share > 0), "and a batch of 40 reads both of them");
+  ok(s.optional.some(o => o.id === "mason-mark"), "the undercroft's mark is one of them");
+  ok(s.optional.every(o => !content.gate.requiresLore.includes(o.id)),
+    "and neither is a pillar the gate needs — which is what makes it optional");
 }
 
 /* ========================================================================= *

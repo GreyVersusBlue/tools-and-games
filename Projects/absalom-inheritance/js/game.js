@@ -47,8 +47,6 @@ function allPlacements(content) {
 }
 
 export function createGame({ content, rng = Math.random, state = null }) {
-  const { tuning } = content;
-
   const listeners = new Set();
   const emit = ev => { for (const fn of listeners) fn(ev); };
 
@@ -353,7 +351,9 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * Vision                                                             *
    * ------------------------------------------------------------------ */
   function recomputeVision() {
-    visible = world.fieldOfView(run.pc.x, run.pc.y, tuning.visionFeet);
+    // `area.tuning`, not the pack's: a room may be darker than the adventure
+    // it is in, and `area` is reassigned by transitionTo() under this closure.
+    visible = world.fieldOfView(run.pc.x, run.pc.y, area.tuning.visionFeet);
     for (const k of visible) explored.add(k);
     run.fog[run.areaId] = packExplored(explored, area.width, area.height);
   }
@@ -629,7 +629,9 @@ export function createGame({ content, rng = Math.random, state = null }) {
   /** Does this dormant creature notice the PC from where it stands? */
   function notices(c) {
     if (c.wakesOn !== "notice") return false;
-    return feetBetween(c.x, c.y, run.pc.x, run.pc.y) <= tuning.noticeFeet
+    // Read off the area the creature is standing in, which is always the one
+    // the PC is in: checkTriggers() only asks about creatures in `run.areaId`.
+    return feetBetween(c.x, c.y, run.pc.x, run.pc.y) <= area.tuning.noticeFeet
       && world.hasLoS(c.x, c.y, run.pc.x, run.pc.y);
   }
 
@@ -1290,9 +1292,46 @@ export function createGame({ content, rng = Math.random, state = null }) {
     run.loreRead.push(loreId);
     const l = content.lore[loreId];
     if (l.logLine) narrative(l.logLine);
+    // Before the event, so the log reads in the order it happened: what the
+    // wall says, then what it gave. The event is what opens the lore panel,
+    // and a heal printed after the panel opens is a heal nobody watched.
+    const restored = applyRestore(l, l.title);
     emit({ type: "lore", lore: l });
     maybeOpenGate();
-    return { ok: true, lore: l };
+    return { ok: true, lore: l, restored };
+  }
+
+  /**
+   * Hand resources back, from whatever content declared the boon.
+   *
+   * The gate's seal-release was the only rest in the pack and this was eleven
+   * lines inside `maybeOpenGate`. A lore pillar can carry the same three keys
+   * now, which is what makes an optional fight worth taking without a tile
+   * kind that yields an item — see content.js's readRestore. `restoreHp` caps
+   * the heal; null means all of it, which is what the gate has always done.
+   *
+   * Returns what it actually gave back, so a caller can tell "you were already
+   * whole" from "the wall paid out" — and so the narrative line only prints
+   * when something moved.
+   */
+  function applyRestore(spec, label) {
+    const restored = [];
+    if (spec.restore.includes("slots") && run.pc.slots < content.pc.slots) {
+      run.pc.slots = content.pc.slots; restored.push("slots");
+    }
+    if (spec.restore.includes("focus") && run.pc.focus < content.pc.focus) {
+      run.pc.focus = content.pc.focus; restored.push("focus");
+    }
+    if (spec.restore.includes("hp") && run.pc.hp < content.pc.hp) {
+      const amount = spec.restoreHp ?? content.pc.hp;
+      const before = run.pc.hp;
+      run.pc.hp = Math.min(content.pc.hp, run.pc.hp + amount);
+      push("damage", `→ ${content.pc.name} regains ${run.pc.hp - before} HP`,
+        `${label}  |  HP ${run.pc.hp}/${content.pc.hp}`);
+      restored.push("hp");
+    }
+    if (restored.length && spec.restoreNarrative) narrative(spec.restoreNarrative);
+    return restored;
   }
 
   function maybeOpenGate() {
@@ -1302,25 +1341,10 @@ export function createGame({ content, rng = Math.random, state = null }) {
     run.gateOpen = true;
     narrative(content.gate.openNarrative);
 
-    // The seal's release is also the adventure's only rest. It exists so the
+    // The seal's release is one of the adventure's two rests. It exists so the
     // Keeper beyond the gate is a fight the player arrives at with spells, not
     // a fight they lose because they spent them on the way in.
-    const restored = [];
-    if (content.gate.restore.includes("slots") && run.pc.slots < content.pc.slots) {
-      run.pc.slots = content.pc.slots; restored.push("slots");
-    }
-    if (content.gate.restore.includes("focus") && run.pc.focus < content.pc.focus) {
-      run.pc.focus = content.pc.focus; restored.push("focus");
-    }
-    if (content.gate.restore.includes("hp") && run.pc.hp < content.pc.hp) {
-      const amount = content.gate.restoreHp ?? content.pc.hp;
-      const before = run.pc.hp;
-      run.pc.hp = Math.min(content.pc.hp, run.pc.hp + amount);
-      push("damage", `→ ${content.pc.name} regains ${run.pc.hp - before} HP`,
-        `the seal's rest  |  HP ${run.pc.hp}/${content.pc.hp}`);
-      restored.push("hp");
-    }
-    if (restored.length && content.gate.restoreNarrative) narrative(content.gate.restoreNarrative);
+    applyRestore(content.gate, "the seal's rest");
 
     for (const c of run.creatures) if (c.wakesOn === "gate-opened" && !c.dead) c.wakesOn = "notice";
     recomputeVision();

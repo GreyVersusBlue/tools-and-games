@@ -1,26 +1,34 @@
 # The Absalom Inheritance — Feature Wishlist
 
-**Status: Phase 8 — the debts on the surface — has shipped, and so has
-Phase 5.** The hint bar follows the room across a stairway (and a loaded save
-comes back with one at all), a build's three prism faces are required content
-rather than a constant in `render.js`, reactions and conditions have their own
-colours in the log, and a number key that refuses now says which of six reasons
-it refused for. `balance.mjs` reports per encounter and per area, holds a
-`test/baseline.json` it compares exactly against every run, counts every
-reaction and condition by actor, and takes a `--variant` merge patch. What it
-says: **the Vault Keeper kills 13.1% of wizard runs and 20.9% of fighter runs —
-70% and 84% of all defeats — and the sanctum kills 3.0% and 0.4%.**
-`test/smoke.mjs` reports **1,067 passed, 0 failed**, up from 968, and there is a
-third suite: `test/browser.mjs`, **24 checks in real Chromium** against the
-served page. Across the two phases fourteen guard-rails in `smoke.mjs` and
-seven in `browser.mjs` were broken on purpose (#34), each failing at the
-assertion whose comment claims it, plus one end-to-end break in the pack that
-the 45-point band could not see and the baseline named by fight. `test/balance.mjs` over 2,000 seeded runs a build: **Wizard
-81.4%** and **Fighter 75.1%**, unchanged to the decimal — neither phase touched
-the game's numbers. The Node suites run in CI, on
-`.github/workflows/absalom-ci.yml`; the browser one needs playwright-core and is
-run by hand. Arc one is finished and arc two has two phases left. The next open
-one is Phase 6 — an area should be a file, not a diff — on Claude Opus 5.
+**Status: Phase 6 — an area should be a file, not a diff — has shipped.** The
+engine reads one tile-kind table instead of three hardcoded lists of what is
+solid; `visionFeet` and `noticeFeet` are per-area overrides on a pack-global
+default, and `standardDC`, which nothing had ever read, is gone; `main.js`
+boots off `content/packs.json` rather than a literal URL, `?pack=<id>` opens a
+second adventure off the same HTML file, and each pack has its own storage
+slot; a save whose `packId` names a different adventure is refused with a
+sentence a player can read. And there is a third area, **the Mason's
+Undercroft**, which cost `content/vault.json` and the authoring guide and
+nothing else — one legend, one grid, one placement of a creature that already
+existed, one lore pillar carrying the first boon a pack has ever been able to
+hand out, and two squares repointed.
+
+**Is the new room neither free nor a wall?** `balance.mjs` at 2,000 says 4.9%
+of wizard runs and 6.1% of fighter runs die in it, and it takes 16.8% and 12.1%
+of all the damage the batch takes. Its optional fight pays the wizard 5.2 points
+of win rate and costs her 4.5; it pays the fighter 1.4 and costs her 6.3. **The
+mason's mark is a caster's boon and Kessa should walk past it** — the autopilot
+never does, which is why the shipped numbers are a floor: **Wizard 79.5%**
+(from 81.4%) and **Fighter 69.3%** (from 75.1%).
+
+`test/smoke.mjs` reports **1,196 passed, 0 failed**, up from 1,067, and
+`test/browser.mjs` is **39 checks in real Chromium**, up from 24. Seventeen
+guard-rails in `smoke.mjs` and three in `browser.mjs` were broken on purpose
+(#34), each failing at the assertion whose comment claims it — including two
+that did *not* fail first time and had to be written before they would. The
+Node suites run in CI, on `.github/workflows/absalom-ci.yml`; the browser one
+needs playwright-core and is run by hand. Arc two has one phase left: Phase 7,
+two more heirs, on Claude Opus 5.
 
 Round one made an unwinnable vignette winnable and broke the single file into ES
 modules; round two added a second area and caught a stall bug with a Monte Carlo
@@ -38,13 +46,14 @@ next door in `Projects/absalom-inheritance/`. No build step, no dependencies,
 nothing vendored: plain ES modules and a canvas, which does have to be *served*,
 because a browser refuses ES modules over `file://`.
 
-The whole adventure is one JSON file. `content/vault.json` (445 lines) carries
-two areas drawn as ASCII rows with a per-area legend — a 22×22 vault and a
-14×10 sanctum reached by a stairway past the Keeper — three creature stat
-blocks placed four times between them, twelve commands (one of which no build
-lists, because it is the Keeper's), five item types, three lore pillars and two
-buildable PCs. The engine reads shapes, never ids: a second area's guardian is
-an ordinary entry in `creatures`.
+The whole adventure is one JSON file, and there are two of them. `content/vault.json`
+carries three areas drawn as ASCII rows with a per-area legend — a 22×22 vault, a
+16×12 undercroft past the Keeper's stairway, and the 14×10 reliquary beyond it —
+three creature stat blocks placed five times between them, twelve commands (one of
+which no build lists, because it is the Keeper's), five item types, four lore
+pillars and two buildable PCs. `content/proving-ground.json` is the second pack,
+deliberately tiny, and `content/packs.json` names both. The engine reads shapes,
+never ids: another area's guardian is an ordinary entry in `creatures`.
 
 What it does well is the rules. `rules.js` is real PF2e math with page
 references: degrees stepping on a natural 1 or 20, basic saves scaling
@@ -196,10 +205,10 @@ node Projects/absalom-inheritance/test/balance.mjs 400 --verbose   (a fast spot 
   comparable challenges, `balance.mjs` needs a band per build rather than one
   shared 45–90% window; if they are an easy mode and a hard mode, the picker
   should say so, since a player choosing Kessa Vane cannot tell.
-- **Does the adventure grow, or does the engine deepen?** Twelve to sixteen
-  minutes, two rooms, four fights. Arc one deepens the engine on the rooms that
-  exist; arc two spends the same effort on more rooms. The order is a taste
-  question, not a technical one.
+- **Does the adventure grow, or does the engine deepen?** Twelve to twenty
+  minutes, three rooms, five fights, one of them optional. Arc one deepened the
+  engine on the rooms that existed; arc two spends the same effort on more
+  rooms. The order is a taste question, not a technical one.
 
 ## The standing backlog
 
@@ -265,9 +274,12 @@ new one.
   quadratic in the node count, and the first thing a larger area finds.
 
 **Content and the pack**
-- A second area cost six files (guide §11 lists them); a third costs the same
-  six. The pack format is data; the engine's idea of what an area *may contain*
-  is not. There is exactly one pack, fetched by a literal URL in `main.js`.
+- A third area cost one content file and a guide rewrite (Phase 6). What still
+  costs code is a new *tile kind* — one row in `world.js`'s registry, plus a
+  colour in `render.js` and a sentence in `ui.js`, neither of which the registry
+  covers. Two packs, named by `content/packs.json`. What a pack still cannot
+  express: an item lying on the floor, a shop, a door that is not the one gate,
+  or any boon other than the three `restore` keys.
 - `startingInventory` is pack-level, so every build carries the same satchel —
   which is how the Fighter came to exist (the longsword was already in it).
 - Two builds; the picker needs no edit for a third. No shops, no levelling, no
@@ -286,8 +298,8 @@ new one.
   10, 15 or 20. The skirmisher is the first thing in this pack that produces a
   middle distance at all, and only for the turn it takes to close again.
 - `checkDisengage()` heals a settled creature to full as anti-cheese. Nothing
-  can be worn down across two engagements. Three stat blocks, four placements,
-  one boss per area.
+  can be worn down across two engagements. Three stat blocks, five placements,
+  one boss per area and one optional fight.
 
 **Surface and accessibility**
 - The hint bar follows the room, the log marks reactions and conditions, the
@@ -323,8 +335,8 @@ new one.
 
 Arc one builds for the player who has read a PF2e rulebook and keeps reaching
 for verbs the game does not have — the reaction, the condition, the template.
-Every phase in it is engine work on the two rooms that already exist rather than
-new content. **Ranked by impact, and the order is the recommendation**:
+Every phase in it was engine work on the two rooms that existed at the time
+rather than new content. **Ranked by impact, and the order is the recommendation**:
 reactions need an interrupt point, conditions need the durational structure that
 interrupt point creates, templates need a geometry module conditions can then
 target, creature AI needs all three to have anything to be smart about, and the
@@ -857,53 +869,86 @@ the mode had changed.
 
 ## Arc two — more adventure than engine
 
-Arc one deepens two rooms. Arc two makes rooms cheap. It builds for the person
-who wants to *write* an adventure for this engine rather than extend it: guide
-§11 is honest that a second area cost six files and a third costs the same six,
-which means the pack format is data and the engine's idea of what an area may
-contain is not. Same terms as arc one — **ranked by impact, the order is the
-recommendation**, same model convention, same definition of finished. How much
-new content the third area carries turns on Devon's answer to the third question
-above; phase 6 makes it cheap either way.
+Arc one deepened two rooms. Arc two makes rooms cheap. It builds for the person
+who wants to *write* an adventure for this engine rather than extend it. Phase 6
+has shipped and the claim it was written to test held: a third area cost
+`content/vault.json` and the authoring guide, and nothing in `js/`. Guide §12 is
+the worked example and is honest about the one thing the phase's own bullets did
+not cover — a pack had no way to hand out a reward, which is why `restore` moved
+from a gate-only field to a shape a `lore` entry carries too. Same terms as arc
+one — **ranked by impact, the order is the recommendation**, same model
+convention, same definition of finished. One phase left.
 
-## Phase 6 — An area should be a file, not a diff
+## Phase 6 — An area should be a file, not a diff — SHIPPED
 
 **Adding the sanctum touched `content.js`, `game.js`, `save.js`, `render.js`,
-`ui.js` and `vault.json`, and the guide says a third area costs the same six.**
+`ui.js` and `vault.json`, and the guide said a third area cost the same six.**
 
-None of those six changes were about the sanctum. They were about the engine
-learning that "more than one area" was a shape. That work is done; the cost was
-not paid off with it. The engine still knows a fixed list of what a legend tile
-may be and what a pack may contain, and there is exactly one pack.
+It cost none of them. The Mason's Undercroft is a diff to `content/vault.json`
+and `content-authoring-guide.md`: one legend, one grid, one `tuning` block, one
+placement of `shattered-sentinel`, one `lore` entry, and two squares repointed
+so the vault's stairway lands in it and its own leads on to the reliquary.
 
-- [ ] **A tile-kind registry.** `world.js`'s `TILE` and `content.js`'s legend
-      parser read one table instead of two hardcoded lists; a new kind declares
-      its own blocks-move / blocks-sight / blocks-effect answers, opting *out*
-      of solidity, never in.
-- [ ] **Per-area `tuning` overrides.** `visionFeet`, `noticeFeet` and
-      `standardDC` are pack-global; a dark room should be a content decision.
-- [ ] **More than one pack.** `main.js` fetches `vault.json` by a literal URL.
-      Give the loader a manifest and a deliberately tiny second pack that proves
-      a pack is portable and gives `smoke.mjs` a fixture it can break freely.
-- [ ] **`packId` with teeth** — `repair` carries it already; make it refuse a
-      save written against a different pack, with a sentence a player can read.
-- [ ] **A third area as the proof.** One legend, one grid, creatures from the
-      existing stat blocks, one lore pillar, and — per round two's honest note
-      that a fourth mandatory fight is what puts the Wizard at 53.6% — one
-      *optional* encounter with a reward rather than another compulsory one. If
-      it costs more than a content file and a guide rewrite, this phase is not
-      finished.
-- [ ] **The test that pins it.** Both packs loaded in `smoke.mjs`; the new area
-      played end to end through `playThrough()`; a cross-pack save refused
-      rather than silently repaired; `balance.mjs` at 2000 with phase 5's
-      per-area report confirming the new room is neither free nor a wall.
+- [x] **A tile-kind registry.** `TILE_KINDS` at the top of `world.js` is the
+      one table. `world.js`'s three barrier predicates read it, `content.js`'s
+      legend parser reads it, and `save.js`'s `standable` — which had a third
+      copy of "wall or pillar, and the gate until it is open" written out
+      longhand — reads it. All three answers default to `true`: a kind that
+      declares nothing is solid, and you opt out of solidity, never into it.
+      `tileBlocks` throws on a barrier name it does not know, because the
+      alternative is reading `undefined`, which is falsy, which is "nothing
+      blocks".
+- [x] **Per-area `tuning` overrides.** `areas.<id>.tuning` layers on the
+      pack's, key by key; `game.js` reads `area.tuning` and never
+      `content.tuning`. The undercroft is at 20 ft of both and it is
+      load-bearing rather than atmosphere — see the optional encounter below.
+      An unknown key is refused with the legal ones in the message, and
+      `standardDC` is gone (#173): it had never been read by anything, the
+      guide's own warning said so and kept it anyway, and per-area overrides
+      would have turned one dead key into one per area.
+- [x] **More than one pack.** `content/packs.json` is the manifest and
+      `?pack=<id>` picks one; an unknown id falls back to the default, because
+      a query string is a thing a player can mistype. A pack's `file` must be a
+      bare filename beside the manifest, and a file whose own `pack.id`
+      disagrees with the manifest's name for it is refused at fetch (#174).
+      `content/proving-ground.json` is the second pack: one room, one build,
+      one straw golem, played end to end by the same autopilot in `smoke.mjs`,
+      and broken there in three ways the shipping pack never would be.
+- [x] **`packId` with teeth.** A save naming a different adventure is refused,
+      and `slot.refusedBecause` carries the sentence — `main.js` puts it in the
+      save bar, and it replaces gvb-save's generic "that is not a valid save"
+      on an import. Each pack also gets its own storage key: the vault keeps
+      the bare one it has always written to (#36 is about what is on somebody's
+      disk), everything else gets `absalom-inheritance-save-v1:<packId>`, so
+      opening the proving ground cannot overwrite a vault run in progress.
+- [x] **A third area as the proof.** The undercroft, between the vault and the
+      reliquary. Its one fight is genuinely optional: the route from the
+      arrival square to the stairway out never comes within the room's own
+      `noticeFeet` of the sentinel with a line of sight to it, and stepping
+      into the west doorway does. `smoke.mjs` asserts that square by square.
+      The reward is the mason's mark, a `lore` entry carrying
+      `restore: ["hp","slots","focus"]` and `restoreHp: 8` — the same three
+      keys the gate's seal-release has always had, which is the whole
+      mechanism a pack now has for rewarding an optional fight and
+      deliberately not a new tile kind (#175).
+- [x] **The test that pins it.** Both packs loaded in `smoke.mjs`, the new area
+      played end to end through `playThrough()`, a cross-pack save refused
+      rather than silently repaired, and `balance.mjs` at 2,000 with the
+      per-area report: **4.9% of wizard runs and 6.1% of fighter runs die in
+      the undercroft, and it takes 16.8% and 12.1% of all damage taken.**
+      Neither free nor a wall.
 
-*Leans on:* `content.js`'s `loadPack`, `world.js`'s `TILE`, `main.js`'s fetch,
-`save.js`'s `repair`, `content-authoring-guide.md` §11. *Save:* no shape change;
-`packId` gains enforcement it already had a field for. *Model:* **Claude Opus
-5** — `loadPack`'s validate-and-refuse pattern already exists and the guide
-already specifies the shape; this extends a validator against a 308-assertion
-net rather than designing a schema.
+**What the third area taught that the second could not.** A stairway you land
+on is a stairway you immediately take again, so the undercroft's arrival square
+is plain floor — the vault→sanctum pair never showed this, because the sanctum
+has no stairway. And a room in the middle moves the dice under every room after
+it: the undercroft's fight shifted the warden fight downstream, the heir ended
+it standing somewhere else, and "read the reliquary plaque" fell from 64% of
+runs to 5.3% — because the plaque sat directly behind the casket from the
+landing, so the walk to read it crossed the casket lid and won the run first.
+It had always been that fragile. The plaque moved west and reads 74.6% now.
+`balance.mjs` reports a share per non-gating pillar rather than "read three
+pillars", which was a stand-in that held only while the plaque was the third.
 
 ## Phase 7 — Two more heirs, with their own satchels
 

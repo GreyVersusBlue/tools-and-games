@@ -33,6 +33,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SITE = path.resolve(HERE, "..", "..", "..");
 const CHROME = process.env.CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const PACK = JSON.parse(fs.readFileSync(path.join(HERE, "..", "content", "vault.json"), "utf8"));
+const MANIFEST = JSON.parse(fs.readFileSync(path.join(HERE, "..", "content", "packs.json"), "utf8"));
 
 const TYPES = {
   ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
@@ -123,6 +124,17 @@ await page.waitForFunction(() => !!window.__absalom, null, { timeout: 20000 });
 eq("beginning as Kessa boots the fighter", await page.evaluate(() => __absalom.content.pc.id), "fighter");
 ok("no page errors on the way in", errors.length === 0, errors.slice(0, 3).join(" | "));
 
+// The boot path is the manifest now, not a literal URL, so the page has to
+// have read it and resolved a file off it. A 404 on either would have been
+// caught by the error listener above, but "it booted the pack the manifest
+// says it boots" is the thing that is actually under test.
+eq("the page booted through the manifest", await page.evaluate(() => __absalom.entry.id), MANIFEST.default);
+eq("and onto the pack that entry names", await page.evaluate(() => __absalom.pack.pack.id), MANIFEST.default);
+eq("the shipping pack keeps the bare storage key it has always written to",
+  await page.evaluate(() => __absalom.slot.key), "absalom-inheritance-save-v1");
+eq("and the manifest lists every pack this game ships",
+  await page.evaluate(() => __absalom.manifest.packs.length), MANIFEST.packs.length);
+
 /* ========================================================================= *
  * The build, on the board                                                   *
  * ========================================================================= */
@@ -200,10 +212,20 @@ eq("and it is the vault's opening line, because the start area has no hint of it
 await page.keyboard.press("ArrowUp");
 eq("the cursor is on the stairway", (await page.textContent("#live")).trim(), "A stairway onward.");
 await page.keyboard.press("Enter");
-await page.waitForFunction(() => __absalom.game.run.areaId === "sanctum", null, { timeout: 10000 });
-eq("the stairway lands her in the sanctum", await page.evaluate(() => __absalom.game.run.areaId), "sanctum");
-eq("and the hint bar reads the room she is standing in", (await page.textContent("#hint")).trim(), PACK.areas.sanctum.hint);
+await page.waitForFunction(() => __absalom.game.run.areaId === "undercroft", null, { timeout: 10000 });
+eq("the stairway lands her in the undercroft", await page.evaluate(() => __absalom.game.run.areaId), "undercroft");
+eq("and the hint bar reads the room she is standing in", (await page.textContent("#hint")).trim(), PACK.areas.undercroft.hint);
 eq("with the board still out of combat", await page.evaluate(() => __absalom.game.mode), "explore");
+
+// The per-area tuning, in the browser rather than in a unit: the renderer
+// draws whatever `game.visible` holds, and the thing that shrank it is a
+// number the pack wrote for this one room. `visionFeet` is 20 here and 30 in
+// the vault, and the fog is the only place a player ever sees the difference.
+eq("the darker room's own tuning is what the engine is reading",
+  await page.evaluate(() => __absalom.game.area.tuning.visionFeet), PACK.areas.undercroft.tuning.visionFeet);
+ok("and it is not the pack's",
+  PACK.areas.undercroft.tuning.visionFeet !== PACK.tuning.visionFeet,
+  `${PACK.areas.undercroft.tuning.visionFeet} vs ${PACK.tuning.visionFeet}`);
 
 /* ========================================================================= *
  * The log's two new colours                                                 *
@@ -237,6 +259,47 @@ const borders = await page.$$eval("#log .log-entry",
 ok("the reaction stripe is a different colour from a plain line", borders[3] !== borders[1], `${borders[3]} vs ${borders[1]}`);
 ok("and so is the condition stripe", borders[4] !== borders[1], `${borders[4]} vs ${borders[1]}`);
 ok("and the two are not the same colour as each other", borders[3] !== borders[4], `${borders[3]} vs ${borders[4]}`);
+
+/* ========================================================================= *
+ * A second adventure, off the same page                                     *
+ * ========================================================================= */
+group("?pack= opens another adventure");
+
+// The point of the manifest, end to end: the same HTML file, one query string,
+// a different pack, a different save key. Nothing in js/ names either of them.
+const SMALL = JSON.parse(fs.readFileSync(path.join(HERE, "..", "content", "proving-ground.json"), "utf8"));
+await page.goto(URL_ + "?pack=proving-ground", { waitUntil: "load" });
+await page.waitForSelector("#create-veil.open .pc-card");
+eq("the proving ground's one build gets one card",
+  (await page.$$("#create-grid .pc-card")).length, SMALL.pcOptions.length);
+await page.click("#create-grid .pc-card:nth-of-type(1) .pc-begin");
+await page.waitForFunction(() => !!window.__absalom, null, { timeout: 20000 });
+eq("and the page is playing it", await page.evaluate(() => __absalom.pack.pack.id), "proving-ground");
+eq("under its own storage key, so the vault run it did not touch is still there",
+  await page.evaluate(() => __absalom.slot.key), "absalom-inheritance-save-v1:proving-ground");
+ok("the vault's own save is untouched on disk",
+  await page.evaluate(() => !!localStorage.getItem("absalom-inheritance-save-v1")));
+eq("the board is the second pack's room", await page.evaluate(() => __absalom.game.area.width), SMALL.areas.yard.rows[0].length);
+eq("and the tab says which adventure this is", await page.title(), `${SMALL.pack.name} — The Absalom Inheritance`);
+
+// A ?pack= nobody ships is a thing a player can mistype, and it boots the
+// adventure they came for rather than an error page. No picker to click here:
+// the vault's own save is still on this origin, untouched by the run above,
+// so falling back to it boots straight into that run — which is the same
+// assertion twice over.
+await page.goto(URL_ + "?pack=not-a-pack", { waitUntil: "load" });
+// Caught rather than awaited bare: the failure this guards against is a page
+// that never boots, and a bare wait turns that into a stack trace with no
+// assertion attached to it. Broken on purpose by dropping main.js's `||`,
+// which left `entry` undefined — this line failed, carrying the sentence the
+// player would have been left staring at.
+const bootedAnyway = await page.waitForFunction(() => !!window.__absalom, null, { timeout: 8000 })
+  .then(() => true, () => false);
+ok("an unknown ?pack= still boots the page", bootedAnyway, bootedAnyway ? "" : (await page.textContent("#hint")).trim());
+eq("an unknown ?pack= falls back to the manifest's default",
+  bootedAnyway ? await page.evaluate(() => __absalom.pack.pack.id) : "(never booted)", MANIFEST.default);
+eq("and the vault run that was there all along comes back with it",
+  bootedAnyway ? await page.evaluate(() => __absalom.game.run.areaId) : "(never booted)", "undercroft");
 
 group("the whole run");
 ok("no page errors, start to finish", errors.length === 0, errors.slice(0, 5).join(" | "));

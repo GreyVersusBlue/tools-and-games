@@ -53,7 +53,7 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-A hundred and seventy-two numbered decisions, accumulated across ten sessions and
+A hundred and seventy-six numbered decisions, accumulated across ten sessions and
 the project phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -2021,6 +2021,47 @@ Two of them have moved since they were written:
    general form: a test that writes into a page's own storage is racing that
    page's write path, not standing outside it.
    *Source: Absalom Phase 8.*
+
+173. **A knob nobody reads is a promise the engine does not keep, and the fix
+   is deleting it, not documenting it.** `tuning.standardDC` was loaded and
+   defaulted from the pack's first commit and no command ever consumed it; the
+   authoring guide's own §2 carried a warning saying so and kept the field
+   anyway, "because the first skill check will want it". The phase that made
+   tuning per-area would have turned one dead key into one dead key per room.
+   It is gone, and what replaces it is a closed key list: a pack writing a key
+   the table does not name is refused with the legal ones in the message. A
+   documented dead field survives every review, because the documentation is
+   what makes it look deliberate. *Source: Absalom Phase 6.*
+
+174. **Two names for one thing is a slot the wrong save gets written to.** A
+   pack is named twice — by the manifest that lists it and by its own
+   `pack.id` — and `main.js` refuses to boot one where the two disagree.
+   That id is what `save.js` keys a storage slot on and what it refuses a
+   foreign save by, so a mismatch is not a cosmetic inconsistency: it is a
+   vault run overwritten by a fixture. The manifest's `file` is also a bare
+   filename, resolved beside the manifest and refused if it carries a path —
+   packs are content, they live in one folder, and a manifest that can climb
+   out of it can be pointed at anything the host serves.
+   *Source: Absalom Phase 6.*
+
+175. **A reward is a field on content the engine already parses, not a new
+   kind of square.** The obvious way to pay for an optional fight is a tile a
+   player steps on to pick something up. It is the wrong way here: a tile kind
+   costs `render.js` a colour and `ui.js` a sentence on top of its registry
+   row, and the whole claim the phase was written to test is that an area
+   costs a content file. So `restore` — the three keys the gate's
+   seal-release has always carried — moved onto `lore`, and a pillar can hand
+   back hit points, spell slots and focus. One room's worth of engine change,
+   once, for every room after it. *Source: Absalom Phase 6.*
+
+176. **A stairway you land on is a stairway you immediately take again.** A
+   `to` pointing at a `stairs` tile makes `checkTriggers` fire `checkStairs`
+   on arrival and send the heir straight back, for ever. Two areas never
+   showed this, because the second one had no stairway at all; the third one
+   found it in the first playthrough. The rule is that an arrival square is
+   plain floor. The general form, which this repo has now hit three times: the
+   bug in an N-of-something feature is almost never in the second one.
+   *Source: Absalom Phase 6.*
 
 ---
 

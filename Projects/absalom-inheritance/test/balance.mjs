@@ -84,7 +84,7 @@ const basePack = loadPack(rawPack);
 const crashed = message => ({
   outcome: "error:" + message, hp: 0, rounds: 0, dealt: 0, taken: 0, slain: 0,
   woken: 0, reactions: 0, lore: 0, potions: 0, slots: 0, focus: 0,
-  gateOpen: false, cast: {}, abilities: {},
+  gateOpen: false, cast: {}, abilities: {}, loreRead: [],
   encounters: [], areas: [], reactionsBy: {}, conditionsBy: {},
 });
 
@@ -268,7 +268,18 @@ export function summarise(content, results) {
     tally,
     rate: n ? wins.length / n : 0,
     gateOpen: results.filter(r => r.gateOpen).length / (n || 1),
-    reliquary: results.filter(r => r.lore >= 3).length / (n || 1),
+    // Every pillar the gate does not require: content a run can walk straight
+    // past, which makes it the only measure of whether an optional room is
+    // being visited at all. Read off `content.gate.requiresLore` rather than a
+    // list of ids here — this file is the vault's harness, and it should not
+    // have to be edited the day the vault grows a fourth pillar.
+    optional: Object.keys(content.lore)
+      .filter(id => !content.gate.requiresLore.includes(id))
+      .map(id => ({
+        id,
+        title: content.lore[id].title,
+        share: results.filter(r => (r.loreRead || []).includes(id)).length / (n || 1),
+      })),
     slain: mean(results, r => r.slain),
     totalPlacements,
     roundsMedian: median(results.map(r => r.rounds)),
@@ -417,12 +428,14 @@ function printReport(summary) {
     console.log(`  ${pad(k, 12)} ${num(v, 6)}  ${pct(v / s.n)}`);
   }
   console.log(`\n  win rate            ${pct(s.rate)}  (band ${100 * BAND.min}–${100 * BAND.max}%)`);
-  // `lore` is a raw count and the sanctum's plaque means it can now go past
-  // the two the gate needs — read this off gateOpen (exactly the condition
+  // `lore` is a raw count and two of the pack's four pillars do not gate
+  // anything — read this off gateOpen (exactly the condition
   // content.gate.requiresLore describes) rather than an exact lore count that
-  // a third, non-gating pillar can legitimately exceed.
+  // a non-gating pillar can legitimately exceed.
   console.log(`  opened the gate      ${pct(s.gateOpen)}`);
-  console.log(`  read the reliquary   ${pct(s.reliquary)}  (optional; not required to win)`);
+  for (const o of s.optional) {
+    console.log(`  read ${pad(o.title, 18)} ${pct(o.share)}  (optional; not required to win)`);
+  }
   console.log(`  creatures slain      mean ${s.slain.toFixed(2)} of ${s.totalPlacements}`);
   console.log(`  encounter rounds     median ${s.roundsMedian}`);
   console.log(`  damage dealt / taken mean ${s.dealt.toFixed(1)} / ${s.taken.toFixed(1)}`);

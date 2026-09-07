@@ -2,15 +2,14 @@
   "pack": {
     "id": "vault-beneath-the-court",
     "name": "The Vault Beneath the Ascendant Court",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "schema": 1,
-    "description": "Two rooms now: the vault proper (two dormant sentinels, two pillars, the Keeper) and, past the stairway the Keeper's death opens the way to, the reliquary the family letter was actually about."
+    "description": "Three rooms: the vault proper (two dormant sentinels, two pillars, the Keeper), the mason's undercroft the Keeper's stairway drops into \u2014 darker than the vault, with one optional fight and the only rest that is not the gate's \u2014 and the reliquary the family letter was actually about."
   },
 
   "tuning": {
     "visionFeet": 30,
-    "noticeFeet": 30,
-    "standardDC": 15
+    "noticeFeet": 30
   },
 
   "pcOptions": [
@@ -344,11 +343,23 @@
         "Beneath the text, a mason's mark rather than a seal — this room was cut after the vault, not with it."
       ],
       "logLine": "You read the reliquary plaque. Whoever finished this room came after Sarvel, and knew exactly what they were guarding."
+    },
+    "mason-mark": {
+      "title": "The Mason's Mark",
+      "body": [
+        "Not a seal and not a plaque \u2014 a working wall, chalked over and re-chalked by whoever cut the reliquary above. Courses, loads, a note about the water table, and at the foot of it, boxed twice: \"Rest here before the last door. Sarvel's people never did.\"",
+        "Beneath the box someone cut a shallow basin and kept it clean. The water in it is cold and still moving."
+      ],
+      "logLine": "You read the mason's mark. The people who finished this place expected the heir to arrive tired.",
+      "restore": ["hp", "slots", "focus"],
+      "restoreHp": 8,
+      "restoreNarrative": "You drink, and sit as long as the basin takes to still. Nothing down here is in a hurry.",
+      "note": "The reward for the undercroft's optional fight, and this pack's proof that a boon is a content decision: `restore` is the same three keys the gate has always carried, and `restoreHp` caps it at 8 rather than a full heal so that taking the sentinel on is a trade rather than a refill. Measured with --variant: worth 5.2 points of win rate to Vesper and 1.4 to Kessa, against a fight that costs them 4.5 and 6.3. It is a caster's boon, and Kessa should walk past it."
     }
   },
 
   "startArea": "vault",
-  "areaOrder": ["vault", "sanctum"],
+  "areaOrder": ["vault", "undercroft", "sanctum"],
   "areas": {
     "vault": {
       "name": "The Vault Beneath the Ascendant Court",
@@ -356,7 +367,7 @@
         "#": { "tile": "wall" },
         ".": { "tile": "floor" },
         "G": { "tile": "gate" },
-        "V": { "tile": "stairs", "to": { "area": "sanctum", "x": 6, "y": 8 } },
+        "V": { "tile": "stairs", "to": { "area": "undercroft", "x": 1, "y": 9 } },
         "P": { "tile": "pillar", "lore": "bequest" },
         "Q": { "tile": "pillar", "lore": "condition" },
         "@": { "tile": "floor", "spawn": "pc" },
@@ -388,6 +399,34 @@
         "######################"
       ]
     },
+    "undercroft": {
+      "name": "The Mason's Undercroft",
+      "hint": "The way on is east and then north. The west chamber is a detour, and something is standing in it.",
+      "tuning": { "visionFeet": 20, "noticeFeet": 20 },
+      "tuningNote": "Cut, not built: no seal-light, so the vault's 30 ft of both becomes 20 here. It is the first per-area tuning in this pack and it is load-bearing rather than atmosphere \u2014 at 30 ft the sentinel notices a heir crossing the south hall through the doorway at 5,7, and the fight stops being optional. test/smoke.mjs asserts that square by square.",
+      "legend": {
+        "#": { "tile": "wall" },
+        ".": { "tile": "floor" },
+        "M": { "tile": "pillar", "lore": "mason-mark" },
+        "s": { "tile": "floor", "creature": "shattered-sentinel" },
+        "A": { "tile": "stairs", "to": { "area": "sanctum", "x": 6, "y": 8 } }
+      },
+      "rows": [
+        "################",
+        "#.....#........#",
+        "#.M...#........#",
+        "#.....#.......A#",
+        "#..s..#........#",
+        "#.....#........#",
+        "#.....#........#",
+        "#####.####.#####",
+        "#..............#",
+        "#..............#",
+        "#..............#",
+        "################"
+      ],
+      "note": "Arrival from the vault is 1,9 \u2014 plain floor, not the stairway square, because a stairway you land on is a stairway you immediately take again (locked #176). The only way out is A at 14,3, one way, exactly as the vault's own was. Two chambers off a south hall: the east one is the route, the west one holds the mark and the sentinel, and the wall at x=6 keeps the two out of each other's sight."
+    },
     "sanctum": {
       "name": "The Reliquary",
       "hint": "The reliquary. The casket is behind the warden \u2014 there is no way back up the stair.",
@@ -401,7 +440,7 @@
       "rows": [
         "##############",
         "#............#",
-        "#....R.......#",
+        "#.R..........#",
         "#............#",
         "#....TT......#",
         "#....TT......#",
@@ -409,7 +448,8 @@
         "#.....w......#",
         "#............#",
         "##############"
-      ]
+      ],
+      "note": "The plaque sits west of the casket rather than north of it. North put it directly behind the four treasure squares from the stairway's landing, so the walk to read it crossed the casket lid and won the run first: the reliquary's own lore was read by 64% of runs on the two-area pack and by 5.3% the moment the undercroft shifted the dice under the warden fight. An optional pillar 5% of runs reach is content nobody reads. It reads 74.6% now."
     }
   },
 
@@ -444,7 +484,7 @@
 
   "intro": {
     "narrative": "Beneath the Ascendant Court, the family letter led you true: a vault older than the Starstone Cathedral, air thick with rock dust and patience.",
-    "goal": "Read both pillars to open the northern gate, then take the stairway beyond it to the reliquary and claim the Inheritance. A sentinel wakes if you stray within 30 ft of it and it can see you.",
+    "goal": "Read both pillars to open the northern gate, then take the stairway beyond it. It drops into the mason's undercroft, which is darker than the vault and holds one fight you do not have to take; the stairway out of it leads to the reliquary and the Inheritance. A sentinel wakes if you stray within 30 ft of it and it can see you \u2014 20 ft below, where the light is worse.",
     "hint": "Click a lit tile to walk, or use the arrow keys. Approach the carved pillars to read them."
   }
 }
