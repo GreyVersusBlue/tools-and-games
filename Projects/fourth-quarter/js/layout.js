@@ -14,6 +14,16 @@
 //   wallT     north-wall thickness (the kitchen's south wall is the same slab)
 //   doorways  [{ x0, x1, corridor: { z0, z1 } }]   gaps in the north wall, and
 //             the walkable band that joins the two rooms through each
+//   annexes   [{ id, x0, x1, z0, z1, h, wall, gap: { a0, a1 } }]
+//             extra floor rectangles beyond the main room and the kitchen. A
+//             room is no longer one rectangle: `wall` names the main-room wall
+//             the annex opens through (north | east | west | south), `gap` is
+//             the doorway's span along that wall (x for north/south, z for
+//             east/west), and the annex's shared edge sits one wall thickness
+//             outside the room, so the wall's inner face is the plane it
+//             replaces. Its own `h` is its ceiling, which need not be the
+//             hall's. The walkable band through the gap is derived, not
+//             authored — annexBand().
 //   windows   [{ x0, x1, y0, y1 }]  pass-through openings in the north wall
 //   bar       { len, x, z, stools: n, stoolZ, approachZ, x0, pitch, taps }
 //   tables    [{ x, z }]           four-tops, four stools on a 0.95 m ring
@@ -22,8 +32,9 @@
 //             and says what world.js draws (a stove gets burners). The bar
 //             counter and the table tops are colliders too, derived from
 //             `bar`/`tables`. A room may have any number of stoves and preps.
-//   tvs       [{ wall, at, y }]  wall is north | east | west | south, `at` is
-//             the x (north/south) or z (east/west) along it
+//   tvs       [{ wall, at, y, area }]  wall is north | east | west | south,
+//             `at` is the x (north/south) or z (east/west) along it, in world
+//             coordinates; `area` names an annex id, or is absent for the hall
 //   pendants  [{ x, z }]         the night rig's warm point lights
 //   stations  { door, doorOut, passFood, passDrink, passFoodShelf,
 //               passDrinkShelf, stove, tap, upgrades, stock, crew, promo,
@@ -137,7 +148,12 @@ export const FIELDHOUSE = Object.freeze({
 });
 
 /** Midtown Draft Hall: a ten-metre bar with a six-tap draft wall, ten stools,
- *  twelve four-tops, and a kitchen with two preps and two stoves. */
+ *  twelve four-tops, and a kitchen with two preps and two stoves. Three of
+ *  those four-tops sit in the back room off the east wall, which is the first
+ *  floor rectangle in this file that is not the hall or the kitchen: 6×8 m
+ *  under a lower ceiling, reached through a 1.7 m doorway. The hall's own east
+ *  side was cleared to make the lane to it — the three tables that stood there
+ *  are the three that moved, so the seat count is the 58 the ladder names. */
 export const MIDTOWN = Object.freeze({
   id: "midtown",
   room: { x: 12, z: 7.5, h: 3.5 },
@@ -148,9 +164,13 @@ export const MIDTOWN = Object.freeze({
   bar: { len: 10, x: -6, z: -5.8, depth: 0.75, pad: 0.1,
          stools: 10, x0: -10.5, pitch: 1.05, stoolZ: -5.05, approachZ: -4.4,
          taps: 6, tapX0: -8.5, tapPitch: 0.5 },
-  tables: [{ x: -9.0, z: -0.6 }, { x: -5.6, z: -0.6 }, { x: 2.4, z: -0.6 }, { x: 5.8, z: -0.6 }, { x: 9.2, z: -0.6 },
-           { x: -9.0, z: 2.4 },  { x: -5.6, z: 2.4 },  { x: 2.4, z: 2.4 },  { x: 5.8, z: 2.4 },  { x: 9.2, z: 2.4 },
-           { x: -7.3, z: 5.4 },  { x: 7.5, z: 5.4 }],
+  annexes: [{ id: "backRoom", x0: 12.15, x1: 18.15, z0: -3.5, z1: 4.5, h: 3.2,
+              wall: "east", gap: { a0: 0.2, a1: 1.9 } }],
+  tables: [{ x: -9.0, z: -0.6 }, { x: -5.6, z: -0.6 }, { x: 2.4, z: -0.6 }, { x: 5.8, z: -0.6 },
+           { x: -9.0, z: 2.4 },  { x: -5.6, z: 2.4 },  { x: 2.4, z: 2.4 },  { x: 5.8, z: 2.4 },
+           { x: -7.3, z: 5.4 },
+           // the back room, through the east doorway
+           { x: 14.2, z: -1.4 }, { x: 14.2, z: 2.0 }, { x: 16.5, z: 0.3 }],
   fitout: [
     { id: "prep",   kind: "prep",      x: 4.6,   z: -10.2,  w: 2.4,  d: 0.9,  h: 0.95, rotY: 0,   pad: 0.08 },
     { id: "prep2",  kind: "prep",      x: 7.4,   z: -10.2,  w: 2.4,  d: 0.9,  h: 0.95, rotY: 0,   pad: 0.08 },
@@ -160,9 +180,11 @@ export const MIDTOWN = Object.freeze({
     { id: "crate2", kind: "crateWood", x: -10.5, z: -3.25,  w: 0.55, d: 0.55, h: 0.5,  rotY: 0.3, pad: 0.06 },
   ],
   tvs: [{ wall: "north", at: -8.5, y: 2.6 }, { wall: "north", at: -3.5, y: 2.6 },
-        { wall: "east", at: -4.0, y: 2.4 }, { wall: "west", at: 1.5, y: 2.4 }, { wall: "south", at: 4.0, y: 2.5 }],
+        { wall: "east", at: -4.0, y: 2.4 }, { wall: "west", at: 1.5, y: 2.4 }, { wall: "south", at: 4.0, y: 2.5 },
+        { wall: "north", at: 15.0, y: 2.4, area: "backRoom" }],
   pendants: [{ x: -9, z: 1 }, { x: -5.6, z: 1 }, { x: 0, z: 1 }, { x: 5.8, z: 1 }, { x: 9.2, z: 1 },
-             { x: -7.3, z: 5 }, { x: 7.5, z: 5 }, { x: -6, z: -5.1 }, { x: -1.5, z: -5.1 }, { x: 7, z: -6.5 }],
+             { x: -7.3, z: 5 }, { x: 7.5, z: 5 }, { x: -6, z: -5.1 }, { x: -1.5, z: -5.1 }, { x: 7, z: -6.5 },
+             { x: 14.2, z: -1.2 }, { x: 14.2, z: 2.2 }, { x: 16.6, z: 0.5 }],
   stations: {
     door:           { x: 0,     z: 7.2 },
     doorOut:        { x: 0,     z: 8.7 },
@@ -306,12 +328,138 @@ export function collidersFor(desc) {
   return out;
 }
 
-/** Walkable test: main room ∪ kitchen ∪ each doorway's corridor band. */
+// ------------------------------------------------- more than one rectangle
+//
+// A room was the hall plus the kitchen behind it, and nothing else could be
+// authored: inBounds() named the two rectangles, unreachable() and navGrid()
+// rastered exactly their bounding box, and world.js drew each of the hall's
+// four walls as one unbroken plane. Midtown's back room is the first floor
+// rectangle that is neither, so all four of those had to stop naming rooms and
+// start reading a list. An annex carries its own ceiling height; the doorway
+// band through its shared wall is derived from the wall it opens through
+// rather than authored, which is one fewer number to get wrong.
+
+export const DOOR_H = 2.2;      // world.js's doorway header height
+const DOOR_REACH = 0.5;         // how far a doorway band overhangs each side
+
+/** Every walkable rectangle, as { id, x0, x1, z0, z1, h }: the hall, the
+ *  kitchen, and each annex. A description with no annexes comes back as the
+ *  two rectangles it always was. */
+export function areasOf(desc) {
+  const R = desc.room, K = desc.kitchen;
+  const out = [
+    { id: "room", x0: -R.x, x1: R.x, z0: -R.z, z1: R.z, h: R.h },
+    { id: "kitchen", x0: K.x0, x1: K.x1, z0: K.z0, z1: K.z1, h: R.h },
+  ];
+  for (const a of desc.annexes ?? []) {
+    out.push({ id: a.id, x0: a.x0, x1: a.x1, z0: a.z0, z1: a.z1, h: a.h ?? R.h });
+  }
+  return out;
+}
+
+/** The rectangle a point sits in, or null. The hall wins a tie, which only a
+ *  description validate() already refuses could produce. */
+export function areaAt(desc, x, z) {
+  for (const a of areasOf(desc)) if (x >= a.x0 && x <= a.x1 && z >= a.z0 && z <= a.z1) return a;
+  return null;
+}
+
+/** The ceiling over a point. An annex may hang lower than the hall, and a
+ *  pendant hung at the hall's height inside one is a lamp in the plaster. */
+export function ceilingAt(desc, x, z) {
+  return (areaAt(desc, x, z) ?? { h: desc.room.h }).h;
+}
+
+/** The walkable band through an annex's doorway, derived from the wall it
+ *  opens through. `axis` is the direction of travel: the band is not inset
+ *  across that axis, so it overhangs both rooms' insets and the wall slab
+ *  between them; along the wall it is the gap itself. */
+export function annexBand(desc, a) {
+  const R = desc.room, g = a.gap;
+  switch (a.wall) {
+    case "east":  return { axis: "x", x0: R.x - DOOR_REACH,  x1: a.x0 + DOOR_REACH,  z0: g.a0, z1: g.a1 };
+    case "west":  return { axis: "x", x0: a.x1 - DOOR_REACH, x1: -R.x + DOOR_REACH,  z0: g.a0, z1: g.a1 };
+    case "north": return { axis: "z", x0: g.a0, x1: g.a1, z0: a.z1 - DOOR_REACH, z1: -R.z + DOOR_REACH };
+    case "south": return { axis: "z", x0: g.a0, x1: g.a1, z0: R.z - DOOR_REACH,  z1: a.z0 + DOOR_REACH };
+    default: return null;
+  }
+}
+
+/** The bounding box of every walkable rectangle. unreachable() and navGrid()
+ *  raster this; before annexes they rastered the hall and the kitchen, and for
+ *  a description with none this is still exactly that box. */
+export function floorBounds(desc) {
+  const as = areasOf(desc);
+  return {
+    x0: Math.min(...as.map(a => a.x0)), x1: Math.max(...as.map(a => a.x1)),
+    z0: Math.min(...as.map(a => a.z0)), z1: Math.max(...as.map(a => a.z1)),
+  };
+}
+
+/** Floor a patron drinks on, in m²: the hall plus every annex, kitchen out. */
+export function floorArea(desc) {
+  return areasOf(desc).filter(a => a.id !== "kitchen")
+    .reduce((n, a) => n + (a.x1 - a.x0) * (a.z1 - a.z0), 0);
+}
+
+/** The spans of one hall wall, as world.js has to draw it: the wall minus
+ *  every annex gap, plus a header over each gap. `a0`/`a1` run along the wall
+ *  (x for north/south, z for east/west) and `y0`/`y1` are its height band. A
+ *  wall with no gap comes back as the single full-height span world.js has
+ *  always drawn as one plane. */
+export function wallSegments(desc, wall) {
+  const R = desc.room;
+  const along = (wall === "north" || wall === "south") ? R.x : R.z;
+  const gaps = (desc.annexes ?? []).filter(a => a.wall === wall).map(a => a.gap)
+    .slice().sort((p, q) => p.a0 - q.a0);
+  const out = [];
+  let cur = -along;
+  for (const g of gaps) {
+    if (g.a0 > cur) out.push({ a0: cur, a1: g.a0, y0: 0, y1: R.h });
+    out.push({ a0: g.a0, a1: g.a1, y0: DOOR_H, y1: R.h });
+    cur = g.a1;
+  }
+  if (cur < along) out.push({ a0: cur, a1: along, y0: 0, y1: R.h });
+  return out;
+}
+
+/** Which hall walls a gap was cut in, so world.js knows to draw that one as
+ *  boxes (a wall with a room on both sides has to read from both). */
+export function gappedWalls(desc) {
+  return new Set((desc.annexes ?? []).map(a => a.wall));
+}
+
+/** An annex's own three outer walls as boxes: { x, z, len, ry }, each a
+ *  BoxGeometry(len, h, wallT) centred half a thickness outside the rectangle,
+ *  so its inner face is the rectangle's edge. The fourth side is shared with
+ *  the hall and belongs to wallSegments(). */
+export function annexWalls(desc, a) {
+  const t = desc.wallT, shared = { east: "west", west: "east", north: "south", south: "north" }[a.wall];
+  const cx = (a.x0 + a.x1) / 2, cz = (a.z0 + a.z1) / 2;
+  const w = a.x1 - a.x0 + 2 * t, d = a.z1 - a.z0 + 2 * t;
+  const all = {
+    north: { x: cx, z: a.z0 - t / 2, len: w, ry: 0 },
+    south: { x: cx, z: a.z1 + t / 2, len: w, ry: 0 },
+    west:  { x: a.x0 - t / 2, z: cz, len: d, ry: Math.PI / 2 },
+    east:  { x: a.x1 + t / 2, z: cz, len: d, ry: Math.PI / 2 },
+  };
+  return Object.entries(all).filter(([side]) => side !== shared).map(([side, b]) => ({ side, ...b }));
+}
+
+/** Walkable test: hall ∪ kitchen ∪ each doorway's corridor band ∪ each annex
+ *  and the band through its doorway. */
 export function inBounds(desc, x, z, r = 0.3) {
   const R = desc.room, K = desc.kitchen;
   if (x > -R.x + r && x < R.x - r && z > -R.z + r && z < R.z - r) return true;
   for (const d of desc.doorways) {
     if (x > d.x0 + r && x < d.x1 - r && z > d.corridor.z0 && z < d.corridor.z1) return true;
+  }
+  for (const a of desc.annexes ?? []) {
+    if (x > a.x0 + r && x < a.x1 - r && z > a.z0 + r && z < a.z1 - r) return true;
+    const b = annexBand(desc, a);
+    if (!b) continue;
+    if (b.axis === "x") { if (x > b.x0 && x < b.x1 && z > b.z0 + r && z < b.z1 - r) return true; }
+    else if (x > b.x0 + r && x < b.x1 - r && z > b.z0 && z < b.z1) return true;
   }
   return x > K.x0 + r && x < K.x1 - r && z > K.z0 + r && z < -R.z - desc.wallT / 2;
 }
@@ -344,15 +492,27 @@ export function crewHome(desc, i) {
 }
 
 const TV_INSET = 0.06;
-/** A TV's mount as world.js draws it: centre and yaw, hung on the named wall.
- *  The north wall is a brick slab, so the inset there clears half its thickness. */
-export function tvMount(desc, tv) {
+/** The rectangle a TV hangs in: the hall, or the annex its `area` names.
+ *  Returns null for an `area` no annex answers to. */
+export function tvArea(desc, tv) {
   const R = desc.room;
+  if (!tv.area) return { id: "room", x0: -R.x, x1: R.x, z0: -R.z, z1: R.z, h: R.h };
+  return areasOf(desc).find(a => a.id === tv.area) ?? null;
+}
+
+/** A TV's mount as world.js draws it: centre and yaw, hung on the named wall
+ *  of the rectangle it belongs to. The hall's north wall is a brick slab, so
+ *  the inset there clears half its thickness; every other wall's inner face is
+ *  the rectangle's own edge, slab or plane, so 6 cm clears it. */
+export function tvMount(desc, tv) {
+  const rc = tvArea(desc, tv);
+  if (!rc) return null;
+  const hall = rc.id === "room";
   switch (tv.wall) {
-    case "north": return { x: tv.at, y: tv.y, z: -R.z + desc.wallT / 2 + 0.02, ry: 0 };
-    case "east":  return { x: R.x - TV_INSET, y: tv.y, z: tv.at, ry: -Math.PI / 2 };
-    case "west":  return { x: -R.x + TV_INSET, y: tv.y, z: tv.at, ry: Math.PI / 2 };
-    case "south": return { x: tv.at, y: tv.y, z: R.z - TV_INSET, ry: Math.PI };
+    case "north": return { x: tv.at, y: tv.y, z: rc.z0 + (hall ? desc.wallT / 2 + 0.02 : TV_INSET), ry: 0 };
+    case "east":  return { x: rc.x1 - TV_INSET, y: tv.y, z: tv.at, ry: -Math.PI / 2 };
+    case "west":  return { x: rc.x0 + TV_INSET, y: tv.y, z: tv.at, ry: Math.PI / 2 };
+    case "south": return { x: tv.at, y: tv.y, z: rc.z1 - TV_INSET, ry: Math.PI };
     default: return null;
   }
 }
@@ -384,8 +544,9 @@ export function standingPoints(desc) {
 export const GRID = 0.25;
 export function unreachable(desc, r = 0.3) {
   const cols = collidersFor(desc);
-  const x0 = Math.floor(-desc.room.x / GRID), x1 = Math.ceil(desc.room.x / GRID);
-  const z0 = Math.floor(desc.kitchen.z0 / GRID), z1 = Math.ceil(desc.room.z / GRID);
+  const fb = floorBounds(desc);
+  const x0 = Math.floor(fb.x0 / GRID), x1 = Math.ceil(fb.x1 / GRID);
+  const z0 = Math.floor(fb.z0 / GRID), z1 = Math.ceil(fb.z1 / GRID);
   const W = x1 - x0 + 1;
   const key = (xi, zi) => (zi - z0) * W + (xi - x0);
   const open = new Uint8Array(W * (z1 - z0 + 1));
@@ -468,9 +629,9 @@ export function navGrid(desc, r = WALKER_R) {
   const hit = byR.get(r);
   if (hit) return hit;
   const cols = collidersFor(desc);
-  const x0 = Math.floor(Math.min(-desc.room.x, desc.kitchen.x0) / GRID);
-  const x1 = Math.ceil(Math.max(desc.room.x, desc.kitchen.x1) / GRID);
-  const z0 = Math.floor(desc.kitchen.z0 / GRID), z1 = Math.ceil(desc.room.z / GRID);
+  const fb = floorBounds(desc);
+  const x0 = Math.floor(fb.x0 / GRID), x1 = Math.ceil(fb.x1 / GRID);
+  const z0 = Math.floor(fb.z0 / GRID), z1 = Math.ceil(fb.z1 / GRID);
   const W = x1 - x0 + 1, H = z1 - z0 + 1;
   const open = new Uint8Array(W * H);
   for (let zi = 0; zi < H; zi++) {
@@ -768,6 +929,52 @@ export function validate(desc) {
     if (!(d.x0 >= desc.kitchen.x0 && d.x1 <= desc.kitchen.x1)) bad.push(`doorway ${i} opens onto no kitchen`);
   }
   if (desc.kitchen.z1 !== -desc.room.z) bad.push("kitchen does not sit on the north wall");
+  // annexes: a second rectangle is a wall between the door and part of the
+  // room, so every one of these is load-bearing. The shared edge has to sit
+  // exactly one wall thickness outside the hall, because world.js draws that
+  // wall as a box whose inner face is the plane it replaces — a hair either
+  // way is a gap you can see through or a slab inside the annex.
+  const seenAnnex = new Set();
+  for (const [i, a] of (desc.annexes ?? []).entries()) {
+    const R = desc.room, t = desc.wallT, name = `annex ${a.id ?? i}`;
+    if (!a.id || seenAnnex.has(a.id)) bad.push(`${name} has no unique id`);
+    seenAnnex.add(a.id);
+    if (!(a.x1 > a.x0 && a.z1 > a.z0)) { bad.push(`${name} is not a rectangle`); continue; }
+    const band = annexBand(desc, a);
+    if (!band) { bad.push(`${name} opens through no wall (${a.wall})`); continue; }
+    // the north wall carries the kitchen doorway, the pass window and the back
+    // bar's shelf, and world.js draws it as brick rather than from
+    // wallSegments(); an annex behind it would have to share all three
+    if (a.wall === "north") { bad.push(`${name} opens north, and the hall's north wall is the kitchen's`); continue; }
+    const edge = { east: [a.x0, R.x + t], west: [a.x1, -R.x - t],
+                   north: [a.z1, -R.z - t], south: [a.z0, R.z + t] }[a.wall];
+    if (Math.abs(edge[0] - edge[1]) > 1e-9) {
+      bad.push(`${name}'s shared edge is at ${fmt(edge[0])}, not the ${fmt(edge[1])} that puts the hall's ${a.wall} wall against it`);
+    }
+    const sideways = a.wall === "north" || a.wall === "south";
+    const along = sideways ? R.x : R.z;
+    const lo = sideways ? a.x0 : a.z0, hi = sideways ? a.x1 : a.z1;
+    if (lo < -along || hi > along) bad.push(`${name} runs past the ends of the hall's ${a.wall} wall`);
+    if (!(a.gap.a1 > a.gap.a0)) bad.push(`${name}'s doorway is not a gap`);
+    else if (a.gap.a0 < lo || a.gap.a1 > hi) bad.push(`${name}'s doorway opens onto no annex`);
+    if (!(a.h > DOOR_H + 0.3)) bad.push(`${name}'s ceiling at ${fmt(a.h)} m does not clear its own doorway`);
+    for (const o of areasOf(desc)) {
+      if (o.id === a.id) continue;
+      if (a.x0 < o.x1 && a.x1 > o.x0 && a.z0 < o.z1 && a.z1 > o.z0) bad.push(`${name} overlaps ${o.id}`);
+    }
+    // walk the doorway's centre line from inside the hall to inside the annex,
+    // 5 cm at a time — the same question the north doorway is asked
+    const mid = (a.gap.a0 + a.gap.a1) / 2;
+    const from = { east: R.x - 0.31, west: -R.x + 0.31, north: -R.z + 0.31, south: R.z - 0.31 }[a.wall];
+    const to = { east: a.x1 - 0.31, west: a.x0 + 0.31, north: a.z0 + 0.31, south: a.z1 - 0.31 }[a.wall];
+    const step = to > from ? 0.05 : -0.05;
+    let joined = true;
+    for (let u = from; step > 0 ? u < to : u > to; u += step) {
+      const [x, z] = band.axis === "x" ? [u, mid] : [mid, u];
+      if (!inBounds(desc, x, z, 0.3)) { joined = false; break; }
+    }
+    if (!joined) bad.push(`${name}'s doorway at ${fmt(mid)} does not join it to the hall`);
+  }
   // no two things the player interacts with by proximity within one
   // interaction radius of each other: day.js's nearest() takes the closest
   // ring inside 1.6 m, and player.js answers nearStove()/nearTap() at 1.6 m
@@ -776,13 +983,24 @@ export function validate(desc) {
     const a = st[near[i]], b = st[near[j]], dist = Math.hypot(a.x - b.x, a.z - b.z);
     if (dist < INTERACT_R) bad.push(`stations ${near[i]} and ${near[j]} are ${fmt(dist)} m apart (interaction range is ${INTERACT_R})`);
   }
-  // TVs hang on a wall of the main room, inside its span and below its ceiling
+  // TVs hang on a wall of the hall or of one of its annexes, inside that
+  // rectangle's span, below its ceiling, and not across a doorway
   for (const [i, tv] of (desc.tvs ?? []).entries()) {
+    if (tv.area && !(desc.annexes ?? []).some(a => a.id === tv.area)) {
+      bad.push(`tv ${i} hangs in ${tv.area}, which is no room of this one`); continue;
+    }
     const m = tvMount(desc, tv);
     if (!m) { bad.push(`tv ${i} names no wall (${tv.wall})`); continue; }
-    const span = (tv.wall === "north" || tv.wall === "south") ? desc.room.x : desc.room.z;
-    if (Math.abs(tv.at) > span - 1) bad.push(`tv ${i} at ${fmt(tv.at)} runs off the ${tv.wall} wall`);
-    if (tv.y < 1.2 || tv.y > desc.room.h - 0.6) bad.push(`tv ${i} at y=${fmt(tv.y)} is not on the wall`);
+    const rc = tvArea(desc, tv);
+    const sideways = tv.wall === "north" || tv.wall === "south";
+    const lo = sideways ? rc.x0 : rc.z0, hi = sideways ? rc.x1 : rc.z1;
+    if (tv.at < lo + 1 || tv.at > hi - 1) bad.push(`tv ${i} at ${fmt(tv.at)} runs off the ${tv.wall} wall`);
+    if (tv.y < 1.2 || tv.y > rc.h - 0.6) bad.push(`tv ${i} at y=${fmt(tv.y)} is not on the wall`);
+    if (!tv.area) for (const a of desc.annexes ?? []) {
+      if (a.wall === tv.wall && tv.at > a.gap.a0 - 1 && tv.at < a.gap.a1 + 1) {
+        bad.push(`tv ${i} at ${fmt(tv.at)} hangs over the ${a.id} doorway`);
+      }
+    }
   }
   for (const [i, p] of (desc.pendants ?? []).entries()) {
     if (!inBounds(desc, p.x, p.z, 0)) bad.push(`pendant ${i} (${fmt(p.x)}, ${fmt(p.z)}) hangs outside the room`);

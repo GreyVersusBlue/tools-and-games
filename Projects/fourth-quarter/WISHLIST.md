@@ -6,19 +6,22 @@ the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
 with `test/smoke-layout.mjs`); Phase 2's first increment authored the other
 three rooms — 30, 44, 58 and 76 seats up the ladder, every one validated
 before a mesh exists; **Phase 3 gave everything that walks a nav grid and a
-planner**, so no patron and no server walks through a four-top any more. Four
-suites are green as of this file — `node test/smoke-campaign.mjs` 216 passed,
-`node test/smoke-engine.mjs` 190 passed, `node test/smoke-layout.mjs` 103
-passed, `node test/smoke-nav.mjs` 89 passed — and the hand-run
-`node tools/browser-check.mjs` 89 passed in real Chromium. Round 3's site-wide
-`npm run games` reported 146 checks, 0 failed across three independent runs on
-a real-Chrome environment, including this project's own 45-check Real Estate
-beat. The first open phase is still **Phase 2 — Four rooms, one ladder**,
-named model **Claude Opus 5**, a 2+ row with one increment shipped: what is
-left is Midtown's second room and the flagship's mezzanine, and the thing that
-was blocking them — a wall between the door and half the seats — is what Phase
-3 just removed. What follows is nine phases across two arcs, the conventions
-three rounds learned the hard way, and the backlog nobody has claimed.
+planner**, so no patron and no server walks through a four-top any more;
+**Phase 2's second increment made a room more than one rectangle**, and
+Midtown now has a back room off its east wall that a patron has to find a
+doorway to get into. Four suites are green as of this file —
+`node test/smoke-campaign.mjs` 216 passed, `node test/smoke-engine.mjs` 190
+passed, `node test/smoke-layout.mjs` 140 passed, `node test/smoke-nav.mjs` 103
+passed — and the hand-run `node tools/browser-check.mjs` 105 passed in real
+Chromium on real Chrome. Round 3's site-wide `npm run games` reported 146
+checks, 0 failed across three independent runs on a real-Chrome environment,
+including this project's own 45-check Real Estate beat. The first open phase
+is still **Phase 2 — Four rooms, one ladder**, named model **Claude Opus 5**,
+a 2+ row with two increments shipped: what is left is the flagship's
+mezzanine, which is the one piece of it that needs a floor at a height other
+than zero and so needs everything that walks to grow a y. What follows is
+nine phases across two arcs, the conventions three rounds learned the hard
+way, and the backlog nobody has claimed.
 
 ## What it is
 
@@ -219,13 +222,24 @@ Open and unclaimed. Pull from here for a phase, and add here rather than
 starting a new list.
 
 **The room**
-- Every room is one rectangle plus a kitchen rectangle behind its north wall.
-  Midtown's "second room off the main floor" and the flagship's mezzanine
-  need `layout.js` to grow a second floor region (and, for the mezzanine, a
-  height), with `inBounds()`, `unreachable()`, the nav grid and `world.js`'s
-  wall drawing following. Phase 2's second increment, and no longer blocked:
-  Phase 3 gave NPCs a planner, so a wall between the door and half the seats
-  is a routing problem rather than a room full of stuck patrons.
+- Every floor rectangle is at `y = 0`. `annexes` gave a room more than one of
+  them and Midtown has its back room, but an annex carries a ceiling height
+  and no floor height, so the flagship's mezzanine still cannot be authored.
+  What it needs is on Phase 2's list; the short version is that `Route`,
+  `stepToward()`, the nav grid's cells, `seatsFor()`, the camera and
+  `player.js`'s ground plane are all two-dimensional, and a mezzanine is the
+  thing that makes them not.
+- The doorway band's overhang is a flat 0.5 m either side of the shared wall
+  (`DOOR_REACH` in `layout.js`), which covers every walker radius the game
+  uses and would stop covering one at 0.5 m. It is a constant because no
+  caller passes a radius that large; if one ever does, derive it from `r`
+  rather than raising the number.
+- Midtown's shadow cameras now span 32.15 m of x against the hall's 26 m,
+  because the box covers every rectangle and the back room is 6 m of it plus
+  9.5 m of dead ground beside the kitchen. At the same 1024² map that is
+  3.1 cm per texel where it was 2.5. Nothing looks wrong; a per-rectangle
+  shadow pass or a tighter box that skips dead ground is the fix if it ever
+  does.
 - Two bodies never see each other. `Route` plans against the furniture and
   nothing else, so two patrons walking opposite ways down the same lane pass
   through one another, and a server delivering to a seated patron stops
@@ -368,7 +382,8 @@ the fit-out its `VENUES` blurb already promises. The Fieldhouse's second stove,
 Midtown's three-tap wall and the flagship's three stoves are all written down
 and none of them exist.
 
-**Increment 1 shipped (PR #170).** What it did, and what is left:
+**Increments 1 and 2 shipped (PRs #170 and this one).** What they did, and
+what is left:
 
 - [x] **Three of the four descriptions.** `FIELDHOUSE` (20×13 m, 8 stools,
   9 four-tops, 2 stoves, 4 taps, 44 seats), `MIDTOWN` (24×15 m, 10 stools,
@@ -377,12 +392,27 @@ and none of them exist.
   taps, 76 seats), each the same plan as the Corner Tap — bar west, kitchen
   east behind the north wall, door mid-south — so no wall stands between the
   door and a stool before Phase 3 gives NPCs a path.
-- [ ] **Midtown's second room and the flagship's mezzanine.** Both need the
-  description to hold more than one floor rectangle (the mezzanine a height
-  too), and `inBounds()`, `unreachable()`, the nav grid, the wall drawing and
-  the shadow cameras to follow. Was deliberately parked behind Phase 3, which
-  has now shipped: a second room is a wall between the door and half the
-  seats, and everything that walks now plans round walls.
+- [x] **Midtown's second room (increment 2).** A description holds more than
+  one floor rectangle now: `annexes` is a list of them, each with its own
+  ceiling height and the hall wall it opens through, and `areasOf()` is what
+  `inBounds()`, `unreachable()`, `navGrid()` and the shadow cameras read
+  instead of naming the hall and the kitchen by hand (#194). The doorway band
+  through the shared wall is derived, not authored (#195), the wall is drawn
+  from `wallSegments()` as spans and a header rather than one plane, and the
+  north wall stays the kitchen's (#196). Midtown's back room is 6×8 m under a
+  3.2 m ceiling off the east wall, with three four-tops **moved** into it
+  rather than added, so the ladder is still 30 / 44 / 58 / 76 (#197).
+- [ ] **The flagship's mezzanine.** This is the increment left, and it is not
+  more of the same: an annex is a rectangle at floor `y = 0`, and a mezzanine
+  is one that is not. Everything that walks is two-dimensional — `Route`,
+  `stepToward()`, the nav grid's cells, `seatsFor()`, the camera and
+  `player.js`'s ground plane all assume `y = 0`, and `world.js` draws every
+  stool, table and collider from the floor up. So the work is a `floorY` on an
+  area and a stair or ramp rectangle that interpolates between two of them; a
+  `floorYAt(desc, x, z)`; a nav grid that refuses a step between two cells
+  more than a stride's rise apart, so a body walks up the stair and not off
+  the edge; and `Patron`, `Server` and the player reading their y off the
+  floor under them. Do not ship a flat rectangle called a mezzanine.
 - [x] **`VENUES[].seats` is derived.** `seatsFor(LAYOUTS[id]).length`, so the
   Real Estate card and `beginNight()`'s cap read the same list. 30, 44, 58,
   76, asserted monotonic in both suites.
@@ -423,9 +453,23 @@ and none of them exist.
   on their stations. `main.js` exposes `window.__fq = { camera, day, player }`
   for it and nothing else reads it.
 
+- [x] **The suite pins the second rectangle too (increment 2).**
+  `smoke-layout.mjs` 103 → 140 and `smoke-nav.mjs` 89 → 103: the hall's east
+  wall as three spans with the header in the middle, the back room's ceiling
+  under the hall's, twelve stools behind a doorway that every route from the
+  door crosses inside the gap, and a crate in that gap taking exactly those
+  twelve out of the offer and nothing else. `tools/browser-check.mjs` 89 → 105
+  measures what `world.js` actually built: the annex floor and its own
+  ceiling, every east-wall span half a thickness outside the room, the Corner
+  Tap's east wall still the single plane it always was, pendants hanging off
+  the ceiling they are under, both shadow cameras reaching the far wall, and a
+  server carrying a ticket from the pass through the doorway to the back
+  room's furthest stool at 0.000 m of penetration.
+
 *Leans on:* phase 1's `layout.js`, `campaign.js`'s `VENUES`, `day.js`.
 *Save:* none — `c.venue` already selects the room. *Model:* **Claude Opus 5**
-named; increment 1 worked under Claude Fable 5.1.
+named; increment 1 worked under Claude Fable 5.1, increment 2 under Claude
+Opus 5.
 
 ## Phase 3 — Feet that find the door — **SHIPPED**
 

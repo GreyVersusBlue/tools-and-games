@@ -132,13 +132,15 @@ const taps = LADDER.map(id => L.layoutFor(id).bar.taps);
 ok(taps.every((n, i) => i === 0 || n > taps[i - 1]) && taps[2] >= 6, `taps climb the ladder and Midtown has a draft wall (got ${taps.join()})`);
 const floors = LADDER.map(id => L.layoutFor(id).room.x * L.layoutFor(id).room.z * 4);
 ok(floors.every((a, i) => i === 0 || a > floors[i - 1]), `floor area climbs the ladder (${floors.join(", ")} m²)`);
+const drinking = LADDER.map(id => L.floorArea(L.layoutFor(id)));
+ok(drinking.every((a, i) => i === 0 || a > drinking[i - 1]), `and so does the floor a patron drinks on, annexes counted (${drinking.join(", ")} m²)`);
 for (const id of LADDER) {
   const d = L.layoutFor(id), cols = L.collidersFor(d);
   ok(cols.length === d.fitout.length + 1 + d.tables.length, `${id}: one collider per block, the bar, and each table`);
   ok(new Set(cols.map(c => c.id)).size === cols.length, `${id}: collider ids are unique`);
   ok(d.tvs.length >= 3 && d.pendants.length >= 5, `${id}: at least three TVs and five pendants`);
 }
-ok(LADDER.map(id => L.layoutFor(id).tvs.length).join() === "3,4,5,7", "TVs up the ladder are 3, 4, 5, 7");
+ok(LADDER.map(id => L.layoutFor(id).tvs.length).join() === "3,4,6,7", "TVs up the ladder are 3, 4, 6, 7 — Midtown's sixth is in the back room");
 // the invariant is looking at the right things
 ok(L.walkable(tap, 0, 0), "the middle of the room is walkable");
 ok(!L.walkable(tap, -5, 0.9), "the centre of a table is not walkable (collider)");
@@ -147,6 +149,58 @@ ok(L.walkable(tap, 2.9, -5.5), "the doorway is walkable through the wall");
 ok(!L.walkable(tap, 0.5, -5.5), "the wall beside the doorway is not");
 ok(L.walkable(tap, 6.1, -7.7), "the stove stand-point is walkable and the stove is not");
 ok(!L.walkable(tap, 6.4, -8.45), "…the stove is not");
+
+// --- (4) a room that is more than one rectangle ---
+// Midtown's back room is the first floor rectangle in this file that is
+// neither the hall nor the kitchen. Everything that used to name those two by
+// hand -- inBounds(), the two grids' bounding boxes, and the hall's walls --
+// now reads areasOf(), and a description with no annex has to come out of that
+// exactly as it went in.
+{
+  const m = L.MIDTOWN, a = m.annexes[0];
+  ok(["cornerTap", "fieldhouse", "flagship"].every(id => (L.layoutFor(id).annexes ?? []).length === 0),
+    "only Midtown has a second room so far");
+  ok(L.areasOf(L.CORNER_TAP).length === 2, "a room with no annex is the two rectangles it always was");
+  ok(L.areasOf(m).length === 3 && L.areasOf(m).some(r => r.id === "backRoom"), "Midtown is the hall, the kitchen and the back room");
+  ok(near(a.x0, m.room.x + m.wallT), `the back room's shared edge is one wall thickness outside the hall (${a.x0})`);
+  ok(L.ceilingAt(m, 14.2, 0) === a.h && a.h < m.room.h, `the back room hangs lower than the hall (${a.h} m under ${m.room.h})`);
+  ok(L.ceilingAt(m, 0, 0) === m.room.h, "…and the hall is still the hall's height");
+  ok(L.ceilingAt(L.CORNER_TAP, 0, 0) === L.CORNER_TAP.room.h, "a room with no annex answers its own height everywhere");
+  // inBounds through the doorway, and not through the wall beside it
+  ok(L.inBounds(m, 12.075, 1.05), "the back room's doorway is walkable through the wall");
+  ok(!L.inBounds(m, 12.075, 4.0), "the wall beside it is not");
+  ok(L.inBounds(m, 15, 0), "the middle of the back room is walkable");
+  ok(!L.inBounds(m, 19, 0), "past its east wall is not");
+  ok(!L.inBounds(m, 15, 6), "and neither is the dead ground beside it, level with the hall's south end");
+  // the two grids grew east with it
+  const fb = L.floorBounds(m);
+  ok(near(fb.x1, a.x1) && near(fb.x0, -m.room.x), `the floor's bounding box reaches the back room's far wall (${fb.x0}..${fb.x1})`);
+  ok(L.floorBounds(L.FLAGSHIP).x1 === L.FLAGSHIP.room.x && L.floorBounds(L.FLAGSHIP).z0 === L.FLAGSHIP.kitchen.z0,
+    "a room with no annex has the bounding box the hall and the kitchen always gave it");
+  // the wall the doorway is cut in
+  const east = L.wallSegments(m, "east");
+  ok(east.length === 3, `the hall's east wall is two spans and a header (${east.length})`);
+  ok(east[1].y0 === L.DOOR_H && near(east[1].a0, a.gap.a0) && near(east[1].a1, a.gap.a1), "…the middle one being the header over the doorway");
+  ok(near(east[0].a0, -m.room.z) && near(east[2].a1, m.room.z), "…and the two spans reach the wall's ends");
+  ok(L.wallSegments(m, "south").length === 1 && L.wallSegments(L.CORNER_TAP, "east").length === 1,
+    "a wall with no doorway is one span, which is the plane world.js always drew");
+  ok(L.gappedWalls(m).has("east") && !L.gappedWalls(m).has("south") && L.gappedWalls(L.CORNER_TAP).size === 0,
+    "only the east wall is gapped, and only Midtown has one");
+  const aw = L.annexWalls(m, a);
+  ok(aw.length === 3 && !aw.some(w => w.side === "west"), "the back room draws its own three walls and leaves the shared one to the hall");
+  ok(aw.every(w => L.areaAt(m, w.x, w.z) === null || w.side === "west"), "…and every one of them stands outside the floor it encloses");
+  // three four-tops moved into it rather than were added to the ladder
+  const mseats = L.seatsFor(m);
+  ok(mseats.length === 58, `Midtown still seats the ladder's 58 with a second room (${mseats.length})`);
+  const inAnnex = mseats.filter(s => s.x > a.x0).length;
+  ok(inAnnex === 12, `twelve of them are behind the doorway (${inAnnex})`);
+  ok(near(L.floorArea(m), m.room.x * m.room.z * 4 + (a.x1 - a.x0) * (a.z1 - a.z0)),
+    `floorArea is the hall plus the annex and not the kitchen (${L.floorArea(m)} m²)`);
+  const atv = m.tvs.find(t => t.area === "backRoom");
+  const amount = L.tvMount(m, atv);
+  ok(!!atv && amount && near(amount.z, a.z0 + 0.06) && amount.ry === 0,
+    "the back room's TV hangs on its own north wall, six centimetres off it, not on the hall's");
+}
 
 // --- reintroduce the bug (the two the wishlist names) ---
 const clone = d => JSON.parse(JSON.stringify(d));
@@ -198,6 +252,44 @@ const noSpawn = clone(tap); delete noSpawn.stations.spawn;
 ok(L.validate(noSpawn).some(m => m === "station spawn missing"), "a room with no spawn is refused");
 const cookInStove = clone(tap); cookInStove.stations.cooks = { x: 5.5, z: -8.45 };
 ok(L.validate(cookInStove).some(m => m.startsWith("cook 2 ")), "a cook line that runs into the stove is refused at the cook it hits");
+// the annex checks, each broken on its own
+{
+  const m = L.MIDTOWN;
+  const shifted = clone(m); shifted.annexes[0].x0 += 0.1; // off the hall's wall by 10 cm
+  ok(L.validate(shifted).some(msg => msg.includes("shared edge is at 12.25")),
+    "a back room shoved 10 cm off the hall's east wall is refused, and named");
+  const gapOff = clone(m); gapOff.annexes[0].gap = { a0: 5.0, a1: 6.7 }; // past the annex's south edge
+  ok(L.validate(gapOff).some(msg => msg.includes("doorway opens onto no annex")),
+    "a doorway cut in the hall wall past the annex's end is refused");
+  const overlap = clone(m); overlap.annexes[0].x0 = 8; overlap.annexes[0].x1 = 14;
+  ok(L.validate(overlap).some(msg => msg === "annex backRoom overlaps room"),
+    "a back room sitting on top of the hall is refused");
+  const northAnnex = clone(m); northAnnex.annexes[0].wall = "north";
+  ok(L.validate(northAnnex).some(msg => msg.includes("the hall's north wall is the kitchen's")),
+    "an annex opening through the north wall is refused: that wall is the kitchen's");
+  const squat = clone(m); squat.annexes[0].h = 2.4;
+  ok(L.validate(squat).some(msg => msg.includes("does not clear its own doorway")),
+    "a back room with a 2.4 m ceiling over a 2.2 m doorway header is refused");
+  const twins = clone(m); twins.annexes.push(clone(m.annexes[0]));
+  ok(L.validate(twins).some(msg => msg.includes("has no unique id")), "two annexes with one id are refused");
+  const tvOverDoor = clone(m); tvOverDoor.tvs[2].at = 1.0; // the hall's east TV, over the doorway
+  ok(L.validate(tvOverDoor).some(msg => msg.includes("hangs over the backRoom doorway")),
+    "a TV hung over the back room's doorway is refused");
+  const tvNowhere = clone(m); tvNowhere.tvs[5].area = "cellar";
+  ok(L.validate(tvNowhere).some(msg => msg.includes("is no room of this one")),
+    "a TV in a room the description does not have is refused");
+  const tvOffAnnex = clone(m); tvOffAnnex.tvs[5].at = 18.0; // past the back room's east wall
+  ok(L.validate(tvOffAnnex).some(msg => msg.includes("runs off the north wall")),
+    "the back room's TV is measured against the back room's wall, not the hall's");
+  const pendantOutAnnex = clone(m); pendantOutAnnex.pendants.push({ x: 18.6, z: 0 });
+  ok(L.validate(pendantOutAnnex).some(msg => msg.includes("hangs outside the room")),
+    "a pendant past the back room's east wall is refused");
+  // and the annex is what makes its own floor walkable: drop it and every
+  // point out there stops being on the floor at all
+  const dropped = clone(m); dropped.annexes = [];
+  const dm = L.validate(dropped).filter(msg => msg.includes("is not walkable"));
+  ok(dm.length === 12, `with the annex dropped, its twelve stool approaches are off the floor (${dm.length})`);
+}
 const kind = clone(tap); kind.fitout[1].kind = "crate"; // the stove is a crate now
 ok(L.collidersFor(kind).map(c => c.id).join(",") === "prep,bar,table1,table2,table3,table4,table5,table6,stove,crate1,crate2", "collider order follows fitout kind, not id: a stove marked crate drops behind the tables");
 

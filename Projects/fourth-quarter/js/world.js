@@ -2,7 +2,11 @@
 // Floor y=0. Every room shares one plan: door mid-south (+z); the bar along
 // the north wall with a service lane behind it; behind the north wall the
 // KITCHEN, reached through a doorway east of the bar, with a pass-through
-// window where food lands. None of the numbers live here — layout.js holds
+// window where food lands. A room may also carry annexes — further floor
+// rectangles with their own ceiling height, opening through a gap in one of
+// the hall's walls, which is why the hall's walls are drawn from
+// layout.wallSegments() rather than as three unbroken planes.
+//   None of the numbers live here — layout.js holds
 // them and derives seats, colliders, inBounds(), the TV mounts and the cook
 // line; this file turns that into meshes and converts the derived boxes to
 // THREE.Box3 at the boundary. Every fit-out block is drawn by its `kind`, so
@@ -109,15 +113,68 @@ export function buildWorld(scene, venueId) {
   kCeil.rotation.x = Math.PI / 2;
   kCeil.position.set((KITCHEN.x0 + KITCHEN.x1) / 2, ROOM.h, (KITCHEN.z0 + KITCHEN.z1) / 2);
   g.add(kCeil);
+  // annex floors and ceilings: the hall's boards at the hall's texel density,
+  // under whatever ceiling the description gives that rectangle
+  for (const a of desc.annexes ?? []) {
+    const aw = a.x1 - a.x0, ad = a.z1 - a.z0, ax = (a.x0 + a.x1) / 2, az = (a.z0 + a.z1) / 2;
+    const aFloor = new THREE.Mesh(plane(aw, ad, 16, 11), mat("floorWood"));
+    aFloor.rotation.x = -Math.PI / 2; aFloor.position.set(ax, 0, az);
+    aFloor.receiveShadow = true; g.add(aFloor);
+    const aCeil = new THREE.Mesh(plane(aw, ad, 16, 11), mat("ceiling"));
+    aCeil.rotation.x = Math.PI / 2; aCeil.position.set(ax, a.h, az);
+    g.add(aCeil);
+  }
 
-  // ---- main room walls (south/east/west stay planes facing in) ----
+  // ---- main room walls ----
+  // A wall with nothing behind it is the plane it has always been, facing in.
+  // A wall an annex opens through has a room on both sides, so it is drawn as
+  // boxes instead — one per span layout.wallSegments() reports, plus the
+  // header over each gap — offset half a thickness outside the room, so its
+  // inner face lands exactly where the plane was.
   const mkWall = (geo, m, x, z, ry) => {
     const w = new THREE.Mesh(geo, m);
     w.position.set(x, ROOM.h / 2, z); w.rotation.y = ry; w.receiveShadow = true; g.add(w);
   };
-  mkWall(plane(ROOM.x * 2, ROOM.h, 16, 3.1), mat("wallPlaster"), 0, ROOM.z, Math.PI);
-  mkWall(plane(ROOM.z * 2, ROOM.h, 11, 3.1), mat("wallPlaster"), -ROOM.x, 0, Math.PI / 2);
-  mkWall(plane(ROOM.z * 2, ROOM.h, 11, 3.1), mat("wallPlaster"), ROOM.x, 0, -Math.PI / 2);
+  const gapped = L.gappedWalls(desc);
+  const onWall = (wall, at) => {
+    const o = WALL_T / 2;
+    if (wall === "south") return { x: at, z: ROOM.z + o, ry: 0 };
+    if (wall === "north") return { x: at, z: -ROOM.z - o, ry: 0 };
+    if (wall === "east") return { x: ROOM.x + o, z: at, ry: Math.PI / 2 };
+    return { x: -ROOM.x - o, z: at, ry: Math.PI / 2 };   // west
+  };
+  const PLAIN = {
+    south: () => mkWall(plane(ROOM.x * 2, ROOM.h, 16, 3.1), mat("wallPlaster"), 0, ROOM.z, Math.PI),
+    west:  () => mkWall(plane(ROOM.z * 2, ROOM.h, 11, 3.1), mat("wallPlaster"), -ROOM.x, 0, Math.PI / 2),
+    east:  () => mkWall(plane(ROOM.z * 2, ROOM.h, 11, 3.1), mat("wallPlaster"), ROOM.x, 0, -Math.PI / 2),
+  };
+  for (const wall of ["south", "west", "east"]) {
+    if (!gapped.has(wall)) { PLAIN[wall](); continue; }
+    for (const seg of L.wallSegments(desc, wall)) {
+      const at = onWall(wall, (seg.a0 + seg.a1) / 2);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(seg.a1 - seg.a0, seg.y1 - seg.y0, WALL_T), mat("wallPlaster"));
+      b.position.set(at.x, (seg.y0 + seg.y1) / 2, at.z); b.rotation.y = at.ry;
+      b.receiveShadow = true; b.castShadow = true; g.add(b);
+    }
+  }
+  // annex walls, and a frame round the doorway that reaches it — the same
+  // dark frame the kitchen doorway gets below
+  const frameM = flat(0x241a10, 0.7);
+  for (const a of desc.annexes ?? []) {
+    for (const w of L.annexWalls(desc, a)) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w.len, a.h, WALL_T), mat("wallPlaster"));
+      b.position.set(w.x, a.h / 2, w.z); b.rotation.y = w.ry;
+      b.receiveShadow = true; g.add(b);
+    }
+    for (const at of [a.gap.a0, a.gap.a1]) {
+      const q = onWall(a.wall, at);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, L.DOOR_H, WALL_T + 0.08), frameM);
+      post.position.set(q.x, L.DOOR_H / 2, q.z); post.rotation.y = q.ry; g.add(post);
+    }
+    const q = onWall(a.wall, (a.gap.a0 + a.gap.a1) / 2);
+    const lint = new THREE.Mesh(new THREE.BoxGeometry(a.gap.a1 - a.gap.a0 + 0.1, 0.1, WALL_T + 0.08), frameM);
+    lint.position.set(q.x, L.DOOR_H, q.z); lint.rotation.y = q.ry; g.add(lint);
+  }
 
   // ---- north wall: brick boxes with a doorway gap and a pass window ----
   const nz = -ROOM.z;
@@ -128,19 +185,18 @@ export function buildWorld(scene, venueId) {
     return b;
   };
   brickBox(-ROOM.x, DOORWAY.x0, 0, ROOM.h);                 // west span (behind the bar)
-  brickBox(DOORWAY.x0, DOORWAY.x1, 2.2, ROOM.h);            // header above the doorway
+  brickBox(DOORWAY.x0, DOORWAY.x1, L.DOOR_H, ROOM.h);       // header above the doorway
   brickBox(DOORWAY.x1, WINDOW.x0, 0, ROOM.h);               // between doorway and window
   brickBox(WINDOW.x0, WINDOW.x1, 0, WINDOW.y0);             // below the window
   brickBox(WINDOW.x0, WINDOW.x1, WINDOW.y1, ROOM.h);        // above the window
   brickBox(WINDOW.x1, ROOM.x, 0, ROOM.h);                   // east span
-  // doorway frame
-  const frameM = flat(0x241a10, 0.7);
+  // doorway frame (frameM is declared with the annex frames above)
   for (const fx of [DOORWAY.x0, DOORWAY.x1]) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.2, WALL_T + 0.08), frameM);
-    post.position.set(fx, 1.1, nz); g.add(post);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, L.DOOR_H, WALL_T + 0.08), frameM);
+    post.position.set(fx, L.DOOR_H / 2, nz); g.add(post);
   }
   const lintel = new THREE.Mesh(new THREE.BoxGeometry(DOORWAY.x1 - DOORWAY.x0 + 0.1, 0.1, WALL_T + 0.08), frameM);
-  lintel.position.set((DOORWAY.x0 + DOORWAY.x1) / 2, 2.2, nz); g.add(lintel);
+  lintel.position.set((DOORWAY.x0 + DOORWAY.x1) / 2, L.DOOR_H, nz); g.add(lintel);
 
   // pass-through sill (both sides of the wall) — where food lands
   const sill = new THREE.Mesh(new THREE.BoxGeometry(WINDOW.x1 - WINDOW.x0 + 0.2, 0.08, 0.7), mat("barTop"));
@@ -278,17 +334,23 @@ export function buildWorld(scene, venueId) {
   // ---- lights: night rig (warm pendants) vs day rig (flat daylight) ----
   const nightRig = new THREE.Group(), dayRig = new THREE.Group();
   nightRig.add(new THREE.HemisphereLight(0x8a7a66, 0x14100c, 0.6));
+  // a pendant hangs 40 cm under the ceiling it is actually under — an annex
+  // ceiling may be lower than the hall's, and the hall's height there is
+  // plaster
   for (const { x: lx, z: lz } of desc.pendants) {
+    const ph = L.ceilingAt(desc, lx, lz);
     const p = new THREE.PointLight(0xffb45e, 14, 11, 1.9);
-    p.position.set(lx, ROOM.h - 0.4, lz); nightRig.add(p);
+    p.position.set(lx, ph - 0.4, lz); nightRig.add(p);
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.22, 12, 1, true), flat(0x1c130b, 0.6));
-    cone.position.set(lx, ROOM.h - 0.25, lz); g.add(cone);
+    cone.position.set(lx, ph - 0.25, lz); g.add(cone);
   }
-  // the shadow cameras cover the whole floor plus a metre: ±9 / 7 / -10 at the Corner Tap
+  // the shadow cameras cover every floor rectangle plus a metre: ±9 / 7 / -10
+  // at the Corner Tap, and out over the annex where there is one
+  const fb = L.floorBounds(desc);
   const shadowBox = light => {
     light.shadow.mapSize.set(1024, 1024);
-    light.shadow.camera.left = -(ROOM.x + 1); light.shadow.camera.right = ROOM.x + 1;
-    light.shadow.camera.top = ROOM.z + 1.5; light.shadow.camera.bottom = KITCHEN.z0 - 1;
+    light.shadow.camera.left = fb.x0 - 1; light.shadow.camera.right = fb.x1 + 1;
+    light.shadow.camera.top = fb.z1 + 1.5; light.shadow.camera.bottom = fb.z0 - 1;
   };
   const key = new THREE.DirectionalLight(0xfff2df, 0.5);
   key.position.set(3, 6, 4); key.castShadow = true; shadowBox(key);
@@ -300,6 +362,13 @@ export function buildWorld(scene, venueId) {
   dayRig.add(sun);
   const doorLight = new THREE.PointLight(0xeaf2ff, 8, 8, 1.6);
   doorLight.position.set(doorX, 2.2, ROOM.z - 0.6); dayRig.add(doorLight);
+  // an annex has walls and a ceiling of its own, so the day rig's sun never
+  // reaches it: one flat light per annex, the day rig's only room-shaped part
+  for (const a of desc.annexes ?? []) {
+    const aLight = new THREE.PointLight(0xf2f4f8, 12, Math.max(a.x1 - a.x0, a.z1 - a.z0) + 3, 1.7);
+    aLight.position.set((a.x0 + a.x1) / 2, a.h - 0.5, (a.z0 + a.z1) / 2);
+    dayRig.add(aLight);
+  }
   dayRig.visible = false;
   g.add(nightRig); g.add(dayRig);
 

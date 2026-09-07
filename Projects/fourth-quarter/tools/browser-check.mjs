@@ -288,6 +288,125 @@ for (const id of ["fieldhouse", "midtown", "flagship", "cornerTap"]) {
     `deepest ${walk.server.worst.toFixed(3)} m`);
 }
 
+// Midtown's back room is the first thing in this project world.js draws that
+// is not the hall or the kitchen, and every Node assertion about it is about
+// layout.js. This is the other half: build both rooms into a throwaway scene
+// on the live page and measure what actually came out. It runs last because
+// buildWorld() repoints world.js's module state at whatever it built.
+group("world.js draws the second rectangle");
+const built = await page.evaluate(async () => {
+  const THREE = await import("three");
+  const W = await import("./js/world.js");
+  const L = await import("./js/layout.js");
+  const read = venue => {
+    const scene = new THREE.Scene();
+    const r = W.buildWorld(scene, venue);
+    const desc = L.layoutFor(venue);
+    const meshes = [], lights = [];
+    r.group.traverse(o => {
+      if (o.isMesh) meshes.push({ x: o.position.x, y: o.position.y, z: o.position.z, ry: o.rotation.y, rx: o.rotation.x });
+      if (o.isLight && o.position) lights.push({ x: o.position.x, y: o.position.y, z: o.position.z });
+    });
+    const key = [...r.nightRig.children, ...r.dayRig.children].filter(l => l.isDirectionalLight)
+      .map(l => ({ left: l.shadow.camera.left, right: l.shadow.camera.right, top: l.shadow.camera.top, bottom: l.shadow.camera.bottom }));
+    const box = new THREE.Box3().setFromObject(r.group);
+    return { meshes, lights, key, box: { x0: box.min.x, x1: box.max.x, z0: box.min.z, z1: box.max.z }, h: desc.room.h };
+  };
+  return { tap: read("cornerTap"), mid: read("midtown") };
+});
+{
+  const m = L.MIDTOWN, a = m.annexes[0], t = m.wallT;
+  const near2 = (p, q) => Math.abs(p - q) <= 1e-6;
+  const cx = (a.x0 + a.x1) / 2, cz = (a.z0 + a.z1) / 2;
+  const inAnnex = p => p.x > a.x0 && p.x < a.x1 && p.z > a.z0 && p.z < a.z1;
+  const floors = built.mid.meshes.filter(o => near2(o.x, cx) && near2(o.z, cz) && near2(o.y, 0));
+  ok("the back room has a floor at its centre, y=0", floors.length === 1, `${floors.length} meshes there`);
+  const ceils = built.mid.meshes.filter(o => near2(o.x, cx) && near2(o.z, cz) && near2(o.y, a.h));
+  ok(`the back room's ceiling is at its own ${a.h} m, not the hall's ${m.room.h}`, ceils.length === 1, `${ceils.length} meshes there`);
+  ok("nothing sits at the hall's ceiling height over the back room",
+    !built.mid.meshes.some(o => inAnnex(o) && near2(o.y, m.room.h)));
+  // the hall's east wall is boxes now, offset half a thickness outside the room
+  const segs = L.wallSegments(m, "east");
+  const onEast = segs.map(seg => built.mid.meshes.some(o =>
+    near2(o.x, m.room.x + t / 2) && near2(o.z, (seg.a0 + seg.a1) / 2) && near2(o.y, (seg.y0 + seg.y1) / 2)));
+  ok("every span of the hall's east wall is in the scene, half a thickness outside the room",
+    segs.length === 3 && onEast.every(Boolean), `${onEast.filter(Boolean).length}/${segs.length}`);
+  ok("and the middle one is the header, its underside on the doorway",
+    near2((segs[1].y0 + segs[1].y1) / 2, (L.DOOR_H + m.room.h) / 2), `y0=${segs[1].y0}`);
+  // the Corner Tap's east wall is the plane it always was: one mesh on the
+  // room's own line, and nothing offset outside it (the kitchen's east wall
+  // shares that x, so it is the z that separates them)
+  const tapRoom = L.CORNER_TAP.room;
+  const tapEast = built.tap.meshes.filter(o => near2(o.x, tapRoom.x) && near2(o.y, tapRoom.h / 2) && Math.abs(o.z) < tapRoom.z);
+  ok("a room with no annex still gets the single plane on its east wall", tapEast.length === 1, `${tapEast.length} meshes on it`);
+  ok("…and nothing offset outside it", !built.tap.meshes.some(o => near2(o.x, tapRoom.x + L.CORNER_TAP.wallT / 2) && Math.abs(o.z) < tapRoom.z));
+  // the annex's own three walls
+  const walls = L.annexWalls(m, a);
+  ok("the back room's three outer walls are all in the scene",
+    walls.every(w => built.mid.meshes.some(o => near2(o.x, w.x) && near2(o.z, w.z) && near2(o.y, a.h / 2))), `${walls.length} expected`);
+  // pendants hang off the ceiling they are actually under
+  const pend = built.mid.lights.filter(inAnnex);
+  ok(`the back room's pendants hang 40 cm under its own ceiling (${a.h - 0.4} m)`,
+    pend.length >= 3 && pend.filter(l => near2(l.y, a.h - 0.4)).length === 3,
+    pend.map(l => l.y.toFixed(2)).join(","));
+  ok("and nothing in there hangs at the hall's pendant height", !pend.some(l => near2(l.y, m.room.h - 0.4)));
+  // the shadow cameras reach it
+  ok("both shadow cameras cover the back room",
+    built.mid.key.length === 2 && built.mid.key.every(k => k.right >= a.x1 + 1 - 1e-6),
+    built.mid.key.map(k => `${k.left}..${k.right}`).join(" / "));
+  ok("and the Corner Tap's are the ±9 / 7 / -10 they always were",
+    built.tap.key.every(k => near2(k.left, -9) && near2(k.right, 9) && near2(k.top, 7) && near2(k.bottom, -10)),
+    JSON.stringify(built.tap.key[0]));
+  ok("the built group reaches the back room's far wall", built.mid.box.x1 >= a.x1 - 1e-6, built.mid.box.x1.toFixed(3));
+}
+
+// a server carrying to the back room specifically: the furthest stool from
+// the pass is in the hall's south-west corner, so the walk above never goes
+// through the doorway with a ticket in hand
+group("a server carries a ticket into the back room");
+await page.click("[data-warp=midtown]", { timeout: 5000 });
+await page.waitForTimeout(600);
+const carried = await page.evaluate(async () => {
+  const THREE = await import("three");
+  const w = await import("./js/world.js");
+  const P = await import("./js/patrons.js");
+  const L = await import("./js/layout.js");
+  const desc = w.currentLayout(), a = desc.annexes[0];
+  const cols = L.collidersFor(desc);
+  const deep = (x, z) => {
+    let d = 0;
+    for (const b of cols) {
+      if (x <= b.min.x || x >= b.max.x || z <= b.min.z || z >= b.max.z) continue;
+      d = Math.max(d, Math.min(x - b.min.x, b.max.x - x, z - b.min.z, b.max.z - z));
+    }
+    return d;
+  };
+  const scene = new THREE.Scene();
+  const target = w.seats.filter(s => s.pos.x > a.x0).reduce((p, q) => (q.pos.x > p.pos.x ? q : p));
+  const sitter = new P.Patron(scene, { walkout() {}, depart() {} }, false);
+  sitter.route.clear(); sitter.state = "settling"; sitter.mesh.position.copy(target.pos);
+  const sv = new P.Server(scene, { readyUnclaimed: () => [], claim: () => true, deliver: () => false },
+    "Check", L.crewHome(desc, 0), 2.0, "server");
+  sv.ticket = { id: 1, kind: "food", itemId: "wings", patronId: sitter.id, placedAt: 0 };
+  sv.state = "toPass";
+  const byId = new Map([[sitter.id, sitter]]);
+  let reachedPass = false, worst = 0, steps = 0, enteredAnnex = false;
+  for (let k = 0; k < 8000 && !(reachedPass && sv.state === "idle"); k++) {
+    const { x, z } = sv.mesh.position;
+    worst = Math.max(worst, deep(x, z));
+    if (x > a.x0) enteredAnnex = true;
+    sv.update(1 / 60, byId);
+    if (sv.state === "toPatron") reachedPass = true;
+    steps = k + 1;
+  }
+  return { reachedPass, done: sv.state === "idle", worst, steps, enteredAnnex,
+    seat: target.id, at: [+sv.mesh.position.x.toFixed(2), +sv.mesh.position.z.toFixed(2)] };
+});
+ok("it reached the pass and then the back room's furthest stool", carried.reachedPass && carried.done,
+  `seat ${carried.seat}, ${carried.steps} steps, stopped at ${carried.at}`);
+ok("it actually crossed into the back room", carried.enteredAnnex);
+ok("and it did not walk through the furniture or the wall", carried.worst < 0.01, `deepest ${carried.worst.toFixed(3)} m`);
+
 await browser.close();
 server.close();
 console.log(`\n${pass} passed, ${fail} failed`);
