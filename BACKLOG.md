@@ -53,52 +53,69 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **The Fourth Quarter Phase 3, "Feet that find
-the door" (PR #172)**, and **the row is gone** — a size-1 row, finished.
-Worked under Claude Opus 5; the row named Fable 5.1.
+The last thing that shipped is **The Fourth Quarter Phase 2, increment 2, "A
+room that is more than one rectangle" (PR #174)**, and **the row is still
+open** — a 2+ row, two increments in, one left.
 
-**What it built.** Everything that walks now plans. `stepToward()` moved a
-mesh along the straight line to its target and consulted nothing, so every
-patron and every server walked through the four-tops; Phase 2 kept each new
-room to one rectangle for exactly that reason. `Projects/fourth-quarter/js/
-layout.js` gained a nav grid — the sweep's 0.25 m lattice again, with every
-collider inflated by `WALKER_R` (0.25 m, against a patron mesh's 0.2 m
-cylinder), memoised per description and radius (#189). A* over eight
-neighbours, a diagonal refused unless both its orthogonals are open, then a
-string-pull that drops every waypoint the walker can already see past: a
-straight shot across open floor comes back as its two endpoints and nothing
-between them. `pathBetween()` returns the route or null; `pathToward()`
-returns the route it does have and says whether it got there (#190), and both
-ends may sit inside inflated geometry with the two boundary legs never pulled
-away (#191). `Route` in `patrons.js` is the queue `Patron` and `Server` walk,
-replanned when the target has moved 0.6 m, each leg still on `stepToward()`.
-`world.js` hangs `reachable` on every seat from one flood of the grid and
-`freeSeat()` refuses to offer a false (#192); `validate()` carries
-`navProblems()` (#193).
+**What it built.** A room stopped being one rectangle plus a kitchen. A
+description carries `annexes`, a list of further floor rectangles, each with
+its own ceiling height and the hall wall it opens through, and
+`areasOf(desc)` is what `inBounds()`, `unreachable()`, `navGrid()`,
+`floorBounds()`, `floorArea()`, `ceilingAt()` and the shadow cameras read
+instead of four separate places spelling out `room` and `kitchen` (#194). The
+one that got missed would have been silent: a nav grid stopping at the hall's
+east wall does not throw, it just stops offering twelve stools. The annex's
+shared edge sits exactly one wall thickness outside the hall, so the box that
+replaces the plane has its inner face where the plane was, and the walkable
+band through the doorway is derived from the wall and the gap rather than
+authored (#195). `wallSegments()` hands `world.js` the hall wall as spans plus
+a header over each gap; a wall with no gap comes back as the single
+full-height span that is still drawn as a plane, so the Corner Tap, the
+Fieldhouse and the flagship are byte-identical geometry and the Corner Tap's
+5,037-sample fixture still matches to 1e-9. The hall's north wall stays the
+kitchen's (#196). **Midtown's back room** is 6×8 m under a 3.2 m ceiling off
+the east wall, through a 1.7 m doorway, with its own TV, three pendants
+hanging off its own lower ceiling, and a day light because the sun never
+reaches it. The three four-tops that stood on the hall's east side **moved**
+into it rather than being added, which left the lane to the doorway open and
+kept the ladder at 30 / 44 / 58 / 76 (#197).
 
-**Guard-rails broken on purpose (#34)**, each caught by the assertion whose
-comment claims it, from a green baseline: the collider inflation deleted (12
-fail, the route shaves a four-top by 0.088 m); the diagonal corner rule
-deleted (3); the string-pull deleted (2, the straight shot comes back as 11
-points); `complete` forced true (5); `navProblems()` dropped from `validate()`
-(1); and in the browser, `Patron` put back on `stepToward()` (4, at 0.66–0.74 m
-of penetration, a body through the middle of a table).
+**Guard-rails broken on purpose (#34)**, fourteen of them, each caught by the
+assertion whose comment claims it, from a green baseline: the doorway band
+deleted from `inBounds()` (14 fail); annexes dropped from `areasOf()` (13);
+the header flattened in `wallSegments()` (1); `ceilingAt()` returning the
+hall's height (1); `tvArea()` ignoring `area` (3); the nav grid back on
+hall-and-kitchen bounds (12); the north-annex refusal deleted (1); the
+shared-edge check deleted (1); the shared wall left in `annexWalls()` (1); the
+annex walls' half-thickness offset deleted (1); and in the browser, annex
+ceilings drawn at the hall's height (2), pendants back on the hall's height
+(2), the gapped-wall branch removed (1), and the shadow box back on `ROOM.x`
+(1).
 
-**Counts.** New `test/smoke-nav.mjs` at 89 assertions, Node total 509 → 598;
-`tools/browser-check.mjs` 58 → 89, four of the new ones stepping a patron to
-every fourth stool in every room at a fixed 1/60 s and measuring how far
-inside the furniture it ever got (0.000 m in all four rooms), plus a server
-carrying a ticket from the pass to the furthest stool from it. Measured: the
-flagship's grid is 113×95 = 10,735 cells, 1.2 ms to build; a typical plan is
-0.45 ms and the worst measured is 3.9 ms.
+**Counts.** `smoke-layout.mjs` 103 → 140, `smoke-nav.mjs` 89 → 103, Node total
+598 → 649; `tools/browser-check.mjs` 89 → 105, hand-run on real Chrome rather
+than a software rasteriser. Measured: Midtown's nav grid is 122×83 = 10,126
+cells against 97×83 before, 5,620 of them open; every route from the door to a
+back-room stool crosses the hall's east wall inside the gap; a server carries
+a ticket from the pass through the doorway to the back room's furthest stool
+in 668 steps at 0.000 m of penetration.
 
 **None of the four shared things was touched.** The two site-wide checks are
 still red on `main` and were red before this branch: `check-integrity.mjs`
 fails on `Projects/school-generator/tools/walk-shell.html` and
-`Tools/prompt-builder.html`; `social:check` reports six pages out of sync.
-The unit count is 1,445, same 2 broken. Outside the project: `HISTORY.md`'s
-decisions 189 through 193 and a Phase 3 entry in its Fourth Quarter section,
-and `CLAUDE.md`'s locked-decision count (188 to 193).
+`Tools/prompt-builder.html`; `social:check` reports six pages out of sync. The
+unit count is 1,454, same 2 broken — the 1,445 the last header carried was
+stale, and a clean `main` reports 1,454 too. `check-collisions.mjs` is 0
+collisions. Outside the project: `HISTORY.md`'s decisions 194 through 197 and
+a Phase 2 increment 2 entry in its Fourth Quarter section, and `CLAUDE.md`'s
+locked-decision count (193 to 197).
+
+Before that: **The Fourth Quarter Phase 3, "Feet that find the door"
+(PR #172)**, which gave everything that walks a nav grid and a planner — A*
+over the sweep's 0.25 m lattice with every collider inflated by `WALKER_R`
+(#189), a route that says whether it got there rather than failing (#190),
+both ends allowed inside inflated geometry (#191), `freeSeat()` refusing a
+stool with no route (#192), and `validate()` carrying `navProblems()` (#193).
 
 Before that: **The Fourth Quarter Phase 2, increment 1, "Four rooms, one
 ladder" (PR #170)**, which made `js/layout.js` hold four descriptions instead
@@ -176,28 +193,34 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**109 ranked items**, one fewer than the last merge: Phase 3 was a size-1 row
-and finished. 47 of them are phases in one of the ten project `WISHLIST.md`
-files; the other 62 are standalone, and live in Tier 2 below. Beyond the
-ranked list there are 255 open bullets in the eleven wishlists' standing
-backlogs and 46 open questions for Devon — 410 open items in all. **One
-standing-backlog bullet closed and two opened**, all in Fourth Quarter's "The
-room": the straight-line walker is gone, and the two new bullets are that no
-two bodies see each other (`Route` plans against the furniture and nothing
-else, so two patrons in the same lane walk through one another) and the cost
-of building the nav grid twice inside `validate()`. No question was answered —
-none stood in front of this row.
+**109 ranked items**, the same as the last merge: rank 1 is a 2+ row and one
+increment does not close it. 47 of them are phases in one of the ten project
+`WISHLIST.md` files; the other 62 are standalone, and live in Tier 2 below.
+Beyond the ranked list there are 257 open bullets in the eleven wishlists'
+standing backlogs and 46 open questions for Devon — 412 open items in all.
+**One standing-backlog bullet was rewritten and two opened**, all in Fourth
+Quarter's "The room": the "every room is one rectangle plus a kitchen" bullet
+is now "every floor rectangle is at `y = 0`", which is what actually blocks
+the mezzanine; the two new ones are `DOOR_REACH`'s flat 0.5 m overhang (it
+covers every walker radius the game uses and stops covering one at 0.5 m, so
+derive it from `r` rather than raise it) and Midtown's shadow cameras now
+spanning 32.15 m of x against the hall's 26, which at the same 1024² map is
+3.1 cm per texel where it was 2.5. No question was answered — none stood in
+front of this row.
 
-**Pick up rank 1: `Projects/fourth-quarter` Phase 2, "Four rooms, one ladder"
-(Opus 5, size 2+), increment 2.** What is left is Midtown's second room and
-the flagship's mezzanine — both need the description to hold more than one
-floor rectangle (the mezzanine a height too), with `inBounds()`,
-`unreachable()`, the nav grid, the wall drawing and the shadow cameras
-following. They were parked behind Phase 3 because a second room is a wall
-between the door and half the seats and nothing that walked could handle one;
-that block is gone. A 2+ row is the whole batch on its own, and one increment
-is what a session ships. Ranks 1 through 6 are all Fourth Quarter; 1, 3 and 4
-are 2+ rows.
+**Pick up rank 1 again: `Projects/fourth-quarter` Phase 2, "Four rooms, one
+ladder" (Opus 5, size 2+), increment 3 — the flagship's mezzanine.** It is
+not more of the same. An annex is a rectangle at floor `y = 0`; a mezzanine is
+one that is not, and `Route`, `stepToward()`, the nav grid's cells,
+`seatsFor()`, the camera and `player.js`'s ground plane are all
+two-dimensional. `Projects/fourth-quarter/WISHLIST.md`'s Phase 2 spells the
+increment out: a `floorY` per area and a stair or ramp rectangle that
+interpolates between two of them, a `floorYAt(desc, x, z)`, a nav grid that
+refuses a step between two cells more than a stride's rise apart so a body
+walks up the stair rather than off the edge, and `Patron`, `Server` and the
+player reading their y off the floor under them. Do not ship a flat rectangle
+called a mezzanine. A 2+ row is the whole batch on its own. Ranks 1 through 6
+are all Fourth Quarter; 1, 3 and 4 are 2+ rows.
 
 **Read this before trusting the order.** Two sources rank the same work
 differently, and the table follows `UPGRADE-PATHS.md`'s order because it is
@@ -242,7 +265,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 2 — Four rooms, one ladder. **Increment 1 shipped (PR #170):** four rooms, derived seats, tier gates, the door-flood invariant. **Left:** Midtown's second room and the flagship's mezzanine, after Phase 3 | `Projects/fourth-quarter` | 2+ | Opus 5 | claude/fq-phase2-inc2 | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
+| 1 | Phase 2 — Four rooms, one ladder. **Increment 1 (PR #170):** four rooms, derived seats, tier gates, the door-flood invariant. **Increment 2 (PR #174):** a description holds more than one floor rectangle, and Midtown has its back room. **Left:** the flagship's mezzanine, which needs a floor at a height other than zero and so needs everything that walks to grow a y | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
 | 2 | Phase 4 — The texture diet | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/fourth-quarter/WISHLIST.md#phase-4--the-texture-diet) |
 | 3 | Phase 6 — The league has a season | `Projects/fourth-quarter` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/fourth-quarter/WISHLIST.md#phase-6--the-league-has-a-season) |
 | 4 | Phase 7 — Regulars, and the bar across town | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/fourth-quarter/WISHLIST.md#phase-7--regulars-and-the-bar-across-town) |
