@@ -15,7 +15,8 @@ absalom-inheritance/
   content/vault.json          the adventure: map, creatures, commands, items, lore, tuning
   content-authoring-guide.md  how to write another one
   js/rules.js                 PF2e math. Pure, RNG injected.
-  js/world.js                 grid, line of sight, A* with rules-legal diagonals
+  js/world.js                 grid, line of sight and line of effect, A* with rules-legal diagonals
+  js/templates.js             cone, burst and emanation, as grid squares. Pure, terrain-free.
   js/conditions.js            the condition catalogue, the two funnels, the tick. Pure, RNG-free.
   js/content.js               load and validate a pack; refuse a broken one
   js/game.js                  the run: state, turns, the reaction bus, commands. Headless.
@@ -23,12 +24,12 @@ absalom-inheritance/
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              787 assertions
-  test/balance.mjs            Monte Carlo playthroughs, exits non-zero out of band
+  test/smoke.mjs              879 assertions
+  test/balance.mjs            Monte Carlo playthroughs; exits non-zero out of band, or on content nothing casts
   test/autopilot.mjs          a competent player, shared by both suites
 ```
 
-`rules.js`, `world.js`, `conditions.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
+`rules.js`, `world.js`, `templates.js`, `conditions.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
 That is what makes the two suites possible, and it is why nothing in the rules waits on a timer:
 animation is `ui.js`'s problem, and a throttled or interrupted animation cannot desynchronise the
 game from its own state.
@@ -89,6 +90,12 @@ catalogue moved them apart again — 65.3% → 60.8% against 79.3% → 80.8% —
 legible: over 2,000 seeded runs per build the Keeper's critical fist stupefied the heir 239 times
 as Vesper and 272 as Kessa, and cost Vesper 39 spells to the flat check and Kessa nothing at all.
 
+**The zero above is the autopilot's, not the engine's, and Phase 3 found out how much that was
+costing.** The policy put the disc up only with a last action at a multiple attack penalty of 8 or
+worse; a level-1 wizard in reach of a construct wants it up every round. Widening that one rule
+took reactions from 0.71 a run to 3.46 and the Wizard from 60.8% to 73.8% with no content change
+at all. See "What the vault casts".
+
 ## Conditions
 
 Eight of them, in `js/conditions.js`: `shielded`, `frightened`, `off-guard`, `clumsy`,
@@ -131,6 +138,89 @@ save with none (#36, #37).
 
 See the content-authoring guide's §5 for `inflicts`, `ends`, `ability` and `immunities`.
 
+## Areas: cone, burst and emanation
+
+Three shapes, in `js/templates.js`, and it is the purest module in the project: grid squares in,
+grid squares out, no world, no content, no state, no terrain. Areas are Player Core p.387.
+
+**`coneSquares(origin, target, feet)`** is the quarter circle the rule actually names. The click
+snaps to one of eight grid directions at the 22.5° octant boundary, and the shape is cut to range
+by `feetBetween` — the same alternating 5/10/5 measurement every other distance in this game uses.
+Two consequences are visible on the board and both are deliberate: the caster's own square is never
+in her own cone, and an orthogonal cone is smaller than a diagonal one (11 squares against 12 at 15
+feet). The second is the diagonal rule showing through, not an error; a shape that came out the same
+size both ways would be one that had stopped measuring in feet.
+
+**`burstSquares(centre, feet)`** spreads from a chosen square, centre included.
+**`emanationSquares(origin, feet)`** spreads from you. At the one creature size this engine has —
+every actor stands in a single square — those two are the same set, and `smoke.mjs` pins the
+equality rather than letting two names for one shape drift apart. What differs is the targeting, and
+that lives in `game.js`: a burst's centre is anywhere you have range and line of effect to, an
+emanation's is always you.
+
+**One knowing departure**, flagged the way Force Fang's is. The book measures a burst from a corner
+and an emanation from the edge of your space; this engine measures square centres, because it has no
+corners anywhere — targeting, line of sight and the A* all address squares — and a second coordinate
+system for templates alone would be a second geometry to keep in step with the first.
+
+**`game.templateSquares(cmd, target)` is the only caller of any of the three**, and both the
+resolution and `render.js`'s aim preview read it. That is the whole reason it exists. The cone used
+to be written twice: `game.js` resolved "within `coneFeet` and within ±45° of the clicked bearing",
+and `render.js` previewed one from its own inline copy of the same trigonometry with the range
+hardcoded to `feet > 15`. They agreed only because Breathe Fire is a 15-foot cone. A 30-foot one
+would have painted one shape and burned another, and nothing would have thrown. `smoke.mjs` reads
+both files' source and fails on a `Math.atan2` in either, the same drift guard the two funnels have.
+
+## Line of sight, line of effect
+
+They are two questions now and the gate is what separates them. `blocksSight(x, y)` takes no gate
+argument at all: the gate is a portcullis, and the two empty seal-recesses flanking it are meant to
+be read from this side. `blocksEffect(x, y, gateOpen)` is the one that stops at a shut gate, and
+`hasLoE` is what every area and every unerring spell filters through. So the heir can see the Vault
+Keeper's chamber through the bars and cannot put a Force Fang into it.
+
+`world.reachableFrom(ox, oy, squares, gateOpen)` is the only place a shape meets terrain: on the
+grid, not inside a solid, line of effect from the origin. It is why the four wall blocks flanking the
+pillars now throw a shadow across a cone, the same way they already broke a sentinel's line of sight.
+
+## What the vault casts
+
+Vesper carries all three shapes. **Breathe Fire** is the 15-foot cone, unchanged. **Ember Burst**
+is a 10-foot burst placed anywhere within 30 feet and spends a rank-1 slot; **Warding Pulse** is a
+one-action 10-foot emanation cantrip. Both are this pack's own spells rather than book ones, said so
+in their notes, and both exist because a template kind with no command is a kind nobody plays.
+
+The numbers were measured, not chosen. Over 2,000 seeded runs per build:
+
+| | wizard | fighter | reactions per run |
+| --- | --- | --- | --- |
+| before this phase | 60.8% | 80.8% | 0.71 |
+| both new spells in the pack, both never cast | 60.8% | 80.8% | 0.71 |
+| the disc rule widened, old kit | 73.8% | 80.8% | 3.46 |
+| shipped | 82.8% | 80.8% | 2.15 |
+
+**The second row is the finding worth keeping.** Both new spells validated at load, appeared in the
+command list, and were cast zero times — the win rate came back bit-identical to the build before
+them, to every decimal. That is the third time in two phases this project has shipped content
+nothing reaches, so `balance.mjs` counts casts per command now and **exits non-zero when a build's
+command is never cast at all**. A note that only prints is a note that gets scrolled past (#13).
+
+**The third row is not content at all**, and the split matters. Getting the pulse to fire displaced
+Shield, and Shield Block went with it: 4,143 casts and 0.71 reactions a run became 0 and 0.00. The
+same guard caught that on the same run. The fix is a policy that was too narrow to begin with —
+`autopilot.mjs` gave the last action of a melee turn to the disc only at a multiple attack penalty
+of 8 or worse, where a level-1 wizard with a construct in reach wants the disc up every round
+whatever her MAP is. Widening it is worth 13 points on its own, against 9 for the two new spells.
+**The heir was always this survivable; the harness had been playing her badly.**
+
+Warding Pulse costs one action because the turn holds three: Strike, ring, disc. At two actions
+there is no room for the disc and Shield goes back to being a thing the policy owns and never uses.
+It rolls a flat 1d4 because 1d4+2 measures 86.7% against a band ceiling of 90%.
+
+Kessa's number does not move at any row, because she has no spells and got none. The two builds are
+now within a point of each other for the first time, and the wizard is no longer the one nearer the
+floor.
+
 ## The save
 
 Storage key **`absalom-inheritance-save-v1`**, schema version 1. Locked decision #36: that key is
@@ -169,8 +259,8 @@ Two knowing departures, both flagged in `content/vault.json`:
 
 * **Force Fang** is a Magus focus spell (Secrets of Magic), not a wizard one. Kept from the
   original design spec.
-* **The cone** is "within range and within ±45° of the bearing you clicked", not a true PF2e cone
-  template. The renderer paints the affected squares before you commit.
+* **Templates measure square centres**, where the book measures from a corner of a square or the
+  edge of your space. See "Areas" above for why, and for what the cone actually is now.
 
 Six conditions in this pack are hung off rolls the book leaves bare, and all six are flagged in
 `content/vault.json` and measured rather than guessed: a critical dagger leaves a construct

@@ -53,8 +53,8 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-Seventy-eight numbered decisions, accumulated across ten sessions and the project
-phases after them. **Code cites these by number, and this is now the only place
+A hundred and fifty-five numbered decisions, accumulated across ten sessions and
+the project phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
 this consolidation and the citation is provenance, not a link: `git log` is
@@ -1731,6 +1731,119 @@ Two of them have moved since they were written:
    too, and no longer does. This extends #34 rather than replacing it.
    *Source: Absalom Phase 2, increment 2.*
 
+148. **A template is a shape, and terrain is somebody else's business.**
+   `js/templates.js` takes grid squares and returns grid squares. It does
+   not know a pillar exists, does not import `world.js`, and holds no
+   state. `world.reachableFrom(ox, oy, squares, gateOpen)` is the single
+   place a shape meets a room — on the grid, not inside a solid, line of
+   effect from the origin — and `game.templateSquares(cmd, target)` is the
+   single place a command asks for one. Both the resolution and
+   `render.js`'s aim preview read that one function, which is the whole
+   point: the cone used to be written twice, and the copy in the renderer
+   hardcoded `feet > 15`. Preview and resolution agreed only because
+   Breathe Fire is a 15-foot cone, and the first spell at any other range
+   would have painted one shape and burned another with nothing throwing.
+   `smoke.mjs` fails on a `Math.atan2` in either file, the same drift guard
+   the two funnels carry. *Source: Absalom Phase 3.*
+
+149. **The cone is the quarter circle the rule names, snapped to eight grid
+   directions, and it is not the same size in all of them.** Player Core
+   p.387 says a cone "shoots out from you in a quarter circle on the grid";
+   the click snaps to one of eight directions at the 22.5° octant boundary
+   (`1 + √2` as a slope, algebra rather than an `atan2`), and range is cut
+   by `feetBetween`, the same alternating 5/10/5 every other distance in
+   this game uses. That yields 11 squares at 15 feet orthogonally against
+   12 on the diagonal, 34 against 36 at 30, and 116 against 120 at 60. The
+   asymmetry is the diagonal rule showing through and is kept rather than
+   smoothed: a template that came out the same size both ways would be one
+   that had stopped measuring in the game's own feet. The suite writes the
+   15-foot set out square by square and counts the other two by hand, so
+   the check is a literal rather than the implementation run twice (#34).
+   *Source: Absalom Phase 3.*
+
+150. **Line of sight and line of effect are two questions, and the gate is
+   what separates them.** `blocksSight(x, y)` takes no `gateOpen` argument
+   at all — the gate is a portcullis, and refusing the argument is what
+   makes the distinction impossible to get wrong by signature.
+   `blocksEffect(x, y, gateOpen)` is the one that stops at a shut gate, and
+   `hasLoE` is what every template and every `unerring` command filters
+   through. So the heir can see the Vault Keeper's chamber through the bars
+   and cannot put a Force Fang into it. One Bresenham walk (`traceLine`)
+   takes the predicate as an argument, because a second copy of that walk
+   is exactly the shape that once put two line-of-sight checks in this repo
+   with one of them doing nothing. A knowing consequence: an area's shape
+   is now shadowed by pillars, so the four wall blocks flanking them are
+   cover against a cone as well as against an eye. *Source: Absalom Phase 3.*
+
+151. **A command no build ever casts fails the balance run.**
+   `balance.mjs` counts, per build, how many times the autopilot cast each
+   non-reaction command across the whole batch, and exits non-zero if any
+   reads zero. Reactions are exempt: they fire from the bus rather than
+   from a decision. This exists because the failure has now happened three
+   times in two phases — Rousing Splash had never been cast in any number
+   this project quoted (#146), an `inflicts` on an `unerring` command
+   applied nothing, and Phase 3's own two new spells validated at load,
+   appeared in the command list, and were cast zero times, returning a win
+   rate bit-identical to the build before them. None of the three crashed
+   and all three looked like working content from the outside. A report
+   line saying "never cast" that exits 0 is a check that gets scrolled past
+   (#13). It earned itself twice on the run it was added: once on the two
+   new spells, and again on Shield, which the fix for the first one
+   displaced — 4,143 casts and 0.71 reactions a run became 0 and 0.00, and
+   nothing else in the report would have said so, because the win rate went
+   *up*. *Source: Absalom Phase 3.*
+
+152. **An area command must be a spell.** Its basic save rolls against the
+   heir's spell DC, which is the only save DC this engine has for one, and
+   `stupefied` moves that DC. A thrown flask or an alchemical bomb written
+   as a `burst` would silently borrow a number it has no claim to, and
+   would get easier or harder for a condition that has nothing to do with
+   it. `content.js` refuses it at load rather than shipping the borrowed
+   number or growing a second DC branch that no pack exercises — a dead
+   branch that validates being the thing #151 exists to catch.
+   *Source: Absalom Phase 3.*
+
+153. **An emanation and a burst of the same radius are one shape here, and
+   the suite says so out loud.** Every actor in this engine stands in a
+   single square, so `emanationSquares(o, f)` is `burstSquares(o, f)`, and
+   writing two implementations would be two names for one shape with a bug
+   waiting in whichever gets read less. What differs is the targeting, and
+   that lives in `game.js`: a burst's centre is any square with range and
+   line of effect to it, an emanation's is always the caster. `smoke.mjs`
+   asserts the equality at four radii, so the day a pack grows a Large
+   creature is a failing test rather than a silently wrong shape. The
+   engine measures square centres throughout where the book measures a
+   burst from a corner and an emanation from the edges of your space; that
+   is a knowing departure, flagged in the README and the authoring guide,
+   taken because this grid has no corners anywhere and a second coordinate
+   system for templates alone would be a second geometry to keep in step.
+   *Source: Absalom Phase 3.*
+
+154. **A number that makes the policy wrong is a content bug, and the
+   harness can say which of the two is wrong.** Warding Pulse costs one
+   action rather than two because a three-action melee turn holds Strike,
+   ring and disc, and a two-action ring leaves no room for the disc — with
+   it at two actions, Shield measured zero casts across 2,000 runs. It
+   rolls a flat 1d4 rather than 1d4+2 because 1d4 measures 82.8% and 1d4+2
+   measures 86.7% against a band whose ceiling is 90%. Neither number was
+   argued about; both were run. The general rule: when a policy rule and a
+   content number disagree about whether an action is worth taking, measure
+   both sides rather than reasoning about one. *Source: Absalom Phase 3.*
+
+155. **The autopilot's own bad play is a measurement, and separating it
+   from the content is part of reporting a number.** Phase 3's wizard went
+   60.8% → 82.8%, and 13 of those 22 points are not content at all:
+   `combatPolicy` gave the last action of a melee turn to the Shield
+   cantrip only at a multiple attack penalty of 8 or worse, and a level-1
+   wizard with a construct in reach wants the disc up every round whatever
+   her MAP is. Widening that one condition takes reactions from 0.71 a run
+   to 3.46 and the old kit from 60.8% to 73.8% with nothing else changed.
+   The heir was always that survivable; the harness had been playing her
+   badly, and every win rate this project quoted before Phase 3 is a floor
+   drawn lower than competent play. It surfaced only because #151 made a
+   never-cast command fail the run — the new spell displaced the disc, and
+   the count said so. When a phase moves a balance number, the handoff owes
+   the split. *Source: Absalom Phase 3.*
 
 ---
 

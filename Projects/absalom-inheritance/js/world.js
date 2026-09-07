@@ -30,19 +30,43 @@ export function makeWorld(area) {
     return false;
   }
 
-  /** Terrain that stops a line of sight. Creatures do not block sight. */
-  function blocksSight(x, y, gateOpen) {
+  /**
+   * Terrain that stops a line of sight. Creatures do not block sight, and
+   * neither does the gate: it is a portcullis, and the two empty seal-recesses
+   * flanking it are meant to be read from this side. Sight takes no `gateOpen`
+   * argument at all, which is the point — the whole distinction below is that
+   * one of these two questions reads the gate and the other cannot.
+   */
+  function blocksSight(x, y) {
+    if (!inBounds(x, y)) return true;
+    const t = tiles[y][x];
+    return t === TILE.WALL || t === TILE.PILLAR;
+  }
+
+  /**
+   * Terrain that stops a line of *effect* — Player Core p.457. A solid barrier
+   * with no gap stops a spell even where it does not stop an eye, which is a
+   * closed gate exactly: you can see the Vault Keeper's chamber through the
+   * bars and you cannot put a Force Fang through them.
+   */
+  function blocksEffect(x, y, gateOpen) {
     if (!inBounds(x, y)) return true;
     const t = tiles[y][x];
     return t === TILE.WALL || t === TILE.PILLAR || (t === TILE.GATE && !gateOpen);
   }
 
   /**
-   * Bresenham between square centres. The two endpoints are exempt: you can
-   * always see the pillar you are standing next to, and a creature standing in
-   * a doorway can still be shot at.
+   * Bresenham between square centres, against whichever of the two barriers
+   * the caller asked about. The two endpoints are exempt: you can always see
+   * the pillar you are standing next to, and a creature standing in an open
+   * doorway can still be shot at.
+   *
+   * One walk, two predicates. The alternative — a second copy of the line for
+   * effect — is the shape that put two versions of this very check in the repo
+   * once before, both passing the suite while one of them did nothing (locked
+   * decision #34).
    */
-  function hasLoS(ax, ay, bx, by, gateOpen) {
+  function traceLine(ax, ay, bx, by, blocked) {
     let x0 = ax, y0 = ay;
     const dx = Math.abs(bx - ax), dy = -Math.abs(by - ay);
     const sx = ax < bx ? 1 : -1, sy = ay < by ? 1 : -1;
@@ -53,7 +77,7 @@ export function makeWorld(area) {
     for (let steps = 0; steps <= W * H; steps++) {
       const atStart = x0 === ax && y0 === ay;
       const atEnd = x0 === bx && y0 === by;
-      if (!atStart && !atEnd && blocksSight(x0, y0, gateOpen)) return false;
+      if (!atStart && !atEnd && blocked(x0, y0)) return false;
       if (atEnd) return true;
       const e2 = 2 * err;
       if (e2 >= dy) { err += dy; x0 += sx; }
@@ -62,17 +86,40 @@ export function makeWorld(area) {
     return false;
   }
 
+  /** Can the eye get there? Takes no gate argument, on purpose. */
+  const hasLoS = (ax, ay, bx, by) => traceLine(ax, ay, bx, by, blocksSight);
+
+  /** Can the spell get there? This is the one that reads the gate. */
+  const hasLoE = (ax, ay, bx, by, gateOpen) =>
+    traceLine(ax, ay, bx, by, (x, y) => blocksEffect(x, y, gateOpen));
+
   /** Every square within `radiusFeet` of (ox, oy) that the eye can reach. */
-  function fieldOfView(ox, oy, radiusFeet, gateOpen) {
+  function fieldOfView(ox, oy, radiusFeet) {
     const seen = new Set();
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         if (feetBetween(ox, oy, x, y) > radiusFeet) continue;
-        if (!hasLoS(ox, oy, x, y, gateOpen)) continue;
+        if (!hasLoS(ox, oy, x, y)) continue;
         seen.add(x + "," + y);
       }
     }
     return seen;
+  }
+
+  /**
+   * Cut a template's squares down to the ones the effect actually reaches:
+   * on the grid, not inside a solid, and with line of effect from the origin.
+   *
+   * This is the only place a shape meets terrain. templates.js does not know a
+   * pillar exists and does not need to; the four wall blocks flanking the
+   * pillars now throw a shadow across a cone the same way they already broke a
+   * sentinel's line of sight.
+   */
+  function reachableFrom(ox, oy, squares, gateOpen) {
+    return squares.filter(s =>
+      inBounds(s.x, s.y) &&
+      !blocksEffect(s.x, s.y, gateOpen) &&
+      hasLoE(ox, oy, s.x, s.y, gateOpen));
   }
 
   /**
@@ -176,8 +223,8 @@ export function makeWorld(area) {
 
   return {
     width: W, height: H,
-    inBounds, tileAt, blocksMove, blocksSight, hasLoS, fieldOfView, findPath, adjacentOpen,
-    planApproach,
+    inBounds, tileAt, blocksMove, blocksSight, blocksEffect, hasLoS, hasLoE, fieldOfView,
+    reachableFrom, findPath, adjacentOpen, planApproach,
   };
 }
 

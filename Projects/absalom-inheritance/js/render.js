@@ -38,6 +38,7 @@ export function createRenderer(canvas, game) {
   let hover = null;      // { x, y } under the pointer
   let cursor = null;     // { x, y } keyboard cursor, drawn differently
   let aim = null;        // { x, y } armed-command preview origin
+  let aimCommand = null; // id of the command that aim belongs to
   let sizedForArea = null;   // id of the area tw/th/origin were last fit to
 
   /**
@@ -178,23 +179,26 @@ export function createRenderer(canvas, game) {
       outline(mark.x, mark.y, colour, width);
     }
 
-    // The cone preview, so a 15-ft cone is something you aim rather than guess.
-    if (aim && game.mode === "combat") {
-      const p = game.run.pc;
-      const ang = Math.atan2(aim.y - p.y, aim.x - p.x);
-      for (let y = 0; y < area.height; y++) {
-        for (let x = 0; x < area.width; x++) {
-          if (!visible.has(x + "," + y)) continue;
-          const dx = x - p.x, dy = y - p.y;
-          if (!dx && !dy) continue;
-          const feet = Math.max(Math.abs(dx), Math.abs(dy)) * 5
-            + Math.floor(Math.min(Math.abs(dx), Math.abs(dy)) / 2) * 5;
-          if (feet > 15) continue;
-          let da = Math.atan2(dy, dx) - ang;
-          while (da > Math.PI) da -= 2 * Math.PI;
-          while (da < -Math.PI) da += 2 * Math.PI;
-          if (Math.abs(da) > Math.PI / 4 + 0.01) continue;
-          diamond(isoX(x, y), isoY(x, y), tw, th);
+    // The template preview, so an area is something you aim rather than guess.
+    //
+    // This asks the engine for the squares it is about to resolve. It used to
+    // work them out itself, from its own copy of the cone trigonometry with
+    // the range hardcoded to 15 feet, and the two agreed only because Breathe
+    // Fire is a 15-foot cone. A preview and a resolution that disagree are the
+    // one bug in this file that cannot announce itself: nothing throws, the
+    // player just gets a different spell than the one they were shown.
+    if (aim && aimCommand && game.mode === "combat") {
+      const cmd = game.content.commandById[aimCommand];
+      const squares = cmd ? game.templateSquares(cmd, aim) : null;
+      const placeable = !cmd || cmd.kind !== "burst" || game.canPlaceBurst(cmd, aim);
+      if (squares && placeable) {
+        for (const sq of squares) {
+          // `explored`, not `visible`: a 30-foot burst placement can reach
+          // past the heir's 30 feet of vision, and a preview that stopped at
+          // the edge of sight would under-draw the far half of it. A square
+          // she has never seen at all still stays dark.
+          if (!explored.has(sq.x + "," + sq.y)) continue;
+          diamond(isoX(sq.x, sq.y), isoY(sq.x, sq.y), tw, th);
           ctx.fillStyle = "rgba(212,101,127,.22)"; ctx.fill();
         }
       }
@@ -320,7 +324,7 @@ export function createRenderer(canvas, game) {
     screenToGrid,
     setHover(t) { hover = t; },
     setCursor(t) { cursor = t; },
-    setAim(t) { aim = t; },
+    setAim(t, commandId = null) { aim = t; aimCommand = t ? commandId : null; },
     get tileSize() { return { tw, th }; },
   };
 }

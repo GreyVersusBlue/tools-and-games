@@ -17,6 +17,8 @@ import {
   feetBetween, isAdjacent, stridesFor,
 } from "./rules.js";
 import { makeWorld, TILE, packExplored, unpackExplored } from "./world.js";
+import { coneSquares, burstSquares, emanationSquares, octantToward } from "./templates.js";
+import { AREA_KINDS } from "./content.js";
 import {
   CONDITIONS, modifiers, damageModifiers, addCondition, removeCondition,
   hasCondition, valueOf, makeCondition, persistentIn, tick, describe, packBag,
@@ -332,7 +334,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * Vision                                                             *
    * ------------------------------------------------------------------ */
   function recomputeVision() {
-    visible = world.fieldOfView(run.pc.x, run.pc.y, tuning.visionFeet, run.gateOpen);
+    visible = world.fieldOfView(run.pc.x, run.pc.y, tuning.visionFeet);
     for (const k of visible) explored.add(k);
     run.fog[run.areaId] = packExplored(explored, area.width, area.height);
   }
@@ -609,7 +611,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
   function notices(c) {
     if (c.wakesOn !== "notice") return false;
     return feetBetween(c.x, c.y, run.pc.x, run.pc.y) <= tuning.noticeFeet
-      && world.hasLoS(c.x, c.y, run.pc.x, run.pc.y, run.gateOpen);
+      && world.hasLoS(c.x, c.y, run.pc.x, run.pc.y);
   }
 
   /**
@@ -681,7 +683,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
   function checkDisengage() {
     let any = false;
     for (const c of awake()) {
-      if (world.hasLoS(c.x, c.y, run.pc.x, run.pc.y, run.gateOpen)) continue;
+      if (world.hasLoS(c.x, c.y, run.pc.x, run.pc.y)) continue;
       c.awake = false;
       c.hp = def(c).hp;
       // It reknits to full HP; it reknits out of whatever was stuck to it too.
@@ -1223,9 +1225,64 @@ export function createGame({ content, rng = Math.random, state = null }) {
     }
   }
 
+  /* ------------------------------------------------------------------ *
+   * Templates                                                          *
+   * ------------------------------------------------------------------ */
+
   /**
-   * Run a command. `target` is a creature key for attack/unerring, or {x,y}
-   * for a cone. Returns { ok, reason } — a refusal never mutates anything.
+   * The squares an area command covers, terrain and line of effect included.
+   *
+   * There is exactly one of these, and both the resolution below and
+   * render.js's aim preview call it. That is the whole reason the function
+   * exists: the two used to be separate copies of the same trigonometry, with
+   * the preview's range hardcoded to 15 feet, and they agreed only because
+   * Breathe Fire is a 15-foot cone. A player aiming a 30-foot one would have
+   * been shown a lie, and nothing would have thrown.
+   *
+   * Returns null when the command needs an aim square and has not been given
+   * one — a refusal, not an empty area.
+   */
+  function templateSquares(cmd, target) {
+    const from = run.pc;
+    const aimed = target && typeof target.x === "number";
+    if (cmd.kind === "cone") {
+      if (!aimed) return null;
+      return world.reachableFrom(from.x, from.y, coneSquares(from, target, cmd.coneFeet), run.gateOpen);
+    }
+    if (cmd.kind === "burst") {
+      if (!aimed) return null;
+      // A burst spreads from where it lands, so its line of effect is
+      // measured from the centre and not from the caster. The caster's own
+      // reach to that centre is a separate question, and canPlaceBurst is it.
+      return world.reachableFrom(target.x, target.y, burstSquares(target, cmd.burstFeet), run.gateOpen);
+    }
+    if (cmd.kind === "emanation") {
+      return world.reachableFrom(from.x, from.y, emanationSquares(from, cmd.emanationFeet), run.gateOpen);
+    }
+    return null;
+  }
+
+  /** Can the heir put a burst's centre on that square? Range, then barrier. */
+  function canPlaceBurst(cmd, target) {
+    return feetBetween(run.pc.x, run.pc.y, target.x, target.y) <= cmd.rangeFeet
+      && world.hasLoE(run.pc.x, run.pc.y, target.x, target.y, run.gateOpen);
+  }
+
+  /** How the log names the shape that just went out. */
+  function areaPhrase(cmd, target) {
+    if (cmd.kind === "cone") {
+      const dir = octantToward(run.pc, target);
+      return `a ${cmd.coneFeet}-foot cone${dir ? ` to the ${dir.name}` : ""}`;
+    }
+    if (cmd.kind === "burst") return `a ${cmd.burstFeet}-foot burst`;
+    return `a ${cmd.emanationFeet}-foot emanation`;
+  }
+
+  /**
+   * Run a command. `target` is a creature key for attack/unerring, {x,y} for
+   * a cone or a burst, and nothing at all for an emanation, which is centred
+   * on the heir and so has no square to pick. Returns { ok, reason } — a
+   * refusal never mutates anything.
    */
   function useCommand(id, target) {
     // A reaction is not an action, and there is no button that spends one. It
@@ -1276,7 +1333,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
       const c = byKey(target);
       if (!c || c.dead) return { ok: false, reason: "no-target" };
       const feet = feetBetween(run.pc.x, run.pc.y, c.x, c.y);
-      if (feet > cmd.rangeFeet || !world.hasLoS(run.pc.x, run.pc.y, c.x, c.y, run.gateOpen)) {
+      if (feet > cmd.rangeFeet || !world.hasLoE(run.pc.x, run.pc.y, c.x, c.y, run.gateOpen)) {
         setHint(`No line of effect within ${cmd.rangeFeet} ft.`);
         return { ok: false, reason: "range" };
       }
@@ -1293,27 +1350,24 @@ export function createGame({ content, rng = Math.random, state = null }) {
       return after(cmd, { ok: true });
     }
 
-    if (cmd.kind === "cone") {
-      if (!target || typeof target.x !== "number") return { ok: false, reason: "no-target" };
+    if (AREA_KINDS.includes(cmd.kind)) {
+      const squares = templateSquares(cmd, target);
+      if (!squares) return { ok: false, reason: "no-target" };
+      if (cmd.kind === "burst" && !canPlaceBurst(cmd, target)) {
+        setHint(`No line of effect within ${cmd.rangeFeet} ft.`);
+        return { ok: false, reason: "range" };
+      }
       spend(cmd);
-      info(`Cast ${cmd.name} (${cmd.costGlyph}${cmd.spendSlot ? ", spends a rank-1 slot" : ""}) — a ${cmd.coneFeet}-foot cone.`);
-      // Cone approximation: within range, and within ±45° of the clicked
-      // bearing. A true PF2e cone template is a different shape; this is close
-      // enough on a 22-square grid and is documented rather than pretended.
-      const ang = Math.atan2(target.y - run.pc.y, target.x - run.pc.x);
+      info(`Cast ${cmd.name} (${cmd.costGlyph}${cmd.spendSlot ? ", spends a rank-1 slot" : ""}) — ${areaPhrase(cmd, target)}.`);
       const dmg = damageFrom("pc", cmd.damage, "spell");
-      // One DC for the whole cone, read once: stupefied moves it, and a DC
+      // One DC for the whole area, read once: stupefied moves it, and a DC
       // re-read per creature would be a spell that got easier halfway through
       // the room the day anything changes a condition mid-resolution.
       const dc = spellDC();
+      const covered = new Set(squares.map(sq => sq.x + "," + sq.y));
       let hitAny = false;
       for (const c of living()) {
-        if (feetBetween(run.pc.x, run.pc.y, c.x, c.y) > cmd.coneFeet) continue;
-        let da = Math.atan2(c.y - run.pc.y, c.x - run.pc.x) - ang;
-        while (da > Math.PI) da -= 2 * Math.PI;
-        while (da < -Math.PI) da += 2 * Math.PI;
-        if (Math.abs(da) > Math.PI / 4 + 0.01) continue;
-        if (!world.hasLoS(run.pc.x, run.pc.y, c.x, c.y, run.gateOpen)) continue;
+        if (!covered.has(c.x + "," + c.y)) continue;
         hitAny = true;
         // A creature caught in a spell notices the caster, whatever it was doing.
         if (!c.awake) wake(c);
@@ -1330,7 +1384,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
         // creature the effect landed on.
         applyInflict(cmd.inflicts, c, r.deg);
       }
-      if (!hitAny) info("The flames scorch empty stone — no creature in the cone.");
+      if (!hitAny) info(`It breaks over empty stone — nothing is caught in the ${cmd.kind}.`);
       return after(cmd, { ok: true });
     }
 
@@ -1452,6 +1506,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
     pcAC, isPCTurn, creatureAt, byKey, def, living, awake, occupied,
     potionCount, bulkCarried, commandBlocked,
     isPillar: (x, y) => !!area.pillars[x + "," + y],
+    templateSquares, canPlaceBurst,
     tileAt: (x, y) => area.tiles[y]?.[x],
     mapPenaltyNow: agile => mapPenalty(turn.attacks, agile),
 

@@ -61,22 +61,74 @@ function findUsable(game, kind) {
   return null;
 }
 
-/** One PC turn's worth of decisions. Returns true if it spent an action. */
-export function combatPolicy(game) {
+/**
+ * How an area command would land, best aim first.
+ *
+ * One creature per candidate aim — a cone pointed at it, or a burst centred on
+ * it — scored by how many creatures the *engine* says that shape covers.
+ * Centring on a creature is not the optimal placement; the true optimum for a
+ * burst is somewhere between two of them. But it is what a person clicking
+ * does, and it never has to guess, because the count comes from
+ * `game.templateSquares` — the same call the resolution makes. A shape this
+ * scores as catching two cannot resolve as catching one, and the old policy
+ * could not say that: it counted "within coneFeet and visible", which is a
+ * circle, and the cone is a quarter of one.
+ *
+ * An emanation has no aim at all, so it gets exactly one entry.
+ */
+function placements(game, cmd, live) {
+  const aims = cmd.kind === "emanation"
+    ? [null]
+    : live.map(c => ({ x: c.x, y: c.y }));
+  const out = [];
+  for (const aim of aims) {
+    if (cmd.kind === "burst" && !game.canPlaceBurst(cmd, aim)) continue;
+    const squares = game.templateSquares(cmd, aim);
+    if (!squares) continue;
+    const covered = new Set(squares.map(s => s.x + "," + s.y));
+    out.push({ aim, caught: live.filter(t => covered.has(t.x + "," + t.y)).length });
+  }
+  return out.sort((a, b) => b.caught - a.caught);
+}
+
+const bestPlacement = (game, cmd, live) => (cmd ? placements(game, cmd, live)[0] : null) || { caught: 0 };
+
+/**
+ * One PC turn's worth of decisions. Returns true if it spent an action.
+ *
+ * `tally` is an optional counter of which commands got cast, so balance.mjs
+ * can report that a shape the pack ships actually goes off. Last phase found
+ * two pieces of content that validated at load and were never once reached in
+ * a number this project had quoted; counting is cheaper than finding that out
+ * again.
+ */
+export function combatPolicy(game, tally = null) {
+  const use = (id, target) => {
+    const r = game.useCommand(id, target);
+    if (r.ok && tally) tally[id] = (tally[id] || 0) + 1;
+    return r.ok;
+  };
+  return decide(game, use);
+}
+
+function decide(game, use) {
   const pc = game.run.pc;
   const maxHp = game.content.pc.hp;
   const live = game.awake();
   if (!live.length) return false;
 
   const dist = c => feetBetween(pc.x, pc.y, c.x, c.y);
-  const canSee = c => game.world.hasLoS(pc.x, pc.y, c.x, c.y, game.run.gateOpen);
+  // Line of *effect*, not sight, because that is what the engine refuses an
+  // unerring spell on: the gate is bars now, and a policy that picked a target
+  // it could see through them would spend the turn on a refusal.
+  const canReach = c => game.world.hasLoE(pc.x, pc.y, c.x, c.y, game.run.gateOpen);
   const actions = game.actionsLeft;
 
   // Bleeding out beats everything. "potion" is universal across builds — the
   // one command id every pcOptions entry lists — since it is the adventure's
   // only externally-bought resource rather than a class feature.
   if (pc.hp <= maxHp * 0.4 && game.potionCount() && !game.commandBlocked("potion")) {
-    return game.useCommand("potion").ok;
+    return use("potion");
   }
 
   // On fire, with something in the kit that puts it out. Rousing Splash heals
@@ -88,36 +140,83 @@ export function combatPolicy(game) {
   const dousing = findUsable(game, "self-heal");
   if (dousing && dousing.ends
       && game.conditionsOf("pc").some(c => c.id === dousing.ends.condition)) {
-    return game.useCommand(dousing.id).ok;
+    return use(dousing.id);
   }
 
-  // A cone command, if this build has one. Aim at the closest target in
-  // range; anything else inside the cone is a bonus.
+  // The two slot spells, weighed against each other rather than in a fixed
+  // order. Breathe Fire rolls 2d6 and Ember Burst 1d6, and they come out of
+  // the same two slots, so the burst has to catch twice as many to be worth
+  // one: two in the burst against one in the cone, or anything at all when the
+  // cone reaches nobody. That last case is the one that matters most to a
+  // 15 HP wizard — a cone starts at her, so "nothing is in the cone" usually
+  // means "the sentinel is still crossing the floor", and thirty feet of burst
+  // range is how she answers it without walking into reach.
   const cone = findUsable(game, "cone");
-  if (cone) {
-    const inCone = live.filter(c => dist(c) <= cone.coneFeet && canSee(c))
-      .sort((a, b) => dist(a) - dist(b));
-    if (inCone.length) return game.useCommand(cone.id, { x: inCone[0].x, y: inCone[0].y }).ok;
+  const burst = findUsable(game, "burst");
+  const coneAim = bestPlacement(game, cone, live);
+  const burstAim = bestPlacement(game, burst, live);
+  if (burstAim.caught >= 1 && burstAim.caught >= 2 * coneAim.caught) {
+    return use(burst.id, burstAim.aim);
+  }
+  if (coneAim.caught >= 1) return use(cone.id, coneAim.aim);
+
+  // An emanation, if this build has one. Centred on the heir, so there is
+  // nothing to aim, and its case is not reach — it is that a basic save rolls
+  // no attack and so takes no multiple attack penalty. She leads with the
+  // dagger and follows with the ring, because the swing the ring displaces is
+  // the one at −4.
+  //
+  // The rule this replaces was "two in the ring, or one the dagger cannot
+  // reach", and it cast the spell zero times in 2,000 runs. Sampling 9,100
+  // wizard decisions says why: an awake construct stood at 5 feet or at 25 and
+  // beyond, and never once at 10, 15 or 20. A sentinel's Stride closes the
+  // whole floor in one turn, so "inside the ring, outside the dagger" is a
+  // square this adventure never produces, and two constructs on her at once is
+  // a fight it never starts. Both halves of that rule were describing a
+  // different adventure.
+  const pulse = findUsable(game, "emanation");
+  if (pulse) {
+    const ring = bestPlacement(game, pulse, live);
+    // Only the zero matters here, so the agile flag does not: what is being
+    // asked is whether she has already swung this turn.
+    const swungAlready = game.mapPenaltyNow(false) > 0;
+    // Never with the last action, so long as this build has a disc to put up
+    // with it. The ring is worth more than the swing it displaces and less
+    // than the disc, and a three-action turn holds all three: Strike, ring,
+    // disc. Without this the pulse takes the last action too and Shield goes
+    // back to being a thing the policy owns and does not use.
+    const keepLastForDisc = actions <= pulse.cost && !!findUsable(game, "self-buff") && !game.shielded;
+    if (!keepLastForDisc && (ring.caught >= 2 || (ring.caught >= 1 && swungAlready))) return use(pulse.id);
   }
 
   // An unerring command, if this build has one — never misses, so spend it on
   // whatever is closest to dying.
   const unerring = findUsable(game, "unerring");
   if (unerring) {
-    const targets = live.filter(c => dist(c) <= unerring.rangeFeet && canSee(c)).sort((a, b) => a.hp - b.hp);
-    if (targets.length) return game.useCommand(unerring.id, targets[0].key).ok;
+    const targets = live.filter(c => dist(c) <= unerring.rangeFeet && canReach(c)).sort((a, b) => a.hp - b.hp);
+    if (targets.length) return use(unerring.id, targets[0].key);
   }
 
   const adj = live.find(c => isAdjacent(c, pc));
   const attack = findUsable(game, "attack");
   if (adj && attack) {
-    // A third Strike at a steep MAP is worth less than the buff it displaces —
-    // whatever penalty this build's own attack actually takes.
+    // The last action of a melee turn goes to the disc, whenever the disc is
+    // down. It used to go there only at a MAP of 8 or worse, on the argument
+    // that a third swing is worth less than the buff it displaces. True, and
+    // too narrow: Shield is a one-action cantrip that costs nothing but the
+    // action and arms Shield Block, so a wizard with a construct in reach
+    // wants it up every round, whatever her MAP is.
+    //
+    // What made the difference visible was a one-action emanation landing in
+    // the middle of the same turn. With the pulse taking the second action and
+    // this rule still asking for a MAP of 8, Shield measured zero casts and
+    // Shield Block zero fires across 2,000 runs — a whole subsystem displaced
+    // in silence by a change that read as an improvement because the win rate
+    // went up. balance.mjs is what said so, and that is the argument for a
+    // never-cast line that exits non-zero rather than printing a note.
     const buff = findUsable(game, "self-buff");
-    if (actions === 1 && game.mapPenaltyNow(attack.agile) >= 8 && buff) {
-      return game.useCommand(buff.id).ok;
-    }
-    return game.useCommand(attack.id, adj.key).ok;
+    if (actions === 1 && buff && !game.shielded) return use(buff.id);
+    return use(attack.id, adj.key);
   }
 
   // Nothing in reach: close on the nearest one.
@@ -142,17 +241,17 @@ export function combatPolicy(game) {
 
   // Boxed in or out of reach: brace, if this build has anything to brace with.
   const brace = findUsable(game, "self-buff");
-  if (brace) return game.useCommand(brace.id).ok;
+  if (brace) return use(brace.id);
   return false;
 }
 
 /** Play an encounter out to its end. */
-export function fight(game, { maxTurns = 200 } = {}) {
+export function fight(game, { maxTurns = 200, tally = null } = {}) {
   let guard = 0;
   while (game.mode === "combat" && !game.run.outcome) {
     if (++guard > maxTurns) throw new Error("fight(): encounter did not terminate");
     if (game.isPCTurn()) {
-      const spent = combatPolicy(game);
+      const spent = combatPolicy(game, tally);
       if (!spent || game.actionsLeft <= 0) {
         let r = game.endTurn();
         while (r && r.actor !== "pc") r = game.advance();
@@ -209,12 +308,13 @@ function collectGoals(content) {
 export function playThrough(game, { maxPhases = 60 } = {}) {
   game.begin();
   const goals = collectGoals(game.content);
+  const cast = {};
 
   let phases = 0;
   for (const goal of goals) {
     while (!game.run.outcome) {
       if (++phases > maxPhases) return summarise(game, "stalled");
-      if (game.mode === "combat") { fight(game); continue; }
+      if (game.mode === "combat") { fight(game, { tally: cast }); continue; }
 
       if (goal.kind === "pillar") {
         // Stand next to the pillar, not on it.
@@ -239,12 +339,13 @@ export function playThrough(game, { maxPhases = 60 } = {}) {
     }
     if (game.run.outcome) break;
   }
-  return summarise(game, game.run.outcome || "unfinished");
+  return summarise(game, game.run.outcome || "unfinished", cast);
 }
 
-function summarise(game, outcome) {
+function summarise(game, outcome, cast = {}) {
   return {
     outcome,
+    cast,
     hp: game.run.pc.hp,
     slots: game.run.pc.slots,
     focus: game.run.pc.focus,

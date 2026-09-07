@@ -357,12 +357,22 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
   /* ------------------------------------------------------------------ *
    * Commands and targeting                                             *
    * ------------------------------------------------------------------ */
+  /**
+   * Which armed commands paint a template under the pointer: the two whose
+   * target is a square rather than a creature. Asking for one kind by name in
+   * five places is how the second one of them ships without a preview, which
+   * is the mistake this phase is here to undo one layer down.
+   */
+  const needsAim = cmd => cmd && (cmd.kind === "cone" || cmd.kind === "burst");
+  const armedNeedsAim = () => armed && needsAim(content.commandById[armed]);
+
   function pickCommand(id) {
     const cmd = content.commandById[id];
     if (!cmd || game.commandBlocked(id)) return;
 
-    // Commands that need no target fire immediately.
-    if (["self-buff", "self-heal", "consume"].includes(cmd.kind)) {
+    // Commands that need no target fire immediately. An emanation is one of
+    // them: its centre is the heir, so there is no square to pick.
+    if (["self-buff", "self-heal", "consume", "emanation"].includes(cmd.kind)) {
       disarm();
       resolve(game.useCommand(id));
       return;
@@ -370,7 +380,7 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     if (armed === id) { disarm(); game.setHint("Command cancelled."); refresh(); return; }
     armed = id;
     game.setHint(cmd.hint);
-    if (cmd.kind === "cone") renderer.setAim(cursor);
+    if (needsAim(cmd)) renderer.setAim(cursor, id);
     refresh();
     announce(cmd.hint);
   }
@@ -381,9 +391,13 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
   function fireAt(x, y) {
     const cmd = content.commandById[armed];
     if (!cmd) return false;
-    if (cmd.kind === "cone") {
+    if (needsAim(cmd)) {
+      // A burst can be refused for range or for a wall in the way, and a
+      // refusal must leave the command armed so the next click is another try
+      // rather than a walk into the room.
       const r = game.useCommand(armed, { x, y });
-      disarm(); resolve(r);
+      if (r.ok) disarm();
+      resolve(r);
       return true;
     }
     const c = game.creatureAt(x, y);
@@ -447,7 +461,7 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     const r = canvas.getBoundingClientRect();
     const g = renderer.screenToGrid(ev.clientX - r.left, ev.clientY - r.top);
     renderer.setHover(g);
-    if (armed && content.commandById[armed].kind === "cone") renderer.setAim(g);
+    if (armedNeedsAim()) renderer.setAim(g, armed);
   });
   canvas.addEventListener("mouseleave", () => renderer.setHover(null));
 
@@ -561,7 +575,7 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
       const ny = Math.max(0, Math.min(game.area.height - 1, cursor.y + dy));
       cursor = { x: nx, y: ny };
       renderer.setCursor(cursor);
-      if (armed && content.commandById[armed].kind === "cone") renderer.setAim(cursor);
+      if (armedNeedsAim()) renderer.setAim(cursor, armed);
       describeCursor();
       return;
     }
@@ -574,7 +588,7 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
       const s = spots[cycle];
       cursor = { x: s.x, y: s.y };
       renderer.setCursor(cursor);
-      if (armed && content.commandById[armed].kind === "cone") renderer.setAim(cursor);
+      if (armedNeedsAim()) renderer.setAim(cursor, armed);
       announce(`Cursor on ${s.why}.`);
       return;
     }

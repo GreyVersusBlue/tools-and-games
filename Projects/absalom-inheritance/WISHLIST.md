@@ -210,25 +210,35 @@ new one.
 
 **Rules and conditions**
 - Conditions exist and there are eight, through two funnels (Phase 2). What
-  there is not: **no dying/wounded, and no flanking, cover or concealment** —
-  `hasLoS` still answers yes or no, so there is nowhere for a circumstance
-  modifier from the *board* to come from, which is the half of the same-type
-  rule nothing in the catalogue can currently exercise.
-- Six command kinds: `attack`, `self-buff`, `self-heal`, `cone`, `unerring`,
-  `consume`. A command can inflict a condition and end one, but there is still
-  **no heal-another, no command whose whole purpose is a debuff, and no ranged
-  attack that rolls to hit** — every condition in the pack rides a Strike or a
-  save that was happening anyway.
+  there is not: **no dying/wounded, and no flanking, cover or concealment**. The
+  grid answers two yes-or-no questions now (`hasLoS` and `hasLoE`, Phase 3) and
+  neither of them is a degree, so there is still nowhere for a circumstance
+  modifier from the *board* to come from — which is the half of the same-type
+  rule nothing in the catalogue can currently exercise. Cover is the obvious
+  next one and `traceLine` is where it would go: the walk already knows which
+  squares it passed through and throws that away.
+- Eight command kinds: `attack`, `self-buff`, `self-heal`, `cone`, `burst`,
+  `emanation`, `unerring`, `consume`. A command can inflict a condition and end
+  one, but there is still **no heal-another, no command whose whole purpose is a
+  debuff, and no ranged attack that rolls to hit** — every condition in the pack
+  rides a Strike or a save that was happening anyway. There is also **no `line`**,
+  the fourth shape on Player Core p.387.
 - Damage types are strings printed in the log; nothing reads them for
   resistance, weakness or immunity.
 
 **Geometry and the grid**
-- The cone is "within range and within ±45° of the bearing you clicked," not a
-  PF2e template — documented in the README rather than pretended. `render.js`
-  re-implements that math inline for the aim preview *and hardcodes 15 feet*, so
-  a second cone at any other range would preview wrong and resolve right.
-- No bursts, emanations or lines. `hasLoS` is line of sight; PF2e's line of
-  *effect* is a different question nothing asks.
+- Three templates (Phase 3), and **no `line`** — the one shape on Player Core
+  p.387 with no kind. It is the only one whose squares are not a filter over a
+  box, so it is a genuinely new function rather than a fourth predicate.
+- **Templates measure square centres, and the book measures corners and edges.**
+  A burst's centre is a square rather than an intersection, and an emanation
+  starts at the middle of your space rather than its sides. Both are knowing
+  departures; both would need a second coordinate system to fix, and the day a
+  creature occupies more than one square is the day that stops being optional.
+  `smoke.mjs` pins the emanation/burst equality so the change announces itself.
+- **Nothing takes cover behind a template.** `hasLoE` cuts squares out of a
+  shape, so a pillar shadows a cone — but no creature knows that, and no
+  creature avoids standing in one. That is Phase 4.
 - `findPath`'s open set is a `Map` scanned linearly for the lowest `f` —
   quadratic in the node count, and the first thing a larger area finds.
 
@@ -244,7 +254,12 @@ new one.
 **Creatures and AI**
 - `runCreatureTurn()` is: if adjacent, Strike; else Stride toward the nearest
   open square beside the PC. Nothing retreats, shoots, avoids a cone, focuses a
-  wounded PC, or coordinates with anything else.
+  wounded PC, or coordinates with anything else. Measured, now that there is a
+  reason to: over 9,100 sampled wizard decisions an awake construct stood at 5
+  feet or at 25 and beyond, and never at 10, 15 or 20 — a Stride crosses the
+  whole floor in one turn, so every fight in this adventure is a duel at arm's
+  length. That is why a 10-foot emanation had to be worth casting against one
+  creature to be worth casting at all.
 - `checkDisengage()` heals a settled creature to full as anti-cheese. Nothing
   can be worn down across two engagements. Three stat blocks, four placements,
   one boss per area.
@@ -260,7 +275,8 @@ new one.
 - `balance.mjs` reports one aggregate per build. It cannot answer "which fight
   kills people" or "did this change move the Keeper fight specifically." No
   baseline is stored, so a 3-point drift is invisible until it crosses a band
-  edge.
+  edge. It does now fail on a command no build ever casts (Phase 3), which is
+  the narrowest possible version of "did this content get played?"
 - No suite covers `render.js` or `ui.js`; both are DOM-bound and untested.
 - The autopilot brawls everything and never uses the cover a player would, so
   every number it reports is a floor rather than a ceiling.
@@ -545,32 +561,77 @@ content, no version bump. *Model:* **Claude Fable 5.1** — a new pure model lay
 with subtle invariants that every check and damage path inherits, plus a save
 shape that is permanent once written.
 
-## Phase 3 — Templates, and line of effect
+## Phase 3 — Templates, and line of effect — SHIPPED
 
-**The cone is a 90-degree wedge with a comment apologising for it, and
-`render.js` draws a different one from its own copy of the math.**
+**The cone was a 90-degree wedge with a comment apologising for it, and
+`render.js` drew a different one from its own copy of the math.**
 
-The README flags the approximation honestly, which beats pretending. The
-duplicate in `render.js` is the bug in waiting: it re-implements the bearing
-test inline and hardcodes `feet > 15`. Breathe Fire is 15 feet, so preview and
-resolution agree today by coincidence.
+The README flagged the approximation honestly, which beats pretending. The
+duplicate in `render.js` was the bug in waiting: it re-implemented the bearing
+test inline and hardcoded `feet > 15`. Breathe Fire is 15 feet, so preview and
+resolution agreed by coincidence.
 
-- [ ] **`js/templates.js`, pure, with its suite.** `coneSquares(origin, bearing,
-      feet)` implementing the real PF2e template, plus `burstSquares` and
-      `emanationSquares`. Grid squares in, grid squares out.
-- [ ] **One caller each.** `game.js`'s `cone` branch and `render.js`'s aim
-      preview both call it; both inline copies of the trigonometry are deleted,
-      and the hardcoded 15 goes with them.
-- [ ] **Line of effect, distinct from line of sight.** `world.js` grows
-      `hasLoE` — a gate blocks it even when you can see through — and every
-      template filters through it. **`burst` and `emanation`** join `cone` as
-      validated command kinds, one pack command each so they ship exercised.
-- [ ] **The test that pins it.** Assert the cone's square count against the
-      published template at 15, 30 and 60 feet; assert the preview set and the
-      resolution set are identical for a seeded aim; break the hardcoded range
-      on purpose first and watch it fail. Then `balance.mjs` — this moves
-      Breathe Fire's real hit rate, so the Wizard's number should shift and the
-      Fighter's should not.
+- [x] **`js/templates.js`, pure, with its suite.** `coneSquares(origin, target,
+      feet)`, `burstSquares` and `emanationSquares`. Grid squares in, grid
+      squares out; no world, no content, no state, no terrain. The cone is the
+      quarter circle Player Core p.387 names, snapped to one of eight grid
+      directions at the 22.5° octant boundary and cut to range by `feetBetween`
+      — 11 squares at 15 feet orthogonally, 34 at 30, 116 at 60, and one more
+      than each of those on the diagonal, because 5/10/5 makes the grid
+      anisotropic and a shape that came out even both ways would have stopped
+      measuring in feet.
+- [x] **One caller each.** `game.templateSquares(cmd, target)` is the only
+      caller of any of the three, and `game.js`'s area branch and `render.js`'s
+      aim preview both read it. Both inline copies of the trigonometry are
+      gone, the hardcoded 15 with them, and `smoke.mjs` fails on a `Math.atan2`
+      in either file — the same drift guard the two funnels have.
+- [x] **Line of effect, distinct from line of sight.** `blocksSight(x, y)` takes
+      no gate argument at all now; `blocksEffect(x, y, gateOpen)` is the one
+      that stops at a shut gate, and `hasLoE` is what every template and every
+      `unerring` command filters through. `world.reachableFrom` is the only
+      place a shape meets terrain. `burst` and `emanation` are validated kinds
+      with one command each — Ember Burst and Warding Pulse — and an area
+      command that is not a spell throws at load, because the spell DC is the
+      only save DC the engine has.
+- [x] **The test that pins it.** 879 assertions, up from 787. The cone's square
+      set is written out square by square at 15 feet and counted by hand at 30
+      and 60; the preview set and the resolution set are the same call, so the
+      assertion is that exactly the creatures standing in the previewed squares
+      rolled a save. Sixteen guard-rails were broken on purpose from a green
+      baseline and fifteen failed at the assertion whose comment claims them.
+      The sixteenth crashed instead of failing and was rewritten — same defect
+      as last phase's `until.when`, and worth writing down twice.
+
+**What the measurement found, which the plan did not predict.** The two new
+commands validated at load, appeared in the command list, and were cast zero
+times: the wizard's win rate came back bit-identical to the build before them,
+to every decimal. That is the third time in two phases this project has shipped
+content nothing reaches. `balance.mjs` counts casts per command now and exits
+non-zero when one reads zero (#151). Fixing it took a policy that weighs the
+burst against the cone rather than checking them in a fixed order, and a
+measured answer to what an emanation is *for* in an adventure whose fights are
+all duels: sampling 9,100 wizard decisions, an awake construct stood at 5 feet
+or at 25 and beyond, and never once at 10, 15 or 20.
+
+**And getting them to fire displaced Shield, which took Shield Block with it**
+— 4,143 casts and 0.71 reactions a run became 0 and 0.00, caught by the same
+guard on the same run. The fix is a policy that was too narrow before either
+spell existed: the last action of a melee turn went to the disc only at a
+multiple attack penalty of 8 or worse, and a level-1 wizard with a construct in
+reach wants the disc up every round whatever her MAP is.
+
+Win rates over 2,000 seeded runs per build, with the two causes separated:
+**60.8%** before the phase, **73.8%** from the widened disc rule alone on the
+old kit, **82.8%** shipped. The fighter is **80.8%** at every row, which is the
+split the plan predicted; 13 of the wizard's 22 points are the harness having
+played her badly rather than anything this phase built. Warding Pulse costs one
+action because a three-action turn holds Strike, ring and disc and a two-action
+ring does not, and it rolls a flat 1d4 because 1d4+2 measures 86.7% against a
+band ceiling of 90%.
+
+**The two builds are within a point of each other for the first time, and it is
+the ceiling that is close now rather than the floor.** That is the next Absalom
+row's first problem, not this one's.
 
 *Leans on:* `world.js`, `game.js`'s `useCommand`, `render.js`'s aim preview,
 `content.js`'s validator. *Save:* none. *Model:* **Claude Fable 5.1** — grid
@@ -604,8 +665,12 @@ rewritten when they arrive.
       the harness rather than by feel.
 - [ ] **The test that pins it.** A seeded encounter where a `skirmisher`
       demonstrably steps away rather than trading; the Keeper's kit firing at
-      least once across a batch. Then `balance.mjs` at 2000 on both builds — the
-      Wizard is the closer of the two to the floor at 53.6%.
+      least once across a batch. Then `balance.mjs` at 2000 on both builds.
+      **The number this line used to quote
+      is two phases stale and its direction has reversed:** after Phase 3 the
+      Wizard is at 82.8% and the Fighter at 80.8%, so the pair are within a
+      point of each other and it is the ceiling at 90% that is close, not the
+      floor at 45%.
 
 *Leans on:* phases 1–3, `game.js`'s `runCreatureTurn`, `content.js`'s creature
 validator, `test/balance.mjs`. *Save:* none — AI is a content field, not run

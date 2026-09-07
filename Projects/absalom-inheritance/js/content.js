@@ -57,7 +57,17 @@ export const REACTION_EFFECTS = Object.freeze([
   "reduce",
 ]);
 
-const KINDS = ["attack", "self-buff", "self-heal", "cone", "unerring", "consume", "reaction"];
+const KINDS = ["attack", "self-buff", "self-heal", "cone", "burst", "emanation", "unerring", "consume", "reaction"];
+
+/**
+ * The kinds that put a shape on the board rather than picking a creature.
+ *
+ * All three resolve the same way — everything standing in the template rolls
+ * one basic save against one DC — and they differ only in where the shape
+ * starts: a cone from you toward a click, a burst around a click you have
+ * range and line of effect to, an emanation around you.
+ */
+export const AREA_KINDS = Object.freeze(["cone", "burst", "emanation"]);
 
 /**
  * When something a pack writes leaves a condition behind.
@@ -195,7 +205,8 @@ export function loadPack(raw) {
       spendSlot: !!c.spendSlot, spendFocus: !!c.spendFocus,
       consumes: c.consumes || null,
       attackBonus: c.attackBonus, acBonus: c.acBonus,
-      coneFeet: c.coneFeet, rangeFeet: c.rangeFeet,
+      coneFeet: c.coneFeet, burstFeet: c.burstFeet, emanationFeet: c.emanationFeet,
+      rangeFeet: c.rangeFeet,
       save: c.save || null, damageType: c.damageType || "damage",
       // Which ability rolls this attack, and whether casting it is Casting a
       // Spell. Both are flat defaults on every other kind rather than absent,
@@ -219,6 +230,17 @@ export function loadPack(raw) {
       `content: attack command "${c.id}" needs attackBonus and damage`);
     if (out.kind === "cone") need(out.coneFeet && out.damage && out.save,
       `content: cone command "${c.id}" needs coneFeet, damage and save`);
+    if (out.kind === "burst") need(out.rangeFeet && out.burstFeet && out.damage && out.save,
+      `content: burst command "${c.id}" needs rangeFeet, burstFeet, damage and save`);
+    if (out.kind === "emanation") need(out.emanationFeet && out.damage && out.save,
+      `content: emanation command "${c.id}" needs emanationFeet, damage and save`);
+    // Every area effect rolls its save against the heir's spell DC, and that
+    // is the only DC the engine has for one. A pack that wrote an area command
+    // that is not a spell would get a DC quietly borrowed from a stat it does
+    // not have — and stupefied, which moves that DC, would move it too. Refuse
+    // at load rather than ship the borrowed number.
+    if (AREA_KINDS.includes(out.kind)) need(out.spell,
+      `content: area command "${c.id}" must be a spell — its save rolls against the heir's spell DC`);
     if (out.save) need(SAVE_STATS.includes(out.save),
       `content: command "${c.id}" names unknown save "${out.save}" (want ${SAVE_STATS.join(", ")})`);
     if (out.kind === "unerring") need(out.rangeFeet && out.damage,
