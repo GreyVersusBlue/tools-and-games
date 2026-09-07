@@ -13,7 +13,7 @@
 import { parseDamage } from "./rules.js";
 import { TILE_ID_BY_NAME, TILE_NAMES } from "./world.js";
 import {
-  CONDITION_IDS, CONDITION_TRAITS, ATTACK_ABILITIES, SAVE_STATS, isCondition,
+  CONDITION_IDS, CONDITION_TRAITS, ATTACK_ABILITIES, SAVE_STATS, isCondition, defOf,
 } from "./conditions.js";
 import { AI_KINDS } from "./ai.js";
 
@@ -53,7 +53,18 @@ export const REACTION_EFFECTS = Object.freeze([
   "reduce",
 ]);
 
-const KINDS = ["attack", "self-buff", "self-heal", "cone", "burst", "emanation", "unerring", "consume", "reaction"];
+const KINDS = ["attack", "buff", "debuff", "self-heal", "cone", "burst", "emanation", "unerring", "consume", "reaction"];
+
+/**
+ * The kinds whose save needs a DC from somewhere.
+ *
+ * The three area shapes, and now `debuff` — the kind whose entire effect is a
+ * condition on something that failed a save. It reads its DC by exactly the
+ * same rule and for exactly the same reason: a spell rolls against the heir's
+ * spell DC, so stupefied moves it, and anything else writes its own number
+ * down.
+ */
+const DC_KINDS = Object.freeze(["cone", "burst", "emanation", "debuff"]);
 
 /**
  * The kinds that put a shape on the board rather than picking a creature.
@@ -68,15 +79,19 @@ export const AREA_KINDS = Object.freeze(["cone", "burst", "emanation"]);
 /**
  * When something a pack writes leaves a condition behind.
  *
- * "hit" and "crit" read the attacker's own degree of success; "crit-fail"
- * reads the *target's*, which is the shape a basic save wants — a creature
- * that critically fails its Reflex save against a cone catches fire, and the
- * roll that decides it is the creature's, not the caster's. One closed list,
+ * "hit" and "crit" read the attacker's own degree of success; "fail" and
+ * "crit-fail" read the *target's*, which is the shape a save wants — a
+ * creature that critically fails its Reflex save against a cone catches fire,
+ * and the roll that decides it is the creature's, not the caster's. "fail" is
+ * "failure or worse", the mirror of what "hit" means on the other side, and it
+ * is here because a `debuff` is a command with nothing in it but the condition:
+ * one that only fired on a critical failure would be a build built on a
+ * one-in-five. One closed list,
  * the way the trigger names and the tile names are closed, because an
  * `inflicts` naming "critfail" would sit in the pack looking correct and
  * never fire.
  */
-export const INFLICT_ON = Object.freeze(["hit", "crit", "crit-fail"]);
+export const INFLICT_ON = Object.freeze(["hit", "crit", "fail", "crit-fail"]);
 
 /**
  * Validate an `inflicts` block off a command or a creature.
@@ -110,6 +125,63 @@ function readInflicts(raw, where) {
     return Object.freeze({ condition: one.condition, value, on: one.on });
   });
   return Object.freeze(out);
+}
+
+/**
+ * Validate an `applies` block — the condition a `buff` puts up.
+ *
+ * The mirror of `inflicts`, minus the `on`: a buff rolls nothing, so there is
+ * no degree to read and no way for it to miss. It exists because the branch it
+ * replaces wrote `applyCondition("pc", "shielded", cmd.acBonus || 1, ...)` in
+ * game.js — one condition id, one duration and one default, all three of them
+ * hardcoded in the engine for a thing that is content. A pack could ship a
+ * second buff and get the disc.
+ *
+ * `helpful` is checked because that is the whole of what makes this kind
+ * different from `debuff`, and the catalogue already knows which conditions
+ * are: a "buff" that leaves its caster clumsy would validate, fire, log, and
+ * read as a renderer bug.
+ */
+function readApplies(raw, where) {
+  if (raw === undefined || raw === null) return null;
+  need(raw && typeof raw === "object" && !Array.isArray(raw), `content: ${where} applies must be an object`);
+  need(isCondition(raw.condition),
+    `content: ${where} applies names unknown condition "${raw.condition}" ` +
+    `(known: ${CONDITION_IDS.join(", ")})`);
+  need(defOf(raw.condition).helpful,
+    `content: ${where} applies "${raw.condition}", which the catalogue does not call helpful — ` +
+    `a buff is the kind that helps the heir, and an unhelpful one here is silence a player would read as a bug`);
+  const value = raw.value ?? 1;
+  need(Number.isInteger(value) && value >= 1,
+    `content: ${where} applies value must be an integer of 1 or more, got ${raw.value}`);
+  return Object.freeze({ condition: raw.condition, value });
+}
+
+/**
+ * Validate a `precision` block — extra damage an attack deals only while its
+ * target is already in some state.
+ *
+ * A rider on `attack` rather than a kind of its own, because it changes one
+ * damage roll and nothing else about how the swing resolves. `when` names a
+ * condition rather than meaning off-guard by definition: PF2e's own precision
+ * damage is gated on off-guard, and writing that id into the engine would be
+ * the same hardcoding the `applies` block above exists to undo.
+ *
+ * It has to be unhelpful for the same reason a debuff's does — a rider keyed
+ * on the heir's own disc would fire on nothing this adventure ever produces.
+ */
+function readPrecision(raw, where) {
+  if (raw === undefined || raw === null) return null;
+  need(raw && typeof raw === "object" && !Array.isArray(raw), `content: ${where} precision must be an object`);
+  need(typeof raw.damage === "string" && raw.damage,
+    `content: ${where} precision needs a damage expression`);
+  need(isCondition(raw.when),
+    `content: ${where} precision names unknown condition "${raw.when}" ` +
+    `(known: ${CONDITION_IDS.join(", ")})`);
+  need(!defOf(raw.when).helpful,
+    `content: ${where} precision fires on "${raw.when}", which the catalogue calls helpful — ` +
+    `nothing in this engine puts a helpful condition on a foe, so the rider would never fire`);
+  return Object.freeze({ damage: Object.freeze(parseDamage(raw.damage)), when: raw.when });
 }
 
 /**
@@ -283,7 +355,12 @@ export function loadPack(raw) {
       target: c.target || null, agile: !!c.agile,
       spendSlot: !!c.spendSlot, spendFocus: !!c.spendFocus,
       consumes: c.consumes || null,
-      attackBonus: c.attackBonus, acBonus: c.acBonus,
+      attackBonus: c.attackBonus,
+      // What this command puts up on the heir, and what extra damage it rolls
+      // against a target already in some state. Null on every other kind
+      // rather than absent, so a consumer never has to ask first.
+      applies: readApplies(c.applies, `command "${c.id}"`),
+      precision: readPrecision(c.precision, `command "${c.id}"`),
       coneFeet: c.coneFeet, burstFeet: c.burstFeet, emanationFeet: c.emanationFeet,
       rangeFeet: c.rangeFeet,
       save: c.save || null, damageType: c.damageType || "damage",
@@ -325,12 +402,36 @@ export function loadPack(raw) {
     // heir's DC, would move a construct's too. A command with *both* is the
     // same silence from the other side: two DCs and no rule saying which one
     // a given caster reads. Refuse either at load.
-    if (AREA_KINDS.includes(out.kind)) {
+    if (DC_KINDS.includes(out.kind)) {
       need(out.spell || out.dc !== null,
-        `content: area command "${c.id}" must be a spell (its save rolls against the heir's spell DC) or carry its own dc`);
+        `content: ${out.kind} command "${c.id}" must be a spell (its save rolls against the heir's spell DC) or carry its own dc`);
       need(!(out.spell && out.dc !== null),
-        `content: area command "${c.id}" is a spell and also writes a dc — it cannot be both`);
+        `content: ${out.kind} command "${c.id}" is a spell and also writes a dc — it cannot be both`);
     }
+    if (out.kind === "buff") {
+      need(out.applies,
+        `content: buff command "${c.id}" needs an applies block naming the condition it puts up`);
+    } else {
+      need(!out.applies,
+        `content: command "${c.id}" is a ${out.kind} and writes an applies block — only a buff puts a condition up on the heir`);
+    }
+    if (out.kind === "debuff") {
+      need(out.rangeFeet && out.save && out.inflicts,
+        `content: debuff command "${c.id}" needs rangeFeet, save and inflicts`);
+      // The line between this kind and an attack with a rider. A debuff that
+      // also rolled damage would be an attack command spelled a second way,
+      // and the engine would then have two answers to "does a failed save
+      // hurt" — which is how the multiple attack penalty comes to apply to one
+      // of them and not the other.
+      need(!out.damage,
+        `content: debuff command "${c.id}" carries damage — a debuff's whole effect is the condition; a command that does both is an attack or an area with an inflicts rider`);
+      for (const spec of out.inflicts) {
+        need(!defOf(spec.condition).helpful,
+          `content: debuff command "${c.id}" inflicts "${spec.condition}", which the catalogue calls helpful — a debuff that helps its target is silence`);
+      }
+    }
+    need(!out.precision || out.kind === "attack",
+      `content: command "${c.id}" is a ${out.kind} and carries precision damage — the rider is on the weapon swing, and only "attack" rolls one`);
     if (out.save) need(SAVE_STATS.includes(out.save),
       `content: command "${c.id}" names unknown save "${out.save}" (want ${SAVE_STATS.join(", ")})`);
     if (out.kind === "unerring") need(out.rangeFeet && out.damage,
@@ -381,8 +482,10 @@ export function loadPack(raw) {
   // engine's whole history before this) working without every field present.
   need(Array.isArray(raw.pcOptions) && raw.pcOptions.length,
     "content: pcOptions must be a non-empty array");
+  const rawInventoryByBuild = {};
   const pcOptions = raw.pcOptions.map(p => {
     need(p.id, "content: every pcOptions entry needs an id");
+    if (p.startingInventory !== undefined) rawInventoryByBuild[p.id] = p.startingInventory;
     need(typeof p.hp === "number" && p.hp > 0, `content: pcOptions "${p.id}".hp must be a positive number`);
     need(typeof p.ac === "number", `content: pcOptions "${p.id}".ac must be a number`);
     need(p.saves && ["fort", "ref", "will"].every(k => typeof p.saves[k] === "number"),
@@ -503,10 +606,23 @@ export function loadPack(raw) {
       `content: item "${it.id}" bulk must be a number or "L"`);
     items[it.id] = Object.freeze({ id: it.id, name: it.name, glyph: it.glyph || "▪", bulk: it.bulk });
   }
-  const startingInventory = (raw.startingInventory || []).map(id => {
-    need(items[id], `content: startingInventory names unknown item "${id}"`);
+  const readInventory = (list, where) => Object.freeze((list || []).map(id => {
+    need(items[id], `content: ${where} names unknown item "${id}"`);
     return id;
-  });
+  }));
+  const startingInventory = readInventory(raw.startingInventory, "startingInventory");
+  // A satchel per build, layered over the pack's. Round three skipped this
+  // because two builds were happy sharing one; four are not, and the Fighter
+  // has been carrying the Wizard's spellbook down four rooms since the day
+  // character creation shipped. Validated here rather than in the pcOptions
+  // pass above because `items` is parsed after it, and the whole value of the
+  // check is that it names the item that is not there.
+  const perBuildInventory = {};
+  for (const [buildId, list] of Object.entries(rawInventoryByBuild)) {
+    need(Array.isArray(list),
+      `content: pcOptions "${buildId}".startingInventory must be an array`);
+    perBuildInventory[buildId] = readInventory(list, `pcOptions "${buildId}".startingInventory`);
+  }
 
   // ---- lore -----------------------------------------------------------
   const lore = {};
@@ -661,6 +777,10 @@ export function loadPack(raw) {
     // does not stop having Reactive Strike because the Wizard was picked.
     allCommandById: Object.freeze({ ...commandById }),
     startingInventory: Object.freeze(startingInventory),
+    // Keyed by build id, and only for the builds that name one. `selectPc`
+    // is what turns this into the single `startingInventory` game.js reads,
+    // the same way it turns `pcOptions` into `pc`.
+    startingInventoryByBuild: Object.freeze(perBuildInventory),
     inventorySlots: raw.inventorySlots || 8,
     bulkLimit: raw.bulkLimit ?? 5,
     bulkLimitNote: raw.bulkLimitNote || "",
@@ -702,6 +822,11 @@ export function selectPc(content, buildId) {
     pc,
     commands: Object.freeze(commands),
     commandById: Object.freeze(Object.fromEntries(commands.map(c => [c.id, c]))),
+    // The satchel resolves here for the same reason `pc` does: game.js reads
+    // one `startingInventory` and has never known there was more than one.
+    // A build that names none gets the pack's, which is what keeps every pack
+    // written before this feature working unchanged.
+    startingInventory: content.startingInventoryByBuild[pc.id] || content.startingInventory,
   });
 }
 

@@ -342,7 +342,14 @@ export function freshRun(content, buildId) {
     loreRead: [],
     gateOpen: false,
     fog: {},
-    inventory: content.startingInventory.map((item, slot) => ({ item, slot })),
+    // The chosen build's satchel, not the pack's. This function is handed the
+    // *unresolved* pack — `main.js` picks a build, calls this, and only then
+    // runs `selectPc` on the state it hands back — so the per-build lookup has
+    // to happen here as well. game.js reading `content.startingInventory` was
+    // the only path a unit test could see, and it went on passing while the
+    // page opened every build's bag on the same longsword and spellbook.
+    inventory: (content.startingInventoryByBuild[build.id] || content.startingInventory)
+      .map((item, slot) => ({ item, slot })),
     log: [],
     stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 },
     outcome: null,

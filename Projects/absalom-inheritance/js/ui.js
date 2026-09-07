@@ -200,7 +200,11 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     const pc = game.run.pc, max = content.pc.hp;
     $("hp-label").textContent = `${pc.hp} / ${max}`;
     $("hp-bar").style.width = Math.max(0, 100 * pc.hp / max) + "%";
-    $("ac-val").textContent = game.pcAC() + (game.shielded ? " ▲" : "");
+    // Any helpful condition, not the disc by name: the ▲ was a readout that
+    // would have gone quiet for the second buff this pack grew, on a number
+    // that had visibly changed.
+    $("ac-val").textContent = game.pcAC()
+      + (game.conditionsOf("pc").some(c => CONDITIONS[c.id]?.helpful) ? " ▲" : "");
     renderConditions();
 
     const inCombat = game.mode === "combat";
@@ -393,7 +397,7 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
 
     // Commands that need no target fire immediately. An emanation is one of
     // them: its centre is the heir, so there is no square to pick.
-    if (["self-buff", "self-heal", "consume", "emanation"].includes(cmd.kind)) {
+    if (["buff", "self-heal", "consume", "emanation"].includes(cmd.kind)) {
       disarm();
       resolve(game.useCommand(id));
       return;
@@ -748,5 +752,20 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     onMessage: text => { $("save-msg").textContent = text; announce(text); },
   });
 
-  return { refresh, buildInventory, replayLog, showEnd, announce };
+  /**
+   * Play back whatever the creatures owe, once the page has finished booting.
+   *
+   * A run reloaded on a creature's turn used to sit frozen: `pumpEnemies` is
+   * started by an action's `resolve()` and by a walk, and a boot is neither.
+   * The autosave writes on every action and flushes on `pagehide`, so a tab
+   * closed while a sentinel was mid-turn came back to a board that would not
+   * move until the player pressed a key it then refused. Found by
+   * test/browser.mjs, which seeded exactly that save and waited twenty seconds
+   * for a turn that was never coming.
+   */
+  function resume() {
+    if (game.mode === "combat" && !game.isPCTurn()) pumpEnemies(null);
+  }
+
+  return { refresh, buildInventory, replayLog, showEnd, announce, resume };
 }

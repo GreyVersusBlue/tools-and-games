@@ -119,6 +119,10 @@ const boot = async () => {
   ui.refresh();
   ui.buildInventory();
   renderer.start();
+  // After `begin()`, because that is what rolls initiative: a save reopened
+  // mid-encounter can land on a creature's turn, and nothing else on this page
+  // would ever start it.
+  ui.resume();
 
   if (game.mode === "over") ui.showEnd();
   if (slot.memoryOnly) {

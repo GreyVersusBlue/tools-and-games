@@ -61,6 +61,32 @@ function findUsable(game, kind) {
   return null;
 }
 
+/** Every command in this build that heals the heir and can be used right now. */
+function healers(game) {
+  return game.content.commands.filter(cmd =>
+    (cmd.kind === "consume" || cmd.kind === "self-heal") && cmd.healing && !game.commandBlocked(cmd.id));
+}
+
+/** The mean of a parsed damage spec — `{ n, s, plus }`, as rules.js writes it. */
+function meanDamage(spec) {
+  return spec.n * (spec.s + 1) / 2 + spec.plus;
+}
+
+/**
+ * This build's buff, if it has one and it is not already standing.
+ *
+ * `game.shielded` used to answer the second half, and it names the Shield
+ * cantrip's own condition: the day a second build shipped a second buff, the
+ * policy would have recast it every single turn and nothing about the line
+ * would have looked wrong. What the condition is comes off the command's own
+ * `applies` block, so no build is named here either.
+ */
+function buffWorthCasting(game) {
+  const cmd = findUsable(game, "buff");
+  if (!cmd) return null;
+  return game.conditionsOf("pc").some(c => c.id === cmd.applies.condition) ? null : cmd;
+}
+
 /**
  * How an area command would land, best aim first.
  *
@@ -124,11 +150,16 @@ function decide(game, use) {
   const canReach = c => game.world.hasLoE(pc.x, pc.y, c.x, c.y, game.run.gateOpen);
   const actions = game.actionsLeft;
 
-  // Bleeding out beats everything. "potion" is universal across builds — the
-  // one command id every pcOptions entry lists — since it is the adventure's
-  // only externally-bought resource rather than a class feature.
-  if (pc.hp <= maxHp * 0.4 && game.potionCount() && !game.commandBlocked("potion")) {
-    return use("potion");
+  // Bleeding out beats everything, and what it drinks or casts is whichever
+  // of this build's healing commands puts the most back. It used to name
+  // "potion" — the one command id every build listed — and a Cleric whose
+  // rank-1 Heal returns twelve and a half points would have drunk a potion
+  // for four and a half because the policy had learned a word. The two kinds
+  // that heal the heir are `consume` and `self-heal`, and `commandBlocked`
+  // already refuses the one with no potion left and the one with no slot.
+  if (pc.hp <= maxHp * 0.4) {
+    const heal = healers(game).sort((a, b) => meanDamage(b.healing) - meanDamage(a.healing))[0];
+    if (heal) return use(heal.id);
   }
 
   // On fire, with something in the kit that puts it out. Rousing Splash heals
@@ -185,7 +216,7 @@ function decide(game, use) {
     // than the disc, and a three-action turn holds all three: Strike, ring,
     // disc. Without this the pulse takes the last action too and Shield goes
     // back to being a thing the policy owns and does not use.
-    const keepLastForDisc = actions <= pulse.cost && !!findUsable(game, "self-buff") && !game.shielded;
+    const keepLastForDisc = actions <= pulse.cost && !!buffWorthCasting(game);
     if (!keepLastForDisc && (ring.caught >= 2 || (ring.caught >= 1 && swungAlready))) return use(pulse.id);
   }
 
@@ -214,8 +245,18 @@ function decide(game, use) {
     // in silence by a change that read as an improvement because the win rate
     // went up. balance.mjs is what said so, and that is the argument for a
     // never-cast line that exits non-zero rather than printing a note.
-    const buff = findUsable(game, "self-buff");
-    if (actions === 1 && buff && !game.shielded) return use(buff.id);
+    const buff = buffWorthCasting(game);
+    if (actions === 1 && buff) return use(buff.id);
+    // A debuff before the swings that profit from it, never after: one action
+    // spent making the target wrong is worth more than the swing it displaces
+    // only while there are swings left to take. Read off `inflicts` rather
+    // than the id, so a build whose debuff leaves something other than
+    // off-guard behind gets the same rule.
+    const debuff = findUsable(game, "debuff");
+    if (debuff && actions > debuff.cost
+        && debuff.inflicts.some(spec => !game.conditionsOf(adj).some(c => c.id === spec.condition))) {
+      return use(debuff.id, adj.key);
+    }
     return use(attack.id, adj.key);
   }
 
@@ -240,7 +281,7 @@ function decide(game, use) {
   }
 
   // Boxed in or out of reach: brace, if this build has anything to brace with.
-  const brace = findUsable(game, "self-buff");
+  const brace = buffWorthCasting(game);
   if (brace) return use(brace.id);
   return false;
 }

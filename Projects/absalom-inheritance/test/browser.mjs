@@ -119,6 +119,24 @@ const names = await page.$$eval("#create-grid .pc-card h3", ns => ns.map(n => n.
 const fighterIdx = PACK.pcOptions.findIndex(p => p.id === "fighter");
 eq("the fighter's card is where the pack puts her", names[fighterIdx], PACK.pcOptions[fighterIdx].name);
 
+// Four cards, on a phone. `grid-template-columns: repeat(auto-fit,
+// minmax(240px, 1fr))` stacks by arithmetic rather than by a media query, so
+// the thing worth asserting is the arithmetic's answer at the narrowest width
+// this site designs for — and the way a card grid goes wrong is two columns of
+// 170px, not zero. Same class of bug as #132: the shelf that fit until it grew
+// a fourth thing.
+//
+// Broken on purpose by dropping minmax's floor to 100px, which put two columns
+// on a 375px screen and 24 px of blurb per line.
+await page.setViewportSize({ width: 375, height: 780 });
+const lefts = await page.$$eval("#create-grid .pc-card", ns => ns.map(n => n.getBoundingClientRect().left));
+eq("four cards stack to one column at 375px", new Set(lefts.map(Math.round)).size, 1);
+const cardW = await page.$$eval("#create-grid .pc-card", ns => ns.map(n => Math.round(n.getBoundingClientRect().width)));
+ok("and each is the full width of the column", cardW.every(w => w > 240), cardW.join(", "));
+ok("with nothing running off the side of the page",
+  await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+await page.setViewportSize({ width: 1280, height: 800 });
+
 await page.click(`#create-grid .pc-card:nth-of-type(${fighterIdx + 1}) .pc-begin`);
 await page.waitForFunction(() => !!window.__absalom, null, { timeout: 20000 });
 eq("beginning as Kessa boots the fighter", await page.evaluate(() => __absalom.content.pc.id), "fighter");
@@ -300,6 +318,117 @@ eq("an unknown ?pack= falls back to the manifest's default",
   bootedAnyway ? await page.evaluate(() => __absalom.pack.pack.id) : "(never booted)", MANIFEST.default);
 eq("and the vault run that was there all along comes back with it",
   bootedAnyway ? await page.evaluate(() => __absalom.game.run.areaId) : "(never booted)", "undercroft");
+
+/* ========================================================================= *
+ * The two new heirs, and the two things about them a player can see          *
+ * ========================================================================= */
+group("a satchel and a ward per build");
+
+// A clean slate, so the picker comes up rather than the run that has been
+// accumulating through this file. Last group in the file for exactly that
+// reason: everything above needs that save to still be there.
+await page.goto(URL_, { waitUntil: "load" });
+await page.evaluate(() => localStorage.clear());
+// The page rolls its dice on `Math.random`, not on a seed — main.js hands
+// createGame the real one — so a fight here is a different fight every run,
+// and the group below wants to be about the ward rather than about a d20.
+// Pinned to one stream before boot, which is the only place a page's own
+// Math.random can be replaced from outside it.
+await page.addInitScript(() => {
+  let s = 20260907;
+  Math.random = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
+});
+await boot();
+await page.waitForSelector("#create-veil.open .pc-card");
+const clericIdx = PACK.pcOptions.findIndex(p => p.id === "cleric");
+await page.click(`#create-grid .pc-card:nth-of-type(${clericIdx + 1}) .pc-begin`);
+await page.waitForFunction(() => !!window.__absalom, null, { timeout: 20000 });
+eq("beginning as Isbeth boots the cleric", await page.evaluate(() => __absalom.content.pc.id), "cleric");
+
+// The satchel is per build now, and the inventory panel is where a player
+// finds it out. Broken on purpose by dropping selectPc's per-build lookup:
+// the Cleric opened her bag on a longsword and a spellbook.
+await page.click("#btn-inv");
+await page.waitForSelector("#inv-veil.open .inv-item");
+const carried = await page.$$eval("#inv-grid .inv-item .iname", ns => ns.map(n => n.textContent));
+ok("the Cleric's bag holds her own mace", carried.some(n => /Mace/.test(n)), carried.join(", "));
+ok("and the reliquary font", carried.some(n => /Font/.test(n)));
+ok("and no spellbook, which is the thing every build used to carry",
+  !carried.some(n => /Spellbook/.test(n)), carried.join(", "));
+await page.click('#inv-veil [data-close="inv-veil"]');
+
+// The second buff, on the surface. The AC readout's ▲ and the ring the
+// renderer draws were both `game.shielded` — the Shield cantrip's own
+// condition — until this phase, so a Cleric who has never held a shield would
+// have raised her AC on screen with nothing saying why.
+//
+// Broken on purpose by putting `game.shielded` back in ui.js and render.js:
+// the readout dropped its ▲ and the ring pixels went to zero, with the AC
+// number itself still visibly moving.
+const sentinel = PACK.areas.vault.rows.findIndex(r => r.includes("e"));
+await seedSave(`
+  st.pc.x = arg[0]; st.pc.y = arg[1];
+  st.creatures[0].awake = true;
+  st.creatures[0].x = arg[0] + 1; st.creatures[0].y = arg[1];
+`, [PACK.areas.vault.rows[sentinel].indexOf("e") - 1, sentinel]);
+await page.waitForFunction(() => __absalom.game.mode === "combat", null, { timeout: 10000 });
+// Initiative is `Math.random` on the page, not a seed, so the sentinel wins it
+// about half the time and the renderer plays its turn back before the board
+// takes a keypress. Waiting for the heir's own turn is the difference between
+// this file passing and this file passing every other run.
+// Whoever won initiative, the heir gets a turn: `ui.resume()` is what plays
+// the creatures' back after a boot, and without it a save reopened on a
+// sentinel's turn sits frozen forever. Reported as a failure with the board's
+// own state rather than left to time out into a stack trace, because "the
+// board never moved" is the thing under test here and a trace says nothing.
+const hersToTake = await page.waitForFunction(
+  () => __absalom.game.isPCTurn() && __absalom.game.actionsLeft > 1,
+  null, { timeout: 20000 }).then(() => true, () => false);
+ok("the board plays the creatures' turns back and reaches the heir's", hersToTake,
+  hersToTake ? "" : JSON.stringify(await page.evaluate(() => ({
+    mode: __absalom.game.mode, pcTurn: __absalom.game.isPCTurn(),
+    actions: __absalom.game.actionsLeft, hp: __absalom.game.run.pc.hp,
+  }))));
+
+// The ring is stroked rgba(127,169,212,.85) and antialiased over whatever it
+// crosses, so no two of its pixels are the same colour and an exact match
+// counts nothing. What is countable is the *difference* the ward makes to one
+// board: the same square, the same zoom, one condition apart. 94 blue-ish
+// pixels are on this board either way — that number on its own says nothing,
+// which is why this reads the delta and not the total (#147).
+const blueish = () => page.evaluate(() => {
+  const c = document.getElementById("game");
+  const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+  let n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 2] > d[i] + 30 && d[i + 2] > 120 && d[i + 1] > d[i]) n++;
+  }
+  return n;
+});
+// Everything below reads a board that has to be hers to act on. Skipped
+// rather than crashed when it is not: a group that dies here reports nothing
+// about the ward, which is what it was written to check.
+if (hersToTake) {
+const acBefore = (await page.textContent("#ac-val")).trim();
+const ringBefore = await blueish();
+const litanyKey = String(await page.evaluate(() => __absalom.content.commands.findIndex(c => c.kind === "buff") + 1));
+await page.keyboard.press(litanyKey);
+const acAfter = (await page.textContent("#ac-val")).trim();
+eq("with the ward on the sheet, not the disc",
+  await page.evaluate(() => __absalom.game.conditionsOf("pc")[0].id), "warded");
+ok("the litany moves the AC number", acAfter !== acBefore, `${acBefore} → ${acAfter}`);
+// The one that catches the regression: with `game.shielded` back in ui.js the
+// number above still visibly climbs from 16 to 17 and only the marker goes
+// quiet, which is worse than either — a bonus the player can see in the
+// arithmetic and cannot see the source of.
+ok("and marks it as a bonus that is standing", acAfter.includes("▲"), JSON.stringify(acAfter));
+// Two frames, because the board draws on requestAnimationFrame and the
+// keypress only changes the state it draws from.
+await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+const ringAfter = await blueish();
+ok("and draws a ring around the heir who has never held a shield",
+  ringAfter - ringBefore > 20, `${ringBefore} px → ${ringAfter} px`);
+}
 
 group("the whole run");
 ok("no page errors, start to finish", errors.length === 0, errors.slice(0, 5).join(" | "));

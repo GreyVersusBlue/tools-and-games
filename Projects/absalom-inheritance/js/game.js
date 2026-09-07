@@ -322,9 +322,12 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * A command or a creature's attack that leaves something behind.
    *
    * `deg` is the degree the *roller* got, which is the attacker for "hit" and
-   * "crit" and the target for "crit-fail" — an attack that lands and a save
-   * that is critically failed are the two shapes a pack can ask for, and each
+   * "crit" and the target for "fail" and "crit-fail" — an attack that lands
+   * and a save that is failed are the two shapes a pack can ask for, and each
    * reads from the roll that already happened rather than a second one.
+   * "fail" is failure or worse, so a critical failure fires it too: a rider
+   * that stopped applying because the save went from bad to worse would be
+   * the one bug in this funnel nobody would look for.
    */
   function applyInflict(specs, target, deg) {
     if (!specs || !specs.length) return false;
@@ -334,7 +337,8 @@ export function createGame({ content, rng = Math.random, state = null }) {
     for (const spec of specs) {
       const fires = spec.on === "crit" ? deg === DEG.CRIT_SUCC
         : spec.on === "hit" ? deg >= DEG.SUCC
-          : deg === DEG.CRIT_FAIL;
+          : spec.on === "fail" ? deg <= DEG.FAIL
+            : deg === DEG.CRIT_FAIL;
       if (!fires) continue;
       // The duration comes off the catalogue rather than the pack. "Off-guard
       // until the start of your next turn" is part of what off-guard *is* in
@@ -1547,6 +1551,19 @@ export function createGame({ content, rng = Math.random, state = null }) {
         const dmg = damageFrom("pc", cmd.damage, "weapon");
         let total = dmg.total, math = dmg.math;
         if (r.deg === DEG.CRIT_SUCC) { total *= 2; math += ` ×2 (crit) = ${total}`; }
+        // Precision damage, if the pack put a rider on this weapon and the
+        // target is in the state it names. Doubled by a critical hit, because
+        // PF2e doubles the whole damage roll and precision is part of it, and
+        // rolled through the same funnel under its own source: enfeebled is a
+        // penalty to *the* melee damage roll and the line above has already
+        // taken it, so a second "weapon" roll here would charge one build's
+        // swing twice for one condition.
+        if (cmd.precision && hasCondition(bagOf(c), cmd.precision.when)) {
+          const p = damageFrom("pc", cmd.precision.damage, "precision");
+          const extra = r.deg === DEG.CRIT_SUCC ? p.total * 2 : p.total;
+          total += extra;
+          math += `  +${extra} precision (${p.math}${r.deg === DEG.CRIT_SUCC ? " ×2" : ""}, ${nameOf(c)} is ${cmd.precision.when})`;
+        }
         hurtCreature(c, total, math, cmd.damageType, "pc");
       }
       applyInflict(cmd.inflicts, c, r.deg);
@@ -1612,15 +1629,48 @@ export function createGame({ content, rng = Math.random, state = null }) {
       return after(cmd, { ok: true });
     }
 
-    if (cmd.kind === "self-buff") {
+    if (cmd.kind === "buff") {
       spend(cmd);
-      // The value is the pack's own acBonus, so a pack that writes a +2 disc
-      // gets a +2 disc without this line or conditions.js knowing the number.
-      // `until` is the whole of "lasts until the start of your next turn" —
-      // the boundary code in advance() takes it from here.
-      applyCondition("pc", "shielded", cmd.acBonus || 1, { who: "pc", when: "start" });
-      info(`Cast ${cmd.name} (${cmd.costGlyph}) — AC ${content.pc.ac} → ${pcAC()} until your next turn.`);
+      // Three things that were written out here and are content now: which
+      // condition, how much of it, and how long it lasts. The value is the
+      // pack's, so a +2 disc is a +2 disc without this line knowing the
+      // number; the duration is the catalogue's, for the reason applyInflict
+      // gives — "until the start of your next turn" is part of what the disc
+      // *is*, and a pack that had to restate it would ship one that forgot.
+      const until = defaultUntilFor(cmd.applies.condition, "pc");
+      const before = pcAC();
+      applyCondition("pc", cmd.applies.condition, cmd.applies.value, until);
+      const now = pcAC();
+      info(`${cmd.spell ? "Cast " : ""}${cmd.name} (${cmd.costGlyph})`
+        + (now === before ? "." : ` — AC ${before} → ${now}.`));
       return after(cmd, { ok: true });
+    }
+
+    if (cmd.kind === "debuff") {
+      const c = byKey(target);
+      if (!c || c.dead) return { ok: false, reason: "no-target" };
+      const feet = feetBetween(run.pc.x, run.pc.y, c.x, c.y);
+      if (feet > cmd.rangeFeet || !world.hasLoE(run.pc.x, run.pc.y, c.x, c.y, run.gateOpen)) {
+        setHint(`No line of effect within ${cmd.rangeFeet} ft.`);
+        return { ok: false, reason: "range" };
+      }
+      spend(cmd);
+      info(`${cmd.spell ? "Cast " : ""}${cmd.name} (${cmd.costGlyph}) — against ${def(c).name}.`);
+      // A target of anything notices the heir, the same way one caught in an
+      // area does. Without this a dormant construct could be shimmed, take
+      // the condition, and go on sleeping through it.
+      if (!c.awake) wake(c);
+      // Its own DC, or the heir's: exactly the rule the area kinds read by,
+      // and the reason content.js refuses a command that writes neither.
+      const dc = cmd.dc !== null ? cmd.dc : spellDC();
+      const r = roll(c, saveKind(cmd.save), def(c).saves[cmd.save], dc);
+      dice(`${def(c).name} — ${cmd.save === "ref" ? "Reflex" : cmd.save === "fort" ? "Fortitude" : "Will"} save (DC ${dc})`, r.math, r.deg);
+      const stuck = applyInflict(cmd.inflicts, c, r.deg);
+      // Said out loud either way. A command with no damage roll in it has
+      // nothing else on screen to show it happened, and "nothing happened" is
+      // what a player reads as a broken button.
+      if (!stuck) push("condition", `→ ${def(c).name} shrugs it off`, DEG_NAME[r.deg]);
+      return after(cmd, { ok: true, deg: r.deg });
     }
 
     if (cmd.kind === "self-heal" || cmd.kind === "consume") {

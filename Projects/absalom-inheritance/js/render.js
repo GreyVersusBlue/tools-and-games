@@ -250,8 +250,11 @@ export function createRenderer(canvas, game) {
         prism(s.x, s.y, 20 * scale, pal.top, pal.left, pal.right, 0.55);
         ctx.fillStyle = PALETTE.gold;
         diamond(cx, cy - 27 * scale, 10 * scale, 5 * scale); ctx.fill();
-        if (game.shielded) {
-          // The Shield cantrip, visible: a disc of force at arm's length.
+        if (game.conditionsOf("pc").some(c => CONDITIONS[c.id]?.helpful)) {
+          // A buff, visible: a ring of it at arm's length. Read off the
+          // catalogue's `helpful` rather than `game.shielded`, for the reason
+          // `mark` below gives — the disc was the only buff in the engine and
+          // a line naming it would have drawn nothing for the second one.
           ctx.strokeStyle = "rgba(127,169,212,.85)"; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.arc(cx, cy - 14 * scale, 13 * scale, 0, Math.PI * 2); ctx.stroke();
           ctx.lineWidth = 1;

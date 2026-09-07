@@ -27,14 +27,16 @@ absalom-inheritance/
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              1,196 assertions
+  test/smoke.mjs              1,370 assertions
   test/balance.mjs            Monte Carlo playthroughs; reports per encounter and per area, and exits
                               non-zero out of band, on content nothing reaches, or on drift from the baseline
   test/baseline.json          the numbers the last commit measured, rewritten with --write-baseline
   test/autopilot.mjs          a competent player, shared by both suites
   test/browser.mjs            the surface, in real Chromium: the hint bar, the log's colours,
                               the build's own prism, a keyboard that answers when it refuses,
-                              and ?pack= opening the second adventure off the same page
+                              four picker cards stacking to one column at 375px, a per-build
+                              satchel in the inventory panel, the second buff's ring and
+                              readout, and ?pack= opening the second adventure off the same page
 ```
 
 `rules.js`, `world.js`, `templates.js`, `conditions.js`, `ai.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
@@ -100,12 +102,37 @@ and nowhere else.
 
 ## Character creation
 
-`content/vault.json`'s `pc` (one object) is `pcOptions` (an array) — a Wizard and a Fighter today,
-picked on a screen shown once, before there is a save to load. `js/content.js`'s `selectPc(pack,
-buildId)` resolves the chosen build's stats and narrows `commands`/`commandById` to exactly that
-build's own list, so every other module still reads `content.pc` as if there were only one PC —
-none of `game.js`, `save.js`, `render.js` changed to add this. See the content-authoring guide's
-§3 for the schema and the save's own `buildId` migration.
+`content/vault.json`'s `pc` (one object) is `pcOptions` (an array) — a Wizard, a Fighter, a Cleric
+and a Rogue, picked on a screen shown once, before there is a save to load. `js/content.js`'s
+`selectPc(pack, buildId)` resolves the chosen build's stats, satchel and command list, so every
+other module still reads `content.pc` and `content.startingInventory` as if there were only one
+PC. See the content-authoring guide's §3 for the schema and the save's own `buildId` migration.
+
+**What the third and fourth builds actually cost.** The Cleric cost nothing but content: a
+statline, four command ids, a satchel. The Rogue cost two new command kinds' worth of engine —
+`debuff` and a `precision` rider — and both of them are content now. The picker itself was not
+touched: it is built from `pcOptions` and its grid stacks by arithmetic rather than by a media
+query, so four cards go to one column at 375px the way two did.
+
+**The satchel is per build.** `startingInventory` sits on a `pcOptions` entry and falls back to
+the pack's. It was pack-level for two rounds and the cost was visible the whole time: Kessa
+carried Vesper's spellbook down four rooms, and a longsword Vesper has no proficiency with sat in
+Vesper's bag. Isbeth carries a mace and a reliquary font and two potions rather than three,
+because a rank-1 Heal is worth two and a half of them; Nim carries a shortsword, thieves' tools,
+and three, because she has nothing else to spend on staying up.
+
+**The two new heirs:**
+
+* **Mother Isbeth Sarr, Warpriest Cleric 1** — 18 HP, AC 16, Will +7. Three rank-1 slots that are
+  all one spell (the Divine Font, modelled as slots), a **Warding Litany** that is +1 AC *and* +1
+  to all three saves, and a mace that is enough and no more. The build that outlasts.
+* **Nim Corvale, Rogue 1** — 15 HP, AC 16, Reflex +7. **Shim the Joint** costs one action, rolls
+  the target's Reflex against her class DC 17, and leaves it off-guard on a failure; every
+  shortsword swing after it in the same turn lands into −2 AC and carries a second d6 of precision
+  damage. The only heir whose damage depends on spending an action *not* swinging.
+
+Four builds, four win rates over 2,000 seeded runs each: **Vesper 79.1%, Isbeth 74.4%, Kessa
+69.3%, Nim 68.0%**, all inside the 45–90% band.
 
 ## Reactions
 
@@ -391,12 +418,19 @@ Two knowing departures, both flagged in `content/vault.json`:
 * **Templates measure square centres**, where the book measures from a corner of a square or the
   edge of your space. See "Areas" above for why, and for what the cone actually is now.
 
-Six conditions in this pack are hung off rolls the book leaves bare, and all six are flagged in
-`content/vault.json` and measured rather than guessed: a critical dagger leaves a construct
-clumsy, a critical longsword leaves it enfeebled, Force Fang slows whatever it hits, a critical
-sentinel fist leaves the heir off-guard, a critical Basalt Fist leaves her frightened *and*
-stupefied, and the Reliquary Warden's fist is fire that can set her alight. A condition system
-nothing in the adventure applies is a system nobody plays.
+Seven conditions in this pack are hung off rolls the book leaves bare, and all of them are
+flagged in `content/vault.json` and measured rather than guessed: a critical dagger leaves a
+construct clumsy, a critical longsword leaves it enfeebled, Force Fang slows whatever it hits,
+Shim the Joint leaves a failed Reflex save off-guard, a critical sentinel fist leaves the heir
+off-guard, a critical Basalt Fist leaves her frightened *and* stupefied, and the Reliquary
+Warden's fist is fire that can set her alight. A condition system nothing in the adventure
+applies is a system nobody plays.
+
+Three more knowing departures, all this pack's own and all flagged in the file: **Ember Burst**
+and **Warding Pulse** are its own rank-1 and cantrip rather than lifted from a book, and so is
+**Shim the Joint** — Feint would have been Deception against Perception, and the three things in
+this vault are masonry with no mind to mislead. **Warded** is likewise the pack's: a status bonus
+where the Shield cantrip's disc is a circumstance one, which is why both can stand at once.
 
 ## Accessibility
 
