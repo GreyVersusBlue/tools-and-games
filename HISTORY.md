@@ -53,7 +53,7 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-A hundred and fifty-five numbered decisions, accumulated across ten sessions and
+A hundred and sixty-three numbered decisions, accumulated across ten sessions and
 the project phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -1844,6 +1844,88 @@ Two of them have moved since they were written:
    never-cast command fail the run — the new spell displaced the disc, and
    the count said so. When a phase moves a balance number, the handoff owes
    the split. *Source: Absalom Phase 3.*
+
+156. **A creature's policy is a pure ranking over measurements the engine
+   has already made.** `js/ai.js` takes a view and returns a choice: no
+   world, no RNG, no state, nothing it can mutate. Every geometric fact in
+   that view — is the foe in reach, does a retreat exist, how many squares
+   would this template catch — was measured by `game.js` and `world.js`
+   first, and the executor walks the very plan that was scored rather than
+   planning a second time on the way out. A policy that measured its own
+   geometry would be a second copy of the engine's, and the two copies of
+   the cone are what that costs: they agreed only because Breathe Fire is
+   15 feet. One planApproach call per turn, one planRetreat, both handed
+   forward. *Source: Absalom Phase 4.*
+
+157. **Amends #152. An area command carries either `spell` or its own `dc`,
+   and never both.** The rule was written to refuse a *borrowed* DC, and
+   read as refusing a second caster. A creature has no spell DC to borrow,
+   so its ability writes one down; the heir's spells read hers, which is
+   what `spell` means and why `stupefied` moves them. A command carrying
+   both is the same silence from the other side: two DCs and no rule saying
+   which caster reads which. `content.js` refuses that too.
+   *Source: Absalom Phase 4.*
+
+158. **A creature asks the reaction bus whether it would provoke, rather
+   than knowing what a Fighter is.** `provokedBy()` builds the bus's own
+   ctx and calls `reactionBlocked()` for every square of the walk it is
+   considering. A policy-side copy of "is she holding Reactive Strike"
+   would have to know about reach, the round budget, the square left versus
+   the square arrived at, and `requiresShield` — and would go on answering
+   confidently after any one of them changed. This cannot: if the bus would
+   refuse every command, nothing provokes, and that is the same sentence in
+   both directions. *Source: Absalom Phase 4.*
+
+159. **A skirmisher only leaves when leaving is free.** It Strides out of
+   reach when that provokes nothing, Steps the five feet that triggers
+   nothing (Player Core p.418) when it does, and stands and fights when
+   neither is available. There is deliberately no expected-damage
+   arithmetic weighing the reaction against the distance: when a Step is
+   available it is strictly cheaper than eating the swing, so the number
+   would be one the policy never acts on, which is #147's warning written
+   as code. The visible consequence is that the same warden behaves
+   differently against the two heirs — 20 feet from Vesper, 5 from Kessa —
+   off one measurement rather than a build check. *Source: Absalom Phase 4.*
+
+160. **An encounter-scoped budget is runtime-only, the way a reaction budget
+   is.** A creature's ability fires once per encounter and the spend lives
+   in `turn.used`, beside `turn.reacted`, and never reaches the save. Same
+   reasoning as #36's other half: it belongs to a fight, and a reload
+   re-rolls initiative rather than resuming the round it was in. A
+   condition is a saved field because a reload has to survive it; a budget
+   inside one encounter is not. *Source: Absalom Phase 4.*
+
+161. **A behaviour that changes how a fight reads without changing whether
+   it is won is worth shipping, and the handoff says so.** Hit-and-run
+   measured neutral: the skirmisher alone moved the wizard 82.8% to 82.8%
+   and the fighter 80.8% to 81.2% over 2,000 seeded runs each, while
+   pushing the median wizard encounter from 14.3 rounds to 15.2. All of
+   this phase's balance movement is the Keeper's cone (81.4% and 75.1%
+   shipped). The temptation on a neutral number is to tune the creature
+   until it shows one; the honest report is that the action it spends
+   backing off costs it roughly what it costs her, and that is what a Step
+   is. #155's rule again, pointed at a feature rather than at the
+   autopilot. *Source: Absalom Phase 4.*
+
+162. **A creature ability is content only a creature can reach, so the
+   harness listens for it.** `balance.mjs` fails a run where an ability
+   named by any creature in the pack never fired, exactly as #151 fails a
+   command no build ever cast. It has one more way to go silent than a
+   spell does: the pack can validate it, the engine can resolve it, and the
+   policy can still never choose it, and nothing in the report would say
+   so. It counts off the engine's own `ability` event rather than a second
+   guess at when a cone goes off. *Source: Absalom Phase 4.*
+
+163. **A guard-rail swept only at the shipped value can be a guard-rail
+   sweeping nothing.** `planRetreat` refuses a destination still inside the
+   foe's reach; at the heir's reach of 5 feet that test is nearly a no-op,
+   because one square directly away from an adjacent square is already 10
+   feet off. Deleted on purpose, the reach-5 sweep stayed green and the
+   reach-10 sweep failed on 131 of 6,051 retreats. Reach is a pack field,
+   so the second value is not hypothetical — and the general form is #147's:
+   when an invariant is stated in terms of a parameter, sweep a value of
+   that parameter the shipped content does not use.
+   *Source: Absalom Phase 4.*
 
 ---
 

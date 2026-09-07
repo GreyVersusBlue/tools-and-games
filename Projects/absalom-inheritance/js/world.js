@@ -8,6 +8,16 @@ import { feetBetween } from "./rules.js";
 export const TILE = { FLOOR: 0, WALL: 1, GATE: 2, PILLAR: 3, TREASURE: 4, STAIRS: 5 };
 
 /**
+ * The eight directions, in a ring, so that "one octant over from this one" is
+ * an index step rather than eight cases. Order is clockwise from east; only
+ * adjacency in the ring matters, not where it starts.
+ */
+export const RING = Object.freeze([
+  { dx: 1, dy: 0 }, { dx: 1, dy: 1 }, { dx: 0, dy: 1 }, { dx: -1, dy: 1 },
+  { dx: -1, dy: 0 }, { dx: -1, dy: -1 }, { dx: 0, dy: -1 }, { dx: 1, dy: -1 },
+]);
+
+/**
  * A World wraps one area's tile grid.
  *
  * `occupied(x, y)` is injected rather than baked in, because "is a creature
@@ -221,10 +231,63 @@ export function makeWorld(area) {
     return best.slice(0, cut + 1);
   }
 
+  /**
+   * The leg a creature Strides *away* from `foe`: straight back if the room
+   * allows it, one octant either side if the wall does not.
+   *
+   * The destination has to end up more than `awayFeet` from the foe, which is
+   * the foe's own reach — a retreat that stays inside it has bought nothing and
+   * spent an action doing it. Longest first, so a Speed 20 construct backs off
+   * twenty feet rather than five and calls it a day.
+   *
+   * It lives here beside planApproach for the reason planApproach lives here:
+   * the suite has to walk the same planner the engine does. A second copy in a
+   * test is a test of the copy.
+   */
+  function planRetreat(from, foe, speed, awayFeet, opts) {
+    const dx = Math.sign(from.x - foe.x), dy = Math.sign(from.y - foe.y);
+    if (!dx && !dy) return null;              // standing on it: nowhere is "away"
+    const i = RING.findIndex(d => d.dx === dx && d.dy === dy);
+    const dirs = [RING[i], RING[(i + 1) % 8], RING[(i + 7) % 8]];
+    for (let steps = Math.floor(speed / 5); steps >= 1; steps--) {
+      for (const d of dirs) {
+        const tx = from.x + d.dx * steps, ty = from.y + d.dy * steps;
+        if (blocksMove(tx, ty, opts.gateOpen) || opts.occupied(tx, ty)) continue;
+        if (feetBetween(tx, ty, foe.x, foe.y) <= awayFeet) continue;
+        const p = findPath(from.x, from.y, tx, ty, opts);
+        // The path is what costs feet, not the straight line: a diagonal leg
+        // is 5/10/5 and a detour around a pillar is longer still.
+        if (p && p.length > 1 && p[p.length - 1].g <= speed) return p;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * One square out of `foe`'s reach, or null. A Step in PF2e is five feet that
+   * triggers nothing, which is the whole reason a creature would take one
+   * instead of the Stride above.
+   *
+   * Furthest from the foe wins, and the ring order breaks the tie, because a
+   * creature that picked differently on two identical boards would take the
+   * balance harness's seeds with it.
+   */
+  function stepAway(from, foe, awayFeet, opts) {
+    let best = null, bestFeet = -1;
+    for (const d of RING) {
+      const tx = from.x + d.dx, ty = from.y + d.dy;
+      if (blocksMove(tx, ty, opts.gateOpen) || opts.occupied(tx, ty)) continue;
+      const feet = feetBetween(tx, ty, foe.x, foe.y);
+      if (feet <= awayFeet || feet <= bestFeet) continue;
+      best = { x: tx, y: ty }; bestFeet = feet;
+    }
+    return best;
+  }
+
   return {
     width: W, height: H,
     inBounds, tileAt, blocksMove, blocksSight, blocksEffect, hasLoS, hasLoE, fieldOfView,
-    reachableFrom, findPath, adjacentOpen, planApproach,
+    reachableFrom, findPath, adjacentOpen, planApproach, planRetreat, stepAway,
   };
 }
 

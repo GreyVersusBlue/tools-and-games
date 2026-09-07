@@ -15,6 +15,7 @@ import { TILE } from "./world.js";
 import {
   CONDITION_IDS, CONDITION_TRAITS, ATTACK_ABILITIES, SAVE_STATS, isCondition,
 } from "./conditions.js";
+import { AI_KINDS } from "./ai.js";
 
 const TILE_BY_NAME = {
   floor: TILE.FLOOR, wall: TILE.WALL, gate: TILE.GATE,
@@ -145,6 +146,14 @@ function readEnds(raw, where) {
  * does, which is what makes clumsy and enfeebled different conditions instead
  * of the same one twice.
  */
+/** A creature's turn policy. Absent is the old one-line strategy. */
+function readAi(value, where) {
+  const ai = value || "brawler";
+  need(AI_KINDS.includes(ai),
+    `content: ${where} has unknown ai "${ai}" (want ${AI_KINDS.join(", ")})`);
+  return ai;
+}
+
 function readAbility(raw, where) {
   const ability = raw || "str";
   need(ATTACK_ABILITIES.includes(ability),
@@ -208,6 +217,10 @@ export function loadPack(raw) {
       coneFeet: c.coneFeet, burstFeet: c.burstFeet, emanationFeet: c.emanationFeet,
       rangeFeet: c.rangeFeet,
       save: c.save || null, damageType: c.damageType || "damage",
+      // An area effect's own DC, for the one caster in the pack who is not the
+      // heir. Null on everything else rather than absent, so a consumer never
+      // has to ask whether the property exists first.
+      dc: typeof c.dc === "number" ? c.dc : null,
       // Which ability rolls this attack, and whether casting it is Casting a
       // Spell. Both are flat defaults on every other kind rather than absent,
       // so a consumer never has to ask whether the property exists first.
@@ -234,13 +247,20 @@ export function loadPack(raw) {
       `content: burst command "${c.id}" needs rangeFeet, burstFeet, damage and save`);
     if (out.kind === "emanation") need(out.emanationFeet && out.damage && out.save,
       `content: emanation command "${c.id}" needs emanationFeet, damage and save`);
-    // Every area effect rolls its save against the heir's spell DC, and that
-    // is the only DC the engine has for one. A pack that wrote an area command
-    // that is not a spell would get a DC quietly borrowed from a stat it does
-    // not have — and stupefied, which moves that DC, would move it too. Refuse
-    // at load rather than ship the borrowed number.
-    if (AREA_KINDS.includes(out.kind)) need(out.spell,
-      `content: area command "${c.id}" must be a spell — its save rolls against the heir's spell DC`);
+    // An area effect's save needs a DC, and there are exactly two places one
+    // can come from: the heir's spell DC, which is what `spell` means, or a
+    // number the command writes down for itself, which is what a creature's
+    // ability does. A command with neither would get a DC quietly borrowed
+    // from a stat its caster does not have — and stupefied, which moves the
+    // heir's DC, would move a construct's too. A command with *both* is the
+    // same silence from the other side: two DCs and no rule saying which one
+    // a given caster reads. Refuse either at load.
+    if (AREA_KINDS.includes(out.kind)) {
+      need(out.spell || out.dc !== null,
+        `content: area command "${c.id}" must be a spell (its save rolls against the heir's spell DC) or carry its own dc`);
+      need(!(out.spell && out.dc !== null),
+        `content: area command "${c.id}" is a spell and also writes a dc — it cannot be both`);
+    }
     if (out.save) need(SAVE_STATS.includes(out.save),
       `content: command "${c.id}" names unknown save "${out.save}" (want ${SAVE_STATS.join(", ")})`);
     if (out.kind === "unerring") need(out.rangeFeet && out.damage,
@@ -357,6 +377,15 @@ export function loadPack(raw) {
       // in the pack's whole command list, not the chosen build's slice — a
       // creature's feats have nothing to do with which heir walked in.
       reactions: Object.freeze([...(c.reactions || [])]),
+      // The area effects it can put on the board, once each per encounter, and
+      // read out of the same global command list for the same reason.
+      abilities: Object.freeze([...(c.abilities || [])]),
+      // How it spends a turn. Absent means "brawler", which is the one-line
+      // strategy every creature in this engine played before there was a
+      // choice — so a pack written before this phase keeps its behaviour
+      // without an edit, and one that names a policy this build does not have
+      // is refused rather than quietly demoted to it.
+      ai: readAi(c.ai, `creature "${id}"`),
       deathLine: c.deathLine || "{name} falls.",
       wakeLine: c.wakeLine || "{name} stirs.",
       sleepLine: c.sleepLine || "{name} settles back into stillness.",
@@ -369,6 +398,23 @@ export function loadPack(raw) {
       need(commandById[rid].kind === "reaction",
         `content: creature "${id}" lists "${rid}", which is a ${commandById[rid].kind} command, not a reaction`);
     }
+    for (const aid of c.abilities) {
+      const cmd = commandById[aid];
+      need(cmd, `content: creature "${id}" lists unknown ability "${aid}"`);
+      // Area kinds only. A creature's turn knows how to put a shape on the
+      // board and nothing else — it has no slots, no focus pool and no
+      // inventory — so an ability naming a self-buff or a potion would
+      // validate here and then be silently unreachable in game.js, which is
+      // the exact failure this pack has now shipped three times.
+      need(AREA_KINDS.includes(cmd.kind),
+        `content: creature "${id}" ability "${aid}" is a ${cmd.kind} command; a creature can only use ${AREA_KINDS.join(", ")}`);
+      need(cmd.dc !== null,
+        `content: creature "${id}" ability "${aid}" needs its own dc — a construct has no spell DC to borrow`);
+    }
+    // A caster with nothing to cast is a brawler wearing a label, and the
+    // label is what a later reader would trust.
+    need(c.ai !== "caster" || c.abilities.length,
+      `content: creature "${id}" is a caster with no abilities`);
   }
 
   // ---- items ----------------------------------------------------------

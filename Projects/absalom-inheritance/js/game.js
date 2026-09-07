@@ -19,6 +19,7 @@ import {
 import { makeWorld, TILE, packExplored, unpackExplored } from "./world.js";
 import { coneSquares, burstSquares, emanationSquares, octantToward } from "./templates.js";
 import { AREA_KINDS } from "./content.js";
+import { chooseAction } from "./ai.js";
 import {
   CONDITIONS, modifiers, damageModifiers, addCondition, removeCondition,
   hasCondition, valueOf, makeCondition, persistentIn, tick, describe, packBag,
@@ -74,6 +75,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
   // whether the array exists before reading it.
   run.pc.conditions ??= [];
   for (const c of run.creatures) c.conditions ??= [];
+  // Same reason, one field over: `stats.abilities` arrived with creature
+  // policies and a state written before them does not carry it. `++` on an
+  // undefined is NaN, and a counter that reads NaN in a report is worse than
+  // one that reads zero, because it looks like a crash somewhere else.
+  run.stats.abilities ??= 0;
 
   function freshState() {
     const startArea = content.areas[content.startArea];
@@ -103,7 +109,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
       fog: {},
       inventory: content.startingInventory.map((item, slot) => ({ item, slot })),
       log: [],
-      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 },
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
       outcome: null,
     };
   }
@@ -129,6 +135,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
     // actor's is refreshed in advance() at the top of its own turn.
     reaction: 1,
     reacted: new Set(),
+    // Which creature abilities have gone off in this encounter, as
+    // "<creature key>|<command id>". Once each per encounter, and runtime-only
+    // for the same reason the reaction budget is: it belongs to a fight, and a
+    // reload re-rolls initiative rather than resuming the round it was in.
+    used: new Set(),
   };
 
   let explored = unpackExplored(run.fog[run.areaId], area.width, area.height);
@@ -654,7 +665,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
   function startCombat() {
     turn.mode = "combat";
     run.stats.rounds++;
-    turn.reaction = 1; turn.reacted.clear();
+    turn.reaction = 1; turn.reacted.clear(); turn.used.clear();
     const rolls = [];
     const pcRoll = roll("pc", "perception", content.pc.perception, 0);
     dice(`Initiative — ${content.pc.name}`, initiativeMath(pcRoll), DEG.SUCC);
@@ -702,7 +713,7 @@ export function createGame({ content, rng = Math.random, state = null }) {
     turn.mode = "explore";
     turn.queue = []; turn.idx = 0; turn.actions = 3; turn.attacks = 0;
     turn.acting = null;
-    turn.reaction = 1; turn.reacted.clear();
+    turn.reaction = 1; turn.reacted.clear(); turn.used.clear();
     // Every duration in this engine is measured in turn boundaries, and there
     // are none outside an encounter: a frightened PC would stay frightened
     // across the whole delve and a burning sentinel would burn forever, both
@@ -867,6 +878,155 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * listener event, which carries the actor and the command; the script stays
    * strides and strikes.
    */
+  /**
+   * Everything a creature's policy is allowed to know about its own turn,
+   * measured once, plus the plans that measurement produced.
+   *
+   * `view` is the pure half and goes to ai.js. The rest — the legs, the square,
+   * the aim — stays here, and the executor below walks exactly the plan that
+   * was scored. Measuring in one place and walking in another is how the two
+   * copies of the cone came to disagree about fifteen feet; there is one
+   * planApproach call in this turn and one planRetreat, and both of their
+   * results are handed forward rather than recomputed.
+   */
+  function situation(c, actions, attacks) {
+    const d = def(c);
+    const foe = run.pc;
+    const opts = pathOpts(c.key);
+    const adjacent = feetBetween(c.x, c.y, foe.x, foe.y) <= d.reachFeet;
+    const approach = adjacent ? null : world.planApproach(c, foe, d.speed, opts);
+    // Both ways out are measured against the *heir's* reach, not the
+    // creature's: what a retreat buys is a square she cannot swing at from
+    // where she stands.
+    const retreat = adjacent ? world.planRetreat(c, foe, d.speed, content.pc.reachFeet, opts) : null;
+    const step = adjacent ? world.stepAway(c, foe, content.pc.reachFeet, opts) : null;
+    const abilities = abilityOptions(c, actions);
+    return {
+      approach, retreat, step, abilities,
+      view: {
+        ai: d.ai, actions, struck: attacks, adjacent,
+        approach: !!approach,
+        retreat: {
+          stride: !!retreat, step: !!step,
+          strideProvokes: provokedBy(c, retreat),
+        },
+        abilities: abilities.map(a => ({ id: a.id, cost: a.cost, caught: a.caught, allies: a.allies })),
+      },
+    };
+  }
+
+  /**
+   * Would walking this leg hand the heir a reaction?
+   *
+   * It asks reactionBlocked() — the bus's own predicate, on the bus's own ctx
+   * shape, for every square of the walk — rather than a policy-side copy of
+   * "is she holding Reactive Strike". A copy would have to know about reach,
+   * about the budget, about the square left versus the square arrived at, and
+   * about requiresShield, and it would go on answering confidently after any
+   * one of them changed. This cannot: if the bus would refuse every command,
+   * nothing provokes, and that is the same sentence in both directions.
+   */
+  function provokedBy(c, leg) {
+    if (!leg || leg.length < 2 || turn.mode !== "combat") return false;
+    const commands = reactionsFor("pc", "move-out-of-reach");
+    if (!commands.length) return false;
+    for (let i = 1; i < leg.length; i++) {
+      const ctx = { event: "move-out-of-reach", actor: c, from: leg[i - 1], to: leg[i] };
+      for (const cmd of commands) if (!reactionBlocked("pc", cmd, ctx)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The area effects this creature still has, each already resolved against
+   * the board it is standing on: how many foes the shape would catch (one, in
+   * a solo adventure) and how many of its own would be in it.
+   *
+   * Aimed at the heir's square, which is the only aim a creature has any
+   * reason to want. `caught` reads the resolved square set rather than a
+   * distance, so a cone that a pillar shadows scores zero and the Keeper does
+   * not spend two actions painting a wall.
+   */
+  function abilityOptions(c, actions) {
+    const out = [];
+    for (const id of def(c).abilities) {
+      if (turn.used.has(c.key + "|" + id)) continue;
+      const cmd = content.allCommandById[id];
+      if (!cmd || cmd.cost > actions) continue;
+      const aim = { x: run.pc.x, y: run.pc.y };
+      if (cmd.kind === "burst" && !canPlaceBurst(cmd, aim, c)) continue;
+      const squares = templateSquares(cmd, aim, c);
+      if (!squares) continue;
+      const covered = new Set(squares.map(sq => sq.x + "," + sq.y));
+      out.push({
+        id, cmd, aim, cost: cmd.cost,
+        caught: covered.has(run.pc.x + "," + run.pc.y) ? 1 : 0,
+        // Every other body in the room, dormant ones included: a construct
+        // that is asleep in the cone is a construct that wakes up in it.
+        allies: living().filter(o => o.key !== c.key && covered.has(o.x + "," + o.y)).length,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * A creature's area effect, resolved.
+   *
+   * The heir's own path through useCommand() cannot be reused: it spends her
+   * slots, rolls her spell DC, and damages everything that is not her. This
+   * one rolls against the ability's own written DC, and the thing making the
+   * save is the heir. One damage roll for the whole area, read once, the same
+   * rule the heir's spells follow — a shape that rolled per target would be
+   * two different spells depending on where people stood.
+   */
+  function creatureArea(c, cmd, aim) {
+    const squares = templateSquares(cmd, aim, c) || [];
+    const covered = new Set(squares.map(sq => sq.x + "," + sq.y));
+    info(`${def(c).name} — ${cmd.name} (${cmd.costGlyph}): ${areaPhrase(cmd, aim, c)}.`);
+    turn.used.add(c.key + "|" + cmd.id);
+    run.stats.abilities++;
+    emit({ type: "ability", actor: c.key, command: cmd.id });
+    const dmg = damageFrom(c, cmd.damage, "spell");
+    const saveName = cmd.save === "ref" ? "Reflex" : cmd.save === "fort" ? "Fortitude" : "Will";
+    const bite = (who, name, saves) => {
+      const r = roll(who, saveKind(cmd.save), saves[cmd.save], cmd.dc);
+      dice(`${name} — basic ${saveName} save (DC ${cmd.dc})`, r.math, r.deg);
+      const dealt = basicSaveDamage(r.deg, dmg.total);
+      if (dealt > 0) {
+        const math = `${dmg.math} → ${DEG_NAME[r.deg]} → ${dealt}`;
+        if (who === "pc") hurtPC(dealt, math, cmd.damageType, c);
+        else hurtCreature(who, dealt, math, cmd.damageType, c);
+      } else {
+        push("damage", `→ ${name} takes no damage`, "critical success on the save");
+      }
+      applyInflict(cmd.inflicts, who, r.deg);
+    };
+    if (covered.has(run.pc.x + "," + run.pc.y)) bite("pc", content.pc.name, content.pc.saves);
+    // Its own kind, if any are standing in it. The policy in ai.js will not
+    // fire a shape with an ally inside, and this is the half that makes that
+    // rule mean something: a template does not check whose side you are on.
+    for (const o of living()) {
+      if (o.key === c.key || run.outcome) continue;
+      if (!covered.has(o.x + "," + o.y)) continue;
+      if (!o.awake) wake(o);
+      bite(o, def(o).name, def(o).saves);
+    }
+  }
+
+  /** Walk a planned leg square by square, announcing every square left. */
+  function walkLeg(c, leg) {
+    const walked = [{ x: c.x, y: c.y }];
+    let cutShort = false;
+    for (let i = 1; i < leg.length; i++) {
+      const from = { x: c.x, y: c.y };
+      c.x = leg[i].x; c.y = leg[i].y;
+      walked.push({ x: c.x, y: c.y });
+      announceStep(c, from, { x: c.x, y: c.y });
+      if (c.dead || run.outcome) { cutShort = true; break; }
+    }
+    return { walked, cutShort, feet: leg[walked.length - 1].g };
+  }
+
   function* creatureTurn(c) {
     // Read after advance() has already run this creature's start boundary, so
     // a slowed that expired there is not still charging it an action.
@@ -874,7 +1034,12 @@ export function createGame({ content, rng = Math.random, state = null }) {
     const d = def(c);
 
     while (actions > 0 && !c.dead && !run.outcome) {
-      if (isAdjacent(c, run.pc)) {
+      const s = situation(c, actions, attacks);
+      const choice = chooseAction(s.view);
+
+      if (choice.do === "end") return;
+
+      if (choice.do === "strike") {
         actions--;
         const pen = mapPenalty(attacks, false);
         attacks++;
@@ -899,28 +1064,36 @@ export function createGame({ content, rng = Math.random, state = null }) {
         continue;
       }
 
-      // Stride toward the closest open square beside the PC. The planner is
-      // world.planApproach so that the suite walks the engine's own, not a copy.
-      const leg = world.planApproach(c, run.pc, d.speed, pathOpts(c.key));
-      if (!leg) break;                       // boxed in: end the turn
-      actions--;
-
-      // Square by square. The creature's own position is the truth at every
-      // step, so a reaction that fires halfway across the floor is measured
-      // against where it actually stands.
-      const walked = [{ x: c.x, y: c.y }];
-      let cutShort = false;
-      for (let i = 1; i < leg.length; i++) {
-        const from = { x: c.x, y: c.y };
-        c.x = leg[i].x; c.y = leg[i].y;
-        walked.push({ x: c.x, y: c.y });
-        announceStep(c, from, { x: c.x, y: c.y });
-        if (c.dead || run.outcome) { cutShort = true; break; }
+      if (choice.do === "cast") {
+        const pick = s.abilities.find(a => a.id === choice.id);
+        actions -= pick.cost;
+        creatureArea(c, pick.cmd, pick.aim);
+        yield { kind: "template", command: pick.cmd.id, at: pick.aim };
+        if (c.dead || run.outcome) return;
+        continue;
       }
-      const feet = leg[walked.length - 1].g;
-      info(`${d.name} Strides ${feet} ft.`);
-      yield { kind: "stride", path: walked };
-      if (cutShort) return;
+
+      if (choice.do === "step") {
+        actions--;
+        const from = { x: c.x, y: c.y };
+        c.x = s.step.x; c.y = s.step.y;
+        // No announceStep: a Step is the five feet that triggers nothing
+        // (Player Core p.418), and that is the entire reason a creature with a
+        // Reactive Strike pointed at it takes one instead of the Stride.
+        info(`${d.name} Steps 5 ft.`);
+        yield { kind: "step", path: [from, { x: c.x, y: c.y }] };
+        continue;
+      }
+
+      // Both remaining choices walk a leg the situation already planned:
+      // toward the heir, or away from her.
+      const leg = choice.do === "retreat" ? s.retreat : s.approach;
+      if (!leg) return;                      // boxed in: end the turn
+      actions--;
+      const walk = walkLeg(c, leg);
+      info(`${d.name} ${choice.do === "retreat" ? "backs off" : "Strides"} ${walk.feet} ft.`);
+      yield { kind: "stride", path: walk.walked };
+      if (walk.cutShort) return;
     }
   }
 
@@ -1242,8 +1415,13 @@ export function createGame({ content, rng = Math.random, state = null }) {
    * Returns null when the command needs an aim square and has not been given
    * one — a refusal, not an empty area.
    */
-  function templateSquares(cmd, target) {
-    const from = run.pc;
+  function templateSquares(cmd, target, caster) {
+    // `caster` is the actor the shape comes out of, and it defaults to the
+    // heir because for three phases she was the only thing that could cast
+    // one. The Keeper is the second, and it reads the same function: a cone
+    // that measured itself differently depending on who threw it would be the
+    // hardcoded 15 all over again, one caster along.
+    const from = caster || run.pc;
     const aimed = target && typeof target.x === "number";
     if (cmd.kind === "cone") {
       if (!aimed) return null;
@@ -1262,16 +1440,17 @@ export function createGame({ content, rng = Math.random, state = null }) {
     return null;
   }
 
-  /** Can the heir put a burst's centre on that square? Range, then barrier. */
-  function canPlaceBurst(cmd, target) {
-    return feetBetween(run.pc.x, run.pc.y, target.x, target.y) <= cmd.rangeFeet
-      && world.hasLoE(run.pc.x, run.pc.y, target.x, target.y, run.gateOpen);
+  /** Can this caster put a burst's centre on that square? Range, then barrier. */
+  function canPlaceBurst(cmd, target, caster) {
+    const from = caster || run.pc;
+    return feetBetween(from.x, from.y, target.x, target.y) <= cmd.rangeFeet
+      && world.hasLoE(from.x, from.y, target.x, target.y, run.gateOpen);
   }
 
   /** How the log names the shape that just went out. */
-  function areaPhrase(cmd, target) {
+  function areaPhrase(cmd, target, caster) {
     if (cmd.kind === "cone") {
-      const dir = octantToward(run.pc, target);
+      const dir = octantToward(caster || run.pc, target);
       return `a ${cmd.coneFeet}-foot cone${dir ? ` to the ${dir.name}` : ""}`;
     }
     if (cmd.kind === "burst") return `a ${cmd.burstFeet}-foot burst`;
@@ -1507,6 +1686,14 @@ export function createGame({ content, rng = Math.random, state = null }) {
     potionCount, bulkCarried, commandBlocked,
     isPillar: (x, y) => !!area.pillars[x + "," + y],
     templateSquares, canPlaceBurst,
+    // What a creature's policy would see and what it would choose, without
+    // running the turn. The suite asserts against these rather than against
+    // the log, because "it Stepped" and "it decided to Step" are different
+    // claims and only the second one is the policy's.
+    situationOf: (key, actions = 3, attacks = 0) => {
+      const c = byKey(key);
+      return c ? situation(c, actions, attacks).view : null;
+    },
     tileAt: (x, y) => area.tiles[y]?.[x],
     mapPenaltyNow: agile => mapPenalty(turn.attacks, agile),
 

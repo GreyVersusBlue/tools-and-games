@@ -278,7 +278,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 4 — Creatures that know what they are standing in | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/absalom-inheritance/WISHLIST.md#phase-4--creatures-that-know-what-they-are-standing-in) |
+| 1 | Phase 4 — Creatures that know what they are standing in | `Projects/absalom-inheritance` | 1 | Opus 5 | `claude/backlog-ranked-batch-kfx1fd` | [WISHLIST.md Phase 4](Projects/absalom-inheritance/WISHLIST.md#phase-4--creatures-that-know-what-they-are-standing-in) |
 | 2 | Phase 5 — A harness that says which fight killed you | `Projects/absalom-inheritance` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Projects/absalom-inheritance/WISHLIST.md#phase-5--a-harness-that-says-which-fight-killed-you) |
 | 3 | Phase 6 — An area should be a file, not a diff | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Projects/absalom-inheritance/WISHLIST.md#phase-6--an-area-should-be-a-file-not-a-diff) |
 | 4 | Phase 7 — Two more heirs, with their own satchels | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/absalom-inheritance/WISHLIST.md#phase-7--two-more-heirs-with-their-own-satchels) |

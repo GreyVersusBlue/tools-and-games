@@ -1,24 +1,27 @@
 # The Absalom Inheritance — Feature Wishlist
 
-**Status: Phase 1 — the interrupt point — has shipped.** The turn loop has a
-seam. `fireTrigger` is called at three named points, `content.js` validates a
-`reaction` command kind against those three names and two effects, and a
-creature turn is a generator the caller drains rather than one function that
-returns when it is over. Kessa carries Reactive Strike, Vesper carries Shield
-Block, and the Vault Keeper answers a Stride out of its reach with a basalt
-fist. `test/smoke.mjs` reports **425 passed, 0 failed**, up from 308, and
-seventeen guard-rails were broken on purpose (#34) and each exited 1 from a
-green baseline. `test/balance.mjs` over 2000 seeded runs a build: **Wizard
-64.5%** (from 53.6%) and **Fighter 79.8%** (unchanged to the decimal). Both
-suites run in CI now, on `.github/workflows/absalom-ci.yml` — before this they
-ran in a session's terminal and nowhere else. Phase 2 is closed. The next open
-phase is Phase 3 — templates, and line of effect — on Claude Fable 5.1.
+**Status: Phase 4 — creatures that know what they are standing in — has
+shipped.** Arc one has one phase left, and it is the harness rather than the
+engine. A creature's turn is a decision now: `js/ai.js`
+takes a measured view and returns one choice, `game.js` executes exactly the
+option that was scored, and three policies read off a pack field. The Reliquary
+Warden hits and backs off — 20 feet from Vesper, 5 from Kessa, because a Step
+triggers nothing and it asks the reaction bus which one it is facing. The Vault
+Keeper opens with Gravel Wave, a 15-foot cone at its own DC 16, once per
+encounter, and never through one of its own. `test/smoke.mjs` reports **968
+passed, 0 failed**, up from 879; nine guard-rails were broken on purpose (#34)
+and each exited 1 from a green baseline. `test/balance.mjs` over 2,000 seeded
+runs a build: **Wizard 81.4%** (from 82.8%) and **Fighter 75.1%** (from 80.8%),
+both inside the 45–90% band. Both suites run in CI, on
+`.github/workflows/absalom-ci.yml`. The next open phase is Phase 5 — a harness
+that says which fight killed you — on Claude Opus 5.
 
 Round one made an unwinnable vignette winnable and broke the single file into ES
 modules; round two added a second area and caught a stall bug with a Monte Carlo
 harness that a browser playthrough never would have; round three added character
-creation and a second build, tuned across three measured passes; round four built
-the interrupt point every previous round had deferred.
+creation and a second build, tuned across three measured passes; arc one built
+the interrupt point, the conditions that expire on it, the templates that need
+a line of effect, and the creatures that decide what to do with all three.
 
 ## What it is
 
@@ -29,12 +32,13 @@ next door in `Projects/absalom-inheritance/`. No build step, no dependencies,
 nothing vendored: plain ES modules and a canvas, which does have to be *served*,
 because a browser refuses ES modules over `file://`.
 
-The whole adventure is one JSON file. `content/vault.json` (342 lines) carries
+The whole adventure is one JSON file. `content/vault.json` (445 lines) carries
 two areas drawn as ASCII rows with a per-area legend — a 22×22 vault and a
 14×10 sanctum reached by a stairway past the Keeper — three creature stat
-blocks placed four times between them, seven commands, five item types, three
-lore pillars and two buildable PCs. The engine reads shapes, never ids: a second
-area's guardian is an ordinary entry in `creatures`.
+blocks placed four times between them, twelve commands (one of which no build
+lists, because it is the Keeper's), five item types, three lore pillars and two
+buildable PCs. The engine reads shapes, never ids: a second area's guardian is
+an ordinary entry in `creatures`.
 
 What it does well is the rules. `rules.js` is real PF2e math with page
 references: degrees stepping on a natural 1 or 20, basic saves scaling
@@ -46,10 +50,10 @@ playthroughs possible in a few seconds.
 What it is not: it is twelve to sixteen minutes long. Two rooms, four mandatory
 fights, three lore pieces, one rest, one casket. Written before arc one started,
 when there were no conditions, no reactions, no templates, no ranged attack that
-could miss and no creature intelligence beyond "walk at the PC and swing."
-Phases 1 and 2 have since closed the first two. What is still true: no
-templates, no ranged attack that can miss, and a creature policy that is one
-line long.
+could miss and no creature intelligence beyond "walk at the PC and swing." Arc
+one closed four of those five. What is still true: **no ranged attack that can
+miss** — every attack roll in the pack is made in reach, and the only things
+that reach further are unerring or a save.
 
 ## The architecture that is there
 
@@ -60,13 +64,18 @@ test suites exist at all.
 - **`js/rules.js` (145)** — the PF2e math and nothing else: `degreeOfSuccess`,
   `check`, `basicSaveDamage`, `mapPenalty`, `feetBetween`, `stridesFor`,
   `parseDamage`, `makeRng`. Pure, RNG injected.
-- **`js/world.js` (209)** — one area's grid. `TILE` (FLOOR, WALL, GATE, PILLAR,
+- **`js/world.js` (319)** — one area's grid. `TILE` (FLOOR, WALL, GATE, PILLAR,
   TREASURE, STAIRS), Bresenham `hasLoS`, `fieldOfView`, an eight-way `findPath`
-  whose node key carries a diagonal parity bit, `planApproach` (the one creature
-  stride planner, shared with the suite), and the fog bitfield the save writes.
-- **`js/content.js` (545)** — `loadPack` parses and *refuses*: a broken pack
+  whose node key carries a diagonal parity bit, three creature movement planners
+  (`planApproach`, `planRetreat`, `stepAway` — shared with the suite, which is
+  why none of them is re-implemented in it), and the fog bitfield the save
+  writes.
+- **`js/content.js` (613)** — `loadPack` parses and *refuses*: a broken pack
   throws a `ContentError` with a sentence. `selectPc(content, buildId)` resolves
   a many-build pack down to the one-PC shape every other module still reads.
+- **`js/ai.js` (92)** — `chooseAction(view)`: one creature's turn, decided.
+  Pure the way `templates.js` is pure — a view in, a choice out, no world, no
+  RNG, no state. Everything it ranks was measured by `game.js` first.
 - **`js/conditions.js` (487)** — eight conditions, the modifier funnel and the
   damage funnel, the same-type rule, immunity traits, default durations and the
   turn-boundary tick. Pure and RNG-free: persistent damage hands back a spec and
@@ -83,8 +92,8 @@ test suites exist at all.
   `pickCharacter`, built entirely from `content.pcOptions`. **`js/main.js`
   (101)** — boot: fetch the pack unresolved, load a save or run the picker,
   `selectPc` once, autosave.
-- **`test/smoke.mjs` (2,610)** — 787 assertions across rules, world, content,
-  game, reactions, conditions and save. **`test/autopilot.mjs` (261)** — a competent player as code,
+- **`test/smoke.mjs` (3,200)** — 968 assertions across rules, world, content,
+  game, reactions, creature policy, conditions and save. **`test/autopilot.mjs` (261)** — a competent player as code,
   generic over command *kind* rather than id. **`test/balance.mjs` (117)** — N
   seeded playthroughs per build, band-checked independently, non-zero exit if
   any build leaves the band.
@@ -162,7 +171,7 @@ or visible in the code.
   invocations that actually work:
 
 ```
-node Projects/absalom-inheritance/test/smoke.mjs        → 425 passed, 0 failed — SMOKE OK
+node Projects/absalom-inheritance/test/smoke.mjs        → 968 passed, 0 failed — SMOKE OK
 node Projects/absalom-inheritance/test/balance.mjs 2000 → BALANCE OK for both builds
 node Projects/absalom-inheritance/test/balance.mjs 400 --verbose   (a fast spot check)
 ```
@@ -192,17 +201,22 @@ Everything here is open and unclaimed. Add to this list rather than starting a
 new one.
 
 **The turn loop**
-- Reactions exist and there are two of them. What there is not: **Step, Delay,
-  Ready, or declining a reaction.** Every reaction fires automatically, which is
-  right for the two that ship (Shield Block's disc lapses at the start of your
-  next turn either way, so declining only wastes it) and wrong for the first one
-  that is a real choice. Torchbearer's `askReaction` is the model.
-- **No creature ever provokes.** `world.planApproach` walks to the *cheapest*
-  square beside the PC, and a path to the cheapest such square cannot cross
-  another one on the way — so a creature can enter your reach and never leave
-  it. Kessa's Reactive Strike is correct and fires zero times in 2000 seeded
-  runs. Phase 4 is what changes that; `smoke.mjs` asserts the zero and will say
-  so when it does.
+- Reactions exist and there are two of them. What there is not: **Delay, Ready,
+  or declining a reaction.** Every reaction fires automatically, which is right
+  for the two that ship (Shield Block's disc lapses at the start of your next
+  turn either way, so declining only wastes it) and wrong for the first one that
+  is a real choice. Torchbearer's `askReaction` is the model. **A Step is a
+  creature action only** — `ai.js` chooses one and `creatureTurn` walks it
+  without announcing it; the heir has no Step button, so she pays a whole Stride
+  to close five feet on something that just backed off.
+- **Nothing provokes, and it is a choice now rather than a consequence.**
+  `world.planApproach` still cannot walk out of your reach (a path to the
+  cheapest square beside you cannot cross another one on the way), and
+  `planRetreat` exists to walk out of it on purpose — but the one creature that
+  uses it takes the Step when the Stride would provoke. Kessa's Reactive Strike
+  is correct and still fires zero times in 2,000 seeded runs. The thing that
+  would change that is a creature with a reason to move that is worth a swing:
+  a ranged attacker backing off to shoot, or a wounded one running.
 - `turn.shielded` is a boolean on a runtime object, the engine's only status
   effect, and deliberately not saved. `turn.reaction` and `turn.reacted` sit
   beside it and are not saved either. Initiative is not saved; a mid-encounter
@@ -236,9 +250,11 @@ new one.
   departures; both would need a second coordinate system to fix, and the day a
   creature occupies more than one square is the day that stops being optional.
   `smoke.mjs` pins the emanation/burst equality so the change announces itself.
-- **Nothing takes cover behind a template.** `hasLoE` cuts squares out of a
-  shape, so a pillar shadows a cone — but no creature knows that, and no
-  creature avoids standing in one. That is Phase 4.
+- **Nothing dodges a template.** A caster refuses to fire one with an ally
+  standing in it, and `hasLoE` cuts squares out of a shape so a pillar shadows a
+  cone — but no creature *moves* to leave one, because nothing in this engine
+  telegraphs a shape before it goes off. That needs an announced action a turn
+  before it resolves, which is the same seam Ready wants.
 - `findPath`'s open set is a `Map` scanned linearly for the lowest `f` —
   quadratic in the node count, and the first thing a larger area finds.
 
@@ -252,14 +268,17 @@ new one.
   XP, no downtime — deliberately.
 
 **Creatures and AI**
-- `runCreatureTurn()` is: if adjacent, Strike; else Stride toward the nearest
-  open square beside the PC. Nothing retreats, shoots, avoids a cone, focuses a
-  wounded PC, or coordinates with anything else. Measured, now that there is a
-  reason to: over 9,100 sampled wizard decisions an awake construct stood at 5
-  feet or at 25 and beyond, and never at 10, 15 or 20 — a Stride crosses the
-  whole floor in one turn, so every fight in this adventure is a duel at arm's
-  length. That is why a 10-foot emanation had to be worth casting against one
-  creature to be worth casting at all.
+- Three policies (`brawler`, `skirmisher`, `caster`) in `js/ai.js`, one
+  creature each. **Nothing shoots, focuses a wounded target, coordinates with
+  anything else, or times an ability for a better moment**: a caster fires its
+  shape on the first turn the shape catches something, which is right for a
+  once-per-encounter opener and would be wrong for a second one. **Target
+  selection is unwritten on purpose** — one PC, no allies, so every rule for
+  choosing between targets would resolve the same way every turn (see the
+  shipped Phase 4 note). Measured, and still true: over 9,100 sampled wizard
+  decisions an awake construct stood at 5 feet or at 25 and beyond, and never at
+  10, 15 or 20. The skirmisher is the first thing in this pack that produces a
+  middle distance at all, and only for the turn it takes to close again.
 - `checkDisengage()` heals a settled creature to full as anti-cheese. Nothing
   can be worn down across two engagements. Three stat blocks, four placements,
   one boss per area.
@@ -275,8 +294,11 @@ new one.
 - `balance.mjs` reports one aggregate per build. It cannot answer "which fight
   kills people" or "did this change move the Keeper fight specifically." No
   baseline is stored, so a 3-point drift is invisible until it crosses a band
-  edge. It does now fail on a command no build ever casts (Phase 3), which is
-  the narrowest possible version of "did this content get played?"
+  edge. It does fail on a command no build ever casts (Phase 3) and on a
+  creature ability no creature ever uses (Phase 4), which is the narrowest
+  possible version of "did this content get played?" — and separating the causes
+  of a balance move is still a hand-written script each time (this phase's
+  four-row table was one).
 - No suite covers `render.js` or `ui.js`; both are DOM-bound and untested.
 - The autopilot brawls everything and never uses the cover a player would, so
   every number it reports is a floor rather than a ceiling.
@@ -638,44 +660,106 @@ row's first problem, not this one's.
 geometry where a wrong square is silent, and the one place a preview and a
 resolution can disagree without anything erroring.
 
-## Phase 4 — Creatures that know what they are standing in
+## Phase 4 — Creatures that know what they are standing in — SHIPPED
 
-**Every creature in this game plays the same one-line strategy: walk at the
+**Every creature in this game played the same one-line strategy: walk at the
 player and swing.**
 
-`runCreatureTurn()` is twenty lines and its whole policy is "if adjacent,
+`runCreatureTurn()` was twenty lines and its whole policy was "if adjacent,
 Strike; else Stride toward the nearest open square beside the PC." Correct while
-a creature had nothing else to do. After phases 1 through 3 it has three things
-to do — take a reaction, apply or dodge a condition, stay out of a template.
-Fourth and not first, because an AI written before the verbs exist is an AI
-rewritten when they arrive.
+a creature had nothing else to do. After phases 1 through 3 it had three things
+to do instead, and this is the phase that gives them to it.
 
-- [ ] **Lift the policy out of the loop.** `creatureTurn(c, view)` returns a
-      chosen action; `runCreatureTurn()` executes it and builds the script. Same
-      output shape, one decision point.
-- [ ] **A per-creature `ai` field in the pack** — `"brawler"` (today's
-      behaviour, the default, so `vault.json` need not change), `"skirmisher"`,
-      `"caster"`. Validated in `content.js`; an unknown value is refused.
-- [ ] **Reaction awareness**, so a creature that would provoke asks whether the
-      reaction is worth eating, and **target selection worth the name** —
-      whether it prefers the wounded, the caster or whoever hit it last is a
-      content field.
-- [ ] **Give the Vault Keeper a real kit.** It is the first boss and currently
-      Strides and Strikes like a sentinel. A reaction and a template, tuned with
-      the harness rather than by feel.
-- [ ] **The test that pins it.** A seeded encounter where a `skirmisher`
-      demonstrably steps away rather than trading; the Keeper's kit firing at
-      least once across a batch. Then `balance.mjs` at 2000 on both builds.
-      **The number this line used to quote
-      is two phases stale and its direction has reversed:** after Phase 3 the
-      Wizard is at 82.8% and the Fighter at 80.8%, so the pair are within a
-      point of each other and it is the ceiling at 90% that is close, not the
-      floor at 45%.
+- [x] **The policy is out of the loop, and it is its own pure module.**
+      `js/ai.js` (92 lines) is `chooseAction(view)`: a view in, a choice out,
+      with no world, no RNG, no state and nothing it can mutate. `game.js`'s
+      `situation()` measures once — reach, the approach leg, the retreat leg,
+      the Step square, every ability resolved against the board — and hands the
+      pure half over; `creatureTurn()` executes the option that was scored,
+      never a second one planned on the way out. The refactor alone was checked
+      by measuring: 400 seeded runs came back **80.5% and 81.8%, bit-identical
+      to the build before it**, which is the shape of a lift that lifted nothing
+      else with it.
+- [x] **A per-creature `ai` field in the pack.** `"brawler"` is the default and
+      is the old strategy exactly, so a pack written before this phase keeps its
+      behaviour without an edit. `"skirmisher"` and `"caster"` are the other
+      two. `content.js` refuses an unknown one, and refuses a caster with
+      nothing to cast.
+- [x] **Reaction awareness, and it reads the bus rather than the build.**
+      `provokedBy()` builds the bus's own ctx and asks `reactionBlocked()`, for
+      every square of the walk it is considering. So the warden Strides 20 feet
+      away from Vesper and Steps 5 feet away from Kessa, off one measurement
+      rather than a build check — a Step is the five feet that triggers nothing
+      (Player Core p.418), and the whole reason to take one.
+- [x] **The Vault Keeper has a real kit.** It already had Reactive Strike; it
+      has **Gravel Wave** now — 2 actions, a 15-foot cone, 2d6 bludgeoning,
+      basic Reflex against **its own DC 16**, off-guard on a critical failure,
+      once per encounter. No build lists it, so no heir can cast it; a creature
+      reads its abilities out of the pack's whole command list the same way it
+      reads its reactions.
+- [x] **The test that pins it.** The skirmisher demonstrably Steps rather than
+      trading, in a seeded encounter, and the assertion is that the reaction
+      *did not fire* — a creature that dodged the swing and a creature that was
+      never offered one look identical from a win rate. The Keeper's kit fires
+      in 87% of runs that reach it. `smoke.mjs` goes from **879 assertions to
+      968**, and `balance.mjs` fails on a creature ability nothing ever used.
+
+**Target selection is deliberately not in this phase.** The plan asked for
+"whether it prefers the wounded, the caster or whoever hit it last" as a content
+field. This adventure has one PC and no allies, so every one of those fields
+would resolve to the same target on every turn of every fight: a validated,
+documented, exercised-by-nothing content field, which is the failure #151 was
+written to catch, dressed as a feature. It belongs to the phase that adds a
+second target. Recorded rather than skipped.
+
+**Where the balance actually moved, measured at 2,000 seeded runs per build with
+the two causes separated:**
+
+| | wizard | fighter |
+| --- | --- | --- |
+| before this phase | 82.8% | 80.8% |
+| the skirmisher alone | 82.8% | 81.2% |
+| the Keeper's cone alone | 81.2% | 74.7% |
+| shipped | **81.4%** | **75.1%** |
+
+**Hit and run measured neutral, and shipped anyway.** The warden that backs off
+costs itself an action to cost her one, and over 2,000 runs those cancel to
+within a tenth of a point for the wizard and four tenths the other way for the
+fighter. What it does change is how long the fight runs: the median wizard
+encounter goes from 14.3 rounds to 15.2. The temptation on a neutral number is
+to keep tuning until it shows one; the honest report is that a Step is worth
+about what a Step costs (#161).
+
+**All of the movement is the cone, and it lands on Kessa twice as hard.** She
+has no disc: Vesper's Shield Block soaks 5 of a 2d6 wave and her AC and Reflex
+are each a point better. That is the widest the two builds have been apart since
+character creation shipped, and it is the ceiling problem the last phase left
+behind, answered from the other end — nothing was taken away from the wizard.
+
+**Kessa's Reactive Strike still fires zero times in 2,000 runs, and now it is
+for a reason.** Before this phase nothing ever left her reach because
+`planApproach` cannot walk out of it. Now something can, and chooses not to:
+the skirmisher takes the Step. The suite's sweep still asserts that no planned
+*approach* leaves her reach, and its message says the newer thing.
+
+**Nine guard-rails were broken on purpose** (#34), every one exiting 1 from a
+green baseline at the assertion whose comment claims it: `provokedBy` forced to
+false (the warden Strides, Kessa's Reactive Strike kills it, four assertions
+fail), `templateSquares` ignoring its caster (the cone comes out of the heir and
+catches nobody), the once-per-encounter budget removed, a Step that calls
+`announceStep`, the caster's ally check dropped, the "does not close again"
+rule dropped, Step and Stride swapped in priority, the ability sort inverted,
+and the Keeper demoted to a brawler in the pack (`balance.mjs` prints
+`CONTENT NEVER REACHED — Gravel Wave` and exits 1). **One of them found a
+guard-rail that could not fail**: `planRetreat`'s "do not end inside her reach"
+test is invisible at reach 5, because one square directly away from an adjacent
+square is already 10 feet off. The sweep runs at reach 5 and reach 10 now, and
+the deleted line fails 131 of 6,051 retreats at 10 (#163, and #147 again).
 
 *Leans on:* phases 1–3, `game.js`'s `runCreatureTurn`, `content.js`'s creature
-validator, `test/balance.mjs`. *Save:* none — AI is a content field, not run
-state. *Model:* **Claude Opus 5** — decision policy with a 2000-run measuring
-stick pointed straight at it, which is the opposite of a silent wrong answer.
+validator, `test/balance.mjs`. *Save:* none — `ai` is a content field, and an
+ability's once-per-encounter spend is runtime-only for the reason the reaction
+budget is (#160). *Model:* **Claude Opus 5.**
 
 ## Phase 5 — A harness that says which fight killed you
 
@@ -692,14 +776,22 @@ than two of them.
       encounter rather than per run.
 - [ ] **Per-area reporting.** How often a run reaches the sanctum, how often it
       dies there, what share of total damage the last room accounts for. Today
-      "read the reliquary 25.5%" is the only sanctum signal there is.
+      "read the reliquary 64.0%" is the only sanctum signal there is, and it is
+      a lore count rather than a fight.
 - [ ] **A stored baseline** in `test/baseline.json`, written by an explicit flag
-      and compared every run, so a move from 53.6% to 50.1% reports a 3.5-point
+      and compared every run, so a move from 81.4% to 77.9% reports a 3.5-point
       regression instead of passing quietly inside a 45-point band.
 - [ ] **Reaction and condition counters** — how often each fired and by whom,
       the cheapest way to catch a feature that is wired but never triggers — and
       a **build × area matrix** printed as one table, so four builds do not
       double the output length.
+- [ ] **Separating the causes of a move should not be a hand-written script.**
+      Phase 4's four-row table (before / skirmisher only / caster only /
+      shipped) was thirty lines of throwaway code that deep-copied the pack,
+      deleted one field, and re-ran the batch. Every phase that touches balance
+      writes that script again. A `--variant` flag that takes a JSON patch and
+      prints the rows side by side is most of what #155's rule needs to be
+      cheap enough to keep obeying.
 - [ ] **The test that pins it.** Break one encounter's numbers on purpose and
       confirm the harness exits non-zero naming that encounter — locked decision
       #34 applied to the harness itself.

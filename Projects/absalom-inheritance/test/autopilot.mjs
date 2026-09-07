@@ -309,11 +309,18 @@ export function playThrough(game, { maxPhases = 60 } = {}) {
   game.begin();
   const goals = collectGoals(game.content);
   const cast = {};
+  // What the *creatures* put on the board, counted the same way and for the
+  // same reason. A creature ability is content nothing in the player's policy
+  // can reach, so the only way to find out it never fires is to listen for it
+  // — off the engine's own event rather than a second guess at when a cone
+  // goes off.
+  const abilities = {};
+  game.on(ev => { if (ev.type === "ability") abilities[ev.command] = (abilities[ev.command] || 0) + 1; });
 
   let phases = 0;
   for (const goal of goals) {
     while (!game.run.outcome) {
-      if (++phases > maxPhases) return summarise(game, "stalled");
+      if (++phases > maxPhases) return summarise(game, "stalled", cast, abilities);
       if (game.mode === "combat") { fight(game, { tally: cast }); continue; }
 
       if (goal.kind === "pillar") {
@@ -339,13 +346,14 @@ export function playThrough(game, { maxPhases = 60 } = {}) {
     }
     if (game.run.outcome) break;
   }
-  return summarise(game, game.run.outcome || "unfinished", cast);
+  return summarise(game, game.run.outcome || "unfinished", cast, abilities);
 }
 
-function summarise(game, outcome, cast = {}) {
+function summarise(game, outcome, cast = {}, abilities = {}) {
   return {
     outcome,
     cast,
+    abilities,
     hp: game.run.pc.hp,
     slots: game.run.pc.slots,
     focus: game.run.pc.focus,
