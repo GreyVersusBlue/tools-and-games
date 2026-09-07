@@ -1,20 +1,21 @@
 # The Absalom Inheritance — Feature Wishlist
 
-**Status: Phase 4 — creatures that know what they are standing in — has
-shipped.** Arc one has one phase left, and it is the harness rather than the
-engine. A creature's turn is a decision now: `js/ai.js`
-takes a measured view and returns one choice, `game.js` executes exactly the
-option that was scored, and three policies read off a pack field. The Reliquary
-Warden hits and backs off — 20 feet from Vesper, 5 from Kessa, because a Step
-triggers nothing and it asks the reaction bus which one it is facing. The Vault
-Keeper opens with Gravel Wave, a 15-foot cone at its own DC 16, once per
-encounter, and never through one of its own. `test/smoke.mjs` reports **968
-passed, 0 failed**, up from 879; nine guard-rails were broken on purpose (#34)
-and each exited 1 from a green baseline. `test/balance.mjs` over 2,000 seeded
-runs a build: **Wizard 81.4%** (from 82.8%) and **Fighter 75.1%** (from 80.8%),
-both inside the 45–90% band. Both suites run in CI, on
-`.github/workflows/absalom-ci.yml`. The next open phase is Phase 5 — a harness
-that says which fight killed you — on Claude Opus 5.
+**Status: Phase 5 — a harness that says which fight killed you — has shipped,
+and arc one is finished.** `balance.mjs` reports one row per encounter and one
+per area now, holds a stored baseline in `test/baseline.json` that it compares
+exactly against every run, counts every reaction and condition by actor, and
+takes a `--variant` merge patch so separating the causes of a balance move is a
+flag rather than a throwaway script. What it says: **the Vault Keeper kills
+13.1% of wizard runs and 20.9% of fighter runs — 70% and 84% of all defeats —
+and the sanctum kills 3.0% and 0.4%.** `test/smoke.mjs` reports **1,038 passed,
+0 failed**, up from 968; nine guard-rails were broken on purpose (#34) and each
+exited 1 at the assertion whose comment claims it, plus one end-to-end break in
+the pack that the band could not see and the baseline named. `test/balance.mjs`
+over 2,000 seeded runs a build: **Wizard 81.4%** and **Fighter 75.1%**,
+unchanged to the decimal, which is what a phase that only measures should look
+like. Both suites run in CI, on `.github/workflows/absalom-ci.yml`. The next
+open phase is Phase 6 — an area should be a file, not a diff — on Claude
+Opus 5, and it opens arc two.
 
 Round one made an unwinnable vignette winnable and broke the single file into ES
 modules; round two added a second area and caught a stall bug with a Monte Carlo
@@ -291,14 +292,19 @@ new one.
   settings, no difficulty selection.
 
 **Tests and the harness**
-- `balance.mjs` reports one aggregate per build. It cannot answer "which fight
-  kills people" or "did this change move the Keeper fight specifically." No
-  baseline is stored, so a 3-point drift is invisible until it crosses a band
-  edge. It does fail on a command no build ever casts (Phase 3) and on a
-  creature ability no creature ever uses (Phase 4), which is the narrowest
-  possible version of "did this content get played?" — and separating the causes
-  of a balance move is still a hand-written script each time (this phase's
-  four-row table was one).
+- `balance.mjs` reports per encounter and per area, holds a baseline it
+  compares exactly against, and takes a `--variant` patch (Phase 5). What it
+  still cannot do: **say anything about a fight that did not happen.** Every row
+  is built from encounters the autopilot walked into, so an encounter the
+  goal list never reaches is not a zero, it is an absent row — and only the
+  baseline's "the batch never played it" line would say so. **The autopilot is
+  still one policy**, so every number is the floor of competent play; there is
+  no second driver that plays badly, or cautiously, to bracket it. **`settled`
+  reads 0.0% on every row**: `checkDisengage()`'s anti-cheese full heal has
+  never fired under the harness, because the autopilot never breaks line of
+  sight, so the one rule protecting against wear-down cheese is measured by
+  nothing. And **the baseline is per build and per encounter only** — a change
+  that moves damage between two commands inside the same fight passes it.
 - No suite covers `render.js` or `ui.js`; both are DOM-bound and untested.
 - The autopilot brawls everything and never uses the cover a player would, so
   every number it reports is a floor rather than a ceiling.
@@ -761,44 +767,83 @@ validator, `test/balance.mjs`. *Save:* none — `ai` is a content field, and an
 ability's once-per-encounter spend is runtime-only for the reason the reaction
 budget is (#160). *Model:* **Claude Opus 5.**
 
-## Phase 5 — A harness that says which fight killed you
+## Phase 5 — A harness that says which fight killed you — SHIPPED
 
-**`balance.mjs` reports one number per build, and one number cannot tell you
-whether the Keeper is too hard or the sanctum is free.**
+**`balance.mjs` reported one number per build, and one number could not tell
+you whether the Keeper was too hard or the sanctum was free.**
 
-The harness has paid for itself twice, on the unwinnable original build and on
-round two's post-combat stairs stall, and both times it worked because it
-produced a number. After four phases of engine change it needs to produce more
-than two of them.
+It can now, and the answer is that **the Vault Keeper is where this adventure
+is decided.** It kills 13.1% of every wizard run and 20.9% of every fighter
+run — 70% and 84% of all defeats — in a fight that happens 0.97 times a run.
+**The sanctum, which two whole phases were spent on, kills 3.0% of Vesper's
+runs and 0.4% of Kessa's**, and accounts for 19.5% of the damage Vesper takes
+against 3.2% of Kessa's. The Reliquary Warden is very nearly free for the
+fighter, and no aggregate this project has ever printed said so.
 
-- [ ] **Per-encounter reporting.** Tag each encounter with its area and the
-      creature that started it; report win rate, rounds and damage taken per
-      encounter rather than per run.
-- [ ] **Per-area reporting.** How often a run reaches the sanctum, how often it
-      dies there, what share of total damage the last room accounts for. Today
-      "read the reliquary 64.0%" is the only sanctum signal there is, and it is
-      a lore count rather than a fight.
-- [ ] **A stored baseline** in `test/baseline.json`, written by an explicit flag
-      and compared every run, so a move from 81.4% to 77.9% reports a 3.5-point
-      regression instead of passing quietly inside a 45-point band.
-- [ ] **Reaction and condition counters** — how often each fired and by whom,
-      the cheapest way to catch a feature that is wired but never triggers — and
-      a **build × area matrix** printed as one table, so four builds do not
-      double the output length.
-- [ ] **Separating the causes of a move should not be a hand-written script.**
-      Phase 4's four-row table (before / skirmisher only / caster only /
-      shipped) was thirty lines of throwaway code that deep-copied the pack,
-      deleted one field, and re-ran the batch. Every phase that touches balance
-      writes that script again. A `--variant` flag that takes a JSON patch and
-      prints the rows side by side is most of what #155's rule needs to be
-      cheap enough to keep obeying.
-- [ ] **The test that pins it.** Break one encounter's numbers on purpose and
-      confirm the harness exits non-zero naming that encounter — locked decision
-      #34 applied to the harness itself.
+- [x] **Per-encounter reporting.** One row per encounter, keyed by the area and
+      the creature that started it, off the engine's own `mode`, `woke`, `area`
+      and `end` events rather than anything the loop watches from outside — a
+      fight that ends because every construct settled back into stone never
+      passes through the autopilot's combat branch at all. Each row carries how
+      often it happens, how long it lasts, what it deals and takes, and how it
+      ends. Two sentinels wake separately, so "the sentinel fight" is a row that
+      happens 2.00 times a run.
+- [x] **Per-area reporting**, plus the **build × area matrix** as one table at
+      the end, so a fourth build costs three lines rather than a fourth report.
+- [x] **A stored baseline** in `test/baseline.json`, written by
+      `--write-baseline` and compared every run. **The comparison is exact, not
+      statistical**: every run is seeded `0x5EED + i`, so the same code over the
+      same run count gives the same numbers to the decimal, and the check only
+      runs when the run count matches the baseline's (2000, which is what CI
+      uses). `DRIFT` is 3 points of win rate, 3 points of an encounter's deaths,
+      and 15% of an encounter's damage taken.
+- [x] **Reaction and condition counters, by actor and by name.** Vesper's
+      Shield Block fires 2.31 times a run in 88.3% of runs; Kessa's Reactive
+      Strike still fires zero times in 2,000, which is now a line in the report
+      rather than a thing a handoff has to remember to say.
+- [x] **`--variant name={json}`**, repeatable, an RFC 7386 merge patch loaded
+      through the same `loadPack` a real pack goes through, printing the columns
+      side by side — win rate and where the deaths went. Phase 4's four-row
+      causal table was thirty lines of throwaway script; it is two flags now.
+      A patch that leaves a caster with nothing to cast is refused there exactly
+      as a bad edit to `vault.json` would be.
+- [x] **The test that pins it.** The Keeper's fist went from 1d6+2 to 1d6+4 on
+      purpose. The band did not notice — 69.5% and 64.7% are both comfortably
+      inside 45–90% — and the baseline exited 1 naming the fight: *"fighter,
+      vault/vault-keeper: killed 20.9% of runs, now 31.3%."* Nine more
+      guard-rails in `smoke.mjs` were broken one at a time from a green
+      baseline, each failing at the assertion whose comment claims it.
 
-*Leans on:* `test/balance.mjs`, `test/autopilot.mjs`, `game.js`'s `run.stats`.
-*Save:* none. *Model:* **Claude Opus 5** — reporting and test wiring around a
-harness pattern that already works.
+**Two numbers per encounter, because one was not enough, and the harness found
+that out about itself on its first real break.** Damage taken per fight
+truncates: a fight that kills you stops dealing damage. The 1d6+4 Keeper cost
+Kessa 10.4 points of win rate and moved her damage-taken in that fight by 1.8,
+against a tolerance of 1.9 — silence. Deaths per encounter moved 10.3 points
+and did not truncate. Both are checked now; the second is the one with teeth.
+
+**One break left the suite green, and the comment was the thing that was
+wrong** (#147). The watcher reads the creature that started a fight off the
+last `woke` event; swapping it to read `game.awake()[0]` instead left all
+assertions passing, because combat opens on the *first* wake and at that
+instant exactly one creature is standing. The two readings cannot differ on a
+fresh run. The case that does distinguish them is the one with no wake at all —
+a save restored mid-encounter, where `begin()` rolls initiative itself — so the
+test is that one now, and deleting the fallback reports the fight as
+"unknown".
+
+**`settled` reads 0.0% on every row of every build**, which is the report
+telling on the engine: `checkDisengage()`'s full-HP anti-cheese heal has never
+fired under the harness, because the autopilot never breaks line of sight. It
+is wired, validated, and exercised by nothing — the same shape as the three
+casualties on record, found in one line of a table rather than in a phase.
+
+**Nothing about the game moved.** 81.4% and 75.1%, the same figures to the
+decimal as the build before this, which is what a phase that only measures is
+supposed to look like. `smoke.mjs` goes from 968 assertions to 1,038. The one
+engine edit is `endCombat()`'s `mode` event, which now carries the `why` it
+already had: "the floor is clear" and "everything hunting you settled back into
+stone" are different endings and there was nothing left to read them off once
+the mode had changed.
 
 ## Arc two — more adventure than engine
 

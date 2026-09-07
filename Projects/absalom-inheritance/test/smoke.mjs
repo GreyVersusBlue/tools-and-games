@@ -27,6 +27,10 @@ import { createGame } from "../js/game.js";
 import { AI_KINDS, chooseAction } from "../js/ai.js";
 import { makeSaveSlot, makeRepair, validRun, freshRun, SAVE_KEY, SAVE_VERSION } from "../js/save.js";
 import { playThrough, travel, fight, combatPolicy } from "./autopilot.mjs";
+import {
+  BAND, DRIFT, runBatch, summarise, encounterRows, areaRows,
+  baselineOf, compareToBaseline, mergePatch, parseVariants,
+} from "./balance.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACK_PATH = path.join(HERE, "..", "content", "vault.json");
@@ -3366,6 +3370,267 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   const picked = slot.fresh("fighter");
   eq(picked.buildId, "fighter", "fresh(buildId) builds the chosen character, not the default one");
   eq(picked.pc.hp, 18, "at that build's own starting HP");
+}
+
+section("the harness");
+
+/**
+ * The harness is the thing every other number in this project is quoted from,
+ * and until this phase nothing checked it. Locked decision #34 says a
+ * guard-rail is verified by breaking what it guards; the ones below were each
+ * broken on purpose from a green baseline, and the comments say which
+ * assertion caught it.
+ *
+ * Every function under test is pure — a batch in, numbers out — so these hand
+ * a batch built by hand rather than playing 2,000 games to find out whether a
+ * denominator is right.
+ */
+
+/** A run-shaped object with only the fields the readers below touch. */
+function fakeRun({ outcome = "victory", taken = 0, encounters = [], areas = [], reactionsBy = {}, conditionsBy = {} } = {}) {
+  return { outcome, taken, encounters, areas, reactionsBy, conditionsBy, cast: {}, abilities: {}, lore: 0, gateOpen: false, slain: 0, rounds: 0, dealt: 0, hp: 0, potions: 0, reactions: 0 };
+}
+const enc = (area, starter, ended, taken = 0, rounds = 1, dealt = 0) => ({ area, starter, ended, taken, rounds, dealt });
+
+{
+  // Two sentinels wake separately and both are "vault/shattered-sentinel", so
+  // the row counts two fights in one run. Broken on purpose by keying the row
+  // on the area alone: "vault" then absorbed the Keeper's fight too, and the
+  // first assertion below read 3.
+  const results = [
+    fakeRun({ encounters: [enc("vault", "shattered-sentinel", "cleared", 2), enc("vault", "shattered-sentinel", "cleared", 4), enc("vault", "vault-keeper", "cleared", 9)] }),
+    fakeRun({ outcome: "defeat", encounters: [enc("vault", "shattered-sentinel", "cleared", 3), enc("vault", "vault-keeper", "died", 15)] }),
+  ];
+  const rows = encounterRows(content, results);
+  eq(rows.length, 2, "encounterRows keys on area and starter together, not on either alone");
+  const sentinels = rows.find(r => r.key === "vault/shattered-sentinel");
+  const keeper = rows.find(r => r.key === "vault/vault-keeper");
+  eq(sentinels.n, 3, "three sentinel fights across the two runs");
+  eq(sentinels.runs, 2, "in two runs — occurrences and runs are different questions");
+  eq(sentinels.per, 1.5, "1.5 sentinel fights per run");
+  eq(sentinels.taken, 3, "mean damage taken is per fight, not per run");
+  // The denominator that matters most in the whole file. `died` is a share of
+  // all runs so the column adds up to the defeat rate; dividing by this
+  // encounter's own occurrences instead reads 50% here and would have made
+  // every encounter look equally lethal in the report the phase is named for.
+  eq(keeper.deathShare, 0.5, "deathShare is a share of runs, not of that encounter's fights");
+  eq(keeper.died, 1, "and the raw count is still there");
+}
+
+{
+  // Sum-to-the-defeat-rate, on the real thing rather than a fixture: a defeat
+  // always happens inside an encounter, so every lost run is on exactly one
+  // row. Broken on purpose by closing an encounter as "cleared" on the `end`
+  // event in autopilot.mjs's watcher — the sum went to 0 while the defeat rate
+  // stayed at 0.19, and this is the assertion that said so.
+  const results = runBatch(resolved, 120);
+  const s = summarise(resolved, results);
+  const deaths = s.encounters.reduce((a, e) => a + e.deathShare, 0);
+  const defeats = (s.tally.defeat || 0) / s.n;
+  ok(Math.abs(deaths - defeats) < 1e-9,
+    `every defeat lands on exactly one encounter row (${deaths.toFixed(4)} vs ${defeats.toFixed(4)})`);
+  ok(defeats > 0, `and this batch actually lost some runs (${(100 * defeats).toFixed(1)}%)`);
+  ok(s.encounters.every(e => content.creatures[e.starter]),
+    "every encounter names a creature the pack defines as the one that started it");
+  ok(s.encounters.every(e => content.areaOrder.includes(e.area)),
+    "and an area the pack defines");
+  ok(s.encounters.some(e => e.key === "vault/vault-keeper"),
+    "the Keeper's fight is its own row rather than being folded into the sentinels'");
+}
+
+{
+  // The starter of a fight nothing woke.
+  //
+  // A fresh run always has an answer either way: combat opens on the first
+  // wake, so at that moment exactly one creature is on its feet and "the last
+  // thing that woke" and "the first thing awake" are the same creature.
+  // Swapping the watcher to read `game.awake()[0]` first left all 1,031
+  // assertions green, which is the honest reason this test exists rather than
+  // the one a comment here first claimed.
+  //
+  // The case that does distinguish them is the one with no wake at all:
+  // begin() rolls fresh initiative for a save restored mid-encounter (see
+  // game.js), so the watcher has never seen a `woke` event and the fallback is
+  // the only thing that can name the fight. Deleting it reports the sanctum
+  // fight as "unknown", and this is the assertion that says so.
+  const g = createGame({
+    content: selectPc(content, "fighter"), rng: makeRng(77),
+    state: {
+      packId: content.pack.id, buildId: "fighter", areaId: "sanctum",
+      pc: { x: 6, y: 6, hp: 18, slots: 0, focus: 0, conditions: [] },
+      creatures: [{
+        key: "sanctum:reliquary-warden@8,6", area: "sanctum", creature: "reliquary-warden",
+        wakesOn: "notice", x: 8, y: 6, hp: 14, awake: true, dead: false, conditions: [],
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
+      outcome: null,
+    },
+  });
+  const r = playThrough(g);
+  ok(r.encounters.length > 0, "a save restored mid-encounter reports the encounter it was restored into");
+  eq(r.encounters[0].starter, "reliquary-warden", "and names the creature that was already awake, rather than \"unknown\"");
+  eq(r.encounters[0].area, "sanctum", "in the area the save was written in");
+}
+
+{
+  // Areas. Broken on purpose by counting `reached` once per area *entry*
+  // rather than once per run: a pack where a stairway can be walked twice
+  // would report more than 100% reached, and the share-of-damage column would
+  // still have looked right.
+  const results = [
+    fakeRun({ taken: 10, areas: [{ area: "vault", taken: 10 }] }),
+    fakeRun({ outcome: "defeat", taken: 30, areas: [{ area: "vault", taken: 20 }, { area: "sanctum", taken: 10 }] }),
+    fakeRun({ taken: 0, areas: [{ area: "vault", taken: 0 }, { area: "sanctum", taken: 0 }, { area: "vault", taken: 0 }] }),
+  ];
+  const rows = areaRows(content, results);
+  eq(rows.map(r => r.id).join(","), content.areaOrder.join(","), "areaRows follows the pack's own area order");
+  const vault = rows.find(r => r.id === "vault");
+  const sanctum = rows.find(r => r.id === "sanctum");
+  eq(vault.reachedShare, 1, "the vault is reached in every run, counted once per run");
+  ok(Math.abs(sanctum.reachedShare - 2 / 3) < 1e-9, "the sanctum in two of three");
+  eq(sanctum.deathShare, 1 / 3, "the run that died in the sanctum is counted where it ended, not where it started");
+  eq(vault.deathShare, 0, "and not in the area it walked through first");
+  eq(vault.takenShare, 0.75, "damage share is of the whole batch's damage");
+}
+
+{
+  // The baseline comparison, which is the check with teeth. Every line below
+  // was produced by moving one number in a copy of the real file.
+  const good = summarise(resolved, runBatch(resolved, 40));
+  const stored = { runs: 40, builds: { wizard: baselineOf(good) } };
+  eq(compareToBaseline(stored, "wizard", good).length, 0, "a batch compared against its own baseline reports no drift");
+
+  const missing = compareToBaseline({ runs: 40, builds: {} }, "wizard", good);
+  eq(missing.length, 1, "a build with no baseline says so rather than passing quietly");
+
+  // A win rate that moved past DRIFT.rate, which is the 3.5-point regression
+  // the phase was written for: the 45-point band cannot see it.
+  const slid = { ...good, rate: good.rate - DRIFT.rate - 0.005 };
+  const rateDrift = compareToBaseline(stored, "wizard", slid);
+  eq(rateDrift.length, 1, "a win rate past the tolerance is one drift line");
+  ok(rateDrift[0].includes("win rate"), "and it says which number moved");
+  eq(compareToBaseline(stored, "wizard", { ...good, rate: good.rate - DRIFT.rate + 0.005 }).length, 0,
+    "a move inside the tolerance is not a regression");
+
+  // The phase's own requirement: break one encounter's numbers and watch the
+  // harness name that encounter. Breaking it the other way — deleting the
+  // per-encounter loop from compareToBaseline — left every assertion above
+  // green, because the win rate in this fixture never moved.
+  const key = "vault/vault-keeper";
+  const hurt = {
+    ...good,
+    encounters: good.encounters.map(e => (e.key === key ? { ...e, taken: e.taken * 2 + 1 } : e)),
+  };
+  const encDrift = compareToBaseline(stored, "wizard", hurt);
+  eq(encDrift.length, 1, "one encounter's damage moving is one drift line");
+  ok(encDrift[0].includes(key), `and the line names the encounter (${encDrift[0]})`);
+  ok(encDrift[0].includes("damage taken"), "and what about it moved");
+
+  // The second number per encounter, and the reason there are two. Bumping the
+  // Keeper's fist from 1d6+2 to 1d6+4 cost the fighter 10.4 points of win rate
+  // and 10.3 points of deaths in that one fight, and moved her damage-taken by
+  // 1.8 against a tolerance of 1.9 — a fight that kills you stops dealing
+  // damage. Deleting this branch leaves every assertion above green and lets
+  // that change through with nothing said about which fight did it.
+  const lethal = {
+    ...good,
+    encounters: good.encounters.map(e => (e.key === key ? { ...e, deathShare: e.deathShare + DRIFT.deaths + 0.01 } : e)),
+  };
+  const deathDrift = compareToBaseline(stored, "wizard", lethal);
+  eq(deathDrift.length, 1, "an encounter that starts killing more runs is one drift line");
+  ok(deathDrift[0].includes(key), "and it names the encounter");
+  ok(deathDrift[0].includes("killed"), "and says it is the deaths that moved, not the damage");
+  eq(compareToBaseline(stored, "wizard", {
+    ...good,
+    encounters: good.encounters.map(e => (e.key === key ? { ...e, deathShare: e.deathShare + DRIFT.deaths - 0.005 } : e)),
+  }).length, 0, "a death share inside the tolerance is not a regression");
+
+  // A fight that stopped happening, and one that started. Both mean the pack
+  // changed shape under a baseline that no longer describes it.
+  const gone = { ...good, encounters: good.encounters.filter(e => e.key !== key) };
+  ok(compareToBaseline(stored, "wizard", gone).some(l => l.includes("never played it")),
+    "an encounter the baseline has and the batch does not is drift");
+  const extra = { ...good, encounters: [...good.encounters, { ...good.encounters[0], key: "cellar/dread-thing" }] };
+  ok(compareToBaseline(stored, "wizard", extra).some(l => l.includes("never seen")),
+    "and so is one the baseline has never seen");
+}
+
+{
+  // The committed baseline is the one CI compares against, so its shape is
+  // worth an assertion: a file written by an older flag, or hand-edited into
+  // the wrong shape, would otherwise fail as "no baseline for wizard" in a
+  // run nobody reads to the end.
+  const stored = JSON.parse(fs.readFileSync(path.join(HERE, "baseline.json"), "utf8"));
+  eq(stored.runs, 2000, "the committed baseline was written at the run count CI uses");
+  for (const build of content.pcOptions) {
+    ok(stored.builds[build.id], `the baseline covers ${build.id}`);
+    const b = stored.builds[build.id];
+    ok(b.rate >= BAND.min && b.rate <= BAND.max, `and its stored rate is inside the band (${build.id})`);
+    for (const [key, e] of Object.entries(b.encounters)) {
+      const [areaId, creature] = key.split("/");
+      ok(content.areaOrder.includes(areaId) && content.creatures[creature],
+        `baseline encounter "${key}" names an area and a creature the pack still has`);
+      ok(typeof e.taken === "number" && typeof e.deathShare === "number", `and carries numbers (${key})`);
+    }
+  }
+}
+
+{
+  // mergePatch, which is what a --variant is. RFC 7386: objects merge, null
+  // deletes, everything else replaces whole.
+  const target = { a: { b: 1, c: 2 }, list: [1, 2], keep: "x" };
+  const out = mergePatch(target, { a: { c: 9, d: 3 }, list: [7], gone: null });
+  eq(JSON.stringify(out), JSON.stringify({ a: { b: 1, c: 9, d: 3 }, list: [7], keep: "x" }),
+    "mergePatch merges objects, replaces arrays whole and leaves untouched keys alone");
+  eq(JSON.stringify(mergePatch(target, { a: null })), JSON.stringify({ list: [1, 2], keep: "x" }),
+    "null deletes the key it names");
+  // The one that matters at run time: balance.mjs patches the same rawPack
+  // once per variant, so a mergePatch that wrote through would make the second
+  // variant a patch on top of the first and every column after the first a
+  // lie. Broken on purpose by assigning into `target` instead of a copy. It
+  // failed here, and at the null-delete line above it, and at the loadPack
+  // refusal below — three assertions for one bug, because a patch that writes
+  // through poisons every later use of the same object. This is the one that
+  // says what the bug is; the other two only say something is wrong.
+  eq(JSON.stringify(target), JSON.stringify({ a: { b: 1, c: 2 }, list: [1, 2], keep: "x" }),
+    "and the target is not written through");
+  const patched = loadPack(mergePatch(rawPack, { creatures: { "vault-keeper": { ai: "brawler", abilities: null } } }));
+  eq(patched.creatures["vault-keeper"].ai, "brawler", "a variant pack loads through the same loadPack a real pack does");
+  eq(content.creatures["vault-keeper"].ai, "caster", "and the pack it was patched from is untouched");
+  throws(() => loadPack(mergePatch(rawPack, { creatures: { "vault-keeper": { abilities: [] } } })),
+    "a variant that leaves a caster with nothing to cast is refused, not measured");
+}
+
+{
+  // The flag parsing. A variant column with no name is a column nobody can
+  // read back, so it is refused rather than numbered.
+  const vs = parseVariants(["node", "balance.mjs", "--variant", 'quiet={"tuning":{"visionFeet":5}}'], () => "");
+  eq(vs.length, 1, "one --variant is one column");
+  eq(vs[0].name, "quiet", "named by what is left of the =");
+  eq(vs[0].patch.tuning.visionFeet, 5, "and carrying the parsed patch");
+  const fromFile = parseVariants(["--variant", "f=@some.json"], f => (f === "some.json" ? '{"tuning":{"visionFeet":1}}' : "{}"));
+  eq(fromFile[0].patch.tuning.visionFeet, 1, "@file reads the patch off disk");
+  throws(() => parseVariants(["--variant", '{"tuning":{}}']), "an unnamed variant is refused");
+  throws(() => parseVariants(["--variant", "broken={nope}"]), "a variant that is not JSON is refused");
+  throws(() => parseVariants(["--variant"]), "a --variant with nothing after it is refused");
+}
+
+{
+  // The reaction and condition counters, off a real batch. These are the
+  // cheapest catch there is for a subsystem that is wired and never fires, and
+  // this project has shipped that twice.
+  const s = summarise(resolved, runBatch(resolved, 60));
+  ok(s.reactionsBy.length > 0, "the wizard's Shield Block fires and is counted by actor");
+  ok(s.reactionsBy.every(r => r.key.includes(" ")), "each counter names an actor and a command");
+  ok(s.reactionsBy.some(r => r.key === "pc shield-block"), "and the one that fires is hers");
+  ok(s.conditionsBy.some(r => r.key === "pc shielded"), "conditions are counted the same way");
+  // Only conditions going on. Broken on purpose by counting `value === 0` too
+  // — every count roughly doubled and this assertion caught it, because
+  // endCombat() takes every condition off at the end of every fight.
+  const shielded = s.conditionsBy.find(r => r.key === "pc shielded").count;
+  const casts = s.commands.find(c => c.name === "Shield").count;
+  eq(shielded, casts, "a condition is counted when it goes on, not when it comes off");
 }
 
 /* ========================================================================= *

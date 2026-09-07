@@ -726,7 +726,11 @@ export function createGame({ content, rng = Math.random, state = null }) {
       c.conditions = [];
     }
     if (why === "cleared") narrative("Silence returns to the vault.");
-    emit({ type: "mode", mode: "explore" });
+    // `why` rides along because "the floor is clear" and "everything that was
+    // hunting you settled back into stone" are different endings to a fight,
+    // and by the time the mode has changed there is nothing left to read them
+    // off. The renderer ignores it; test/balance.mjs reports it.
+    emit({ type: "mode", mode: "explore", why });
     setHint(run.gateOpen ? content.gate.openHint : "The way is clear, for now.");
     // A standing condition, not an event, for the same reason checkTreasure()
     // below already is: a Stride taken mid-fight can land the PC exactly on a

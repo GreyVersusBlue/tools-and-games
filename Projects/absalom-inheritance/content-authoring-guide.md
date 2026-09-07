@@ -570,6 +570,44 @@ that fights everything, and reports the win rate. `--verbose` prints the first t
 It exits non-zero outside the band declared in `balance.mjs` (currently 45–90%), so a content
 edit that makes the adventure unwinnable fails the build.
 
+**The band is 45 points wide, so it is not the only check.** A batch also reports one row per
+encounter — keyed by the area and the creature that started it — and one per area, and it
+compares both against `test/baseline.json`, the numbers the last commit measured. A change past
+`DRIFT` fails and names the fight it moved:
+
+```
+BASELINE DRIFT — fighter: win rate 75.1% → 64.7% (−10.4 points, tolerance 3.0)
+                 fighter, vault/vault-keeper: killed 20.9% of runs, now 31.3% (+10.3 points, tolerance 3.0)
+```
+
+**This is the check most likely to fail on a change you meant.** Retuning a stat block is exactly
+what it fires on. When the drift is the change you intended, rerun with `--write-baseline` and
+commit `test/baseline.json` in the same commit, with the new figures in your notes. The
+comparison is exact rather than statistical — every run uses the seed `0x5EED + i`, so the same
+pack over the same run count gives the same numbers on every machine — and it only runs when the
+run count matches the baseline's (2000, which is what CI uses).
+
+**Two numbers per encounter, not one, and the second is the one that matters.** Damage taken per
+fight truncates: a fight that kills you stops dealing damage, so the harder an encounter gets the
+less of it the average shows. Bumping the Keeper's fist by two points cost the fighter 10.4
+points of win rate and moved her damage-taken by 1.8, inside its own tolerance. Deaths per
+encounter is what did not truncate.
+
+**`--variant name={json}` measures a cause rather than an effect.** It patches the pack (RFC 7386
+merge patch, so `null` deletes a key and an array replaces one whole), loads it through the same
+`loadPack` a real pack goes through, and prints the columns side by side — win rate, rounds,
+damage, and the share of runs that died in each encounter. It is repeatable, so three columns is
+three flags:
+
+```
+node test/balance.mjs 2000 \
+  --variant 'brawler-keeper={"creatures":{"vault-keeper":{"ai":"brawler","abilities":null}}}' \
+  --variant 'no-skirmish={"creatures":{"reliquary-warden":{"ai":"brawler"}}}'
+```
+
+A patch that makes the pack invalid is refused there exactly as a bad edit to `vault.json` would
+be, rather than producing a column of quietly wrong numbers.
+
 This is not a nicety. The single-file build this replaced could not be finished on any seed —
 two Creature-0 constructs woke together and put six attacks a round into a 15 HP wizard — and
 the only reason anybody found out is that something counted. Three separate content changes

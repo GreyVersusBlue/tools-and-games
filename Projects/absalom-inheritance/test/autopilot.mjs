@@ -301,12 +301,112 @@ function collectGoals(content) {
 }
 
 /**
+ * Everything a report wants to say about a run that `run.stats` cannot,
+ * watched off the engine's own events rather than reconstructed from outside.
+ *
+ * The four aggregate counters answer "how did the run go" and nothing else.
+ * "Which fight killed you" is a different question, and it needs the run cut
+ * into encounters and areas while it is happening: the deltas are only
+ * knowable at the boundary, and by the end there is one total.
+ *
+ * Every boundary here is an event the engine already emits — `mode` for an
+ * encounter opening and closing, `woke` for what started it, `area` for a
+ * stairway, `end` for the run itself. Nothing measures a boundary a second
+ * way, which is the whole reason this reads events instead of watching
+ * `game.mode` from the loop below: a fight that ends because every construct
+ * settled back into stone (endCombat("lost")) never passes through the loop's
+ * combat branch at all.
+ */
+function watchRun(game) {
+  const encounters = [];
+  const areas = [];
+  const reactions = {};
+  const conditions = {};
+  const abilities = {};
+
+  // A creature key is "<area>:<creature>@<x>,<y>". Read the creature id off
+  // the state rather than parsing the key: the key's shape is game.js's
+  // business, and a report that parses it goes quietly wrong the day it gains
+  // a field.
+  const whoIs = key => {
+    if (key === "pc") return "pc";
+    const c = game.run.creatures.find(c => c.key === key);
+    return c ? c.creature : key;
+  };
+
+  const stats = () => ({ ...game.run.stats });
+  let fight = null;
+  let woke = null;
+  let here = { area: game.run.areaId, taken: 0, from: stats() };
+
+  function openFight() {
+    if (fight) return;
+    // The creature that started it: whatever woke immediately before combat
+    // began. A save restored mid-encounter starts combat with nothing waking
+    // at all, so fall back to whoever is already on their feet.
+    const starter = woke || game.awake()[0]?.key || null;
+    woke = null;
+    fight = { area: game.run.areaId, starter: starter ? whoIs(starter) : "unknown", from: stats() };
+  }
+
+  function closeFight(ended) {
+    if (!fight) return;
+    const now = stats();
+    encounters.push({
+      area: fight.area,
+      starter: fight.starter,
+      ended,
+      rounds: now.rounds - fight.from.rounds,
+      dealt: now.dealt - fight.from.dealt,
+      taken: now.taken - fight.from.taken,
+    });
+    fight = null;
+  }
+
+  function closeArea() {
+    here.taken = stats().taken - here.from.taken;
+    delete here.from;
+    areas.push(here);
+  }
+
+  game.on(ev => {
+    if (ev.type === "ability") abilities[ev.command] = (abilities[ev.command] || 0) + 1;
+    else if (ev.type === "reaction") tick(reactions, whoIs(ev.actor) + " " + ev.command);
+    // value 0 is a condition coming off; only the ones going on are news.
+    else if (ev.type === "condition" && ev.value > 0) tick(conditions, whoIs(ev.actor) + " " + ev.condition);
+    else if (ev.type === "woke") woke = ev.key;
+    else if (ev.type === "mode" && ev.mode === "combat") openFight();
+    // endCombat() says which of the two ways a fight ended; a "mode" event
+    // that carries no `why` at all is begin()'s opening one, and there is no
+    // encounter open for it to close.
+    else if (ev.type === "mode" && ev.mode !== "combat") closeFight(ev.why === "lost" ? "settled" : "cleared");
+    else if (ev.type === "end") { closeFight(ev.outcome === "defeat" ? "died" : "cleared"); }
+    else if (ev.type === "area") {
+      closeArea();
+      here = { area: ev.areaId, taken: 0, from: stats() };
+    }
+  });
+
+  return {
+    abilities,
+    close() {
+      // A run that stalls or runs out of goals leaves both open, and an
+      // encounter dropped on the floor is exactly the one worth seeing.
+      closeFight("unfinished");
+      closeArea();
+      return { encounters, areas, reactionsBy: reactions, conditionsBy: conditions, abilities };
+    },
+  };
+}
+
+const tick = (bag, key) => { bag[key] = (bag[key] || 0) + 1; };
+
+/**
  * Play the whole adventure: every pillar, the gate, every stairway, the
  * casket, fighting whatever wakes on the way. Returns how it ended and what
  * it cost.
  */
 export function playThrough(game, { maxPhases = 60 } = {}) {
-  game.begin();
   const goals = collectGoals(game.content);
   const cast = {};
   // What the *creatures* put on the board, counted the same way and for the
@@ -314,13 +414,18 @@ export function playThrough(game, { maxPhases = 60 } = {}) {
   // can reach, so the only way to find out it never fires is to listen for it
   // — off the engine's own event rather than a second guess at when a cone
   // goes off.
-  const abilities = {};
-  game.on(ev => { if (ev.type === "ability") abilities[ev.command] = (abilities[ev.command] || 0) + 1; });
+  //
+  // Subscribed before begin(), not after: begin() rolls initiative itself for
+  // a save restored mid-encounter, and a watcher attached afterwards would
+  // miss the encounter it is standing in.
+  const watch = watchRun(game);
+  const abilities = watch.abilities;
+  game.begin();
 
   let phases = 0;
   for (const goal of goals) {
     while (!game.run.outcome) {
-      if (++phases > maxPhases) return summarise(game, "stalled", cast, abilities);
+      if (++phases > maxPhases) return summarise(game, "stalled", cast, watch.close());
       if (game.mode === "combat") { fight(game, { tally: cast }); continue; }
 
       if (goal.kind === "pillar") {
@@ -346,14 +451,29 @@ export function playThrough(game, { maxPhases = 60 } = {}) {
     }
     if (game.run.outcome) break;
   }
-  return summarise(game, game.run.outcome || "unfinished", cast, abilities);
+  return summarise(game, game.run.outcome || "unfinished", cast, watch.close());
 }
 
-function summarise(game, outcome, cast = {}, abilities = {}) {
+/**
+ * `detail` is watchRun()'s close(): the per-encounter, per-area, per-reaction
+ * and per-condition breakdown. It defaults to an empty one so the shape is the
+ * same for a caller that built the summary by hand — balance.mjs reads these
+ * arrays without checking, and a missing key there would read as "this run
+ * fought nothing" rather than as the crash it is.
+ */
+function summarise(game, outcome, cast = {}, detail = {}) {
+  const { encounters = [], areas = [], reactionsBy = {}, conditionsBy = {} } = detail;
   return {
     outcome,
     cast,
-    abilities,
+    abilities: detail.abilities || {},
+    encounters,
+    areas,
+    // `reactionsBy` and `reactions` are different questions and the names have
+    // to say so: one is "who fired what, how often", the other is the run's
+    // single total, which balance.mjs has printed since round two.
+    reactionsBy,
+    conditionsBy,
     hp: game.run.pc.hp,
     slots: game.run.pc.slots,
     focus: game.run.pc.focus,
