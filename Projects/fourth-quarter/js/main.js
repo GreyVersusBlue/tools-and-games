@@ -122,12 +122,12 @@ function beginNight() {
     crowdTarget: C.forecast(campaign),
     gameNight: C.isGameNight(campaign),
     hourLenSec: 45,
-    // The physical room's own seat count, not the venue tier's — world.js builds
-    // the same 30-stool-and-table room at every tier (see world.js's buildWorld()
-    // and campaign.js's VENUES comment), so this is the one true cap. Reading it
-    // straight from `seats` (imported from world.js, already used below to reset
-    // occupancy) means the engine's arrival gate can never drift from the room a
-    // player can actually see.
+    // The physical room's own seat count, not the venue tier's — world.js fills
+    // `seats` from the venue's layout.js description (every tier the Corner
+    // Tap's 30 until Phase 2 authors the rest; see campaign.js's VENUES
+    // comment), so this is the one true cap. Reading it straight from `seats`
+    // (imported from world.js, already used below to reset occupancy) means the
+    // engine's arrival gate can never drift from the room a player can see.
     seats: seats.length,
     stock: campaign.stock,        // shared — the night eats the shelves
     promo: C.promoDef(campaign).id,

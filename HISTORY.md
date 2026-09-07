@@ -2125,6 +2125,47 @@ Two of them have moved since they were written:
    started by an action and by a walk and a boot is neither.
    *Source: Absalom Phase 7.*
 
+182. **A room is a description, and the check that it is the same room is a
+   dump of the old one, not a re-implementation.** `world.js` was 363 lines of
+   literal coordinates with no test, and `day.js` kept its own copy of six of
+   them. `layout.js` holds the numbers now, pure, and derives seats,
+   colliders and `inBounds()`; `world.js` draws from it and converts to
+   `THREE.Box3` at the boundary. The transcription was verified against
+   `test/fixtures/corner-tap.json`, dumped from the *old* `world.js` running
+   in Chromium before `layout.js` existed: 30 seats, 11 `Box3`es, nine
+   stand-points, and `inBounds()` on 5,037 grid samples. A suite that
+   recomputes the old arithmetic in a new file proves the two files agree with
+   each other (#34); a dump of the old function proves the new one agrees with
+   what shipped. Colliders are derived from a block's own width, depth,
+   rotation and pad rather than measured off its mesh with
+   `Box3.setFromObject`, so the same box exists under Node — and the one
+   rotated crate is the case a naive w×d would get wrong by 7 cm.
+   *Source: Fourth Quarter Phase 1.*
+
+183. **Exported stand-points keep their identity across a rebuild.** `DOOR`,
+   `PASS_FOOD`, `STOVE_STATION` and six more are `Vector3` constants held by
+   `patrons.js`, `player.js` and `main.js`; a rebuild re-aims them with
+   `.set()` rather than exporting a fresh object per venue, and `ROOM` and
+   `KITCHEN` are `Object.assign`ed the same way. The alternative — every
+   consumer calling `currentLayout()` on every read — would have touched
+   three modules for a phase whose point was that they should not need to
+   know. The cost is that the exports are mutable and documented as such; a
+   module that copies one at import time holds the Corner Tap's forever, and
+   none does today. *Source: Fourth Quarter Phase 1.*
+
+184. **A pure-module phase in a three.js project still ships a browser check,
+   under `tools/` when CI globs `test/`.** `tools/browser-check.mjs` boots
+   the page in Chromium and asserts that the module-level lists are the
+   derived ones after boot, after "New Game" and after a dev warp, with no
+   page error. It found the phase's one real bug: the first `day.js` draft
+   named a station's lookup key `ring`, and the constructor then assigned the
+   torus mesh to `st.ring`, so the first `rebuildStations()` looked up a mesh
+   as a key and threw — with all 448 Node assertions green. It lives under
+   `tools/` because `fourth-quarter-ci.yml` runs every `test/*.mjs` and this
+   one needs `playwright-core`; Absalom's and Blue Hour's `test/browser.mjs`
+   sit under `test/` only because their workflows name their suites.
+   *Source: Fourth Quarter Phase 1.*
+
 ---
 
 # The site sessions, 1–10
@@ -2948,7 +2989,27 @@ file did the same for the one seed it touched. Save: none.
 
 ---
 
-# The Fourth Quarter, Phase 5
+# The Fourth Quarter, Phases 1 and 5
+
+**Phase 1 — The room is a description.** `js/layout.js`, pure, zero imports:
+one description per venue tier (all four the Corner Tap until Phase 2), and
+`seatsFor()`, `collidersFor()`, `inBounds()`, `walkable()`, `standPointsFor()`
+and `validate()` derived from it. `world.js` builds from the description
+through `adoptLayout()`, which refills `seats`/`colliders` and re-aims the
+exported stand-points; `day.js` reads its six rings from `currentLayout()`
+and `rebuildStations()` re-reads them. `test/smoke-layout.mjs` (55) holds the
+derivation to `test/fixtures/corner-tap.json`, dumped from the old `world.js`
+in Chromium (#182): same 30 seats in the same order, every collider edge within
+1e-6, zero of 5,037 grid samples differing. The walkability invariant —
+approaches and stand-points walkable, door in, exit out, doorway joining the
+rooms — holds for every description in the table. *Broken on purpose (#34),
+five ways:* a table on stool 1's approach, the doorway a metre east (16
+corridor samples), `blockBox` ignoring rotation (crate2's two edges), tables
+before stools, and the corridor dropped from `inBounds` (8 samples and every
+doorway "does not join"); each failed at the assertion whose comment claims
+it. `tools/browser-check.mjs` (25, hand-run) found the one real bug, a
+`ring` key clash in `day.js` that every Node test missed (#184).
+
 
 **Phase 5 — The suite runs on every pull request.** 393 assertions in
 `test/smoke-engine.mjs` and `test/smoke-campaign.mjs`, no browser, no

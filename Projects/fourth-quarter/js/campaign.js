@@ -34,12 +34,15 @@ export const PROMOS = {
 // how many closed nights (rent/wages/upkeep still due, no revenue) it takes to move
 // in before the doors can reopen.
 //
-// `seats` is deliberately the same 30 at every tier. world.js builds one physical
-// room (6 stools + 6 four-tops) regardless of venue, so a tier-varying number here
-// was cosmetic — the engine's real cap is world.js's own seats.length, wired
-// directly in main.js's beginNight(). Session-2 audit measured peak occupancy at
-// 23-29 against the 30 that already existed and found nothing above it was ever
-// gating anything; rather than fake a floor plan that doesn't exist, this says so.
+// `seats` is deliberately the same 30 at every tier. The room is a description
+// in layout.js now, and all four tiers still map to the Corner Tap's (6 stools +
+// 6 four-tops) until Phase 2 authors the other three; the engine's real cap is
+// world.js's own seats.length, wired directly in main.js's beginNight(), so a
+// tier-varying number here was cosmetic. Session-2 audit measured peak occupancy
+// at 23-29 against the 30 that already existed and found nothing above it was
+// ever gating anything; rather than fake a floor plan that doesn't exist, this
+// says so. When Phase 2 lands, this column should read layout.seatsFor().length
+// or go.
 export const VENUES = {
   cornerTap:  { id: "cornerTap",  name: "The Corner Tap",     order: 0, cost: 0,     seats: 30, buzzMult: 1.00, darkNights: 0, rent: 110,
                 desc: "Where you started. Six tables, six stools, one stove, one tap." },

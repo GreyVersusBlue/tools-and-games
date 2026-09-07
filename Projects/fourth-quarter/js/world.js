@@ -1,70 +1,88 @@
-// world.js — The Corner Tap, built in meters.
-// Floor y=0. Main room x∈[-8,8], z∈[-5.5,5.5]; door mid-south (+z).
-// The bar runs along the north wall with a wide service lane behind it.
-// Behind the north wall: the KITCHEN (x∈[1,8], z∈[-9,-5.5]) — reached
-// through a doorway east of the bar, with a pass-through window where
-// food lands. Exposes: seats[], colliders[], pass points, inBounds().
+// world.js — the room, built in metres from a description in layout.js.
+// Floor y=0. The Corner Tap: main room x∈[-8,8], z∈[-5.5,5.5]; door mid-south
+// (+z); the bar along the north wall with a service lane behind it; behind the
+// north wall the KITCHEN, reached through a doorway east of the bar, with a
+// pass-through window where food lands. None of those numbers live here any
+// more — layout.js holds them and derives seats, colliders and inBounds();
+// this file turns that into meshes, and converts the derived boxes to
+// THREE.Box3 at the boundary. Exposes: seats[], colliders[], the stand-points,
+// inBounds(), and currentLayout().
 
 import * as THREE from "three";
 import { mat, flat, glow } from "./materials.js";
+import * as L from "./layout.js";
 
+// Every export below is filled in by buildWorld() from the venue's description
+// and rewritten on each rebuild — the objects keep their identity, so a module
+// that imported DOOR before the first build still holds tonight's door. ROOM and
+// KITCHEN are the Corner Tap's until the first call, which is what they were
+// as literals; the stand-points are set on the same call.
 export const ROOM = { x: 8, z: 5.5, h: 3.1 };
 export const KITCHEN = { x0: 1, x1: 8, z0: -9, z1: -5.5 };
-const WALL_T = 0.15;                 // north wall thickness (visible from both sides)
-const DOORWAY = { x0: 2.1, x1: 3.7 }; // gap in the north wall
-const WINDOW = { x0: 4.5, x1: 6.2, y0: 1.05, y1: 2.05 }; // pass-through opening
 
-export const DOOR = new THREE.Vector3(0, 0, ROOM.z - 0.3);
-export const DOOR_OUT = new THREE.Vector3(0, 0, ROOM.z + 1.2);
+export const DOOR = new THREE.Vector3();
+export const DOOR_OUT = new THREE.Vector3();
 
 // carrier stand-points (walk here, press E / deliver from here)
-export const PASS_FOOD  = new THREE.Vector3(5.35, 0, -4.7);   // main-room side of the window
-export const PASS_DRINK = new THREE.Vector3(0.2, 0, -2.85);   // east end of the bar front
+export const PASS_FOOD  = new THREE.Vector3();   // main-room side of the window
+export const PASS_DRINK = new THREE.Vector3();   // east end of the bar front
 // where ready items physically sit (spread along x)
-export const PASS_FOOD_SHELF  = new THREE.Vector3(5.35, 1.12, -5.5);
-export const PASS_DRINK_SHELF = new THREE.Vector3(-0.3, 1.16, -3.8);
+export const PASS_FOOD_SHELF  = new THREE.Vector3();
+export const PASS_DRINK_SHELF = new THREE.Vector3();
 // where the player actually cooks/pours — distinct from the pickup counters above
-export const STOVE_STATION = new THREE.Vector3(6.1, 0, -7.7);   // in front of the kitchen stove
-export const TAP_STATION   = new THREE.Vector3(-5.5, 0, -2.85); // west end of the bar front
+export const STOVE_STATION = new THREE.Vector3();   // in front of the kitchen stove
+export const TAP_STATION   = new THREE.Vector3();   // west end of the bar front
+export const UPGRADES_STATION = new THREE.Vector3();
 
 export const seats = [];
 export const colliders = [];
-export const UPGRADES_STATION = new THREE.Vector3(-6.6, 0, -1.6);
+
+let current = L.CORNER_TAP;
+/** The description the room on screen was built from. */
+export function currentLayout() { return current; }
 
 /** Walkable test: main room ∪ kitchen ∪ the doorway corridor joining them. */
 export function inBounds(x, z, r = 0.3) {
-  const main = x > -ROOM.x + r && x < ROOM.x - r && z > -ROOM.z + r && z < ROOM.z - r;
-  const corridor = x > DOORWAY.x0 + r && x < DOORWAY.x1 - r && z > -6.0 && z < -4.8;
-  const kitchen = x > KITCHEN.x0 + r && x < KITCHEN.x1 - r && z > KITCHEN.z0 + r && z < -ROOM.z - WALL_T / 2;
-  return main || corridor || kitchen;
+  return L.inBounds(current, x, z, r);
 }
 
-let seatId = 0;
-function addSeat(x, z, ax, az) {
-  seats.push({ id: ++seatId, pos: new THREE.Vector3(x, 0, z), approach: new THREE.Vector3(ax, 0, az), taken: false });
+/** Point the exported constants at a description. Called at the top of
+ *  buildWorld(); exported so a test can aim the module without a scene. */
+export function adoptLayout(desc) {
+  current = desc;
+  Object.assign(ROOM, desc.room);
+  Object.assign(KITCHEN, desc.kitchen);
+  const p = L.standPointsFor(desc);
+  const set = (v, k) => v.set(p[k].x, p[k].y, p[k].z);
+  set(DOOR, "door"); set(DOOR_OUT, "doorOut");
+  set(PASS_FOOD, "passFood"); set(PASS_DRINK, "passDrink");
+  set(PASS_FOOD_SHELF, "passFoodShelf"); set(PASS_DRINK_SHELF, "passDrinkShelf");
+  set(STOVE_STATION, "stove"); set(TAP_STATION, "tap"); set(UPGRADES_STATION, "upgrades");
+  seats.length = 0;
+  for (const s of L.seatsFor(desc)) {
+    seats.push({ id: s.id, pos: new THREE.Vector3(s.x, 0, s.z), approach: new THREE.Vector3(s.ax, 0, s.az), taken: false });
+  }
+  colliders.length = 0;
+  for (const b of L.collidersFor(desc)) {
+    colliders.push(new THREE.Box3(new THREE.Vector3(b.min.x, b.min.y, b.min.z), new THREE.Vector3(b.max.x, b.max.y, b.max.z)));
+  }
 }
-function blockCollider(mesh, pad = 0.05) {
-  mesh.updateWorldMatrix(true, false);
-  const box = new THREE.Box3().setFromObject(mesh);
-  box.expandByScalar(pad);
-  box.min.y = 0; box.max.y = 2.5;
-  colliders.push(box);
-}
+adoptLayout(current);
 
-export function buildWorld(scene) {
+export function buildWorld(scene, venueId) {
   const g = new THREE.Group();
 
   // main.js's rebuildVenue() (a signed lease, a dev-menu warp, "New Game") calls
-  // this again on the same page, and neither module-level array was ever cleared
-  // — every rebuild silently doubled seats and colliders on top of the previous
-  // room's, all sitting at the same coordinates since the room itself never
-  // changes shape. Harmless-looking (the old stool meshes are gone with the
-  // group they belonged to) until freeSeat() or the collision check starts
-  // working a list several rooms deep. The venue ladder going live means this
-  // now runs on every real playthrough, not just a dev warp or two.
-  seats.length = 0;
-  colliders.length = 0;
-  seatId = 0;
+  // this again on the same page, and for two rounds neither module-level array
+  // was cleared — every rebuild silently doubled seats and colliders on top of
+  // the previous room's. adoptLayout() empties both and refills them from the
+  // description, so a rebuild is the new room's lists and nothing else's. Any
+  // new module-level array here inherits the same obligation.
+  const desc = L.layoutFor(venueId);
+  adoptLayout(desc);
+  const DOORWAY = desc.doorways[0];
+  const WINDOW = desc.windows[0];
+  const WALL_T = desc.wallT;
 
   // ---- floors & ceilings ----
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.z * 2), mat("floorWood"));
@@ -129,14 +147,20 @@ export function buildWorld(scene) {
   kWall(kD, KITCHEN.x0, (KITCHEN.z0 + KITCHEN.z1) / 2, Math.PI / 2);  // kitchen west
   kWall(kD, KITCHEN.x1, (KITCHEN.z0 + KITCHEN.z1) / 2, Math.PI / 2);  // kitchen east
 
-  // ---- kitchen fit-out ----
-  const prep = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.95, 0.9), mat("metal"));
-  prep.position.set(2.6, 0.475, -7.3); prep.castShadow = true; g.add(prep); blockCollider(prep, 0.08);
-  const stove = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.95, 0.85), mat("metal"));
-  stove.position.set(6.4, 0.475, -8.45); stove.castShadow = true; g.add(stove); blockCollider(stove, 0.08);
+  // ---- kitchen fit-out (the blocks are the description's; colliders are
+  //      already derived from the same numbers, so nothing is measured off a mesh) ----
+  const fit = Object.fromEntries(desc.fitout.map(f => [f.id, f]));
+  const block = (f, m) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(f.w, f.h, f.d), m);
+    b.position.set(f.x, f.h / 2, f.z); b.rotation.y = f.rotY || 0;
+    b.castShadow = true; g.add(b);
+    return b;
+  };
+  block(fit.prep, mat("metal"));
+  const stove = block(fit.stove, mat("metal"));
   for (let i = 0; i < 4; i++) {
     const burner = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 12), glow(0xff5a2b, 0.9));
-    burner.position.set(6.05 + (i % 2) * 0.7, 0.96, -8.62 + Math.floor(i / 2) * 0.36);
+    burner.position.set(stove.position.x - 0.35 + (i % 2) * 0.7, fit.stove.h + 0.01, stove.position.z - 0.17 + Math.floor(i / 2) * 0.36);
     g.add(burner);
   }
   const kShelf = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.06, 0.35), mat("barTop"));
@@ -158,33 +182,30 @@ export function buildWorld(scene) {
   doorGlow.position.set(0, 1.1, ROOM.z - 0.09); doorGlow.rotation.y = Math.PI; g.add(doorGlow);
 
   // ---- the bar (pulled off the wall — a real lane behind it) ----
-  const barLen = 7, barX = -2.75, barZ = -3.8; // back edge -4.175 → 1.25 m lane to the wall
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(barLen, 1.1, 0.75), mat("barTop"));
+  const barLen = desc.bar.len, barX = desc.bar.x, barZ = desc.bar.z;
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(barLen, 1.1, desc.bar.depth), mat("barTop"));
   counter.position.set(barX, 0.55, barZ); counter.castShadow = true; g.add(counter);
   const kick = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.12, 0.8), flat(0x120c07));
   kick.position.set(barX, 0.06, barZ); g.add(kick);
-  blockCollider(counter, 0.1);
   // back bar shelf + bottles, on the north wall behind the lane
   const shelf = new THREE.Mesh(new THREE.BoxGeometry(barLen, 0.08, 0.35), mat("barTop"));
   shelf.position.set(barX, 1.5, nz + WALL_T / 2 + 0.2); g.add(shelf);
   const bottleCols = [0x7fb069, 0xc46a3a, 0x9a6fb5, 0x5aa7d6, 0xd7b45a];
-  for (let i = 0; i < 12; i++) {
+  const bottles = Math.max(1, Math.round((barLen - 0.8) / 0.56) + 1);
+  for (let i = 0; i < bottles; i++) {
     const b = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.32, 8), flat(bottleCols[i % bottleCols.length], 0.25));
     b.position.set(barX - barLen / 2 + 0.4 + i * 0.56, 1.7, nz + WALL_T / 2 + 0.2); g.add(b);
   }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < desc.bar.taps; i++) {
     const tap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.35, 8), flat(0xc9c9c9, 0.3, 0.9));
-    tap.position.set(-4.2 + i * 0.5, 1.28, barZ - 0.1); g.add(tap);
+    tap.position.set(desc.bar.tapX0 + i * desc.bar.tapPitch, 1.28, barZ - 0.1); g.add(tap);
   }
   const barSign = makeLabel("BAR PICK-UP", 0xe8a33d);
   barSign.position.set(PASS_DRINK.x, 1.75, barZ + 0.4); g.add(barSign);
 
-  // bar stools (patron seats), along the new counter front
-  for (let i = 0; i < 6; i++) {
-    const x = -5.6 + i * 1.18;
-    stool(g, x, -3.05);
-    addSeat(x, -3.05, x, -2.4);
-  }
+  // stools: one mesh per derived seat (bar stools first, then each table's
+  // four) — the seat list itself was filled by adoptLayout() above
+  for (const s of seats) stool(g, s.pos.x, s.pos.z);
 
   const stoveRing = stationRing(0xff5a2b);
   stoveRing.position.set(STOVE_STATION.x, 0.02, STOVE_STATION.z); stoveRing.scale.setScalar(0.7);
@@ -194,8 +215,7 @@ export function buildWorld(scene) {
   g.add(tapRing);
 
   // ---- tables ----
-  const tableSpots = [[-5, 0.9], [-1.6, 0.9], [1.9, 0.9], [-5, 3.4], [-1.6, 3.4], [4.9, 2.6]];
-  for (const [tx, tz] of tableSpots) table4(g, tx, tz);
+  for (const t of desc.tables) table4(g, t.x, t.z);
 
   // ---- TVs with live scoreboard canvases ----
   const tvs = [
@@ -223,13 +243,8 @@ export function buildWorld(scene) {
   }
 
   // ---- upgrade crates (workshop station, west wall) ----
-  const crateM = mat("metal");
-  const crate1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 0.6), crateM);
-  crate1.position.set(UPGRADES_STATION.x, 0.3, UPGRADES_STATION.z - 0.5);
-  crate1.castShadow = true; g.add(crate1); blockCollider(crate1, 0.06);
-  const crate2 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 0.55), flat(0x5a4632, 0.8));
-  crate2.position.set(UPGRADES_STATION.x + 0.5, 0.25, UPGRADES_STATION.z - 0.35);
-  crate2.rotation.y = 0.3; crate2.castShadow = true; g.add(crate2); blockCollider(crate2, 0.06);
+  block(fit.crate1, mat("metal"));
+  block(fit.crate2, flat(0x5a4632, 0.8));
   const toolSign = makeLabel("UPGRADES", 0x9a6fb5);
   toolSign.scale.multiplyScalar(0.55);
   toolSign.position.set(UPGRADES_STATION.x + 0.2, 1.35, UPGRADES_STATION.z - 0.9);
@@ -277,21 +292,15 @@ function stool(g, x, z) {
   s.position.set(x, 0, z); g.add(s);
 }
 
+/** A four-top's top and leg. Its stools and their seats come from the
+ *  description (layout.seatsFor), and its collider from layout.collidersFor. */
 function table4(g, x, z) {
   const t = new THREE.Group();
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.06, 20), mat("tableTop"));
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(L.TABLE_TOP_R, L.TABLE_TOP_R, 0.06, 20), mat("tableTop"));
   top.position.y = 0.92; top.castShadow = true; t.add(top);
   const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, 0.9, 10), flat(0x1c130b, 0.5));
   leg.position.y = 0.45; t.add(leg);
   t.position.set(x, 0, z); g.add(t);
-  blockCollider(top, 0.12);
-  const R = 0.95;
-  for (let i = 0; i < 4; i++) {
-    const a = (Math.PI / 2) * i + Math.PI / 4;
-    const sx = x + Math.cos(a) * R, sz = z + Math.sin(a) * R;
-    stool(g, sx, sz);
-    addSeat(sx, sz, x + Math.cos(a) * (R + 0.55), z + Math.sin(a) * (R + 0.55));
-  }
 }
 
 // ---- canvas helpers ----

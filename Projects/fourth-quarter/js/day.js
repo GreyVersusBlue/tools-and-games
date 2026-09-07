@@ -4,7 +4,7 @@
 // Walk into a ring, press E, manage in a panel, close, keep walking.
 
 import * as THREE from "three";
-import { stationRing, ROOM, KITCHEN, DOOR, UPGRADES_STATION } from "./world.js";
+import { stationRing, currentLayout } from "./world.js";
 import { MENU } from "./engine.js";
 import * as C from "./campaign.js";
 import * as audio from "./audio.js";
@@ -26,20 +26,19 @@ export class DayPhase {
     this.getC = getC;
     this.cb = cb;
     this.cart = {};
+    // Ring positions come from the venue's description (layout.js), never from
+    // literals here: the same numbers world.js built the room from, so a ring
+    // cannot drift from the floor it marks. rebuildStations() re-reads them.
     this.stations = [
-      { id: "stock", label: "Stock Order", key: "STOCK", color: 0xe8a33d,
-        pos: new THREE.Vector3((KITCHEN.x0 + KITCHEN.x1) / 2, 0, -7.2), open: () => this.stockPanel() },
-      { id: "crew", label: "The Crew", key: "CREW", color: 0x5aa7d6,
-        pos: new THREE.Vector3(-2, 0, -2.1), open: () => this.crewPanel() },
-      { id: "promo", label: "Tonight's Theme", key: "THEME", color: 0xff4e42,
-        pos: new THREE.Vector3(-3.2, 0, ROOM.z - 1.2), open: () => this.promoPanel() },
-      { id: "door", label: "Open the Doors", key: "OPEN", color: 0x58b368,
-        pos: new THREE.Vector3(DOOR.x, 0, DOOR.z - 0.9), open: () => this.doorPanel() },
-      { id: "upgrades", label: "Upgrades", key: "UPG", color: 0x9a6fb5,
-        pos: UPGRADES_STATION.clone(), open: () => this.upgradePanel() },
-      { id: "realestate", label: "Real Estate", key: "ESTATE", color: 0xd4af37,
-        pos: new THREE.Vector3(6.7, 0, -0.8), open: () => this.realEstatePanel() },
+      { id: "stock", label: "Stock Order", key: "STOCK", color: 0xe8a33d, open: () => this.stockPanel() },
+      { id: "crew", label: "The Crew", key: "CREW", color: 0x5aa7d6, open: () => this.crewPanel() },
+      { id: "promo", label: "Tonight's Theme", key: "THEME", color: 0xff4e42, open: () => this.promoPanel() },
+      { id: "door", label: "Open the Doors", key: "OPEN", color: 0x58b368, point: "doorRing", open: () => this.doorPanel() },
+      { id: "upgrades", label: "Upgrades", key: "UPG", color: 0x9a6fb5, open: () => this.upgradePanel() },
+      { id: "realestate", label: "Real Estate", key: "ESTATE", color: 0xd4af37, point: "realEstate", open: () => this.realEstatePanel() },
     ];
+    for (const st of this.stations) st.pos = new THREE.Vector3();
+    this.placeStations();
     this.group = new THREE.Group();
     for (const st of this.stations) {
       st.ring = stationRing(st.color);
@@ -61,21 +60,31 @@ export class DayPhase {
   setVisible(v) { this.group.visible = v; }
   panelOpen() { return $("#panelOverlay").style.display === "flex"; }
 
+  /** Read each station's stand-point off the room world.js last built. */
+  placeStations() {
+    const pts = currentLayout().stations;
+    for (const st of this.stations) {
+      const p = pts[st.point ?? st.id]; // `ring` is the mesh
+      st.pos.set(p.x, 0, p.z);
+    }
+  }
+
   /**
    * Re-seat the station rings after main.js tears the venue down and rebuilds it.
    *
-   * main.js's rebuildVenue() has always called this; the method never existed, so
-   * "New Game (wipe save)" and every venue move threw `day.rebuildStations is not
-   * a function` and abandoned the rest of rebuildVenue — which is why the camera
-   * never got reset to the spawn point on those paths.
+   * main.js's rebuildVenue() has always called this; for a round the method did
+   * not exist, so "New Game (wipe save)" and every venue move threw
+   * `day.rebuildStations is not a function` and abandoned the rest of
+   * rebuildVenue — which is why the camera never got reset on those paths.
    *
-   * It reads as a no-op today and that is correct: buildWorld() ignores the venue
-   * argument main.js passes it, so ROOM/KITCHEN/DOOR are the same metres at every
-   * tier and the rings are already where they belong. rebuildVenue() only removes
-   * worldGroup, so this.group survives on the scene. The moment a tier gets its
-   * own floor plan, this is the hook that has to know about it.
+   * It re-reads the six positions from whatever description world.js just
+   * built from. Every tier is still the Corner Tap's description until Phase 2
+   * authors the others, so today the rings land where they were; the day a tier
+   * gets its own floor plan, this is already the hook that moves them.
+   * rebuildVenue() only removes worldGroup, so this.group survives on the scene.
    */
   rebuildStations() {
+    this.placeStations();
     for (const st of this.stations) {
       st.ring.position.x = st.pos.x;
       st.ring.position.z = st.pos.z;
