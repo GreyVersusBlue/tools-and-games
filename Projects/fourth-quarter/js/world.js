@@ -1,12 +1,14 @@
 // world.js — the room, built in metres from a description in layout.js.
-// Floor y=0. The Corner Tap: main room x∈[-8,8], z∈[-5.5,5.5]; door mid-south
-// (+z); the bar along the north wall with a service lane behind it; behind the
-// north wall the KITCHEN, reached through a doorway east of the bar, with a
-// pass-through window where food lands. None of those numbers live here any
-// more — layout.js holds them and derives seats, colliders and inBounds();
-// this file turns that into meshes, and converts the derived boxes to
-// THREE.Box3 at the boundary. Exposes: seats[], colliders[], the stand-points,
-// inBounds(), and currentLayout().
+// Floor y=0. Every room shares one plan: door mid-south (+z); the bar along
+// the north wall with a service lane behind it; behind the north wall the
+// KITCHEN, reached through a doorway east of the bar, with a pass-through
+// window where food lands. None of the numbers live here — layout.js holds
+// them and derives seats, colliders, inBounds(), the TV mounts and the cook
+// line; this file turns that into meshes and converts the derived boxes to
+// THREE.Box3 at the boundary. Every fit-out block is drawn by its `kind`, so
+// a room with three stoves is three entries in its description and nothing
+// here. Exposes: seats[], colliders[], the stand-points, inBounds(), and
+// currentLayout().
 
 import * as THREE from "three";
 import { mat, flat, glow } from "./materials.js";
@@ -85,16 +87,20 @@ export function buildWorld(scene, venueId) {
   const WALL_T = desc.wallT;
 
   // ---- floors & ceilings ----
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.z * 2), mat("floorWood"));
+  // Each material's texture repeat was tuned on the Corner Tap's surfaces, and
+  // the textures are shared across every mesh that uses them, so a bigger room
+  // scales the plane's UVs by its size over the Corner Tap's instead: the same
+  // plank width on a 28 m floor as on a 16 m one. (Corner Tap: scale 1 exactly.)
+  const floor = new THREE.Mesh(plane(ROOM.x * 2, ROOM.z * 2, 16, 11), mat("floorWood"));
   floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
   const kW = KITCHEN.x1 - KITCHEN.x0, kD = KITCHEN.z1 - KITCHEN.z0;
-  const kFloor = new THREE.Mesh(new THREE.PlaneGeometry(kW, kD), mat("kitchenTile"));
+  const kFloor = new THREE.Mesh(plane(kW, kD, 7, 3.5), mat("kitchenTile"));
   kFloor.rotation.x = -Math.PI / 2;
   kFloor.position.set((KITCHEN.x0 + KITCHEN.x1) / 2, 0, (KITCHEN.z0 + KITCHEN.z1) / 2);
   kFloor.receiveShadow = true; g.add(kFloor);
-  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.z * 2), mat("ceiling"));
+  const ceil = new THREE.Mesh(plane(ROOM.x * 2, ROOM.z * 2, 16, 11), mat("ceiling"));
   ceil.rotation.x = Math.PI / 2; ceil.position.y = ROOM.h; g.add(ceil);
-  const kCeil = new THREE.Mesh(new THREE.PlaneGeometry(kW, kD), mat("ceiling"));
+  const kCeil = new THREE.Mesh(plane(kW, kD, 7, 3.5), mat("ceiling"));
   kCeil.rotation.x = Math.PI / 2;
   kCeil.position.set((KITCHEN.x0 + KITCHEN.x1) / 2, ROOM.h, (KITCHEN.z0 + KITCHEN.z1) / 2);
   g.add(kCeil);
@@ -104,9 +110,9 @@ export function buildWorld(scene, venueId) {
     const w = new THREE.Mesh(geo, m);
     w.position.set(x, ROOM.h / 2, z); w.rotation.y = ry; w.receiveShadow = true; g.add(w);
   };
-  mkWall(new THREE.PlaneGeometry(ROOM.x * 2, ROOM.h), mat("wallPlaster"), 0, ROOM.z, Math.PI);
-  mkWall(new THREE.PlaneGeometry(ROOM.z * 2, ROOM.h), mat("wallPlaster"), -ROOM.x, 0, Math.PI / 2);
-  mkWall(new THREE.PlaneGeometry(ROOM.z * 2, ROOM.h), mat("wallPlaster"), ROOM.x, 0, -Math.PI / 2);
+  mkWall(plane(ROOM.x * 2, ROOM.h, 16, 3.1), mat("wallPlaster"), 0, ROOM.z, Math.PI);
+  mkWall(plane(ROOM.z * 2, ROOM.h, 11, 3.1), mat("wallPlaster"), -ROOM.x, 0, Math.PI / 2);
+  mkWall(plane(ROOM.z * 2, ROOM.h, 11, 3.1), mat("wallPlaster"), ROOM.x, 0, -Math.PI / 2);
 
   // ---- north wall: brick boxes with a doorway gap and a pass window ----
   const nz = -ROOM.z;
@@ -147,39 +153,58 @@ export function buildWorld(scene, venueId) {
   kWall(kD, KITCHEN.x0, (KITCHEN.z0 + KITCHEN.z1) / 2, Math.PI / 2);  // kitchen west
   kWall(kD, KITCHEN.x1, (KITCHEN.z0 + KITCHEN.z1) / 2, Math.PI / 2);  // kitchen east
 
-  // ---- kitchen fit-out (the blocks are the description's; colliders are
-  //      already derived from the same numbers, so nothing is measured off a mesh) ----
-  const fit = Object.fromEntries(desc.fitout.map(f => [f.id, f]));
+  // ---- fit-out (the blocks are the description's; colliders are already
+  //      derived from the same numbers, so nothing is measured off a mesh).
+  //      Drawn by kind: a stove is a metal block with four burners, a prep a
+  //      metal block, a crate metal or wood. Any count of each. ----
   const block = (f, m) => {
     const b = new THREE.Mesh(new THREE.BoxGeometry(f.w, f.h, f.d), m);
     b.position.set(f.x, f.h / 2, f.z); b.rotation.y = f.rotY || 0;
     b.castShadow = true; g.add(b);
     return b;
   };
-  block(fit.prep, mat("metal"));
-  const stove = block(fit.stove, mat("metal"));
-  for (let i = 0; i < 4; i++) {
-    const burner = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 12), glow(0xff5a2b, 0.9));
-    burner.position.set(stove.position.x - 0.35 + (i % 2) * 0.7, fit.stove.h + 0.01, stove.position.z - 0.17 + Math.floor(i / 2) * 0.36);
-    g.add(burner);
+  for (const f of desc.fitout) {
+    if (f.kind === "stove") {
+      const stove = block(f, mat("metal"));
+      for (let i = 0; i < 4; i++) {
+        const burner = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 12), glow(0xff5a2b, 0.9));
+        burner.position.set(stove.position.x - 0.35 + (i % 2) * 0.7, f.h + 0.01, stove.position.z - 0.17 + Math.floor(i / 2) * 0.36);
+        g.add(burner);
+      }
+    } else if (f.kind === "crateWood") {
+      block(f, flat(0x5a4632, 0.8));
+    } else {
+      block(f, mat("metal")); // prep, crate
+    }
   }
-  const kShelf = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.06, 0.35), mat("barTop"));
-  kShelf.position.set(2.4, 1.7, -8.75); g.add(kShelf);
-  for (let i = 0; i < 6; i++) {
+  // dry-goods shelf on the kitchen's north wall, west end: the Corner Tap's
+  // 2.2 m shelf with six cans, longer in a wider kitchen
+  const shelfLen = Math.min(kW - 0.8, 2.2 + Math.max(0, kW - 7) * 0.4);
+  const shelfX = KITCHEN.x0 + 0.3 + shelfLen / 2, shelfZ = KITCHEN.z0 + 0.25;
+  const kShelf = new THREE.Mesh(new THREE.BoxGeometry(shelfLen, 0.06, 0.35), mat("barTop"));
+  kShelf.position.set(shelfX, 1.7, shelfZ); g.add(kShelf);
+  const cans = Math.round(shelfLen / 0.34);
+  for (let i = 0; i < cans; i++) {
     const can = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.2, 10), flat(0xb8b2a6, 0.5, 0.4));
-    can.position.set(1.55 + i * 0.34, 1.83, -8.75); g.add(can);
+    can.position.set(shelfX - shelfLen / 2 + 0.25 + i * 0.34, 1.83, shelfZ); g.add(can);
   }
-  const kLight = new THREE.PointLight(0xfff0dc, 10, 9, 1.8); // kitchen never goes dark
-  kLight.position.set(4.5, ROOM.h - 0.4, -7.2); g.add(kLight);
+  // the kitchen never goes dark: one warm light per 7 m of its width
+  const kLights = Math.max(1, Math.round(kW / 7));
+  for (let i = 0; i < kLights; i++) {
+    const kLight = new THREE.PointLight(0xfff0dc, 10, 9, 1.8);
+    kLight.position.set(KITCHEN.x0 + kW * (i + 0.5) / kLights, ROOM.h - 0.4, (KITCHEN.z0 + KITCHEN.z1) / 2 + 0.05);
+    g.add(kLight);
+  }
   const heat = new THREE.Mesh(new THREE.PlaneGeometry(WINDOW.x1 - WINDOW.x0 - 0.1, WINDOW.y1 - WINDOW.y0 - 0.1), glow(0xffb45e, 0.25));
   heat.position.set((WINDOW.x0 + WINDOW.x1) / 2, (WINDOW.y0 + WINDOW.y1) / 2, KITCHEN.z0 + 0.16);
   g.add(heat); // warm glow on the kitchen back wall
 
-  // door frame (front entrance, visual)
+  // door frame (front entrance, visual) — on the south wall at the door's x
+  const doorX = DOOR.x;
   const frame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.3, 0.12), flat(0x241a10, 0.7));
-  frame.position.set(0, 1.15, ROOM.z - 0.02); g.add(frame);
+  frame.position.set(doorX, 1.15, ROOM.z - 0.02); g.add(frame);
   const doorGlow = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.1), glow(0x2b3f66, 0.5));
-  doorGlow.position.set(0, 1.1, ROOM.z - 0.09); doorGlow.rotation.y = Math.PI; g.add(doorGlow);
+  doorGlow.position.set(doorX, 1.1, ROOM.z - 0.09); doorGlow.rotation.y = Math.PI; g.add(doorGlow);
 
   // ---- the bar (pulled off the wall — a real lane behind it) ----
   const barLen = desc.bar.len, barX = desc.bar.x, barZ = desc.bar.z;
@@ -217,34 +242,29 @@ export function buildWorld(scene, venueId) {
   // ---- tables ----
   for (const t of desc.tables) table4(g, t.x, t.z);
 
-  // ---- TVs with live scoreboard canvases ----
-  const tvs = [
-    tvScreen(g, -4.5, 2.35, nz + WALL_T / 2 + 0.02, 0),
-    tvScreen(g, ROOM.x - 0.06, 2.2, -2.6, -Math.PI / 2),
-    tvScreen(g, -ROOM.x + 0.06, 2.2, 0.5, Math.PI / 2),
-  ];
+  // ---- TVs with live scoreboard canvases, hung where the description says ----
+  const tvs = desc.tvs.map(tv => { const m = L.tvMount(desc, tv); return tvScreen(g, m.x, m.y, m.z, m.ry); });
 
-  // ---- neon sign ----
+  // ---- neon sign, over the door ----
   const neon = makeLabel("THE FOURTH QUARTER", 0xff4e42, 512, 44);
   neon.scale.multiplyScalar(1.6);
-  neon.position.set(0, 2.6, ROOM.z - 0.08); neon.rotation.y = Math.PI; g.add(neon);
+  neon.position.set(doorX, 2.6, ROOM.z - 0.08); neon.rotation.y = Math.PI; g.add(neon);
 
-  // ---- corkboard (promo station, south wall by the door) ----
+  // ---- corkboard (promo station, south wall — over the promo ring's x) ----
+  const corkX = desc.stations.promo.x;
   const cork = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 0.05), flat(0x8a6a42, 0.95));
-  cork.position.set(-3.2, 1.6, ROOM.z - 0.05); g.add(cork);
+  cork.position.set(corkX, 1.6, ROOM.z - 0.05); g.add(cork);
   const corkFrame = new THREE.Mesh(new THREE.BoxGeometry(1.62, 1.12, 0.04), flat(0x2e1d10, 0.7));
-  corkFrame.position.set(-3.2, 1.6, ROOM.z - 0.03); g.add(corkFrame);
+  corkFrame.position.set(corkX, 1.6, ROOM.z - 0.03); g.add(corkFrame);
   for (let i = 0; i < 5; i++) {
     const note = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.28),
       flat([0xf2e9dc, 0xe8d27a, 0xa8c8e0][i % 3], 1));
-    note.position.set(-3.75 + (i % 3) * 0.55, 1.75 - Math.floor(i / 3) * 0.4, ROOM.z - 0.07);
+    note.position.set(corkX - 0.55 + (i % 3) * 0.55, 1.75 - Math.floor(i / 3) * 0.4, ROOM.z - 0.07);
     note.rotation.z = (Math.random() - 0.5) * 0.2; note.rotation.y = Math.PI;
     g.add(note);
   }
 
-  // ---- upgrade crates (workshop station, west wall) ----
-  block(fit.crate1, mat("metal"));
-  block(fit.crate2, flat(0x5a4632, 0.8));
+  // ---- upgrades sign (the crates themselves are fit-out, drawn above) ----
   const toolSign = makeLabel("UPGRADES", 0x9a6fb5);
   toolSign.scale.multiplyScalar(0.55);
   toolSign.position.set(UPGRADES_STATION.x + 0.2, 1.35, UPGRADES_STATION.z - 0.9);
@@ -253,34 +273,42 @@ export function buildWorld(scene, venueId) {
   // ---- lights: night rig (warm pendants) vs day rig (flat daylight) ----
   const nightRig = new THREE.Group(), dayRig = new THREE.Group();
   nightRig.add(new THREE.HemisphereLight(0x8a7a66, 0x14100c, 0.6));
-  const warm = [[-4, 0.8], [0, 0.8], [4, 1.8], [-2, -3.2], [5.3, -4.4]];
-  for (const [lx, lz] of warm) {
+  for (const { x: lx, z: lz } of desc.pendants) {
     const p = new THREE.PointLight(0xffb45e, 14, 11, 1.9);
     p.position.set(lx, ROOM.h - 0.4, lz); nightRig.add(p);
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.22, 12, 1, true), flat(0x1c130b, 0.6));
     cone.position.set(lx, ROOM.h - 0.25, lz); g.add(cone);
   }
+  // the shadow cameras cover the whole floor plus a metre: ±9 / 7 / -10 at the Corner Tap
+  const shadowBox = light => {
+    light.shadow.mapSize.set(1024, 1024);
+    light.shadow.camera.left = -(ROOM.x + 1); light.shadow.camera.right = ROOM.x + 1;
+    light.shadow.camera.top = ROOM.z + 1.5; light.shadow.camera.bottom = KITCHEN.z0 - 1;
+  };
   const key = new THREE.DirectionalLight(0xfff2df, 0.5);
-  key.position.set(3, 6, 4); key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  key.shadow.camera.left = -9; key.shadow.camera.right = 9;
-  key.shadow.camera.top = 7; key.shadow.camera.bottom = -10;
+  key.position.set(3, 6, 4); key.castShadow = true; shadowBox(key);
   nightRig.add(key);
 
   dayRig.add(new THREE.HemisphereLight(0xdde6f2, 0x5a5048, 1.35));
   const sun = new THREE.DirectionalLight(0xfff6e6, 1.8);
-  sun.position.set(-4, 7, 6); sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -9; sun.shadow.camera.right = 9;
-  sun.shadow.camera.top = 7; sun.shadow.camera.bottom = -10;
+  sun.position.set(-4, 7, 6); sun.castShadow = true; shadowBox(sun);
   dayRig.add(sun);
   const doorLight = new THREE.PointLight(0xeaf2ff, 8, 8, 1.6);
-  doorLight.position.set(0, 2.2, ROOM.z - 0.6); dayRig.add(doorLight);
+  doorLight.position.set(doorX, 2.2, ROOM.z - 0.6); dayRig.add(doorLight);
   dayRig.visible = false;
   g.add(nightRig); g.add(dayRig);
 
   scene.add(g);
   return { group: g, tvs, nightRig, dayRig };
+}
+
+/** A PlaneGeometry whose UVs are scaled by its size over a reference size, so
+ *  a shared texture keeps one texel density across rooms of different sizes. */
+function plane(w, h, refW, refH) {
+  const geo = new THREE.PlaneGeometry(w, h);
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (w / refW), uv.getY(i) * (h / refH));
+  return geo;
 }
 
 function stool(g, x, z) {

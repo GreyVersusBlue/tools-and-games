@@ -2,6 +2,7 @@
 // Campaign books + stock/promo wiring into the night engine.
 
 import * as C from "../js/campaign.js";
+import * as L from "../js/layout.js";
 import { NightEngine, MENU, seed } from "../js/engine.js";
 
 let pass = 0, fail = 0;
@@ -67,10 +68,12 @@ const rc = C.newCampaign();
 ok(C.rent(rc) === C.VENUES.cornerTap.rent, "rent(c) reads off the campaign's current venue");
 C.devWarpVenue(rc, "flagship");
 ok(C.rent(rc) === C.VENUES.flagship.rent, "and moves with it");
-// Physical capacity, on the other hand, does not move — world.js builds one
-// 30-seat room regardless of tier (buildWorld() ignores the venue argument), so
-// pretending the tiers differ here was cosmetic. See campaign.js's VENUES comment.
-ok(C.VENUE_ORDER.every(id => C.VENUES[id].seats === 30), "every tier's seats field is the same physical 30 — no fake variety");
+// Physical capacity is the floor plan's, counted off layout.js — the same
+// list world.js builds stools from — so the Real Estate card cannot promise a
+// seat the room does not have. See campaign.js's VENUES comment.
+ok(C.VENUE_ORDER.every(id => C.VENUES[id].seats === L.seatsFor(L.layoutFor(id)).length), "every tier's seats field is its floor plan's stool count");
+ok(C.VENUE_ORDER.map(id => C.VENUES[id].seats).join() === "30,44,58,76", `seats climb 30, 44, 58, 76 (got ${C.VENUE_ORDER.map(id => C.VENUES[id].seats).join()})`);
+ok(C.VENUE_ORDER.every((id, i) => i === 0 || C.VENUES[id].seats > C.VENUES[C.VENUE_ORDER[i - 1]].seats), "seats are strictly monotonic up the ladder");
 
 // ---- dev/debug helpers ----
 const cashBefore = c.cash;
@@ -131,6 +134,26 @@ cNoCookUpg.staff = cNoCookUpg.staff.filter(s => s.role !== "cook");
 C.buyUpgrade(cNoCookUpg, "training"); C.buyUpgrade(cNoCookUpg, "rushexp");
 ok(C.roleMult(cNoCookUpg, "cook") === 0, "no upgrade can fake a kitchen open with no cook on shift");
 ok(C.upgradeFees(cu) === C.UPGRADES.pos.fee + C.UPGRADES.training.fee, "upkeep sums only owned upgrades' fees");
+
+// ---- upgrades: tier gates (the 2D build's, carried over) ----
+ok(Object.values(C.UPGRADES).every(u => Number.isInteger(u.tier) && u.tier >= 0 && u.tier < C.VENUE_ORDER.length), "every upgrade names a tier that exists");
+ok(C.UPGRADES.broadcast.tier === 1 && C.UPGRADES.crafttaps.tier === 1, "Premium Screens and the Craft Tap Wall need the Fieldhouse");
+ok(C.UPGRADES.pos.tier === 0 && C.UPGRADES.training.tier === 0 && C.UPGRADES.rushexp.tier === 0, "the other three are open from day one");
+const cg = C.newCampaign(); cg.cash = 100000;
+ok(C.upgradeGate(cg, "broadcast") === C.VENUES.fieldhouse, "at the Corner Tap, Premium Screens is gated on the Fieldhouse");
+ok(C.upgradeGate(cg, "pos") === null && C.upgradeGate(cg, "nope") === null, "an open upgrade (or a nonexistent one) has no gate");
+const gr = C.buyUpgrade(cg, "broadcast");
+ok(!gr.ok && gr.err === "The Fieldhouse or bigger — no room for it here." && !C.owned(cg, "broadcast"), `the gate refuses the sale by name (${gr.err})`);
+ok(cg.cash === 100000, "a refused sale costs nothing");
+ok(!C.buyUpgrade(cg, "crafttaps").ok, "the Craft Tap Wall is refused at the Corner Tap too");
+C.devWarpVenue(cg, "fieldhouse");
+ok(C.upgradeGate(cg, "broadcast") === null && C.buyUpgrade(cg, "broadcast").ok && C.owned(cg, "broadcast"), "at the Fieldhouse the same sale goes through");
+C.devWarpVenue(cg, "flagship");
+ok(C.upgradeGate(cg, "crafttaps") === null, "the gate is 'this tier or bigger', not 'exactly this tier'");
+// the gate is on buying, not owning: a Corner Tap save with the Craft Tap Wall
+// already in (bought before the gate existed) keeps it and its effect
+const cOld = C.newCampaign(); cOld.upgrades.push("crafttaps");
+ok(C.owned(cOld, "crafttaps") && C.beerMult(cOld) === 1.2 && C.upgradeGate(cOld, "crafttaps") === C.VENUES.fieldhouse, "an upgrade owned below its tier stays owned and keeps working");
 
 // ---- settlement ----
 const cash0 = c.cash, day0 = c.day;
@@ -428,6 +451,7 @@ ok(typeof b4.net === "number" && c4.day === 5, "night settles into the books");
 
 // ---- upgrades: crowd + pricing effects ----
 const cf = C.newCampaign(); cf.cash = 100000;
+C.devWarpVenue(cf, "fieldhouse"); // both of these are gated on the Fieldhouse
 const fBase = C.forecast(cf);
 C.buyUpgrade(cf, "broadcast");
 ok(C.forecast(cf) > fBase, "Premium Screens lifts the forecast");

@@ -79,6 +79,8 @@ const probe = () => page.evaluate(async () => {
       passFoodShelf: v(w.PASS_FOOD_SHELF), passDrinkShelf: v(w.PASS_DRINK_SHELF),
       stove: v(w.STOVE_STATION), tap: v(w.TAP_STATION), upgrades: v(w.UPGRADES_STATION) },
     inBounds: [[0, 0], [2.9, -5.5], [0.5, -5.5], [6, -7], [0, 5.4]].map(([x, z]) => w.inBounds(x, z)),
+    camera: v(window.__fq.camera.position),
+    rings: window.__fq.day.stations.map(st => ({ id: st.point ?? st.id, x: st.ring.position.x, z: st.ring.position.z })),
   };
 });
 
@@ -95,8 +97,17 @@ const sameRoom = (label, got, venueId) => {
     got.colliders.every((b, i) => ["x", "y", "z"].every(a => near(b.min[a], cols[i].min[a]) && near(b.max[a], cols[i].max[a]))));
   ok(`${label}: stand-points are the description's`,
     Object.entries(got.points).every(([k, p]) => near(p.x, pts[k].x) && near(p.y, pts[k].y) && near(p.z, pts[k].z)));
-  ok(`${label}: inBounds answers room / doorway / wall / kitchen / south wall`,
-    got.inBounds.join() === [true, true, false, true, false].join(), got.inBounds.join());
+  // the five probe points are the Corner Tap's; every room answers the middle
+  // of its floor and a point past its south wall the same way, and only the
+  // Corner Tap's doorway / wall / kitchen points are the Corner Tap's
+  if (venueId === "cornerTap") {
+    ok(`${label}: inBounds answers room / doorway / wall / kitchen / south wall`,
+      got.inBounds.join() === [true, true, false, true, false].join(), got.inBounds.join());
+  }
+  ok(`${label}: camera is on the room's spawn at eye height`,
+    near(got.camera.x, pts.spawn.x) && near(got.camera.y, 1.62) && near(got.camera.z, pts.spawn.z), JSON.stringify(got.camera));
+  ok(`${label}: six rings sit on the description's stations`,
+    got.rings.length === 6 && got.rings.every(r => near(r.x, pts[r.id].x) && near(r.z, pts[r.id].z)), JSON.stringify(got.rings));
 };
 
 group("boot");
@@ -122,6 +133,15 @@ ok("no page errors after the warp", errors.length === 0, errors.join(" | "));
 const warped = await probe();
 sameRoom("warp", warped, "flagship");
 ok("seats did not stack across three builds", warped.seats.length === L.seatsFor(L.layoutFor("flagship")).length);
+
+// every rung, from the flagship down and back: the dev menu is still open
+for (const id of ["fieldhouse", "midtown", "cornerTap"]) {
+  group(`dev warp to ${id}`);
+  await page.click(`[data-warp=${id}]`, { timeout: 5000 });
+  await page.waitForTimeout(600);
+  ok(`no page errors after the warp to ${id}`, errors.length === 0, errors.join(" | "));
+  sameRoom(id, await probe(), id);
+}
 
 await browser.close();
 server.close();

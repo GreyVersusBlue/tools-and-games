@@ -2166,6 +2166,58 @@ Two of them have moved since they were written:
    sit under `test/` only because their workflows name their suites.
    *Source: Fourth Quarter Phase 1.*
 
+185. **The ladder is physically bigger, and every rung is the Corner Tap's
+   plan scaled until NPCs can path.** Q22 answered: yes. The Fieldhouse,
+   Midtown and the flagship are 20×13, 24×15 and 28×18 m against the Corner
+   Tap's 16×11, with 44, 58 and 76 seats, two, two and three stoves, four,
+   six and eight taps — and every one keeps bar-west, kitchen-east-behind-
+   the-north-wall, door-mid-south, one rectangle plus a kitchen. Midtown's
+   "second room off the main floor" and the flagship's mezzanine, both named
+   in the wishlist, are deferred behind Phase 3 on purpose: `stepToward()`
+   walks a straight line and consults nothing, so a wall between the door
+   and half the seats is a room where every patron walks into masonry and
+   stops. A bigger single room is honest today; a second room would be a
+   bug shipped as content. `VENUES[].seats` is `seatsFor(LAYOUTS[id]).length`
+   so the Real Estate card cannot promise a stool the room does not have.
+   *Source: Fourth Quarter Phase 2, increment 1.*
+
+186. **A standing point can be walkable and still unreachable, so the
+   invariant floods from the door.** Phase 1's `validate()` checked every
+   seat approach and stand-point for "inside the room and outside every
+   collider", which a crate across the doorway passes in full: every kitchen
+   point is still walkable, and none can be reached. `unreachable(desc)`
+   rasterises the floor at 0.25 m, floods from the cells within a metre of
+   the door, and names every seat approach, station, idle-server spot and
+   cook spot the flood never touches. It is a sweep, not a planner — Phase
+   3's nav grid may reuse the cells but the check does not wait for it. The
+   guard was proven the way #34 asks: the crate across each room's doorway
+   strands the stove with six named problems, and deleting the sweep from
+   `validate()` fails exactly the five assertions written against it.
+   *Source: Fourth Quarter Phase 2, increment 1.*
+
+187. **An upgrade's tier gate is on buying, not owning.** `UPGRADES[].tier`
+   carries the 2D build's gates (Premium Screens and the Craft Tap Wall need
+   the Fieldhouse), `upgradeGate(c, id)` names the room, and `buyUpgrade()`
+   refuses with that name. A save that installed either at the Corner Tap
+   before the gate existed keeps it, keeps its effect and keeps paying its
+   upkeep: taking a paid-for thing away on a version bump is worse than one
+   Corner Tap with a tap wall it should not have. The panel disables the
+   button and says which room, rather than hiding the card.
+   *Source: Fourth Quarter Phase 2, increment 1.*
+
+188. **What a description does not say, `world.js` derives from what it
+   does; and a shared texture keeps its density by scaling UVs, not by
+   cloning materials.** The neon hangs over `stations.door.x`, the corkboard
+   over `stations.promo.x`, the kitchen shelf on the kitchen's north wall at
+   its west end, the kitchen light at its centre, the shadow cameras a metre
+   past the floor — none of them authored per room, all of them right in
+   every room because the things they follow are. Each texture's `repeat`
+   was tuned on the Corner Tap and every mesh shares the one loaded
+   material, so a 28 m floor scales its plane's UVs by 28/16 and gets the
+   same plank width; the Corner Tap scales by exactly 1. Cloning the
+   material per room would have doubled 66 MB of GPU texture per rung.
+   *Source: Fourth Quarter Phase 2, increment 1.*
+
 ---
 
 # The site sessions, 1–10
@@ -2989,7 +3041,7 @@ file did the same for the one seed it touched. Save: none.
 
 ---
 
-# The Fourth Quarter, Phases 1 and 5
+# The Fourth Quarter, Phases 1, 2 and 5
 
 **Phase 1 — The room is a description.** `js/layout.js`, pure, zero imports:
 one description per venue tier (all four the Corner Tap until Phase 2), and
@@ -3009,6 +3061,30 @@ before stools, and the corridor dropped from `inBounds` (8 samples and every
 doorway "does not join"); each failed at the assertion whose comment claims
 it. `tools/browser-check.mjs` (25, hand-run) found the one real bug, a
 `ring` key clash in `day.js` that every Node test missed (#184).
+
+**Phase 2, increment 1 — Four rooms, one ladder (PR #170).** Three new
+descriptions in `layout.js` — `FIELDHOUSE`, `MIDTOWN`, `FLAGSHIP` — each the
+Corner Tap's plan bigger (#185): 30, 44, 58, 76 seats; 1, 2, 2, 3 stoves; 3,
+4, 6, 8 taps; 3, 4, 5, 7 TVs. The description grew a `kind` per fit-out block
+(`world.js` draws by kind, so a third stove is a line of content), TVs as
+`{ wall, at, y }` through `tvMount()`, a pendant list, and three stand-points
+that had been literals in `main.js`: the camera spawn, the idle-server line
+and the cook line (the old cook formula put a cook inside the Fieldhouse's
+prep counter). `validate()` now floods from the door (#186), refuses two
+proximity stations within 1.6 m, and holds TVs to walls that exist.
+`VENUES[].seats` is derived; `UPGRADES[].tier` gates the tap wall and the
+screens behind the Fieldhouse (#187). `world.js` scales floor, ceiling and
+wall UVs by room size (#188). `smoke-layout.mjs` 55 → 103, `smoke-campaign.mjs`
+203 → 216, `tools/browser-check.mjs` 25 → 58 (it warps every rung and asserts
+the spawn and the six rings). *Broken on purpose (#34):* a crate across each
+room's doorway (six problems, the stove first, and no "not walkable"); a
+flagship table walled in on four sides (four seats unreachable); the sweep
+deleted (five assertions, nothing else); the spacing check deleted (one); the
+gate deleted from `buyUpgrade()` (four, the first `the gate refuses the sale
+by name (undefined)`). A Fieldhouse table at (2.9, −5.0) meant as a doorway
+block did not fail the suite, and on inspection stops 1 cm short of the
+corridor — the suite was right. *Left:* Midtown's second room and the
+flagship's mezzanine, after Phase 3.
 
 
 **Phase 5 — The suite runs on every pull request.** 393 assertions in
