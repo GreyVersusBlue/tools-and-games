@@ -72,6 +72,7 @@ button{font-family:var(--disp);cursor:pointer;letter-spacing:.06em;text-transfor
   font-size:14px;margin-bottom:14px}
 .card p{font-size:14px;line-height:1.6;margin-bottom:12px}
 .card .dim{color:var(--muted);font-size:12.5px}
+.card #loadLine{font-family:var(--mono,monospace);font-size:11.5px;letter-spacing:.04em;min-height:1.2em}
 .card button{background:var(--amber);color:#1a1207;border:none;padding:11px 22px;
   border-radius:6px;font-size:17px;margin-top:6px;width:100%}
 .card button:hover{background:#f7b954}

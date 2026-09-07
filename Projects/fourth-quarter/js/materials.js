@@ -1,58 +1,68 @@
-// materials.js — one registry for every surface in the bar.
-// References the exact Poly Haven 2K filenames as downloaded (no renaming).
-// Two map layouts exist in the set:
-//   • diff/rough sets:  <slug>_diff_2k.jpg (+ _nor_gl_2k, _rough_2k)
-//   • ARM sets:         <slug>_arm_2k.jpg packs AO (R), roughness (G),
-//     metalness (B) into one texture — wired to all three material slots.
-// brown_leather ships "albedo" instead of "diff"; the registry just lists
-// each file explicitly so naming quirks don't matter.
+// materials.js — one registry for every surface in the bar, and the loader
+// that fills it. The registry itself (MATS) lives in textures.js, which has no
+// THREE in it so test/smoke-textures.mjs can read it under bare Node; it is
+// re-exported here so nothing that imported MATS from this file has to move.
+//
+// Phase 4: every load goes through one THREE.LoadingManager, so the start
+// overlay can say "Textures 12 / 27", and each file is fetched at the tier
+// pickTier() chose for this device — 1k unless a Retina-class screen and GPU
+// argue for the 2k originals, or `?tex=2k` / `?tex=1k` asks outright. The 404
+// fallback is exactly what it was: a missing file keeps that slot's placeholder
+// colour and the room goes on.
 
 import * as THREE from "three";
+import { MATS, TIERS, DEFAULT_TIER, pickTier, texturePath, textureFiles } from "./textures.js";
+
+export { MATS, TIERS, pickTier, texturePath };
 
 export const USE_TEXTURES = true; // textures/ is populated — placeholders only if a file 404s
 
-// key → { polyhaven slug, repeat, files{diff,normal,rough|arm}, placeholder params }
-export const MATS = {
-  floorWood: {
-    polyhaven: "wood_floor_deck", repeat: [6, 4], color: 0x6b4a2e, rough: 0.8,
-    files: { diff: "wood_floor_deck_diff_2k.jpg", normal: "wood_floor_deck_nor_gl_2k.jpg", arm: "wood_floor_deck_arm_2k.jpg" },
-  },
-  wallPlaster: {
-    polyhaven: "painted_plaster_wall", repeat: [4, 2], color: 0x3a2c20, rough: 0.95,
-    files: { diff: "painted_plaster_wall_diff_2k.jpg", normal: "painted_plaster_wall_nor_gl_2k.jpg", arm: "painted_plaster_wall_arm_2k.jpg" },
-  },
-  wallBrick: {
-    polyhaven: "red_brick_plaster_patch_02", repeat: [5, 2], color: 0x59352a, rough: 0.9,
-    files: { diff: "red_brick_plaster_patch_02_diff_2k.jpg", normal: "red_brick_plaster_patch_02_nor_gl_2k.jpg", rough: "red_brick_plaster_patch_02_rough_2k.jpg" },
-  },
-  barTop: {
-    polyhaven: "dark_wooden_planks", repeat: [4, 1], color: 0x2e1d10, rough: 0.35,
-    files: { diff: "dark_wooden_planks_diff_2k.jpg", normal: "dark_wooden_planks_nor_gl_2k.jpg", arm: "dark_wooden_planks_arm_2k.jpg" },
-  },
-  tableTop: {
-    polyhaven: "wood_table_001", repeat: [1, 1], color: 0x50361f, rough: 0.5,
-    files: { diff: "wood_table_001_diff_2k.jpg", normal: "wood_table_001_nor_gl_2k.jpg", rough: "wood_table_001_rough_2k.jpg" },
-  },
-  ceiling: {
-    polyhaven: "concrete_wall_008", repeat: [6, 4], color: 0x191411, rough: 1.0,
-    files: { diff: "concrete_wall_008_diff_2k.jpg", normal: "concrete_wall_008_nor_gl_2k.jpg", arm: "concrete_wall_008_arm_2k.jpg" },
-  },
-  kitchenTile: {
-    polyhaven: "wood_planks", repeat: [3, 2], color: 0x8c8478, rough: 0.6,
-    files: { diff: "wood_planks_diff_2k.jpg", normal: "wood_planks_nor_gl_2k.jpg", arm: "wood_planks_arm_2k.jpg" },
-  },
-  leather: {
-    polyhaven: "brown_leather", repeat: [1, 1], color: 0x4a2f1d, rough: 0.65,
-    files: { diff: "brown_leather_albedo_2k.jpg", normal: "brown_leather_nor_gl_2k.jpg", rough: "brown_leather_rough_2k.jpg" },
-  },
-  metal: {
-    polyhaven: "brushed_concrete", repeat: [1, 1], color: 0x7a7f85, rough: 0.4, metal: 0.7,
-    files: { diff: "brushed_concrete_diff_2k.jpg", normal: "brushed_concrete_nor_gl_2k.jpg", rough: "brushed_concrete_rough_2k.jpg" },
-  },
-};
-
-const loader = new THREE.TextureLoader();
+const manager = new THREE.LoadingManager();
+const loader = new THREE.TextureLoader(manager);
 const cache = {};
+
+/** What the loader has done so far. `total` is the registry's count, not the
+ *  manager's running one, so the line reads "0 / 27" before the first fetch
+ *  rather than "0 / 0". `failed` counts 404s, which the manager still counts
+ *  as finished so `done` is reached either way. */
+const status = { tier: null, total: textureFiles().length, loaded: 0, failed: 0, done: false, ms: null };
+let listeners = [];
+let t0 = null;
+
+manager.onProgress = (url, loaded) => { status.loaded = loaded; notify(); };
+manager.onError = () => { status.failed++; notify(); };
+manager.onLoad = () => {
+  status.done = true;
+  status.ms = t0 == null ? null : Math.round(performance.now() - t0);
+  notify();
+};
+function notify() { for (const fn of listeners) fn(status); }
+
+/**
+ * Decide the tier before the first mat() call. main.js passes the renderer so
+ * the choice can read its texture limit; `override` is the `?tex=` query. A
+ * second call is ignored — the tier is per page load, and half a room at 2k
+ * with the other half at 1k is the one outcome nobody wants.
+ */
+export function initTextures({ renderer, override, onProgress } = {}) {
+  if (!status.tier) {
+    const nav = typeof navigator !== "undefined" ? navigator : {};
+    const dpr = typeof devicePixelRatio === "number" ? devicePixelRatio : 1;
+    status.tier = pickTier({
+      override,
+      saveData: !!(nav.connection && nav.connection.saveData),
+      dpr,
+      maxTextureSize: renderer ? renderer.capabilities.maxTextureSize : 0,
+      widthPx: typeof screen !== "undefined" ? screen.width * dpr : 0,
+    });
+  }
+  // The tier is set before the first call, so the line never reads "at null".
+  if (onProgress) { listeners.push(onProgress); onProgress(status); }
+  return status.tier;
+}
+
+/** A read-only view for the HUD and tools/browser-check.mjs. */
+export function textureStatus() { return { ...status }; }
 
 export function mat(key) {
   if (cache[key]) return cache[key];
@@ -63,8 +73,10 @@ export function mat(key) {
     metalness: def.metal ?? 0.0,
   });
   if (USE_TEXTURES && def.files) {
-    const base = `textures/${key}/`;
-    const load = (file, cb) => loader.load(base + file, t => {
+    // mat() before initTextures() means a caller that never chose — take the default.
+    if (!status.tier) status.tier = DEFAULT_TIER;
+    if (t0 == null) t0 = performance.now();
+    const load = (file, cb) => loader.load(texturePath(key, file, status.tier), t => {
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.repeat.set(def.repeat[0], def.repeat[1]);
       cb(t); m.needsUpdate = true;

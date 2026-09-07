@@ -2361,6 +2361,37 @@ Two of them have moved since they were written:
    popped 22 cm in one frame and the browser check saw it.
    *Source: Fourth Quarter Phase 2, increment 3.*
 
+201. **A first visit downloads the 1k textures; the 2k originals are opt-in.**
+   `pickTier()` in `js/textures.js` is the one rule: the `?tex=` query wins,
+   `navigator.connection.saveData` forces 1k, and 2k is chosen only when a
+   device pixel ratio of 2 or more meets a texture limit of 8192 or more and
+   a backing store at least 2560 device pixels wide. Everything else is 1k.
+   The wishlist's question 4 asked whether 66 MB on first paint was
+   acceptable and nobody was there to answer it; the session decided no, and
+   set the 2k threshold at "a Retina laptop or a 4K desktop" because that is
+   the only screen where a 2k texel on a 6×4-repeated floor could show. The
+   thresholds are three numbers in one function with a suite pinning each,
+   so widening or narrowing them is a one-line change with a test to update.
+   A phone at dpr 3 with a 1170 px backing store is 1k on purpose.
+   *Source: Fourth Quarter Phase 4.*
+
+202. **The texture tiers are JPEG, the 2k files are the Poly Haven originals
+   untouched, and normal maps are encoded 4:4:4.** The wishlist offered a
+   re-encode or a vendored KTX2Loader with the basis transcoder, and said
+   measure both. KTX2 was not measured: no encoder was available offline in
+   the session, and the loader, transcoder and wasm are about 700 KB before
+   the first texture lands, against a 1k set that is 5 MB in all. WebP was
+   measured and sat between JPEG 4:2:0 and 4:4:4 on both bytes and error,
+   and would have been a second format in the README's table. What "normal
+   maps as JPEG where it shows" turned out to mean was chroma subsampling
+   storing the tangent channels at half resolution; 4:4:4 at q88 costs twice
+   the bytes of 4:2:0 and is still a twentieth of the original. The 2k files
+   stay as downloaded (q98, 4:2:0 for most) rather than re-encoded at q88 —
+   the re-encode would take them to about 27 MB with nothing visible lost,
+   but it is 27 more binaries in git history for a tier the default never
+   fetches, and the standing backlog names it. *Source: Fourth Quarter
+   Phase 4.*
+
 ---
 
 # The site sessions, 1–10
@@ -3184,7 +3215,7 @@ file did the same for the one seed it touched. Save: none.
 
 ---
 
-# The Fourth Quarter, Phases 1, 2, 3 and 5
+# The Fourth Quarter, Phases 1 through 5
 
 **Phase 1 — The room is a description.** `js/layout.js`, pure, zero imports:
 one description per venue tier (all four the Corner Tap until Phase 2), and
@@ -3353,6 +3384,35 @@ suite a later phase adds runs from its first commit without an edit here.
 fail every assertion and the process exited 1; the loop over the other files,
 with none to run, exited 0. The path filter fires on the phase's own PR
 because `WISHLIST.md` under the folder changed in it.
+
+**Phase 4 — The texture diet (PR #178).** 27 Poly Haven 2K JPEGs, 69,218,191
+bytes, encoded at about q98, all fetched by the first room. Now `js/textures.js`
+holds the registry with no THREE in it, and `pickTier()` chooses 1k for
+everyone but a Retina-class screen on a GPU that can hold 8192-wide
+textures, with `?tex=` as the override (#201); `materials.js` chooses once in
+`initTextures()` before the first `mat()`, fetches every file through one
+`LoadingManager`, and the start overlay's last line counts to `Textures 27 /
+27 at 1k — ready.` The 1k set is `tools/make-textures.mjs`'s output, checked
+in: 1024², Lanczos-3, mozjpeg, 4:4:4 q88 for normal maps and 4:2:0 q85 for
+the rest (#202), 5,076,840 bytes, 13.6× lighter. `test/smoke-textures.mjs`
+(190) fails when any of the 54 files is missing on disk and pins every case
+of the tier rule; `tools/measure-load.mjs` boots the page per tier behind a
+CDP throttle and exits non-zero unless every file lands and 1k is 5× lighter
+on the wire. *Measured*, headless Chromium at 20 Mbps: 1k is 4.85 MB on the
+wire and fully textured at 5.02 s, 2k is 66.02 MB and 30.86 s, first rAF
+0.10–0.11 s either way, 158 meshes and 9,878 triangles in the Corner Tap by
+a `window.__fq.scene` traverse. *Counts:* Node total 734 → 924,
+`tools/browser-check.mjs` 137 → 145. *Broken on purpose (#34), each caught by
+the assertion whose comment claims it:* a 1k file deleted (1), the dpr rule
+inverted (3), `saveData` ignored (1), the loader taking 2k regardless (4),
+the `TextureLoader` built without the manager (3), `mat()`'s cache deleted
+(3), the loading line's arithmetic changed (1). The cache break found a
+wrong assertion: the first draft counted texture requests on the wire and
+stayed green at 741 loads, because Chromium's memory cache answers a
+repeated URL without a request Playwright can see. It now reads the
+manager's count and says why (#147). *Left:* the 2k originals at q98, a
+single 1k size for every surface, and nothing gating "Take the Floor" on the
+manager — all three in the standing backlog. Arc one is closed.
 
 ---
 

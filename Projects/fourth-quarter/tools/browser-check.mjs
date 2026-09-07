@@ -28,6 +28,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as L from "../js/layout.js";
+import * as L_TEX from "../js/textures.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SITE = path.resolve(HERE, "..", "..", "..");
@@ -65,6 +66,9 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 const errors = [];
 page.on("pageerror", e => errors.push(String(e)));
+// every texture URL the page asks for, so the tier can be checked against the wire
+const texRequests = [];
+page.on("request", r => { if (/\/textures\//.test(r.url())) texRequests.push(r.url().replace(/^.*\/textures\//, "textures/")); });
 page.on("console", m => { if (m.type() === "error" && !/404|Failed to load resource/.test(m.text())) errors.push("console: " + m.text()); });
 
 // what the page's world.js holds right now, as plain numbers
@@ -120,6 +124,23 @@ await page.waitForTimeout(2500);
 ok("no page errors on boot", errors.length === 0, errors.join(" | "));
 sameRoom("boot", await probe(), "cornerTap");
 
+group("textures: one tier, one counted set, a line on the start overlay");
+// Phase 4. deviceScaleFactor is 1 above, so pickTier() lands on 1k with no
+// override; every fetch must be the 1k file, all 27 must land, and the start
+// overlay's line must say so. The 2k originals stay in place for `?tex=2k`.
+await page.waitForFunction(() => window.__fq && window.__fq.textures.done, null, { timeout: 30000 }).catch(() => {});
+const tex = await page.evaluate(() => window.__fq.textures);
+const files = L_TEX.textureFiles();
+ok("the page chose the 1k tier at dpr 1", tex.tier === "1k" && (await page.evaluate(() => window.__fq.texTier)) === "1k", tex.tier);
+ok(`the manager finished all ${files.length} registry files`, tex.done && tex.total === files.length && tex.loaded === files.length, JSON.stringify(tex));
+ok("none of them 404ed", tex.failed === 0, `${tex.failed} failed`);
+ok(`${files.length} texture requests went out, every one for a 1k file`,
+  texRequests.length === files.length && texRequests.every(u => /\/1k\/[^/]+_1k\.jpg$/.test(u)), texRequests.filter(u => !/\/1k\//.test(u)).join(" "));
+ok("every request is a path texturePath() produces", texRequests.every(u => files.some(f => L_TEX.texturePath(f.key, f.file, "1k") === u)));
+const loadLine = await page.textContent("#loadLine");
+ok(`the start overlay's line reads "Textures 27 / 27 at 1k — ready."`, loadLine === `Textures ${files.length} / ${files.length} at 1k — ready.`, loadLine);
+ok("the loader recorded a duration", typeof tex.ms === "number" && tex.ms >= 0, String(tex.ms));
+
 group("New Game (wipe save) → rebuildVenue()");
 await page.click("text=New Game (wipe save)");
 await page.waitForTimeout(600);
@@ -137,6 +158,13 @@ ok("no page errors after the warp", errors.length === 0, errors.join(" | "));
 const warped = await probe();
 sameRoom("warp", warped, "flagship");
 ok("seats did not stack across three builds", warped.seats.length === L.seatsFor(L.layoutFor("flagship")).length);
+// Counted at the manager, not on the wire: with mat()'s cache deleted the
+// manager reached 177 loads on the first build alone while Playwright still
+// saw 27 requests, because Chromium's memory cache answers a repeated URL
+// without one (#147). The manager counts every load() call.
+const afterWarp = await page.evaluate(() => window.__fq.textures);
+ok("three builds loaded each texture once: mat() caches the material, so a rebuild reloads nothing",
+  afterWarp.loaded === L_TEX.textureFiles().length, `${afterWarp.loaded} loads`);
 
 // every rung, from the flagship down and back: the dev menu is still open
 for (const id of ["fieldhouse", "midtown", "cornerTap"]) {

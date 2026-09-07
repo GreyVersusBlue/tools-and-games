@@ -13,6 +13,7 @@ import { DayPhase } from "./day.js";
 import { DevPanel } from "./dev.js";
 import * as C from "./campaign.js";
 import * as audio from "./audio.js";
+import { initTextures, textureStatus } from "./materials.js";
 import { mountSaveBar } from "../../../assets/js/gvb-save.js";
 
 const $ = s => document.querySelector(s);
@@ -47,6 +48,20 @@ addEventListener("resize", () => {
 const slot = C.campaignSlot();
 let campaign = slot.load() || C.newCampaign();
 const save = () => slot.save(campaign);
+
+// Textures: choose the tier once, before the first mat() call in buildWorld(),
+// and keep the start overlay's line honest about how many of the 27 have
+// landed. `?tex=1k` / `?tex=2k` forces a tier; tools/measure-load.mjs uses it.
+const texTier = initTextures({
+  renderer,
+  override: new URLSearchParams(location.search).get("tex"),
+  onProgress: st => {
+    const el = $("#loadLine");
+    if (!el) return;
+    if (st.done) el.textContent = `Textures ${st.loaded - st.failed} / ${st.total} at ${st.tier}` + (st.failed ? ` — ${st.failed} missing, painted flat.` : " — ready.");
+    else el.textContent = `Loading textures ${st.loaded} / ${st.total} at ${st.tier}…`;
+  },
+});
 
 let { group: worldGroup, tvs, nightRig, dayRig } = buildWorld(scene, campaign.venue);
 
@@ -473,7 +488,11 @@ enterDay();
 // two crowds, so it can ask whether anybody is standing in a table. Getters
 // because both arrays are replaced on every night. Nothing in the game reads
 // this.
-window.__fq = { camera, day, player, get patrons() { return patrons; }, get servers() { return servers; } };
+window.__fq = {
+  camera, day, player, scene, texTier,
+  get patrons() { return patrons; }, get servers() { return servers; },
+  get textures() { return textureStatus(); },
+};
 let last = performance.now();
 let hudT = 0;
 renderer.setAnimationLoop(() => {
