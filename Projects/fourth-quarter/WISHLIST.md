@@ -15,13 +15,14 @@ everything that walks a y read off the floor under it. Four suites are green
 as of this file — `node test/smoke-campaign.mjs` 216 passed,
 `node test/smoke-engine.mjs` 190 passed, `node test/smoke-layout.mjs` 188
 passed, `node test/smoke-nav.mjs` 129 passed — and the hand-run
-`node tools/browser-check.mjs` 137 passed in Chromium. Round 3's site-wide
+`node tools/browser-check.mjs` 145 passed in Chromium. Round 3's site-wide
 `npm run games` reported 146 checks, 0 failed across three independent runs
 on a real-Chrome environment, including this project's own 45-check Real
-Estate beat. Phase 2 is closed. The first open phase is **Phase 4 — The
-texture diet**, named model **Claude Opus 5**, size 1. What follows is
-nine phases across two arcs, the conventions three rounds learned the hard
-way, and the backlog nobody has claimed.
+Estate beat. Arc one is closed: Phases 1 through 5 have all shipped. The
+first open phase is **Phase 6 — The league has a season**, named model
+**Claude Fable 5.1**, size 2+. What follows is nine phases across two arcs,
+the conventions three rounds learned the hard way, and the backlog nobody
+has claimed.
 
 ## What it is
 
@@ -102,9 +103,15 @@ comment saying why). Honest is not built.
   across four rooms. `inBounds()` delegates to layout.js. The neon, door
   frame, corkboard and kitchen shelf are derived from the description's door,
   promo and kitchen rather than authored.
-- **`js/materials.js` (95)** — nine texture sets keyed by surface, ARM maps
-  wired to three material slots each, a 404 falling back to a placeholder
-  colour.
+- **`js/textures.js` (115)** — the registry of nine texture sets keyed by
+  surface, pure: `pickTier()` decides 1k or 2k from device pixel ratio,
+  texture limit, backing-store width, `saveData` and a `?tex=` override, and
+  `texturePath()` names the file at a tier. `test/smoke-textures.mjs` holds
+  the rule and checks all 54 files are on disk.
+- **`js/materials.js` (105)** — the loader: one `LoadingManager` counting
+  every fetch for the start overlay's line, ARM maps wired to three material
+  slots each, a 404 falling back to a placeholder colour, a material cached
+  per surface so three rebuilds load each file once.
 - **`js/patrons.js` (350)** — `Patron`/`Server` state machines, the meshes,
   and `Route`: a queue of waypoints from the nav grid, replanned when the
   target moves 0.6 m, walked leg by leg with `stepToward()`.
@@ -208,10 +215,11 @@ the phases below would need answered.
    14-week season with a 4-team bracket, regulars, a rival, three distributors.
    All of it ports; none of it is small; a 3D floor game with a full back
    office is a different game. Phases 6-9 assume "most of it, in that order."
-4. **Is 66 MB of texture on first paint acceptable?** 27 JPEGs, 69,218,191
-   bytes, all 27 loaded by the first room. Uncompressed in GPU memory that is
-   roughly 600 MB with mipmaps (2048² × 4 × 27 × 1.33 — arithmetic, not a
-   measurement). Phase 4 cuts it by an order of magnitude at some visible cost.
+4. ~~**Is 66 MB of texture on first paint acceptable?**~~ Answered by Phase 4
+   on 2026-09-07 (HISTORY.md #201): no. A first visit now downloads 5.08 MB of
+   1k JPEG; the 2k originals stay in place for `?tex=2k` and for a Retina-class
+   screen with a GPU that can hold them. Devon can widen or narrow
+   `pickTier()`'s rule; the numbers it was set from are in the README.
 5. **Has `SPOILAGE_RATE = 0.15` actually been played yet?** One number in
    `campaign.js`, tune by feel; no assertion depends on the exact value except
    one asserting 15% of 20 rounds to 3.
@@ -268,12 +276,18 @@ starting a new list.
   written by `stepToward()` and read by nothing.
 
 **Assets**
-- 27 2k JPEGs, 66 MiB, no 1k variants, no KTX2/basis, no resolution tier. The
-  largest single file is `painted_plaster_wall_nor_gl_2k.jpg` at 3.86 MB — a
-  normal map, the one map where JPEG chroma subsampling does the most damage.
+- The 2k originals are still 66 MiB on disk and still what a Retina laptop
+  downloads. Re-encoding them at q88 would take them to about 27 MiB with no
+  visible cost (the 1k measurements in `tools/make-textures.mjs` say so), at
+  the price of 27 more binaries in git history; Phase 4 left them as
+  downloaded (#202). KTX2/basis was not measured — no encoder offline.
+- The 1k tier is one size for every surface. A 512 tier for phones, or a
+  per-surface size (the leather and the table top repeat 1×1 and could go
+  smaller), has not been looked at.
 - `audio/sfx/events/crowd-groan.mp3` is the last non-OGG file after round 2's
   conversion.
-- No loading screen: the room paints untextured and fills in as 27 files land.
+- The loading line is on the start overlay only; a texture that lands after
+  "Take the Floor" still pops in. Nothing gates the button on the manager.
 
 **The books**
 - No league, season, standings, playoffs or off-season. `gameNight` is
@@ -534,7 +548,7 @@ Phase 2's rooms were kept to one rectangle each for exactly this reason.
 *Leans on:* phase 1's `layout.js`, `patrons.js`, `world.js`'s colliders.
 *Save:* none. *Model:* **Claude Fable 5.1** named; worked under Claude Opus 5.
 
-## Phase 4 — The texture diet
+## Phase 4 — The texture diet — **SHIPPED**
 
 **A first visit downloads 66 megabytes of JPEG to look at a bar.**
 
@@ -546,30 +560,44 @@ GPU-memory cost, and neither has ever been measured. The constraint shaping the
 whole phase: zero offsite requests, no build step, so every byte is a file
 checked in here and produced offline.
 
-- [ ] **A resolution tier chosen at load.** `materials.js` gains
-  `textures/<key>/1k/` beside the 2k files and picks a tier from a cheap
-  heuristic (device pixel ratio, `renderer.capabilities.maxTextureSize`, a URL
-  override for testing). The 404 fallback stays exactly as it is.
-- [ ] **Generate the 1k set offline and check it in**, documented in the README
-  with the exact command, the way the Poly Haven filenames are documented now.
-- [ ] **Stop shipping normal maps as JPEG where it shows.** The largest single
-  file is a 3.86 MB normal map. Either re-encode smaller at higher quality, or
-  evaluate a vendored KTX2Loader plus the basis transcoder in `libs/addons/` —
-  Castle Conundrum and the school generator both vendor `libs/addons/` subtrees,
-  so the shape is established. Measure both before choosing.
-- [ ] **A loading state.** The room paints untextured and fills in over several
-  seconds; make the `TextureLoader` calls a counted set with a progress line on
-  the start overlay.
-- [ ] **Measure it and say so.** Bytes before and after, first-paint to
-  fully-textured on a throttled connection, and mesh/triangle counts by round
-  1's method — `requestAnimationFrame` plus a `window.__scene` traverse.
-  **Do not** hook `WebGLRenderer.prototype.render`: r160 assigns it as an own
-  property on the instance and the prototype patch never fires.
+- [x] **A resolution tier chosen at load.** `js/textures.js` is the registry
+  and the rule: `pickTier()` takes the `?tex=` override, then `saveData`, then
+  dpr ≥ 2 with `maxTextureSize` ≥ 8192 and a backing store ≥ 2560 px wide for
+  2k, and 1k for everything else (#201). `materials.js` chooses once, in
+  `initTextures()` before the first `mat()`, and fetches
+  `textures/<key>/1k/<slug>_<map>_1k.jpg`. The 404 fallback is untouched.
+- [x] **The 1k set, generated offline and checked in.** `tools/make-textures.mjs`
+  (sharp, Lanczos-3, mozjpeg): 27 files, 5,076,840 bytes against 69,218,191,
+  13.6×. The README has the exact command.
+- [x] **Normal maps as JPEG, where it showed.** The damage was 4:2:0 chroma
+  subsampling on the tangent channels, not the container. Measured on a 1024²
+  reference: 4:4:4 at q88 takes the plaster normal's R error from 6.92 to 5.11
+  RMSE for 363 KB against 190 KB; WebP q88 sat between on both axes and would
+  have been a second format; KTX2 was not measured — no encoder offline, and a
+  700 KB transcoder before the first texture (#202). Normals are 4:4:4 q88,
+  everything else 4:2:0 q85.
+- [x] **A loading state.** One `THREE.LoadingManager` behind the
+  `TextureLoader`; the start overlay's last line counts to `27 / 27 at 1k —
+  ready.` and names the missing ones if any 404. `window.__fq.textures` is
+  the same status for scripts.
+- [x] **Measured.** `tools/measure-load.mjs`, CDP-throttled, per tier, exits
+  non-zero if a tier fails or 1k is not 5× lighter: at 20 Mbps, 1k is 4.85 MB
+  on the wire and fully textured at 5.02 s; 2k is 66.02 MB and 30.86 s. First
+  rAF 0.10–0.11 s either way; 158 meshes, 9,878 triangles in the Corner Tap,
+  by a `window.__fq.scene` traverse and not a `render` hook.
+- [x] **Reintroduced the bugs.** Seven, each caught by the assertion whose
+  comment claims it: a 1k file deleted (1 fails), the dpr rule inverted (3),
+  `saveData` ignored (1); in the browser, the loader taking 2k regardless (4),
+  the `TextureLoader` built without the manager (3), `mat()`'s cache deleted
+  (3), the line's arithmetic changed (1). The cache break taught one thing:
+  the first draft counted requests on the wire and stayed green at 741 loads,
+  because Chromium's memory cache answers a repeated URL without a request.
+  The assertion now reads the manager's count and says why (#147).
 
 *Leans on:* `materials.js`, `index.html`'s start overlay, the README's texture
 table. *Save:* none — a chosen tier is a per-device fact, not campaign state.
 *Model:* **Claude Opus 5** — asset conversion and a load-time heuristic, both
-verifiable by looking.
+verifiable by looking. *Shipped 2026-09-07 under Claude Fable 5.1.*
 
 ## Phase 5 — The suite runs on every pull request — **SHIPPED**
 

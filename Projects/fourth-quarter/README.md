@@ -136,9 +136,12 @@ engine's result, and Mules fans bounce when they win.
   the dark-night settlement instead of "Open the Doors" whenever a venue move
   is still settling in (`c.darkNightsLeft > 0`).
 - Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs`,
-  `node test/smoke-layout.mjs` and `node test/smoke-nav.mjs` (CI runs every
-  `test/*.mjs`). `node tools/browser-check.mjs` boots the page in Chromium and
-  is run by hand; it needs `playwright-core`.
+  `node test/smoke-layout.mjs`, `node test/smoke-nav.mjs` and
+  `node test/smoke-textures.mjs` (CI runs every `test/*.mjs`).
+  `node tools/browser-check.mjs` boots the page in Chromium and is run by
+  hand; it needs `playwright-core`. `node tools/measure-load.mjs` is the
+  texture load measurement (below), and `node tools/make-textures.mjs` is
+  the 1k generator.
 - `js/layout.js` — the room as data, pure. One description per venue tier:
   room, kitchen, doorways, windows, bar, tables, fit-out blocks by kind, TV
   mounts, pendants, stand-points (the camera spawn, the idle-server line and
@@ -167,13 +170,16 @@ engine's result, and Mules fans bounce when they win.
   to it — `world.js` hangs `reachable` on every seat when it adopts a room.
 - `js/player.js` — pointer-lock movement, collision, pick-up/deliver, and the
   stove/tap timing-bar minigame.
-- `js/materials.js` — the texture registry (below).
+- `js/textures.js` — the texture registry and the resolution tier, pure (below).
+- `js/materials.js` — the loader: one counted `LoadingManager`, the tier
+  chosen once, a 404 keeping that slot's placeholder colour.
 - `js/main.js` — loop, HUD, overlays, broadcast theater.
 
 ## Textures
 
-`js/materials.js` references the exact Poly Haven 2K filenames as downloaded —
-no renaming needed. Drop each asset's files into its `textures/<key>/` folder:
+`js/textures.js` holds the registry (`MATS`) and references the exact Poly
+Haven 2K filenames as downloaded — no renaming needed. Drop each asset's files
+into its `textures/<key>/` folder:
 
 | Folder | Asset | Files |
 |---|---|---|
@@ -188,8 +194,67 @@ no renaming needed. Drop each asset's files into its `textures/<key>/` folder:
 | `metal`       | brushed_concrete | diff / nor_gl / rough |
 
 **arm** files pack AO/roughness/metalness into one image (R/G/B) and get wired
-to all three material slots automatically. `USE_TEXTURES` is now `true`; any
+to all three material slots automatically. `USE_TEXTURES` is `true`; any
 missing file just falls back to that surface's placeholder color.
+
+### Two tiers
+
+The 2K originals are 27 files and 69,218,191 bytes. **Nobody downloads them by
+default.** Each surface has a 1k copy beside it —
+`textures/<key>/1k/<slug>_<map>_1k.jpg`, Poly Haven's own 1K filename, so a
+hand-downloaded 1K set drops into the same place — and the set of 27 is
+5,076,840 bytes, 13.6× lighter. `pickTier()` in `js/textures.js` chooses once
+per page load, before the first `mat()` call:
+
+- `?tex=1k` or `?tex=2k` on the URL wins outright.
+- `navigator.connection.saveData` forces 1k.
+- 2k only when it would show and the GPU can hold it: device pixel ratio ≥ 2,
+  `renderer.capabilities.maxTextureSize` ≥ 8192, and a backing store at least
+  2560 device pixels wide (a Retina laptop, a 4K desktop). A phone at dpr 3
+  with a 1170 px backing store gets 1k.
+- Everything else gets 1k.
+
+The rule is pure and pinned in `test/smoke-textures.mjs`, which also fails
+when any of the 54 files the registry names is missing on disk.
+
+**Regenerate the 1k set** after changing a 2K original (the output is checked
+in; nothing runs at page load, and the page never fetches a file this did not
+write):
+
+```
+cd Projects/fourth-quarter
+npm i --no-save playwright-core sharp     # node_modules/ is ignored; no package.json is created
+node tools/make-textures.mjs              # --force to rewrite files that are up to date
+```
+
+1024×1024, Lanczos-3, mozjpeg. Normal maps are written with 4:4:4 chroma at
+q88, everything else 4:2:0 at q85 — a normal map's tangent is its R and G
+channels, and 4:2:0 stores those at half resolution; the numbers that chose
+this are in the script's header comment.
+
+### The loading line, and measuring it
+
+Every texture load goes through one `THREE.LoadingManager`, and the start
+overlay's last line reads `Loading textures 12 / 27 at 1k…` until it reads
+`Textures 27 / 27 at 1k — ready.` (or `— 2 missing, painted flat.`).
+`window.__fq.textures` is the same status for scripts.
+
+`node tools/measure-load.mjs` (needs `playwright-core`, see above; `--mbps`
+sets the throttle, default 20; `--tiers 1k,2k`) boots the page once per tier
+with the network throttled through CDP and prints bytes on the wire, first
+`requestAnimationFrame`, time to the manager's `onLoad`, and mesh / triangle
+counts from a `window.__fq.scene` traverse. It exits non-zero when a tier does
+not finish, a file 404s, or 1k is not at least 5× lighter than 2k. Measured
+2026-09-07 (headless Chromium, swiftshader, 1280×800 at dpr 1, 40 ms latency):
+
+| throttle | tier | textures on the wire | first rAF | fully textured | meshes | triangles |
+| --- | --- | --- | --- | --- | --- | --- |
+| 20 Mbps | 1k | 4.85 MB | 0.11 s | 5.02 s | 158 | 9,878 |
+| 20 Mbps | 2k | 66.02 MB | 0.10 s | 30.86 s | 158 | 9,878 |
+| 5 Mbps | 1k | 4.85 MB | 0.13 s | 11.72 s | 158 | 9,878 |
+| 5 Mbps | 2k | 66.02 MB | 0.12 s | 114.50 s | 158 | 9,878 |
+
+On a 5 Mbps line the 2k room takes 114.5 s to finish; the 1k room, 11.7 s.
 
 ## Roadmap (next sprints)
 
