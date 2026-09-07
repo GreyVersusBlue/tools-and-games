@@ -1,14 +1,20 @@
 # Checks for The Absalom Inheritance. Three rounds and a phase shipped, and
 # each of their pull requests said the same thing: no workflow in this repo
 # path-matches Projects/absalom-inheritance/**, so both suites ran in a
-# session's terminal and nowhere else. That is 1,196 assertions and 4,000
-# seeded playthroughs, about a minute and a half of Node with no browser and no
-# dependency, and both already exit non-zero on a failure (locked #13).
+# session's terminal and nowhere else. That is 1,370 assertions and 8,000
+# seeded playthroughs — four builds now, not two — about three minutes of Node
+# with no browser and no dependency, and both already exit non-zero on a
+# failure (locked #13).
 #
 # There is a third suite and it is deliberately not here: test/browser.mjs
 # boots the real page in real Chromium and asserts the hint bar, the log's
-# colours, the build's prism, the keyboard's refusals, and ?pack= opening the
-# second adventure off the same HTML file under its own storage key. It needs
+# colours, the build's prism, the keyboard's refusals, the picker stacking to
+# one column at 375px with four cards, a per-build satchel in the inventory
+# panel, the second buff's ring and readout, and ?pack= opening the second
+# adventure off the same HTML file under its own storage key. It is 51 checks,
+# and two of the things it has caught were invisible to smoke.mjs: a satchel
+# resolved on the wrong side of `selectPc`, and a board that sat frozen after a
+# save reopened on a creature's turn. It needs
 # playwright-core and a browser on disk, neither of which the game itself has
 # any use for, and it is run by hand — the same arrangement Blue Hour's
 # test/browser.mjs already has. Wiring a browser into CI is the site-wide "CI
@@ -21,7 +27,8 @@
 # balance.mjs is the one that matters most and the one most likely to be
 # skipped by hand: it is the file that found out the original single-file build
 # could not be won on any seed, and it fails if either build leaves the 45-90%
-# band. A dice-math change that quietly makes the vault unwinnable is exactly
+# band — all four of them, since each build gets its own batch and its own
+# check. A dice-math change that quietly makes the vault unwinnable is exactly
 # what it is for, and thirty seconds of CI is a cheap place to find that out.
 # It fails on three more things now: a command in a build's list that the
 # autopilot never casts across the whole batch, an ability named by a creature
@@ -85,8 +92,8 @@ jobs:
       - name: smoke
         run: node Projects/absalom-inheritance/test/smoke.mjs
 
-      # 2000 runs per build, which is what the project's own README tells a
-      # contributor to run. Fewer would widen the band's error bars for no
-      # saving worth having.
+      # 2000 runs per build — 8,000 playthroughs across the four — which is
+      # what the project's own README tells a contributor to run. Fewer would
+      # widen the band's error bars for no saving worth having.
       - name: balance
         run: node Projects/absalom-inheritance/test/balance.mjs 2000

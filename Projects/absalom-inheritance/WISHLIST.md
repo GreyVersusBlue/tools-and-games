@@ -232,10 +232,10 @@ new one.
   is correct and still fires zero times in 2,000 seeded runs. The thing that
   would change that is a creature with a reason to move that is worth a swing:
   a ranged attacker backing off to shoot, or a wounded one running.
-- `turn.shielded` is a boolean on a runtime object, the engine's only status
-  effect, and deliberately not saved. `turn.reaction` and `turn.reacted` sit
-  beside it and are not saved either. Initiative is not saved; a mid-encounter
-  reload re-rolls it.
+- `turn.reaction` and `turn.reacted` are runtime fields and are not saved.
+  Initiative is not saved; a mid-encounter reload re-rolls it. It now *plays*,
+  which it did not before Phase 7 — `ui.resume()` starts the creature turns a
+  reloaded save landed in the middle of.
 
 **Rules and conditions**
 - Conditions exist and there are eight, through two funnels (Phase 2). What
@@ -280,10 +280,18 @@ new one.
   covers. Two packs, named by `content/packs.json`. What a pack still cannot
   express: an item lying on the floor, a shop, a door that is not the one gate,
   or any boon other than the three `restore` keys.
-- `startingInventory` is pack-level, so every build carries the same satchel —
-  which is how the Fighter came to exist (the longsword was already in it).
-- Two builds; the picker needs no edit for a third. No shops, no levelling, no
-  XP, no downtime — deliberately.
+- Four builds, each with its own satchel; the picker needs no edit for a fifth
+  and stacks to one column at 375px at four cards. **What a fifth build would
+  cost is now the same question as what a new command kind costs**, and after
+  Phase 7 the Cleric's answer was "nothing" — a statline, four command ids and
+  a `startingInventory`. No shops, no levelling, no XP, no downtime —
+  deliberately. **Nothing targets an ally, because there are none**: `sideOf()`
+  answers `"pc"` or `"foe"` and a party is a different game (#177).
+- **A `buff` still only targets the heir and a `debuff` only a creature.**
+  Neither takes an area, so there is no "everything in the cone is off-guard";
+  an area command's `inflicts` rider is the closest thing, and it always rolls
+  damage as well. A `debuff` also cannot end a condition — `ends` is a
+  `self-heal`/`consume` field and points only at the heir's own bag.
 
 **Creatures and AI**
 - Three policies (`brawler`, `skirmisher`, `caster`) in `js/ai.js`, one
@@ -950,38 +958,91 @@ It had always been that fragile. The plaque moved west and reads 74.6% now.
 `balance.mjs` reports a share per non-gating pillar rather than "read three
 pillars", which was a stand-in that held only while the plaque was the third.
 
-## Phase 7 — Two more heirs, with their own satchels
+## Phase 7 — Two more heirs, with their own satchels — SHIPPED
 
-**The picker is built entirely from `pcOptions` and has never been asked for a
-third card.**
+**A third build costs far less than the picker did, and the row asked for the
+two that exercise a command kind the engine lacks rather than another striker.**
+It got one of the two it named, and the reason is worth writing down.
 
-Round three said it plainly: a third build costs far less than the picker did,
-and the one worth having exercises a command kind the engine lacks rather than
-being another striker. After arc one those kinds exist. A Cleric heals someone
-other than itself; a Rogue debuffs and wants off-guard to mean something.
+**`heal-other` cannot be built here, and no amount of care would have made it
+work** (#177). This engine has exactly two sides — `sideOf()` answers `"pc"` or
+`"foe"` and nothing else — so the only creature a `heal-other` could target is
+something trying to kill you. A Cleric who heals an ally needs an ally, and an
+ally is a party, and a party is a different game. What the row was actually
+pointing at is a command whose effect is a condition rather than a number, and
+this engine can reach that from both sides: **`buff`** puts one on the heir and
+**`debuff`** puts one on a creature. Those are the two that shipped.
 
-- [ ] **`heal-other` and `debuff` command kinds**, validated in `content.js`,
-      resolved in `useCommand` — the first commands here that target a creature
-      with something other than damage.
-- [ ] **Two builds in `pcOptions`**, a support and a skirmisher, each tuned
-      across measured passes. Expect three iterations; that is what both
-      existing builds took.
-- [ ] **`startingInventory` moves to per-build with a pack-level default.**
-      Round three skipped this because two builds were happy sharing a satchel;
-      four are not, and a non-caster carrying a spellbook is the kind of detail
-      this project otherwise gets right.
-- [ ] **The autopilot learns the new kinds** — `findUsable(game, "heal-other")`
-      and `"debuff"` in `combatPolicy()`, with no branch naming a build. The
-      generic-over-kind property is the thing worth protecting. Check the picker
-      still stacks to one column at 375px at four cards.
-- [ ] **The test that pins it.** A 40-seed `playThrough()` per new build, the
-      way the Fighter was pinned, then `balance.mjs` at 2000 across all four
-      with phase 5's matrix carrying the output.
+- [x] **`buff` and `debuff` command kinds**, validated in `content.js` and
+      resolved in `useCommand`. `buff` replaces `self-buff` rather than sitting
+      beside it (#178): the old branch wrote `applyCondition("pc", "shielded",
+      cmd.acBonus || 1, { who: "pc", when: "start" })` — the condition id, the
+      value's default and the whole duration hardcoded in the engine for a
+      thing that is content. Shield now writes `applies: { condition:
+      "shielded", value: 1 }` and the duration comes off the catalogue, which
+      grew `defaultUntil: "self-start"` on the disc to hold it. `debuff` is the
+      first command in this engine whose entire effect is the condition: one
+      target, one save, no damage, and content.js refuses one that carries a
+      `damage` field, one that applies something the catalogue calls helpful,
+      and one that writes neither `spell` nor a `dc` of its own.
+- [x] **`inflicts` gained `on: "fail"`** (#179) — failure *or worse*, the
+      mirror of what `hit` means from the other side. Without it a debuff could
+      only fire on a critical failure, which is a build built on a one-in-five.
+- [x] **Precision damage as a rider on `attack`** (#180):
+      `precision: { damage: "1d6", when: "off-guard" }`. `when` names a
+      condition rather than meaning off-guard by definition, so a pack that
+      wants a blade that bites the frightened needs no code change. It is
+      doubled by a critical hit and rolled under its own `damageFrom` source,
+      because enfeebled is a penalty to *the* melee damage roll once and the
+      weapon line beside it has already taken it.
+- [x] **Two builds in `pcOptions`, tuned across measured passes.** **Mother
+      Isbeth Sarr** (Warpriest Cleric 1, 18 HP, AC 16, Will +7) carries three
+      rank-1 slots that are all one spell, the Warding Litany, and a mace. She
+      cost **no engine change at all** — a statline, four command ids and a
+      satchel. **Nim Corvale** (Rogue 1, 15 HP, AC 16, Reflex +7) is the whole
+      case for the two new kinds: Shim, Strike, Strike, with both swings into
+      −2 AC and a second d6. Two passes, not three: the first put Isbeth at
+      50.0% with the Keeper killing 36.7% of her runs, and one statline pass
+      (Warpriest rather than cloistered — AC 16, STR 3, 18 HP) put her at 74.4%.
+- [x] **`startingInventory` moved to per-build with a pack-level default**
+      (#181), resolved in `selectPc` **and again in `save.js`'s `freshRun`**,
+      because `main.js` picks a build, calls `freshRun` with the *unresolved*
+      pack, and only then runs `selectPc` on what comes back. The unit test
+      that only knew about the first one was green for an afternoon while every
+      build in the browser opened its bag on the same longsword and spellbook;
+      `test/browser.mjs` is what said so.
+- [x] **The autopilot learned the new kinds, with no branch naming a build.**
+      Emergency healing is now "whichever of this build's `consume` and
+      `self-heal` commands puts the most back" rather than the literal id
+      `"potion"`; the buff branch asks whether *this build's* buff condition is
+      already standing rather than `game.shielded`, which is the disc's own id
+      and answers false forever for a Cleric; and a debuff goes in before the
+      swings that profit from it, read off `inflicts` rather than off the id.
+- [x] **The test that pins it.** A 40-seed `playThrough()` per new build, each
+      asserting its own new kind actually fires; `balance.mjs` at 2,000 across
+      all four with `test/baseline.json` rewritten; and twelve guard-rails
+      broken on purpose, each failing at the assertion whose comment claims it.
 
-*Leans on:* `content.js`, `content/vault.json`, `test/autopilot.mjs`,
-`ui.js`'s `pickCharacter`. *Save:* per-build `startingInventory` changes what a
-fresh run gets, not what a save carries. *Model:* **Claude Opus 5** — content
-tables and one policy branch on mechanisms arc one already built and tested.
+**Two things the browser suite caught that 1,370 Node assertions could not.**
+The satchel resolved on the wrong side of `selectPc`, above. And a run reloaded
+on a creature's turn sat **frozen** — `pumpEnemies` is started by an action's
+`resolve()` and by a walk, and a boot is neither, so a tab closed while a
+sentinel was mid-turn came back to a board that would not move until the player
+pressed a key it then refused. `ui.resume()`, called from `main.js` after
+`begin()`, is one line and the bug was three rounds old.
+
+**One guard-rail did not fail first time, and the fix was the right one** (#147).
+Breaking `buffWorthCasting` back to `game.shielded` left the litany's *cast
+count* higher, not zero — the policy re-cast a ward that was already up, every
+turn — so a test that counted casts could never see it. The assertion that
+catches it drives the policy to its last action with the ward standing and
+checks it swings instead.
+
+**What the four builds measure**, 2,000 seeded runs each, band 45–90%: **Vesper
+79.1%, Isbeth 74.4%, Kessa 69.3%, Nim 68.0%.** Kessa's number did not move at
+all, which is the check that the autopilot generalisation changed nothing for a
+build with one healer and no buff; Vesper's moved 0.35 points, from a wizard out
+of potions now reaching for Rousing Splash.
 
 ## Phase 8 — The debts on the surface — SHIPPED
 
@@ -1062,8 +1123,9 @@ canvas never needed focusing.
 - **Levelling, XP and treasure beyond the casket.** The adventure is a vignette
   and every round has kept it one on purpose.
 - **Multi-PC parties.** `selectPc` resolves one build onto `content.pc` and
-  every module reads that singular. A party is not a fifth build; it is a new
-  turn-order model on top of phase 1's.
+  every module reads that singular; `sideOf()` has two answers. A party is not a
+  fifth build; it is a new turn-order model on top of phase 1's, and it is the
+  thing `heal-other` was actually asking for (#177).
 - **Sound, settings, difficulty selection**, and a visual regression harness for
   `render.js` — the last would need a golden-image pipeline this project has no
   build step for.

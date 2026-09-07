@@ -2,26 +2,26 @@
   "runs": 2000,
   "builds": {
     "wizard": {
-      "rate": 0.7945,
+      "rate": 0.791,
       "encounters": {
         "vault/shattered-sentinel": {
           "per": 1.9955,
-          "taken": 2.165,
-          "deathShare": 0.025
+          "taken": 2.175,
+          "deathShare": 0.0265
         },
         "vault/vault-keeper": {
-          "per": 0.975,
-          "taken": 8.165,
-          "deathShare": 0.1305
+          "per": 0.9735,
+          "taken": 8.295,
+          "deathShare": 0.1355
         },
         "undercroft/shattered-sentinel": {
-          "per": 0.8445,
-          "taken": 3.118,
-          "deathShare": 0.049
+          "per": 0.838,
+          "taken": 3.261,
+          "deathShare": 0.046
         },
         "sanctum/reliquary-warden": {
-          "per": 0.7955,
-          "taken": 0.996,
+          "per": 0.792,
+          "taken": 1.008,
           "deathShare": 0.001
         }
       }
@@ -48,6 +48,56 @@
           "per": 0.6945,
           "taken": 0.862,
           "deathShare": 0.001
+        }
+      }
+    },
+    "cleric": {
+      "rate": 0.7435,
+      "encounters": {
+        "vault/shattered-sentinel": {
+          "per": 1.994,
+          "taken": 3.745,
+          "deathShare": 0.0255
+        },
+        "vault/vault-keeper": {
+          "per": 0.9745,
+          "taken": 15.84,
+          "deathShare": 0.193
+        },
+        "undercroft/shattered-sentinel": {
+          "per": 0.7815,
+          "taken": 4.509,
+          "deathShare": 0.038
+        },
+        "sanctum/reliquary-warden": {
+          "per": 0.7435,
+          "taken": 1.144,
+          "deathShare": 0
+        }
+      }
+    },
+    "rogue": {
+      "rate": 0.6795,
+      "encounters": {
+        "vault/shattered-sentinel": {
+          "per": 1.982,
+          "taken": 2.661,
+          "deathShare": 0.0475
+        },
+        "vault/vault-keeper": {
+          "per": 0.9525,
+          "taken": 10.845,
+          "deathShare": 0.228
+        },
+        "undercroft/shattered-sentinel": {
+          "per": 0.7245,
+          "taken": 2.689,
+          "deathShare": 0.0445
+        },
+        "sanctum/reliquary-warden": {
+          "per": 0.68,
+          "taken": 0.6,
+          "deathShare": 0.0005
         }
       }
     }

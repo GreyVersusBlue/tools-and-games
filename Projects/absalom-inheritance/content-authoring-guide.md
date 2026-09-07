@@ -86,8 +86,15 @@ that, square by square.
 
 Character creation (round three) turned the single `pc` object into an array of buildable
 characters. Each entry is the same character sheet round one and two always had, plus an `id`,
-a `blurb` for the picker screen, and its own `commands` — which of the pack's global `commands`
-(§4) that build can actually use.
+a `blurb` for the picker screen, its own `commands` — which of the pack's global `commands`
+(§4) that build can actually use — and, since Phase 7, its own `startingInventory` (§6).
+
+The shipping pack has four: a Wizard, a Fighter, a Cleric and a Rogue. What each of the last two
+cost is worth knowing before adding a fifth. The Cleric cost **no engine change at all** — she is
+a statline, four command ids, and a satchel. The Rogue cost two: a `debuff` kind and a
+`precision` rider, both of which are now content anybody can write. The picker itself has never
+been touched: it is built from this array and stacks to one column at 375px whether there are two
+cards or four.
 
 ```json
 "pcOptions": [
@@ -100,7 +107,8 @@ a `blurb` for the picker screen, and its own `commands` — which of the pack's 
     "saves": { "fort": 4, "ref": 5, "will": 6 },
     "spellDC": 17, "spellAttack": 7, "slots": 2, "focus": 1,
     "palette": { "top": "#3f6ea8", "left": "#26456b", "right": "#315687" },
-    "commands": ["strike", "shield", "splash", "breathe", "fang", "potion"]
+    "commands": ["strike", "shield", "splash", "breathe", "fang", "potion"],
+    "startingInventory": ["dagger", "potion", "potion", "potion", "book", "rations"]
   },
   {
     "id": "fighter",
@@ -180,7 +188,8 @@ shown when the command is armed, and `note` is the button's tooltip.
 | `burst` | `rangeFeet`, `burstFeet`, `damage`, `save`, `spell` | The same, around a square you place within `rangeFeet` and have line of effect to. |
 | `emanation` | `emanationFeet`, `damage`, `save`, `spell` | The same, around the heir. Takes no target. |
 | `unerring` | `rangeFeet`, `damage` | No roll, no save. Needs line of effect. |
-| `self-buff` | `acBonus` | Circumstance bonus to AC until the start of your next turn. |
+| `buff` | `applies` | Puts one *helpful* condition on the heir. Takes no target. |
+| `debuff` | `rangeFeet`, `save`, `inflicts`, and `spell` or `dc` | Targets a creature. One save; a failure leaves a condition behind. Rolls no damage at all. |
 | `self-heal` | `healing` | Heals the PC. |
 | `consume` | `healing`, `consumes` | Heals, and destroys one matching item. The only kind usable outside an encounter. |
 | `reaction` | `triggers`, `effect` | Fires by itself at one of three named points. Costs 0. See below. |
@@ -220,7 +229,7 @@ left rolls one basic save against one DC, read once. They differ only in where t
   radius; the centre needs line of effect, and a placement that fails either is refused without
   spending anything.
 * **`emanation`** is centred on her and takes no target at all — it fires straight from the command
-  list, the way `self-buff` does, with nothing to click.
+  list, the way `buff` does, with nothing to click.
 
 Three things to know before writing one:
 
@@ -248,6 +257,72 @@ and Phase 3 added two more and reached neither on its first run. **The same chec
 abilities**, which cannot appear in that list because no build lists them — an ability named by any
 creature in the pack and never used across the batch fails the run the same way.
 
+### `buff` and `debuff`: a command whose effect is a condition, not a number
+
+These two are the kinds with no damage roll in them, and they are the ones to reach for when a
+build's identity is what it does to a fight rather than how hard it hits.
+
+**`buff`** takes an `applies` block and nothing else:
+
+```json
+{
+  "id": "litany", "name": "Warding Litany", "cost": 1, "kind": "buff", "spell": true,
+  "applies": { "condition": "warded", "value": 1 },
+  "hint": "Warding Litany (◆): +1 AC and +1 to every save until your next turn begins."
+}
+```
+
+The condition has to be one the catalogue calls **helpful** — today that is `shielded` and
+`warded` — and a `buff` that applies `clumsy` **throws at load**. `value` defaults to 1 and is
+what the condition is worth per point, so a pack that writes `"value": 2` on `shielded` gets a
++2 disc with no code change. **The duration is the catalogue's, not yours.** "Until the start of
+your next turn" is part of what the disc *is*; a pack that had to restate it would ship one that
+forgot and leave a bonus stapled to the heir for the rest of the delve.
+
+Only a `buff` may write `applies`. Anything else that does **throws at load**, because a
+self-heal that quietly shielded you is a rule no player could find.
+
+**`debuff`** is the mirror, aimed outward:
+
+```json
+{
+  "id": "shim", "name": "Shim the Joint", "cost": 1, "kind": "debuff",
+  "rangeFeet": 5, "dc": 17, "save": "ref",
+  "inflicts": { "condition": "off-guard", "value": 1, "on": "fail" }
+}
+```
+
+It targets one creature within `rangeFeet` that it has line of effect to, rolls that creature's
+`save` against one DC, and hands the degree to `inflicts`. It reads its DC by exactly the rule
+the area kinds do: `spell: true` to roll against the heir's spell DC, or its own `dc`, never
+both and never neither. A dormant creature targeted by one wakes up. Four things **throw at
+load**: a `damage` field (a debuff's whole effect is the condition — a command that does both is
+an `attack` or an area with a rider), a missing `rangeFeet`, `save` or `inflicts`, an `inflicts`
+naming a condition the catalogue calls helpful, and the DC rule above.
+
+`on: "fail"` is the entry that exists for this kind, and it means failure *or worse* — see the
+next section.
+
+### Precision damage: a second die, gated on a state
+
+An `attack` may carry a `precision` block, which is PF2e's Sneak Attack written as content:
+
+```json
+"precision": { "damage": "1d6", "when": "off-guard" }
+```
+
+The extra die is rolled only when the target already has the named condition, and a critical hit
+doubles it along with the rest of the damage. `when` names a condition rather than meaning
+off-guard by definition, because "off-guard" is the state PF2e happens to gate precision on and a
+pack that wants a blade that bites the frightened should not need a code change. It must be a
+condition the catalogue does *not* call helpful — nothing in this engine puts a helpful condition
+on a foe, so a rider gated on one would never fire — and only `attack` may carry it. Both
+**throw at load**.
+
+`enfeebled` takes its point off the weapon's damage roll and not off the precision die: PF2e's
+penalty is to *the* melee damage roll, once. That is why `damageFrom` has a `precision` source of
+its own.
+
 ### Conditions a command leaves behind, and takes off
 
 `inflicts` hangs a condition off a roll that already happened. One object, or an array of them
@@ -262,16 +337,24 @@ bag's higher-value-wins merge would silently drop one of them.
 ]
 ```
 
-`condition` must be one the catalogue in `js/conditions.js` defines — `shielded`, `frightened`,
-`off-guard`, `clumsy`, `enfeebled`, `stupefied`, `slowed`, `persistent-fire` — and an unknown one
-throws at load, for the same reason an unknown tile name does. `value` defaults to 1 and must be a
-positive integer. `on` is one of exactly three:
+`condition` must be one the catalogue in `js/conditions.js` defines — `shielded`, `warded`,
+`frightened`, `off-guard`, `clumsy`, `enfeebled`, `stupefied`, `slowed`, `persistent-fire` — and
+an unknown one throws at load, for the same reason an unknown tile name does. `value` defaults to
+1 and must be a positive integer. `on` is one of exactly four:
 
 | `on` | fires when | reads whose roll |
 | --- | --- | --- |
 | `hit` | the attack succeeded or better | the attacker's |
 | `crit` | the attack critically succeeded | the attacker's |
+| `fail` | the target failed **or worse** | **the target's** |
 | `crit-fail` | the target critically failed | **the target's** — which is what a basic save wants |
+
+`fail` is failure or worse on purpose, the mirror of what `hit` means on the other side: a rider
+that stopped applying because the save went from bad to worse is the one bug in this funnel
+nobody would go looking for. It exists because a `debuff` is a command with nothing in it but the
+condition, and one that only fired on a critical failure would be a build built on a one-in-five.
+A basic-save area is usually still better written with `crit-fail` — Breathe Fire setting a
+critical failure alight is the spell's own rider, not its whole effect.
 
 An `unerring` command rolls nothing, so it has no degree: it counts as a `hit`, always. Force Fang
 is the pack's one source of `slowed` for that reason — slowed is worth a whole focus point, and an
@@ -448,6 +531,28 @@ the whole number.
 
 `startingInventory` may repeat an id — that is how the PC carries three potions. Naming an item
 that is not in `items` is a load error.
+
+**A build may carry its own satchel.** Put a `startingInventory` on a `pcOptions` entry and it
+replaces the pack's for that build; a build that names none gets the pack's, which is what keeps
+every pack written before this working unchanged. It is a replacement and not a merge, so a
+build that names one lists everything it carries.
+
+```json
+"pcOptions": [
+  { "id": "fighter", "...": "...", "startingInventory": ["longsword", "potion", "potion", "potion", "rations"] }
+]
+```
+
+This was pack-level for two rounds, and the cost of that was on the board the whole time: the
+Fighter walked four rooms carrying the Wizard's spellbook and a longsword sat in the Wizard's bag
+that she has no proficiency with. Two builds were happy sharing a satchel; four are not.
+
+There are two places the satchel is resolved and both of them matter. `selectPc` resolves it for
+anything that builds a run from content — `game.js`, `balance.mjs` — and `save.js`'s `freshRun`
+resolves it again, because `main.js` picks a build, calls `freshRun` with the *unresolved* pack,
+and only then runs `selectPc` on the state it gets back. A unit test that only exercised the
+first one went green for an afternoon while every build in the browser opened its bag on the same
+longsword and spellbook.
 
 Nothing is equippable. `dagger` and `longsword` are flavour; the Strike command carries its own
 `attackBonus` and `damage`. If a future area wants a weapon that changes the numbers, that is a

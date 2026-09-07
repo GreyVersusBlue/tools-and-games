@@ -77,8 +77,15 @@ export function attackKind(ability) {
  * is the condition itself ticking, and healing is not damage at all. A caller
  * that had to guess would guess wrong once and then be wrong forever, so every
  * `rollDamage` in game.js names its source out loud.
+ *
+ * `precision` is the extra die a rogue's blade carries into an off-guard
+ * target. It is unmodified not because a condition has no business touching
+ * it — enfeebled plainly does have business with the arm behind the blade —
+ * but because PF2e's penalty is to *the* melee damage roll, once, and the
+ * weapon line beside it has already been charged for it. A precision die
+ * routed through "weapon" would take the point off twice, for one build.
  */
-export const DAMAGE_SOURCES = Object.freeze(["weapon", "spell", "persistent", "healing"]);
+export const DAMAGE_SOURCES = Object.freeze(["weapon", "spell", "precision", "persistent", "healing"]);
 
 /** The only source a condition can move. */
 const MODIFIED_DAMAGE = "weapon";
@@ -143,7 +150,28 @@ export const CONDITIONS = Object.freeze({
     helpful: true,
     bonusType: "circumstance",
     affects: Object.freeze({ ac: 1 }),
+    // The duration belongs here and not to the command that puts it up. It
+    // was written out longhand in game.js's self-buff branch for two rounds,
+    // which was survivable while exactly one command in the engine applied
+    // exactly one buff; the second one would have had to remember it.
+    defaultUntil: "self-start",
     note: "The Shield cantrip's disc of force. Ends at the start of your next turn, or when you block with it.",
+  }),
+  warded: Object.freeze({
+    id: "warded",
+    name: "Warded",
+    // Like the disc: the value is what the pack asked for, not a stack count.
+    showsValue: false,
+    helpful: true,
+    // Status, where the disc is circumstance, and that is the whole of why
+    // this is a second condition rather than the first one renamed. A cleric
+    // standing inside her own litany and a wizard behind her disc are adding
+    // two different bonuses to the same AC; a frightened heir loses this one
+    // and keeps that one, because frightened is a status penalty.
+    bonusType: "status",
+    affects: Object.freeze({ ac: 1, "save-fort": 1, "save-ref": 1, "save-will": 1 }),
+    defaultUntil: "self-start",
+    note: "This pack's own, the way Ember Burst and Warding Pulse are: a status bonus to AC and to all three saves until the start of your next turn. Saves as well as AC is the point — the disc answers a fist and this answers the Keeper's floor, which is a Reflex save nothing else in the engine helps with.",
   }),
   frightened: Object.freeze({
     id: "frightened",

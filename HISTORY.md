@@ -2063,6 +2063,68 @@ Two of them have moved since they were written:
    bug in an N-of-something feature is almost never in the second one.
    *Source: Absalom Phase 6.*
 
+177. **A command cannot target something the engine has no word for.** The
+   Absalom wishlist asked Phase 7 for `heal-other` and `debuff` — "the first
+   commands here that target a creature with something other than damage." One
+   of them cannot exist. `sideOf()` in `game.js` answers `"pc"` or `"foe"` and
+   there is no third answer, so the only creature a `heal-other` could reach is
+   something trying to kill you; an ally is a party, and a party is a new
+   turn-order model, not a command kind. Rather than build a heal nothing could
+   receive, the session took what the row was pointing at — an effect that is a
+   condition rather than a number — and built it on the side the engine can
+   reach: `buff` onto the heir, `debuff` onto a creature. **The general form: a
+   plan written before the engine existed can name a shape the engine has no
+   noun for, and the honest move is to name the missing noun out loud rather
+   than fake the shape.** Reversible the day there is a party.
+   *Source: Absalom Phase 7.*
+
+178. **Two kinds that do one thing is worse than one kind that does it
+   properly.** `self-buff` applied `shielded` at `cmd.acBonus || 1` for
+   "until the start of your next turn" — a condition id, a default and a
+   duration, all three written into `game.js` for a thing that is content, and
+   survivable only while exactly one command in the engine put exactly one
+   condition up. The fix was not a `buff` kind beside it; it was `buff`
+   *instead* of it, taking an `applies: { condition, value }` block, with the
+   duration read off the catalogue (which grew `defaultUntil` on the disc to
+   hold it) and a load-time refusal for any condition the catalogue does not
+   call `helpful`. Adding a second kind would have shipped two ways to say one
+   thing and left the hardcoded id in the engine anyway. *Source: Absalom Phase 7.*
+
+179. **A closed vocabulary needs the entry the new kind actually wants.**
+   `INFLICT_ON` was `hit`, `crit`, `crit-fail` — right for a rider on a basic
+   save, where a critical failure is a bonus on top of damage that landed
+   regardless. A `debuff` has nothing else in it, so on that list it would fire
+   about one time in five and the build resting on it would be a lottery.
+   `"fail"` means failure *or worse*, the mirror of what `hit` means on the
+   attacker's side. Growing the closed list is the cheap half; the half worth
+   writing down is that **a vocabulary sized for one shape quietly refuses the
+   next one, and it refuses it by working.** *Source: Absalom Phase 7.*
+
+180. **The condition a rider keys on is content, not a rule.** PF2e gates
+   precision damage on off-guard and nothing else, so `sneakAttack` reading
+   `hasCondition(target, "off-guard")` would have been correct and would also
+   have been the third id hardcoded in the engine in one phase. It is
+   `precision: { damage, when }`, `when` naming any unhelpful condition, and a
+   pack that wants a blade that bites the frightened writes it. The arithmetic
+   note that came with it: precision is doubled by a critical hit like the rest
+   of the roll, and rolled under its own `damageFrom` source, because enfeebled
+   is a penalty to *the* melee damage roll once and charging it twice would
+   apply a rule to exactly one build. *Source: Absalom Phase 7.*
+
+181. **A field resolved in one place is a field resolved in one of the places
+   that needs it.** `startingInventory` went per-build, resolved in
+   `selectPc` — and the unit tests went green while every build in the browser
+   opened its bag on the same longsword and spellbook, because `main.js` picks
+   a build, calls `save.js`'s `freshRun` with the *unresolved* pack, and only
+   then runs `selectPc` on the state that comes back. Two call sites, one of
+   which no Node test could see. **The check that found it was a browser
+   assertion against the inventory panel** — locked #39's "assert against the
+   DOM for anything that just happened", pointed at a field rather than at an
+   animation. The same run found a second three-round-old bug the same way: a
+   save reloaded on a creature's turn sat frozen, because `pumpEnemies` is
+   started by an action and by a walk and a boot is neither.
+   *Source: Absalom Phase 7.*
+
 ---
 
 # The site sessions, 1–10

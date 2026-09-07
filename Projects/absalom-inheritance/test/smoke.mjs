@@ -206,7 +206,7 @@ eq(content.commandById.strike.agile, true, "the dagger is agile, so MAP is -4/-8
 eq(content.creatures["shattered-sentinel"].damage.s, 6, "the sentinel's damage string parsed into dice");
 
 /* -- pcOptions and selectPc — character creation, round three ---------- */
-eq(content.pcOptions.length, 2, "the pack ships two builds");
+eq(content.pcOptions.length, 4, "the pack ships four builds");
 eq(content.pc.id, "wizard", "content.pc defaults to the first build");
 ok(Object.isFrozen(content.pcOptions[0]), "each build is frozen");
 eq(content.pcById.fighter.name, "Kessa Vane", "pcById looks builds up by id");
@@ -742,10 +742,13 @@ section("game");
   ok(g.explored.has("10,19"), "the spawn square is explored at boot");
   ok(!g.explored.has("10,2"), "the stairway is not explored at boot");
 
-  // Bulk — Player Core p.271. Two 1-Bulk items plus five Light.
+  // Bulk — Player Core p.271. Vesper's own satchel now that the satchel is
+  // per build: the spellbook at 1 Bulk, and dagger, three potions and rations
+  // at Light. The heirloom longsword she had no proficiency with went with the
+  // Fighter, and this number is what says so.
   const bulk = g.bulkCarried();
-  eq(bulk.forEncumbrance, 2, "five Light items are under a whole Bulk between them");
-  ok(Math.abs(bulk.exact - 2.5) < 1e-9, "the readout shows the tenths");
+  eq(bulk.forEncumbrance, 1, "five Light items are under a whole Bulk between them");
+  ok(Math.abs(bulk.exact - 1.5) < 1e-9, "the readout shows the tenths");
 
   // A command that needs a target refuses without one, and refusing costs
   // nothing — the original build decremented actions before validating range.
@@ -944,6 +947,41 @@ function toPCTurn(g, limit = 40) {
   eq(fought, 40, "the fighter build actually reaches and fights the sentinels, every seed");
   ok(wins > 0, `the fighter build's adventure is winnable (${wins}/40 seeds)`);
   ok(wins < 40, `and losable (${40 - wins}/40 seeds lost)`);
+}
+
+{
+  // The two builds this phase adds, pinned the same way and for a sharper
+  // version of the same reason. The Cleric is the first build whose emergency
+  // healing is a spell rather than a potion, and the Rogue the first whose
+  // damage depends on spending an action *not* swinging — and neither of them
+  // has a line in combatPolicy naming it. If either never fought, or never
+  // reached its own new command, "generic over kind" is what broke.
+  //
+  // Broken on purpose twice: `healers()` narrowed back to `kind === "consume"`
+  // left the Cleric casting Heal zero times across 40 seeds, and dropping the
+  // debuff branch out of the melee arm left Shim the Joint at zero.
+  for (const [buildId, seed, kinds] of [
+    ["cleric", 4000, ["self-heal", "buff"]],
+    ["rogue", 5000, ["debuff"]],
+  ]) {
+    const build = selectPc(content, buildId);
+    const cast = {};
+    let wins = 0, fought = 0;
+    for (let i = 0; i < 40; i++) {
+      const g = createGame({ content: build, rng: makeRng(seed + i) });
+      const r = playThrough(g);
+      for (const [id, n] of Object.entries(r.cast)) cast[id] = (cast[id] || 0) + n;
+      if (g.run.stats.rounds > 0) fought++;
+      if (r.outcome === "victory") wins++;
+    }
+    eq(fought, 40, `the ${buildId} build reaches and fights, every seed`);
+    ok(wins > 0, `the ${buildId} build's adventure is winnable (${wins}/40 seeds)`);
+    ok(wins < 40, `and losable (${40 - wins}/40 seeds lost, ${buildId})`);
+    for (const kind of kinds) {
+      const id = build.commands.find(c => c.kind === kind).id;
+      ok((cast[id] || 0) > 0, `and its ${kind} command actually fires (${id} ×${cast[id] || 0})`);
+    }
+  }
 }
 
 /* -- the undercroft: a third room, and the boon it is worth ------------ */
@@ -2134,7 +2172,7 @@ section("conditions");
       ok(def.persistent.flatDC > 0, `"${key}" carries a flat DC`);
     }
   }
-  eq(CONDITION_IDS.length, 8, "eight conditions ship");
+  eq(CONDITION_IDS.length, 9, "nine conditions ship");
   ok(isCondition("frightened"), "frightened is one of them");
   ok(!isCondition("petrified"), "petrified is not — the catalogue is closed, like the tile names");
   // Every entry has to do something, or it is a chip that means nothing. The
@@ -2244,7 +2282,13 @@ section("conditions");
   eq(CONDITION_IDS.filter(id => {
     const a = CONDITIONS[id].affects;
     return a && Object.values(a).some(v => v > 0);
-  }).length, 1, "and there is exactly one condition in the catalogue that grants a bonus of any type");
+  }).length, 2, "and there are exactly two conditions in the catalogue that grant a bonus of any type");
+  // And they are different types, which is the arithmetic the assertion above
+  // could not do until this phase: the disc is circumstance and the litany is
+  // status, so a heir under both is +2 AC and not +1.
+  eq(CONDITIONS.warded.bonusType, "status", "the litany's ward is a status bonus, not a second circumstance one");
+  eq(modifiers([makeCondition("shielded"), makeCondition("warded")], "ac"), 2,
+    "so the disc and the ward stand together, where two circumstance bonuses would not");
 
   const weak = [makeCondition("enfeebled", { value: 2 })];
   eq(modifiers(weak, "damage"), -2, "enfeebled 2 takes 2 off a damage roll");
@@ -2399,14 +2443,280 @@ section("conditions");
   ok(g.useCommand("shield").ok, "Vesper casts Shield");
   eq(g.conditionsOf("pc").length, 1, "which puts one condition on her, not a boolean on the turn object");
   eq(g.conditionsOf("pc")[0].id, "shielded", "and it is the disc");
-  eq(g.conditionsOf("pc")[0].value, content.commandById.shield.acBonus,
-    "carrying the pack's own acBonus as its value, so a +2 disc would be +2 here without a code change");
+  eq(g.conditionsOf("pc")[0].value, content.commandById.shield.applies.value,
+    "carrying the pack's own applies.value, so a +2 disc would be +2 here without a code change");
   eq(g.conditionsOf("pc")[0].until.who, "pc", "until the start of her own next turn");
+  eq(g.conditionsOf("pc")[0].until.when, "start", "read off the catalogue, not written out in the buff branch");
   eq(g.modifiersFor("pc", "ac"), 1, "worth +1 through the funnel");
   eq(g.pcAC(), 16, "which is the AC everything else in the engine reads");
   ok(g.shielded, "and the getter the renderer uses still answers");
 
 }
+
+/* -- buff: the second one, and what the branch stopped hardcoding -------- */
+{
+  // The disc's branch used to read `applyCondition("pc", "shielded",
+  // cmd.acBonus || 1, { who: "pc", when: "start" })` — the condition id, the
+  // duration and the default all written into the engine for a thing that is
+  // content. This is the second buff, and it is a different condition with a
+  // different bonus type on four different numbers.
+  //
+  // Broken on purpose by putting "shielded" back in the buff branch: the
+  // Cleric's litany started shielding her and this fired on the id.
+  const g = keeperFight("cleric", 7);
+  eq(g.pcAC(), 16, "Isbeth's own AC");
+  ok(g.useCommand("litany").ok, "she speaks the litany");
+  eq(g.conditionsOf("pc")[0].id, "warded", "which puts the ward up, not the disc");
+  eq(g.conditionsOf("pc")[0].until.when, "start",
+    "with the duration off the catalogue — the branch does not write one");
+  eq(g.pcAC(), 17, "worth +1 AC");
+  eq(g.modifiersFor("pc", "save-ref"), 1, "and +1 to a Reflex save, which the disc never touched");
+  eq(g.modifiersFor("pc", "save-will"), 1, "and to Will");
+  eq(g.modifiersFor("pc", "save-fort"), 1, "and to Fortitude");
+}
+
+{
+  // The other half of "no branch names a build", and the half a cast count
+  // cannot see. `buffWorthCasting` used to be `findUsable("self-buff") &&
+  // !game.shielded`, and `game.shielded` is the Shield cantrip's own
+  // condition: for a Cleric it answers false forever, so the policy would
+  // spend an action on a litany that was already standing, every turn — and
+  // the litany's cast count would go *up*, not to zero, so the pin above
+  // could not see it. Counting was the wrong instrument (#147); this is the
+  // right one.
+  //
+  // Broken on purpose by putting `game.shielded` back: the ward was already
+  // up, the policy cast it again, and this line fired.
+  // Down to the last action, because that is the only place the rule lives:
+  // "the last action of a melee turn goes to the buff, whenever the buff is
+  // down". With two actions left the policy swings whatever it thinks of the
+  // ward, so a break would hide.
+  const g = keeperFight("cleric", 77);
+  ok(g.useCommand("litany").ok, "the ward goes up");
+  ok(g.conditionsOf("pc").some(c => c.id === "warded"), "and is standing");
+  ok(g.useCommand("strike-mace", g.run.creatures[0].key).ok, "one swing goes in");
+  eq(g.actionsLeft, 1, "leaving the action the rule is about");
+  const tally = {};
+  combatPolicy(g, tally);
+  ok(!(tally.litany > 0),
+    `the policy does not spend the last action on a ward that is already up (litany ×${tally.litany || 0})`);
+  eq(tally["strike-mace"], 1, "it swings again instead");
+}
+
+throws(() => {
+  const p = clone();
+  cmd(p, "litany").applies = { condition: "clumsy" };
+  loadPack(p);
+}, "content: a buff that applies an unhelpful condition is refused");
+throws(() => {
+  const p = clone();
+  delete cmd(p, "litany").applies;
+  loadPack(p);
+}, "content: a buff with no applies block is refused");
+throws(() => {
+  const p = clone();
+  cmd(p, "splash").applies = { condition: "shielded" };
+  loadPack(p);
+}, "content: a non-buff command that writes an applies block is refused");
+throws(() => {
+  const p = clone();
+  cmd(p, "litany").applies = { condition: "nope-not-a-condition" };
+  loadPack(p);
+}, "content: a buff naming a condition the catalogue does not have is refused");
+
+/* -- debuff: a command whose whole effect is the condition ---------------- */
+{
+  // The first one in the engine. Everything else that has ever applied a
+  // condition applied it as a rider on a damage roll, which is why the
+  // vocabulary had no way to say "on a failure" until this kind existed.
+  //
+  // Broken on purpose by deleting the `spec.on === "fail"` arm of
+  // applyInflict: Shim landed on critical failures only and this went red on
+  // the "leaves it off-guard" line, not on any of the ones around it.
+  const g = keeperFight("rogue", 3);
+  const keeper = g.run.creatures[0];
+  eq(g.conditionsOf(keeper).length, 0, "the Keeper starts clean");
+  const before = g.actionsLeft;
+  const r = g.useCommand("shim", keeper.key);
+  eq(r.ok, true, "Shim the Joint resolves");
+  eq(g.actionsLeft, before - 1, "for one action");
+  eq(g.mapPenaltyNow(false), 0,
+    "and takes no multiple attack penalty and adds none — it rolls no attack");
+  eq(keeper.hp, 18, "it deals no damage at all");
+  const deg = r.deg;
+  eq(g.conditionsOf(keeper).length, deg <= 1 ? 1 : 0,
+    `a failed Reflex save leaves it off-guard and a successful one does not (rolled ${deg})`);
+}
+
+{
+  // Every degree, forced, rather than whichever one seed 3 happened to roll.
+  // The point of "fail" is that it is failure *or worse*: a rider that stopped
+  // applying because the save got worse is the one bug in this funnel nobody
+  // would go looking for.
+  let landed = 0, degrees = new Set();
+  for (let seed = 0; seed < 60; seed++) {
+    const g = keeperFight("rogue", 900 + seed);
+    const keeper = g.run.creatures[0];
+    const r = g.useCommand("shim", keeper.key);
+    degrees.add(r.deg);
+    const stuck = g.conditionsOf(keeper).some(c => c.id === "off-guard");
+    eq(stuck, r.deg <= 1, `off-guard iff the save was a failure or worse (seed ${900 + seed})`);
+    if (stuck) landed++;
+  }
+  ok(landed > 0 && landed < 60, `Shim lands on some and not others (${landed}/60)`);
+  ok(degrees.has(0) || degrees.has(1), "and at least one of those sixty was a failure");
+}
+
+{
+  // Out of range. A debuff is targeted, so it refuses the way an unerring
+  // spell does — with a reason, and without spending the action.
+  const g = keeperFight("rogue", 5, [10, 8]);
+  const keeper = g.run.creatures[0];
+  const before = g.actionsLeft;
+  const r = g.useCommand("shim", keeper.key);
+  eq(r.ok, false, "Shim refuses a target it is not standing next to");
+  eq(r.reason, "range", "and says so as a range refusal, not a silence");
+  eq(g.actionsLeft, before, "and the refusal costs nothing");
+  eq(g.conditionsOf(keeper).length, 0, "and leaves the target alone");
+}
+
+{
+  // The wake. Broken on purpose by dropping the `if (!c.awake) wake(c)` line:
+  // the sentinel took the condition and went on sleeping.
+  const g = keeperFight("rogue", 21);
+  const keeper = g.run.creatures[0];
+  keeper.awake = false;
+  g.useCommand("shim", keeper.key);
+  ok(keeper.awake, "a construct shimmed in its sleep wakes up");
+}
+
+throws(() => { const p = clone(); cmd(p, "shim").damage = "1d4"; loadPack(p); },
+  "content: a debuff that also rolls damage is refused");
+throws(() => { const p = clone(); delete cmd(p, "shim").inflicts; loadPack(p); },
+  "content: a debuff with nothing to inflict is refused");
+throws(() => { const p = clone(); delete cmd(p, "shim").rangeFeet; loadPack(p); },
+  "content: a debuff with no range is refused");
+throws(() => { const p = clone(); delete cmd(p, "shim").save; loadPack(p); },
+  "content: a debuff with no save is refused");
+throws(() => { const p = clone(); delete cmd(p, "shim").dc; loadPack(p); },
+  "content: a debuff that is not a spell and writes no dc of its own is refused");
+throws(() => { const p = clone(); cmd(p, "shim").spell = true; loadPack(p); },
+  "content: a debuff that is a spell and also writes a dc is refused");
+throws(() => { const p = clone(); cmd(p, "shim").inflicts = { condition: "shielded", on: "fail" }; loadPack(p); },
+  "content: a debuff that helps its target is refused");
+
+/* -- precision: the second die, and the state that gates it -------------- */
+{
+  // Sneak Attack as a rider on the weapon rather than a rule in the engine.
+  // The same shortsword, the same seed, against a target that is off-guard
+  // and one that is not — the only difference between the two runs is the
+  // condition, so the difference in damage is the rider and nothing else.
+  //
+  // Broken on purpose by dropping the `hasCondition` guard, which made the
+  // second die unconditional: `plain` and `sneaky` came out equal and this
+  // fired on the "more than the same swing" line.
+  const swing = offGuard => {
+    const g = keeperFight("rogue", 41);
+    const keeper = g.run.creatures[0];
+    if (offGuard) keeper.conditions = [{ id: "off-guard", value: 1, until: null }];
+    const before = keeper.hp;
+    const r = g.useCommand("strike-shortsword", keeper.key);
+    return { dealt: before - keeper.hp, deg: r.deg, log: g.run.log };
+  };
+  const plain = swing(false), sneaky = swing(true);
+  ok(plain.deg >= 2 && sneaky.deg >= 2, "both swings land on this seed");
+  ok(sneaky.dealt > plain.dealt,
+    `the off-guard swing deals more than the same swing does not (${sneaky.dealt} vs ${plain.dealt})`);
+  ok(sneaky.log.some(e => (e.math || "").includes("precision")),
+    "and the damage line says where the extra came from");
+  ok(!plain.log.some(e => (e.math || "").includes("precision")),
+    "while the plain one does not mention a rider that did not fire");
+}
+
+throws(() => { const p = clone(); cmd(p, "strike-shortsword").precision.when = "shielded"; loadPack(p); },
+  "content: a precision rider gated on a helpful condition is refused");
+throws(() => { const p = clone(); cmd(p, "strike-shortsword").precision.when = "nope"; loadPack(p); },
+  "content: a precision rider naming an unknown condition is refused");
+throws(() => { const p = clone(); cmd(p, "shim").precision = { damage: "1d6", when: "off-guard" }; loadPack(p); },
+  "content: precision damage on anything but an attack is refused");
+throws(() => { const p = clone(); delete cmd(p, "strike-shortsword").precision.damage; loadPack(p); },
+  "content: a precision rider with no damage is refused");
+
+/* -- the satchel is per build -------------------------------------------- */
+{
+  // Round three shipped one satchel for every build, which is how Kessa came
+  // to carry Vesper's spellbook down four rooms. `selectPc` resolves it the
+  // same way it resolves `pc`, so game.js still reads one list and has never
+  // known there was more than one.
+  //
+  // Broken on purpose by dropping the `startingInventoryByBuild` lookup out of
+  // selectPc: all four builds went back to the pack's list and the Fighter's
+  // "no spellbook" line went red.
+  const carried = id => selectPc(content, id).startingInventory;
+  ok(carried("wizard").includes("book"), "Vesper carries the spellbook");
+  ok(!carried("fighter").includes("book"), "and Kessa, who casts nothing, does not");
+  ok(carried("fighter").includes("longsword"), "the heirloom longsword is the Fighter's");
+  ok(!carried("wizard").includes("longsword"), "and not the Wizard's, who is not trained on one");
+  ok(carried("cleric").includes("font") && !carried("cleric").includes("book"),
+    "the Cleric carries a font instead of a spellbook");
+  ok(carried("rogue").includes("tools"), "and the Rogue her tools");
+  eq(carried("cleric").filter(i => i === "potion").length, 2,
+    "two potions for the build whose Heal is worth two and a half of them");
+  eq(carried("rogue").filter(i => i === "potion").length, 3,
+    "three for the build with nothing else to spend on staying up");
+  // A pack whose builds name no satchel gets the pack's, which is every pack
+  // written before this phase.
+  const shared = loadPack((() => { const p = clone(); for (const b of p.pcOptions) delete b.startingInventory; return p; })());
+  eq(JSON.stringify(selectPc(shared, "fighter").startingInventory),
+    JSON.stringify(shared.startingInventory),
+    "a build that names no satchel falls back to the pack's");
+}
+
+{
+  // And what the run actually starts holding, which is the assertion that
+  // would have caught the spellbook: the inventory is built off
+  // content.startingInventory in game.js, and this reads it after begin().
+  const held = id => {
+    const g = createGame({ content: selectPc(content, id), rng: makeRng(1) });
+    g.begin();
+    return g.run.inventory.map(i => i.item);
+  };
+  ok(!held("fighter").includes("book"), "a fresh Fighter run holds no spellbook");
+  ok(held("cleric").includes("mace"), "a fresh Cleric run holds a mace");
+}
+
+{
+  // And the path the *page* takes, which is not that one. main.js picks a
+  // build, calls save.js's freshRun with the unresolved pack, and only then
+  // runs selectPc on the state it gets back — so freshRun does its own
+  // per-build lookup. The assertion above went green for a whole afternoon
+  // while every build in the browser opened its bag on the same longsword and
+  // spellbook, and test/browser.mjs is what said so.
+  //
+  // Broken on purpose by putting `content.startingInventory` back in freshRun:
+  // this went red and the createGame test above stayed green, which is the
+  // whole reason both exist.
+  const bag = id => freshRun(content, id).inventory.map(i => i.item);
+  ok(!bag("fighter").includes("book"), "freshRun gives the Fighter no spellbook either");
+  ok(bag("cleric").includes("font"), "and the Cleric her font");
+  ok(bag("rogue").includes("shortsword"), "and the Rogue her shortsword");
+  eq(bag("wizard").filter(i => i === "potion").length, 3, "with the right number of potions in each");
+  eq(bag("cleric").filter(i => i === "potion").length, 2, "including the Cleric's two");
+  // Slots are 0..n-1 in order, which is what the inventory grid draws off.
+  eq(JSON.stringify(freshRun(content, "cleric").inventory.map(i => i.slot)), "[0,1,2,3,4]",
+    "and the slots are still numbered from zero");
+}
+
+throws(() => {
+  const p = clone();
+  p.pcOptions.find(b => b.id === "rogue").startingInventory.push("nope");
+  loadPack(p);
+}, "content: a build's satchel naming a missing item is refused");
+throws(() => {
+  const p = clone();
+  p.pcOptions.find(b => b.id === "rogue").startingInventory = "shortsword";
+  loadPack(p);
+}, "content: a build's satchel that is not an array is refused");
 
 {
   // The duration on its own, with nothing else in the fight touching it: a
@@ -2596,8 +2906,8 @@ section("conditions");
 
 /* -- what a pack is allowed to inflict ----------------------------------- */
 {
-  eq(JSON.stringify(INFLICT_ON), JSON.stringify(["hit", "crit", "crit-fail"]),
-    "three ways a pack can hang a condition off a roll");
+  eq(JSON.stringify(INFLICT_ON), JSON.stringify(["hit", "crit", "fail", "crit-fail"]),
+    "four ways a pack can hang a condition off a roll");
   eq(content.commandById.breathe.inflicts[0].condition, "persistent-fire",
     "Breathe Fire sets a critical failure alight");
   eq(content.commandById.breathe.inflicts[0].on, "crit-fail", "on the target's own save");
@@ -2671,7 +2981,7 @@ section("conditions");
   eq(damageModifiers(weak, "healing"), 0, "nor a healing roll, which is not damage at all");
   throws(() => damageModifiers(weak, "falling"),
     "an unknown source throws rather than quietly returning 0 for it");
-  eq(DAMAGE_SOURCES.length, 4, "four sources, and every rollDamage in the engine names one");
+  eq(DAMAGE_SOURCES.length, 5, "five sources, and every rollDamage in the engine names one");
   eq(damageModifiers([], "weapon"), 0, "an empty bag moves nothing");
 }
 
@@ -3128,9 +3438,10 @@ section("conditions");
   ok(/helpful/.test(rend), "it asks the catalogue which ones are good news");
   ok(!/affects\s*&&\s*def\.affects\.ac/.test(ui), "ui.js no longer decides by whether AC moved downward");
   ok(/def\.helpful/.test(ui), "it asks the same flag");
-  eq(CONDITION_IDS.filter(id => CONDITIONS[id].helpful).length, 1,
-    "exactly one condition in the catalogue is worth having");
-  eq(CONDITIONS.shielded.helpful, true, "and it is the disc");
+  eq(CONDITION_IDS.filter(id => CONDITIONS[id].helpful).length, 2,
+    "exactly two conditions in the catalogue are worth having");
+  eq(CONDITIONS.shielded.helpful, true, "the disc");
+  eq(CONDITIONS.warded.helpful, true, "and the litany's ward — the second one the two files above were written for");
 }
 
 section("save");
