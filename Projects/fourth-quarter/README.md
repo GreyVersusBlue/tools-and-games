@@ -133,14 +133,23 @@ engine's result, and Mules fans bounce when they win.
   (Stock, Crew, Theme, Upgrades, Real Estate, Door). The door's panel becomes
   the dark-night settlement instead of "Open the Doors" whenever a venue move
   is still settling in (`c.darkNightsLeft > 0`).
-- Tests: `node test/smoke-engine.mjs` and `node test/smoke-campaign.mjs`.
-- `js/world.js` — Corner Tap geometry: main room + back-of-house kitchen
-  (doorway east of the bar, pass-through window where food lands), seats,
-  colliders + walkable-bounds union, TVs, neon sign, day/night light rigs,
-  stove/tap minigame stations, upgrade crates. One physical room at every
-  venue tier — `buildWorld()` clears and rebuilds `seats`/`colliders` on
-  every call, since a signed lease, a dev warp, or "New Game" all call it
-  again on the same page load.
+- Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs` and
+  `node test/smoke-layout.mjs` (CI runs all three). `node tools/browser-check.mjs`
+  boots the page in Chromium and is run by hand; it needs `playwright-core`.
+- `js/layout.js` — the room as data, pure. One description per venue tier
+  (all four the Corner Tap for now): room, kitchen, doorways, windows, bar,
+  tables, fit-out blocks, stand-points. Derives seats, colliders as plain
+  boxes, `inBounds()`, and `validate()` — every stool reachable, every
+  doorway joining the rooms. `test/fixtures/corner-tap.json` is what the old
+  hand-built `world.js` produced, dumped from Chromium, and the suite holds the
+  derivation to it.
+- `js/world.js` — the room in meshes, built from a `layout.js` description:
+  main room + back-of-house kitchen (doorway east of the bar, pass-through
+  window where food lands), TVs, neon sign, day/night light rigs, stove/tap
+  minigame stations, upgrade crates. `buildWorld(scene, venueId)` refills
+  `seats`/`colliders` and re-aims the stand-points on every call, since a
+  signed lease, a dev warp, or "New Game" all call it again on the same page
+  load.
 - `js/patrons.js` — patron + server NPC state machines (bartenders stick to
   drink tickets).
 - `js/player.js` — pointer-lock movement, collision, pick-up/deliver, and the

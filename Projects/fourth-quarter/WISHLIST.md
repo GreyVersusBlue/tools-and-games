@@ -1,16 +1,18 @@
 # The Fourth Quarter — Feature Wishlist
 
 **Status: nothing is open and nothing is broken.** Three rounds shipped the
-day phase, the venue ladder, the shared save system and spoilage, and the
-project had run its own task list out by the time the prompt rounds ended.
-Both suites are green as of this file — `node test/smoke-campaign.mjs` 203
-passed, `node test/smoke-engine.mjs` 190 passed — and round 3's site-wide
+day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
+the suites in CI; **Phase 1 made the room a description** (`js/layout.js`,
+pure, with `test/smoke-layout.mjs`). Three suites are green as of this file —
+`node test/smoke-campaign.mjs` 203 passed, `node test/smoke-engine.mjs` 190
+passed, `node test/smoke-layout.mjs` 55 passed — and the hand-run
+`node tools/browser-check.mjs` 25 passed in real Chromium. Round 3's site-wide
 `npm run games` reported 146 checks, 0 failed across three independent runs on
 a real-Chrome environment, including this project's own 45-check Real Estate
-beat. The first open phase is **Phase 1 — The room is a description**, named
-model **Claude Fable 5.1**. What follows is nine phases across two arcs, the
-conventions three rounds learned the hard way, and the backlog nobody has
-claimed.
+beat. The first open phase is **Phase 2 — Four rooms, one ladder**, named
+model **Claude Opus 5**, a 2+ row. What follows is nine phases across two
+arcs, the conventions three rounds learned the hard way, and the backlog
+nobody has claimed.
 
 ## What it is
 
@@ -63,10 +65,21 @@ comment saying why). Honest is not built.
 - **`test/smoke-campaign.mjs` (458 lines, 203 assertions)** and
   **`test/smoke-engine.mjs` (155 lines, 190 assertions)** — Node only, no
   runner, no dependency: a `pass`/`fail` counter and an `ok()`.
-- **`js/world.js` (363)** — the Corner Tap in metres. Main room x∈[-8,8]
-  z∈[-5.5,5.5], a kitchen behind the north wall through `DOORWAY` x∈[2.1,3.7],
-  a pass-through `WINDOW`, six stools and six four-tops, three TVs, two light
-  rigs. Exports `seats[]`, `colliders[]`, `inBounds()` and named stand-points.
+- **`js/layout.js` (198)** — a room as data, pure, zero imports. One
+  description per venue tier (`LAYOUTS`, all four the Corner Tap until Phase 2
+  authors the rest): room, kitchen, doorways with their corridor band, windows,
+  bar, tables, solid fit-out blocks, and every stand-point. Derives
+  `seatsFor()`, `collidersFor()` as plain `{min,max}` boxes, `inBounds()`,
+  `walkable()` and `validate()` — the walkability invariant. **`test/
+  smoke-layout.mjs` (55 assertions)** compares the derivation against
+  `test/fixtures/corner-tap.json`, dumped from the old `world.js` in Chromium
+  before this file existed.
+- **`js/world.js` (372)** — the room in meshes, built from a description.
+  `buildWorld(scene, venueId)` adopts `layoutFor(venueId)`: refills the
+  exported `seats[]`/`colliders[]` (`THREE.Box3` at the boundary), aims the
+  exported stand-point `Vector3`s, then draws walls, bar, tables, kitchen,
+  three TVs and two light rigs. `inBounds()` delegates to layout.js; TV,
+  pendant and corkboard positions are still literals here.
 - **`js/materials.js` (95)** — nine texture sets keyed by surface, ARM maps
   wired to three material slots each, a 404 falling back to a placeholder
   colour.
@@ -78,17 +91,16 @@ comment saying why). Honest is not built.
   **`js/dev.js` (120)** and **`js/audio.js` (141)** — the backquote cheat menu;
   twelve one-shots and three loops with a mute toggle.
 
-The load-bearing habit is **pure module plus its suite**: two files hold every
-number the game decides, they import no three.js, and 393 assertions sit on
-them. Everything visual is downstream and untested.
+The load-bearing habit is **pure module plus its suite**: three files hold
+every number the game decides, they import no three.js, and 448 assertions sit
+on them. Everything visual is downstream, and `tools/browser-check.mjs` is the
+one hand-run check that looks at it.
 
-Where it breaks down is `world.js`: 363 lines of literal coordinates with no
-data behind them and no test of any kind. `day.js` keeps its own copy of the
-station coordinates. And nothing that walks consults the colliders —
+Where it still breaks down: nothing that walks consults the colliders —
 `stepToward()` moves a mesh along the straight line to its target, every patron
 and every server uses it, so they already walk through the four-tops today. In
 one open 16×11 m room that reads as a stylisation. It stops reading that way
-the moment there is a wall between the door and the stool.
+the moment there is a wall between the door and the stool. That is Phase 3.
 
 ## Conventions a new builder must know
 
@@ -101,8 +113,8 @@ the moment there is a wall between the door and the stool.
   #34). Round 3 set `SPOILAGE_RATE` to `0`, watched exactly three of seven new
   assertions fail, restored it, watched 203 pass. Do that, and write down which
   assertions failed.
-- **Anything that decides a number goes in `engine.js` or `campaign.js`.** Both
-  import cleanly under plain Node. The moment a rule needs `document` or
+- **Anything that decides a number goes in `engine.js`, `campaign.js` or
+  `layout.js`.** All three import cleanly under plain Node. The moment a rule needs `document` or
   `THREE` it is in the wrong file — pass the answer down as an event or a
   return value, the way `update(dt)` already does.
 - **Never change the storage key** (locked decision #36). It is `fq3d-save`,
@@ -186,13 +198,14 @@ Open and unclaimed. Pull from here for a phase, and add here rather than
 starting a new list.
 
 **The room**
-- `buildWorld(scene, venue)` takes a venue and ignores it; `world.js` has no
-  data layer and no test of any kind.
+- `buildWorld(scene, venueId)` builds from `layoutFor(venueId)`, and all four
+  tiers map to the Corner Tap's description (Phase 2 authors the other three).
 - Every NPC walks a straight line (`stepToward`), consulting neither
   `colliders` nor `inBounds`. Patrons already clip the four-tops.
-- `PASS_FOOD`, `PASS_DRINK`, `STOVE_STATION`, `TAP_STATION`,
-  `UPGRADES_STATION` and every station-ring position in `day.js` are literal
-  coordinates in two different files.
+- TV, pendant, corkboard, neon and kitchen-shelf positions are still literals
+  in `world.js`, relative to `ROOM`; they have no collider and no stand-point,
+  so nothing asks about them yet. A tier whose TVs move will want them in the
+  description.
 - Nothing is ever occluded: three TVs, five pendants and a key light render
   every frame regardless of where you stand. `velLook` in `patrons.js` is
   written by `stepToward()` and read by nothing.
@@ -247,44 +260,65 @@ which and why in one clause. A phase is *finished* only when its branch has
 become a pull request, that pull request has merged to main with CI green, and
 the closing report names the **next open phase's number and its named model**.
 
-## Phase 1 — The room is a description
+## Phase 1 — The room is a description — **SHIPPED**
 
-**`buildWorld(scene, campaign.venue)` has taken a venue argument since session
-one, and the function signature is `buildWorld(scene)`.**
+**`buildWorld(scene, campaign.venue)` had taken a venue argument since session
+one, and the function signature was `buildWorld(scene)`.**
 
-Everything about the Corner Tap is a literal inside 363 lines of untested
-scene-building, so nothing can ask that file a question — which is why `day.js`
-keeps its own copy of the station coordinates. This phase separates describing
-a room from building one, and puts the derived facts behind a pure module.
+Everything about the Corner Tap was a literal inside 363 lines of untested
+scene-building, so nothing could ask that file a question — which is why
+`day.js` kept its own copy of the station coordinates. This phase separated
+describing a room from building one, and put the derived facts behind a pure
+module.
 
-- [ ] **`js/layout.js`, pure, with `test/smoke-layout.mjs`.** A room is data:
-  `{ id, room, kitchen, doorways[], windows[], bar, tables[], stools[],
+- [x] **`js/layout.js`, pure, with `test/smoke-layout.mjs`.** A room is data:
+  `{ id, room, kitchen, wallT, doorways[], windows[], bar, tables[], fitout[],
   stations }`. The module derives `seatsFor()`, `collidersFor()` as plain
-  `{min,max}` boxes with no `THREE.Box3`, `inBounds(desc, x, z, r)` and the
-  named stand-points. No three.js import anywhere in it.
-- [ ] **The Corner Tap becomes the first description.** Transcribe today's
-  numbers exactly, `DOORWAY` x∈[2.1,3.7] and the corridor band included: the
-  derived seat list must be the same 30 positions in the same order as today's
-  `addSeat()` calls, and `inBounds()` must agree with the current function
-  across a grid of samples in room, corridor and kitchen.
-- [ ] **`world.js` builds from a description**, converting the derived boxes to
-  `THREE.Box3` at the boundary; `seats`/`colliders` stay the exported
-  module-level arrays, reset at the top. **`day.js` reads its station positions
-  from the same description**, not from its own `THREE.Vector3` literals, and
-  `rebuildStations()` starts doing something.
-- [ ] **A walkability invariant, asserted.** Every seat's `approach` and every
-  station stand-point is inside `inBounds()` and outside every collider, for
-  every description in the table — the assertion that makes phase 2 authorable
-  instead of a guessing game.
-- [ ] **Reintroduce the bug.** Put a table on a stool's approach point and
-  watch the invariant fail; move the doorway a metre east and watch the
-  corridor test fail.
+  `{min,max}` boxes with no `THREE.Box3`, `inBounds(desc, x, z, r)`,
+  `walkable()`, `standPointsFor()` and `validate()`. No three.js import
+  anywhere in it. 55 assertions.
+- [x] **The Corner Tap became the first description.** Today's numbers
+  transcribed exactly, `DOORWAY` x∈[2.1,3.7] and the corridor band z∈(-6,-4.8)
+  included. The check is not a re-implementation: before `layout.js` existed,
+  the old `world.js` was booted in Chromium and its 30 seats, 11 `Box3`
+  colliders, nine stand-points and `inBounds()` on a 0.25 m grid (69×73 =
+  5,037 samples) were dumped to `test/fixtures/corner-tap.json`. The suite
+  compares the derivation to that file: same seats in the same order, every
+  box edge within 1e-6 (the rotated crate's AABB included), zero grid samples
+  differing. After the rewrite the same dump from the new `world.js` diffed
+  against the fixture at zero.
+- [x] **`world.js` builds from a description.** `adoptLayout(desc)` refills
+  `seats`/`colliders` (converting to `THREE.Box3` at the boundary) and re-aims
+  the exported stand-point `Vector3`s; `buildWorld(scene, venueId)` calls it
+  first and draws the rest from the same object. `addSeat()` and
+  `blockCollider()` are gone. **`day.js` reads its six ring positions from
+  `currentLayout().stations`**, and `rebuildStations()` re-reads them.
+- [x] **A walkability invariant, asserted.** `validate(desc)`: every seat's
+  approach and every stand-point inside `inBounds()` and outside every
+  collider, the door inside the room and the exit outside it, each doorway's
+  centre line walkable from the room into the kitchen 5 cm at a time, and each
+  doorway within the kitchen's span. Asserted for every description in
+  `LAYOUTS`.
+- [x] **Reintroduced the bug**, five ways, each failing at the assertion whose
+  comment claims it: a table on stool 1's approach — `cornerTap validates:
+  seat 1 (bar) approach (-5.6, -2.4) is not walkable` (and the tap station,
+  which the same table covers); the doorway a metre east — 16 corridor samples
+  disagree with the fixture; `blockBox` ignoring rotation — crate2's two edges;
+  tables before stools — 30 seats out of order; the corridor band dropped from
+  `inBounds` — 8 samples and every description's doorway "does not join the
+  room to the kitchen".
+- [x] **`tools/browser-check.mjs`**, hand-run, 25 checks in real Chromium: the
+  page's `seats`, `colliders`, stand-points and `inBounds()` are the derived
+  ones on boot, after "New Game (wipe save)" and after a dev warp, with no
+  page error. It caught the phase's one real bug: the first `day.js` draft
+  keyed the door and real-estate stations as `ring: "doorRing"` and the
+  constructor then assigned the torus mesh to `st.ring`, so the first rebuild
+  threw `Cannot read properties of undefined (reading 'x')` with all 448 Node
+  assertions green.
 
-*Leans on:* `world.js`, `day.js`, `patrons.js`'s `freeSeat`. *Save:* none — a
-description is derived from `c.venue`, which already exists and is already
-repaired. *Model:* **Claude Fable 5.1** — a new pure geometry layer extracted
-from 363 lines with zero coverage, where a wrong number is a stool you cannot
-reach and nothing says so.
+*Leaned on:* `world.js`, `day.js`. *Save:* none. *Model:* **Claude Fable 5.1**.
+*Left as literals in `world.js`:* TV, pendant, corkboard, neon and kitchen
+shelf positions, relative to `ROOM` — none has a collider or a stand-point.
 
 ## Phase 2 — Four rooms, one ladder
 
