@@ -14,7 +14,8 @@ import {
   feetBetween, isAdjacent, stridesFor,
 } from "../js/rules.js";
 import { makeWorld, TILE, packExplored, unpackExplored } from "../js/world.js";
-import { loadPack, selectPc, ContentError, REACTION_TRIGGERS, REACTION_EFFECTS, INFLICT_ON } from "../js/content.js";
+import { coneSquares, burstSquares, emanationSquares, octantToward, OCTANTS } from "../js/templates.js";
+import { loadPack, selectPc, ContentError, REACTION_TRIGGERS, REACTION_EFFECTS, INFLICT_ON, AREA_KINDS } from "../js/content.js";
 import {
   CONDITIONS, CONDITION_IDS, MODIFIER_KINDS, BONUS_TYPES, isCondition,
   CONDITION_TRAITS, DEFAULT_UNTILS, DAMAGE_SOURCES, damageModifiers,
@@ -176,7 +177,7 @@ eq(content.pc.id, "wizard", "content.pc defaults to the first build");
 ok(Object.isFrozen(content.pcOptions[0]), "each build is frozen");
 eq(content.pcById.fighter.name, "Kessa Vane", "pcById looks builds up by id");
 eq(resolved.pc.id, "wizard", "selectPc resolves the requested build");
-eq(resolved.commands.length, 7, "selectPc narrows commands to the wizard's own list");
+eq(resolved.commands.length, 9, "selectPc narrows commands to the wizard's own list");
 ok(!resolved.commandById["strike-sword"], "a build cannot see a command outside its own list");
 ok(!!resolved.commandById.breathe, "but every command the build lists is there");
 const fighterContent = selectPc(content, "fighter");
@@ -210,6 +211,19 @@ throws(() => { const p = clone(); p.areas.vault.legend["k"].wakesOn = "tuesday";
 throws(() => { const p = clone(); p.startingInventory.push("nope"); loadPack(p); }, "content: starting inventory naming a missing item is refused");
 throws(() => { const p = clone(); p.commands[0].cost = 9; loadPack(p); }, "content: a command costing more than three actions is refused");
 throws(() => { const p = clone(); p.commands[0].kind = "vibes"; loadPack(p); }, "content: a command with an unknown kind is refused");
+const cmd = (p, id) => p.commands.find(c => c.id === id);
+throws(() => { const p = clone(); delete cmd(p, "emberburst").burstFeet; loadPack(p); }, "content: a burst with no radius is refused");
+throws(() => { const p = clone(); delete cmd(p, "emberburst").rangeFeet; loadPack(p); }, "content: a burst with no range to place it at is refused");
+throws(() => { const p = clone(); delete cmd(p, "wardpulse").emanationFeet; loadPack(p); }, "content: an emanation with no radius is refused");
+throws(() => { const p = clone(); delete cmd(p, "wardpulse").save; loadPack(p); }, "content: an area command with no save is refused");
+// Every area effect rolls against the heir's spell DC, and a command that is
+// not a spell has no business borrowing it — stupefied moves that DC, and it
+// would move a thrown flask's too. Confirmed to load silently before the
+// check existed, and to resolve at DC 17 as though a bomb were a spell.
+throws(() => { const p = clone(); cmd(p, "breathe").spell = false; loadPack(p); }, "content: a cone that is not a spell is refused");
+throws(() => { const p = clone(); delete cmd(p, "emberburst").spell; loadPack(p); }, "content: and so is a burst");
+throws(() => { const p = clone(); cmd(p, "wardpulse").spell = false; loadPack(p); }, "content: and an emanation");
+eq(AREA_KINDS.join(","), "cone,burst,emanation", "three kinds put a shape on the board");
 throws(() => { const p = clone(); p.gate.requiresLore.push("nope"); loadPack(p); }, "content: a gate requiring missing lore is refused");
 throws(() => { const p = clone(); p.treasure.requiresDown.push("nope"); loadPack(p); }, "content: treasure requiring a missing creature is refused");
 throws(() => {
@@ -307,16 +321,37 @@ eq(world.tileAt(-1, 5), TILE.WALL, "off-grid reads as wall rather than undefined
 
 ok(world.blocksMove(10, 5, false), "a closed gate blocks movement");
 ok(!world.blocksMove(10, 5, true), "an open gate does not");
-ok(world.blocksSight(10, 5, false), "a closed gate blocks sight");
-ok(!world.blocksSight(10, 5, true), "an open gate does not block sight");
+ok(!world.blocksSight(10, 5), "a gate never blocks sight — it is a portcullis, and blocksSight takes no gate argument at all");
+ok(world.blocksEffect(10, 5, false), "a closed gate blocks line of effect");
+ok(!world.blocksEffect(10, 5, true), "an open one does not");
 ok(world.blocksMove(3, 12, false), "a pillar blocks movement");
-ok(world.blocksSight(3, 12, false), "a pillar blocks sight");
+ok(world.blocksSight(3, 12), "a pillar blocks sight");
+ok(world.blocksEffect(3, 12, false), "and effect");
 ok(!world.blocksMove(10, 2, false), "a stairway does not block movement");
-ok(!world.blocksSight(10, 2, false), "a stairway does not block sight");
+ok(!world.blocksSight(10, 2), "a stairway does not block sight");
+ok(!world.blocksEffect(10, 2, false), "nor effect");
 
-ok(world.hasLoS(10, 19, 10, 17, false), "line of sight down an open corridor");
-ok(!world.hasLoS(1, 6, 20, 6, false) === false, "a clear row has line of sight end to end");
-ok(!world.hasLoS(10, 19, 10, 2, false), "the stairway is not visible through a closed gate");
+ok(world.hasLoS(10, 19, 10, 17), "line of sight down an open corridor");
+ok(world.hasLoS(1, 6, 20, 6), "a clear row has line of sight end to end");
+
+/* -- line of effect, which is the one that reads the gate ---------------- */
+{
+  // The whole distinction, on one pair of squares: the heir standing on her
+  // spawn can see the stairway through the bars and cannot put a spell
+  // through them. Before this phase there was one predicate for both
+  // questions and the gate answered it, so "you can see it but you cannot
+  // hit it" was not a state this grid could hold.
+  //
+  // Broken on purpose by giving hasLoE the sight predicate: the second line
+  // fails, and it names the gate.
+  ok(world.hasLoS(10, 19, 10, 2), "the stairway is visible through a closed gate");
+  ok(!world.hasLoE(10, 19, 10, 2, false), "and no spell reaches it while the gate is shut");
+  ok(world.hasLoE(10, 19, 10, 2, true), "the open gate lets both through");
+  // And the barrier that is not a gate stops both, so the split above is
+  // about the gate rather than about hasLoE having quietly stopped working.
+  ok(!world.hasLoS(2, 12, 6, 12), "the western pillar blocks sight");
+  ok(!world.hasLoE(2, 12, 6, 12, true), "and effect, gate or no gate");
+}
 ok(world.hasLoS(10, 6, 10, 2, true), "the stairway is visible once the gate opens");
 ok(world.hasLoS(4, 10, 5, 10, false), "a wall square can be seen from beside it (endpoints are exempt)");
 ok(!world.hasLoS(3, 10, 6, 10, false), "the wall block between them breaks line of sight");
@@ -348,10 +383,10 @@ ok(!world.hasLoS(3, 10, 6, 10, false), "the wall block between them breaks line 
 }
 
 {
-  const fov = world.fieldOfView(10, 19, 30, false);
+  const fov = world.fieldOfView(10, 19, 30);
   ok(fov.has("10,19"), "you can see the square you are standing on");
   ok(fov.has("10,17"), "you can see two squares up the corridor");
-  ok(!fov.has("10,2"), "you cannot see the stairway from the spawn");
+  ok(!fov.has("10,2"), "the stairway is outside the 30 ft radius from the spawn — a distance fact, not a gate one");
   for (const k of fov) {
     const [x, y] = k.split(",").map(Number);
     ok(feetBetween(10, 19, x, y) <= 30, `field of view respects the 30 ft radius at ${k}`);
@@ -368,6 +403,122 @@ ok(!world.hasLoS(3, 10, 6, 10, false), "the wall block between them breaks line 
   ok(back.has("3,1") && back.has("21,21"), "unpacking recovers the right squares");
   eq(unpackExplored(undefined, 22, 22).size, 0, "unpacking a missing bitfield gives an empty set");
   eq(unpackExplored("", 22, 22).size, 0, "unpacking an empty bitfield gives an empty set");
+}
+
+/* ========================================================================= *
+ * 3b — templates: the three area shapes
+ * ========================================================================= */
+section("templates");
+
+/* -- which of eight directions a click points ---------------------------- */
+{
+  const o = { x: 10, y: 10 };
+  const named = (x, y) => octantToward(o, { x, y })?.name;
+  eq(named(15, 10), "east", "straight along a row");
+  eq(named(10, 20), "south", "straight down a column");
+  eq(named(1, 10), "west", "and back the other way");
+  eq(named(10, 3), "north", "and up");
+  eq(named(15, 15), "south-east", "a clean diagonal");
+  eq(named(5, 5), "north-west", "and its opposite");
+  eq(named(5, 15), "south-west", "the third");
+  eq(named(15, 5), "north-east", "the fourth");
+  eq(OCTANTS.length, 8, "eight directions, and no ninth");
+  eq(octantToward(o, o), null, "the square you are standing on names no direction at all");
+  // The octant boundary is 22.5°, so a click three across and one down is
+  // east and a click two across and one down is south-east. A `Math.sign`
+  // snap — which is what this looks like it could be — would call both of
+  // them south-east and rotate the cone 45° off what the player clicked.
+  eq(named(13, 11), "east", "three across and one down snaps to the row");
+  eq(named(12, 11), "south-east", "two across and one down snaps to the diagonal");
+}
+
+/* -- the cone, against a template counted by hand ------------------------ */
+{
+  const o = { x: 10, y: 10 };
+  const keys = list => list.map(sq => sq.x + "," + sq.y).sort();
+  // The whole 15-foot cone, written out, not a count. Derived by hand from
+  // the two rules that make it: the quarter circle, and feetBetween's 5/10/5
+  // diagonals. A square at (dx, dy) with dx ≥ |dy| measures 5·dx + 5·⌊|dy|/2⌋
+  // feet, so at 15 feet dx runs 1..3 while |dy| is 0 or 1, and only dx = 2
+  // survives at |dy| = 2.
+  eq(JSON.stringify(keys(coneSquares(o, { x: 15, y: 10 }, 15))),
+    JSON.stringify(["11,10", "11,11", "11,9", "12,10", "12,11", "12,12", "12,8", "12,9", "13,10", "13,11", "13,9"]),
+    "a 15-foot cone east is these eleven squares and no others");
+  eq(JSON.stringify(keys(coneSquares(o, { x: 15, y: 15 }, 15))),
+    JSON.stringify(["10,11", "10,12", "10,13", "11,10", "11,11", "11,12", "11,13", "12,10", "12,11", "12,12", "13,10", "13,11"]),
+    "a 15-foot cone south-east is these twelve");
+  // Counted the same way at the other two sizes the phase named. Row by row
+  // for the orthogonal cone: |dy| = 0 gives r squares, |dy| = 1 gives 2r, and
+  // each further pair of |dy| steps costs one square of reach.
+  //   30 ft: 6 + 12 + 8 + 6 + 2                        = 34
+  //   60 ft: 12 + 24 + 20 + 18 + 14 + 12 + 8 + 6 + 2   = 116
+  eq(coneSquares(o, { x: 20, y: 10 }, 30).length, 34, "a 30-foot cone east covers 34 squares");
+  eq(coneSquares(o, { x: 20, y: 10 }, 60).length, 116, "a 60-foot cone east covers 116");
+  eq(coneSquares(o, { x: 20, y: 20 }, 30).length, 36, "a 30-foot cone on the diagonal covers 36");
+  eq(coneSquares(o, { x: 20, y: 20 }, 60).length, 120, "and a 60-foot one 120");
+  // The orthogonal and diagonal counts differ, and that is the diagonal rule
+  // showing through rather than a bug: 5/10/5 makes this grid anisotropic, so
+  // a shape that came out the same size both ways would be one that had
+  // stopped measuring with feetBetween.
+  ok(coneSquares(o, { x: 20, y: 20 }, 15).length > coneSquares(o, { x: 20, y: 10 }, 15).length,
+    "the diagonal cone is the larger of the two");
+  ok(!keys(coneSquares(o, { x: 15, y: 10 }, 15)).includes("10,10"),
+    "the caster's own square is never inside her own cone");
+  eq(coneSquares(o, o, 15).length, 0, "a cone aimed at your own feet is no cone");
+  // Broken on purpose by dropping the feetBetween filter, which turns the
+  // cone into an unbounded wedge and fails here rather than in a count.
+  let overRange = null;
+  for (const sq of coneSquares(o, { x: 20, y: 10 }, 30)) {
+    if (feetBetween(o.x, o.y, sq.x, sq.y) > 30) { overRange = sq.x + "," + sq.y; break; }
+  }
+  eq(overRange, null, "no square in a 30-foot cone is further away than 30 feet");
+}
+
+/* -- burst and emanation ------------------------------------------------- */
+{
+  const o = { x: 10, y: 10 };
+  // Counted from max(|dx|,|dy|) + ⌊min/2⌋ ≤ r: a 5-foot burst is the 3×3
+  // around its centre; a 10-foot one adds the ring at two squares out except
+  // its four corners, which measure 15 feet; a 15-foot one adds the ring at
+  // three except the pair flanking each corner.
+  eq(burstSquares(o, 5).length, 9, "a 5-foot burst is nine squares");
+  eq(burstSquares(o, 10).length, 21, "a 10-foot burst is twenty-one");
+  eq(burstSquares(o, 15).length, 37, "a 15-foot burst is thirty-seven");
+  ok(burstSquares(o, 10).some(sq => sq.x === 10 && sq.y === 10),
+    "the centre square is inside its own burst");
+  ok(!burstSquares(o, 10).some(sq => sq.x === 12 && sq.y === 12),
+    "and the corner two-and-two out is not: it measures 15 feet, not 10");
+  // The claim templates.js makes in its own comment, pinned. Every actor in
+  // this engine stands in one square, so an emanation and a burst centred on
+  // the same square are the same set. The day a Large creature arrives, this
+  // is the failing test that says the two have to come apart.
+  for (const feet of [5, 10, 15, 30]) {
+    const a = emanationSquares(o, feet).map(sq => sq.x + "," + sq.y).sort().join(" ");
+    const b = burstSquares(o, feet).map(sq => sq.x + "," + sq.y).sort().join(" ");
+    eq(a, b, `at ${feet} feet an emanation and a burst on the same square are the same shape`);
+  }
+}
+
+/* -- what terrain does to a shape ---------------------------------------- */
+{
+  // templates.js knows nothing about pillars; world.js is where a shape meets
+  // one. The western pillar stands at 3,12 and the heir at 2,12, so a cone
+  // east from her runs straight into it.
+  const raw = coneSquares({ x: 2, y: 12 }, { x: 8, y: 12 }, 15);
+  const cut = world.reachableFrom(2, 12, raw, false);
+  const kept = new Set(cut.map(sq => sq.x + "," + sq.y));
+  ok(raw.some(sq => sq.x === 3 && sq.y === 12), "the raw shape covers the pillar's own square");
+  // Broken on purpose by having reachableFrom hand `squares` straight back:
+  // these two fail, and both name the pillar.
+  ok(!kept.has("3,12"), "reachableFrom drops it — there is no setting fire to the inside of a pillar");
+  ok(!kept.has("5,12"), "and drops the square behind it, which has no line of effect");
+  ok(kept.has("3,11"), "the square beside the pillar is still in the cone");
+  // Aimed off the edge of the map.
+  let offGrid = null;
+  for (const sq of world.reachableFrom(1, 6, coneSquares({ x: 1, y: 6 }, { x: 1, y: 1 }, 30), false)) {
+    if (!world.inBounds(sq.x, sq.y)) { offGrid = sq.x + "," + sq.y; break; }
+  }
+  eq(offGrid, null, "a template aimed off the edge of the map keeps no square that is off it");
 }
 
 /* ========================================================================= *
@@ -589,6 +740,188 @@ function toPCTurn(g, limit = 40) {
   eq(fought, 40, "the fighter build actually reaches and fights the sentinels, every seed");
   ok(wins > 0, `the fighter build's adventure is winnable (${wins}/40 seeds)`);
   ok(wins < 40, `and losable (${40 - wins}/40 seeds lost)`);
+}
+
+/* -- areas: the cone, the burst and the emanation, as the engine casts them */
+
+/**
+ * A hand-built fight in the open floor of the vault, so a template has room
+ * to be a shape rather than a corridor. Seeds 1 through 6 all give Vesper the
+ * first turn with three actions; the tests below say which they use.
+ */
+function areaFight({ seed = 1, pc = [10, 8], foes = [], gateOpen = true, pack = content } = {}) {
+  const c = selectPc(pack, "wizard");
+  const g = createGame({
+    content: c, rng: makeRng(seed),
+    state: {
+      packId: pack.pack.id, buildId: "wizard", areaId: "vault",
+      pc: { x: pc[0], y: pc[1], hp: 15, slots: 2, focus: 1 },
+      creatures: foes.map((f, i) => ({
+        key: i === 0 ? "vault:shattered-sentinel@7,8" : "vault:shattered-sentinel@14,8",
+        area: "vault", creature: "shattered-sentinel", wakesOn: "notice",
+        x: f[0], y: f[1], hp: 11, awake: true, dead: false,
+      })),
+      loreRead: [], gateOpen, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  return g;
+}
+
+const saveLines = g => g.run.log.filter(e => e.kind === "dice" && / — basic /.test(e.text)).length;
+
+{
+  // The assertion this phase exists for: the squares the engine says it will
+  // cover are the squares it resolves against. There is one function now and
+  // both callers read it, so this cannot drift — but "cannot drift" is what
+  // the two copies of the cone trigonometry looked like too, and one of them
+  // had `feet > 15` hardcoded in it.
+  //
+  // Broken on purpose by putting a second filter back inside the resolution
+  // loop — any range test of its own, which is exactly the shape of the bug:
+  // it leaves the preview alone and quietly narrows what the spell hits. The
+  // save-line count is the assertion that catches it, and it is the count and
+  // not the damage, because a creature that saves takes nothing either way.
+  const g = areaFight({ seed: 1, foes: [[12, 8], [12, 9]] });
+  const cone = g.content.commandById.breathe;
+  const shown = g.templateSquares(cone, { x: 14, y: 8 });
+  const covered = new Set(shown.map(sq => sq.x + "," + sq.y));
+  const inside = g.living().filter(c => covered.has(c.x + "," + c.y));
+  eq(inside.length, 2, "both sentinels stand in the previewed cone");
+  ok(g.useCommand("breathe", { x: 14, y: 8 }).ok, "Breathe Fire goes off");
+  eq(saveLines(g), 2, "and exactly the two creatures the preview covered rolled a save");
+  ok(g.living().every(c => c.hp < 11) || g.living().length < 2,
+    "both of them felt it");
+}
+
+{
+  // The hardcoded 15 is gone, and this is what proves it rather than the
+  // absence of a string. Same spell at 30 feet, one sentinel 25 feet away:
+  // under the old preview math it was outside the shape, and under the old
+  // resolution it was inside, which is the disagreement nothing could see.
+  //
+  // Broken on purpose by capping the cone at 15 feet inside templates.js.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.commands.find(c => c.id === "breathe").coneFeet = 30;
+  const long = loadPack(p);
+  const g = areaFight({ seed: 1, pc: [5, 8], foes: [[10, 8]], pack: long });
+  eq(feetBetween(5, 8, 10, 8), 25, "the sentinel stands 25 feet away, past where the old preview stopped");
+  const shown = g.templateSquares(g.content.commandById.breathe, { x: 12, y: 8 });
+  ok(shown.some(sq => sq.x === 10 && sq.y === 8), "a 30-foot cone reaches its square");
+  ok(g.useCommand("breathe", { x: 12, y: 8 }).ok, "and the spell goes off");
+  eq(saveLines(g), 1, "the sentinel 25 feet out rolled its save");
+}
+
+{
+  // Line of effect, in the one place a player will meet it: the western
+  // pillar, with a sentinel directly behind it. The heir can see it — sight
+  // does not stop at a pillar's far side by accident, it stops at the pillar
+  // — and the cone still cannot reach it, because the shape is cut by
+  // reachableFrom before a single save is rolled.
+  //
+  // Broken on purpose by dropping the hasLoE filter out of reachableFrom.
+  const g = areaFight({ seed: 1, pc: [2, 12], foes: [[5, 12]] });
+  const cone = g.content.commandById.breathe;
+  const shown = g.templateSquares(cone, { x: 8, y: 12 });
+  ok(!shown.some(sq => sq.x === 5 && sq.y === 12), "the square behind the pillar is not in the cone");
+  ok(g.useCommand("breathe", { x: 8, y: 12 }).ok, "the spell still goes off — a slot is a slot");
+  eq(saveLines(g), 0, "and nothing rolls a save");
+  eq(g.living()[0].hp, 11, "the sentinel behind the pillar is untouched");
+  ok(g.run.log.some(e => e.text.includes("nothing is caught in the cone")),
+    "the log says so out loud rather than leaving the player to wonder");
+}
+
+{
+  // A burst is placed, and placement is the thing that can be refused. Range
+  // first, then the barrier — and a refusal spends nothing, which is the
+  // property every refusal in this engine has and the one worth checking on
+  // a command that costs a slot.
+  const g = areaFight({ seed: 1, foes: [[12, 8], [12, 9]] });
+  const far = g.useCommand("emberburst", { x: 10, y: 19 });
+  eq(far.reason, "range", "a burst centred 55 feet away is refused");
+  eq(g.run.pc.slots, 2, "and the slot is still there");
+  eq(g.actionsLeft, 3, "and so are the actions");
+  ok(g.useCommand("emberburst", { x: 12, y: 9 }).ok, "one centred on a sentinel goes off");
+  eq(saveLines(g), 2, "and catches both of them, ten feet apart");
+  eq(g.run.pc.slots, 1, "that one did spend the slot");
+}
+
+{
+  // The same refusal, for the other reason. The heir stands five squares
+  // south of the sealed gate: 25 feet, inside Ember Burst's 30, and she can
+  // see straight through the bars. Line of effect is the whole of why this is
+  // refused, so the second half opens the gate and casts the same spell at
+  // the same square.
+  //
+  // Broken on purpose by giving canPlaceBurst hasLoS instead of hasLoE: the
+  // first assertion fails, and it names the closed gate.
+  const shut = areaFight({ seed: 1, foes: [[12, 8]], gateOpen: false });
+  eq(feetBetween(10, 8, 10, 3), 25, "the square past the gate is 25 feet off, inside the spell's 30");
+  ok(shut.world.hasLoS(10, 8, 10, 3), "and she can see it through the bars");
+  eq(shut.useCommand("emberburst", { x: 10, y: 3 }).reason, "range",
+    "the burst is refused anyway — there is no line of effect through a shut gate");
+  const open = areaFight({ seed: 1, foes: [[12, 8]], gateOpen: true });
+  ok(open.useCommand("emberburst", { x: 10, y: 3 }).ok, "with the gate open the same placement is legal");
+}
+
+{
+  // An emanation takes no target at all, which is the one thing about it the
+  // UI has to get right: it fires from the command list like Shield does,
+  // with nothing to click. Ten feet reaches two squares out, so the sentinel
+  // at arm's length is in it and the one twenty feet away is not.
+  const g = areaFight({ seed: 1, foes: [[11, 8], [14, 8]] });
+  eq(feetBetween(10, 8, 14, 8), 20, "the second sentinel is twenty feet off");
+  const shown = g.templateSquares(g.content.commandById.wardpulse, null);
+  // `shown ?? []`, and the null gets its own line, because the first version
+  // of this block read `shown.some(...)` straight off. Breaking the emanation
+  // so it demanded an aim square it can never be given returned null, `.some`
+  // threw, and the run exited 1 with no FAIL line at all — a non-zero exit
+  // that says nothing about which guard caught it. That is the same defect
+  // the persistent-fire duration lookup had last phase (locked #147's
+  // neighbour), and it is worth writing down twice: an assertion that crashes
+  // is not an assertion that failed.
+  ok(shown !== null, "an emanation is a shape without being aimed");
+  const ring = shown ?? [];
+  ok(ring.some(sq => sq.x === 11 && sq.y === 8), "the ring covers the square beside her");
+  ok(!ring.some(sq => sq.x === 14 && sq.y === 8), "and not the one four squares out");
+  ok(g.useCommand("wardpulse").ok, "Warding Pulse needs no target");
+  eq(saveLines(g), 1, "one sentinel rolled a save");
+  eq(g.byKey("vault:shattered-sentinel@14,8").hp, 11, "and the far one is untouched");
+}
+
+{
+  // A cone or a burst with no square to aim at is a refusal, not an empty
+  // area that quietly spends the slot.
+  const g = areaFight({ seed: 1, foes: [[12, 8]] });
+  eq(g.useCommand("breathe").reason, "no-target", "a cone with nothing to aim at is refused");
+  eq(g.useCommand("emberburst").reason, "no-target", "and so is a burst");
+  eq(g.run.pc.slots, 2, "neither spent a slot");
+}
+
+/* -- the third drift guard: one shape, and no trigonometry --------------- */
+{
+  // The same shape as the `check(` and `rollDamage(` guards. Two copies of
+  // the cone math existed in this repo — one resolving, one previewing — and
+  // the failure mode was neither a crash nor a wrong number but a player
+  // shown a different spell than the one that went off. What replaces them is
+  // one function per shape, called once each, in one file.
+  //
+  // Broken on purpose by inlining an atan2 bearing test back into the
+  // resolution loop.
+  const read = f => fs.readFileSync(path.join(HERE, "..", "js", f), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const gameSrc = read("game.js"), rend = read("render.js");
+  eq((gameSrc.match(/Math\.atan2/g) || []).length, 0, "no trigonometry left in game.js");
+  eq((rend.match(/Math\.atan2/g) || []).length, 0, "and none left in render.js");
+  eq((gameSrc.match(/\bconeSquares\(/g) || []).length, 1, "game.js asks for a cone in exactly one place");
+  eq((gameSrc.match(/\bburstSquares\(/g) || []).length, 1, "and a burst in one");
+  eq((gameSrc.match(/\bemanationSquares\(/g) || []).length, 1, "and an emanation in one");
+  ok(/function templateSquares\(cmd, target\)/.test(gameSrc), "and all three are inside templateSquares");
+  // The renderer no longer works a shape out for itself. It knows the word
+  // "template" and nothing about feet.
+  ok(/game\.templateSquares\(/.test(rend), "render.js asks the engine for the squares it paints");
+  ok(!/coneFeet/.test(rend), "and never reads a range of its own");
 }
 
 /* ========================================================================= *

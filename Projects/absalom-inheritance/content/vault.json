@@ -30,7 +30,7 @@
       "spellAttack": 7,
       "slots": 2,
       "focus": 1,
-      "commands": ["strike", "shield", "splash", "breathe", "fang", "potion", "shield-block"]
+      "commands": ["strike", "shield", "splash", "breathe", "emberburst", "wardpulse", "fang", "potion", "shield-block"]
     },
     {
       "id": "fighter",
@@ -125,6 +125,38 @@
       "inflicts": { "condition": "persistent-fire", "value": 1, "on": "crit-fail" },
       "hint": "Breathe Fire (◆◆, spends a rank-1 slot): click a direction — 15-ft cone, basic Reflex DC 17. A critical failure catches fire.",
       "note": "Burning Hands was renamed Breathe Fire in the Remaster. Implemented under its legal name. The persistent fire on a critical failure is this pack's own addition, not the spell's: the Remaster spell leaves nothing behind. It is here because a condition system with nothing in the adventure that applies one is a system nobody plays, and a basic save that already rolls four degrees is the cheapest honest place to hang the fourth. Measured, not guessed — see the balance numbers in the phase handoff."
+    },
+    {
+      "id": "emberburst",
+      "name": "Ember Burst",
+      "flavour": "rank 1",
+      "cost": 2,
+      "costGlyph": "◆◆",
+      "kind": "burst",
+      "spell": true,
+      "spendSlot": true,
+      "rangeFeet": 30,
+      "burstFeet": 10,
+      "damage": "1d6",
+      "damageType": "fire",
+      "save": "ref",
+      "hint": "Ember Burst (◆◆, spends a rank-1 slot): click a square within 30 ft — a 10-foot burst, basic Reflex DC 17.",
+      "note": "This pack's own rank-1 spell rather than one lifted from a book, flagged here the way Force Fang's departure is. It exists because the burst template needed one command to ship exercised, and the cone could not be that command: a cone starts at the heir, so the only way to catch two sentinels in one is to let both of them reach her. A burst is placed, and thirty feet of placement is what makes it worth a slot. Weaker per creature than Breathe Fire on purpose — 1d6 against 2d6 — and drawn from the same two slots, so what it adds to the delve is a question about the shape of the room rather than more magic."
+    },
+    {
+      "id": "wardpulse",
+      "name": "Warding Pulse",
+      "flavour": "cantrip",
+      "cost": 1,
+      "costGlyph": "◆",
+      "kind": "emanation",
+      "spell": true,
+      "emanationFeet": 10,
+      "damage": "1d4",
+      "damageType": "force",
+      "save": "ref",
+      "hint": "Warding Pulse (◆): a ring of the seal's own gold snaps out ten feet from where you stand — basic Reflex DC 17, everything it touches.",
+      "note": "The emanation template's one command, and a cantrip rather than a slot spell because an emanation is centred on the caster: it only pays once a construct has already closed on a 15 HP wizard, which is exactly when she cannot afford to have spent a slot on the hope that one would. Its case is that a basic save rolls no attack and so takes no multiple attack penalty — she leads with the dagger and follows with the ring, because the swing the ring displaces is the one at −4. One action, not two, and that was decided by the action economy rather than by taste: a three-action turn against something in reach is Strike, ring, disc, and a two-action ring leaves no room for the disc at all. Shipped at a flat 1d4 and measured against the alternative over 2,000 seeded runs per build — 1d4 puts the heir at 82.8%, 1d4+2 at 86.7%, and the band's ceiling is 90%. This pack's own spell, same departure as Ember Burst and the same reason."
     },
     {
       "id": "fang",

@@ -138,7 +138,9 @@ shown when the command is armed, and `note` is the button's tooltip.
 | `kind` | Needs | Does |
 | --- | --- | --- |
 | `attack` | `attackBonus`, `damage` | Attack roll vs the target's AC. Target must be adjacent. Crits double. |
-| `cone` | `coneFeet`, `damage`, `save` | Everything within the cone rolls a basic save vs `pc.spellDC`. |
+| `cone` | `coneFeet`, `damage`, `save`, `spell` | A quarter circle from the heir toward the square you clicked. Everything in it rolls a basic save vs her spell DC. |
+| `burst` | `rangeFeet`, `burstFeet`, `damage`, `save`, `spell` | The same, around a square you place within `rangeFeet` and have line of effect to. |
+| `emanation` | `emanationFeet`, `damage`, `save`, `spell` | The same, around the heir. Takes no target. |
 | `unerring` | `rangeFeet`, `damage` | No roll, no save. Needs line of effect. |
 | `self-buff` | `acBonus` | Circumstance bonus to AC until the start of your next turn. |
 | `self-heal` | `healing` | Heals the PC. |
@@ -166,9 +168,41 @@ that hit for nothing.
 `save` is `"fort"`, `"ref"` or `"will"` and is read off the target creature's `saves`. Anything
 else **throws at load** rather than rolling against `undefined`.
 
-The cone is an approximation: within `coneFeet`, and within ±45° of the bearing you clicked. A
-true PF2e cone template is a different shape. On a 22-square grid the difference is small, and
-the renderer paints the squares it will hit before you commit, so a player is never guessing.
+### The three area kinds
+
+`cone`, `burst` and `emanation` all resolve the same way: `js/templates.js` works out the squares,
+`world.reachableFrom` cuts them to what the room lets through, and everything standing in what is
+left rolls one basic save against one DC, read once. They differ only in where the shape starts.
+
+* **`cone`** starts at the heir and points at the square you clicked. The click snaps to one of the
+  eight grid directions, so a cone is a quarter circle on the grid rather than a wedge that rotates
+  with the pointer. Her own square is never in it.
+* **`burst`** is placed. `rangeFeet` is how far the centre can be from her and `burstFeet` is the
+  radius; the centre needs line of effect, and a placement that fails either is refused without
+  spending anything.
+* **`emanation`** is centred on her and takes no target at all — it fires straight from the command
+  list, the way `self-buff` does, with nothing to click.
+
+Three things to know before writing one:
+
+* **An area command must be `spell: true`.** Its save rolls against the heir's spell DC, which is
+  the only spell DC the engine has, and `stupefied` moves it. A thrown flask that borrowed that
+  number would be quietly wrong in both directions, so a non-spell area command **throws at load**.
+* **The engine measures square centres**, where the book measures a burst from a corner and an
+  emanation from the edge of your space. Knowing departure; see the README's "Areas".
+* **A 10-foot emanation and a 10-foot burst on the same square are the same set of squares**, because
+  every actor in this engine stands in one square. The difference is who picks the centre.
+
+**Line of effect is not line of sight.** `blocksSight` does not read the gate — it is a portcullis —
+and `blocksEffect` does. Every template and every `unerring` command filters through `hasLoE`, so a
+square you can see through the bars is one you cannot cast into, and a pillar throws a shadow across
+a cone rather than sitting inside one.
+
+**A command nothing casts fails the build.** `test/balance.mjs` counts, per build, how many times
+the autopilot cast each non-reaction command across the whole batch, and exits non-zero if any of
+them reads zero. Write a command the adventure has no room for and the number says so. This is not
+hypothetical: Phase 2 shipped a spell that had never been cast in any figure this project quoted,
+and Phase 3 added two more and reached neither on its first run.
 
 ### Conditions a command leaves behind, and takes off
 

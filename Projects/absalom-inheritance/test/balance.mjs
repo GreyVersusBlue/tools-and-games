@@ -50,7 +50,7 @@ export function runBatch(content, runs, { verbose = false } = {}) {
     try {
       r = playThrough(game);
     } catch (e) {
-      r = { outcome: "error:" + e.message, hp: 0, rounds: 0, dealt: 0, taken: 0, slain: 0, woken: 0, reactions: 0, lore: 0, potions: 0, slots: 0, focus: 0, gateOpen: false };
+      r = { outcome: "error:" + e.message, hp: 0, rounds: 0, dealt: 0, taken: 0, slain: 0, woken: 0, reactions: 0, lore: 0, potions: 0, slots: 0, focus: 0, gateOpen: false, cast: {} };
     }
     r.seed = 0x5EED + i;
     results.push(r);
@@ -91,11 +91,38 @@ function report(content, results) {
   // adventure's creatures never provoke, and that is worth reading off a
   // number instead of arguing about.
   console.log(`  reactions fired      mean ${mean(results, r => r.reactions).toFixed(2)}  (in ${(100 * results.filter(r => r.reactions > 0).length / n).toFixed(1)}% of runs)`);
+  // Which commands the autopilot actually cast, counted rather than assumed,
+  // and a build failure when one of them is never cast at all.
+  //
+  // The last phase shipped two pieces of content that validated at load and
+  // were then never reached in a single number this project had quoted: a
+  // `self-heal` branch the policy did not have, so Rousing Splash had never
+  // been cast once, and an `inflicts` on an `unerring` command that applied
+  // nothing because that branch read no degree of success. Neither crashed.
+  // Both looked exactly like working content from the outside.
+  //
+  // This phase reproduced it on its own first run — Ember Burst and Warding
+  // Pulse both read 0 — which is the argument for the line exiting non-zero
+  // rather than printing a note somebody scrolls past (locked decision #13).
+  // A command nothing ever casts is either content the adventure has no room
+  // for or a policy that cannot see it, and both are worth stopping for.
+  // Reactions are exempt: they fire from the bus rather than from a decision,
+  // and they have their own line above.
+  const casts = {};
+  for (const r of results) for (const [id, k] of Object.entries(r.cast || {})) casts[id] = (casts[id] || 0) + k;
+  const uncast = [];
+  console.log("  commands cast");
+  for (const cmd of content.commands) {
+    if (cmd.kind === "reaction") continue;
+    const k = casts[cmd.id] || 0;
+    if (!k) uncast.push(cmd.name);
+    console.log(`    ${cmd.name.padEnd(22)} ${String(k).padStart(6)}${k ? "" : "   ← never cast"}`);
+  }
   if (wins.length) {
     console.log(`  on a win: HP left    mean ${mean(wins, r => r.hp).toFixed(1)} of ${content.pc.hp}, median ${median(wins.map(r => r.hp))}`);
     console.log(`            potions left mean ${mean(wins, r => r.potions).toFixed(2)}`);
   }
-  return wins.length / n;
+  return { rate: wins.length / n, uncast };
 }
 
 const invokedDirectly = process.argv[1] &&
@@ -113,10 +140,16 @@ if (invokedDirectly) {
   for (const build of basePack.pcOptions) {
     const content = selectPc(basePack, build.id);
     if (verbose) console.log(`\nfirst twelve runs, ${build.name}:`);
-    const rate = report(content, runBatch(content, runs, { verbose }));
-    const ok = rate >= BAND.min && rate <= BAND.max;
-    console.log(`\n${ok ? "BALANCE OK" : "BALANCE OUT OF BAND"} — ${build.id}: ${(100 * rate).toFixed(1)}%\n`);
-    allOk = allOk && ok;
+    const { rate, uncast } = report(content, runBatch(content, runs, { verbose }));
+    const inBand = rate >= BAND.min && rate <= BAND.max;
+    // Two ways to fail, and they say which. A rate outside the band means
+    // the adventure got unwinnable or free; a command nothing cast means
+    // the pack grew content the game never reaches.
+    const verdict = !inBand ? `BALANCE OUT OF BAND — ${build.id}: ${(100 * rate).toFixed(1)}%`
+      : uncast.length ? `CONTENT NEVER REACHED — ${build.id}: ${uncast.join(", ")}`
+      : `BALANCE OK — ${build.id}: ${(100 * rate).toFixed(1)}%`;
+    console.log(`\n${verdict}\n`);
+    allOk = allOk && inBand && !uncast.length;
   }
   process.exit(allOk ? 0 : 1);
 }
