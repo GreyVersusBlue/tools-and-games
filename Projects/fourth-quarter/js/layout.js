@@ -419,6 +419,324 @@ export function unreachable(desc, r = 0.3) {
   return standingPoints(desc).filter(p => !reached(p.x, p.z)).map(p => p.name);
 }
 
+// ------------------------------------------------------------------- nav
+//
+// stepToward() walks the straight line to its target and consults nothing.
+// One open room hid that for three rounds; Phase 2's rooms put a wall between
+// the door and half the seats, and a straight line into masonry is a patron
+// standing still all night. This is the grid a body plans on: unreachable()'s
+// 0.25 m cells again, but with every collider inflated by the walker's radius,
+// so a corner gets turned instead of clipped. A* over eight neighbours (a
+// diagonal needs both its orthogonals open, or a walker slips through the join
+// of two tables), then a string-pull that drops every waypoint the walker can
+// already see past — a straight shot across an empty room comes back as its
+// two endpoints and nothing between them.
+
+/** A walking body's radius. The player slides against colliders at 0.3 m; a
+ *  patron mesh is a 0.2 m cylinder, and 0.25 m is what the grid gives it. */
+export const WALKER_R = 0.25;
+
+/** How far a start or a target may sit from open floor and still be planned
+ *  to. Both ends are routinely inside inflated geometry on purpose: a cook
+ *  stands against the prep counter, a seated patron is inside the table's
+ *  box, and a leaving patron aims at a point outside the room entirely. */
+export const SNAP_R = 1.0;
+
+const DIAG = Math.SQRT2;
+const LINE_STEP = 0.1;      // string-pull sampling along a candidate segment
+const SAME_PT = 0.02;
+
+/** Open for a body of radius r: inside the walkable area, and r clear of
+ *  every collider. walkable() asks the same question of a point. */
+export function navOpen(desc, x, z, r = WALKER_R, cols = collidersFor(desc)) {
+  if (!inBounds(desc, x, z, r)) return false;
+  for (const b of cols) if (pointInBox(b, x, z, r)) return false;
+  return true;
+}
+
+// weak, so a description a test cloned and threw away takes its grid with it
+let navCache = new WeakMap();
+/** Drop the memoised grids. Only a test that mutates a description in place
+ *  after planning on it needs this; the shipped descriptions are frozen. */
+export function clearNavCache() { navCache = new WeakMap(); }
+
+/** The rasterised floor: `open[zi * W + xi]` for cells on the same 0.25 m
+ *  lattice unreachable() floods, spanning the room and the kitchen. */
+export function navGrid(desc, r = WALKER_R) {
+  let byR = navCache.get(desc);
+  if (!byR) navCache.set(desc, (byR = new Map()));
+  const hit = byR.get(r);
+  if (hit) return hit;
+  const cols = collidersFor(desc);
+  const x0 = Math.floor(Math.min(-desc.room.x, desc.kitchen.x0) / GRID);
+  const x1 = Math.ceil(Math.max(desc.room.x, desc.kitchen.x1) / GRID);
+  const z0 = Math.floor(desc.kitchen.z0 / GRID), z1 = Math.ceil(desc.room.z / GRID);
+  const W = x1 - x0 + 1, H = z1 - z0 + 1;
+  const open = new Uint8Array(W * H);
+  for (let zi = 0; zi < H; zi++) {
+    for (let xi = 0; xi < W; xi++) {
+      if (navOpen(desc, (x0 + xi) * GRID, (z0 + zi) * GRID, r, cols)) open[zi * W + xi] = 1;
+    }
+  }
+  const g = { desc, r, x0, z0, W, H, open, cols };
+  byR.set(r, g);
+  return g;
+}
+
+const cellX = (g, i) => (g.x0 + (i % g.W)) * GRID;
+const cellZ = (g, i) => (g.z0 + Math.floor(i / g.W)) * GRID;
+export function cellPoint(g, i) { return { x: cellX(g, i), z: cellZ(g, i) }; }
+
+/** The open cell nearest (x,z), or -1 when nothing open is within `within`.
+ *  Pass Infinity to accept whatever the floor does have. */
+export function nearestCell(g, x, z, within = SNAP_R) {
+  const cx = Math.round(x / GRID) - g.x0, cz = Math.round(z / GRID) - g.z0;
+  if (cx >= 0 && cx < g.W && cz >= 0 && cz < g.H && g.open[cz * g.W + cx]) return cz * g.W + cx;
+  const rad = Number.isFinite(within) ? Math.ceil(within / GRID) : Math.max(g.W, g.H);
+  let best = -1, bestD = Infinity;
+  for (let dz = -rad; dz <= rad; dz++) {
+    const zi = cz + dz;
+    if (zi < 0 || zi >= g.H) continue;
+    for (let dx = -rad; dx <= rad; dx++) {
+      const xi = cx + dx;
+      if (xi < 0 || xi >= g.W) continue;
+      const i = zi * g.W + xi;
+      if (!g.open[i]) continue;
+      const d = Math.hypot(cellX(g, i) - x, cellZ(g, i) - z);
+      if (d < bestD && d <= within) { bestD = d; best = i; }
+    }
+  }
+  return best;
+}
+
+const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+/** Eight neighbours, minus the two diagonals that would cut a corner. */
+function eachNeighbour(g, i, fn) {
+  const xi = i % g.W, zi = (i - xi) / g.W;
+  for (let k = 0; k < 8; k++) {
+    const dx = NB[k][0], dz = NB[k][1];
+    const nx = xi + dx, nz = zi + dz;
+    if (nx < 0 || nx >= g.W || nz < 0 || nz >= g.H) continue;
+    const n = nz * g.W + nx;
+    if (!g.open[n]) continue;
+    if (dx && dz && !(g.open[zi * g.W + nx] && g.open[nz * g.W + xi])) continue;
+    fn(n, dx && dz ? DIAG : 1);
+  }
+}
+
+/** Every cell the floor joins to `i`, by the same neighbour rule A* uses, so
+ *  "the planner will find a route" and "this flood reached it" never differ. */
+export function navComponent(g, i) {
+  const seen = new Uint8Array(g.open.length);
+  if (i < 0) return seen;
+  seen[i] = 1;
+  const q = [i];
+  while (q.length) {
+    const c = q.pop();
+    eachNeighbour(g, c, n => { if (!seen[n]) { seen[n] = 1; q.push(n); } });
+  }
+  return seen;
+}
+
+// a binary heap of cell indices, keyed by f
+function heapPush(h, f, node, key) {
+  h.push(node); f.push(key);
+  let i = h.length - 1;
+  while (i > 0) {
+    const p = (i - 1) >> 1;
+    if (f[p] <= f[i]) break;
+    [h[p], h[i]] = [h[i], h[p]]; [f[p], f[i]] = [f[i], f[p]];
+    i = p;
+  }
+}
+function heapPop(h, f) {
+  const top = h[0];
+  const n = h.pop(), k = f.pop();
+  if (h.length) {
+    h[0] = n; f[0] = k;
+    let i = 0;
+    for (;;) {
+      const l = 2 * i + 1, r = l + 1;
+      let m = i;
+      if (l < h.length && f[l] < f[m]) m = l;
+      if (r < h.length && f[r] < f[m]) m = r;
+      if (m === i) break;
+      [h[m], h[i]] = [h[i], h[m]]; [f[m], f[i]] = [f[i], f[m]];
+      i = m;
+    }
+  }
+  return top;
+}
+
+/** A* from cell s to cell t. When t is walled off, `cells` is the route to
+ *  the closed cell that got nearest it — a body that cannot reach its target
+ *  still gets somewhere, which is the whole point of not freezing. */
+function astar(g, s, t) {
+  const n = g.open.length;
+  const gScore = new Float64Array(n).fill(Infinity);
+  const came = new Int32Array(n).fill(-1);
+  const closed = new Uint8Array(n);
+  const tx = t % g.W, tz = (t - tx) / g.W;
+  const h = i => {
+    const xi = i % g.W, dx = Math.abs(xi - tx), dz = Math.abs((i - xi) / g.W - tz);
+    return dx + dz + (DIAG - 2) * Math.min(dx, dz);
+  };
+  const heap = [], keys = [];
+  gScore[s] = 0;
+  heapPush(heap, keys, s, h(s));
+  let best = s, bestH = h(s);
+  while (heap.length) {
+    const c = heapPop(heap, keys);
+    if (closed[c]) continue;
+    closed[c] = 1;
+    const hc = h(c);
+    if (hc < bestH) { bestH = hc; best = c; }
+    if (c === t) return { cells: trace(came, s, t), complete: true };
+    eachNeighbour(g, c, (nb, w) => {
+      const ng = gScore[c] + w;
+      if (ng < gScore[nb]) { gScore[nb] = ng; came[nb] = c; heapPush(heap, keys, nb, ng + h(nb)); }
+    });
+  }
+  return { cells: trace(came, s, best), complete: false };
+}
+function trace(came, s, t) {
+  const out = [t];
+  let c = t;
+  while (c !== s && came[c] >= 0) { c = came[c]; out.push(c); }
+  return out.reverse();
+}
+
+/** Every 10 cm of a→b is open for a body of radius r. */
+export function clearLine(desc, a, b, r = WALKER_R, cols = collidersFor(desc)) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const d = Math.hypot(dx, dz);
+  const n = Math.max(1, Math.ceil(d / LINE_STEP));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    if (!navOpen(desc, a.x + dx * t, a.z + dz * t, r, cols)) return false;
+  }
+  return true;
+}
+
+function dedupe(pts) {
+  if (pts.length < 2) return pts.slice();
+  const out = [pts[0]], last = pts[pts.length - 1];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i], q = out[out.length - 1];
+    if (Math.hypot(p.x - q.x, p.z - q.z) < SAME_PT) continue;
+    if (Math.hypot(p.x - last.x, p.z - last.z) < SAME_PT) continue;
+    out.push(p);
+  }
+  out.push(last);
+  return out;
+}
+
+/** Throw away every waypoint the walker can see past. `lockFirst` and
+ *  `lockLast` hold the two legs that leave and enter inflated geometry — the
+ *  step out of a table's box, the step through the door — which no clearance
+ *  test can approve and no walker may skip. */
+function stringPull(desc, pts, r, cols, lockFirst, lockLast) {
+  if (pts.length < 3) return pts.slice();
+  const end = pts.length - 1;
+  const free = lockLast ? end - 1 : end;
+  const out = [pts[0]];
+  let i = 0;
+  if (lockFirst) { out.push(pts[1]); i = 1; }
+  while (i < end) {
+    const cap = i >= free ? end : free;
+    let next = i + 1;
+    for (let j = cap; j > i + 1; j--) {
+      if (clearLine(desc, pts[i], pts[j], r, cols)) { next = j; break; }
+    }
+    out.push(pts[next]);
+    i = next;
+  }
+  return out;
+}
+
+/**
+ * The honest answer to "walk me from here to there": a list of waypoints
+ * starting at `from`, and whether it actually ends at `to`. When `to` is
+ * walled off, `complete` is false and the route ends at the reachable point
+ * nearest it — a patron with no route to the door leaves by the nearest exit
+ * the floor does join to, and nothing stands still because the plan failed.
+ * `within` is how far the target may sit from open floor: DOOR_OUT is outside
+ * the room on purpose and needs more slack than a stool does.
+ */
+export function pathToward(desc, from, to, r = WALKER_R, within = SNAP_R) {
+  const g = navGrid(desc, r);
+  const A = { x: from.x, z: from.z }, B = { x: to.x, z: to.z };
+  let s = nearestCell(g, A.x, A.z, SNAP_R);
+  if (s < 0) s = nearestCell(g, A.x, A.z, Infinity);
+  let t = nearestCell(g, B.x, B.z, within);
+  const goalNear = t >= 0;
+  if (!goalNear) t = nearestCell(g, B.x, B.z, Infinity);
+  if (s < 0 || t < 0) return { pts: [A], complete: false };
+  const res = astar(g, s, t);
+  const complete = goalNear && res.complete;
+  const pts = [A];
+  for (const c of res.cells) pts.push(cellPoint(g, c));
+  if (complete) pts.push(B);
+  const clean = dedupe(pts);
+  if (clean.length < 2) return { pts: clean, complete };
+  const lockFirst = !navOpen(desc, A.x, A.z, r, g.cols);
+  const lockLast = complete && !navOpen(desc, B.x, B.z, r, g.cols);
+  return { pts: stringPull(desc, clean, r, g.cols, lockFirst, lockLast), complete };
+}
+
+/** The route from `from` to `to`, or null when the floor does not join them.
+ *  The first point is `from` and the last is `to`; a straight shot across an
+ *  empty room is exactly those two. */
+export function pathBetween(desc, from, to, r = WALKER_R, within = SNAP_R) {
+  const res = pathToward(desc, from, to, r, within);
+  return res.complete ? res.pts : null;
+}
+
+/** Which seats a body can actually get to from the door, by seat order.
+ *  world.js hangs this on each seat and freeSeat() never offers a false. */
+export function reachableSeats(desc, from = desc.stations.door, r = WALKER_R) {
+  const g = navGrid(desc, r);
+  const seen = navComponent(g, nearestCell(g, from.x, from.z, SNAP_R));
+  return seatsFor(desc).map(s => {
+    const t = nearestCell(g, s.ax, s.az, SNAP_R);
+    return t >= 0 && seen[t] === 1;
+  });
+}
+
+/** Every point a walking body aims at, and how far from open floor each is
+ *  allowed to sit. doorOut is outside the room by design, so it gets more
+ *  slack than a seat approach, which should be floor a patron fits on. */
+export function navRoutes(desc) {
+  const st = desc.stations, out = [];
+  for (const s of seatsFor(desc)) out.push({ name: `seat ${s.id} (${s.kind}) approach`, x: s.ax, z: s.az });
+  for (const k of ["passFood", "passDrink"]) if (st[k]) out.push({ name: `station ${k}`, x: st[k].x, z: st[k].z });
+  if (st.doorOut) out.push({ name: "station doorOut", x: st.doorOut.x, z: st.doorOut.z, within: 2.5 });
+  for (let i = 0; i < 3; i++) {
+    if (st.crewHome) { const h = crewHome(desc, i); out.push({ name: `server ${i + 1} home`, x: h.x, z: h.z }); }
+    if (st.cooks) { const c = cookSpot(desc, i); out.push({ name: `cook ${i + 1}`, x: c.x, z: c.z }); }
+  }
+  return out;
+}
+
+/** The pathing half of the invariant: a walker of WALKER_R can get from the
+ *  door to every point a walker is ever sent to. unreachable() answers this
+ *  for a point-sized body; a body has width, and 0.25 m of it is the
+ *  difference between a stool being offered and a patron in a wall. */
+export function navProblems(desc, r = WALKER_R) {
+  const g = navGrid(desc, r);
+  const d = desc.stations.door;
+  const s = nearestCell(g, d.x, d.z, SNAP_R);
+  if (s < 0) return [`the door (${fmt(d.x)}, ${fmt(d.z)}) is not within ${SNAP_R} m of floor a ${r} m walker fits on`];
+  const seen = navComponent(g, s);
+  const bad = [];
+  for (const p of navRoutes(desc)) {
+    const t = nearestCell(g, p.x, p.z, p.within ?? SNAP_R);
+    if (t < 0) bad.push(`${p.name} (${fmt(p.x)}, ${fmt(p.z)}) is not within ${p.within ?? SNAP_R} m of floor a ${r} m walker fits on`);
+    else if (!seen[t]) bad.push(`${p.name} has no route from the door`);
+  }
+  return bad;
+}
+
 /**
  * The walkability invariant: every seat's approach point and every station
  * stand-point is walkable, the door is inside the room and the exit is not,
@@ -470,6 +788,7 @@ export function validate(desc) {
     if (!inBounds(desc, p.x, p.z, 0)) bad.push(`pendant ${i} (${fmt(p.x)}, ${fmt(p.z)}) hangs outside the room`);
   }
   for (const name of unreachable(desc)) bad.push(`${name} cannot be reached from the door`);
+  for (const m of navProblems(desc)) bad.push(m);
   return bad;
 }
 

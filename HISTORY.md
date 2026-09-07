@@ -53,7 +53,7 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-A hundred and seventy-six numbered decisions, accumulated across ten sessions and
+A hundred and ninety-three numbered decisions, accumulated across ten sessions and
 the project phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -2218,6 +2218,62 @@ Two of them have moved since they were written:
    material per room would have doubled 66 MB of GPU texture per rung.
    *Source: Fourth Quarter Phase 2, increment 1.*
 
+189. **Two grids, because they answer two questions, and they do not nest.**
+   `unreachable()` keeps the point-sized sweep #186 built: `walkable()` with
+   colliders taken literally, radius 0.3 only against the walls. `navGrid()`
+   is a second rasterisation of the same 0.25 m lattice with every collider
+   inflated by the walker's radius. Neither contains the other. Against a
+   table the nav grid is stricter — 14 cm off a four-top's face is walkable
+   and is not floor a body fits on. Against a wall it is looser — a patron is
+   0.25 m where the player slides at 0.3, so a patron stands closer to the
+   west wall than the player can. Folding them into one grid would have to
+   pick a radius, and the two callers want different ones.
+   *Source: Fourth Quarter Phase 3.*
+
+190. **A route that cannot reach its target is an answer, not an error.**
+   `pathToward()` always returns a route: when the floor does not join the two
+   points it reports `complete: false` and the way to the nearest point it
+   does reach. `pathBetween()` is the same call with `null` for incomplete,
+   for the callers that want a yes or no. Nothing on the floor may freeze
+   because a plan failed — a patron with no route to the exit walks to the
+   nearest place the floor joins to and is gone from there, and a patron whose
+   stool goes unreachable mid-walk hands the stool back and leaves. The
+   alternative, returning nothing and letting the caller decide, is how a
+   patron ends up standing in the middle of the room until last call.
+   *Source: Fourth Quarter Phase 3.*
+
+191. **Both ends of a route are allowed to be inside the furniture, and the
+   two legs that cross the boundary are never string-pulled away.** A cook
+   stands against the prep counter, a stool is tucked 6.8 cm under its table's
+   padded box, and DOOR_OUT is outside the room altogether — all three are
+   inside inflated geometry, and all three are places a body has to get to.
+   So a target snaps to the nearest open cell within `SNAP_R` (1 m; the exit
+   asks for 2.5), and the first and last legs are locked: no clearance test
+   can approve them and no walker may skip them. Requiring every stand-point
+   to be open floor would have meant moving the cook line, the stools and the
+   door.
+   *Source: Fourth Quarter Phase 3.*
+
+192. **`freeSeat()` never offers a stool with no route to it.** `world.js`
+   hangs `reachable` on each seat when it adopts a description, from one flood
+   of the nav grid rather than a plan per stool, and `patrons.js` filters on
+   it. A patron that claims an unreachable stool has already taken it out of
+   circulation for the night; refusing to hand it out is cheaper than
+   detecting the stall afterwards. The flag and the planner are asserted to
+   agree on every stool in every room, because a disagreement means the room
+   fills up with patrons walking at walls.
+   *Source: Fourth Quarter Phase 3.*
+
+193. **`validate()` carries the nav check, so a floor plan is authored against
+   a body and not only against geometry.** `navProblems(desc)` asks whether a
+   0.25 m walker can get from the door to every seat approach, both passes,
+   the exit, the three idle-server spots and the three cook spots, and its
+   messages join `validate()`'s list. The case that made this worth a locked
+   decision: a crate leaving a 20 cm slot in the corridor passes the
+   point-sized sweep in full — the kitchen is reachable, for a point — and
+   leaves a kitchen no cook can walk into. Proven by reintroducing it.
+   *Source: Fourth Quarter Phase 3.*
+
 ---
 
 # The site sessions, 1–10
@@ -3041,7 +3097,7 @@ file did the same for the one seed it touched. Save: none.
 
 ---
 
-# The Fourth Quarter, Phases 1, 2 and 5
+# The Fourth Quarter, Phases 1, 2, 3 and 5
 
 **Phase 1 — The room is a description.** `js/layout.js`, pure, zero imports:
 one description per venue tier (all four the Corner Tap until Phase 2), and
@@ -3085,6 +3141,39 @@ by name (undefined)`). A Fieldhouse table at (2.9, −5.0) meant as a doorway
 block did not fail the suite, and on inspection stops 1 cm short of the
 corridor — the suite was right. *Left:* Midtown's second room and the
 flagship's mezzanine, after Phase 3.
+
+**Phase 3 — Feet that find the door (PR #TBD).** Everything that walks now
+plans. `layout.js` gained a nav grid: the sweep's 0.25 m lattice again, with
+every collider inflated by `WALKER_R` (0.25 m, against a patron mesh's 0.2 m
+cylinder), memoised per description and radius (#189). A* over eight
+neighbours, a diagonal refused unless both its orthogonals are open, then a
+string-pull that drops every waypoint the walker can see past — a straight
+shot across open floor comes back as its two endpoints and nothing between
+them. `pathBetween()` returns the route or null; `pathToward()` returns the
+route it does have and says whether it got there (#190). Both ends may sit
+inside inflated geometry, and the legs that cross the boundary are never
+pulled away (#191). `Route` in `patrons.js` is the queue both `Patron` and
+`Server` walk, replanned when the target has moved 0.6 m, each leg still on
+`stepToward()` with the leftover of a step spilling into the next leg.
+`world.js` hangs `reachable` on every seat from one flood of the grid, and
+`freeSeat()` refuses to offer a false (#192). `validate()` carries
+`navProblems()` (#193). *Counts:* new `test/smoke-nav.mjs` at 89 assertions,
+Node total 509 → 598; `tools/browser-check.mjs` 58 → 89, four of the new ones
+stepping a patron to every fourth stool in every room at a fixed 1/60 s and
+measuring how far inside the furniture it ever got (0.000 m in all four
+rooms), plus a server carrying a ticket from the pass to the furthest stool
+from it. *Broken on purpose (#34), each caught by the assertion whose comment
+claims it, from a green baseline:* the collider inflation deleted (12 fail,
+the route shaves a four-top by 0.088 m); the diagonal corner rule deleted (3,
+the random-pair clearance in three of four rooms); the string-pull deleted (2,
+the straight shot comes back as 11 points); `complete` forced true (5, every
+"no route" assertion); `navProblems()` dropped from `validate()` (1); and in
+the browser, `Patron` put back on `stepToward()` (4, at 0.66–0.74 m of
+penetration — a body through the middle of a table). One thing the numbers
+said that the plan did not: a stool sits 6.8 cm under its own table's padded
+collider box by construction (0.95 / √2 against 0.62 + 0.12), so the walk
+check samples before each step and never after the last, and the fact is
+written into the check rather than tuned around.
 
 
 **Phase 5 — The suite runs on every pull request.** 393 assertions in

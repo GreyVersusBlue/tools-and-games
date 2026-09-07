@@ -135,9 +135,10 @@ engine's result, and Mules fans bounce when they win.
   (Stock, Crew, Theme, Upgrades, Real Estate, Door). The door's panel becomes
   the dark-night settlement instead of "Open the Doors" whenever a venue move
   is still settling in (`c.darkNightsLeft > 0`).
-- Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs` and
-  `node test/smoke-layout.mjs` (CI runs all three). `node tools/browser-check.mjs`
-  boots the page in Chromium and is run by hand; it needs `playwright-core`.
+- Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs`,
+  `node test/smoke-layout.mjs` and `node test/smoke-nav.mjs` (CI runs every
+  `test/*.mjs`). `node tools/browser-check.mjs` boots the page in Chromium and
+  is run by hand; it needs `playwright-core`.
 - `js/layout.js` — the room as data, pure. One description per venue tier:
   room, kitchen, doorways, windows, bar, tables, fit-out blocks by kind, TV
   mounts, pendants, stand-points (the camera spawn, the idle-server line and
@@ -147,6 +148,11 @@ engine's result, and Mules fans bounce when they win.
   each other. `test/fixtures/corner-tap.json` is what the old hand-built
   `world.js` produced, dumped from Chromium, and the suite holds the Corner
   Tap's derivation to it; the other three rooms are held to the invariant.
+  It also holds the nav grid everything that walks plans on: the same 0.25 m
+  cells with colliders inflated by the walker's 0.25 m radius, A* with no
+  corner cutting, a string-pull, and `pathBetween()` / `pathToward()` /
+  `reachableSeats()`. `validate()` carries `navProblems()`, so a room where a
+  0.25 m body cannot reach a stool is refused at authoring time.
 - `js/world.js` — the room in meshes, built from a `layout.js` description:
   main room + back-of-house kitchen (doorway east of the bar, pass-through
   window where food lands), TVs, neon sign, day/night light rigs, stove/tap
@@ -155,7 +161,10 @@ engine's result, and Mules fans bounce when they win.
   signed lease, a dev warp, or "New Game" all call it again on the same page
   load.
 - `js/patrons.js` — patron + server NPC state machines (bartenders stick to
-  drink tickets).
+  drink tickets), and `Route`, the waypoint queue both walk: planned off
+  `layout.js`'s nav grid, replanned when the target moves 0.6 m, each leg
+  walked with `stepToward()`. `freeSeat()` never offers a stool with no route
+  to it — `world.js` hangs `reachable` on every seat when it adopts a room.
 - `js/player.js` — pointer-lock movement, collision, pick-up/deliver, and the
   stove/tap timing-bar minigame.
 - `js/materials.js` — the texture registry (below).

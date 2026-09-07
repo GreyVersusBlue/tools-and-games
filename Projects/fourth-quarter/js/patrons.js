@@ -6,7 +6,8 @@
 
 import * as THREE from "three";
 import { flat, glow } from "./materials.js";
-import { seats, DOOR, DOOR_OUT, PASS_FOOD, PASS_DRINK } from "./world.js";
+import { seats, DOOR, DOOR_OUT, PASS_FOOD, PASS_DRINK, currentLayout } from "./world.js";
+import { pathToward, WALKER_R, SNAP_R } from "./layout.js";
 import { MENU } from "./engine.js";
 import * as audio from "./audio.js";
 
@@ -17,8 +18,12 @@ const MULES_AMBER = 0xe8a33d;
 const WALK = 1.55, SERVER_WALK = 2.0;
 let _pid = 0;
 
+/** An open stool the floor actually joins to the door. world.js hangs
+ *  `reachable` on every seat from layout.js's nav grid; a stool walled off by
+ *  the fit-out is not offered rather than claimed by a patron who then walks
+ *  into the wall in front of it. */
 export function freeSeat() {
-  const open = seats.filter(s => !s.taken);
+  const open = seats.filter(s => !s.taken && s.reachable !== false);
   return open.length ? open[Math.floor(Math.random() * open.length)] : null;
 }
 
@@ -86,6 +91,7 @@ export class Patron {
     this.consumeMesh = null;
     this.cheer = 0;
     this.bob = Math.random() * Math.PI * 2;
+    this.route = new Route();
     if (!this.seat) { this.state = "leaving"; engine.walkout(this.id); }
     else this.seat.taken = true;
   }
@@ -133,6 +139,17 @@ export class Patron {
 
   releaseSeat() { if (this.seat) { this.seat.taken = false; this.seat = null; } }
 
+  /** No route to the stool it claimed: hand the stool back and leave. This
+   *  should not fire, because freeSeat() only offers stools the floor joins
+   *  to — but a patron whose target went unreachable leaves rather than
+   *  stands in the room for the rest of the night. */
+  strand() {
+    this.releaseSeat();
+    this.route.clear();
+    this.state = "leaving";
+    this.engine.walkout(this.id);
+  }
+
   update(dt) {
     const m = this.mesh;
     this.bob += dt * 3;
@@ -144,9 +161,11 @@ export class Patron {
     }
     switch (this.state) {
       case "entering": {
-        const target = this.seat.approach;
-        m.lookAt(target.x, m.position.y, target.z);
-        if (stepToward(m.position, target, WALK * dt)) {
+        if (!this.route.aim(m.position, this.seat.approach)) { this.strand(); break; }
+        const wp = this.route.head();
+        if (wp) m.lookAt(wp.x, m.position.y, wp.z);
+        if (this.route.step(m.position, WALK * dt)) {
+          this.route.clear();
           m.position.copy(this.seat.pos);
           m.lookAt(this.seat.approach.x, m.position.y, this.seat.approach.z);
           m.rotateY(Math.PI);
@@ -172,8 +191,14 @@ export class Patron {
         }
         break;
       case "leaving": {
-        m.lookAt(DOOR_OUT.x, m.position.y, DOOR_OUT.z);
-        if (stepToward(m.position, DOOR_OUT, WALK * dt)) {
+        // the exit sits outside the room, so it plans with the exit's slack;
+        // a patron the floor cannot join to it walks to the nearest point it
+        // can and is gone from there, rather than pushing at a wall
+        if (this.route.within !== EXIT_SNAP) { this.route.clear(); this.route.within = EXIT_SNAP; }
+        this.route.aim(m.position, DOOR_OUT);
+        const wp = this.route.head();
+        if (wp) m.lookAt(wp.x, m.position.y, wp.z);
+        if (this.route.step(m.position, WALK * dt)) {
           this.scene.remove(m);
           this.state = "gone";
         }
@@ -198,6 +223,7 @@ export class Server {
     this.state = "idle";
     this.ticket = null;
     this.carry = null;
+    this.route = new Route();
   }
 
   update(dt, patronsById) {
@@ -210,30 +236,40 @@ export class Server {
           const tk = ready.sort((a, b) => a.placedAt - b.placedAt)[0];
           if (this.engine.claim(tk.id, "server:" + this.name)) {
             this.ticket = tk;
+            this.route.clear();
             this.state = "toPass";
           }
-        } else stepToward(m.position, this.home, this.speed * dt);
+        } else {
+          this.route.aim(m.position, this.home);
+          this.route.step(m.position, this.speed * dt);
+        }
         break;
       }
       case "toPass": {
         const pass = this.ticket.kind === "food" ? PASS_FOOD : PASS_DRINK;
-        m.lookAt(pass.x, m.position.y, pass.z);
-        if (stepToward(m.position, pass, this.speed * dt)) {
+        this.route.aim(m.position, pass);
+        const wp = this.route.head();
+        if (wp) m.lookAt(wp.x, m.position.y, wp.z);
+        if (this.route.step(m.position, this.speed * dt)) {
           this.carry = itemMesh(this.ticket.itemId);
           this.carry.position.set(0, 1.05, 0.24);
           m.add(this.carry);
+          this.route.clear();
           this.state = "toPatron";
         }
         break;
       }
       case "toPatron": {
         const p = patronsById.get(this.ticket.patronId);
-        if (!p || p.state === "leaving" || p.state === "gone") { this.dropCarry(); this.state = "idle"; break; }
-        m.lookAt(p.pos.x, m.position.y, p.pos.z);
-        if (stepToward(m.position, p.pos, this.speed * dt, 0.75)) {
+        if (!p || p.state === "leaving" || p.state === "gone") { this.dropCarry(); this.route.clear(); this.state = "idle"; break; }
+        // the target walks: aim() replans once it has moved REPATH_D
+        this.route.aim(m.position, p.pos);
+        const wp = this.route.head();
+        if (wp) m.lookAt(wp.x, m.position.y, wp.z);
+        if (this.route.step(m.position, this.speed * dt, 0.75)) {
           const res = this.engine.deliver(this.ticket.id, false);
           if (res) { p.receive(this.ticket.itemId); audio.playSfx("cashRegister", 0.7); }
-          this.dropCarry(); this.ticket = null; this.state = "idle";
+          this.dropCarry(); this.ticket = null; this.route.clear(); this.state = "idle";
         }
         break;
       }
@@ -241,6 +277,62 @@ export class Server {
   }
 
   dropCarry() { if (this.carry) { this.mesh.remove(this.carry); this.carry = null; } }
+}
+
+// ----------------------------------------------------------------- routing
+// A queue of waypoints from layout.js's nav grid, replanned when the target
+// moves. stepToward() still walks each leg; what changed is that the legs go
+// round the furniture instead of through it. A route that cannot reach its
+// target is not an error and not a freeze — it ends at the nearest point the
+// floor does join to, and aim() returns false so the caller can decide.
+
+const REPATH_D = 0.6;          // a target that moved this far gets a new plan
+const WAYPOINT_R = 0.08;       // how close counts as "on" an intermediate corner
+export const EXIT_SNAP = 2.5;  // DOOR_OUT sits outside the room on purpose
+
+export class Route {
+  constructor(within = SNAP_R) {
+    this.pts = null; this.i = 0; this.to = null; this.complete = false; this.within = within;
+  }
+
+  /** Plan, or replan if the target has moved. False means the floor does not
+   *  join `pos` to `to`; the route still leads somewhere, just not there. */
+  aim(pos, to) {
+    if (this.pts && this.to && Math.hypot(to.x - this.to.x, to.z - this.to.z) < REPATH_D) return this.complete;
+    const res = pathToward(currentLayout(), pos, to, WALKER_R, this.within);
+    this.to = { x: to.x, z: to.z };
+    this.pts = res.pts.slice(1);
+    if (!this.pts.length) this.pts = [{ x: res.pts[0].x, z: res.pts[0].z }];
+    this.i = 0;
+    this.complete = res.complete;
+    return this.complete;
+  }
+
+  clear() { this.pts = null; this.to = null; this.i = 0; this.complete = false; }
+
+  /** The waypoint being walked to right now — what a body should face. */
+  head() { return this.pts && this.i < this.pts.length ? this.pts[this.i] : this.to; }
+
+  /** Walk `dist` along the route, spilling what is left of a step into the
+   *  next leg so a corner does not cost a frame. True once the last waypoint
+   *  is within `arrive`. */
+  step(pos, dist, arrive = 0.12) {
+    if (!this.pts || !this.pts.length) return true;
+    let left = dist;
+    while (this.i < this.pts.length) {
+      const last = this.i === this.pts.length - 1;
+      const wp = this.pts[this.i];
+      const stop = last ? arrive : WAYPOINT_R;
+      const d = Math.hypot(wp.x - pos.x, wp.z - pos.z);
+      if (d <= stop) { if (last) return true; this.i++; continue; }
+      if (!stepToward(pos, wp, left, stop)) return false;
+      if (last) return true;
+      left -= Math.max(0, d - stop);
+      this.i++;
+      if (left <= 0) return false;
+    }
+    return true;
+  }
 }
 
 // ---------------------------------------------------------------- movement

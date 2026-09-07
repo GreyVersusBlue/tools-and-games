@@ -73,7 +73,7 @@ const probe = () => page.evaluate(async () => {
   const v = p => ({ x: p.x, y: p.y, z: p.z });
   return {
     layout: w.currentLayout().id,
-    seats: w.seats.map(s => ({ id: s.id, x: s.pos.x, z: s.pos.z, ax: s.approach.x, az: s.approach.z })),
+    seats: w.seats.map(s => ({ id: s.id, x: s.pos.x, z: s.pos.z, ax: s.approach.x, az: s.approach.z, reachable: s.reachable })),
     colliders: w.colliders.map(b => ({ min: v(b.min), max: v(b.max) })),
     points: { door: v(w.DOOR), doorOut: v(w.DOOR_OUT), passFood: v(w.PASS_FOOD), passDrink: v(w.PASS_DRINK),
       passFoodShelf: v(w.PASS_FOOD_SHELF), passDrinkShelf: v(w.PASS_DRINK_SHELF),
@@ -92,6 +92,10 @@ const sameRoom = (label, got, venueId) => {
   ok(`${label}: ${seats.length} seats`, got.seats.length === seats.length, `got ${got.seats.length}`);
   ok(`${label}: every seat is the derived one, in order`,
     got.seats.every((s, i) => s.id === seats[i].id && near(s.x, seats[i].x) && near(s.z, seats[i].z) && near(s.ax, seats[i].ax) && near(s.az, seats[i].az)));
+  const reach = L.reachableSeats(desc);
+  ok(`${label}: every seat carries the nav grid's reachable, and every one of them is true`,
+    got.seats.every((s, i) => s.reachable === reach[i]) && reach.every(Boolean),
+    `${got.seats.filter(s => s.reachable !== true).length} not reachable on the page`);
   ok(`${label}: ${cols.length} colliders`, got.colliders.length === cols.length, `got ${got.colliders.length}`);
   ok(`${label}: every collider is the derived box, in order`,
     got.colliders.every((b, i) => ["x", "y", "z"].every(a => near(b.min[a], cols[i].min[a]) && near(b.max[a], cols[i].max[a]))));
@@ -141,6 +145,147 @@ for (const id of ["fieldhouse", "midtown", "cornerTap"]) {
   await page.waitForTimeout(600);
   ok(`no page errors after the warp to ${id}`, errors.length === 0, errors.join(" | "));
   sameRoom(id, await probe(), id);
+}
+
+// freeSeat() is the one place the reachable flag has teeth, and it is a
+// list filter rather than anything that moves — mark a stool unreachable on
+// the live page and it stops being handed out. Nothing here is timed, so
+// locked #53 does not apply.
+group("freeSeat() refuses a stool with no route");
+const offered = await page.evaluate(async () => {
+  const w = await import("./js/world.js");
+  const p = await import("./js/patrons.js");
+  const before = w.seats.filter(s => s.reachable !== false).length;
+  w.seats[0].reachable = false;
+  const ids = new Set();
+  for (let i = 0; i < 400; i++) { const s = p.freeSeat(); if (s) ids.add(s.id); }
+  w.seats[0].reachable = true;
+  return { before, total: w.seats.length, drawn: [...ids].sort((a, b) => a - b) };
+});
+ok("every stool but the flagged one is still on offer", offered.before === offered.total, `${offered.before}/${offered.total}`);
+ok("400 draws never return the flagged stool", !offered.drawn.includes(1), offered.drawn.slice(0, 4).join(","));
+ok("400 draws do reach the rest of the room", offered.drawn.length >= offered.total - 4, `${offered.drawn.length}/${offered.total - 1}`);
+
+// and the module the page loaded is the module the Node suite planned on
+group("the page plans the same routes Node does");
+const planned = await page.evaluate(async () => {
+  const l = await import("./js/layout.js");
+  const d = l.layoutFor("cornerTap");
+  return {
+    straight: l.pathBetween(d, { x: 0, z: 4.5 }, { x: 0, z: 2 }),
+    round: l.pathBetween(d, { x: -6.6, z: 0.9 }, { x: -3.2, z: 0.9 }),
+  };
+});
+const nodeStraight = L.pathBetween(L.CORNER_TAP, { x: 0, z: 4.5 }, { x: 0, z: 2 });
+const nodeRound = L.pathBetween(L.CORNER_TAP, { x: -6.6, z: 0.9 }, { x: -3.2, z: 0.9 });
+ok("a straight shot is two points in the browser too", JSON.stringify(planned.straight) === JSON.stringify(nodeStraight), JSON.stringify(planned.straight));
+ok("the route round a four-top is the same list Node planned", JSON.stringify(planned.round) === JSON.stringify(nodeRound), `${planned.round.length} points`);
+
+// Phase 3's actual claim, stepped rather than watched: build a patron for
+// every fourth stool in each room, drive it at a fixed 1/60 s until it sits,
+// then send it home. The dt is a number, not a frame time, so this is not a
+// real-time motion assertion and locked #53 does not apply — a slow renderer
+// changes how long the loop takes, not where anybody ends up.
+group("patrons walk to their stools without going through the furniture");
+// the loop above left the room on the Corner Tap, whose warp button is
+// disabled while it is the current venue — so it goes last, unwarped
+for (const id of ["fieldhouse", "midtown", "flagship", "cornerTap"]) {
+  if (await page.isEnabled(`[data-warp=${id}]`)) {
+    await page.click(`[data-warp=${id}]`, { timeout: 5000 });
+    await page.waitForTimeout(600);
+  }
+  const walk = await page.evaluate(async () => {
+    const THREE = await import("three");
+    const w = await import("./js/world.js");
+    const P = await import("./js/patrons.js");
+    const L = await import("./js/layout.js");
+    const desc = w.currentLayout();
+    const cols = L.collidersFor(desc);
+    const deep = (x, z) => {   // how far inside a collider box (0 = outside all)
+      let d = 0;
+      for (const b of cols) {
+        if (x <= b.min.x || x >= b.max.x || z <= b.min.z || z >= b.max.z) continue;
+        d = Math.max(d, Math.min(x - b.min.x, b.max.x - x, z - b.min.z, b.max.z - z));
+      }
+      return d;
+    };
+    const engine = { walkout() {}, depart() {} };
+    const scene = new THREE.Scene();
+    const out = { tried: 0, sat: 0, gone: 0, worst: 0, worstSeat: null, slowest: 0, stuck: [] };
+    for (let i = 0; i < w.seats.length; i += 4) {
+      w.seats.forEach((s, j) => { s.taken = j !== i; });
+      const p = new P.Patron(scene, engine, false);
+      if (!p.seat || p.seat.id !== w.seats[i].id) { out.stuck.push(`seat ${w.seats[i].id} was not offered`); continue; }
+      out.tried++;
+      const seatId = p.seat.id;
+      let n = 0;
+      // sample before each step, never after the last one: sitting down copies
+      // the stool's own position, and a stool is tucked 6.8 cm under its
+      // table's padded box by construction (0.95 / √2 against 0.62 + 0.12)
+      for (; n < 4000 && p.state === "entering"; n++) {
+        const d = deep(p.pos.x, p.pos.z);
+        if (d > out.worst) { out.worst = d; out.worstSeat = seatId; }
+        p.update(1 / 60);
+      }
+      if (p.state === "settling") out.sat++;
+      else out.stuck.push(`seat ${seatId}: ${p.state} after ${n} steps at (${p.pos.x.toFixed(1)}, ${p.pos.z.toFixed(1)})`);
+      out.slowest = Math.max(out.slowest, n);
+      // and home again, starting from the stool — a start inside a box, which
+      // is the case the planner has to route out of rather than through
+      p.releaseSeat();
+      p.state = "leaving";
+      let m = 0, cleared = false;
+      for (; m < 4000 && p.state === "leaving"; m++) {
+        const d = deep(p.pos.x, p.pos.z);
+        if (!cleared && d === 0) cleared = true;
+        if (cleared && d > out.worst) { out.worst = d; out.worstSeat = seatId; }
+        p.update(1 / 60);
+      }
+      if (!cleared) out.stuck.push(`seat ${seatId}: never got clear of its own table on the way out`);
+      if (p.state === "gone") out.gone++;
+      else out.stuck.push(`seat ${seatId}: still ${p.state} on the way out`);
+      out.slowest = Math.max(out.slowest, m);
+      w.seats.forEach(s => { s.taken = false; });
+    }
+
+    // one server, the full ticket: idle at its home, fetch from the food pass,
+    // carry it to a patron sitting at the furthest stool from the pass
+    const far = w.seats.reduce((a, b) =>
+      Math.hypot(b.pos.x - w.PASS_FOOD.x, b.pos.z - w.PASS_FOOD.z) > Math.hypot(a.pos.x - w.PASS_FOOD.x, a.pos.z - w.PASS_FOOD.z) ? b : a);
+    const sitter = new P.Patron(scene, engine, false);
+    sitter.route.clear();
+    sitter.state = "settling";
+    sitter.mesh.position.copy(far.pos);
+    const ticket = { id: 1, kind: "food", itemId: "wings", patronId: sitter.id, placedAt: 0 };
+    // deliver() answers false on purpose: the walk is what is under test, and
+    // a true would ring the register and hand the patron a mesh
+    const sv = new P.Server(scene, { readyUnclaimed: () => [], claim: () => true, deliver: () => false },
+      "Check", L.crewHome(desc, 0), 2.0, "server");
+    sv.ticket = ticket;
+    sv.state = "toPass";
+    const byId = new Map([[sitter.id, sitter]]);
+    out.server = { reachedPass: false, reachedPatron: false, worst: 0, steps: 0 };
+    for (let k = 0; k < 8000 && !(out.server.reachedPass && sv.state === "idle"); k++) {
+      const d = deep(sv.mesh.position.x, sv.mesh.position.z);
+      if (d > out.server.worst) out.server.worst = d;
+      sv.update(1 / 60, byId);
+      if (sv.state === "toPatron") out.server.reachedPass = true;
+      out.server.steps = k + 1;
+    }
+    out.server.reachedPatron = out.server.reachedPass && sv.state === "idle";
+    out.server.at = [+sv.mesh.position.x.toFixed(2), +sv.mesh.position.z.toFixed(2)];
+    out.server.target = [+far.pos.x.toFixed(2), +far.pos.z.toFixed(2)];
+    return out;
+  });
+  ok(`${id}: every sampled patron reached its stool`, walk.tried > 0 && walk.sat === walk.tried, `${walk.sat}/${walk.tried}  ${walk.stuck.join(" | ")}`);
+  ok(`${id}: and every one of them left again`, walk.gone === walk.tried, `${walk.gone}/${walk.tried}`);
+  ok(`${id}: nobody walked inside a table, a counter or a crate`, walk.worst < 0.01,
+    `deepest ${walk.worst.toFixed(3)} m (seat ${walk.worstSeat}), longest walk ${(walk.slowest / 60).toFixed(1)} s`);
+  ok(`${id}: a server reached the food pass and then the furthest stool from it`,
+    walk.server.reachedPass && walk.server.reachedPatron,
+    `${walk.server.steps} steps, stopped at ${walk.server.at} for a patron at ${walk.server.target}`);
+  ok(`${id}: and it did not walk through the furniture either`, walk.server.worst < 0.01,
+    `deepest ${walk.server.worst.toFixed(3)} m`);
 }
 
 await browser.close();

@@ -61,9 +61,14 @@ export function adoptLayout(desc) {
   set(PASS_FOOD_SHELF, "passFoodShelf"); set(PASS_DRINK_SHELF, "passDrinkShelf");
   set(STOVE_STATION, "stove"); set(TAP_STATION, "tap"); set(UPGRADES_STATION, "upgrades");
   seats.length = 0;
-  for (const s of L.seatsFor(desc)) {
-    seats.push({ id: s.id, pos: new THREE.Vector3(s.x, 0, s.z), approach: new THREE.Vector3(s.ax, 0, s.az), taken: false });
-  }
+  // `reachable` is the nav grid's answer, not the geometry's: a stool can be
+  // walkable and still have no route from the door once the fit-out is in the
+  // way, and patrons.js's freeSeat() refuses to offer one of those.
+  const reach = L.reachableSeats(desc);
+  L.seatsFor(desc).forEach((s, i) => {
+    seats.push({ id: s.id, pos: new THREE.Vector3(s.x, 0, s.z), approach: new THREE.Vector3(s.ax, 0, s.az),
+      taken: false, reachable: reach[i] });
+  });
   colliders.length = 0;
   for (const b of L.collidersFor(desc)) {
     colliders.push(new THREE.Box3(new THREE.Vector3(b.min.x, b.min.y, b.min.z), new THREE.Vector3(b.max.x, b.max.y, b.max.z)));
