@@ -115,8 +115,10 @@ engine's result, and Mules fans bounce when they win.
   and the nightly rent alike — see below.
 - Rent is **$110/night at the Corner Tap, rising $50/rung up the ladder**
   ($160 / $210 / $260). Wages, rent, upgrade upkeep, and theme costs settle at
-  close. The physical room doesn't grow with the tier — see Files below — so
-  the ladder's payoff is the bigger crowd (`buzzMult`), not more seats.
+  close. Each rung is a bigger room too — 30, 44, 58 and 76 seats, more
+  stoves and more taps — so the ladder's payoff is the crowd (`buzzMult`) and
+  the stools to seat it. Two upgrades (Premium Screens, the Craft Tap Wall)
+  need the Fieldhouse or bigger; the Upgrades panel says so.
 
 ## Files
 
@@ -136,13 +138,15 @@ engine's result, and Mules fans bounce when they win.
 - Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs` and
   `node test/smoke-layout.mjs` (CI runs all three). `node tools/browser-check.mjs`
   boots the page in Chromium and is run by hand; it needs `playwright-core`.
-- `js/layout.js` — the room as data, pure. One description per venue tier
-  (all four the Corner Tap for now): room, kitchen, doorways, windows, bar,
-  tables, fit-out blocks, stand-points. Derives seats, colliders as plain
-  boxes, `inBounds()`, and `validate()` — every stool reachable, every
-  doorway joining the rooms. `test/fixtures/corner-tap.json` is what the old
-  hand-built `world.js` produced, dumped from Chromium, and the suite holds the
-  derivation to it.
+- `js/layout.js` — the room as data, pure. One description per venue tier:
+  room, kitchen, doorways, windows, bar, tables, fit-out blocks by kind, TV
+  mounts, pendants, stand-points (the camera spawn, the idle-server line and
+  the cook line included). Derives seats, colliders as plain boxes,
+  `inBounds()`, a flood fill from the door, and `validate()` — every stool
+  reachable, every doorway joining the rooms, no two stations within reach of
+  each other. `test/fixtures/corner-tap.json` is what the old hand-built
+  `world.js` produced, dumped from Chromium, and the suite holds the Corner
+  Tap's derivation to it; the other three rooms are held to the invariant.
 - `js/world.js` — the room in meshes, built from a `layout.js` description:
   main room + back-of-house kitchen (doorway east of the bar, pass-through
   window where food lands), TVs, neon sign, day/night light rigs, stove/tap
@@ -180,9 +184,10 @@ missing file just falls back to that surface's placeholder color.
 
 ## Roadmap (next sprints)
 
-1. **Distinct rooms per venue tier.** The ladder is reachable now (Real
-   Estate station, session 2) but every tier is the same 30-seat room —
-   upgrade tiering and a real seat cap can hook back in once this exists.
+1. **Distinct rooms per venue tier — shipped, one rectangle each.** Four
+   rooms, four seat counts, tier-gated upgrades. Still open: Midtown's second
+   room and the flagship's mezzanine, which wait on NPC pathing (wishlist
+   Phase 3).
 2. **A difficulty curve tied to the calendar — decided and partly built.**
    Rent scales with venue tier (session 2); food spoilage (session 3, see
    above) answers the other half by making hoarding food a real cost. Still

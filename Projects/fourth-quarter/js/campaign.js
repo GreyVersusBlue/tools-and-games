@@ -6,6 +6,7 @@ import { MENU, FOOD } from "./engine.js";
 // Relative, not "/assets/js/gvb-save.js": this module is also imported by
 // test/smoke-campaign.mjs under plain Node, which cannot resolve a site-absolute
 // specifier. The relative path resolves the same in both.
+import { LAYOUTS, seatsFor } from "./layout.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export const SAVE_KEY = "fq3d-save";
@@ -34,23 +35,20 @@ export const PROMOS = {
 // how many closed nights (rent/wages/upkeep still due, no revenue) it takes to move
 // in before the doors can reopen.
 //
-// `seats` is deliberately the same 30 at every tier. The room is a description
-// in layout.js now, and all four tiers still map to the Corner Tap's (6 stools +
-// 6 four-tops) until Phase 2 authors the other three; the engine's real cap is
-// world.js's own seats.length, wired directly in main.js's beginNight(), so a
-// tier-varying number here was cosmetic. Session-2 audit measured peak occupancy
-// at 23-29 against the 30 that already existed and found nothing above it was
-// ever gating anything; rather than fake a floor plan that doesn't exist, this
-// says so. When Phase 2 lands, this column should read layout.seatsFor().length
-// or go.
+// `seats` is derived from the tier's floor plan in layout.js — the physical
+// stools world.js builds, counted before a mesh exists — so the number on the
+// Real Estate card and the number the night engine caps arrivals at cannot
+// drift apart. (For two rounds it was a literal 30 four times over, on
+// purpose: every tier was the Corner Tap's room and a varying number would
+// have lied. Phase 2 authored the rooms.)
 export const VENUES = {
-  cornerTap:  { id: "cornerTap",  name: "The Corner Tap",     order: 0, cost: 0,     seats: 30, buzzMult: 1.00, darkNights: 0, rent: 110,
+  cornerTap:  { id: "cornerTap",  name: "The Corner Tap",     order: 0, cost: 0,     seats: seatsFor(LAYOUTS.cornerTap).length, buzzMult: 1.00, darkNights: 0, rent: 110,
                 desc: "Where you started. Six tables, six stools, one stove, one tap." },
-  fieldhouse: { id: "fieldhouse", name: "The Fieldhouse",     order: 1, cost: 5500,  seats: 30, buzzMult: 1.15, darkNights: 1, rent: 160,
+  fieldhouse: { id: "fieldhouse", name: "The Fieldhouse",     order: 1, cost: 5500,  seats: seatsFor(LAYOUTS.fieldhouse).length, buzzMult: 1.15, darkNights: 1, rent: 160,
                 desc: "Room to breathe — a second stove keeps the kitchen from choking on a rush." },
-  midtown:    { id: "midtown",    name: "Midtown Draft Hall", order: 2, cost: 15000, seats: 30, buzzMult: 1.30, darkNights: 1, rent: 210,
+  midtown:    { id: "midtown",    name: "Midtown Draft Hall", order: 2, cost: 15000, seats: seatsFor(LAYOUTS.midtown).length, buzzMult: 1.30, darkNights: 1, rent: 210,
                 desc: "A real draft wall — three taps instead of one changes the whole rhythm of the bar." },
-  flagship:   { id: "flagship",   name: "The Fourth Quarter", order: 3, cost: 34000, seats: 30, buzzMult: 1.50, darkNights: 2, rent: 260,
+  flagship:   { id: "flagship",   name: "The Fourth Quarter", order: 3, cost: 34000, seats: seatsFor(LAYOUTS.flagship).length, buzzMult: 1.50, darkNights: 2, rent: 260,
                 desc: "The flagship. Three stoves, a four-tap draft wall, and a room that finally looks the part." },
 };
 export const VENUE_ORDER = ["cornerTap", "fieldhouse", "midtown", "flagship"];
@@ -140,24 +138,27 @@ export function devClearDarkNights(c) { c.darkNightsLeft = 0; }
 export function devFillStock(c, amount = 500) { for (const id in c.stock) c.stock[id] = amount; }
 
 // ---------- upgrades (both-edged: every one helps AND costs upkeep) ----------
-// No venue ladder yet in the 3D port, so nothing's tier-gated — all five are
-// buyable from day one. Effects thread through campaign.js math (speedMult,
-// roleMult, beerMult, forecast) and campaign.js/engine.js pass them along;
-// nothing here needs new state beyond the S.upgrades id list.
+// `tier` is the VENUES `order` a room has to be at before the upgrade can be
+// bought — the 2D build's gates, carried over: Premium Screens and the Craft
+// Tap Wall need the Fieldhouse or bigger, the other three are open from day
+// one. The gate is on buying, not owning: a save that installed one before
+// the gate existed keeps it. Effects thread through campaign.js math
+// (speedMult, roleMult, beerMult, forecast) and campaign.js/engine.js pass
+// them along; nothing here needs new state beyond the S.upgrades id list.
 export const UPGRADES = {
-  pos:       { id: "pos",       name: "POS System",         cost: 800,  fee: 25,
+  pos:       { id: "pos",       name: "POS System",         cost: 800,  fee: 25, tier: 0,
                pro: "Servers ring in 20% faster on their feet.",
                con: "$25/night service contract, forever." },
-  training:  { id: "training",  name: "Staff Training Program", cost: 600, fee: 0,
+  training:  { id: "training",  name: "Staff Training Program", cost: 600, fee: 0, tier: 0,
                pro: "Whole crew works 15% faster — cooks, bartenders, servers alike.",
                con: "Certified staff expect it: effective wages up 15%." },
-  crafttaps: { id: "crafttaps", name: "Craft Tap Wall",      cost: 1200, fee: 15,
+  crafttaps: { id: "crafttaps", name: "Craft Tap Wall",      cost: 1200, fee: 15, tier: 1,
                pro: "Draft pours command 20% more per pint.",
                con: "Finicky lines: $15/night upkeep." },
-  broadcast: { id: "broadcast", name: "Premium Screens",     cost: 900,  fee: 20,
+  broadcast: { id: "broadcast", name: "Premium Screens",     cost: 900,  fee: 20, tier: 1,
                pro: "Sharper picture pulls a bigger crowd — draw up 15%.",
                con: "$20/night in AV contracts and power." },
-  rushexp:   { id: "rushexp",   name: "Rush Expediting",     cost: 1400, fee: 20,
+  rushexp:   { id: "rushexp",   name: "Rush Expediting",     cost: 1400, fee: 20, tier: 0,
                pro: "A real ticket rail: cooks push 30% more plates an hour.",
                con: "$20/night in gas and hood maintenance." },
 };
@@ -165,10 +166,20 @@ export const UPGRADES = {
 export function owned(c, id) { return c.upgrades.includes(id); }
 export function upgradeFees(c) { return Object.values(UPGRADES).reduce((s, u) => s + (owned(c, u.id) ? u.fee : 0), 0); }
 
+/** The smallest venue an upgrade fits in, or null if the current room is
+ *  big enough. The panel prints the name; buyUpgrade() refuses on it. */
+export function upgradeGate(c, id) {
+  const u = UPGRADES[id];
+  if (!u || !(u.tier > 0) || venueDef(c).order >= u.tier) return null;
+  return VENUES[VENUE_ORDER[u.tier]];
+}
+
 export function buyUpgrade(c, id) {
   const u = UPGRADES[id];
   if (!u) return { ok: false, err: "No such upgrade." };
   if (owned(c, id)) return { ok: false, err: "Already installed." };
+  const gate = upgradeGate(c, id);
+  if (gate) return { ok: false, err: `${gate.name} or bigger — no room for it here.` };
   if (c.cash < u.cost) return { ok: false, err: "Can't cover the install." };
   c.cash -= u.cost;
   c.upgrades.push(id);

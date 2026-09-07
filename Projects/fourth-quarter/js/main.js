@@ -5,7 +5,8 @@
 
 import * as THREE from "three";
 import { NightEngine, hourName } from "./engine.js";
-import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats, KITCHEN } from "./world.js";
+import { buildWorld, drawBroadcast, PASS_FOOD_SHELF, PASS_DRINK_SHELF, seats, currentLayout } from "./world.js";
+import { cookSpot, crewHome } from "./layout.js";
 import { Patron, Server, itemMesh, personMesh } from "./patrons.js";
 import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
@@ -66,6 +67,14 @@ player.onInteract = () => {
 // calls it when the Tonight panel renders, long after both exist.
 const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight, mountBar });
 
+/** Put the camera on the room's own spawn point (layout.js `stations.spawn`),
+ *  eye height 1.62 — the literal (0, 1.62, 3.4) was the Corner Tap's, and a
+ *  28 m room's door is somewhere else. */
+function spawnCamera() {
+  const sp = currentLayout().stations.spawn;
+  camera.position.set(sp.x, 1.62, sp.z);
+}
+
 function setLighting(night) {
   nightRig.visible = night; dayRig.visible = !night;
   scene.background.copy(night ? NIGHT_BG : DAY_BG);
@@ -81,7 +90,7 @@ function rebuildVenue() {
   worldGroup = built.group; tvs = built.tvs; nightRig = built.nightRig; dayRig = built.dayRig;
   setLighting(false); // still day phase right after a move
   day.rebuildStations();
-  camera.position.set(0, 1.62, 3.4);
+  spawnCamera();
 }
 
 /** A closed "moving in" night: bills land, no patrons, day counter advances.
@@ -102,7 +111,7 @@ function enterDay() {
   audio.stopLoop("barBed", 1.2);
   setLighting(false);
   day.setVisible(true);
-  camera.position.set(0, 1.62, 3.4);
+  spawnCamera();
   player.clearCarry();
   broadcast = { gameNight: false, started: false, finished: false, flicker: 0, tick: 0, mules: 0, sharks: 0, clockText: "" };
   $("#boxOverlay").style.display = "none";
@@ -138,12 +147,17 @@ function beginNight() {
   player.engine = engine;
   seats.forEach(s => (s.taken = false));
   patrons = []; patronsById = new Map();
-  const spread = [0.4, -3.4, 2.6];
+  // idle spots and the cook line come from the room's description (layout.js
+  // crewHome()/cookSpot()), which validate() has checked are walkable and
+  // reachable — the old literals were the Corner Tap's and put a cook inside
+  // the Fieldhouse's prep counter
+  const room = currentLayout();
   const floorStaff = campaign.staff.filter(s => s.role !== "cook");
-  servers = floorStaff.map((s, i) => new Server(scene, engine, s.name.split(" ")[0], spread[i % 3], s.speed * C.speedMult(campaign, s.role), s.role));
+  servers = floorStaff.map((s, i) => new Server(scene, engine, s.name.split(" ")[0], crewHome(room, i), s.speed * C.speedMult(campaign, s.role), s.role));
   cookMeshes = campaign.staff.filter(s => s.role === "cook").map((s, i) => {
     const m = personMesh(0x8a6a42, true);
-    m.position.set((KITCHEN.x0 + KITCHEN.x1) / 2 - 0.6 + i * 0.5, 0, KITCHEN.z0 + 1.3);
+    const c = cookSpot(room, i);
+    m.position.set(c.x, 0, c.z);
     m.rotation.y = Math.PI;
     scene.add(m);
     return m;
@@ -453,6 +467,11 @@ $("#wipeBtn").addEventListener("click", () => {
 
 // ---- loop ----
 enterDay();
+
+// For tools/browser-check.mjs only: the camera and the day phase, so a check
+// can ask where the spawn and the six rings landed after a rebuild. Nothing
+// in the game reads this.
+window.__fq = { camera, day, player };
 let last = performance.now();
 let hudT = 0;
 renderer.setAnimationLoop(() => {

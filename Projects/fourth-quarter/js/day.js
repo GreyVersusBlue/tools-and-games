@@ -298,16 +298,19 @@ export class DayPhase {
     const c = this.getC();
     const cards = Object.values(C.UPGRADES).map(u => {
       const on = C.owned(c, u.id);
+      const gate = C.upgradeGate(c, u.id); // null, or the venue this needs
       return `<div class="promoCard ${on ? "on" : ""}">
         <b>${u.name}</b>${!on ? ` <span class="hint">$${u.cost}${u.fee ? ` + $${u.fee}/night` : ""}</span>` : ""}
         ${on ? '<span class="pill">installed</span>' : ""}
+        ${gate && !on ? `<span class="pill">needs ${gate.name}</span>` : ""}
         <div class="hint">+ ${u.pro}</div>
         <div class="hint">− ${u.con}</div>
-        ${!on ? `<button class="btn small" data-buyupg="${u.id}" style="margin-top:6px" ${c.cash < u.cost ? "disabled" : ""}>Install</button>` : ""}
+        ${gate && !on ? `<div class="hint">No room for it here — ${gate.name} or bigger.</div>` : ""}
+        ${!on ? `<button class="btn small" data-buyupg="${u.id}" style="margin-top:6px" ${c.cash < u.cost || gate ? "disabled" : ""}>Install</button>` : ""}
       </div>`;
     }).join("");
     this.show("Upgrades",
-      `<p class="hint">Permanent gear — once it's in, it stays in (upkeep and all). Nothing here is tier-locked yet; the whole shop's open.</p>${cards}`,
+      `<p class="hint">Permanent gear — once it's in, it stays in (upkeep and all). Two of these need a bigger room than the Corner Tap; the card says which.</p>${cards}`,
       `<span class="hint">Current nightly upkeep: <b class="money">$${C.upgradeFees(c)}</b> · Cash $${Math.round(c.cash)}</span>`);
   }
 

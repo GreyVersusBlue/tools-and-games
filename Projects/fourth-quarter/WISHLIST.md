@@ -2,17 +2,21 @@
 
 **Status: nothing is open and nothing is broken.** Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
-the suites in CI; **Phase 1 made the room a description** (`js/layout.js`,
-pure, with `test/smoke-layout.mjs`). Three suites are green as of this file —
-`node test/smoke-campaign.mjs` 203 passed, `node test/smoke-engine.mjs` 190
-passed, `node test/smoke-layout.mjs` 55 passed — and the hand-run
-`node tools/browser-check.mjs` 25 passed in real Chromium. Round 3's site-wide
+the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
+with `test/smoke-layout.mjs`); **Phase 2's first increment authored the other
+three rooms** — 30, 44, 58 and 76 seats up the ladder, every one validated
+before a mesh exists. Three suites are green as of this file —
+`node test/smoke-campaign.mjs` 216 passed, `node test/smoke-engine.mjs` 190
+passed, `node test/smoke-layout.mjs` 103 passed — and the hand-run
+`node tools/browser-check.mjs` 58 passed in real Chromium. Round 3's site-wide
 `npm run games` reported 146 checks, 0 failed across three independent runs on
 a real-Chrome environment, including this project's own 45-check Real Estate
-beat. The first open phase is **Phase 2 — Four rooms, one ladder**, named
-model **Claude Opus 5**, a 2+ row. What follows is nine phases across two
-arcs, the conventions three rounds learned the hard way, and the backlog
-nobody has claimed.
+beat. The first open phase is still **Phase 2 — Four rooms, one ladder**,
+named model **Claude Opus 5**, a 2+ row with one increment shipped: what is
+left is Midtown's second room and the flagship's mezzanine, both of which need
+the description format to grow past one rectangle. What follows is nine phases
+across two arcs, the conventions three rounds learned the hard way, and the
+backlog nobody has claimed.
 
 ## What it is
 
@@ -65,21 +69,29 @@ comment saying why). Honest is not built.
 - **`test/smoke-campaign.mjs` (458 lines, 203 assertions)** and
   **`test/smoke-engine.mjs` (155 lines, 190 assertions)** — Node only, no
   runner, no dependency: a `pass`/`fail` counter and an `ok()`.
-- **`js/layout.js` (198)** — a room as data, pure, zero imports. One
-  description per venue tier (`LAYOUTS`, all four the Corner Tap until Phase 2
-  authors the rest): room, kitchen, doorways with their corridor band, windows,
-  bar, tables, solid fit-out blocks, and every stand-point. Derives
-  `seatsFor()`, `collidersFor()` as plain `{min,max}` boxes, `inBounds()`,
-  `walkable()` and `validate()` — the walkability invariant. **`test/
-  smoke-layout.mjs` (55 assertions)** compares the derivation against
-  `test/fixtures/corner-tap.json`, dumped from the old `world.js` in Chromium
-  before this file existed.
-- **`js/world.js` (372)** — the room in meshes, built from a description.
+- **`js/layout.js` (476)** — a room as data, pure, zero imports. One
+  description per venue tier (`LAYOUTS`: the Corner Tap, the Fieldhouse,
+  Midtown, the flagship): room, kitchen, doorways with their corridor band,
+  windows, bar, tables, fit-out blocks by `kind` (prep, stove, crate), TV
+  mounts by wall, pendants, and every stand-point including the camera spawn,
+  the idle-server line and the cook line. Derives `seatsFor()`,
+  `collidersFor()` as plain `{min,max}` boxes, `inBounds()`, `walkable()`,
+  `tvMount()`, `cookSpot()`, `crewHome()`, `unreachable()` (a flood fill from
+  the door on a 0.25 m grid) and `validate()` — the walkability invariant
+  plus reachability, station spacing and wall-mounted TVs. **`test/
+  smoke-layout.mjs` (103 assertions)** compares the Corner Tap's derivation
+  against `test/fixtures/corner-tap.json`, dumped from the old `world.js` in
+  Chromium before this file existed, and pins every room on the ladder.
+- **`js/world.js` (400)** — the room in meshes, built from a description.
   `buildWorld(scene, venueId)` adopts `layoutFor(venueId)`: refills the
   exported `seats[]`/`colliders[]` (`THREE.Box3` at the boundary), aims the
-  exported stand-point `Vector3`s, then draws walls, bar, tables, kitchen,
-  three TVs and two light rigs. `inBounds()` delegates to layout.js; TV,
-  pendant and corkboard positions are still literals here.
+  exported stand-point `Vector3`s, then draws walls, bar, tables, every
+  fit-out block by kind, the TVs where `tvMount()` says, the pendants, and
+  two light rigs whose shadow cameras cover the floor. Floor, ceiling and wall
+  UVs are scaled by room size so one shared texture keeps one texel density
+  across four rooms. `inBounds()` delegates to layout.js. The neon, door
+  frame, corkboard and kitchen shelf are derived from the description's door,
+  promo and kitchen rather than authored.
 - **`js/materials.js` (95)** — nine texture sets keyed by surface, ARM maps
   wired to three material slots each, a 404 falling back to a placeholder
   colour.
@@ -198,14 +210,18 @@ Open and unclaimed. Pull from here for a phase, and add here rather than
 starting a new list.
 
 **The room**
-- `buildWorld(scene, venueId)` builds from `layoutFor(venueId)`, and all four
-  tiers map to the Corner Tap's description (Phase 2 authors the other three).
+- Every room is one rectangle plus a kitchen rectangle behind its north wall.
+  Midtown's "second room off the main floor" and the flagship's mezzanine
+  need `layout.js` to grow a second floor region (and, for the mezzanine, a
+  height), with `inBounds()`, `unreachable()` and `world.js`'s wall drawing
+  following. Phase 2's second increment; it should land after Phase 3, since
+  a wall between the door and a stool is exactly what a straight-line walker
+  cannot handle.
 - Every NPC walks a straight line (`stepToward`), consulting neither
   `colliders` nor `inBounds`. Patrons already clip the four-tops.
-- TV, pendant, corkboard, neon and kitchen-shelf positions are still literals
-  in `world.js`, relative to `ROOM`; they have no collider and no stand-point,
-  so nothing asks about them yet. A tier whose TVs move will want them in the
-  description.
+- The Corner Tap's five probe points in `tools/browser-check.mjs` are the
+  Corner Tap's; the other rooms are checked for seats, colliders, stand-points,
+  spawn and rings but not for `inBounds()` at named coordinates.
 - Nothing is ever occluded: three TVs, five pendants and a key light render
   every frame regardless of where you stand. `velLook` in `patrons.js` is
   written by `stepToward()` and read by nothing.
@@ -331,27 +347,64 @@ the fit-out its `VENUES` blurb already promises. The Fieldhouse's second stove,
 Midtown's three-tap wall and the flagship's three stoves are all written down
 and none of them exist.
 
-- [ ] **Four descriptions.** Corner Tap as-is; the Fieldhouse wider with a
-  second stove and 40-odd seats; Midtown with a real draft wall and a second
-  room off the main floor; the flagship with a mezzanine's worth of tables, a
-  proper kitchen and 70+ seats.
-- [ ] **`VENUES[].seats` becomes derived, or goes away.** It has been a
-  cosmetic 30 four times since round 2's audit. `beginNight()` keeps reading
-  `seats.length` off the built room either way.
-- [ ] **Stations, lights and TVs follow the room.** Six rings per description,
-  `rebuildStations()` actually moving them, a per-room camera spawn instead of
-  `(0, 1.62, 3.4)` hard-coded twice in `main.js`, and the night rig's five
-  pendants and three TV mounts moved out of literals into the description.
-- [ ] **The upgrade table gets its tier gates back.** The 2D build gates
-  Premium Screens and the Craft Tap Wall behind venue tier; the 3D `UPGRADES`
-  has no `tier` field at all. Add it, gate `buyUpgrade()`, say so in the panel.
-- [ ] **The suite pins every room.** Phase 1's invariant across all four, plus:
-  seat count is monotonic up the ladder, every room has a reachable door and
-  kitchen, and no two stations sit within interaction range (1.6 m).
+**Increment 1 shipped (PR #170).** What it did, and what is left:
+
+- [x] **Three of the four descriptions.** `FIELDHOUSE` (20×13 m, 8 stools,
+  9 four-tops, 2 stoves, 4 taps, 44 seats), `MIDTOWN` (24×15 m, 10 stools,
+  12 four-tops, 2 preps and 2 stoves, a 6-tap draft wall, 58 seats) and
+  `FLAGSHIP` (28×18 m, 12 stools, 16 four-tops, 3 preps and 3 stoves, 8
+  taps, 76 seats), each the same plan as the Corner Tap — bar west, kitchen
+  east behind the north wall, door mid-south — so no wall stands between the
+  door and a stool before Phase 3 gives NPCs a path.
+- [ ] **Midtown's second room and the flagship's mezzanine.** Both need the
+  description to hold more than one floor rectangle (the mezzanine a height
+  too), and `inBounds()`, `unreachable()`, the wall drawing and the shadow
+  cameras to follow. Deliberately after Phase 3: a second room is a wall
+  between the door and half the seats, and today's patrons walk through
+  masonry and stop.
+- [x] **`VENUES[].seats` is derived.** `seatsFor(LAYOUTS[id]).length`, so the
+  Real Estate card and `beginNight()`'s cap read the same list. 30, 44, 58,
+  76, asserted monotonic in both suites.
+- [x] **Stations, lights and TVs follow the room.** Six rings per description
+  (Phase 1), `rebuildStations()` moving them (asserted in Chromium for every
+  rung), `stations.spawn` replacing the camera literal, `stations.crewHome`
+  and `stations.cooks` replacing `main.js`'s idle-server spread and cook line
+  (the old cook line put a cook inside the Fieldhouse's prep counter), TVs as
+  `{ wall, at, y }` derived through `tvMount()`, pendants as a list. The
+  neon, door frame, corkboard and kitchen shelf derive from the door, promo
+  station and kitchen. Every fit-out block carries a `kind`, so a room's
+  stove count is its description's and nothing in `world.js`.
+- [x] **The upgrade table has its tier gates back.** `UPGRADES[].tier` (the
+  2D build's: Premium Screens and the Craft Tap Wall need the Fieldhouse),
+  `upgradeGate(c, id)` names the room, `buyUpgrade()` refuses with it, and the
+  panel disables the button and says which room. The gate is on buying, not
+  owning (#187).
+- [x] **The suite pins every room.** Phase 1's invariant across all four,
+  plus a flood fill from the door on a 0.25 m grid that reports every seat
+  approach, station, idle-server spot and cook spot it cannot reach; seat
+  count, stoves, taps and floor area monotonic up the ladder; no two
+  proximity stations within 1.6 m; every TV on a wall that exists, within its
+  span, below the ceiling; every pendant inside the room. *Reintroduced the
+  bug:* a crate across each room's doorway leaves every kitchen point walkable
+  and unreachable, and only the sweep sees it (six problems, `station stove
+  cannot be reached from the door` first); a flagship table walled in on four
+  sides has four unreachable seats; the sweep deleted from `validate()` fails
+  those five assertions and nothing else; the spacing check deleted fails the
+  one assertion that names it; the gate deleted from `buyUpgrade()` fails four
+  in `smoke-campaign.mjs`, the first reading `the gate refuses the sale by
+  name (undefined)`. One break that did *not* fail is on record: a Fieldhouse
+  table at (2.9, −5.0) looked like a doorway block and was not — its box
+  stops 1 cm short of the corridor mouth — and the suite was right to pass.
+- [x] **`tools/browser-check.mjs`** grew to 58 checks: after the flagship
+  warp it warps to the Fieldhouse, Midtown and back to the Corner Tap, and at
+  every rung asserts the seats, colliders and stand-points are the derived
+  ones, the camera sits on `stations.spawn` at 1.62 m, and the six rings sit
+  on their stations. `main.js` exposes `window.__fq = { camera, day, player }`
+  for it and nothing else reads it.
 
 *Leans on:* phase 1's `layout.js`, `campaign.js`'s `VENUES`, `day.js`.
-*Save:* none — `c.venue` already selects the room. *Model:* **Claude Opus 5** —
-content authoring and wiring on a spine phase 1 already tested.
+*Save:* none — `c.venue` already selects the room. *Model:* **Claude Opus 5**
+named; increment 1 worked under Claude Fable 5.1.
 
 ## Phase 3 — Feet that find the door
 

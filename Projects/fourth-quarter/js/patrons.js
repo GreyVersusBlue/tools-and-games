@@ -185,14 +185,14 @@ export class Patron {
 
 // ---------------------------------------------------------------- Server NPC
 export class Server {
-  constructor(scene, engine, name, homeX, speed = SERVER_WALK, role = "server") {
+  constructor(scene, engine, name, home, speed = SERVER_WALK, role = "server") {
     this.engine = engine;
     this.scene = scene;
     this.name = name;
     this.role = role;
     this.speed = speed;
     this.mesh = personMesh(role === "bartender" ? 0x2f4a5a : 0x2f2a24, true);
-    this.home = new THREE.Vector3(homeX, 0, -2.2);
+    this.home = new THREE.Vector3(home.x, 0, home.z); // layout.js crewHome(desc, i)
     this.mesh.position.copy(this.home);
     scene.add(this.mesh);
     this.state = "idle";
