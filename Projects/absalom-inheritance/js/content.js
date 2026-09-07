@@ -172,6 +172,28 @@ function readImmunities(raw, where) {
   return Object.freeze([...raw]);
 }
 
+/**
+ * A build's three prism faces, as hex colours.
+ *
+ * Three and not one, because `render.js` extrudes a top diamond and two side
+ * faces and shading them from a single colour would need a colour space this
+ * renderer does not have. Hex only, and validated here rather than trusted:
+ * a canvas fillStyle silently keeps its previous value when handed nonsense,
+ * so a typo in a pack would draw the *last thing drawn*'s colour and look like
+ * a renderer bug.
+ */
+function readPalette(raw, where) {
+  need(raw && typeof raw === "object", `content: ${where} needs a palette with top, left and right`);
+  const out = {};
+  for (const face of ["top", "left", "right"]) {
+    const v = raw[face];
+    need(typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v),
+      `content: ${where} palette.${face} must be a #rrggbb colour, got ${JSON.stringify(v)}`);
+    out[face] = v;
+  }
+  return Object.freeze(out);
+}
+
 class ContentError extends Error {}
 
 function need(cond, msg) {
@@ -336,6 +358,13 @@ export function loadPack(raw) {
       immunities: readImmunities(p.immunities, `pcOptions "${p.id}"`),
       spellDC: p.spellDC || 10, spellAttack: p.spellAttack || 0,
       slots: p.slots || 0, focus: p.focus || 0,
+      // The three faces render.js extrudes this build's prism from. Required
+      // rather than defaulted, because a default is how two builds come to
+      // look identical on the board: the wizard and the fighter drew the same
+      // blue prism for two whole rounds and nothing said so. A pack that adds
+      // a third build has to decide what it looks like, and a validator saying
+      // so at load is cheaper than noticing it in a screenshot.
+      palette: readPalette(p.palette, `pcOptions "${p.id}"`),
       commands: Object.freeze([...cmdIds]),
     });
   });
@@ -502,7 +531,7 @@ export function loadPack(raw) {
     }
 
     areas[areaId] = Object.freeze({
-      id: areaId, name: a.name || areaId, width, height,
+      id: areaId, name: a.name || areaId, hint: a.hint || "", width, height,
       tiles: Object.freeze(tiles.map(r => Object.freeze(r))),
       pillars: Object.freeze(pillars),
       placements: Object.freeze(placements.map(Object.freeze)),
@@ -521,6 +550,12 @@ export function loadPack(raw) {
       const target = areas[dest.area];
       need(dest.x >= 0 && dest.y >= 0 && dest.x < target.width && dest.y < target.height,
         `content: area "${a.id}" stairs at ${k} land outside area "${dest.area}"`);
+      // A stairway swaps the whole board out, and the hint bar is the one
+      // line on the page that says what to do next. An area you can arrive in
+      // has to carry one, so `transitionTo` never has a fallback branch to
+      // pick between — an area nothing points at needs none, which is why this
+      // is checked here, against the stairways, rather than on every area.
+      need(target.hint, `content: area "${a.id}" stairs at ${k} lead to "${dest.area}", which has no hint for the hint bar`);
     }
   }
 

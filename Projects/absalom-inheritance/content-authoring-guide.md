@@ -76,6 +76,7 @@ a `blurb` for the picker screen, and its own `commands` — which of the pack's 
     "speed": 25, "perception": 5,
     "saves": { "fort": 4, "ref": 5, "will": 6 },
     "spellDC": 17, "spellAttack": 7, "slots": 2, "focus": 1,
+    "palette": { "top": "#3f6ea8", "left": "#26456b", "right": "#315687" },
     "commands": ["strike", "shield", "splash", "breathe", "fang", "potion"]
   },
   {
@@ -84,10 +85,24 @@ a `blurb` for the picker screen, and its own `commands` — which of the pack's 
     "blurb": "...",
     "hp": 18, "ac": 14, "speed": 25, "perception": 6,
     "saves": { "fort": 6, "ref": 4, "will": 1 },
+    "palette": { "top": "#4f8a7a", "left": "#2f5449", "right": "#3d6d60" },
     "commands": ["strike-sword", "potion"]
   }
 ]
 ```
+
+**`palette` is required, and it is three colours because the prism has three faces.**
+`render.js` extrudes a top diamond and two sides, and there is no colour space in this renderer
+to shade one hex into three. Hex `#rrggbb` only, checked at load: a canvas `fillStyle` handed
+nonsense silently keeps the value it had, so a typo would draw the last thing drawn's colour and
+read as a renderer bug rather than as a content one.
+
+There is no default on purpose. A default is how two builds come to look identical, which is
+exactly what happened — the wizard and the fighter drew the same blue prism for two whole rounds
+and nothing in the game or the tests said so. Pick against the board, not for the character: the
+foes are red (`#8a3a46`) and the Keeper is purple (`#6f4a8a`), so a warm PC reads as one of them
+at a glance. The picker draws the same three faces as a swatch on the card, off the same field,
+so the card and the board cannot disagree.
 
 `id` and a unique one across the array, `hp`, `ac` and all three `saves` are required per build.
 `slots` and `focus` default to 0 — a build with no spellcasting simply omits them, the way the
@@ -465,6 +480,7 @@ a session or a test walking the whole adventure should expect to visit them in.
   },
   "sanctum": {
     "name": "The Reliquary",
+    "hint": "The reliquary. The casket is behind the warden.",
     "legend": { "#": { "tile": "wall" }, ".": { "tile": "floor" }, "T": { "tile": "treasure" } },
     "rows": ["######", "#....#", "######"]
   }
@@ -492,10 +508,19 @@ A legend entry may also carry:
   need to exist earlier in the file — validated in a pass after every area is parsed, so a
   stairway is free to point forward.
 
+An area may also carry a **`hint`**: the line the hint bar shows on arrival. A stairway swaps the
+whole board out from under it, and without one the bar goes on describing the room you left.
+**It is required on any area a stairway leads into**, checked against the stairways rather than
+against every area — the start area needs none, because `intro.hint` is the line for the room you
+have not left yet, and the vault (which nothing points at) deliberately has none. That rule is
+what keeps `transitionTo` from needing a fallback branch nothing can reach. A save reopened in
+an area shows that area's hint too, falling back to `intro.hint` for the start area.
+
 Rules the loader enforces, per area: every row the same length, every character in the legend,
 every `lore` and `creature` reference resolvable, at least one creature, a `pc` spawn if (and only
 if) this is the start area. Across areas: `startArea` must name a real one, `areaOrder` may only
-list real ones, and every `stairs` destination must name a real area and land inside its bounds.
+list real ones, and every `stairs` destination must name a real area, land inside its bounds, and
+lead to an area that has a `hint`.
 
 **A creature's saved identity includes its area.** The key game.js and save.js both use is
 `"<areaId>:<creatureId>@<x>,<y>"`, not just `"<creatureId>@<x>,<y>"` — the area has to be in it or

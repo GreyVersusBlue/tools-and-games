@@ -25,11 +25,13 @@ absalom-inheritance/
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              1,038 assertions
+  test/smoke.mjs              1,067 assertions
   test/balance.mjs            Monte Carlo playthroughs; reports per encounter and per area, and exits
                               non-zero out of band, on content nothing reaches, or on drift from the baseline
   test/baseline.json          the numbers the last commit measured, rewritten with --write-baseline
   test/autopilot.mjs          a competent player, shared by both suites
+  test/browser.mjs            the surface, in real Chromium: the hint bar, the log's colours,
+                              the build's own prism, and a keyboard that answers when it refuses
 ```
 
 `rules.js`, `world.js`, `templates.js`, `conditions.js`, `ai.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
@@ -62,6 +64,19 @@ The batch is seeded (`0x5EED + i`), so the same code over the same run count pro
 numbers to the decimal and the comparison is exact rather than statistical. A deliberate change
 to the numbers fails here once; read the drift lines, decide they are what you meant, and rewrite
 the file in the same commit.
+
+There is a third suite, and it is not in CI because it needs a browser:
+
+```
+npm i playwright-core
+node Projects/absalom-inheritance/test/browser.mjs
+```
+
+It serves the site root, boots the real page in real Chromium and asserts what a player sees —
+the hint bar after a stairway, the two new log colours, the chosen build's own prism on the
+canvas, and the sentence the keyboard says when it refuses a command (locked #39). 24 checks,
+about twelve seconds. Nothing in it is a frame-timing assertion, so locked #53 does not apply:
+this game draws on input and sits still between clicks.
 
 To find out *why* a number moved, `--variant name={json}` patches the pack (RFC 7386 merge patch,
 so `null` deletes and an array replaces) and prints the columns side by side:

@@ -30,6 +30,8 @@
       "spellAttack": 7,
       "slots": 2,
       "focus": 1,
+      "palette": { "top": "#3f6ea8", "left": "#26456b", "right": "#315687" },
+      "paletteNote": "The blue prism this game shipped with, kept for the build that was the only build.",
       "commands": ["strike", "shield", "splash", "breathe", "emberburst", "wardpulse", "fang", "potion", "shield-block"]
     },
     {
@@ -46,6 +48,8 @@
       "saves": { "fort": 6, "ref": 4, "will": 1 },
       "slots": 0,
       "focus": 0,
+      "palette": { "top": "#4f8a7a", "left": "#2f5449", "right": "#3d6d60" },
+      "paletteNote": "Steel green, chosen against the board rather than for Kessa: the foes are red and the Keeper is purple, so a warm PC would read as one of them at a glance.",
       "commands": ["strike-sword", "potion", "reactive-strike"],
       "reactionsNote": "No reactions modelled — same restraint as Vesper's Shield Block note. A Fighter's actual selling point (Attack of Opportunity) is exactly the priority-2 gap in the prompt, not something this build fakes with a wizard-shaped workaround."
     }
@@ -386,6 +390,7 @@
     },
     "sanctum": {
       "name": "The Reliquary",
+      "hint": "The reliquary. The casket is behind the warden \u2014 there is no way back up the stair.",
       "legend": {
         "#": { "tile": "wall" },
         ".": { "tile": "floor" },

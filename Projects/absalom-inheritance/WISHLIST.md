@@ -1,21 +1,26 @@
 # The Absalom Inheritance — Feature Wishlist
 
-**Status: Phase 5 — a harness that says which fight killed you — has shipped,
-and arc one is finished.** `balance.mjs` reports one row per encounter and one
-per area now, holds a stored baseline in `test/baseline.json` that it compares
-exactly against every run, counts every reaction and condition by actor, and
-takes a `--variant` merge patch so separating the causes of a balance move is a
-flag rather than a throwaway script. What it says: **the Vault Keeper kills
-13.1% of wizard runs and 20.9% of fighter runs — 70% and 84% of all defeats —
-and the sanctum kills 3.0% and 0.4%.** `test/smoke.mjs` reports **1,038 passed,
-0 failed**, up from 968; nine guard-rails were broken on purpose (#34) and each
-exited 1 at the assertion whose comment claims it, plus one end-to-end break in
-the pack that the band could not see and the baseline named. `test/balance.mjs`
-over 2,000 seeded runs a build: **Wizard 81.4%** and **Fighter 75.1%**,
-unchanged to the decimal, which is what a phase that only measures should look
-like. Both suites run in CI, on `.github/workflows/absalom-ci.yml`. The next
-open phase is Phase 6 — an area should be a file, not a diff — on Claude
-Opus 5, and it opens arc two.
+**Status: Phase 8 — the debts on the surface — has shipped, and so has
+Phase 5.** The hint bar follows the room across a stairway (and a loaded save
+comes back with one at all), a build's three prism faces are required content
+rather than a constant in `render.js`, reactions and conditions have their own
+colours in the log, and a number key that refuses now says which of six reasons
+it refused for. `balance.mjs` reports per encounter and per area, holds a
+`test/baseline.json` it compares exactly against every run, counts every
+reaction and condition by actor, and takes a `--variant` merge patch. What it
+says: **the Vault Keeper kills 13.1% of wizard runs and 20.9% of fighter runs —
+70% and 84% of all defeats — and the sanctum kills 3.0% and 0.4%.**
+`test/smoke.mjs` reports **1,067 passed, 0 failed**, up from 968, and there is a
+third suite: `test/browser.mjs`, **24 checks in real Chromium** against the
+served page. Across the two phases fourteen guard-rails in `smoke.mjs` and
+seven in `browser.mjs` were broken on purpose (#34), each failing at the
+assertion whose comment claims it, plus one end-to-end break in the pack that
+the 45-point band could not see and the baseline named by fight. `test/balance.mjs` over 2,000 seeded runs a build: **Wizard
+81.4%** and **Fighter 75.1%**, unchanged to the decimal — neither phase touched
+the game's numbers. The Node suites run in CI, on
+`.github/workflows/absalom-ci.yml`; the browser one needs playwright-core and is
+run by hand. Arc one is finished and arc two has two phases left. The next open
+one is Phase 6 — an area should be a file, not a diff — on Claude Opus 5.
 
 Round one made an unwinnable vignette winnable and broke the single file into ES
 modules; round two added a second area and caught a stall bug with a Monte Carlo
@@ -285,11 +290,16 @@ new one.
   one boss per area.
 
 **Surface and accessibility**
-- `transitionTo()` writes a narrative line and emits `area` but never calls
-  `setHint()`, so the hint bar still reads what it said in the room you left;
-  `ui.js`'s `area` handler refreshes everything except that one string.
-- The PC draws in the same blue palette regardless of build. No sound, no
-  settings, no difficulty selection.
+- The hint bar follows the room, the log marks reactions and conditions, the
+  heir draws in her build's own colours and the keyboard says why it refuses
+  (Phase 8). What there still is not: **no sound, no settings, no difficulty
+  selection**, and **no visual regression harness** — `test/browser.mjs`
+  asserts DOM and counts pixels of a known colour, which is not the same as
+  noticing that the board looks wrong. A golden-image pipeline is the only
+  thing that would, and this project has no build step to put one in.
+- **`test/browser.mjs` is not in CI**, because it needs playwright-core and a
+  browser on disk. That is the same arrangement Blue Hour has, and it means the
+  surface is checked when somebody remembers to check it.
 
 **Tests and the harness**
 - `balance.mjs` reports per encounter and per area, holds a baseline it
@@ -928,32 +938,79 @@ other than itself; a Rogue debuffs and wants off-guard to mean something.
 fresh run gets, not what a save carries. *Model:* **Claude Opus 5** — content
 tables and one policy branch on mechanisms arc one already built and tested.
 
-## Phase 8 — The debts on the surface
+## Phase 8 — The debts on the surface — SHIPPED
 
-**A stairway swaps the whole board out and the hint bar still describes the room
-you left.**
+**A stairway swapped the whole board out and the hint bar still described the
+room you left.**
 
 Small, real, and each carried forward at least one round because no session was
-already in the file. Batch them so one session pays the cost of opening `ui.js`
+already in the file. Batched so one session paid the cost of opening `ui.js`
 and `render.js` once.
 
-- [ ] **The hint bar on transition.** `transitionTo()` emits `area` and writes a
-      narrative line but never calls `setHint()`; `ui.js`'s `area` handler
-      refreshes the panel, the cursor and the aim and leaves `#hint` alone. One
-      line each, named in every set of notes since round two.
-- [ ] **The PC looks like the build.** `render.js` draws the same blue prism for
-      a Wizard and a Fighter; a palette per build, read from `pcOptions`.
-- [ ] **Reactions and conditions styled in the log**, if phases 1 and 2 left
-      them as plain entries, and **a keyboard pass over every verb the arc
-      added** — the README's claim that the adventure is finishable without a
-      pointer is a promise, and new verbs are how such a promise stops being
-      true.
-- [ ] **The test that pins it.** DOM assertions through `window.__absalom` and
-      dispatched events for the hint bar after a transition and for every new
-      control's keyboard path (locked decision #39).
+- [x] **The hint bar on transition.** `transitionTo()` calls `setHint()` now,
+      before it emits `area` and before `checkTreasure()` — that order matters,
+      because standing on a guarded casket is a more specific thing to say than
+      "you are in the reliquary" and has to be able to win. The line is content:
+      an area carries a `hint`, and `content.js` **requires one on any area a
+      stairway leads into**, checked against the stairways rather than against
+      every area. So there is no fallback branch: an area you can arrive in
+      always has one, and the vault — which nothing points at — deliberately has
+      none, because `intro.hint` is the line for the room you have not left yet.
+- [x] **A loaded save comes back with a hint bar**, which it did not: nothing
+      set one, and the only thing that ever would was the first turn of an
+      encounter. The area's own hint, falling back to `intro.hint` for the start
+      area, which is the one place both halves of that rule are reachable.
+- [x] **The PC looks like the build.** `palette` is a required field on every
+      `pcOptions` entry — three `#rrggbb` faces, validated, no default. A
+      default is how two builds come to look identical, and that is exactly what
+      had happened: `render.js` owned `pcTop/pcLeft/pcRight` where no pack could
+      reach them and the wizard and the fighter drew the same blue prism for two
+      whole rounds. Kessa is steel green, chosen against the board rather than
+      for her: the foes are red and the Keeper purple, so a warm PC reads as one
+      of them at a glance. The picker draws the same three faces as a swatch on
+      the card, off the same field, so the card and the board cannot disagree.
+- [x] **Reactions and conditions styled in the log.** They were plain `info`
+      lines in a column where the dice rolls were the only thing with a colour,
+      which made a Shield Block read as narration. Two log kinds of their own,
+      and `ui.js` maps kind to class off a **table rather than a chain of
+      ternaries** — the chain had an `else` that turned everything unknown into
+      a dice roll, so both new kinds would have arrived wearing the dice
+      column's colour without a line of `ui.js` changing. The condition stripe
+      is the same colour as the marker `render.js` draws over an afflicted
+      creature's head.
+- [x] **A keyboard pass over every verb the arc added.** Every kind already had
+      a path — number keys arm, arrows aim, Enter fires, an emanation goes off
+      on the key because there is nothing to aim — and the gap was the refusal.
+      A pointer sees a greyed button and a cost glyph; a keyboard got silence,
+      the same key doing nothing for six different reasons. `refusal()` turns
+      `commandBlocked()`'s one-word reason into a sentence, exhaustively, and
+      falls through to the reason itself rather than to silence. A reaction's
+      number says a reaction has no number.
+- [x] **The test that pins it.** `test/browser.mjs`, 24 checks in real
+      Chromium against the served page: the swatches against the pack's own
+      colours, the fighter's top face counted on the canvas *and the wizard's
+      counted at zero*, the refusal sentences off `#live`, the hint bar across a
+      real keyboard walk onto the stairway, and the log's classes and computed
+      border colours. Seven of them were broken on purpose (#34) and each failed
+      at the assertion whose comment claims it. On the Node side `smoke.mjs`
+      goes 1,038 → 1,067 and five more were broken the same way.
 
-*Leans on:* `ui.js`, `render.js`, `absalom_inheritance.html`. *Save:* none.
-*Model:* **Claude Opus 5** — surface wiring against ids that already exist.
+**The autosave is why the first version of the browser suite could not seed a
+save.** `main.js` runs a coalesced autosave that marks on every action and
+flushes on `pagehide`, so a state written into the slot while a mark is pending
+is overwritten by the live game's own snapshot on the way out — and it looks
+exactly like a save that was never written. gvb-save's flush is a no-op when
+nothing is dirty, so letting the 1500 ms timer fire first is the whole fix.
+`seedSave()` carries that in a comment, because the next person to write a
+browser test here will hit it.
+
+**One thing the browser found that no unit test would have.** A `page.click` on
+the canvas to "focus it before typing" is itself a move — the click handler is
+`act(x, y)` — so the heir walked off across the vault and the arrow keys aimed
+at a square she was no longer beside. The keydown listener is on `window`; the
+canvas never needed focusing.
+
+*Model:* Claude Opus 5.
 
 ## What this leaves for a later arc
 

@@ -3372,6 +3372,138 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   eq(picked.pc.hp, 18, "at that build's own starting HP");
 }
 
+section("the surface");
+
+/**
+ * Phase 8's half of the surface work, checked where it can be checked under
+ * Node: the engine writes the log kinds and the hint the DOM then styles and
+ * shows. `test/browser.mjs` is the other half, and it asserts the classes and
+ * the hint bar in real Chromium against the real page (locked #39).
+ */
+
+{
+  // The hint bar on transition. A stairway swaps the whole board out and the
+  // bar went on describing the room the heir left — named in every set of
+  // notes since round two.
+  const g = createGame({ content: resolved, rng: makeRng(4242) });
+  g.begin();
+  const before = g.hint;
+  // Straight to the top of the stair, with the gate open and the vault
+  // cleared, because what is under test is the transition rather than the
+  // walk to it.
+  const st = g.snapshot();
+  st.gateOpen = true;
+  st.pc.x = 10; st.pc.y = 3;
+  for (const c of st.creatures) { c.dead = true; c.awake = false; }
+  const g2 = createGame({ content: resolved, rng: makeRng(4243), state: st });
+  const order = [];
+  g2.on(ev => { if (ev.type === "hint" || ev.type === "area") order.push(ev.type); });
+  g2.begin();
+  order.length = 0;
+  const r = g2.walkTo(10, 2);
+  ok(r.ok, "the heir walks onto the stairway");
+  eq(g2.run.areaId, "sanctum", "and the stairway takes her to the sanctum");
+  eq(g2.hint, content.areas.sanctum.hint, "the hint bar reads the room she is standing in, not the one she left");
+  ok(g2.hint !== before, "which is not the line it was showing before the stairs");
+  // Order matters and nothing else pins it: `checkTreasure()` runs after the
+  // transition and sets its own hint when the casket is guarded, so the area's
+  // hint has to be set before it rather than after, or the more specific line
+  // would be the one that got overwritten.
+  eq(order[0], "hint", "the hint is set before the area event goes out");
+  eq(order[1], "area", "and the area event follows it");
+}
+
+{
+  // An area you can arrive in must carry a hint, checked against the
+  // stairways rather than against every area: the vault has none, on purpose,
+  // because nothing in this pack points at it and `intro.hint` is the line for
+  // the room you have not left yet.
+  const raw = JSON.parse(JSON.stringify(rawPack));
+  delete raw.areas.sanctum.hint;
+  const e = throws(() => loadPack(raw), "a stairway into an area with no hint is refused");
+  ok(e && /has no hint/.test(e.message), `and the message says why (${e && e.message})`);
+  ok(!content.areas.vault.hint, "the start area is allowed none, because nothing leads into it");
+}
+
+{
+  // The log kinds. Both were plain `info` lines until this phase, in a column
+  // where the dice rolls were the only thing with a colour.
+  // A whole run rather than one fight: Shield Block needs the heir shielded
+  // and then hit, which one sentinel encounter often does not manage. Seed 77
+  // is the first that fires one.
+  let g = null;
+  for (let seed = 77; seed < 120 && !g; seed++) {
+    const run = createGame({ content: resolved, rng: makeRng(seed) });
+    playThrough(run);
+    if (run.run.stats.reactions > 0) g = run;
+  }
+  ok(g, "found a run where a reaction fired");
+  const kinds = new Set(g.run.log.map(e => e.kind));
+  ok(kinds.has("condition"), "a condition going on writes a log entry of its own kind");
+  ok(kinds.has("reaction"), "and a reaction that fires writes one of its own");
+  const cond = g.run.log.find(e => e.kind === "condition");
+  ok(/ is /.test(cond.text), `and the condition line still reads as a sentence (${cond.text})`);
+  const react = g.run.log.find(e => e.kind === "reaction");
+  ok(react.text.startsWith("↺"), "the reaction line keeps its glyph");
+  // Nothing else changed kind. A `damage` or a `dice` line that had quietly
+  // become a "condition" would style right and read wrong.
+  ok(g.run.log.some(e => e.kind === "dice"), "dice rolls are still dice rolls");
+  ok(g.run.log.some(e => e.kind === "narrative"), "and narration is still narration");
+}
+
+{
+  // A condition that never goes on is a condition line too, and it is the one
+  // a player is most likely to be reading for a rule. Same fixture as the
+  // immunity test in the conditions section above: a Breathe Fire that would
+  // frighten the Keeper, which is a construct.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  p.commands.find(c => c.id === "breathe").inflicts =
+    { condition: "frightened", value: 1, on: "crit-fail" };
+  p.commands.find(c => c.id === "breathe").damage = "1d1";
+  p.creatures["vault-keeper"].saves.ref = -20;
+  const pack = loadPack(p);
+  const g = createGame({
+    content: selectPc(pack, "wizard"), rng: makeRng(3),
+    state: {
+      packId: pack.pack.id, buildId: "wizard", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 15, slots: 2, focus: 1 },
+      creatures: [{
+        key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+        wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0 }, outcome: null,
+    },
+  });
+  g.begin();
+  ok(g.useCommand("breathe", { x: 11, y: 4 }).ok, "Vesper breathes fire at the Keeper");
+  const line = g.run.log.find(e => e.text.includes("immune to mental effects"));
+  ok(line, "the refusal is written out loud");
+  eq(line.kind, "condition", "and it is a condition line, not an unmarked info one");
+}
+
+{
+  // A build's three prism faces are content, and required. Two builds drew the
+  // same blue prism for two whole rounds because the colour lived in render.js
+  // where a pack could not reach it.
+  for (const build of content.pcOptions) {
+    ok(/^#[0-9a-f]{6}$/i.test(build.palette.top), `${build.id} has a top face colour`);
+    ok(/^#[0-9a-f]{6}$/i.test(build.palette.left), `${build.id} has a left face colour`);
+    ok(/^#[0-9a-f]{6}$/i.test(build.palette.right), `${build.id} has a right face colour`);
+  }
+  const tops = content.pcOptions.map(p => p.palette.top);
+  eq(new Set(tops).size, tops.length, "and no two builds share a top face, which is the whole point");
+  const missing = JSON.parse(JSON.stringify(rawPack));
+  delete missing.pcOptions[1].palette;
+  throws(() => loadPack(missing), "a build with no palette is refused");
+  const bad = JSON.parse(JSON.stringify(rawPack));
+  bad.pcOptions[1].palette.left = "steel green";
+  const e = throws(() => loadPack(bad), "and one whose colour is not a hex triple is refused");
+  // A canvas fillStyle handed nonsense keeps the value it had, so an unchecked
+  // colour would draw whatever was drawn last and read as a renderer bug.
+  ok(e && /#rrggbb/.test(e.message), `with a message that says what it wanted (${e && e.message})`);
+}
+
 section("the harness");
 
 /**

@@ -46,7 +46,17 @@ export function pickCharacter(content) {
       const card = document.createElement("div");
       card.className = "pc-card";
       const cmdNames = pc.commands.map(id => content.commandById[id].name).join(" · ");
+      // The swatch is the same three colours render.js extrudes the prism
+      // from, drawn as the same shape it draws: a card that says "the blue
+      // one" and a board that draws green is worse than no swatch at all, so
+      // both read `pc.palette` and neither has a copy of the numbers.
+      const pal = pc.palette;
       card.innerHTML =
+        `<svg class="pc-swatch" viewBox="0 0 34 30" aria-hidden="true">` +
+        `<polygon points="17,0 34,9 17,18 0,9" fill="${pal.top}"/>` +
+        `<polygon points="0,9 17,18 17,30 0,21" fill="${pal.left}"/>` +
+        `<polygon points="34,9 34,21 17,30 17,18" fill="${pal.right}"/>` +
+        `</svg>` +
         `<h3 class="serif">${escapeHtml(pc.name)}</h3>` +
         `<div class="pc-title">${escapeHtml(pc.title)}</div>` +
         `<div class="pc-blurb">${escapeHtml(pc.blurb)}</div>` +
@@ -150,9 +160,20 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
    * Log                                                                *
    * ------------------------------------------------------------------ */
   const logEl = $("log");
+  // Every log kind the engine writes, mapped to the class that styles it.
+  // A table rather than a chain of ternaries because the chain had an else:
+  // anything that was not "narrative" or "info" rendered as a dice roll, so
+  // the two kinds this phase added would have arrived wearing the dice
+  // column's colour without a single line of this file changing.
+  const LOG_CLASS = {
+    narrative: "narrative", info: "", dice: "dice", damage: "dice",
+    reaction: "reaction", condition: "condition",
+  };
   function renderLogEntry(entry) {
     const div = document.createElement("div");
-    div.className = "log-entry " + (entry.kind === "narrative" ? "narrative" : entry.kind === "info" ? "" : "dice");
+    // An unknown kind is a save written by a newer build than this one, and
+    // "unstyled" is the right answer to it — the same answer an `info` gets.
+    div.className = "log-entry " + (LOG_CLASS[entry.kind] ?? "");
     if (entry.kind === "dice" && entry.deg !== undefined) {
       div.innerHTML = `<span>${escape(entry.text)} — <span class="deg-${entry.deg}">${DEG_NAME[entry.deg]}</span></span>` +
         `<span class="math">${escape(entry.math || "")}</span>`;
@@ -559,11 +580,23 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
     if (ev.target.tagName === "BUTTON" && (ev.key === " " || ev.key === "Enter")) return;
 
     // Number keys pick a command.
+    //
+    // A pointer sees a greyed-out button and a cost glyph; a keyboard used to
+    // get silence, which is the same key doing nothing for six different
+    // reasons. Every refusal says which one now — arc one added five verbs and
+    // four of them can be blocked by something a player cannot see from the
+    // hint bar.
     const n = Number(ev.key);
     if (n >= 1 && n <= content.commands.length) {
       ev.preventDefault();
       const cmd = content.commands[n - 1];
-      if (cmd.kind !== "reaction") pickCommand(cmd.id);
+      if (cmd.kind === "reaction") {
+        announce(`${cmd.name} is a reaction — it fires on its own trigger, not on a key.`);
+        return;
+      }
+      const why = game.commandBlocked(cmd.id);
+      if (why) { announce(`${cmd.name}: ${refusal(why, cmd)}`); return; }
+      pickCommand(cmd.id);
       return;
     }
     if (ev.key === "e" || ev.key === "E") { ev.preventDefault(); doEndTurn(); return; }
@@ -624,6 +657,32 @@ export function mountUI({ game, renderer, slot, onAdopt, onReset }) {
 
   const live = $("live");
   function announce(text) { live.textContent = text; }
+
+  /**
+   * `commandBlocked`'s reason string, as a sentence.
+   *
+   * The engine answers in one word on purpose — a reason string is for a
+   * caller to branch on, and "not-your-turn" is not a thing to say to
+   * somebody. This is the one place that turns them into English, and it is
+   * exhaustive over `game.js`'s list: a reason with no sentence here falls
+   * through to itself rather than to silence, which is the failure this
+   * function exists to stop happening again.
+   */
+  function refusal(why, cmd) {
+    switch (why) {
+      case "over": return "the run is over.";
+      case "explore": return "not outside an encounter.";
+      case "not-your-turn": return "not your turn.";
+      case "actions": return `${cmd.cost} action${cmd.cost === 1 ? "" : "s"} needed, ${game.actionsLeft} left.`;
+      case "slots": return "no spell slots left.";
+      case "focus": return "no Focus Points left.";
+      case "supply": return "none left.";
+      case "reaction-spent": return "the reaction is already spent this round.";
+      case "no-shield": return "the disc is down.";
+      case "unknown": return "this build does not have it.";
+      default: return why;
+    }
+  }
 
   /* ------------------------------------------------------------------ *
    * End screen                                                         *

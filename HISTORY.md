@@ -53,7 +53,7 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-A hundred and sixty-seven numbered decisions, accumulated across ten sessions and
+A hundred and seventy-two numbered decisions, accumulated across ten sessions and
 the project phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -1972,6 +1972,55 @@ Two of them have moved since they were written:
    encounter's own occurrences instead makes every fight look equally
    lethal, and no other assertion in the file would have noticed.
    *Source: Absalom Phase 5.*
+
+168. **A field two things must agree on has no default.** A build's three
+   prism faces are required content on every `pcOptions` entry, checked as
+   `#rrggbb` at load, with no fallback in `render.js` and none in the
+   picker. The reason is what a default did: `pcTop/pcLeft/pcRight` lived in
+   the renderer where no pack could reach them, so a Wizard and a Fighter
+   drew the same blue prism for two whole rounds and neither the game nor
+   1,038 assertions said anything. The validation is the cheap half; the
+   expensive half is that a third build now cannot arrive without deciding
+   what it looks like. *Source: Absalom Phase 8.*
+
+169. **A branch nothing can reach is worse than a rule that refuses.** An
+   area's hint bar line is required on any area a stairway *leads into*,
+   checked against the stairways rather than against every area. So
+   `transitionTo()` has no fallback to pick between — an area you can arrive
+   in always has one — and the start area deliberately has none, because
+   `intro.hint` is the line for the room you have not left yet. The
+   alternative, an optional field with a default, would have shipped a
+   default branch nothing in this pack could execute, which is #151's
+   failure wearing a validator's clothes. *Source: Absalom Phase 8.*
+
+170. **A mapping with an `else` is a mapping that will be wrong about the
+   next case.** `ui.js` rendered a log entry as narrative, or as unstyled,
+   or — everything else — as a dice roll. Adding two kinds to the engine
+   would have put both of them in the dice column's colour without a single
+   line of `ui.js` changing, and nothing would have failed. It is a table
+   now, and an unknown kind renders unstyled: a save written by a newer
+   build than the page is the case that actually reaches it.
+   *Source: Absalom Phase 8.*
+
+171. **A refusal is an answer, and a keyboard has to hear it.** A pointer
+   sees a greyed-out button and a cost glyph; a number key that did nothing
+   was the same key doing nothing for six different reasons.
+   `commandBlocked()`'s one-word reason exists for a caller to branch on,
+   so `ui.js` owns the sentences, exhaustively, and falls through to the
+   raw reason rather than to silence when a new one is added. The same
+   argument the engine already made for saying "immune to mental effects"
+   out loud rather than letting a button do nothing.
+   *Source: Absalom Phase 8.*
+
+172. **A browser test that seeds a save has to respect the autosave.** A
+   state written into the slot while a coalesced autosave still has a mark
+   pending is overwritten by the live game's own snapshot when `pagehide`
+   flushes on the way to the reload — and the symptom is a save that looks
+   as though it was never written. gvb-save's flush is a no-op when nothing
+   is dirty, so waiting out the timer before writing is the whole fix. The
+   general form: a test that writes into a page's own storage is racing that
+   page's write path, not standing outside it.
+   *Source: Absalom Phase 8.*
 
 ---
 
