@@ -53,7 +53,7 @@ Two things follow, and neither has been done:
 
 # Locked decisions
 
-A hundred and sixty-three numbered decisions, accumulated across ten sessions and
+A hundred and sixty-seven numbered decisions, accumulated across ten sessions and
 the project phases after them. **Code cites these by number, and this is now the only place
 the numbers resolve.** Each is
 verbatim, with the file and section it came from — those files were deleted in
@@ -1926,6 +1926,52 @@ Two of them have moved since they were written:
    when an invariant is stated in terms of a parameter, sweep a value of
    that parameter the shipped content does not use.
    *Source: Absalom Phase 4.*
+
+164. **A seeded harness gets a golden file, not an error bar.** Every run in
+   `balance.mjs` uses `0x5EED + i`, so the same code over the same run count
+   returns the same numbers to the decimal on every machine. The comparison
+   against `test/baseline.json` is therefore exact: no confidence interval,
+   no widened tolerance, and the check simply does not run when the run
+   count does not match the file's. The tolerances that remain (3 points of
+   win rate, 3 points of an encounter's deaths, 15% of its damage taken)
+   are about what is worth stopping a build for, not about noise. The
+   consequence is intended: a deliberate retune fails here once, and
+   `--write-baseline` in the same commit is how it is answered.
+   *Source: Absalom Phase 5.*
+
+165. **A metric that stops accruing when the run ends cannot measure how
+   lethal the run's ending is.** Damage taken per encounter truncates — a
+   fight that kills you deals nothing further — so the harder an encounter
+   gets, the less of it the mean shows. Bumping the Vault Keeper's fist
+   from 1d6+2 to 1d6+4 cost the fighter 10.4 points of win rate and moved
+   her damage-taken in that fight by 1.8 against a tolerance of 1.9, which
+   is silence; deaths in that fight moved 10.3 points. Both are checked and
+   deaths is the one with teeth. The general form: when a per-episode
+   number is bounded by the episode ending, pair it with one counted over
+   the whole batch. *Source: Absalom Phase 5.*
+
+166. **Measuring a cause is a flag, not a script.** `--variant name={json}`
+   is an RFC 7386 merge patch applied to the raw pack and loaded through
+   the same `loadPack` real content goes through, printing columns side by
+   side. Three phases in a row had written the same thirty-line throwaway —
+   deep-copy the pack, delete one field, re-run the batch — and thrown it
+   away again, which is how #155's "separate the causes of a move" rule
+   was becoming too expensive to obey. Going through `loadPack` matters as
+   much as the patch: a variant that leaves a caster with nothing to cast
+   is refused rather than measured. *Source: Absalom Phase 5.*
+
+167. **The harness needs its own guard-rails, and they need a pure seam to
+   hang off.** Everything in `balance.mjs` that reads a batch —
+   `encounterRows`, `areaRows`, `summarise`, `compareToBaseline`,
+   `mergePatch`, `parseVariants` — takes data and returns data, prints
+   nothing and exits nothing, so `smoke.mjs` can hand each one a batch
+   built by hand. Nine of them were broken on purpose from a green
+   baseline. The one that mattered most was a denominator: an encounter's
+   deaths are a share of *all runs*, so the column sums to the defeat rate
+   and the rows can be read against each other. Dividing by that
+   encounter's own occurrences instead makes every fight look equally
+   lethal, and no other assertion in the file would have noticed.
+   *Source: Absalom Phase 5.*
 
 ---
 

@@ -25,8 +25,10 @@ absalom-inheritance/
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              968 assertions
-  test/balance.mjs            Monte Carlo playthroughs; exits non-zero out of band, or on content nothing reaches
+  test/smoke.mjs              1,038 assertions
+  test/balance.mjs            Monte Carlo playthroughs; reports per encounter and per area, and exits
+                              non-zero out of band, on content nothing reaches, or on drift from the baseline
+  test/baseline.json          the numbers the last commit measured, rewritten with --write-baseline
   test/autopilot.mjs          a competent player, shared by both suites
 ```
 
@@ -43,8 +45,35 @@ node Projects/absalom-inheritance/test/balance.mjs 2000
 ```
 
 Both exit non-zero on failure. `balance.mjs` fails if the adventure stops being winnable, which
-is not hypothetical — the build this replaced could not be finished on any seed. It now runs and
+is not hypothetical — the build this replaced could not be finished on any seed. It runs and
 reports every build in `pcOptions` separately, and fails if any one of them is out of band.
+
+It reports more than a win rate. Every batch prints a row per encounter (how often it happens,
+how long it lasts, what it deals and takes, and what share of all runs died in it), a row per
+area, every reaction and condition by who and which, and one build × area matrix at the end. The
+band is 45 points wide and cannot see a 3-point regression, so the numbers are also frozen in
+`test/baseline.json` and compared every run:
+
+```
+node Projects/absalom-inheritance/test/balance.mjs 2000 --write-baseline
+```
+
+The batch is seeded (`0x5EED + i`), so the same code over the same run count produces the same
+numbers to the decimal and the comparison is exact rather than statistical. A deliberate change
+to the numbers fails here once; read the drift lines, decide they are what you meant, and rewrite
+the file in the same commit.
+
+To find out *why* a number moved, `--variant name={json}` patches the pack (RFC 7386 merge patch,
+so `null` deletes and an array replaces) and prints the columns side by side:
+
+```
+node Projects/absalom-inheritance/test/balance.mjs 2000 \
+  --variant 'brawler-keeper={"creatures":{"vault-keeper":{"ai":"brawler","abilities":null}}}'
+```
+
+That flag exists because every phase that touched balance had written the same thirty-line
+throwaway script — deep-copy the pack, delete one field, re-run the batch — and then thrown it
+away again.
 
 Both also run in CI, on `.github/workflows/absalom-ci.yml`, against any commit that touches this
 folder, the shell page or `assets/js/gvb-save.js`. Before that they ran in a session's terminal

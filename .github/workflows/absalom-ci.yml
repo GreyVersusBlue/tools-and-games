@@ -1,9 +1,9 @@
 # Checks for The Absalom Inheritance. Three rounds and a phase shipped, and
 # each of their pull requests said the same thing: no workflow in this repo
 # path-matches Projects/absalom-inheritance/**, so both suites ran in a
-# session's terminal and nowhere else. That is 968 assertions and 4,000 seeded
-# playthroughs, about forty seconds of Node with no browser and no dependency,
-# and both already exit non-zero on a failure (locked #13).
+# session's terminal and nowhere else. That is 1,038 assertions and 4,000
+# seeded playthroughs, about a minute and a half of Node with no browser and no
+# dependency, and both already exit non-zero on a failure (locked #13).
 #
 # The shell page is in the path list because it carries the CSS and the element
 # ids ui.js reads, and a commit that edits it and not the folder still has to
@@ -14,13 +14,21 @@
 # could not be won on any seed, and it fails if either build leaves the 45-90%
 # band. A dice-math change that quietly makes the vault unwinnable is exactly
 # what it is for, and thirty seconds of CI is a cheap place to find that out.
-# It fails on two more things now: a command in a build's list that the
-# autopilot never casts across the whole batch, and an ability named by a
-# creature that no creature ever uses. Phase 3 added two commands and neither
-# went off on the first run; the phase before it shipped a spell that had never
-# been cast in a single number this project had quoted; and a creature ability
-# has one more way to go silent than either, because no player policy can
-# reach it and it cannot appear in the cast list at all.
+# It fails on three more things now: a command in a build's list that the
+# autopilot never casts across the whole batch, an ability named by a creature
+# that no creature ever uses, and a drift from test/baseline.json. Phase 3
+# added two commands and neither went off on the first run; the phase before it
+# shipped a spell that had never been cast in a single number this project had
+# quoted; and a creature ability has one more way to go silent than either,
+# because no player policy can reach it and it cannot appear in the cast list at
+# all.
+#
+# The baseline is the one that will fail on a change somebody meant. The band
+# is 45 points wide and a 3-point regression walks through it; baseline.json is
+# the numbers the last commit measured, per build and per encounter, and the
+# batch is seeded so the comparison is exact rather than statistical. A red
+# check here names the fight that moved. If it is the change you meant, rerun
+# with --write-baseline and commit the file.
 #
 # This is one project's job, not the site-wide "CI runs almost nothing" row in
 # BACKLOG.md (named rather than numbered, because its rank moves every time
