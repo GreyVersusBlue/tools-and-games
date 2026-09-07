@@ -18,18 +18,19 @@ absalom-inheritance/
   js/world.js                 grid, line of sight and line of effect, A* with rules-legal diagonals
   js/templates.js             cone, burst and emanation, as grid squares. Pure, terrain-free.
   js/conditions.js            the condition catalogue, the two funnels, the tick. Pure, RNG-free.
+  js/ai.js                    one creature's turn, decided. Pure: a view in, a choice out.
   js/content.js               load and validate a pack; refuse a broken one
   js/game.js                  the run: state, turns, the reaction bus, commands. Headless.
   js/save.js                  the gvb-save slot, and repair
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              879 assertions
-  test/balance.mjs            Monte Carlo playthroughs; exits non-zero out of band, or on content nothing casts
+  test/smoke.mjs              968 assertions
+  test/balance.mjs            Monte Carlo playthroughs; exits non-zero out of band, or on content nothing reaches
   test/autopilot.mjs          a competent player, shared by both suites
 ```
 
-`rules.js`, `world.js`, `templates.js`, `conditions.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
+`rules.js`, `world.js`, `templates.js`, `conditions.js`, `ai.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
 That is what makes the two suites possible, and it is why nothing in the rules waits on a timer:
 animation is `ui.js`'s problem, and a throttled or interrupted animation cannot desynchronise the
 game from its own state.
@@ -77,12 +78,14 @@ A reaction is a command of `kind: "reaction"`, with `triggers` and an `effect` o
 `reduce`, both validated as closed vocabularies. Creatures name theirs in a `reactions` array. See
 the content-authoring guide's §4.
 
-**The shipped creatures never provoke, and that is measured, not assumed.** A creature Strides to
-the *cheapest* open square beside you, and an optimal path to the cheapest such square cannot cross
-another one on the way — so a creature enters your reach and never leaves it. Kessa's Reactive
-Strike fires 0 times in 2000 seeded playthroughs; the Keeper's fires against a player, which the
-autopilot is not. `smoke.mjs` asserts the zero over 3,032 planned Strides so the next phase that
-gives a creature a reason to reposition is told the rule has come alive.
+**The shipped creatures never provoke, and that is measured, not assumed — but the reason changed
+in Phase 4.** A creature Strides to the *cheapest* open square beside you, and an optimal path to
+the cheapest such square cannot cross another one on the way, so a creature that is *approaching*
+enters your reach and never leaves it; `smoke.mjs` still asserts that over 3,032 planned Strides.
+What is new is that a creature can now leave on purpose — the Reliquary Warden hits and backs off —
+and it asks the bus first. Facing Kessa it Steps the five feet that triggers nothing rather than
+Striding the twenty that would. So Kessa's Reactive Strike still fires 0 times in 2,000 seeded
+playthroughs, and the zero is now a creature declining to feed it. See "What the creatures do".
 
 Shield Block is the first thing in three rounds to move the two builds toward each other: the
 Wizard's win rate went 53.6% → 64.5% against the Fighter's unchanged 79.8%. The condition
@@ -217,9 +220,58 @@ Warding Pulse costs one action because the turn holds three: Strike, ring, disc.
 there is no room for the disc and Shield goes back to being a thing the policy owns and never uses.
 It rolls a flat 1d4 because 1d4+2 measures 86.7% against a band ceiling of 90%.
 
-Kessa's number does not move at any row, because she has no spells and got none. The two builds are
-now within a point of each other for the first time, and the wizard is no longer the one nearer the
-floor.
+Kessa's number does not move at any row, because she has no spells and got none. That left the two
+builds within a point of each other, which the phase below opened back up from the other side.
+
+## What the creatures do
+
+**`js/ai.js` is `chooseAction(view)` and nothing else.** A view in, a choice out: no world, no RNG,
+no state, nothing it can mutate. Every fact it ranks was measured first by `game.js`'s `situation()`
+— is the heir in reach, does a retreat leg exist, would Striding it provoke, how many squares would
+this template catch and how many of its own are standing in them — and the turn then walks *that*
+plan rather than planning a second time. Two copies of the cone once agreed only because Breathe
+Fire is 15 feet; a policy with its own geometry would be the same bug with a longer fuse.
+
+Three policies, one pack field, `ai`, absent meaning `brawler`:
+
+| | who | what it does |
+| --- | --- | --- |
+| `brawler` | both Shattered Sentinels | if adjacent, Strike; else Stride. The strategy every creature played before this phase, kept as the default so a pack written before it needs no edit. |
+| `skirmisher` | the Reliquary Warden | Strike once, then get out of reach and stay out for the rest of the turn. |
+| `caster` | the Vault Keeper | open with an area ability the heir is standing in and its own escort is not; otherwise punch. |
+
+**A skirmisher only leaves when leaving is free**, and how it leaves depends on who it is facing.
+Against Vesper it Strides the full 20 feet. Against Kessa it Steps 5 — a Step triggers nothing
+(Player Core p.418), and Kessa is holding Reactive Strike. It works that out by asking the reaction
+bus: `provokedBy()` builds the bus's own ctx and calls `reactionBlocked()` for every square of the
+walk, so it cannot drift from what the bus would actually do. With no Step available and a Stride
+that would provoke, it stands and fights.
+
+**The Keeper's Gravel Wave is the engine's first template thrown *at* the heir.** 2 actions, a
+15-foot cone from the creature's square, 2d6 bludgeoning, basic Reflex, off-guard on a critical
+failure, once per encounter. Its DC is **16, written on the command**, not the heir's spell DC of
+17: a construct has none to borrow, and a stupefied Vesper must not make a floor easier to dodge.
+An area command now carries either `spell` or its own `dc`, and refuses to carry both (#157, which
+amends #152). No build lists the command, so no heir can cast it — a creature reads its abilities
+out of the pack's whole command list, exactly as it reads its reactions.
+
+Measured over 2,000 seeded runs per build, with the two causes separated:
+
+| | wizard | fighter |
+| --- | --- | --- |
+| before this phase | 82.8% | 80.8% |
+| the skirmisher alone | 82.8% | 81.2% |
+| the Keeper's cone alone | 81.2% | 74.7% |
+| shipped | **81.4%** | **75.1%** |
+
+**Hit and run measured neutral.** The action the warden spends backing off costs it about what it
+costs her; what it changes is the shape of the fight, not who wins it — the median wizard encounter
+runs 14.3 rounds before and 15.2 after. All of the movement is the cone, and it lands twice as hard
+on Kessa, who has no disc to soak it and a point less of both AC and Reflex.
+
+**Kessa's Reactive Strike still fires zero times in 2,000 runs, and now that is a decision rather
+than an absence.** Nothing could leave her reach before, because `planApproach` cannot walk out of
+one. Something can now, and takes the Step instead.
 
 ## The save
 

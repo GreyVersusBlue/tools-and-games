@@ -24,6 +24,7 @@ import {
   modifiers, persistentIn, tick, describe, repairBag, packBag,
 } from "../js/conditions.js";
 import { createGame } from "../js/game.js";
+import { AI_KINDS, chooseAction } from "../js/ai.js";
 import { makeSaveSlot, makeRepair, validRun, freshRun, SAVE_KEY, SAVE_VERSION } from "../js/save.js";
 import { playThrough, travel, fight, combatPolicy } from "./autopilot.mjs";
 
@@ -260,6 +261,38 @@ throws(() => { const p = clone(); p.creatures["vault-keeper"].reactions = ["nope
   "content: a creature listing an unknown reaction is refused");
 throws(() => { const p = clone(); p.creatures["vault-keeper"].reactions = ["potion"]; loadPack(p); },
   "content: a creature listing a command that is not a reaction is refused");
+
+/* -- what a creature does with its turn, and what it can put on the board -- */
+eq(content.creatures["shattered-sentinel"].ai, "brawler",
+  "a creature that names no ai is a brawler, which is what every creature did before there was a choice");
+eq(JSON.stringify(content.creatures["shattered-sentinel"].abilities), "[]",
+  "and owns no abilities rather than an undefined");
+eq(content.creatures["vault-keeper"].ai, "caster", "the Keeper is the pack's one caster");
+eq(content.creatures["reliquary-warden"].ai, "skirmisher", "and the warden its one skirmisher");
+eq(JSON.stringify(content.creatures["vault-keeper"].abilities), JSON.stringify(["gravel-wave"]),
+  "with one ability, read out of the shared command list the way its reaction is");
+ok(content.pcOptions.every(b => !b.commands.some(id => id === "gravel-wave")),
+  "no build lists Gravel Wave, so no heir can cast it");
+ok(!selectPc(content, "wizard").commandById["gravel-wave"],
+  "and selectPc narrows it out of the command table the heir's own actions read");
+ok(!!content.allCommandById["gravel-wave"],
+  "while the pack's whole command list still carries it, which is where a creature reads its kit");
+throws(() => { const p = clone(); p.creatures["vault-keeper"].ai = "genius"; loadPack(p); },
+  "content: a creature naming an ai this build does not have is refused");
+throws(() => { const p = clone(); p.creatures["vault-keeper"].abilities = ["nope"]; loadPack(p); },
+  "content: a creature listing an unknown ability is refused");
+throws(() => { const p = clone(); p.creatures["vault-keeper"].abilities = ["potion"]; loadPack(p); },
+  "content: a creature ability that is not an area shape is refused — a creature's turn cannot drink");
+throws(() => { const p = clone(); p.creatures["vault-keeper"].abilities = ["breathe"]; loadPack(p); },
+  "content: a creature ability with no dc of its own is refused — a construct has no spell DC to borrow");
+throws(() => { const p = clone(); delete p.creatures["vault-keeper"].abilities; loadPack(p); },
+  "content: a caster with nothing to cast is refused");
+throws(() => { const p = clone(); delete p.commands.find(c => c.id === "gravel-wave").dc; loadPack(p); },
+  "content: an area command that is neither a spell nor carries a dc is refused");
+throws(() => { const p = clone(); p.commands.find(c => c.id === "gravel-wave").spell = true; loadPack(p); },
+  "content: an area command that is a spell and also writes a dc is refused — two DCs and no rule saying which");
+eq(content.allCommandById["gravel-wave"].dc, 16, "Gravel Wave's save is rolled against its own DC 16");
+eq(content.pcById.wizard.spellDC, 17, "and the heir's spell DC is 17, which is the number it is deliberately not");
 {
   // Zero is the one cost a reaction is allowed, and the one every other kind
   // is not: a reaction spends a reaction, which is not one of the three
@@ -917,7 +950,7 @@ const saveLines = g => g.run.log.filter(e => e.kind === "dice" && / — basic /.
   eq((gameSrc.match(/\bconeSquares\(/g) || []).length, 1, "game.js asks for a cone in exactly one place");
   eq((gameSrc.match(/\bburstSquares\(/g) || []).length, 1, "and a burst in one");
   eq((gameSrc.match(/\bemanationSquares\(/g) || []).length, 1, "and an emanation in one");
-  ok(/function templateSquares\(cmd, target\)/.test(gameSrc), "and all three are inside templateSquares");
+  ok(/function templateSquares\(cmd, target, caster\)/.test(gameSrc), "and all three are inside templateSquares");
   // The renderer no longer works a shape out for itself. It knows the word
   // "template" and nothing about feet.
   ok(/game\.templateSquares\(/.test(rend), "render.js asks the engine for the squares it paints");
@@ -980,16 +1013,37 @@ section("reactions");
 }
 
 /**
+ * The Keeper with its ability list taken away: a boss that only punches.
+ *
+ * Most of what keeperFight() is used for below is watching one Basalt Fist
+ * land and reading what it left behind. The shipped Keeper is a caster that
+ * opens with a two-action cone, so on the pack as written those turns hold one
+ * fist instead of three, and every assertion counting fists would be measuring
+ * a different action while still reading as a condition test. Stripping the
+ * ability is the smaller lie: the fist is unchanged, and the tests that are
+ * actually about the ability ask for it with `{ ability: true }`.
+ */
+function fistOnly(p) {
+  delete p.creatures["vault-keeper"].abilities;
+  delete p.creatures["vault-keeper"].ai;
+  return p;
+}
+const fistOnlyPack = loadPack(fistOnly(JSON.parse(JSON.stringify(rawPack))));
+
+/**
  * A scenario builder: the PC standing next to the Vault Keeper, gate open,
  * the Keeper awake, in the upper chamber. Hand-built rather than played into,
  * because the interesting cases are all about which square somebody left and
  * walking there first would spend the round getting into position.
+ *
+ * `ability: true` uses the Keeper the pack ships, cone and all.
  */
-function keeperFight(buildId, seed, pcAt = [10, 4]) {
-  const c = selectPc(content, buildId);
-  const build = content.pcById[buildId];
+function keeperFight(buildId, seed, pcAt = [10, 4], { ability = false } = {}) {
+  const pack = ability ? content : fistOnlyPack;
+  const c = selectPc(pack, buildId);
+  const build = pack.pcById[buildId];
   const state = {
-    packId: content.pack.id, buildId, areaId: "vault",
+    packId: pack.pack.id, buildId, areaId: "vault",
     pc: { x: pcAt[0], y: pcAt[1], hp: build.hp, slots: build.slots, focus: build.focus },
     creatures: [{
       key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
@@ -1096,7 +1150,13 @@ function keeperFight(buildId, seed, pcAt = [10, 4]) {
 
 /* -- incoming-damage: Shield Block, before a hit point moves -------------- */
 {
-  const g = keeperFight("wizard", 1);
+  // Seed 12, and the thing the disc stops is Gravel Wave rather than a fist:
+  // the Keeper is a caster now and opens with the cone, which is bludgeoning
+  // and so is exactly what a force disc is allowed to soak. That the block
+  // fires on a creature's *area* effect and not only on its Strike is the
+  // point worth having here — incoming-damage is one trigger, and a hit point
+  // does not know which shape took it off.
+  const g = keeperFight("wizard", 12, [10, 4], { ability: true });
   eq(g.commandBlocked("shield-block"), "no-shield", "Shield Block is unavailable with no Shield up");
   ok(g.useCommand("shield").ok, "Vesper casts Shield");
   eq(g.commandBlocked("shield-block"), null, "and now the disc can block");
@@ -1111,7 +1171,7 @@ function keeperFight(buildId, seed, pcAt = [10, 4]) {
   ok(r && r.actor !== "pc", "the Keeper takes its turn");
   const fresh = g.run.log.slice(before);
   const blockAt = fresh.findIndex(e => e.text.includes("Shield Block: 5 damage stopped"));
-  ok(blockAt >= 0, "the Keeper's fist rings off the disc");
+  ok(blockAt >= 0, "the Keeper's Gravel Wave rings off the disc");
   eq(g.run.stats.reactions, 1, "one block, not one per attack — the disc is spent doing it");
   const dmgAt = fresh.findIndex((e, i) => i > blockAt && e.kind === "damage");
   ok(dmgAt > blockAt, "the block is logged before the damage, because it happened before it");
@@ -1127,12 +1187,12 @@ function keeperFight(buildId, seed, pcAt = [10, 4]) {
 
 {
   // No Shield, no block: the same fight, the same seed, the full damage.
-  const shielded = keeperFight("wizard", 1);
+  const shielded = keeperFight("wizard", 12, [10, 4], { ability: true });
   shielded.useCommand("shield");
   let a = shielded.endTurn();
   while (a && a.actor !== "pc" && !shielded.run.outcome) a = shielded.advance();
 
-  const bare = keeperFight("wizard", 1);
+  const bare = keeperFight("wizard", 12, [10, 4], { ability: true });
   let b = bare.endTurn();
   while (b && b.actor !== "pc" && !bare.run.outcome) b = bare.advance();
   eq(bare.run.stats.reactions, 0, "with no Shield up nothing blocks");
@@ -1141,15 +1201,19 @@ function keeperFight(buildId, seed, pcAt = [10, 4]) {
 }
 
 {
-  // A disc of force does nothing about heat. Same fight, same seed, the
-  // Keeper's fist retyped as fire — the reaction is offered and refused on the
-  // damage type rather than fired and wasted.
+  // A disc of force does nothing about heat. Same fight, same seed, both of
+  // the Keeper's damage sources retyped as fire — the reaction is offered and
+  // refused on the damage type rather than fired and wasted. Both, because the
+  // Keeper opens with Gravel Wave: retyping the fist alone would leave a
+  // bludgeoning cone in front of it and the disc would block that instead,
+  // which is a passing test measuring nothing.
   const p = JSON.parse(JSON.stringify(rawPack));
   p.creatures["vault-keeper"].damageType = "fire";
+  p.commands.find(c => c.id === "gravel-wave").damageType = "fire";
   const hot = loadPack(p);
   const c = selectPc(hot, "wizard");
   const g = createGame({
-    content: c, rng: makeRng(1),
+    content: c, rng: makeRng(12),
     state: {
       packId: hot.pack.id, buildId: "wizard", areaId: "vault",
       pc: { x: 10, y: 4, hp: 15, slots: 2, focus: 1 },
@@ -1428,14 +1492,377 @@ function keeperFight(buildId, seed, pcAt = [10, 4]) {
     }
   }
   ok(strides > 1500, `the sweep actually planned strides (${strides})`);
+  // Phase 4 was the phase this line was waiting for, and it still holds: a
+  // creature that *approaches* still never leaves her reach, because the
+  // cheapest square beside her cannot be reached through another one. What
+  // changed is that approaching is no longer the only thing a creature does.
+  // The planner that leaves her reach on purpose is planRetreat, swept
+  // immediately below, and the reason the Fighter's Reactive Strike is still
+  // not live in shipped play is not this invariant — it is that a skirmisher
+  // offered the choice takes the Step instead (js/ai.js).
   eq(leaves, 0,
     `no planned Stride leaves the PC's reach (${leaves} of ${strides}) — if this fails, ` +
-    `a creature can now provoke and the Fighter's Reactive Strike is live in shipped play`);
+    `a creature can now provoke on its way in, which planApproach has never done`);
+}
+
+/* -- the two planners that walk the other way ---------------------------- */
+{
+  // planRetreat and stepAway are the movement Phase 4 added, and they are in
+  // world.js beside planApproach for the reason planApproach is there: the
+  // suite has to sweep the planner the engine actually walks. Both contracts
+  // are one sentence, and both sentences are about reach.
+  //
+  // Swept at reach 5 and at reach 10. Ten is not hypothetical padding — the
+  // heir's reach is a pack field, and at 5 feet the "does this square leave
+  // her reach" test in planRetreat is nearly a no-op, because one square
+  // directly away from an adjacent square is already 10 feet off. Sweeping
+  // only the shipped reach would be a guard-rail that cannot tell whether the
+  // line it guards is there (locked #147): the line was deleted on purpose and
+  // the reach-5 half of this sweep stayed green.
+  const counts = {};
+  for (const awayFeet of [5, 10]) {
+    let retreats = 0, endedInReach = 0, overSpeed = 0, steps = 0, stepInReach = 0, stepFar = 0;
+    for (const areaId of content.areaOrder) {
+      const a = content.areas[areaId];
+      const w = makeWorld(a);
+      const opts = { gateOpen: true, occupied: () => false };
+      const open = [];
+      for (let y = 0; y < a.height; y++) {
+        for (let x = 0; x < a.width; x++) if (!w.blocksMove(x, y, true)) open.push({ x, y });
+      }
+      for (const pc of open) {
+        for (const c of open) {
+          // Only from inside reach: backing off is a thing a creature does
+          // when there is something to back off from.
+          if (feetBetween(pc.x, pc.y, c.x, c.y) > awayFeet) continue;
+          if (pc.x === c.x && pc.y === c.y) continue;
+          const leg = w.planRetreat(c, pc, 20, awayFeet, opts);
+          if (leg) {
+            retreats++;
+            const end = leg[leg.length - 1];
+            if (feetBetween(pc.x, pc.y, end.x, end.y) <= awayFeet) endedInReach++;
+            if (end.g > 20) overSpeed++;
+          }
+          const sq = w.stepAway(c, pc, awayFeet, opts);
+          if (sq) {
+            steps++;
+            if (feetBetween(pc.x, pc.y, sq.x, sq.y) <= awayFeet) stepInReach++;
+            if (Math.max(Math.abs(sq.x - c.x), Math.abs(sq.y - c.y)) !== 1) stepFar++;
+          }
+        }
+      }
+    }
+    counts[awayFeet] = { retreats, endedInReach, overSpeed, steps, stepInReach, stepFar };
+  }
+  for (const awayFeet of [5, 10]) {
+    const k = counts[awayFeet];
+    ok(k.retreats > 400, `reach ${awayFeet}: the sweep actually planned retreats (${k.retreats})`);
+    // Broken on purpose by deleting planRetreat's `feetBetween(...) <=
+    // awayFeet` skip: 131 of 6,051 reach-10 retreats then end inside the reach
+    // they spent an action leaving, and the reach-5 half stays green — which
+    // is the whole argument for sweeping two reaches instead of the shipped
+    // one.
+    eq(k.endedInReach, 0,
+      `reach ${awayFeet}: every planned retreat ends outside it (${k.endedInReach} of ${k.retreats} do not)`);
+    // Broken on purpose by cutting the `p[p.length - 1].g <= speed` test: 831
+    // retreats at reach 5 and 2,126 at reach 10 then cost a Speed 20 construct
+    // more than 20 feet in one action.
+    eq(k.overSpeed, 0,
+      `reach ${awayFeet}: and none of them costs more than the creature's Speed (${k.overSpeed})`);
+    ok(k.steps > 400, `reach ${awayFeet}: and actually offered Steps (${k.steps})`);
+    // Broken on purpose the same way, one function down: 127 of 2,704 offered
+    // Steps at reach 5, and 1,810 of 6,310 at reach 10, then land in a square
+    // she can still swing at.
+    eq(k.stepInReach, 0,
+      `reach ${awayFeet}: every offered Step lands outside it (${k.stepInReach} of ${k.steps} do not)`);
+    eq(k.stepFar, 0,
+      `reach ${awayFeet}: and every one of them is one square (${k.stepFar} of ${k.steps} are not)`);
+  }
 }
 
 /* ========================================================================= *
- * 6 — the save slot
+ * 6 — creature policy: the decision, then the turn that executes it
+ *
+ * ai.js first, on hand-built views, because that is the whole reason it is its
+ * own module: what a skirmisher does when the foe holds a reaction is a
+ * question with an answer, and the answer should be readable without building
+ * a fight to ask it. Then the wiring — that the view game.js hands it says
+ * what the board actually says, and that the turn walks the option that was
+ * chosen rather than a second one it planned on the way out.
  * ========================================================================= */
+section("creature policy");
+
+{
+  eq(JSON.stringify(AI_KINDS), JSON.stringify(["brawler", "skirmisher", "caster"]),
+    "three policies, and brawler is the one a pack gets by writing nothing");
+  throws(() => chooseAction({ ai: "genius", actions: 3 }),
+    "ai.js refuses a policy it does not have rather than quietly brawling");
+  eq(chooseAction({ ai: "brawler", actions: 0, adjacent: true }).do, "end",
+    "no actions, no decision — a slowed creature with none left ends its turn");
+}
+
+/* -- brawler: the one-line strategy, unchanged --------------------------- */
+{
+  const view = extra => ({ ai: "brawler", actions: 3, struck: 0, adjacent: false, approach: false, retreat: {}, abilities: [], ...extra });
+  eq(chooseAction(view({ adjacent: true })).do, "strike", "adjacent, so it swings");
+  eq(chooseAction(view({ approach: true })).do, "stride", "not adjacent, so it closes");
+  eq(chooseAction(view({})).do, "end", "boxed in with nothing in reach, so it stops");
+  eq(chooseAction(view({ adjacent: true, struck: 2 })).do, "strike",
+    "and it keeps swinging at a multiple attack penalty, which is what it did before this module existed");
+  // The kit is a caster's to spend. A pack may hand a brawler an ability —
+  // nothing in content.js stops it — and this is the line that says what
+  // happens then, rather than leaving it to whichever branch is read first.
+  eq(chooseAction(view({ adjacent: true, abilities: [{ id: "gravel-wave", cost: 2, caught: 1, allies: 0 }] })).do,
+    "strike", "a brawler holding an ability still punches: casting is the caster's branch");
+}
+
+/* -- skirmisher: hit, then get out, and which way out depends on her ------ */
+{
+  const view = extra => ({
+    ai: "skirmisher", actions: 3, struck: 0, adjacent: true, approach: true,
+    retreat: { stride: true, step: true, strideProvokes: false }, abilities: [], ...extra,
+  });
+  eq(chooseAction(view({})).do, "strike", "it swings first — a skirmisher that never hits is just a coward");
+  eq(chooseAction(view({ struck: 1 })).do, "retreat",
+    "and having hit, it backs off rather than trading a second swing");
+  eq(chooseAction(view({ struck: 1, retreat: { stride: true, step: true, strideProvokes: true } })).do, "step",
+    "against a foe holding Reactive Strike it Steps instead: five feet that triggers nothing");
+  eq(chooseAction(view({ struck: 1, retreat: { stride: false, step: true, strideProvokes: false } })).do, "step",
+    "with no room to Stride it Steps anyway");
+  // The branch the shipped adventure does not reach and the policy still has
+  // to answer: no Step out of reach, and a Stride that hands her the swing.
+  // Standing and fighting is the answer, because backing into the one corner
+  // that costs you a free hit is worse than the hit.
+  eq(chooseAction(view({ struck: 1, retreat: { stride: true, step: false, strideProvokes: true } })).do, "strike",
+    "boxed in against a reaction it stands its ground");
+  eq(chooseAction(view({ struck: 1, retreat: { stride: false, step: false, strideProvokes: false } })).do, "strike",
+    "and boxed in against nothing, it just keeps swinging");
+  eq(chooseAction(view({ struck: 1, adjacent: false })).do, "end",
+    "once it has swung and left, it does not walk back in and undo it");
+  eq(chooseAction(view({ struck: 0, adjacent: false })).do, "stride",
+    "but it closes on a turn it has not swung on yet");
+}
+
+/* -- caster: the shape first, and not through its own escort ------------- */
+{
+  const view = extra => ({
+    ai: "caster", actions: 3, struck: 0, adjacent: true, approach: true,
+    retreat: { stride: true, step: true, strideProvokes: false },
+    abilities: [{ id: "gravel-wave", cost: 2, caught: 1, allies: 0 }], ...extra,
+  });
+  eq(chooseAction(view({})).id, "gravel-wave", "it opens with the shape rather than the fist");
+  eq(chooseAction(view({})).do, "cast", "which is a cast, not a strike");
+  eq(chooseAction(view({ abilities: [] })).do, "strike",
+    "with the ability spent it is a brawler again, and the fist is what is left");
+  eq(chooseAction(view({ actions: 1 })).do, "strike",
+    "a two-action cone is not cast with one action left");
+  eq(chooseAction(view({ abilities: [{ id: "gravel-wave", cost: 2, caught: 0, allies: 0 }] })).do, "strike",
+    "and not at a shape that catches nobody");
+  // The phase's own name, as one assertion: a creature that knows what is
+  // standing in the square it is about to fill with rubble.
+  eq(chooseAction(view({ abilities: [{ id: "gravel-wave", cost: 2, caught: 1, allies: 1 }] })).do, "strike",
+    "and never through one of its own");
+  eq(chooseAction(view({
+    abilities: [
+      { id: "small", cost: 2, caught: 1, allies: 0 },
+      { id: "big", cost: 2, caught: 2, allies: 0 },
+    ],
+  })).id, "big", "given two, it takes the one that catches more");
+  eq(chooseAction(view({ adjacent: false, abilities: [] })).do, "stride",
+    "and a caster with nothing left still closes");
+}
+
+/* -- the view game.js builds, against the board it is built from --------- */
+
+/**
+ * The warden alone in the reliquary with the heir beside it. The sanctum is
+ * the open room in this pack, which is what a creature that wants to back off
+ * twenty feet needs.
+ */
+function wardenFight(buildId, seed, pcAt = [5, 7]) {
+  const c = selectPc(content, buildId);
+  const build = content.pcById[buildId];
+  const g = createGame({
+    content: c, rng: makeRng(seed),
+    state: {
+      packId: content.pack.id, buildId, areaId: "sanctum",
+      pc: { x: pcAt[0], y: pcAt[1], hp: build.hp, slots: build.slots, focus: build.focus },
+      creatures: [{
+        key: "sanctum:reliquary-warden@6,7", area: "sanctum", creature: "reliquary-warden",
+        wakesOn: "notice", x: 6, y: 7, hp: 8, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
+      outcome: null,
+    },
+  });
+  g.begin();
+  return g;
+}
+const WARDEN = "sanctum:reliquary-warden@6,7";
+
+{
+  // The one place in this engine where a creature reads the player's sheet,
+  // and it reads it by asking the reaction bus rather than by knowing what a
+  // Fighter is. Kessa has Reactive Strike; Vesper does not; the same warden on
+  // the same square gets a different answer to the same question.
+  //
+  // Broken on purpose by making provokedBy() return false unconditionally:
+  // the fighter's `strideProvokes` goes false, the assertion below fails, and
+  // so does the Step the turn takes because of it.
+  const vs = build => wardenFight(build, 1).situationOf(WARDEN);
+  eq(vs("fighter").ai, "skirmisher", "the warden's policy comes off the pack");
+  eq(vs("fighter").adjacent, true, "it is in reach of the heir");
+  eq(vs("fighter").retreat.strideProvokes, true,
+    "and Striding out of Kessa's reach would hand her a Reactive Strike");
+  eq(vs("wizard").retreat.strideProvokes, false,
+    "while Vesper has no reaction that answers a creature leaving her reach");
+  eq(vs("wizard").retreat.stride, true, "both of them leave it room to Stride");
+  eq(vs("wizard").retreat.step, true, "and room to Step");
+}
+
+{
+  // Against Kessa: swing, then Step. The reaction never fires, and that is the
+  // assertion — a creature that avoided the swing and a creature that never
+  // had one offered look identical from the win rate, and only the first one
+  // is a policy.
+  const g = wardenFight("fighter", 1);
+  const w = g.byKey(WARDEN);
+  const before = g.run.log.length;
+  g.endTurn();
+  const fresh = g.run.log.slice(before).map(e => e.text);
+  ok(fresh.some(t => t.includes("Cinder Fist")), "the warden swings");
+  ok(fresh.some(t => t === "Reliquary Warden Steps 5 ft."), "and Steps away rather than Striding");
+  eq(g.run.stats.reactions, 0, "which triggers nothing: a Step is the five feet that does not");
+  ok(feetBetween(w.x, w.y, g.run.pc.x, g.run.pc.y) > 5,
+    "and it is out of her reach at the end of it, which is what the action bought");
+  eq(g.lastTrigger("move-out-of-reach"), null,
+    "the move trigger was never even offered — a Step does not reach the bus at all");
+}
+
+{
+  // Against Vesper: the same warden, the same square, twenty feet instead of
+  // five, because nothing is going to punish it for the distance.
+  const g = wardenFight("wizard", 1);
+  const w = g.byKey(WARDEN);
+  g.endTurn();
+  ok(g.run.log.some(e => e.text === "Reliquary Warden backs off 20 ft."),
+    "it Strides the whole retreat rather than shuffling five feet");
+  ok(feetBetween(w.x, w.y, g.run.pc.x, g.run.pc.y) >= 20,
+    "and ends the turn a Stride away from her");
+}
+
+{
+  // A brawler is what it always was. Same builder, the warden retyped, and the
+  // creature closes and swings for as long as it has actions.
+  const p = JSON.parse(JSON.stringify(rawPack));
+  delete p.creatures["reliquary-warden"].ai;
+  const plain = loadPack(p);
+  const g = createGame({
+    content: selectPc(plain, "fighter"), rng: makeRng(1),
+    state: {
+      packId: plain.pack.id, buildId: "fighter", areaId: "sanctum",
+      pc: { x: 5, y: 7, hp: 18, slots: 0, focus: 0 },
+      creatures: [{
+        key: WARDEN, area: "sanctum", creature: "reliquary-warden",
+        wakesOn: "notice", x: 6, y: 7, hp: 8, awake: true, dead: false,
+      }],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
+      outcome: null,
+    },
+  });
+  g.begin();
+  const before = g.run.log.length;
+  g.endTurn();
+  const fresh = g.run.log.slice(before).map(e => e.text);
+  eq(fresh.filter(t => t.includes("Cinder Fist")).length, 3, "a brawler spends all three actions swinging");
+  ok(!fresh.some(t => t.includes("Steps") || t.includes("backs off")), "and goes nowhere");
+  eq(g.byKey(WARDEN).x, 6, "it is standing where it started");
+}
+
+/* -- the Keeper's kit, resolved from the other side of the board --------- */
+{
+  // The cone comes out of the creature, not the heir, and the heir is the one
+  // rolling the save. Everything below is a first for this engine: a template
+  // whose origin is a creature, a basic save the PC makes, and a DC that is
+  // not hers.
+  //
+  // Broken on purpose by dropping the `caster` argument in templateSquares'
+  // `const from = caster || run.pc` — the cone then comes out of the heir's
+  // own square, aimed at herself, and catches nobody.
+  const g = keeperFight("wizard", 12, [10, 4], { ability: true });
+  const view = g.situationOf("vault:vault-keeper@11,1");
+  eq(view.ai, "caster", "the Keeper is a caster");
+  eq(view.abilities.length, 1, "with one ability left to spend");
+  eq(view.abilities[0].caught, 1, "and the heir is standing in the shape it would make");
+  eq(view.abilities[0].allies, 0, "with nothing of its own in it");
+  eq(g.run.stats.abilities, 0, "nothing has gone off yet");
+
+  const before = g.run.log.length;
+  g.endTurn();
+  const fresh = g.run.log.slice(before);
+  ok(fresh.some(e => e.text.includes("Gravel Wave")), "it opens with Gravel Wave");
+  eq(g.run.stats.abilities, 1, "counted once");
+  const save = fresh.find(e => e.kind === "dice" && e.text.includes("basic Reflex"));
+  ok(!!save, "the heir rolls a basic Reflex save, which nothing in this engine had ever asked her for");
+  ok(save.text.includes("DC 16"), "against the ability's own DC 16");
+  eq(g.spellDC, 17, "and not against her spell DC of 17, which is the number it would have borrowed");
+  ok(save.math.includes("+5"), "rolled with her own Reflex bonus");
+  // Once per encounter, and the budget is the turn's rather than the save's.
+  eq(g.situationOf("vault:vault-keeper@11,1").abilities.length, 0, "the ability is spent");
+  let r = g.endTurn();
+  let guard = 0;
+  while (r && !g.run.outcome && ++guard < 12) r = r.actor === "pc" ? g.endTurn() : g.advance();
+  eq(g.run.stats.abilities, 1, "and it does not go off a second time in the same encounter");
+  ok(g.run.log.filter(e => e.text.includes("Basalt Fist")).length > 1,
+    "while the fist keeps swinging, which is what a spent caster is");
+}
+
+{
+  // A cone through its own escort, refused. A sentinel dragged up into the
+  // Keeper's chamber and stood in the shape: the ability is still there, still
+  // affordable, and still catches the heir, and the Keeper punches instead.
+  //
+  // This is the assertion the phase is named for, and it is the pair to the
+  // pure one above: that one says the policy refuses, this one says the
+  // measurement it refuses on is the board's and not a guess.
+  const c = selectPc(content, "wizard");
+  const g = createGame({
+    content: c, rng: makeRng(12),
+    state: {
+      packId: content.pack.id, buildId: "wizard", areaId: "vault",
+      pc: { x: 10, y: 4, hp: 15, slots: 2, focus: 1 },
+      creatures: [
+        {
+          key: "vault:vault-keeper@11,1", area: "vault", creature: "vault-keeper",
+          wakesOn: "gate-opened", x: 11, y: 4, hp: 18, awake: true, dead: false,
+        },
+        // (10,3) is inside the westward cone from (11,4) and beside the heir
+        // at (10,4): in the shape, and not the thing the shape is for.
+        {
+          key: "vault:shattered-sentinel@7,8", area: "vault", creature: "shattered-sentinel",
+          wakesOn: "notice", x: 10, y: 3, hp: 11, awake: true, dead: false,
+        },
+      ],
+      loreRead: [], gateOpen: true, fog: {}, inventory: [], log: [],
+      stats: { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0 },
+      outcome: null,
+    },
+  });
+  g.begin();
+  const view = g.situationOf("vault:vault-keeper@11,1");
+  eq(view.abilities[0].caught, 1, "the heir is still in the cone");
+  eq(view.abilities[0].allies, 1, "and so is the sentinel between them");
+  eq(chooseAction(view).do, "strike", "so the Keeper does not cast it");
+  // Play the whole encounter out rather than one turn: the sentinel is between
+  // them for as long as it lives, and the claim is that the wave waits.
+  let r = g.currentActor === "pc" ? g.endTurn() : g.advance();
+  let guard = 0;
+  while (r && !g.run.outcome && ++guard < 6) r = r.actor === "pc" ? g.endTurn() : g.advance();
+  eq(g.run.stats.abilities, 0, "and does not, for as long as its own is standing in it");
+}
+
 /* ========================================================================= *
  * 7 — conditions
  *
@@ -1961,7 +2388,7 @@ section("conditions");
   // And it fires. The Keeper's crit is rare, so this is a pack whose fist
   // frightens on every hit — the same code path, reached without begging a
   // seed for a natural 20.
-  const p = JSON.parse(JSON.stringify(rawPack));
+  const p = fistOnly(JSON.parse(JSON.stringify(rawPack)));
   p.creatures["vault-keeper"].inflicts = { condition: "frightened", value: 1, on: "hit" };
   p.creatures["vault-keeper"].immunities = [];
   const jumpy = loadPack(p);
@@ -2195,7 +2622,7 @@ section("conditions");
 {
   // A pack whose sentinel fist knocks the heir off-guard on every hit, so the
   // path is reached without begging a seed for a natural 20.
-  const p = JSON.parse(JSON.stringify(rawPack));
+  const p = fistOnly(JSON.parse(JSON.stringify(rawPack)));
   p.creatures["vault-keeper"].inflicts = { condition: "off-guard", value: 1, on: "hit" };
   const pack = loadPack(p);
   const g = createGame({
@@ -2385,7 +2812,7 @@ section("conditions");
   // The Keeper's fist leaves two things behind, and a loop that applied only
   // the first would look exactly like a Keeper that frightens. Broken on
   // purpose by `return applyCondition(...)` inside applyInflict's loop.
-  const p = JSON.parse(JSON.stringify(rawPack));
+  const p = fistOnly(JSON.parse(JSON.stringify(rawPack)));
   p.creatures["vault-keeper"].inflicts = [
     { condition: "frightened", value: 1, on: "hit" },
     { condition: "stupefied", value: 2, on: "hit" },
@@ -2735,6 +3162,15 @@ ok(!validRun({ pc: { hp: 5, x: 1, y: 1 }, creatures: [] }), "inventory must be p
   {
     const s = base(); delete s.stats;
     eq(repair(s).stats.rounds, 0, "repair: missing stats are rebuilt");
+  }
+  {
+    // `abilities` joined the counters this phase, so every save written before
+    // it has a stats block with five keys and not six. `++` on the missing one
+    // is NaN, and a report that prints NaN reads as a crash somewhere else
+    // entirely — additive means the old shape still loads (#37).
+    const s = base(); s.stats = { rounds: 3, dealt: 9, taken: 4, woken: 1, slain: 1, reactions: 2 };
+    eq(repair(s).stats.abilities, 0, "repair: a save from before creature abilities counts zero of them");
+    eq(repair(s).stats.reactions, 2, "and keeps the counters it does carry");
   }
   {
     const s = base(); delete s.fog;

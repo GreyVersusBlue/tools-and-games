@@ -186,6 +186,22 @@
       "note": "Interact. The potion is treated as already drawn, so drawing it does not cost a second action."
     },
     {
+      "id": "gravel-wave",
+      "name": "Gravel Wave",
+      "flavour": "vault keeper",
+      "cost": 2,
+      "costGlyph": "\u25c6\u25c6",
+      "kind": "cone",
+      "coneFeet": 15,
+      "dc": 16,
+      "damage": "2d6",
+      "damageType": "bludgeoning",
+      "save": "ref",
+      "inflicts": { "condition": "off-guard", "value": 1, "on": "crit-fail" },
+      "hint": "Gravel Wave (\u25c6\u25c6): the Keeper drives a fist into the floor and fifteen feet of it comes up at you.",
+      "note": "Nobody's build lists this, so no heir can cast it: it is in the shared command list because a creature's abilities are looked up there, the same way its reactions are. It carries its own DC 16 \u2014 a moderate DC for a level-0 creature \u2014 rather than borrowing the heir's spell DC, which is what stops a stupefied Vesper from making a construct's floor easier to dodge. Once per encounter, and 2 actions of a 3-action turn, so the round it goes off is a round with one Basalt Fist in it instead of two. Measured against the alternative rather than guessed: two Fists at +4 into AC 15 average about 4.1 damage, and 2d6 basic Reflex at DC 16 averages about 3.9 with no attack roll to miss with, so the wave is the opener and the second Fist is what it displaces. A critical failure leaves the heir off-guard, which is the sentinels' own crit rider arriving a room early and from the floor rather than the fist."
+    },
+    {
       "id": "reactive-strike",
       "name": "Reactive Strike",
       "flavour": "reaction",
@@ -256,6 +272,8 @@
         { "condition": "stupefied", "value": 1, "on": "crit" }
       ],
       "reactions": ["reactive-strike"],
+      "abilities": ["gravel-wave"],
+      "ai": "caster",
       "deathLine": "The Keeper kneels, and does not rise. Gold dust settles over the casket.",
       "wakeLine": "The shape beside the casket was never rubble. {name} stands, and the chamber narrows.",
       "note": "A critical Basalt Fist leaves the heir frightened 1 and stupefied 1 — the wake line already says the chamber narrows, and this is that sentence with a number on it. Frightened 1 is a −1 status penalty to every check and to AC, wearing off at the end of the heir's own turn, so it costs one turn of arithmetic rather than a spiral. Stupefied 1 is −1 to her spell DC and a DC 6 flat check on every spell she casts until the end of her next turn, which is the only place in this engine a condition costs a caster the spell rather than a number. It costs Kessa nothing at all, because she casts nothing, and that is the clearest reading this pack has of how differently the two builds feel one fist. The statline the two sentinels originally shipped with (17 HP, AC 14, fist +6 for 1d6+2), promoted to the boss it was always sized for: 15 XP against a solo level-1 PC, and the only fight the PC arrives at with a full spell list, because opening the gate restores them. The number was never wrong; it was pointed at the wrong fight, twice over."
@@ -274,6 +292,7 @@
       "damageType": "fire",
       "immunities": ["mental"],
       "inflicts": { "condition": "persistent-fire", "value": 1, "on": "crit" },
+      "ai": "skirmisher",
       "deathLine": "{name} folds at the joints and does not rise again.",
       "wakeLine": "A last construct rises between you and the reliquary — {name}.",
       "sleepLine": "{name} loses you in the dark and settles back to stone.",

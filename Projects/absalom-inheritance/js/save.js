@@ -195,7 +195,7 @@ export function makeRepair(content) {
     // `reactions` joined this list in the interrupt-point phase. A save
     // written before it has no such key and comes through here as 0 —
     // additive, repaired on every load, no version bump (#37).
-    s.stats = { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, ...(s.stats || {}) };
+    s.stats = { rounds: 0, dealt: 0, taken: 0, woken: 0, slain: 0, reactions: 0, abilities: 0, ...(s.stats || {}) };
     if (!["victory", "defeat", null, undefined].includes(s.outcome)) s.outcome = null;
     s.outcome ??= null;
     // Dead is dead: a save at 0 HP with no outcome would boot into a playable

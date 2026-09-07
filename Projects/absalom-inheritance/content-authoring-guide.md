@@ -174,9 +174,10 @@ else **throws at load** rather than rolling against `undefined`.
 `world.reachableFrom` cuts them to what the room lets through, and everything standing in what is
 left rolls one basic save against one DC, read once. They differ only in where the shape starts.
 
-* **`cone`** starts at the heir and points at the square you clicked. The click snaps to one of the
-  eight grid directions, so a cone is a quarter circle on the grid rather than a wedge that rotates
-  with the pointer. Her own square is never in it.
+* **`cone`** starts at whoever is casting it and points at the square that was clicked (or, for a
+  creature, at the heir). The aim snaps to one of the eight grid directions, so a cone is a quarter
+  circle on the grid rather than a wedge that rotates with the pointer. The caster's own square is
+  never in it.
 * **`burst`** is placed. `rangeFeet` is how far the centre can be from her and `burstFeet` is the
   radius; the centre needs line of effect, and a placement that fails either is refused without
   spending anything.
@@ -185,9 +186,12 @@ left rolls one basic save against one DC, read once. They differ only in where t
 
 Three things to know before writing one:
 
-* **An area command must be `spell: true`.** Its save rolls against the heir's spell DC, which is
-  the only spell DC the engine has, and `stupefied` moves it. A thrown flask that borrowed that
-  number would be quietly wrong in both directions, so a non-spell area command **throws at load**.
+* **An area command carries either `spell: true` or its own `dc`, and never both.** A spell's save
+  rolls against the heir's spell DC, and `stupefied` moves it; a command with a `dc` writes its own
+  number down, which is what a creature's ability does, because a construct has no spell DC to
+  borrow. A command with neither would borrow one it has no claim to and a command with both would
+  have two and no rule saying which; **both throw at load**. (This was "must be a spell" until
+  creature abilities existed — #157 amends #152.)
 * **The engine measures square centres**, where the book measures a burst from a corner and an
   emanation from the edge of your space. Knowing departure; see the README's "Areas".
 * **A 10-foot emanation and a 10-foot burst on the same square are the same set of squares**, because
@@ -202,7 +206,9 @@ a cone rather than sitting inside one.
 the autopilot cast each non-reaction command across the whole batch, and exits non-zero if any of
 them reads zero. Write a command the adventure has no room for and the number says so. This is not
 hypothetical: Phase 2 shipped a spell that had never been cast in any figure this project quoted,
-and Phase 3 added two more and reached neither on its first run.
+and Phase 3 added two more and reached neither on its first run. **The same check counts creature
+abilities**, which cannot appear in that list because no build lists them — an ability named by any
+creature in the pack and never used across the batch fails the run the same way.
 
 ### Conditions a command leaves behind, and takes off
 
@@ -318,6 +324,8 @@ Keyed by id.
   "immunities": ["mental"],
   "inflicts": { "condition": "off-guard", "value": 1, "on": "crit" },
   "reactions": [],
+  "abilities": [],
+  "ai": "brawler",
   "deathLine": "{name} shatters into gravel and gold dust.",
   "wakeLine": "Rubble shudders upright into a humanoid shape — {name} still keeps its post.",
   "sleepLine": "{name} loses you in the dark. The rubble settles, and reknits."
@@ -352,11 +360,38 @@ ships with `["reactive-strike"]`, which is what makes walking away from it a dec
 
 ### Creature AI
 
-There is one behaviour and it is not configurable: Stride toward the nearest open square beside
-the PC, Strike when adjacent, three actions a turn, MAP applied. The turn is a generator now, so
-a Stride is resolved square by square and can be interrupted between two of them; what it
-chooses is unchanged. If you want something that casts, retreats or calls for help, that is
-engine work in `creatureTurn`, not a content field.
+`ai` is one of three, and absent means `"brawler"` — the behaviour every creature had before this
+field existed, so an older pack needs no edit.
+
+| `ai` | the turn it takes |
+| --- | --- |
+| `"brawler"` | Stride toward the nearest open square beside the PC, Strike when adjacent, three actions a turn, MAP applied. |
+| `"skirmisher"` | Strike once, then leave her reach and stay out of it for the rest of the turn: a Stride when that provokes nothing, a Step when it would, and neither when it is cornered against a foe holding a reaction. |
+| `"caster"` | Open with an ability whose shape catches the PC and none of its own, then behave like a brawler with what is left. |
+
+The decision itself is `js/ai.js`'s `chooseAction(view)`, which is pure: it ranks measurements
+`game.js` has already made and hands back one option, and the turn walks that option rather than
+re-planning. If you want something the three do not do — shooting, focusing a wounded target,
+calling for help, holding an ability for a better turn — that is a new policy in `ai.js` plus a
+name in `AI_KINDS`, not a new field here.
+
+`abilities` is an array of command ids this creature can put on the board, **once each per
+encounter**, and the rules for one are stricter than for a reaction:
+
+- it must be an area kind (`cone`, `burst` or `emanation`) — a creature's turn has no slots, no
+  focus pool and no inventory, so any other kind would validate here and be unreachable there;
+- it must carry its own `dc`, because a construct has no spell DC to borrow and the heir's moves
+  when she is stupefied;
+- the lookup is against the pack's whole `commands` list, like `reactions`, so the command can be
+  one no build lists. `gravel-wave` is exactly that: it is in `commands` and in nobody's
+  `commands` array, so no heir can cast it.
+
+An `ai: "caster"` with an empty `abilities` is refused at load. A `brawler` holding an ability is
+allowed and simply never uses it — which `balance.mjs` will then fail on, because an ability no
+creature ever fires is content nothing reaches (#162).
+
+The spend is runtime-only, beside the reaction budget, and never reaches the save: it belongs to
+one encounter, and a reload re-rolls initiative rather than resuming the round it was in.
 
 ---
 

@@ -50,7 +50,7 @@ export function runBatch(content, runs, { verbose = false } = {}) {
     try {
       r = playThrough(game);
     } catch (e) {
-      r = { outcome: "error:" + e.message, hp: 0, rounds: 0, dealt: 0, taken: 0, slain: 0, woken: 0, reactions: 0, lore: 0, potions: 0, slots: 0, focus: 0, gateOpen: false, cast: {} };
+      r = { outcome: "error:" + e.message, hp: 0, rounds: 0, dealt: 0, taken: 0, slain: 0, woken: 0, reactions: 0, lore: 0, potions: 0, slots: 0, focus: 0, gateOpen: false, cast: {}, abilities: {} };
     }
     r.seed = 0x5EED + i;
     results.push(r);
@@ -118,11 +118,30 @@ function report(content, results) {
     if (!k) uncast.push(cmd.name);
     console.log(`    ${cmd.name.padEnd(22)} ${String(k).padStart(6)}${k ? "" : "   ← never cast"}`);
   }
+  // The same check, pointed at the other side of the board. A creature's
+  // ability is content no player policy can reach, so it can never appear in
+  // the list above however long the run goes, and it has one more way to go
+  // silent than a spell does: the pack can validate it, the engine can resolve
+  // it, and the creature's policy can still never choose it. Nothing in the
+  // report would say so. The three casualties on record here all took a whole
+  // phase to notice, and every one of them was a number nobody was printing.
+  const fired = {};
+  for (const r of results) for (const [id, k] of Object.entries(r.abilities || {})) fired[id] = (fired[id] || 0) + k;
+  const owned = [...new Set(Object.values(content.creatures).flatMap(c => c.abilities))];
+  const unused = [];
+  if (owned.length) {
+    console.log("  creature abilities used");
+    for (const id of owned) {
+      const k = fired[id] || 0;
+      if (!k) unused.push(content.allCommandById[id].name);
+      console.log(`    ${content.allCommandById[id].name.padEnd(22)} ${String(k).padStart(6)}${k ? "" : "   ← never used"}`);
+    }
+  }
   if (wins.length) {
     console.log(`  on a win: HP left    mean ${mean(wins, r => r.hp).toFixed(1)} of ${content.pc.hp}, median ${median(wins.map(r => r.hp))}`);
     console.log(`            potions left mean ${mean(wins, r => r.potions).toFixed(2)}`);
   }
-  return { rate: wins.length / n, uncast };
+  return { rate: wins.length / n, uncast: [...uncast, ...unused] };
 }
 
 const invokedDirectly = process.argv[1] &&
