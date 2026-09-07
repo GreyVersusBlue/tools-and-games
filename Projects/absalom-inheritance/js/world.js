@@ -5,7 +5,77 @@
 
 import { feetBetween } from "./rules.js";
 
-export const TILE = { FLOOR: 0, WALL: 1, GATE: 2, PILLAR: 3, TREASURE: 4, STAIRS: 5 };
+/**
+ * Every kind of square this engine knows, in one table.
+ *
+ * `TILE` was a bare enum here and `content.js` kept a second list mapping the
+ * legend's names onto it, and `save.js` a third copy of "wall or pillar, and
+ * the gate until it is open" written out longhand. Three lists, one fact: a
+ * kind added to one and missed in another is a pack that either refuses to
+ * load or loads with a hole in a wall. All three read this now.
+ *
+ * The three answers default to `true`: a kind that declares nothing is solid.
+ * That direction is deliberate. A new kind whose author forgot to say what it
+ * blocks becomes a square nobody can walk into, which is visible in the first
+ * ten seconds of play. The other default is a wall you walk through and see
+ * through, which reads as a rendering bug and gets found much later. Opt out
+ * of solidity, never into it.
+ *
+ * `"unless-open"` is the one conditional answer, and it is the gate: solid
+ * until the run's gate is open. There is exactly one thing in this engine that
+ * opens, and a registry inventing a general mechanism for a second would be
+ * offering content authors something no pack can reach.
+ *
+ * Order is the tile id. It is not written into any save — a save carries
+ * coordinates and a fog bitfield, never a tile — but `render.js` and `ui.js`
+ * still switch on `TILE.WALL` and friends, so a kind goes on the end.
+ */
+const SOLID = Object.freeze({ blocksMove: true, blocksSight: true, blocksEffect: true });
+const OPEN = Object.freeze({ blocksMove: false, blocksSight: false, blocksEffect: false });
+
+export const TILE_KINDS = Object.freeze([
+  { name: "floor", ...OPEN },
+  { name: "wall" },
+  // A portcullis: it stops a body and it stops a spell, and it does not stop
+  // an eye. The two empty seal-recesses flanking it are meant to be read from
+  // the far side.
+  { name: "gate", blocksMove: "unless-open", blocksSight: false, blocksEffect: "unless-open" },
+  { name: "pillar" },
+  { name: "treasure", ...OPEN },
+  { name: "stairs", ...OPEN },
+].map((kind, id) => Object.freeze({ ...SOLID, ...kind, id })));
+
+/** The enum every module already reads: FLOOR, WALL, GATE, PILLAR, ... */
+export const TILE = Object.freeze(Object.fromEntries(TILE_KINDS.map(k => [k.name.toUpperCase(), k.id])));
+
+/** What a pack's legend writes, to what the grid stores. content.js's door. */
+export const TILE_ID_BY_NAME = Object.freeze(Object.fromEntries(TILE_KINDS.map(k => [k.name, k.id])));
+
+/** The kind names, in id order, for an error message that says what is legal. */
+export const TILE_NAMES = Object.freeze(TILE_KINDS.map(k => k.name));
+
+/** The three questions a square can be asked. */
+export const BARRIERS = Object.freeze(["blocksMove", "blocksSight", "blocksEffect"]);
+
+/**
+ * Does tile `t` stop `barrier`?
+ *
+ * An unknown barrier name throws rather than answering. A typo would read
+ * `undefined` off the kind, which is falsy, which is "nothing blocks" — the
+ * one wrong answer this function must never give quietly. The check is the
+ * `undefined` itself rather than a scan of `BARRIERS`: every kind is built
+ * from `SOLID`, so it carries exactly the three keys and nothing else, and
+ * this runs on every square of every line trace and every path node.
+ */
+export function tileBlocks(t, barrier, gateOpen = false) {
+  const kind = TILE_KINDS[t];
+  if (kind === undefined) return true;    // off the table is off the map
+  const answer = kind[barrier];
+  if (answer === undefined) {
+    throw new Error(`tileBlocks: unknown barrier "${barrier}" (want ${BARRIERS.join(", ")})`);
+  }
+  return answer === "unless-open" ? !gateOpen : answer;
+}
 
 /**
  * The eight directions, in a ring, so that "one octant over from this one" is
@@ -31,38 +101,28 @@ export function makeWorld(area) {
   const inBounds = (x, y) => x >= 0 && y >= 0 && x < W && y < H;
   const tileAt = (x, y) => (inBounds(x, y) ? tiles[y][x] : TILE.WALL);
 
-  /** Terrain that stops a body. A gate stops one until it is open. */
-  function blocksMove(x, y, gateOpen) {
-    if (!inBounds(x, y)) return true;
-    const t = tiles[y][x];
-    if (t === TILE.WALL || t === TILE.PILLAR) return true;
-    if (t === TILE.GATE && !gateOpen) return true;
-    return false;
-  }
-
   /**
-   * Terrain that stops a line of sight. Creatures do not block sight, and
-   * neither does the gate: it is a portcullis, and the two empty seal-recesses
-   * flanking it are meant to be read from this side. Sight takes no `gateOpen`
-   * argument at all, which is the point — the whole distinction below is that
-   * one of these two questions reads the gate and the other cannot.
-   */
-  function blocksSight(x, y) {
-    if (!inBounds(x, y)) return true;
-    const t = tiles[y][x];
-    return t === TILE.WALL || t === TILE.PILLAR;
-  }
-
-  /**
-   * Terrain that stops a line of *effect* — Player Core p.457. A solid barrier
+   * The three barriers, each read off the tile-kind registry above rather than
+   * spelled out here. What a kind stops is a property of the kind; these three
+   * only add "off the grid is solid", which is a property of the edge.
+   *
+   * Sight takes no `gateOpen` argument at all, which is the point — the whole
+   * distinction between these questions is that two of them read the gate and
+   * the third cannot. Line of *effect* is Player Core p.457: a solid barrier
    * with no gap stops a spell even where it does not stop an eye, which is a
-   * closed gate exactly: you can see the Vault Keeper's chamber through the
+   * closed gate exactly. You can see the Vault Keeper's chamber through the
    * bars and you cannot put a Force Fang through them.
    */
+  function blocksMove(x, y, gateOpen) {
+    return !inBounds(x, y) || tileBlocks(tiles[y][x], "blocksMove", gateOpen);
+  }
+
+  function blocksSight(x, y) {
+    return !inBounds(x, y) || tileBlocks(tiles[y][x], "blocksSight");
+  }
+
   function blocksEffect(x, y, gateOpen) {
-    if (!inBounds(x, y)) return true;
-    const t = tiles[y][x];
-    return t === TILE.WALL || t === TILE.PILLAR || (t === TILE.GATE && !gateOpen);
+    return !inBounds(x, y) || tileBlocks(tiles[y][x], "blocksEffect", gateOpen);
   }
 
   /**

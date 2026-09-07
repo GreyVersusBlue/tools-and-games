@@ -1,13 +1,14 @@
 # Checks for The Absalom Inheritance. Three rounds and a phase shipped, and
 # each of their pull requests said the same thing: no workflow in this repo
 # path-matches Projects/absalom-inheritance/**, so both suites ran in a
-# session's terminal and nowhere else. That is 1,067 assertions and 4,000
+# session's terminal and nowhere else. That is 1,196 assertions and 4,000
 # seeded playthroughs, about a minute and a half of Node with no browser and no
 # dependency, and both already exit non-zero on a failure (locked #13).
 #
 # There is a third suite and it is deliberately not here: test/browser.mjs
 # boots the real page in real Chromium and asserts the hint bar, the log's
-# colours, the build's prism and the keyboard's refusals. It needs
+# colours, the build's prism, the keyboard's refusals, and ?pack= opening the
+# second adventure off the same HTML file under its own storage key. It needs
 # playwright-core and a browser on disk, neither of which the game itself has
 # any use for, and it is run by hand — the same arrangement Blue Hour's
 # test/browser.mjs already has. Wiring a browser into CI is the site-wide "CI

@@ -479,6 +479,12 @@ function summarise(game, outcome, cast = {}, detail = {}) {
     focus: game.run.pc.focus,
     potions: game.potionCount(),
     lore: game.run.loreRead.length,
+    // The ids, not just the count. "Read three pillars" was a stand-in for
+    // "read the reliquary plaque" that held only while the plaque was the
+    // third one; the undercroft's mark made it the fourth and the count went
+    // on reading 100% of wins without meaning anything. A report that wants to
+    // know whether an optional room was visited has to name the pillar.
+    loreRead: [...game.run.loreRead],
     gateOpen: game.run.gateOpen,
     slain: game.run.stats.slain,
     woken: game.run.stats.woken,

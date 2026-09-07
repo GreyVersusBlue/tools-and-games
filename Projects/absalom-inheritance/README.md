@@ -12,7 +12,9 @@ was needed.
 
 ```
 absalom-inheritance/
+  content/packs.json          the manifest: which adventures ship, and which one boots
   content/vault.json          the adventure: map, creatures, commands, items, lore, tuning
+  content/proving-ground.json a second, deliberately tiny one — one room, one build, one golem
   content-authoring-guide.md  how to write another one
   js/rules.js                 PF2e math. Pure, RNG injected.
   js/world.js                 grid, line of sight and line of effect, A* with rules-legal diagonals
@@ -25,13 +27,14 @@ absalom-inheritance/
   js/render.js                isometric canvas renderer
   js/ui.js                    panels, log, modals, keyboard, save bar
   js/main.js                  boot and wiring
-  test/smoke.mjs              1,067 assertions
+  test/smoke.mjs              1,196 assertions
   test/balance.mjs            Monte Carlo playthroughs; reports per encounter and per area, and exits
                               non-zero out of band, on content nothing reaches, or on drift from the baseline
   test/baseline.json          the numbers the last commit measured, rewritten with --write-baseline
   test/autopilot.mjs          a competent player, shared by both suites
   test/browser.mjs            the surface, in real Chromium: the hint bar, the log's colours,
-                              the build's own prism, and a keyboard that answers when it refuses
+                              the build's own prism, a keyboard that answers when it refuses,
+                              and ?pack= opening the second adventure off the same page
 ```
 
 `rules.js`, `world.js`, `templates.js`, `conditions.js`, `ai.js`, `content.js`, `game.js` and `save.js` run under plain Node with no DOM.
@@ -74,8 +77,9 @@ node Projects/absalom-inheritance/test/browser.mjs
 
 It serves the site root, boots the real page in real Chromium and asserts what a player sees —
 the hint bar after a stairway, the two new log colours, the chosen build's own prism on the
-canvas, and the sentence the keyboard says when it refuses a command (locked #39). 24 checks,
-about twelve seconds. Nothing in it is a frame-timing assertion, so locked #53 does not apply:
+canvas, the sentence the keyboard says when it refuses a command (locked #39), and `?pack=`
+opening the second adventure off the same HTML file under its own storage key. 39 checks,
+about twenty seconds. Nothing in it is a frame-timing assertion, so locked #53 does not apply:
 this game draws on input and sits still between clicks.
 
 To find out *why* a number moved, `--variant name={json}` patches the pack (RFC 7386 merge patch,
@@ -303,10 +307,11 @@ Measured over 2,000 seeded runs per build, with the two causes separated:
 
 | | wizard | fighter |
 | --- | --- | --- |
-| before this phase | 82.8% | 80.8% |
+| before that phase | 82.8% | 80.8% |
 | the skirmisher alone | 82.8% | 81.2% |
 | the Keeper's cone alone | 81.2% | 74.7% |
-| shipped | **81.4%** | **75.1%** |
+| after that phase | 81.4% | 75.1% |
+| shipped, with the undercroft | **79.5%** | **69.3%** |
 
 **Hit and run measured neutral.** The action the warden spends backing off costs it about what it
 costs her; what it changes is the shape of the fight, not who wins it — the median wizard encounter
@@ -317,10 +322,38 @@ on Kessa, who has no disc to soak it and a point less of both AC and Reflex.
 than an absence.** Nothing could leave her reach before, because `planApproach` cannot walk out of
 one. Something can now, and takes the Step instead.
 
+## Three rooms, and two adventures
+
+The vault, the mason's undercroft, and the reliquary, in that order, one way. The undercroft is
+the third area and it is the phase's own proof: adding it was a diff to `content/vault.json` and
+the authoring guide, and nothing else. One legend, one grid, one placement of a creature that
+already existed, one lore pillar, and two squares repointed.
+
+It is darker than the vault — `visionFeet` and `noticeFeet` are 20 there, written in the room's
+own `tuning` rather than the pack's — and that is not atmosphere. Its one fight is **optional**:
+the route from the arrival square to the stairway out never comes within notice range of the
+sentinel with a line of sight to it, and stepping into the west doorway does. At the vault's 30 ft
+it would wake on the way past, and the choice would not exist. `test/smoke.mjs` asserts that
+square by square.
+
+The reward for taking the fight is the mason's mark, a pillar carrying `restore: ["hp","slots",
+"focus"]` — the same three keys the gate's seal-release has always had, on a `lore` entry.
+Measured with `--variant`, it is worth **+5.2 points of win rate to the wizard and +1.4 to the
+fighter**, against a fight that costs them 4.5 and 6.3. The mark is a caster's boon and Kessa
+should walk past it; the autopilot never does, which is why the shipped numbers are a floor.
+
+`content/packs.json` is the manifest. `?pack=proving-ground` opens the other adventure off the
+same HTML file: one room, one build, one straw golem, its own storage key. Nothing in `js/` names
+an id belonging to either pack. See the guide's §13.
+
 ## The save
 
 Storage key **`absalom-inheritance-save-v1`**, schema version 1. Locked decision #36: that key is
-permanent.
+permanent — and it belongs to the pack that has always written to it. There is more than one pack
+now, and a second adventure gets `absalom-inheritance-save-v1:<packId>` rather than sharing the
+slot, because one key would mean opening the proving ground overwrites a vault run the first time
+the autosave ticks. A save whose `packId` names a different adventure is refused outright, with a
+sentence the save bar shows instead of an empty character picker.
 
 Persistence is through the shared `assets/js/gvb-save.js`, so the game gets localStorage, export
 to a file, import back, a memory fallback where storage is blocked, and one implementation of

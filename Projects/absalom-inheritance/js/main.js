@@ -2,7 +2,7 @@
 // the character picker if there is not), wire the engine to the renderer and
 // the UI, and start autosaving.
 
-import { fetchPack, selectPc } from "./content.js";
+import { fetchManifest, fetchPack, selectPc } from "./content.js";
 import { createGame } from "./game.js";
 import { createRenderer } from "./render.js";
 import { mountUI, pickCharacter } from "./ui.js";
@@ -11,6 +11,9 @@ import { makeSaveSlot, SAVE_KEY } from "./save.js";
 const boot = async () => {
   const status = document.getElementById("hint");
 
+  // Which adventures this game ships, and the one being played.
+  let manifest, entry;
+
   // The pack as fetched: every build in `pcOptions`, unresolved onto any one
   // of them. save.js needs this whole shape to validate and repair a save's
   // `buildId`; only once a build is chosen (from a save, or from the picker)
@@ -18,15 +21,37 @@ const boot = async () => {
   let pack;
   try {
     // Relative, so the page works from any path GitHub Pages serves it at.
-    pack = await fetchPack(new URL("../content/vault.json", import.meta.url));
+    // The manifest, not a pack: which adventures exist is content now, and
+    // `?pack=<id>` picks one. An id the manifest does not list falls back to
+    // its default rather than failing, because the query string is a thing a
+    // player can mistype and the adventure is a thing they came here to play.
+    const manifestUrl = new URL("../content/packs.json", import.meta.url);
+    manifest = await fetchManifest(manifestUrl);
+    const asked = new URLSearchParams(location.search).get("pack");
+    entry = manifest.byId[asked] || manifest.byId[manifest.default];
+    pack = await fetchPack(new URL(entry.file, manifestUrl), entry.id);
   } catch (e) {
     status.textContent = "The vault's records are unreadable: " + e.message;
     console.error(e);
     return;
   }
+  // The page's own <title> is the game, and it stays the game for the pack the
+  // game ships. A second adventure opened by hand says which one it is, because
+  // the board is the only other thing that would, and two rooms of grey stone
+  // look alike in a tab strip.
+  if (entry.id !== manifest.default) document.title = `${entry.name} — The Absalom Inheritance`;
 
+  // Keyed on the pack, so opening the proving ground does not overwrite a
+  // vault run in progress — see save.js's keyFor.
   const slot = makeSaveSlot(pack);
   const loaded = slot.load();
+  // A save this slot turned away rather than one that was never there. The
+  // only way that happens today is a foreign pack's file imported into a
+  // browser whose storage already holds it under the legacy key; without this
+  // line it reaches the player as an empty character picker.
+  if (!loaded && slot.refusedBecause) {
+    document.getElementById("save-msg").textContent = slot.refusedBecause;
+  }
 
   // No save means no chosen build yet. `slot.fresh(buildId)` forwards the pick
   // straight to save.js's freshRun() (gvb-save's fresh()/reset() pass their
@@ -103,7 +128,7 @@ const boot = async () => {
 
   // Handy for a driver script, and for anyone poking at it in a console. Read
   // only: nothing in the game reads these back.
-  window.__absalom = { game, renderer, slot, content, pack, SAVE_KEY };
+  window.__absalom = { game, renderer, slot, content, pack, manifest, entry, SAVE_KEY };
 };
 
 boot();

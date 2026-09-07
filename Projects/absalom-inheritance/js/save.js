@@ -5,7 +5,7 @@
 // relative form behaves identically in the browser.
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 import { LOG_SAVED } from "./game.js";
-import { TILE } from "./world.js";
+import { tileBlocks } from "./world.js";
 import { repairBag } from "./conditions.js";
 
 /**
@@ -14,6 +14,44 @@ import { repairBag } from "./conditions.js";
  * Integer Foundry and Aphelion already use — `<slug>-save-v1`.
  */
 export const SAVE_KEY = "absalom-inheritance-save-v1";
+
+/**
+ * The one pack that has ever written to `SAVE_KEY`.
+ *
+ * There is more than one pack now, and they cannot share a slot: one key would
+ * mean opening the proving ground overwrites a vault run in progress the first
+ * time the autosave ticks. Every other pack gets its own key, suffixed with its
+ * id — and this one keeps the bare key it has always had, because #36 is about
+ * what is already on somebody's disk, not about what the string looks like.
+ * Rename the vault pack and this constant does not follow: the saves in the
+ * wild were written under this id and stay readable under it.
+ */
+export const LEGACY_PACK_ID = "vault-beneath-the-court";
+
+/** Which key a pack's runs live under. */
+export const keyFor = packId => (packId === LEGACY_PACK_ID ? SAVE_KEY : `${SAVE_KEY}:${packId}`);
+
+/**
+ * Why this save cannot be loaded into this pack, in a sentence a player can
+ * read — or null when it can.
+ *
+ * `packId` has been written into every save since the field existed and
+ * nothing has ever checked it. A save carries area ids, creature keys, lore
+ * ids and item ids, and `repair` above is built to survive a pack that *lost*
+ * one of those — it drops the creature, forgets the fog, walks the heir back
+ * to the spawn. Handed a save from a different adventure entirely it would do
+ * all of that at once and hand back a technically valid run with nothing in
+ * it. Refusing is the honest answer, and saying which pack it came from is
+ * what makes the refusal actionable rather than "that is not a valid save".
+ *
+ * A save with no `packId` at all predates the field and means the pack that
+ * existed then — the same argument `repair`'s `buildId` fallback makes.
+ */
+export function packRefusal(content, s) {
+  if (!s || !s.packId || s.packId === content.pack.id) return null;
+  return `That save was written for "${s.packId}" and this is "${content.pack.id}". `
+    + "A save cannot cross adventures — switch back to the one it came from and import it there.";
+}
 
 /** Bump only when the shape changes in a way `repair` cannot cover. */
 export const SAVE_VERSION = 1;
@@ -50,14 +88,16 @@ export function makeRepair(content) {
     return Math.min(hi, Math.max(lo, Math.round(n)));
   };
 
-  /** Somewhere a body can actually stand, in a given area. */
-  const standable = (area, x, y, gateOpen) => {
-    if (x < 0 || y < 0 || x >= area.width || y >= area.height) return false;
-    const t = area.tiles[y][x];
-    if (t === TILE.WALL || t === TILE.PILLAR) return false;
-    if (t === TILE.GATE && !gateOpen) return false;
-    return true;
-  };
+  /**
+   * Somewhere a body can actually stand, in a given area.
+   *
+   * The list of what is solid used to be written out here as well as in
+   * world.js, which is two places to remember a new tile kind. It asks the
+   * registry now, exactly as `makeWorld`'s own `blocksMove` does.
+   */
+  const standable = (area, x, y, gateOpen) =>
+    x >= 0 && y >= 0 && x < area.width && y < area.height
+    && !tileBlocks(area.tiles[y][x], "blocksMove", gateOpen);
 
   // Every creature in every area, keyed the same way game.js keys them.
   const placedByKey = new Map();
@@ -213,12 +253,22 @@ export function makeRepair(content) {
  * exists to survive.
  */
 export function makeSaveSlot(content, storage) {
-  return createSaveSlot({
+  // The last thing this slot turned away and why. gvb-save's `validate` is a
+  // boolean and its `load()` returns null either way, so a refusal that only
+  // said "no" would reach the player as an empty character picker — which is
+  // exactly what a lost save looks like from the outside.
+  let refusedBecause = null;
+
+  const slot = createSaveSlot({
     game: "absalom-inheritance",
-    key: SAVE_KEY,
+    key: keyFor(content.pack.id),
     version: SAVE_VERSION,
     storage,
-    validate: validRun,
+    validate(s) {
+      if (!validRun(s)) return false;
+      refusedBecause = packRefusal(content, s);
+      return !refusedBecause;
+    },
     repair: makeRepair(content),
     // Character generation is not randomised, but the starting state is still
     // derived from the content pack rather than a literal, and a factory is
@@ -229,6 +279,35 @@ export function makeSaveSlot(content, storage) {
     // how the character picker's chosen buildId gets here: `slot.fresh(id)`.
     defaults: buildId => freshRun(content, buildId),
   });
+
+  // Spread rather than mutate: gvb-save's slot is a plain object of closures,
+  // and the two overrides below have to be the ones mountSaveBar calls, since
+  // it reads `slot.promptImport` off whatever object it was handed. The spread
+  // flattens gvb-save's one getter, `memoryOnly`, into the boolean it reads at
+  // this moment — which is the right value forever, because it answers a
+  // question about the storage object chosen before createSaveSlot returned.
+  //
+  // Each of the three cleared first, because `refusedBecause` means "why the
+  // call you just made turned something away" and `validate` is not reached on
+  // every path into these: an empty storage key returns before it, and a file
+  // that is not JSON at all fails in `deserialize`. Without the reset, a
+  // corrupt file imported after a foreign one would be reported as a foreign
+  // one — the last true sentence, attached to the wrong event.
+  return {
+    ...slot,
+    /** Null unless the last load or import was turned away. Read after both. */
+    get refusedBecause() { return refusedBecause; },
+    load: () => { refusedBecause = null; return slot.load(); },
+    importFromFile: file => { refusedBecause = null; return slot.importFromFile(file).catch(rethrowRefusal); },
+    promptImport: () => { refusedBecause = null; return slot.promptImport().catch(rethrowRefusal); },
+  };
+
+  // gvb-save rejects every unreadable import with one generic sentence. When
+  // the reason was a foreign pack we know something better to say than "that
+  // is not a valid absalom-inheritance save" — because it is one.
+  function rethrowRefusal(err) {
+    throw refusedBecause ? new Error(refusedBecause) : err;
+  }
 }
 
 /**

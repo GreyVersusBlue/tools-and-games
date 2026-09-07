@@ -2,7 +2,7 @@
   "runs": 2000,
   "builds": {
     "wizard": {
-      "rate": 0.814,
+      "rate": 0.7945,
       "encounters": {
         "vault/shattered-sentinel": {
           "per": 1.9955,
@@ -14,15 +14,20 @@
           "taken": 8.165,
           "deathShare": 0.1305
         },
-        "sanctum/reliquary-warden": {
+        "undercroft/shattered-sentinel": {
           "per": 0.8445,
-          "taken": 3.52,
-          "deathShare": 0.0305
+          "taken": 3.118,
+          "deathShare": 0.049
+        },
+        "sanctum/reliquary-warden": {
+          "per": 0.7955,
+          "taken": 0.996,
+          "deathShare": 0.001
         }
       }
     },
     "fighter": {
-      "rate": 0.751,
+      "rate": 0.6935,
       "encounters": {
         "vault/shattered-sentinel": {
           "per": 1.991,
@@ -34,10 +39,15 @@
           "taken": 12.406,
           "deathShare": 0.2095
         },
-        "sanctum/reliquary-warden": {
+        "undercroft/shattered-sentinel": {
           "per": 0.7555,
-          "taken": 0.818,
-          "deathShare": 0.0045
+          "taken": 3.49,
+          "deathShare": 0.061
+        },
+        "sanctum/reliquary-warden": {
+          "per": 0.6945,
+          "taken": 0.862,
+          "deathShare": 0.001
         }
       }
     }
