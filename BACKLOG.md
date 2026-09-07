@@ -53,132 +53,141 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **The Absalom Inheritance Phase 2, "Conditions
-that expire", increment 2 (PR #155)**, and **the row is gone: Phase 2 is
-closed.** It was a 2+ row that took two sessions and it is finished, which is
-what a 2+ row is supposed to do. Absalom's arc has six phases left, now ranks 1
-through 6.
+The last thing that shipped is **The Absalom Inheritance Phase 3, "Templates
+and line of effect" (PR #157)**, and **the row is gone.** A size-1 row, worked
+whole in one session. Absalom's arc has five phases left, now ranks 1 through 5.
 
-**The catalogue is eight conditions and the funnel is two funnels.** Increment
-1 built a system with three conditions in it; this one gave it names.
-`clumsy`, `enfeebled`, `stupefied`, `off-guard` and `slowed` joined `shielded`,
-`frightened` and `persistent-fire`. `Projects/absalom-inheritance/js/conditions.js`
-is 487 lines, still pure and still RNG-free.
+**The cone was written twice, and one of the copies hardcoded 15 feet.**
+`game.js` resolved "within `coneFeet` and within ±45° of the clicked bearing";
+`render.js` previewed one from its own inline copy of the same trigonometry
+with `feet > 15` written into it. They agreed only because Breathe Fire is a
+15-foot cone. A spell at any other range would have painted one shape and
+burned another, with nothing erroring.
 
-**`modifiersFor`'s four kinds were three approximations wearing one name, and
-there are nine now.** `attack` split into `attack-str` and `attack-dex`,
-because enfeebled is a Strength penalty and clumsy a Dexterity one, and one
-kind makes Vesper's finesse dagger and Kessa's longsword the same weapon.
-`save` split into `save-fort`/`save-ref`/`save-will`, because clumsy is Reflex
-and stupefied is Will, and one kind makes both of them frightened with another
-name. `damage` is the hole increment 1 left and `spell-dc` is a DC nothing was
-reading. A command or creature names the ability that swings its attack,
-defaulting to `str`, so no pack that predates the field had to change.
+**`js/templates.js` is 130 lines and is the purest module in the project**:
+grid squares in, grid squares out, no world, no content, no state, no RNG and
+no terrain. `coneSquares`, `burstSquares`, `emanationSquares`. The cone is the
+quarter circle Player Core p.387 names, snapped to one of eight grid directions
+at the 22.5° octant boundary — `1 + √2` as a slope, algebra rather than the
+`atan2` it replaces — and cut to range by `feetBetween`. **11 squares at 15
+feet orthogonally, 34 at 30 and 116 at 60, and one more than each on the
+diagonal.** The asymmetry is 5/10/5 showing through and is kept: a template
+that came out the same size both ways would be one that had stopped measuring
+in the game's own feet.
 
-**There is exactly one `rollDamage(` in `game.js` now**, inside
-`damageFrom(actor, spec, source)`, guarded the way the one `check(` is with the
-file's own source read and its comments stripped. `source` is required —
-`weapon`, `spell`, `persistent` or `healing` — because three of the four take
-no modifier at all, and a caller allowed to omit it is a caller guessing, which
-is exactly how every call site came to add the weapon's own `plus` and nothing
-else. Damage floors at 0: a penalty larger than the dice is a Strike that does
-nothing, never one that heals.
+**`game.templateSquares(cmd, target)` is the only caller of any of the three**,
+and both the resolution and the aim preview read it. `smoke.mjs` fails on a
+`Math.atan2` in `game.js` or `render.js`, the same drift guard the two funnels
+carry.
 
-**`slowed` is the first condition to read the bag outside the modifier funnel**,
-in `advance()` for the PC and `creatureTurn` for a creature, both after that
-actor's start boundary. The ordering is the whole of it and was got right by
-breaking it: slowed is `self-end` because one that expired at the *start* of
-your turn would come off before the turn had any actions to take away, and
-off-guard is `self-start` because footing is what you get back when your turn
-comes round. **Durations come off the catalogue, not the pack** — a pack that
-had to write one would ship one that forgot, and that is a −2 stapled to the
-heir for the rest of the delve.
+**Line of sight and line of effect are two questions now, and the gate
+separates them.** `blocksSight(x, y)` takes no gate argument at all — it is a
+portcullis, and refusing the argument is what makes the distinction impossible
+to get wrong by signature. `blocksEffect(x, y, gateOpen)` is the one that stops
+at a shut gate, and `hasLoE` is what every template and every `unerring` spell
+filters through: the heir can see the Vault Keeper's chamber through the bars
+and cannot put a Force Fang into it. `world.reachableFrom` is the only place a
+shape meets terrain, which is why a pillar now shadows a cone. One Bresenham
+walk takes the predicate as an argument, because a second copy of that walk is
+exactly what once put two line-of-sight checks in this repo with one of them
+doing nothing.
 
-**Immunity is content**: a creature lists `immunities`, a condition carries
-traits, and `applyCondition` refuses out loud with the reason. Every construct
-in this pack refuses `frightened`; nothing in the pack tries yet, exactly as the
-plan predicted, so the suite is what exercises it. **`inflicts` may be a list**
-(the Keeper's crit is frightened *and* stupefied) and two entries naming one
-condition are a load error. **`ends` on a command takes a condition off**:
-Rousing Splash rolls Player Core p.409's DC 10 rather than ending fire
-outright, and it has something to end because the Reliquary Warden's fist is
-fire now.
+**`burst` and `emanation` are validated kinds with one command each** — Ember
+Burst (rank 1, ◆◆, a slot, a 10-foot burst placed within 30 feet, 1d6 fire) and
+Warding Pulse (cantrip, ◆, a 10-foot emanation, 1d4 force), both Vesper's, both
+flagged in `vault.json` as this pack's own spells rather than book ones. **An
+area command that is not a spell throws at load**: its save rolls against the
+heir's spell DC, that is the only one the engine has, and `stupefied` moves it.
 
-**Two things were found rather than planned, and both were dead code that
-validated.** `autopilot.mjs`'s `combatPolicy` had no `self-heal` branch at all,
-so Rousing Splash had never been cast in a single balance number this project
-has quoted. And an `inflicts` on an `unerring` command passed the content
-validator and then did nothing, because that branch never called
-`applyInflict` — it rolls no attack, so it had no degree to read. It passes
-`DEG.SUCC` now, which is what gives `slowed` its one source: Force Fang.
+**Both new commands validated at load, appeared in the command list, and were
+cast zero times.** The wizard's win rate came back bit-identical to the build
+before them, to every decimal. That is the third time in two phases this
+project has shipped content nothing reaches, so **`balance.mjs` counts casts
+per command now and exits non-zero when one reads zero** (#151). It earned
+itself twice on the run it was added: the fix for the first problem displaced
+Shield, and Shield Block went with it — 4,143 casts and 0.71 reactions a run
+became 0 and 0.00, while the win rate went *up*. Nothing else in the report
+would have said so.
 
-**Measured at 2,000 seeded runs per build**, against a clean checkout of the
-previous commit in the same container. Win rates moved **65.3% → 60.8%**
-(wizard) and **79.3% → 80.8%** (fighter), both inside the 45–90% band. Clumsy
-landed 1,059 times, enfeebled 1,026, slowed 3,545, off-guard 533 and 398,
-frightened and stupefied 239 and 272 each, the heir set alight 193 and 72.
-Stupefied cost Vesper **39 spells** to its flat check and Kessa nothing, because
-she casts none. Rousing Splash was cast on a burning heir 238 times and put the
-fire out 129 of them. **The split between the builds widened rather than closed,
-and this time the reason is legible rather than a shrug:** the same critical
-fist costs a caster a spell and a fighter nothing.
+**Sampling 9,100 wizard decisions is what explained the emanation.** An awake
+construct stood at 5 feet, or at 25 and beyond, and **never once at 10, 15 or
+20**: a Stride crosses the whole floor in one turn, so every fight in this
+adventure is a duel at arm's length, and a shape whose case is "two of them at
+once" has no case here at all.
 
-**`smoke.mjs` goes from 599 checks to 787, and thirty-seven guard-rails were
-broken on purpose** (#34) against the real project files, every one exiting 1
-from a green baseline and every one checked against the assertion whose comment
-claims it. **Four found nothing useful the first time**, and three of them are
-now locked #147 — an assertion whose comment claims more than its arithmetic
-can see:
+**Measured at 2,000 seeded runs per build**, with the two causes separated:
 
-- The splash test counted a *refused* command as evidence the DC 10 check can
-  fail. One refusal out of forty seeds was its whole case, and deleting the
-  check left the suite green.
-- The stupefied test asserted an unbeatable DC 24 fizzled, which stayed true
-  when the base DC broke from 5 to 0, because DC 19 is also unbeatable. It
-  reads the logged `vs DC 6` and `vs DC 8` now, which is the formula rather
-  than a number that happens to be hard.
-- An off-guard-plus-Shield assertion claimed to prove the same-type rule. It
-  cannot: Player Core p.443 bites when a type holds two bonuses or two
-  penalties, and one of each sums identically either way. The rule is really
-  pinned by frightened-plus-clumsy. The assertion says so now, and so does the
-  pack's own note, which claimed it too.
+| | wizard | fighter | reactions/run |
+| --- | --- | --- | --- |
+| before this phase | 60.8% | 80.8% | 0.71 |
+| both new spells in the pack, never cast | 60.8% | 80.8% | 0.71 |
+| the disc rule widened, old kit | 73.8% | 80.8% | 3.46 |
+| shipped | **82.8%** | **80.8%** | 2.15 |
 
-The fourth is smaller and worth the next session's attention anyway: **an
-assertion crashed instead of failing.** Breaking `applyInflict`'s duration
-lookup left `until` null and `.until.when` threw, so the run exited 1 with no
-`FAIL` line at all — a non-zero exit that says nothing about which guard caught
-it. It reads `until?.when` now.
+**13 of the wizard's 22 points are not content**, and the next session should
+know that before it reads any older number in this file. `combatPolicy` gave
+the last action of a melee turn to the Shield cantrip only at a multiple attack
+penalty of 8 or worse; a level-1 wizard with a construct in reach wants the
+disc up every round. The heir was always that survivable — the harness had been
+playing her badly, and **every Absalom win rate quoted before this phase is a
+floor drawn lower than competent play.** Warding Pulse costs one action because
+a three-action turn holds Strike, ring and disc and a two-action ring does not,
+and it rolls a flat 1d4 because 1d4+2 measures 86.7% against a band ceiling of
+90%.
 
-**Seven decisions are locked, 141 through 147**, and no question was answered —
+**The two builds are within a point of each other for the first time, and it is
+the ceiling that is close now rather than the floor.** That is rank 1's first
+problem, not this row's, and the stale 53.6% its plan quotes has been marked.
+
+**`smoke.mjs` goes from 787 checks to 879, and sixteen guard-rails were broken
+on purpose** (#34) against the real project files, every one exiting 1 from a
+green baseline at the assertion whose comment claims it, plus a seventeenth on
+`balance.mjs` — removing the emanation policy prints `CONTENT NEVER REACHED`
+and exits 1. The 15-foot cone's square set is written out square by square and
+the other two counted by hand, so the check is a literal rather than the
+implementation run twice. **One break crashed instead of failing**: `shown.some`
+on a null gave a non-zero exit with no `FAIL` line, which is the same defect
+last phase found in a duration lookup, and it is rewritten. It is worth writing
+down twice — an assertion that crashes is not an assertion that failed.
+
+The three shapes were also driven in a real browser: the burst paints its
+diamond and resolves against the square clicked, Warding Pulse fires from the
+command list with nothing to click, the cone preview paints a quarter wedge,
+zero console errors.
+
+**Eight decisions are locked, 148 through 155**, and no question was answered —
 none stood in front of this row.
 
-**Rank 2 — Phase 4, creatures that know what they are standing in — still has
+**Rank 1 — Phase 4, creatures that know what they are standing in — still has
 its tripwire.** `smoke.mjs` asserts that no planned Stride leaves the PC's
 reach, over 3,032 of them, because with today's planner none can. Give a
 creature a reason to retreat or reposition and that assertion fails, and its
-message says so. That is the intended outcome, not a regression.
+message says so. That is the intended outcome, not a regression. Phase 4 now
+also has a shape to dodge, which is what its plan said it was waiting for.
 
 **None of the four shared things was touched this round.** No `index.html`, no
 `assets/js/gvb-save.js`, no `Tools/board-check/**`, no generated previews or og
 images. **The two site-wide checks are still red on `main` and were red before
-this branch existed**: 1,425 units checked and the same 2 broken, and the same
-six social pages out of sync. `check-integrity.mjs` fails on
+this branch existed**: `check-integrity.mjs` fails on
 `Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
 inline `<script type="module">`, which is a syntax error in a module) and on
 `Tools/prompt-builder.html` (it references `fonts.googleapis.com` and
-`fonts.gstatic.com`, against the zero-offsite rule). `social:check` reports six
-pages out of sync with the board. None of the three is ranked below yet; all
-three are somebody's next quarter-session. What else moved outside the project:
-`CLAUDE.md`'s locked-decision count, 140 to 147, and a clause on the #34 bullet
-about a break that leaves the suite green meaning the *comment* may be the
-thing that is wrong; and a stale assertion count in a header comment in
-`.github/workflows/absalom-ci.yml`. Nothing in
-`Projects/absalom_inheritance.html` changed this round — the chip CSS increment
-1 added already covers the five new conditions.
+`fonts.gstatic.com`, against the zero-offsite rule); `social:check` reports six
+pages out of sync with the board. The unit count in the integrity sweep is
+**1,440 here against 1,436 on `main`** — the new module, and the same 2 broken.
+None of the three is ranked below yet; all three are somebody's next
+quarter-session. What else moved outside the project: `CLAUDE.md`'s
+locked-decision count, 147 to 155, `HISTORY.md`'s own long-stale count in the
+same sentence, and a stale assertion count in a header comment in
+`.github/workflows/absalom-ci.yml`, which also gained a note that `balance.mjs`
+fails on a second thing now. Nothing in `Projects/absalom_inheritance.html`
+changed — the chip CSS and the command panel already carry the two new
+commands.
 
-Before that: **Absalom Phase 2 increment 1 (PR #153)**, which deleted
-`turn.shielded` and built the pure condition layer, the one-`check(` funnel,
-the boundary tick and the save shape this increment filled in.
+Before that: **Absalom Phase 2, "Conditions that expire"**, in two increments
+(PRs #153 and #155), which deleted `turn.shielded`, built the pure condition
+layer and the one-`check(` funnel, and then gave it a catalogue of eight and a
+nine-kind modifier funnel.
 
 Before that: **Absalom Phase 1, "The interrupt point" (PR #151)**, which built
 the reaction bus those turn boundaries hang off — three named trigger points,
@@ -197,45 +206,47 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**117 ranked items**, one fewer than last round, because rank 1 finished and
-its row went. Every rank below it moved up by one. 55 of them are phases in one
+**116 ranked items**, one fewer than last round, because rank 1 finished and
+its row went. Every rank below it moved up by one. 54 of them are phases in one
 of the ten project `WISHLIST.md` files; the other 62 are standalone, and live
-in Tier 2 below. Beyond the ranked list there are 253 open bullets in the
+in Tier 2 below. Beyond the ranked list there are 254 open bullets in the
 eleven wishlists' standing backlogs and 47 open questions for Devon — 417 open
-items in all. **No standing-backlog bullet was added or closed.** Two of
-Absalom's were rewritten rather than removed: "no conditions at all" is now
-"no dying/wounded, and no flanking, cover or concealment", which is the half of
-the same-type rule nothing in the catalogue can currently exercise; and the
-command-kinds bullet now says what is still missing (no heal-another, no
-command whose whole purpose is a debuff, no ranged attack that rolls to hit)
-rather than that conditions do not exist. No question was answered: none stood
-in front of this row. Bell to Bell, Hearth and Torchbearer all have no ranked
-rows left: every phase of all three has shipped.
+items in all. **One standing-backlog bullet was added and none closed**: the
+`line` template, the fourth shape on Player Core p.387 and the only one with no
+kind, which is a genuinely new function rather than a fourth predicate over a
+box. Four of Absalom's were rewritten rather than removed — the geometry
+section is now about what templates still do not do (no `line`, square centres
+where the book measures corners and edges, nothing that *dodges* a template),
+the command-kinds bullet counts eight, the creature-AI bullet carries the
+9,100-decision measurement, and the harness bullet notes the never-cast check.
+No question was answered: none stood in front of this row. Bell to Bell, Hearth
+and Torchbearer all have no ranked rows left: every phase of all three has
+shipped.
 
-**Pick up rank 1: `Projects/absalom-inheritance` Phase 3, "Templates, and line
-of effect" (Fable 5.1, size 1).** A size-1 row is the whole batch. The phase's
-own sentence is that the cone is a 90-degree wedge with a comment apologising
-for it, and `render.js` draws a different one from its own copy of the math —
-it re-implements the bearing test inline and hardcodes `feet > 15`, so preview
-and resolution agree today only because Breathe Fire happens to be 15 feet.
-Two things this increment leaves it that its plan does not mention: the cone's
-resolution now reads `spellDC()` rather than `content.pc.spellDC`, so whatever
-`templates.js` grows has one DC to ask for; and `damageFrom("pc", cmd.damage,
-"spell")` is already the cone's damage roll, so a template that hits more
-squares does not need a second damage path.
+**Pick up rank 1: `Projects/absalom-inheritance` Phase 4, "Creatures that know
+what they are standing in" (Opus 5, size 1).** A size-1 row is the whole batch.
+Its own sentence is that every creature plays the same one line — if adjacent,
+Strike; else Stride at the PC — and after three phases it has three things to
+do instead: take a reaction, apply or dodge a condition, and stay out of a
+template. All three of those now exist. Two things this phase leaves it that
+its plan does not mention: `game.templateSquares(cmd, target)` is a pure query
+a creature's policy can ask before choosing a square, and the 9,100-decision
+sample above says what its Stride currently does — closes the whole floor in
+one turn, so there is no middle distance in this adventure for a skirmisher to
+step to yet.
 
 **Read this before trusting the order.** Two sources rank the same work
 differently, and the table follows `UPGRADE-PATHS.md`'s order because it is
 the newest:
 
-- **Daredevil sits at rank 25, and three other sources put it first.**
+- **Daredevil sits at rank 22, and three other sources put it first.**
   `gvb-site-handoff-v10.md` §11, the round-3 refresh notes and prompt 22's
   notes all call the Earl decision "the single biggest open item on the site."
   It is also blocked on Devon (see Questions for Devon, Q3), which is the
   argument for not opening with it.
 - Bell to Bell's own `docs/HANDOFF.md` said the next ticket was T8, whisper
   audio. It shipped in Phase 7, directional, in this backlog's own last round.
-- The Schedule Visualizer's storage-quota question is Phase 4 (rank 44) here
+- The Schedule Visualizer's storage-quota question is Phase 4 (rank 41) here
   and #1 in its own project's notes.
 - Six more disagreements of the same kind are listed at the end of Tier 2,
   under **Where the sources disagree**.
@@ -267,123 +278,122 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 3 — Templates, and line of effect | `Projects/absalom-inheritance` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/absalom-inheritance/WISHLIST.md#phase-3--templates-and-line-of-effect) |
-| 2 | Phase 4 — Creatures that know what they are standing in | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/absalom-inheritance/WISHLIST.md#phase-4--creatures-that-know-what-they-are-standing-in) |
-| 3 | Phase 5 — A harness that says which fight killed you | `Projects/absalom-inheritance` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Projects/absalom-inheritance/WISHLIST.md#phase-5--a-harness-that-says-which-fight-killed-you) |
-| 4 | Phase 6 — An area should be a file, not a diff | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Projects/absalom-inheritance/WISHLIST.md#phase-6--an-area-should-be-a-file-not-a-diff) |
-| 5 | Phase 7 — Two more heirs, with their own satchels | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/absalom-inheritance/WISHLIST.md#phase-7--two-more-heirs-with-their-own-satchels) |
-| 6 | Phase 8 — The debts on the surface | `Projects/absalom-inheritance` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/absalom-inheritance/WISHLIST.md#phase-8--the-debts-on-the-surface) |
-| 7 | Phase 1 — The room is a description | `Projects/fourth-quarter` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/fourth-quarter/WISHLIST.md#phase-1--the-room-is-a-description) |
-| 8 | Phase 2 — Four rooms, one ladder | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
-| 9 | Phase 3 — Feet that find the door | `Projects/fourth-quarter` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/fourth-quarter/WISHLIST.md#phase-3--feet-that-find-the-door) |
-| 10 | Phase 4 — The texture diet | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/fourth-quarter/WISHLIST.md#phase-4--the-texture-diet) |
-| 11 | Phase 6 — The league has a season | `Projects/fourth-quarter` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/fourth-quarter/WISHLIST.md#phase-6--the-league-has-a-season) |
-| 12 | Phase 7 — Regulars, and the bar across town | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/fourth-quarter/WISHLIST.md#phase-7--regulars-and-the-bar-across-town) |
-| 13 | Phase 8 — The night has moments | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/fourth-quarter/WISHLIST.md#phase-8--the-night-has-moments) |
-| 14 | Phase 9 — A night you can lose | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 9](Projects/fourth-quarter/WISHLIST.md#phase-9--a-night-you-can-lose) |
-| 15 | Phase 1 — Guests who walk | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/Ren-Faire-Claude/WISHLIST.md#phase-1--guests-who-walk) |
-| 16 | Phase 2 — Weather worth checking | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Projects/Ren-Faire-Claude/WISHLIST.md#phase-2--weather-worth-checking) |
-| 17 | Phase 3 — Acts with a story | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 3](Projects/Ren-Faire-Claude/WISHLIST.md#phase-3--acts-with-a-story) |
-| 18 | Phase 4 — A faire that outlives its season | `Projects/Ren-Faire-Claude` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 4](Projects/Ren-Faire-Claude/WISHLIST.md#phase-4--a-faire-that-outlives-its-season) |
-| 19 | Phase 5 — The review that has been owed four rounds | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/Ren-Faire-Claude/WISHLIST.md#phase-5--the-review-that-has-been-owed-four-rounds) |
-| 20 | Phase 6 — A map you can pan, zoom and preview into | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/Ren-Faire-Claude/WISHLIST.md#phase-6--a-map-you-can-pan-zoom-and-preview-into) |
-| 21 | Phase 7 — A third crew | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/Ren-Faire-Claude/WISHLIST.md#phase-7--a-third-crew) |
-| 22 | Phase 8 — The wiring audit, automatic | `Projects/Ren-Faire-Claude` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/Ren-Faire-Claude/WISHLIST.md#phase-8--the-wiring-audit-automatic) |
-| 23 | Phase 1 — The backer-less middle game | `Projects/daredevil` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/daredevil/WISHLIST.md#phase-1--the-backer-less-middle-game) |
-| 24 | Phase 2 — Everything the game already wrote and cannot show | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Projects/daredevil/WISHLIST.md#phase-2--everything-the-game-already-wrote-and-cannot-show) |
-| 25 | Phase 3 — Relationships as a declared thing | `Projects/daredevil` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/daredevil/WISHLIST.md#phase-3--relationships-as-a-declared-thing) |
-| 26 | Phase 4 — Danny and Tommy get a way out | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/daredevil/WISHLIST.md#phase-4--danny-and-tommy-get-a-way-out) |
-| 27 | Phase 5 — A walker that knows what it did not reach | `Projects/daredevil` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 5](Projects/daredevil/WISHLIST.md#phase-5--a-walker-that-knows-what-it-did-not-reach) |
-| 28 | Phase 6 — Evenings that cost something | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Projects/daredevil/WISHLIST.md#phase-6--evenings-that-cost-something) |
-| 29 | Phase 7 — Three stunts that are three stunts | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/daredevil/WISHLIST.md#phase-7--three-stunts-that-are-three-stunts) |
-| 30 | Phase 8 — A workflow that runs the suite, and a real thumb | `Projects/daredevil` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/daredevil/WISHLIST.md#phase-8--a-workflow-that-runs-the-suite-and-a-real-thumb) |
-| 31 | Phase 1 — The skill table becomes a record | `Numina` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Numina/WISHLIST.md#phase-1--the-skill-table-becomes-a-record) |
-| 32 | Phase 2 — A page for every skill, and links between them | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Numina/WISHLIST.md#phase-2--a-page-for-every-skill-and-links-between-them) |
-| 33 | Phase 3 — The character builder | `Numina` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 3](Numina/WISHLIST.md#phase-3--the-character-builder) |
-| 34 | Phase 4 — The accessibility and mobile pass | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Numina/WISHLIST.md#phase-4--the-accessibility-and-mobile-pass) |
-| 35 | Phase 5 — Come play | `Numina` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Numina/WISHLIST.md#phase-5--come-play) |
-| 36 | Phase 6 — Excellencies, history, and the timeline | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Numina/WISHLIST.md#phase-6--excellencies-history-and-the-timeline) |
-| 37 | Phase 7 — The print packet and the offline kit | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Numina/WISHLIST.md#phase-7--the-print-packet-and-the-offline-kit) |
-| 38 | Phase 8 — Search and navigation, upgraded | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Numina/WISHLIST.md#phase-8--search-and-navigation-upgraded) |
-| 39 | Phase 1 — The simulation half, in numbers | `Tools/schedule` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Tools/schedule/WISHLIST.md#phase-1--the-simulation-half-in-numbers) |
-| 40 | Phase 2 — The editor under the same harness | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Tools/schedule/WISHLIST.md#phase-2--the-editor-under-the-same-harness) |
-| 41 | Phase 3 — A published file the machine can rebuild | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 3](Tools/schedule/WISHLIST.md#phase-3--a-published-file-the-machine-can-rebuild) |
-| 42 | Phase 4 — The storage answer | `Tools/schedule` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 4](Tools/schedule/WISHLIST.md#phase-4--the-storage-answer) |
-| 43 | Phase 5 — The seam at 14729 | `Tools/schedule` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Tools/schedule/WISHLIST.md#phase-5--the-seam-at-14729) |
-| 44 | Phase 6 — One conflict engine, and the constraints nobody checks | `Tools/schedule` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Tools/schedule/WISHLIST.md#phase-6--one-conflict-engine-and-the-constraints-nobody-checks) |
-| 45 | Phase 7 — Scenarios you can name and compare | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Tools/schedule/WISHLIST.md#phase-7--scenarios-you-can-name-and-compare) |
-| 46 | Phase 8 — The tool a keyboard can drive | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Tools/schedule/WISHLIST.md#phase-8--the-tool-a-keyboard-can-drive) |
-| 47 | Phase 1 — The sim without the page | `Projects/corner-and-kettle` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/corner-and-kettle/WISHLIST.md#phase-1--the-sim-without-the-page) |
-| 48 | Phase 2 — `test/balance.mjs` | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/corner-and-kettle/WISHLIST.md#phase-2--testbalancemjs) |
-| 49 | Phase 3 — The Serve gate, decided | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 3](Projects/corner-and-kettle/WISHLIST.md#phase-3--the-serve-gate-decided) |
-| 50 | Phase 4 — The page becomes a view | `Projects/corner-and-kettle` | 2+ | Opus 5 |  | [WISHLIST.md Phase 4](Projects/corner-and-kettle/WISHLIST.md#phase-4--the-page-becomes-a-view) |
-| 51 | Phase 5 — Staff who have a week | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/corner-and-kettle/WISHLIST.md#phase-5--staff-who-have-a-week) |
-| 52 | Phase 6 — Customers who remember | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/corner-and-kettle/WISHLIST.md#phase-6--customers-who-remember) |
-| 53 | Phase 7 — A reopening worth doing | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/corner-and-kettle/WISHLIST.md#phase-7--a-reopening-worth-doing) |
-| 54 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
-| 55 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
-| 56 | Decide whether any real report card needs a second look, after the `.75`-band bug | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
-| 57 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 58 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — |  | [Questions for Devon](#questions-for-devon) |
-| 59 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
-| 60 | The `Tools/Name Picker.html` → `name-picker.html` rename, plus `newindex.html`'s one link | `site` | ¼ | — |  | [Name Picker](#name-picker) |
-| 61 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 62 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 63 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 64 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 65 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 66 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 67 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 68 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
-| 69 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 70 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 71 | Configurable grading policies and a "why this grade" audit trail | `Tools/final-grade-checker` | 1 | — |  | [Final Grade Checker](#final-grade-checker) |
-| 72 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — |  | [The site itself](#the-site-itself) |
-| 73 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
-| 74 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
-| 75 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
-| 76 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
-| 77 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
-| 78 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 79 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 80 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 81 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 82 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
-| 83 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 84 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 85 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
-| 86 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 87 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 88 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 89 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 90 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 91 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 92 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 93 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 94 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 95 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 96 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 97 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 98 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 99 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 100 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 101 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 102 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
-| 103 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
-| 104 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 105 | Get an actual screenshot from a session where the browser pane composites | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
-| 106 | The jsPDF-AutoTable column-width warning | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
-| 107 | Verify the EXIF fix against a real sideways phone photo | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
-| 108 | A real screenshot of the two-row mobile layout | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
-| 109 | Settings persistence — plain `localStorage`, three primitives — only if a teacher asks | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
-| 110 | The stale "twelve keys" comment in `np-store.js`; there are thirteen | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
-| 111 | Exercise multiple rosters under real use — neither browser suite has run more than one | `Tools/name-picker` | ½ | — |  | [Name Picker](#name-picker) |
-| 112 | Mobile and accessibility re-verification, carried twice | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
-| 113 | Wire `leastPicked()` into a "who's due" display | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
-| 114 | An automated assertion for the print-all path's rotation fix | `Tools/seating-chart` | ¼ | — |  | [Seating Chart Generator](#seating-chart-generator) |
-| 115 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
-| 116 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
-| 117 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 1 | Phase 4 — Creatures that know what they are standing in | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/absalom-inheritance/WISHLIST.md#phase-4--creatures-that-know-what-they-are-standing-in) |
+| 2 | Phase 5 — A harness that says which fight killed you | `Projects/absalom-inheritance` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Projects/absalom-inheritance/WISHLIST.md#phase-5--a-harness-that-says-which-fight-killed-you) |
+| 3 | Phase 6 — An area should be a file, not a diff | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Projects/absalom-inheritance/WISHLIST.md#phase-6--an-area-should-be-a-file-not-a-diff) |
+| 4 | Phase 7 — Two more heirs, with their own satchels | `Projects/absalom-inheritance` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/absalom-inheritance/WISHLIST.md#phase-7--two-more-heirs-with-their-own-satchels) |
+| 5 | Phase 8 — The debts on the surface | `Projects/absalom-inheritance` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/absalom-inheritance/WISHLIST.md#phase-8--the-debts-on-the-surface) |
+| 6 | Phase 1 — The room is a description | `Projects/fourth-quarter` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/fourth-quarter/WISHLIST.md#phase-1--the-room-is-a-description) |
+| 7 | Phase 2 — Four rooms, one ladder | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
+| 8 | Phase 3 — Feet that find the door | `Projects/fourth-quarter` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/fourth-quarter/WISHLIST.md#phase-3--feet-that-find-the-door) |
+| 9 | Phase 4 — The texture diet | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/fourth-quarter/WISHLIST.md#phase-4--the-texture-diet) |
+| 10 | Phase 6 — The league has a season | `Projects/fourth-quarter` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/fourth-quarter/WISHLIST.md#phase-6--the-league-has-a-season) |
+| 11 | Phase 7 — Regulars, and the bar across town | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/fourth-quarter/WISHLIST.md#phase-7--regulars-and-the-bar-across-town) |
+| 12 | Phase 8 — The night has moments | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/fourth-quarter/WISHLIST.md#phase-8--the-night-has-moments) |
+| 13 | Phase 9 — A night you can lose | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 9](Projects/fourth-quarter/WISHLIST.md#phase-9--a-night-you-can-lose) |
+| 14 | Phase 1 — Guests who walk | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/Ren-Faire-Claude/WISHLIST.md#phase-1--guests-who-walk) |
+| 15 | Phase 2 — Weather worth checking | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Projects/Ren-Faire-Claude/WISHLIST.md#phase-2--weather-worth-checking) |
+| 16 | Phase 3 — Acts with a story | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 3](Projects/Ren-Faire-Claude/WISHLIST.md#phase-3--acts-with-a-story) |
+| 17 | Phase 4 — A faire that outlives its season | `Projects/Ren-Faire-Claude` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 4](Projects/Ren-Faire-Claude/WISHLIST.md#phase-4--a-faire-that-outlives-its-season) |
+| 18 | Phase 5 — The review that has been owed four rounds | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/Ren-Faire-Claude/WISHLIST.md#phase-5--the-review-that-has-been-owed-four-rounds) |
+| 19 | Phase 6 — A map you can pan, zoom and preview into | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/Ren-Faire-Claude/WISHLIST.md#phase-6--a-map-you-can-pan-zoom-and-preview-into) |
+| 20 | Phase 7 — A third crew | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/Ren-Faire-Claude/WISHLIST.md#phase-7--a-third-crew) |
+| 21 | Phase 8 — The wiring audit, automatic | `Projects/Ren-Faire-Claude` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/Ren-Faire-Claude/WISHLIST.md#phase-8--the-wiring-audit-automatic) |
+| 22 | Phase 1 — The backer-less middle game | `Projects/daredevil` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/daredevil/WISHLIST.md#phase-1--the-backer-less-middle-game) |
+| 23 | Phase 2 — Everything the game already wrote and cannot show | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Projects/daredevil/WISHLIST.md#phase-2--everything-the-game-already-wrote-and-cannot-show) |
+| 24 | Phase 3 — Relationships as a declared thing | `Projects/daredevil` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/daredevil/WISHLIST.md#phase-3--relationships-as-a-declared-thing) |
+| 25 | Phase 4 — Danny and Tommy get a way out | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/daredevil/WISHLIST.md#phase-4--danny-and-tommy-get-a-way-out) |
+| 26 | Phase 5 — A walker that knows what it did not reach | `Projects/daredevil` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 5](Projects/daredevil/WISHLIST.md#phase-5--a-walker-that-knows-what-it-did-not-reach) |
+| 27 | Phase 6 — Evenings that cost something | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Projects/daredevil/WISHLIST.md#phase-6--evenings-that-cost-something) |
+| 28 | Phase 7 — Three stunts that are three stunts | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/daredevil/WISHLIST.md#phase-7--three-stunts-that-are-three-stunts) |
+| 29 | Phase 8 — A workflow that runs the suite, and a real thumb | `Projects/daredevil` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/daredevil/WISHLIST.md#phase-8--a-workflow-that-runs-the-suite-and-a-real-thumb) |
+| 30 | Phase 1 — The skill table becomes a record | `Numina` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Numina/WISHLIST.md#phase-1--the-skill-table-becomes-a-record) |
+| 31 | Phase 2 — A page for every skill, and links between them | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Numina/WISHLIST.md#phase-2--a-page-for-every-skill-and-links-between-them) |
+| 32 | Phase 3 — The character builder | `Numina` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 3](Numina/WISHLIST.md#phase-3--the-character-builder) |
+| 33 | Phase 4 — The accessibility and mobile pass | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Numina/WISHLIST.md#phase-4--the-accessibility-and-mobile-pass) |
+| 34 | Phase 5 — Come play | `Numina` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Numina/WISHLIST.md#phase-5--come-play) |
+| 35 | Phase 6 — Excellencies, history, and the timeline | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Numina/WISHLIST.md#phase-6--excellencies-history-and-the-timeline) |
+| 36 | Phase 7 — The print packet and the offline kit | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Numina/WISHLIST.md#phase-7--the-print-packet-and-the-offline-kit) |
+| 37 | Phase 8 — Search and navigation, upgraded | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Numina/WISHLIST.md#phase-8--search-and-navigation-upgraded) |
+| 38 | Phase 1 — The simulation half, in numbers | `Tools/schedule` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Tools/schedule/WISHLIST.md#phase-1--the-simulation-half-in-numbers) |
+| 39 | Phase 2 — The editor under the same harness | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Tools/schedule/WISHLIST.md#phase-2--the-editor-under-the-same-harness) |
+| 40 | Phase 3 — A published file the machine can rebuild | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 3](Tools/schedule/WISHLIST.md#phase-3--a-published-file-the-machine-can-rebuild) |
+| 41 | Phase 4 — The storage answer | `Tools/schedule` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 4](Tools/schedule/WISHLIST.md#phase-4--the-storage-answer) |
+| 42 | Phase 5 — The seam at 14729 | `Tools/schedule` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Tools/schedule/WISHLIST.md#phase-5--the-seam-at-14729) |
+| 43 | Phase 6 — One conflict engine, and the constraints nobody checks | `Tools/schedule` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Tools/schedule/WISHLIST.md#phase-6--one-conflict-engine-and-the-constraints-nobody-checks) |
+| 44 | Phase 7 — Scenarios you can name and compare | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Tools/schedule/WISHLIST.md#phase-7--scenarios-you-can-name-and-compare) |
+| 45 | Phase 8 — The tool a keyboard can drive | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Tools/schedule/WISHLIST.md#phase-8--the-tool-a-keyboard-can-drive) |
+| 46 | Phase 1 — The sim without the page | `Projects/corner-and-kettle` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/corner-and-kettle/WISHLIST.md#phase-1--the-sim-without-the-page) |
+| 47 | Phase 2 — `test/balance.mjs` | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/corner-and-kettle/WISHLIST.md#phase-2--testbalancemjs) |
+| 48 | Phase 3 — The Serve gate, decided | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 3](Projects/corner-and-kettle/WISHLIST.md#phase-3--the-serve-gate-decided) |
+| 49 | Phase 4 — The page becomes a view | `Projects/corner-and-kettle` | 2+ | Opus 5 |  | [WISHLIST.md Phase 4](Projects/corner-and-kettle/WISHLIST.md#phase-4--the-page-becomes-a-view) |
+| 50 | Phase 5 — Staff who have a week | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/corner-and-kettle/WISHLIST.md#phase-5--staff-who-have-a-week) |
+| 51 | Phase 6 — Customers who remember | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/corner-and-kettle/WISHLIST.md#phase-6--customers-who-remember) |
+| 52 | Phase 7 — A reopening worth doing | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/corner-and-kettle/WISHLIST.md#phase-7--a-reopening-worth-doing) |
+| 53 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
+| 54 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
+| 55 | Decide whether any real report card needs a second look, after the `.75`-band bug | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
+| 56 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 57 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — |  | [Questions for Devon](#questions-for-devon) |
+| 58 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
+| 59 | The `Tools/Name Picker.html` → `name-picker.html` rename, plus `newindex.html`'s one link | `site` | ¼ | — |  | [Name Picker](#name-picker) |
+| 60 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 61 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 62 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 63 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 64 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 65 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 66 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 67 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
+| 68 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 69 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 70 | Configurable grading policies and a "why this grade" audit trail | `Tools/final-grade-checker` | 1 | — |  | [Final Grade Checker](#final-grade-checker) |
+| 71 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — |  | [The site itself](#the-site-itself) |
+| 72 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
+| 73 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
+| 74 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
+| 75 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
+| 76 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
+| 77 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 78 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 79 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 80 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 81 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
+| 82 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 83 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 84 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
+| 85 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 86 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 87 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 88 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 89 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 90 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 91 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 92 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 93 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 94 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 95 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 96 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 97 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 98 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 99 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 100 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 101 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
+| 102 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
+| 103 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 104 | Get an actual screenshot from a session where the browser pane composites | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
+| 105 | The jsPDF-AutoTable column-width warning | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
+| 106 | Verify the EXIF fix against a real sideways phone photo | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
+| 107 | A real screenshot of the two-row mobile layout | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
+| 108 | Settings persistence — plain `localStorage`, three primitives — only if a teacher asks | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
+| 109 | The stale "twelve keys" comment in `np-store.js`; there are thirteen | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
+| 110 | Exercise multiple rosters under real use — neither browser suite has run more than one | `Tools/name-picker` | ½ | — |  | [Name Picker](#name-picker) |
+| 111 | Mobile and accessibility re-verification, carried twice | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
+| 112 | Wire `leastPicked()` into a "who's due" display | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
+| 113 | An automated assertion for the print-all path's rotation fix | `Tools/seating-chart` | ¼ | — |  | [Seating Chart Generator](#seating-chart-generator) |
+| 114 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 115 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
+| 116 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
 
 ---
 
