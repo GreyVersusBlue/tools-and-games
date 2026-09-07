@@ -53,69 +53,60 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **The Fourth Quarter Phase 1, "The room is a
-description" (PR #168)**, and **the row is gone.** It was a size-1 row and
-therefore the whole batch. Worked under Claude Fable 5.1, the row's named model.
+The last thing that shipped is **The Fourth Quarter Phase 2, increment 1,
+"Four rooms, one ladder" (PR #170)**, and **the row stays** at rank 1 with
+its text rewritten, because it is a 2+ row and one increment is what a
+session ships. Worked under Claude Fable 5.1; the row names Opus 5.
 
-**What it built.** `Projects/fourth-quarter/js/layout.js`, pure and
-import-free: a room is `{ id, room, kitchen, wallT, doorways[], windows[],
-bar, tables[], fitout[], stations }`, one description per venue tier in
-`LAYOUTS` (all four the Corner Tap until Phase 2 authors the rest), and the
-module derives `seatsFor()`, `collidersFor()` as plain `{min,max}` boxes,
-`inBounds()`, `walkable()`, `standPointsFor()` and `validate()`. `world.js`
-builds from it: `adoptLayout()` refills the exported `seats`/`colliders`
-(`THREE.Box3` at the boundary) and re-aims the exported stand-point
-`Vector3`s, and `buildWorld(scene, venueId)` finally reads the argument
-`main.js` has passed it since session one. `day.js` reads its six ring
-positions from `currentLayout().stations` and `rebuildStations()` re-reads
-them. `addSeat()` and `blockCollider()` are gone.
+**What it built.** Three new room descriptions in
+`Projects/fourth-quarter/js/layout.js` — `FIELDHOUSE` (44 seats, two stoves,
+four taps), `MIDTOWN` (58, two preps and two stoves, a six-tap draft wall),
+`FLAGSHIP` (76, three preps and three stoves, eight taps) — each the Corner
+Tap's plan bigger: one rectangle plus a kitchen, bar west, kitchen east, door
+mid-south (#185). The description grew a `kind` per fit-out block, TVs as
+`{ wall, at, y }` through `tvMount()`, a pendant list, and three stand-points
+that had been literals in `main.js`: the camera spawn, the idle-server line
+and the cook line (the old cook formula put a cook inside the Fieldhouse's
+prep counter). `validate()` floods from the door on a 0.25 m grid and names
+every standing point it cannot reach (#186), refuses two proximity stations
+within 1.6 m, and holds TVs to walls that exist. `VENUES[].seats` is
+`seatsFor(LAYOUTS[id]).length` — 30, 44, 58, 76. `UPGRADES[].tier` gates
+Premium Screens and the Craft Tap Wall behind the Fieldhouse, on buying and
+not on owning (#187). `world.js` draws by kind, hangs TVs and pendants from
+the description, derives the neon, corkboard, kitchen shelf and shadow cameras
+from the room, and scales surface UVs by room size so one shared texture keeps
+one texel density (#188).
 
-**The transcription check is a dump, not a re-implementation (#182).** Before
-`layout.js` existed, the old `world.js` was booted in Chromium and its 30
-seats, 11 `Box3` colliders, nine stand-points and `inBounds()` on a 69×73
-grid at 0.25 m were written to `test/fixtures/corner-tap.json`.
-`test/smoke-layout.mjs` (55 assertions) holds the derivation to that file:
-same seats in the same order, every box edge within 1e-6 (the one rotated
-crate included, which a naive width-by-depth gets wrong by 7 cm), 0 of 5,037
-grid samples differing. After the rewrite, the same dump from the new
-`world.js` diffed against the fixture at zero. The walkability invariant —
-every seat approach and stand-point inside bounds and outside every
-collider, door in, exit out, each doorway's centre line walkable from room to
-kitchen 5 cm at a time — holds for every description in the table, which is
-what makes Phase 2 authorable.
+**Guard-rails broken on purpose (#34)**, each failing at the assertion whose
+comment claims it: a crate across each room's doorway (six problems, `station
+stove cannot be reached from the door` first, and no "not walkable"); a
+flagship table walled in on four sides (four seats unreachable); the sweep
+deleted from `validate()` (exactly its five assertions); the spacing check
+deleted (one); the gate deleted from `buyUpgrade()` (four in
+`smoke-campaign.mjs`, the first `the gate refuses the sale by name
+(undefined)`). One break that did not fail is on record: a Fieldhouse table
+at (2.9, −5.0) meant as a doorway block stops 1 cm short of the corridor, and
+the suite was right to stay green.
 
-**Five guard-rails broken on purpose (#34)**, each failing at the assertion
-whose comment claims it: a table on stool 1's approach (`seat 1 (bar)
-approach (-5.6, -2.4) is not walkable`); the doorway a metre east (16
-corridor samples disagree with the fixture); `blockBox` ignoring rotation
-(crate2's two edges); tables before stools (30 seats out of order); the
-corridor band dropped from `inBounds` (8 samples, and every doorway "does not
-join the room to the kitchen").
+**Counts.** `smoke-layout.mjs` 55 → 103, `smoke-campaign.mjs` 203 → 216,
+`smoke-engine.mjs` 190; `tools/browser-check.mjs` 25 → 58, warping every
+rung and asserting seats, colliders, stand-points, the camera on
+`stations.spawn` and the six rings on their stations, no page error. All four
+rooms were screenshotted from the door and looked at.
 
-**The one real bug, and what found it (#184).** The first `day.js` draft keyed
-the door and real-estate stations as `ring: "doorRing"`, and the constructor
-then assigned the torus mesh to `st.ring`, so the first `rebuildStations()`
-looked up a mesh as a key and threw `Cannot read properties of undefined
-(reading 'x')` on "New Game" and on every signed lease — with all 448 Node
-assertions green. `tools/browser-check.mjs` (25 checks, hand-run, needs
-`playwright-core`) boots the page and asserts the lists after boot, after
-New Game and after a dev warp, with no page error; it lives under `tools/`
-because `fourth-quarter-ci.yml` runs every `test/*.mjs`. The key is `point`
-now.
+**None of the four shared things was touched.** The two site-wide checks are
+still red on `main` and were red before this branch: `check-integrity.mjs`
+fails on `Projects/school-generator/tools/walk-shell.html` and
+`Tools/prompt-builder.html`; `social:check` reports six pages out of sync.
+The unit count is 1,441, same 2 broken. Outside the project: `HISTORY.md`'s
+decisions 185 through 188 and a Phase 2 entry in its Fourth Quarter section,
+and `CLAUDE.md`'s locked-decision count (184 to 188).
 
-**None of the four shared things was touched.** No `index.html`, no
-`assets/js/gvb-save.js`, no `Tools/board-check/**`, no generated previews or
-og images. **The two site-wide checks are still red on `main` and were red
-before this branch existed**: `check-integrity.mjs` fails on
-`Projects/school-generator/tools/walk-shell.html` (an HTML comment inside an
-inline `<script type="module">`) and on `Tools/prompt-builder.html` (it
-references `fonts.googleapis.com` and `fonts.gstatic.com`, against the
-zero-offsite rule); `social:check` reports six pages out of sync with the
-board. The unit count is **1,441**, up 5 for this phase's new files, and the
-same 2 are broken. None of the three is ranked below yet; all three are
-somebody's next quarter-session. What else moved outside the project:
-`HISTORY.md`'s decisions 182 through 184 and a "Fourth Quarter, Phases 1 and
-5" section, and `CLAUDE.md`'s locked-decision count (181 to 184).
+Before that: **The Fourth Quarter Phase 1, "The room is a description" (PR
+#168)**, which made `js/layout.js` the room — seats, colliders, `inBounds()`
+and the walkability invariant derived from one description per tier, held
+to a Chromium dump of the old `world.js` (#182), and `tools/browser-check.mjs`
+catching the `ring` key clash every Node test missed (#184).
 
 Before that: **Absalom Phase 7, "Two more heirs, with their own satchels"
 (PR #166)**, which closed arc two: `buff` replacing `self-buff` and `debuff`
@@ -179,30 +170,26 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**110 ranked items**, one fewer than the last merge, because rank 1 finished and
-its row went. Every rank below it moved up by one. 48 of them are phases in one
+**110 ranked items**, the same as the last merge, because rank 1 is a 2+ row
+and shipped an increment rather than finishing. 48 of them are phases in one
 of the ten project `WISHLIST.md` files; the other 62 are standalone, and live
 in Tier 2 below. Beyond the ranked list there are 254 open bullets in the
-eleven wishlists' standing backlogs and 47 open questions for Devon — 411 open
-items in all. **No standing-backlog bullet was added and none closed**, though
-two of Fourth Quarter's "The room" bullets were rewritten: `buildWorld()` now
-builds from `layoutFor(venueId)` with all four tiers mapped to the Corner Tap,
-and the stand-point bullet became a note that TV, pendant, corkboard, neon and
-kitchen-shelf positions are the literals still left in `world.js`, none with a
-collider or a stand-point. **No question was answered**: Q22, "should the
-ladder be physically bigger?", stands in front of Phase 2, not Phase 1 — a
-description layer is worth having whichever way it goes.
+eleven wishlists' standing backlogs and 46 open questions for Devon — 410 open
+items in all. **One standing-backlog bullet closed and one opened**, both in
+Fourth Quarter's "The room": the TV/pendant/corkboard literals are in the
+description now, and the new bullet says the browser check's five `inBounds`
+probe points are the Corner Tap's only. **One question answered: Q22**,
+"should the ladder be physically bigger?" — yes, by #185, struck below.
 
-**Pick up rank 1: `Projects/fourth-quarter` Phase 2, "Four rooms, one
-ladder" (Opus 5, size 2+).** A 2+ row, so it is the whole batch and it will
-not finish in one session: do one increment, ship it, and leave the row in
-place with its text rewritten to say what is done. Phase 1 left it authoring
-work — four descriptions in `layout.js`'s `LAYOUTS` table, each validated by
-`validate()` before a mesh exists — and `campaign.js`'s `VENUES[].seats`
-column should read `seatsFor().length` or go. Q22 stands in front of this row.
-It heads a run of eight consecutive Fourth Quarter rows — ranks 1 through 7
-are all that project, and three of them (1, 4 and 5) are 2+ rows that are each
-a whole batch on their own.
+**Pick up rank 1 again: `Projects/fourth-quarter` Phase 2, "Four rooms, one
+ladder" (Opus 5, size 2+), increment 2 — or skip to rank 2.** What is left of
+Phase 2 is Midtown's second room and the flagship's mezzanine, and both are
+deliberately parked behind **Phase 3, "Feet that find the door" (rank 2,
+Fable 5.1, size 1)**: a second room is a wall between the door and half the
+seats, and today's `stepToward()` walks patrons into masonry. The honest next
+batch is rank 2, then rank 1's second increment on top of it. Ranks 1
+through 7 are all Fourth Quarter; 1, 4 and 5 are 2+ rows that are each a
+whole batch on their own.
 
 **Read this before trusting the order.** Two sources rank the same work
 differently, and the table follows `UPGRADE-PATHS.md`'s order because it is
@@ -247,7 +234,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 2 — Four rooms, one ladder | `Projects/fourth-quarter` | 2+ | Opus 5 | `claude/backlog-ranked-batch-iza30j` | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
+| 1 | Phase 2 — Four rooms, one ladder. **Increment 1 shipped (PR #170):** four rooms, derived seats, tier gates, the door-flood invariant. **Left:** Midtown's second room and the flagship's mezzanine, after Phase 3 | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 2](Projects/fourth-quarter/WISHLIST.md#phase-2--four-rooms-one-ladder) |
 | 2 | Phase 3 — Feet that find the door | `Projects/fourth-quarter` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/fourth-quarter/WISHLIST.md#phase-3--feet-that-find-the-door) |
 | 3 | Phase 4 — The texture diet | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/fourth-quarter/WISHLIST.md#phase-4--the-texture-diet) |
 | 4 | Phase 6 — The league has a season | `Projects/fourth-quarter` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/fourth-quarter/WISHLIST.md#phase-6--the-league-has-a-season) |
@@ -1194,6 +1181,10 @@ only its own?", answered by locked #133 while shipping Absalom Phase 1. The
 answer is #17's: read the other engine and write your own, share the vocabulary
 and not the code. Torchbearer has no open questions left.
 
+**Struck: Q22**, "should the ladder be physically bigger?", answered yes by
+locked #185 while shipping Fourth Quarter Phase 2's first increment: 30, 44,
+58 and 76 seats up the ladder, one rectangle each until NPCs can path.
+
 **The `Where` column names files that no longer exist.** The prompts, the
 notes files and the ten handoffs were deleted in this consolidation; they are
 cited by name so a raise count can be checked, and `git log` is where they
@@ -1239,7 +1230,6 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q22 | **Should the ladder be physically bigger?** Four tiers, $0 to $34,000, one 30-seat room, and `buildWorld()` ignores the venue it is handed. Phases 1–3 are the largest single piece of work in that file. Round 2's honest-30-seats fix means nothing currently lies, so this is a want, not a fix. | 3 | wishlist, prompt 07, `Projects/fourth-quarter/README.md` roadmap |
 | Q23 | **Should there be a way to lose?** Cash goes negative, turns red, and nothing else happens. Options that fit what exists: a bankruptcy threshold, a lease that can be lost (a downgrade rather than a game over), a bank that stops lending. Round 3 declined to invent one unprompted and was right to. | 3 | wishlist, prompt 07's notes, README roadmap |
 | Q24 | **How much of the 2D campaign is actually wanted?** 21 event cards, a 14-week season with a 4-team bracket, regulars, a rival, three distributors. All of it ports; none of it is small; a 3D floor game with a full back office is a different game. Phases 6–9 assume "most of it, in that order." | 2 | wishlist, README roadmap |
 | Q25 | **Is 66 MB of texture on first paint acceptable?** 27 JPEGs, 69,218,191 bytes, all 27 loaded by the first room. Uncompressed in GPU memory that is roughly 600 MB with mipmaps (2048² × 4 × 27 × 1.33 — arithmetic, not a measurement). Phase 4 cuts it by an order of magnitude at some visible cost. | 1 | wishlist |
