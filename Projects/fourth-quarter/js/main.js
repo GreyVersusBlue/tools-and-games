@@ -13,6 +13,8 @@ import { DayPhase } from "./day.js";
 import { DevPanel } from "./dev.js";
 import * as C from "./campaign.js";
 import * as LG from "./league.js";
+import * as EV from "./events.js";
+import { FloorMoment } from "./moments.js";
 import * as audio from "./audio.js";
 import { initTextures, textureStatus } from "./materials.js";
 import { mountSaveBar } from "../../../assets/js/gvb-save.js";
@@ -69,12 +71,17 @@ let { group: worldGroup, tvs, nightRig, dayRig } = buildWorld(scene, campaign.ve
 let phase = "day"; // day | night | report
 let engine = null, patrons = [], patronsById = new Map(), servers = [], cookMeshes = [], passDisplays = new Map();
 let broadcast = null, started = false, speed = 1;
+let moment = null;        // the night's pending moment on the floor (moments.js), or null
+let leavingMoments = [];  // ones answered, walking back out
 let tonightAtOpen = null; // league.js's tonight() as it stood when the doors opened; the box score reads it
 
 const player = new Player(camera, renderer.domElement, null);
 player.onInteract = () => {
   if (phase === "day") day.interact(player.pos);
   else if (phase === "night") {
+    // a moment in reach comes before the taps, the pass and the regulars:
+    // it is the one thing on the floor that is waiting on you
+    if (moment && moment.near(player.pos) && engine && engine.moment && !day.panelOpen()) { openMomentPanel(); return; }
     const r = player.tryInteract(scene, patronsById);
     if (r && r.msg) flash(r.msg, r.good);
   }
@@ -82,7 +89,24 @@ player.onInteract = () => {
 
 // mountBar is a hoisted function declaration further down the file; DayPhase only
 // calls it when the Tonight panel renders, long after both exist.
-const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight, mountBar });
+const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight, mountBar, resolveMoment });
+
+/** The boss answers a moment: the panel's choice goes to the engine, the
+ *  engine's events (the line, bodies leaving, a staffer walking) come back
+ *  through handleEvents like any other, and the cursor goes back to the
+ *  floor — still inside the click, so no extra click is needed. */
+function resolveMoment(idx) {
+  if (phase !== "night" || !engine || !engine.moment) return;
+  handleEvents(engine.resolveMoment(idx));
+  renderer.domElement.requestPointerLock();
+}
+/** The card's panel: title, body, one button per choice. The sim keeps
+ *  running while it is up — the panel only freezes the boss (see the loop),
+ *  which is the cost of the interruption. */
+function openMomentPanel() {
+  document.exitPointerLock();
+  day.momentPanel(engine.moment.event, engine.view());
+}
 
 /** Put the camera on the room's own spawn point (layout.js `stations.spawn`),
  *  eye height 1.62 over the floor there — the literal (0, 1.62, 3.4) was the
@@ -204,6 +228,9 @@ function beginNight() {
     // spawn of their own during hours 1-3, so the seat cap and the crowd
     // number keep agreeing with the room
     regulars: C.regularsIn(campaign),
+    // the night's moments: a budget off the chaos roll, the books' view and
+    // the picker over the save's cooldowns (campaign.js's nightMoments())
+    moments: C.nightMoments(campaign),
   });
   player.engine = engine;
   seats.forEach(s => (s.taken = false));
@@ -263,7 +290,7 @@ function tick(txt, cls) {
 
 function updateHUD() {
   $("#hDay").textContent = `Day ${campaign.day} · ${C.weekday(campaign)}`;
-  $("#hCash").textContent = "$" + Math.round(campaign.cash + (phase === "night" && engine ? engine.revenue + engine.tips : 0));
+  $("#hCash").textContent = "$" + Math.round(campaign.cash + (phase === "night" && engine ? engine.revenue + engine.tips + engine.eventNet : 0));
   $("#hCash").classList.toggle("hurt", campaign.cash < 0);
   // Reputation sits beside cash because it is the other running total: cash is
   // what tonight paid, this is what every night before it bought.
@@ -276,7 +303,9 @@ function updateHUD() {
     $("#hMoodFill").style.width = pct + "%";
     $("#hMoodFill").style.background = pct >= 60 ? "var(--green)" : pct >= 40 ? "var(--amber)" : "var(--red)";
     $("#hMood").textContent = pct >= 80 ? "Electric" : pct >= 60 ? "Good" : pct >= 40 ? "Restless" : "Ugly";
-    $("#prompt").textContent = day.panelOpen() ? "" : player.promptText(patronsById);
+    $("#prompt").textContent = day.panelOpen() ? ""
+      : moment && engine.moment && moment.near(player.pos) ? `E — ${engine.moment.event.title}`
+      : player.promptText(patronsById);
   } else {
     $("#hHour").textContent = "DAY";
     $("#hCrowd").textContent = "—";
@@ -303,7 +332,12 @@ function updateBroadcast(dt) {
   // halftime: the first third of the hour after Q2 is the standings screen
   broadcast.showStandings = !!engine && broadcast.started && !broadcast.finished
     && engine.hour === 5 && (engine.t - 5 * engine.hourLenSec) < engine.hourLenSec / 3;
-  drawBroadcast(tvs, broadcast);
+  // "Screen Goes Dark", left dark: the biggest screen is black for the night
+  if (engine && engine.flags.tvBroken && tvs.length) {
+    const [dead, ...rest] = tvs;
+    dead.ctx.fillStyle = "#000"; dead.ctx.fillRect(0, 0, dead.canvas.width, dead.canvas.height); dead.tex.needsUpdate = true;
+    drawBroadcast(rest, broadcast);
+  } else drawBroadcast(tvs, broadcast);
 }
 function settleScore(win) {
   if (win && broadcast.us <= broadcast.them) broadcast.us = broadcast.them + (Math.random() < 0.5 ? 3 : 7);
@@ -359,6 +393,43 @@ function handleEvents(evts) {
         }
         break;
       }
+      case "moment": {
+        // the card arrives as a person at the door or a lit prop, marked;
+        // the ticker's ⚠ line is the log event before this one
+        if (moment) moment.remove();
+        moment = new FloorMoment(scene, e.event, engine.view());
+        audio.playSfx("orderDing");
+        break;
+      }
+      case "momentClosed": {
+        if (moment) { moment.close(); leavingMoments.push(moment); moment = null; }
+        if (day.panelOpen() && day.momentOpen) day.closePanel();
+        if (e.auto) tick(`${e.event.title} — nobody answered it; it ran its course.`, "b");
+        break;
+      }
+      case "clearOut": {
+        // bodies leave now, on the card's word: not walkouts (nobody was
+        // stood up), not happy departures either — they just go
+        const room = patrons.filter(p => ["settling", "deciding", "waiting", "consuming"].includes(p.state));
+        for (let i = 0; i < e.n && room.length; i++) {
+          const p = room.splice(Math.floor(Math.random() * room.length), 1)[0];
+          if (p.bubbleMesh) { p.mesh.remove(p.bubbleMesh); p.bubbleMesh = null; }
+          if (p.ticket) { engine.tickets.forEach(t => { if (t.patronId === p.id && (t.state === "prep" || t.state === "ready")) t.state = "dead"; }); p.ticket = null; }
+          p.releaseSeat(); engine.depart(); p.state = "leaving";
+        }
+        break;
+      }
+      case "staffQuits": {
+        // off the floor now: a server's body walks, a cook's or bartender's
+        // side of the ticket slows to what the rest of the crew can do;
+        // the books take them off the payroll at settlement
+        const sv = servers.find(x => x.name === e.name.split(" ")[0]);
+        if (sv) { sv.dropCarry(); scene.remove(sv.mesh); servers = servers.filter(x => x !== sv); }
+        const rest = { ...campaign, staff: campaign.staff.filter(x => x.name !== e.name) };
+        engine.foodMult = C.roleMult(rest, "cook");
+        engine.drinkMult = C.roleMult(rest, "bartender");
+        break;
+      }
       case "lastCall": setTimeout(showBoxScore, 2500); break;
     }
   }
@@ -390,12 +461,27 @@ function showBoxScore() {
     <div class="row"><span>Walkouts</span><span class="${s.walkouts ? "bad" : ""}">${s.walkouts}${empt ? ` (${empt} found bare shelves)` : ""}</span></div>
     <div class="row"><span>Service rate</span><span class="${s.serviceRate >= 90 ? "good" : s.serviceRate >= 70 ? "warn" : "bad"}">${s.serviceRate}%</span></div>
     <div class="row"><span>Spoiled overnight</span><span class="${spoiled ? "bad" : ""}">${spoiled} serving${spoiled === 1 ? "" : "s"}${spoiled ? ` (~$${books.spoilage.value.toFixed(2)} wholesale)` : ""}</span></div>
+    ${momentRows(books.moments, s.moments)}
     ${engine.gameNight ? `<div class="sec">The Game</div>
     <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${gameLine(s.game.win)}</span></div>` : ""}
     ${socialRows(books.social)}`;
   $("#boxOverlay").style.display = "flex";
   document.exitPointerLock();
 }
+/** The night's moments on the box score: each card by name and the hour,
+ *  what nobody answered, and what they cost or paid all told. */
+function momentRows(mo, sm) {
+  if (!mo || !sm || !sm.resolved.length) return "";
+  const rows = sm.resolved.map(m => {
+    const card = EV.eventDef(m.id);
+    return `<div class="row"><span>${card ? card.title : m.id}<span class="hint"> · ${hourName(m.hour)}</span></span><span class="${m.auto ? "bad" : ""}">${m.auto ? "ran its course" : "answered"}</span></div>`;
+  });
+  if (mo.net) rows.push(`<div class="row"><span>Moments, in the till</span><span class="${mo.net > 0 ? "money" : "bad"}">${mo.net > 0 ? "+" : "−"}$${Math.abs(mo.net)}</span></div>`);
+  if (mo.quit.length) rows.push(`<div class="row"><span>Walked mid-shift</span><span class="bad">${mo.quit.join(", ")}</span></div>`);
+  if (mo.raised.length) rows.push(`<div class="row"><span>Raise, from tomorrow</span><span>${mo.raised.join(", ")}</span></div>`);
+  return `<div class="sec">The Night's Moments</div>${rows.join("")}`;
+}
+
 /** The box score's half-dozen lines on people rather than money: which way your
  *  name moved and why, who was in, who got 86'd, who left and who was earned.
  *  The rival is not here on purpose — it gets one line in the morning ticker. */
@@ -434,6 +520,9 @@ function teardownNightMeshes() {
   for (const sv of servers) { sv.dropCarry(); scene.remove(sv.mesh); }
   for (const m of cookMeshes) scene.remove(m);
   for (const m of passDisplays.values()) scene.remove(m);
+  if (moment) moment.remove();
+  for (const m of leavingMoments) m.remove();
+  moment = null; leavingMoments = [];
   patrons = []; servers = []; cookMeshes = []; passDisplays = new Map();
   engine = null; player.engine = null;
 }
@@ -471,6 +560,16 @@ const dev = new DevPanel(() => campaign, {
   skipToClose: () => {
     if (phase !== "night" || !engine) return false;
     engine.t = engine.hourLenSec * 8 - 0.001;
+    return true;
+  },
+  /** Dev only: put a named card on the floor now, budget and cooldown be
+   *  damned, so a moment can be looked at without waiting on the coin. */
+  fireMoment: id => {
+    const card = EV.eventDef(id);
+    if (phase !== "night" || !engine || !card || engine.moment) return false;
+    const out = engine.openMoment(card);
+    if (!out.length) return false;
+    handleEvents(out);
     return true;
   },
 });
@@ -576,6 +675,8 @@ window.__fq = {
   get patrons() { return patrons; }, get servers() { return servers; }, get patronsById() { return patronsById; },
   get textures() { return textureStatus(); },
   get campaign() { return campaign; }, get engine() { return engine; }, get broadcast() { return broadcast; },
+  get moment() { return moment; }, get leavingMoments() { return leavingMoments; },
+  resolveMoment, openMomentPanel, dev,
 };
 let last = performance.now();
 let hudT = 0;
@@ -589,6 +690,9 @@ renderer.setAnimationLoop(() => {
       handleEvents(engine.update(simDt));
       for (const p of patrons) if (p.state !== "gone") p.update(simDt);
       for (const sv of servers) sv.update(simDt, patronsById);
+      if (moment) moment.update(simDt);
+      for (const m of leavingMoments) m.update(simDt);
+      leavingMoments = leavingMoments.filter(m => !m.gone);
       syncPassDisplays();
     } else if (phase === "day") {
       day.update(dt);

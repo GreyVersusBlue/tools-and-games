@@ -635,6 +635,9 @@ await page.evaluate(() => window.__fq.day.cb.openDoors());
 // machine can starve, and a fixed 400 ms once read the halftime screen early
 const settled = (fn, label) => page.waitForFunction(fn, null, { timeout: 15000 }).catch(() => { throw new Error(`timed out waiting for ${label}`); });
 await settled(() => window.__fq.engine && window.__fq.broadcast && window.__fq.broadcast.gameNight, "the night to open");
+// Phase 8 put moments in the night; this group's arithmetic predates them,
+// so its night gets none (the last group fires its own, by hand)
+await page.evaluate(() => { window.__fq.engine.momentBudget = 0; });
 const opened = await page.evaluate(async () => {
   const C = await import("./js/campaign.js");
   const e = window.__fq.engine, b = window.__fq.broadcast;
@@ -749,6 +752,7 @@ ok("asking who is in tonight twenty times gives the same answer every time",
 // open the doors and run the night straight to the box score
 await page.evaluate(() => window.__fq.day.cb.openDoors());
 await settled(() => window.__fq.engine, "the second night to open");
+await page.evaluate(() => { window.__fq.engine.momentBudget = 0; }); // as above: the loyalty sums below are the regulars' alone
 const target = await page.evaluate(() => window.__fq.engine.crowdTarget);
 ok("the crowd the door opens on is the forecast the corkboard printed", target === board.forecast, `${target} vs ${board.forecast}`);
 
@@ -879,6 +883,153 @@ ok(sameUsual ? "the snubbed one shares the usual, so the books charge them the 8
   sRow && sRow.loyalty - second.loyalty === (sameUsual ? -8 : 3), `${second && second.loyalty} → ${sRow && sRow.loyalty}`);
 ok("the score bug's reputation is the campaign's after settlement", after.bug === String(Math.round(after.rep)), `${after.bug} vs ${after.rep}`);
 ok("no page errors through the second night", errors.length === 0, errors.join(" | "));
+
+
+group("the night has moments");
+// Phase 8. A third night, with the cards fired by hand off the dev menu
+// rather than waited on: a person who walks in from the door (the
+// inspector), a lit prop (the tap), a card that clears bodies out (the
+// rowdy fans), and one left unanswered at last call. The sim keeps running
+// under the panel, and the books settle what the floor reports.
+await page.click("#nextDayBtn");
+await settled(() => document.querySelector("#boxOverlay").style.display === "none", "the third day to come back");
+const cdBefore = await page.evaluate(() => JSON.stringify(window.__fq.campaign.eventCd));
+ok("the campaign's cooldown record is empty after two nights with no moments", cdBefore === "{}", cdBefore);
+await page.evaluate(async () => {
+  const { MENU } = await import("./js/engine.js");
+  for (const id in MENU) window.__fq.campaign.stock[id] = 60;
+  window.__fq.day.cb.openDoors();
+});
+await settled(() => window.__fq.engine, "the third night to open");
+const opened3 = await page.evaluate(() => {
+  const e = window.__fq.engine;
+  return { budget: e.momentBudget, roll: typeof e.momentRoll, viewRep: e.view().rep, rep: window.__fq.campaign.rep, viewKeys: Object.keys(e.view()).sort().join(), moment: e.moment, day: window.__fq.campaign.day };
+});
+ok("the engine opened with a moments budget off the chaos roll and the books' view", opened3.budget >= 0 && opened3.budget <= 3 && opened3.roll === "function" && opened3.viewRep === opened3.rep && opened3.moment === null, JSON.stringify(opened3));
+ok("the view carries the books' half and the floor's", /buzz/.test(opened3.viewKeys) && /regularsIn/.test(opened3.viewKeys) && /crowd/.test(opened3.viewKeys) && /flags/.test(opened3.viewKeys) && /budget/.test(opened3.viewKeys), opened3.viewKeys);
+// the coin is not this group's: no card of its own, so every card below is the one fired by hand
+await page.evaluate(() => { window.__fq.engine.momentBudget = 0; });
+
+/** Fire a card the way a developer would: the dev menu's select and button. */
+const fire = id => page.evaluate(id => {
+  window.__fq.dev.open();
+  document.querySelector("#devMoment").value = id;
+  document.querySelector("[data-firemoment]").click();
+  return { open: window.__fq.dev.isOpen(), pending: window.__fq.engine.moment && window.__fq.engine.moment.event.id };
+}, id);
+
+// 1. the inspector: a person, from the door to the kitchen pass
+await page.evaluate(() => { window.__fq.campaign.stock.wings = 500; }); // a walk-in the inspector will not like
+const insp = await fire("inspect");
+ok("the dev menu fires a card and closes: the engine has a pending moment", !insp.open && insp.pending === "inspect", JSON.stringify(insp));
+const inspFloor = await page.evaluate(async () => {
+  const w = await import("./js/world.js");
+  const m = window.__fq.moment;
+  return { has: !!m, who: m && m.who, plate: m && m.mesh.children.some(x => x.name === "nameplate"), marker: m && m.mesh.children.some(x => x.geometry && x.geometry.type === "ConeGeometry"),
+    ring: window.__fq.scene.children.some(x => x.name === "momentRing"), atDoor: m && Math.hypot(m.pos.x - w.DOOR.x, m.pos.z - w.DOOR.z) < 1,
+    anchor: m && { x: m.anchor.x, z: m.anchor.z }, passFood: { x: w.PASS_FOOD.x, z: w.PASS_FOOD.z },
+    ticker: document.querySelector("#ticker").textContent, fired: window.__fq.engine.view().fired.join() };
+});
+ok("the inspector is a person on the floor: a name over the head, a marker, a lit ring, in from the door", inspFloor.has && inspFloor.who === "Inspector" && inspFloor.plate && inspFloor.marker && inspFloor.ring && inspFloor.atDoor, JSON.stringify(inspFloor));
+ok("the card's anchor is the kitchen pass, the description's stand-point", inspFloor.anchor && near(inspFloor.anchor.x, inspFloor.passFood.x) && near(inspFloor.anchor.z, inspFloor.passFood.z), JSON.stringify(inspFloor.anchor));
+ok("the ticker announced it and the engine counts it as fired", /⚠ Health Inspector!/.test(inspFloor.ticker) && inspFloor.fired === "inspect", inspFloor.fired);
+await page.evaluate(() => document.querySelector('[data-speed="2"]').click());
+await patient(() => window.__fq.moment && window.__fq.moment.arrived, "the inspector to reach the pass");
+const inspArrived = await page.evaluate(() => { const m = window.__fq.moment; return { d: Math.hypot(m.pos.x - m.anchor.x, m.pos.z - m.anchor.z) }; });
+ok("they walk to the anchor and stand there", inspArrived.d < 0.5, `${inspArrived.d.toFixed(2)} m off`);
+// the boss walks up: the prompt names the card, E opens the panel, the sim runs on under it
+await page.evaluate(() => { const m = window.__fq.moment, cam = window.__fq.camera; cam.position.set(m.pos.x + 0.5, m.pos.y + 1.62, m.pos.z + 0.5); });
+await settled(() => document.querySelector("#prompt").textContent === "E — Health Inspector", "the prompt to name the card");
+ok("standing at the inspector, the prompt is the card, ahead of the pass behind them", true);
+const panel = await page.evaluate(() => {
+  window.__fq.player.onInteract();
+  const t0 = window.__fq.engine.t;
+  return new Promise(res => setTimeout(() => res({
+    open: window.__fq.day.panelOpen(), momentOpen: window.__fq.day.momentOpen, title: document.querySelector("#panelTitle").textContent,
+    body: document.querySelector("#panelBody").textContent, buttons: [...document.querySelectorAll("[data-moment]")].map(b => b.textContent.trim()),
+    ran: window.__fq.engine.t - t0, pointer: !!document.pointerLockElement, prompt: document.querySelector("#prompt").textContent,
+  }), 600));
+});
+ok("E opens the card as the management panel: title, body, one button per choice", panel.open && panel.momentOpen && panel.title === "Health Inspector" && /clipboard/.test(panel.body) && panel.buttons.length === 1 && /Open the kitchen/.test(panel.buttons[0]), JSON.stringify(panel.buttons));
+// any advance at all is the claim: a sim paused under the panel reads
+// exactly 0, and the software renderer's few frames a second make the
+// amount itself meaningless (#53)
+ok("and the sim kept running while it was up", panel.ran > 0, `${panel.ran.toFixed(2)} sim seconds in 0.6 real`);
+ok("the prompt is blank under a panel", panel.prompt === "");
+const answered = await page.evaluate(() => {
+  const e = window.__fq.engine;
+  const before = { net: e.eventNet, rep: e.eventRep, cash: document.querySelector("#hCash").textContent };
+  document.querySelector("[data-moment='0']").click();
+  return { before, open: window.__fq.day.panelOpen(), pending: e.moment, net: e.eventNet, rep: e.eventRep, resolved: e.moments.map(m => `${m.id}:${m.choice}:${m.auto}`).join(),
+    floor: !!window.__fq.moment, leaving: window.__fq.leavingMoments.length, ring: window.__fq.scene.children.some(x => x.name === "momentRing"),
+    ticker: document.querySelector("#ticker").textContent };
+});
+ok("the button answers it: the panel closes, the moment is resolved, once, by the boss", !answered.open && answered.pending === null && answered.resolved === "inspect:0:false", answered.resolved);
+ok("an overstocked walk-in fails the inspection: $200 into the night's ledger and 5 off your name, carried for the books", answered.before.net === 0 && answered.net === -200 && answered.rep === -5, `${answered.net} / ${answered.rep}`);
+ok("the choice's line is on the ticker", /Inspector flags aging stock/.test(answered.ticker), answered.ticker.slice(-120));
+ok("the ring is gone and the inspector is walking out", !answered.floor && !answered.ring && answered.leaving === 1);
+await patient(() => window.__fq.leavingMoments.length === 0, "the inspector to be gone out the door");
+const cashLine = await page.evaluate(() => ({ hud: document.querySelector("#hCash").textContent, expect: "$" + Math.round(window.__fq.campaign.cash + window.__fq.engine.revenue + window.__fq.engine.tips + window.__fq.engine.eventNet) }));
+ok("the score bug's cash carries the $200", cashLine.hud === cashLine.expect, `${cashLine.hud} vs ${cashLine.expect}`);
+
+// 2. the tap: a lit prop at the tap station, and a flag the engine reads
+const tap = await fire("tap");
+const tapFloor = await page.evaluate(async () => {
+  const w = await import("./js/world.js");
+  const m = window.__fq.moment;
+  return { pending: window.__fq.engine.moment.event.id, who: m.who, plate: m.mesh.children.some(x => x.name === "nameplate"), arrived: m.arrived,
+    atTap: Math.hypot(m.pos.x - w.TAP_STATION.x, m.pos.z - w.TAP_STATION.z) < 0.01, ring: window.__fq.scene.children.some(x => x.name === "momentRing") };
+});
+ok("the blown tap is a lit prop at the tap station: no person, no name, already there", tap.pending === "tap" && tapFloor.who === null && !tapFloor.plate && tapFloor.arrived && tapFloor.atTap && tapFloor.ring, JSON.stringify(tapFloor));
+const tapOut = await page.evaluate(() => {
+  const e = window.__fq.engine;
+  const beerBefore = e.inStock("beer");
+  window.__fq.openMomentPanel();
+  const labels = [...document.querySelectorAll("[data-moment]")].map(b => b.textContent.trim());
+  document.querySelector("[data-moment='1']").click();
+  return { beerBefore, labels, tapBroken: e.flags.tapBroken, beerAfter: e.inStock("beer"), stockBeer: e.stock.beer, resolved: e.moments.map(m => m.id).join(), floor: !!window.__fq.moment, ticker: document.querySelector("#ticker").textContent };
+});
+ok("the panel prices the repair off the upgrades, and leaving it sets the night flag", /\$120/.test(tapOut.labels[0]) && tapOut.tapBroken === true && tapOut.resolved === "inspect,tap", JSON.stringify(tapOut.labels));
+ok("with the line dead the beer is 86'd though the kegs are full", tapOut.beerBefore && !tapOut.beerAfter && tapOut.stockBeer > 0, `stock ${tapOut.stockBeer}`);
+ok("a prop is gone the moment it is answered", !tapOut.floor && /Taps are dead/.test(tapOut.ticker));
+
+// 3. the rowdy fans: bodies leave now, on the card's word
+await page.evaluate(() => { const e = window.__fq.engine; if (e.t < e.hourLenSec * 2) e.t = e.hourLenSec * 2 + 0.01; });
+await patient(() => window.__fq.patrons.filter(p => ["settling", "deciding", "waiting", "consuming"].includes(p.state)).length >= 8, "eight bodies seated");
+const rowdy = await fire("rowdy");
+const cleared = await page.evaluate(() => {
+  const e = window.__fq.engine;
+  const seated = () => window.__fq.patrons.filter(p => ["settling", "deciding", "waiting", "consuming"].includes(p.state)).length;
+  const before = { inBar: e.inBar, seated: seated(), walkouts: e.walkouts };
+  window.__fq.openMomentPanel();
+  document.querySelector("[data-moment='0']").click();
+  return { before, inBar: e.inBar, seated: seated(), walkouts: e.walkouts, rep: e.eventRep, resolved: e.moments.map(m => m.id).join() };
+});
+ok("showing them the door clears six bodies: the headcount and the seats both drop by six, and nobody is a walkout", rowdy.pending === "rowdy" && cleared.before.inBar - cleared.inBar === 6 && cleared.before.seated - cleared.seated === 6 && cleared.walkouts === cleared.before.walkouts, JSON.stringify(cleared));
+ok("and the rep is up 2 on the night, net -3 with the inspector's", cleared.rep === -3 && cleared.resolved === "inspect,tap,rowdy", `${cleared.rep}`);
+
+// 4. the legend, unanswered at last call: the first option, marked
+const hero = await fire("hero");
+ok("a fourth card is on the floor, waiting", hero.pending === "hero");
+await page.evaluate(() => document.querySelector('[data-speed="1"]').click());
+const dayOfNight = await page.evaluate(() => window.__fq.campaign.day);
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the third box score");
+const books3 = await page.evaluate(() => {
+  const c = window.__fq.campaign, e = window.__fq.engine;
+  return { box: document.querySelector("#boxBody").textContent, resolved: e.moments.map(m => `${m.id}:${m.choice}:${m.auto}`).join(), net: e.eventNet,
+    cd: c.eventCd, day: c.day, floor: !!window.__fq.moment, ring: window.__fq.scene.children.some(x => x.name === "momentRing"), total: e.summary().total, take: e.summary().revenue + e.summary().tips };
+});
+ok("last call resolved the legend to its first option and said nobody chose", books3.resolved === "inspect:0:false,tap:1:false,rowdy:0:false,hero:0:true", books3.resolved);
+ok("its $40 round is in the ledger: -$240 for the night, and the take carries it", books3.net === -240 && Math.abs(books3.total - (books3.take - 240)) <= 1, `${books3.net}, total ${books3.total}`);
+ok("the floor is clear at close", !books3.floor && !books3.ring);
+ok("the box score has a section on the night's moments, each card by name, the unanswered one marked",
+  /The Night's Moments/.test(books3.box) && /Health Inspector/.test(books3.box) && /Keg Tap Blows/.test(books3.box) && /Rival Fans Get Loud/.test(books3.box) && /A Legend Walks In/.test(books3.box) && /ran its course/.test(books3.box) && /−\$240/.test(books3.box),
+  books3.box.slice(books3.box.indexOf("The Night's Moments"), books3.box.indexOf("The Night's Moments") + 200));
+ok("every card that fired is on cooldown from the night it fired: 7, 4, 2 and 5 nights",
+  books3.cd.inspect === dayOfNight + 7 && books3.cd.tap === dayOfNight + 4 && books3.cd.rowdy === dayOfNight + 2 && books3.cd.hero === dayOfNight + 5 && Object.keys(books3.cd).length === 4, JSON.stringify(books3.cd));
+ok("and the record is in the save on disk", await page.evaluate(() => { const c = JSON.parse(localStorage.getItem("fq3d-save")); return !!(c && c.eventCd && c.eventCd.inspect); }));
+ok("no page errors through a night of moments", errors.length === 0, errors.join(" | "));
 
 await browser.close();
 server.close();
