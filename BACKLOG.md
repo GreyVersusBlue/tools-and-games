@@ -58,10 +58,60 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **The Fourth Quarter Phase 9, "A night you can
-lose" (PR #189)**, which **closed rank 1**: a 1-session row, closed in one
-session. **The Fourth Quarter has no ranked phases left** — all nine have
-shipped, and its `WISHLIST.md` now opens by saying so.
+The last thing that shipped is **Faire Weekend Phase 1, increment 1, "Guests
+who walk" (PR #191)**, the first increment of the 2+ row at rank 1. **The row
+stays at rank 1**, its wishlist text rewritten to say what is done and what
+is left: increment 2 is the economy.
+
+**What it built.** The crowd as people, walked, with the money left where it
+was. `GUESTS` in `data.js` is four archetypes (families, revellers, history
+buffs, day-trippers) with needs, purses and affinities, and the walk's eight
+tunables with a paragraph each. `js/guests.js` (pure, 274 lines) spawns at
+most 400 agents off the attendance number, each standing for `attendance /
+400` (#223), gives every built stage, seated stall and demo camp the
+reachable path cell it is served from, and walks each guest up to twelve hops
+per time block toward what pulls hardest: need × quality × taste ×
+shade-in-heat × a repeat penalty, over distance. The same show twice is half
+the show, which is what circulates the crowd. `computePathRoutes()` is the
+Stage 17 BFS keeping its parents, and `computePathDistances()` reads off the
+same tree. The walk runs on its own rng stream so forty seeds still roll the
+events they rolled before (#224); only aggregates reach `history`. On the
+page: a "Where the crowd went" line on the ticket stub, and two sentences the
+day can now say — guests went home hungry, and nobody could find a way from
+the gate to a named plot. That second one is the col-3 spur biting for the
+first time; a stall on it feeds nobody, but still sells at Stage 17's 0.8×
+because sales are not the walk's yet.
+
+**What is left of the row.** Reconcile with the economy (stall sales become
+the guests who reached a stall with money left; `computeFootTraffic` becomes
+a statistic derived from the walk), rule on the col-3 spur once the ruling
+costs money, and rewrite the seven `SIGNIFICANCE:` checks against the new
+model — that rewrite is the phase's design review. All seven pass unchanged
+today because the model they pin has not moved.
+
+**Guard-rails broken on purpose (#34)**, twenty-three, each caught by the
+assertion whose text claims it. Two first left the suite green, both the
+"two lines guarding the same absence" shape: the till's purse check
+duplicated the pull gate, so the till check went and the pull is the one rule
+(#225); and `hungry` read off the spent needs vector agreed with the meal
+count on every real crowd, so a crowd hungrier than the table allows now pins
+the case where they differ.
+
+**Counts.** `tests/smoke.mjs` 801 → 802; `tests/guests.mjs` new at 151;
+`play-games.mjs faire-weekend` 18 checks, 0 failed under Xvfb.
+
+**None of the four shared things was touched.** The two site-wide checks are
+still red on `main` and were red before this branch: `check-integrity.mjs`
+fails on `Projects/school-generator/tools/walk-shell.html` and
+`Tools/prompt-builder.html` (1,469 units, 2 broken), and `social:check`
+reports the same six pages out of sync. `check-collisions.mjs` passes.
+Outside the project: `HISTORY.md`'s decisions 223 through 225 and a Phase 1
+entry, and `CLAUDE.md`'s locked-decision count (222 to 225).
+
+Before that: **The Fourth Quarter Phase 9, "A night you can lose" (PR
+#189)**, which **closed rank 1**: a 1-session row, closed in one session.
+**The Fourth Quarter has no ranked phases left** — all nine have shipped, and
+its `WISHLIST.md` now opens by saying so.
 
 **What it built.** A way to lose, and a way back. A night whose books close
 below $0 is a missed night; three in a row and the landlord takes the lease
@@ -275,23 +325,26 @@ site work that happens to land in that folder. Neither is
 `Tools/prompt-builder.html`, which is red on `npm run check` today and is a
 site problem.
 
-**82 ranked items**, down one: PR #189 finished the 1-session row at rank 1,
-so it is out and everything below it moved up one. 33 of them are phases in
-a live project `WISHLIST.md` — nine of the ten files now, since the Fourth
-Quarter's is closed out; the other 49 are standalone,
-and live in Tier 2 below. Beyond the ranked list there are 241 open bullets in
-those ten standing backlogs and 39 open questions for Devon — 362 open items
-in all. **No standing-backlog bullet changed. One question was answered** —
-Q23, the one standing in front of this row, struck below and recorded as
-locked #219 and #220.
+**82 ranked items**, unchanged: PR #191 shipped one increment of the 2+ row
+at rank 1 and the row stays. 33 of them are phases in a live project
+`WISHLIST.md` — nine of the ten files now, since the Fourth Quarter's is
+closed out; the other 49 are standalone, and live in Tier 2 below. Beyond the
+ranked list there are 239 open bullets in those ten standing backlogs and 39
+open questions for Devon — 360 open items in all. **Two standing-backlog
+bullets closed** in Ren-Faire's `WISHLIST.md`: the guest-agent simulation
+(the one item untouched since Stage 9) and the stale README counts. **No
+question was answered.**
 
-**Pick up rank 1: `Projects/Ren-Faire-Claude` Phase 1, "Guests who walk"
-(Fable 5.1, size 2+).** A 2+ row is the whole batch and will not finish in
-one session: do one increment, ship it, and leave the row in place with its
-Item text rewritten to say what is done and what is left. Do not pair it
-with anything. It opens eight consecutive Ren-Faire rows, ranks 1 through 8,
-ending with the ½ wiring audit; ranks 2 through 5 are 1-session rows, so a
-session that finds this 2+ row already claimed has an obvious next batch.
+**Pick up rank 1 again: `Projects/Ren-Faire-Claude` Phase 1, "Guests who
+walk", increment 2 (Fable 5.1, size 2+).** The economy: stall sales from the
+guests who reached a stall with money left, `computeFootTraffic` derived from
+the walk, the col-3 spur ruling, and the `SIGNIFICANCE:` rewrite. The walk
+already reports `buyers`, `spent` and `arrivalsByBlock` per stall; nothing
+reads them for money yet. A 2+ row is the whole batch: do the increment, ship
+it, and leave the row in place unless every bullet is closed. It opens eight
+consecutive Ren-Faire rows, ranks 1 through 8, ending with the ½ wiring
+audit; ranks 2 through 5 are 1-session rows, so a session that finds this 2+
+row already claimed has an obvious next batch.
 
 **Read this before trusting the order.** Two sources rank the same work
 differently, and the table follows `UPGRADE-PATHS.md`'s order because it is
@@ -334,7 +387,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 1 — Guests who walk | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 | `claude/backlog-batch-work-pi8rvs` | [WISHLIST.md Phase 1](Projects/Ren-Faire-Claude/WISHLIST.md#phase-1--guests-who-walk) |
+| 1 | Phase 1 — Guests who walk: increment 1 (the crowd, spawned and walked) shipped in PR #191; increment 2 is the economy, the col-3 spur ruling and the `SIGNIFICANCE:` rewrite | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/Ren-Faire-Claude/WISHLIST.md#phase-1--guests-who-walk) |
 | 2 | Phase 2 — Weather worth checking | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Projects/Ren-Faire-Claude/WISHLIST.md#phase-2--weather-worth-checking) |
 | 3 | Phase 3 — Acts with a story | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 3](Projects/Ren-Faire-Claude/WISHLIST.md#phase-3--acts-with-a-story) |
 | 4 | Phase 4 — A faire that outlives its season | `Projects/Ren-Faire-Claude` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 4](Projects/Ren-Faire-Claude/WISHLIST.md#phase-4--a-faire-that-outlives-its-season) |

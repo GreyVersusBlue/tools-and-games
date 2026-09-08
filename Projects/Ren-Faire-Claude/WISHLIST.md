@@ -245,7 +245,7 @@ on top of it re-slices that aggregate rather than producing it. The hard part
 is not the agents; it is landing them on an economy seven `SIGNIFICANCE:`
 checks pin. Those checks are the acceptance criteria, not an obstacle.
 
-**Increment 1 shipped (PR pending, 2026-09-08): the crowd exists and walks.**
+**Increment 1 shipped (PR #191, 2026-09-08): the crowd exists and walks.**
 `GUESTS` in `data.js` (four archetypes, needs, purses, affinities, and the
 walk's eight tunables with a paragraph each), `js/guests.js` (pure, 274
 lines), `tests/guests.mjs` (151 assertions), `computePathRoutes()` and

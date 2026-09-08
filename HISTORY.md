@@ -4124,7 +4124,7 @@ Three lessons from the project's own retro, worth keeping:
   event family. **Concrete findings, not "coverage is at 80%."** It is a person
   with grep, and it found a real gap in each of the last two rounds it ran.
 
-**Phase 1, increment 1 — Guests who walk (PR pending).** Twenty-two stages
+**Phase 1, increment 1 — Guests who walk (PR #191).** Twenty-two stages
 built a faire out of tables and coefficients, and nobody in the crowd had
 ever taken a step: attendance was one number and every siting mechanic
 re-sliced it. This increment built the people and walked them, and left the
