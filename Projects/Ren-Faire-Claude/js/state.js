@@ -3,8 +3,8 @@
 // NEW state (no in-place mutation), so ui.js can just re-render after every
 // action and tests can assert on plain objects.
 
-import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS } from './data.js';
-import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition } from './engine.js';
+import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, DEFAULT_WEATHER_ID } from './data.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition, rollWeather } from './engine.js';
 // Relative, not "/assets/js/gvb-save.js": tests/smoke.mjs imports this module
 // under plain Node, which cannot resolve a leading slash. The relative form
 // resolves identically in the browser (v7 §1 documented the same trap for
@@ -13,8 +13,33 @@ import { createSaveSlot } from '../../../assets/js/gvb-save.js';
 
 const SAVE_KEY = 'renn-faire-sim-save-v1';
 
-export function createInitialState() {
+// The weather seed anything that did not ask for one gets: a save written
+// before Phase 2, and every state createInitialState() builds without an
+// explicit seed. Any constant would do; what matters is that it IS a
+// constant. createInitialState() drawing a seed off the clock was written
+// first and the suite refused it inside a minute (#232): two fresh states
+// built one millisecond apart got different skies, so a test holding
+// everything but a stall's gate distance equal was comparing two different
+// days — and would have passed most runs, which is worse than failing.
+// newGame() below is the one function that draws a real one.
+export const DEFAULT_WEATHER_SEED = 0x0FA13E00;
+
+// Deterministic given its argument, and the argument defaults to a
+// constant — calling this twice in one process gives two identical states,
+// which most of tests/smoke.mjs quietly depends on. newGame() is where a
+// real playthrough's season comes from.
+export function createInitialState(weatherSeed = DEFAULT_WEATHER_SEED) {
+  const seed = (weatherSeed ?? DEFAULT_WEATHER_SEED) >>> 0;
   return {
+    // Phase 2: one weather seed per save, drawn once and never again, so a
+    // playthrough gets the same weather every time it is reloaded and the
+    // forecast cannot be rerolled by pressing F5.
+    weatherSeed: seed,
+    // Today's weather, stamped at the top of the day rather than rolled
+    // when the gates open (#231). Day 1 of weekend 1 is stamped here for
+    // the same reason nextDay/startNextWeekend stamp theirs: the player has
+    // to be able to plan against it.
+    weather: rollWeather(seed, 1, 1).id,
     day: 1,
     season: 1, // weekend number (Stage 6) — gates campaigns/contracts via unlockSeason
     weekendDay: 1, // 1=Fri, 2=Sat, 3=Sun; hard-stops at CONFIG.seasonLength (see nextDay)
@@ -36,6 +61,17 @@ export function createInitialState() {
     bankrupt: false, // Stage 16: set true by runDay() the moment cash crosses CONFIG.bankruptcyFloor; nextDay() reads it once, on the player's next click, to route to the 'gameOver' phase
     victoryAchieved: false, // Stage 16: set true the first time checkWinCondition() passes at a weekend boundary, so the milestone only fires once per save
   };
+}
+
+// A brand-new game with a season of its own. The one impure thing in this
+// module, and it is impure in exactly the way runDay()'s default seed
+// argument already is: the clock decides, once, and everything downstream
+// is a pure function of what it decided. main.js calls this when there is
+// no save to load, and it is the `defaults` factory the save slot resets
+// through, so wiping a save starts a new season rather than replaying the
+// constant one.
+export function newGame() {
+  return createInitialState((Date.now() ^ 0x5BD1E995) >>> 0);
 }
 
 function clone(state) {
@@ -542,6 +578,7 @@ export function nextDay(state) {
 
   next.day += 1;
   next.weekendDay += 1;
+  next.weather = rollWeather(next.weatherSeed, next.season, next.weekendDay).id;
   next.phase = 'plan';
   // roster, built plots, hired vendors, ticket price, and schedule all
   // persist day-to-day on purpose — replanning from zero every day would
@@ -560,6 +597,10 @@ export function startNextWeekend(state) {
   next.day += 1;
   next.weekendDay = 1;
   next.season += 1;
+  // Same stamp as nextDay's, and the two together are exactly what
+  // engine.js's nextCalendarDay models — the forecast shown on the Office
+  // desk yesterday is this line's output, or the forecast was lying.
+  next.weather = rollWeather(next.weatherSeed, next.season, next.weekendDay).id;
   next.phase = 'plan';
   return { state: next };
 }
@@ -600,6 +641,16 @@ function repairSave(parsed) {
   if (typeof parsed.nextPlotId !== 'number') parsed.nextPlotId = 1; // pre-Stage-10 save
   if (typeof parsed.bankrupt !== 'boolean') parsed.bankrupt = false; // pre-Stage-16 save
   if (typeof parsed.victoryAchieved !== 'boolean') parsed.victoryAchieved = false; // pre-Stage-16 save
+  // Phase 2: a save written before weather existed has neither field. The
+  // seed backfills to a fixed constant rather than Date.now() so that
+  // loading such a save twice gives it the same season twice — a seed
+  // redrawn on every load would rewrite the forecast under a player who
+  // reloaded, which is the one thing the whole calendar-derived design
+  // (#231) exists to prevent. The day itself defaults to 'fair', which is
+  // neutral on all three multipliers, exactly as WEEKEND_DAY_ATTENDANCE
+  // falls back to 1 for a state that never set weekendDay.
+  if (typeof parsed.weatherSeed !== 'number') parsed.weatherSeed = DEFAULT_WEATHER_SEED;
+  if (typeof parsed.weather !== 'string') parsed.weather = DEFAULT_WEATHER_ID;
 
   // Stage 10: planning/build status + per-plot vendor seating are new
   // fields. Every pre-existing plot was, functionally, already "built"
@@ -662,10 +713,11 @@ function slot(storage) {
     storage,
     validate: validateSave,
     repair: repairSave,
-    // A factory, not a literal (locked decision #47) — nothing in
-    // createInitialState() is randomized, but the factory avoids a
-    // deep-copy round trip and makes fresh()/reset() usable as-is.
-    defaults: createInitialState,
+    // A factory, not a literal (locked decision #47), and Phase 2 made that
+    // load-bearing rather than merely tidy: newGame() draws a weather seed
+    // off the clock, so a literal would hand every reset for the life of the
+    // page the one season that existed when this module was imported.
+    defaults: newGame,
   });
 }
 

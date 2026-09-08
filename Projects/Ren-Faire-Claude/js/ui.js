@@ -2,7 +2,7 @@
 // main.js wires all interaction via event delegation on #content.
 
 import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta } from './engine.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -16,6 +16,11 @@ export function renderLedger(state) {
   const draw = computeGroundsDraw(state.builtPlots);
   const drawPct = ((draw.mult - GROUNDS_DRAW.floor) / (GROUNDS_DRAW.ceiling - GROUNDS_DRAW.floor)) * 100;
   const cashClass = state.cash < 0 ? ' bad' : '';
+  // Phase 2: a lever nothing on screen names is not a lever, and weather
+  // moves three numbers at once. The permanent HUD slot carries all three,
+  // because the player has to be able to plan today's schedule against
+  // today's sky before the gates open.
+  const sky = weatherFor(state);
   return `
     <div class="ledger-item" title="${weekendNames[state.weekendDay] || 'This day'}'s crowd runs ${(WEEKEND_DAY_ATTENDANCE[state.weekendDay] || 1).toFixed(2)}x the base draw, before reputation, price, or the grounds.">
       <span class="ledger-label">Weekend ${state.season}</span>
@@ -29,6 +34,10 @@ export function renderLedger(state) {
       <span class="ledger-label mono">${rep}</span>
       <span class="ledger-sub">${repLabel}</span>
       <span class="meter ${rep >= 70 ? 'is-high' : rep < 35 ? 'is-low' : ''}"><i style="width:${clampPct(rep)}%"></i></span>
+    </div>
+    <div class="ledger-item" title="${weatherTitle(sky)}">
+      <span class="ledger-label text">${sky.name}</span>
+      <span class="ledger-sub">today's sky${weatherPips(sky)}</span>
     </div>
     <div class="ledger-item" title="How much of a crowd the built grounds pull on their own, before reputation, price, or the bill. An empty field sits at ${GROUNDS_DRAW.floor.toFixed(2)}x; every built stage, staffed stall, and demo camp raises it, with diminishing returns.">
       <span class="ledger-label mono">${draw.mult.toFixed(2)}&times;</span>
@@ -90,6 +99,8 @@ export function renderOffice(state, warn) {
         <tr class="total-row"><td>Break-even gate</td><td class="mono">${breakEven === null ? 'never at this price' : `${breakEven.toLocaleString()} guests`}</td></tr>
       </table>
       <p class="hint">Stall revenue lands on top of that and can carry a thin gate \u2014 but only from stalls that actually have a vendor seated in them.</p>
+
+      ${renderForecast(state)}
 
       ${renderMarketing(state)}
     </section>
@@ -631,6 +642,7 @@ export function renderFairFloor(state, conflicts, warn) {
     : state.builtPlots.map(p => renderPlotCard(state, p, footTraffic, reachability)).join('');
 
   const builtStages = state.builtPlots.filter(p => p.kind === 'stage' && p.status === 'built');
+  const sky = weatherFor(state);
 
   const scheduleGrid = builtStages.length === 0
     ? `<p class="hint">Build at least one stage to start scheduling acts.</p>`
@@ -642,7 +654,7 @@ export function renderFairFloor(state, conflicts, warn) {
       <tbody>
         ${TIME_BLOCKS.map(block => `
           <tr>
-            <td title="${heatNote(block)}">${block.label}${heatPips(block)}</td>
+            <td title="${heatNote(block, sky)}">${block.label}${heatPips(block, sky)}</td>
             ${builtStages.map(stage => {
               const currentId = state.schedule[block.id]?.[stage.id] || '';
               const options = state.roster.map(performerById).filter(Boolean)
@@ -657,7 +669,7 @@ export function renderFairFloor(state, conflicts, warn) {
           </tr>`).join('')}
       </tbody>
     </table>
-    <p class="hint">Sun pips mark the hot blocks. A shaded grove stage is worth more to the crowd then; an open hilltop is better in the cool blocks, where its long sightlines carry.</p>`;
+    <p class="hint">Sun pips mark the hot blocks, at today's sky rather than an average one \u2014 ${sky.name.toLowerCase()} runs every block's sun at ${sky.heatMult.toFixed(2)}&times;. A shaded grove stage is worth more to the crowd in the hot blocks; an open hilltop is better in the cool ones, where its long sightlines carry.</p>`;
 
   return `
     <section class="panel">
@@ -678,15 +690,85 @@ export function renderFairFloor(state, conflicts, warn) {
 // Stage 19: a compact visual for a time block's `heat`, so the shade/
 // sightline tradeoff introduced this stage is discoverable from the
 // schedule table rather than only from the manual.
-function heatPips(block) {
-  const n = Math.max(0, Math.min(3, Math.round((block.heat || 0) * 3)));
+// Phase 2: the pips read the day's effective heat, not the authored one —
+// on a scorcher the morning gains a pip and on a downpour the afternoon
+// loses all three, which is the whole point of the schedule table being
+// where a player decides who plays in the sun.
+function heatPips(block, weather) {
+  const n = Math.max(0, Math.min(4, Math.round(effectiveHeat(block, weather) * 3)));
   return '<span class="heat-pip"></span>'.repeat(n);
 }
-function heatNote(block) {
-  const h = block.heat || 0;
-  if (h >= 0.85) return 'Full sun \u2014 shade counts for a lot here, open hilltops bake.';
-  if (h >= 0.5) return 'Warm \u2014 shade counts for something.';
-  return 'Cool light \u2014 shade barely matters; sightlines carry the block.';
+function heatNote(block, weather) {
+  const h = effectiveHeat(block, weather);
+  const sky = weather ? ` (${weather.name.toLowerCase()})` : '';
+  if (h >= 1.4) return `Punishing sun${sky} \u2014 shade outweighs the view outright, and an open hilltop is the worst seat on the grounds.`;
+  if (h >= 0.85) return `Full sun${sky} \u2014 shade counts for a lot here, open hilltops bake.`;
+  if (h >= 0.5) return `Warm${sky} \u2014 shade counts for something.`;
+  return `Cool light${sky} \u2014 shade barely matters; sightlines carry the block.`;
+}
+// The heat blockQualityWeights actually spends, recovered from the weights
+// it returns rather than recomputed here — a second copy of `authored x
+// heatMult, floored at 0, shade capped` in this file would be a second
+// thing to keep in sync and the first place a retune would go stale.
+function effectiveHeat(block, weather) {
+  return blockQualityWeights(block, weather).shade / 0.25;
+}
+
+// Phase 2: the three numbers a WEATHER row moves, spelled out. Every
+// surface that shows the weather shows this on hover, because "Overcast"
+// on its own is flavour and the numbers are the mechanic.
+function weatherTitle(w) {
+  const parts = [
+    `${Math.round(w.attendanceMult * 100)}% of the gate you would otherwise draw`,
+    w.satisfactionDelta === 0 ? 'no effect on the crowd\u2019s mood' : `${w.satisfactionDelta > 0 ? '+' : ''}${w.satisfactionDelta} to the crowd\u2019s mood`,
+    `sun ${w.heatMult.toFixed(2)}\u00d7 the block\u2019s own`,
+  ];
+  return `${w.name}. ${w.note} ${parts.join(' \u00b7 ')}.`;
+}
+
+// The same sun pips the schedule table uses, at the day's own heat rather
+// than a block's, so the HUD and the schedule agree at a glance.
+function weatherPips(w) {
+  const n = Math.max(0, Math.min(4, Math.round(w.heatMult * 1.4)));
+  return '<span class="heat-pip"></span>'.repeat(n);
+}
+
+const WEEKDAY_NAMES = ['', 'Friday', 'Saturday', 'Sunday'];
+
+// Phase 2: tomorrow's sky, on the Office desk, exact rather than a band.
+// Weather a player learns about after committing to a day rate is a tax,
+// not a decision, and every lever this desk owns — the ticket price, the
+// campaigns, and through Backstage the contracts — is committed a day
+// before the day it pays for.
+function renderForecast(state) {
+  const today = weatherFor(state);
+  const tomorrow = forecastWeather(state);
+  const when = nextCalendarDay(state);
+  const label = when.season === (state.season || 1)
+    ? WEEKDAY_NAMES[when.weekendDay] || `Day ${when.weekendDay}`
+    : `Weekend ${when.season}, ${WEEKDAY_NAMES[when.weekendDay] || 'Friday'}`;
+  // A ratio, not a difference of the two multipliers: 0.50x to 0.86x is 72%
+  // more people through the gate, not 36% more, and a forecast that gets its
+  // own arithmetic wrong is worse than no forecast.
+  const gateShift = Math.round((tomorrow.attendanceMult / today.attendanceMult - 1) * 100);
+  const shiftNote = Math.abs(gateShift) < 2
+    ? 'about the same gate as today'
+    : `about ${Math.abs(gateShift)}% ${gateShift > 0 ? 'more' : 'less'} of a gate than today`;
+  return `
+    <h3>The Forecast</h3>
+    <div class="forecast-card" title="${weatherTitle(tomorrow)}">
+      <div class="forecast-head">
+        <span class="forecast-when">${label}</span>
+        <span class="forecast-name">${tomorrow.name}${weatherPips(tomorrow)}</span>
+      </div>
+      <p class="flavor">${tomorrow.note}</p>
+      <table class="ledger-table">
+        <tr><td>Gate turnout</td><td class="mono ${tomorrow.attendanceMult < 1 ? 'neg' : ''}">${tomorrow.attendanceMult.toFixed(2)}&times;</td></tr>
+        <tr><td>Crowd mood before anything else</td><td class="mono ${tomorrow.satisfactionDelta < 0 ? 'neg' : ''}">${tomorrow.satisfactionDelta > 0 ? '+' : ''}${tomorrow.satisfactionDelta}</td></tr>
+        <tr><td>Sun on every block <span class="hint">(shade against sightline)</span></td><td class="mono">${tomorrow.heatMult.toFixed(2)}&times;</td></tr>
+      </table>
+      <p class="hint">${shiftNote}. A day rate booked today is booked against this, not against what is overhead now.</p>
+    </div>`;
 }
 
 // Stage 19: attendance is now the product of five separate terms
@@ -697,6 +779,7 @@ function renderDrawBreakdown(result) {
   const parts = [];
   if (result.groundsDraw) parts.push(`grounds <b>${result.groundsDraw.mult.toFixed(2)}\u00d7</b>`);
   if (typeof result.priceMult === 'number') parts.push(`price <b>${result.priceMult.toFixed(2)}\u00d7</b>`);
+  if (result.weather) parts.push(`${result.weather.name.toLowerCase()} <b>${result.weather.attendanceMult.toFixed(2)}\u00d7</b>`);
   if (result.scheduledCount) parts.push(`<b>${result.scheduledCount}</b> act${result.scheduledCount === 1 ? '' : 's'} on the bill`);
   if (result.priceSatDelta) parts.push(`gate mood <b>${result.priceSatDelta > 0 ? '+' : ''}${result.priceSatDelta}</b>`);
   if (!parts.length) return '';
@@ -741,6 +824,18 @@ function renderStallTill(state, result) {
   return rows;
 }
 
+// Phase 2: the sky the day actually ran under, read off the report rather
+// than off the state — a day in `history` written before this phase has no
+// weather on it, and a row of neutral multipliers would be a claim the day
+// never made. Renders nothing in that case, the way renderCrowdWalk does.
+function renderWeatherRow(result) {
+  const w = result.weather;
+  if (!w) return '';
+  const mood = result.weatherSatDelta;
+  const moodNote = mood ? `, ${mood > 0 ? '+' : ''}${mood} mood` : '';
+  return `<div class="ticket-row" title="${weatherTitle(w)}"><span>Weather</span><span class="mono">${w.name} <span class="hint">(${w.attendanceMult.toFixed(2)}&times; gate${moodNote})</span></span></div>`;
+}
+
 export function renderReport(state, result) {
   const netClass = result.cashDelta >= 0 ? 'good' : 'bad';
   const satLabel = result.satisfaction >= 75 ? 'Delighted' : result.satisfaction >= 55 ? 'Content' : result.satisfaction >= 35 ? 'Grumbling' : 'Miserable';
@@ -751,6 +846,7 @@ export function renderReport(state, result) {
       ${renderDrawBreakdown(result)}
       ${result.campaignActive ? `<div class="ticket-row"><span>${result.campaignActive}</span><span class="mono">+${Math.round((result.adFactor - 1) * 100)}% draw</span></div>` : ''}
       <div class="ticket-row"><span>Crowd mood</span><span class="mono">${satLabel} (${result.satisfaction}/100)</span></div>
+      ${renderWeatherRow(result)}
       ${renderCrowdWalk(result)}
       <hr>
       <div class="ticket-row"><span>Ticket revenue</span><span class="mono">${money(result.ticketRevenue)}</span></div>

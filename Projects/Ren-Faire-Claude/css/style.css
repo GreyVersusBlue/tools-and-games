@@ -233,6 +233,10 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
   line-height: 1.1;
   color: var(--vellum);
 }
+/* Phase 2: the weather slot carries a name rather than a figure, and a
+   name set at the numeric label's 1.3rem crowds the four figures beside
+   it off the HUD's first line on a laptop. */
+.ledger-label.text { font-size: 0.95rem; font-weight: 600; letter-spacing: 0.01em; }
 .ledger-label.good { color: var(--moss); }
 .ledger-label.bad { color: var(--wine-text); }
 .ledger-sub {
@@ -835,6 +839,28 @@ select {
   vertical-align: middle;
   background: var(--lantern);
 }
+
+/* Phase 2: tomorrow's sky on the Office desk. Same card shell as a
+   campaign card — it is the same kind of object, a thing the desk tells
+   you about a day you have not played yet. */
+.forecast-card {
+  background: #1A1610;
+  border: 1px solid var(--bark-line);
+  border-radius: 5px;
+  padding: 0.7rem 0.8rem;
+}
+.forecast-card .flavor { margin: 0.3rem 0 0; font-size: 0.86rem; }
+.forecast-card .ledger-table { margin-top: 0.5rem; }
+.forecast-head { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
+.forecast-when {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--vellum-dim);
+}
+.forecast-name { font-family: var(--font-ui); font-size: 0.95rem; font-weight: 600; color: var(--vellum); }
 
 /* ============================================================
    Ticket stub — day report, weekend summary, victory, game over
