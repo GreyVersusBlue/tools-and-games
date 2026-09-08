@@ -95,11 +95,13 @@ account's other GitHub Pages projects.
   close**, in all four of those phases. The trade is deliberate: the same change
   also stops an accidental reload throwing away a day the player already earned,
   and it makes bankruptcy a real loss rather than something you reload past.
-- `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test`)
+- `js/guests.js` — Phase 1 (guests who walk): the crowd as people. `spawnGuests(n, rng)` turns the attendance number into at most 400 typed agents (families, revellers, history buffs, day-trippers, from `GUESTS` in `data.js`), each standing for `attendance / sampled` people; `buildAttractions(state)` gives every built stage, seated stall and demo camp the reachable path cell it is served from, and names the ones no walk from the gate reaches; `walkGuests(state, guests, rng)` steps each guest up to `GUESTS.stepsPerBlock` hops per time block toward whatever pulls hardest (need × quality × archetype taste × shade-in-heat × a repeat penalty, over distance), serves the need on arrival and takes the stall's ticket out of the purse. Pure; `simulateDay` calls it with its own rng stream and puts the aggregates on the report as `guests`. The economy does not read it yet.
+- `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test` runs it and `tests/guests.mjs`)
+- `tests/guests.mjs` — Phase 1's suite, pure Node: the route tree, routes between cells, spawning, attractions, the walk's invariants (nobody off-grid, purse + spent is the purse they came with, arrivals sum every way), taste, heat, distance, the unreachable spur, the seam into `simulateDay`, a forty-seed event fingerprint pinned against the Stage 22 engine, and a 30-day run through the state layer
 - `package.json` / `package-lock.json` / `.gitignore` — dev-only. They exist
   solely so `npm test` can install jsdom; nothing in them runs on the static
   GitHub Pages deploy, and nothing in `index.html` imports from them. Keep
-  them: deleting them takes the 709-check suite with them.
+  them: deleting them takes the smoke suite with them.
 - `assets/fonts/` — the three vendored type families, woff2 only. See the
   README in that folder for source, licence, and which weights are here and why.
 - `WISHLIST.md` — the plan: eight ranked phases, the standing backlog, and the open questions. Stages 1-22 are recorded in the repo root's `HISTORY.md`
@@ -111,7 +113,8 @@ npm install
 npm test
 ```
 
-783 checks: pure engine/state logic (RNG determinism, terrain/grid data
+802 checks in `tests/smoke.mjs` and 151 in `tests/guests.mjs` (see the file
+list above for what the second one covers). The first: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to

@@ -175,6 +175,63 @@ export const WEEKEND_DAY_ATTENDANCE = {
   3: 0.95, // Sunday
 };
 
+// ---------- guests (Phase 1: guests who walk) ----------
+// Through Stage 22 the crowd was one number and every siting mechanic was a
+// coefficient on averages of it. This table is the crowd as people: four
+// archetypes, each a share of the gate, a needs vector and a purse, plus the
+// tunables for the walk js/guests.js runs across the path network every
+// block. Content only — the walk itself lives in guests.js.
+//
+// `sampleCap`: a Saturday with a full bill and a built-out grounds can put
+// 3,000+ through the gate, and simulateDay is called 120 times per average
+// in the SIGNIFICANCE checks alone. So the walk simulates at most this many
+// agents and each stands for attendance / sampled people (`represents` on
+// the report). 400 is enough that a single stall's arrival count is a real
+// statistic (a 5% share is 20 agents, not 2) and small enough that a day
+// costs milliseconds.
+// `stepsPerBlock`: path-tile hops a guest can walk in one time block. The
+// gate to the far end of the row-7 connector is 24 hops, so 12 means the
+// East Meadow is an afternoon's commitment from the gate, not a stroll —
+// which is the whole reason reachability was worth building.
+// `walkTolerance`: hops at which an attraction's pull is halved. Lower makes
+// the crowd cling to the gate; higher makes distance irrelevant again.
+// `satisfyRate`: the fraction of a need one arrival serves. 0.65 means a
+// family that ate wants a second meal a third as much, so it heads for a
+// show next instead of queueing at the same stall all day.
+// `restThreshold`: below this pull a guest stays where it is for the block
+// (sits on the grass). It is what an empty field does to a crowd.
+// `shadeWeight`: how much a hot block bends a guest toward a shaded
+// destination.
+// `repeatPenalty`: the pull of a plot a guest has already been to, per
+// visit. The same jouster twice is half the show, which is what sends the
+// crowd on to the second stage and the far stall instead of parking it at
+// whatever it reached first.
+// `demoPull`: a demo camp's draw against a stage's. A stage with a
+// popularity-8 act on it draws about 0.8; a falconer's camp is a smaller
+// thing for most people and the thing a history buff came for (see the
+// buff's `affinity`).
+export const GUESTS = {
+  sampleCap: 400,
+  stepsPerBlock: 12,
+  walkTolerance: 8,
+  satisfyRate: 0.65,
+  restThreshold: 0.04,
+  shadeWeight: 0.6,
+  repeatPenalty: 0.5,
+  demoPull: 0.55,
+  // `share` weights the spawn; the four sum to 1. `needs` are 0-1 pulls
+  // toward food stalls, shows (stages and demo camps), shade and craft
+  // stalls. `budget` is a purse in dollars, drawn uniformly. `affinity`
+  // scales the pull of a specific attraction kind: history buffs cross the
+  // grounds for a demo camp a family walks past, revellers for a stage.
+  archetypes: [
+    { id: 'family', label: 'Families', share: 0.35, needs: { food: 0.9, spectacle: 0.7, shade: 0.8, spend: 0.4 }, budget: [40, 70], affinity: { stage: 1.0, demo: 1.0, food: 1.2, vendor: 1.0 } },
+    { id: 'reveller', label: 'Revellers', share: 0.25, needs: { food: 0.6, spectacle: 0.9, shade: 0.2, spend: 0.7 }, budget: [50, 90], affinity: { stage: 1.3, demo: 0.8, food: 1.0, vendor: 1.0 } },
+    { id: 'buff', label: 'History buffs', share: 0.15, needs: { food: 0.4, spectacle: 0.8, shade: 0.4, spend: 0.5 }, budget: [30, 60], affinity: { stage: 0.9, demo: 2.0, food: 0.8, vendor: 1.3 } },
+    { id: 'tripper', label: 'Day-trippers', share: 0.25, needs: { food: 0.7, spectacle: 0.5, shade: 0.5, spend: 0.3 }, budget: [20, 40], affinity: { stage: 1.0, demo: 0.7, food: 1.0, vendor: 0.8 } },
+  ],
+};
+
 // ---------- faire grounds map ----------
 // Stage 2: plots now sit on a real coordinate grid instead of carrying
 // authored sightline/shade/traffic numbers. Those are *derived* in

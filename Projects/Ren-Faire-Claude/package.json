@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/smoke.mjs"
+    "test": "node tests/smoke.mjs && node tests/guests.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"

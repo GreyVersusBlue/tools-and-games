@@ -4,6 +4,12 @@
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
 import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE } from './data.js';
+// Phase 1 (guests who walk): guests.js imports this module's path and plot
+// helpers and this module calls its walk from simulateDay. The cycle is
+// safe because neither file reads the other at load time — only inside
+// functions — and it keeps the walk in the file the wishlist named rather
+// than folding it into simulateDay's 250 lines.
+import { spawnGuests, walkGuests } from './guests.js';
 
 // ---------- seeded RNG (mulberry32) ----------
 // Deterministic given a numeric seed so tests can assert exact outputs.
@@ -283,7 +289,7 @@ export function isFootprintWithinCurrentGrid(state, kind, x, y) {
   return footprintCells(x, y, w, h).every(c => isWithinCurrentGrid(state, c.x, c.y));
 }
 
-function orthogonalNeighbors(cell) {
+export function orthogonalNeighbors(cell) {
   return [
     { x: cell.x + 1, y: cell.y },
     { x: cell.x - 1, y: cell.y },
@@ -411,29 +417,60 @@ export function computeFootTraffic(builtPlots) {
 // at module scope — the same "state-independent, computed once" spirit as
 // terrainAt()/quoteBuild() before it. Returns a Map keyed by "x,y" -> hop
 // count from the gate.
-let _pathDistanceCache = null;
-export function computePathDistances() {
-  if (_pathDistanceCache) return _pathDistanceCache;
-  const dist = new Map();
+// Phase 1 (guests who walk): the BFS keeps its parent pointers now, so the
+// same tree that answers "how far" answers "which way". computePathRoutes()
+// returns a Map keyed "x,y" -> { x, y, dist, prev } where `prev` is the key
+// of the cell one hop closer to the gate (null at the gate itself);
+// computePathDistances() is that Map flattened to hop counts, exactly the
+// shape it has had since Stage 17, so nothing that read it moves.
+let _pathRouteCache = null;
+export function computePathRoutes() {
+  if (_pathRouteCache) return _pathRouteCache;
+  const routes = new Map();
   const key = (x, y) => `${x},${y}`;
   if (terrainAt(ENTRANCE.x, ENTRANCE.y) === 'path') {
-    dist.set(key(ENTRANCE.x, ENTRANCE.y), 0);
+    routes.set(key(ENTRANCE.x, ENTRANCE.y), { x: ENTRANCE.x, y: ENTRANCE.y, dist: 0, prev: null });
     const queue = [[ENTRANCE.x, ENTRANCE.y]];
     while (queue.length) {
       const [x, y] = queue.shift();
-      const d = dist.get(key(x, y));
+      const here = routes.get(key(x, y));
       for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
         const nx = x + dx, ny = y + dy;
         if (terrainAt(nx, ny) !== 'path') continue;
         const nk = key(nx, ny);
-        if (dist.has(nk)) continue;
-        dist.set(nk, d + 1);
+        if (routes.has(nk)) continue;
+        routes.set(nk, { x: nx, y: ny, dist: here.dist + 1, prev: key(x, y) });
         queue.push([nx, ny]);
       }
     }
   }
+  _pathRouteCache = routes;
+  return routes;
+}
+
+let _pathDistanceCache = null;
+export function computePathDistances() {
+  if (_pathDistanceCache) return _pathDistanceCache;
+  const dist = new Map();
+  for (const [k, node] of computePathRoutes()) dist.set(k, node.dist);
   _pathDistanceCache = dist;
   return dist;
+}
+
+// The gate-to-cell walk as an ordered list of cells, gate first, the asked
+// cell last. Null for a cell that is not path, or is path the gate cannot
+// reach (the col-3 spur below row 3, today) — a route that does not exist
+// is a null, never a partial list, so a caller cannot walk half of one.
+export function pathRouteTo(x, y) {
+  const routes = computePathRoutes();
+  let node = routes.get(`${x},${y}`);
+  if (!node) return null;
+  const out = [];
+  while (node) {
+    out.push({ x: node.x, y: node.y });
+    node = node.prev ? routes.get(node.prev) : null;
+  }
+  return out.reverse();
 }
 
 // Shortest gate-to-plot walk, in path-tile hops, along whichever of a
@@ -917,6 +954,46 @@ export function simulateDay(state, seed) {
     log.push(`${bestStall.vendor.name} pulled a lively crowd from its ${bestStall.plot.name} spot, while ${worstStall.vendor.name} saw barely anyone drift past its ${worstStall.plot.name}.`);
   }
 
+  // --- the crowd walks (Phase 1) ---
+  // A second rng stream, derived from the seed rather than drawn from the
+  // day's own, so every event roll a seed produced before this phase is the
+  // roll it produces after it. Only aggregates leave here: the guests die
+  // with the report and `history` never carries a person.
+  const guestRng = makeRng((seed ^ 0x9E3779B9) >>> 0);
+  const { guests: population, represents } = spawnGuests(attendance, guestRng);
+  const walk = walkGuests(state, population, guestRng);
+  const scale = (n) => Math.round(n * represents);
+  const guests = {
+    sampled: walk.sampled,
+    represents: Math.round(represents * 100) / 100,
+    byArchetype: walk.byArchetype,
+    ate: scale(walk.served.food),
+    watched: scale(walk.served.spectacle),
+    bought: scale(walk.served.spend),
+    shaded: scale(walk.served.shade),
+    hungry: scale(walk.hungry),
+    unspent: scale(walk.unspent),
+    spent: scale(walk.spent),
+    steps: walk.steps,
+    idle: walk.idle,
+    offGrid: walk.offGrid,
+    arrivals: walk.arrivals,
+    buyers: walk.buyers,
+    unreachable: walk.unreachable,
+  };
+  if (attendance > 0 && walk.sampled > 0) {
+    if (guests.hungry > 0 && guests.hungry >= attendance * 0.25) {
+      warnings.push(`${guests.hungry.toLocaleString()} guests went home hungry \u2014 not enough food within a walk of where the crowd was.`);
+    }
+    if (guests.unspent > 0 && guests.unspent >= attendance * 0.25 && builtFoodVendorPlots.length > 0) {
+      log.push(`${guests.unspent.toLocaleString()} guests left with their purse untouched.`);
+    }
+    if (walk.unreachable.length > 0) {
+      const names = walk.unreachable.map(id => (state.builtPlots.find(p => p.id === id) || {}).name || id);
+      warnings.push(`Nobody could find a way from the gate to ${names.join(', ')} \u2014 ${walk.unreachable.length === 1 ? 'it fronts' : 'they front'} a stretch of path that does not connect.`);
+    }
+  }
+
   // --- ticket revenue & costs ---
   const ticketRevenue = attendance * state.ticketPrice;
   const performerCosts = rosterPerformers.reduce((s, p) => s + effectivePerformerCost(state, p.id), 0);
@@ -978,6 +1055,8 @@ export function simulateDay(state, seed) {
     campaignActive: state.activeCampaign ? state.activeCampaign.name : null,
     footTraffic,
     reachability,
+    // Phase 1: what the crowd did on foot. Aggregates only — see guests.js.
+    guests,
     events,
     log,
     warnings,

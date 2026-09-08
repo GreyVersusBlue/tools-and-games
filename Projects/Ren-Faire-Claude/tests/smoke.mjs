@@ -27,7 +27,7 @@ function assert(cond, msg) {
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
 const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights } = await import(mod('js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE } = await import(mod('js/data.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS } = await import(mod('js/data.js'));
 const State = await import(mod('js/state.js'));
 
 // --- RNG determinism ---
@@ -1148,12 +1148,18 @@ const State = await import(mod('js/state.js'));
   s = State.assignSchedule(s, 'midday', '3_0', 'perf_jouster_1').state;
 
   let ok = true;
+  let guestsOk = true;
   let endedEarly = false;
   for (let i = 0; i < 50; i++) {
     try {
       const { state: next, result } = State.runDay(s, i * 31 + 7);
       if (Number.isNaN(result.cashDelta) || Number.isNaN(result.satisfaction)) ok = false;
       if (result.attendance < 0) ok = false;
+      // Phase 1: the crowd walked, nobody left the path network, and no
+      // number the walk reports is NaN or Infinity.
+      if (!result.guests || result.guests.offGrid !== 0) guestsOk = false;
+      for (const v of Object.values(result.guests || {})) if (typeof v === 'number' && !Number.isFinite(v)) guestsOk = false;
+      if (result.attendance > 0 && result.guests && result.guests.sampled !== Math.min(result.attendance, GUESTS.sampleCap)) guestsOk = false;
       s = State.nextDay(next).state;
       // Stage 16: victory and bankruptcy are now legitimate outcomes of a
       // long random run, not failures of the fuzz test itself. Victory
@@ -1169,6 +1175,7 @@ const State = await import(mod('js/state.js'));
     }
   }
   assert(ok, '50-day fuzz run completes with no throws, no NaNs, no negative attendance');
+  assert(guestsOk, '50-day fuzz run: every day\'s crowd walked with nobody off-grid, no NaN in the walk\'s report, and a sample sized to the gate');
   assert(s.day === 51 || (endedEarly && s.phase === 'gameOver'), '50-day fuzz run advanced the day counter the expected number of times, or ended early in a legitimate bankruptcy');
 }
 

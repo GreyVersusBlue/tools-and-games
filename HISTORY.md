@@ -2686,6 +2686,44 @@ Two of them have moved since they were written:
    key change, no version bump (#36).
    *Source: Fourth Quarter Phase 9.*
 
+223. **The crowd is sampled: at most 400 agents walk, and each stands for
+   `attendance / 400` people.** A Saturday with a full bill and a built-out
+   grounds puts 3,000 through the gate, and `simulateDay` runs 120 times per
+   average in the SIGNIFICANCE checks alone, so walking every person would
+   have turned a four-second suite into a minute. 400 is the smallest number
+   at which a single stall's share is a statistic rather than a coin flip
+   (a 5% share is 20 agents), and the walk costs about 15 ms at that size.
+   The report carries `sampled` and `represents`; every count a player reads
+   (`ate`, `watched`, `bought`, `hungry`) is scaled and rounded, every count
+   a test reads (`arrivals`, `buyers`, `arrivalsByBlock`) is raw. Below the
+   cap every guest is one person and `represents` is exactly 1.
+   *Source: Faire Weekend Phase 1, increment 1.*
+
+224. **The walk has its own rng stream, and only aggregates reach the
+   save.** `simulateDay` draws the crowd from `makeRng(seed ^ 0x9E3779B9)`,
+   not from the day's own generator, so every event a seed rolled before
+   this phase is the event it rolls after it — pinned by a forty-seed
+   fingerprint computed against the Stage 22 engine, which moves the moment
+   the walk touches the day's stream. The guests themselves die with the
+   report: `history` carries the `guests` block of counts and ids and never
+   a person, so a save from before this phase loads as it did, and a report
+   written before it renders no crowd line rather than a row of zeros. No
+   key change, no version bump (#36).
+   *Source: Faire Weekend Phase 1, increment 1.*
+
+225. **A stall a guest cannot afford pulls nothing, and that is the one
+   purse rule.** The till had a second check — spend only if the purse
+   covers the ticket — and breaking either left the suite green, because
+   the other guarded the same absence (#34). The till check is gone: the
+   pull is where a guest decides, so the pull is where the purse is read,
+   and a purse that goes negative is now caught by the invariant that purse
+   plus spent equals the purse they arrived with. The same shape decided
+   `hungry`: it is read off the meal count and the archetype table, not the
+   spent needs vector, because at the shipped `satisfyRate` the two agree
+   on every real crowd and a test that could not tell them apart was
+   pinning nothing (#147).
+   *Source: Faire Weekend Phase 1, increment 1.*
+
 ---
 
 # The site sessions, 1–10
@@ -4085,6 +4123,60 @@ Three lessons from the project's own retro, worth keeping:
   as clearly: ten specific, nameable actions, plus the entire `change`/`input`
   event family. **Concrete findings, not "coverage is at 80%."** It is a person
   with grep, and it found a real gap in each of the last two rounds it ran.
+
+**Phase 1, increment 1 — Guests who walk (PR pending).** Twenty-two stages
+built a faire out of tables and coefficients, and nobody in the crowd had
+ever taken a step: attendance was one number and every siting mechanic
+re-sliced it. This increment built the people and walked them, and left the
+money where it was.
+
+`GUESTS` in `data.js` is the crowd as content: four archetypes (families
+35%, revellers 25%, history buffs 15%, day-trippers 25%), each a needs vector
+over food, spectacle, shade and spend, a purse range, and an affinity per
+attraction kind, so a history buff crosses the grounds for a demo camp a
+family walks past. `js/guests.js` (pure, 250 lines) spawns at most 400 agents
+off the attendance number (#223), gives every built stage, seated stall and
+demo camp the reachable path cell it is served from, and walks each guest up
+to twelve hops per time block toward whatever pulls hardest: need × quality
+× taste × shade-in-heat × a repeat penalty, over distance. The same show
+twice is half the show, and that is what circulates the crowd — without it a
+400-guest crowd parked at whatever it reached first and the far stall saw
+nobody all day. `computePathRoutes()` in `engine.js` is the Stage 17 BFS
+keeping its parents; `computePathDistances()` reads off the same tree so
+nothing that used it moved, and `pathRouteTo()` and `pathRouteBetween()`
+answer with a contiguous list of cells or null, never half a route.
+
+The economy did not move. Attendance, ticket revenue and stall sales are
+Stage 22's, all seven SIGNIFICANCE checks pass unchanged, and forty seeds
+roll exactly the events they rolled before (#224). What changed on the page
+is one line on the ticket stub, "Where the crowd went", and two sentences
+the day can now say: that guests went home hungry, and that nobody could
+find a way from the gate to a named plot. The second is the col-3 spur
+biting for the first time. A food stall at (4,4) fronts the spur below the
+row-3 gap, Stage 17's aggregate reachability priced it at 0.8× and shrugged,
+and the walk feeds nobody from it and says so. It still sells, because
+sales are not the walk's yet; the ruling waits for increment 2, where it
+costs money.
+
+*Counts:* `tests/smoke.mjs` 801 → 802, `tests/guests.mjs` new at 151, both
+green; `play-games.mjs faire-weekend` 18 checks, 0 failed under Xvfb.
+
+*Broken on purpose (#34), twenty-three, each caught by the assertion whose
+text claims it:* a guest stepping off the path (4 fail), an unreachable plot
+given a stop anyway (5), the steps-per-block cap dropped (1), an unaffordable
+craft stall still pulling (2), distance ignored (2), affinity ignored (1),
+shade ignored (1), the repeat penalty dropped (2), a need never satisfied
+(1), the sample cap ignored (3), `represents` always 1 (1), the needs vector
+shared with the table (22), a shed counted as an attraction (1), a route
+walked backwards (2), the walk drawing from the day's own rng (1), the route
+tree's parents dropped (2), the unreachable warning dropped (1), an old
+report rendering zeros (1), and the shares no longer summing to 1 (1).
+**Two first left the suite green**, and both were the shape #34 names: the
+till's purse check duplicated the pull gate, so the till check was removed
+and the pull is the one rule (#225); and `hungry` read off the spent needs
+vector agreed with the meal count on every real crowd, so a crowd hungrier
+than the table allows, with a purse for exactly one meal, now pins that a
+guest who ate is not hungry.
 
 ---
 
