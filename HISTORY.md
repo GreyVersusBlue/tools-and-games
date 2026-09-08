@@ -2974,6 +2974,68 @@ Two of them have moved since they were written:
    forgetting what it just agreed to.
    *Source: Faire Weekend Phase 3.*
 
+241. **Renown is what cash does not measure, tallied once at the weekend
+   boundary, and it never goes down.** `state.renown` is moved by exactly
+   one thing, `nextDay` at the moment the phase becomes `weekendEnd`, from
+   `weekendRenown`'s three lines: the crowd's mood held across the weekend
+   (2 at 70, 4 at 85), every contracted act in its third weekend or later
+   (1 each, up to 5), and a weekend closed on four or more built plots with
+   nothing torn down this run (1). Tenure ticks before the award so an act
+   signed on Weekend 1 is kept by the close of Weekend 3, not 4. No line
+   subtracts: a second track that punishes is reputation again, and the
+   game already has one of those. The sizes were set by playing: a first
+   run lands 24–32 by Weekend 6 with the kept line doing most of the work,
+   which puts the headliner (20) inside a first season and the South
+   Meadow (30) in a second. *Source: Faire Weekend Phase 4.*
+
+242. **Winning does not end the run, and closing the season is the
+   player's call, with or without the win.** `closeSeason` is offered from
+   the victory screen and from the weekend-end desk at Weekend 6 or later,
+   and refused before that or from anywhere else. A season that missed the
+   win closes the same way and its record says `won: false`; a faire that
+   outlives its season is the point, not a prize for the win alone. This
+   answers Questions for Devon Q28 ("should winning end the run?"): no,
+   and the sandbox after the win now has somewhere to go.
+   *Source: Faire Weekend Phase 4.*
+
+243. **The carryover is the first thing in this game to reach a save
+   through `migrate`, and the tally is why.** The slot went 1 → 2, key
+   unchanged (#36). For a pre-Phase-4 save `migrateSave` builds
+   `carryover` as run 1 with an empty record and credits `renown` with the
+   mood line its completed weekends would have earned, read off the
+   history the save already carries — once. That tally cannot live in
+   `repair`, which runs on every load and would overwrite what the boundary
+   has earned since; that is the #37 line, drawn where it bites. The other
+   two lines are not tallied, because an old save recorded neither tenure
+   nor a demolition count and guessing at them would be inventing a
+   history. `repair` still fills zeros and empties for a current-version
+   save missing a field. Every original key comes through equal, and the
+   suite compares them. *Source: Faire Weekend Phase 4.*
+
+244. **What crosses a closed season: renown whole, reputation as the start
+   plus half of what stood above it, and the acts' stories.** Cash, the
+   grounds, the roster, every contract and relationship (#235: the act
+   left), the schedule, campaigns and history start over. "Half the closing
+   reputation, floored at the start" was written first and carried nothing
+   for any faire that could win, since the start is 50 and half of a
+   Legendary 82 is 41; the suite's preview check refused it. `arcBeats`
+   and `actTraits` cross so a beat answered stays answered and a rate
+   raised stays raised — a career knows one Ysolde. The next season's
+   weather seed is `nextRunSeed(seed, run)` rather than the clock, so
+   `closeSeason` is as pure as every other action and two closings of the
+   same season give the same second season. *Source: Faire Weekend Phase 4.*
+
+245. **A renown gate on a grounds tier sits on top of its weekend gate,
+   and the fence hint names whichever is short.** `isExpansionUnlocked`
+   reads both; a tier without `unlockRenown` reads exactly as before. The
+   South Meadow is two rows south rather than two columns east because the
+   row-2 artery test, the east-edge stage test and the 710px board column
+   all pin the width, and a tier that scrolls east on a desktop was the one
+   layout regression a fourth tier could add for nothing. Its connector
+   stops at col 6: the guest suite pins the network's diameter under a
+   day's 24 steps, and a connector reaching col 4 put its far end at 25.
+   *Source: Faire Weekend Phase 4.*
+
 ---
 
 # The site sessions, 1–10
@@ -4720,6 +4782,79 @@ because the result comes from the same state — so the guard was deleted
 and the assertion rewritten against `simulateDay`, which is where the
 claim actually holds. A first draft of `bestBlockFor` also went red before
 any break was tried (#236).
+
+**Phase 4 — A faire that outlives its season.** You won by having $25,000
+and 70 reputation at the end of weekend six, and then the game politely
+continued doing nothing new: `GRID_EXPANSIONS` ran out at weekend 4 and
+weekend 12 was weekend 7 again.
+
+**Renown, the second track.** `state.renown`, earned once per weekend at
+the boundary from three lines `weekendRenown` computes (#241): the crowd's
+mood held across the weekend, every act kept a third weekend or longer,
+and a weekend closed on four or more built plots with nothing torn down
+this run. `tenure` and `demolished` are the two records those lines read;
+signing writes a tenure of 0, the boundary ticks it, release deletes it,
+`demolishPlot` counts and `relocatePlot` does not. The HUD carries the
+number with a tooltip naming what earns it and what it buys, and the
+weekend-end stub prints the lines, or says out loud that the weekend
+earned nothing and how one does.
+
+**The run boundary.** `closeSeason` (#242) from the victory screen or the
+weekend-end desk at Weekend 6 or later, with or without the win. It banks
+`seasonRecord` — weekends, days, the gate, the net, the closing numbers,
+the win, the plots, the moments answered — onto `carryover.seasons` and
+opens the next run on `carryoverPreview` (#244): renown whole, reputation
+as the start plus half of what stood above it, the arcs kept, everything
+else fresh, the weather seed derived by `nextRunSeed` rather than drawn
+off the clock. `renderCarryLedger` prints the same two reads on the
+victory screen and above the Close button, so the screen cannot promise
+what the action does not do.
+
+**The carryover schema, through `migrate`.** `carryover` is `{ schema,
+run, seasons, startedWith }`; the slot is at version 2 with the key
+unchanged, and `migrateSave` is the first real migration this game has had
+(#243): a Stage 22 save, a pre-Stage-22 save and a version-1 export all
+enter as run 1 with an empty record and the mood renown their completed
+weekends earned, once, with every original key coming through equal.
+
+**Two unlocks off the track.** The South Meadow, a fourth tier at Weekend
+5 with 30 renown, two authored rows with a connector off the col-10 spur
+(#245); and The Gilded Company of Marrow, draw 10 at $980, who will not
+sign for money alone until the faire has 20 renown — refused before any
+quote is made, and worn on the Backstage row as the bar it is waiting on.
+
+**A finding for Q27.** A scripted manager playing from a real start banked
+$28,000 to $104,000 by Weekend 6 across six seeds and a dozen builds, and
+never took reputation past 63 from 50: satisfaction sits in the 60s once
+the crowd outgrows the stages, and attendance grows with the reputation
+the bar wants. The cash bar is trivial and the reputation bar is out of
+reach for any manager the suite could write. The win numbers were left
+alone — that is Devon's question — and the full-run test seeds reputation
+at 70 and says why; everything else in it is played.
+
+*Broken on purpose (#34), twenty-four, every one caught by the assertion
+whose text claims it:* the intact line dropped (7 fail), kept reading `>`
+for `>=` (7), the kept cap removed (3), the award computed before the
+tenure tick (5), `startNextWeekend` awarding again (3), `migrate` not
+tallying (4), the tally moved into `repair` (caught by the version-2 save
+that must be repaired to zero), the arcs forgotten at the close, the seed
+not derived, relationships carried, the signing bar ignored, the
+expansion gate ignoring renown, the demolition not counted, release
+keeping tenure, the victory screen losing its Close button, the HUD slot
+removed (4), the close block ignoring `canCloseSeason`, `main.js` dropping
+the `closeSeason` case, the connector reaching col 4 (the col-3 assertion
+here and the guest suite's diameter), the slot left at version 1, the old
+reputation floor, the weekend-end renown row removed, the headliner's bar
+missing from Backstage, and `repair` inventing a run number. One break
+was first written wrong rather than caught wrong: a `hidden` attribute on
+the HUD slot left its text in the DOM and the suite green, which is the
+test finding the slot by its text; deleting the slot fails four.
+
+*Counts:* `tests/smoke.mjs` 1,652 → 1,825 in two new sections (1k pure,
+Section 27 in jsdom), `tests/guests.mjs` 168 unchanged and the suite that
+caught the first draft of the meadow's connector; the export-envelope
+assertion moved from version 1 to 2. `play-games.mjs faire-weekend`
+18 checks, 0 failed under Xvfb, no page or console errors.
 
 ---
 
