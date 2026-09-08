@@ -2572,6 +2572,55 @@ Two of them have moved since they were written:
    is comped by standing at them rather than the taps being worked.
    *Source: Fourth Quarter Phase 7, increment 2.*
 
+215. **A card whose condition names a system this build does not have is
+   not on the table.** The 2D build's "Warehouse Walkout" and "The Good
+   Stuff Ran Out" are about its three distributors, which the 3D build has
+   never had. Porting them with `when` false forever would have been two
+   cards that never fire — a promise kept in a table rather than a
+   backlog, where nothing would ever read it. Nineteen of 21 cards shipped;
+   the two come back with the distributor arc, and `smoke-events.mjs`
+   counts nineteen so the absence is a claim rather than an oversight.
+   *Source: Fourth Quarter Phase 8.*
+
+216. **A moment is on the floor, the sim runs under it, and last call
+   answers what the boss did not.** A card is a person who walks in from
+   the door to the card's stand-point, or a lit prop there, and E in reach
+   opens its choices as the management panel — the same panel the day
+   stations use. The clock does not stop for the panel: that is the cost of
+   the interruption, and the part a paused 2D dialog cannot charge. Esc
+   walks away and the card keeps waiting. One card waits at a time; the
+   engine asks the picker only when none does, so a warped clock opens one
+   card for the hours it passed, not three. At last call an unanswered card
+   resolves to its first option, marked `auto`, and the box score says
+   "ran its course" — the doors are never held on a dialog.
+   *Source: Fourth Quarter Phase 8.*
+
+217. **A choice is data; the floor reports; the books decide (again).**
+   `resolveChoice()` returns `{ fx, line, cls }` and writes nothing.
+   `engine.applyEffects()` spends what the night can spend now — cash into
+   `eventNet` (in the take), mood and stock onto the floor, bodies leaving
+   as a `clearOut` event, a walkout as a `staffQuits` event — and carries
+   the rest in `summary().moments`: rep, buzz, loyalty per id, raises and
+   walkouts by name, the resolved list. `settleNight()` applies those and
+   writes the cooldowns off the resolved list, so `eventCd` is written by
+   the books off the floor's word, never by the picker mid-night. The order
+   inside settlement is the 2D build's: a card's rep and buzz land, then the
+   night's own drift reads the moved number; a walkout leaves the payroll
+   after tonight's wages, which they worked most of. Two of the 2D build's
+   lines became numbers, because a line is not an effect: a dead screen on a
+   game night thins the walk-ins and the next round to 70%, dead sound to
+   85%.
+   *Source: Fourth Quarter Phase 8.*
+
+218. **The inspector's nose is overstock.** The 2D build fails the health
+   inspection on a lot within a day of its date. This build has no lots —
+   it rots a flat 15% of what is left — so "near-spoiled" is a walk-in
+   holding more food than the night's forecast will eat in two and a half
+   nights: the part that will rot before it sells. A per-lot shelf life is
+   a later arc ("What this leaves"), and the day it lands this is the one
+   line to change.
+   *Source: Fourth Quarter Phase 8.*
+
 ---
 
 # The site sessions, 1–10
@@ -3760,6 +3809,71 @@ are noted as luck-sensitive in their comments: a random stool lands at the
 bar, and a random order lands on the usual, each about a quarter of the time.
 
 *Left:* nothing of this phase. Sized 2+; closed in two increments.
+
+**Phase 8 — The night has moments (PR #187).** Eight sim hours, and the
+only thing that ever interrupted you was a ticket. Now the 2D build's event
+cards are on the floor. `js/events.js` (375, pure, zero imports) holds
+nineteen of the 21 cards with their `when`/`cd`/`weight` shape — the two
+about distributors wait for that arc (#215) — the picker (`eligible()` over
+the save's `eventCd` and tonight's fired list, `rollMoment()` for hours 1-6
+with a nightly budget of 0-3 off the chaos roll and a 40% coin, then a
+weighted pick) and `resolveChoice()`, which returns `{ fx, line, cls }` and
+writes nothing. `EFFECT_KINDS` names the twelve records the engine spends
+(#217): cash into the night's take, mood and stock onto the floor, bodies
+leaving as a `clearOut` event, rep, loyalty and buzz carried to the books,
+three night flags (`tapBroken` 86s the beer with the kegs full; `tvBroken`
+thins a game night's draw and the next round to 70%, and blacks out the
+biggest screen; `soundBroken` to 85%), a raise, a walkout (`staffQuits`
+now, off the payroll at settlement), and a wager settled at the final.
+`NightEngine` takes `moments: { budget, view, roll }` so it stays
+import-free, asks the picker at every hour boundary with nothing pending,
+keeps one card waiting, and resolves it — by the boss, or at last call to
+its first option, marked `auto` (#216). `campaign.js` gives it
+`eventView()` (the season, your name, the End Zone, the crew, the roster,
+who is in) and `nightMoments()`, and `settleNight()` reads
+`summary.moments` for rep, buzz, loyalty, raises, walkouts and the
+cooldowns; `eventCd` is additive and `repairEventCd()` keeps a finite,
+whole, positive day under an id the table has. The inspector's nose is
+overstock, because there are no lots (#218).
+
+`js/moments.js` (116) is the floor's half: a person in a light coat who
+walks in from the door to the card's stand-point (`ANCHOR_STATION`: the
+door's spawn, the drink pass, the tap, the crew's spot under the north
+screen, the kitchen pass), a nameplate and the boss's marker cone in event
+red, or a lit prop already there; a floor ring either way. In reach the
+prompt names the card ahead of the taps and the pass, E opens its choices
+as the management panel (`day.momentPanel()`, one stacked button per
+choice with its sub-line), and the button's click goes to
+`engine.resolveMoment()` and re-locks the cursor inside the gesture. The
+box score has a section "The Night's Moments": each card by name and hour,
+"answered" or "ran its course", the till's net, who walked and who got a
+raise. The dev menu can fire any card by name, budget and cooldown be
+damned.
+
+*Counts:* `test/smoke-events.mjs` new (121), Node total 1,153 → 1,274;
+`tools/browser-check.mjs` 193 → 224, a third night run by hand: the
+inspector in from the door with a nameplate, walking to the kitchen pass
+(0.04 m off); the prompt; the panel with the sim advancing under it; the
+answer's $200 and 5 rep in the engine's ledger and the cash on the score
+bug; the tap as a prop that 86s a full keg; the rowdy fans clearing six
+bodies off the seats and the headcount without a walkout; the legend left
+hanging and resolved at close; four cooldowns in the save on disk. The two
+earlier browser nights pin their budget to zero, because their loyalty
+sums predate the cards and a birthday round would have moved them.
+
+*Broken on purpose (#34), sixteen in Node and five in the browser, each
+caught by the assertion whose comment claims it:* in Node, the cooldown
+dropped (4 fail), the fired-tonight check dropped (2), the hours ignored
+(1), the budget ignored (3), the weighted pick gone uniform (2), a moment
+answerable twice (4), last call leaving one hanging (2), cash dropped (5),
+`tapBroken` ignored (1), the wager never settled (2), the roll asked while
+a card waits (1), a dead screen drawing a full room (3), cooldowns never
+written (2), the quitter off the payroll before wages (6), the card's rep
+never landing (1), repair skipping `eventCd` (1). The last-call break first
+crashed the suite on `moments[0]` of an empty list rather than failing it,
+and both lines that read it guard the length now. In the browser: the moment not put ahead of the pass on E (the panel never opens), `clearOut` ignored by the floor (the headcount does not drop), the nameplate left off, the choice button unwired (the answer never lands, 5 fail), and `main.js` not handing the engine the night's moments (the view has no books' half, 3). The first of those crashed the run on a null button click after the named assertion had failed; the click is guarded now.
+
+*Left:* nothing of this phase. Sized 1; closed in one session.
 
 ---
 

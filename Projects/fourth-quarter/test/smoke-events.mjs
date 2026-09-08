@@ -248,9 +248,11 @@ const poorView = (o = {}) => richView({
   ok(e3.moment !== null, "a card waits at hour 3");
   e3.t = 79.9;
   const close = e3.update(0.2);
-  ok(e3.done && e3.moment === null && e3.moments[0].choice === 0 && e3.moments[0].auto === true, "last call resolves it to the first option and says nobody chose");
+  // `length === 1` first: with the auto-resolve removed this line crashed on
+  // `moments[0]` rather than failing, and #34 wants the failure to name itself
+  ok(e3.done && e3.moment === null && e3.moments.length === 1 && e3.moments[0].choice === 0 && e3.moments[0].auto === true, "last call resolves it to the first option and says nobody chose");
   ok(e3.eventNet === -50 && e3.eventRep === 1 && close.some(x => x.type === "momentClosed" && x.auto) && close.some(x => x.type === "lastCall"), "with the first option's effects, before the lastCall event");
-  ok(e3.summary().moments.resolved[0].auto === true && e3.summary().moments.rep === 1, "and the summary carries it to the books");
+  ok(e3.summary().moments.resolved.length === 1 && e3.summary().moments.resolved[0].auto === true && e3.summary().moments.rep === 1, "and the summary carries it to the books");
   // a warped clock still asks for the hours it passed, once each, one card at a time
   const e4 = mk(3, () => card);
   e4.t = 39; e4.update(0.1);

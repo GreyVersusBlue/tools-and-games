@@ -959,7 +959,10 @@ ok("the prompt is blank under a panel", panel.prompt === "");
 const answered = await page.evaluate(() => {
   const e = window.__fq.engine;
   const before = { net: e.eventNet, rep: e.eventRep, cash: document.querySelector("#hCash").textContent };
-  document.querySelector("[data-moment='0']").click();
+  // guarded: with the E priority or the button's wiring broken there is no
+  // button, and a null click crashed the run where the next line should fail
+  const btn = document.querySelector("[data-moment='0']");
+  if (btn) btn.click();
   return { before, open: window.__fq.day.panelOpen(), pending: e.moment, net: e.eventNet, rep: e.eventRep, resolved: e.moments.map(m => `${m.id}:${m.choice}:${m.auto}`).join(),
     floor: !!window.__fq.moment, leaving: window.__fq.leavingMoments.length, ring: window.__fq.scene.children.some(x => x.name === "momentRing"),
     ticker: document.querySelector("#ticker").textContent };

@@ -160,6 +160,13 @@ table and this week's fixtures.
   regular's id and the campaign's day, so the answer is the same every time it
   is asked and nothing about it is stored. Also owns the reputation and buzz
   arithmetic, the loyalty drift, and the repair for all three fields.
+- `js/events.js` — the night's moments, pure. Nineteen of the 2D build's 21
+  event cards with their `when`/`cd`/`weight` shape, a picker over the
+  save's cooldowns and a nightly budget, and resolution as data: a choice
+  returns `{ fx, line, cls }` and the engine spends `fx` (cash, mood, crowd,
+  stock, rep, loyalty, buzz, a night flag, a raise, a walkout, a wager).
+  `js/moments.js` is the floor's half: a person who walks in from the door
+  or a lit prop at the card's stand-point, answered with E.
 - `js/campaign.js` — the books between nights: cash, calendar, stock orders,
   payroll + roles, promos, upgrades, settlement, persistence. Also pure — the
   save slot takes any localStorage-shaped object, and the smoke test passes a stub.
@@ -174,8 +181,8 @@ table and this week's fixtures.
   is still settling in (`c.darkNightsLeft > 0`).
 - Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs`,
   `node test/smoke-league.mjs`, `node test/smoke-regulars.mjs`,
-  `node test/smoke-layout.mjs`, `node test/smoke-nav.mjs` and
-  `node test/smoke-textures.mjs` (CI runs every
+  `node test/smoke-events.mjs`, `node test/smoke-layout.mjs`,
+  `node test/smoke-nav.mjs` and `node test/smoke-textures.mjs` (CI runs every
   `test/*.mjs`).
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
   hand; it needs `playwright-core`. `node tools/measure-load.mjs` is the
@@ -308,8 +315,9 @@ On a 5 Mbps line the 2k room takes 114.5 s to finish; the 1k room, 11.7 s.
    session's spoilage is a cost curve, not a lease-can-be-lost mechanic.
    `SPOILAGE_RATE` in `js/campaign.js` is the one number to tune if 15%/night
    feels wrong once it's been played.
-3. **Full campaign port — the league is in (wishlist Phase 6), and the
-   regulars are (Phase 7, both increments: the books and the floor).**
-   Still to port: distributors, a Commercial Walk-In upgrade to
-   cut the spoilage rate, events as floor moments, and a season that nudges
-   rent and wages, re-balanced for the 3D serving loop.
+3. **Full campaign port — the league is in (wishlist Phase 6), the
+   regulars are (Phase 7, both increments: the books and the floor), and
+   the event cards are moments on the floor (Phase 8).** Still to port:
+   distributors (and the two event cards about them), a Commercial Walk-In
+   upgrade to cut the spoilage rate, and a season that nudges rent and
+   wages, re-balanced for the 3D serving loop.
