@@ -8,19 +8,23 @@
 // computes, walked across the authored path network one time block at a
 // time toward whatever serves the need each of them feels most.
 //
-// What it is NOT, yet: the economy. Ticket revenue is still attendance ×
-// price and stall sales are still the Stage 14/17 coefficients. The walk
-// reports what the crowd did — who ate, who watched, who reached a stall
-// with money in hand, which built plots nobody could walk to — and the day
-// report says it out loud. Reconciling that with the money is Phase 1's
-// next increment, and the SIGNIFICANCE checks are its acceptance criteria.
+// Increment 2 (the economy, #226). Ticket revenue is still attendance × price —
+// that is what the gate charges and the walk has no vote in it. Stall
+// sales are no longer a coefficient on the whole crowd: `spentAt` is the
+// dollars that changed hands at each stall, counted one arrival at a time,
+// and simulateDay scales it by `represents` and takes the house's
+// wristband cut off the top. A stall nobody walked to earns nothing, which
+// is the col-3 spur ruling (#227) and the first time siting can cost a
+// player real money rather than a clamped multiplier.
 //
 // Invariants, each pinned in tests/guests.mjs:
 //  - a guest is always on a path tile the gate can reach; never off-grid;
 //  - the walk is a pure function of (state, guests, rng): same seed, same
 //    report, so a day is final once the gates close (#45);
 //  - a built plot with no finite walk from the gate is never arrived at,
-//    and is named in `unreachable` rather than shrugged at.
+//    and is named in `unreachable` rather than shrugged at;
+//  - every dollar in `spentAt` came out of a named guest's purse, so
+//    `sum(spentAt) === spent` and no stall can bank money nobody carried.
 
 import { GUESTS, TIME_BLOCKS, ENTRANCE, GRID } from './data.js';
 import { terrainAt, computePathRoutes, plotFootprintCells, orthogonalNeighbors, computePlotAttributes, effectivePopularity, performerById, vendorById, clamp } from './engine.js';
@@ -33,7 +37,14 @@ const key = (x, y) => `${x},${y}`;
 // the same to walk as a 300-guest Friday. Archetype is drawn against the
 // authored shares, the purse uniformly within the archetype's range. The
 // needs vector is copied per guest because the walk spends it.
-export function spawnGuests(n, rng) {
+//
+// Increment 2: `ticketPrice` comes out of the purse at the gate (#229).
+// A guest brought one day's money and the gate is the first thing it
+// spends it on, so `arrived` is what they walked up with and `budget` is
+// what is left for the stalls. This is what couples the ticket slider to
+// the till: charge $28 and the day-tripper who brought $24 walks in broke,
+// pulls at no stall (that is the one purse rule, #225) and buys nothing.
+export function spawnGuests(n, rng, ticketPrice = 0) {
   const count = Math.max(0, Math.min(Math.round(n), GUESTS.sampleCap));
   const represents = count > 0 ? n / count : 0;
   const guests = [];
@@ -46,12 +57,14 @@ export function spawnGuests(n, rng) {
       if (roll < 0) { arch = a; break; }
     }
     const [lo, hi] = arch.budget;
+    const arrived = Math.round(lo + rng() * (hi - lo));
     guests.push({
       id: i,
       archetype: arch.id,
       needs: { ...arch.needs },
       affinity: arch.affinity,
-      budget: Math.round(lo + rng() * (hi - lo)),
+      arrived,
+      budget: Math.max(0, arrived - Math.max(0, ticketPrice || 0)),
       spent: 0,
       x: ENTRANCE.x,
       y: ENTRANCE.y,
@@ -209,9 +222,10 @@ export function walkGuests(state, guests, rng) {
   const arrivals = {};
   const arrivalsByBlock = {};
   const buyers = {};
+  const spentAt = {};
   const served = { food: 0, spectacle: 0, spend: 0, shade: 0 };
   let spent = 0, steps = 0, idle = 0, offGrid = 0;
-  for (const a of attractions) { arrivals[a.plotId] = 0; buyers[a.plotId] = 0; }
+  for (const a of attractions) { arrivals[a.plotId] = 0; buyers[a.plotId] = 0; spentAt[a.plotId] = 0; }
   const reachable = computePathRoutes();
 
   for (const block of TIME_BLOCKS) {
@@ -245,11 +259,15 @@ export function walkGuests(state, guests, rng) {
         // The purse was checked in pullOf: a stall a guest cannot afford
         // pulls nothing, so nobody arrives at one. That is the one rule,
         // on purpose — a second check here guarded the same absence and
-        // stayed green when either was deleted (#34).
+        // stayed green when either was deleted (#34). Increment 2 makes
+        // this line the till: `spentAt` is what simulateDay bills the
+        // vendor's gross from, so a purse that empties is a stall that
+        // stops selling.
         if (best.price > 0) {
           g.budget -= best.price;
           g.spent += best.price;
           spent += best.price;
+          spentAt[best.plotId] += best.price;
           buyers[best.plotId]++;
         }
         if (heat >= 0.5 && best.shade >= 0.5) {
@@ -270,5 +288,5 @@ export function walkGuests(state, guests, rng) {
   const unspent = guests.filter(g => g.spent === 0 && g.budget > 0).length;
   const byArchetype = {};
   for (const g of guests) byArchetype[g.archetype] = (byArchetype[g.archetype] || 0) + 1;
-  return { arrivals, arrivalsByBlock, buyers, served, spent, steps, idle, offGrid, hungry, unspent, byArchetype, unreachable, sampled: guests.length };
+  return { arrivals, arrivalsByBlock, buyers, spentAt, served, spent, steps, idle, offGrid, hungry, unspent, byArchetype, unreachable, sampled: guests.length };
 }

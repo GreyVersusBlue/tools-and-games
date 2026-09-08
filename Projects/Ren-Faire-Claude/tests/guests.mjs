@@ -20,7 +20,7 @@ function assert(cond, msg) {
 }
 
 const { spawnGuests, walkGuests, buildAttractions, pathRouteBetween, pathHopsBetween } = await import(mod('js/guests.js'));
-const { makeRng, simulateDay, computePathRoutes, computePathDistances, pathRouteTo, terrainAt, reachabilityDistance } = await import(mod('js/engine.js'));
+const { makeRng, simulateDay, computePathRoutes, computePathDistances, pathRouteTo, terrainAt, reachabilityDistance, vendorById, measureFootTraffic } = await import(mod('js/engine.js'));
 const { GUESTS, GRID, ENTRANCE, TIME_BLOCKS, VENDORS, CONFIG } = await import(mod('js/data.js'));
 const { renderReport } = await import(mod('js/ui.js'));
 const State = await import(mod('js/state.js'));
@@ -59,7 +59,17 @@ const demo = (id, x, y) => ({ id, kind: 'demo', x, y, w: 1, h: 1, status: 'built
     }
   }
   assert(GUESTS.sampleCap >= 200, 'the sample cap is large enough for a stall\'s share to be a statistic');
-  assert(GUESTS.stepsPerBlock * TIME_BLOCKS.length >= computePathDistances().size, 'a full day of steps can cross the whole reachable network');
+  // Increment 2 changed this from a comparison against the network's *size*
+  // (24 cells against 24 steps, which passed by one) to its diameter, which
+  // is the number that actually decides whether a guest can get somewhere:
+  // the farthest reachable cell is 16 hops out, so a day's 24 steps reaches
+  // it with room to walk back. Below TIME_BLOCKS.length steps per block the
+  // far end of the grounds would be unreachable within a day, which is a
+  // different game.
+  const gateDistances = [...computePathDistances().values()];
+  const diameter = Math.max(...gateDistances);
+  assert(GUESTS.stepsPerBlock * TIME_BLOCKS.length > diameter, `a full day of steps reaches the farthest cell on the network and leaves some over (${GUESTS.stepsPerBlock * TIME_BLOCKS.length} steps against ${diameter} hops)`);
+  assert(GUESTS.stepsPerBlock < diameter, `and one block's walk does not cross the whole grounds, or gate distance costs nothing (${GUESTS.stepsPerBlock} against ${diameter})`);
   assert(GUESTS.satisfyRate > 0 && GUESTS.satisfyRate < 1, 'satisfyRate is a fraction of a need, not all of it or none');
 }
 
@@ -136,6 +146,22 @@ const demo = (id, x, y) => ({ id, kind: 'demo', x, y, w: 1, h: 1, status: 'built
   const a = spawnGuests(300, makeRng(9)), b = spawnGuests(300, makeRng(9));
   assert(JSON.stringify(a) === JSON.stringify(b), 'spawnGuests is deterministic for the same seed');
   assert(JSON.stringify(spawnGuests(300, makeRng(10))) !== JSON.stringify(a), 'and differs across seeds');
+
+  // Increment 2: the gate takes its share of the purse first (#229). Same
+  // seed, so `arrived` is identical across the three and only what is left
+  // for the stalls moves.
+  const free = spawnGuests(300, makeRng(9), 0);
+  const anchored = spawnGuests(300, makeRng(9), CONFIG.priceAnchor);
+  const gouged = spawnGuests(300, makeRng(9), CONFIG.ticketPrice.max);
+  assert(free.guests.every((g, i) => g.arrived === anchored.guests[i].arrived && g.arrived === gouged.guests[i].arrived),
+    'what a guest walked up with does not depend on the ticket price');
+  assert(free.guests.every((g, i) => g.budget === g.arrived), 'with no gate charge a guest carries its whole purse in');
+  assert(anchored.guests.every((g, i) => g.budget === Math.max(0, g.arrived - CONFIG.priceAnchor)), 'at the anchor price the gate has taken exactly the ticket out of every purse');
+  const purse = (r) => r.guests.reduce((sum, g) => sum + g.budget, 0);
+  assert(purse(gouged) < purse(anchored) && purse(anchored) < purse(free), 'a dearer ticket leaves the stalls a thinner crowd to sell to');
+  assert(gouged.guests.every(g => g.budget >= 0), 'a purse the gate emptied floors at zero rather than going negative');
+  assert(spawnGuests(300, makeRng(9)).guests.every((g, i) => g.budget === free.guests[i].budget),
+    'the ticket price argument defaults to no charge, so every pre-increment-2 caller is unchanged');
 }
 
 // ---------------------------------------------------------------------
@@ -214,6 +240,35 @@ const onGrid = (g) => g.x >= 0 && g.y >= 0 && g.x < GRID.cols && g.y < GRID.rows
   assert(a.served.food > 0 && b.served.food === 0, 'the same vendor on the spur feeds nobody');
   assert(b.hungry > a.hungry, 'and the crowd goes home hungrier for it');
   assert(a.unreachable.length === 0, 'a stall on the artery is reachable');
+  // Increment 2: this is now the whole of the col-3 spur ruling (#227) at
+  // the walk level. No arrivals means no `spentAt` entry at all, which is
+  // what makes simulateDay bill the stall $0 instead of Stage 17's 0.8x
+  // floor. The placement that would create this state is refused up front
+  // (see tests/smoke.mjs); an already-built one lands here.
+  assert(!('4_4' in b.spentAt) && (b.spentAt['6_3'] === undefined), 'an unreachable stall has no till entry to bill from');
+  assert(a.spentAt['6_3'] > 0, 'and the reachable one does');
+}
+
+// --- the till: every dollar a stall banked came out of a named purse ---
+{
+  const s = grounds([
+    stage('3_0', 3, 0),
+    stall('6_3', 'food', 6, 3, 'vend_cider'),
+    stall('8_3', 'vendor', 8, 3, 'vend_leather'),
+  ]);
+  const rng = makeRng(21);
+  const { guests } = spawnGuests(400, rng, CONFIG.priceAnchor);
+  const r = walkGuests(s, guests, rng);
+  const tillTotal = Object.values(r.spentAt).reduce((sum, n) => sum + n, 0);
+  assert(tillTotal > 0, 'the stalls took money');
+  assert(tillTotal === r.spent, `the stalls' tills add up to exactly what the crowd spent (${tillTotal} vs ${r.spent})`);
+  assert(tillTotal === guests.reduce((sum, g) => sum + g.spent, 0), 'and to exactly what came out of the guests\u2019 own purses');
+  assert(guests.every(g => g.spent + g.budget === Math.max(0, g.arrived - CONFIG.priceAnchor)),
+    'no guest spent money it did not walk in with \u2014 what it brought is the gate\u2019s share plus the stalls\u2019 plus what it took home');
+  const cider = vendorById('vend_cider'), leather = vendorById('vend_leather');
+  assert(r.spentAt['6_3'] === r.buyers['6_3'] * cider.avgTicket, 'a stall\u2019s till is its buyer count times the vendor\u2019s average ticket, exactly');
+  assert(r.spentAt['8_3'] === r.buyers['8_3'] * leather.avgTicket, 'and the same for the craft stall, at its own ticket');
+  assert(r.spentAt['3_0'] === 0 && r.arrivals['3_0'] > 0, 'a stage takes no money however many people watch it');
 }
 
 // --- distance matters: the same stall nearer the gate draws more ---
@@ -286,7 +341,10 @@ const onGrid = (g) => g.x >= 0 && g.y >= 0 && g.x < GRID.cols && g.y < GRID.rows
   // Two stew stalls fronting the same path cell (10,5) on the col-10 spur,
   // thirteen hops from the gate: (9,5) is clearing (shade 0.3), (11,5) is
   // woods (shade 0.88). Same vendor, same distance, same everything but
-  // the canopy — and the crowd arrives at Midday, with the heat at 0.85.
+  // the canopy. Thirteen hops is more than two blocks' walk at
+  // GUESTS.stepsPerBlock, so the first arrival lands in a hot block rather
+  // than at the gate-side start of the day; which block that is falls out
+  // of the stride and is read off the result rather than named here.
   const s = grounds([stall('9_5', 'food', 9, 5, 'vend_stew'), stall('11_5', 'food', 11, 5, 'vend_stew')]);
   const { attractions } = buildAttractions(s);
   const shady = attractions.find(a => a.plotId === '11_5'), open = attractions.find(a => a.plotId === '9_5');
@@ -296,8 +354,11 @@ const onGrid = (g) => g.x >= 0 && g.y >= 0 && g.x < GRID.cols && g.y < GRID.rows
   const { guests } = spawnGuests(400, rng);
   const r = walkGuests(s, guests, rng);
   assert(r.served.shade > 0, 'somebody found shade on a hot block');
-  const midday = r.arrivalsByBlock.midday;
-  assert((midday['11_5'] || 0) > 300 && !midday['9_5'], `at Midday the crowd chose the grove stall over the open one (${midday['11_5'] || 0} vs ${midday['9_5'] || 0})`);
+  const firstBlockId = TIME_BLOCKS.map(b => b.id).find(id => Object.keys(r.arrivalsByBlock[id]).length > 0);
+  const firstBlock = TIME_BLOCKS.find(b => b.id === firstBlockId);
+  assert(firstBlock && firstBlock.heat >= 0.85, `the walk out to the spur lands the crowd in a hot block (${firstBlockId} at heat ${firstBlock && firstBlock.heat})`);
+  const arriving = r.arrivalsByBlock[firstBlockId];
+  assert((arriving['11_5'] || 0) > 300 && !arriving['9_5'], `on the block they arrive, the crowd chose the grove stall over the open one (${arriving['11_5'] || 0} vs ${arriving['9_5'] || 0})`);
   assert(r.arrivals['9_5'] > 0, 'the open stall still fed the second meal, once the grove stall was a place they had already been');
 }
 

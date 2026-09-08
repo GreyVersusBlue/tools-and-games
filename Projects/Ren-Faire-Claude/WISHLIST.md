@@ -1,16 +1,16 @@
 # Faire Weekend — Feature Wishlist
 
 **Status: twenty-two stages are shipped, three rounds of site-wide review have
-run over them, and Phase 1 is one increment in.** The suites stand at **802
-passed** (`node tests/smoke.mjs`) plus **151 passed** (`node tests/guests.mjs`,
-new), 0 failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed under
-Xvfb. Round 3 closed the mobile tap-target debt, found one more never-clicked
-action (`cancelMove`) after round 2 had called that audit closed, and left the
+run over them, and Phase 1 is done.** The suites stand at **857 passed**
+(`node tests/smoke.mjs`) plus **168 passed** (`node tests/guests.mjs`), 0
+failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed under Xvfb.
+Round 3 closed the mobile tap-target debt, found one more never-clicked action
+(`cancelMove`) after round 2 had called that audit closed, and left the
 layout/density review owed for a fourth round running. Every stage's plan and
 how it landed is in the repo root's `HISTORY.md` and in `README.md`; nothing
-here repeats them. The open phase is still **Phase 1 — Guests who walk**, on
-**Claude Fable 5.1**: increment 1 built the crowd and walked it; increment 2
-is the economy.
+here repeats them. **Phase 1 closed in two increments** — the crowd, then the
+economy it spends in — so the open phase is now **Phase 2 — Weather worth
+checking**, on **Claude Opus 5**.
 
 ## What it is
 
@@ -36,15 +36,18 @@ built plot costs 7% of its own build cost per day forever. Stage 19 tied all
 of it to attendance itself through `computeGroundsDraw`, so the site plan
 grows the crowd rather than only dividing it.
 
-What it is not: a simulation of people. The crowd is one number —
-`baseAttendance × priceMult × popularityFactor × adFactor × groundsDraw.mult ×
-weekendDayFactor × jitter` — and every siting mechanic is a coefficient on
-averages of it. Nobody walks anywhere. There is also no weather, no act you
-have a history with, and nothing to do after the win screen.
+What it is not, still: a faire with weather, an act you have a history with,
+or anything to do after the win screen. What it stopped being in Phase 1 is a
+spreadsheet with a plat drawn on it. The gate is still one number
+(`baseAttendance × priceMult × popularityFactor × adFactor ×
+groundsDraw.mult × weekendDayFactor × jitter`), but what that crowd does
+once it is inside is four hundred agents walking the path network, and the
+stalls' takings are the money those agents handed over rather than a
+coefficient on the average.
 
 ## The architecture that is there
 
-- **`js/data.js` (452)** — content only, no logic, deliberately JSON-shaped so
+- **`js/data.js` (535)** — content only, no logic, deliberately JSON-shaped so
   it could become fetched `.json` untouched. `CONFIG` (every tunable number
   with the paragraph explaining why it is that number), `GROUNDS_DRAW`, four
   `TIME_BLOCKS` each with a `weight` and a `heat` (0.15/0.85/1.0/0.25),
@@ -53,7 +56,7 @@ have a history with, and nothing to do after the win screen.
   (10×7 at weekend 1, 12×8 at 2, 14×10 at 4), `PLACEMENT_RULES`, and the
   catalogs: 4 structure types, 15 performers, 12 vendors, 4 campaigns, 3
   contract options, 10 events.
-- **`js/engine.js` (1,081)** — pure, no DOM. Forty-odd exports: `makeRng`, the
+- **`js/engine.js` (1,245)** — pure, no DOM. Forty-odd exports: `makeRng`, the
   footprint primitives, `isLegalPlacement`, `quoteBuild`, `computeFootTraffic`,
   `computePathDistances`/`computeReachability`, `computeGroundsDraw`, the
   price-elasticity trio, `blockQualityWeights`, `totalUpkeep`,
@@ -66,7 +69,7 @@ have a history with, and nothing to do after the win screen.
   routes. Persistence went to `assets/js/gvb-save.js` at Stage 22: key
   `renn-faire-sim-save-v1`, everything `loadState` used to backfill now in
   `repair`, `migrate` a no-op, `defaults: createInitialState` as a factory.
-- **`js/ui.js` (817)** — state → HTML strings, ten renderers, no listeners.
+- **`js/ui.js` (860)** — state → HTML strings, ten renderers, no listeners.
   `renderGroundsPanel` owns the plat map, status line and build palette;
   `renderFairFloor` owns plot cards and the schedule; the four
   end-of-something screens share one ticket-stub shell.
@@ -77,7 +80,7 @@ have a history with, and nothing to do after the win screen.
 - **`css/style.css` (1,060)** — the "operations room" palette and the
   surveyor's-plat map. Two breakpoints, 1080px and 720px; `--cell` is 46px,
   38px, 48px respectively.
-- **`tests/smoke.mjs` (3,018)** — the largest test file in the repo, 801
+- **`tests/smoke.mjs` (3,256)** — the largest test file in the repo, 857
   assertions, no framework: an `assert()` counter and a `mod()` helper turning
   a path into a `file://` URL so Windows can run it. Sections 1–1g are pure;
   20, 21, 23 and 24 parse `style.css` and `index.html` as text; 1h and 22
@@ -85,7 +88,7 @@ have a history with, and nothing to do after the win screen.
 
 The load-bearing habit is what the layering implies: **anything worth testing
 is a pure function in `engine.js` with a suite, and `main.js` is a thin wire.**
-It breaks down in two places — `ui.js`, 817 lines of template literals with
+It breaks down in two places — `ui.js`, 860 lines of template literals with
 real logic inside them (live re-quoting, tag thresholds, ghost-cell legality)
 that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
 
@@ -93,7 +96,7 @@ that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
 
 - **`data.js` has no logic, `engine.js` has no DOM, `ui.js` has no listeners,
   only `main.js` touches `document`.** That is why the whole simulation
-  imports under plain Node and most of the 801 assertions cost nothing to run.
+  imports under plain Node and most of the 857 assertions cost nothing to run.
 - **Every action returns a new state and an optional error**, and refuses
   *before* money moves — the four placement actions all check
   `isLegalPlacement` first.
@@ -124,10 +127,14 @@ that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
   stage that finally gave it a multiplier also gave the HUD a tooltip naming
   the number.
 - **Correctness tests are not enough — see Section 1g, tagged
-  `SIGNIFICANCE:`.** Seven checks, twelve assertions, each asserting a
-  mechanic is *strategically load-bearing* rather than merely implemented.
-  Stage 18 shipped fully green with "build nothing, charge maximum" strictly
-  optimal. Run these against every balance change.
+  `SIGNIFICANCE:`.** Ten checks, twenty assertions, each asserting a mechanic
+  is *strategically load-bearing* rather than merely implemented. Stage 18
+  shipped fully green with "build nothing, charge maximum" strictly optimal.
+  Run these against every balance change — and check what state each one runs
+  on before trusting a pass. Phase 1 increment 2 rewrote the economy under
+  all seven of the original checks and every one still passed, because every
+  state they used was a bare stage with nothing for sale. Checks 8, 9 and 10
+  exist because of that.
 - **Verify a guard-rail by reintroducing the bug it guards** (#34). Round 3
   did it four times and caught two real mistakes before they shipped.
 - **Nothing leaves the site.** Fonts are vendored, Section 21 asserts it, and
@@ -150,7 +157,15 @@ notes and handoff have deferred rather than answered.
   been flagged "most likely to need adjusting after real play" for four rounds
   running, and no round could answer it because nobody has played a full
   season. The `SIGNIFICANCE:` tests prove they are not degenerate, not that
-  weekend 6 is a satisfying place to arrive.
+  weekend 6 is a satisfying place to arrive. **Partly answered by Phase 1
+  increment 2:** `perGuestCost` stays at 5, ruled rather than assumed. It was
+  the first candidate for absorbing the walk-based stall economy's revenue
+  uplift, and SIGNIFICANCE 3 refused it — a per-head cost scales with the
+  crowd whether or not anything is being sold, so at $11 a head "charge the
+  maximum" is correct again on a faire with no stalls (#228). `wristbandCut`
+  moved instead, 0.28 → 0.12. The other three are still open, and increment 2
+  pinned one edge of the win condition: a built-out faire cannot bank $25,000
+  in two weekends.
 - **Should winning end the run?** `acknowledgeVictory` drops back into the
   ordinary weekend-end screen and play continues — but `GRID_EXPANSIONS` runs
   out at weekend 4, so every weekend after the win is the same weekend. Is the
@@ -233,72 +248,63 @@ when its branch has become a pull request, that has merged to main with CI
 green, and the closing report names the **next open phase's number and its
 named model**.
 
-## Phase 1 — Guests who walk
+## Phase 1 — Guests who walk — **shipped, two increments**
 
-**The crowd is one number the grounds multiply, and nobody in it has ever
-taken a step.**
+**The crowd was one number the grounds multiplied, and nobody in it had ever
+taken a step. It is four hundred agents now, and what they spend is the
+stalls' takings.**
 
-`computeGroundsDraw` turns built structures into draw points and a multiplier
-clamped between 0.25 and 1.65 — a stage 1.0 points, a staffed stall 0.5, a
-demo camp 0.35, square root on the sum. Everything Stages 12, 14 and 17 built
-on top of it re-slices that aggregate rather than producing it. The hard part
-is not the agents; it is landing them on an economy seven `SIGNIFICANCE:`
-checks pin. Those checks are the acceptance criteria, not an obstacle.
+**Increment 1 (PR #191, 2026-09-08): the crowd exists and walks.** `GUESTS`
+in `data.js` (four archetypes, needs, purses, affinities, and the walk's
+eight tunables with a paragraph each), `js/guests.js` (pure), `tests/
+guests.mjs`, `computePathRoutes()` and `pathRouteTo()` in `engine.js` with
+`computePathDistances()` reading off the same tree, a `guests` block on every
+day report, and a "Where the crowd went" line on the ticket stub. At most 400
+agents are walked and each stands for `attendance / 400` (#223); the walk has
+its own rng stream so forty seeds still roll the events they rolled before
+(#224); a stall a guest cannot afford pulls nothing, and that is the one purse
+rule (#225).
 
-**Increment 1 shipped (PR #191, 2026-09-08): the crowd exists and walks.**
-`GUESTS` in `data.js` (four archetypes, needs, purses, affinities, and the
-walk's eight tunables with a paragraph each), `js/guests.js` (pure, 274
-lines), `tests/guests.mjs` (151 assertions), `computePathRoutes()` and
-`pathRouteTo()` in `engine.js` with `computePathDistances()` now read off the
-same tree, a `guests` block on every day report, and a "Where the crowd went"
-line on the ticket stub. At most 400 agents are walked and each stands for
-`attendance / 400` (#223); the walk has its own rng stream so forty seeds still
-roll the events they rolled before (#224); a stall a guest cannot afford pulls
-nothing, and that is the one purse rule (#225). The same show twice is half the
-show (`repeatPenalty`), which is what circulates the crowd. The economy is
-untouched: attendance, ticket revenue and stall sales are exactly Stage 22's.
+**Increment 2 (2026-09-08): the economy.** Ticket revenue is still
+`attendance × price` — the gate charges what it charges and the walk has no
+vote in it. Everything else about a stall's day is the walk's now.
 
-- [x] **`guests.js`, pure, with its own suite.** An archetype table in
-  `data.js` — families, revellers, history buffs, day-trippers — each with a
-  needs vector (food, spectacle, shade, spend) and a budget; `spawnGuests(n,
-  rng)` turns the attendance number the formula already computes into a typed
-  population, so today's entry point survives the change. *Done.*
-- [x] **Walk them.** `computePathDistances` already BFSes the path network
-  from `ENTRANCE`; extend it to return routes, not just distances, and step
-  each guest per block toward what serves its need. *Done: the BFS keeps its
-  parents, `pathRouteBetween` is a cached BFS per source cell, and every guest
-  walks up to `stepsPerBlock` hops per block toward the attraction that pulls
-  hardest — need × quality × taste × shade-in-heat × repeat penalty, over
-  distance.*
-- [ ] **Reconcile with the economy, don't replace it.** Ticket revenue stays
-  `attendance × price`; vendor sales become the guests who actually reached a
-  stall with money left, and `computeFootTraffic`'s multiplier becomes a
-  statistic *derived* from the walk rather than an authored curve. *Increment
-  2. The walk already reports `buyers` and `spent` per stall and
-  `arrivalsByBlock`; nothing reads them for money yet.*
-- [ ] **Fix or rule on the col-3 spur**, which a test pins today because
-  aggregate reachability shrugged at it. Agents will not. *Increment 2, with
-  the economy in hand: today a stall on the spur is named on the report
-  ("Nobody could find a way from the gate to Grove Stall") and feeds nobody,
-  but it still sells at Stage 17's 0.8× because sales are not the walk's yet.
-  Rule when the ruling costs money.*
-- [ ] **Keep the seven `SIGNIFICANCE:` checks meaningful.** Each must still
-  pass, or be rewritten to assert the same strategic claim against the new
-  model — and that rewrite *is* this phase's design review. *Increment 2; all
-  seven pass unchanged today because the model they pin has not moved.*
-- [x] **Determinism and a fuzz block.** One `makeRng(seed)` off the day as
-  `runDay` does, so a report survives a reload unchanged (#45); extend the
-  50-day fuzz run to assert no throws, no NaN, no guest off-grid. *Done: the
-  walk's stream is `makeRng(seed ^ 0x9E3779B9)`, the 50-day fuzz asserts
-  nobody off-grid, no NaN, and a sample sized to the gate; a 30-day run in
-  `guests.mjs` checks history carries aggregates only.*
+- [x] **`guests.js`, pure, with its own suite.** *Increment 1.*
+- [x] **Walk them.** *Increment 1.*
+- [x] **Reconcile with the economy, don't replace it.** *Done (#226). A
+  stall's gross is `spentAt` — money guests physically handed over, one
+  arrival at a time out of purses the walk tracks — scaled by `represents`,
+  with `CONFIG.wristbandCut` taken off the top. The `attendance × 0.12 ×
+  quality/7 × footTraffic × reachability` line is gone and both clamped
+  siting bands cap nothing now. `computeFootTraffic` survives as the
+  estimate the build palette shows before the gates open (labelled "est." on
+  the page); `measureFootTraffic` is its measured twin off the walk's arrival
+  counts, and it is what the report carries. Both are on the ticket stub, per
+  stall, beside what that stall took.*
+- [x] **Fix or rule on the col-3 spur.** *Ruled (#227): the terrain gap
+  stays, an already-built stall on the spur takes $0 and is named on the
+  report, and building a new one is refused with its own sentence before
+  money moves. Fixing the terrain was rejected — it would turn a clearing a
+  save may have built on into a path tile.*
+- [x] **Keep the seven `SIGNIFICANCE:` checks meaningful.** *Done, and the
+  finding was that all seven passed untouched because every state they use
+  is a bare stage with nobody selling anything — not one of them could see
+  the stall economy. Three were added (the price trade on a faire that
+  sells things, siting deciding money, and the band `wristbandCut` sets from
+  both ends) and two Stage 14/17 assertions were rewritten against the new
+  model. Check 3 is also what refused `perGuestCost` as the balance knob and
+  sent the change to `wristbandCut` instead (#228).*
+- [x] **Determinism and a fuzz block.** *Increment 1.*
 
-*Leans on:* `computePathDistances`/`computeFootTraffic`/`computeReachability`,
-`TERRAIN_ROWS`, `ENTRANCE`. *Save:* none — guests die with the report and only
-the day's aggregates reach `history`, so every existing save still loads; a
-report written before this phase renders no crowd line rather than zeros.
-*Model:* **Claude Fable 5.1** — a simulation layer replacing the term every
-other mechanic multiplies into, where a wrong answer is a plausible number.
+**Three numbers moved and each is a locked decision:** `wristbandCut` 0.28 →
+0.12 (#228), the gate taking its share of the purse before a guest reaches a
+stall (#229), and `stepsPerBlock` 12 → 6 (#230, because at 12 a guest crossed
+the whole season-1 grounds inside one block and gate distance cost nothing).
+The ledger landed at: empty field -$1,177 a day (unchanged), day-one build
+-$191 → +$248, mid faire +$2,448 → +$3,626, built-out +$7,184 → +$8,980.
+
+*Save:* none, either increment. Guests die with the report, only aggregates
+reach `history`, and no key changed.
 
 ## Phase 2 — Weather worth checking
 

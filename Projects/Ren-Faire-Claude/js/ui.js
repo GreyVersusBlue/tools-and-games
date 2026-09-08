@@ -242,7 +242,7 @@ export function renderBackstage(state, warn) {
         : `<span class="hint-tag">${option.label}</span>`;
       const seatedPlot = state.builtPlots.find(p => p.assignedVendorId === v.id);
       const trafficTag = seatedPlot && footTraffic[seatedPlot.id]
-        ? ` <span class="mono" title="Foot traffic here vs. the grounds\u2019 average staffed stall today">${footTraffic[seatedPlot.id].mult.toFixed(2)}x traffic</span>`
+        ? ` <span class="mono" title="Estimated foot traffic here vs. the grounds\u2019 average staffed stall, from terrain and what is built nearby. What the crowd actually did is on the day report.">${footTraffic[seatedPlot.id].mult.toFixed(2)}x traffic (est.)</span>`
         : '';
       const seatNote = seatedPlot
         ? `<span class="hint-tag" title="Currently selling from this stall">seated: ${seatedPlot.name}</span>${trafficTag}`
@@ -350,7 +350,7 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
     const attrs = computePlotAttributes(p, state.builtPlots);
     const statusWord = p.status === 'planning' ? 'planned, not yet built' : 'built';
     const footNote = (p.status === 'built' && (p.kind === 'food' || p.kind === 'vendor') && footTraffic && footTraffic[p.id])
-      ? `, foot traffic ${footTraffic[p.id].mult.toFixed(2)}x`
+      ? `, foot traffic ${footTraffic[p.id].mult.toFixed(2)}x est.`
       : '';
     // Stage 17: reachability applies to built stages too (not just stalls),
     // so it's noted alongside foot traffic rather than folded into it.
@@ -528,13 +528,16 @@ function renderPlotCard(state, p, footTraffic, reachability) {
     ? `<span class="hint-tag" title="A nearby demo camp draws its own lingering crowd your way">near a demo camp +${attrs.nearbyDemos * 7}% traffic</span>`
     : '';
   // Stage 14: how this stall's own foot traffic compares to the grounds'
-  // average staffed stall today — the actual number simulateDay uses to
-  // scale its sales. Stages don't get one (footTraffic only tracks
-  // food/vendor plots); a still-planning stall doesn't either, since it
-  // isn't really on the grounds yet.
+  // average staffed stall. Stages don't get one (computeFootTraffic only
+  // tracks food/vendor plots); a still-planning stall doesn't either, since
+  // it isn't really on the grounds yet.
+  // Phase 1 increment 2: this is the *estimate* and says so. Sales are the
+  // walk's now, so this number no longer scales anything — it is the
+  // forecast a player plans against, and the day report carries what the
+  // crowd actually did beside it.
   const footEntry = !isPlanning && footTraffic && footTraffic[p.id];
   const footTrafficTag = footEntry
-    ? `<span class="${footEntry.mult >= 1.05 ? 'hint-tag' : footEntry.mult <= 0.95 ? 'warn-tag' : 'hint-tag'}" title="How this stall's placement compares to the grounds\u2019 average foot traffic today">${footEntry.mult.toFixed(2)}x foot traffic</span>`
+    ? `<span class="${footEntry.mult >= 1.05 ? 'hint-tag' : footEntry.mult <= 0.95 ? 'warn-tag' : 'hint-tag'}" title="Estimated from terrain and what is built nearby: how this stall's placement compares to the grounds\u2019 average. The day report carries what the crowd actually did.">${footEntry.mult.toFixed(2)}x foot traffic (est.)</span>`
     : '';
   // Stage 17: reachability applies to stages too (unlike foot traffic,
   // which only ever tracked food/vendor stalls), so this checks reachability
@@ -712,7 +715,30 @@ function renderCrowdWalk(result) {
     `<b>${g.bought.toLocaleString()}</b> bought something`,
   ];
   if (g.hungry > 0) parts.push(`<b>${g.hungry.toLocaleString()}</b> went hungry`);
+  if (g.spent > 0) parts.push(`<b>${money(g.spent)}</b> left the purses`);
   return `<div class="ticket-row crowd-walk"><span>Where the crowd went</span><span class="hint">${parts.join(' &middot; ')}</span></div>`;
+}
+
+// Phase 1 increment 2: the till, stall by stall. Every line here is money
+// guests physically walked up and handed over, so a stall nobody reached
+// shows a zero rather than being quietly absent — that zero is the whole
+// point of the walk being wired to the economy.
+function renderStallTill(state, result) {
+  const sales = result.stallSales || {};
+  const ids = Object.keys(sales);
+  if (ids.length === 0) return '';
+  const rows = ids.map(id => {
+    const sale = sales[id];
+    const plot = (state.builtPlots || []).find(p => p.id === id);
+    const vendor = vendorById(sale.vendorId);
+    const measured = result.footTraffic && result.footTraffic[id];
+    const est = result.footTrafficEstimate && result.footTrafficEstimate[id];
+    const drift = measured && est
+      ? ` <span class="hint" title="What the build palette forecast from terrain and adjacency, against what the crowd actually did">est. ${est.mult.toFixed(2)}x, walked ${measured.mult.toFixed(2)}x</span>`
+      : '';
+    return `<div class="ticket-row"><span class="hint">${vendor ? vendor.name : sale.vendorId} at ${plot ? plot.name : id} &mdash; ${sale.buyers.toLocaleString()} sales${drift}</span><span class="mono">${money(sale.house)}</span></div>`;
+  }).join('');
+  return rows;
 }
 
 export function renderReport(state, result) {
@@ -728,7 +754,8 @@ export function renderReport(state, result) {
       ${renderCrowdWalk(result)}
       <hr>
       <div class="ticket-row"><span>Ticket revenue</span><span class="mono">${money(result.ticketRevenue)}</span></div>
-      <div class="ticket-row"><span>Stall revenue (house cut)</span><span class="mono">${money(result.vendorRevenue)}</span></div>
+      <div class="ticket-row"><span>Stall revenue <span class="hint">(${Math.round(CONFIG.wristbandCut * 100)}% of ${money(result.vendorGross || 0)} across the stalls)</span></span><span class="mono">${money(result.vendorRevenue)}</span></div>
+      ${renderStallTill(state, result)}
       <div class="ticket-row"><span>Performer wages</span><span class="mono">-${money(result.performerCosts)}</span></div>
       <div class="ticket-row"><span>Stall staffing</span><span class="mono">-${money(result.vendorCosts)}</span></div>
       <div class="ticket-row"><span>Plot upkeep</span><span class="mono">-${money(result.upkeep)}</span></div>
