@@ -6,6 +6,7 @@
 // while testing.
 
 import * as C from "./campaign.js";
+import * as LG from "./league.js";
 
 const $ = s => document.querySelector(s);
 
@@ -57,6 +58,12 @@ export class DevPanel {
         <button class="btn small ghost" data-day="-1">−1 day</button>
       </div>
 
+      <div class="sec">League — season ${c.league.season}, week ${LG.weekOf(c.day) + 1}, ${LG.phaseOf(c.day)}</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button class="btn small" data-setday="${LG.dateOf(c.league.season, LG.REG_WEEKS, "Mon")}">Skip to the bracket</button>
+        <button class="btn small" data-setday="${LG.seasonStart(c.league.season + 1)}">Skip to next season</button>
+      </div>
+
       <div class="sec">Venue — currently ${v.name}${c.darkNightsLeft ? ` <span class="hint">(${c.darkNightsLeft} dark night${c.darkNightsLeft === 1 ? "" : "s"} left)</span>` : ""}</div>
       <div class="row" style="gap:8px;flex-wrap:wrap">${venueBtns}</div>
       ${c.darkNightsLeft ? `<button class="btn small ghost" style="margin-top:8px" data-cleardark="1">Clear dark nights</button>` : ""}
@@ -87,6 +94,10 @@ export class DevPanel {
     }
     if (t.dataset.day) {
       C.devSetDay(c, c.day + +t.dataset.day);
+      this.cb.save(); this.render();
+    }
+    if (t.dataset.setday) {
+      C.devSetDay(c, +t.dataset.setday);
       this.cb.save(); this.render();
     }
     if (t.dataset.warp) {

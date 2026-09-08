@@ -12,6 +12,7 @@ import { Player } from "./player.js";
 import { DayPhase } from "./day.js";
 import { DevPanel } from "./dev.js";
 import * as C from "./campaign.js";
+import * as LG from "./league.js";
 import * as audio from "./audio.js";
 import { initTextures, textureStatus } from "./materials.js";
 import { mountSaveBar } from "../../../assets/js/gvb-save.js";
@@ -68,6 +69,7 @@ let { group: worldGroup, tvs, nightRig, dayRig } = buildWorld(scene, campaign.ve
 let phase = "day"; // day | night | report
 let engine = null, patrons = [], patronsById = new Map(), servers = [], cookMeshes = [], passDisplays = new Map();
 let broadcast = null, started = false, speed = 1;
+let tonightAtOpen = null; // league.js's tonight() as it stood when the doors opened; the box score reads it
 
 const player = new Player(camera, renderer.domElement, null);
 player.onInteract = () => {
@@ -128,23 +130,51 @@ function enterDay() {
   day.setVisible(true);
   spawnCamera();
   player.clearCarry();
-  broadcast = { gameNight: false, started: false, finished: false, flicker: 0, tick: 0, mules: 0, sharks: 0, clockText: "" };
+  const tn = C.tonight(campaign);
+  broadcast = { gameNight: false, started: false, finished: false, flicker: 0, tick: 0, us: 0, them: 0, clockText: "",
+    headline: dayHeadline(tn), standings: leagueTable(), week: tn.week, showStandings: false };
   $("#boxOverlay").style.display = "none";
   $("#ticker").innerHTML = "";
   tick(`Day ${campaign.day}, ${C.weekday(campaign)}. Quiet room, full to-do list.`, "hl");
-  tick(C.isGameNight(campaign)
-    ? "Mules game tonight — stock the beer and staff up."
-    : "No game tonight. A theme can still fill some stools.", "");
+  // the season's two turning points, on the morning each lands
+  const L = campaign.league;
+  if (tn.phase === "offseason" && tn.week === LG.SEASON_WEEKS && C.weekday(campaign) === "Mon" && L.champion) {
+    const champ = LG.teamDef(L.champion);
+    tick(champ.id === LG.MULES
+      ? `THE MULES ARE MAFA CHAMPIONS. Season ${L.season} ends with a banner in Fairview.`
+      : `The ${champ.short} take the MAFA title. Season ${L.season} is over; the league goes dark for two weeks.`, champ.id === LG.MULES ? "g" : "b");
+  }
+  if (tn.phase === "regular" && tn.week === 0 && C.weekday(campaign) === "Mon" && L.season > 1) {
+    tick(`Fresh schedules on the corkboard — MAFA Season ${L.season} kicks off.`, "hl");
+  }
+  tick(tn.mules ? `${tn.label}. Stock the beer and staff up.` : `${tn.label}. A theme can still fill some stools.`, "");
   updateHUD();
+}
+
+/** What the screens say on a night the Mules are not playing. */
+function dayHeadline(tn) {
+  if (tn.games.length) return tn.label.replace(/ on the screens$/, "").toUpperCase() + " — MAFA TONIGHT";
+  if (tn.phase === "offseason") return "MAFA OFF-SEASON — HIGHLIGHTS";
+  return "MAFA TONIGHT — HIGHLIGHTS";
+}
+/** The standings as the TVs draw them: the league's order with the short names on. */
+function leagueTable() {
+  return LG.standings(campaign.league).map(r => ({ ...r, short: LG.teamDef(r.id).short }));
 }
 
 function beginNight() {
   phase = "night";
   setLighting(true);
   day.setVisible(false);
+  const tn = C.tonight(campaign);
+  tonightAtOpen = tn;
   engine = new NightEngine({
     crowdTarget: C.forecast(campaign),
     gameNight: C.isGameNight(campaign),
+    // league.js says who is at home and what the Mules' form is worth, so the
+    // result the room sees is drawn from the same odds the standings use
+    home: tn.mules ? tn.home : undefined,
+    winProb: C.mulesWinProb(campaign),
     hourLenSec: 45,
     // The physical room's own seat count, not the venue tier's — world.js fills
     // `seats` from the venue's layout.js description (every tier the Corner
@@ -185,9 +215,11 @@ function beginNight() {
   // and be asked to play before it had buffered.
   audio.preload("stormOut", "stingerKickoff", "stingerFinal", "sizzle", "pour");
   passDisplays = new Map();
-  broadcast = { gameNight: engine.gameNight, started: false, finished: false, win: null, mules: 0, sharks: 0, clockText: "Q1 15:00", flicker: 0, tick: 0 };
+  broadcast = { gameNight: engine.gameNight, started: false, finished: false, win: null, us: 0, them: 0, clockText: "Q1 15:00", flicker: 0, tick: 0,
+    usName: "MULES", themName: tn.opp ? tn.opp.short.toUpperCase() : "", home: tn.home,
+    headline: dayHeadline(tn), standings: leagueTable(), week: tn.week, showStandings: false };
   $("#ticker").innerHTML = "";
-  tick(`Doors open. ${engine.gameNight ? "Mules game tonight — kickoff 7 PM." : "No game — just the regulars and the jukebox."}`, "hl");
+  tick(`Doors open. ${engine.gameNight ? `${tn.label} — kickoff 7 PM.` : tn.games.length ? `${tn.label}.` : "No game — just the regulars and the jukebox."}`, "hl");
   const pd = C.promoDef(campaign);
   if (pd.id !== "none") tick(`Tonight's theme: ${pd.name}.`, "hl");
   audio.startLoop("barBed", 0.35);
@@ -245,14 +277,17 @@ function updateBroadcast(dt) {
     broadcast.clockText = `Q${q} ${String(Math.max(0, clockMin)).padStart(2, "0")}:${String(Math.floor(Math.random() * 60)).padStart(2, "0")}`;
     if (Math.random() < 0.06) {
       const pts = Math.random() < 0.55 ? 7 : 3;
-      if (Math.random() < 0.5) broadcast.mules += pts; else broadcast.sharks += pts;
+      if (Math.random() < 0.5) broadcast.us += pts; else broadcast.them += pts;
     }
   }
+  // halftime: the first third of the hour after Q2 is the standings screen
+  broadcast.showStandings = !!engine && broadcast.started && !broadcast.finished
+    && engine.hour === 5 && (engine.t - 5 * engine.hourLenSec) < engine.hourLenSec / 3;
   drawBroadcast(tvs, broadcast);
 }
 function settleScore(win) {
-  if (win && broadcast.mules <= broadcast.sharks) broadcast.mules = broadcast.sharks + (Math.random() < 0.5 ? 3 : 7);
-  if (!win && broadcast.sharks <= broadcast.mules) broadcast.sharks = broadcast.mules + (Math.random() < 0.5 ? 3 : 7);
+  if (win && broadcast.us <= broadcast.them) broadcast.us = broadcast.them + (Math.random() < 0.5 ? 3 : 7);
+  if (!win && broadcast.them <= broadcast.us) broadcast.them = broadcast.us + (Math.random() < 0.5 ? 3 : 7);
 }
 
 // ---- pass counter displays ----
@@ -334,9 +369,19 @@ function showBoxScore() {
     <div class="row"><span>Service rate</span><span class="${s.serviceRate >= 90 ? "good" : s.serviceRate >= 70 ? "warn" : "bad"}">${s.serviceRate}%</span></div>
     <div class="row"><span>Spoiled overnight</span><span class="${spoiled ? "bad" : ""}">${spoiled} serving${spoiled === 1 ? "" : "s"}${spoiled ? ` (~$${books.spoilage.value.toFixed(2)} wholesale)` : ""}</span></div>
     ${engine.gameNight ? `<div class="sec">The Game</div>
-    <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${s.game.win ? "Mules win — the room erupted" : "Mules dropped it"}</span></div>` : ""}`;
+    <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${gameLine(s.game.win)}</span></div>` : ""}`;
   $("#boxOverlay").style.display = "flex";
   document.exitPointerLock();
+}
+/** The box score's one line on the game: who, the score the screens showed,
+ *  and what it meant if it was a bracket night. */
+function gameLine(win) {
+  const tn = tonightAtOpen;
+  const opp = tn && tn.opp ? tn.opp.short : "them";
+  const score = `${broadcast.us}–${broadcast.them}`;
+  if (tn && tn.kind === "final") return win ? `MULES WIN THE MAFA TITLE, ${score} — nobody's going home` : `Mules fall in the final, ${score} — the room files out quiet`;
+  if (tn && tn.kind === "semi") return win ? `Mules beat the ${opp} ${score} — on to the final` : `Mules drop the semi to the ${opp}, ${score} — season's over`;
+  return win ? `Mules beat the ${opp} ${score} — the room erupted` : `Mules dropped it to the ${opp}, ${score}`;
 }
 $("#nextDayBtn").addEventListener("click", () => {
   audio.playSfx("uiClick");
@@ -492,6 +537,7 @@ window.__fq = {
   camera, day, player, scene, texTier,
   get patrons() { return patrons; }, get servers() { return servers; },
   get textures() { return textureStatus(); },
+  get campaign() { return campaign; }, get engine() { return engine; }, get broadcast() { return broadcast; },
 };
 let last = performance.now();
 let hudT = 0;

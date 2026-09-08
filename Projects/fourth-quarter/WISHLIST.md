@@ -39,19 +39,22 @@ and the Door — press E, and manage in a DOM panel. By night eight sim hours ru
 at 45 real seconds an hour: patrons walk in, take a stool, order, wait
 `PATIENCE` seconds and walk out if you blow it. Servers fetch and deliver; you
 can beat them to it for a flat $2 boss tip, and you can work the stove or the
-taps on a timing bar to finish a ticket early. Thursdays and Sundays the TVs
-run a fake Mules broadcast that agrees with the engine's own result. At last
-call a box score settles wages, rent, theme cost and upgrade upkeep, rots 15%
-of the food on the shelf, and writes tomorrow's ledger.
+taps on a timing bar to finish a ticket early. The bar lives inside a MAFA
+season (`js/league.js`, Phase 6): once a week the Mules play, the TVs carry
+the real opponent and the standings at halftime, and the result the room
+sees is the one the standings keep. At last call a box score settles wages,
+rent, theme cost and upgrade upkeep, rots 15% of the food on the shelf, and
+writes tomorrow's ledger.
 
 What it is not: a campaign. The 2D original next door
 (`Projects/The-Fourth-Quarter.html`, 1,956 lines — **deliberately kept live as
 the board's archive card and not yours to touch, merge or clean up**, locked
-decision #2) has ten sprints of systems this build has never had: a 14-week
-MAFA season with playoffs and an off-season, eight named teams, regulars with
-loyalty, a rival bar with a buzz number, three distributors, ads, reputation,
-and 21 mid-night event cards with real choices. The 3D build has the *floor*
-the 2D build never had and roughly a third of its books. It also has no way to
+decision #2) has ten sprints of systems this build has mostly never had:
+regulars with loyalty, a rival bar with a buzz number, three distributors,
+ads, reputation, and 21 mid-night event cards with real choices. The 14-week
+MAFA season with playoffs, an off-season and eight named teams is the one of
+them that has been ported (Phase 6). The 3D build has the *floor* the 2D
+build never had and roughly a third of its books. It also has no way to
 lose: cash goes red and stays red. The venue ladder is the sharpest version of
 that gap — four tiers, one-way leases at $0 / $5,500 / $15,000 / $34,000, each
 with more `buzzMult` and more rent, and every one the same 30-seat room,
@@ -66,14 +69,25 @@ comment saying why). Honest is not built.
   done`, prep multipliers, promo pricing, stock consumption, mood, the Mules
   game beats. `update(dt)` returns events and knows nothing about who draws
   them. Zero imports.
-- **`js/campaign.js` (482)** — the books between nights: stock, `VENUES`,
+- **`js/league.js` (319)** — the MAFA season, pure. Eight `TEAMS`, a
+  double round-robin dealt by the circle method off a seed, the calendar as
+  arithmetic (`seasonOf`, `weekOf`, `phaseOf`, `dateOf`: 14 regular weeks,
+  two bracket weeks, 14 dark nights, 126 days a season), `records()` and
+  `standings()` derived from the results every call, `stakes()` for the
+  Mules against the bracket line, `tonight()` naming what is on the screens
+  and what it is worth at the door (`CROWD`), and two writers: `syncLeague()`
+  holding the invariant and `settleLeagueNight()` playing tonight with the
+  engine's result. Imports `mulberry32` from engine.js, nothing else.
+- **`js/campaign.js` (538)** — the books between nights: stock, `VENUES`,
   `UPGRADES`, `PROMOS`, `ROLES`, payroll, `settleNight()`,
-  `settleDarkNight()`, `applySpoilage()`, `repairCampaign()`, the save slot.
-  Imports `MENU`/`FOOD` from engine.js and `createSaveSlot` from
-  `../../../assets/js/gvb-save.js`, nothing else. Also pure — the tests hand it
-  a plain object as storage.
-- **`test/smoke-campaign.mjs` (458 lines, 203 assertions)** and
-  **`test/smoke-engine.mjs` (155 lines, 190 assertions)** — Node only, no
+  `settleDarkNight()`, `applySpoilage()`, `repairCampaign()`, the save slot,
+  and the three questions it asks league.js: `tonight()`, `isGameNight()`,
+  `mulesWinProb()`. Imports `MENU`/`FOOD` from engine.js, the league from
+  league.js and `createSaveSlot` from `../../../assets/js/gvb-save.js`,
+  nothing else. Also pure — the tests hand it a plain object as storage.
+- **`test/smoke-campaign.mjs` (567 lines, 241 assertions)**,
+  **`test/smoke-league.mjs` (233 lines, 84 assertions)** and
+  **`test/smoke-engine.mjs` (172 lines, 194 assertions)** — Node only, no
   runner, no dependency: a `pass`/`fail` counter and an `ok()`.
 - **`js/layout.js` (794)** — a room as data, pure, zero imports. One
   description per venue tier (`LAYOUTS`: the Corner Tap, the Fieldhouse,
@@ -303,8 +317,17 @@ starting a new list.
 
 **The night**
 - No mid-night events. The 2D build has 21 with real choices.
-- The Mules game is one home team and an anonymous opponent; the 2D build has
-  eight named teams and a fixture list.
+- A season does not move the economy. The 2D build nudges rent 10% and wages
+  6% a season, capped; here season 2 costs what season 1 did. Phase 9's
+  difficulty curve is where it belongs.
+- The Mules' game is on the local screens whoever they play; the 2D build's
+  League Pass, which gates other teams' games, was not ported, so every
+  league night is a 1.15× night. `CROWD` in `league.js` is the table.
+- Standings tie-break on wins, losses, then id. No head-to-head, no points
+  differential (there are no points; the score on the TV is theatre).
+- The halftime standings screen and the corkboard table have been looked at
+  in headless Chromium at 1280×800 only, through the state they draw from
+  rather than the pixels.
 - A patron's whole personality is a shirt colour and a Mules-fan flag, and a
   Mules win has no cheer sound (`audio.js` says so) — just the whistle sting.
 
@@ -638,43 +661,83 @@ model layer with silent failure modes or a save shape everything downstream
 inherits**, every phase names its model, and finished means merged with CI
 green and a closing report naming the next phase and its model.
 
-## Phase 6 — The league has a season
+## Phase 6 — The league has a season — **SHIPPED**
 
-**"Game night" is `weekday() in ["Thu","Sun"]` and the result is a coin flip.**
+**"Game night" was `weekday() in ["Thu","Sun"]` and the result was a coin flip.**
 
-The TVs run a fake broadcast, the Mules win 55% of the time, and nothing
-remembers. The 2D build runs 14 weeks across eight named teams, seeds a
+The TVs ran a fake broadcast, the Mules won 55% of the time, and nothing
+remembered. The 2D build runs 14 weeks across eight named teams, seeds a
 four-team bracket, plays semifinals Thursday and Sunday, crowns a champion,
 goes dark for an off-season and starts again with rent and wages nudged up.
 That is the biggest source of "why is tonight different from last Tuesday"
 available for free, and it is the spine the next three phases hang off.
 
-- [ ] **`js/league.js`, pure, with `test/smoke-league.mjs`.** Eight teams, a
-  fixture list, standings, `seasonPhase()` (regular / playoffs / off-season),
-  `advance()` on each settled night, and a result generator taking the same
-  seeded `rnd` the engine uses.
-- [ ] **A season in the save, additive.** `c.league` written by
-  `newCampaign()`, defaulted in `repairCampaign()` — a campaign saved on day 40
-  before this existed loads into a season at the right week rather than being
-  rejected. The key does not change (locked decision #36).
-- [ ] **The calendar reads the fixture list.** `isGameNight()` asks the league
-  whether the Mules play tonight rather than checking the weekday, and
-  `forecast()` accounts for the opponent — a rivalry game and a meaningless
-  week-13 fixture are not the same crowd.
-- [ ] **The broadcast agrees with the league.** `drawBroadcast()` already draws
-  two team names; give it the real ones, put standings on a screen between
-  periods, and add a standings panel at the corkboard — the 2D build's League
-  tab is the screen that makes a season feel like one.
-- [ ] **The suite pins the shape.** A full season lands exactly 14 regular
-  weeks then a bracket then a champion; every team plays the same number of
-  games; the off-season is finite; two campaigns seeded the same produce the
-  same season and different seeds do not.
+- [x] **`js/league.js`, pure, with `test/smoke-league.mjs` (84).** Eight
+  teams, a double round-robin dealt off a seed, `records()` and
+  `standings()` derived from the results on every call, `phaseOf()` /
+  `weekOf()` / `seasonOf()` as arithmetic on the day number, and results
+  rolled off the engine's own `mulberry32` stepped over the league's saved
+  state (#203, #204). The 2D build's `S.league.week` pointer and stored `w` /
+  `l` counters were not ported: a pointer can drift from the calendar and a
+  counter from the results, and neither can here.
+- [x] **A season in the save, additive.** `c.league` written by
+  `newCampaign()` off a random seed, rebuilt in `repairCampaign()` off a seed
+  that is the day when it is missing or fails `validLeague()`, and in either
+  case `syncLeague()`d to the campaign's day — a day-40 save from before the
+  league existed loads into week 5 of season 1 with its 22 results behind it.
+  Key and version unchanged (#36, #37).
+- [x] **The calendar reads the fixture list.** `isGameNight()` is "the Mules
+  play tonight"; `forecast()` reads `tonight(c).crowd`, a table that puts the
+  final over a semi over the Sharks over a plain game over a game the Mules
+  are already eliminated from, with the other three games of the week on the
+  screens for less (#205). The Mules' night rotates Thursday, Sunday, Sunday,
+  Monday.
+- [x] **The broadcast agrees with the league.** `drawBroadcast()` prints the
+  real opponent, the pregame line says home or away, the standings are on
+  every screen for the first third of the hour after Q2, and the Theme panel
+  at the corkboard carries the table with the Mules' row lit, this week's
+  four fixtures with tonight's marked, the champion and past champions. The
+  result is the engine's at the league's odds (`winProb`, 0.53 home ± four
+  points a game of streak) and `settleNight()` writes it into the fixture
+  list, so the TV, the box score and the standings hold one result (#204).
+  The box score's game line names the opponent and the score, and says so
+  when it was a semi or the final.
+- [x] **The suite pins the shape.** A full season is exactly 14 regular weeks,
+  every team at 14 played, the semis seeded 2 v 3 Thursday and 1 v 4 Sunday
+  from the top four, the final the Sunday after between the two winners with
+  the higher seed hosting, a champion written to history once, a finite
+  off-season, and season 2 opening on a Monday with fresh fixtures; two
+  leagues seeded the same are byte-identical at day 200 and different seeds
+  are not; the invariant holds after a jump to season 4 and after a walk back
+  to day 50; the `stakes()` boundaries are rigged and tested on both sides.
+- [x] **Reintroduced the bugs.** Fifteen in Node, each caught by the
+  assertion whose comment claims it, from a green baseline: the bracket's
+  week read off the calendar's season rather than the stored one (2 fail),
+  the settling flag ignored (1), bracket games counting in the standings
+  (1), "eliminated" and "clinched" each off by one (1 each), the rivalry
+  branch gone (2 across two suites), the Mules always on Thursday (4), the
+  weekday rule back in `isGameNight()` (2), `forecast()` back on 1.5 (1),
+  repair not syncing (3), the engine's result dropped at settlement (1), the
+  engine ignoring `winProb` (1), the champion never written to history (6),
+  the seeds the bottom four (1). One more, `playGame()` marking a game played
+  before rolling it, is caught by both suites dying of a `TypeError` in
+  `records()` rather than by an assertion; the exit code is non-zero and the
+  stack names the line, and it is recorded here because #34 says to say so.
+  In the browser, four: `main.js` dropping the league's odds (1), the
+  halftime screen never shown (1), the Mules' row not lit (1), the broadcast
+  naming the old Sharks whoever plays (1). The third of those also tripped
+  the two halftime assertions once, because the harness read the broadcast
+  400 ms after moving the clock while a site-wide check was running beside
+  it; every wait in that group is now on the state the loop writes, with a
+  15 s ceiling that fails the assertion rather than the run.
 
 *Leans on:* `campaign.js`'s calendar, `engine.js`'s game beats, `world.js`'s
-`drawBroadcast`. *Save:* additive `league` record, defaulted in
-`repairCampaign()`. *Model:* **Claude Fable 5.1** — a new pure model layer plus
-a save shape every later phase reads, where a wrong bracket stays silent for
-fourteen in-game weeks.
+`drawBroadcast`, `day.js`'s Theme panel. *Save:* additive `league` record,
+defaulted in `repairCampaign()`. *Model:* **Claude Fable 5.1** — a new pure
+model layer plus a save shape every later phase reads, where a wrong bracket
+stays silent for fourteen in-game weeks. *Shipped 2026-09-08 under Claude
+Fable 5.1, in one session: sized 2+, and every bullet closed, so the row is
+closed rather than left open for an increment that has nothing to do.*
 
 ## Phase 7 — Regulars, and the bar across town
 

@@ -28,13 +28,21 @@ export function hourName(h) {
 
 let _seedState = null;
 export function seed(n) { _seedState = n >>> 0; }
+/** One mulberry32 step: the next state and the value in [0, 1) it yields.
+ *  Exported so league.js rolls its results off the same generator, stepped
+ *  over the league's own saved state rather than this module's. */
+export function mulberry32(state) {
+  state = ((state | 0) + 0x6D2B79F5) | 0;
+  let t = Math.imul(state ^ (state >>> 15), 1 | state);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return { state, value: ((t ^ (t >>> 14)) >>> 0) / 4294967296 };
+}
 function rnd() {
   if (_seedState === null) return Math.random();
-  // mulberry32 — deterministic runs for tests
-  _seedState |= 0; _seedState = (_seedState + 0x6D2B79F5) | 0;
-  let t = Math.imul(_seedState ^ (_seedState >>> 15), 1 | _seedState);
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  // deterministic runs for tests
+  const r = mulberry32(_seedState);
+  _seedState = r.state;
+  return r.value;
 }
 const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
 const pick = a => a[Math.floor(rnd() * a.length)];
@@ -52,6 +60,8 @@ export class NightEngine {
    *  promo        — 'none'|'wingnight'|'happyhour'|'watchparty'
    *  foodMult     — cook prep-speed multiplier; 0 = kitchen's closed (no cook on shift)
    *  drinkMult    — bartender prep-speed multiplier; 0.55 default = servers cover the taps, badly
+   *  home         — the Mules are at home tonight (league.js says; a coin flip if omitted)
+   *  winProb      — chance the Mules win tonight's game (league.js's odds; 0.55 if omitted)
    */
   constructor(opts = {}) {
     // `?? default` is not enough for the numbers: it only catches null and
@@ -81,7 +91,11 @@ export class NightEngine {
     this.inBar = 0;             // agents currently seated/entering (3D layer maintains)
     this.spawnDebt = 0;         // fractional arrivals accumulator
     this.tickets = [];          // {id, patronId, itemId, kind, placedAt, readyAt, state:'prep'|'ready'|'carried'|'done'|'dead', claimedBy}
-    this.game = { started: false, finished: false, win: null, home: ri(0, 1) === 1 };
+    // the coin is flipped whether or not `home` is given, so a seeded run's
+    // draw sequence is the same either way
+    const coin = ri(0, 1) === 1;
+    this.game = { started: false, finished: false, win: null, home: opts.home ?? coin };
+    this.winProb = clamp(fin(opts.winProb, 0.55));
     this.log = [];
   }
 
@@ -109,7 +123,7 @@ export class NightEngine {
       }
       if (this.gameNight && this.hour === 6 && !this.game.finished) {
         this.game.finished = true;
-        this.game.win = rnd() < 0.55;
+        this.game.win = rnd() < this.winProb;
         this.mood = clamp(this.mood + (this.game.win ? 0.14 : -0.12));
         ev.push({ type: "final", win: this.game.win },
           this.logLine(this.game.win

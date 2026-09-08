@@ -8,6 +8,7 @@ import { stationRing, currentLayout } from "./world.js";
 import { standPointsFor } from "./layout.js";
 import { MENU } from "./engine.js";
 import * as C from "./campaign.js";
+import * as LG from "./league.js";
 import * as audio from "./audio.js";
 
 const $ = s => document.querySelector(s);
@@ -198,15 +199,45 @@ export class DayPhase {
         ${dead ? '<span class="pill">no game tonight</span>' : ""}
         <div class="hint">${p.desc}</div></div>`;
     }).join("");
+    const tn = C.tonight(c);
     this.show("Tonight's Theme",
-      `<p class="hint">One theme per night, pinned to the corkboard. ${C.isGameNight(c) ? "Mules game tonight — themes stack with the game crowd." : "No game tonight."}</p>${cards}`,
+      `<p class="hint">One theme per night, pinned to the corkboard. ${tn.mules ? `${tn.label} — themes stack with the game crowd.` : `${tn.label}.`}</p>${cards}
+       ${this.standingsHtml(c)}`,
       `<span class="hint">Forecast with this theme: <b>~${C.forecast(c)}</b> through the door</span>`);
+  }
+
+  /** The league table pinned under the theme cards — the 2D build's League
+   *  tab, on the corkboard because that is where the schedules go up. Season,
+   *  week and phase on top; eight rows, the Mules' lit; this week's four
+   *  games under it with the results that are in. */
+  standingsHtml(c) {
+    const L = c.league, tn = C.tonight(c);
+    const phase = { regular: `week ${tn.week + 1} of ${LG.REG_WEEKS}`, playoffs: tn.week === LG.REG_WEEKS ? "semifinals" : "the final", offseason: "off-season" }[tn.phase];
+    const rows = LG.standings(L).map((r, i) => {
+      const t = LG.teamDef(r.id);
+      const streak = r.streak >= 2 ? `W${r.streak}` : r.streak <= -2 ? `L${-r.streak}` : "—";
+      return `<tr class="${t.id === LG.MULES ? "us" : ""}"><td>${i + 1}.</td><td>${t.name}${t.rival ? ' <span class="pill">rival</span>' : ""}</td><td class="num">${r.w}</td><td class="num">${r.l}</td><td class="num">${streak}</td></tr>`;
+    }).join("");
+    const week = (L.weeks[tn.week] || []).map(g => {
+      const h = LG.teamDef(g.home), a = LG.teamDef(g.away);
+      const when = g.playoff === "final" ? "Final" : g.playoff ? "Semi" : g.day;
+      const result = g.played ? `${LG.teamDef(g.winner).short} won` : LG.gameDate(L, tn.week, g) === c.day ? "<b>tonight</b>" : "";
+      return `<tr><td>${when}</td><td>${a.short} at ${h.short}</td><td class="num">${result}</td></tr>`;
+    }).join("");
+    const champ = L.champion ? `<div class="hint">MAFA champions, season ${L.season}: <b>${LG.teamDef(L.champion).name}</b></div>` : "";
+    const past = L.history.filter(h => h.season < L.season).map(h => `season ${h.season} — ${LG.teamDef(h.champion).short}`).join(", ");
+    return `<div class="sec">MAFA — season ${L.season}, ${phase}</div>
+      ${champ}
+      <table id="standings"><tr><th></th><th>Team</th><th class="num">W</th><th class="num">L</th><th class="num">Streak</th></tr>${rows}</table>
+      ${week ? `<div class="sec">This week</div><table id="thisWeek">${week}</table>` : ""}
+      ${past ? `<div class="hint">Past champions: ${past}</div>` : ""}`;
   }
 
   doorPanel() {
     const c = this.getC();
     if (c.darkNightsLeft > 0) return this.darkNightPanel();
-    const game = C.isGameNight(c);
+    const tn = C.tonight(c);
+    const game = !!tn.mules;
     const warn = [];
     if (game && (c.stock.beer || 0) < C.forecast(c) * 1.3) warn.push("Beer's thin for a game night.");
     if (!c.staff.length) warn.push("No servers — you're running every order yourself.");
@@ -216,7 +247,7 @@ export class DayPhase {
     if (c.cash < C.rent(c) + C.wageBill(c) + C.upgradeFees(c)) warn.push("Tonight's rent + wages + upkeep outrun the till. A bad night puts you in the red.");
     const rows = [
       ["Day", `${c.day} · ${C.weekday(c)}`],
-      ["Tonight", game ? "Mules game — kickoff 7 PM" : "No game on the screens"],
+      ["Tonight", game ? `${tn.label} — kickoff 7 PM` : tn.label],
       ["Theme", C.promoDef(c).name + (C.promoDef(c).cost ? ` (−$${C.promoDef(c).cost})` : "")],
       ["Forecast", `~${C.forecast(c)} through the door`],
       ["Crew", c.staff.length ? c.staff.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
