@@ -3461,7 +3461,7 @@ manager's count and says why (#147). *Left:* the 2k originals at q98, a
 single 1k size for every surface, and nothing gating "Take the Floor" on the
 manager — all three in the standing backlog. Arc one is closed.
 
-**Phase 6 — The league has a season (PR #TBD).** Game night was `weekday()
+**Phase 6 — The league has a season (PR #179).** Game night was `weekday()
 in ["Thu", "Sun"]` and the result a coin flip nothing remembered. Now
 `js/league.js` (319, pure, imports only `mulberry32` from engine.js) holds a
 MAFA season: eight named teams, a double round-robin dealt by the circle
