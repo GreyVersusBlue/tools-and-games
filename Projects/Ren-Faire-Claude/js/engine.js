@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS, RENOWN } from './data.js';
 // Phase 1 (guests who walk): guests.js imports this module's path and plot
 // helpers and this module calls its walk from simulateDay. The cycle is
 // safe because neither file reads the other at load time — only inside
@@ -425,8 +425,14 @@ export function isSeasonUnlocked(state, unlockSeason) {
 // always the Weekend-1 baseline, so this never returns undefined even for
 // a save at season 1 (or a pre-Stage-8 save with no migration needed,
 // since season already defaults to 1).
+// Phase 4: a tier can carry a second gate, `unlockRenown`, on top of its
+// weekend. Both have to hold. A tier without the field reads as 0, so the
+// three original tiers unlock exactly as they did.
+export function isExpansionUnlocked(state, tier) {
+  return isSeasonUnlocked(state, tier.unlockSeason) && renownOf(state) >= (tier.unlockRenown || 0);
+}
 export function currentGridSize(state) {
-  const unlocked = GRID_EXPANSIONS.filter(g => isSeasonUnlocked(state, g.unlockSeason));
+  const unlocked = GRID_EXPANSIONS.filter(g => isExpansionUnlocked(state, g));
   return unlocked[unlocked.length - 1] || GRID_EXPANSIONS[0];
 }
 
@@ -435,7 +441,7 @@ export function currentGridSize(state) {
 // hints in the UI the same way AD_CAMPAIGNS/CONTRACT_OPTIONS show locked
 // tiers.
 export function nextGridExpansion(state) {
-  return GRID_EXPANSIONS.find(g => !isSeasonUnlocked(state, g.unlockSeason)) || null;
+  return GRID_EXPANSIONS.find(g => !isExpansionUnlocked(state, g)) || null;
 }
 
 // Whether (x,y) sits within the currently-unlocked grounds — distinct from
@@ -480,6 +486,75 @@ export function checkBankruptcy(cash) {
 export function checkWinCondition(state) {
   const w = CONFIG.winCondition;
   return state.season >= w.seasonTarget && state.reputation >= w.minReputation && state.cash >= w.minCash;
+}
+
+// ---------- renown, the second track (Phase 4) ----------
+// The number itself. A state with no record — a fixture, a save from
+// before this phase on its way through migrate — reads as 0, the same way
+// relationshipOf reads neutral.
+export function renownOf(state) {
+  return state && typeof state.renown === 'number' ? state.renown : 0;
+}
+
+// The mood line on its own, off a summarizeWeekend() result: the one part
+// of a weekend's renown that a completed weekend's history still carries,
+// which is why the save's migrate can tally it for weekends played before
+// this phase existed. The other two lines need tenure and the demolition
+// count, neither of which an old save recorded, so migrate does not guess
+// at them.
+export function moodRenown(summary) {
+  if (!summary || !summary.days || summary.days.length === 0) return null;
+  const avg = summary.avgSatisfaction;
+  if (avg >= RENOWN.moodHighBar) return { id: 'mood', label: `A weekend the crowd loved (mood ${avg}/100)`, points: RENOWN.moodHighPoints };
+  if (avg >= RENOWN.moodBar) return { id: 'mood', label: `A weekend the crowd enjoyed (mood ${avg}/100)`, points: RENOWN.moodPoints };
+  return null;
+}
+
+// Everything a weekend earned, as lines with reasons and a total. Pure:
+// reads the state as it stands at the boundary — after state.js has
+// ticked tenure for the weekend just closed — and the weekend's summary.
+// Applied once per weekend by nextDay, and printed by the weekend-end
+// screen from state.lastRenown.
+export function weekendRenown(state, summary) {
+  const lines = [];
+  const mood = moodRenown(summary);
+  if (mood) lines.push(mood);
+  const tenure = (state && state.tenure) || {};
+  const kept = contractedActIds(state).filter(id => (tenure[id] || 0) >= RENOWN.keptWeekends);
+  if (kept.length > 0) {
+    const points = Math.min(kept.length, RENOWN.keptCap);
+    lines.push({ id: 'kept', label: `${kept.length} act${kept.length === 1 ? '' : 's'} kept a ${ordinal(RENOWN.keptWeekends)} weekend or longer`, points });
+  }
+  const built = ((state && state.builtPlots) || []).filter(p => p.status === 'built').length;
+  if (built >= RENOWN.intactMinBuilt && !((state && state.demolished) > 0)) {
+    lines.push({ id: 'intact', label: `${built} plots built and nothing torn down`, points: RENOWN.intactPoints });
+  }
+  return { lines, total: lines.reduce((s, l) => s + l.points, 0) };
+}
+function ordinal(n) { return `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`; }
+
+// The headliner's bar. A performer with `unlockRenown` will not sign, at
+// any price, until the faire has that much renown; everyone else returns
+// null. Read by contractPerformer before any quote is made, and by
+// Backstage so the row says what it is waiting on rather than hiding.
+export function signingBar(state, perf) {
+  if (!perf || typeof perf.unlockRenown !== 'number') return null;
+  const have = renownOf(state);
+  if (have >= perf.unlockRenown) return null;
+  return { need: perf.unlockRenown, have, short: perf.unlockRenown - have };
+}
+
+// The next run's weather seed, derived from this one's rather than drawn
+// off the clock: closing a season is a pure action like every other in
+// state.js, and a run's whole calendar is still a function of the seed
+// newGame() drew once (#232). Mixed with the run number so two closings
+// of the same run (a save exported before and after) get the same second
+// season, and a third season differs from the second.
+export function nextRunSeed(weatherSeed, run) {
+  let h = ((weatherSeed >>> 0) ^ Math.imul(run >>> 0, 0x9E3779B1)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85EBCA6B) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xC2B2AE35) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
 }
 
 // ---------- faire grounds map ----------

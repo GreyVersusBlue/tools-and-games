@@ -222,6 +222,19 @@ function handleAction(action, el) {
       res = State.acknowledgeVictory(state);
       state = res.state;
       break;
+    case 'closeSeason': {
+      // Phase 4: the run boundary. The new run replaces the state outright,
+      // so every piece of view state pointing at the old grounds goes too.
+      res = State.closeSeason(state);
+      if (res.error) { ui.flash = res.error; break; }
+      state = res.state;
+      ui.activeTab = 'office';
+      ui.pendingBuild = null;
+      ui.pendingMove = null;
+      ui.negotiating = null;
+      ui.flash = `Season ${res.record.run} closed and banked. Season ${state.carryover.run} opens with $${state.cash.toLocaleString()}, ${state.reputation} reputation and ${state.renown} renown.`;
+      break;
+    }
     case 'newFaire':
       state = State.resetSave();
       ui.activeTab = 'office';

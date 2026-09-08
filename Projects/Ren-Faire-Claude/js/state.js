@@ -3,8 +3,8 @@
 // NEW state (no in-place mutation), so ui.js can just re-render after every
 // action and tests can assert on plain objects.
 
-import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, DEFAULT_WEATHER_ID, RELATIONSHIP } from './data.js';
-import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition, rollWeather, quoteContract, offerDiscount, relationshipOf, beatById, pendingBeats, clamp } from './engine.js';
+import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, DEFAULT_WEATHER_ID, RELATIONSHIP, CARRYOVER } from './data.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition, rollWeather, quoteContract, offerDiscount, relationshipOf, beatById, pendingBeats, clamp, summarizeWeekend, weekendRenown, moodRenown, signingBar, nextRunSeed, contractedActIds } from './engine.js';
 // Relative, not "/assets/js/gvb-save.js": tests/smoke.mjs imports this module
 // under plain Node, which cannot resolve a leading slash. The relative form
 // resolves identically in the browser (v7 §1 documented the same trap for
@@ -64,6 +64,26 @@ export function createInitialState(weatherSeed = DEFAULT_WEATHER_SEED) {
     relationships: {}, // performer/vendor id -> 0..100, written at signing and moved by runDay; absent reads as RELATIONSHIP.neutral
     arcBeats: {}, // beat id -> choice id, once resolved; a resolved beat never fires again on this save
     actTraits: {}, // performer/vendor id -> { popularity?, quality?, quirk?, rateMult? } laid over the catalog by performerFor/vendorFor
+    // Phase 4: a faire that outlives its season. renown and carryover are
+    // the first fields a pre-Phase-4 save reaches through migrate rather
+    // than repair (see migrateSave below); tenure, demolished and
+    // lastRenown are ordinary content drift and repair fills them.
+    renown: 0, // the second track; earned at each weekend boundary by engine.js's weekendRenown, carried whole across a closed season
+    carryover: emptyCarryover(), // { schema, run, seasons, startedWith } — see data.js's CARRYOVER
+    tenure: {}, // performer/vendor id -> weekends held under contract without a break; ticked at the boundary, deleted with the act
+    demolished: 0, // built plots torn down this run; the "nothing torn down" renown line reads it
+    lastRenown: null, // the most recent weekend's { lines, total }, for the weekend-end screen
+  };
+}
+
+// A first run's carryover record: nothing closed yet, and it opened on the
+// configured starting numbers.
+export function emptyCarryover() {
+  return {
+    schema: CARRYOVER.schema,
+    run: 1,
+    seasons: [],
+    startedWith: { cash: CONFIG.startingCash, reputation: CONFIG.startingReputation, renown: 0 },
   };
 }
 
@@ -93,6 +113,17 @@ function clone(state) {
     relationships: { ...(state.relationships || {}) },
     arcBeats: { ...(state.arcBeats || {}) },
     actTraits: Object.fromEntries(Object.entries(state.actTraits || {}).map(([k, v]) => [k, { ...v }])),
+    tenure: { ...(state.tenure || {}) },
+    carryover: cloneCarryover(state.carryover),
+    lastRenown: state.lastRenown ? { total: state.lastRenown.total, lines: (state.lastRenown.lines || []).map(l => ({ ...l })) } : null,
+  };
+}
+function cloneCarryover(co) {
+  if (!co) return emptyCarryover();
+  return {
+    ...co,
+    seasons: (co.seasons || []).map(r => ({ ...r })),
+    startedWith: { ...(co.startedWith || {}) },
   };
 }
 
@@ -245,6 +276,10 @@ export function demolishPlot(state, plotId) {
   const next = clone(state);
   next.cash -= fee;
   next.builtPlots = next.builtPlots.filter(p => p.id !== plotId);
+  // Phase 4: the "nothing torn down" renown line reads this count for the
+  // rest of the run. A relocation is not a demolition — the plot is still
+  // standing — so relocatePlot does not touch it.
+  next.demolished = (next.demolished || 0) + 1;
   return { state: next, error: null, fee };
 }
 
@@ -370,11 +405,16 @@ export function contractPerformer(state, performerId, contractId = 'open') {
   const perf = performerById(performerId);
   if (!perf) return { state, error: 'Unknown performer.' };
   if (state.roster.includes(performerId)) return { state, error: 'Already contracted.' };
+  // Phase 4: the headliner will not sign for money alone. Checked before
+  // any terms are resolved, so no quote is ever made for a refusal.
+  const bar = signingBar(state, perf);
+  if (bar) return { state, error: `${perf.name} will not sign for money alone \u2014 the faire needs ${bar.need} renown and has ${bar.have}.` };
   const resolved = resolveTerms(state, contractId);
   if (resolved.error) return { state, error: resolved.error };
   const quote = quoteContract(state, 'performer', performerId, resolved.terms);
   const next = clone(state);
   next.roster.push(performerId);
+  next.tenure[performerId] = 0; // Phase 4: weekends held; the boundary ticks it
   next.contracts[performerId] = {
     contractId: quote.contractId,
     label: quote.label,
@@ -406,6 +446,7 @@ export function releasePerformer(state, performerId) {
   }
   delete next.contracts[performerId];
   delete next.relationships[performerId]; // #235: the relationship leaves with them
+  delete next.tenure[performerId]; // Phase 4: and so does the tenure
   next.roster = next.roster.filter(id => id !== performerId);
   // pull them out of the schedule too
   for (const blockId of Object.keys(next.schedule)) {
@@ -451,6 +492,7 @@ export function hireVendor(state, vendorId, contractId = 'open') {
     cancelFeeMult: quote.cancelFeeMult,
   };
   next.relationships[vendorId] = RELATIONSHIP.neutral;
+  next.tenure[vendorId] = 0;
   // Auto-seat into the first open matching stall so hiring "just works" for
   // the common case; the player can still reassign by hand, or reach for
   // Auto-Fill Stalls later if a demolition ever leaves someone unseated.
@@ -475,6 +517,7 @@ export function fireVendor(state, vendorId) {
   }
   delete next.vendorContracts[vendorId];
   delete next.relationships[vendorId]; // #235
+  delete next.tenure[vendorId];
   next.hiredVendors = next.hiredVendors.filter(id => id !== vendorId);
   for (const p of next.builtPlots) if (p.assignedVendorId === vendorId) p.assignedVendorId = null;
   return { state: next, error: null, fee };
@@ -611,6 +654,16 @@ export function nextDay(state) {
     // rather than silently rolling into a new weekend. day/weekendDay/season
     // only advance once the player confirms via startNextWeekend().
     next.phase = 'weekendEnd';
+    // Phase 4: the weekend just closed counts toward every act still under
+    // contract, and then the weekend earns its renown. Tenure ticks first
+    // so an act signed on Weekend 1's Friday reads as kept a third weekend
+    // at the close of Weekend 3, not Weekend 4. The award is applied here
+    // and nowhere else, so a reload on the weekend-end screen cannot earn
+    // it twice (the phase is on disk, #45).
+    for (const id of contractedActIds(next)) next.tenure[id] = (next.tenure[id] || 0) + 1;
+    const award = weekendRenown(next, summarizeWeekend(next.history, CONFIG.seasonLength));
+    next.renown = (next.renown || 0) + award.total;
+    next.lastRenown = award;
     // Stage 16: check the win condition right at this same boundary, before
     // the weekend-end summary shows. Only ever fires once per save (guarded
     // by victoryAchieved) — acknowledgeVictory() below drops back into the
@@ -660,6 +713,83 @@ export function acknowledgeVictory(state) {
   const next = clone(state);
   next.phase = 'weekendEnd';
   return { state: next };
+}
+
+// ---------- the run boundary (Phase 4) ----------
+// Whether the season can be closed from here: only from the weekend-end
+// desk (or the victory screen that sits in front of it), and only once the
+// season has run its CONFIG.winCondition.seasonTarget weekends. A run that
+// missed the win still closes — the record says so — because a faire that
+// outlives its season is the point, not a prize for the win alone.
+export function canCloseSeason(state) {
+  if (state.phase !== 'weekendEnd' && state.phase !== 'victory') return { ok: false, reason: 'The season closes from the weekend-end desk.' };
+  const target = CONFIG.winCondition.seasonTarget;
+  if (state.season < target) return { ok: false, reason: `A season runs ${target} weekends; this is Weekend ${state.season}.` };
+  return { ok: true };
+}
+
+// The one record a closed season leaves. Pure, and exported so the ledger
+// screens can show exactly what closeSeason is about to bank.
+export function seasonRecord(state) {
+  const co = state.carryover || emptyCarryover();
+  const history = state.history || [];
+  return {
+    run: co.run,
+    weekends: state.season,
+    days: history.length,
+    attendance: history.reduce((s, d) => s + (d.attendance || 0), 0),
+    net: history.reduce((s, d) => s + (d.cashDelta || 0), 0),
+    cash: Math.round(state.cash),
+    reputation: Math.round(state.reputation),
+    renown: state.renown || 0,
+    renownEarned: (state.renown || 0) - ((co.startedWith && co.startedWith.renown) || 0),
+    won: !!state.victoryAchieved,
+    plots: (state.builtPlots || []).filter(p => p.status === 'built').length,
+    beats: Object.keys(state.arcBeats || {}).length,
+  };
+}
+
+// What the next run opens with, before it exists. Pure, read by the ledger
+// screens and by closeSeason itself so the two cannot disagree.
+export function carryoverPreview(state) {
+  const co = state.carryover || emptyCarryover();
+  return {
+    run: co.run + 1,
+    cash: CONFIG.startingCash,
+    // Half of what stood above the starting reputation carries, never
+    // less than the start. "Half the closing number, floored at the start"
+    // was written first and carried nothing for any faire that could win:
+    // the start is 50 and half of a Legendary 82 is 41.
+    reputation: CONFIG.startingReputation + Math.max(0, Math.round((state.reputation - CONFIG.startingReputation) * CARRYOVER.reputationKeep)),
+    renown: state.renown || 0,
+    beats: Object.keys(state.arcBeats || {}).length,
+  };
+}
+
+// End the season deliberately. Banks this run's record onto the carryover,
+// and returns a fresh run that keeps exactly what data.js's CARRYOVER says
+// crosses: renown whole, reputation at half, the acts' stories. Everything
+// else starts over. The next run's weather seed is derived from this one's
+// (engine.js's nextRunSeed) rather than drawn off the clock, so the action
+// is as pure as every other in this file and a test can replay it.
+export function closeSeason(state) {
+  const can = canCloseSeason(state);
+  if (!can.ok) return { state, error: can.reason };
+  const co = state.carryover || emptyCarryover();
+  const record = seasonRecord(state);
+  const opens = carryoverPreview(state);
+  const next = createInitialState(nextRunSeed(state.weatherSeed, opens.run));
+  next.reputation = opens.reputation;
+  next.renown = opens.renown;
+  next.arcBeats = { ...(state.arcBeats || {}) };
+  next.actTraits = Object.fromEntries(Object.entries(state.actTraits || {}).map(([k, v]) => [k, { ...v }]));
+  next.carryover = {
+    schema: CARRYOVER.schema,
+    run: opens.run,
+    seasons: [...(co.seasons || []).map(r => ({ ...r })), record],
+    startedWith: { cash: opens.cash, reputation: opens.reputation, renown: opens.renown },
+  };
+  return { state: next, error: null, record };
 }
 
 // ---------- arc beats (Phase 3) ----------
@@ -717,6 +847,40 @@ function validateSave(s) {
  * (nonexistent) version field said. migrate() stays the default no-op;
  * there is no version-specific reshaping here, only fill-in-the-gaps.
  */
+/**
+ * Phase 4: the first real migration this game has had, and the one place
+ * migrate stops being a no-op. It runs only when the stored version is not
+ * the current one (gvb-save's contract), which for this project means a
+ * save written before Phase 4: version 1 from Stage 22 on, or no `__v` at
+ * all (read as 0) from before that. Both are "before the carryover".
+ *
+ * What it does that repair could not: it tallies the renown the save's
+ * completed weekends would have earned, off the history they already
+ * carry. That is a one-time reshaping of old data into the new field —
+ * exactly what #37 says migrate is for — and it must not run on every
+ * load, because a second pass would overwrite renown earned since. Only
+ * the mood line is tallied: the other two need tenure and a demolition
+ * count, neither of which an old save recorded, and guessing at them would
+ * be inventing a history rather than reading one.
+ *
+ * Nothing the old save carried is touched. The migration test asserts
+ * every original key comes through equal.
+ */
+function migrateSave(parsed, from) {
+  if (from < 2) {
+    parsed.carryover = emptyCarryover();
+    const history = Array.isArray(parsed.history) ? parsed.history : [];
+    const per = CONFIG.seasonLength;
+    let renown = 0;
+    for (let start = 0; start + per <= history.length; start += per) {
+      const line = moodRenown(summarizeWeekend(history.slice(start, start + per), per));
+      if (line) renown += line.points;
+    }
+    parsed.renown = renown;
+  }
+  return parsed;
+}
+
 function repairSave(parsed) {
   if (typeof parsed.season !== 'number') parsed.season = 1; // pre-Stage-6 save
   if (!parsed.vendorContracts) parsed.vendorContracts = {}; // pre-Stage-7 save
@@ -744,6 +908,23 @@ function repairSave(parsed) {
   for (const id of [...(parsed.roster || []), ...(parsed.hiredVendors || [])]) {
     if (typeof parsed.relationships[id] !== 'number') parsed.relationships[id] = RELATIONSHIP.neutral;
   }
+  // Phase 4. The carryover itself came through migrate for an old save;
+  // this is the every-load gap fill for a current-version save with a
+  // field missing (a hand-edited localStorage, a truncated write), which
+  // is what repair is for. It fills zeros and empties only — it never
+  // tallies anything, so it cannot double-count what migrate did.
+  if (!parsed.carryover || typeof parsed.carryover !== 'object') parsed.carryover = emptyCarryover();
+  if (typeof parsed.carryover.schema !== 'number') parsed.carryover.schema = CARRYOVER.schema;
+  if (typeof parsed.carryover.run !== 'number') parsed.carryover.run = 1;
+  if (!Array.isArray(parsed.carryover.seasons)) parsed.carryover.seasons = [];
+  if (!parsed.carryover.startedWith || typeof parsed.carryover.startedWith !== 'object') parsed.carryover.startedWith = emptyCarryover().startedWith;
+  if (typeof parsed.renown !== 'number') parsed.renown = 0;
+  if (!parsed.tenure || typeof parsed.tenure !== 'object') parsed.tenure = {};
+  for (const id of [...(parsed.roster || []), ...(parsed.hiredVendors || [])]) {
+    if (typeof parsed.tenure[id] !== 'number') parsed.tenure[id] = 0;
+  }
+  if (typeof parsed.demolished !== 'number') parsed.demolished = 0;
+  if (parsed.lastRenown !== null && (typeof parsed.lastRenown !== 'object' || !Array.isArray(parsed.lastRenown.lines))) parsed.lastRenown = null;
 
   // Stage 10: planning/build status + per-plot vendor seating are new
   // fields. Every pre-existing plot was, functionally, already "built"
@@ -802,9 +983,12 @@ function slot(storage) {
   return createSaveSlot({
     game: 'faire-weekend',
     key: SAVE_KEY,
-    version: 1,
+    // Phase 4: 1 -> 2. The key is unchanged (#36); the version is what
+    // routes a pre-carryover save through migrateSave once.
+    version: 2,
     storage,
     validate: validateSave,
+    migrate: migrateSave,
     repair: repairSave,
     // A factory, not a literal (locked decision #47), and Phase 2 made that
     // load-bearing rather than merely tidy: newGame() draws a weather seed
