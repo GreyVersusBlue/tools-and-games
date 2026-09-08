@@ -1084,3 +1084,51 @@ select {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- Phase 3: acts with a story ---------- */
+.mood-tag {
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: 3px;
+  padding: 0.12em 0.45em;
+  white-space: nowrap;
+  background: rgba(210, 162, 76, 0.16);
+  color: var(--brass);
+}
+.mood-tag.mood-devoted { background: rgba(210, 162, 76, 0.32); color: #F2D48A; }
+.mood-tag.mood-warm { background: rgba(210, 162, 76, 0.2); color: var(--brass); }
+.mood-tag.mood-settled { background: rgba(232, 220, 190, 0.1); color: var(--vellum-faint); }
+.mood-tag.mood-cool { background: rgba(163, 53, 71, 0.14); color: #E58E9B; }
+.mood-tag.mood-sour { background: rgba(163, 53, 71, 0.28); color: #F0A4B0; }
+.beat-cards { display: grid; gap: 0.6rem; margin: 0.4rem 0 1rem; }
+.beat-card {
+  background: #1A1610;
+  border: 1px solid var(--bark-line);
+  border-left: 3px solid var(--brass);
+  border-radius: 5px;
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.beat-card.mood-sour { border-left-color: var(--wine); }
+.beat-card .flavor { margin: 0; }
+.offer-row td { padding-top: 0; }
+.offer-card {
+  background: #1A1610;
+  border: 1px dashed var(--bark-line);
+  border-radius: 5px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.offer-terms { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; }
+.offer-terms label { font-family: var(--font-ui); font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; }
+.offer-terms select { min-height: 32px; }
+.offer-line { margin: 0; }
+.offer-ask { color: var(--brass); }
+.offer-buttons { display: flex; flex-wrap: wrap; gap: 0.4rem; }

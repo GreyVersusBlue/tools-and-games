@@ -1,8 +1,8 @@
 // ui.js — turns state into HTML strings. No event listeners live here;
 // main.js wires all interaction via event delegation on #content.
 
-import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights } from './engine.js';
+import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, RELATIONSHIP, NEGOTIATION } from './data.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf } from './engine.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -202,8 +202,103 @@ function renderStallSummary(state) {
   `;
 }
 
-export function renderBackstage(state, warn) {
-  const rows = PERFORMERS.map(p => {
+// Phase 3: the relationship an act has with the house, as a tag whose
+// tooltip carries the number. A relationship the player cannot see is the
+// weekendDay mistake again, so every contracted row wears one.
+function moodTag(state, id) {
+  const value = relationshipOf(state, id);
+  const tier = relationshipTier(value);
+  return `<span class="mood-tag mood-${tier.id}" title="Relationship ${value}/100 — ${tier.note}">${tier.label}</span>`;
+}
+
+// The contract buttons for an unsigned act: the three quick picks, each
+// priced through quoteContract so an act with an arc rate or a
+// relationship shows what they would actually sign for, plus Negotiate.
+function contractButtons(state, kind, act, action) {
+  const buttons = Object.values(CONTRACT_OPTIONS)
+    .filter(opt => isSeasonUnlocked(state, opt.unlockSeason))
+    .map(opt => {
+      const quote = quoteContract(state, kind, act.id, opt);
+      const label = opt.priceMult < 1 ? `${opt.label} (${money(quote.dailyCost)}/day)` : opt.label;
+      return `<button class="btn small" data-action="${action}" data-id="${act.id}" data-contract="${opt.id}">${label}</button>`;
+    }).join('');
+  const negotiate = `<button class="btn small" data-action="negotiate" data-id="${act.id}" data-kind="${kind}" title="Name your own terms — commitment against break fee against rate">Negotiate</button>`;
+  const nextUnlock = Object.values(CONTRACT_OPTIONS)
+    .filter(opt => !isSeasonUnlocked(state, opt.unlockSeason))
+    .sort((a, b) => a.unlockSeason - b.unlockSeason)[0];
+  const lockedHint = nextUnlock ? `<br><span class="hint-tag">${nextUnlock.label} unlocks Weekend ${nextUnlock.unlockSeason}</span>` : '';
+  return buttons + negotiate + lockedHint;
+}
+
+// The negotiation row (Phase 3): one <tr> under the act being negotiated
+// with, carrying two <select>s on the delegated change listener and the
+// act's asking rate for that pair, re-quoted on every change. Signing
+// stores exactly the quote shown.
+function renderOfferRow(state, negotiating, kind, act) {
+  if (!negotiating || negotiating.id !== act.id) return '';
+  const terms = { commitDays: negotiating.commitDays, cancelFeeMult: negotiating.cancelFeeMult };
+  const quote = quoteContract(state, kind, act.id, terms);
+  const commitOptions = NEGOTIATION.commitments.map(c => {
+    const locked = !isSeasonUnlocked(state, c.unlockSeason);
+    return `<option value="${c.days}" ${c.days === terms.commitDays ? 'selected' : ''} ${locked ? 'disabled' : ''}>${c.label}${c.days > 0 ? ` (${c.days} days, −${Math.round(c.discount * 100)}%)` : ''}${locked ? ` — Weekend ${c.unlockSeason}` : ''}</option>`;
+  }).join('');
+  const feeOptions = NEGOTIATION.cancelFees.map(f =>
+    `<option value="${f.mult}" ${f.mult === terms.cancelFeeMult ? 'selected' : ''}>${f.label}${f.discount > 0 && terms.commitDays > 0 ? ` (−${Math.round(f.discount * 100)}%)` : ''}</option>`).join('');
+  const rel = relationshipOf(state, act.id);
+  const swing = Math.round((1 - (1 - NEGOTIATION.relationshipSwing * ((rel - RELATIONSHIP.neutral) / RELATIONSHIP.neutral))) * 100);
+  const swingNote = swing !== 0 ? ` <span class="hint">(${swing > 0 ? 'asks ' + swing + '% less' : 'asks ' + (-swing) + '% more'} — ${relationshipTier(rel).label.toLowerCase()})</span>` : '';
+  const askNote = quote ? `<strong class="mono offer-ask">${money(quote.dailyCost)}/day</strong> <span class="hint">against ${money(act.cost)} listed</span>${swingNote}` : '<span class="warn-tag">Those terms are not on offer</span>';
+  return `
+      <tr class="offer-row">
+        <td colspan="5">
+          <div class="offer-card" data-id="${act.id}">
+            <div class="offer-terms">
+              <label>Commitment <select data-action="offerTerm" data-term="commitDays">${commitOptions}</select></label>
+              <label>Break fee <select data-action="offerTerm" data-term="cancelFeeMult" ${terms.commitDays === 0 ? 'title="A fee on a day rate is a fee on nothing owed"' : ''}>${feeOptions}</select></label>
+            </div>
+            <p class="offer-line">${act.name} asks ${askNote}</p>
+            <div class="offer-buttons">
+              <button class="btn small primary" data-action="signOffer" data-id="${act.id}" data-kind="${kind}" ${quote ? '' : 'disabled'}>Sign at ${quote ? money(quote.dailyCost) : '—'}/day</button>
+              <button class="btn small" data-action="cancelOffer">Never mind</button>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+}
+
+// The arc beats waiting on an answer, as cards above the roster.
+function renderBeatCards(state) {
+  const pending = pendingBeats(state);
+  if (pending.length === 0) return '';
+  const cards = pending.map(({ beat, subjectName, subjectId }) => {
+    const tier = relationshipTier(relationshipOf(state, subjectId));
+    const choices = beat.choices.map(c => {
+      const parts = [];
+      if (typeof c.cash === 'number' && c.cash !== 0) parts.push(`${c.cash < 0 ? '−' : '+'}${money(Math.abs(c.cash))}`);
+      if (typeof c.popularity === 'number' && c.popularity !== 0) parts.push(`draw ${c.popularity > 0 ? '+' : ''}${c.popularity}`);
+      if (typeof c.quality === 'number' && c.quality !== 0) parts.push(`quality ${c.quality > 0 ? '+' : ''}${c.quality}`);
+      if (typeof c.rateMult === 'number' && c.rateMult !== 1) parts.push(`rate ×${c.rateMult}`);
+      if ('quirk' in c) parts.push(c.quirk ? `gains ${quirkTitle(c.quirk)}` : 'sheds their quirk');
+      if (typeof c.relationship === 'number' && c.relationship !== 0) parts.push(`relationship ${c.relationship > 0 ? '+' : ''}${c.relationship}`);
+      const title = [c.note, parts.join(', ')].filter(Boolean).join(' — ');
+      return `<button class="btn small" data-action="resolveBeat" data-id="${beat.id}" data-choice="${c.id}" title="${title}">${c.label}</button>`;
+    }).join('');
+    return `
+      <div class="beat-card mood-${tier.id}" data-beat="${beat.id}">
+        <div class="plot-card-head"><strong>${beat.title}</strong><span class="mood-tag mood-${tier.id}">${subjectName} — ${tier.label}</span></div>
+        <p class="flavor">${beat.text}</p>
+        <div class="palette-buttons">${choices}</div>
+      </div>`;
+  }).join('');
+  return `
+      <h3>Backstage</h3>
+      <p class="hint">Hover a choice to see what it moves. A moment unanswered waits, but not past the mood that raised it.</p>
+      <div class="beat-cards">${cards}</div>`;
+}
+
+export function renderBackstage(state, warn, negotiating = null) {
+  const rows = PERFORMERS.map(base => {
+    const p = performerFor(state, base.id);
     const contracted = state.roster.includes(p.id);
     const quirkLabel = p.quirk ? `<span class="quirk-tag" title="${quirkDesc(p.quirk)}">${quirkTitle(p.quirk)}</span>` : '';
     const costCell = contracted ? `${money(effectivePerformerCost(state, p.id))}/day` : `${money(p.cost)}/day`;
@@ -211,54 +306,46 @@ export function renderBackstage(state, warn) {
     if (contracted) {
       const contract = state.contracts[p.id];
       const option = CONTRACT_OPTIONS[contract.contractId];
+      const label = contract.label || (option ? option.label : contract.contractId);
       const lockNote = contract.commitDaysRemaining > 0
-        ? `<span class="warn-tag" title="Releasing before the commitment ends charges a cancellation fee">${option.label} \u2014 ${contract.commitDaysRemaining} day${contract.commitDaysRemaining === 1 ? '' : 's'} left</span>`
-        : `<span class="hint-tag">${option.label}</span>`;
-      actionCell = `${lockNote}<br><button class="btn small danger" data-action="release" data-id="${p.id}">Release</button>`;
+        ? `<span class="warn-tag" title="Releasing before the commitment ends charges a cancellation fee">${label} — ${contract.commitDaysRemaining} day${contract.commitDaysRemaining === 1 ? '' : 's'} left</span>`
+        : `<span class="hint-tag">${label}</span>`;
+      actionCell = `${lockNote} ${moodTag(state, p.id)}<br><button class="btn small danger" data-action="release" data-id="${p.id}">Release</button>`;
     } else {
-      const buttons = Object.values(CONTRACT_OPTIONS)
-        .filter(opt => isSeasonUnlocked(state, opt.unlockSeason))
-        .map(opt => {
-          const rate = Math.round(p.cost * opt.priceMult);
-          const label = opt.priceMult < 1 ? `${opt.label} (${money(rate)}/day)` : opt.label;
-          return `<button class="btn small" data-action="contract" data-id="${p.id}" data-contract="${opt.id}">${label}</button>`;
-        }).join('');
-      const nextUnlock = Object.values(CONTRACT_OPTIONS)
-        .filter(opt => !isSeasonUnlocked(state, opt.unlockSeason))
-        .sort((a, b) => a.unlockSeason - b.unlockSeason)[0];
-      const lockedHint = nextUnlock ? `<br><span class="hint-tag">${nextUnlock.label} unlocks Weekend ${nextUnlock.unlockSeason}</span>` : '';
-      actionCell = buttons + lockedHint;
+      actionCell = contractButtons(state, 'performer', p, 'contract');
     }
     return `
       <tr class="${contracted ? 'is-contracted' : ''}">
         <td>${p.name}${quirkLabel}</td>
         <td class="mono">${p.role}</td>
-        <td class="mono stars">${'\u2605'.repeat(Math.round(p.popularity / 2))}</td>
+        <td class="mono stars">${'★'.repeat(Math.round(p.popularity / 2))}</td>
         <td class="mono">${costCell}</td>
         <td>${actionCell}</td>
-      </tr>`;
+      </tr>${contracted ? '' : renderOfferRow(state, negotiating, 'performer', p)}`;
   }).join('');
 
   const summary = stallSummary(state);
   const footTraffic = computeFootTraffic(state.builtPlots);
-  const vendorRows = VENDORS.map(v => {
+  const vendorRows = VENDORS.map(base => {
+    const v = vendorFor(state, base.id);
     const hired = state.hiredVendors.includes(v.id);
     const costCell = hired ? `${money(effectiveVendorCost(state, v.id))}/day` : `${money(v.cost)}/day`;
     let actionCell;
     if (hired) {
       const contract = state.vendorContracts[v.id];
       const option = CONTRACT_OPTIONS[contract.contractId];
+      const label = contract.label || (option ? option.label : contract.contractId);
       const lockNote = contract.commitDaysRemaining > 0
-        ? `<span class="warn-tag" title="Letting them go before the commitment ends charges a cancellation fee">${option.label} \u2014 ${contract.commitDaysRemaining} day${contract.commitDaysRemaining === 1 ? '' : 's'} left</span>`
-        : `<span class="hint-tag">${option.label}</span>`;
+        ? `<span class="warn-tag" title="Letting them go before the commitment ends charges a cancellation fee">${label} — ${contract.commitDaysRemaining} day${contract.commitDaysRemaining === 1 ? '' : 's'} left</span>`
+        : `<span class="hint-tag">${label}</span>`;
       const seatedPlot = state.builtPlots.find(p => p.assignedVendorId === v.id);
       const trafficTag = seatedPlot && footTraffic[seatedPlot.id]
-        ? ` <span class="mono" title="Estimated foot traffic here vs. the grounds\u2019 average staffed stall, from terrain and what is built nearby. What the crowd actually did is on the day report.">${footTraffic[seatedPlot.id].mult.toFixed(2)}x traffic (est.)</span>`
+        ? ` <span class="mono" title="Estimated foot traffic here vs. the grounds’ average staffed stall, from terrain and what is built nearby. What the crowd actually did is on the day report.">${footTraffic[seatedPlot.id].mult.toFixed(2)}x traffic (est.)</span>`
         : '';
       const seatNote = seatedPlot
         ? `<span class="hint-tag" title="Currently selling from this stall">seated: ${seatedPlot.name}</span>${trafficTag}`
-        : `<span class="warn-tag" title="Hired and drawing wages, but not selling anything today">not seated \u2014 earning nothing</span>`;
-      actionCell = `${lockNote} ${seatNote}<br><button class="btn small danger" data-action="fireVendor" data-id="${v.id}">Let go</button>`;
+        : `<span class="warn-tag" title="Hired and drawing wages, but not selling anything today">not seated — earning nothing</span>`;
+      actionCell = `${lockNote} ${moodTag(state, v.id)} ${seatNote}<br><button class="btn small danger" data-action="fireVendor" data-id="${v.id}">Let go</button>`;
     } else {
       const stallKind = STALL_KIND_BY_VENDOR_TYPE[v.type];
       const kindLabel = v.type === 'food' ? 'food' : 'craft';
@@ -268,43 +355,33 @@ export function renderBackstage(state, warn) {
           ? `<span class="warn-tag">Build a ${kindLabel} stall first</span>`
           : `<span class="warn-tag">No open ${kindLabel} stalls</span>`;
       } else {
-        const buttons = Object.values(CONTRACT_OPTIONS)
-          .filter(opt => isSeasonUnlocked(state, opt.unlockSeason))
-          .map(opt => {
-            const rate = Math.round(v.cost * opt.priceMult);
-            const label = opt.priceMult < 1 ? `${opt.label} (${money(rate)}/day)` : opt.label;
-            return `<button class="btn small" data-action="hireVendor" data-id="${v.id}" data-contract="${opt.id}">${label}</button>`;
-          }).join('');
-        const nextUnlock = Object.values(CONTRACT_OPTIONS)
-          .filter(opt => !isSeasonUnlocked(state, opt.unlockSeason))
-          .sort((a, b) => a.unlockSeason - b.unlockSeason)[0];
-        const lockedHint = nextUnlock ? `<br><span class="hint-tag">${nextUnlock.label} unlocks Weekend ${nextUnlock.unlockSeason}</span>` : '';
-        actionCell = buttons + lockedHint;
+        actionCell = contractButtons(state, 'vendor', v, 'hireVendor');
       }
     }
     return `
       <tr class="${hired ? 'is-contracted' : ''}">
         <td>${v.name}</td>
         <td class="mono">${v.type}</td>
-        <td class="mono stars">${'\u2605'.repeat(Math.round(v.quality / 2))}</td>
+        <td class="mono stars">${'★'.repeat(Math.round(v.quality / 2))}</td>
         <td class="mono">${costCell}</td>
         <td>${actionCell}</td>
-      </tr>`;
+      </tr>${hired ? '' : renderOfferRow(state, negotiating, 'vendor', v)}`;
   }).join('');
 
   return `
     <section class="panel">
       <h2>The Tiring House</h2>
       <p class="flavor">Contract the acts who'll carry the day, and staff for the stalls you've built.</p>
-      <p class="hint">Day Rate has no commitment \u2014 release anytime for free. Weekend Package is cheaper per day but locks the act in; breaking it early costs a fee.</p>
+      <p class="hint">Day Rate has no commitment — release anytime for free. Weekend Package is cheaper per day but locks the act in; breaking it early costs a fee. Or negotiate: a longer commitment and a stiffer fee for breaking it buy a lower rate, and an act that likes the house asks less.</p>
       ${warn ? `<p class="warn">${warn}</p>` : ''}
+      ${renderBeatCards(state)}
       <table class="roster-table">
         <thead><tr><th>Performer</th><th>Role</th><th>Draw</th><th>Cost</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
 
       <h3>Vendors &amp; Stalls</h3>
-      <p class="hint">Stalls only sell if you've built the plot for them on the Fair Floor first, hired a matching vendor, and seated them there \u2014 hiring auto-seats them into an open stall, but check Fair Floor if you've been moving people around.</p>
+      <p class="hint">Stalls only sell if you've built the plot for them on the Fair Floor first, hired a matching vendor, and seated them there — hiring auto-seats them into an open stall, but check Fair Floor if you've been moving people around.</p>
       ${renderStallSummary(state)}
       <table class="roster-table">
         <thead><tr><th>Vendor</th><th>Type</th><th>Quality</th><th>Cost</th><th></th></tr></thead>
@@ -836,6 +913,21 @@ function renderWeatherRow(result) {
   return `<div class="ticket-row" title="${weatherTitle(w)}"><span>Weather</span><span class="mono">${w.name} <span class="hint">(${w.attendanceMult.toFixed(2)}&times; gate${moodNote})</span></span></div>`;
 }
 
+// Phase 3: what the day did backstage. Only acts whose number moved by
+// more than the one point for turning up are named, and only when the
+// report has any; a report from before the phase has no `relationships`
+// and shows nothing rather than an empty row.
+function renderMoodRow(result) {
+  const rel = result.relationships;
+  if (!rel) return '';
+  const moved = Object.entries(rel).filter(([, r]) => r.delta !== 0);
+  if (moved.length === 0) return '';
+  const up = moved.filter(([, r]) => r.delta > 0).length;
+  const down = moved.length - up;
+  const detail = moved.map(([id, r]) => `${actNameOf(id)} ${r.delta > 0 ? '+' : ''}${r.delta} (${r.notes.join(', ')})`).join('\n');
+  return `<div class="ticket-row" title="${detail}"><span>Backstage</span><span class="mono">${up} pleased, ${down} sore <span class="hint">(hover)</span></span></div>`;
+}
+
 export function renderReport(state, result) {
   const netClass = result.cashDelta >= 0 ? 'good' : 'bad';
   const satLabel = result.satisfaction >= 75 ? 'Delighted' : result.satisfaction >= 55 ? 'Content' : result.satisfaction >= 35 ? 'Grumbling' : 'Miserable';
@@ -847,6 +939,7 @@ export function renderReport(state, result) {
       ${result.campaignActive ? `<div class="ticket-row"><span>${result.campaignActive}</span><span class="mono">+${Math.round((result.adFactor - 1) * 100)}% draw</span></div>` : ''}
       <div class="ticket-row"><span>Crowd mood</span><span class="mono">${satLabel} (${result.satisfaction}/100)</span></div>
       ${renderWeatherRow(result)}
+      ${renderMoodRow(result)}
       ${renderCrowdWalk(result)}
       <hr>
       <div class="ticket-row"><span>Ticket revenue</span><span class="mono">${money(result.ticketRevenue)}</span></div>

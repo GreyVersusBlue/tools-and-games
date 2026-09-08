@@ -26,8 +26,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather } = await import(mod('js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID } = await import(mod('js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather, performerFor, vendorFor, traitRateMult, relationshipOf, relationshipTier, contractedActIds, bestBlockFor, offerDiscount, relationshipRateMult, quoteContract, beatById, actNameOf, pendingBeats, performerById, vendorById } = await import(mod('js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS } = await import(mod('js/data.js'));
 const State = await import(mod('js/state.js'));
 
 // --- RNG determinism ---
@@ -154,7 +154,11 @@ const State = await import(mod('js/state.js'));
   assert(EVENT_REQUIREMENTS.nonsense === undefined, 'EVENT_REQUIREMENTS has no entry for an unrecognized requires string, by construction');
 
   const rng = makeRng(1);
-  const ctxAllFalse = { hasChaosProne: false, hasVendor: false, hasMultiplePrimaDonnas: false, hasTwoMusicians: false, hasFalconerScheduled: false, bigRoster: false };
+  // Built off the map's own keys rather than a hand-typed list: Phase 3
+  // added two flags and the typed version read them as `undefined`, which
+  // is not `false`, so both went red for a reason that was not a bug.
+  const ctxAllFalse = Object.fromEntries(Object.keys(EVENT_REQUIREMENTS).map(k => [k, false]));
+  assert(Object.keys(ctxAllFalse).length >= 8, `the all-false ctx covers every EVENT_REQUIREMENTS key (${Object.keys(ctxAllFalse).length})`);
   for (const [key, check] of Object.entries(EVENT_REQUIREMENTS)) {
     assert(check(ctxAllFalse) === false, `EVENT_REQUIREMENTS.${key} is false against an all-false ctx`);
     assert(check({ ...ctxAllFalse, [key]: true }) === true, `EVENT_REQUIREMENTS.${key} is true once its own ctx flag is set`);
@@ -3760,6 +3764,493 @@ function makeMemoryStorage() {
     assert(!!stub, 'a day report from before Phase 2 still renders');
     assert(!/Weather/.test(stub.textContent),
       'and shows no weather row at all rather than inventing neutral multipliers the day never ran under');
+  }
+}
+
+// ---------------------------------------------------------------------
+// Section 1j: Phase 3 — acts with a story.
+//
+// A relationship number per contracted act, moved by what the day did;
+// arcs whose beats fire at a tier and change a number for the rest of the
+// save; one contract quote that the quick picks and a negotiated offer
+// both go through; two events gated on the tiers. Most of what follows is
+// pure. The DOM half is Section 26 below.
+// ---------------------------------------------------------------------
+{
+  const R = RELATIONSHIP;
+  // --- the table ---
+  assert(R.min === 0 && R.max === 100 && R.neutral > R.min && R.neutral < R.max, 'RELATIONSHIP runs 0-100 with neutral strictly inside it');
+  assert(R.tiers.length >= 3, `RELATIONSHIP names a real spread of tiers (${R.tiers.length})`);
+  for (let i = 1; i < R.tiers.length; i++) assert(R.tiers[i].min < R.tiers[i - 1].min, `tiers are listed from the top down (${R.tiers[i].id} under ${R.tiers[i - 1].id})`);
+  assert(R.tiers[R.tiers.length - 1].min === R.min, 'the lowest tier starts at the floor, so every number has a tier');
+  assert(R.tiers.every(t => t.label && t.note), 'every tier carries a label and a note the tooltip can show');
+  assert(R.tiers.find(t => t.id === 'devoted').min === R.devotedAt, 'devotedAt is the Devoted tier’s floor, not a second number to keep in sync');
+  assert(relationshipTier(R.sourAt).id === 'sour' && relationshipTier(R.sourAt + 1).id !== 'sour', 'sourAt is the Sour tier’s ceiling');
+  assert(relationshipTier(R.neutral).id === 'settled', 'a fresh signing reads as Settled');
+  assert(relationshipTier(R.max).id === 'devoted' && relationshipTier(R.min).id === 'sour', 'the two ends are the two edges');
+  assert(R.onBill > 0 && R.bestBlock > 0 && R.packedHouse > 0 && R.soldWell > 0, 'the good things move the number up');
+  assert(R.offBill < 0 && R.sulked < 0 && R.soldNothing < 0 && R.unseated < 0, 'and the bad things move it down');
+  assert(Math.abs(R.offBill) > R.onBill, 'a day left off the bill costs more than a day on it earns, so a benched act drifts sour rather than treading water');
+  assert(relationshipOf({}, 'perf_jouster_1') === R.neutral, 'an act with no record reads as neutral');
+  assert(relationshipOf({ relationships: { perf_jouster_1: 12 } }, 'perf_jouster_1') === 12, 'and one with a record reads its number');
+  assert(relationshipOf(undefined, 'x') === R.neutral, 'relationshipOf survives no state at all');
+
+  // --- the arcs ---
+  const allActIds = new Set([...PERFORMERS.map(p => p.id), ...VENDORS.map(v => v.id)]);
+  const tierIds = new Set(R.tiers.map(t => t.id));
+  const allowedKeys = new Set(['id', 'label', 'note', 'cash', 'relationship', 'popularity', 'quality', 'rateMult', 'quirk']);
+  const arcIds = ARCS.map(a => a.id);
+  assert(new Set(arcIds).size === arcIds.length, 'every arc id is unique');
+  const subjects = ARCS.map(a => a.subject);
+  assert(new Set(subjects).size === subjects.length, 'no act has two arcs');
+  const beatIds = ARCS.flatMap(a => a.beats.map(b => b.id));
+  assert(new Set(beatIds).size === beatIds.length, 'every beat id is unique across every arc, since state.arcBeats is keyed by it alone');
+  assert(ARCS.some(a => PERFORMERS.some(p => p.id === a.subject)) && ARCS.some(a => VENDORS.some(v => v.id === a.subject)), 'arcs exist for both a performer and a vendor');
+  for (const arc of ARCS) {
+    assert(allActIds.has(arc.subject), `${arc.id}’s subject ${arc.subject} is a real performer or vendor`);
+    const isPerformer = PERFORMERS.some(p => p.id === arc.subject);
+    assert(arc.beats.length >= 1, `${arc.id} has at least one beat`);
+    assert(arc.beats.some(b => b.when === 'devoted') && arc.beats.some(b => b.when === 'sour'), `${arc.id} has a beat at both edges, so a run in either direction finds something`);
+    for (const beat of arc.beats) {
+      assert(tierIds.has(beat.when), `${beat.id}’s when ("${beat.when}") is a tier id`);
+      assert(typeof beat.title === 'string' && beat.title.length > 0 && typeof beat.text === 'string' && beat.text.length > 40, `${beat.id} carries a title and a real paragraph`);
+      assert(beat.choices.length >= 2, `${beat.id} offers a choice, not a notice`);
+      const choiceIds = beat.choices.map(c => c.id);
+      assert(new Set(choiceIds).size === choiceIds.length, `${beat.id}’s choice ids are unique`);
+      for (const c of beat.choices) {
+        assert(typeof c.label === 'string' && c.label.length > 0, `${beat.id}/${c.id} has a label`);
+        for (const k of Object.keys(c)) assert(allowedKeys.has(k), `${beat.id}/${c.id} uses only effect keys resolveBeat reads (got "${k}")`);
+        const moves = ['cash', 'relationship', 'popularity', 'quality', 'rateMult'].some(k => typeof c[k] === 'number' && c[k] !== 0 && !(k === 'rateMult' && c[k] === 1)) || ('quirk' in c);
+        assert(moves || c.relationship === 0, `${beat.id}/${c.id} changes a number (or says out loud that it changes nothing)`);
+        if ('popularity' in c) assert(isPerformer, `${beat.id}/${c.id} moves popularity only on a performer`);
+        if ('quality' in c) assert(!isPerformer, `${beat.id}/${c.id} moves quality only on a vendor`);
+        if ('quirk' in c) assert(isPerformer && (c.quirk === null || !!QUIRKS[c.quirk]), `${beat.id}/${c.id}’s quirk is null or a real QUIRKS id`);
+        if ('rateMult' in c) assert(c.rateMult > 0, `${beat.id}/${c.id}’s rateMult is positive`);
+        if ('cash' in c) assert(Number.isInteger(c.cash), `${beat.id}/${c.id}’s cash is whole dollars`);
+      }
+    }
+  }
+  assert(beatById('ysolde_sour').arc.id === 'arc_ysolde' && beatById('nope') === null, 'beatById finds a beat by id and returns null for a stranger');
+  assert(actNameOf('perf_jouster_2') === 'Dame Ysolde Ironback' && actNameOf('vend_glass') === "Gaffer's Glass" && actNameOf('zzz') === 'zzz', 'actNameOf names a performer, a vendor, or echoes an unknown id');
+
+  // --- the save's own version of an act ---
+  {
+    const base = performerById('perf_jouster_2');
+    assert(performerFor({}, 'perf_jouster_2') === base, 'with no traits, performerFor hands back the catalog record itself');
+    assert(performerFor({ actTraits: {} }, 'perf_jouster_2') === base, 'and with an empty traits map');
+    const moved = performerFor({ actTraits: { perf_jouster_2: { popularity: -2, quirk: null } } }, 'perf_jouster_2');
+    assert(moved.popularity === base.popularity - 2 && moved.quirk === null && base.quirk === 'prima_donna', 'traits lay popularity and quirk over the record without touching the catalog');
+    assert(performerFor({ actTraits: { perf_jouster_2: { popularity: 40 } } }, 'perf_jouster_2').popularity === 10, 'popularity is clamped to 10');
+    assert(performerFor({ actTraits: { perf_jouster_2: { quirk: 'night_owl' } } }, 'perf_jouster_2').quirk === 'night_owl', 'a quirk can be gained');
+    assert(performerFor({}, 'nobody') === undefined, 'an unknown performer is still undefined');
+    const vb = vendorById('vend_glass');
+    assert(vendorFor({}, 'vend_glass') === vb, 'vendorFor hands back the catalog record with no traits');
+    assert(vendorFor({ actTraits: { vend_glass: { quality: -2 } } }, 'vend_glass').quality === vb.quality - 2, 'and lays quality over it with traits');
+    assert(traitRateMult({}, 'vend_glass') === 1 && traitRateMult({ actTraits: { vend_glass: { rateMult: 1.2 } } }, 'vend_glass') === 1.2, 'traitRateMult defaults to 1');
+  }
+
+  // --- the best block ---
+  assert(bestBlockFor(performerById('perf_musician_3')).id === 'golden', 'a night owl’s best block is Golden Hour');
+  assert(bestBlockFor(performerById('perf_jouster_1')).id === 'afternoon', 'a crowd pleaser’s best block is the Afternoon, the biggest crowd');
+  assert(bestBlockFor(performerById('perf_jester_2')).id === 'afternoon', 'and so is a plain act’s');
+  assert(bestBlockFor({ ...performerById('perf_jester_2'), quirk: 'night_owl' }).id === 'golden', 'a quirk gained through an arc moves it');
+
+  // --- one quote for every contract ---
+  {
+    const s0 = State.createInitialState();
+    const ys = performerById('perf_jouster_2');
+    for (const opt of Object.values(CONTRACT_OPTIONS)) {
+      const q = quoteContract(s0, 'performer', ys.id, opt);
+      assert(q.dailyCost === Math.round(ys.cost * opt.priceMult), `at neutral a ${opt.label} quotes exactly what it did before this phase (${q.dailyCost})`);
+      assert(q.contractId === opt.id && q.label === opt.label && q.commitDays === opt.commitDays && q.cancelFeeMult === opt.cancelFeeMult, `and carries the option’s id, label, commitment and fee`);
+    }
+    const day = quoteContract(s0, 'performer', ys.id, { commitDays: 0, cancelFeeMult: 0 });
+    assert(day.dailyCost === ys.cost && day.contractId === 'offer' && day.commitDays === 0, 'a day-to-day offer with no fee is the listed rate');
+    const dayFee = quoteContract(s0, 'performer', ys.id, { commitDays: 0, cancelFeeMult: 1 });
+    assert(dayFee.dailyCost === day.dailyCost, 'a cancellation fee on a day rate buys nothing, since there are no days to owe it on');
+    const wk = quoteContract(s0, 'performer', ys.id, { commitDays: 3, cancelFeeMult: 0 });
+    const wkFee = quoteContract(s0, 'performer', ys.id, { commitDays: 3, cancelFeeMult: 0.5 });
+    const wkFull = quoteContract(s0, 'performer', ys.id, { commitDays: 3, cancelFeeMult: 1 });
+    assert(wk.dailyCost < day.dailyCost && wkFee.dailyCost < wk.dailyCost && wkFull.dailyCost < wkFee.dailyCost, `commitment and then fee each buy a lower rate (${day.dailyCost} > ${wk.dailyCost} > ${wkFee.dailyCost} > ${wkFull.dailyCost})`);
+    assert(wkFee.label === 'The weekend, half the days owed' && wkFee.commitDays === 3 && wkFee.cancelFeeMult === 0.5, 'a negotiated quote names its terms');
+    const two = quoteContract(s0, 'performer', ys.id, { commitDays: 6, cancelFeeMult: 1 });
+    assert(two.dailyCost < wkFull.dailyCost, 'two weekends is cheaper still');
+    // The quick picks are points on the grid, not a second price list.
+    assert(Math.abs(wkFee.mult - CONTRACT_OPTIONS.weekend.priceMult) <= 0.02, `"the weekend, half the days owed" prices within 2 points of the Weekend Package (${wkFee.mult.toFixed(2)} vs ${CONTRACT_OPTIONS.weekend.priceMult})`);
+    assert(Math.abs(two.mult - CONTRACT_OPTIONS.season.priceMult) <= 0.03, `"two weekends, every day owed" prices within 3 points of the Season Contract (${two.mult.toFixed(2)} vs ${CONTRACT_OPTIONS.season.priceMult})`);
+    assert(quoteContract(s0, 'performer', ys.id, { commitDays: 4, cancelFeeMult: 0 }) === null, 'a commitment not on the list is not on offer');
+    assert(quoteContract(s0, 'performer', ys.id, { commitDays: 3, cancelFeeMult: 0.3 }) === null, 'nor is a fee not on the list');
+    assert(quoteContract(s0, 'performer', 'nobody', { commitDays: 0, cancelFeeMult: 0 }) === null, 'nor an act nobody has heard of');
+    assert(offerDiscount(3, 0.5).priceMult === 1 - 0.12 - 0.04 && offerDiscount(0, 0.5).priceMult === 1, 'offerDiscount is the two list discounts, with the fee counting only against a commitment');
+    // The relationship swing.
+    const devoted = { ...s0, relationships: { [ys.id]: R.max } };
+    const sour = { ...s0, relationships: { [ys.id]: R.min } };
+    assert(Math.abs(relationshipRateMult(devoted, ys.id) - (1 - NEGOTIATION.relationshipSwing)) < 1e-9 && Math.abs(relationshipRateMult(sour, ys.id) - (1 + NEGOTIATION.relationshipSwing)) < 1e-9 && relationshipRateMult(s0, ys.id) === 1, 'the swing is symmetric about neutral and reaches NEGOTIATION.relationshipSwing at either end');
+    const qD = quoteContract(devoted, 'performer', ys.id, { commitDays: 3, cancelFeeMult: 0.5 });
+    const qS = quoteContract(sour, 'performer', ys.id, { commitDays: 3, cancelFeeMult: 0.5 });
+    assert(qD.dailyCost < wkFee.dailyCost && wkFee.dailyCost < qS.dailyCost, `SIGNIFICANCE: a Devoted act asks less and a Sour one more on the same terms (${qD.dailyCost} < ${wkFee.dailyCost} < ${qS.dailyCost})`);
+    assert(qS.dailyCost - qD.dailyCost >= ys.cost * 0.2, `and the spread is worth caring about (${qS.dailyCost - qD.dailyCost} a day on a ${ys.cost} act)`);
+    const cheap = { ...devoted, actTraits: { [ys.id]: { rateMult: 0.1 } } };
+    assert(quoteContract(cheap, 'performer', ys.id, { commitDays: 6, cancelFeeMult: 1 }).mult === NEGOTIATION.floorMult, 'nothing stacks below the floor');
+    const priced = { ...s0, actTraits: { [ys.id]: { rateMult: 1.5 } } };
+    assert(quoteContract(priced, 'performer', ys.id, CONTRACT_OPTIONS.open).dailyCost === Math.round(ys.cost * 1.5), 'an arc’s rate multiplier prices every future contract, quick pick included');
+    const vq = quoteContract(s0, 'vendor', 'vend_glass', { commitDays: 3, cancelFeeMult: 0.5 });
+    assert(vq && vq.dailyCost === Math.round(vendorById('vend_glass').cost * wkFee.mult), 'vendors are priced through the same quote');
+  }
+
+  // --- signing through the quote ---
+  {
+    let s = State.createInitialState();
+    s = State.contractPerformer(s, 'perf_jouster_2', 'weekend').state;
+    const c = s.contracts.perf_jouster_2;
+    assert(c.dailyCost === Math.round(750 * 0.85) && c.commitDaysRemaining === 3 && c.cancelFeeMult === 0.5 && c.label === 'Weekend Package' && c.contractId === 'weekend', 'a quick-pick contract stores exactly what it did before, plus its fee and label');
+    assert(s.relationships.perf_jouster_2 === R.neutral, 'signing starts the relationship at neutral');
+    const r = State.contractPerformer(State.createInitialState(), 'perf_jouster_2', { commitDays: 3, cancelFeeMult: 1 });
+    assert(!r.error && r.state.contracts.perf_jouster_2.contractId === 'offer' && r.state.contracts.perf_jouster_2.cancelFeeMult === 1 && r.state.contracts.perf_jouster_2.commitDaysRemaining === 3, 'a negotiated offer signs with its own terms');
+    assert(r.state.contracts.perf_jouster_2.dailyCost === quoteContract(State.createInitialState(), 'performer', 'perf_jouster_2', { commitDays: 3, cancelFeeMult: 1 }).dailyCost, 'at the rate the quote showed');
+    assert(effectivePerformerCost(r.state, 'perf_jouster_2') === r.state.contracts.perf_jouster_2.dailyCost, 'and effectivePerformerCost reads it — no fourth cost path');
+    const released = State.releasePerformer(r.state, 'perf_jouster_2');
+    assert(released.fee === Math.round(r.state.contracts.perf_jouster_2.dailyCost * 3 * 1), `breaking a negotiated contract charges the fee the offer named (${released.fee}), not a CONTRACT_OPTIONS row’s`);
+    assert(!('perf_jouster_2' in released.state.relationships), '#235: the relationship leaves with the act');
+    const locked = State.contractPerformer(State.createInitialState(), 'perf_jouster_2', { commitDays: 6, cancelFeeMult: 0 });
+    assert(locked.error && /Weekend 3/.test(locked.error), `a two-weekend commitment is gated to Weekend 3 like the Season Contract (${locked.error})`);
+    assert(State.contractPerformer(State.createInitialState(), 'perf_jouster_2', { commitDays: 5, cancelFeeMult: 0 }).error, 'terms off the list are refused');
+    // An old-shape contract (no cancelFeeMult, no label) still releases on its option row.
+    let old = State.createInitialState();
+    old = State.contractPerformer(old, 'perf_jouster_2', 'weekend').state;
+    delete old.contracts.perf_jouster_2.cancelFeeMult;
+    delete old.contracts.perf_jouster_2.label;
+    const oldFee = State.releasePerformer(old, 'perf_jouster_2').fee;
+    assert(oldFee === Math.round(Math.round(750 * 0.85) * 3 * 0.5), `a pre-Phase-3 contract record still charges its option row’s fee (${oldFee})`);
+    // Vendors mirror all of it.
+    let v = State.createInitialState();
+    v = State.buildPlot(v, 'vendor', 1, 2).state;
+    const vr = State.hireVendor(v, 'vend_glass', { commitDays: 3, cancelFeeMult: 0.5 });
+    assert(!vr.error && vr.state.vendorContracts.vend_glass.contractId === 'offer' && vr.state.vendorContracts.vend_glass.cancelFeeMult === 0.5 && vr.state.relationships.vend_glass === R.neutral, 'a vendor signs a negotiated offer and starts at neutral');
+    const fired = State.fireVendor(vr.state, 'vend_glass');
+    assert(fired.fee === Math.round(vr.state.vendorContracts.vend_glass.dailyCost * 3 * 0.5) && !('vend_glass' in fired.state.relationships), 'and is let go on the offer’s own fee, taking the relationship with them');
+    // Re-signing starts over.
+    const again = State.contractPerformer({ ...released.state, relationships: { ...released.state.relationships } }, 'perf_jouster_2', 'open').state;
+    assert(again.relationships.perf_jouster_2 === R.neutral, 'an act released and re-signed starts at neutral again');
+  }
+
+  // --- what the day does to the acts ---
+  {
+    let s = State.createInitialState();
+    s.cash = 60000;
+    s = State.buildPlot(s, 'stage', 3, 0).state;
+    s = State.buildPlot(s, 'stage', 7, 3).state;
+    s = State.contractPerformer(s, 'perf_jouster_2').state; // prima donna, 9
+    s = State.contractPerformer(s, 'perf_magician_1').state; // prima donna, 7
+    s = State.contractPerformer(s, 'perf_jester_2').state; // benched
+    s = State.contractPerformer(s, 'perf_musician_3').state; // night owl
+    s = State.assignSchedule(s, 'midday', '3_0', 'perf_jouster_2').state;
+    s = State.assignSchedule(s, 'midday', '7_3', 'perf_magician_1').state;
+    s = State.assignSchedule(s, 'golden', '3_0', 'perf_musician_3').state;
+    s = State.assignSchedule(s, 'afternoon', '7_3', 'perf_jouster_2').state;
+    const result = simulateDay(s, 42);
+    const rel = result.relationships;
+    assert(rel && typeof rel === 'object', 'the day report carries a relationships map');
+    assert(rel.perf_jester_2.delta === R.offBill && rel.perf_jester_2.notes.includes('left off the bill'), 'a contracted act nobody scheduled is left off the bill');
+    assert(rel.perf_musician_3.delta === R.onBill + R.bestBlock && rel.perf_musician_3.notes.some(n => /Golden Hour/.test(n)), 'a night owl in Golden Hour played their best block');
+    assert(rel.perf_magician_1.delta === R.onBill + R.sulked, 'the prima donna who lost the bill sulked, and it cost them');
+    assert(rel.perf_jouster_2.delta === R.onBill + R.bestBlock && !rel.perf_jouster_2.notes.some(n => /sulk/.test(n)), 'the one who won it did not — and playing the Afternoon was their best block');
+    assert(result.log.some(l => /Rosalind Quicksilver went home pleased: played, played Golden Hour, their best block\./.test(l)), 'a move of four or more is written on the report with its reasons');
+    assert(!result.log.some(l => /Old Nettle went home/.test(l)), 'and a move of three is not — the report is not a ledger of every act every day');
+    // A packed house: shrink a stage until it overflows.
+    const tiny = { ...s, builtPlots: s.builtPlots.map(p => (p.id === '3_0' ? { ...p, capacity: 5 } : p)) };
+    const packed = simulateDay(tiny, 42);
+    assert(packed.warnings.some(w => /overflowed/.test(w)), 'sanity: the shrunk stage overflows');
+    assert(packed.relationships.perf_jouster_2.notes.includes('played to a packed house'), 'the act on the overflowing stage played to a packed house');
+    assert(packed.relationships.perf_jouster_2.delta === rel.perf_jouster_2.delta + R.packedHouse, 'and it is worth packedHouse on top');
+    assert(!packed.relationships.perf_magician_1.notes.includes('played to a packed house'), 'the act on the other stage did not');
+    // Vendors.
+    let v = State.createInitialState();
+    v.cash = 60000;
+    v.reputation = 80;
+    v = State.buildPlot(v, 'stage', 3, 0).state;
+    v = State.buildPlot(v, 'food', 6, 3).state;
+    v = State.buildPlot(v, 'food', 9, 3).state; // will be walked onto the spur below
+    v = State.buildPlot(v, 'vendor', 8, 3).state;
+    v = State.hireVendor(v, 'vend_cider', 'open').state; // seats at 6_3
+    v = State.hireVendor(v, 'vend_stew', 'open').state; // seats at 9_3
+    v = State.hireVendor(v, 'vend_glass', 'open').state; // seats at 8_3
+    v = State.unassignVendorFromPlot(v, '8_3').state; // hired, unseated
+    // The spur is unbuildable by rule (#227), so the stall is walked onto
+    // it by hand, the way tests/guests.mjs builds its spur fixture.
+    v = { ...v, builtPlots: v.builtPlots.map(p => (p.id === '9_3' ? { ...p, id: '4_4', x: 4, y: 4 } : p)) };
+    assert(v.builtPlots.find(p => p.id === '4_4').assignedVendorId === 'vend_stew', 'sanity: the stew is on the spur');
+    const vr = simulateDay(v, 7);
+    assert(vr.relationships.vend_cider.delta === R.soldWell, 'a seated stall that took money sold well');
+    assert(vr.relationships.vend_stew.delta === R.soldNothing && vr.relationships.vend_stew.notes.includes('sold nothing all day'), 'a seated stall nobody could reach sold nothing');
+    assert(!!vr.relationships.vend_glass && vr.relationships.vend_glass.delta === R.unseated, 'a hired vendor with no stall was left standing');
+    // runDay applies them.
+    const ran = State.runDay(s, 42).state;
+    assert(ran.relationships.perf_jester_2 === R.neutral + R.offBill && ran.relationships.perf_musician_3 === R.neutral + R.onBill + R.bestBlock, 'runDay moves each act by its delta');
+    const floor = State.runDay({ ...s, relationships: { ...s.relationships, perf_jester_2: 1 } }, 42).state;
+    assert(floor.relationships.perf_jester_2 === R.min, 'and clamps at the floor');
+    const ceil = State.runDay({ ...s, relationships: { ...s.relationships, perf_musician_3: 99 } }, 42).state;
+    assert(ceil.relationships.perf_musician_3 === R.max, 'and the ceiling');
+    const gone = simulateDay({ ...s, roster: s.roster.filter(id => id !== 'perf_jester_2') }, 42);
+    assert(!('perf_jester_2' in gone.relationships) && Object.keys(gone.relationships).length === 3, 'an act not under contract is never reported on, so runDay cannot resurrect a released one');
+    // The same seed moves them the same way twice.
+    assert(JSON.stringify(simulateDay(s, 42).relationships) === JSON.stringify(rel), 'the deltas are a pure function of the day');
+    // And a state from before the phase still simulates and does not move anyone.
+    const bare = { ...s };
+    delete bare.relationships; delete bare.arcBeats; delete bare.actTraits;
+    assert(simulateDay(bare, 42).attendance === result.attendance, 'a state with none of the three new maps runs the same day');
+  }
+
+  // --- the two gated events ---
+  {
+    assert(EVENT_POOL.some(e => e.id === 'evt_encore' && e.requires === 'hasDevotedAct') && EVENT_POOL.some(e => e.id === 'evt_late_call' && e.requires === 'hasSourAct'), 'the two new events are in the pool and gated on the two tier flags');
+    assert(typeof EVENT_REQUIREMENTS.hasDevotedAct === 'function' && typeof EVENT_REQUIREMENTS.hasSourAct === 'function', 'both flags are in EVENT_REQUIREMENTS, so neither fails open');
+    const enc = EVENT_EFFECTS.encore(makeRng(1));
+    const late = EVENT_EFFECTS.late_call(makeRng(1));
+    assert(enc.satisfactionDelta > 0 && enc.repDelta > 0 && /encore/.test(enc.message), 'an encore is good news');
+    assert(late.satisfactionDelta < 0 && late.cashDelta < 0 && /missed their call/.test(late.message), 'a missed call is bad news');
+    let s = State.createInitialState();
+    s.cash = 60000;
+    s = State.buildPlot(s, 'stage', 3, 0).state;
+    s = State.contractPerformer(s, 'perf_jester_2').state;
+    s = State.assignSchedule(s, 'afternoon', '3_0', 'perf_jester_2').state;
+    const fired = (state, id) => { for (let seed = 0; seed < 300; seed++) if (simulateDay(state, seed).events.some(e => e.id === id)) return true; return false; };
+    assert(!fired(s, 'evt_encore') && !fired(s, 'evt_late_call'), 'at neutral neither event can fire in 300 seeds');
+    const devoted = { ...s, relationships: { perf_jester_2: R.devotedAt } };
+    const sour = { ...s, relationships: { perf_jester_2: R.sourAt } };
+    assert(fired(devoted, 'evt_encore') && !fired(devoted, 'evt_late_call'), 'a Devoted act unlocks the encore and not the missed call');
+    assert(fired(sour, 'evt_late_call') && !fired(sour, 'evt_encore'), 'a Sour act unlocks the missed call and not the encore');
+    assert(!fired({ ...s, relationships: { perf_jester_2: R.devotedAt - 1 } }, 'evt_encore'), 'one point under Devoted is not Devoted');
+    const vend = { ...s, builtPlots: [...s.builtPlots], hiredVendors: ['vend_cider'], vendorContracts: { vend_cider: { contractId: 'open', dailyCost: 250, commitDaysRemaining: 0 } }, relationships: { vend_cider: R.max } };
+    assert(fired(vend, 'evt_encore'), 'a Devoted vendor counts too');
+    // The event rolls a neutral state made before this phase are the rolls it makes now.
+    const oldEvents = [];
+    for (let seed = 0; seed < 40; seed++) oldEvents.push(simulateDay(s, seed).events.map(e => e.id).join('|'));
+    const bare = { ...s }; delete bare.relationships;
+    const bareEvents = [];
+    for (let seed = 0; seed < 40; seed++) bareEvents.push(simulateDay(bare, seed).events.map(e => e.id).join('|'));
+    assert(oldEvents.join(',') === bareEvents.join(','), 'a state with no relationships rolls the events a neutral one does');
+  }
+
+  // --- beats ---
+  {
+    let s = State.createInitialState();
+    s.cash = 20000;
+    s = State.contractPerformer(s, 'perf_jouster_2', 'weekend').state;
+    s = State.contractPerformer(s, 'perf_jester_2').state;
+    assert(pendingBeats(s).length === 0, 'nothing is pending at neutral');
+    const dev = { ...s, relationships: { ...s.relationships, perf_jouster_2: 85 } };
+    const pend = pendingBeats(dev);
+    assert(pend.length === 1 && pend[0].beat.id === 'ysolde_devoted' && pend[0].subjectName === 'Dame Ysolde Ironback', 'Ysolde at 85 has her Devoted beat pending and nothing else');
+    assert(pendingBeats({ ...dev, roster: ['perf_jester_2'] }).length === 0, 'a released subject’s beats are not pending');
+    assert(pendingBeats({ ...dev, relationships: { perf_jouster_2: 15 } })[0].beat.id === 'ysolde_sour', 'at 15 it is the Sour beat instead');
+    assert(pendingBeats({ ...dev, arcBeats: { ysolde_devoted: 'thanks' } }).length === 0, 'a resolved beat never comes back');
+    assert(pendingBeats({}).length === 0, 'pendingBeats survives an empty state');
+    // Resolve it.
+    const before = dev.contracts.perf_jouster_2.dailyCost;
+    const r = State.resolveBeat(dev, 'ysolde_devoted', 'champion');
+    assert(!r.error && r.state.arcBeats.ysolde_devoted === 'champion', 'resolving records the choice');
+    assert(r.state.actTraits.perf_jouster_2.rateMult === 1.15 && r.state.actTraits.perf_jouster_2.popularity === 1, 'and its effects as traits');
+    assert(r.state.contracts.perf_jouster_2.dailyCost === Math.round(before * 1.15), `a rate change re-prices the standing contract now (${before} → ${r.state.contracts.perf_jouster_2.dailyCost})`);
+    assert(effectivePerformerCost(r.state, 'perf_jouster_2') === r.state.contracts.perf_jouster_2.dailyCost, 'through effectivePerformerCost');
+    assert(performerFor(r.state, 'perf_jouster_2').popularity === 10, 'and her draw moved (9 → 10)');
+    assert(r.state.relationships.perf_jouster_2 === 90, 'and the relationship moved by the choice’s own delta');
+    assert(dev.contracts.perf_jouster_2.dailyCost === before && !dev.arcBeats.ysolde_devoted, 'the state passed in was not mutated');
+    assert(pendingBeats(r.state).length === 0, 'and the beat is no longer pending');
+    assert(State.resolveBeat(r.state, 'ysolde_devoted', 'thanks').error, 'resolving it again is refused');
+    assert(State.resolveBeat(dev, 'ysolde_devoted', 'nope').error, 'a choice the beat does not offer is refused');
+    assert(State.resolveBeat(dev, 'ysolde_sour', 'purse').error, 'a beat whose tier is not the current one is refused');
+    assert(State.resolveBeat(dev, 'nothing', 'purse').error, 'an unknown beat is refused');
+    // The other kinds of effect.
+    const sourY = { ...s, relationships: { ...s.relationships, perf_jouster_2: 10 } };
+    const purse = State.resolveBeat(sourY, 'ysolde_sour', 'purse').state;
+    assert(purse.cash === sourY.cash - 400 && purse.relationships.perf_jouster_2 === 35, 'a purse costs cash and buys relationship');
+    const headline = State.resolveBeat(sourY, 'ysolde_sour', 'headline').state;
+    assert(performerFor(headline, 'perf_jouster_2').quirk === null && performerFor(headline, 'perf_jouster_2').popularity === 8, 'a quirk can be shed and popularity lowered');
+    let a = State.createInitialState();
+    a = State.contractPerformer(a, 'perf_magician_1').state;
+    a = { ...a, relationships: { perf_magician_1: 90 } };
+    const dusk = State.resolveBeat(a, 'aldric_devoted', 'dusk').state;
+    assert(performerFor(dusk, 'perf_magician_1').quirk === 'night_owl' && bestBlockFor(performerFor(dusk, 'perf_magician_1')).id === 'golden', 'a quirk can be gained, and the best block follows it');
+    let g = State.createInitialState();
+    g = State.buildPlot(g, 'vendor', 1, 2).state;
+    g = State.hireVendor(g, 'vend_glass').state;
+    g = { ...g, cash: 5000, relationships: { vend_glass: 90 } };
+    const rail = State.resolveBeat(g, 'glass_devoted', 'rail').state;
+    assert(vendorFor(rail, 'vend_glass').quality === 10 && rail.cash === 5000 - 180, 'a vendor’s quality moves and the rail is paid for');
+    // A rate multiplier compounds across beats and prices the next signing.
+    const raised = State.resolveBeat({ ...a, relationships: { perf_magician_1: 10 } }, 'aldric_sour', 'raise').state;
+    assert(raised.contracts.perf_magician_1.dailyCost === Math.round(550 * 1.2), 'Aldric’s raise lands on his standing contract');
+    const rehired = State.contractPerformer(State.releasePerformer(raised, 'perf_magician_1').state, 'perf_magician_1', 'open').state;
+    assert(rehired.contracts.perf_magician_1.dailyCost === Math.round(550 * 1.2), 'and on the next contract he signs');
+    // SIGNIFICANCE 12: an arc's choice is a different day, not a different tooltip.
+    let d = State.createInitialState();
+    d.cash = 60000;
+    d = State.buildPlot(d, 'stage', 3, 0).state;
+    d = State.contractPerformer(d, 'perf_musician_2').state; // Fenwick, 6
+    for (const b of TIME_BLOCKS) d = State.assignSchedule(d, b.id, '3_0', 'perf_musician_2').state;
+    const plain = simulateDay(d, 11);
+    const consort = simulateDay(State.resolveBeat({ ...d, relationships: { perf_musician_2: 90 } }, 'fenwick_devoted', 'consort').state, 11);
+    assert(consort.attendance > plain.attendance, `SIGNIFICANCE: hiring the consort draws a bigger crowd on the same seed (${consort.attendance} vs ${plain.attendance})`);
+    assert(consort.performerCosts === Math.round(plain.performerCosts * 1.5), `and costs a rate and a half (${consort.performerCosts} vs ${plain.performerCosts})`);
+  }
+
+  // --- a pre-arc save loads with every relationship at neutral ---
+  {
+    let s = State.createInitialState();
+    s.cash = 20000;
+    s = State.buildPlot(s, 'food', 6, 2).state;
+    s = State.contractPerformer(s, 'perf_jouster_2', 'weekend').state;
+    s = State.contractPerformer(s, 'perf_jester_2').state;
+    s = State.hireVendor(s, 'vend_cider', 'weekend').state;
+    delete s.relationships; delete s.arcBeats; delete s.actTraits;
+    for (const c of Object.values(s.contracts)) { delete c.cancelFeeMult; delete c.label; }
+    for (const c of Object.values(s.vendorContracts)) { delete c.cancelFeeMult; delete c.label; }
+    const storage = makeMemoryStorage();
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify(s));
+    const loaded = State.saveSlot(storage).load();
+    assert(loaded && typeof loaded.relationships === 'object' && typeof loaded.arcBeats === 'object' && typeof loaded.actTraits === 'object', 'a pre-Phase-3 save comes through repair with all three maps');
+    assert(['perf_jouster_2', 'perf_jester_2', 'vend_cider'].every(id => loaded.relationships[id] === R.neutral), 'and every act it had under contract is at neutral');
+    assert(Object.keys(loaded.relationships).length === 3, 'and nobody else has a record');
+    assert(Object.keys(loaded.arcBeats).length === 0 && Object.keys(loaded.actTraits).length === 0, 'with nothing resolved and nobody changed');
+    assert(pendingBeats(loaded).length === 0, 'so nothing is pending on first load');
+    assert(loaded.roster.length === 2 && loaded.hiredVendors.length === 1 && loaded.cash === s.cash, 'and it lost nothing');
+    const fee = State.releasePerformer(loaded, 'perf_jouster_2').fee;
+    assert(fee === Math.round(loaded.contracts.perf_jouster_2.dailyCost * 3 * 0.5), 'its old-shape Weekend Package still breaks on the option row’s fee');
+  }
+}
+
+// ---------------------------------------------------------------------
+// Section 26: Phase 3 on the page. Backstage wears the relationship, shows
+// the beat as a card, and takes a negotiated offer through the delegated
+// change listener; the ticket stub carries a Backstage row.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  const boot = async (save) => {
+    const storage = makeMemoryStorage();
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify(save));
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    dom.window.prompt = () => 'A Name';
+    dom.window.document.addEventListener('click', (e) => {
+      if (e.target && e.target.tagName === 'A') e.preventDefault();
+    }, true);
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return { dom, doc: dom.window.document, storage };
+  };
+  const click = (doc, sel) => {
+    const el = doc.querySelector(sel);
+    if (!el) return false;
+    el.dispatchEvent(new el.ownerDocument.defaultView.Event('click', { bubbles: true }));
+    return true;
+  };
+  const change = (doc, sel, value) => {
+    const el = doc.querySelector(sel);
+    if (!el) return false;
+    el.value = String(value);
+    el.dispatchEvent(new el.ownerDocument.defaultView.Event('change', { bubbles: true }));
+    return true;
+  };
+  const saved = (storage) => JSON.parse(storage.getItem('renn-faire-sim-save-v1'));
+
+  // --- the relationship is on the page, and a beat is a card with buttons ---
+  {
+    let s = State.createInitialState();
+    s.cash = 20000;
+    s = State.buildPlot(s, 'food', 6, 2).state;
+    s = State.contractPerformer(s, 'perf_jouster_2', 'weekend').state;
+    s = State.contractPerformer(s, 'perf_jester_2').state;
+    s = State.hireVendor(s, 'vend_cider').state;
+    s.relationships.perf_jouster_2 = 85;
+    s.relationships.vend_cider = 10;
+    const { doc, storage } = await boot(s);
+    click(doc, '[data-tab="backstage"]');
+    const tags = [...doc.querySelectorAll('.roster-table .mood-tag')];
+    assert(tags.length === 3, `every contracted act wears a mood tag (${tags.length} of 3)`);
+    assert(tags.some(t => t.classList.contains('mood-devoted') && /Devoted/.test(t.textContent) && /85\/100/.test(t.title)), 'Ysolde’s reads Devoted and carries the number in its tooltip');
+    assert(tags.some(t => t.classList.contains('mood-sour') && /Sour/.test(t.textContent)), 'the cider’s reads Sour');
+    assert(tags.some(t => t.classList.contains('mood-settled')), 'and Old Nettle’s reads Settled');
+    const cards = [...doc.querySelectorAll('.beat-card')];
+    assert(cards.length === 1 && cards[0].dataset.beat === 'ysolde_devoted', 'the one pending beat is a card (the cider has no arc at Sour, since vend_cider has no arc at all)');
+    assert(/Ironback rides/.test(cards[0].textContent) && /Dame Ysolde Ironback/.test(cards[0].textContent), 'the card names the beat and the act');
+    const choiceBtns = cards[0].querySelectorAll('[data-action="resolveBeat"]');
+    assert(choiceBtns.length === 2 && [...choiceBtns].every(b => b.title.length > 0), 'each choice is a button whose tooltip says what it moves');
+    const costBefore = saved(storage).contracts.perf_jouster_2.dailyCost;
+    assert(click(doc, '[data-action="resolveBeat"][data-id="ysolde_devoted"][data-choice="champion"]'), 'a choice is clickable');
+    const after = saved(storage);
+    assert(after.arcBeats.ysolde_devoted === 'champion' && after.actTraits.perf_jouster_2.rateMult === 1.15, 'clicking it resolves the beat into the save');
+    assert(after.contracts.perf_jouster_2.dailyCost === Math.round(costBefore * 1.15), 'and re-prices her contract');
+    assert(!doc.querySelector('.beat-card'), 'the card is gone');
+    const row = [...doc.querySelectorAll('.roster-table tr')].find(tr => /Ysolde/.test(tr.textContent));
+    assert(row && row.textContent.includes(`$${after.contracts.perf_jouster_2.dailyCost.toLocaleString()}/day`), 'the roster row shows the new rate');
+    assert(row && row.querySelector('.stars').textContent.length === 5, 'and five stars for a draw of 10');
+    assert(doc.querySelector('#content .warn') && /A bigger draw, at a bigger rate/.test(doc.querySelector('#content .warn').textContent), 'the flash carries the choice’s note');
+  }
+
+  // --- negotiating an offer, through the change listener ---
+  {
+    let s = State.createInitialState();
+    s.cash = 20000;
+    const { doc, storage } = await boot(s);
+    click(doc, '[data-tab="backstage"]');
+    assert(!doc.querySelector('.offer-card'), 'no offer row is open on boot');
+    assert(click(doc, '[data-action="negotiate"][data-id="perf_musician_1"]'), 'Negotiate is clickable on an unsigned act');
+    const card = doc.querySelector('.offer-card[data-id="perf_musician_1"]');
+    assert(!!card, 'and opens an offer row under that act');
+    const listed = performerById('perf_musician_1').cost;
+    assert(card.querySelector('.offer-ask').textContent.includes(`$${listed}`), `it opens at the listed rate ($${listed}), day to day, no fee`);
+    assert(change(doc, '.offer-card select[data-term="commitDays"]', 3), 'the commitment select is on the change listener');
+    const ask3 = quoteContract(s, 'performer', 'perf_musician_1', { commitDays: 3, cancelFeeMult: 0 }).dailyCost;
+    assert(doc.querySelector('.offer-card .offer-ask').textContent.includes(`$${ask3}`), `and the ask re-quotes for the weekend ($${ask3})`);
+    assert(change(doc, '.offer-card select[data-term="cancelFeeMult"]', 1), 'so is the fee select');
+    const ask3f = quoteContract(s, 'performer', 'perf_musician_1', { commitDays: 3, cancelFeeMult: 1 }).dailyCost;
+    assert(ask3f < ask3 && doc.querySelector('.offer-card .offer-ask').textContent.includes(`$${ask3f}`), `and the fee lowers it ($${ask3f})`);
+    const two = doc.querySelector('.offer-card select[data-term="commitDays"] option[value="6"]');
+    assert(two && two.disabled && /Weekend 3/.test(two.textContent), 'two weekends is listed but locked until Weekend 3');
+    assert(click(doc, '[data-action="signOffer"][data-id="perf_musician_1"]'), 'Sign is clickable');
+    const c = saved(storage).contracts.perf_musician_1;
+    assert(c && c.contractId === 'offer' && c.commitDaysRemaining === 3 && c.cancelFeeMult === 1 && c.dailyCost === ask3f, 'signing stores the terms and the rate the row showed');
+    assert(!doc.querySelector('.offer-card'), 'and the row closes');
+    const row = [...doc.querySelectorAll('.roster-table tr')].find(tr => /Tumbledown/.test(tr.textContent));
+    assert(row && /The weekend, every day owed/.test(row.textContent) && /3 days left/.test(row.textContent), 'the roster names the negotiated terms');
+    assert(click(doc, '[data-action="negotiate"][data-id="vend_turkeyleg"]') === false, 'a vendor with no open stall has no Negotiate button');
+    assert(click(doc, '[data-action="negotiate"][data-id="perf_jester_2"]') && click(doc, '[data-action="cancelOffer"]') && !doc.querySelector('.offer-card'), 'Never mind closes an offer without signing');
+    assert(!saved(storage).contracts.perf_jester_2, 'and nothing was signed');
+  }
+
+  // --- the ticket stub carries a Backstage row ---
+  {
+    let s = State.createInitialState();
+    s.cash = 60000;
+    s = State.buildPlot(s, 'stage', 3, 0).state;
+    s = State.contractPerformer(s, 'perf_jester_2').state;
+    s = State.contractPerformer(s, 'perf_jester_3').state;
+    s = State.assignSchedule(s, 'afternoon', '3_0', 'perf_jester_2').state;
+    const { doc } = await boot(s);
+    click(doc, '[data-action="openGates"]');
+    const rows = [...doc.querySelectorAll('.ticket-stub .ticket-row')];
+    const back = rows.find(r => /^Backstage/.test(r.textContent.trim()));
+    assert(!!back, 'the ticket stub carries a Backstage row');
+    assert(back && /1 pleased, 1 sore/.test(back.textContent), 'counting who went home pleased and who sore');
+    assert(back && /Bramblewit -3 \(left off the bill\)/.test(back.title) && /Old Nettle \+4/.test(back.title), 'with each act’s move and reason in the tooltip');
+  }
+
+  // --- a pre-arc save renders Backstage without a label on its contracts ---
+  {
+    let s = State.createInitialState();
+    s.cash = 20000;
+    s = State.contractPerformer(s, 'perf_jouster_2', 'weekend').state;
+    delete s.relationships; delete s.arcBeats; delete s.actTraits;
+    delete s.contracts.perf_jouster_2.cancelFeeMult; delete s.contracts.perf_jouster_2.label;
+    const { doc } = await boot(s);
+    click(doc, '[data-tab="backstage"]');
+    const row = [...doc.querySelectorAll('.roster-table tr')].find(tr => /Ysolde/.test(tr.textContent));
+    assert(row && /Weekend Package/.test(row.textContent) && row.querySelector('.mood-tag.mood-settled'), 'an old contract row names its option and reads Settled');
   }
 }
 

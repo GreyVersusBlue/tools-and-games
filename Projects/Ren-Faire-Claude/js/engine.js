@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS } from './data.js';
 // Phase 1 (guests who walk): guests.js imports this module's path and plot
 // helpers and this module calls its walk from simulateDay. The cycle is
 // safe because neither file reads the other at load time — only inside
@@ -79,6 +79,149 @@ export function effectiveVendorCost(state, vendorId) {
   if (!vendor) return 0;
   const contract = state.vendorContracts && state.vendorContracts[vendorId];
   return contract ? contract.dailyCost : vendor.cost;
+}
+
+// ---------- acts with a story (Phase 3) ----------
+// A performer or vendor record with the save's own changes laid over it.
+// An arc beat can move an act's popularity or quality, hand them a quirk or
+// take one away, and re-price them; all of that lives in state.actTraits[id]
+// rather than on the catalog, so data.js stays content and two saves can
+// know two different Ysoldes. Everything that used to read performerById /
+// vendorById for a number that can now move reads these instead. A state
+// with no traits (every fixture written before this phase) gets the catalog
+// record back untouched, so nothing that passed before moved.
+export function performerFor(state, id) {
+  const perf = performerById(id);
+  if (!perf) return perf;
+  const t = state && state.actTraits && state.actTraits[id];
+  if (!t) return perf;
+  const out = { ...perf };
+  if (typeof t.popularity === 'number') out.popularity = clamp(perf.popularity + t.popularity, 1, 10);
+  if ('quirk' in t) out.quirk = t.quirk;
+  return out;
+}
+export function vendorFor(state, id) {
+  const vendor = vendorById(id);
+  if (!vendor) return vendor;
+  const t = state && state.actTraits && state.actTraits[id];
+  if (!t) return vendor;
+  const out = { ...vendor };
+  if (typeof t.quality === 'number') out.quality = clamp(vendor.quality + t.quality, 1, 10);
+  return out;
+}
+// The one multiplier an arc can put on an act's price. Read by
+// quoteContract below and nowhere else, so it is not a fourth cost path:
+// it is folded into the contract's dailyCost at signing (or re-priced
+// onto a standing contract by applyBeatChoice), and effectivePerformerCost
+// still reads the contract.
+export function traitRateMult(state, id) {
+  const t = state && state.actTraits && state.actTraits[id];
+  return t && typeof t.rateMult === 'number' ? t.rateMult : 1;
+}
+
+// The number itself. An act nobody has a record for reads as neutral: a
+// save from before this phase, a fixture built from a plain literal, an act
+// released and re-signed. That is what lets `repair` fill the map lazily and
+// what the pre-arc save test asserts.
+export function relationshipOf(state, id) {
+  const r = state && state.relationships && state.relationships[id];
+  return typeof r === 'number' ? r : RELATIONSHIP.neutral;
+}
+export function relationshipTier(value) {
+  return RELATIONSHIP.tiers.find(t => value >= t.min) || RELATIONSHIP.tiers[RELATIONSHIP.tiers.length - 1];
+}
+export function contractedActIds(state) {
+  return [...(state.roster || []), ...(state.hiredVendors || [])];
+}
+
+// The block a performer draws best in: the block their quirk favours (the
+// highest per-block multiplier effectivePopularity applies), ties broken by
+// the block's crowd weight. So a night owl's best block is Golden Hour and
+// everyone else's is the Afternoon. Compared as a multiplier rather than as
+// raw draw x crowd, because Golden Hour's crowd is small enough that the
+// Afternoon would win that contest even for a night owl — and "your best
+// block is the one everyone's is" is not a relationship anyone can tend.
+// Derived from data already authored rather than a new field per act, so
+// a quirk gained through an arc moves it.
+export function bestBlockFor(perf) {
+  let best = null;
+  const base = perf.popularity || 1;
+  for (const block of TIME_BLOCKS) {
+    const mult = effectivePopularity(perf, block.id) / base;
+    if (!best || mult > best.mult + 1e-9 || (Math.abs(mult - best.mult) < 1e-9 && block.weight > best.block.weight)) best = { block, mult };
+  }
+  return best ? best.block : TIME_BLOCKS[0];
+}
+
+// The one contract quote. `terms` is { priceMult?, commitDays, cancelFeeMult }:
+// a CONTRACT_OPTIONS row passes its own priceMult and the negotiation form
+// passes a commitment and a fee, which are priced off NEGOTIATION's two
+// lists. On top of that base: the act's arc rate multiplier and the
+// relationship swing, then a floor. Returns the whole priced record so
+// contractPerformer / hireVendor store exactly what was quoted.
+export function offerDiscount(commitDays, cancelFeeMult) {
+  const commitment = NEGOTIATION.commitments.find(c => c.days === commitDays);
+  const fee = NEGOTIATION.cancelFees.find(f => f.mult === cancelFeeMult);
+  if (!commitment || !fee) return null;
+  // A fee on a day rate is a fee on nothing owed, so it buys nothing.
+  const feeDiscount = commitDays > 0 ? fee.discount : 0;
+  return { commitment, fee, priceMult: 1 - commitment.discount - feeDiscount };
+}
+export function relationshipRateMult(state, id) {
+  const rel = relationshipOf(state, id);
+  return 1 - NEGOTIATION.relationshipSwing * ((rel - RELATIONSHIP.neutral) / RELATIONSHIP.neutral);
+}
+export function quoteContract(state, kind, id, terms) {
+  const act = kind === 'vendor' ? vendorById(id) : performerById(id);
+  if (!act) return null;
+  let base, commitDays, cancelFeeMult, label, contractId;
+  if (terms && typeof terms.priceMult === 'number') {
+    base = terms.priceMult; commitDays = terms.commitDays; cancelFeeMult = terms.cancelFeeMult;
+    label = terms.label; contractId = terms.id || 'offer';
+  } else {
+    const d = offerDiscount(terms ? terms.commitDays : 0, terms ? terms.cancelFeeMult : 0);
+    if (!d) return null;
+    base = d.priceMult; commitDays = d.commitment.days; cancelFeeMult = d.fee.mult;
+    label = commitDays > 0 ? `${d.commitment.label}, ${d.fee.label.toLowerCase()}` : d.commitment.label;
+    contractId = 'offer';
+  }
+  const mult = Math.max(NEGOTIATION.floorMult, base * traitRateMult(state, id) * relationshipRateMult(state, id));
+  return {
+    contractId, label, commitDays, cancelFeeMult,
+    dailyCost: Math.round(act.cost * mult),
+    listed: act.cost,
+    mult,
+  };
+}
+
+// Arc beats. A beat is pending when its subject is contracted, its `when`
+// tier is the subject's current tier, and it has not been resolved on this
+// save. Pure read; the UI renders every pending beat as a card and
+// state.js's resolveBeat is the only writer of state.arcBeats.
+export function beatById(beatId) {
+  for (const arc of ARCS) {
+    const beat = arc.beats.find(b => b.id === beatId);
+    if (beat) return { arc, beat };
+  }
+  return null;
+}
+export function actNameOf(id) {
+  const act = performerById(id) || vendorById(id);
+  return act ? act.name : id;
+}
+export function pendingBeats(state) {
+  const contracted = new Set(contractedActIds(state));
+  const resolved = (state && state.arcBeats) || {};
+  const out = [];
+  for (const arc of ARCS) {
+    if (!contracted.has(arc.subject)) continue;
+    const tier = relationshipTier(relationshipOf(state, arc.subject)).id;
+    for (const beat of arc.beats) {
+      if (resolved[beat.id]) continue;
+      if (beat.when === tier) out.push({ arc, beat, subjectId: arc.subject, subjectName: actNameOf(arc.subject) });
+    }
+  }
+  return out;
 }
 
 // ---------- grounds draw (Stage 19) ----------
@@ -946,8 +1089,10 @@ export function simulateDay(state, seed) {
   // gameplay-side until it's actually built.
   const builtStages = state.builtPlots.filter(p => p.kind === 'stage' && p.status === 'built');
   const builtFoodVendorPlots = state.builtPlots.filter(p => (p.kind === 'food' || p.kind === 'vendor') && p.status === 'built');
-  const rosterPerformers = state.roster.map(performerById).filter(Boolean);
-  const hiredVendorObjs = state.hiredVendors.map(vendorById).filter(Boolean);
+  // Phase 3: the save's own version of each act, not the catalog's — an arc
+  // may have moved their popularity, quality or quirk.
+  const rosterPerformers = state.roster.map(id => performerFor(state, id)).filter(Boolean);
+  const hiredVendorObjs = state.hiredVendors.map(id => vendorFor(state, id)).filter(Boolean);
   // Stage 10: hiring a vendor and seating them at a specific stall are now
   // two different things — a hired-but-unseated vendor still draws wages
   // (see vendorCosts below) but sells nothing, so only vendors actually
@@ -974,7 +1119,7 @@ export function simulateDay(state, seed) {
     const stagesInBlock = state.schedule[block.id] || {};
     const stageEntries = builtStages.map(stage => {
       const performerId = stagesInBlock[stage.id];
-      const perf = performerId ? performerById(performerId) : null;
+      const perf = performerId ? performerFor(state, performerId) : null;
       if (perf) scheduledCount++;
       const drawPop = perf ? effectivePopularity(perf, block.id) : 1.2; // ambient draw, empty stage
       const attrs = computePlotAttributes(stage, state.builtPlots);
@@ -1054,7 +1199,7 @@ export function simulateDay(state, seed) {
       const share = e.weight / blockWeightSum;
       const stageAttendance = Math.round(blockAttendance * share);
       const capped = Math.min(stageAttendance, e.stage.capacity);
-      if (stageAttendance > e.stage.capacity) overCapacityHit = true;
+      if (stageAttendance > e.stage.capacity) { overCapacityHit = true; e._overflowed = true; }
       let quality = e.attrs.sightline * qw.sightline + e.attrs.shade * qw.shade + (e.drawPop / 10) * qw.pop;
       if (e._sulking) quality -= 0.3;
       if (capped > e.stage.capacity * 0.95) quality -= 0.15; // crowding discomfort near cap
@@ -1209,6 +1354,43 @@ export function simulateDay(state, seed) {
   const guestCosts = Math.round(attendance * CONFIG.perGuestCost);
   const costs = performerCosts + vendorCosts + upkeep + overhead + guestCosts;
 
+  // --- what the day did to the acts (Phase 3) ---
+  // Pure arithmetic on what already happened above: who played, in which
+  // block, who sulked, whose stage overflowed, which stall took money. The
+  // deltas ride out on the result and state.js's runDay is what applies
+  // them, so a report can print them and a replayed seed moves them the
+  // same way twice.
+  const relationships = {};
+  const moodLines = [];
+  const note = (id, delta, why) => {
+    if (!relationships[id]) relationships[id] = { delta: 0, notes: [] };
+    relationships[id].delta += delta;
+    relationships[id].notes.push(why);
+  };
+  for (const perf of rosterPerformers) {
+    const played = blockBreakdown.flatMap(b => b.stageEntries.filter(e => e.perf && e.perf.id === perf.id).map(e => ({ block: b.block, entry: e })));
+    if (played.length === 0) { note(perf.id, RELATIONSHIP.offBill, 'left off the bill'); continue; }
+    note(perf.id, RELATIONSHIP.onBill, 'played');
+    const best = bestBlockFor(perf);
+    if (played.some(p => p.block.id === best.id)) note(perf.id, RELATIONSHIP.bestBlock, `played ${best.label}, their best block`);
+    if (played.some(p => p.entry._sulking)) note(perf.id, RELATIONSHIP.sulked, 'sulked through a shared bill');
+    if (played.some(p => p.entry._overflowed)) note(perf.id, RELATIONSHIP.packedHouse, 'played to a packed house');
+  }
+  for (const vendor of hiredVendorObjs) {
+    const plot = plotByVendorId.get(vendor.id);
+    if (!plot) { note(vendor.id, RELATIONSHIP.unseated, 'hired and left standing'); continue; }
+    const sale = stallSales[plot.id];
+    if (sale && sale.buyers > 0) note(vendor.id, RELATIONSHIP.soldWell, 'sold well');
+    else note(vendor.id, RELATIONSHIP.soldNothing, 'sold nothing all day');
+  }
+  for (const [id, r] of Object.entries(relationships)) {
+    if (r.delta <= -4 || r.delta >= 4) {
+      moodLines.push(`${actNameOf(id)} ${r.delta > 0 ? 'went home pleased' : 'went home sore'}: ${r.notes.join(', ')}.`);
+    }
+  }
+  const actRelationship = (id) => relationshipOf(state, id);
+  const contractedIds = contractedActIds(state);
+
   // --- random events ---
   const ctx = {
     hasChaosProne: rosterPerformers.some(p => p.quirk === 'chaos_prone' && isScheduledAnywhere(state.schedule, p.id)),
@@ -1219,6 +1401,9 @@ export function simulateDay(state, seed) {
     hasTwoMusicians: rosterPerformers.filter(p => p.role === 'musician' && isScheduledAnywhere(state.schedule, p.id)).length >= 2,
     hasFalconerScheduled: rosterPerformers.some(p => p.role === 'falconer' && isScheduledAnywhere(state.schedule, p.id)),
     bigRoster: rosterPerformers.length >= 5,
+    // Phase 3: gated on how the acts feel, not on who they are.
+    hasDevotedAct: contractedIds.some(id => actRelationship(id) >= RELATIONSHIP.devotedAt),
+    hasSourAct: contractedIds.some(id => actRelationship(id) <= RELATIONSHIP.sourAt),
   };
   const events = rollEvents(rng, ctx);
   let eventCashDelta = 0, eventRepDelta = 0, eventSatDelta = 0;
@@ -1232,6 +1417,7 @@ export function simulateDay(state, seed) {
     log.push(result.message);
   }
   satisfaction = clamp(satisfaction + eventSatDelta, 0, 100);
+  for (const line of moodLines) log.push(line);
 
   const cashDelta = Math.round(ticketRevenue + houseVendorRevenue - costs + eventCashDelta);
   const reputationDelta = clamp(Math.round((satisfaction - 60) / 8), -6, 6) + eventRepDelta;
@@ -1270,6 +1456,9 @@ export function simulateDay(state, seed) {
     reachability,
     // Phase 1: what the crowd did on foot. Aggregates only — see guests.js.
     guests,
+    // Phase 3: what the day did to each contracted act, by id — a delta and
+    // the reasons for it. runDay applies it; the ticket stub prints it.
+    relationships,
     events,
     log,
     warnings,
@@ -1298,6 +1487,9 @@ export const EVENT_REQUIREMENTS = {
   hasTwoMusicians: (ctx) => ctx.hasTwoMusicians,
   hasFalconerScheduled: (ctx) => ctx.hasFalconerScheduled,
   bigRoster: (ctx) => ctx.bigRoster,
+  // Phase 3
+  hasDevotedAct: (ctx) => ctx.hasDevotedAct,
+  hasSourAct: (ctx) => ctx.hasSourAct,
 };
 
 function rollEvents(rng, ctx) {
@@ -1370,4 +1562,17 @@ export const EVENT_EFFECTS = {
     cashDelta: 0, repDelta: 0, satisfactionDelta: 3,
     message: 'With so many acts camped together, the tiring house buzzed with shared stories \u2014 morale stayed high all day.',
   }),
+  // Phase 3 additions — gated on relationship tiers (see data.js's
+  // RELATIONSHIP and the two ctx flags in simulateDay).
+  encore: (rng) => ({
+    cashDelta: 60, repDelta: 1, satisfactionDelta: 5,
+    message: 'An act that loves this house stayed on past their set for an unpaid encore \u2014 the crowd threw coins, and stayed.',
+  }),
+  late_call: (rng) => {
+    const cost = 30 + Math.floor(rng() * 50);
+    return {
+      cashDelta: -cost, repDelta: -1, satisfactionDelta: -4,
+      message: `An act with one foot out the door missed their call \u2014 a crier was sent to find them, $${cost} and a restless crowd later.`,
+    };
+  },
 };

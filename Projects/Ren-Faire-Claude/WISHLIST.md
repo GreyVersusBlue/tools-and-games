@@ -1,7 +1,7 @@
 # Faire Weekend — Feature Wishlist
 
 **Status: twenty-two stages are shipped, three rounds of site-wide review have
-run over them, and Phases 1 and 2 are done.** The suites stand at **1,118
+run over them, and Phases 1, 2 and 3 are done.** The suites stand at **1,652
 passed** (`node tests/smoke.mjs`) plus **168 passed** (`node tests/guests.mjs`),
 0 failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed under Xvfb.
 Round 3 closed the mobile tap-target debt, found one more never-clicked action
@@ -9,8 +9,9 @@ Round 3 closed the mobile tap-target debt, found one more never-clicked action
 layout/density review owed for a fourth round running. Every stage's plan and
 how it landed is in the repo root's `HISTORY.md` and in `README.md`; nothing
 here repeats them. **Phase 1 closed in two increments** — the crowd, then the
-economy it spends in — and **Phase 2 gave the season weather**, so the open
-phase is now **Phase 3 — Acts with a story**, on **Claude Opus 5**.
+economy it spends in — **Phase 2 gave the season weather**, and **Phase 3
+gave the acts a story**, so the open phase is now **Phase 4 — A faire that
+outlives its season**, on **Claude Fable 5.1**.
 
 ## What it is
 
@@ -36,8 +37,10 @@ built plot costs 7% of its own build cost per day forever. Stage 19 tied all
 of it to attendance itself through `computeGroundsDraw`, so the site plan
 grows the crowd rather than only dividing it.
 
-What it is not, still: a faire with an act you have a history with, or
-anything to do after the win screen. What it stopped being in Phase 1 is a
+What it is not, still: anything to do after the win screen. What it stopped
+being in Phase 3 is a faire whose acts are price lookups: every contracted
+act carries a relationship the day moves, eight of them have an arc, and a
+contract is a negotiation the relationship prices. What it stopped being in Phase 1 is a
 spreadsheet with a plat drawn on it. The gate is still one number
 (`baseAttendance × priceMult × popularityFactor × adFactor ×
 groundsDraw.mult × weekendDayFactor × weatherMult × jitter`), but what that
@@ -47,7 +50,7 @@ coefficient on the average.
 
 ## The architecture that is there
 
-- **`js/data.js` (649)** — content only, no logic, deliberately JSON-shaped so
+- **`js/data.js` (847)** — content only, no logic, deliberately JSON-shaped so
   it could become fetched `.json` untouched. `CONFIG` (every tunable number
   with the paragraph explaining why it is that number), `GROUNDS_DRAW`, four
   `TIME_BLOCKS` each with a `weight` and a `heat` (0.15/0.85/1.0/0.25),
@@ -56,16 +59,20 @@ coefficient on the average.
   with authored `TERRAIN_ROWS`, `ENTRANCE`, three `GRID_EXPANSIONS` tiers
   (10×7 at weekend 1, 12×8 at 2, 14×10 at 4), `PLACEMENT_RULES`, and the
   catalogs: 4 structure types, 15 performers, 12 vendors, 4 campaigns, 3
-  contract options, 10 events.
-- **`js/engine.js` (1,366)** — pure, no DOM. Forty-odd exports: `makeRng`, the
+  contract options, 12 events — and, from Phase 3, `RELATIONSHIP` (the
+  deltas and the five tiers), `NEGOTIATION` (the commitment and fee lists
+  every offer is priced off) and `ARCS` (eight subjects, sixteen beats).
+- **`js/engine.js` (1,578)** — pure, no DOM. Fifty-odd exports: `makeRng`, the
   footprint primitives, `isLegalPlacement`, `quoteBuild`, `computeFootTraffic`,
   `computePathDistances`/`computeReachability`, `computeGroundsDraw`, the
   price-elasticity trio, `blockQualityWeights`, `totalUpkeep`,
   `checkBankruptcy`/`checkWinCondition`, the Phase 2 weather quintet
   (`weatherById`/`weatherFor`/`weatherWeightAt`/`rollWeather`/`forecastWeather`
-  plus `nextCalendarDay`) — and `simulateDay`, 260 lines that read all of it
-  and return a day.
-- **`js/state.js` (739)** — the state object and ~25 actions, each returning
+  plus `nextCalendarDay`), the Phase 3 set (`performerFor`/`vendorFor`,
+  `relationshipOf`/`relationshipTier`, `bestBlockFor`, `quoteContract` and
+  `offerDiscount`, `pendingBeats`/`beatById`) — and `simulateDay`, 290 lines
+  that read all of it and return a day, its relationship deltas included.
+- **`js/state.js` (832)** — the state object and ~26 actions, each returning
   `{ state, error }` with a *new* state. Owns the planning→commit build flow,
   performer and vendor contracts, the weekend boundary (`nextDay` parks in
   `weekendEnd`, `startNextWeekend` rolls over), and the `gameOver`/`victory`
@@ -73,25 +80,31 @@ coefficient on the average.
   `renn-faire-sim-save-v1`, everything `loadState` used to backfill now in
   `repair`, `migrate` a no-op, `defaults: newGame` as a factory. Phase 2 split
   `createInitialState(seed)` (deterministic) from `newGame()` (the one thing
-  that reads the clock) — see #232 and the conventions below.
-- **`js/ui.js` (953)** — state → HTML strings, eleven renderers, no listeners.
+  that reads the clock) — see #232 and the conventions below. Phase 3 added
+  `relationships`, `arcBeats` and `actTraits` (all additive, all filled by
+  `repair`), routed `contractPerformer`/`hireVendor` through `quoteContract`
+  so a contract record carries its own `cancelFeeMult` and `label`, and added
+  `resolveBeat`, the one writer of the last two maps.
+- **`js/ui.js` (1,049)** — state → HTML strings, eleven renderers, no listeners.
   `renderGroundsPanel` owns the plat map, status line and build palette;
   `renderFairFloor` owns plot cards and the schedule; `renderForecast` owns
-  tomorrow's sky on the Office desk; the four end-of-something screens share
-  one ticket-stub shell.
-- **`js/main.js` (303)** — the only file that touches `document`. Holds the
+  tomorrow's sky on the Office desk; `renderBackstage` owns the mood tags,
+  the beat cards and the negotiation row; the four end-of-something screens
+  share one ticket-stub shell.
+- **`js/main.js` (333)** — the only file that touches `document`. Holds the
   mutable state, delegates `click`/`change`/`input` off `#app`, re-renders
   after every action, mounts gvb-save's export/import bar in `#footer`; its
-  `handleAction` is a 23-case switch.
-- **`css/style.css` (1,086)** — the "operations room" palette and the
+  `handleAction` is a 27-case switch, and `ui.negotiating` is the one piece
+  of view state Backstage reads.
+- **`css/style.css` (1,134)** — the "operations room" palette and the
   surveyor's-plat map. Two breakpoints, 1080px and 720px; `--cell` is 46px,
   38px, 48px respectively.
-- **`tests/smoke.mjs` (3,767)** — the largest test file in the repo, 1,118
+- **`tests/smoke.mjs` (4,258)** — the largest test file in the repo, 1,652
   assertions, no framework: an `assert()` counter and a `mod()` helper turning
-  a path into a `file://` URL so Windows can run it. Sections 1–1g and 1i are
-  pure; 20, 21, 23 and 24 parse `style.css` and `index.html` as text; 1h, 22
-  and 25 build a JSDOM and re-import `js/main.js` cache-busted, which is a
-  reload. **A second JSDOM steals the first one's renders** — `main.js`'s `$`
+  a path into a `file://` URL so Windows can run it. Sections 1–1g, 1i and 1j
+  are pure; 20, 21, 23 and 24 parse `style.css` and `index.html` as text; 1h,
+  22, 25 and 26 build a JSDOM and re-import `js/main.js` cache-busted, which
+  is a reload. **A second JSDOM steals the first one's renders** — `main.js`'s `$`
   reads `globalThis.document` — so everything a boot needs to assert has to
   happen before the next boot.
 
@@ -143,7 +156,7 @@ that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
   stage that finally gave it a multiplier also gave the HUD a tooltip naming
   the number.
 - **Correctness tests are not enough — see Section 1g, tagged
-  `SIGNIFICANCE:`.** Eleven checks, each asserting a mechanic
+  `SIGNIFICANCE:`.** Thirteen checks, each asserting a mechanic
   is *strategically load-bearing* rather than merely implemented. Stage 18
   shipped fully green with "build nothing, charge maximum" strictly optimal.
   Run these against every balance change — and check what state each one runs
@@ -153,9 +166,19 @@ that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
   exist because of that, and check 11 (weather deciding which ground is the
   good ground) is deliberately asserted on mood and reputation rather than on
   the day's net, because terrain does not move attendance and the net would
-  have passed under a broken weather term.
+  have passed under a broken weather term. Checks 12 and 13 (Phase 3) are
+  that a Devoted act and a Sour one ask different money for the same terms,
+  and that an arc's choice is a different day on the same seed.
+- **An act's numbers are read through `performerFor`/`vendorFor`, never
+  `performerById`/`vendorById`, wherever they can move** (#240). The catalog
+  is content; the save's `actTraits` is where an arc's popularity, quality,
+  quirk and rate changes live. `performerById` is still right for a name.
+- **A relationship leaves with the act** (#235), and **a contract record
+  carries its own fee and label** (#237) — read the record, not the option.
 - **Verify a guard-rail by reintroducing the bug it guards** (#34). Round 3
-  did it four times and caught two real mistakes before they shipped.
+  did it four times and caught two real mistakes before they shipped, and
+  Phase 3 ran twenty-three breaks and found two assertions that did not
+  fail — one crashed, one guarded dead code.
 - **Nothing leaves the site.** Fonts are vendored, Section 21 asserts it, and
   `index.html` carries a comment where the Google Fonts links were, saying not
   to put them back. Never hand-edit inside the `gvb:social` markers (#31).
@@ -235,18 +258,28 @@ Open and unclaimed. Add here rather than starting a new list.
   plots is still unbuilt too.
 
 **Content**
-- A third contractable role (security, gate staff, an announcer); multi-weekend
-  performer arcs; negotiation rather than a fixed rate.
-- More filler for `EVENT_POOL` (10), `AD_CAMPAIGNS` (4), and the quirk set
+- A third contractable role (security, gate staff, an announcer). ~~Multi-
+  weekend performer arcs; negotiation rather than a fixed rate.~~ *Phase 3:
+  `ARCS` with a beat at each edge for eight acts, and `quoteContract` pricing
+  every contract off a commitment, a fee and the relationship.*
+- More arcs: seven performers and ten vendors have none, and every arc has
+  exactly one beat per edge. The shape is in `data.js`; adding one is a row
+  and the integrity suite checks it.
+- The relationship deltas (`RELATIONSHIP` in `data.js`) have not been played
+  through a season. Reaching Devoted takes about eight good days on the
+  bill; reaching Sour takes ten days benched. Whether that is the right pace
+  is a question for real play, like Q27's numbers.
+- More filler for `EVENT_POOL` (12), `AD_CAMPAIGNS` (4), and the quirk set
   (four quirks across fifteen performers, one of them blank).
 - A second, deeper win track; a photo-mode/postcard export off
   `summarizeWeekend`; a build-preview of a placement's effect on grounds draw.
 
 **Tooling**
 - The `data-action` wiring audit is a person with grep, and it found a real
-  gap in each of the last two rounds it ran. 25 distinct actions: 23 with a
-  case in `main.js`'s switch, plus `schedule` and `assignVendor` on the
-  delegated `change` listener.
+  gap in each of the last two rounds it ran. 30 distinct actions: 27 with a
+  case in `main.js`'s switch, plus `schedule`, `assignVendor` and (Phase 3)
+  `offerTerm` on the delegated `change` listener. Phase 3's five new actions
+  are all clicked or changed in Section 26.
 - `commitAll` is covered only in `play-games.mjs`, never in `smoke.mjs` —
   known and accepted, written down nowhere the tests can see.
 - ~~`README.md` still says "783 checks" and "the 709-check suite".~~ *Fixed
@@ -383,7 +416,7 @@ id, so a report written today still reads correctly if the table is retuned,
 and a report written before this phase shows no weather row at all rather than
 inventing neutral multipliers the day never ran under.
 
-## Phase 3 — Acts with a story
+## Phase 3 — Acts with a story — **shipped (PR #197)**
 
 **Fifteen performers, and hiring one is a price lookup.**
 
@@ -392,27 +425,41 @@ performer is a popularity number, a role, and at most one quirk. Nothing
 anybody does on Friday changes what they cost or draw on Saturday, and the
 Season Contract's only argument is its discount.
 
-- [ ] **A relationship number per contracted performer and vendor**, moved by
+- [x] **A relationship number per contracted performer and vendor**, moved by
   what the day did: scheduled into their best block, left off the bill, sulked
   through a shared slot as a `prima_donna`, played a stage that overflowed.
-- [ ] **Arcs in `data.js`.** A beat unlocks at a relationship threshold, offers
+  *`RELATIONSHIP` in `data.js`, `state.relationships[id]` 0-100 from neutral
+  50, deltas computed in `simulateDay` and applied by `runDay`. A packed house
+  pleases the act (#238); the best block is the quirk's (#236); the number
+  leaves with the act (#235).*
+- [x] **Arcs in `data.js`.** A beat unlocks at a relationship threshold, offers
   a choice, and changes a number — popularity, rate, a quirk gained or shed.
-- [ ] **Negotiation instead of a price tag.** A counter-offer trading rate
+  *`ARCS`: eight subjects, a beat at Sour and at Devoted each, thirty-six
+  choices. `resolveBeat` writes `arcBeats` and `actTraits`; the traits are
+  read through `performerFor`/`vendorFor` (#240). A beat waits without
+  blocking the gates (#239).*
+- [x] **Negotiation instead of a price tag.** A counter-offer trading rate
   against commitment length against cancellation fee, priced through
   `effectivePerformerCost`/`effectiveVendorCost`, not a fourth cost path.
-- [ ] **Two more `EVENT_POOL` entries gated on the new state**, through
+  *`quoteContract` is the one quote and the quick picks are points on its
+  grid (#237); the act names its price for the terms, ±15% by relationship.*
+- [x] **Two more `EVENT_POOL` entries gated on the new state**, through
   `EVENT_REQUIREMENTS` — which fails closed on an unrecognised key, so a typo
-  makes an event ineligible rather than always-eligible.
-- [ ] **Backstage shows the arc** in the card idiom the roster already uses. A
-  relationship the player cannot see is the `weekendDay` mistake again.
-- [ ] **Tests.** Catalog integrity for every arc beat, plus a `repair` test
-  proving a pre-arc save loads with every relationship at neutral.
+  makes an event ineligible rather than always-eligible. *`evt_encore` on a
+  Devoted act, `evt_late_call` on a Sour one.*
+- [x] **Backstage shows the arc** in the card idiom the roster already uses. A
+  relationship the player cannot see is the `weekendDay` mistake again. *A
+  mood tag on every contracted row, a `.beat-card` per pending beat, an offer
+  row under the act being negotiated with, and a Backstage row on the stub.*
+- [x] **Tests.** Catalog integrity for every arc beat, plus a `repair` test
+  proving a pre-arc save loads with every relationship at neutral. *Section
+  1j and Section 26, 1,118 → 1,652.*
 
 *Leans on:* `PERFORMERS`/`VENDORS`/`CONTRACT_OPTIONS`/`EVENT_POOL`,
 `state.js`'s `contracts`/`vendorContracts`. *Save:* additive — a
-`relationships` map keyed by performer and vendor id, filled by `repair`.
-*Model:* **Claude Opus 5** — content tables and UI wiring over catalogs that
-already have integrity suites.
+`relationships` map keyed by performer and vendor id, filled by `repair`,
+plus `arcBeats` and `actTraits`. *Model:* **Claude Opus 5** — worked under
+Claude Fable 5.1.
 
 ## Phase 4 — A faire that outlives its season
 

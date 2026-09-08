@@ -3,8 +3,8 @@
 // NEW state (no in-place mutation), so ui.js can just re-render after every
 // action and tests can assert on plain objects.
 
-import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, DEFAULT_WEATHER_ID } from './data.js';
-import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition, rollWeather } from './engine.js';
+import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, DEFAULT_WEATHER_ID, RELATIONSHIP } from './data.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition, rollWeather, quoteContract, offerDiscount, relationshipOf, beatById, pendingBeats, clamp } from './engine.js';
 // Relative, not "/assets/js/gvb-save.js": tests/smoke.mjs imports this module
 // under plain Node, which cannot resolve a leading slash. The relative form
 // resolves identically in the browser (v7 §1 documented the same trap for
@@ -60,6 +60,10 @@ export function createInitialState(weatherSeed = DEFAULT_WEATHER_SEED) {
     nextPlotId: 1, // Stage 10: counter for placePlot's ids, decoupled from (x,y) so relocating a plot never orphans its schedule/assignment references
     bankrupt: false, // Stage 16: set true by runDay() the moment cash crosses CONFIG.bankruptcyFloor; nextDay() reads it once, on the player's next click, to route to the 'gameOver' phase
     victoryAchieved: false, // Stage 16: set true the first time checkWinCondition() passes at a weekend boundary, so the milestone only fires once per save
+    // Phase 3: acts with a story. All three additive, all filled by repair.
+    relationships: {}, // performer/vendor id -> 0..100, written at signing and moved by runDay; absent reads as RELATIONSHIP.neutral
+    arcBeats: {}, // beat id -> choice id, once resolved; a resolved beat never fires again on this save
+    actTraits: {}, // performer/vendor id -> { popularity?, quality?, quirk?, rateMult? } laid over the catalog by performerFor/vendorFor
   };
 }
 
@@ -86,6 +90,9 @@ function clone(state) {
     activeCampaign: state.activeCampaign ? { ...state.activeCampaign } : null,
     campaignCooldowns: { ...state.campaignCooldowns },
     history: [...state.history],
+    relationships: { ...(state.relationships || {}) },
+    arcBeats: { ...(state.arcBeats || {}) },
+    actTraits: Object.fromEntries(Object.entries(state.actTraits || {}).map(([k, v]) => [k, { ...v }])),
   };
 }
 
@@ -336,22 +343,48 @@ export function autoFillStalls(state) {
 // default) is the no-commitment day rate at the listed cost; 'weekend'
 // locks the performer in at a discount for CONTRACT_OPTIONS.weekend.commitDays,
 // tracked via state.contracts[performerId].commitDaysRemaining.
+// Phase 3: `contractId` may also be an offer — { commitDays, cancelFeeMult }
+// off NEGOTIATION's two lists — and either way the record stored here is
+// what engine.js's quoteContract priced, relationship swing and all. The
+// contract carries its own cancelFeeMult and label now, so releasePerformer
+// and Backstage read the record rather than looking a CONTRACT_OPTIONS row
+// back up; a quick-pick contract still names its option id.
+function resolveTerms(state, contractId) {
+  if (contractId && typeof contractId === 'object') {
+    const d = offerDiscount(contractId.commitDays, contractId.cancelFeeMult);
+    if (!d) return { error: 'Those terms are not on offer.' };
+    if (!isSeasonUnlocked(state, d.commitment.unlockSeason)) {
+      return { error: `A ${d.commitment.label.toLowerCase()} commitment unlocks in Weekend ${d.commitment.unlockSeason}.` };
+    }
+    return { terms: { commitDays: d.commitment.days, cancelFeeMult: d.fee.mult } };
+  }
+  const option = CONTRACT_OPTIONS[contractId];
+  if (!option) return { error: 'Unknown contract type.' };
+  if (!isSeasonUnlocked(state, option.unlockSeason)) {
+    return { error: `${option.label} unlocks in Weekend ${option.unlockSeason}.` };
+  }
+  return { terms: option };
+}
+
 export function contractPerformer(state, performerId, contractId = 'open') {
   const perf = performerById(performerId);
   if (!perf) return { state, error: 'Unknown performer.' };
   if (state.roster.includes(performerId)) return { state, error: 'Already contracted.' };
-  const option = CONTRACT_OPTIONS[contractId];
-  if (!option) return { state, error: 'Unknown contract type.' };
-  if (!isSeasonUnlocked(state, option.unlockSeason)) {
-    return { state, error: `${option.label} unlocks in Weekend ${option.unlockSeason}.` };
-  }
+  const resolved = resolveTerms(state, contractId);
+  if (resolved.error) return { state, error: resolved.error };
+  const quote = quoteContract(state, 'performer', performerId, resolved.terms);
   const next = clone(state);
   next.roster.push(performerId);
   next.contracts[performerId] = {
-    contractId,
-    dailyCost: Math.round(perf.cost * option.priceMult),
-    commitDaysRemaining: option.commitDays,
+    contractId: quote.contractId,
+    label: quote.label,
+    dailyCost: quote.dailyCost,
+    commitDaysRemaining: quote.commitDays,
+    cancelFeeMult: quote.cancelFeeMult,
   };
+  // A fresh signing starts at neutral. An act released and re-signed starts
+  // over too (#235): the record went with them.
+  next.relationships[performerId] = RELATIONSHIP.neutral;
   return { state: next, error: null };
 }
 
@@ -365,10 +398,14 @@ export function releasePerformer(state, performerId) {
   let fee = 0;
   if (contract && contract.commitDaysRemaining > 0) {
     const option = CONTRACT_OPTIONS[contract.contractId];
-    fee = Math.round(contract.dailyCost * contract.commitDaysRemaining * (option?.cancelFeeMult || 0));
+    // Phase 3: a negotiated contract carries its own fee; a quick-pick one
+    // from before this phase still reads its option row.
+    const feeMult = typeof contract.cancelFeeMult === 'number' ? contract.cancelFeeMult : (option?.cancelFeeMult || 0);
+    fee = Math.round(contract.dailyCost * contract.commitDaysRemaining * feeMult);
     next.cash -= fee;
   }
   delete next.contracts[performerId];
+  delete next.relationships[performerId]; // #235: the relationship leaves with them
   next.roster = next.roster.filter(id => id !== performerId);
   // pull them out of the schedule too
   for (const blockId of Object.keys(next.schedule)) {
@@ -401,18 +438,19 @@ export function hireVendor(state, vendorId, contractId = 'open') {
       ? { state, error: `Build a stall plot first \u2014 no open ${kindLabel} stalls.` }
       : { state, error: `No open ${kindLabel} stalls \u2014 build another, or let a hired ${kindLabel} vendor go first.` };
   }
-  const option = CONTRACT_OPTIONS[contractId];
-  if (!option) return { state, error: 'Unknown contract type.' };
-  if (!isSeasonUnlocked(state, option.unlockSeason)) {
-    return { state, error: `${option.label} unlocks in Weekend ${option.unlockSeason}.` };
-  }
+  const resolved = resolveTerms(state, contractId);
+  if (resolved.error) return { state, error: resolved.error };
+  const quote = quoteContract(state, 'vendor', vendorId, resolved.terms);
   const next = clone(state);
   next.hiredVendors.push(vendorId);
   next.vendorContracts[vendorId] = {
-    contractId,
-    dailyCost: Math.round(vendor.cost * option.priceMult),
-    commitDaysRemaining: option.commitDays,
+    contractId: quote.contractId,
+    label: quote.label,
+    dailyCost: quote.dailyCost,
+    commitDaysRemaining: quote.commitDays,
+    cancelFeeMult: quote.cancelFeeMult,
   };
+  next.relationships[vendorId] = RELATIONSHIP.neutral;
   // Auto-seat into the first open matching stall so hiring "just works" for
   // the common case; the player can still reassign by hand, or reach for
   // Auto-Fill Stalls later if a demolition ever leaves someone unseated.
@@ -431,10 +469,12 @@ export function fireVendor(state, vendorId) {
   let fee = 0;
   if (contract && contract.commitDaysRemaining > 0) {
     const option = CONTRACT_OPTIONS[contract.contractId];
-    fee = Math.round(contract.dailyCost * contract.commitDaysRemaining * (option?.cancelFeeMult || 0));
+    const feeMult = typeof contract.cancelFeeMult === 'number' ? contract.cancelFeeMult : (option?.cancelFeeMult || 0);
+    fee = Math.round(contract.dailyCost * contract.commitDaysRemaining * feeMult);
     next.cash -= fee;
   }
   delete next.vendorContracts[vendorId];
+  delete next.relationships[vendorId]; // #235
   next.hiredVendors = next.hiredVendors.filter(id => id !== vendorId);
   for (const p of next.builtPlots) if (p.assignedVendorId === vendorId) p.assignedVendorId = null;
   return { state: next, error: null, fee };
@@ -497,6 +537,13 @@ export function runDay(state, seed = Date.now() ^ (state.day * 7919)) {
   next.lastResult = result;
   next.history.push(result);
   next.phase = 'report';
+  // Phase 3: what the day did to each act. simulateDay only reports acts
+  // on the roster or in hiredVendors, so nothing here can resurrect a
+  // relationship #235 says leaves with a released act; a guard for that
+  // was written and then deleted, because no break could reach it (#34).
+  for (const [id, r] of Object.entries(result.relationships || {})) {
+    next.relationships[id] = clamp(relationshipOf(next, id) + r.delta, RELATIONSHIP.min, RELATIONSHIP.max);
+  }
   // Stage 16: flag bankruptcy the moment it happens, but still show today's
   // report ticket as normal — the player sees what went wrong before the
   // run actually ends. nextDay() checks this flag first and routes to the
@@ -615,6 +662,41 @@ export function acknowledgeVictory(state) {
   return { state: next };
 }
 
+// ---------- arc beats (Phase 3) ----------
+// The one writer of state.arcBeats and state.actTraits. Refuses a beat that
+// is not actually pending (wrong tier, already resolved, subject released)
+// and a choice the beat does not offer, before any number moves. Each
+// effect key is read here and nowhere else — see data.js's ARCS for what
+// each one means. A rate change re-prices the standing contract in place
+// as well as future ones, so "raise his rate a fifth" costs a fifth more
+// tomorrow, not after the next signing.
+export function resolveBeat(state, beatId, choiceId) {
+  const found = beatById(beatId);
+  if (!found) return { state, error: 'Unknown beat.' };
+  const { arc, beat } = found;
+  if (!pendingBeats(state).some(p => p.beat.id === beatId)) return { state, error: 'That moment has passed.' };
+  const choice = beat.choices.find(c => c.id === choiceId);
+  if (!choice) return { state, error: 'That is not one of the choices.' };
+  const id = arc.subject;
+  const next = clone(state);
+  const traits = { ...(next.actTraits[id] || {}) };
+  if (typeof choice.cash === 'number') next.cash += choice.cash;
+  if (typeof choice.relationship === 'number') {
+    next.relationships[id] = clamp(relationshipOf(next, id) + choice.relationship, RELATIONSHIP.min, RELATIONSHIP.max);
+  }
+  if (typeof choice.popularity === 'number') traits.popularity = (traits.popularity || 0) + choice.popularity;
+  if (typeof choice.quality === 'number') traits.quality = (traits.quality || 0) + choice.quality;
+  if ('quirk' in choice) traits.quirk = choice.quirk;
+  if (typeof choice.rateMult === 'number') {
+    traits.rateMult = (traits.rateMult || 1) * choice.rateMult;
+    const contract = next.contracts[id] || next.vendorContracts[id];
+    if (contract) contract.dailyCost = Math.round(contract.dailyCost * choice.rateMult);
+  }
+  next.actTraits[id] = traits;
+  next.arcBeats[beat.id] = choice.id;
+  return { state: next, error: null, choice, beat, subjectId: id };
+}
+
 // ---------- persistence ----------
 // Stage 22: adopted assets/js/gvb-save.js, replacing the hand-rolled
 // localStorage calls this used to make directly. Key is unchanged (locked
@@ -651,6 +733,17 @@ function repairSave(parsed) {
   // falls back to 1 for a state that never set weekendDay.
   if (typeof parsed.weatherSeed !== 'number') parsed.weatherSeed = DEFAULT_WEATHER_SEED;
   if (typeof parsed.weather !== 'string') parsed.weather = DEFAULT_WEATHER_ID;
+  // Phase 3: a save from before the acts had a story. Every act it has
+  // under contract starts at neutral — the same number a fresh signing gets
+  // — and nothing has been resolved or changed. Written out explicitly
+  // rather than left to relationshipOf's fallback so the map on disk says
+  // what the game will read, and the pre-arc save test can assert it.
+  if (!parsed.relationships || typeof parsed.relationships !== 'object') parsed.relationships = {};
+  if (!parsed.arcBeats || typeof parsed.arcBeats !== 'object') parsed.arcBeats = {};
+  if (!parsed.actTraits || typeof parsed.actTraits !== 'object') parsed.actTraits = {};
+  for (const id of [...(parsed.roster || []), ...(parsed.hiredVendors || [])]) {
+    if (typeof parsed.relationships[id] !== 'number') parsed.relationships[id] = RELATIONSHIP.neutral;
+  }
 
   // Stage 10: planning/build status + per-plot vendor seating are new
   // fields. Every pre-existing plot was, functionally, already "built"
