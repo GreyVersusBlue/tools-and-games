@@ -19,6 +19,14 @@ export const HOUR_W = [0.07, 0.11, 0.15, 0.17, 0.17, 0.15, 0.11, 0.07];
 export const PATIENCE = 55;      // seconds a patron waits on a ticket before walking
 export const BOSS_TIP = 2;       // flat extra tip when the owner delivers
 export const BOSS_MOOD = 0.012;  // room-mood bump per boss delivery
+// The regulars drift in over hours 1-3 (the 2D build's `i % 3 === h - 1`),
+// the i-th name on the list due at the hour below. Never hour 0: the doors
+// have just opened, and never the rush.
+export const REGULAR_HOURS = [1, 2, 3];
+// league.js's MULES, which this file cannot import (league.js imports it).
+// smoke-regulars.mjs holds the two equal.
+export const HOME_TEAM = "FVM";
+export const SNUB_MOOD = 0.02;   // a regular finds their usual 86'd: the room hears about it
 
 export function hourName(h) {
   const hh = 17 + h;
@@ -62,6 +70,10 @@ export class NightEngine {
    *  drinkMult    — bartender prep-speed multiplier; 0.55 default = servers cover the taps, badly
    *  home         — the Mules are at home tonight (league.js says; a coin flip if omitted)
    *  winProb      — chance the Mules win tonight's game (league.js's odds; 0.55 if omitted)
+   *  regulars     — campaign.js's regularsIn(): who is in tonight. Each comes
+   *                 through the door as a spawn of its own during hours 1-3,
+   *                 counted in `inBar` and `arrivals` like anyone else, so the
+   *                 seat cap and the crowd number keep agreeing with the room.
    */
   constructor(opts = {}) {
     // `?? default` is not enough for the numbers: it only catches null and
@@ -101,6 +113,16 @@ export class NightEngine {
     this.game = { started: false, finished: false, win: null, home: opts.home ?? coin };
     this.winProb = clamp(fin(opts.winProb, 0.55));
     this.log = [];
+    this.queued = [];           // events raised between updates (a snub), handed out on the next
+    // The floor's own record of the regulars, which the books read at close:
+    // who is due when, who is still at the door because the room was full,
+    // who got the usual, who found it 86'd, and whose first round was on the
+    // house. Ids only — campaign.js owns the people.
+    this.regulars = Array.isArray(opts.regulars) ? opts.regulars.filter(r => r && typeof r === "object" && r.id != null) : [];
+    this.regularQueue = [];        // due, and waiting on a stool
+    this.regularsSeated = [];      // ids, in the order they came through the door
+    this.snubbed = new Set();      // ids whose usual was gone when they ordered
+    this.comped = new Set();       // ids whose first round the boss comped
   }
 
   logLine(txt, cls) { this.log.push({ t: this.t, hour: Math.min(7, this.hour), txt, cls }); return { type: "log", txt, cls }; }
@@ -108,7 +130,7 @@ export class NightEngine {
   /** Advance the sim by dt seconds. Returns an array of events for the 3D layer. */
   update(dt) {
     if (this.done) return [];
-    const ev = [];
+    const ev = this.queued.splice(0);
     const prevHour = this.hour;
     this.t += dt;
     this.hour = Math.min(8, Math.floor(this.t / this.hourLenSec));
@@ -120,6 +142,15 @@ export class NightEngine {
         return ev;
       }
       ev.push({ type: "hour", hour: this.hour, label: hourName(this.hour) });
+      // the regulars due this hour join the door's queue; they take a stool
+      // below, through the same gate as everyone else. Every hour between
+      // the last update and this one is walked, so a clock that jumps (the
+      // dev menu's skip, a test's warp) still brings in the ones it passed.
+      for (let h = prevHour + 1; h <= this.hour; h++) {
+        const slot = REGULAR_HOURS.indexOf(h);
+        if (slot < 0) continue;
+        for (let i = 0; i < this.regulars.length; i++) if (i % REGULAR_HOURS.length === slot) this.regularQueue.push(this.regulars[i]);
+      }
       // Mules game beats
       if (this.gameNight && this.hour === 2 && !this.game.started) {
         this.game.started = true;
@@ -138,6 +169,15 @@ export class NightEngine {
 
     // arrivals — expected per second this hour, accrued into a debt counter
     if (this.hour < 8) {
+      // a regular at the door goes in ahead of the walk-ins, and only when
+      // there is a stool: a full room holds them at the door, it does not
+      // stand them beside the seat cap
+      while (this.regularQueue.length && this.inBar < this.seats) {
+        const r = this.regularQueue.shift();
+        this.inBar++; this.arrivals++;
+        this.regularsSeated.push(r.id);
+        ev.push({ type: "spawn", mulesFan: r.team === HOME_TEAM, regular: r });
+      }
       const perSec = (this.crowdTarget * HOUR_W[this.hour]) / this.hourLenSec;
       this.spawnDebt += perSec * dt * (0.85 + rnd() * 0.3);
       while (this.spawnDebt >= 1) {
@@ -179,8 +219,9 @@ export class NightEngine {
   }
 
   /** A seated patron decides what they want. Registers a prep ticket.
-   *  Consumes a serving from stock; returns null if the item is 86'd. */
-  placeTicket(patronId, itemId) {
+   *  Consumes a serving from stock; returns null if the item is 86'd.
+   *  `regularId` marks a regular's ticket; `comped` opens it at $0. */
+  placeTicket(patronId, itemId, { regularId = null, comped = false } = {}) {
     if (!this.inStock(itemId)) return null;
     if (this.stock) this.stock[itemId]--;
     const item = MENU[itemId];
@@ -189,9 +230,40 @@ export class NightEngine {
     const tk = {
       id: ++_tid, patronId, itemId, kind: item.kind, price: this.price(itemId),
       placedAt: this.t, readyAt: this.t + prepSec,
-      state: "prep", claimedBy: null,
+      state: "prep", claimedBy: null, regularId, comped: false,
     };
     this.tickets.push(tk);
+    if (comped) this.comp(tk.id);
+    return tk;
+  }
+
+  /** A regular's first order, spelled out: the usual if the shelf has it,
+   *  else what anyone else would get — and the snub is recorded, once, so
+   *  the floor can say so and the books can read it. Returns the item id, or
+   *  null when the shelves are bare. */
+  usualFor(regular, round) {
+    if (round === 0 && regular && this.inStock(regular.usual)) return regular.usual;
+    if (round === 0 && regular) this.snub(regular);
+    return this.chooseOrder(round);
+  }
+  snub(regular) {
+    if (this.snubbed.has(regular.id)) return;
+    this.snubbed.add(regular.id);
+    this.mood = clamp(this.mood - SNUB_MOOD);
+    const usual = MENU[regular.usual] ? MENU[regular.usual].name : regular.usual;
+    this.queued.push(this.logLine(`${String(regular.name || "A regular").split(" ")[0]} came in for the ${usual} and you're out.`, "b"));
+  }
+
+  /** The boss puts a regular's round on the house. The ticket rings at $0;
+   *  the tip is still figured on the shelf price, since the regular tips on
+   *  what it would have cost. Once per regular per night — the second E is a
+   *  no-op, and so is a ticket already paid for. */
+  comp(ticketId) {
+    const tk = this.tickets.find(t => t.id === ticketId);
+    if (!tk || tk.regularId == null || tk.comped || tk.state === "done" || tk.state === "dead") return null;
+    if (this.comped.has(tk.regularId)) return null;
+    tk.comped = true; tk.price = 0;
+    this.comped.add(tk.regularId);
     return tk;
   }
 
@@ -250,9 +322,10 @@ export class NightEngine {
     tk.state = "done";
     const item = MENU[tk.itemId];
     const shelfPrice = tk.price ?? this.price(tk.itemId);
+    const tipBase = tk.comped ? this.price(tk.itemId) : shelfPrice;
     const waited = this.t - tk.placedAt;
     const speedFactor = clamp(1 - waited / (PATIENCE * 1.4), 0.1, 1); // fast service tips better
-    let tip = Math.round(shelfPrice * (0.12 + 0.13 * speedFactor) * this.mood * 100) / 100;
+    let tip = Math.round(tipBase * (0.12 + 0.13 * speedFactor) * this.mood * 100) / 100;
     if (tk.playerCrafted) { tip += 0.75; this.crafted++; }
     if (byBoss) { tip += BOSS_TIP; this.bossServes++; this.mood = clamp(this.mood + BOSS_MOOD); }
     this.revenue += shelfPrice; this.tips += tip; this.served++;
@@ -280,6 +353,9 @@ export class NightEngine {
       revenue: Math.round(this.revenue), tips: Math.round(this.tips * 100) / 100,
       served: this.served, walkouts: this.walkouts, bossServes: this.bossServes, crafted: this.crafted,
       arrivals: this.arrivals,
+      // the floor's word on the regulars, ids only; campaign.js reads `comped`
+      // at settlement and the box score reads the rest
+      regularsSeated: this.regularsSeated.slice(), snubbed: [...this.snubbed], comped: [...this.comped],
       serviceRate: totalSeen ? Math.round(100 * this.served / (this.served + this.walkouts)) : 100,
       mood: this.mood, game: this.game,
       total: Math.round(this.revenue + this.tips),

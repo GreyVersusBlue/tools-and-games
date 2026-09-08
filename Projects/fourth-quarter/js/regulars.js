@@ -31,6 +31,10 @@ export const LOST_MEMORY = 6;         // how many names the door remembers
 // night, so a one-night move at the Fieldhouse is cheaper than a two-night move
 // into the flagship, which is the shape the ladder already has.
 export const DARK_NIGHT_LOYALTY = 5;
+// The boss put their first round on the house: half a birthday round in the
+// 2D build's terms (12 for the whole bench), and more than the +3 a good
+// night gives everybody, because it cost the shelf price out of tonight's take.
+export const COMP_LOYALTY = 4;
 
 /** The roster cap by venue tier — the 2D build's `regularCap()`: 3, 5, 7, 9. */
 export function regularCap(tierOrder) { return 3 + Math.max(0, tierOrder | 0) * 2; }
@@ -134,10 +138,14 @@ export function repDrift(rep, serviceRate, mood, nRegulars, postWin) {
  * could see (#34). The caller's filter is the single guard now; `stockedOut`
  * is documented as a subset of `showing` and this function trusts it.
  */
-export function driftLoyalty(list, { showing, stockedOut, good, ugly }) {
+export function driftLoyalty(list, { showing, stockedOut, comped = new Set(), good, ugly }) {
   for (const r of list) {
     if (stockedOut.has(r.id)) r.loyalty -= 8;
     else if (showing.has(r.id) && good) r.loyalty += 3;
+    // the floor's word: the engine's `comped` set is ids the boss actually
+    // comped tonight, a subset of who was seated, and this trusts it the way
+    // it trusts `stockedOut`
+    if (comped.has(r.id)) r.loyalty += COMP_LOYALTY;
     if (showing.has(r.id)) {
       r.visits = Math.max(0, Math.round(num(r.visits, 0))) + 1;
       if (ugly) r.loyalty -= 5;

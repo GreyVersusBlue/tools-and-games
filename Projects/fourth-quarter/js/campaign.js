@@ -444,7 +444,7 @@ export function wageBill(c) { return c.staff.reduce((s, x) => s + effWage(c, x),
  * empty one, so every regular takes the stay-home drift. Returns what moved,
  * for the box score, the ticker and the tests.
  */
-function settleSocial(c, { serviceRate, mood, arrivals, postWin, showing, champion, dark = false }, rand) {
+function settleSocial(c, { serviceRate, mood, arrivals, postWin, showing, champion, comped = new Set(), dark = false }, rand) {
   // A dark night is not a night anyone saw, so it is not a night that can be
   // good or ugly: no reputation moves either way, nothing is minted, and the
   // only marks it leaves are the ones below — every regular takes the
@@ -457,11 +457,15 @@ function settleSocial(c, { serviceRate, mood, arrivals, postWin, showing, champi
   // driftLoyalty() charges the 8 to whatever is in this set (see its note).
   const stockedOut = new Set(showing.filter(r => (c.stock[r.usual] || 0) <= 0).map(r => r.id));
   const snubbed = showing.filter(r => stockedOut.has(r.id)).map(r => r.name);
+  // the floor's word, not the books': the engine's `comped` set is who the
+  // boss actually walked up to tonight, so it is read off the summary and
+  // never derived here
+  const onTheHouse = showing.filter(r => comped.has(r.id)).map(r => r.name);
 
   const dRep = dark ? 0 : R.repDrift(c.rep, serviceRate, mood, c.regulars.length, postWin);
   c.rep = Math.max(0, Math.min(100, c.rep + dRep));
 
-  R.driftLoyalty(c.regulars, { showing: showingIds, stockedOut, good, ugly });
+  R.driftLoyalty(c.regulars, { showing: showingIds, stockedOut, comped, good, ugly });
   if (dark) for (const r of c.regulars) r.loyalty = Math.max(0, r.loyalty - R.DARK_NIGHT_LOYALTY);
   const lost = R.pruneRegulars(c.regulars, c.regularsLost);
   // a name walking out is a name walking out — the street hears about it
@@ -483,7 +487,7 @@ function settleSocial(c, { serviceRate, mood, arrivals, postWin, showing, champi
   const buzz = drift.buzz;
 
   return {
-    dRep, rep: c.rep, showing: showing.map(r => r.name), snubbed, lost,
+    dRep, rep: c.rep, showing: showing.map(r => r.name), snubbed, comped: onTheHouse, lost,
     gained: gained ? { name: gained.name, returning: !!gained.returning } : null,
     dBuzz, buzz, rivalLine: R.rivalLine(buzz, dBuzz, c.rep), good, ugly,
   };
@@ -520,6 +524,9 @@ export function settleNight(c, summary, rand = Math.random) {
     postWin: !!(g && g.finished && g.win === true),
     showing,
     champion: final ? final.winner : null,
+    // ids the boss comped on the floor; a summary without the field (the Node
+    // suites' synthetic nights) comped nobody
+    comped: new Set(Array.isArray(summary.comped) ? summary.comped : []),
   }, rand);
   const spoilage = applySpoilage(c);
   c.day++;

@@ -83,7 +83,7 @@ export function adoptLayout(desc) {
   L.seatsFor(desc).forEach((s, i) => {
     seats.push({ id: s.id, pos: new THREE.Vector3(s.x, s.y, s.z),
       approach: new THREE.Vector3(s.ax, L.floorYAt(desc, s.ax, s.az), s.az),
-      taken: false, reachable: reach[i] });
+      taken: false, reachable: reach[i], kind: s.kind });
   });
   colliders.length = 0;
   for (const b of L.collidersFor(desc)) {

@@ -200,6 +200,10 @@ function beginNight() {
     foodMult: C.roleMult(campaign, "cook"),
     drinkMult: C.roleMult(campaign, "bartender"),
     beerMult: C.beerMult(campaign),
+    // who is in tonight, by the day's coin; each comes through the door as a
+    // spawn of their own during hours 1-3, so the seat cap and the crowd
+    // number keep agreeing with the room
+    regulars: C.regularsIn(campaign),
   });
   player.engine = engine;
   seats.forEach(s => (s.taken = false));
@@ -330,8 +334,9 @@ function handleEvents(evts) {
     switch (e.type) {
       case "log": tick(e.txt, e.cls); break;
       case "spawn": {
-        const p = new Patron(scene, engine, e.mulesFan);
+        const p = new Patron(scene, engine, e.mulesFan, e.regular || null);
         patrons.push(p); patronsById.set(p.id, p);
+        if (e.regular) tick(`${e.regular.name.split(" ")[0]}'s in. ${p.seat && p.seat.kind === "bar" ? "The usual stool." : "The bar's full — a table, then."}`, "g");
         break;
       }
       case "ready": audio.playSfx("ticketReady"); break;
@@ -401,6 +406,7 @@ function socialRows(so) {
   if (so.showing.length) rows.push(`<div class="row"><span>Regulars in</span><span>${so.showing.join(", ")}</span></div>`);
   if (so.snubbed.length) rows.push(`<div class="row"><span>Came in for the usual, and you were out</span><span class="bad">${so.snubbed.join(", ")}</span></div>`);
   if (so.lost.length) rows.push(`<div class="row"><span>Stopped coming</span><span class="bad">${so.lost.join(", ")}</span></div>`);
+  if (so.comped && so.comped.length) rows.push(`<div class="row"><span>First round on the house</span><span class="good">${so.comped.join(", ")}</span></div>`);
   if (so.gained) rows.push(`<div class="row"><span>${so.gained.returning ? "Came back" : "New regular"}</span><span class="good">${so.gained.name}</span></div>`);
   return `<div class="sec">The Room's People</div>${rows.join("")}`;
 }
@@ -567,7 +573,7 @@ enterDay();
 // this.
 window.__fq = {
   camera, day, player, scene, texTier,
-  get patrons() { return patrons; }, get servers() { return servers; },
+  get patrons() { return patrons; }, get servers() { return servers; }, get patronsById() { return patronsById; },
   get textures() { return textureStatus(); },
   get campaign() { return campaign; }, get engine() { return engine; }, get broadcast() { return broadcast; },
 };

@@ -2533,6 +2533,45 @@ Two of them have moved since they were written:
    than a two-night one, which is the shape the ladder already has.
    *Source: Fourth Quarter Phase 7.*
 
+212. **A regular comes through the door, and a full room holds them at it.**
+   A regular who is in tonight is a spawn from the engine's own arrival
+   stream, not a body dropped beside one: `NightEngine` takes `regulars`,
+   queues the i-th name at hour `1 + i % 3` (the 2D build's drift-in over
+   hours 1-3), and seats them through the same `inBar < seats` gate every
+   walk-in goes through, ahead of the walk-ins, counted in `inBar` and
+   `arrivals`. When the room is full they wait at the door and take the
+   first stool that frees. The alternative — spawning them regardless — put
+   a 31st body in a 30-stool room and had the HUD's headcount disagree with
+   the floor. A clock that jumps (the dev menu's skip, a test's warp) walks
+   every hour it passed, so nobody due is lost; and with no regulars the
+   walk-ins' seeded draw sequence is exactly the one it was.
+   *Source: Fourth Quarter Phase 7, increment 2.*
+
+213. **The floor reports; the books decide.** The engine hands the
+   settlement three id lists — who it seated, who found the usual 86'd, and
+   whose first round the boss comped — and the books read exactly one of
+   them. Who showed stays the day's coin (#207), and the 86 stays the shelf
+   at close (#210): the floor's snub costs the room's mood (0.02) and one
+   ticker line, never a second loyalty charge. The comp is the one thing only
+   the floor can know, so it is read off `summary.comped` and never derived
+   in `campaign.js`. Two records of one fact drift, which is #34's shape in a
+   save; and a warped clock would otherwise have the floor say nobody came
+   in on a night the coin says three did.
+   *Source: Fourth Quarter Phase 7, increment 2.*
+
+214. **The first round on the house: one per regular per night, $0 on the
+   ticket, the tip on the shelf price, four loyalty.** Only a regular, only
+   their first round, only while they are in the room and the round is
+   unpaid — a regular on their second beer has paid for the first. A comp
+   given before the order lands opens the ticket at $0. The tip is still
+   figured on what it would have cost, because the regular tips on that.
+   Four is more than the three a good night gives everybody and a third of
+   the 2D build's birthday round (12 for the whole bench), because it comes
+   out of tonight's take one shelf price at a time. The interaction reaches
+   1.1 m against a station's 1.6, so a regular on the stool beside the taps
+   is comped by standing at them rather than the taps being worked.
+   *Source: Fourth Quarter Phase 7, increment 2.*
+
 ---
 
 # The site sessions, 1–10
@@ -3664,6 +3703,63 @@ nameplate, their usual pre-filled on the ticket, and a first-round-free
 interaction at the bar. None of it is built. A regular who shows tonight is
 currently a body in the crowd multiplier and a name in the box score, not
 somebody you can walk up to. Sized 2+; this is increment 1 of 2.
+
+**Phase 7, increment 2 — A regular is a person on the floor (PR #185).**
+The half the 2D build cannot do, and the half the port exists for. A regular
+who is in tonight comes through the door as a body: `NightEngine` takes
+`regulars`, queues the i-th name at hour `1 + i % 3`, and seats them through
+the same `inBar < seats` gate as every walk-in, ahead of the walk-ins and
+counted in `inBar` and `arrivals` (#212) — a full room holds them at the door
+until a stool frees. `Patron` takes a `regular`: a maroon jacket (amber if
+they are a Mules fan), a nameplate sprite over the head, a stool at the bar
+when the bar has one (`freeSeat("bar")`, `seats` now carrying `kind`), and
+the usual pre-filled on the first ticket by `engine.usualFor()`, which picks
+what anyone else would get when the shelf is bare and records the snub once:
+0.02 off the room's mood and one ticker line ("Bo came in for the Loaded
+Nachos and you're out"). The boss walks up: `player.nearRegular()` at 1.1 m,
+the prompt prices the round, and E puts the first round on the house
+(#214) — the ticket rings at $0, the tip is figured on the shelf price, the
+engine records the id, and a second E does nothing.
+
+**The floor reports; the books decide** (#213). `summary()` carries
+`regularsSeated`, `snubbed` and `comped` as id lists; `settleNight()` reads
+`comped` into `settleSocial()`, `driftLoyalty()` gives those four
+(`COMP_LOYALTY`), and the box score names them under "First round on the
+house". Who showed is still the day's coin and the 86 is still the shelf at
+close: the floor's snub is mood and a line, never a second loyalty charge,
+so a warped clock cannot make the floor and the books disagree about who
+was in.
+
+*Counts:* `smoke-engine.mjs` 196 → 223, `smoke-regulars.mjs` 89 → 98, Node
+total 1,117 → 1,153; `tools/browser-check.mjs` 178 → 193, its second night
+now run at 2x to hour 2 rather than warped straight to close: the first
+regular through the door with a nameplate and a bar stool, the usual on the
+ticket at the shelf price, the boss's comp and its refusal, the second
+regular snubbed on the floor with the ticker line waited for rather than
+read, and at close the one person carrying both numbers — down 4, the 86's 8
+and the round's 4.
+
+*Broken on purpose (#34), fifteen in Node and five in the browser, each
+caught by the assertion whose comment claims it:* the seat gate skipped for
+a regular, a regular not counted at the door, the usual served off a bare
+shelf, the snub charged twice, the comp not zeroing the ticket, a second
+comp allowed, the tip figured on $0, a warped clock dropping the hours it
+passed, a Mules regular walking in as nobody's fan, the pre-order comp
+ignored, a regular without an id seated, `HOME_TEAM` off the Mules,
+`driftLoyalty` ignoring the comp, `settleNight` not passing it, and the
+books not naming them; in the browser, the nameplate left off, `main.js`
+not handing the engine the list, the comp's reach set to zero, the bar-stool
+preference removed, and the snub line written to the log instead of queued.
+One test line crashed rather than failed after the seat-gate break
+(`later[0]` of an empty list) and was hardened to fail; the snub-line break
+was first caught by a thrown wait timeout rather than an `ok`, and the wait
+is an assertion now; and "a second E does nothing" turned out to depend on
+which bar stool the regular drew (one by the drink pass answers "Nothing on
+the bar yet"), so it asserts the comp set did not grow. Two browser breaks
+are noted as luck-sensitive in their comments: a random stool lands at the
+bar, and a random order lands on the usual, each about a quarter of the time.
+
+*Left:* nothing of this phase. Sized 2+; closed in two increments.
 
 ---
 
