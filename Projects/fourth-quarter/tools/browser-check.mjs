@@ -595,6 +595,92 @@ ok("it reached the pass and then the back room's furthest stool", carried.reache
 ok("it actually crossed into the back room", carried.enteredAnnex);
 ok("and it did not walk through the furniture or the wall", carried.worst < 0.01, `deepest ${carried.worst.toFixed(3)} m`);
 
+group("the league is on the corkboard, on the screens, and in the books");
+// Phase 6. The previous group left the dev overlay open on Midtown; this one
+// runs a real night on a Mules game night and follows the result from the
+// engine to the TVs to the standings.
+if (await page.isVisible("#devOverlay")) await page.click("#devClose");
+if (await page.isVisible("#startOverlay")) await page.click("#startBtn");
+const cork = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const LG = await import("./js/league.js");
+  const c = window.__fq.campaign;
+  C.devSetDay(c, 4); // Thursday of week 0: the Mules' first game, whatever the seed
+  const tn = C.tonight(c);
+  window.__fq.day.promoPanel();
+  const body = document.querySelector("#panelBody");
+  const out = {
+    valid: LG.validLeague(c.league), season: c.league.season,
+    rows: body.querySelectorAll("#standings tr").length - 1,
+    usRow: body.querySelector("#standings tr.us td:nth-child(2)")?.textContent.trim() ?? null,
+    names: LG.TEAMS.every(t => body.textContent.includes(t.name)),
+    thisWeek: body.querySelectorAll("#thisWeek tr").length,
+    tonightRow: body.querySelector("#thisWeek b")?.textContent ?? null,
+    hint: body.querySelector("p.hint").textContent,
+    mules: !!tn.mules, opp: tn.opp ? tn.opp.short : null, home: tn.home, label: tn.label,
+    winProb: C.mulesWinProb(c),
+  };
+  window.__fq.day.closePanel();
+  return out;
+});
+ok("the campaign on the page carries a valid season-1 league", cork.valid && cork.season === 1);
+ok("the corkboard panel lists all eight teams in the standings", cork.rows === 8 && cork.names, `${cork.rows} rows`);
+ok("the Mules' row is the lit one", /Fairview Mules/.test(cork.usRow || ""), cork.usRow);
+ok("this week's four games are under it, tonight's marked", cork.thisWeek === 4 && cork.tonightRow === "tonight", `${cork.thisWeek} rows, ${cork.tonightRow}`);
+ok("the panel's line names tonight's opponent", cork.mules && cork.opp && cork.hint.includes(cork.opp), cork.hint);
+
+await page.evaluate(() => window.__fq.day.cb.openDoors());
+// every wait below is on the state the loop writes, not a fixed pause: the
+// HUD tick that redraws the broadcast runs every 0.12 s of a loop that a busy
+// machine can starve, and a fixed 400 ms once read the halftime screen early
+const settled = (fn, label) => page.waitForFunction(fn, null, { timeout: 15000 }).catch(() => { throw new Error(`timed out waiting for ${label}`); });
+await settled(() => window.__fq.engine && window.__fq.broadcast && window.__fq.broadcast.gameNight, "the night to open");
+const opened = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const e = window.__fq.engine, b = window.__fq.broadcast;
+  return { gameNight: e.gameNight, home: e.game.home, winProb: e.winProb, themName: b.themName, usName: b.usName, bHome: b.home,
+    hudGame: !!e, forecast: C.forecast(window.__fq.campaign), crowdTarget: e.crowdTarget };
+});
+ok("the night engine is on a game night with the league's home flag", opened.gameNight === true && opened.home === cork.home, `home ${opened.home} vs ${cork.home}`);
+ok("and the league's odds, not the 0.55 coin", Math.abs(opened.winProb - cork.winProb) < 1e-9 && opened.winProb !== 0.55, `${opened.winProb}`);
+ok("the broadcast names the Mules and the opponent", opened.usName === "MULES" && opened.themName === cork.opp.toUpperCase() && opened.bHome === cork.home, `${opened.usName} / ${opened.themName}`);
+ok("the crowd target is the league-aware forecast", opened.crowdTarget === opened.forecast, `${opened.crowdTarget} vs ${opened.forecast}`);
+
+// kickoff, then halftime: the standings screen for the first third of hour 5
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 2 + 0.01; });
+await settled(() => window.__fq.broadcast.started, "kickoff");
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 5 + 0.01; });
+// waited for rather than read after a pause; a screen that never comes up fails the assertion after 15 s
+const shown = await page.waitForFunction(() => window.__fq.broadcast.showStandings === true, null, { timeout: 15000 }).then(() => true).catch(() => false);
+const half = await page.evaluate(() => { const b = window.__fq.broadcast; return { started: b.started, show: b.showStandings, rows: b.standings.length, week: b.week }; });
+half.show = shown;
+ok("kickoff fired and the halftime standings screen is up", half.started && half.show === true && half.rows === 8 && half.week === 0, JSON.stringify(half));
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 5 + e.hourLenSec / 3 + 1; });
+await settled(() => (window.__fq.engine.t - 5 * window.__fq.engine.hourLenSec) > window.__fq.engine.hourLenSec / 3 + 0.5, "the third of the hour to pass");
+await page.waitForTimeout(300); // one more HUD tick after the clock moved
+ok("and it is back to the field a third of the hour later", (await page.evaluate(() => window.__fq.broadcast.showStandings)) === false);
+
+// the final, then last call, then the books
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 6 + 0.01; });
+await settled(() => window.__fq.broadcast.finished, "the final");
+const fin = await page.evaluate(() => { const e = window.__fq.engine, b = window.__fq.broadcast; return { finished: b.finished, win: e.game.win, us: b.us, them: b.them }; });
+ok("the final fired with a boolean result and a score that agrees with it", fin.finished && typeof fin.win === "boolean" && (fin.win ? fin.us > fin.them : fin.them > fin.us), JSON.stringify(fin));
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the box score (2.5 s after last call)");
+const books = await page.evaluate(async () => {
+  const LG = await import("./js/league.js");
+  const c = window.__fq.campaign;
+  const g = c.league.weeks[0].find(x => x.home === LG.MULES || x.away === LG.MULES);
+  return { day: c.day, played: g.played, winner: g.winner, box: document.querySelector("#boxBody").textContent,
+    boxShown: document.querySelector("#boxOverlay").style.display === "flex",
+    invariant: LG.allGames(c.league).every(({ g, date }) => g.played === (date < c.day)) };
+});
+ok("the box score is up and the books rolled to day 5", books.boxShown && books.day === 5, `day ${books.day}`);
+ok("the Mules' game is in the standings with the result the room saw", books.played && (books.winner === "FVM") === fin.win, `winner ${books.winner}, engine win ${fin.win}`);
+ok("the box score's game line names the opponent and the score", books.box.includes(cork.opp) && books.box.includes(`${fin.us}–${fin.them}`));
+ok("the morning after holds the league's invariant", books.invariant);
+ok("no page errors through a whole night", errors.length === 0, errors.join(" | "));
+
 await browser.close();
 server.close();
 console.log(`\n${pass} passed, ${fail} failed`);

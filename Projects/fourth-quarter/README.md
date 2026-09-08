@@ -85,9 +85,18 @@ python3 -m http.server 8000
   each, six minutes at 1×.
 
 One night = 8 sim hours (5 PM → 1 AM), 45 real seconds per hour at 1×.
-Games land on **Thursdays and Sundays** — bigger crowds, heavier beer share.
-Kickoff at 7, final at 11 — the TVs run a fake broadcast that agrees with the
-engine's result, and Mules fans bounce when they win.
+The bar lives inside a **MAFA season** (`js/league.js`): eight named teams, a
+14-week double round-robin, a four-team bracket over two more weeks, a
+champion, then two dark weeks and a fresh schedule. The Mules play once a
+week on a night that rotates Thursday, Sunday, Sunday, Monday; the other
+three games of the week are on the screens for a smaller draw. A Mules night
+is a bigger crowd and a heavier beer share, a rivalry night (the Sharks) or a
+bracket night bigger still, and a game the Mules are already eliminated from
+is a smaller one. Kickoff at 7, final at 11 — the TVs run a broadcast with
+the real opponent on it and the standings up at halftime, the result is
+rolled at the league's odds and written into the standings at settlement,
+and Mules fans bounce when they win. The corkboard's Theme panel carries the
+table and this week's fixtures.
 
 ## The day's decisions
 
@@ -125,9 +134,17 @@ engine's result, and Mules fans bounce when they win.
 - `js/engine.js` — pure night sim (arrivals, tickets, prep, tips, mood, game
   beats, stock consumption, promo pricing, cook/bartender prep-speed
   multipliers, the player's stove/tap minigame hooks). No three.js.
+- `js/league.js` — the MAFA season, pure. The calendar is the schedule:
+  season, week, phase and tonight's games are functions of the day number,
+  and the save (`c.league`) carries only results, seeds, champions and the
+  generator state. `syncLeague()` holds the one invariant (everything dated
+  before today is played, nothing from today on), which is also how a save
+  from before the league existed loads into the right week.
 - `js/campaign.js` — the books between nights: cash, calendar, stock orders,
   payroll + roles, promos, upgrades, settlement, persistence. Also pure — the
   save slot takes any localStorage-shaped object, and the smoke test passes a stub.
+  `tonight()`, `isGameNight()`, `forecast()` and `mulesWinProb()` ask
+  league.js; `settleNight()` hands the engine's result back to it.
   `repairCampaign()` is the load-time fill-in, and the note above it is the
   write-up of the session-8 audit: every field the game does arithmetic on, what
   an old save missing it actually did, and why a `typeof` check wasn't enough.
@@ -136,8 +153,9 @@ engine's result, and Mules fans bounce when they win.
   the dark-night settlement instead of "Open the Doors" whenever a venue move
   is still settling in (`c.darkNightsLeft > 0`).
 - Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs`,
-  `node test/smoke-layout.mjs`, `node test/smoke-nav.mjs` and
-  `node test/smoke-textures.mjs` (CI runs every `test/*.mjs`).
+  `node test/smoke-league.mjs`, `node test/smoke-layout.mjs`,
+  `node test/smoke-nav.mjs` and `node test/smoke-textures.mjs` (CI runs every
+  `test/*.mjs`).
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
   hand; it needs `playwright-core`. `node tools/measure-load.mjs` is the
   texture load measurement (below), and `node tools/make-textures.mjs` is
@@ -269,6 +287,7 @@ On a 5 Mbps line the 2k room takes 114.5 s to finish; the 1k room, 11.7 s.
    session's spoilage is a cost curve, not a lease-can-be-lost mechanic.
    `SPOILAGE_RATE` in `js/campaign.js` is the one number to tune if 15%/night
    feels wrong once it's been played.
-3. **Full campaign port** — league standings, regulars, rival bar,
-   distributors, a Commercial Walk-In upgrade to cut the spoilage rate,
-   events as floor moments, re-balanced for the 3D serving loop.
+3. **Full campaign port — the league is in (wishlist Phase 6).** Still to
+   port: regulars, the rival bar, distributors, a Commercial Walk-In upgrade
+   to cut the spoilage rate, events as floor moments, and a season that
+   nudges rent and wages, re-balanced for the 3D serving loop.

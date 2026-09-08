@@ -511,27 +511,41 @@ function tvScreen(g, x, y, z, ry) {
   return { canvas: c, ctx, tex };
 }
 
-/** Redraw all TVs with the current fake broadcast state. Cheap; call ~2×/sec. */
+/**
+ * Redraw all TVs with the current broadcast state. Cheap; call ~2×/sec.
+ *
+ *  state.gameNight   the Mules play tonight
+ *  state.headline    what the screens say when they are not showing the Mules
+ *                    (league.js's tonight().label, upper-cased by main.js)
+ *  state.usName / themName   the Mules and tonight's opponent, as the score
+ *                    bug prints them; `us` / `them` the running score
+ *  state.standings   [{ id, short, w, l, streak }] in table order, drawn in
+ *                    place of the field while `showStandings` is on — the
+ *                    between-periods screen
+ */
 export function drawBroadcast(tvs, state) {
   for (const tv of tvs) {
     const { ctx, canvas: c } = tv;
     ctx.fillStyle = "#06121e"; ctx.fillRect(0, 0, c.width, c.height);
-    ctx.fillStyle = "#14532d"; ctx.fillRect(0, 96, c.width, 130);
-    ctx.strokeStyle = "#ffffff22"; ctx.lineWidth = 2;
-    for (let i = 0; i < 10; i++) { ctx.beginPath(); ctx.moveTo(i * 56 + (state.flicker % 56), 96); ctx.lineTo(i * 56 + (state.flicker % 56), 226); ctx.stroke(); }
+    if (state.showStandings && state.standings && state.standings.length) drawStandings(ctx, c, state);
+    else {
+      ctx.fillStyle = "#14532d"; ctx.fillRect(0, 96, c.width, 130);
+      ctx.strokeStyle = "#ffffff22"; ctx.lineWidth = 2;
+      for (let i = 0; i < 10; i++) { ctx.beginPath(); ctx.moveTo(i * 56 + (state.flicker % 56), 96); ctx.lineTo(i * 56 + (state.flicker % 56), 226); ctx.stroke(); }
+    }
     ctx.fillStyle = "#0b1320"; ctx.fillRect(0, 0, c.width, 72);
     ctx.font = "bold 34px Impact, sans-serif"; ctx.textBaseline = "middle";
     if (!state.gameNight) {
       ctx.fillStyle = "#e8a33d"; ctx.textAlign = "center";
-      ctx.fillText("MAFA TONIGHT — HIGHLIGHTS", c.width / 2, 36);
+      ctx.fillText(state.headline || "MAFA TONIGHT — HIGHLIGHTS", c.width / 2, 36);
     } else if (!state.started) {
       ctx.fillStyle = "#e8a33d"; ctx.textAlign = "center";
-      ctx.fillText("MULES vs SHARKS — PREGAME", c.width / 2, 36);
+      ctx.fillText(`${state.usName} ${state.home ? "vs" : "at"} ${state.themName} — PREGAME`, c.width / 2, 36);
     } else {
       ctx.textAlign = "left"; ctx.fillStyle = "#f2e9dc";
-      ctx.fillText(`MULES ${state.mules}`, 22, 36);
+      ctx.fillText(`${state.usName} ${state.us}`, 22, 36);
       ctx.fillStyle = "#5aa7d6";
-      ctx.fillText(`SHARKS ${state.sharks}`, 210, 36);
+      ctx.fillText(`${state.themName} ${state.them}`, 230, 36);
       ctx.fillStyle = "#ff4e42"; ctx.textAlign = "right";
       ctx.fillText(state.finished ? "FINAL" : state.clockText, c.width - 18, 36);
     }
@@ -539,6 +553,21 @@ export function drawBroadcast(tvs, state) {
     ctx.fillRect(0, (state.flicker * 7) % c.height, c.width, 3);
     tv.tex.needsUpdate = true;
   }
+}
+
+/** The standings table, eight rows under the score bug, the Mules' row lit. */
+function drawStandings(ctx, c, state) {
+  ctx.fillStyle = "#0e1a26"; ctx.fillRect(0, 72, c.width, c.height - 72);
+  ctx.font = "bold 20px Impact, sans-serif"; ctx.textBaseline = "middle";
+  ctx.fillStyle = "#e8a33d"; ctx.textAlign = "left";
+  ctx.fillText(`MAFA STANDINGS — WEEK ${state.week + 1}`, 22, 90);
+  ctx.textAlign = "right"; ctx.fillText("W   L", c.width - 22, 90);
+  state.standings.forEach((r, i) => {
+    const y = 114 + i * 21;
+    ctx.fillStyle = r.id === "FVM" ? "#f2e9dc" : "#9fb3c8";
+    ctx.textAlign = "left"; ctx.fillText(`${i + 1}. ${r.short.toUpperCase()}${r.streak >= 3 ? `  W${r.streak}` : ""}`, 22, y);
+    ctx.textAlign = "right"; ctx.fillText(`${r.w}   ${r.l}`, c.width - 22, y);
+  });
 }
 
 /** Glowing floor ring marking a walk-up management station. */

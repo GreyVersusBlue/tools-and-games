@@ -7,13 +7,13 @@ import { MENU, FOOD } from "./engine.js";
 // test/smoke-campaign.mjs under plain Node, which cannot resolve a site-absolute
 // specifier. The relative path resolves the same in both.
 import { LAYOUTS, seatsFor } from "./layout.js";
+import { DAYS, MULES, newLeague, validLeague, syncLeague, settleLeagueNight, tonight as leagueTonight, winProb } from "./league.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
+export { DAYS };
 export const SAVE_KEY = "fq3d-save";
 export const RENT = 110;
-export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export const BASE_CROWD = { Mon: 26, Tue: 20, Wed: 28, Thu: 34, Fri: 44, Sat: 48, Sun: 38 };
-export const GAME_DAYS = ["Thu", "Sun"]; // Mules on the screens
 
 // per-serving wholesale cost
 export const STOCK_COST = { wings: 3.2, burger: 3.8, nachos: 2.5, fries: 1.2, beer: 1.85, soda: 0.5 };
@@ -87,10 +87,13 @@ export function settleDarkNight(c, rand = Math.random) {
   const net = -(wages + rentDue + upgFees);
   c.cash = Math.round((c.cash - wages - rentDue - upgFees) * 100) / 100;
   const spoilage = applySpoilage(c);
+  // the league plays on whether the doors were open or not
+  const games = settleLeagueNight(c.league, c.day, null);
   c.day++;
+  syncLeague(c.league, c.day);
   c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, upgFees, net, spoilage };
+  return { wages, rent: rentDue, upgFees, net, spoilage, games };
 }
 
 // ---------- spoilage: this session's answer to "day 40 is as easy as day 4" ----------
@@ -127,7 +130,7 @@ export function applySpoilage(c) {
 
 // ---------- dev/debug helpers — a debug menu only, never part of normal play ----------
 export function devAddCash(c, amount) { c.cash = Math.round((c.cash + amount) * 100) / 100; }
-export function devSetDay(c, day) { c.day = Math.max(1, Math.round(day)); }
+export function devSetDay(c, day) { c.day = Math.max(1, Math.round(day)); syncLeague(c.league, c.day); }
 /** Instant, free, no dark nights — for testing a tier without grinding to it. */
 export function devWarpVenue(c, venueId) {
   if (!(venueId in VENUES)) return false;
@@ -251,13 +254,33 @@ export function newCampaign() {
     promoTonight: "none",
     upgrades: [],
     stats: { nights: 0, bestNight: 0, lifetimeNet: 0 },
+    league: newLeague(Math.floor(Math.random() * 4294967296)),
   };
   rollApplicants(c, Math.random);
   return c;
 }
 
 export function weekday(c) { return DAYS[(c.day - 1) % 7]; }
-export function isGameNight(c) { return GAME_DAYS.includes(weekday(c)); }
+
+// ---------- the league ----------
+// Game night used to be `weekday() in ["Thu", "Sun"]` and the result a coin
+// flip nothing remembered. Now league.js holds a MAFA season the calendar
+// walks through, and these are the campaign's three questions of it.
+
+/** What is on the screens tonight — see league.js's tonight(). */
+export function tonight(c) { return leagueTonight(c.league, c.day); }
+/** The Mules play tonight. The engine's game beats, the beer skew and the
+ *  Watch Party's crowd all key off this. */
+export function isGameNight(c) { return !!tonight(c).mules; }
+/** The night engine's odds for the Mules tonight, off the league's form
+ *  table, so the room's result and the standings are drawn from the same
+ *  number. 0.55 — the old coin — when there is no game. */
+export function mulesWinProb(c) {
+  const g = tonight(c).mules;
+  if (!g) return 0.55;
+  const pHome = winProb(c.league, g);
+  return g.home === MULES ? pHome : 1 - pHome;
+}
 
 export function promoDef(c) {
   const p = PROMOS[c.promoTonight] || PROMOS.none;
@@ -266,7 +289,7 @@ export function promoDef(c) {
 
 export function forecast(c) {
   const base = BASE_CROWD[weekday(c)];
-  const game = isGameNight(c) ? 1.5 : 1;
+  const game = tonight(c).crowd; // a rivalry, a bracket game and a dead rubber are not the same crowd
   const upgMult = owned(c, "broadcast") ? 1.15 : 1;
   return Math.round(base * game * promoDef(c).crowd * upgMult * venueDef(c).buzzMult);
 }
@@ -331,10 +354,15 @@ export function settleNight(c, summary, rand = Math.random) {
   c.stats.bestNight = Math.max(c.stats.bestNight, take);
   c.stats.lifetimeNet += net;
   const spoilage = applySpoilage(c);
+  // the Mules' result is the engine's, so the standings say what the room saw;
+  // the other games tonight are the league's own rolls
+  const g = summary.game;
+  const games = settleLeagueNight(c.league, c.day, g && g.finished && typeof g.win === "boolean" ? g.win : null);
   c.day++;
+  syncLeague(c.league, c.day);
   c.promoTonight = "none";
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage };
+  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games };
 }
 
 // ---- persistence: the shared save system ------------------------------------
@@ -413,6 +441,17 @@ function num(v, fallback) { return Number.isFinite(v) ? v : fallback; }
  * - **`upgrades` was only checked for falsiness,** so an object there made
  *   `owned()` throw on `.includes` from the first frame.
  *
+ * **The league is additive** (Phase 6). A save from before it existed has no
+ * `league`, and one that was hand-edited or truncated can have a broken one;
+ * either gets a fresh record seeded off the day, and `syncLeague()` then plays
+ * it forward to the campaign's day, so a day-40 save loads into week 5 of
+ * season 1 with 22 results behind it rather than being refused or dropped on
+ * day 1 of a season. The seed is the day rather than a random draw so two
+ * loads of the same old save agree. `syncLeague()` also runs on a league that
+ * is fine, because it is the one place the invariant "everything before today
+ * is played, nothing from today on is" is held, and a load is the one time
+ * nobody else has held it.
+ *
  * Keep this idempotent: the slot runs it on every load, including saves it wrote
  * itself.
  */
@@ -454,6 +493,9 @@ export function repairCampaign(c) {
     if (p.role !== "cook") p.speed = num(p.speed, speedForSkill(p.skill));
   }
   for (const id in MENU) c.stock[id] = Math.max(0, num(c.stock[id], 0));
+
+  if (!validLeague(c.league)) c.league = newLeague(c.day);
+  syncLeague(c.league, c.day);
   return c;
 }
 

@@ -3,6 +3,7 @@
 
 import * as C from "../js/campaign.js";
 import * as L from "../js/layout.js";
+import * as LG from "../js/league.js";
 import { NightEngine, MENU, seed } from "../js/engine.js";
 
 let pass = 0, fail = 0;
@@ -477,6 +478,90 @@ ok(readyEvts.some(ev => ev.type === "ready" && ev.ticket.id === tkA.id), "a perf
 ok(e5.claim(tkA.id, "boss"), "the player-worked ticket can be claimed like any other");
 const rCraft = e5.deliver(tkA.id, false);
 ok(rCraft && e5.crafted === 1, "delivering a player-crafted ticket counts toward crafted");
+
+// ---- the league (Phase 6): the calendar asks league.js, not the weekday ----
+{
+  const c = C.newCampaign();
+  ok(LG.validLeague(c.league) && c.league.season === 1, "a fresh campaign carries a season-1 league");
+  // week 0 the Mules play Thursday; week 1 they play Sunday. The old rule said
+  // both Thursdays and both Sundays; the fixture list says one each.
+  c.day = 4;  ok(C.isGameNight(c), "day 4 (Thu, week 0) is a Mules game");
+  c.day = 7;  ok(!C.isGameNight(c), "day 7 (Sun, week 0) is not — the Mules played Thursday");
+  c.day = 11; ok(!C.isGameNight(c), "day 11 (Thu, week 1) is not — the Mules play Sunday this week");
+  c.day = 14; ok(C.isGameNight(c), "day 14 (Sun, week 1) is");
+  ok(C.tonight(c).mules && C.tonight(c).opp && C.tonight(c).label.includes(C.tonight(c).opp.short), "tonight() names the opponent");
+  // the forecast accounts for the opponent: a rivalry night draws more than a plain game
+  const rivalWeek = c.league.weeks.findIndex(w => w.some(g => [g.home, g.away].includes(LG.MULES) && [g.home, g.away].includes("HCS")));
+  const rg = c.league.weeks[rivalWeek].find(g => [g.home, g.away].includes("HCS"));
+  const plainWeek = c.league.weeks.findIndex((w, i) => i !== rivalWeek && i < 6);
+  const pg = c.league.weeks[plainWeek].find(g => [g.home, g.away].includes(LG.MULES));
+  // a fresh Corner Tap with no theme and no screens: the forecast is base × the league's multiplier, rounded
+  c.day = LG.dateOf(1, plainWeek, pg.day);
+  ok(C.forecast(c) === Math.round(C.BASE_CROWD[C.weekday(c)] * LG.CROWD.mules), `a plain Mules game is base × ${LG.CROWD.mules}`);
+  c.day = LG.dateOf(1, rivalWeek, rg.day);
+  ok(C.forecast(c) === Math.round(C.BASE_CROWD[C.weekday(c)] * LG.CROWD.rivalry), `a rivalry night is base × ${LG.CROWD.rivalry}`);
+  c.day = 2; ok(C.forecast(c) === C.BASE_CROWD.Tue, "a Tuesday with nothing on is 1×");
+  // odds: the engine's winProb is the league's, from the Mules' side
+  c.day = 4; const g4 = C.tonight(c).mules;
+  const pHome = LG.winProb(c.league, g4);
+  ok(Math.abs(C.mulesWinProb(c) - (g4.home === LG.MULES ? pHome : 1 - pHome)) < 1e-9, "mulesWinProb is winProb from the Mules' side of the fixture");
+  c.day = 2; ok(C.mulesWinProb(c) === 0.55, "and the old coin when there is no game");
+}
+
+// ---- the league in the save: additive, defaulted, played forward ----
+{
+  // a save from before the league existed, forty nights in
+  const old = C.newCampaign(); delete old.league; old.day = 40;
+  C.repairCampaign(old);
+  ok(LG.validLeague(old.league) && old.league.season === 1 && LG.weekOf(old.day) === 5, "a day-40 save with no league loads into week 5 of season 1");
+  const played = LG.allGames(old.league).filter(x => x.g.played);
+  ok(played.length === 22 && played.every(x => x.date < 40), "with the 22 games dated before day 40 played and nothing on or after");
+  const again = C.newCampaign(); delete again.league; again.day = 40; C.repairCampaign(again);
+  ok(JSON.stringify(again.league) === JSON.stringify(old.league), "two loads of the same old save agree: the seed is the day");
+  // a corrupt record is rebuilt whole, not patched
+  const bad = C.newCampaign(); bad.league.weeks = "nope"; bad.day = 9;
+  C.repairCampaign(bad);
+  ok(LG.validLeague(bad.league) && LG.allGames(bad.league).filter(x => x.g.played).length === 5, "a corrupt league record is rebuilt and played to day 9 (week 0's four and Monday's)");
+  // a league behind the day is caught up on load (the day moved without settlement)
+  const lag = C.newCampaign(); lag.day = 30;
+  C.repairCampaign(lag);
+  ok(LG.allGames(lag.league).every(({ g, date }) => g.played === (date < 30)), "repair holds the league to the day");
+  // the slot round-trips it
+  const storage = {}; const stub = { getItem: k => storage[k] ?? null, setItem: (k, v) => { storage[k] = v; }, removeItem: k => { delete storage[k]; } };
+  const c = C.newCampaign(); c.day = 20; C.repairCampaign(c);
+  C.saveCampaign(c, stub);
+  const back = C.loadCampaign(stub);
+  ok(back && JSON.stringify(back.league) === JSON.stringify(c.league), "a saved league loads back identical");
+  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 1, "no key change, no version bump: the field is additive and repair fills it");
+}
+
+// ---- settlement: the standings say what the room saw ----
+{
+  const c = C.newCampaign(); c.day = 4; C.repairCampaign(c);
+  const g = C.tonight(c).mules;
+  const win = { total: 500, revenue: 450, tips: 50, game: { started: true, finished: true, win: true } };
+  const books = C.settleNight(c, win, Math.random);
+  ok(g.played && g.winner === LG.MULES && books.games.includes(g), "a night the Mules won puts a Mules win in the standings");
+  ok(c.day === 5 && LG.allGames(c.league).every(({ g, date }) => g.played === (date < 5)), "and the next morning holds the invariant");
+  const c2 = C.newCampaign(); c2.day = 4; C.repairCampaign(c2);
+  const g2 = C.tonight(c2).mules;
+  C.settleNight(c2, { total: 0, revenue: 0, tips: 0, game: { started: true, finished: true, win: false } }, Math.random);
+  ok(g2.played && g2.winner !== LG.MULES, "a loss is a loss");
+  const c3 = C.newCampaign(); c3.day = 4; C.repairCampaign(c3);
+  const g3 = C.tonight(c3).mules;
+  C.settleNight(c3, { total: 0, revenue: 0, tips: 0, game: { started: false, finished: false, win: null } }, Math.random);
+  ok(g3.played && [g3.home, g3.away].includes(g3.winner), "a night whose game never finished: the league rolls it");
+  // a dark night moves the league too
+  const c4 = C.newCampaign(); c4.day = 4; C.repairCampaign(c4); c4.cash = 5500; C.moveVenue(c4);
+  const g4 = C.tonight(c4).mules;
+  const dn = C.settleDarkNight(c4, Math.random);
+  ok(g4.played && dn.games.includes(g4) && c4.day === 5, "the Mules play whether the doors were open or not");
+  // the dev menu's day jump syncs
+  const c5 = C.newCampaign(); C.devSetDay(c5, 60);
+  ok(LG.allGames(c5.league).every(({ g, date }) => g.played === (date < 60)), "devSetDay() catches the league up");
+  C.devSetDay(c5, 3);
+  ok(LG.allGames(c5.league).every(({ g, date }) => g.played === (date < 3)), "and walks it back, leaving Monday's game behind it");
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

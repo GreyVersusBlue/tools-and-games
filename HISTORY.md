@@ -2392,6 +2392,53 @@ Two of them have moved since they were written:
    fetches, and the standing backlog names it. *Source: Fourth Quarter
    Phase 4.*
 
+203. **The calendar is the schedule; the save carries only results.** Which
+   MAFA season and week it is, whether the league is in its regular season,
+   its bracket or its off-season, and which games are on tonight are
+   functions of the campaign's day number: 14 regular weeks, two bracket
+   weeks, 14 dark nights, 126 days a season, so every season opens on a
+   Monday and `weekOf(day)` is integer arithmetic. `c.league` holds the
+   results, the seeds they produced, the champions so far and the generator
+   state that rolled them, and nothing the day can derive; records and
+   standings are recomputed from the results on every call. `syncLeague()`
+   holds one invariant, every game dated before today played and none dated
+   today or later, on every load and after every day change. That is what
+   lets a save written before the league existed load into week 5 of season
+   1 with 22 results behind it, and lets the dev menu walk the day backwards
+   without leaving a season in the future. A league record that fails
+   `validLeague()` is rebuilt whole from a seed that is the day, not patched,
+   so two loads of the same old save agree. The 2D build's week pointer and
+   stored win counters were not ported: a pointer can drift from the
+   calendar and a counter from the results, and neither can here. Its
+   15-night off-season became 14 so the next season opens on a Monday.
+   *Source: Fourth Quarter Phase 6.*
+
+204. **There is one result.** The engine still rolls the Mules' game at hour
+   6, but at the league's odds (`winProb`: 0.53 for the home side, four points
+   a game of streak either way, clamped to [0.2, 0.8]) rather than the flat
+   0.55, and `settleNight()` hands that result to `settleLeagueNight()`,
+   which writes it into the fixture list. The other games that night, a
+   dark night's Mules game, and a night whose game never finished are the
+   league's own rolls off the same mulberry32, stepped over the league's
+   saved state rather than the engine's module-level one. The broadcast, the
+   box score and the standings cannot disagree about who won because none of
+   them holds a result of its own. *Source: Fourth Quarter Phase 6.*
+
+205. **One Mules game a week, and the crowd reads what is on.** The old rule
+   was two 1.5× nights a week, Thursday and Sunday, against an anonymous
+   opponent. Now the Mules play once a week on a slot that rotates Thursday,
+   Sunday, Sunday, Monday, and the other three games of the week are on the
+   screens. The table (`CROWD` in `league.js`): the final 2.2, a semi 1.9, the
+   Sharks 1.75, a Mules game 1.5, a game the Mules are already eliminated from
+   1.25, another team's playoff game 1.3, another team's game 1.15, nothing
+   1. `forecast()` reads `tonight(c).crowd` and nothing else about the game;
+   the engine's beats, the beer skew and the Watch Party key off
+   `isGameNight()`, which now means "the Mules play tonight". A regular week
+   used to draw 1.5 + 1.5 over base across two nights and now draws 1.5 + 3 ×
+   1.15 across four, one of them a Monday; nobody has played it, and the
+   table is one object to retune. The 2D build's League Pass, which gated
+   other teams' games, was not ported. *Source: Fourth Quarter Phase 6.*
+
 ---
 
 # The site sessions, 1–10
@@ -3215,7 +3262,7 @@ file did the same for the one seed it touched. Save: none.
 
 ---
 
-# The Fourth Quarter, Phases 1 through 5
+# The Fourth Quarter, Phases 1 through 6
 
 **Phase 1 — The room is a description.** `js/layout.js`, pure, zero imports:
 one description per venue tier (all four the Corner Tap until Phase 2), and
@@ -3413,6 +3460,40 @@ repeated URL without a request Playwright can see. It now reads the
 manager's count and says why (#147). *Left:* the 2k originals at q98, a
 single 1k size for every surface, and nothing gating "Take the Floor" on the
 manager — all three in the standing backlog. Arc one is closed.
+
+**Phase 6 — The league has a season (PR #TBD).** Game night was `weekday()
+in ["Thu", "Sun"]` and the result a coin flip nothing remembered. Now
+`js/league.js` (319, pure, imports only `mulberry32` from engine.js) holds a
+MAFA season: eight named teams, a double round-robin dealt by the circle
+method off a seed, the calendar as arithmetic on the day number (#203), and
+`tonight()` naming what is on the screens and what it is worth at the door
+(#205). `c.league` is additive, rebuilt off the day and `syncLeague()`d on
+every load, so a day-40 save from before it existed loads into week 5 with 22
+results behind it. The engine takes the league's odds and its home flag, and
+`settleNight()` hands the result back, so the TV, the box score and the
+standings hold one result (#204). `drawBroadcast()` prints the real opponent
+and the standings for the first third of the hour after Q2; the Theme panel
+at the corkboard carries the table, this week's fixtures with tonight's
+marked, and the champions; the dev menu can skip to the bracket or the next
+season. *Counts:* `test/smoke-league.mjs` is new (84), `smoke-campaign.mjs`
+216 → 241, `smoke-engine.mjs` 190 → 194, Node total 924 → 1,026;
+`tools/browser-check.mjs` 145 → 162, and it now runs a real night: opens the
+doors on a Mules night, jumps the engine to kickoff, halftime, the final and
+last call, and reads the result out of the standings the morning after.
+*Broken on purpose (#34), fifteen in Node and four in
+the browser, each caught by the assertion whose comment claims it:* the
+bracket's week read off the calendar's season (2), the settling flag ignored
+(1), bracket games in the standings (1), "eliminated" and "clinched" each off
+by one (1, 1), the rivalry branch gone (2), the Mules always on Thursday (4),
+the weekday rule back (2), `forecast()` back on 1.5 (1), repair not syncing
+(3), the engine's result dropped (1), `winProb` ignored (1), the champion
+never in history (6), the seeds the bottom four (1); in the browser, the odds dropped (1), the halftime screen never shown (1),
+the Mules' row not lit (1), the broadcast naming the Sharks whoever plays
+(1). One break, `playGame()` marking a game played before rolling it, is caught
+by a `TypeError` in `records()` rather than an assertion; the suite exits 1
+and the stack names the line. *Left:* the economy does not move with the
+season, League Pass, and a tie-break beyond wins-losses-id, all in the
+standing backlog. Sized 2+, closed in one session because every bullet was.
 
 ---
 

@@ -151,5 +151,22 @@ ok(jt && Number.isFinite(jt.readyAt) && jt.readyAt > jt.placedAt,
 ok(new NightEngine({ foodMult: 0 }).foodMult === 0, "foodMult 0 survives the guard: no cook still closes the kitchen");
 ok(new NightEngine({ foodMult: -3 }).foodMult === 0, "a negative multiplier clamps to closed rather than going backwards");
 
+// --- the league's odds and home flag reach the game (Phase 6) ---
+{
+  const run = opts => {
+    const e = new NightEngine({ crowdTarget: 1, gameNight: true, hourLenSec: 1, seats: 1, ...opts });
+    let win = null;
+    for (let t = 0; t < 9 && !e.done; t += 0.5) for (const ev of e.update(0.5)) if (ev.type === "final") win = ev.win;
+    return { e, win };
+  };
+  seed(5); const sure = run({ winProb: 1 });
+  seed(5); const never = run({ winProb: 0 });
+  ok(sure.win === true && never.win === false, "winProb 1 always wins the final and winProb 0 always loses it");
+  ok(run({ home: true }).e.game.home === true && run({ home: false }).e.game.home === false, "home is the caller's when given");
+  seed(9); const a = run({}); seed(9); const b = run({ home: true });
+  ok(a.e.spawnDebt === b.e.spawnDebt && a.win === b.win, "giving home does not shift the seeded draw sequence");
+  ok(new NightEngine({}).winProb === 0.55 && new NightEngine({ winProb: NaN }).winProb === 0.55, "no odds, or NaN odds, is the old 0.55 coin");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
