@@ -700,6 +700,21 @@ function renderDrawBreakdown(result) {
   return `<div class="draw-breakdown">${parts.join('<span>&middot;</span>')}</div>`;
 }
 
+// Phase 1: where the crowd went on foot. Missing from any report written
+// before this phase (an old save's history), so it renders nothing rather
+// than a row of zeros.
+function renderCrowdWalk(result) {
+  const g = result.guests;
+  if (!g || !g.sampled) return '';
+  const parts = [
+    `<b>${g.watched.toLocaleString()}</b> watched a show`,
+    `<b>${g.ate.toLocaleString()}</b> ate`,
+    `<b>${g.bought.toLocaleString()}</b> bought something`,
+  ];
+  if (g.hungry > 0) parts.push(`<b>${g.hungry.toLocaleString()}</b> went hungry`);
+  return `<div class="ticket-row crowd-walk"><span>Where the crowd went</span><span class="hint">${parts.join(' &middot; ')}</span></div>`;
+}
+
 export function renderReport(state, result) {
   const netClass = result.cashDelta >= 0 ? 'good' : 'bad';
   const satLabel = result.satisfaction >= 75 ? 'Delighted' : result.satisfaction >= 55 ? 'Content' : result.satisfaction >= 35 ? 'Grumbling' : 'Miserable';
@@ -710,6 +725,7 @@ export function renderReport(state, result) {
       ${renderDrawBreakdown(result)}
       ${result.campaignActive ? `<div class="ticket-row"><span>${result.campaignActive}</span><span class="mono">+${Math.round((result.adFactor - 1) * 100)}% draw</span></div>` : ''}
       <div class="ticket-row"><span>Crowd mood</span><span class="mono">${satLabel} (${result.satisfaction}/100)</span></div>
+      ${renderCrowdWalk(result)}
       <hr>
       <div class="ticket-row"><span>Ticket revenue</span><span class="mono">${money(result.ticketRevenue)}</span></div>
       <div class="ticket-row"><span>Stall revenue (house cut)</span><span class="mono">${money(result.vendorRevenue)}</span></div>
