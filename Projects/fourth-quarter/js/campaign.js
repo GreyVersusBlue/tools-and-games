@@ -72,7 +72,9 @@ export function canMoveVenue(c) {
   const nv = nextVenue(c);
   return !!nv && c.cash >= nv.cost;
 }
-/** Sign the lease: one-way, cash-gated, kicks off the dark-night countdown. */
+/** Sign the lease: cash-gated, kicks off the dark-night countdown. Climbing is
+ *  still the only *voluntary* direction — the ladder walks back down only
+ *  through evictLease(), which is not a thing a player chooses. */
 export function moveVenue(c) {
   const nv = nextVenue(c);
   if (!nv) return { ok: false, err: "Already at the flagship — nowhere left to climb." };
@@ -80,15 +82,40 @@ export function moveVenue(c) {
   c.cash -= nv.cost;
   c.venue = nv.id;
   c.darkNightsLeft = nv.darkNights;
+  // the high-water mark, not the current room: an evicted run's summary should
+  // still say the flagship if the flagship is where it got to
+  c.stats.bestTier = Math.max(num(c.stats.bestTier, 0), nv.order);
   return { ok: true, venue: nv };
+}
+
+/** The rung below, or null at the Corner Tap — evictLease()'s only question. */
+export function prevVenue(c) {
+  const i = VENUE_ORDER.indexOf(c.venue);
+  return i > 0 ? VENUES[VENUE_ORDER[i - 1]] : null;
+}
+
+/**
+ * Tonight's fixed bill: wages, rent and upgrade upkeep, in one place.
+ *
+ * Both settlements computed these three by hand and the two copies had already
+ * drifted once in shape (`settleDarkNight()` summed them into `net` a different
+ * way than `settleNight()` did). That was harmless while nothing read the
+ * result twice. The lease check reads it on both paths, so a number that can
+ * differ between them is a number that can evict on one path and not the other.
+ * A theme is not in here on purpose: it is an optional spend on an open night,
+ * and a closed night cannot buy one.
+ */
+export function billsFor(c) {
+  const wages = wageBill(c);
+  const rentDue = rent(c);
+  const upgFees = upgradeFees(c);
+  return { wages, rent: rentDue, upgFees, total: wages + rentDue + upgFees };
 }
 /** A closed "moving in" night: bills still land, no revenue, no patrons. */
 export function settleDarkNight(c, rand = Math.random) {
-  const wages = wageBill(c);
-  const upgFees = upgradeFees(c);
-  const rentDue = rent(c);
-  const net = -(wages + rentDue + upgFees);
-  c.cash = Math.round((c.cash - wages - rentDue - upgFees) * 100) / 100;
+  const { wages, rent: rentDue, upgFees, total } = billsFor(c);
+  const net = -total;
+  c.cash = Math.round((c.cash - total) * 100) / 100;
   const spoilage = applySpoilage(c);
   // the league plays on whether the doors were open or not
   const games = settleLeagueNight(c.league, c.day, null);
@@ -105,7 +132,134 @@ export function settleDarkNight(c, rand = Math.random) {
   syncLeague(c.league, c.day);
   c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, upgFees, net, spoilage, games, social };
+  // last, so the countdown it may overwrite is this night's, not the move's
+  const lease = applyLease(c);
+  return { wages, rent: rentDue, upgFees, net, spoilage, games, social, lease };
+}
+
+// ---------- the lease: the night you can lose ----------
+//
+// The gap this closes, in the README's words and this wishlist's: the cash
+// number turns red and then stays red, forever, and you keep playing.
+// settleNight() would take the till to negative ten thousand and roll
+// tomorrow's applicants. Phases 6-8 built the pressure that makes a bad week
+// reachable — a season with stakes, a rival, and cards that can sink a night —
+// and this is the consequence they were missing.
+//
+// Locked #219 answers Questions for Devon Q23, "should there be a way to
+// lose?", with the shape the wishlist named and the one the three listed
+// options collapse to: **the landlord, not the bank.** A night whose books
+// close below zero is a missed night; LEASE_STRIKES of them in a row and the
+// lease is gone. One night back in the black clears the count outright — this
+// is a landlord counting consecutive misses, not a ledger of every bad night
+// you have ever had, so a run that recovers is not carrying a mark from day 6
+// into day 40.
+//
+// The threshold is zero rather than a tier-scaled floor because zero is the
+// number the HUD already turns red on. A player who can see the rule being
+// applied is the whole point of a loss condition; a hidden −3×rent line would
+// be one more number to learn.
+export const LEASE_FLOOR = 0;
+export const LEASE_STRIKES = 3;
+/** What the till holds the morning after an eviction — see evictLease(). */
+export const RECOVERY_CASH = 300;
+
+/** Regulars over the current room's cap walk, shakiest first, and the door
+ *  remembers them. Called from a demotion and from every load (a save the dev
+ *  menu warped down the ladder is the other way to be over cap). */
+function pruneToVenueCap(c) {
+  const gone = [];
+  while (c.regulars.length > regularCap(c)) {
+    const shakiest = c.regulars.reduce((a, b) => (b.loyalty < a.loyalty ? b : a));
+    c.regulars = c.regulars.filter(r => r !== shakiest);
+    c.regularsLost.push({ name: shakiest.name, usual: shakiest.usual, team: shakiest.team });
+    gone.push(shakiest.name);
+  }
+  c.regularsLost = c.regularsLost.slice(-R.LOST_MEMORY);
+  return gone;
+}
+
+/** Gear the room you just got moved into has no wall for. Comes out with the
+ *  fixtures, and its upkeep comes off the nightly bill with it — which is a
+ *  real part of what makes the smaller room survivable. */
+function stripUpgrades(c) {
+  const gone = c.upgrades.filter(id => UPGRADES[id] && UPGRADES[id].tier > venueDef(c).order);
+  if (gone.length) c.upgrades = c.upgrades.filter(id => !gone.includes(id));
+  return gone;
+}
+
+/**
+ * Lose the lease. Locked #220: this drops you a rung, it does not end the run.
+ *
+ * A game over on night 12 of a 40-night campaign throws away the only thing the
+ * player has built. A demotion keeps the run and takes the room: the ladder
+ * walks backward through the same VENUE_ORDER moveVenue() walks forward, the
+ * smaller room's move-in nights come due (at least one, because moving out is a
+ * move), the gear that does not fit comes off the wall, the regulars over the
+ * smaller cap stop coming, and the debt is written off against the seized
+ * deposit — the till floors at RECOVERY_CASH rather than reopening at minus
+ * eleven hundred, which would evict again three nights later with nothing the
+ * player could have done about it.
+ *
+ * Only an eviction from the Corner Tap is the end, because there is no rung
+ * below it. That is the one place `failed` is ever set.
+ */
+export function evictLease(c) {
+  const from = venueDef(c);
+  const to = prevVenue(c);
+  c.stats.evictions = num(c.stats.evictions, 0) + 1;
+  c.strikes = 0;
+  if (!to) {
+    c.failed = true;
+    return { from: from.id, fromName: from.name, to: null, toName: null, stripped: [], lost: [] };
+  }
+  c.venue = to.id;
+  c.darkNightsLeft = Math.max(1, to.darkNights);
+  const stripped = stripUpgrades(c);
+  const lost = pruneToVenueCap(c);
+  c.cash = Math.max(c.cash, RECOVERY_CASH);
+  return { from: from.id, fromName: from.name, to: to.id, toName: to.name, stripped, lost };
+}
+
+/**
+ * The landlord's count, applied once per settled night — open doors or dark.
+ *
+ * Returns what the ticker and the box score say, and nothing else moves here:
+ * every number this reads was already written by the settlement above it.
+ * `warned` and `evicted` are exclusive by construction, which is what lets both
+ * lines be printed unconditionally from one record.
+ */
+export function applyLease(c) {
+  // `strikes` in the record is always the count as it stands *after* this
+  // night, so a screen reading it never has to know which branch made it.
+  if (c.failed) return { short: true, strikes: c.strikes, left: 0, cleared: false, warned: false, evicted: null, failed: true };
+  if (c.cash >= LEASE_FLOOR) {
+    const cleared = c.strikes > 0;
+    c.strikes = 0;
+    return { short: false, strikes: 0, left: LEASE_STRIKES, cleared, warned: false, evicted: null, failed: false };
+  }
+  c.strikes = Math.min(LEASE_STRIKES, c.strikes + 1);
+  if (c.strikes < LEASE_STRIKES) {
+    return { short: true, strikes: c.strikes, left: LEASE_STRIKES - c.strikes, cleared: false, warned: true, evicted: null, failed: false };
+  }
+  const evicted = evictLease(c);
+  return { short: true, strikes: c.strikes, left: 0, cleared: false, warned: false, evicted, failed: !!c.failed };
+}
+
+/** The run, in the four numbers the ending screen asks for. `bestTier` is the
+ *  high-water rung rather than the current one, so a run that climbed to
+ *  Midtown and got evicted back to the Fieldhouse still says Midtown. */
+export function runSummary(c) {
+  const order = Math.max(0, Math.min(VENUE_ORDER.length - 1, Math.round(num(c.stats.bestTier, 0))));
+  return {
+    nights: c.stats.nights,
+    bestNight: c.stats.bestNight,
+    lifetimeNet: c.stats.lifetimeNet,
+    tier: VENUES[VENUE_ORDER[order]].name,
+    evictions: num(c.stats.evictions, 0),
+    rep: Math.round(c.rep),
+    regulars: c.regulars.length,
+  };
 }
 
 // ---------- spoilage: this session's answer to "day 40 is as easy as day 4" ----------
@@ -147,6 +301,7 @@ export function devSetDay(c, day) { c.day = Math.max(1, Math.round(day)); syncLe
 export function devWarpVenue(c, venueId) {
   if (!(venueId in VENUES)) return false;
   c.venue = venueId; c.darkNightsLeft = 0;
+  c.stats.bestTier = Math.max(num(c.stats.bestTier, 0), VENUES[venueId].order);
   return true;
 }
 export function devClearDarkNights(c) { c.darkNightsLeft = 0; }
@@ -275,7 +430,8 @@ export function newCampaign() {
     applicants: [],
     promoTonight: "none",
     upgrades: [],
-    stats: { nights: 0, bestNight: 0, lifetimeNet: 0 },
+    stats: { nights: 0, bestNight: 0, lifetimeNet: 0, bestTier: 0, evictions: 0 },
+    strikes: 0, failed: false,
     league: newLeague(Math.floor(Math.random() * 4294967296)),
     rep: R.REP_START,
     regulars: R.newRegulars(),
@@ -575,13 +731,11 @@ const RIVAL_TEAM = (LEAGUE_TEAMS.find(t => t.rival) || {}).id || null;
 
 /** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
 export function settleNight(c, summary, rand = Math.random) {
-  const wages = wageBill(c);
+  const { wages, rent: rentDue, upgFees, total: bill } = billsFor(c);
   const promoCost = promoDef(c).cost;
-  const upgFees = upgradeFees(c);
-  const rentDue = rent(c);
   const take = summary.total;
-  const net = Math.round(take - wages - rentDue - promoCost - upgFees);
-  c.cash = Math.round((c.cash + take - wages - rentDue - promoCost - upgFees) * 100) / 100;
+  const net = Math.round(take - bill - promoCost);
+  c.cash = Math.round((c.cash + take - bill - promoCost) * 100) / 100;
   c.stats.nights++;
   c.stats.bestNight = Math.max(c.stats.bestNight, take);
   c.stats.lifetimeNet += net;
@@ -612,7 +766,9 @@ export function settleNight(c, summary, rand = Math.random) {
   syncLeague(c.league, c.day);
   c.promoTonight = "none";
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social, moments };
+  // the landlord counts last, on the cash the whole night left behind
+  const lease = applyLease(c);
+  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social, moments, lease };
 }
 
 // ---- persistence: the shared save system ------------------------------------
@@ -721,9 +877,19 @@ export function repairCampaign(c) {
     nights: Math.max(0, Math.round(num(st.nights, 0))),
     bestNight: Math.max(0, num(st.bestNight, 0)),
     lifetimeNet: num(st.lifetimeNet, 0),
+    evictions: Math.max(0, Math.round(num(st.evictions, 0))),
+    bestTier: Math.max(0, Math.min(VENUE_ORDER.length - 1, Math.round(num(st.bestTier, 0)))),
   };
 
   if (!(c.venue in VENUES)) c.venue = "cornerTap";
+  // Phase 9's fields, all additive: a save from before the lease existed has no
+  // strike count and has not failed, which is the only reading that does not
+  // judge forty nights played under different rules. `bestTier` is floored at
+  // the room the save is actually in, so an old save at the flagship does not
+  // report a Corner Tap run.
+  c.stats.bestTier = Math.max(c.stats.bestTier, venueDef(c).order);
+  c.strikes = Math.max(0, Math.min(LEASE_STRIKES, Math.round(num(c.strikes, 0))));
+  c.failed = c.failed === true;
   c.darkNightsLeft = Math.max(0, Math.round(num(c.darkNightsLeft, 0)));
   if (!(c.promoTonight in PROMOS)) c.promoTonight = "none";
 
@@ -755,14 +921,11 @@ export function repairCampaign(c) {
   c.regulars = R.repairRegulars(c.regulars, c.day);
   c.regularsLost = R.repairLost(c.regularsLost);
   c.rival = R.repairRival(c.rival);
-  // A save moved down the ladder by the dev menu can be over the smaller room's
-  // cap; the shakiest go rather than the newest, and the door remembers them.
-  while (c.regulars.length > R.regularCap(venueDef(c).order)) {
-    const shakiest = c.regulars.reduce((a, b) => (b.loyalty < a.loyalty ? b : a));
-    c.regulars = c.regulars.filter(r => r !== shakiest);
-    c.regularsLost.push({ name: shakiest.name, usual: shakiest.usual, team: shakiest.team });
-  }
-  c.regularsLost = c.regularsLost.slice(-R.LOST_MEMORY);
+  // A save moved down the ladder — by an eviction or by the dev menu — can be
+  // over the smaller room's cap; the shakiest go rather than the newest, and
+  // the door remembers them. Same helper the demotion calls, so the two paths
+  // cannot disagree about who walks.
+  pruneToVenueCap(c);
   // Phase 8's one field, additive: a save from before it has no cooldowns,
   // which is the same as every card being ready to fire.
   c.eventCd = EV.repairEventCd(c.eventCd);

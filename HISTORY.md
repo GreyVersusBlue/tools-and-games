@@ -2621,6 +2621,71 @@ Two of them have moved since they were written:
    line to change.
    *Source: Fourth Quarter Phase 8.*
 
+219. **The way to lose is the landlord, and the count is consecutive.**
+   Answers Questions for Devon Q23, "should there be a way to lose?", which
+   had been raised three times and blocked four rounds of this project. Of
+   the three options on the table — a bankruptcy threshold, a lease that can
+   be lost, a bank that stops lending — the second is the one the rest of the
+   game already supports, and the other two collapse into it: the threshold
+   is *how* the lease is lost, and a bank that stops lending is a screen
+   nothing else in this build has. A night whose books close below $0 is a
+   missed night; three in a row and the lease is gone. One night back in the
+   black clears the count outright, because this is a landlord counting
+   consecutive misses and not a ledger of every bad night in the run — a
+   campaign that recovers should not be carrying a mark from day 6 into day
+   40. Dark nights count: bills land on a closed night and no revenue does,
+   which is the one way a venue move can bankrupt you mid-move. The
+   threshold is zero rather than a floor scaled to the tier because zero is
+   the number the HUD already turns red on, and a loss condition the player
+   cannot see being applied is not a loss condition.
+   *Source: Fourth Quarter Phase 9.*
+
+220. **Eviction drops you a rung; it does not end the run.** A game over on
+   night 12 of a 40-night campaign throws away the only thing the player
+   built, and the ladder was one-way up with no reason but that nothing had
+   ever asked it to go down. `evictLease()` walks `VENUE_ORDER` backward
+   through the same list `moveVenue()` walks forward: the smaller room's
+   move-in nights come due (at least one, because moving *out* is a move,
+   and the Corner Tap's own count is zero), gear the smaller room has no
+   wall for comes off — with its upkeep, which is half of what makes the
+   smaller room survivable — the regulars over the smaller cap stop coming
+   through the same prune a load uses, and the debt is written off against
+   the seized deposit: the till floors at $300 rather than reopening at
+   minus eleven hundred, which would evict again three nights later with
+   nothing the player could have done about it. Only an eviction from the
+   Corner Tap sets `failed`, because there is no rung below it. The run
+   summary reads the high-water tier, not the current room, so a run that
+   climbed to the flagship and got evicted back still says the flagship.
+   *Source: Fourth Quarter Phase 9.*
+
+221. **One `billsFor(c)`, because two copies of a sum are two answers.**
+   `settleNight()` and `settleDarkNight()` each computed wages, rent and
+   upgrade upkeep by hand, and the two copies had already drifted in shape.
+   That was harmless while nothing read the result twice. The lease check
+   reads it on both paths, so a bill that can differ between them is a bill
+   that evicts on one path and not the other. A theme is not in it on
+   purpose: it is an optional spend on an open night, and a closed night
+   cannot buy one. The guard-rail that matters here is the one that was
+   nearly missed — an assertion on a campaign with no upgrades installed
+   cannot see a dropped upkeep line, which is exactly how two hand-written
+   copies stay wrong for a phase, so the bill assertions run on a campaign
+   that owns gear.
+   *Source: Fourth Quarter Phase 9.*
+
+222. **`strikes` and `failed` are additive, and an old save is not judged for
+   nights played under different rules.** Both default in `repairCampaign()`
+   — zero strikes, not failed — under the same rule the file already
+   follows: every field the game does arithmetic on gets a finite fallback,
+   every field it calls a method on gets a type check. A strike count past
+   the limit clamps to the limit rather than evicting on load, and only a
+   literal `true` is a failed run, so a truthy string in a hand-edited save
+   does not end a campaign. `stats.bestTier` and `stats.evictions` join them
+   through the `stats` spread that was already there for exactly this, and
+   `bestTier` is floored at the room the save is actually in, so a save at
+   the flagship from before this phase does not report a Corner Tap run. No
+   key change, no version bump (#36).
+   *Source: Fourth Quarter Phase 9.*
+
 ---
 
 # The site sessions, 1–10
@@ -3874,6 +3939,65 @@ crashed the suite on `moments[0]` of an empty list rather than failing it,
 and both lines that read it guard the length now. In the browser: the moment not put ahead of the pass on E (the panel never opens), `clearOut` ignored by the floor (the headcount does not drop), the nameplate left off, the choice button unwired (the answer never lands, 5 fail), and `main.js` not handing the engine the night's moments (the view has no books' half, 3). The first of those crashed the run on a null button click after the named assertion had failed; the click is guarded now.
 
 *Left:* nothing of this phase. Sized 1; closed in one session.
+
+**Phase 9 — A night you can lose (PR pending).** The cash number turned red
+and then stayed red, forever, and you kept playing. `settleNight()` would take
+the till to negative ten thousand and roll tomorrow's applicants. This closed
+the still-open half of README roadmap item 2 and the last open Fourth Quarter
+phase, and it answered Questions for Devon Q23, raised three times and
+blocking four rounds of this project (#219).
+
+The landlord counts (#219): a night whose books close below `LEASE_FLOOR` ($0,
+the number the HUD already turns red on) is a missed night, `LEASE_STRIKES` of
+them in a row takes the lease, and one night back in the black clears the
+count outright. Dark nights count too, which is the one way a venue move can
+bankrupt you mid-move. Eviction is a demotion, not a game over (#220):
+`evictLease()` walks `VENUE_ORDER` backward through the list `moveVenue()`
+walks forward, the smaller room's move-in nights come due (at least one,
+because moving *out* is a move and the Corner Tap's own count is zero), gear
+the smaller room has no wall for comes off with its upkeep, the regulars over
+the smaller cap stop coming through the same `pruneToVenueCap()` a load uses,
+and the debt is written off against the seized deposit — `RECOVERY_CASH`, so
+the smaller room does not evict you again three nights later with nothing you
+could have done about it. Only an eviction from the Corner Tap sets `failed`.
+One `billsFor(c)` replaced two hand-written copies of wages + rent + upkeep
+(#221), because the lease check reads that number on both paths. `strikes`,
+`failed`, `stats.bestTier` and `stats.evictions` are additive, defaulted in
+`repairCampaign()` (#222): no key change, no version bump.
+
+On the page: the Tonight panel carries the standing notice as a warning row
+and a "The lease" line before the night that could spend it; the box score
+grows a Lease section on any night the landlord had something to say, and a
+Run section — nights survived, best night, lifetime net, furthest you got,
+evictions, reputation, the roster — once the run is over. The morning ticker
+says which room took the keys, what came off the wall and who is not
+following you over; a reload with no record left prints the standing notice
+off the campaign's own strike count instead. The box score's button becomes
+"Start a New Campaign" on a failed run, which is the one campaign-eraser in
+the game and the one case the save bar's "no start over on three mounts"
+argument does not cover. Reloading into a failed save finds the same numbers
+on the door's own panel, because the door stops being a door.
+
+*Counts:* `test/smoke-campaign.mjs` 241 → 293, Node total 1,274 → 1,326;
+`tools/browser-check.mjs` 224 → 261.
+
+*Broken on purpose (#34), seventeen in Node, each caught by the assertion
+whose text claims it:* the threshold raised above starting cash, the strike
+limit set past reach, the count never incremented, a good night not clearing
+it, a dark night not counted, the eviction not moving the room, no move-out
+night on the way down, the debt not written off, gear that does not fit left
+on the wall, the roster not pruned, the bottom rung not ending the run, the
+high-water tier following the current room, `settleNight()` dropping the
+upkeep from its bill, `billsFor()` forgetting it, strikes not clamped on
+load, `failed` accepting any truthy value, and `bestTier` not floored at the
+current room. **Three of those first left the suite green** and the
+assertions were rewritten until they did not: the raised threshold was caught
+only by a check on the constant (a fresh campaign's worst night is $660 in
+the black now says so); `Math.max(1, to.darkNights)` was invisible on a rung
+whose own count is already 1 (the Corner Tap's is 0, and that is where it is
+asserted); and a dropped upkeep line was invisible on a campaign with no gear
+installed, which is exactly the shape of the bug #221 exists to prevent, so
+both settlements are now asserted against a campaign that owns a POS.
 
 ---
 

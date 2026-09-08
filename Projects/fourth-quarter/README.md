@@ -175,10 +175,15 @@ table and this week's fixtures.
   `repairCampaign()` is the load-time fill-in, and the note above it is the
   write-up of the session-8 audit: every field the game does arithmetic on, what
   an old save missing it actually did, and why a `typeof` check wasn't enough.
+  `billsFor()` is the one place a night's wages, rent and upkeep are summed,
+  and both settlements spend it; `applyLease()` is the landlord's count and
+  `evictLease()` the demotion, both run once per settled night, open doors or
+  dark.
 - `js/day.js` — day-phase controller: station rings + management panels
   (Stock, Crew, Theme, Upgrades, Real Estate, Door). The door's panel becomes
   the dark-night settlement instead of "Open the Doors" whenever a venue move
-  is still settling in (`c.darkNightsLeft > 0`).
+  is still settling in (`c.darkNightsLeft > 0`), and the run summary once a
+  run has failed (`c.failed`).
 - Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs`,
   `node test/smoke-league.mjs`, `node test/smoke-regulars.mjs`,
   `node test/smoke-events.mjs`, `node test/smoke-layout.mjs`,
@@ -308,13 +313,21 @@ On a 5 Mbps line the 2k room takes 114.5 s to finish; the 1k room, 11.7 s.
    rooms, four seat counts, tier-gated upgrades. Still open: Midtown's second
    room and the flagship's mezzanine, which wait on NPC pathing (wishlist
    Phase 3).
-2. **A difficulty curve tied to the calendar — decided and partly built.**
-   Rent scales with venue tier (session 2); food spoilage (session 3, see
-   above) answers the other half by making hoarding food a real cost. Still
-   open: there's no fail state beyond a red HUD number and a warning — this
-   session's spoilage is a cost curve, not a lease-can-be-lost mechanic.
-   `SPOILAGE_RATE` in `js/campaign.js` is the one number to tune if 15%/night
-   feels wrong once it's been played.
+2. **A difficulty curve tied to the calendar, and a night you can lose —
+   shipped (wishlist Phase 9).** Rent scales with venue tier (session 2);
+   food spoilage (session 3, see above) makes hoarding food a real cost; and
+   the lease can now be lost. A night whose books close below $0 is a missed
+   night, three in a row and the landlord takes the room — with the warning
+   on the Tonight panel, in the ticker and on the box score before the
+   eviction. Losing the lease **drops you a rung rather than ending the run**:
+   the smaller room's move-in nights come due, gear it has no wall for comes
+   off with its upkeep, the regulars over its cap stop coming, and the debt is
+   written off against the seized deposit. Only an eviction from the Corner
+   Tap ends a run, because there is nowhere below it; the box score then
+   carries the run summary. `LEASE_FLOOR`, `LEASE_STRIKES` and
+   `RECOVERY_CASH` in `js/campaign.js` are the three numbers, and
+   `SPOILAGE_RATE` is still the one to tune if 15%/night feels wrong once it
+   has been played.
 3. **Full campaign port — the league is in (wishlist Phase 6), the
    regulars are (Phase 7, both increments: the books and the floor), and
    the event cards are moments on the floor (Phase 8).** Still to port:
