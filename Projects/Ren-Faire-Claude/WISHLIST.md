@@ -1,7 +1,7 @@
 # Faire Weekend — Feature Wishlist
 
 **Status: twenty-two stages are shipped, three rounds of site-wide review have
-run over them, and Phases 1, 2 and 3 are done.** The suites stand at **1,652
+run over them, and Phases 1, 2, 3 and 4 are done.** The suites stand at **1,825
 passed** (`node tests/smoke.mjs`) plus **168 passed** (`node tests/guests.mjs`),
 0 failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed under Xvfb.
 Round 3 closed the mobile tap-target debt, found one more never-clicked action
@@ -9,9 +9,11 @@ Round 3 closed the mobile tap-target debt, found one more never-clicked action
 layout/density review owed for a fourth round running. Every stage's plan and
 how it landed is in the repo root's `HISTORY.md` and in `README.md`; nothing
 here repeats them. **Phase 1 closed in two increments** — the crowd, then the
-economy it spends in — **Phase 2 gave the season weather**, and **Phase 3
-gave the acts a story**, so the open phase is now **Phase 4 — A faire that
-outlives its season**, on **Claude Fable 5.1**.
+economy it spends in — **Phase 2 gave the season weather**, **Phase 3
+gave the acts a story**, and **Phase 4 gave the faire a life past its
+season**: renown, a run boundary, and the carryover schema. Arc one is
+closed. The open phase is now **Phase 5 — The review that has been owed
+four rounds**, on **Claude Opus 5**.
 
 ## What it is
 
@@ -37,8 +39,11 @@ built plot costs 7% of its own build cost per day forever. Stage 19 tied all
 of it to attendance itself through `computeGroundsDraw`, so the site plan
 grows the crowd rather than only dividing it.
 
-What it is not, still: anything to do after the win screen. What it stopped
-being in Phase 3 is a faire whose acts are price lookups: every contracted
+What it stopped being in Phase 4 is a faire that ends at its win screen: a
+season closes deliberately, banks a record, and the next one opens on
+renown carried whole, half the standing above the start, and the acts'
+stories. What it stopped being in Phase 3 is a faire whose acts are price
+lookups: every contracted
 act carries a relationship the day moves, eight of them have an arc, and a
 contract is a negotiation the relationship prices. What it stopped being in Phase 1 is a
 spreadsheet with a plat drawn on it. The gate is still one number
@@ -50,7 +55,7 @@ coefficient on the average.
 
 ## The architecture that is there
 
-- **`js/data.js` (847)** — content only, no logic, deliberately JSON-shaped so
+- **`js/data.js` (919)** — content only, no logic, deliberately JSON-shaped so
   it could become fetched `.json` untouched. `CONFIG` (every tunable number
   with the paragraph explaining why it is that number), `GROUNDS_DRAW`, four
   `TIME_BLOCKS` each with a `weight` and a `heat` (0.15/0.85/1.0/0.25),
@@ -58,11 +63,15 @@ coefficient on the average.
   `WEATHER` table with its early/late season weight ramp, a 14×10 `GRID`
   with authored `TERRAIN_ROWS`, `ENTRANCE`, three `GRID_EXPANSIONS` tiers
   (10×7 at weekend 1, 12×8 at 2, 14×10 at 4), `PLACEMENT_RULES`, and the
-  catalogs: 4 structure types, 15 performers, 12 vendors, 4 campaigns, 3
+  catalogs: 4 structure types, 16 performers, 12 vendors, 4 campaigns, 3
   contract options, 12 events — and, from Phase 3, `RELATIONSHIP` (the
   deltas and the five tiers), `NEGOTIATION` (the commitment and fee lists
   every offer is priced off) and `ARCS` (eight subjects, sixteen beats).
-- **`js/engine.js` (1,578)** — pure, no DOM. Fifty-odd exports: `makeRng`, the
+  From Phase 4: the grid is 14×12 (two South Meadow rows), a fourth
+  `GRID_EXPANSIONS` tier carries `unlockRenown`, the sixteenth performer
+  carries one too, and `RENOWN` and `CARRYOVER` say what the second track
+  pays for and what crosses a closed season.
+- **`js/engine.js` (1,653)** — pure, no DOM. Fifty-odd exports: `makeRng`, the
   footprint primitives, `isLegalPlacement`, `quoteBuild`, `computeFootTraffic`,
   `computePathDistances`/`computeReachability`, `computeGroundsDraw`, the
   price-elasticity trio, `blockQualityWeights`, `totalUpkeep`,
@@ -70,9 +79,11 @@ coefficient on the average.
   (`weatherById`/`weatherFor`/`weatherWeightAt`/`rollWeather`/`forecastWeather`
   plus `nextCalendarDay`), the Phase 3 set (`performerFor`/`vendorFor`,
   `relationshipOf`/`relationshipTier`, `bestBlockFor`, `quoteContract` and
-  `offerDiscount`, `pendingBeats`/`beatById`) — and `simulateDay`, 290 lines
-  that read all of it and return a day, its relationship deltas included.
-- **`js/state.js` (832)** — the state object and ~26 actions, each returning
+  `offerDiscount`, `pendingBeats`/`beatById`), the Phase 4 set
+  (`renownOf`, `moodRenown`/`weekendRenown`, `isExpansionUnlocked`,
+  `signingBar`, `nextRunSeed`) — and `simulateDay`, 290 lines that read
+  all of it and return a day, its relationship deltas included.
+- **`js/state.js` (1,016)** — the state object and ~28 actions, each returning
   `{ state, error }` with a *new* state. Owns the planning→commit build flow,
   performer and vendor contracts, the weekend boundary (`nextDay` parks in
   `weekendEnd`, `startNextWeekend` rolls over), and the `gameOver`/`victory`
@@ -84,26 +95,34 @@ coefficient on the average.
   `relationships`, `arcBeats` and `actTraits` (all additive, all filled by
   `repair`), routed `contractPerformer`/`hireVendor` through `quoteContract`
   so a contract record carries its own `cancelFeeMult` and `label`, and added
-  `resolveBeat`, the one writer of the last two maps.
-- **`js/ui.js` (1,049)** — state → HTML strings, eleven renderers, no listeners.
+  `resolveBeat`, the one writer of the last two maps. Phase 4 bumped the
+  slot to version 2 and gave it a real `migrate` for the first time: a
+  pre-carryover save enters as run 1 with an empty record and the mood
+  renown its completed weekends earned (#243). `renown`, `carryover`,
+  `tenure`, `demolished` and `lastRenown` are the new fields; `nextDay`
+  ticks tenure and awards the weekend at the boundary; `closeSeason` is
+  the run boundary, with `canCloseSeason`, `seasonRecord` and
+  `carryoverPreview` as the pure reads the screens share with it.
+- **`js/ui.js` (1,156)** — state → HTML strings, eleven renderers, no listeners.
   `renderGroundsPanel` owns the plat map, status line and build palette;
   `renderFairFloor` owns plot cards and the schedule; `renderForecast` owns
   tomorrow's sky on the Office desk; `renderBackstage` owns the mood tags,
   the beat cards and the negotiation row; the four end-of-something screens
-  share one ticket-stub shell.
-- **`js/main.js` (333)** — the only file that touches `document`. Holds the
+  share one ticket-stub shell, and from Phase 4 the victory screen and the
+  weekend-end desk at the target weekend share `renderCarryLedger`.
+- **`js/main.js` (346)** — the only file that touches `document`. Holds the
   mutable state, delegates `click`/`change`/`input` off `#app`, re-renders
   after every action, mounts gvb-save's export/import bar in `#footer`; its
-  `handleAction` is a 27-case switch, and `ui.negotiating` is the one piece
+  `handleAction` is a 28-case switch, and `ui.negotiating` is the one piece
   of view state Backstage reads.
-- **`css/style.css` (1,134)** — the "operations room" palette and the
+- **`css/style.css` (1,148)** — the "operations room" palette and the
   surveyor's-plat map. Two breakpoints, 1080px and 720px; `--cell` is 46px,
   38px, 48px respectively.
-- **`tests/smoke.mjs` (4,258)** — the largest test file in the repo, 1,652
+- **`tests/smoke.mjs` (4,812)** — the largest test file in the repo, 1,825
   assertions, no framework: an `assert()` counter and a `mod()` helper turning
-  a path into a `file://` URL so Windows can run it. Sections 1–1g, 1i and 1j
+  a path into a `file://` URL so Windows can run it. Sections 1–1g and 1i–1k
   are pure; 20, 21, 23 and 24 parse `style.css` and `index.html` as text; 1h,
-  22, 25 and 26 build a JSDOM and re-import `js/main.js` cache-busted, which
+  22, 25, 26 and 27 build a JSDOM and re-import `js/main.js` cache-busted, which
   is a reload. **A second JSDOM steals the first one's renders** — `main.js`'s `$`
   reads `globalThis.document` — so everything a boot needs to assert has to
   happen before the next boot.
@@ -126,7 +145,13 @@ that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
   an existing save carries no `__v`, which `gvb-save.js` reads as version 0.
 - **`migrate` is version drift; `repair` is every load** (#37, #50). Every
   backfill this game does — `vendorContracts`, plot `status`/`w`/`h`, the
-  auto-seat pass — is content drift and lives in `repair`.
+  auto-seat pass — is content drift and lives in `repair`. Phase 4 is the
+  one exception and the reason the slot is at version 2: the carryover
+  tally off an old save's history runs once, in `migrate`, because run on
+  every load it would overwrite what the boundary earned since (#243).
+  **A test fixture written straight to storage needs `__v: 2`**, or it is
+  read as a pre-Phase-4 save and its renown is re-tallied on the way in;
+  Section 27's `boot` stamps it.
 - **`createInitialState()` is deterministic; `newGame()` reads the clock**
   (#232). The weather seed went into the factory first and the suite refused
   it inside a minute: two fresh states built a millisecond apart got different
@@ -207,11 +232,22 @@ notes and handoff have deferred rather than answered.
   maximum" is correct again on a faire with no stalls (#228). `wristbandCut`
   moved instead, 0.28 → 0.12. The other three are still open, and increment 2
   pinned one edge of the win condition: a built-out faire cannot bank $25,000
-  in two weekends.
-- **Should winning end the run?** `acknowledgeVictory` drops back into the
-  ordinary weekend-end screen and play continues — but `GRID_EXPANSIONS` runs
-  out at weekend 4, so every weekend after the win is the same weekend. Is the
-  sandbox the intent, or is a second track owed (Phase 4)?
+  in two weekends. **Phase 4 pinned the other edge, and it is the one that
+  matters:** a scripted manager playing from a real start — building toward
+  the gate, the best vendors, the biggest draws on every stage in every
+  block, every beat answered, the price at the anchor — banked $28,000 to
+  $104,000 by Weekend 6 across six seeds and a dozen builds, and never
+  took reputation past 63 from 50. Satisfaction sits in the 60s once the
+  crowd outgrows the stages (a stage near capacity drops 0.15 of quality,
+  and attendance grows with the reputation the bar wants), so the cash
+  bar is trivial and the reputation bar is out of reach for any manager
+  that file could write. A careful human may do better; nobody has. The
+  full-run test says so out loud and seeds reputation at 70. `minCash`
+  and `minReputation` are the two numbers to look at together.
+- ~~**Should winning end the run?**~~ *Answered by Phase 4 (#241, #242):
+  winning does not end the run and closing the season is the player's
+  call, from the victory screen or the weekend-end desk at Weekend 6 or
+  later, with or without the win. The second track is renown.*
 - **Is the 1080px breakpoint a touch device?** Round 3 fixed 720px to a 44px
   floor and deliberately left 1080px at `--cell: 38px` (34px markers), reading
   a narrow laptop window as mouse-driven. A named exclusion that wants a
@@ -271,15 +307,25 @@ Open and unclaimed. Add here rather than starting a new list.
   is a question for real play, like Q27's numbers.
 - More filler for `EVENT_POOL` (12), `AD_CAMPAIGNS` (4), and the quirk set
   (four quirks across fifteen performers, one of them blank).
-- A second, deeper win track; a photo-mode/postcard export off
-  `summarizeWeekend`; a build-preview of a placement's effect on grounds draw.
+- ~~A second, deeper win track;~~ *Phase 4: renown, and the season that
+  closes on it.* A photo-mode/postcard export off `summarizeWeekend`; a
+  build-preview of a placement's effect on grounds draw.
+- More renown sources. Three lines pay today (mood, acts kept, grounds
+  intact) and the kept line does most of the work: a first run lands 24–32
+  by Weekend 6 with the mood line firing once or twice. A weather-beaten
+  weekend survived, a beat answered, a Devoted act on the bill are the
+  obvious next three; the shape is `weekendRenown` and its lines.
+- The `carryover.seasons` record is banked and printed on the ledger once,
+  at the close. Nothing shows past seasons afterwards — a hall of closed
+  seasons on the Office desk is a renderer away.
 
 **Tooling**
 - The `data-action` wiring audit is a person with grep, and it found a real
   gap in each of the last two rounds it ran. 30 distinct actions: 27 with a
   case in `main.js`'s switch, plus `schedule`, `assignVendor` and (Phase 3)
   `offerTerm` on the delegated `change` listener. Phase 3's five new actions
-  are all clicked or changed in Section 26.
+  are all clicked or changed in Section 26; Phase 4's one (`closeSeason`)
+  is clicked from both screens in Section 27. 31 distinct actions now.
 - `commitAll` is covered only in `play-games.mjs`, never in `smoke.mjs` —
   known and accepted, written down nowhere the tests can see.
 - ~~`README.md` still says "783 checks" and "the 709-check suite".~~ *Fixed
@@ -461,7 +507,7 @@ Season Contract's only argument is its discount.
 plus `arcBeats` and `actTraits`. *Model:* **Claude Opus 5** — worked under
 Claude Fable 5.1.
 
-## Phase 4 — A faire that outlives its season
+## Phase 4 — A faire that outlives its season — **shipped**
 
 **You win by having $25,000 and 70 reputation at the end of weekend six, and
 then the game politely continues doing nothing new.**
@@ -471,27 +517,53 @@ then the game politely continues doing nothing new.**
 that the sandbox is static: `GRID_EXPANSIONS` runs out at weekend 4, every
 campaign and contract tier has unlocked, and weekend 12 is weekend 7 again.
 
-- [ ] **A second track with its own currency.** Standing or renown, earned by
+- [x] **A second track with its own currency.** Standing or renown, earned by
   what cash does not measure: satisfaction held high across a weekend, an act
   kept a full season, a grounds built without demolishing anything.
-- [ ] **A run boundary.** End a season deliberately, bank a carryover record,
-  start the next one keeping something specific.
-- [ ] **The carryover schema is the real deliverable.** Versioned, read
+  *`RENOWN` in `data.js`, `state.renown`, tallied by `weekendRenown` at the
+  weekend boundary from three lines: the crowd's mood (2 at 70, 4 at 85),
+  every act in its third weekend or later (1 each, up to 5), and a weekend
+  closed on four or more built plots with nothing torn down this run (1).
+  `tenure` and `demolished` are the two records those lines read. The HUD
+  carries the number and a tooltip that says what earns it (#241).*
+- [x] **A run boundary.** End a season deliberately, bank a carryover record,
+  start the next one keeping something specific. *`closeSeason`, from the
+  weekend-end desk or the victory screen at Weekend 6 or later, with or
+  without the win (#242). It keeps renown whole, reputation as the start
+  plus half of what stood above it, and the acts' stories; cash, the
+  grounds, the roster and every relationship start over (#244). The next
+  season's weather seed is derived from this one's, not the clock.*
+- [x] **The carryover schema is the real deliverable.** Versioned, read
   through `migrate` rather than `repair` (schema drift, not content drift —
-  #37), designed once, because every later phase inherits it.
-- [ ] **Unlocks hanging off the second track**: a fourth expansion tier past
-  Deep Woods Trail, a headliner who will not sign for money alone.
-- [ ] **The win screen becomes a ledger** — what was earned, what carries,
-  what the next season starts with.
-- [ ] **Tests.** A full run reaching the second win and carrying over, plus a
+  #37), designed once, because every later phase inherits it. *`carryover`
+  is `{ schema, run, seasons, startedWith }`; the slot is at version 2, the
+  key unchanged; `migrateSave` builds the record for a pre-Phase-4 save and
+  credits it the mood renown its completed weekends earned, once (#243).*
+- [x] **Unlocks hanging off the second track**: a fourth expansion tier past
+  Deep Woods Trail, a headliner who will not sign for money alone. *The
+  South Meadow, 14×12, at Weekend 5 with 30 renown, two authored rows with
+  a connector that stops short of the col-3 spur (#245); The Gilded Company
+  of Marrow, draw 10 at $980, at 20 renown, refused before any quote is
+  made.*
+- [x] **The win screen becomes a ledger** — what was earned, what carries,
+  what the next season starts with. *`renderCarryLedger`, on the victory
+  screen and on the weekend-end desk once the season can close.*
+- [x] **Tests.** A full run reaching the second win and carrying over, plus a
   migration test proving a pre-carryover save enters the new shape with an
-  empty record and loses nothing.
+  empty record and loses nothing. *Section 1k plays two seasons from a real
+  start with a scripted manager — the first to the win, closed from the
+  victory screen; the second to the South Meadow on carried renown — and
+  loads a Stage 22 save, a pre-Stage-22 save and a version-1 export through
+  the migration with every original key compared. Section 27 is the
+  screens. 1,652 → 1,825.* **The full run seeds reputation at 70 and says
+  why** — see Questions for Devon: from a real start no manager the suite
+  could write cleared 63, while cash cleared the bar two to four times over.
 
 *Leans on:* `checkWinCondition`, `startNextWeekend`/`acknowledgeVictory`,
 `gvb-save.js`'s `migrate`. *Save:* the first non-additive change in this
 project's history — a real `migrate`, key unchanged (#36). *Model:* **Claude
 Fable 5.1** — a save schema every later phase inherits, and the one place
-`migrate` stops being a no-op.
+`migrate` stops being a no-op. Worked under Claude Fable 5.1.
 
 ## Arc two — the grounds you can touch
 

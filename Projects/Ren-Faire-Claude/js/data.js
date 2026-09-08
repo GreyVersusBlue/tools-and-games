@@ -385,7 +385,12 @@ export const GUESTS = {
 // new rows/cols on the fly) means terrainAt()/TERRAIN_ROWS stay simple,
 // pure, and state-independent, same as every stage before this one — only
 // the *bounds a build is allowed within* become state-aware.
-export const GRID = { cols: 14, rows: 10 };
+// Phase 4: two more rows (10 and 11) for the renown-gated fourth tier, the
+// South Meadow. Rows only, not columns: the row-2 artery test, the
+// stage-off-the-east-edge test and the 710px board column all pin the
+// width at 14, and a tier that scrolls east on a desktop was the one
+// layout regression a fourth tier could add for nothing.
+export const GRID = { cols: 14, rows: 12 };
 
 // One character per cell, legend below. The grounds are threaded by a real
 // path *network*, not one line: the row-2 artery runs the full width, a
@@ -408,6 +413,17 @@ export const TERRAIN_ROWS = [
   'CCCPCCCCCCPPPP',
   'HHHPHHCCWWPWCC',
   'CCCPCCCCCCPCCC',
+  // Phase 4: the South Meadow, rows 10-11. Frontage comes off the col-10
+  // spur through a westward connector along row 11 (cols 6-10). Two
+  // things fix its length. It stops well short of col 3 because the col-3
+  // spur is disconnected from the gate at row 3 (#227, and a pinned
+  // assertion), and joining it from the south would have quietly reversed
+  // that ruling. And it stops at col 6 because the far end of the network
+  // has to sit inside a day's walk: tests/guests.mjs pins the diameter
+  // under GUESTS.stepsPerBlock x TIME_BLOCKS.length (24), and a connector
+  // reaching col 4 put (4,11) at 25 hops. (6,11) is 23.
+  'CCCCCCCWWCPCCC',
+  'CCCCCCPPPPPCCC',
 ];
 
 export const TERRAIN_LEGEND = { C: 'clearing', H: 'hill', W: 'woods', P: 'path' };
@@ -433,6 +449,11 @@ export const GRID_EXPANSIONS = [
   { unlockSeason: 1, cols: 10, rows: 7, label: 'Home Grounds' },
   { unlockSeason: 2, cols: 12, rows: 8, label: 'East Meadow' },
   { unlockSeason: 4, cols: 14, rows: 10, label: 'Deep Woods Trail' },
+  // Phase 4: the first tier money alone cannot reach. `unlockRenown` is a
+  // second gate on top of the weekend one, read by engine.js's
+  // isExpansionUnlocked; a save carries its renown across a closed season,
+  // so a second run reaches this ground earlier than the first could.
+  { unlockSeason: 5, unlockRenown: 30, cols: 14, rows: 12, label: 'South Meadow' },
 ];
 
 // Base sightline/shade/traffic for a plot sitting on each terrain type,
@@ -605,6 +626,12 @@ export const PERFORMERS = [
   { id: 'perf_jester_3', name: 'Bramblewit', role: 'jester', cost: 300, popularity: 5, quirk: null },
   { id: 'perf_falconer_2', name: 'Talon of the Greenwood', role: 'falconer', cost: 475, popularity: 6, quirk: 'crowd_pleaser' },
   { id: 'perf_livinghist_3', name: "The Chandler\u2019s Row", role: 'livingHistory', cost: 210, popularity: 3, quirk: null },
+  // Phase 4: the headliner who will not sign for money alone. `unlockRenown`
+  // is read by engine.js's signingBar and state.js's contractPerformer; the
+  // faire has to have earned that much renown before any contract, at any
+  // price, is on the table. Draw 10 is the catalog's ceiling and the rate
+  // is priced to match.
+  { id: 'perf_troupe_1', name: 'The Gilded Company of Marrow', role: 'troupe', cost: 980, popularity: 10, quirk: 'crowd_pleaser', unlockRenown: 20 },
 ];
 
 // Vendor pool (food + craft). The house keeps CONFIG.wristbandCut of a
@@ -717,6 +744,51 @@ export const NEGOTIATION = {
   ],
   relationshipSwing: 0.15,
   floorMult: 0.5, // no ask ever goes below half the listed rate, whatever stacks
+};
+
+// Phase 4: renown, the second track. Cash measures a weekend; renown
+// measures what cash does not, and it is the one number that crosses a
+// closed season whole (see CARRYOVER). Tallied once per weekend at the
+// boundary, by engine.js's weekendRenown, from three things:
+//   - the crowd's mood held across the weekend (avgSatisfaction from
+//     summarizeWeekend), two points at `moodBar` and four at `moodHighBar`;
+//   - acts kept: every contracted act in its `keptWeekends`th weekend or
+//     later earns a point, up to `keptCap` a weekend, so a company that
+//     stays together is worth more than a bill rebooked every Friday;
+//   - grounds built and never torn down: a point for a weekend closed on
+//     at least `intactMinBuilt` built plots with `state.demolished` still 0.
+// Sized so a good first run lands in the low twenties by Weekend 6 and a
+// second run reaches the thirties: the headliner (PERFORMERS, unlockRenown
+// 20) is a first-season prize, the South Meadow (GRID_EXPANSIONS, 30) is
+// the reason to play a second.
+export const RENOWN = {
+  moodBar: 70, moodPoints: 2,
+  moodHighBar: 85, moodHighPoints: 4,
+  keptWeekends: 3, keptCap: 5,
+  intactMinBuilt: 4, intactPoints: 1,
+};
+
+// Phase 4: what crosses a closed season, and the shape it crosses in.
+// `state.carryover` is { schema, run, seasons, startedWith }: `schema` is
+// this table's own version, independent of the save envelope's `__v`, so a
+// later phase can reshape the record without touching how the save loads;
+// `run` is 1 for a first season; `seasons` is one record per closed
+// season, oldest first; `startedWith` is what this run opened on, so a run
+// always knows what it started under (the difficulty-settings idea in
+// WISHLIST.md wants exactly that). state.js's closeSeason is the one
+// writer; the save's migrate builds it for a pre-carryover save.
+//
+// What crosses: renown, whole; reputation as the start plus
+// `reputationKeep` of whatever stood above the start at the close (82
+// carries as 66; anything at or under the start carries as the start, so a
+// bad season is not a handicap); and the acts'
+// stories (arcBeats and actTraits), so a beat answered once stays
+// answered and a rate raised stays raised. What does not: cash, the
+// grounds, the roster, contracts, relationships (#235: they leave with
+// the act, and the act left), the schedule, campaigns and history.
+export const CARRYOVER = {
+  schema: 1,
+  reputationKeep: 0.5,
 };
 
 // Arcs. Each is a subject (a performer or vendor id) and its beats. A beat

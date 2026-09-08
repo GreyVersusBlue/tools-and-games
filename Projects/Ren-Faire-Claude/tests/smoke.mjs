@@ -26,8 +26,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather, performerFor, vendorFor, traitRateMult, relationshipOf, relationshipTier, contractedActIds, bestBlockFor, offerDiscount, relationshipRateMult, quoteContract, beatById, actNameOf, pendingBeats, performerById, vendorById } = await import(mod('js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS } = await import(mod('js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather, performerFor, vendorFor, traitRateMult, relationshipOf, relationshipTier, contractedActIds, bestBlockFor, offerDiscount, relationshipRateMult, quoteContract, beatById, actNameOf, pendingBeats, performerById, vendorById, isExpansionUnlocked, renownOf, moodRenown, weekendRenown, signingBar, nextRunSeed, reachabilityDistance: reachabilityDistanceOf } = await import(mod('js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS, RENOWN, CARRYOVER } = await import(mod('js/data.js'));
 const State = await import(mod('js/state.js'));
 
 // --- RNG determinism ---
@@ -2759,8 +2759,10 @@ const State = await import(mod('js/state.js'));
     assert(click(doc, '#save-bar [data-gvb="export"]'), 'Stage 22: the Export save button is clickable');
     globalThis.Blob = OrigBlob;
     const exported = exportedText && JSON.parse(exportedText);
-    assert(exported?.format === 'gvb-save' && exported.game === 'faire-weekend' && exported.version === 1,
-      'Stage 22: Export writes a real gvb-save envelope for this game, not a stub');
+    // Phase 4 bumped the slot to version 2, the first bump this game has
+    // had; an exported file says which shape it is in.
+    assert(exported?.format === 'gvb-save' && exported.game === 'faire-weekend' && exported.version === 2,
+      'Stage 22: Export writes a real gvb-save envelope for this game, not a stub (version 2 as of Phase 4)');
     assert(exported?.state?.cash === 4321,
       'Stage 22: the exported envelope actually carries the live game state, not a snapshot from boot');
 
@@ -4251,6 +4253,558 @@ function makeMemoryStorage() {
     click(doc, '[data-tab="backstage"]');
     const row = [...doc.querySelectorAll('.roster-table tr')].find(tr => /Ysolde/.test(tr.textContent));
     assert(row && /Weekend Package/.test(row.textContent) && row.querySelector('.mood-tag.mood-settled'), 'an old contract row names its option and reads Settled');
+  }
+}
+
+
+// ---------------------------------------------------------------------
+// Section 1k: Phase 4 — a faire that outlives its season.
+//
+// Renown, the second track, tallied at every weekend boundary; a run
+// boundary that banks a record and opens the next season on what carries;
+// the carryover schema, the first thing in this game's history to reach a
+// save through migrate rather than repair; and the two unlocks that hang
+// off renown. Pure. The DOM half is Section 27.
+// ---------------------------------------------------------------------
+{
+  // --- the tables ---
+  assert(RENOWN.moodHighBar > RENOWN.moodBar && RENOWN.moodHighPoints > RENOWN.moodPoints, 'a weekend the crowd loved is worth more than one they enjoyed, and sits higher');
+  assert(RENOWN.moodBar > 60, 'the mood bar sits above the 60 that reputation itself reads as neutral, so renown is not a second reputation');
+  assert(Number.isInteger(RENOWN.keptWeekends) && RENOWN.keptWeekends >= 2 && RENOWN.keptCap >= 1, 'kept acts count from a real tenure, and the line is capped');
+  assert(RENOWN.intactMinBuilt >= 2 && RENOWN.intactPoints >= 1, 'the intact-grounds line needs something built before it pays');
+  assert(CARRYOVER.schema === 1 && CARRYOVER.reputationKeep > 0 && CARRYOVER.reputationKeep < 1, 'the carryover schema is at 1 and reputation crosses as a real fraction, neither whole nor none');
+  const meadow = GRID_EXPANSIONS[GRID_EXPANSIONS.length - 1];
+  assert(typeof meadow.unlockRenown === 'number' && meadow.unlockRenown > 0, 'the last grounds tier is gated on renown');
+  assert(GRID_EXPANSIONS.filter(g => typeof g.unlockRenown === 'number').length === 1, 'and it is the only one, so the first three tiers unlock exactly as they did');
+  assert(GRID.rows === 12 && TERRAIN_ROWS.length === 12, 'the authored grid grew two rows for it');
+  assert(GRID.cols === 14, 'and no columns: the row-2 artery, the east-edge stage test and the 710px board column all pin the width');
+  const headliner = PERFORMERS.find(p => typeof p.unlockRenown === 'number');
+  assert(!!headliner && headliner.id === 'perf_troupe_1', 'one performer carries a renown bar: the headliner');
+  assert(headliner.popularity === 10 && headliner.cost > Math.max(...PERFORMERS.filter(p => p !== headliner).map(p => p.cost)), 'and is the biggest draw at the biggest rate in the catalog');
+  assert(headliner.unlockRenown < meadow.unlockRenown, 'the headliner is the first-season prize and the meadow is the reason to play a second');
+  // The South Meadow's path connector: on the network the gate reaches,
+  // inside a day's walk, and not joined to the col-3 spur.
+  const dist = computePathDistances();
+  assert(dist.get('10,11') !== undefined && dist.get('6,11') !== undefined, 'the row-11 connector is reachable from the gate along the col-10 spur');
+  assert(dist.get('3,10') === undefined && dist.get('3,11') === undefined && dist.get('5,11') === undefined, 'and stops short of the col-3 spur, which stays disconnected (#227)');
+  assert(Math.max(...dist.values()) < GUESTS.stepsPerBlock * TIME_BLOCKS.length, `the far end of the meadow is inside a day's walk (${Math.max(...dist.values())} hops against ${GUESTS.stepsPerBlock * TIME_BLOCKS.length} steps) — the first draft reached col 4 and was 25`);
+  const meadowStall = { kind: 'food', x: 7, y: 10, w: 1, h: 1 };
+  assert(Number.isFinite(reachabilityDistanceOf(meadowStall)), 'a stall on the meadow fronting the connector resolves a gate walk');
+  assert(isLegalPlacement('food', 7, 10, []).ok, 'and is a legal placement once the fence moves');
+
+  // --- renownOf and the three lines ---
+  assert(renownOf({}) === 0 && renownOf(undefined) === 0 && renownOf({ renown: 7 }) === 7, 'renownOf reads the number and falls back to 0');
+  const summaryAt = (avg) => ({ days: [{}], avgSatisfaction: avg });
+  assert(moodRenown(summaryAt(RENOWN.moodBar - 1)) === null, 'a weekend one point under the bar earns no mood line');
+  assert(moodRenown(summaryAt(RENOWN.moodBar)).points === RENOWN.moodPoints, 'at the bar it earns the enjoyed points');
+  assert(moodRenown(summaryAt(RENOWN.moodHighBar)).points === RENOWN.moodHighPoints, 'at the high bar it earns the loved points');
+  assert(moodRenown({ days: [], avgSatisfaction: 100 }) === null && moodRenown(null) === null, 'a weekend with no days earns nothing, whatever the average says');
+
+  const bare = State.createInitialState();
+  const none = weekendRenown(bare, summaryAt(50));
+  assert(none.total === 0 && none.lines.length === 0, 'an empty faire with a flat crowd earns nothing');
+  let f = State.createInitialState();
+  f.cash = 60000;
+  for (const [k, x, y] of [['stage', 3, 0], ['food', 5, 3], ['vendor', 6, 3], ['demo', 8, 3]]) f = State.buildPlot(f, k, x, y).state;
+  f = State.contractPerformer(f, 'perf_jester_2').state;
+  f = State.contractPerformer(f, 'perf_jester_3').state;
+  f = State.hireVendor(f, 'vend_stew').state;
+  assert(f.builtPlots.filter(p => p.status === 'built').length === RENOWN.intactMinBuilt, 'fixture: exactly intactMinBuilt plots built');
+  const intactOnly = weekendRenown(f, summaryAt(50));
+  assert(intactOnly.lines.length === 1 && intactOnly.lines[0].id === 'intact' && intactOnly.total === RENOWN.intactPoints, 'four built plots and nothing torn down is the intact line alone');
+  const torn = { ...f, demolished: 1 };
+  assert(weekendRenown(torn, summaryAt(50)).total === 0, 'one demolition this run and the intact line is gone');
+  const three = { ...f, builtPlots: f.builtPlots.slice(0, RENOWN.intactMinBuilt - 1) };
+  assert(weekendRenown(three, summaryAt(50)).total === 0, 'one plot short of the minimum and it is gone too');
+  const planned = { ...f, builtPlots: [...f.builtPlots.slice(0, 3), { ...f.builtPlots[3], status: 'planning' }] };
+  assert(weekendRenown(planned, summaryAt(50)).total === 0, 'a planning plot does not count as built for it');
+  const kept = { ...f, tenure: { perf_jester_2: RENOWN.keptWeekends, perf_jester_3: RENOWN.keptWeekends - 1, vend_stew: RENOWN.keptWeekends + 2 } };
+  const keptAward = weekendRenown(kept, summaryAt(50));
+  const keptLine = keptAward.lines.find(l => l.id === 'kept');
+  assert(!!keptLine && keptLine.points === 2 && /2 acts kept/.test(keptLine.label), 'two of three acts are in their third weekend or later, and the line counts exactly them (performer and vendor alike)');
+  const many = { ...f, roster: PERFORMERS.slice(0, 8).map(p => p.id), tenure: Object.fromEntries(PERFORMERS.slice(0, 8).map(p => [p.id, 9])) };
+  assert(weekendRenown(many, summaryAt(50)).lines.find(l => l.id === 'kept').points === RENOWN.keptCap, `eight kept acts cap at ${RENOWN.keptCap}`);
+  const gone = { ...kept, roster: [], hiredVendors: [] };
+  assert(!weekendRenown(gone, summaryAt(50)).lines.find(l => l.id === 'kept'), 'a tenure record with no contract behind it counts for nothing');
+  const all = weekendRenown(kept, summaryAt(RENOWN.moodHighBar));
+  assert(all.lines.map(l => l.id).join(',') === 'mood,kept,intact' && all.total === RENOWN.moodHighPoints + 2 + RENOWN.intactPoints, 'all three lines stack and the total is their sum');
+
+  // --- the expansion gate ---
+  assert(isExpansionUnlocked({ season: 5, renown: meadow.unlockRenown }, meadow), 'the meadow opens at its weekend with its renown');
+  assert(!isExpansionUnlocked({ season: 5, renown: meadow.unlockRenown - 1 }, meadow), 'one renown short and it does not');
+  assert(!isExpansionUnlocked({ season: 4, renown: 99 }, meadow), 'nor a weekend early, however much renown');
+  assert(isExpansionUnlocked({ season: 4 }, GRID_EXPANSIONS[2]) && isExpansionUnlocked({ season: 1 }, GRID_EXPANSIONS[0]), 'a tier with no renown gate reads exactly as before');
+  assert(currentGridSize({ season: 6, renown: 0 }).label === 'Deep Woods Trail', 'a Weekend 6 faire with no renown is still on Deep Woods Trail');
+  assert(currentGridSize({ season: 5, renown: meadow.unlockRenown }).rows === 12, 'and with the renown the fence moves south');
+  assert(nextGridExpansion({ season: 4, renown: 0 }).label === meadow.label && nextGridExpansion({ season: 5, renown: meadow.unlockRenown }) === null, 'nextGridExpansion names the meadow until it opens, then nothing');
+  assert(!isWithinCurrentGrid({ season: 5, renown: 0 }, 7, 10) && isWithinCurrentGrid({ season: 5, renown: meadow.unlockRenown }, 7, 10), 'isWithinCurrentGrid reads the same gate');
+  {
+    let m = State.createInitialState();
+    m.cash = 60000; m.season = 5;
+    assert(/fence line/.test(State.buildPlot(m, 'food', 7, 10).error || ''), 'building on the meadow without the renown is refused as past the fence');
+    m.renown = meadow.unlockRenown;
+    assert(!State.buildPlot(m, 'food', 7, 10).error, 'and allowed with it');
+  }
+
+  // --- the headliner's bar ---
+  assert(signingBar({ renown: 0 }, performerById('perf_jester_2')) === null, 'an ordinary act has no bar');
+  const bar = signingBar({ renown: 5 }, headliner);
+  assert(bar && bar.need === headliner.unlockRenown && bar.have === 5 && bar.short === headliner.unlockRenown - 5, 'the headliner reports need, have and the gap');
+  assert(signingBar({ renown: headliner.unlockRenown }, headliner) === null, 'and none once the faire has it');
+  {
+    let h = State.createInitialState();
+    h.cash = 60000;
+    const refused = State.contractPerformer(h, headliner.id, 'open');
+    assert(/will not sign for money alone/.test(refused.error || '') && refused.state === h, 'contractPerformer refuses the headliner at zero renown, before any money moves');
+    const refusedOffer = State.contractPerformer(h, headliner.id, { commitDays: 3, cancelFeeMult: 1 });
+    assert(/will not sign/.test(refusedOffer.error || ''), 'a negotiated offer is refused the same way');
+    h.renown = headliner.unlockRenown;
+    const signed = State.contractPerformer(h, headliner.id, 'weekend');
+    assert(!signed.error && signed.state.roster.includes(headliner.id) && signed.state.contracts[headliner.id].dailyCost === quoteContract(h, 'performer', headliner.id, CONTRACT_OPTIONS.weekend).dailyCost, 'with the renown they sign, priced through the one quote like everyone else');
+  }
+
+  // --- tenure and the demolition count ---
+  {
+    let t = State.createInitialState();
+    t.cash = 60000;
+    t = State.buildPlot(t, 'food', 5, 3).state;
+    t = State.contractPerformer(t, 'perf_jester_2').state;
+    t = State.hireVendor(t, 'vend_stew').state;
+    assert(t.tenure.perf_jester_2 === 0 && t.tenure.vend_stew === 0, 'signing writes a tenure of 0 for a performer and a vendor');
+    let w = { ...t, weekendDay: CONFIG.seasonLength };
+    w = State.nextDay(w).state;
+    assert(w.phase === 'weekendEnd' && w.tenure.perf_jester_2 === 1 && w.tenure.vend_stew === 1, 'the weekend boundary ticks every contracted act');
+    const mid = State.nextDay({ ...t, weekendDay: 1 }).state;
+    assert(mid.tenure.perf_jester_2 === 0, 'an ordinary day does not');
+    const rel = State.releasePerformer(w, 'perf_jester_2').state;
+    assert(!('perf_jester_2' in rel.tenure) && rel.tenure.vend_stew === 1, 'release deletes the tenure with the act (#235) and leaves the others');
+    const fired = State.fireVendor(w, 'vend_stew').state;
+    assert(!('vend_stew' in fired.tenure), 'so does firing a vendor');
+    const resigned = State.contractPerformer(rel, 'perf_jester_2').state;
+    assert(resigned.tenure.perf_jester_2 === 0, 'and re-signing starts the count over');
+
+    const plot = t.builtPlots[0];
+    const dem = State.demolishPlot(t, plot.id).state;
+    assert(dem.demolished === 1, 'demolishPlot counts');
+    const moved = State.relocatePlot(t, plot.id, 6, 3);
+    assert(!moved.error && moved.state.demolished === 0, 'relocatePlot does not — the plot is still standing');
+    const del = State.placePlot(t, 'demo', 8, 3).state;
+    assert(State.deletePlanningPlot(del, del.builtPlots[1].id).state.demolished === 0, 'and deleting a plan is not a demolition');
+  }
+
+  // --- the boundary award, applied once ---
+  {
+    let b = State.createInitialState();
+    b.cash = 60000;
+    for (const [k, x, y] of [['stage', 3, 0], ['food', 5, 3], ['vendor', 6, 3], ['demo', 8, 3]]) b = State.buildPlot(b, k, x, y).state;
+    b = State.contractPerformer(b, 'perf_jester_2').state;
+    b.tenure.perf_jester_2 = RENOWN.keptWeekends - 1; // ticks to keptWeekends at this boundary
+    b.weekendDay = CONFIG.seasonLength;
+    b.history = [{ day: 1, attendance: 100, cashDelta: 0, satisfaction: 90, reputationDelta: 0 }, { day: 2, attendance: 100, cashDelta: 0, satisfaction: 90, reputationDelta: 0 }, { day: 3, attendance: 100, cashDelta: 0, satisfaction: 90, reputationDelta: 0 }];
+    const closed = State.nextDay(b).state;
+    const expected = RENOWN.moodHighPoints + 1 + RENOWN.intactPoints;
+    assert(closed.renown === expected, `the boundary awards the weekend's renown (${closed.renown} of ${expected}: loved crowd, one act kept a third weekend, grounds intact)`);
+    assert(closed.lastRenown && closed.lastRenown.total === expected && closed.lastRenown.lines.length === 3, 'and records the lines for the screen');
+    assert(closed.tenure.perf_jester_2 === RENOWN.keptWeekends, 'tenure ticked before the award was computed, so the act reads as kept this weekend and not next');
+    const rolled = State.startNextWeekend(closed).state;
+    assert(rolled.renown === expected, 'startNextWeekend does not award again');
+    assert(State.nextDay({ ...b, weekendDay: 1 }).state.renown === 0, 'and an ordinary day awards nothing');
+    // The "kept" line is the one break that used to pass: with the tick
+    // after the award, an act signed on Weekend 1 read as kept at the close
+    // of Weekend 4, and the assertion above on tenure would still pass.
+    // This one is what catches the order.
+    const late = { ...b, tenure: { perf_jester_2: RENOWN.keptWeekends - 1 } };
+    assert(State.nextDay(late).state.lastRenown.lines.some(l => l.id === 'kept'), 'an act one weekend short at the top of the boundary is kept by the bottom of it');
+  }
+
+  // --- the run boundary ---
+  {
+    const target = CONFIG.winCondition.seasonTarget;
+    assert(!State.canCloseSeason({ ...State.createInitialState(), phase: 'plan', season: target }).ok, 'the season does not close from the planning desk');
+    assert(!State.canCloseSeason({ ...State.createInitialState(), phase: 'weekendEnd', season: target - 1 }).ok, 'nor a weekend early');
+    assert(State.canCloseSeason({ ...State.createInitialState(), phase: 'weekendEnd', season: target }).ok, 'it closes from the weekend-end desk at the target weekend');
+    assert(State.canCloseSeason({ ...State.createInitialState(), phase: 'victory', season: target }).ok, 'and from the victory screen');
+    assert(State.canCloseSeason({ ...State.createInitialState(), phase: 'weekendEnd', season: target + 3 }).ok, 'and any weekend after');
+    const early = State.closeSeason({ ...State.createInitialState(), phase: 'weekendEnd', season: 2 });
+    assert(early.error && /Weekend 2/.test(early.error), 'closeSeason refuses with the reason');
+
+    let r = State.createInitialState();
+    r.cash = 60000;
+    for (const [k, x, y] of [['stage', 3, 0], ['food', 5, 3]]) r = State.buildPlot(r, k, x, y).state;
+    r = State.contractPerformer(r, 'perf_jouster_2', 'weekend').state;
+    r = State.hireVendor(r, 'vend_stew').state;
+    r.relationships.perf_jouster_2 = 85;
+    r = State.resolveBeat(r, 'ysolde_devoted', 'champion').state;
+    r.season = target; r.weekendDay = CONFIG.seasonLength; r.phase = 'weekendEnd';
+    r.reputation = 82; r.cash = 31000; r.renown = 23; r.victoryAchieved = true; r.demolished = 2;
+    r.history = Array.from({ length: target * CONFIG.seasonLength }, (_, i) => ({ day: i + 1, attendance: 500, cashDelta: 1000, satisfaction: 70, reputationDelta: 1 }));
+    r.tenure = { perf_jouster_2: 4, vend_stew: 4 };
+    const rec = State.seasonRecord(r);
+    assert(rec.run === 1 && rec.weekends === target && rec.days === target * CONFIG.seasonLength && rec.attendance === 500 * rec.days && rec.net === 1000 * rec.days, 'the record sums the season out of history');
+    assert(rec.cash === 31000 && rec.reputation === 82 && rec.renown === 23 && rec.renownEarned === 23 && rec.won === true && rec.plots === 2 && rec.beats === 1, 'and carries the closing numbers, the win, the grounds and the answered moments');
+    const opens = State.carryoverPreview(r);
+    assert(opens.run === 2 && opens.cash === CONFIG.startingCash && opens.renown === 23 && opens.reputation === CONFIG.startingReputation + Math.round((82 - CONFIG.startingReputation) * CARRYOVER.reputationKeep), `the preview says what the next run opens with (reputation ${opens.reputation}: the start plus half of what stood above it)`);
+    assert(State.carryoverPreview({ ...r, reputation: 40 }).reputation === CONFIG.startingReputation, 'a reputation under the start carries as the start, so a bad season is not a handicap');
+    assert(opens.reputation > CONFIG.startingReputation, 'and a Legendary one carries something — "half the closing number, floored at the start" carried nothing, since half of 82 is under 50');
+
+    const { state: run2, error, record } = State.closeSeason(r);
+    assert(!error && record && record.run === 1 && JSON.stringify(record) === JSON.stringify(rec), 'closeSeason banks exactly the record seasonRecord described');
+    assert(run2.carryover.run === 2 && run2.carryover.schema === CARRYOVER.schema && run2.carryover.seasons.length === 1 && run2.carryover.seasons[0].renown === 23, 'run 2 carries the banked season');
+    assert(run2.renown === 23, 'renown crosses whole');
+    assert(run2.reputation === opens.reputation && run2.cash === CONFIG.startingCash, 'reputation crosses at half; cash starts over');
+    assert(run2.carryover.startedWith.renown === 23 && run2.carryover.startedWith.reputation === run2.reputation && run2.carryover.startedWith.cash === CONFIG.startingCash, 'startedWith records what run 2 opened on');
+    assert(run2.arcBeats.ysolde_devoted === 'champion' && run2.actTraits.perf_jouster_2.rateMult === 1.15, 'the acts remember: the beat stays answered and the rate stays raised');
+    assert(run2.roster.length === 0 && run2.hiredVendors.length === 0 && run2.builtPlots.length === 0 && Object.keys(run2.relationships).length === 0 && Object.keys(run2.tenure).length === 0 && run2.history.length === 0 && run2.demolished === 0, 'the roster, the vendors, the grounds, every relationship and tenure, the history and the demolition count start over');
+    assert(run2.season === 1 && run2.day === 1 && run2.weekendDay === 1 && run2.phase === 'plan' && run2.victoryAchieved === false && run2.bankrupt === false && run2.lastRenown === null, 'the calendar and the flags are a fresh season');
+    assert(run2.weatherSeed === nextRunSeed(r.weatherSeed, 2) && run2.weatherSeed !== r.weatherSeed, 'run 2 gets its own weather seed, derived from run 1 rather than the clock');
+    assert(run2.weather === rollWeather(run2.weatherSeed, 1, 1).id, 'and its first day is stamped off it');
+    const again = State.closeSeason(r).state;
+    assert(JSON.stringify(again) === JSON.stringify(run2), 'closing the same season twice gives the same second season — the action is pure');
+    assert(nextRunSeed(r.weatherSeed, 3) !== run2.weatherSeed && nextRunSeed(7, 2) === nextRunSeed(7, 2), 'nextRunSeed differs by run and is deterministic');
+    assert(r.carryover.run === 1 && r.carryover.seasons.length === 0, 'the closed state itself was not mutated');
+    // Run 2 closes too, and the bank grows.
+    const r2 = { ...run2, phase: 'weekendEnd', season: target, renown: 40, reputation: 60, history: [] };
+    const run3 = State.closeSeason(r2).state;
+    assert(run3.carryover.run === 3 && run3.carryover.seasons.length === 2 && run3.carryover.seasons[1].renownEarned === 17 && run3.carryover.seasons[0].run === 1, 'a third season carries both records in order, and the second knows what it earned over what it started with');
+    const fromVictory = State.closeSeason({ ...r, phase: 'victory' });
+    assert(!fromVictory.error && fromVictory.state.carryover.run === 2, 'closing from the victory screen works the same');
+  }
+
+  // --- the migration: a pre-carryover save enters the new shape and loses nothing ---
+  {
+    const mkOld = () => {
+      let o = State.createInitialState();
+      o.cash = 60000;
+      o = State.buildPlot(o, 'stage', 3, 0).state;
+      o = State.contractPerformer(o, 'perf_jester_2', 'weekend').state;
+      o.season = 3; o.day = 7; o.weekendDay = 1; o.reputation = 61;
+      // Two completed weekends in history: one the crowd enjoyed (avg 72),
+      // one they did not (avg 60); then nothing for weekend 3 yet.
+      o.history = [72, 72, 72, 60, 60, 60].map((sat, i) => ({ day: i + 1, attendance: 400, cashDelta: 300, satisfaction: sat, reputationDelta: 1 }));
+      delete o.renown; delete o.carryover; delete o.tenure; delete o.demolished; delete o.lastRenown;
+      return o;
+    };
+    const oldKeys = Object.keys(mkOld());
+    assert(!oldKeys.includes('renown') && !oldKeys.includes('carryover'), 'fixture: the old save has none of the Phase 4 fields');
+    const loadWith = (blob) => {
+      const raw = JSON.stringify(blob);
+      globalThis.localStorage = { getItem: () => raw, setItem: () => {}, removeItem: () => {} };
+      const loaded = State.loadState();
+      delete globalThis.localStorage;
+      return loaded;
+    };
+    for (const [label, blob] of [['a Stage 22 save (__v 1)', { ...mkOld(), __v: 1 }], ['a pre-Stage-22 save (no __v)', mkOld()]]) {
+      const m = loadWith(blob);
+      assert(!!m, `${label} loads`);
+      if (!m) continue;
+      assert(m.carryover && m.carryover.schema === CARRYOVER.schema && m.carryover.run === 1 && m.carryover.seasons.length === 0, `${label} enters as run 1 with an empty record`);
+      assert(m.carryover.startedWith.cash === CONFIG.startingCash && m.carryover.startedWith.reputation === CONFIG.startingReputation && m.carryover.startedWith.renown === 0, `${label} is recorded as having started on the configured numbers`);
+      assert(m.renown === RENOWN.moodPoints, `${label} is credited the mood renown its completed weekends earned (${m.renown} of ${RENOWN.moodPoints}: one weekend at 72, one at 60, a third not yet played)`);
+      assert(m.tenure && m.tenure.perf_jester_2 === 0 && m.demolished === 0 && m.lastRenown === null, `${label} gets zeros for what it never recorded`);
+      const before = mkOld();
+      const canon = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)) ? Object.fromEntries(Object.keys(x).sort().map(key => [key, x[key]])) : x);
+      const lost = oldKeys.filter(k => canon(before[k]) !== canon(m[k]));
+      assert(lost.length === 0, `${label} loses nothing: every original key comes through equal (${lost.join(', ') || 'none differ'})`);
+    }
+    // The split (#37): the tally is migrate's, not repair's. A current-
+    // version save missing the field is a gap, and repair fills it with a
+    // zero — it does not go back through history, because on every load it
+    // would overwrite what the boundary has earned since.
+    const current = loadWith({ ...mkOld(), __v: 2 });
+    assert(current && current.renown === 0 && current.carryover.run === 1, 'a version-2 save with the fields missing is repaired to zero, not tallied');
+    const already = loadWith({ ...mkOld(), __v: 2, renown: 9, carryover: { schema: 1, run: 2, seasons: [{ run: 1 }], startedWith: { cash: 1, reputation: 2, renown: 3 } } });
+    assert(already && already.renown === 9 && already.carryover.run === 2 && already.carryover.seasons.length === 1, 'and a version-2 save that has them keeps them');
+    // An exported file from before this phase says version 1 in its
+    // envelope and takes the same road.
+    const slot = State.saveSlot({ getItem: () => null, setItem: () => {}, removeItem: () => {} });
+    const imported = slot.deserialize(JSON.stringify({ format: 'gvb-save', game: 'faire-weekend', version: 1, savedAt: 'x', state: mkOld() }));
+    assert(imported && imported.renown === RENOWN.moodPoints && imported.carryover.run === 1, 'an imported version-1 export migrates the same way');
+    assert(slot.version === 2, 'the slot is at version 2');
+    const written = JSON.parse((() => { let out; State.saveSlot({ getItem: () => null, setItem: (k, v) => { out = v; }, removeItem: () => {} }).save(State.createInitialState()); return out; })());
+    assert(written.__v === 2 && written.carryover.run === 1, 'and a save written now says so');
+  }
+
+  // --- a full season, twice, through the boundary ---
+  // A scripted manager plays from a real start: builds toward the gate,
+  // hires the best vendors, signs the biggest draws, fills every stage in
+  // every block, answers every beat, and holds the price at the anchor.
+  // Reputation is set to the win's bar at the start and that is said out
+  // loud: across six seeds and a dozen builds no manager this file could
+  // write cleared 63 from 50 in six weekends, while cash cleared $25,000
+  // by a factor of two to four every time. That is evidence for Questions
+  // for Devon's economy question, recorded there; everything else here —
+  // the cash, the renown, the headliner, the fence, the record, the second
+  // season — is played for real.
+  const tryBuild = (s, kind, reserve) => {
+    const size = currentGridSize(s);
+    let best = null;
+    for (let y = 0; y < size.rows; y++) for (let x = 0; x < size.cols; x++) {
+      if (!isFootprintWithinCurrentGrid(s, kind, x, y) || !quoteBuild(kind, x, y, s.builtPlots) || !isLegalPlacement(kind, x, y, s.builtPlots).ok) continue;
+      const d = reachabilityDistanceOf({ kind, x, y, ...footprintFor(kind) });
+      if (!Number.isFinite(d)) continue;
+      if (!best || d < best.d) best = { x, y, d, cost: quoteBuild(kind, x, y, s.builtPlots).cost };
+    }
+    if (!best || s.cash - best.cost < reserve) return s;
+    const r = State.buildPlot(s, kind, best.x, best.y);
+    return r.error ? s : r.state;
+  };
+  const manage = (s, o) => {
+    const cnt = k => s.builtPlots.filter(p => p.kind === k && p.status === 'built').length;
+    const plan = [['stage', 1], ['food', 2], ['vendor', 2], ['stage', 2], ['demo', 1], ['food', o.stalls], ['vendor', o.stalls], ['stage', o.stages], ['demo', 2]];
+    for (let i = 0; i < 16; i++) {
+      const before = s.cash;
+      const step = plan.find(([k, n]) => cnt(k) < n);
+      if (!step) break;
+      s = tryBuild(s, step[0], 600);
+      if (s.cash === before) break;
+    }
+    for (const v of [...VENDORS].sort((a, b) => b.quality - a.quality)) {
+      if (!s.hiredVendors.includes(v.id)) { const r = State.hireVendor(s, v.id, 'weekend'); if (!r.error) s = r.state; }
+    }
+    s = State.autoFillStalls(s).state;
+    const stages = s.builtPlots.filter(p => p.kind === 'stage' && p.status === 'built');
+    const want = Math.min(stages.length * TIME_BLOCKS.length, o.acts);
+    const pool = PERFORMERS.map(p => performerFor(s, p.id)).sort((a, b) => b.popularity - a.popularity);
+    for (const p of pool) {
+      if (s.roster.includes(p.id) || signingBar(s, p)) continue;
+      if (s.roster.length >= want) {
+        // The headliner takes the weakest act's slot the moment they will sign.
+        if (typeof p.unlockRenown !== 'number') break;
+        const weakest = [...s.roster].map(id => performerFor(s, id)).sort((a, b) => a.popularity - b.popularity)[0];
+        s = State.releasePerformer(s, weakest.id).state;
+      }
+      if (s.cash < 1500) break;
+      const r = State.contractPerformer(s, p.id, 'weekend');
+      if (!r.error) s = r.state;
+    }
+    for (const b of TIME_BLOCKS) for (const st of stages) s = State.unassignSchedule(s, b.id, st.id).state;
+    const acts = [...s.roster].map(id => performerFor(s, id)).sort((a, b) => b.popularity - a.popularity);
+    let i = 0;
+    for (const b of TIME_BLOCKS) for (const st of stages) { if (i < acts.length) s = State.assignSchedule(s, b.id, st.id, acts[i++].id).state; }
+    for (const pb of pendingBeats(s)) s = State.resolveBeat(s, pb.beat.id, pb.beat.choices[0].id).state;
+    s = State.setTicketPrice(s, CONFIG.priceAnchor).state;
+    if (!s.activeCampaign && s.cash > 6000) { const r = State.launchCampaign(s, 'ad_crier'); if (!r.error) s = r.state; }
+    return s;
+  };
+  const playSeason = (s, seed, o) => {
+    const trace = [];
+    for (let d = 0; d < 60; d++) {
+      s = manage(s, o);
+      s = State.runDay(s, seed + d * 101).state;
+      s = State.nextDay(s).state;
+      if (s.phase === 'gameOver') return { s, trace };
+      if (s.phase === 'victory') return { s, trace, won: true };
+      if (s.phase === 'weekendEnd') {
+        trace.push({ season: s.season, cash: s.cash, reputation: s.reputation, renown: s.renown, award: s.lastRenown });
+        if (s.season >= CONFIG.winCondition.seasonTarget) return { s, trace };
+        s = State.startNextWeekend(s).state;
+      }
+    }
+    return { s, trace };
+  };
+  {
+    const o = { stalls: 3, stages: 5, acts: 8 };
+    let s1 = State.createInitialState(20260908);
+    s1.reputation = CONFIG.winCondition.minReputation;
+    const one = playSeason(s1, 4242, o);
+    assert(one.won === true && one.s.phase === 'victory' && one.s.victoryAchieved, `season one reaches the win from $${CONFIG.startingCash} (cash $${one.s.cash}, reputation ${one.s.reputation} at Weekend ${one.s.season})`);
+    assert(one.s.cash >= CONFIG.winCondition.minCash, 'the cash bar is cleared by play, not by the fixture');
+    assert(one.trace.every((t, i) => i === 0 || t.renown >= one.trace[i - 1].renown), 'renown never goes down across the season');
+    assert(one.s.renown >= headliner.unlockRenown, `and reaches the headliner's bar by the close (${one.s.renown} against ${headliner.unlockRenown})`);
+    assert(one.s.roster.includes(headliner.id), 'the manager signed the headliner the weekend they would sign');
+    assert(one.s.renown < meadow.unlockRenown, `but not the meadow's (${one.s.renown} against ${meadow.unlockRenown}): that is the second season's prize`);
+    assert(one.trace.some(t => t.award && t.award.lines.some(l => l.id === 'kept')) && one.trace.some(t => t.award && t.award.lines.some(l => l.id === 'intact')), 'the kept and intact lines both fired during the season');
+    assert(currentGridSize(one.s).label === 'Deep Woods Trail', 'season one ends on Deep Woods Trail');
+
+    const { state: s2, record } = State.closeSeason(one.s);
+    assert(record.won && record.run === 1 && record.days === CONFIG.winCondition.seasonTarget * CONFIG.seasonLength && record.attendance > 0, 'the season closes from the victory screen with a won record of every day played');
+    assert(s2.carryover.run === 2 && s2.renown === one.s.renown && s2.cash === CONFIG.startingCash && s2.reputation === CONFIG.startingReputation + Math.round((one.s.reputation - CONFIG.startingReputation) * CARRYOVER.reputationKeep), 'season two opens on the carryover');
+    assert(Object.keys(s2.arcBeats).length === Object.keys(one.s.arcBeats).length && Object.keys(s2.arcBeats).length > 0, 'and remembers every moment answered');
+    assert(currentGridSize(s2).label === 'Home Grounds', 'season two starts back on the Home Grounds');
+    const two = playSeason(s2, 9001, o);
+    assert(two.s.phase !== 'gameOver', `season two does not fold (cash $${two.s.cash} at Weekend ${two.s.season})`);
+    assert(two.s.renown >= meadow.unlockRenown, `season two reaches the meadow's bar (${two.s.renown} against ${meadow.unlockRenown})`);
+    const meadowWeekend = two.trace.find(t => t.season >= meadow.unlockSeason && t.renown >= meadow.unlockRenown);
+    assert(!!meadowWeekend, 'and had it by Weekend 5 or 6, when the fence can move');
+    assert(currentGridSize(two.s).label === meadow.label, 'the fence moved: season two ends on the South Meadow');
+    assert(!State.buildPlot({ ...two.s, cash: 60000 }, 'food', 7, 10).error, 'and a stall can be built on it');
+    assert(two.s.roster.includes(headliner.id), 'the headliner signed again in season two, on carried renown');
+    assert(two.s.carryover.seasons.length === 1 && two.s.carryover.startedWith.renown === one.s.renown, 'the bank is intact through a whole second season');
+    const s3 = State.closeSeason({ ...two.s, phase: 'weekendEnd' }).state;
+    assert(s3.carryover.run === 3 && s3.carryover.seasons.length === 2 && s3.carryover.seasons[1].renownEarned === two.s.renown - one.s.renown, 'and a third season banks the second, knowing what it earned');
+  }
+}
+
+// ---------------------------------------------------------------------
+// Section 27: Phase 4 on the page. Renown in the HUD, the weekend-end
+// stub's renown lines, the season close with its ledger, the victory
+// screen as a ledger, the headliner's bar on Backstage, and the fence's
+// hint naming its renown.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  // A fixture written straight to storage is stamped with the current
+  // version unless it says otherwise: without `__v` it reads as a pre-
+  // Phase-4 save and migrate re-tallies its renown from its history, which
+  // is exactly the behaviour the last block below tests on purpose and the
+  // rest of this section must not trip over.
+  const boot = async (save) => {
+    const storage = makeMemoryStorage();
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify('__v' in save ? save : { ...save, __v: 2 }));
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    dom.window.prompt = () => 'A Name';
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return { dom, doc: dom.window.document, storage };
+  };
+  const click = (doc, sel) => {
+    const el = doc.querySelector(sel);
+    if (!el) return false;
+    el.dispatchEvent(new el.ownerDocument.defaultView.Event('click', { bubbles: true }));
+    return true;
+  };
+  const saved = (storage) => JSON.parse(storage.getItem('renn-faire-sim-save-v1'));
+  const target = CONFIG.winCondition.seasonTarget;
+  const headliner = PERFORMERS.find(p => typeof p.unlockRenown === 'number');
+  const meadow = GRID_EXPANSIONS[GRID_EXPANSIONS.length - 1];
+
+  // --- the HUD, and a weekend-end stub before the season can close ---
+  {
+    let s = State.createInitialState();
+    s.renown = 7;
+    s.season = 2; s.weekendDay = CONFIG.seasonLength; s.phase = 'weekendEnd';
+    s.lastRenown = { total: 3, lines: [{ id: 'mood', label: 'A weekend the crowd enjoyed (mood 71/100)', points: 2 }, { id: 'intact', label: '4 plots built and nothing torn down', points: 1 }] };
+    const { doc } = await boot(s);
+    const slot = [...doc.querySelectorAll('#ledger .ledger-item')].find(el => /renown/.test(el.textContent));
+    assert(!!slot && slot.querySelector('.ledger-label').textContent.trim() === '7' && /season 1/.test(slot.textContent), 'the HUD carries renown and the season number');
+    assert(slot && /tallied at the close of every weekend/.test(slot.title) && slot.title.includes(headliner.name) && slot.title.includes(meadow.label), 'with a tooltip that says what earns it and what it buys');
+    const total = doc.querySelector('.weekend-summary .renown-total');
+    assert(!!total && /\+3/.test(total.textContent) && /7/.test(total.textContent), 'the weekend-end stub carries a Renown row with the weekend\'s total and the running number');
+    const lines = [...doc.querySelectorAll('.weekend-summary .renown-line')];
+    assert(lines.length === 2 && /crowd enjoyed/.test(lines[0].textContent) && /\+2/.test(lines[0].textContent) && /nothing torn down/.test(lines[1].textContent), 'and one line per reason');
+    assert(!doc.querySelector('[data-action="closeSeason"]') && !doc.querySelector('.carry-ledger'), 'at Weekend 2 there is no Close Season button and no ledger');
+  }
+
+  // --- a weekend that earned nothing says so ---
+  {
+    let s = State.createInitialState();
+    s.season = 1; s.weekendDay = CONFIG.seasonLength; s.phase = 'weekendEnd';
+    s.lastRenown = { total: 0, lines: [] };
+    const { doc } = await boot(s);
+    const line = doc.querySelector('.weekend-summary .renown-line');
+    assert(!!line && /Nothing this weekend/.test(line.textContent) && /\+0/.test(line.textContent), 'an empty weekend prints the three ways to earn, not a blank');
+  }
+
+  // --- closing the season from the weekend-end desk ---
+  {
+    let s = State.createInitialState();
+    s.cash = 60000;
+    s = State.buildPlot(s, 'stage', 3, 0).state;
+    s = State.contractPerformer(s, 'perf_jouster_2').state;
+    s.relationships.perf_jouster_2 = 85;
+    s = State.resolveBeat(s, 'ysolde_devoted', 'champion').state;
+    s.season = target; s.weekendDay = CONFIG.seasonLength; s.phase = 'weekendEnd';
+    s.reputation = 64; s.cash = 12000; s.renown = 19;
+    s.history = Array.from({ length: target * CONFIG.seasonLength }, (_, i) => ({ day: i + 1, attendance: 300, cashDelta: 200, satisfaction: 65, reputationDelta: 0 }));
+    s.lastRenown = { total: 1, lines: [{ id: 'intact', label: '4 plots built and nothing torn down', points: 1 }] };
+    const { doc, storage } = await boot(s);
+    const ledger = doc.querySelector('.weekend-summary .carry-ledger');
+    assert(!!ledger, 'at the target weekend the weekend-end stub carries the carryover ledger');
+    const rows = ledger ? [...ledger.querySelectorAll('.ticket-row')].map(r => r.textContent.replace(/\s+/g, ' ').trim()) : [];
+    assert(rows.some(r => /Through the gate/.test(r) && r.includes((300 * target * CONFIG.seasonLength).toLocaleString())), 'the ledger sums the season\'s gate');
+    assert(rows.some(r => /Net over the season/.test(r) && r.includes(`$${(200 * target * CONFIG.seasonLength).toLocaleString()}`)), 'and its net');
+    assert(rows.some(r => /Renown earned/.test(r) && /\+19/.test(r)), 'and the renown it earned');
+    assert(rows.some(r => /Standing/.test(r) && /Not yet legendary/.test(r)), 'a season that missed the win says so');
+    assert(rows.some(r => /Renown, whole/.test(r) && /19/.test(r)) && rows.some(r => /Reputation, 50 plus 50% of the 14 above it\s*57$/.test(r)), 'what carries: renown whole, reputation as the start plus half of the 14 above it (57)');
+    assert(rows.some(r => /stories/.test(r) && /1 moment answered/.test(r)), 'and the acts\' stories');
+    assert(rows.some(r => /Cash/.test(r) && r.includes(`$${CONFIG.startingCash.toLocaleString()}`)), 'and what season 2 opens with');
+    assert(!ledger.textContent.includes(`${headliner.name} will sign`), 'at 19 renown the ledger does not promise the headliner');
+    const btn = doc.querySelector('[data-action="closeSeason"]');
+    assert(!!btn && /Close Season 1/.test(btn.textContent), 'the Close Season button names the season');
+    assert(!!doc.querySelector('[data-action="startNextWeekend"]'), 'and Begin Weekend 7 is still offered beside it: closing is a choice');
+    assert(click(doc, '[data-action="closeSeason"]'), 'it is clickable');
+    const after = saved(storage);
+    assert(after.carryover.run === 2 && after.carryover.seasons.length === 1 && after.carryover.seasons[0].won === false && after.renown === 19 && after.reputation === 57 && after.cash === CONFIG.startingCash && after.phase === 'plan' && after.season === 1, 'clicking it writes season 2 to disk: run 2, one banked season, the carryover applied');
+    assert(after.arcBeats.ysolde_devoted === 'champion', 'with Ysolde\'s moment still answered');
+    const hud = [...doc.querySelectorAll('#ledger .ledger-item')].find(el => /renown/.test(el.textContent));
+    assert(hud && /season 2/.test(hud.textContent) && hud.querySelector('.ledger-label').textContent.trim() === '19', 'the HUD now reads season 2 at 19 renown');
+    assert(/Season 1 closed and banked/.test(doc.querySelector('#content .warn')?.textContent || '') && /Season 2 opens with/.test(doc.querySelector('#content .warn')?.textContent || ''), 'the flash says what happened and what the new season opens with');
+    assert(doc.querySelector('.plat-title').textContent.trim() === 'Home Grounds' && !doc.querySelector('.plot-marker'), 'the site plan is the empty Home Grounds again');
+  }
+
+  // --- the victory screen is a ledger with two ways on ---
+  {
+    const w = CONFIG.winCondition;
+    let s = { ...State.createInitialState(), cash: w.minCash + 500, season: target, weekendDay: CONFIG.seasonLength, reputation: w.minReputation + 10, phase: 'victory', victoryAchieved: true, renown: headliner.unlockRenown + 2 };
+    s.history = Array.from({ length: target * CONFIG.seasonLength }, (_, i) => ({ day: i + 1, attendance: 600, cashDelta: 1500, satisfaction: 75, reputationDelta: 1 }));
+    const { doc, storage } = await boot(s);
+    assert(!!doc.querySelector('.victory-stub .carry-ledger'), 'the victory stub carries the ledger');
+    const text = doc.querySelector('.victory-stub').textContent.replace(/\s+/g, ' ');
+    assert(/A Legendary Faire/.test(text) && /Standing/.test(text) && /Season 2 opens with/.test(text), 'headline, standing, and what season 2 opens with');
+    assert(text.includes(`${headliner.name} will sign`), 'at 22 renown it promises the headliner will sign');
+    assert(!!doc.querySelector('.victory-stub [data-action="closeSeason"]') && !!doc.querySelector('.victory-stub [data-action="acknowledgeVictory"]'), 'both Close the season and Continue the Faire are offered');
+    assert(click(doc, '[data-action="acknowledgeVictory"]') && !!doc.querySelector('.weekend-summary'), 'Continue still drops into the weekend-end summary');
+    assert(!!doc.querySelector('.weekend-summary [data-action="closeSeason"]'), 'where the season can still be closed');
+    assert(click(doc, '[data-action="closeSeason"]'), 'and is');
+    const after = saved(storage);
+    assert(after.carryover.run === 2 && after.carryover.seasons[0].won === true && after.reputation === CONFIG.startingReputation + Math.round((w.minReputation + 10 - CONFIG.startingReputation) * CARRYOVER.reputationKeep), 'closing after the win banks a won season and carries half of the reputation above the start');
+  }
+
+  // --- the headliner on Backstage ---
+  {
+    let s = State.createInitialState();
+    s.cash = 20000;
+    const { doc, storage } = await boot(s);
+    click(doc, '[data-tab="backstage"]');
+    let row = [...doc.querySelectorAll('.roster-table tr')].find(tr => tr.textContent.includes(headliner.name));
+    assert(!!row, 'the headliner is on the Backstage board');
+    assert(row && row.querySelector('.renown-bar') && new RegExp(`${headliner.unlockRenown} renown \\(0 now\\)`).test(row.textContent), 'wearing the bar: will not sign for money alone, with the number and the gap');
+    assert(row && !row.querySelector('[data-action="contract"]') && !row.querySelector('[data-action="negotiate"]'), 'and no contract or Negotiate button');
+    let s2 = State.createInitialState();
+    s2.cash = 20000; s2.renown = headliner.unlockRenown;
+    const b2 = await boot(s2);
+    click(b2.doc, '[data-tab="backstage"]');
+    row = [...b2.doc.querySelectorAll('.roster-table tr')].find(tr => tr.textContent.includes(headliner.name));
+    assert(row && !row.querySelector('.renown-bar') && row.querySelector('[data-action="contract"]') && row.querySelector('[data-action="negotiate"]'), 'with the renown the row has the same buttons as anyone');
+    assert(click(b2.doc, `[data-action="contract"][data-id="${headliner.id}"][data-contract="open"]`), 'and the day rate is clickable');
+    assert(saved(b2.storage).roster.includes(headliner.id) && saved(b2.storage).tenure[headliner.id] === 0, 'clicking it signs them, tenure 0');
+  }
+
+  // --- the fence names its renown ---
+  {
+    let s = State.createInitialState();
+    s.season = meadow.unlockSeason; s.renown = 12;
+    const { doc } = await boot(s);
+    const hint = doc.querySelector('.grounds-status').textContent;
+    assert(new RegExp(`${meadow.label}.*unlocks ${meadow.unlockRenown} renown \\(12 now\\)`).test(hint), `at Weekend ${meadow.unlockSeason} with 12 renown the fence hint names the renown gap, not a weekend already reached`);
+    let s2 = State.createInitialState();
+    s2.season = meadow.unlockSeason - 1; s2.renown = 0;
+    const b2 = await boot(s2);
+    assert(new RegExp(`unlocks Weekend ${meadow.unlockSeason} and ${meadow.unlockRenown} renown`).test(b2.doc.querySelector('.grounds-status').textContent), 'a weekend earlier it names both gates');
+    let s3 = { ...State.createInitialState(), season: meadow.unlockSeason - 1, weekendDay: CONFIG.seasonLength, phase: 'weekendEnd', renown: 0, lastRenown: { total: 0, lines: [] } };
+    const b3 = await boot(s3);
+    const note = b3.doc.querySelector('.unlock-note');
+    assert(note && note.textContent.includes(meadow.label) && new RegExp(`once the faire has ${meadow.unlockRenown} renown`).test(note.textContent), 'the weekend-end unlock notice names the meadow with its renown condition rather than promising it');
+    let s4 = { ...State.createInitialState(), season: meadow.unlockSeason, renown: meadow.unlockRenown };
+    const b4 = await boot(s4);
+    assert(b4.doc.querySelector('.plat-title').textContent.trim() === meadow.label && b4.doc.querySelectorAll('.terrain-cell').length === meadow.cols * meadow.rows, 'with both gates met the plat draws the South Meadow');
+  }
+
+  // --- a pre-carryover save boots straight into the new shape ---
+  {
+    let o = State.createInitialState();
+    o.history = [80, 80, 80].map((sat, i) => ({ day: i + 1, attendance: 400, cashDelta: 300, satisfaction: sat, reputationDelta: 1, weather: { id: 'fair' }, warnings: [], log: [], events: [] }));
+    o.season = 1; o.weekendDay = CONFIG.seasonLength; o.phase = 'weekendEnd';
+    delete o.renown; delete o.carryover; delete o.tenure; delete o.demolished; delete o.lastRenown;
+    const { doc, storage } = await boot({ ...o, __v: 1 });
+    assert(!!doc.querySelector('.weekend-summary'), 'a Stage 22 save parked on a weekend-end screen boots to it');
+    const hud = [...doc.querySelectorAll('#ledger .ledger-item')].find(el => /renown/.test(el.textContent));
+    assert(hud && hud.querySelector('.ledger-label').textContent.trim() === String(RENOWN.moodPoints), 'the HUD shows the renown its one completed weekend was credited on the way in');
+    assert(saved(storage).__v === 2 && saved(storage).carryover.run === 1, 'and the save on disk is now version 2');
   }
 }
 

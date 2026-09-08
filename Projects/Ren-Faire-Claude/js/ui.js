@@ -1,8 +1,9 @@
 // ui.js — turns state into HTML strings. No event listeners live here;
 // main.js wires all interaction via event delegation on #content.
 
-import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, RELATIONSHIP, NEGOTIATION } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf } from './engine.js';
+import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, RELATIONSHIP, NEGOTIATION, RENOWN, CARRYOVER } from './data.js';
+import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf, renownOf, signingBar } from './engine.js';
+import { canCloseSeason, seasonRecord, carryoverPreview } from './state.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
 
@@ -39,6 +40,10 @@ export function renderLedger(state) {
       <span class="ledger-label text">${sky.name}</span>
       <span class="ledger-sub">today's sky${weatherPips(sky)}</span>
     </div>
+    <div class="ledger-item" title="${renownTitle(state)}">
+      <span class="ledger-label mono">${renownOf(state)}</span>
+      <span class="ledger-sub">renown &middot; season ${(state.carryover && state.carryover.run) || 1}</span>
+    </div>
     <div class="ledger-item" title="How much of a crowd the built grounds pull on their own, before reputation, price, or the bill. An empty field sits at ${GROUNDS_DRAW.floor.toFixed(2)}x; every built stage, staffed stall, and demo camp raises it, with diminishing returns.">
       <span class="ledger-label mono">${draw.mult.toFixed(2)}&times;</span>
       <span class="ledger-sub">grounds draw</span>
@@ -48,6 +53,19 @@ export function renderLedger(state) {
 }
 
 function clampPct(n) { return Math.max(0, Math.min(100, Math.round(n))); }
+
+// Phase 4: the second track's tooltip — what earns it, and what it is for.
+// A lever nothing on screen names is not a lever, and renown is earned by
+// three things the ledger never itemises.
+function renownTitle(state) {
+  const headliner = PERFORMERS.find(p => typeof p.unlockRenown === 'number');
+  const meadow = GRID_EXPANSIONS.find(g => typeof g.unlockRenown === 'number');
+  const wants = [
+    headliner ? `${headliner.name} signs at ${headliner.unlockRenown}` : '',
+    meadow ? `${meadow.label} opens at ${meadow.unlockRenown} from Weekend ${meadow.unlockSeason}` : '',
+  ].filter(Boolean).join('; ');
+  return `Renown is what cash does not measure, tallied at the close of every weekend: ${RENOWN.moodPoints} for a weekend whose crowd mood held at ${RENOWN.moodBar} or better (${RENOWN.moodHighPoints} at ${RENOWN.moodHighBar}), 1 for every act kept a ${RENOWN.keptWeekends}rd weekend or longer (up to ${RENOWN.keptCap}), and ${RENOWN.intactPoints} for a weekend closed on ${RENOWN.intactMinBuilt}+ built plots with nothing ever torn down. It carries whole into the next season when this one closes. ${wants}.`;
+}
 
 export function renderTabs(activeTab, phase) {
   if (phase !== 'plan') return '';
@@ -312,7 +330,12 @@ export function renderBackstage(state, warn, negotiating = null) {
         : `<span class="hint-tag">${label}</span>`;
       actionCell = `${lockNote} ${moodTag(state, p.id)}<br><button class="btn small danger" data-action="release" data-id="${p.id}">Release</button>`;
     } else {
-      actionCell = contractButtons(state, 'performer', p, 'contract');
+      // Phase 4: the headliner will not sign for money alone. The row stays
+      // on the board with the bar it is waiting on, rather than vanishing.
+      const bar = signingBar(state, p);
+      actionCell = bar
+        ? `<span class="warn-tag renown-bar" title="Will not sign for money alone. Renown is tallied at the close of every weekend; see the ledger.">Will not sign for money alone \u2014 ${bar.need} renown (${bar.have} now)</span>`
+        : contractButtons(state, 'performer', p, 'contract');
     }
     return `
       <tr class="${contracted ? 'is-contracted' : ''}">
@@ -536,11 +559,24 @@ export function renderGroundsPanel(state, pendingBuild, pendingMove, warn) {
       ${mapHtml}
       ${warn ? `<p class="warn">${warn}</p>` : ''}
       <p class="hint grounds-status">${next
-        ? `<span class="hint-tag">${next.label} (${next.cols}\u00d7${next.rows}) unlocks Weekend ${next.unlockSeason}</span>`
+        ? `<span class="hint-tag">${next.label} (${next.cols}\u00d7${next.rows}) unlocks ${expansionGateText(state, next)}</span>`
         : `<span class="hint-tag">Full grounds explored</span>`}</p>
       ${paletteHtml}
     </div>
   `;
+}
+
+// Phase 4: a tier gated on renown says so, and says how far off it is,
+// rather than reading "Weekend 5" to a player who reached Weekend 5 with
+// twelve renown and no idea why the fence did not move.
+function expansionGateText(state, tier) {
+  const parts = [];
+  if (!isSeasonUnlocked(state, tier.unlockSeason)) parts.push(`Weekend ${tier.unlockSeason}`);
+  if (typeof tier.unlockRenown === 'number' && renownOf(state) < tier.unlockRenown) {
+    parts.push(`${tier.unlockRenown} renown (${renownOf(state)} now)`);
+  }
+  if (parts.length === 0) return 'now';
+  return parts.join(' and ');
 }
 
 // Build palette: pick a structure kind, then tap an open cell on the map
@@ -981,10 +1017,75 @@ export function renderWeekendEnd(state, summary) {
       <hr>
       <div class="ticket-row total"><span>Weekend net</span><span class="mono ${netClass}">${summary.totalNet >= 0 ? '+' : ''}${money(summary.totalNet)}</span></div>
       <div class="ticket-row"><span>Reputation</span><span class="mono ${summary.repDelta >= 0 ? 'good' : 'bad'}">${summary.repDelta >= 0 ? '+' : ''}${summary.repDelta}</span></div>
+      ${renderRenownRows(state)}
       ${renderUnlockNotice(state)}
+      ${renderSeasonClose(state)}
       <button class="btn primary" data-action="startNextWeekend">Begin Weekend ${state.season + 1} \u2192</button>
     </div>
   `;
+}
+
+// Phase 4: what the weekend earned on the second track, line by line, off
+// state.lastRenown (nextDay wrote it at this boundary). A weekend that
+// earned nothing says so, because a track the player cannot see moving is
+// the weekendDay mistake again.
+function renderRenownRows(state) {
+  const award = state.lastRenown;
+  const total = award ? award.total : 0;
+  const lines = award && award.lines.length
+    ? award.lines.map(l => `<div class="ticket-row renown-line"><span class="hint">${l.label}</span><span class="mono good">+${l.points}</span></div>`).join('')
+    : `<div class="ticket-row renown-line"><span class="hint">Nothing this weekend \u2014 a crowd mood of ${RENOWN.moodBar}+, acts kept a ${RENOWN.keptWeekends}rd weekend, or ${RENOWN.intactMinBuilt}+ plots with nothing torn down</span><span class="mono">+0</span></div>`;
+  return `
+      <div class="ticket-row renown-total"><span>Renown</span><span class="mono ${total > 0 ? 'good' : ''}">+${total} \u2192 ${renownOf(state)}</span></div>
+      ${lines}`;
+}
+
+// Phase 4: once the season has run its weekends, the weekend-end desk
+// offers to close it — with the ledger of what would carry laid out above
+// the button, so closing is a decision rather than a surprise. Before that
+// weekend the block is absent; the season cannot be closed early.
+function renderSeasonClose(state) {
+  if (!canCloseSeason(state).ok) return '';
+  return `
+      <hr>
+      ${renderCarryLedger(state)}
+      <button class="btn" data-action="closeSeason">Close Season ${(state.carryover && state.carryover.run) || 1} and carry over \u2192</button>`;
+}
+
+// The ledger both the victory screen and the season-close block print:
+// what this season earned, what carries, what the next opens with. Read
+// off state.js's seasonRecord and carryoverPreview, the same two functions
+// closeSeason itself uses, so the screen cannot promise something the
+// action does not do.
+function renderCarryLedger(state) {
+  const rec = seasonRecord(state);
+  const opens = carryoverPreview(state);
+  const keepPct = Math.round(CARRYOVER.reputationKeep * 100);
+  const headliner = PERFORMERS.find(p => typeof p.unlockRenown === 'number');
+  const meadow = GRID_EXPANSIONS.find(g => typeof g.unlockRenown === 'number');
+  const opensWith = [
+    headliner && opens.renown >= headliner.unlockRenown ? `${headliner.name} will sign` : '',
+    meadow && opens.renown >= meadow.unlockRenown ? `${meadow.label} opens at Weekend ${meadow.unlockSeason}` : '',
+  ].filter(Boolean);
+  return `
+      <div class="carry-ledger">
+        <h3>Season ${rec.run} \u2014 the ledger</h3>
+        <div class="ticket-row"><span>Weekends run</span><span class="mono">${rec.weekends}</span></div>
+        <div class="ticket-row"><span>Through the gate</span><span class="mono">${rec.attendance.toLocaleString()}</span></div>
+        <div class="ticket-row"><span>Net over the season</span><span class="mono ${rec.net >= 0 ? 'good' : 'bad'}">${rec.net >= 0 ? '+' : ''}${money(rec.net)}</span></div>
+        <div class="ticket-row"><span>Renown earned</span><span class="mono good">+${rec.renownEarned}</span></div>
+        <div class="ticket-row"><span>Standing</span><span class="mono">${rec.won ? 'A Legendary Faire' : 'Not yet legendary'}</span></div>
+        <h3>What carries</h3>
+        <div class="ticket-row"><span>Renown, whole</span><span class="mono good">${opens.renown}</span></div>
+        <div class="ticket-row"><span>Reputation, ${CONFIG.startingReputation} plus ${keepPct}% of the ${Math.max(0, rec.reputation - CONFIG.startingReputation)} above it</span><span class="mono">${opens.reputation}</span></div>
+        <div class="ticket-row"><span>The acts\u2019 stories</span><span class="mono">${rec.beats} moment${rec.beats === 1 ? '' : 's'} answered</span></div>
+        <div class="ticket-row"><span class="hint">Cash, the grounds, the roster and every contract start over.</span><span></span></div>
+        <h3>Season ${opens.run} opens with</h3>
+        <div class="ticket-row"><span>Cash</span><span class="mono">${money(opens.cash)}</span></div>
+        <div class="ticket-row"><span>Reputation</span><span class="mono">${opens.reputation}</span></div>
+        <div class="ticket-row"><span>Renown</span><span class="mono">${opens.renown}</span></div>
+        ${opensWith.length ? `<div class="ticket-row"><span class="hint">${opensWith.join('; ')}.</span><span></span></div>` : ''}
+      </div>`;
 }
 
 // Flags anything that unlocks specifically at the START of next weekend, so
@@ -995,7 +1096,10 @@ function renderUnlockNotice(state) {
   const items = [
     ...AD_CAMPAIGNS.filter(c => c.unlockSeason === nextSeason).map(c => `${c.name} campaign`),
     ...Object.values(CONTRACT_OPTIONS).filter(o => o.unlockSeason === nextSeason).map(o => `${o.label} contracts`),
-    ...GRID_EXPANSIONS.filter(g => g.unlockSeason === nextSeason).map(g => `${g.label} grounds expansion (${g.cols}\u00d7${g.rows})`),
+    ...GRID_EXPANSIONS.filter(g => g.unlockSeason === nextSeason).map(g => {
+      const short = typeof g.unlockRenown === 'number' && renownOf(state) < g.unlockRenown;
+      return `${g.label} grounds expansion (${g.cols}\u00d7${g.rows})${short ? ` \u2014 once the faire has ${g.unlockRenown} renown` : ''}`;
+    }),
   ];
   if (!items.length) return '';
   return `<p class="hint unlock-note">New this weekend: ${items.join(', ')} unlocked!</p>`;
@@ -1015,7 +1119,10 @@ export function renderVictory(state) {
       <div class="ticket-row"><span>Weekend</span><span class="mono">${state.season}</span></div>
       <div class="ticket-row"><span>Reputation</span><span class="mono good">${Math.round(state.reputation)}</span></div>
       <div class="ticket-row"><span>Cash on hand</span><span class="mono good">${money(state.cash)}</span></div>
-      <button class="btn primary" data-action="acknowledgeVictory">Continue the Faire \u2192</button>
+      <hr>
+      ${renderCarryLedger(state)}
+      <button class="btn primary" data-action="closeSeason">Close the season and carry over \u2192</button>
+      <button class="btn" data-action="acknowledgeVictory">Continue the Faire \u2192</button>
     </div>
   `;
 }

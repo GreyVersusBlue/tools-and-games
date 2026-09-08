@@ -940,6 +940,20 @@ select {
   font-size: 0.9rem;
 }
 .victory-stub { box-shadow: 0 0 0 2px var(--brass), 0 22px 60px -18px rgba(240, 178, 82, 0.5); }
+/* Phase 4: the second track on the weekend-end stub, and the ledger the
+   victory screen and the season-close block share. */
+.renown-total { margin-top: 0.4rem; }
+.renown-line { font-size: 0.86rem; padding-top: 0; }
+.renown-line .hint { max-width: 78%; }
+.carry-ledger h3 {
+  font-family: var(--font-display, inherit);
+  font-size: 1.05rem;
+  margin: 0.9rem 0 0.25rem;
+  letter-spacing: 0.02em;
+}
+.carry-ledger h3:first-child { margin-top: 0; }
+.ticket-stub .btn + .btn { margin-top: 0.5rem; }
+.renown-bar { display: inline-block; max-width: 22ch; white-space: normal; }
 .gameover-stub { background: linear-gradient(180deg, #D8CBB0, #BFB094); box-shadow: 0 0 0 2px #7A2733, 0 22px 50px -22px #000; }
 
 /* A breakdown of what actually produced the day's crowd — Stage 19 added
