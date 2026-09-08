@@ -9,7 +9,17 @@ import { standPointsFor } from "./layout.js";
 import { MENU } from "./engine.js";
 import * as C from "./campaign.js";
 import * as LG from "./league.js";
+import * as RG from "./regulars.js";
 import * as audio from "./audio.js";
+
+/** The Tonight panel's one line on the regulars: how many of them there are,
+ *  and how many of those the door expects. `regularsIn()` is deterministic on
+ *  the day, so this number is the number the night actually gets. */
+function regularsLine(c) {
+  if (!c.regulars.length) return "none yet";
+  const n = C.regularsIn(c).length;
+  return `${n} of ${c.regulars.length} expected tonight`;
+}
 
 const $ = s => document.querySelector(s);
 
@@ -226,11 +236,35 @@ export class DayPhase {
     }).join("");
     const champ = L.champion ? `<div class="hint">MAFA champions, season ${L.season}: <b>${LG.teamDef(L.champion).name}</b></div>` : "";
     const past = L.history.filter(h => h.season < L.season).map(h => `season ${h.season} — ${LG.teamDef(h.champion).short}`).join(", ");
-    return `<div class="sec">MAFA — season ${L.season}, ${phase}</div>
+    return `${this.regularsHtml(c)}<div class="sec">MAFA — season ${L.season}, ${phase}</div>
       ${champ}
       <table id="standings"><tr><th></th><th>Team</th><th class="num">W</th><th class="num">L</th><th class="num">Streak</th></tr>${rows}</table>
       ${week ? `<div class="sec">This week</div><table id="thisWeek">${week}</table>` : ""}
       ${past ? `<div class="hint">Past champions: ${past}</div>` : ""}`;
+  }
+
+  /** The regulars, on the corkboard next to the schedules — who they are, what
+   *  they drink, whose games they turn up for, and how shaky they are. There is
+   *  deliberately no rival panel to go with it: the End Zone is a number in the
+   *  crowd and a line in the morning ticker, not a screen. */
+  regularsHtml(c) {
+    const cap = C.regularCap(c);
+    if (!c.regulars.length) {
+      return `<div class="sec">The Regulars — 0 of ${cap}</div>
+        <div class="hint">Nobody yet. A busy night you run well can earn one; 86 their usual or run an ugly floor and they drift.</div>`;
+    }
+    const inTonight = new Set(C.regularsIn(c).map(r => r.id));
+    const rows = c.regulars.map(r => {
+      const t = LG.teamDef(r.team);
+      const state = r.loyalty >= 70 ? "" : r.loyalty >= 35 ? "warn" : "bad";
+      // no `tr.us` here: that rule paints the whole row amber and would bury the
+      // loyalty colour, which is the number worth reading on this table
+      return `<tr><td>${r.name}</td><td>${RG.usualName(r)}</td>` +
+        `<td>${t.short}</td><td class="num ${state}">${Math.round(r.loyalty)}</td>` +
+        `<td class="num">${inTonight.has(r.id) ? '<span class="pill">in tonight</span>' : ""}</td></tr>`;
+    }).join("");
+    return `<div class="sec">The Regulars — ${c.regulars.length} of ${cap}</div>
+      <table id="regulars"><tr><th>Name</th><th>The usual</th><th>Team</th><th class="num">Loyalty</th><th class="num"></th></tr>${rows}</table>`;
   }
 
   doorPanel() {
@@ -250,6 +284,8 @@ export class DayPhase {
       ["Tonight", game ? `${tn.label} — kickoff 7 PM` : tn.label],
       ["Theme", C.promoDef(c).name + (C.promoDef(c).cost ? ` (−$${C.promoDef(c).cost})` : "")],
       ["Forecast", `~${C.forecast(c)} through the door`],
+      ["Reputation", `${Math.round(c.rep)} / 100`],
+      ["Regulars", regularsLine(c)],
       ["Crew", c.staff.length ? c.staff.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
       ["Wages + rent", `$${C.wageBill(c)} + $${C.rent(c)}`],
       ["Upgrade upkeep", `$${C.upgradeFees(c)}`],

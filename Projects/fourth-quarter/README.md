@@ -122,6 +122,15 @@ table and this week's fixtures.
   ($34,000). Cash up front, then 1-2 closed nights (rent/wages/upkeep still
   due, no patrons) before the doors reopen. Each rung lifts the crowd forecast
   and the nightly rent alike — see below.
+- **Regulars, your name, and the bar across town.** Named regulars have a
+  usual, a MAFA team and a loyalty number; who walks in on a given night is a
+  pure function of the day, so the corkboard's forecast and the door agree.
+  Reputation (0-100, opens at 50) drives the crowd multiplier, applicant skill
+  and how well regulars stick. The End Zone across town has a buzz (10-95)
+  that drags your crowd when it outruns your name — one line in the morning
+  ticker, no panel. 86 a regular's usual, run an ugly floor, or go dark for a
+  move and they drift; at zero they stop coming, and a great busy night can
+  win them back.
 - Rent is **$110/night at the Corner Tap, rising $50/rung up the ladder**
   ($160 / $210 / $260). Wages, rent, upgrade upkeep, and theme costs settle at
   close. Each rung is a bigger room too — 30, 44, 58 and 76 seats, more
@@ -140,6 +149,11 @@ table and this week's fixtures.
   generator state. `syncLeague()` holds the one invariant (everything dated
   before today is played, nothing from today on), which is also how a save
   from before the league existed loads into the right week.
+- `js/regulars.js` — the people who come back and the rival bar, pure. Who is
+  in tonight is `dayRoll(id, day)`, one generator step off a hash of the
+  regular's id and the campaign's day, so the answer is the same every time it
+  is asked and nothing about it is stored. Also owns the reputation and buzz
+  arithmetic, the loyalty drift, and the repair for all three fields.
 - `js/campaign.js` — the books between nights: cash, calendar, stock orders,
   payroll + roles, promos, upgrades, settlement, persistence. Also pure — the
   save slot takes any localStorage-shaped object, and the smoke test passes a stub.
@@ -287,7 +301,10 @@ On a 5 Mbps line the 2k room takes 114.5 s to finish; the 1k room, 11.7 s.
    session's spoilage is a cost curve, not a lease-can-be-lost mechanic.
    `SPOILAGE_RATE` in `js/campaign.js` is the one number to tune if 15%/night
    feels wrong once it's been played.
-3. **Full campaign port — the league is in (wishlist Phase 6).** Still to
-   port: regulars, the rival bar, distributors, a Commercial Walk-In upgrade
-   to cut the spoilage rate, events as floor moments, and a season that
-   nudges rent and wages, re-balanced for the 3D serving loop.
+3. **Full campaign port — the league is in (wishlist Phase 6), and the
+   regulars' books are (Phase 7, increment 1).** What is left of the regulars
+   is their 3D half: a named mesh on the floor, a nameplate, their usual
+   pre-filled on the ticket, and a first-round-free interaction at the bar.
+   Still to port beyond that: distributors, a Commercial Walk-In upgrade to
+   cut the spoilage rate, events as floor moments, and a season that nudges
+   rent and wages, re-balanced for the 3D serving loop.

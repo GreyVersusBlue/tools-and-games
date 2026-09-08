@@ -97,6 +97,11 @@ function setLighting(night) {
   scene.background.copy(night ? NIGHT_BG : DAY_BG);
 }
 
+/** Last night's settleSocial() report, kept across the box score so the next
+ *  morning's ticker can say which way the End Zone moved. Null on a reload,
+ *  where campaign.rivalLine() falls back to the standing line. */
+let lastSocial = null;
+
 /** Tear down the current room and build the new venue's — called right after
  *  a successful moveVenue(). Only ever fires during the day phase (moves
  *  happen at the Real Estate desk), so there's no active night sim/patrons
@@ -114,6 +119,7 @@ function rebuildVenue() {
  *  Stays in the day phase throughout — there's no night sim to run. */
 function closedNight() {
   const books = C.settleDarkNight(campaign);
+  lastSocial = books.social;
   save();
   const billed = Math.round(books.wages + books.rent + books.upgFees);
   tick(`Closed for the move. −$${billed} in bills, doors stay shut tonight.`, "b");
@@ -148,6 +154,12 @@ function enterDay() {
     tick(`Fresh schedules on the corkboard — MAFA Season ${L.season} kicks off.`, "hl");
   }
   tick(tn.mules ? `${tn.label}. Stock the beer and staff up.` : `${tn.label}. A theme can still fill some stools.`, "");
+  // one line about the bar across town, and never a panel: the End Zone is a
+  // pressure on the door, not a screen you can go look at
+  const drag = C.rivalLine(campaign, lastSocial ? lastSocial.dBuzz : 0);
+  tick(drag, lastSocial && lastSocial.dBuzz >= 2 ? "b" : lastSocial && lastSocial.dBuzz <= -2 ? "g" : "");
+  const inTonight = C.regularsIn(campaign);
+  if (inTonight.length) tick(`${inTonight.map(r => r.name.split(" ")[0]).join(", ")} ${inTonight.length === 1 ? "is" : "are"} good for tonight.`, "g");
   updateHUD();
 }
 
@@ -249,6 +261,10 @@ function updateHUD() {
   $("#hDay").textContent = `Day ${campaign.day} · ${C.weekday(campaign)}`;
   $("#hCash").textContent = "$" + Math.round(campaign.cash + (phase === "night" && engine ? engine.revenue + engine.tips : 0));
   $("#hCash").classList.toggle("hurt", campaign.cash < 0);
+  // Reputation sits beside cash because it is the other running total: cash is
+  // what tonight paid, this is what every night before it bought.
+  $("#hRep").textContent = Math.round(campaign.rep);
+  $("#hRep").classList.toggle("hurt", campaign.rep < 30);
   if (phase === "night" && engine) {
     $("#hHour").textContent = engine.done ? "CLOSE" : hourName(Math.min(7, engine.hour));
     $("#hCrowd").textContent = engine.inBar;
@@ -348,6 +364,7 @@ function showBoxScore() {
   phase = "report";
   const s = engine.summary();
   const books = C.settleNight(campaign, s);
+  lastSocial = books.social;
   save();
   const empt = patrons.filter(p => p.emptyShelves).length;
   const spoiled = Object.values(books.spoilage.byItem).reduce((a, b) => a + b, 0);
@@ -369,10 +386,25 @@ function showBoxScore() {
     <div class="row"><span>Service rate</span><span class="${s.serviceRate >= 90 ? "good" : s.serviceRate >= 70 ? "warn" : "bad"}">${s.serviceRate}%</span></div>
     <div class="row"><span>Spoiled overnight</span><span class="${spoiled ? "bad" : ""}">${spoiled} serving${spoiled === 1 ? "" : "s"}${spoiled ? ` (~$${books.spoilage.value.toFixed(2)} wholesale)` : ""}</span></div>
     ${engine.gameNight ? `<div class="sec">The Game</div>
-    <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${gameLine(s.game.win)}</span></div>` : ""}`;
+    <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${gameLine(s.game.win)}</span></div>` : ""}
+    ${socialRows(books.social)}`;
   $("#boxOverlay").style.display = "flex";
   document.exitPointerLock();
 }
+/** The box score's half-dozen lines on people rather than money: which way your
+ *  name moved and why, who was in, who got 86'd, who left and who was earned.
+ *  The rival is not here on purpose — it gets one line in the morning ticker. */
+function socialRows(so) {
+  if (!so) return "";
+  const arrow = so.dRep > 0 ? "good" : so.dRep < 0 ? "bad" : "";
+  const rows = [`<div class="row"><span>Reputation</span><span class="${arrow}">${so.dRep >= 0 ? "+" : "−"}${Math.abs(so.dRep)} → ${so.rep}</span></div>`];
+  if (so.showing.length) rows.push(`<div class="row"><span>Regulars in</span><span>${so.showing.join(", ")}</span></div>`);
+  if (so.snubbed.length) rows.push(`<div class="row"><span>Came in for the usual, and you were out</span><span class="bad">${so.snubbed.join(", ")}</span></div>`);
+  if (so.lost.length) rows.push(`<div class="row"><span>Stopped coming</span><span class="bad">${so.lost.join(", ")}</span></div>`);
+  if (so.gained) rows.push(`<div class="row"><span>${so.gained.returning ? "Came back" : "New regular"}</span><span class="good">${so.gained.name}</span></div>`);
+  return `<div class="sec">The Room's People</div>${rows.join("")}`;
+}
+
 /** The box score's one line on the game: who, the score the screens showed,
  *  and what it meant if it was a bracket night. */
 function gameLine(win) {

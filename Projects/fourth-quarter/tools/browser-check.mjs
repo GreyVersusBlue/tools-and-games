@@ -681,6 +681,107 @@ ok("the box score's game line names the opponent and the score", books.box.inclu
 ok("the morning after holds the league's invariant", books.invariant);
 ok("no page errors through a whole night", errors.length === 0, errors.join(" | "));
 
+group("the regulars are on the corkboard, in the forecast, and in the box score");
+// Phase 7. The previous group left the box score up on day 5. Take tomorrow's
+// ledger, mint three regulars off the dev menu, and follow them from the
+// corkboard's table to the number the door opens on to the settlement.
+await page.click("#nextDayBtn");
+await settled(() => document.querySelector("#boxOverlay").style.display === "none", "the day to come back");
+
+const morning = await page.evaluate(() => ({
+  rep: document.querySelector("#hRep").textContent,
+  campaignRep: window.__fq.campaign.rep,
+  ticker: document.querySelector("#ticker").textContent,
+  rivalPanel: !!document.querySelector("#rivalPanel, [data-rival]"),
+}));
+// not 50: the night the previous group ran already settled and moved it, which
+// is the point — the bug reads the campaign, it does not hold a number of its own
+ok("the score bug carries the reputation beside cash", morning.rep === String(Math.round(morning.campaignRep)) && morning.campaignRep !== 50,
+  `${morning.rep}, campaign ${morning.campaignRep}`);
+ok("the morning ticker has the one line about the bar across town", /The End Zone/.test(morning.ticker), morning.ticker.slice(0, 120));
+ok("and there is no rival panel anywhere on the page", !morning.rivalPanel);
+
+const board = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const RG = await import("./js/regulars.js");
+  const LG = await import("./js/league.js");
+  const c = window.__fq.campaign;
+  // a deterministic namer, so the assertions below can quote the roster
+  let s = 424242;
+  const rand = () => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return s / 4294967296; };
+  for (let i = 0; i < 3; i++) C.devAddRegular(c, rand);
+  const inTonight = C.regularsIn(c);
+  window.__fq.day.promoPanel();
+  const body = document.querySelector("#panelBody");
+  const cells = [...body.querySelectorAll("#regulars tr")].slice(1).map(tr => [...tr.children].map(td => td.textContent.trim()));
+  window.__fq.day.closePanel();
+  window.__fq.day.doorPanel();
+  const door = document.querySelector("#panelBody").textContent;
+  window.__fq.day.closePanel();
+  return {
+    roster: c.regulars.map(r => ({ name: r.name, usual: RG.usualName(r), team: LG.teamDef(r.team).short, loyalty: r.loyalty })),
+    inTonight: inTonight.map(r => r.name),
+    cells, door, forecast: C.forecast(c), cap: C.regularCap(c),
+    // Asked twenty times, not twice. Node's suite proves dayRoll() is a
+    // function of the day; this proves the page calls it and not a coin, and
+    // two calls do not: three regulars at ~0.82 each agree by luck about half
+    // the time, so a `Math.random()` in showsTonight() sat green here while
+    // smoke-regulars.mjs caught it (#147 — the comment has to be a claim the
+    // arithmetic can actually distinguish).
+    againIn: Array.from({ length: 20 }, () => C.regularsIn(c).map(r => r.name).join()),
+  };
+});
+// the earlier groups warped the room up the ladder, so the cap is that room's
+ok("three regulars are on the roster, inside this room's cap", board.roster.length === 3 && board.cap >= 3, `cap ${board.cap}`);
+ok("the corkboard's table has a row each, with the name, the usual, the team and the loyalty",
+  board.cells.length === 3 && board.cells.every((row, i) =>
+    row[0] === board.roster[i].name && row[1] === board.roster[i].usual &&
+    row[2] === board.roster[i].team && row[3] === String(board.roster[i].loyalty)),
+  JSON.stringify(board.cells));
+ok("the ones in tonight are marked, and only those",
+  board.cells.filter(r => r[4].includes("in tonight")).map(r => r[0]).join() === board.inTonight.join(),
+  `${board.cells.filter(r => r[4]).length} marked, ${board.inTonight.length} in`);
+ok("the Tonight panel prints the reputation and how many are expected",
+  /Reputation/.test(board.door) && board.door.includes(`${board.inTonight.length} of ${board.roster.length} expected tonight`), board.door.slice(0, 200));
+ok("asking who is in tonight twenty times gives the same answer every time",
+  board.againIn.every(a => a === board.inTonight.join()), `${new Set(board.againIn).size} distinct answers`);
+
+// open the doors and run the night straight to the box score
+await page.evaluate(() => window.__fq.day.cb.openDoors());
+await settled(() => window.__fq.engine, "the second night to open");
+const target = await page.evaluate(() => window.__fq.engine.crowdTarget);
+ok("the crowd the door opens on is the forecast the corkboard printed", target === board.forecast, `${target} vs ${board.forecast}`);
+
+// 86 one regular's usual before last call, and leave the rest stocked
+const victim = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const { FOOD } = await import("./js/engine.js");
+  const c = window.__fq.campaign;
+  const inTonight = C.regularsIn(c);
+  for (const id of FOOD) c.stock[id] = 60;
+  const v = inTonight[0];
+  c.stock[v.usual] = 0;
+  return v ? { name: v.name, usual: v.usual, loyalty: v.loyalty } : null;
+});
+ok("one of tonight's regulars has had their usual 86'd", !!victim, victim && `${victim.name} — ${victim.usual}`);
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the second box score");
+// the score bug is redrawn by the loop's 0.12 s HUD tick, not by showBoxScore(),
+// so wait for the tick rather than reading the number the settlement replaced
+await settled(() => document.querySelector("#hRep").textContent === String(Math.round(window.__fq.campaign.rep)), "the HUD tick after settlement");
+const after = await page.evaluate(() => {
+  const c = window.__fq.campaign;
+  return { box: document.querySelector("#boxBody").textContent, rep: c.rep, bug: document.querySelector("#hRep").textContent,
+    roster: c.regulars.map(r => ({ name: r.name, loyalty: r.loyalty })) };
+});
+const vRow = after.roster.find(r => r.name === victim.name);
+ok("the box score has a section on the room's people with the reputation move", /The Room's People/.test(after.box) && /Reputation/.test(after.box));
+ok("it names who was in tonight", board.inTonight.every(n => after.box.includes(n)), board.inTonight.join(", "));
+ok("and names the one who came in for the usual and found you out", after.box.includes("and you were out") && after.box.includes(victim.name));
+ok("that regular lost exactly 8 loyalty and the others did not", vRow && victim.loyalty - vRow.loyalty === 8, `${victim.loyalty} → ${vRow && vRow.loyalty}`);
+ok("the score bug's reputation is the campaign's after settlement", after.bug === String(Math.round(after.rep)), `${after.bug} vs ${after.rep}`);
+ok("no page errors through the second night", errors.length === 0, errors.join(" | "));
+
 await browser.close();
 server.close();
 console.log(`\n${pass} passed, ${fail} failed`);

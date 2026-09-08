@@ -741,37 +741,45 @@ closed rather than left open for an increment that has nothing to do.*
 
 ## Phase 7 — Regulars, and the bar across town
 
-**Nobody who walks in has ever been here before.**
+**Increment 1 of 2 is in. The books remember you; the floor does not.**
 
-A patron is a shirt colour, a Mules-fan flag and up to three rounds. The 2D
-build earns you named regulars with a usual, a team, and a loyalty number that
-drops when you 86 their order — and puts a rival bar across town whose buzz
-drifts against your reputation and drags your crowd when it wins. Together they
-make a good night an investment and a bad one a consequence.
+Increment 1 built `js/regulars.js` and wired it through `campaign.js`: named
+regulars with a usual, a team and a loyalty number, reputation as one number
+0-100 in the score bug, and The End Zone across town as a buzz that drifts
+against it. Who is in tonight is a pure function of the day (#207), the
+day-one forecast is unchanged (#208), the rival has no panel and a floored
+drag (#209), a regular at zero is remembered for six names and can be won back
+as themselves (#210), and a dark night costs standing (#211). `HISTORY.md`'s
+Phase 7 increment 1 entry has the whole of it.
 
-- [ ] **Regulars in `campaign.js`, ported not copied.** A cap that grows with
-  the tier, `regularShows()` weighted by loyalty and by whether their team is
-  on tonight, loyalty moving on service rate, stock-outs and walkouts.
+**What is left is the phase's 3D half, and it is the half that earns the
+port.** A regular who shows tonight is a body in the crowd multiplier and a
+name in the box score. They are not somebody you can walk up to.
+
+- [x] **Regulars in `campaign.js`, ported not copied.** A cap that grows with
+  the tier (3, 5, 7, 9), the show roll weighted by loyalty, by whether their
+  team is on tonight and by reputation, loyalty moving on service rate, room
+  mood and stock-outs.
 - [ ] **A regular is a person on the floor.** The half the 2D build cannot do:
   a named patron mesh, a nameplate, their usual pre-filled on the ticket, and a
   first-round-free interaction at the bar. This is where the port earns its
-  keep.
-- [ ] **Reputation, one number, honest about what it does.** It drives
-  applicant quality, crowd multiplier and regular retention — all three have
-  hooks in the 2D source. Show it in the score bug beside cash.
-- [ ] **The rival bar.** Buzz drifting nightly against `rep`, crowd drag when
-  it outruns you, and one line in the day ticker about what they did last
-  night. No rival panel — it is a pressure, not a screen. Both records land
-  additively in the save, defaulted in `repairCampaign()`.
-- [ ] **The suite covers the drift.** Loyalty and buzz never leave 0-100; a
-  stocked-out usual costs loyalty exactly once per night; a regular at zero
-  loyalty stops showing and can be re-earned; crowd drag is bounded so a bad
-  streak cannot zero the forecast.
+  keep. Increment 2's whole job. `patrons.js` takes a `regular` on the Patron
+  constructor; `beginNight()` already knows who is in from `regularsIn()`, and
+  the engine's arrival stream is where they have to come from so the seat cap
+  and the crowd number stay honest.
+- [x] **Reputation, one number, honest about what it does.** Applicant
+  quality, crowd multiplier and regular retention, all three, and it is in the
+  score bug beside cash.
+- [x] **The rival bar.** Buzz drifting nightly against `rep`, crowd drag when
+  it outruns you, and one line in the day ticker. No rival panel. Both records
+  additive in the save, defaulted in `repairCampaign()`.
+- [x] **The suite covers the drift.** `test/smoke-regulars.mjs` (89), and
+  `tools/browser-check.mjs` 162 → 178.
 
 *Leans on:* phase 6's league (a regular's team plays in it), `campaign.js`,
-`patrons.js`. *Save:* additive `regulars` array and `rival` record.
-*Model:* **Claude Opus 5** — a port from a working, balanced reference onto an
-established save pattern, with a suite around it.
+`patrons.js`. *Save:* additive `regulars`, `regularsLost`, `rep` and `rival`,
+all in. *Model:* **Claude Opus 5** — a port from a working, balanced reference
+onto an established save pattern, with a suite around it.
 
 ## Phase 8 — The night has moments
 
