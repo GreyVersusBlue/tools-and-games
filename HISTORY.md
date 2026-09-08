@@ -3941,7 +3941,7 @@ and the stack names the line. *Left:* the economy does not move with the
 season, League Pass, and a tie-break beyond wins-losses-id, all in the
 standing backlog. Sized 2+, closed in one session because every bullet was.
 
-**Phase 7, increment 1 — The books remember you (PR #TBD).** Nobody who
+**Phase 7, increment 1 — The books remember you (PR #183).** Nobody who
 walked in had ever been here before, and no night you ran left a mark on the
 next one. `js/regulars.js` (251, pure, imports `engine.js` and `league.js`
 only) is the 2D build's regulars and its rival bar, ported: a named person
@@ -4428,7 +4428,7 @@ and price the gross off it; the test is a new 900-guest fixture, and it
 asserts out loud that the scaling *would* have disagreed, so it cannot go
 back to proving nothing if the fixture ever shrinks.
 
-**Phase 2 — Weather worth checking (PR #TBD).** Every time block knew
+**Phase 2 — Weather worth checking (PR #195).** Every time block knew
 exactly how hot it was and no two days had ever been different. Saturday of
 weekend 1 and Saturday of weekend 6 lit the grounds identically, and the
 only reason to look at the sky was flavour text nobody had written.

@@ -328,7 +328,7 @@ The ledger landed at: empty field -$1,177 a day (unchanged), day-one build
 *Save:* none, either increment. Guests die with the report, only aggregates
 reach `history`, and no key changed.
 
-## Phase 2 — Weather worth checking — **shipped**
+## Phase 2 — Weather worth checking — **shipped (PR #195)**
 
 **Every time block knew exactly how hot it was, and no two days had ever been
 different. Seven skies now, drawn off the calendar rather than the day, with
