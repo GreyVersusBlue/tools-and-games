@@ -1,6 +1,7 @@
 # The Fourth Quarter — Feature Wishlist
 
-**Status: nothing is open and nothing is broken.** Three rounds shipped the
+**Status: Phases 1 through 8 have shipped; Phase 9 is the one open row.**
+Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
 with `test/smoke-layout.mjs`); Phase 2's first increment authored the other
@@ -78,6 +79,15 @@ comment saying why). Honest is not built.
   and what it is worth at the door (`CROWD`), and two writers: `syncLeague()`
   holding the invariant and `settleLeagueNight()` playing tonight with the
   engine's result. Imports `mulberry32` from engine.js, nothing else.
+- **`js/events.js` (375)** — the night's moments, pure, zero imports. The
+  2D build's event cards (19 of 21; the two about distributors wait for
+  that arc, #215) with their `when`/`cd`/`weight` shape, `eligible()` over
+  the save's `eventCd` and tonight's `fired` list, `pickWeighted()`,
+  `rollMoment()` (hours 1-6, a nightly budget off the chaos roll, then a 40%
+  coin), and `resolveChoice()` returning `{ fx, line, cls }` — effects as
+  data the engine spends (`EFFECT_KINDS`). **`test/smoke-events.mjs`
+  (121 assertions)** holds the table, the picker over 10,000 draws, the
+  engine's spending and the books' settlement.
 - **`js/campaign.js` (538)** — the books between nights: stock, `VENUES`,
   `UPGRADES`, `PROMOS`, `ROLES`, payroll, `settleNight()`,
   `settleDarkNight()`, `applySpoilage()`, `repairCampaign()`, the save slot,
@@ -788,6 +798,8 @@ around it.
 
 ## Phase 8 — The night has moments
 
+**Shipped 2026-09-08 under Claude Fable 5.1 (PR pending), in one session.**
+
 **Eight sim hours, and the only thing that ever interrupts you is a ticket.**
 
 The 2D build has 21 event cards with conditions, cooldowns and weights: the tap
@@ -797,30 +809,61 @@ In a click-through night they are a dialog. Here they can be a person walking
 through the door and standing in front of you, which is the whole argument for
 the 3D build existing.
 
-- [ ] **`js/events.js`, pure, with its suite.** The table ported with its
-  `when`/`cd`/`weight` shape intact, a picker respecting cooldowns and
-  conditions, and resolution returning effects as data — never touching the DOM
-  or the scene.
-- [ ] **Effects the engine already understands.** Cash, mood, crowd, stock,
-  rep, loyalty, and a small set of night flags (`tapBroken`, `tvBroken`) that
-  `engine.js` reads when pricing and prepping. Anything an event wants that the
-  engine cannot express is a new engine field with its own assertions, not a
-  special case in the handler.
-- [ ] **A moment on the floor, not a modal.** The event arrives as a marked NPC
-  or a lit prop you walk up to and press E on; the choices are the panel you
-  already have. The sim keeps running while you decide — the cost of the
-  interruption, and the part a paused 2D dialog cannot charge you. Cooldowns
-  survive the night in an additive `eventCd` record, so the health inspector
-  cannot show up three nights running.
-- [ ] **The suite pins the picker.** Nothing fires on cooldown or with a false
-  `when`; weights hold over 10,000 seeded draws; every choice's effects apply
-  exactly once; an unresolved event at last call resolves to its first option
-  rather than blocking the close.
+- [x] **`js/events.js`, pure, with its suite.** Nineteen cards ported with
+  the `when`/`cd`/`weight` shape intact; the two about distributors are not
+  on the table, because a card whose condition names a system this build
+  does not have is a card that never fires (#215). `eligible()` respects the
+  save's cooldowns, tonight's fired list and every `when`; `rollMoment()` is
+  the 2D build's hour roll (hours 1-6, a budget of 0-3 off the chaos roll, a
+  40% coin, then a weighted pick); `resolveChoice()` returns effects as data
+  and writes nothing. `test/smoke-events.mjs`, 121 assertions.
+- [x] **Effects the engine already understands.** `EFFECT_KINDS` names
+  twelve: cash into the night's take (`eventNet`, in `summary().total`),
+  mood and stock onto the floor now, `crowd`/`crowdPct` as a `clearOut`
+  event the floor acts on, rep, loyalty and buzz carried to the books, three
+  night flags (`tapBroken` 86s the beer, `tvBroken` thins a game night's
+  draw and the next round to 70%, `soundBroken` to 85%), a raise, a walkout
+  (`staffQuits` event now, off the payroll at settlement), and a wager
+  settled at the final. The two things the 2D build only said in a line
+  ("fewer folks stick around") are numbers here (#217).
+- [x] **A moment on the floor, not a modal.** `js/moments.js`: a card is a
+  person who walks in from the door to the card's stand-point (a light coat,
+  a nameplate, the boss's marker cone in event red) or a lit prop there (the
+  tap, the screen); a floor ring marks it either way. In reach, the prompt
+  names the card and E opens its choices as the management panel. The sim
+  keeps running underneath; Esc walks away and the card keeps waiting; last
+  call resolves it to its first option and the box score says nobody
+  answered (#216). Cooldowns survive the night in the additive `eventCd`
+  record, written at settlement from the floor's `resolved` list, so the
+  inspector cannot come three nights running.
+- [x] **The suite pins the picker.** Nothing fires on cooldown, fired
+  twice, at hour 0 or 7, or past the budget; every card's share of 10,000
+  seeded draws is its weight's share within 1.5 points; every choice's
+  effects apply exactly once and a second answer applies nothing; an
+  unresolved moment at last call resolves to its first option, marked
+  `auto`. In the browser (`tools/browser-check.mjs`, 193 → 224): the
+  inspector in from the door with a nameplate, walking to the kitchen pass;
+  the prompt; the panel with the sim advancing under it; the answer's $200
+  and 5 rep in the engine's ledger and the cash on the score bug; the tap as
+  a prop that 86s a full keg; the rowdy fans clearing six bodies off the
+  seats without a walkout; the legend left hanging and resolved at close;
+  four cooldowns in the save.
+- [x] **Reintroduced the bugs (#34).** Sixteen in Node, each caught by the
+  assertion whose comment claims it: the cooldown dropped (4 fail), the
+  fired-tonight check dropped (2), the hours ignored (1), the budget ignored
+  (3), the weighted pick gone uniform (2), a moment answerable twice (4),
+  last call leaving one hanging (2), cash dropped (5), `tapBroken` ignored
+  (1), the wager never settled (2), the roll asked while a card waits (1),
+  a dead screen drawing a full room (3), cooldowns never written (2), the
+  quitter off the payroll before wages (6), the card's rep never landing
+  (1), repair skipping `eventCd` (1). The last-call break first crashed the
+  suite on `moments[0]` rather than failing it; two lines guard the length
+  now. Five in the browser, listed in `HISTORY.md`.
 
 *Leans on:* phases 6 and 7 (half the conditions reference the season, the rival
 and the regulars), `engine.js`, `day.js`'s panel. *Save:* additive `eventCd`
 map. *Model:* **Claude Opus 5** — a content table and floor wiring over an
-event pipeline that already exists.
+event pipeline that already exists. *Worked under Claude Fable 5.1.*
 
 ## Phase 9 — A night you can lose
 

@@ -8,11 +8,12 @@
 import * as C from "./campaign.js";
 import * as LG from "./league.js";
 import * as RG from "./regulars.js";
+import * as EV from "./events.js";
 
 const $ = s => document.querySelector(s);
 
 export class DevPanel {
-  /** @param cb { save(), flash(msg, good), rebuild(), resetProgress(), skipToClose() } */
+  /** @param cb { save(), flash(msg, good), rebuild(), resetProgress(), skipToClose(), fireMoment(id) } */
   constructor(getC, cb) {
     this.getC = getC;
     this.cb = cb;
@@ -87,6 +88,12 @@ export class DevPanel {
       <button class="btn small" data-skipclose="1">Skip to last call</button>
       <p class="hint" style="margin-top:6px">Only does anything with a night in
       progress. Closes the books the normal way, so the box score comes up.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+        <select id="devMoment">${EV.EVENTS.map(e => `<option value="${e.id}">${e.title}</option>`).join("")}</select>
+        <button class="btn small" data-firemoment="1">Fire this moment</button>
+      </div>
+      <p class="hint" style="margin-top:6px">Puts the card on the floor now, whatever the
+      budget or its cooldown says. Refused while one is already waiting.${Object.keys(c.eventCd || {}).length ? ` On cooldown: ${Object.entries(c.eventCd).map(([id, d]) => `${id} until day ${d}`).join(", ")}.` : ""}</p>
 
       <div class="sec">Danger zone</div>
       <button class="btn small ghost" data-resetall="1">Reset all progress</button>
@@ -128,6 +135,11 @@ export class DevPanel {
       // The box score comes up 2.5s after last call, on the engine's own timer.
       if (this.cb.skipToClose()) { this.close(); this.cb.flash("Last call.", true); }
       else this.cb.flash("No night running — open the doors first.");
+    }
+    if (t.dataset.firemoment) {
+      const id = $("#devMoment").value;
+      if (this.cb.fireMoment(id)) { this.close(); this.cb.flash(`${EV.eventDef(id).title} is on the floor.`, true); }
+      else this.cb.flash("No night running, or a moment is already waiting.");
     }
     if (t.dataset.rep) {
       C.devSetRep(c, c.rep + +t.dataset.rep);

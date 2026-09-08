@@ -10,6 +10,7 @@ import { MENU } from "./engine.js";
 import * as C from "./campaign.js";
 import * as LG from "./league.js";
 import * as RG from "./regulars.js";
+import * as EV from "./events.js";
 import * as audio from "./audio.js";
 
 /** The Tonight panel's one line on the regulars: how many of them there are,
@@ -27,7 +28,7 @@ export class DayPhase {
   /**
    * @param scene   three.js scene (rings live here)
    * @param getC    () => campaign object (always current)
-   * @param cb      { save(), openDoors(), flash(), mountBar(el), onMove(), closedNight() }
+   * @param cb      { save(), openDoors(), flash(), mountBar(el), onMove(), closedNight(), resolveMoment(idx) }
    *                mountBar is main.js's one-and-only save-bar mount, called by
    *                doorPanel()/darkNightPanel(); onMove() rebuilds the room after a
    *                signed lease (main.js's rebuildVenue()); closedNight() settles one
@@ -60,6 +61,7 @@ export class DayPhase {
     this.scene = scene;   // rebuildStations() needs it if the group ever detaches
     scene.add(this.group);
     this.t = 0;
+    this.momentOpen = false;   // the panel on screen is a night moment's, not a day station's
 
     $("#panelClose").addEventListener("click", () => this.closePanel());
     document.addEventListener("keydown", e => {
@@ -136,6 +138,7 @@ export class DayPhase {
 
   show(title, html, footer = "") {
     const wasOpen = this.panelOpen();
+    this.momentOpen = false;
     $("#panelTitle").textContent = title;
     $("#panelBody").innerHTML = html;
     $("#panelFoot").innerHTML = footer;
@@ -144,7 +147,23 @@ export class DayPhase {
   }
   closePanel() {
     $("#panelOverlay").style.display = "none";
+    this.momentOpen = false;
     audio.playSfx("uiClose");
+  }
+
+  /** A night moment's panel: the card's body and one button per choice, in
+   *  the same panel the six day stations use. The sim is still running
+   *  behind it; Esc closes it and the moment keeps waiting on the floor.
+   *  `view` is the engine's view of the card, for the texts that name
+   *  somebody. */
+  momentPanel(card, view) {
+    const buttons = card.choices.map((ch, i) => `
+      <button class="btn wide" data-moment="${i}">${EV.text(ch.label, view)}${ch.sub ? `<span class="hint">${EV.text(ch.sub, view)}</span>` : ""}</button>`).join("");
+    this.show(card.title,
+      `<p>${EV.text(card.body, view)}</p>
+       <p class="hint">The floor keeps moving while you decide. Esc walks away — it'll still be waiting, until last call decides for you.</p>`,
+      `<div class="footStack moment">${buttons}</div>`);
+    this.momentOpen = true;
   }
 
   // ---------------------------------------------------------------- panels
@@ -412,6 +431,7 @@ export class DayPhase {
       this.cb.save(); this.promoPanel();
     }
     if (t.dataset.opendoors) { this.closePanel(); this.cb.openDoors(); }
+    if (t.dataset.moment !== undefined) { this.closePanel(); if (this.cb.resolveMoment) this.cb.resolveMoment(+t.dataset.moment); }
     if (t.dataset.closednight) { this.closePanel(); this.cb.closedNight(); }
     if (t.dataset.signlease) {
       const r = C.moveVenue(c);

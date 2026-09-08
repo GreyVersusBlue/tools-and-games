@@ -9,6 +9,7 @@ import { MENU, FOOD } from "./engine.js";
 import { LAYOUTS, seatsFor } from "./layout.js";
 import { DAYS, MULES, TEAMS as LEAGUE_TEAMS, newLeague, validLeague, syncLeague, settleLeagueNight, tonight as leagueTonight, winProb } from "./league.js";
 import * as R from "./regulars.js";
+import * as EV from "./events.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export { DAYS };
@@ -280,6 +281,7 @@ export function newCampaign() {
     regulars: R.newRegulars(),
     regularsLost: [],
     rival: R.newRival(),
+    eventCd: {},
   };
   rollApplicants(c, Math.random);
   return c;
@@ -327,6 +329,80 @@ export function regularsIn(c) { return R.regularsTonight(c.regulars, c.day, c.re
  *  standing line, so the morning always says something about across town. */
 export function rivalWord(c) { return R.rivalWord(c.rival.buzz); }
 export function rivalLine(c, d = 0) { return R.rivalLine(c.rival.buzz, d, c.rep); }
+
+// ---------- the night's moments ----------
+// events.js owns the table and the picker; the engine runs them; these are
+// the campaign's two jobs: say what the books know at the top of the night,
+// and settle what the floor reports at the end of it.
+
+/** The books' half of a card's view (events.js's header lists the fields):
+ *  the calendar, the season, your name, the End Zone, the crew, the roster
+ *  and who is in tonight. The engine merges in the floor's half — hour,
+ *  crowd, mood, stock, the night's flags. Read only. */
+export function eventView(c) {
+  const tn = tonight(c);
+  const g = tn.mules;
+  return {
+    day: c.day,
+    playoff: g && g.playoff ? g.playoff : null,
+    phase: tn.phase,
+    rivalGame: !!g && !!RIVAL_TEAM && (g.home === RIVAL_TEAM || g.away === RIVAL_TEAM),
+    tier: venueDef(c).order,
+    rep: c.rep, buzz: c.rival.buzz,
+    upgrades: c.upgrades.slice(),
+    staff: c.staff.map(s => ({ name: s.name, role: s.role, skill: s.skill, wage: s.wage })),
+    regulars: c.regulars.map(r => ({ id: r.id, name: r.name, usual: r.usual, team: r.team, loyalty: r.loyalty })),
+    regularsIn: regularsIn(c).map(r => r.id),
+  };
+}
+/** What the engine needs to run tonight's moments — the three things its
+ *  `moments` option takes, built here so main.js and a test hand it the same
+ *  picker over the same save record. `rand` draws the budget and every roll. */
+export function nightMoments(c, rand = Math.random) {
+  return {
+    budget: EV.nightBudget(rand),
+    view: () => eventView(c),
+    roll: view => EV.rollMoment(EV.EVENTS, view, c.eventCd, rand),
+  };
+}
+/**
+ * The books' half of settling the night's moments: what the floor could
+ * only report, applied to the numbers campaign.js owns. Reputation, the
+ * End Zone's buzz and a regular's loyalty move here, before the night's own
+ * drift reads them (the 2D build's order: the card wrote the number during
+ * the night, the close drifted it). A raise takes from tomorrow; a staffer
+ * who walked mid-shift is off the payroll — after tonight's wages, which
+ * they worked most of. Every card that fired goes on cooldown from today.
+ * Returns what moved, for the box score.
+ */
+function settleMoments(c, mo) {
+  const out = { net: 0, rep: 0, buzz: 0, loyalty: {}, raised: [], quit: [], resolved: [], auto: [] };
+  if (!mo || typeof mo !== "object") return out;
+  out.net = Math.round(num(mo.net, 0));
+  out.rep = Math.round(num(mo.rep, 0));
+  c.rep = Math.max(0, Math.min(100, c.rep + out.rep));
+  out.buzz = Math.round(num(mo.buzz, 0));
+  c.rival.buzz = Math.max(R.BUZZ_MIN, Math.min(R.BUZZ_MAX, c.rival.buzz + out.buzz));
+  const loy = mo.loyalty && typeof mo.loyalty === "object" ? mo.loyalty : {};
+  for (const r of c.regulars) {
+    const d = num(loy[r.id], 0);
+    if (!d) continue;
+    r.loyalty = Math.max(0, Math.min(100, r.loyalty + d));
+    out.loyalty[r.id] = d;
+  }
+  for (const ch of Array.isArray(mo.staff) ? mo.staff : []) {
+    if (!ch || typeof ch.name !== "string") continue;
+    const s = c.staff.find(x => x.name === ch.name);
+    if (!s) continue;
+    if (ch.quit) { c.staff = c.staff.filter(x => x !== s); out.quit.push(s.name); }
+    else if (Number.isFinite(ch.wage)) { s.wage = Math.max(0, Math.round(ch.wage)); out.raised.push(s.name); }
+  }
+  const fired = (Array.isArray(mo.resolved) ? mo.resolved : []).filter(m => m && typeof m.id === "string");
+  out.resolved = fired.map(m => m.id);
+  out.auto = fired.filter(m => m.auto).map(m => m.id);
+  c.eventCd = EV.cooldownsAfter(c.eventCd, out.resolved, c.day);
+  return out;
+}
 
 export function promoDef(c) {
   const p = PROMOS[c.promoTonight] || PROMOS.none;
@@ -509,6 +585,9 @@ export function settleNight(c, summary, rand = Math.random) {
   c.stats.nights++;
   c.stats.bestNight = Math.max(c.stats.bestNight, take);
   c.stats.lifetimeNet += net;
+  // the moments first: a card moved your name, the End Zone or a regular
+  // during the night, and the night's own drift reads the moved number
+  const moments = settleMoments(c, summary.moments);
   // people before spoilage: a regular's usual is 86'd if the shelf was bare
   // when they wanted it, not if the walk-in rotted it overnight
   const showing = regularsIn(c);
@@ -533,7 +612,7 @@ export function settleNight(c, summary, rand = Math.random) {
   syncLeague(c.league, c.day);
   c.promoTonight = "none";
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social };
+  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social, moments };
 }
 
 // ---- persistence: the shared save system ------------------------------------
@@ -684,6 +763,9 @@ export function repairCampaign(c) {
     c.regularsLost.push({ name: shakiest.name, usual: shakiest.usual, team: shakiest.team });
   }
   c.regularsLost = c.regularsLost.slice(-R.LOST_MEMORY);
+  // Phase 8's one field, additive: a save from before it has no cooldowns,
+  // which is the same as every card being ready to fire.
+  c.eventCd = EV.repairEventCd(c.eventCd);
   return c;
 }
 

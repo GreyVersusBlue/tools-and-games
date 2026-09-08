@@ -242,7 +242,8 @@ export class Patron {
         this.timer -= dt;
         if (this.timer <= 0) {
           if (this.consumeMesh) { this.mesh.remove(this.consumeMesh); this.consumeMesh = null; }
-          const anotherRound = this.round < 3 && Math.random() < (this.engine.gameNight && !this.engine.game.finished ? 0.72 : 0.45);
+          // the engine's number, so a dead screen reaches it (engine.roundChance())
+          const anotherRound = this.round < 3 && Math.random() < this.engine.roundChance();
           if (anotherRound) this.wantsNext();
           else { this.releaseSeat(); this.engine.depart(); this.state = "leaving"; }
         }
