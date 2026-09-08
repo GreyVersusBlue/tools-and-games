@@ -2818,6 +2818,73 @@ Two of them have moved since they were written:
    can get anywhere.
    *Source: Faire Weekend Phase 1, increment 2.*
 
+231. **Weather is a pure function of a per-save seed and the calendar, not a
+   roll taken from the day.** The wishlist asked for one roll per day
+   "seeded off the same day seed and stamped onto the state before
+   `simulateDay` runs", and asked in the next bullet for a forecast one day
+   ahead. Those two cannot both be true: `runDay`'s default seed is
+   `Date.now() ^ (day * 7919)`, generated the instant the player opens the
+   gates, so a forecast drawn from it would be a guess dressed as a
+   promise — and the forecast's whole reason to exist is that weather you
+   learn about after committing to a day rate is a tax rather than a
+   decision. So `state.weatherSeed` is drawn once per save and
+   `rollWeather(weatherSeed, season, weekendDay)` answers the same thing
+   every time it is asked. Three things fall out rather than being coded:
+   tomorrow's sky is computable today, a reload shows the day the weather it
+   showed the first time, and `simulateDay` takes no new draw from the day's
+   own rng, so every seed rolls the events it rolled before this phase.
+   `engine.js`'s `nextCalendarDay` is the one model of the shape
+   `nextDay`/`startNextWeekend` walk, and the suite walks a save through a
+   weekend rollover comparing the forecast against the day that arrives —
+   the forecast and the stamp cannot drift apart without that going red.
+   *Source: Faire Weekend Phase 2.*
+
+232. **`createInitialState()` is deterministic; `newGame()` is the one
+   function that draws a real seed.** The seed was written into
+   `createInitialState()` off the clock first, and `tests/smoke.mjs` refused
+   it inside a minute: two fresh states built a millisecond apart got two
+   different skies, and every test in that file that compares two fresh
+   states — the stall gate-distance pair among them — was silently comparing
+   two different days. The factory now takes a seed argument defaulting to a
+   named constant, `newGame()` wraps it with the clock, `main.js` calls
+   `newGame()` when there is no save to load, and the save slot's `defaults`
+   factory is `newGame` so wiping a save starts a new season rather than
+   replaying the constant one. `repair` backfills a pre-Phase-2 save with
+   the same constant, deliberately: a seed redrawn on every load would
+   rewrite the forecast under a player who pressed F5. Both determinism
+   assertions are run under a clock stubbed to jump a minute per reading,
+   because written the obvious way they passed against the broken version —
+   the two calls landed in the same millisecond and the assertion agreed
+   with its own comment by luck (#147).
+   *Source: Faire Weekend Phase 2.*
+
+233. **The shade weight is what gets a ceiling, not the heat.**
+   `blockQualityWeights` returns `sightline: 0.80 - shade`, so an unbounded
+   shade term pays a stage for having no view at all, and past a heat of 3.2
+   it pays a negative one. Clamping the heat instead would need the clamp
+   and the hottest authored `heatMult` kept in sync by hand; clamping the
+   weight makes "three non-negative weights summing to 1" structurally true
+   for any table anyone ever authors. `WEATHER_SHADE_CEILING` is 0.7 and the
+   hottest thing in play reaches 0.65, and the suite asserts that gap in
+   both directions: nothing authored touches the ceiling, and a nonsense
+   multiplier is caught by it. A guard rail the balance is quietly leaning
+   on is not a guard rail — retuning it would retune the game.
+   *Source: Faire Weekend Phase 2.*
+
+234. **The forecast is exact, one day ahead, and there is no fog of war
+   over it.** A band ("warm to hot"), a probability, or an accuracy that
+   degrades with distance were all available and all rejected: the levers
+   the forecast exists to inform — the ticket price, a campaign, a day-rate
+   hire, who plays which block — are committed the day before they pay, and
+   a forecast a player cannot act on is decoration. One day is the horizon
+   because that is the commitment horizon; the Weekend Package and Season
+   Contract are longer bets and are deliberately left to the season's own
+   shape (#231's early/late weight ramp) rather than to a longer forecast.
+   If this ever wants to be a weather *skill* rather than a weather
+   *readout*, the place to add uncertainty is a second forecast further out,
+   not fog over this one.
+   *Source: Faire Weekend Phase 2.*
+
 ---
 
 # The site sessions, 1–10
@@ -4272,7 +4339,7 @@ vector agreed with the meal count on every real crowd, so a crowd hungrier
 than the table allows, with a purse for exactly one meal, now pins that a
 guest who ate is not hungry.
 
-**Phase 1, increment 2 — The economy (PR #TBD).** Increment 1 walked the
+**Phase 1, increment 2 — The economy (PR #193).** Increment 1 walked the
 crowd and left the money alone, which meant the game had two answers to
 "how did that stall do today" and they did not have to agree. This
 increment made the walk the only answer, and the design review the phase
@@ -4360,6 +4427,113 @@ that is not 940 times the ticket. The fix is to scale the buyer count once
 and price the gross off it; the test is a new 900-guest fixture, and it
 asserts out loud that the scaling *would* have disagreed, so it cannot go
 back to proving nothing if the fixture ever shrinks.
+
+**Phase 2 — Weather worth checking (PR #TBD).** Every time block knew
+exactly how hot it was and no two days had ever been different. Saturday of
+weekend 1 and Saturday of weekend 6 lit the grounds identically, and the
+only reason to look at the sky was flavour text nobody had written.
+
+Most of the system was already built. `TIME_BLOCKS` authors a `heat` per
+block and `blockQualityWeights` spends it properly — shade's weight is
+`0.25 x heat` and whatever shade gives up rolls into sightline — so what was
+missing was a table, one multiplier on that heat, and a readout. `WEATHER`
+in `data.js` is seven rows, each a name, a note, and three numbers: what the
+sky does to the block's sun, to the gate, and to the crowd's mood. Scorching
+runs the sun at 2.60x and keeps 14% of the gate at home; a downpour halves
+the gate and costs eleven points of mood; the crisp blue October afternoon
+brings 10% more people out and is worth +4. `fair` is the neutral row and is
+neutral on all three, because everything written before this phase falls
+back to it.
+
+**The season has a shape, and it is a weight ramp rather than a gate.**
+Every row carries an `early` and a `late` draw weight, interpolated linearly
+across `WEATHER_SEASON_SPAN` weekends and held flat past the end. Weekend 1
+is 48% hot days and 10% wet ones; weekend 6 is 10% hot and 30% wet, with the
+crisp autumn day up from 4% to 19%. Every row keeps a non-zero weight at
+both ends, so a downpour in weekend 1 is unlucky rather than impossible and
+the ramp changes odds rather than locking content away. The net effect on
+the ledger is a small tax with large variance: the mean gate multiplier runs
+0.963 in weekend 1 and 0.926 in weekend 6, and the mean mood -0.8 to -1.0.
+
+**The forecast is why the roll is not a roll (#231).** The wishlist asked
+for one roll per day off the day's own seed and, in the next bullet, for a
+forecast one day ahead — and those cannot both be true, because `runDay`'s
+seed is `Date.now()`-derived and generated when the player opens the gates.
+So weather is a pure function of a per-save `weatherSeed` and the calendar
+position, which makes tomorrow computable today, makes a reloaded report
+show the sky it showed the first time, and takes no draw from the day's own
+rng, so every seed rolls the events it rolled before. `nextCalendarDay` is
+the one model of the shape `nextDay`/`startNextWeekend` walk, and the suite
+walks a save through a weekend rollover comparing each forecast against the
+day that actually arrives.
+
+**Writing the seed into `createInitialState()` was the mistake, and the
+suite caught it in under a minute (#232).** Two fresh states built a
+millisecond apart got different skies, so the pair of tests that hold
+everything but a stall's gate distance equal were comparing two different
+days. The factory takes a seed argument now, defaulting to a named constant;
+`newGame()` is the one function that draws a real one, `main.js` calls it
+when there is no save, and it is the save slot's `defaults` factory so a
+reset starts a new season. A pre-Phase-2 save is repaired with the same
+constant on purpose: a seed redrawn per load would rewrite the forecast under
+a player who pressed F5.
+
+**On the page**, four surfaces, because a lever nothing on screen names is
+not a lever and this one moves three numbers at once. Today's sky has a
+permanent HUD slot with sun pips and a tooltip carrying all three. The
+Office desk carries a forecast card naming tomorrow by weekday, its note,
+the three numbers as a table, and how much more or less of a gate that is
+than today. The schedule table's sun pips are drawn at *today's* effective
+heat rather than the authored one, so a scorcher visibly moves the morning
+and a downpour flattens the afternoon — which is the point, since the
+schedule table is where a player decides who plays in the sun. And the
+ticket stub carries a Weather row and names the sky in the draw breakdown.
+
+**SIGNIFICANCE 11 is the check the phase owed.** Two states, one stage each,
+same act in all four blocks, one on four cells of authored hill and one on
+four cells of authored woods. On the hottest authored day the grove has the
+happier crowd (53.3 against 45.3) and loses far less reputation for the day
+(-0.3 against -1.5); on the coolest the hilltop takes it back outright (65.3
+against 34.3). The
+assertion is deliberately not on the day's net: terrain does not move
+attendance and satisfaction does not move today's cash, so the net is nearly
+identical either way and would have passed under a completely broken weather
+term. It is asserted on mood and on the reputation that mood pays.
+
+*Counts:* `tests/smoke.mjs` 857 → 1,118, `tests/guests.mjs` 168 unchanged,
+both green; `play-games.mjs faire-weekend` 18 checks, 0 failed under Xvfb.
+
+*Broken on purpose (#34), twenty, each caught by the assertion whose text
+claims it:* the attendance multiplier dropped (3 fail), the mood delta
+dropped (1), `blockQualityWeights` called without the weather (2), the shade
+ceiling removed (2), the neutral row made non-neutral (5), the season ramp
+gone flat (9), the weights ignoring the season (2), the day seed ignoring
+the day-of-weekend (3), `nextCalendarDay` never rolling over a weekend (4),
+`nextDay` not stamping (4), `startNextWeekend` not stamping (3), the sky
+rolled from the day's own rng (11), `createInitialState` seeded off the clock
+(2), `repair` redrawing the seed per load (2), the heat pips reading the
+authored heat (1), the forecast card showing today (4), an old report given
+a neutral weather row (1), the HUD's weather slot removed (3), and the ticket
+stub's weather row removed (3), and the forecast card printing the difference
+between the two gate multipliers rather than the ratio (2) — which is the bug
+that shipped in the first draft of that line and reads correctly only when
+today is exactly 1.00x. Off a washed-out day it is badly wrong: 0.50x to 0.86x
+is 72% more people through the gate, not 36%. The check is written against a
+save the two formulas disagree about by at least five points, so it cannot
+pass by the two happening to agree.
+
+**Three assertions were rewritten because they did not fail.** Two claimed
+determinism against code that calls `Date.now()`, and passed against the
+clock-seeded version — both calls landed in the same millisecond, so the
+assertion agreed with its own comment by luck (#147); they run under a
+stubbed clock that jumps a minute per reading now, and check the named
+constant as well. The third read the ticket stub's whole text for the
+weather's name, and deleting the Weather row outright left the suite green,
+because the bad-weather warning and the draw breakdown both name the sky
+too — three lines guarding the same absence guard nothing (#34). It reads
+the row itself now. A fourth assertion did not fail so much as crash: with
+the HUD slot removed it dereferenced undefined and killed the run, so the
+suite reported a TypeError instead of the three failures it had.
 
 ---
 

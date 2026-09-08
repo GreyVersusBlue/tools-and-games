@@ -1,16 +1,16 @@
 # Faire Weekend — Feature Wishlist
 
 **Status: twenty-two stages are shipped, three rounds of site-wide review have
-run over them, and Phase 1 is done.** The suites stand at **857 passed**
-(`node tests/smoke.mjs`) plus **168 passed** (`node tests/guests.mjs`), 0
-failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed under Xvfb.
+run over them, and Phases 1 and 2 are done.** The suites stand at **1,118
+passed** (`node tests/smoke.mjs`) plus **168 passed** (`node tests/guests.mjs`),
+0 failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed under Xvfb.
 Round 3 closed the mobile tap-target debt, found one more never-clicked action
 (`cancelMove`) after round 2 had called that audit closed, and left the
 layout/density review owed for a fourth round running. Every stage's plan and
 how it landed is in the repo root's `HISTORY.md` and in `README.md`; nothing
 here repeats them. **Phase 1 closed in two increments** — the crowd, then the
-economy it spends in — so the open phase is now **Phase 2 — Weather worth
-checking**, on **Claude Opus 5**.
+economy it spends in — and **Phase 2 gave the season weather**, so the open
+phase is now **Phase 3 — Acts with a story**, on **Claude Opus 5**.
 
 ## What it is
 
@@ -36,55 +36,64 @@ built plot costs 7% of its own build cost per day forever. Stage 19 tied all
 of it to attendance itself through `computeGroundsDraw`, so the site plan
 grows the crowd rather than only dividing it.
 
-What it is not, still: a faire with weather, an act you have a history with,
-or anything to do after the win screen. What it stopped being in Phase 1 is a
+What it is not, still: a faire with an act you have a history with, or
+anything to do after the win screen. What it stopped being in Phase 1 is a
 spreadsheet with a plat drawn on it. The gate is still one number
 (`baseAttendance × priceMult × popularityFactor × adFactor ×
-groundsDraw.mult × weekendDayFactor × jitter`), but what that crowd does
-once it is inside is four hundred agents walking the path network, and the
-stalls' takings are the money those agents handed over rather than a
+groundsDraw.mult × weekendDayFactor × weatherMult × jitter`), but what that
+crowd does once it is inside is four hundred agents walking the path network,
+and the stalls' takings are the money those agents handed over rather than a
 coefficient on the average.
 
 ## The architecture that is there
 
-- **`js/data.js` (535)** — content only, no logic, deliberately JSON-shaped so
+- **`js/data.js` (649)** — content only, no logic, deliberately JSON-shaped so
   it could become fetched `.json` untouched. `CONFIG` (every tunable number
   with the paragraph explaining why it is that number), `GROUNDS_DRAW`, four
   `TIME_BLOCKS` each with a `weight` and a `heat` (0.15/0.85/1.0/0.25),
-  `WEEKEND_DAY_ATTENDANCE` (Fri 0.85 / Sat 1.2 / Sun 0.95), a 14×10 `GRID`
+  `WEEKEND_DAY_ATTENDANCE` (Fri 0.85 / Sat 1.2 / Sun 0.95), the seven-row
+  `WEATHER` table with its early/late season weight ramp, a 14×10 `GRID`
   with authored `TERRAIN_ROWS`, `ENTRANCE`, three `GRID_EXPANSIONS` tiers
   (10×7 at weekend 1, 12×8 at 2, 14×10 at 4), `PLACEMENT_RULES`, and the
   catalogs: 4 structure types, 15 performers, 12 vendors, 4 campaigns, 3
   contract options, 10 events.
-- **`js/engine.js` (1,245)** — pure, no DOM. Forty-odd exports: `makeRng`, the
+- **`js/engine.js` (1,366)** — pure, no DOM. Forty-odd exports: `makeRng`, the
   footprint primitives, `isLegalPlacement`, `quoteBuild`, `computeFootTraffic`,
   `computePathDistances`/`computeReachability`, `computeGroundsDraw`, the
   price-elasticity trio, `blockQualityWeights`, `totalUpkeep`,
-  `checkBankruptcy`/`checkWinCondition` — and `simulateDay`, 250 lines that
-  read all of it and return a day.
-- **`js/state.js` (687)** — the state object and ~25 actions, each returning
+  `checkBankruptcy`/`checkWinCondition`, the Phase 2 weather quintet
+  (`weatherById`/`weatherFor`/`weatherWeightAt`/`rollWeather`/`forecastWeather`
+  plus `nextCalendarDay`) — and `simulateDay`, 260 lines that read all of it
+  and return a day.
+- **`js/state.js` (739)** — the state object and ~25 actions, each returning
   `{ state, error }` with a *new* state. Owns the planning→commit build flow,
   performer and vendor contracts, the weekend boundary (`nextDay` parks in
   `weekendEnd`, `startNextWeekend` rolls over), and the `gameOver`/`victory`
   routes. Persistence went to `assets/js/gvb-save.js` at Stage 22: key
   `renn-faire-sim-save-v1`, everything `loadState` used to backfill now in
-  `repair`, `migrate` a no-op, `defaults: createInitialState` as a factory.
-- **`js/ui.js` (860)** — state → HTML strings, ten renderers, no listeners.
+  `repair`, `migrate` a no-op, `defaults: newGame` as a factory. Phase 2 split
+  `createInitialState(seed)` (deterministic) from `newGame()` (the one thing
+  that reads the clock) — see #232 and the conventions below.
+- **`js/ui.js` (953)** — state → HTML strings, eleven renderers, no listeners.
   `renderGroundsPanel` owns the plat map, status line and build palette;
-  `renderFairFloor` owns plot cards and the schedule; the four
-  end-of-something screens share one ticket-stub shell.
+  `renderFairFloor` owns plot cards and the schedule; `renderForecast` owns
+  tomorrow's sky on the Office desk; the four end-of-something screens share
+  one ticket-stub shell.
 - **`js/main.js` (303)** — the only file that touches `document`. Holds the
   mutable state, delegates `click`/`change`/`input` off `#app`, re-renders
   after every action, mounts gvb-save's export/import bar in `#footer`; its
   `handleAction` is a 23-case switch.
-- **`css/style.css` (1,060)** — the "operations room" palette and the
+- **`css/style.css` (1,086)** — the "operations room" palette and the
   surveyor's-plat map. Two breakpoints, 1080px and 720px; `--cell` is 46px,
   38px, 48px respectively.
-- **`tests/smoke.mjs` (3,256)** — the largest test file in the repo, 857
+- **`tests/smoke.mjs` (3,767)** — the largest test file in the repo, 1,118
   assertions, no framework: an `assert()` counter and a `mod()` helper turning
-  a path into a `file://` URL so Windows can run it. Sections 1–1g are pure;
-  20, 21, 23 and 24 parse `style.css` and `index.html` as text; 1h and 22
-  build a JSDOM and re-import `js/main.js` cache-busted, which is a reload.
+  a path into a `file://` URL so Windows can run it. Sections 1–1g and 1i are
+  pure; 20, 21, 23 and 24 parse `style.css` and `index.html` as text; 1h, 22
+  and 25 build a JSDOM and re-import `js/main.js` cache-busted, which is a
+  reload. **A second JSDOM steals the first one's renders** — `main.js`'s `$`
+  reads `globalThis.document` — so everything a boot needs to assert has to
+  happen before the next boot.
 
 The load-bearing habit is what the layering implies: **anything worth testing
 is a pure function in `engine.js` with a suite, and `main.js` is a thin wire.**
@@ -105,6 +114,13 @@ that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
 - **`migrate` is version drift; `repair` is every load** (#37, #50). Every
   backfill this game does — `vendorContracts`, plot `status`/`w`/`h`, the
   auto-seat pass — is content drift and lives in `repair`.
+- **`createInitialState()` is deterministic; `newGame()` reads the clock**
+  (#232). The weather seed went into the factory first and the suite refused
+  it inside a minute: two fresh states built a millisecond apart got different
+  skies, and every test that compares two fresh states was comparing two
+  different days. Anything else that wants per-save randomness goes in
+  `newGame()`, and a test that asserts determinism against code that *might*
+  call `Date.now()` has to stub the clock, or it passes by luck.
 - **The save slot is built fresh per call, never cached.** `gvb-save.js`
   probes storage once at `createSaveSlot()` and the suite reassigns
   `globalThis.localStorage` per JSDOM boot, so a cached slot freezes onto the
@@ -127,14 +143,17 @@ that only the DOM sections reach, and `simulateDay`, pure but undecomposed.
   stage that finally gave it a multiplier also gave the HUD a tooltip naming
   the number.
 - **Correctness tests are not enough — see Section 1g, tagged
-  `SIGNIFICANCE:`.** Ten checks, twenty assertions, each asserting a mechanic
+  `SIGNIFICANCE:`.** Eleven checks, each asserting a mechanic
   is *strategically load-bearing* rather than merely implemented. Stage 18
   shipped fully green with "build nothing, charge maximum" strictly optimal.
   Run these against every balance change — and check what state each one runs
   on before trusting a pass. Phase 1 increment 2 rewrote the economy under
   all seven of the original checks and every one still passed, because every
   state they used was a bare stage with nothing for sale. Checks 8, 9 and 10
-  exist because of that.
+  exist because of that, and check 11 (weather deciding which ground is the
+  good ground) is deliberately asserted on mood and reputation rather than on
+  the day's net, because terrain does not move attendance and the net would
+  have passed under a broken weather term.
 - **Verify a guard-rail by reintroducing the bug it guards** (#34). Round 3
   did it four times and caught two real mistakes before they shipped.
 - **Nothing leaves the site.** Fonts are vendored, Section 21 asserts it, and
@@ -203,13 +222,16 @@ Open and unclaimed. Add here rather than starting a new list.
   Stage 9 on.~~ *Phase 1 increment 1: `js/guests.js` walks a sampled crowd
   across the path network every block. The economy still reads Stage 22's
   coefficients; that is increment 2.*
-- Weather, still the obvious fit for `TIME_BLOCKS.heat`, authored per block
-  and constant forever.
+- ~~Weather, still the obvious fit for `TIME_BLOCKS.heat`, authored per block
+  and constant forever.~~ *Phase 2: a seven-row `WEATHER` table, a heat
+  multiplier on every block, and an exact one-day forecast on the Office desk.
+  Derived from a per-save seed and the calendar rather than the day's rng
+  (#231), which is what lets the forecast exist at all.*
 - The col-3 path spur is disconnected from the gate at row 3, found building
   Stage 17 and pinned by a `computePathDistances` assertion rather than fixed.
   Since Phase 1 increment 1 the day report names any built plot that fronts
   it; the ruling is Phase 1's next increment.
-- `simulateDay` is 250 undecomposed lines. A drag-to-reorder move for planning
+- `simulateDay` is 260 undecomposed lines. A drag-to-reorder move for planning
   plots is still unbuilt too.
 
 **Content**
@@ -306,10 +328,11 @@ The ledger landed at: empty field -$1,177 a day (unchanged), day-one build
 *Save:* none, either increment. Guests die with the report, only aggregates
 reach `history`, and no key changed.
 
-## Phase 2 — Weather worth checking
+## Phase 2 — Weather worth checking — **shipped**
 
-**Every time block knows exactly how hot it is, and no two days have ever been
-different.**
+**Every time block knew exactly how hot it was, and no two days had ever been
+different. Seven skies now, drawn off the calendar rather than the day, with
+tomorrow's on the desk before you commit to it.**
 
 `TIME_BLOCKS` carries `heat` per block and `blockQualityWeights` already uses
 it properly: shade's weight is `0.25 × heat` and the slack rolls into
@@ -318,27 +341,47 @@ sightline, so a hilltop stage is the best seat at Morning Procession (heat
 the weather hardcoded. Stage 22 proved the shape: a table, one term, and a
 tooltip naming the number on screen.
 
-- [ ] **A `WEATHER` table in `data.js`**, each row a heat multiplier, an
-  attendance multiplier, a satisfaction delta and a name, in
-  `WEEKEND_DAY_ATTENDANCE`'s content-only idiom.
-- [ ] **One roll per day**, seeded off the same day seed and stamped onto the
-  state before `simulateDay` runs, so a reloaded report shows the weather it
-  showed the first time.
-- [ ] **`heat` becomes per-day as well as per-block.**
-  `blockQualityWeights(block, weather)`: a scorching Saturday punishes
-  hilltops in every block, a grey one flattens the tradeoff entirely.
-- [ ] **A forecast one day ahead, on the Office desk.** Weather you learn
-  about after committing to a day rate is a tax, not a decision.
-- [ ] **A season with a shape.** Later weekends skew cooler and wetter, so
-  `seasonTarget: 6` is a run through a season rather than six identical ones.
-- [ ] **A `SIGNIFICANCE:` check.** A grove stage out-earns a hilltop on the
-  hottest authored day and loses on the coolest.
+- [x] **A `WEATHER` table in `data.js`.** *Seven rows — scorching, warm and
+  clear, fair, overcast, crisp and cool, drizzle, downpour — each a name, a
+  note, a heat multiplier, an attendance multiplier and a satisfaction delta,
+  plus the early/late season weights. `fair` is the neutral row and is neutral
+  on all three, because everything written before this phase falls back to it.*
+- [x] **One roll per day.** *Done, but not off the day seed (#231). `runDay`'s
+  seed is `Date.now()`-derived and generated when the gates open, so a forecast
+  drawn from it could not exist. Weather is a pure function of a per-save
+  `weatherSeed` and the calendar instead, stamped at the top of each day by
+  `createInitialState`/`nextDay`/`startNextWeekend`. A reload shows the sky it
+  showed the first time, and `simulateDay` takes no new draw from the day's own
+  rng, so every seed rolls the events it rolled before.*
+- [x] **`heat` becomes per-day as well as per-block.**
+  *`blockQualityWeights(block, weather)`, with the shade **weight** capped
+  rather than the heat (#233), so the three weights stay non-negative and
+  summing to 1 for any table anyone authors. At heat ≤ 1 the arithmetic is
+  identical to the pre-phase line, which is why ~850 existing assertions did
+  not move.*
+- [x] **A forecast one day ahead, on the Office desk.** *Exact, not a band
+  (#234). Names tomorrow by weekday, carries the note and all three numbers,
+  and says how much more or less of a gate that is than today.*
+- [x] **A season with a shape.** *Each row's draw weight ramps linearly from
+  its `early` to its `late` value across `WEATHER_SEASON_SPAN` (6) weekends and
+  holds flat past the end. Weekend 1 is 48% hot days and 10% wet; weekend 6 is
+  10% hot and 30% wet, with the crisp autumn day up from 4% to 19%. No row's
+  weight ever reaches zero, so the ramp changes odds rather than gating
+  content. The cost of all of it is a small tax with large variance: the mean
+  gate multiplier runs 0.963 in weekend 1 and 0.926 in weekend 6.*
+- [x] **A `SIGNIFICANCE:` check.** *Check 11. A grove stage has the happier
+  crowd on the hottest authored day (53.3 against the hilltop's 45.3) and loses
+  badly on the coolest (34.3 against 65.3), and the flip is worth reputation.
+  Asserted on mood rather than on the day's net on purpose: terrain does not
+  move attendance and satisfaction does not move today's cash, so a net-based
+  version of this check would pass under a completely broken weather term.*
 
-*Leans on:* `TIME_BLOCKS.heat`, `blockQualityWeights`. *Save:* additive — a
-`weather` field on the state and each `history` entry, `repair` defaulting a
-missing one to fair exactly as the weekend-day factor falls back to 1.
-*Model:* **Claude Opus 5** — a content table, one engine term and a readout,
-on a pattern the last stage already shipped.
+*Save:* additive, as planned — `weather` and `weatherSeed` on the state,
+`repair` defaulting the first to fair and the second to a named constant. No
+key changed. A `history` entry carries the whole `WEATHER` row rather than an
+id, so a report written today still reads correctly if the table is retuned,
+and a report written before this phase shows no weather row at all rather than
+inventing neutral multipliers the day never ran under.
 
 ## Phase 3 — Acts with a story
 

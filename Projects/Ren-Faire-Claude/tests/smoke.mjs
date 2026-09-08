@@ -26,8 +26,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights } = await import(mod('js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS } = await import(mod('js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather } = await import(mod('js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID } = await import(mod('js/data.js'));
 const State = await import(mod('js/state.js'));
 
 // --- RNG determinism ---
@@ -3030,6 +3030,54 @@ const State = await import(mod('js/state.js'));
   assert(devNet < CONFIG.winCondition.minCash / (CONFIG.seasonLength * 2),
     `SIGNIFICANCE: a built-out faire cannot bank the win condition in two weekends — $${devNet.toFixed(0)} a day against $${(CONFIG.winCondition.minCash / (CONFIG.seasonLength * 2)).toFixed(0)}`);
   assert(devNet > 0, `SIGNIFICANCE: a built-out faire is still profitable, or there is nothing to play toward ($${devNet.toFixed(0)} a day)`);
+
+  // 11. Phase 2: the sky has to change which ground is the good ground.
+  //     TIME_BLOCKS already made terrain schedule-dependent — a hilltop is
+  //     the best seat at Morning Procession and the worst at Afternoon —
+  //     but averaged over a whole day the hilltop won every time, because
+  //     the authored heats are fixed and two of the four blocks are cool.
+  //     Weather is what makes the choice of ground a season-long bet rather
+  //     than a solved one: on the hottest authored day the grove stage has
+  //     the happier crowd across the whole day, and on the coolest the
+  //     hilltop does. Two states, one stage each, same act in all four
+  //     blocks, and only the ground and the sky differ.
+  //
+  //     Note what this is NOT asserted on. Terrain does not move
+  //     attendance (computeGroundsDraw counts kinds, not ground) and
+  //     satisfaction does not move today's cash, so the day's net is nearly
+  //     identical either way and would pass this check under a completely
+  //     broken weather term. What the flip actually pays is reputation,
+  //     which is what tomorrow's gate is built from, so that is the second
+  //     assertion here.
+  const oneStageOn = (x, y) => {
+    let s = base();
+    s.cash = 60000;
+    const r = State.buildPlot(s, 'stage', x, y);
+    assert(!r.error, `terrain fixture: a stage at ${x},${y} builds legally`);
+    s = r.state;
+    s = State.contractPerformer(s, 'perf_jester_2').state;
+    const st = s.builtPlots.find(p => p.kind === 'stage');
+    for (const b of TIME_BLOCKS) s = State.assignSchedule(s, b.id, st.id, 'perf_jester_2').state;
+    return s;
+  };
+  // (2,0) is four cells of authored hill; (8,0) is four cells of authored
+  // woods. Both are inside the Weekend-1 fence.
+  const hilltop = oneStageOn(2, 0);
+  const grove = oneStageOn(8, 0);
+  assert(terrainAt(2, 0) === 'hill' && terrainAt(8, 0) === 'woods', 'sanity check: the terrain fixture really is a hilltop against a grove');
+  const hottest = WEATHER.reduce((a, b) => (b.heatMult > a.heatMult ? b : a));
+  const coolest = WEATHER.reduce((a, b) => (b.heatMult < a.heatMult ? b : a));
+  const under = (st, w, key) => avg({ ...st, weather: w.id }, key, 60);
+  const hotHill = under(hilltop, hottest, 'satisfaction');
+  const hotGrove = under(grove, hottest, 'satisfaction');
+  const coolHill = under(hilltop, coolest, 'satisfaction');
+  const coolGrove = under(grove, coolest, 'satisfaction');
+  assert(hotGrove > hotHill,
+    `SIGNIFICANCE: on the hottest authored day (${hottest.id}) the grove stage has the happier crowd (${hotGrove.toFixed(1)} against the hilltop's ${hotHill.toFixed(1)})`);
+  assert(coolHill > coolGrove,
+    `SIGNIFICANCE: and on the coolest (${coolest.id}) the hilltop takes it back (${coolHill.toFixed(1)} against the grove's ${coolGrove.toFixed(1)})`);
+  assert(under(grove, hottest, 'reputationDelta') > under(hilltop, hottest, 'reputationDelta'),
+    'SIGNIFICANCE: and the flip is worth reputation, not just a satisfaction number nothing spends');
 }
 
 function makeMemoryStorage() {
@@ -3040,6 +3088,303 @@ function makeMemoryStorage() {
     removeItem: (k) => store.delete(k),
     clear: () => store.clear(),
   };
+}
+
+// ---------------------------------------------------------------------
+// Section 1i: Phase 2 — weather worth checking.
+//
+// Weather is deliberately NOT drawn from the day's own rng (#231). It is a
+// pure function of one number stored per save and the calendar position,
+// which is what lets the Office desk print tomorrow's sky honestly and what
+// stops a reload from rerolling today's. Most of what follows is that
+// property, asserted from several directions, because a forecast that can
+// disagree with the day that arrives is worse than no forecast at all.
+// ---------------------------------------------------------------------
+{
+  // --- the table itself ---
+  assert(WEATHER.length >= 5, `WEATHER authors a real spread of days (${WEATHER.length})`);
+  const weatherIds = WEATHER.map(w => w.id);
+  assert(new Set(weatherIds).size === weatherIds.length, 'every WEATHER id is unique');
+  for (const w of WEATHER) {
+    assert(typeof w.name === 'string' && w.name.length > 0, `${w.id} carries a name`);
+    assert(typeof w.note === 'string' && w.note.length > 0, `${w.id} carries a note the UI can show`);
+    assert(typeof w.heatMult === 'number' && w.heatMult >= 0, `${w.id} authors a non-negative heat multiplier`);
+    assert(typeof w.attendanceMult === 'number' && w.attendanceMult > 0, `${w.id} authors a positive attendance multiplier`);
+    assert(typeof w.satisfactionDelta === 'number', `${w.id} authors a satisfaction delta`);
+    assert(w.early >= 0 && w.late >= 0, `${w.id} authors non-negative early/late weights`);
+    assert(w.early > 0 || w.late > 0, `${w.id} is reachable somewhere in the season`);
+  }
+  const fair = WEATHER.find(w => w.id === DEFAULT_WEATHER_ID);
+  assert(!!fair, `WEATHER carries the fallback row DEFAULT_WEATHER_ID names ('${DEFAULT_WEATHER_ID}')`);
+  // The fallback has to be arithmetically invisible, because every state
+  // written before this phase falls back to it — a fixture built from a
+  // plain object literal, a save repaired on load, a history entry. If it
+  // ever stops being neutral, "no weather" silently becomes "some weather".
+  assert(fair.heatMult === 1 && fair.attendanceMult === 1 && fair.satisfactionDelta === 0,
+    'the fallback weather row is neutral on all three multipliers');
+
+  // --- lookup and fallback ---
+  assert(weatherById(DEFAULT_WEATHER_ID) === fair, 'weatherById finds the row an id names');
+  assert(weatherById('a-sky-nobody-authored') === fair, 'an unknown weather id falls back to the neutral row');
+  assert(weatherById(undefined) === fair, 'a missing weather id falls back to the neutral row');
+  assert(weatherFor({}) === fair, 'a state that never set weather reads as the neutral row');
+  assert(weatherFor({ weather: 'downpour' }).id === 'downpour', 'weatherFor reads the id off the state');
+
+  // --- the season's shape ---
+  for (const w of WEATHER) {
+    assert(weatherWeightAt(w, 1) === w.early, `${w.id} draws at its early weight in weekend 1`);
+    assert(Math.abs(weatherWeightAt(w, WEATHER_SEASON_SPAN) - w.late) < 1e-9, `${w.id} draws at its late weight in weekend ${WEATHER_SEASON_SPAN}`);
+    assert(weatherWeightAt(w, WEATHER_SEASON_SPAN + 6) === weatherWeightAt(w, WEATHER_SEASON_SPAN),
+      `${w.id} holds its late weight past the end of the ramp rather than extrapolating`);
+    assert(weatherWeightAt(w, 0) === w.early, `${w.id} holds its early weight before weekend 1`);
+  }
+  // The payoff, measured rather than asserted off the table: sample every
+  // weekend-day of a lot of saves and count what actually turns up. Weekend
+  // 1 has to be a hot season and weekend WEATHER_SEASON_SPAN a cool wet
+  // one, or `seasonTarget: 6` is still six copies of the same weekend.
+  const shareAt = (season) => {
+    const counts = {};
+    let total = 0;
+    for (let seed = 0; seed < 800; seed++) {
+      for (let wd = 1; wd <= CONFIG.seasonLength; wd++) {
+        const w = rollWeather(seed, season, wd);
+        counts[w.id] = (counts[w.id] || 0) + 1;
+        total++;
+      }
+    }
+    const share = (ids) => ids.reduce((sum, id) => sum + (counts[id] || 0), 0) / total;
+    return { counts, share, total };
+  };
+  const early = shareAt(1);
+  const late = shareAt(WEATHER_SEASON_SPAN);
+  const hotIds = WEATHER.filter(w => w.heatMult > 1).map(w => w.id);
+  const wetIds = ['drizzle', 'downpour'];
+  assert(hotIds.length > 0 && wetIds.every(id => weatherIds.includes(id)), 'sanity check: the season-shape test names rows that exist');
+  assert(early.share(hotIds) > late.share(hotIds) * 2,
+    `SIGNIFICANCE: weekend 1 is a hot season and weekend ${WEATHER_SEASON_SPAN} is not (${(early.share(hotIds) * 100).toFixed(0)}% hot days against ${(late.share(hotIds) * 100).toFixed(0)}%)`);
+  assert(late.share(wetIds) > early.share(wetIds) * 2,
+    `SIGNIFICANCE: and the late season is the wet one (${(late.share(wetIds) * 100).toFixed(0)}% wet days against ${(early.share(wetIds) * 100).toFixed(0)}%)`);
+  for (const w of WEATHER) {
+    assert((early.counts[w.id] || 0) > 0 || (late.counts[w.id] || 0) > 0,
+      `${w.id} actually turns up in play, not just in the table`);
+  }
+
+  // --- the roll is a lookup, not a draw ---
+  assert(rollWeather(12345, 2, 3) === rollWeather(12345, 2, 3), 'rollWeather answers the same twice for the same save and calendar day');
+  assert(rollWeather(12345, 2, 3) === rollWeather(12345, 2, 3), 'and a third time — it holds no state between calls');
+  {
+    // Different days of one save have to differ somewhere, or the "season"
+    // is one sky repeated. Counted across a save's whole run rather than
+    // asserted on one pair, since any two adjacent days may legitimately
+    // match.
+    const seen = new Set();
+    for (let season = 1; season <= WEATHER_SEASON_SPAN; season++) {
+      for (let wd = 1; wd <= CONFIG.seasonLength; wd++) seen.add(rollWeather(9001, season, wd).id);
+    }
+    assert(seen.size >= 3, `one save's season runs through several skies (${seen.size} distinct across ${WEATHER_SEASON_SPAN * CONFIG.seasonLength} days)`);
+    const other = new Set();
+    for (let season = 1; season <= WEATHER_SEASON_SPAN; season++) {
+      for (let wd = 1; wd <= CONFIG.seasonLength; wd++) other.add(rollWeather(9002, season, wd).id);
+    }
+    let differs = false;
+    for (let season = 1; season <= WEATHER_SEASON_SPAN && !differs; season++) {
+      for (let wd = 1; wd <= CONFIG.seasonLength && !differs; wd++) {
+        if (rollWeather(9001, season, wd).id !== rollWeather(9002, season, wd).id) differs = true;
+      }
+    }
+    assert(differs, 'two saves get two different seasons');
+  }
+
+  // --- the weights ---
+  {
+    // Every authored combination has to leave three non-negative weights
+    // summing to 1. This is the invariant WEATHER_SHADE_CEILING exists for:
+    // sightline is 0.80 - shade, so an unbounded shade term would pay a
+    // stage for having no view at all.
+    for (const block of TIME_BLOCKS) {
+      for (const w of WEATHER) {
+        const q = blockQualityWeights(block, w);
+        assert(q.sightline >= 0 && q.shade >= 0 && q.pop >= 0, `${block.id} under ${w.id} keeps every quality weight non-negative`);
+        assert(Math.abs(q.sightline + q.shade + q.pop - 1) < 1e-9, `${block.id} under ${w.id} keeps the three quality weights summing to 1`);
+        assert(q.shade <= WEATHER_SHADE_CEILING, `${block.id} under ${w.id} keeps shade under the ceiling`);
+      }
+    }
+    // The ceiling has to be a guard rail, not a number the balance leans
+    // on: if the hottest authored row is already pinned to it, retuning the
+    // ceiling silently retunes the game.
+    const liveMax = Math.max(...TIME_BLOCKS.flatMap(b => WEATHER.map(w => blockQualityWeights(b, w).shade)));
+    assert(liveMax < WEATHER_SHADE_CEILING, `nothing authored reaches the shade ceiling (live max ${liveMax.toFixed(3)} against ${WEATHER_SHADE_CEILING})`);
+    // ...and it does bite on something absurd, or it is not a guard rail.
+    assert(blockQualityWeights({ heat: 1 }, { heatMult: 40 }).shade === WEATHER_SHADE_CEILING,
+      'a nonsense heat multiplier is caught by the ceiling rather than driving sightline negative');
+    assert(blockQualityWeights({ heat: 1 }, { heatMult: 40 }).sightline >= 0,
+      'and sightline stays non-negative under it');
+
+    // No weather argument has to mean exactly what it meant before this
+    // phase existed, for every block, or ~850 assertions written against
+    // the old weighting were quietly re-baselined.
+    for (const block of TIME_BLOCKS) {
+      const before = { sightline: 0.55 + (0.25 - 0.25 * block.heat), shade: 0.25 * block.heat, pop: 0.20 };
+      const now = blockQualityWeights(block);
+      assert(Math.abs(now.sightline - before.sightline) < 1e-9 && Math.abs(now.shade - before.shade) < 1e-9,
+        `${block.id} with no weather weighs exactly as it did before Phase 2`);
+      assert(Math.abs(blockQualityWeights(block, weatherById(DEFAULT_WEATHER_ID)).shade - before.shade) < 1e-9,
+        `${block.id} under the neutral row weighs the same as under no row at all`);
+    }
+    const hottestRow = WEATHER.reduce((a, b) => (b.heatMult > a.heatMult ? b : a));
+    const coolestRow = WEATHER.reduce((a, b) => (b.heatMult < a.heatMult ? b : a));
+    const midday = TIME_BLOCKS.find(b => b.id === 'midday');
+    assert(blockQualityWeights(midday, hottestRow).shade > blockQualityWeights(midday, coolestRow).shade,
+      'the same block wants far more shade on the hottest authored day than the coolest');
+    assert(blockQualityWeights(midday, hottestRow).shade > blockQualityWeights(midday, hottestRow).sightline,
+      'and on the hottest day shade outweighs the view outright — that is what makes a hilltop the wrong place to be');
+  }
+
+  // --- the forecast cannot lie ---
+  {
+    assert(nextCalendarDay({ season: 2, weekendDay: 1 }).weekendDay === 2, 'the calendar rolls to the next day of the same weekend');
+    assert(nextCalendarDay({ season: 2, weekendDay: 1 }).season === 2, 'without touching the weekend number');
+    const rollover = nextCalendarDay({ season: 2, weekendDay: CONFIG.seasonLength });
+    assert(rollover.season === 3 && rollover.weekendDay === 1, 'and a weekend’s last day rolls into the next weekend’s Friday');
+
+    // The real assertion: walk a save through a whole weekend boundary,
+    // reading the forecast before each advance and the stamp after it. This
+    // is the one that would catch state.js and engine.js drifting apart —
+    // nextCalendarDay models what nextDay/startNextWeekend do, and nothing
+    // makes them do it except this check.
+    let s = State.createInitialState();
+    let checked = 0;
+    for (let i = 0; i < 9; i++) {
+      const forecast = forecastWeather(s);
+      s = State.runDay(s, 5000 + i).state;
+      s.bankrupt = false; // the fixture is an empty field; the point here is the calendar, not solvency
+      let n = State.nextDay(s).state;
+      if (n.phase === 'victory') n = State.acknowledgeVictory(n).state;
+      if (n.phase === 'weekendEnd') n = State.startNextWeekend(n).state;
+      s = n;
+      assert(forecast.id === s.weather,
+        `the forecast shown on the desk is the weather the day arrived with (weekend ${s.season} day ${s.weekendDay}: forecast ${forecast.id}, got ${s.weather})`);
+      checked++;
+    }
+    assert(checked === 9, 'the forecast walk covered a full weekend rollover and then some');
+  }
+
+  // --- what the day does with it ---
+  {
+    let built = State.createInitialState();
+    built.cash = 60000;
+    built = State.buildPlot(built, 'stage', 3, 0).state;
+    built = State.contractPerformer(built, 'perf_jester_2').state;
+    const stage = built.builtPlots.find(p => p.kind === 'stage');
+    for (const b of TIME_BLOCKS) built = State.assignSchedule(built, b.id, stage.id, 'perf_jester_2').state;
+
+    const day = (weather, seed = 4242) => simulateDay({ ...built, weather }, seed);
+    const neutral = day(DEFAULT_WEATHER_ID);
+    const unstamped = simulateDay({ ...built, weather: undefined }, 4242);
+    assert(neutral.attendance === unstamped.attendance && neutral.satisfaction === unstamped.satisfaction,
+      'a day with no weather stamped on it resolves exactly like a fair one');
+
+    const wet = WEATHER.reduce((a, b) => (b.attendanceMult < a.attendanceMult ? b : a));
+    const dry = WEATHER.reduce((a, b) => (b.attendanceMult > a.attendanceMult ? b : a));
+    assert(day(wet.id).attendance < neutral.attendance, `${wet.id} keeps people home (${day(wet.id).attendance} against ${neutral.attendance})`);
+    assert(day(dry.id).attendance > neutral.attendance, `${dry.id} brings them out (${day(dry.id).attendance} against ${neutral.attendance})`);
+    // Asserted as a ratio against the authored multiplier rather than as
+    // "smaller", so a weather term that got wired in at half strength — or
+    // stacked twice — fails here instead of passing as "still smaller".
+    const ratio = day(wet.id).attendance / neutral.attendance;
+    assert(Math.abs(ratio - wet.attendanceMult) < 0.02,
+      `and by the multiplier the table authors, not some fraction of it (${ratio.toFixed(3)} against ${wet.attendanceMult})`);
+
+    const gloomy = WEATHER.reduce((a, b) => (b.satisfactionDelta < a.satisfactionDelta ? b : a));
+    const lovely = WEATHER.reduce((a, b) => (b.satisfactionDelta > a.satisfactionDelta ? b : a));
+    assert(day(gloomy.id).weatherSatDelta === gloomy.satisfactionDelta, 'the report carries the mood the sky cost');
+    assert(day(lovely.id).satisfaction > day(gloomy.id).satisfaction, 'a lovely day leaves a happier crowd than a miserable one');
+    assert(day(gloomy.id).warnings.some(w => w.includes(gloomy.name)),
+      'and a genuinely bad day says so on the report rather than only in the arithmetic');
+
+    assert(day(wet.id).weather && day(wet.id).weather.id === wet.id, 'the day report carries the whole weather row, not an id to look up later');
+
+    // The load-bearing determinism claim: weather takes no draw from the
+    // day's own rng, so every seed rolls the events it rolled before this
+    // phase landed. If a future change rolls the sky inside simulateDay,
+    // this is what fails.
+    let sameEvents = true;
+    for (let seed = 0; seed < 40; seed++) {
+      const a = simulateDay({ ...built, weather: 'scorcher' }, 6000 + seed);
+      const b = simulateDay({ ...built, weather: 'downpour' }, 6000 + seed);
+      if (JSON.stringify(a.events.map(e => e.id)) !== JSON.stringify(b.events.map(e => e.id))) sameEvents = false;
+    }
+    assert(sameEvents, 'weather takes no draw from the day rng — the same seed rolls the same events under any sky');
+    const twice = day('drizzle');
+    assert(twice.attendance === day('drizzle').attendance && twice.cashDelta === day('drizzle').cashDelta,
+      'and the same seed under the same sky is still the same day');
+  }
+
+  // --- the save ---
+  {
+    // Both determinism checks below run under a clock that jumps a minute
+    // per reading, because both are about code that MIGHT call Date.now()
+    // and the real clock does not move between two adjacent statements.
+    // Written the naive way first, and both passed against a deliberately
+    // clock-seeded version — the two calls landed in the same millisecond,
+    // so the assertion agreed with its own comment by luck (#147). Move
+    // the clock and they fail as they claim to.
+    const withMovingClock = (fn) => {
+      const realNow = Date.now;
+      let t = 1e9;
+      Date.now = () => (t += 60000);
+      try { return fn(); } finally { Date.now = realNow; }
+    };
+
+    const fresh = State.createInitialState();
+    const again = withMovingClock(() => State.createInitialState());
+    // createInitialState() drawing its seed off the clock was written first
+    // and this is the assertion that refused it: two fixtures built a
+    // millisecond apart got two different skies, and every test in this
+    // file that compares two fresh states was silently comparing two
+    // different days (#232).
+    assert(fresh.weatherSeed === again.weatherSeed && fresh.weather === again.weather,
+      'two states from createInitialState() are the same state whenever they are built — it is deterministic, and most of this file depends on that');
+    assert(fresh.weatherSeed === State.DEFAULT_WEATHER_SEED,
+      'and the seed it defaults to is the named constant, not something derived');
+    assert(typeof fresh.weatherSeed === 'number' && Number.isFinite(fresh.weatherSeed), 'a new state carries a weather seed');
+    assert(weatherIds.includes(fresh.weather), `and day one is stamped with a real sky (${fresh.weather})`);
+    assert(State.createInitialState(1234).weather !== undefined && State.createInitialState(1234).weatherSeed === 1234,
+      'and an explicit seed is honoured');
+    let differs = false;
+    for (let seed = 0; seed < 200 && !differs; seed++) {
+      if (State.createInitialState(seed).weather !== fresh.weather) differs = true;
+    }
+    assert(differs, 'the seed is what decides the sky — different seeds give different opening days');
+    assert(typeof State.newGame === 'function' && Number.isFinite(State.newGame().weatherSeed),
+      'newGame() is the one thing that draws a real seed');
+
+    const storage = makeMemoryStorage();
+    const slot = State.saveSlot(storage);
+    let s = State.createInitialState(777);
+    s = State.runDay(s, 11).state;
+    s = State.nextDay(s).state;
+    slot.save(s);
+    const back = slot.load();
+    assert(back.weatherSeed === s.weatherSeed && back.weather === s.weather, 'the weather seed and today’s sky both survive a save/load round trip');
+    assert(forecastWeather(back).id === forecastWeather(s).id, 'and so does the forecast — reloading does not reroll tomorrow');
+
+    // A save written before this phase: no seed, no sky. It has to come
+    // back neutral and, crucially, come back the SAME neutral twice — a
+    // seed redrawn per load would rewrite the forecast under a player who
+    // pressed F5, which is the whole thing #231 exists to prevent.
+    const legacy = State.createInitialState(777);
+    delete legacy.weather;
+    delete legacy.weatherSeed;
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify(legacy));
+    const repaired = State.saveSlot(storage).load();
+    assert(repaired.weather === DEFAULT_WEATHER_ID, 'a save from before Phase 2 loads under the neutral sky');
+    assert(typeof repaired.weatherSeed === 'number', 'and is given a weather seed on the way in');
+    assert(repaired.weatherSeed === State.DEFAULT_WEATHER_SEED, 'and it is the named constant');
+    const repairedTwice = withMovingClock(() => State.saveSlot(storage).load());
+    assert(repairedTwice.weatherSeed === repaired.weatherSeed && forecastWeather(repairedTwice).id === forecastWeather(repaired).id,
+      'and loading it again an hour later gives it the same season, not a fresh roll — a redrawn seed would rewrite the forecast under a player who pressed F5');
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -3250,6 +3595,172 @@ function makeMemoryStorage() {
   // widest unlocked grounds would be squeezed narrower than its own cells.
   assert(Number.isFinite(cap) && cap >= 704,
     `the fit-content() cap (${cap}px) clears the widest grounds tier\u2019s real width (~703.4px for Deep Woods Trail at the desktop 46px cell)`);
+}
+
+// ---------------------------------------------------------------------
+// Section 25: Phase 2 — the weather is on screen (jsdom)
+//
+// A lever nothing on screen names is not a lever. weekendDay was set,
+// incremented and displayed for sixteen stages while nothing read it;
+// weather is the reverse failure mode waiting to happen — three multipliers
+// silently moving the day's numbers with nothing telling the player which
+// day they are planning against. So this boots the real page and reads the
+// real DOM: today's sky in the permanent HUD, tomorrow's on the Office
+// desk, the schedule's sun pips at today's heat rather than an average one,
+// and the sky the day ran under on the ticket stub.
+//
+// Asserted against the DOM for what is on screen now, per locked decision
+// #39 — the save carries the id, but an id in a save nobody renders is the
+// bug this section exists to catch.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
+    .replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  const boot = async (save) => {
+    const storage = makeMemoryStorage();
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify(save));
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    dom.window.prompt = () => 'A Name';
+    dom.window.document.addEventListener('click', (e) => {
+      if (e.target && e.target.tagName === 'A') e.preventDefault();
+    }, true);
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return { dom, doc: dom.window.document, storage };
+  };
+  const click = (doc, sel) => {
+    const el = doc.querySelector(sel);
+    if (!el) return false;
+    el.dispatchEvent(new el.ownerDocument.defaultView.Event('click', { bubbles: true }));
+    return true;
+  };
+
+  // A save deliberately stamped with the worst sky in the table, so every
+  // assertion below is looking for a specific named row rather than
+  // whichever one the default seed happened to roll.
+  const wet = WEATHER.reduce((a, b) => (b.attendanceMult < a.attendanceMult ? b : a));
+  let s = State.createInitialState(4242);
+  s.cash = 60000;
+  s.weather = wet.id;
+  s = State.buildPlot(s, 'stage', 3, 0).state;
+  s = State.contractPerformer(s, 'perf_jester_2').state;
+  const stage = s.builtPlots.find(p => p.kind === 'stage');
+  for (const b of TIME_BLOCKS) s = State.assignSchedule(s, b.id, stage.id, 'perf_jester_2').state;
+
+  const { doc } = await boot(s);
+
+  // --- the HUD names today's sky ---
+  const ledger = doc.querySelector('#ledger').textContent;
+  assert(ledger.includes(wet.name), `the HUD names today's sky (${wet.name})`);
+  const skySlot = [...doc.querySelectorAll('#ledger .ledger-item')].find(el => el.textContent.includes(wet.name));
+  assert(!!skySlot, 'and it has its own slot rather than being buried in another item’s text');
+  assert(/\d/.test((skySlot && skySlot.getAttribute('title')) || ''),
+    'and the slot’s tooltip carries the numbers, not just the name — the whole point of the weekendDay precedent');
+
+  // --- the Office desk forecasts tomorrow ---
+  const tomorrow = forecastWeather(s);
+  const forecastCard = doc.querySelector('.forecast-card');
+  assert(!!forecastCard, 'the Office desk carries a forecast card');
+  assert(forecastCard.textContent.includes(tomorrow.name),
+    `and it names the sky tomorrow actually arrives with (${tomorrow.name})`);
+  assert(forecastCard.textContent.includes(tomorrow.attendanceMult.toFixed(2)),
+    'and prints the gate multiplier as a number a player can plan a day rate against');
+  // --- the schedule's pips read today's heat, not the authored one ---
+  {
+    assert(click(doc, '[data-tab="fairfloor"]'), 'the Fair Floor tab is clickable');
+    const rows = [...doc.querySelectorAll('.schedule-table tbody tr')];
+    assert(rows.length === TIME_BLOCKS.length, `the schedule table has a row per time block (${rows.length})`);
+    const hottestBlock = TIME_BLOCKS.reduce((a, b) => (b.heat > a.heat ? b : a));
+    const row = rows.find(r => r.textContent.includes(hottestBlock.label));
+    const pips = row.querySelectorAll('.heat-pip').length;
+    // Under the wettest (and so coolest) authored sky the hottest authored
+    // block loses its pips outright. With the pips read off block.heat
+    // alone — the pre-Phase-2 code — this is 3.
+    assert(pips < 3, `the hottest block shows fewer sun pips under ${wet.name} than its authored heat would give it (${pips})`);
+    assert((doc.querySelector('.schedule-table + .hint') || { textContent: '' }).textContent.includes(wet.name.toLowerCase()) ||
+      doc.querySelector('#content').textContent.toLowerCase().includes(wet.name.toLowerCase()),
+      'and the hint under the table says which sky the pips are drawn at');
+  }
+
+  // --- the ticket stub says what the day ran under ---
+  {
+    click(doc, '[data-action="openGates"]');
+    const stub = doc.querySelector('.ticket-stub');
+    assert(!!stub, 'the gates opened and a report is on screen');
+    // Read the row, not the stub's text. Written the loose way first —
+    // "the stub mentions Downpour somewhere" — and deleting the weather row
+    // outright left the suite green, because the bad-weather warning and
+    // the draw breakdown both name the sky too. Three lines guarding the
+    // same absence guard nothing (#34).
+    const weatherRow = [...stub.querySelectorAll('.ticket-row')]
+      .find(r => (r.querySelector('span') || {}).textContent === 'Weather');
+    assert(!!weatherRow, 'the ticket stub carries a Weather row of its own');
+    assert(!!weatherRow && weatherRow.textContent.includes(wet.name), `and it names the sky the day ran under (${wet.name})`);
+    assert(!!weatherRow && weatherRow.textContent.includes(wet.attendanceMult.toFixed(2)),
+      'and what that sky did to the gate, so a bad day reads as a bad day rather than a mystery');
+  }
+
+  // --- the forecast is tomorrow's, not today's rendered twice ---
+  // Every boot below this line replaces globalThis.document, and main.js's
+  // `$` reads that global — so a second JSDOM steals the first one's
+  // renders. Everything that reads `doc` has to happen above here.
+  {
+    let split = null;
+    for (let seed = 0; seed < 400 && !split; seed++) {
+      const probe = State.createInitialState(seed);
+      if (forecastWeather(probe).id !== weatherFor(probe).id) split = probe;
+    }
+    assert(!!split, 'a save exists whose today and tomorrow differ');
+    const probe = { ...split, cash: 60000 };
+    const { doc: doc2 } = await boot(probe);
+    const card = doc2.querySelector('.forecast-card');
+    assert(!!card && card.textContent.includes(forecastWeather(probe).name),
+      `the forecast card shows tomorrow's sky (${forecastWeather(probe).name}), not today's (${weatherFor(probe).name})`);
+    assert(!!card && !card.textContent.includes(weatherFor(probe).name),
+      'and does not show today\u2019s at all, which is what a forecast card rendering the wrong day would look like');
+  }
+
+  // --- and the card's own arithmetic is a ratio, not a difference ---
+  // Written as `tomorrow.attendanceMult - today.attendanceMult` first, which
+  // reads correctly only when today is 1.00x. Off a washed-out day it is
+  // badly wrong: 0.50x to 0.86x is 72% more people through the gate, not 36%.
+  {
+    let pair = null;
+    for (let seed = 0; seed < 4000 && !pair; seed++) {
+      const probe = State.createInitialState(seed);
+      const today = weatherFor(probe), tomorrow = forecastWeather(probe);
+      const ratio = Math.round((tomorrow.attendanceMult / today.attendanceMult - 1) * 100);
+      const diff = Math.round((tomorrow.attendanceMult - today.attendanceMult) * 100);
+      // Only a pair the two formulas disagree about can test anything.
+      if (Math.abs(ratio - diff) >= 5) pair = { probe, ratio, diff };
+    }
+    assert(!!pair, 'a save exists whose forecast the two formulas disagree about');
+    const { doc: doc3 } = await boot({ ...pair.probe, cash: 60000 });
+    const hint = [...doc3.querySelectorAll('.forecast-card .hint')].map(e => e.textContent).join(' ');
+    assert(hint.includes(`${Math.abs(pair.ratio)}%`),
+      `the forecast prints the ratio (${pair.ratio}%) between today's gate and tomorrow's`);
+    assert(!hint.includes(`${Math.abs(pair.diff)}%`),
+      `and not the difference between the two multipliers (${pair.diff}%), which is only right when today is 1.00x`);
+  }
+
+  // --- a report written before this phase existed renders without one ---
+  {
+    let legacy = State.createInitialState(4242);
+    legacy.cash = 20000;
+    legacy = State.buildPlot(legacy, 'stage', 3, 0).state;
+    legacy = State.runDay(legacy, 99).state;
+    delete legacy.lastResult.weather;
+    delete legacy.lastResult.weatherSatDelta;
+    legacy.history[0] = legacy.lastResult;
+    const { doc: doc3 } = await boot(legacy);
+    const stub = doc3.querySelector('.ticket-stub');
+    assert(!!stub, 'a day report from before Phase 2 still renders');
+    assert(!/Weather/.test(stub.textContent),
+      'and shows no weather row at all rather than inventing neutral multipliers the day never ran under');
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

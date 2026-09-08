@@ -10,7 +10,10 @@ import { validateSchedule, summarizeWeekend } from './engine.js';
 import { CONFIG } from './data.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 
-let state = State.loadState() || State.createInitialState();
+// Phase 2: newGame(), not createInitialState() — the latter is deterministic
+// on purpose (see state.js) and would give every first-time player the same
+// season. This is the one call that draws a real one.
+let state = State.loadState() || State.newGame();
 const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: null };
 
 const $ = (sel) => document.querySelector(sel);

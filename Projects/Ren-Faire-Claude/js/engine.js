@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID } from './data.js';
 // Phase 1 (guests who walk): guests.js imports this module's path and plot
 // helpers and this module calls its walk from simulateDay. The cycle is
 // safe because neither file reads the other at load time — only inside
@@ -144,21 +144,125 @@ export function priceSatisfactionDelta(price) {
     : -diff * CONFIG.priceSatisfactionBonusPerDollar;
 }
 
-// ---------- stage quality weighting (Stage 19) ----------
+// ---------- stage quality weighting (Stage 19, weather in Phase 2) ----------
 // How much sightline / shade / act popularity each count toward a stage's
-// crowd-quality score during a given time block.
+// crowd-quality score during a given time block, on a given day.
 //
-// The fixed 0.55/0.25/0.20 split only applies at full heat. As `heat` drops
-// the shade term's weight drops with it and the slack rolls into sightline,
-// because shade nobody needs is not a feature. This is what unlocks the top
-// of the satisfaction range (see TIME_BLOCKS' comment in data.js) and, more
-// importantly, gives terrain a schedule-dependent personality: a hilltop
-// stage is the best seat on the grounds at Morning Procession and the worst
-// place to stand at Afternoon.
-export function blockQualityWeights(block) {
-  const heat = typeof block?.heat === 'number' ? clamp(block.heat, 0, 1) : 1;
-  const shade = 0.25 * heat;
-  return { sightline: 0.55 + (0.25 - shade), shade, pop: 0.20 };
+// The fixed 0.55/0.25/0.20 split only applies at an authored heat of 1 under
+// a neutral sky. As heat drops the shade term's weight drops with it and the
+// slack rolls into sightline, because shade nobody needs is not a feature.
+// This is what unlocks the top of the satisfaction range (see TIME_BLOCKS'
+// comment in data.js) and, more importantly, gives terrain a
+// schedule-dependent personality: a hilltop stage is the best seat on the
+// grounds at Morning Procession and the worst place to stand at Afternoon.
+//
+// Phase 2 made that personality day-dependent as well. A WEATHER row's
+// heatMult scales the block's authored heat, and it can exceed 1 — on a
+// scorching afternoon shade takes 0.65 of the weight against sightline's
+// 0.15, so the hilltop is not merely a worse seat than usual, it is the
+// wrong ground to have built on. On a downpour the shade term all but
+// vanishes and the long view carries every block.
+export function blockQualityWeights(block, weather) {
+  const authored = typeof block?.heat === 'number' ? clamp(block.heat, 0, 1) : 1;
+  // Phase 2: the day's sky scales the block's authored heat. A missing or
+  // malformed weather argument multiplies by 1, so every caller written
+  // before this phase — and every ad-hoc test state built from an object
+  // literal — gets exactly the weights it got before.
+  const mult = typeof weather?.heatMult === 'number' && weather.heatMult >= 0 ? weather.heatMult : 1;
+  const heat = Math.max(0, authored * mult);
+  // The shade ceiling, not the heat, is what keeps these three weights
+  // non-negative and summing to 1: sightline is 0.80 - shade, so shade can
+  // run to WEATHER_SHADE_CEILING and sightline still has 0.20 left. At
+  // heat <= 1 this is arithmetically identical to the pre-Phase-2 line
+  // (0.55 + (0.25 - shade)); above it, shade overtakes sightline, which is
+  // what a scorcher is supposed to do to an open hilltop.
+  const shade = Math.min(0.25 * heat, WEATHER_SHADE_CEILING);
+  return { sightline: 0.80 - shade, shade, pop: 0.20 };
+}
+
+// ---------- weather (Phase 2) ----------
+// The whole system is deterministic in the calendar rather than in the
+// day's own rng, and that is decision #231. simulateDay's seed is
+// `Date.now() ^ (day * 7919)` — generated the instant the player opens the
+// gates — so a forecast drawn from it could not exist a day early without
+// being a lie, and the wishlist's own reasoning for the forecast is that
+// weather you learn about after committing to a day rate is a tax rather
+// than a decision. So the roll reads one number stored per save
+// (`weatherSeed`) plus the calendar position, which means tomorrow's
+// weather is computable today, a reload shows the day the weather it
+// showed the first time, and no draw is taken from the day's rng — every
+// seed rolls the events it rolled before this phase.
+
+// The WEATHER row an id names, or the neutral fallback. Anything unknown,
+// missing, or from a save that predates the table lands on `fair`.
+export function weatherById(id) {
+  return WEATHER.find(w => w.id === id) || WEATHER.find(w => w.id === DEFAULT_WEATHER_ID) || WEATHER[0];
+}
+
+// Today's weather for a state — the row `state.weather` names. Same
+// fallback, so a fixture that never set the field is `fair` and therefore
+// neutral rather than absent.
+export function weatherFor(state) {
+  return weatherById(state && state.weather);
+}
+
+// A row's draw weight at a given weekend: its `early` weight at weekend 1,
+// its `late` weight at weekend WEATHER_SEASON_SPAN, straight-line between,
+// and flat outside that range in both directions (a weekend 9 sandbox run
+// keeps late-season weather rather than extrapolating into nonsense).
+export function weatherWeightAt(row, season) {
+  const span = Math.max(1, WEATHER_SEASON_SPAN - 1);
+  const t = clamp(((season || 1) - 1) / span, 0, 1);
+  return Math.max(0, row.early + (row.late - row.early) * t);
+}
+
+// One stable 32-bit seed per (save, weekend, day-of-weekend). Mixed rather
+// than added so that adjacent days do not walk adjacent mulberry32 states
+// and produce visibly correlated skies.
+function weatherDaySeed(weatherSeed, season, weekendDay) {
+  let h = ((weatherSeed >>> 0) ^ 0x5F3759DF) >>> 0;
+  h = Math.imul(h ^ ((season || 0) >>> 0), 0x85EBCA6B) >>> 0;
+  h = Math.imul(h ^ ((weekendDay || 0) >>> 0), 0xC2B2AE35) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  return h;
+}
+
+// The weather a given save has on a given calendar day. Pure, and a
+// function of nothing but its three arguments — call it twice and it
+// answers twice the same, which is what makes both the forecast and a
+// reloaded report honest.
+export function rollWeather(weatherSeed, season, weekendDay) {
+  const rng = makeRng(weatherDaySeed(weatherSeed, season, weekendDay));
+  const weights = WEATHER.map(row => weatherWeightAt(row, season));
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (!(total > 0)) return weatherById(DEFAULT_WEATHER_ID);
+  let roll = rng() * total;
+  for (let i = 0; i < WEATHER.length; i++) {
+    roll -= weights[i];
+    if (roll < 0) return WEATHER[i];
+  }
+  return WEATHER[WEATHER.length - 1];
+}
+
+// Where the calendar goes next. This is the one place that knows the shape
+// state.js's nextDay/startNextWeekend pair walks — a weekend's last day
+// rolls into (season + 1, day 1), any other day is the next day of the
+// same weekend — so the forecast and the day that actually arrives cannot
+// disagree without a test noticing.
+export function nextCalendarDay(state) {
+  const season = state.season || 1;
+  const weekendDay = state.weekendDay || 1;
+  return weekendDay >= CONFIG.seasonLength
+    ? { season: season + 1, weekendDay: 1 }
+    : { season, weekendDay: weekendDay + 1 };
+}
+
+// Tomorrow's weather, exactly — not a band and not a probability. A
+// forecast a player cannot act on is decoration, and the acts, contracts
+// and ticket price it is meant to inform are all committed a day ahead.
+export function forecastWeather(state) {
+  const next = nextCalendarDay(state);
+  return rollWeather(state.weatherSeed, next.season, next.weekendDay);
 }
 
 // ---------- season/progression (Stage 6) ----------
@@ -923,8 +1027,13 @@ export function simulateDay(state, seed) {
   // state built with a plain object literal, mainly — rather than NaN-ing
   // the whole attendance formula.
   const weekendDayFactor = WEEKEND_DAY_ATTENDANCE[state.weekendDay] || 1;
+  // Phase 2: the sky gets a vote in how many people turn out. Read off the
+  // state rather than rolled here (#231) — state.js stamps the day's
+  // weather when the day begins, so this is a lookup, not a draw, and no
+  // seed's event rolls moved when the phase landed.
+  const weather = weatherFor(state);
   const jitter = 0.9 + rng() * 0.2;
-  const attendance = Math.max(0, Math.round(baseAttendance * priceMult * popularityFactor * adFactor * groundsDraw.mult * weekendDayFactor * jitter));
+  const attendance = Math.max(0, Math.round(baseAttendance * priceMult * popularityFactor * adFactor * groundsDraw.mult * weekendDayFactor * weather.attendanceMult * jitter));
 
   // --- satisfaction (attendance-weighted across block/stage slots) ---
   let satWeightSum = 0;
@@ -937,7 +1046,10 @@ export function simulateDay(state, seed) {
     const blockAttendance = Math.round(attendance * (blockWeightSum / totalWeightAllBlocks));
     // Stage 19: sightline/shade/popularity weights are per-block now, not
     // constant — shade only counts while the sun is actually on the crowd.
-    const qw = blockQualityWeights(block);
+    // Phase 2: and how much sun that is now depends on the day as well as
+    // the block, so a scorcher punishes an open hilltop in every block and
+    // a grey day flattens the tradeoff to nearly nothing.
+    const qw = blockQualityWeights(block, weather);
     for (const e of stageEntries) {
       const share = e.weight / blockWeightSum;
       const stageAttendance = Math.round(blockAttendance * share);
@@ -960,6 +1072,17 @@ export function simulateDay(state, seed) {
   // every day after this one.
   const priceSatDelta = priceSatisfactionDelta(state.ticketPrice);
   satisfaction = clamp(satisfaction + priceSatDelta, 0, 100);
+  // Phase 2: and what the sky did to the mood, on top of what the day's
+  // siting and scheduling earned. Applied after the block loop rather than
+  // inside it because it is the same for every block — the per-block half
+  // of weather is the heat that already moved qw above.
+  const weatherSatDelta = weather.satisfactionDelta || 0;
+  satisfaction = clamp(satisfaction + weatherSatDelta, 0, 100);
+  if (weatherSatDelta <= -4) {
+    warnings.push(`${weather.name} all day \u2014 ${weather.note}`);
+  } else if (weatherSatDelta >= 2) {
+    log.push(`${weather.name}, and the crowd was in no hurry to leave.`);
+  }
   if (priceSatDelta <= -6) {
     warnings.push(`At ${'$' + state.ticketPrice} a head, plenty of folk grumbled about the price on the way in.`);
   } else if (priceSatDelta >= 2) {
@@ -1130,6 +1253,11 @@ export function simulateDay(state, seed) {
     groundsDraw,
     priceMult,
     priceSatDelta: Math.round(priceSatDelta * 10) / 10,
+    // Phase 2: the whole WEATHER row, so a report written today still reads
+    // correctly if the table is retuned tomorrow — history carries what the
+    // day actually ran under rather than an id to look up later.
+    weather,
+    weatherSatDelta,
     campaignActive: state.activeCampaign ? state.activeCampaign.name : null,
     // Phase 1 increment 2: `footTraffic` is measured off the walk;
     // `footTrafficEstimate` is the terrain-and-adjacency forecast the build

@@ -189,6 +189,120 @@ export const WEEKEND_DAY_ATTENDANCE = {
   3: 0.95, // Sunday
 };
 
+// ---------- weather (Phase 2: weather worth checking) ----------
+// Through Phase 1 every day of the season had the same sun over it.
+// TIME_BLOCKS authors a `heat` per block and nothing ever moved it, so
+// Saturday of weekend 1 and Saturday of weekend 6 lit the grounds
+// identically and the only reason to look at the sky was flavour text
+// nobody had written. That is most of a weather system already built:
+// blockQualityWeights spends `heat` properly (shade's weight is 0.25 x heat
+// and whatever shade gives up rolls into sightline), so the missing piece
+// is a table, one multiplier on that heat, and two multipliers on the day.
+//
+// Each row is four numbers and a name:
+//   heatMult          scales the block's authored heat. Above 1 it pushes
+//                     past what any block authors, which is the point --
+//                     see WEATHER_SHADE_CEILING below.
+//   attendanceMult    how many people turn out at all.
+//   satisfactionDelta what the sky does to the crowd's mood before anything
+//                     on the grounds gets a vote, in the same satisfaction
+//                     points priceSatisfactionDelta returns.
+//   early / late      the row's draw weight at weekend 1 and at weekend
+//                     WEATHER_SEASON_SPAN, interpolated linearly in between
+//                     by engine.js's weatherWeightAt.
+//
+// The early/late ramp is the season's shape, and it is the answer to "why
+// is weekend 6 a different game from weekend 1". A Maryland-style faire
+// opens in late August and closes in October: the season starts with
+// scorchers and warm clear days and ends with overcast, drizzle, and the
+// crisp blue October afternoon that is the best day of the year to be on a
+// faire ground. Every row keeps a non-zero weight at both ends -- a
+// downpour in weekend 1 is unlucky, not impossible -- so no row is ever
+// unreachable and the ramp changes odds rather than gating content.
+//
+// Nothing here is logic: engine.js's rollWeather does the drawing and
+// state.js stamps the result on the day. See CONFIG's habit of carrying the
+// paragraph that explains the number next to the number.
+export const WEATHER = [
+  {
+    id: 'scorcher',
+    name: 'Scorching',
+    note: 'The sun is merciless. Anything without a tree over it bakes, and plenty of folk stay home.',
+    heatMult: 2.6, attendanceMult: 0.86, satisfactionDelta: -5,
+    early: 5, late: 0.5,
+  },
+  {
+    id: 'warm',
+    name: 'Warm and clear',
+    note: 'A proper faire day. Hot in the open at midday, but nobody is complaining.',
+    heatMult: 1.4, attendanceMult: 1.06, satisfactionDelta: 2,
+    early: 7, late: 2,
+  },
+  {
+    id: 'fair',
+    name: 'Fair',
+    note: 'Ordinary weather doing nothing in particular. The blocks light the grounds exactly as authored.',
+    heatMult: 1, attendanceMult: 1, satisfactionDelta: 0,
+    early: 6, late: 5,
+  },
+  {
+    id: 'overcast',
+    name: 'Overcast',
+    note: 'Flat grey light all day. Nobody wants shade; the long views carry every block.',
+    heatMult: 0.55, attendanceMult: 0.97, satisfactionDelta: 0,
+    early: 3, late: 6,
+  },
+  {
+    id: 'crisp',
+    name: 'Crisp and cool',
+    note: 'The blue October afternoon everyone remembers. Cool enough to walk all day, and they do.',
+    heatMult: 0.5, attendanceMult: 1.1, satisfactionDelta: 4,
+    early: 1, late: 5,
+  },
+  {
+    id: 'drizzle',
+    name: 'Drizzle',
+    note: 'Steady grey wet. The people who came are committed; the people who did not, are not.',
+    heatMult: 0.35, attendanceMult: 0.8, satisfactionDelta: -4,
+    early: 2, late: 5,
+  },
+  {
+    id: 'downpour',
+    name: 'Downpour',
+    note: 'Rain off the tent edges in sheets. A day to get through rather than a day to earn on.',
+    heatMult: 0.2, attendanceMult: 0.5, satisfactionDelta: -11,
+    early: 0.5, late: 2.5,
+  },
+];
+
+// How many weekends the early -> late weight ramp takes to run its full
+// course. Six, because CONFIG.winCondition.seasonTarget is 6 and the ramp
+// exists so that a run to the win condition is a run through a season
+// rather than six copies of one weekend. Authored separately rather than
+// read off winCondition so that retuning the win target does not silently
+// restretch the weather; if they should move together, move them together.
+export const WEATHER_SEASON_SPAN = 6;
+
+// The most weight `shade` can ever take in blockQualityWeights, and so the
+// one thing keeping that function's three weights non-negative and summing
+// to 1 no matter what a WEATHER row multiplies the heat by. Past 0.5 the
+// shade term outweighs sightline, which is exactly what a scorching
+// afternoon is supposed to do to an open hilltop stage; the ceiling is what
+// stops a future heatMult typo from driving the sightline weight negative
+// and paying a stage for having no view at all. TIME_BLOCKS caps heat at
+// 1.0 and the hottest authored row multiplies by 2.6, so the live maximum
+// is 0.65 -- deliberately under this, so the ceiling is a guard rail rather
+// than a number the balance is quietly leaning on. Move it if a hotter row
+// is ever authored; do not move it to change the balance.
+export const WEATHER_SHADE_CEILING = 0.7;
+
+// The row anything unstamped falls back to: a state that predates this
+// phase, an ad-hoc test fixture built from an object literal, or a save
+// repaired on load. `fair` is neutral on all three multipliers, so falling
+// back to it is exactly as invisible as WEEKEND_DAY_ATTENDANCE falling
+// back to 1 for a state that never set weekendDay.
+export const DEFAULT_WEATHER_ID = 'fair';
+
 // ---------- guests (Phase 1: guests who walk) ----------
 // Through Stage 22 the crowd was one number and every siting mechanic was a
 // coefficient on averages of it. This table is the crowd as people: four
