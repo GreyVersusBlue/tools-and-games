@@ -58,7 +58,13 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **The Fourth Quarter Phase 6, "The league
+The last thing that shipped is **the teaching-tools archive (PR #181)**, which
+is not a ranked row: Devon's direct instruction, worked while another session
+ran a game's rows. It took 21 rows out of the table and put them in
+`ARCHIVE.md`. The paragraph below says what it did and what it deliberately
+left ranked.
+
+Before that: **The Fourth Quarter Phase 6, "The league
 has a season" (PR #179)**, which **closes the row**: sized 2+, every bullet
 closed in one session, so it was marked shipped rather than left open for an
 increment with nothing to do.
@@ -213,8 +219,8 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**The teaching tools are archived.** Devon's call, 2026-09-08, locked
-decision #206: the five classroom tools are no longer maintained or improved
+**The teaching tools are archived (PR #181).** Devon's call, 2026-09-08,
+locked decision #206: the five classroom tools are no longer maintained or improved
 on this repo, so their open work came out of this file and went into
 `ARCHIVE.md` whole. Twenty-one ranked rows, four Tier 2 sections, six
 questions, five Ownership rows and two "sources disagree" entries. Nothing was
@@ -226,7 +232,7 @@ site work that happens to land in that folder. Neither is
 `Tools/prompt-builder.html`, which is red on `npm run check` today and is a
 site problem.
 
-**85 ranked items**, twenty-one fewer than the last merge. 36 of them are
+**85 ranked items**, twenty-one fewer than before PR #181. 36 of them are
 phases in one of the ten live project `WISHLIST.md` files; the other 49 are
 standalone, and live in Tier 2 below. Beyond the ranked list there are 241
 open bullets in those ten standing backlogs and 40 open questions for
