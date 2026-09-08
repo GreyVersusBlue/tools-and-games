@@ -28,7 +28,7 @@ export class DayPhase {
   /**
    * @param scene   three.js scene (rings live here)
    * @param getC    () => campaign object (always current)
-   * @param cb      { save(), openDoors(), flash(), mountBar(el), onMove(), closedNight(), resolveMoment(idx) }
+   * @param cb      { save(), openDoors(), flash(), mountBar(el), onMove(), closedNight(), resolveMoment(idx), newRun() }
    *                mountBar is main.js's one-and-only save-bar mount, called by
    *                doorPanel()/darkNightPanel(); onMove() rebuilds the room after a
    *                signed lease (main.js's rebuildVenue()); closedNight() settles one
@@ -126,6 +126,7 @@ export class DayPhase {
     if (!st) return "";
     // Moving in isn't "opening the doors" — the door ring's panel becomes the
     // dark-night settlement while a move is in progress, so the prompt says so.
+    if (st.id === "door" && this.getC().failed) return "E — The Run";
     if (st.id === "door" && this.getC().darkNightsLeft > 0) return "E — Tonight";
     return `E — ${st.label}`;
   }
@@ -288,6 +289,7 @@ export class DayPhase {
 
   doorPanel() {
     const c = this.getC();
+    if (c.failed) return this.failedPanel();
     if (c.darkNightsLeft > 0) return this.darkNightPanel();
     const tn = C.tonight(c);
     const game = !!tn.mules;
@@ -297,7 +299,11 @@ export class DayPhase {
     if (!C.hasCook(c)) warn.push("No cook — the kitchen's closed tonight.");
     if (!C.hasBartender(c)) warn.push("No bartender — servers cover the taps, badly.");
     if (Object.values(c.stock).every(v => !v)) warn.push("The shelves are BARE. Nobody can order anything.");
-    if (c.cash < C.rent(c) + C.wageBill(c) + C.upgradeFees(c)) warn.push("Tonight's rent + wages + upkeep outrun the till. A bad night puts you in the red.");
+    if (c.cash < C.billsFor(c).total) warn.push("Tonight's rent + wages + upkeep outrun the till. A bad night puts you in the red.");
+    // the standing notice, on the last screen before the night that could spend it
+    if (c.strikes > 0) warn.push(c.strikes === C.LEASE_STRIKES - 1
+      ? `LAST WARNING: ${c.strikes} nights in the red. Close tonight below $0 and the landlord takes the lease.`
+      : `Notice on the door: ${c.strikes} of ${C.LEASE_STRIKES} nights in the red.`);
     const rows = [
       ["Day", `${c.day} · ${C.weekday(c)}`],
       ["Tonight", game ? `${tn.label} — kickoff 7 PM` : tn.label],
@@ -308,6 +314,7 @@ export class DayPhase {
       ["Crew", c.staff.length ? c.staff.map(s => s.name.split(" ")[0]).join(", ") : "just you"],
       ["Wages + rent", `$${C.wageBill(c)} + $${C.rent(c)}`],
       ["Upgrade upkeep", `$${C.upgradeFees(c)}`],
+      ["The lease", c.strikes ? `${c.strikes} of ${C.LEASE_STRIKES} nights in the red` : "in good standing"],
     ].map(r => `<div class="row"><span class="hint">${r[0]}</span><span>${r[1]}</span></div>`).join("");
     this.show("Tonight",
       rows + warn.map(w => `<div class="row bad">⚠ ${w}</div>`).join(""),
@@ -323,6 +330,30 @@ export class DayPhase {
     // Mounted after show(), because show() replaces #panelFoot's innerHTML and the
     // container has to exist first. A fresh container every render means the
     // buttons are rebuilt rather than duplicated, so re-opening the panel is safe.
+    if (this.cb.mountBar) this.cb.mountBar($("#doorSaveBar"));
+  }
+
+  /** The one dead end in the game. A run that lost the Corner Tap has no rung
+   *  below it and no way to trade out of the hole, so the door stops being a
+   *  door: the panel says what the run was and offers a fresh one. Reachable
+   *  only by reloading into a failed save — the box score's own ending screen
+   *  is what a player normally sees. */
+  failedPanel() {
+    const c = this.getC();
+    const r = C.runSummary(c);
+    const rows = [
+      ["Nights survived", `${r.nights}`],
+      ["Best night", `$${Math.round(r.bestNight)}`],
+      ["Lifetime net", `${r.lifetimeNet >= 0 ? "+" : "−"}$${Math.abs(Math.round(r.lifetimeNet))}`],
+      ["Furthest you got", r.tier],
+      ["Evictions", `${r.evictions}`],
+    ].map(x => `<div class="row"><span class="hint">${x[0]}</span><span>${x[1]}</span></div>`).join("");
+    this.show("The Run",
+      `<p class="hint">The landlord took the Corner Tap. There is no smaller room to fall into, and the doors do not open again.</p>${rows}`,
+      `<div class="footStack">
+         <button class="btn wide" data-newrun="1">Start a New Campaign</button>
+         <div id="doorSaveBar"></div>
+       </div>`);
     if (this.cb.mountBar) this.cb.mountBar($("#doorSaveBar"));
   }
 
@@ -433,6 +464,7 @@ export class DayPhase {
     if (t.dataset.opendoors) { this.closePanel(); this.cb.openDoors(); }
     if (t.dataset.moment !== undefined) { this.closePanel(); if (this.cb.resolveMoment) this.cb.resolveMoment(+t.dataset.moment); }
     if (t.dataset.closednight) { this.closePanel(); this.cb.closedNight(); }
+    if (t.dataset.newrun && this.cb.newRun) { this.closePanel(); this.cb.newRun(); }
     if (t.dataset.signlease) {
       const r = C.moveVenue(c);
       if (r.ok) {

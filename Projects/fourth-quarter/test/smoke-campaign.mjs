@@ -563,5 +563,179 @@ ok(rCraft && e5.crafted === 1, "delivering a player-crafted ticket counts toward
   ok(LG.allGames(c5.league).every(({ g, date }) => g.played === (date < 3)), "and walks it back, leaving Monday's game behind it");
 }
 
+// ---- Phase 9: the lease, and the night you can lose ----------------------
+// The gap: settleNight() took cash to negative ten thousand and rolled
+// tomorrow's applicants. Locked #219 (the landlord counts consecutive nights in
+// the red), #220 (eviction is a demotion, not a game over) and #221 (billsFor()
+// is the one place the nightly bill is computed).
+{
+  // one bill, two settlements. The drift this guards is not hypothetical: the
+  // lease check reads the same number on both paths, so a wages/rent/upkeep
+  // sum that differs between them evicts on one path and not the other.
+  const c = C.newCampaign();
+  const b = C.billsFor(c);
+  ok(b.wages === C.wageBill(c) && b.rent === C.rent(c) && b.upgFees === C.upgradeFees(c), "billsFor() reports the three lines it sums");
+  ok(b.total === b.wages + b.rent + b.upgFees, "and its total is exactly those three");
+  const cashBefore = c.cash;
+  const night = C.settleNight(c, { total: 0, revenue: 0, tips: 0 }, Math.random);
+  ok(night.wages === b.wages && night.rent === b.rent && night.upgFees === b.upgFees, "a played night bills the same three numbers");
+  ok(Math.abs((cashBefore - c.cash) - b.total) < 1e-9, "and a $0 take costs exactly the bill");
+  // the threshold is $0 and nothing else: a fresh campaign that takes nothing
+  // all night still has $660 in the till, so it is not a night in the red
+  ok(c.cash > 0 && c.strikes === 0 && !night.lease.warned && !night.lease.short, `a fresh campaign's worst night is still in the black ($${c.cash})`);
+  const d = C.newCampaign();
+  const dBefore = d.cash;
+  const dark = C.settleDarkNight(d, Math.random);
+  ok(dark.wages === b.wages && dark.rent === b.rent && dark.upgFees === b.upgFees && Math.abs((dBefore - d.cash) - b.total) < 1e-9,
+    "and a dark night costs exactly the same bill");
+  ok(night.net === -b.total && dark.net === -b.total, "both nets are the negative of the one bill");
+  // an upgrade's upkeep moves both by the same amount, which is the property
+  // two hand-written copies of this arithmetic could not promise
+  const u = C.newCampaign(); u.cash = 5000; C.buyUpgrade(u, "pos");
+  ok(C.billsFor(u).total === b.total + C.UPGRADES.pos.fee, "installing the POS adds its fee to the one bill");
+  // and both settlements spend that number rather than their own: with no
+  // upgrade installed a dropped upkeep line is invisible, which is exactly how
+  // two hand-written copies of this arithmetic stay wrong for a phase
+  const ub = C.billsFor(u);
+  const uCash = u.cash;
+  const uNight = C.settleNight(u, { total: 0, revenue: 0, tips: 0 }, Math.random);
+  ok(uNight.upgFees === C.UPGRADES.pos.fee && Math.abs((uCash - u.cash) - ub.total) < 1e-9 && uNight.net === -ub.total,
+    `a played night with gear on the wall spends the upkeep too ($${uCash - u.cash} vs $${ub.total})`);
+  const v = C.newCampaign(); v.cash = 5000; C.buyUpgrade(v, "pos");
+  const vCash = v.cash;
+  const vDark = C.settleDarkNight(v, Math.random);
+  ok(vDark.upgFees === C.UPGRADES.pos.fee && Math.abs((vCash - v.cash) - ub.total) < 1e-9 && vDark.net === -ub.total,
+    `and so does a closed one ($${vCash - v.cash} vs $${ub.total})`);
+}
+
+{
+  // the count itself: below $0 at settlement is a missed night, three in a row
+  // takes the lease, one night in the black clears it outright
+  const c = C.newCampaign(); c.cash = 100;
+  const zero = { total: 0, revenue: 0, tips: 0 };
+  const n1 = C.settleNight(c, zero, Math.random);
+  ok(c.cash < 0 && c.strikes === 1 && n1.lease.warned && n1.lease.left === 2 && !n1.lease.evicted, `first night in the red is a warning, not an eviction (${c.strikes})`);
+  const n2 = C.settleNight(c, zero, Math.random);
+  ok(c.strikes === 2 && n2.lease.warned && n2.lease.left === 1 && !n2.lease.evicted, "second is the last warning");
+  const n3 = C.settleNight(c, zero, Math.random);
+  ok(!!n3.lease.evicted && c.strikes === 0, "third takes the lease and resets the count");
+  ok(C.LEASE_STRIKES === 3 && C.LEASE_FLOOR === 0, "three strikes, and the floor is the zero the HUD already turns red on");
+
+  // a clean night clears the count rather than banking it
+  const c2 = C.newCampaign(); c2.cash = 100;
+  const bad = C.settleNight(c2, zero, Math.random);
+  ok(c2.strikes === 1 && bad.lease.warned, "a strike is on the board");
+  const good = C.settleNight(c2, { total: 5000, revenue: 5000, tips: 0 }, Math.random);
+  ok(c2.cash > 0 && c2.strikes === 0 && good.lease.cleared && !good.lease.warned, "one night in the black wipes it");
+  const quiet = C.settleNight(c2, { total: 5000, revenue: 5000, tips: 0 }, Math.random);
+  ok(quiet.lease.cleared === false && quiet.lease.strikes === 0, "and a second good night has nothing to report");
+}
+
+{
+  // a dark night counts too — bills land on a closed night and no revenue does,
+  // which is the one way a venue move can bankrupt you mid-move
+  const c = C.newCampaign(); c.cash = 5500; C.moveVenue(c);
+  ok(c.venue === "fieldhouse" && c.darkNightsLeft === 1 && c.cash === 0, "moved in with nothing left");
+  const dn = C.settleDarkNight(c, Math.random);
+  ok(c.cash < 0 && c.strikes === 1 && dn.lease.warned, "the closed night's bill puts you in the red and on the board");
+}
+
+{
+  // eviction is a demotion: locked #220
+  const c = C.newCampaign(); c.cash = 999999;
+  C.moveVenue(c); C.moveVenue(c); C.moveVenue(c);
+  ok(c.venue === "flagship" && c.stats.bestTier === 3, "up the ladder to the flagship, and the high-water mark says so");
+  C.buyUpgrade(c, "crafttaps"); C.buyUpgrade(c, "pos");
+  c.darkNightsLeft = 0;
+  const feesBefore = C.billsFor(c).upgFees;
+  // three regulars over Midtown's cap of 7, so the demotion has somebody to lose
+  while (c.regulars.length < C.regularCap(c)) if (!C.devAddRegular(c, Math.random)) break;
+  const roster = c.regulars.length;
+  const capBelow = 3 + 2 * 2;
+  c.cash = -1;
+  const ev = C.evictLease(c);
+  ok(c.venue === "midtown" && ev.from === "flagship" && ev.to === "midtown", `the ladder walks one rung back (${c.venue})`);
+  ok(c.darkNightsLeft >= 1, "with the smaller room's move-in nights to push through");
+  ok(c.cash === C.RECOVERY_CASH, `the debt is written off against the deposit ($${c.cash})`);
+  ok(c.strikes === 0 && c.stats.evictions === 1 && !c.failed, "the count resets, the eviction is on the record, and the run continues");
+  // Midtown is a tier-2 room and the biggest gate on any upgrade is tier 1, so
+  // nothing comes off the wall on this rung. The rung that does strip is below.
+  ok(ev.stripped.length === 0 && C.billsFor(c).upgFees === feesBefore, "nothing comes off a wall Midtown still has");
+  ok(c.stats.bestTier === 3 && C.runSummary(c).tier === "The Fourth Quarter", "the run still says how far it got, not where it ended up");
+  ok(roster === 3 + 3 * 2 && roster > capBelow, `a full flagship roster to demote (${roster})`);
+  ok(c.regulars.length === capBelow && ev.lost.length === roster - capBelow, `the regulars over Midtown's cap walk (${roster} → ${c.regulars.length})`);
+  ok(ev.lost.every(n => c.regularsLost.some(x => x.name === n)), "and the door remembers every one of them");
+}
+
+{
+  // the rung that strips: the Corner Tap is a tier-0 room, and the tap wall and
+  // the premium screens are both gated at tier 1
+  const c = C.newCampaign(); c.cash = 999999; C.moveVenue(c); c.darkNightsLeft = 0;
+  C.buyUpgrade(c, "crafttaps"); C.buyUpgrade(c, "pos");
+  const feesBefore = C.billsFor(c).upgFees;
+  ok(feesBefore === C.UPGRADES.crafttaps.fee + C.UPGRADES.pos.fee, "the Fieldhouse carries both upkeeps");
+  c.cash = -1;
+  const ev = C.evictLease(c);
+  ok(c.venue === "cornerTap" && !c.failed, "evicted out of the Fieldhouse and down to the Corner Tap, still playing");
+  // the Corner Tap's own move-in count is 0, because nobody moves *into* the
+  // room they started in. Being moved out of a bigger one is still a move.
+  ok(C.VENUES.cornerTap.darkNights === 0 && c.darkNightsLeft === 1, `a move out costs a closed night even into the room with none of its own (${c.darkNightsLeft})`);
+  ok(ev.stripped.includes("crafttaps") && !C.owned(c, "crafttaps"), "the tap wall comes off a wall that isn't there any more");
+  ok(!ev.stripped.includes("pos") && C.owned(c, "pos"), "and the POS, which fits any room, stays installed");
+  ok(C.billsFor(c).upgFees === C.UPGRADES.pos.fee && C.billsFor(c).upgFees < feesBefore, "so the nightly upkeep drops to what's left, which is half of what makes the smaller room survivable");
+  ok(C.upgradeGate(c, "crafttaps") !== null, "and it is gated behind the Fieldhouse again, to be bought back with the room");
+}
+
+{
+  // the bottom rung is the only dead end
+  const c = C.newCampaign();
+  ok(C.prevVenue(c) === null, "there is nothing below the Corner Tap");
+  c.cash = -1;
+  const ev = C.evictLease(c);
+  ok(c.failed === true && ev.to === null && c.venue === "cornerTap", "an eviction from the Corner Tap ends the run and moves nobody");
+  // and a failed run does not keep getting evicted
+  const again = C.applyLease(c);
+  ok(again.failed === true && !again.evicted && c.stats.evictions === 1, "a failed campaign is not evicted a second time");
+}
+
+{
+  // the save append: additive, no key change, no version bump
+  const old = C.newCampaign();
+  old.cash = 5500; C.moveVenue(old); old.darkNightsLeft = 0;
+  delete old.strikes; delete old.failed;
+  delete old.stats.bestTier; delete old.stats.evictions;
+  C.repairCampaign(old);
+  ok(old.strikes === 0 && old.failed === false, "a save from before the lease loads at zero strikes and not failed");
+  ok(old.stats.bestTier === 1 && old.stats.evictions === 0, "and its high-water tier is floored at the room it is actually in");
+  ok(C.runSummary(old).tier === "The Fieldhouse", "so its run summary names that room rather than the Corner Tap");
+  const junk = C.newCampaign();
+  junk.strikes = "lots"; junk.failed = "yes"; junk.stats.evictions = NaN; junk.stats.bestTier = 99;
+  C.repairCampaign(junk);
+  ok(junk.strikes === 0, "a non-numeric strike count repairs to zero");
+  ok(junk.failed === false, "and only a literal true is a failed run");
+  ok(junk.stats.evictions === 0 && junk.stats.bestTier === 3, "NaN evictions repair to zero and a tier past the flagship clamps to it");
+  const over = C.newCampaign(); over.strikes = 9; C.repairCampaign(over);
+  ok(over.strikes === C.LEASE_STRIKES, "a strike count past the limit clamps to it rather than evicting on load");
+  ok(C.SAVE_KEY === "fq3d-save" && C.SAVE_VERSION === 1, "no key change, no version bump: the two fields are additive and repair fills them");
+  // and they survive a round trip through the slot
+  const storage = {}; const stub = { getItem: k => storage[k] ?? null, setItem: (k, v) => { storage[k] = v; }, removeItem: k => { delete storage[k]; } };
+  const c = C.newCampaign(); c.cash = -1; C.settleNight(c, { total: 0, revenue: 0, tips: 0 }, Math.random);
+  C.saveCampaign(c, stub);
+  const back = C.loadCampaign(stub);
+  ok(back.strikes === c.strikes && back.strikes > 0, "a strike count reloads at the number the night left it");
+}
+
+{
+  // the run summary: the four numbers the ending screen asks for
+  const c = C.newCampaign();
+  C.settleNight(c, { total: 900, revenue: 800, tips: 100 }, Math.random);
+  C.settleNight(c, { total: 400, revenue: 400, tips: 0 }, Math.random);
+  const r = C.runSummary(c);
+  ok(r.nights === 2 && r.nights === c.stats.nights, "nights survived is the campaign's own count");
+  ok(r.bestNight === 900, "best night is the biggest take, not the last one");
+  ok(r.lifetimeNet === c.stats.lifetimeNet, "lifetime net is the campaign's own running total");
+  ok(r.tier === "The Corner Tap" && r.evictions === 0, "and a run that never moved says so");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

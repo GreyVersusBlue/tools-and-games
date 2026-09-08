@@ -89,7 +89,7 @@ player.onInteract = () => {
 
 // mountBar is a hoisted function declaration further down the file; DayPhase only
 // calls it when the Tonight panel renders, long after both exist.
-const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight, mountBar, resolveMoment });
+const day = new DayPhase(scene, () => campaign, { save, openDoors: beginNight, flash, onMove: rebuildVenue, closedNight, mountBar, resolveMoment, newRun: resetProgress });
 
 /** The boss answers a moment: the panel's choice goes to the engine, the
  *  engine's events (the line, bodies leaving, a staffer walking) come back
@@ -125,6 +125,14 @@ function setLighting(night) {
  *  morning's ticker can say which way the End Zone moved. Null on a reload,
  *  where campaign.rivalLine() falls back to the standing line. */
 let lastSocial = null;
+/** The landlord's record from the last settlement, so the morning ticker can
+ *  say what the box score said. Null on a reload — a strike count that survived
+ *  a reload is read off the campaign instead, in enterDay(). */
+let lastLease = null;
+/** An eviction changes the room while the box score is up. The rebuild waits
+ *  for Tomorrow's Ledger, because tearing the world down under a screen the
+ *  player is still reading is how you get a black frame. */
+let pendingRebuild = false;
 
 /** Tear down the current room and build the new venue's — called right after
  *  a successful moveVenue(). Only ever fires during the day phase (moves
@@ -150,7 +158,34 @@ function closedNight() {
   const spoiled = Object.values(books.spoilage.byItem).reduce((a, b) => a + b, 0);
   if (spoiled) tick(`${spoiled} serving${spoiled === 1 ? "" : "s"} spoiled in the walk-in while the doors stayed shut.`, "b");
   if (campaign.darkNightsLeft === 0) tick(`Ready to open at ${C.venueDef(campaign).name} tomorrow.`, "hl");
+  // A move can bankrupt you mid-move: bills land on a closed night and no
+  // revenue does. The room can therefore change here, in the day phase, where
+  // rebuilding it right away is safe.
+  tickLease(books.lease);
+  if (books.lease.evicted) {
+    if (books.lease.evicted.to) rebuildVenue(); // nothing moved on the bottom rung
+    refreshStartTag();
+  }
   updateHUD();
+}
+
+/** The landlord's lines, in the ticker, from one settlement's record. Called
+ *  from the day phase (a closed night) and from the morning after a played one,
+ *  so it never writes into a ticker the night is about to clear. */
+function tickLease(lease) {
+  if (!lease) return;
+  if (lease.warned) {
+    tick(lease.left === 1
+      ? `NOTICE ON THE DOOR: ${lease.strikes} nights in the red. One more and the lease is gone.`
+      : `Notice from the landlord: ${lease.strikes} of ${C.LEASE_STRIKES} nights in the red.`, "b");
+  }
+  if (lease.cleared) tick("Back in the black. The landlord's notice comes off the door.", "g");
+  const ev = lease.evicted;
+  if (!ev) return;
+  if (!ev.to) { tick(`EVICTED FROM ${ev.fromName.toUpperCase()}. There is no smaller room. The run is over.`, "b"); return; }
+  tick(`Evicted from ${ev.fromName}. The keys to ${ev.toName} are what's left — debt settled against the deposit, $${Math.round(campaign.cash)} in the till.`, "b");
+  if (ev.stripped.length) tick(`${ev.stripped.map(id => C.UPGRADES[id].name).join(", ")} came off the wall — no room for it here.`, "b");
+  if (ev.lost.length) tick(`${ev.lost.join(", ")} won't be following you over.`, "b");
 }
 
 function enterDay() {
@@ -184,6 +219,12 @@ function enterDay() {
   tick(drag, lastSocial && lastSocial.dBuzz >= 2 ? "b" : lastSocial && lastSocial.dBuzz <= -2 ? "g" : "");
   const inTonight = C.regularsIn(campaign);
   if (inTonight.length) tick(`${inTonight.map(r => r.name.split(" ")[0]).join(", ")} ${inTonight.length === 1 ? "is" : "are"} good for tonight.`, "g");
+  // last, because it is the line that matters most on a morning that has one.
+  // A reload has no record to print, so a standing notice is read off the
+  // campaign's own strike count instead of being lost with lastLease.
+  if (lastLease) tickLease(lastLease);
+  else if (campaign.strikes > 0) tick(`Notice on the door: ${campaign.strikes} of ${C.LEASE_STRIKES} nights in the red.`, "b");
+  lastLease = null;
   updateHUD();
 }
 
@@ -441,6 +482,9 @@ function showBoxScore() {
   const s = engine.summary();
   const books = C.settleNight(campaign, s);
   lastSocial = books.social;
+  lastLease = books.lease;
+  // the room may have changed under the box score; enterDay() picks this up
+  pendingRebuild = !!(books.lease.evicted && books.lease.evicted.to);
   save();
   const empt = patrons.filter(p => p.emptyShelves).length;
   const spoiled = Object.values(books.spoilage.byItem).reduce((a, b) => a + b, 0);
@@ -464,9 +508,53 @@ function showBoxScore() {
     ${momentRows(books.moments, s.moments)}
     ${engine.gameNight ? `<div class="sec">The Game</div>
     <div class="row"><span>Final</span><span class="${s.game.win ? "good" : "bad"}">${gameLine(s.game.win)}</span></div>` : ""}
-    ${socialRows(books.social)}`;
+    ${socialRows(books.social)}
+    ${leaseRows(books.lease)}
+    ${campaign.failed ? runSummaryRows() : ""}`;
+  // The one screen in the game that offers to erase a campaign, and it only
+  // offers it when the campaign is already over. The save bar's comment below
+  // says why "start over" is off the other three mounts; a run that has failed
+  // is the case that argument does not cover.
+  $("#nextDayBtn").textContent = campaign.failed ? "Start a New Campaign" : "Tomorrow's Ledger";
   $("#boxOverlay").style.display = "flex";
   document.exitPointerLock();
+}
+
+/** The landlord on the box score: the notice, or the eviction and what it cost.
+ *  Nothing at all on an ordinary night in the black, which is most of them. */
+function leaseRows(lease) {
+  if (!lease) return "";
+  const rows = [];
+  if (lease.warned) rows.push(`<div class="row"><span>Notice from the landlord</span><span class="bad">${lease.strikes} of ${C.LEASE_STRIKES} nights in the red — ${lease.left} more and the lease is gone</span></div>`);
+  if (lease.cleared) rows.push(`<div class="row"><span>Back in the black</span><span class="good">the notice comes off the door</span></div>`);
+  const ev = lease.evicted;
+  if (ev) {
+    rows.push(`<div class="row"><span>Evicted from</span><span class="bad">${ev.fromName}</span></div>`);
+    rows.push(ev.to
+      ? `<div class="row"><span>Down to</span><span>${ev.toName} — ${campaign.darkNightsLeft} closed night${campaign.darkNightsLeft === 1 ? "" : "s"} to move in</span></div>`
+      : `<div class="row"><span>Nowhere left to go</span><span class="bad">there is no smaller room</span></div>`);
+    if (ev.to) rows.push(`<div class="row"><span>Debt settled against the deposit</span><span class="money">$${Math.round(campaign.cash)}</span></div>`);
+    if (ev.stripped.length) rows.push(`<div class="row"><span>Came off the wall</span><span class="bad">${ev.stripped.map(id => C.UPGRADES[id].name).join(", ")}</span></div>`);
+    if (ev.lost.length) rows.push(`<div class="row"><span>Not following you over</span><span class="bad">${ev.lost.join(", ")}</span></div>`);
+  }
+  if (!rows.length) return "";
+  return `<div class="sec">The Lease</div>${rows.join("")}`;
+}
+
+/** The run, once it is over: the four numbers the wishlist asked for, plus what
+ *  the room was worth to the street when it closed. */
+function runSummaryRows() {
+  const r = C.runSummary(campaign);
+  const rows = [
+    ["Nights survived", `${r.nights}`],
+    ["Best night", `$${Math.round(r.bestNight)}`],
+    ["Lifetime net", `${r.lifetimeNet >= 0 ? "+" : "−"}$${Math.abs(Math.round(r.lifetimeNet))}`],
+    ["Furthest you got", r.tier],
+    ["Evictions", `${r.evictions}`],
+    ["Reputation at the end", `${r.rep} / 100`],
+    ["Regulars still on the board", `${r.regulars}`],
+  ].map(x => `<div class="row"><span>${x[0]}</span><span>${x[1]}</span></div>`).join("");
+  return `<div class="sec">The Run</div>${rows}`;
 }
 /** The night's moments on the box score: each card by name and the hour,
  *  what nobody answered, and what they cost or paid all told. */
@@ -509,7 +597,10 @@ function gameLine(win) {
 }
 $("#nextDayBtn").addEventListener("click", () => {
   audio.playSfx("uiClick");
+  if (campaign.failed) { $("#boxOverlay").style.display = "none"; resetProgress(); return; }
   teardownNightMeshes();
+  // an eviction moved you into a smaller room while this screen was up
+  if (pendingRebuild) { pendingRebuild = false; rebuildVenue(); refreshStartTag(); }
   enterDay();
 });
 
@@ -612,9 +703,13 @@ syncMuteBtn();
 function refreshStartTag() {
   const where = C.venueDef(campaign).name;
   const inProgress = campaign.day > 1 || campaign.stats.nights > 0;
-  $("#startTag").textContent = inProgress
-    ? `Day ${campaign.day} at ${where} — the books remember.`
-    : `Day 1 at ${where}`;
+  // A failed run is not a campaign in progress, and the start screen is the one
+  // place it can be found again after a reload.
+  $("#startTag").textContent = campaign.failed
+    ? `${campaign.stats.nights} nights, and the landlord took the keys. Wipe to start again.`
+    : inProgress
+      ? `Day ${campaign.day} at ${where} — the books remember.`
+      : `Day 1 at ${where}`;
 }
 refreshStartTag();
 

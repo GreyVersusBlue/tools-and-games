@@ -1034,6 +1034,125 @@ ok("every card that fired is on cooldown from the night it fired: 7, 4, 2 and 5 
 ok("and the record is in the save on disk", await page.evaluate(() => { const c = JSON.parse(localStorage.getItem("fq3d-save")); return !!(c && c.eventCd && c.eventCd.inspect); }));
 ok("no page errors through a night of moments", errors.length === 0, errors.join(" | "));
 
+group("the lease: a notice on the door, a demotion, and a run that ends");
+// Phase 9. The previous group left the box score up. Take tomorrow's ledger,
+// then drive the landlord's count through the page rather than through
+// campaign.js: the notice on the Tonight panel, the eviction on the box score,
+// the smaller room actually rebuilt under the player's feet, and the ending
+// screen with its one campaign-eraser.
+await page.click("#nextDayBtn");
+await settled(() => document.querySelector("#boxOverlay").style.display === "none", "the day to come back");
+
+// two strikes on the board at the Fieldhouse, so the next night in the red has
+// a rung to fall to. devWarpVenue + onMove() is the dev menu's own path.
+const notice = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const c = window.__fq.campaign;
+  C.devWarpVenue(c, "fieldhouse");
+  C.devClearDarkNights(c);
+  window.__fq.day.cb.onMove();
+  c.cash = -50; c.strikes = 2;
+  window.__fq.day.doorPanel();
+  return { venue: c.venue, bestTier: c.stats.bestTier, body: document.querySelector("#panelBody").textContent };
+});
+ok("the last warning is on the Tonight panel, in the words that say how close it is",
+  /LAST WARNING/.test(notice.body) && /2 nights in the red/.test(notice.body), notice.body.slice(0, 200));
+ok("and the panel's own row says the lease is not in good standing",
+  /The lease/.test(notice.body) && /2 of 3 nights in the red/.test(notice.body) && !/in good standing/.test(notice.body));
+
+// the third night in the red, run through the real closing path
+await page.evaluate(() => { window.__fq.day.closePanel(); window.__fq.day.cb.openDoors(); });
+await settled(() => window.__fq.engine, "the night to open");
+await page.evaluate(() => { window.__fq.engine.momentBudget = 0; });
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the box score after the third night in the red");
+const evicted = await page.evaluate(() => {
+  const c = window.__fq.campaign;
+  return { venue: c.venue, cash: c.cash, strikes: c.strikes, failed: c.failed, evictions: c.stats.evictions, bestTier: c.stats.bestTier,
+    dark: c.darkNightsLeft, box: document.querySelector("#boxBody").textContent, btn: document.querySelector("#nextDayBtn").textContent,
+    saved: (JSON.parse(localStorage.getItem("fq3d-save")) || {}).strikes };
+});
+ok("the third night takes the lease and drops a rung: the Corner Tap, not a game over",
+  evicted.venue === "cornerTap" && evicted.failed === false && evicted.evictions === 1 && evicted.strikes === 0, JSON.stringify(evicted).slice(0, 200));
+ok("the debt is written off against the deposit and the move-out night is on the counter",
+  evicted.cash === 300 && evicted.dark === 1, `$${evicted.cash}, ${evicted.dark} dark`);
+ok("the box score has a Lease section that names both rooms and what it cost",
+  /The Lease/.test(evicted.box) && /Evicted from/.test(evicted.box) && /The Fieldhouse/.test(evicted.box) && /The Corner Tap/.test(evicted.box), 
+  evicted.box.slice(evicted.box.indexOf("The Lease"), evicted.box.indexOf("The Lease") + 220));
+ok("the run is not over, so the button is still Tomorrow's Ledger and there is no run summary",
+  evicted.btn === "Tomorrow's Ledger" && !/The Run/.test(evicted.box), evicted.btn);
+ok("the strike count reset is on disk, not just in memory", evicted.saved === 0, `saved ${evicted.saved}`);
+
+// the room the player wakes up in is the smaller one, actually rebuilt
+await page.click("#nextDayBtn");
+await settled(() => document.querySelector("#boxOverlay").style.display === "none", "the morning after the eviction");
+sameRoom("after the eviction", await probe(), "cornerTap");
+const morningAfter = await page.evaluate(() => {
+  window.__fq.day.doorPanel();
+  return { ticker: document.querySelector("#ticker").textContent, title: document.querySelector("#panelTitle").textContent,
+    body: document.querySelector("#panelBody").textContent, tag: document.querySelector("#startTag").textContent };
+});
+ok("the morning ticker says which room took the keys and what is left in the till",
+  /Evicted from The Fieldhouse/.test(morningAfter.ticker) && /Corner Tap/.test(morningAfter.ticker), morningAfter.ticker.slice(-220));
+ok("and the door is a move-in night, not an open-the-doors night",
+  morningAfter.title === "Tonight" && /Moving into The Corner Tap/.test(morningAfter.body) && /Closed nights left/.test(morningAfter.body),
+  morningAfter.body.slice(0, 180));
+
+// push through the move-out night in the black: the notice comes off the door
+const clearedNotice = await page.evaluate(() => {
+  window.__fq.campaign.cash = 4000;
+  window.__fq.campaign.strikes = 2;
+  document.querySelector("[data-closednight]").click();
+  const c = window.__fq.campaign;
+  return { strikes: c.strikes, dark: c.darkNightsLeft, ticker: document.querySelector("#ticker").textContent };
+});
+ok("a closed night back in the black clears the count outright and says so",
+  clearedNotice.strikes === 0 && clearedNotice.dark === 0 && /Back in the black/.test(clearedNotice.ticker),
+  `${clearedNotice.strikes} strikes: ${clearedNotice.ticker.slice(-140)}`);
+
+// and the bottom rung, where there is nothing left to fall to
+await page.evaluate(() => {
+  const c = window.__fq.campaign;
+  c.cash = -1; c.strikes = 2;
+  window.__fq.day.closePanel();
+  window.__fq.day.cb.openDoors();
+});
+await settled(() => window.__fq.engine, "the last night");
+await page.evaluate(() => { window.__fq.engine.momentBudget = 0; });
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 8 - 0.001; });
+await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the ending screen");
+const ended = await page.evaluate(async () => {
+  const C = await import("./js/campaign.js");
+  const c = window.__fq.campaign;
+  // the tier name is derived here rather than written down, because how far up
+  // the ladder this run got depends on what the groups above it warped through
+  return { failed: c.failed, venue: c.venue, nights: c.stats.nights, evictions: c.stats.evictions,
+    tier: C.VENUES[C.VENUE_ORDER[c.stats.bestTier]].name, summary: C.runSummary(c),
+    box: document.querySelector("#boxBody").textContent, btn: document.querySelector("#nextDayBtn").textContent };
+});
+ok("an eviction from the Corner Tap ends the run and moves nobody",
+  ended.failed === true && ended.venue === "cornerTap" && ended.evictions === 2, JSON.stringify(ended).slice(0, 160));
+ok("the ending screen carries the run: nights survived, best night, lifetime net and how far it got",
+  /The Run/.test(ended.box) && new RegExp(`Nights survived${ended.nights}`).test(ended.box) && /Best night/.test(ended.box) && /Lifetime net/.test(ended.box) && new RegExp(`Furthest you got${ended.tier}`).test(ended.box),
+  ended.box.slice(ended.box.indexOf("The Run"), ended.box.indexOf("The Run") + 240));
+ok("and the furthest it got is the high-water rung, not the Corner Tap it died in",
+  ended.summary.tier === ended.tier && ended.tier !== "The Corner Tap" && ended.venue === "cornerTap", `${ended.tier} vs ${ended.venue}`);
+ok("and the one screen in the game that offers to erase a campaign is the one where the campaign is already over",
+  ended.btn === "Start a New Campaign", ended.btn);
+
+await page.click("#nextDayBtn");
+await settled(() => document.querySelector("#boxOverlay").style.display === "none", "the fresh campaign");
+const fresh = await page.evaluate(() => {
+  const c = window.__fq.campaign;
+  return { day: c.day, cash: c.cash, strikes: c.strikes, failed: c.failed, venue: c.venue, nights: c.stats.nights,
+    saved: JSON.parse(localStorage.getItem("fq3d-save")) };
+});
+ok("it starts a new campaign: day 1, $900, no strikes, back at the Corner Tap",
+  fresh.day === 1 && fresh.cash === 900 && fresh.strikes === 0 && fresh.failed === false && fresh.venue === "cornerTap" && fresh.nights === 0, JSON.stringify(fresh).slice(0, 160));
+ok("and the failed run is off the disk with it", fresh.saved && fresh.saved.failed === false && fresh.saved.day === 1);
+sameRoom("the fresh campaign", await probe(), "cornerTap");
+ok("no page errors through an eviction, a demotion and an ending", errors.length === 0, errors.join(" | "));
+
 await browser.close();
 server.close();
 console.log(`\n${pass} passed, ${fail} failed`);

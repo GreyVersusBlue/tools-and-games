@@ -1,6 +1,11 @@
 # The Fourth Quarter — Feature Wishlist
 
-**Status: Phases 1 through 8 have shipped; Phase 9 is the one open row.**
+**Status: all nine phases have shipped. This project has no ranked row left.**
+Phase 9 closed the arc on 2026-09-08: the night you can lose, the landlord's
+three strikes, and an eviction that drops you a rung instead of ending the run.
+What is left is under "What this leaves for a later arc" at the foot of this
+file — distributors, staff as a simulated system, per-lot shelf life — and none
+of it is ranked.
 Three rounds shipped the
 day phase, the venue ladder, the shared save system and spoilage; Phase 5 put
 the suites in CI; Phase 1 made the room a description (`js/layout.js`, pure,
@@ -798,7 +803,7 @@ around it.
 
 ## Phase 8 — The night has moments
 
-**Shipped 2026-09-08 under Claude Fable 5.1 (PR pending), in one session.**
+**Shipped 2026-09-08 under Claude Fable 5.1 (PR #187), in one session.**
 
 **Eight sim hours, and the only thing that ever interrupts you is a ticket.**
 
@@ -865,9 +870,12 @@ and the regulars), `engine.js`, `day.js`'s panel. *Save:* additive `eventCd`
 map. *Model:* **Claude Opus 5** — a content table and floor wiring over an
 event pipeline that already exists. *Worked under Claude Fable 5.1.*
 
-## Phase 9 — A night you can lose
+## Phase 9 — A night you can lose — **SHIPPED**
 
-**The cash number turns red and then stays red, forever, and you keep
+**Shipped 2026-09-08 under Claude Opus 5 (PR pending), in one session. This
+closes the last open Fourth Quarter phase.**
+
+**The cash number turned red and then stayed red, forever, and you kept
 playing.**
 
 Spoilage answered "why is day 40 harder than day 4." Nothing answered "and then
@@ -876,36 +884,60 @@ tomorrow's applicants. This is the still-open half of README roadmap item 2,
 and it is deliberately last: it needs the season to have stakes, the rival to
 apply pressure, and the events to be able to sink you.
 
-- [ ] **A loss condition, once Devon has picked one** (Questions, 2). The shape
-  that fits what exists: cash below a threshold at settlement for N consecutive
-  nights, with the landlord's warning arriving before the eviction and both in
-  the ticker.
-- [ ] **A recovery arc, not just a game over.** Losing the lease drops you a
-  rung rather than ending the run. The ladder is one-way up today —
-  `moveVenue()` walks `VENUE_ORDER` forward and refuses at the flagship, and
-  the only other writer of `c.venue` is the dev menu's warp. A downgrade
-  through the same function, with its own dark nights and settlement, keeps a
-  bad week from being a wasted playthrough.
-- [ ] **The books stop pretending.** Fold `settleNight()` and
-  `settleDarkNight()`'s duplicated wages/rent/upkeep arithmetic into one
-  `billsFor(c)` both call, so the loss check reads a number that cannot drift
-  between the two paths.
-- [ ] **A real ending screen.** The box score already has the shape; a run
-  summary (nights survived, best night, lifetime net, tier reached) belongs on
-  it, and `c.stats` already carries three of the four. A `strikes` count and a
-  `failed` flag land additively, defaulted in `repairCampaign()`, so an old
-  save loads at zero strikes rather than being judged for forty nights played
-  under different rules.
-- [ ] **Reintroduce the bug.** Set the threshold above starting cash and watch
-  a fresh campaign fail on night one; set the strike count to zero and watch
-  the warning fire without the eviction.
+- [x] **A loss condition, and the question answered.** Q23 had been raised
+  three times and blocked four rounds; locked **#219** answers it. A night
+  whose books close below `LEASE_FLOOR` ($0, the number the HUD already turns
+  red on) is a missed night, and `LEASE_STRIKES` of them in a row takes the
+  lease. One night back in the black clears the count outright — a landlord
+  counting consecutive misses, not a ledger of every bad night in the run.
+  The warning lands on strikes 1 and 2, in the ticker, on the box score's
+  Lease section and on the Tonight panel before the night that could spend it;
+  the eviction lands on 3. Dark nights count, which is the one way a venue
+  move can bankrupt you mid-move.
+- [x] **A recovery arc, not a game over** (#220). `evictLease()` walks
+  `VENUE_ORDER` backward through the same list `moveVenue()` walks forward:
+  the smaller room's move-in nights come due (at least one, because moving
+  *out* is a move and the Corner Tap's own count is zero), gear the smaller
+  room has no wall for comes off with its upkeep, the regulars over the
+  smaller cap stop coming through the same `pruneToVenueCap()` a load uses,
+  and the debt is written off against the seized deposit — the till floors at
+  `RECOVERY_CASH` ($300) rather than reopening at minus eleven hundred and
+  evicting again three nights later. Only an eviction from the Corner Tap sets
+  `failed`, because there is no rung below it.
+- [x] **The books stopped pretending** (#221). One `billsFor(c)` returns
+  wages, rent, upkeep and their total; both settlements spend it. A theme
+  stays out of it on purpose — an optional spend on an open night, and a
+  closed night cannot buy one.
+- [x] **A real ending screen.** The box score grows a Lease section on any
+  night the landlord had something to say, and a Run section when the run is
+  over: nights survived, best night, lifetime net, furthest you got,
+  evictions, reputation and the roster at the end. `runSummary()` reads
+  `stats.bestTier`, the high-water rung rather than the current room, so a run
+  that climbed to the flagship and got evicted back still says the flagship.
+  The one campaign-eraser in the game lives on that screen, and only there —
+  the save bar's "start over" is still off all three of its mounts, because a
+  run that has failed is the one case that argument does not cover. Reloading
+  into a failed save finds the same numbers on the door's own panel.
+- [x] **`strikes`, `failed`, `stats.bestTier` and `stats.evictions` are
+  additive** (#222), defaulted in `repairCampaign()`; a count past the limit
+  clamps rather than evicting on load, only a literal `true` is a failed run,
+  and `bestTier` is floored at the room the save is actually in. No key
+  change, no version bump (#36).
+- [x] **Reintroduced the bug, seventeen times** (#34), each break caught by
+  the assertion whose text claims it. Three of them first left the suite
+  green and the assertions were rewritten until they did not: the threshold
+  raised above starting cash was caught only by a check on the constant, the
+  move-out night's `Math.max(1, ...)` was invisible on a rung whose own count
+  is already 1, and a dropped upkeep line was invisible on a campaign with no
+  gear installed — which is exactly how two hand-written copies of a sum stay
+  wrong for a phase.
 
-*Leans on:* `campaign.js`'s settlement, `main.js`'s box score, phases 6-8 for
-the pressure that makes it reachable. *Save:* additive `strikes`/`failed`
-fields; no key change, no migration. *Model:* **Claude Opus 5** — the loss
-condition is one branch over numbers `settleNight()` already computes and the
-save append follows `repairCampaign()`'s pattern; the hard part is Devon's
-decision, not the code.
+*Counts:* `test/smoke-campaign.mjs` 241 → 293, Node total 1,274 → 1,326;
+`tools/browser-check.mjs` 224 → 261.
+
+*Left:* nothing of this phase. Sized 1; closed in one session. Everything
+under "What this leaves for a later arc" below is still open, and this project
+has no ranked phases left.
 
 ## What this leaves for a later arc
 
