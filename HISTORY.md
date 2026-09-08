@@ -4134,7 +4134,7 @@ money where it was.
 35%, revellers 25%, history buffs 15%, day-trippers 25%), each a needs vector
 over food, spectacle, shade and spend, a purse range, and an affinity per
 attraction kind, so a history buff crosses the grounds for a demo camp a
-family walks past. `js/guests.js` (pure, 250 lines) spawns at most 400 agents
+family walks past. `js/guests.js` (pure, 274 lines) spawns at most 400 agents
 off the attendance number (#223), gives every built stage, seated stall and
 demo camp the reachable path cell it is served from, and walks each guest up
 to twelve hops per time block toward whatever pulls hardest: need × quality

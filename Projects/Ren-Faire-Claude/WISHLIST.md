@@ -247,7 +247,7 @@ checks pin. Those checks are the acceptance criteria, not an obstacle.
 
 **Increment 1 shipped (PR pending, 2026-09-08): the crowd exists and walks.**
 `GUESTS` in `data.js` (four archetypes, needs, purses, affinities, and the
-walk's eight tunables with a paragraph each), `js/guests.js` (pure, 250
+walk's eight tunables with a paragraph each), `js/guests.js` (pure, 274
 lines), `tests/guests.mjs` (151 assertions), `computePathRoutes()` and
 `pathRouteTo()` in `engine.js` with `computePathDistances()` now read off the
 same tree, a `guests` block on every day report, and a "Where the crowd went"
