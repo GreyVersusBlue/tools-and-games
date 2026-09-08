@@ -2885,6 +2885,95 @@ Two of them have moved since they were written:
    not fog over this one.
    *Source: Faire Weekend Phase 2.*
 
+235. **A relationship leaves with the act.** `state.relationships` holds a
+   number only for acts under contract: signing writes `RELATIONSHIP.neutral`,
+   `releasePerformer`/`fireVendor` delete the key, and an act released and
+   re-signed starts at neutral again. The alternative — a number that
+   survives release and waits for the act to come back — was considered and
+   rejected: it makes the map grow for the life of the save, it lets a
+   player dodge a Sour act's consequences by releasing and re-hiring in the
+   same afternoon (the beat that raised it stays resolved, since
+   `state.arcBeats` is not cleared, so the story happened; only the mood
+   restarts), and it turns "how does this act feel about the house" into
+   "how did they feel the last time they were here", which is a different
+   question the page would have to explain. `repair` fills the map for every
+   act a pre-Phase-3 save has under contract and for nobody else.
+   *Source: Faire Weekend Phase 3.*
+
+236. **An act's best block is the one their quirk favours, ties broken by
+   the biggest crowd, compared as a multiplier and not as draw × crowd.**
+   `bestBlockFor` was written the obvious way first — the block with the
+   highest `effectivePopularity × block.weight` — and the suite refused it
+   at once: Golden Hour's crowd weight is 0.85 against the Afternoon's 1.2,
+   so a night owl's +20% could not overcome it and every performer's best
+   block was the Afternoon. "Your best block is the one everyone's is" is
+   not a relationship anyone can tend. The rule compares
+   `effectivePopularity(perf, block) / perf.popularity` instead, which is
+   the quirk's own per-block factor, and ties go to the block with the
+   larger `weight`. Derived from data already authored rather than a new
+   field per act, so a quirk gained or shed through an arc moves it.
+   *Source: Faire Weekend Phase 3.*
+
+237. **One quote for every contract, and the quick picks are points on the
+   negotiation grid.** `quoteContract(state, kind, id, terms)` is the only
+   place a daily rate is computed: listed cost × the act's arc rate
+   multiplier × the terms' discount × the relationship swing, floored at
+   half the listed rate. A `CONTRACT_OPTIONS` row passes its own
+   `priceMult`; a negotiated offer passes a commitment length and a
+   cancellation fee off `NEGOTIATION`'s two lists, and the discounts are
+   tuned so "the weekend, half the days owed" lands at 0.84 against the
+   Weekend Package's 0.85 and "two weekends, every day owed" at 0.70 against
+   the Season Contract's 0.72 — the suite pins both within two and three
+   points. A fee on a day rate is a fee on nothing owed and is priced as
+   nothing. The contract record stores what was quoted, with its own
+   `cancelFeeMult` and `label`, so `releasePerformer` reads the record and
+   `effectivePerformerCost`/`effectiveVendorCost` are unchanged: the
+   wishlist's "not a fourth cost path" held. A record from before this
+   phase has neither field and falls back to its option row. The act names
+   its price for the terms rather than haggling in rounds: a deterministic
+   ask is one the player can plan against, and the levers that make it move
+   — the relationship, the commitment, the fee — are all on the page.
+   *Source: Faire Weekend Phase 3.*
+
+238. **A packed house pleases the act and costs the crowd.** The wishlist
+   listed "played a stage that overflowed" without saying which way it
+   moves the number, and it could go either way: an overflow is people
+   turned away. It is `+packedHouse` (2) for the act, because the crowd's
+   side is already paid — the stage's quality drops 0.15 near capacity and
+   the ticket stub warns — and making the act unhappy too would leave
+   nothing on the other side of the scale. As ruled, cramming a popular act
+   onto a small stage is a real trade: a sourer crowd today against a
+   warmer act tomorrow. A day's deltas are small on purpose (−4 to +6) so
+   a tier is a run of days, not one Saturday.
+   *Source: Faire Weekend Phase 3.*
+
+239. **A beat fires on a tier, once per save, and waits without blocking
+   the gates.** `pendingBeats` is a pure read: an arc's subject is under
+   contract, the beat's `when` names the subject's current tier, and
+   `state.arcBeats` does not already hold it. The card sits on Backstage
+   until it is answered; the gates open regardless. A beat left unanswered
+   while the tier moves on is no longer pending, and comes back if the tier
+   does — "waits, but not past the mood that raised it", which the page
+   says. Forcing an answer before the gates was rejected because the
+   choices cost money and the player may not have it that day; auto-
+   resolving to a default was rejected because that is the Fourth Quarter's
+   #216 in reverse, a choice made for a player who was not asked.
+   *Source: Faire Weekend Phase 3.*
+
+240. **An arc's changes live on the save, not the catalog, and a rate
+   change re-prices the standing contract now.** `state.actTraits[id]`
+   carries a popularity or quality delta, a quirk override and a rate
+   multiplier; `performerFor`/`vendorFor` lay it over the `PERFORMERS`/
+   `VENDORS` record, and `simulateDay`, `guests.js` and Backstage all read
+   those rather than `performerById`/`vendorById` for anything that can now
+   move. `data.js` stays content, and two saves can know two different
+   Ysoldes. `resolveBeat` is the one writer. A `rateMult` multiplies the
+   act's standing `dailyCost` in place as well as compounding into the
+   trait, so "raise his rate a fifth" costs a fifth more tomorrow rather
+   than after the next signing — the alternative reads as the game
+   forgetting what it just agreed to.
+   *Source: Faire Weekend Phase 3.*
+
 ---
 
 # The site sessions, 1–10
@@ -4534,6 +4623,103 @@ too — three lines guarding the same absence guard nothing (#34). It reads
 the row itself now. A fourth assertion did not fail so much as crash: with
 the HUD slot removed it dereferenced undefined and killed the run, so the
 suite reported a TypeError instead of the three failures it had.
+
+**Phase 3 — Acts with a story (PR #197).** Fifteen performers and twelve
+vendors, and hiring one was a price lookup. Nothing anybody did on Friday
+changed what they cost or drew on Saturday, and the Season Contract's only
+argument was its discount.
+
+**A relationship number per contracted act.** `state.relationships[id]`,
+0-100, written at `RELATIONSHIP.neutral` (50) when the contract is signed
+and moved by what the day did: +1 for playing at all, +3 on top for playing
+the block they draw best in (#236), −3 for a contracted act nobody
+scheduled, −4 for a prima donna who sulked through a shared bill, +2 for a
+stage that overflowed (#238); for a vendor +2 for a seated stall that took
+money, −3 for one nobody bought from, −4 for a hired vendor left standing
+with no stall. `simulateDay` computes the deltas from what it already knew
+— who played where, `_sulking`, a new `_overflowed` per stage entry,
+`stallSales` — and returns them as `result.relationships`, each with its
+reasons; `runDay` applies and clamps them. Five tiers read off the number:
+Sour to 20, Cool, Settled, Warm, Devoted from 80. Releasing an act deletes
+the record (#235).
+
+**Arcs in `data.js`.** `ARCS` is eight subjects — six performers, two
+vendors — with a beat at each edge, sixteen beats and thirty-six choices.
+A beat unlocks when the subject is under contract and at the tier its
+`when` names, fires once per save, and each choice is a set of numbers:
+cash, a relationship delta, a popularity or quality delta, a rate
+multiplier, a quirk gained or shed. `resolveBeat` in `state.js` is the one
+writer of `state.arcBeats` and `state.actTraits`; `performerFor`/
+`vendorFor` lay the traits over the catalog record (#240), and everything
+that reads a number an arc can move reads those. Ysolde can shed
+`prima_donna`; Aldric can gain `night_owl` and his best block follows it;
+Fenwick's consort is draw +2 at a rate and a half.
+
+**Negotiation instead of a price tag (#237).** `quoteContract` is the one
+place a rate is computed, and `CONTRACT_OPTIONS`' three quick picks go
+through it with their own `priceMult` — so at neutral they quote exactly
+what they did before, which the suite asserts row by row. A Negotiate
+button opens an offer row under the act with two selects, commitment
+(day to day / the weekend / two weekends, the last gated to Weekend 3 like
+the Season Contract) and break fee (none / half the days owed / every day
+owed), and the act's asking rate re-quoted on every change: listed × arc
+rate × terms discount × relationship swing, ±15% at the two ends, floored
+at half. A fee on a day rate buys nothing. The contract carries its own
+`cancelFeeMult` and `label`, and `releasePerformer`/`fireVendor` charge
+the record's fee.
+
+**Two events gated on the new state.** `evt_encore` on any Devoted act,
+`evt_late_call` on any Sour one, through `EVENT_REQUIREMENTS`, which fails
+closed. The suite runs 300 seeds each way: at neutral neither can fire, at
+80 the encore does and the missed call does not, at 20 the reverse, at 79
+nothing — and a state with no `relationships` map at all rolls, across
+forty seeds, the events a neutral one rolls, so no report written before
+this phase moved.
+
+**On the page.** Every contracted row on Backstage wears a mood tag with
+the number and the tier's note in its tooltip; a pending beat is a card
+above the roster with its text and a button per choice whose tooltip says
+what it moves; the negotiation row is inline under the act; and the ticket
+stub carries a Backstage row counting who went home pleased and who sore,
+with each act's move and reason in the tooltip. Moves of four or more are
+written into the report's log with their reasons.
+
+**SIGNIFICANCE 12 and 13.** A Devoted Ysolde asks $536 a day for the
+weekend at half fee and a Sour one $724, on a $750 act — a $188 a day
+spread. And Fenwick's consort draws a bigger crowd on the same seed and
+costs exactly a rate and a half, so an arc's choice is a different day
+rather than a different tooltip.
+
+*Counts:* `tests/smoke.mjs` 1,118 → 1,652 in two new sections (1j pure,
+Section 26 in jsdom), `tests/guests.mjs` 168 unchanged, both green;
+`play-games.mjs faire-weekend` 18 checks, 0 failed under Xvfb. One
+pre-existing assertion was rewritten: the `EVENT_REQUIREMENTS` all-false
+ctx was a hand-typed list of six flags, so the two new ones read as
+`undefined`, which is not `false`; it is built off the map's own keys now
+and asserts how many it covers.
+
+*Broken on purpose (#34), twenty-three, twenty-one caught by the assertion
+whose text claims it:* `offBill` made positive (4 fail), `runDay` never
+applying the deltas (3), release keeping the relationship (2), the quote
+ignoring the relationship (3), the fee counting on a day rate (2), the
+Devoted flag dropped (2), `hasSourAct` missing from `EVENT_REQUIREMENTS`
+(4), a beat's rate change skipping the standing contract (4),
+`pendingBeats` forgetting resolved beats (4), `repair` not backfilling (2),
+`performerFor` ignoring traits (7), `bestBlockFor` always the Afternoon
+(6), `simulateDay` reading the catalog performer (1, SIGNIFICANCE 13 and
+nothing else), the mood tag gone (5), the ticket stub row gone (3), the
+`offerTerm` change handler gone (4), the contract storing no fee (6), the
+packed house never noted (2), the encore unlisted (3), signing starting
+Sour (7), and a beat with a misspelt effect key (3). **Two were not
+caught, and both were the test's fault.** The unseated-vendor note removed
+crashed the suite on `undefined.delta` rather than failing the assertion
+that claims it; the assertion guards the dereference now and the re-run
+fails on the named line. And a guard in `runDay` against a released act
+being resurrected by the result could not be reached by any break at all,
+because the result comes from the same state — so the guard was deleted
+and the assertion rewritten against `simulateDay`, which is where the
+claim actually holds. A first draft of `bestBlockFor` also went red before
+any break was tried (#236).
 
 ---
 

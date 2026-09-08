@@ -27,7 +27,7 @@
 //    `sum(spentAt) === spent` and no stall can bank money nobody carried.
 
 import { GUESTS, TIME_BLOCKS, ENTRANCE, GRID } from './data.js';
-import { terrainAt, computePathRoutes, plotFootprintCells, orthogonalNeighbors, computePlotAttributes, effectivePopularity, performerById, vendorById, clamp } from './engine.js';
+import { terrainAt, computePathRoutes, plotFootprintCells, orthogonalNeighbors, computePlotAttributes, effectivePopularity, performerFor, vendorFor, clamp } from './engine.js';
 
 const key = (x, y) => `${x},${y}`;
 
@@ -163,7 +163,7 @@ export function buildAttractions(state) {
     }
     if (!stop) { unreachable.push(plot.id); continue; }
     const attrs = computePlotAttributes(plot, state.builtPlots);
-    const vendor = plot.assignedVendorId ? vendorById(plot.assignedVendorId) : null;
+    const vendor = plot.assignedVendorId ? vendorFor(state, plot.assignedVendorId) : null;
     attractions.push({
       plotId: plot.id,
       kind: plot.kind,
@@ -185,11 +185,11 @@ export function buildAttractions(state) {
 // empty stage draws the way simulateDay's ambient 1.2 does; a seated
 // vendor draws by quality), a shade bonus scaled by the block's heat, all
 // divided by distance. A craft stall a guest cannot afford pulls nothing.
-function pullOf(guest, attraction, block, schedule) {
+function pullOf(guest, attraction, block, schedule, state) {
   let quality;
   if (attraction.kind === 'stage') {
     const performerId = ((schedule || {})[block.id] || {})[attraction.plotId];
-    const perf = performerId ? performerById(performerId) : null;
+    const perf = performerId ? performerFor(state, performerId) : null;
     const drawPop = perf ? effectivePopularity(perf, block.id) : 1.2;
     quality = (drawPop / 10) * (0.6 + 0.4 * attraction.sightline);
   } else if (attraction.kind === 'demo') {
@@ -234,7 +234,7 @@ export function walkGuests(state, guests, rng) {
     for (const g of guests) {
       let best = null, bestPull = GUESTS.restThreshold;
       for (const a of attractions) {
-        const pull = pullOf(g, a, block, state.schedule);
+        const pull = pullOf(g, a, block, state.schedule, state);
         // rng breaks exact ties so two identical stalls split a crowd
         // instead of the first-listed one taking all of it.
         if (pull > bestPull || (pull === bestPull && best && rng() < 0.5)) { best = a; bestPull = pull; }

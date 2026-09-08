@@ -646,4 +646,202 @@ export const EVENT_POOL = [
   { id: 'evt_musicians_jam', weight: 2, effectId: 'musicians_jam', requires: 'hasTwoMusicians' },
   { id: 'evt_falconer_show', weight: 2, effectId: 'falconer_show', requires: 'hasFalconerScheduled' },
   { id: 'evt_gossip_wagon', weight: 1, effectId: 'gossip_wagon', requires: 'bigRoster' },
+  // Phase 3 additions — gated on how the acts feel about the house rather
+  // than on who is on the bill. `hasDevotedAct` is any contracted performer
+  // or vendor at or above RELATIONSHIP.devotedAt; `hasSourAct` is any one at
+  // or below RELATIONSHIP.sourAt. Both go through EVENT_REQUIREMENTS, which
+  // fails closed on a key it does not know, so a typo here makes the event
+  // ineligible rather than always-eligible.
+  { id: 'evt_encore', weight: 2, effectId: 'encore', requires: 'hasDevotedAct' },
+  { id: 'evt_late_call', weight: 2, effectId: 'late_call', requires: 'hasSourAct' },
+];
+
+// ---------- Phase 3: acts with a story ----------
+// A relationship number per contracted performer and vendor, 0-100, starting
+// at `neutral` the day they sign and moved by what the day did to them. The
+// deltas are small on purpose: a run of good days is what earns a Devoted
+// act, not one good Saturday. The number itself lives in
+// state.relationships[id]; nothing here is read for an act that is not
+// contracted, and releasing one forgets it (#235).
+//
+// What moves it, per day:
+//   performers — `onBill` for playing at all, `bestBlock` on top when the
+//   block is the one they draw best in (engine.js's bestBlockFor), `offBill`
+//   for a contracted act nobody scheduled, `sulked` for a prima donna who
+//   shared a bill with an equal, `packedHouse` when their stage overflowed
+//   (the crowd hated it, the act loved it — that tension is the point).
+//   vendors — `soldWell` for a seated stall that took money, `soldNothing`
+//   for a seated one nobody bought from, `unseated` for a hired vendor
+//   standing about earning nothing.
+// The tiers are what Backstage shows and what the arcs and the two gated
+// events read; `devotedAt`/`sourAt` are the two edges that mean something.
+export const RELATIONSHIP = {
+  neutral: 50, min: 0, max: 100,
+  onBill: 1, bestBlock: 3, offBill: -3, sulked: -4, packedHouse: 2,
+  soldWell: 2, soldNothing: -3, unseated: -4,
+  devotedAt: 80, sourAt: 20,
+  tiers: [
+    { id: 'devoted', label: 'Devoted', min: 80, note: 'Would follow you to another shire. Asks less, gives more.' },
+    { id: 'warm', label: 'Warm', min: 65, note: 'Glad to be here.' },
+    { id: 'settled', label: 'Settled', min: 36, note: 'A working arrangement, nothing more.' },
+    { id: 'cool', label: 'Cool', min: 21, note: 'Counting the days on the contract.' },
+    { id: 'sour', label: 'Sour', min: 0, note: 'One more bad day from walking. Asks more, gives less.' },
+  ],
+};
+
+// Negotiation. CONTRACT_OPTIONS stays as the three quick picks, but every
+// contract in the game is now priced through one quote (engine.js's
+// quoteContract): listed rate x an arc's rate multiplier x the terms'
+// discount x the relationship's swing. A counter-offer picks a commitment
+// length and a cancellation fee off these two lists and the act names its
+// price for that pair. The discounts are tuned so a neutral act's asking
+// rate for "the weekend, half the days owed" lands within a dollar or two
+// of the Weekend Package (0.84 against 0.85) and "two weekends, every day
+// owed" near the Season Contract (0.70 against 0.72): the quick picks are
+// honest points on the same grid, not a second price list.
+//
+// `relationshipSwing` is how far the act's ask moves at either end: a
+// Devoted act (100) asks 15% under what a stranger would, a Sour one (0)
+// asks 15% over. A cancellation fee only earns a discount when there are
+// days to owe it on — a fee on a day rate is nothing, and is priced as such.
+export const NEGOTIATION = {
+  commitments: [
+    { days: 0, label: 'Day to day', discount: 0, unlockSeason: 1 },
+    { days: 3, label: 'The weekend', discount: 0.12, unlockSeason: 1 },
+    { days: 6, label: 'Two weekends', discount: 0.22, unlockSeason: 3 },
+  ],
+  cancelFees: [
+    { mult: 0, label: 'No fee', discount: 0 },
+    { mult: 0.5, label: 'Half the days owed', discount: 0.04 },
+    { mult: 1, label: 'Every day owed', discount: 0.08 },
+  ],
+  relationshipSwing: 0.15,
+  floorMult: 0.5, // no ask ever goes below half the listed rate, whatever stacks
+};
+
+// Arcs. Each is a subject (a performer or vendor id) and its beats. A beat
+// unlocks when the subject is contracted and its relationship tier is the
+// one `when` names ('devoted' or 'sour'), fires once per save (resolved
+// beats are remembered in state.arcBeats by choice), and offers two or
+// three choices. A choice is a set of numbers: `cash` moves the ledger,
+// `relationship` moves the number that unlocked it, `popularity` (performer)
+// or `quality` (vendor) moves the act's own record for the rest of the
+// save, `rateMult` re-prices their standing contract and every future one,
+// and `quirk` sets a quirk id or, as null, sheds whatever they had. A key
+// that is absent leaves that number alone; engine.js's applyBeatChoice is
+// the one place these are read.
+export const ARCS = [
+  { id: 'arc_ysolde', subject: 'perf_jouster_2', beats: [
+    { id: 'ysolde_sour', when: 'sour', title: 'Dame Ysolde has her armour packed',
+      text: 'She has spent too many afternoons sharing a bill with someone the crowd liked as well, and the Ironback does not share. Her squire says she has a standing offer from the faire two shires over.',
+      choices: [
+        { id: 'purse', label: 'A purse and a public apology ($400)', cash: -400, relationship: 25, note: 'Costly, but she stays and her pride is mended.' },
+        { id: 'headline', label: 'Promise her the afternoon, alone', relationship: 15, quirk: null, popularity: -1, note: 'She sheds the sulking, and some of the fire that came with it.' },
+        { id: 'let_go', label: 'Let her pack', relationship: -10, note: 'Nothing changes but the mood. She will not forget.' },
+      ] },
+    { id: 'ysolde_devoted', when: 'devoted', title: 'The Ironback rides for the house',
+      text: 'Ysolde has taken to riding the length of the grounds before the gates open, saluting the stalls. The vendors love it. She wants to know if the house does.',
+      choices: [
+        { id: 'champion', label: 'Name her Champion of the Faire', popularity: 1, rateMult: 1.15, relationship: 5, note: 'A bigger draw, at a bigger rate.' },
+        { id: 'thanks', label: 'Thank her, and leave the contract alone', relationship: 2, note: 'She shrugs. The ride continues.' },
+      ] },
+  ] },
+  { id: 'arc_corwin', subject: 'perf_jouster_1', beats: [
+    { id: 'corwin_sour', when: 'sour', title: 'Sir Corwin has stopped falling off',
+      text: 'The Unhorsed is unhorsed for a living, and a man left off the bill for days on end starts to wonder what the joke is. He asks, politely, whether he is wanted.',
+      choices: [
+        { id: 'bill', label: 'Swear he rides tomorrow, and pay a day in advance', cash: -650, relationship: 20, note: 'The advance is his usual rate, and it lands.' },
+        { id: 'shrug', label: 'Tell him rides are earned', relationship: -5, quirk: null, note: 'He stops playing to the crowd. The crowd notices.' },
+      ] },
+    { id: 'corwin_devoted', when: 'devoted', title: 'Sir Corwin teaches the children to fall',
+      text: 'He has started a half-hour before his tilts where the small ones learn to tumble off a barrel. It costs him nothing and the parents stay for the joust.',
+      choices: [
+        { id: 'bless', label: 'Bless it, and pay for the barrels ($150)', cash: -150, popularity: 1, relationship: 5, note: 'A bigger draw for the price of some barrels.' },
+        { id: 'quiet', label: 'Let it be, unofficially', relationship: 1, note: 'It goes on. Nobody writes it down.' },
+      ] },
+  ] },
+  { id: 'arc_aldric', subject: 'perf_magician_1', beats: [
+    { id: 'aldric_sour', when: 'sour', title: 'Master Aldric will not share a stage with a lute',
+      text: 'He has been sulking through his own sets. He names his terms: the Golden Hour to himself, or a rate that makes the sharing worth it.',
+      choices: [
+        { id: 'raise', label: 'Raise his rate a fifth', rateMult: 1.2, relationship: 20, note: 'He is mollified. Expensively.' },
+        { id: 'humble', label: 'Tell him the crowd is the judge', relationship: 5, quirk: null, popularity: -1, note: 'He sheds the sulk, and a little of the mystique.' },
+      ] },
+    { id: 'aldric_devoted', when: 'devoted', title: 'Master Aldric offers the Hollow\u2019s trick',
+      text: 'There is an illusion he has never done outside the Hollow. He would do it here, once a day, at dusk, if the house will let him keep the evening.',
+      choices: [
+        { id: 'dusk', label: 'Give him dusk', popularity: 2, quirk: 'night_owl', relationship: 5, note: 'He becomes a Golden Hour act, and a bigger one.' },
+        { id: 'decline', label: 'The schedule is the schedule', relationship: -3, note: 'The trick stays in the Hollow.' },
+      ] },
+  ] },
+  { id: 'arc_piccolo', subject: 'perf_jester_1', beats: [
+    { id: 'piccolo_sour', when: 'sour', title: 'Piccolo is being contrary on purpose now',
+      text: 'The rowdiness was always half the act. Left idle, he has been starting it in the crowd instead of on the stage, and a stall rail is down.',
+      choices: [
+        { id: 'leash', label: 'Put him on the bill and pay for the rail ($120)', cash: -120, relationship: 15, note: 'He is happier working.' },
+        { id: 'tame', label: 'Tell him one more rail and he walks', quirk: null, relationship: 5, note: 'He stops the chaos. It was most of the fun.' },
+      ] },
+    { id: 'piccolo_devoted', when: 'devoted', title: 'Piccolo has written a play about the house',
+      text: 'It is unkind, extremely funny, and the crowd will love it. He would like to stage it.',
+      choices: [
+        { id: 'stage', label: 'Stage it', popularity: 2, relationship: 5, note: 'He becomes the act people come back for.' },
+        { id: 'forbid', label: 'Forbid it', relationship: -15, note: 'He performs it anyway, elsewhere, about you.' },
+      ] },
+  ] },
+  { id: 'arc_wren', subject: 'perf_falconer_1', beats: [
+    { id: 'wren_sour', when: 'sour', title: 'The mews are going hungry',
+      text: 'Wren keeps the birds on her own coin, and a falconer left off the bill is a falconer buying meat with nothing coming in. She asks for a lodging allowance.',
+      choices: [
+        { id: 'allowance', label: 'Grant it ($250)', cash: -250, relationship: 20, note: 'The birds eat. She stays.' },
+        { id: 'refuse', label: 'Refuse', relationship: -10, popularity: -1, note: 'One of the hawks is sold.' },
+      ] },
+    { id: 'wren_devoted', when: 'devoted', title: 'Wren offers a second flight',
+      text: 'She has trained a young goshawk to work the crowd rather than the lure. Two birds, one show, if the house will underwrite the hood and jesses.',
+      choices: [
+        { id: 'fund', label: 'Fund the second bird ($300)', cash: -300, popularity: 2, quirk: 'crowd_pleaser', relationship: 5, note: 'A bigger show, and one that plays to the crowd.' },
+        { id: 'one_bird', label: 'One bird is plenty', relationship: 0, note: 'The goshawk goes back to the lure.' },
+      ] },
+  ] },
+  { id: 'arc_fenwick', subject: 'perf_musician_2', beats: [
+    { id: 'fenwick_sour', when: 'sour', title: 'Fenwick has gone quiet',
+      text: 'Loudlyre is not loud. He plays the morning to nobody and packs up early. He asks, once, whether the house wants a musician or a name on a bill.',
+      choices: [
+        { id: 'afternoon', label: 'Swear him a real slot and stand him a round ($80)', cash: -80, relationship: 20, note: 'He tunes up.' },
+        { id: 'ignore', label: 'Leave him to it', relationship: -5, note: 'The lyre stays quiet.' },
+      ] },
+    { id: 'fenwick_devoted', when: 'devoted', title: 'Fenwick wants the whole consort',
+      text: 'He has been drilling three players from the shire on his own time. Four instruments, one rate and a half.',
+      choices: [
+        { id: 'consort', label: 'Hire the consort', popularity: 2, rateMult: 1.5, relationship: 5, note: 'A much bigger act at a much bigger rate.' },
+        { id: 'solo', label: 'Keep him solo', relationship: 0, note: 'The players go home. He does not mind.' },
+      ] },
+  ] },
+  { id: 'arc_turkeyleg', subject: 'vend_turkeyleg', beats: [
+    { id: 'turkeyleg_sour', when: 'sour', title: 'The turkey legs are going cold',
+      text: 'Nobody is walking past the stall, and a legful of meat unsold at close is money burned. The cook wants a better pitch or a lower cut.',
+      choices: [
+        { id: 'cut', label: 'Take a smaller cut for a while ($200 back to them)', cash: -200, relationship: 20, note: 'They stay on, and the pit fires up.' },
+        { id: 'no', label: 'A pitch is a pitch', relationship: -10, quality: -1, note: 'The legs get smaller.' },
+      ] },
+    { id: 'turkeyleg_devoted', when: 'devoted', title: 'The cook wants a second pit',
+      text: 'The stall sells out most days. A second pit means double the legs and a line that moves.',
+      choices: [
+        { id: 'pit', label: 'Pay for the pit ($350)', cash: -350, quality: 2, relationship: 5, note: 'A better stall, for good.' },
+        { id: 'one_pit', label: 'One pit is fine', relationship: 0, note: 'The line stays long.' },
+      ] },
+  ] },
+  { id: 'arc_glass', subject: 'vend_glass', beats: [
+    { id: 'glass_sour', when: 'sour', title: 'Gaffer\u2019s Glass is packing the kiln',
+      text: 'Glass is slow to make and slow to sell, and a gaffer who has stood a whole weekend without a sale is a gaffer with a wagon half-loaded already.',
+      choices: [
+        { id: 'buy', label: 'Buy a set for the house ($300)', cash: -300, relationship: 20, note: 'The wagon is unloaded.' },
+        { id: 'let', label: 'Wish them luck', relationship: -10, quality: -1, note: 'The best pieces go with them.' },
+      ] },
+    { id: 'glass_devoted', when: 'devoted', title: 'The gaffer offers to blow glass in the open',
+      text: 'A demonstration at the stall itself, molten and dangerous and very hard to walk past. It needs a rail and a bucket.',
+      choices: [
+        { id: 'rail', label: 'Build the rail ($180)', cash: -180, quality: 2, relationship: 5, note: 'The stall becomes a show.' },
+        { id: 'no_fire', label: 'Not near the thatch', relationship: -3, note: 'The kiln stays shut.' },
+      ] },
+  ] },
 ];

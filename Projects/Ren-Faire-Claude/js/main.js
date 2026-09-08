@@ -14,7 +14,9 @@ import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 // on purpose (see state.js) and would give every first-time player the same
 // season. This is the one call that draws a real one.
 let state = State.loadState() || State.newGame();
-const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: null };
+// Phase 3: `negotiating` is { kind, id, commitDays, cancelFeeMult } while an
+// offer row is open on Backstage, and null otherwise. View state, not save.
+const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: null, negotiating: null };
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -65,7 +67,7 @@ function render() {
   const conflicts = validateSchedule(state.schedule);
   let panel = '';
   if (ui.activeTab === 'office') panel = UI.renderOffice(state, panelFlash);
-  else if (ui.activeTab === 'backstage') panel = UI.renderBackstage(state, panelFlash);
+  else if (ui.activeTab === 'backstage') panel = UI.renderBackstage(state, panelFlash, ui.negotiating);
   else panel = UI.renderFairFloor(state, conflicts, panelFlash);
 
   $('#content').innerHTML = `
@@ -179,7 +181,26 @@ function handleAction(action, el) {
       state = res.state;
       if (res.fee > 0) ui.flash = `Let a contracted vendor go early \u2014 $${res.fee} cancellation fee.`;
       break;
+    case 'negotiate':
+      ui.negotiating = { kind: el.dataset.kind, id, commitDays: 0, cancelFeeMult: 0 };
+      break;
+    case 'cancelOffer':
+      ui.negotiating = null;
+      break;
+    case 'signOffer': {
+      if (!ui.negotiating || ui.negotiating.id !== id) return;
+      const terms = { commitDays: ui.negotiating.commitDays, cancelFeeMult: ui.negotiating.cancelFeeMult };
+      res = ui.negotiating.kind === 'vendor' ? State.hireVendor(state, id, terms) : State.contractPerformer(state, id, terms);
+      if (res.error) ui.flash = res.error; else { state = res.state; ui.negotiating = null; }
+      break;
+    }
+    case 'resolveBeat':
+      res = State.resolveBeat(state, id, el.dataset.choice);
+      if (res.error) ui.flash = res.error;
+      else { state = res.state; ui.flash = res.choice.note ? `${res.choice.note}` : null; }
+      break;
     case 'openGates':
+      ui.negotiating = null;
       res = State.runDay(state);
       state = res.state;
       break;
@@ -253,6 +274,12 @@ function wire() {
         ? State.assignSchedule(state, block, stage, performerId)
         : State.unassignSchedule(state, block, stage);
       if (res.error) ui.flash = res.error; else state = res.state;
+      render();
+      return;
+    }
+    if (target.dataset.action === 'offerTerm') {
+      if (!ui.negotiating) return;
+      ui.negotiating[target.dataset.term] = Number(target.value);
       render();
       return;
     }
