@@ -1,5 +1,15 @@
 # Schedule Visualizer and Browser Generator — Feature Wishlist
 
+> **ARCHIVED 2026-09-08. Nothing in this file is open work.** The teaching
+> tools are no longer maintained or improved on this repo (locked decision
+> #206), so the eight phases below, the 22-bullet standing backlog and the two
+> questions came out of `BACKLOG.md` and are recorded in `ARCHIVE.md`. The tool
+> itself is untouched and still serves: `Tools/schedule-visualizer.html`,
+> `Tools/schedule-browser.html` and everything under `Tools/schedule/` work
+> exactly as they did, and the suites still run. Do not open work against this
+> file. Everything below is preserved in the state it was cut in — read
+> "open", "next" and "blocked" as of that date.
+
 **Status: three rounds are shipped, nothing is currently open, and
 Phase 1 below is the first open phase, on Claude Fable 5.1.** Round 1
 vendored the fonts and settled the versioned-filename question, round 2

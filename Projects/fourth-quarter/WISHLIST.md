@@ -746,10 +746,10 @@ closed rather than left open for an increment that has nothing to do.*
 Increment 1 built `js/regulars.js` and wired it through `campaign.js`: named
 regulars with a usual, a team and a loyalty number, reputation as one number
 0-100 in the score bug, and The End Zone across town as a buzz that drifts
-against it. Who is in tonight is a pure function of the day (#206), the
-day-one forecast is unchanged (#207), the rival has no panel and a floored
-drag (#208), a regular at zero is remembered for six names and can be won back
-as themselves (#209), and a dark night costs standing (#210). `HISTORY.md`'s
+against it. Who is in tonight is a pure function of the day (#207), the
+day-one forecast is unchanged (#208), the rival has no panel and a floored
+drag (#209), a regular at zero is remembered for six names and can be won back
+as themselves (#210), and a dark night costs standing (#211). `HISTORY.md`'s
 Phase 7 increment 1 entry has the whole of it.
 
 **What is left is the phase's 3D half, and it is the half that earns the

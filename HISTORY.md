@@ -2439,7 +2439,37 @@ Two of them have moved since they were written:
    table is one object to retune. The 2D build's League Pass, which gated
    other teams' games, was not ported. *Source: Fourth Quarter Phase 6.*
 
-206. **Who is in the bar tonight is arithmetic, not a stored roll.** The 2D
+206. **The five teaching tools are archived, and `ARCHIVE.md` is where work
+   that will not be done lives.** Devon, 2026-09-08: the classroom tools are
+   no longer maintained or improved on this repo. Their open work came out of
+   `BACKLOG.md` and into a new root `ARCHIVE.md` in the wording it was cut in
+   — 21 ranked rows, the four Tier 2 sections (Final Grade Checker, Image to
+   PDF, Name Picker, Seating Chart Generator), six of the 46 open questions
+   (Q4, Q5, Q6, Q37, Q50, Q51), two answered entries, five Ownership rows and
+   two "Where the sources disagree" entries. `Tools/schedule/WISHLIST.md` was
+   left in place with an archived banner rather than pasted in, because it is
+   627 lines and a live URL either way. The ranked table renumbered 106 → 85
+   and the open-item count 415 → 366. **Nothing was deleted and no tool
+   changed**: every page still serves at its current URL, the board cards are
+   untouched, and the suites still pass. Three boundaries were decided here
+   rather than read off the folder name. **`Tools/board-check/` is not a
+   teaching tool and is not archived** — it is the site-wide check and
+   regression suite that every session's definition of done runs
+   (`npm run check && npm run social:check`), and all six of its ranked rows
+   are game or site work that happens to land there. **`Tools/prompt-builder.html`
+   is not archived either**: it is owned by nothing and is one of the two
+   standing `npm run check` failures on `main`, and a red integrity check is a
+   site problem, not a tool wish. **The Name Picker rename dies with the
+   archive** — Q5 asked for three rounds whether `Tools/Name Picker.html`
+   should become `name-picker.html`, and the answer is now "leave it forever",
+   because a rename is an improvement to an unmaintained tool and it would
+   move a live URL for nothing. The FERPA rule stands unchanged: the Final
+   Grade Checker remembers nothing, archived or not. Reversing this means
+   moving rows back from `ARCHIVE.md`, which is cheap; the cost of getting it
+   wrong is a session spending an hour on a tool nobody wants improved.
+   *Source: the teaching-tools archive pass.*
+
+207. **Who is in the bar tonight is arithmetic, not a stored roll.** The 2D
    build rolls `regularShows()` once at the top of the night and keeps the
    answer on the night object. `regulars.js` does not store it at all:
    `dayRoll(id, day)` is one mulberry32 step off an FNV hash of the regular's
@@ -2453,7 +2483,7 @@ Two of them have moved since they were written:
    teams, and it is why `regularsIn()` is safe to call from a render path.
    *Source: Fourth Quarter Phase 7.*
 
-207. **Reputation opens at 50, because 50 is the identity.** `repMult()` is
+208. **Reputation opens at 50, because 50 is the identity.** `repMult()` is
    `0.6 + rep/125`: 0.60x at 0, exactly 1.00x at 50, 1.40x at 100. The 2D
    build starts a campaign at 35 and therefore ships a 0.88x opening night;
    this build does not, and a save written before this phase forecasts the
@@ -2468,7 +2498,7 @@ Two of them have moved since they were written:
    build sells it for who walks in looking for work.
    *Source: Fourth Quarter Phase 7.*
 
-208. **The rival is a pressure, not a screen, and the drag has a floor.** The
+209. **The rival is a pressure, not a screen, and the drag has a floor.** The
    End Zone gets no panel, no tab and no page: it is one multiplier on the
    forecast (`1 - clamp((buzz - rep) * 0.003, 0, 0.15)`) and one line in the
    morning ticker about what they did last night. The bound matters as much
@@ -2480,7 +2510,7 @@ Two of them have moved since they were written:
    that hot cools (-1 over 80), so neither side of the street can run away
    with it. *Source: Fourth Quarter Phase 7.*
 
-209. **A regular at zero is remembered, not replaced.** Loyalty moves once a
+210. **A regular at zero is remembered, not replaced.** Loyalty moves once a
    night and in one place: `settleSocial()`. A regular who came in and found
    their usual 86'd loses 8, and loses it once, because the 86 is a `Set` of
    ids built from exactly the people who showed — a regular who stayed home
@@ -2491,7 +2521,7 @@ Two of them have moved since they were written:
    same job. "Can be re-earned" means the same person; a replacement is not a
    reconciliation. *Source: Fourth Quarter Phase 7.*
 
-210. **A dark night is not a night anyone saw.** Moving in used to cost
+211. **A dark night is not a night anyone saw.** Moving in used to cost
    money and stock and nothing else. It now costs standing: no reputation
    moves either way (nobody was there to form an opinion, and the alternative
    — running the drift on a service rate of 1 — *raised* it for closing the
@@ -3570,21 +3600,21 @@ asks `regulars.js` the questions — `regularsIn()`, `regularCap()`,
 `rivalLine()` — and `settleSocial()` is the one place any of them moves for a
 night.
 
-**Who is in tonight is not stored** (#206). `dayRoll(id, day)` is one
+**Who is in tonight is not stored** (#207). `dayRoll(id, day)` is one
 mulberry32 step off a hash of the regular's id and the day, so the corkboard's
 forecast, the crowd the door opens on, the morning's "good for tonight" line
 and the settlement's loyalty drift all get the same list without a field to go
-stale. **The forecast does not move on a day-one campaign** (#207): `repMult`
+stale. **The forecast does not move on a day-one campaign** (#208): `repMult`
 is exactly 1.00 at the starting reputation of 50, nobody has regulars, and the
 End Zone opens at 45 under your 50, so a save written before this phase
 forecasts the same number to the person. The one thing that does change on day
 one is who applies for work — `applicantSkillCap()` is 4 at 50, where the flat
 roll used to be 5 — and that is what reputation is for. **The rival gets no
-panel** (#208): one multiplier, floored at 0.85x, and one line in the morning
+panel** (#209): one multiplier, floored at 0.85x, and one line in the morning
 ticker; with reputation floored at 0.60x the worst campaign the arithmetic
-allows still draws 51% of its base. **A regular at zero is remembered** (#209)
+allows still draws 51% of its base. **A regular at zero is remembered** (#210)
 for six names, and half the time a great, busy night wins one of them back as
-themselves. **A dark night is not a night anyone saw** (#210): no reputation
+themselves. **A dark night is not a night anyone saw** (#211): no reputation
 either way, 6 off every regular, nothing minted, a free +1 for Vic.
 
 On screen: reputation in the score bug beside cash, a Regulars table on the
