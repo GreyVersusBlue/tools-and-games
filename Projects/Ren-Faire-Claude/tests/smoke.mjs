@@ -26,7 +26,7 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights } = await import(mod('js/engine.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights } = await import(mod('js/engine.js'));
 const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS } = await import(mod('js/data.js'));
 const State = await import(mod('js/state.js'));
 
@@ -369,6 +369,37 @@ const State = await import(mod('js/state.js'));
   // Stage kind is never included in the result \u2014 only food/vendor stalls
   // have a foot-traffic multiplier at all.
   assert(shares.stage1 === undefined, 'computeFootTraffic never includes a stage in its result');
+}
+
+// --- Phase 1 increment 2: measureFootTraffic, the estimate's measured twin ---
+{
+  const seated = (id, x, y) => ({ id, kind: 'food', x, y, status: 'built', cost: 480, assignedVendorId: 'vend_stew' });
+  assert(Object.keys(measureFootTraffic({}, [])).length === 0, 'measureFootTraffic returns nothing with no built stalls');
+  assert(Object.keys(measureFootTraffic(undefined, undefined)).length === 0, 'measureFootTraffic handles undefined arguments');
+
+  const lone = seated('lone', 6, 1);
+  const one = measureFootTraffic({ lone: 90 }, [lone]);
+  assert(one.lone.mult === 1 && one.lone.arrivals === 90, 'a lone seated stall is its own mean, so exactly 1x, and carries its raw arrival count');
+
+  // An unstaffed stall is a shed: it is not measured, and it does not drag
+  // the mean the staffed ones are scored against. Same rule the walk and
+  // computeGroundsDraw already follow.
+  const shed = { id: 'shed', kind: 'food', x: 9, y: 1, status: 'built', cost: 480 };
+  const withShed = measureFootTraffic({ lone: 90, shed: 0 }, [lone, shed]);
+  assert(withShed.shed === undefined && withShed.lone.mult === 1, 'an unstaffed stall is measured nowhere and moves nobody\u2019s mean');
+
+  const busy = seated('busy', 6, 1), quiet = seated('quiet', 9, 1);
+  const pair = measureFootTraffic({ busy: 120, quiet: 80 }, [busy, quiet]);
+  assert(pair.busy.mult > 1 && pair.quiet.mult < 1, 'the better-walked stall scores above 1x and the other below');
+  assert(Math.abs(pair.busy.mult + pair.quiet.mult - 2) < 1e-9, 'inside the clamp band the two multipliers average to exactly 1 \u2014 this is a share of the day, not an absolute');
+
+  // Same clamp band as the estimate, so the two numbers are comparable to
+  // the eye on the report. A stall nobody reached sits on the floor rather
+  // than dropping off the report; it earns nothing either way, because
+  // sales come off the till and not off this number.
+  const lopsided = measureFootTraffic({ busy: 1000, quiet: 0 }, [busy, quiet]);
+  assert(lopsided.busy.mult === 1.6 && lopsided.quiet.mult === 0.6, 'both ends clamp to the same 0.6x-1.6x band computeFootTraffic uses');
+  assert(lopsided.quiet.arrivals === 0, 'and a stall nobody walked to still reports its zero');
 }
 
 // --- Stage 17: computePathDistances (BFS from ENTRANCE) ---
@@ -1700,6 +1731,29 @@ const State = await import(mod('js/state.js'));
 
   const strandedBuild = State.buildPlot(State.createInitialState(), 'food', 6, 0);
   assert(strandedBuild.error && /path/i.test(strandedBuild.error), 'buildPlot surfaces the same path-frontage refusal end to end');
+
+  // Phase 1 increment 2: the col-3 spur, ruled (#227). hasPathFrontage is
+  // a terrain question and (4,5) answers it yes — (3,5) is a path tile
+  // right beside it. But the col-3 spur is cut off from ENTRANCE by the
+  // authoring gap at (3,3), so nobody can walk there, and now that sales
+  // come off the walk a stall there takes $0 a day while paying full
+  // upkeep. It is refused with its own sentence rather than sold as a
+  // buildable spot.
+  assert(hasPathFrontage([{ x: 4, y: 5 }]) === true, 'a cell beside the col-3 spur passes the terrain-only frontage check');
+  assert(!Number.isFinite(reachabilityDistance({ kind: 'food', x: 4, y: 5 })), 'and has no finite walk from the gate, which is the whole problem');
+  const spurStall = isLegalPlacement('food', 4, 5, []);
+  assert(spurStall.ok === false && /connect to the front gate/i.test(spurStall.reason),
+    'isLegalPlacement refuses a stall whose only path frontage does not connect to the gate');
+  assert(!/thoroughfare/.test(spurStall.reason || ''), 'and refuses it with the disconnected-path sentence, not the no-frontage one');
+  const spurBuild = State.buildPlot(State.createInitialState(), 'food', 4, 5);
+  assert(spurBuild.error && /connect to the front gate/i.test(spurBuild.error), 'buildPlot surfaces the disconnected-path refusal end to end');
+  // A demo camp is subject to the same rule (it is in requiresPathFrontage
+  // too) and a stage is not, because a stage does not need frontage at all.
+  assert(isLegalPlacement('demo', 4, 5, []).ok === false, 'a demo camp on the spur is refused for the same reason');
+  // A stall against the connected artery is still legal — (6,1) is a
+  // clearing whose south neighbour (6,2) is on the row-2 artery, four hops
+  // from the gate.
+  assert(isLegalPlacement('food', 6, 1, []).ok === true, 'a stall fronting the connected artery is still legal');
 }
 
 {
@@ -1799,63 +1853,134 @@ const State = await import(mod('js/state.js'));
 }
 
 // ---------------------------------------------------------------------
-// Stage 14: crowd-flow-as-a-system, phase 1 \u2014 foot traffic drives vendor
+// Stage 14: crowd-flow-as-a-system, phase 1 — foot traffic drives vendor
 // revenue at the simulateDay level, not just as a standalone pure function.
+//
+// Phase 1 increment 2 rewrote this whole section, and the rewrite is worth
+// reading before trusting it. Through Stage 22 a stall's sales were
+// `attendance x 0.12 x quality/7 x footTraffic x reachability`, so a SOLO
+// stall's revenue was a closed-form number these tests could reproduce by
+// hand, and a stall's distance from the gate moved money even when the
+// grounds held nothing else to walk to. Neither is true of an agent model:
+// the till is whatever the crowd handed over, and with exactly one thing
+// on the grounds every guest finds it wherever it is. So the two claims
+// this section pins are now:
+//  (1) a stall's house revenue is its own crowd's money and nothing else;
+//  (2) on a grounds with somewhere else to be, the better-placed stall
+//      takes more of it.
+// Claim (2) is tested on a faire with a scheduled stage and a demo camp,
+// because that is the only condition under which it is true — the version
+// of this test that used a lone stall was asserting a coefficient, not a
+// mechanic.
 // ---------------------------------------------------------------------
 {
-  // Regression guarantee: with only ONE stall built, its foot-traffic
-  // multiplier is always exactly 1 (see the computeFootTraffic tests
-  // above), so its economics must come out bit-for-bit identical to the
-  // pre-Stage-14 flat formula \u2014 placement-driven traffic should never
-  // change a solo stall's numbers.
+  // (1) A lone seated stall: its measured foot traffic is exactly 1 (it is
+  // the whole group, so it is the mean), and every dollar of house revenue
+  // traces back through the walk — buyers x the vendor's ticket x the
+  // house's cut, with no coefficient anywhere in the chain.
   let solo = State.createInitialState();
   solo = State.buildPlot(solo, 'stage', 3, 0).state;
   solo = State.buildPlot(solo, 'food', 6, 1).state; // (6,1): clearing, no stage-adjacency bonus at anchor distance 3
   solo = State.hireVendor(solo, 'vend_cider').state; // quality 8, avgTicket 9, food
   const soloResult = simulateDay(solo, 1);
   const soloPlot = solo.builtPlots.find(p => p.kind === 'food');
-  assert(soloResult.footTraffic[soloPlot.id].mult === 1, 'a lone built stall\u2019s foot-traffic multiplier is exactly 1 inside a real simulateDay run');
-  const conversion = 0.12 * (8 / 7);
-  const expectedBuyers = Math.round(soloResult.attendance * conversion * 1);
-  const expectedGross = expectedBuyers * 9;
-  const expectedRevenue = Math.round(expectedGross * CONFIG.wristbandCut);
-  assert(soloResult.vendorRevenue === expectedRevenue, 'a lone stall\u2019s vendorRevenue matches the pre-Stage-14 flat conversion formula exactly');
+  assert(soloResult.footTraffic[soloPlot.id].mult === 1, 'a lone seated stall’s measured foot-traffic multiplier is exactly 1 inside a real simulateDay run');
+  const soloSale = soloResult.stallSales[soloPlot.id];
+  assert(soloSale && soloSale.buyers > 0, 'a lone seated stall sells to somebody');
+  assert(soloSale.buyers === Math.round(soloResult.guests.buyers[soloPlot.id] * soloResult.guests.represents),
+    'a stall’s buyer count is the walk’s own count scaled by what one agent stands for — not a conversion rate on attendance');
+  assert(soloSale.gross === soloSale.buyers * 9, 'a stall’s gross is its buyers times the vendor’s average ticket, exactly');
+  assert(soloResult.vendorRevenue === Math.round(soloSale.gross * CONFIG.wristbandCut),
+    'house vendor revenue is the wristband cut of the till and nothing else');
+  assert(soloResult.vendorGross === soloSale.gross, 'the day report’s vendorGross is the sum of what the stalls took');
+  assert(soloResult.guests.spent === soloResult.vendorGross,
+    'and what the crowd is reported as spending is the same money — the ticket stub’s "left the purses" line and its stall revenue row add up');
 
-  // Two identically-built food stalls, one clearly better-sited (built at
-  // (6,1), clearing) than the other (built at (9,3), isolated woods) \u2014
-  // build order controls which cell hireVendor's auto-seat lands a fresh
-  // vendor on (the first open stall of that kind), so building the
-  // high-traffic cell first seats there; building the low-traffic cell
-  // first seats there instead. Same roster/schedule/ticket price/rng seed
-  // in both, so attendance itself must come out identical \u2014 isolating
-  // placement as the only thing that can move vendor revenue.
-  let sHigh = State.createInitialState();
-  sHigh = State.buildPlot(sHigh, 'stage', 3, 0).state;
-  sHigh = State.buildPlot(sHigh, 'food', 6, 1).state; // built first \u2014 auto-seat lands here
-  sHigh = State.buildPlot(sHigh, 'food', 9, 3).state;
-  sHigh = State.hireVendor(sHigh, 'vend_cider').state;
-  const resultHigh = simulateDay(sHigh, 1);
+  // The solo fixture above draws well under GUESTS.sampleCap, so `represents`
+  // is exactly 1 and every way of scaling the till agrees. On a real
+  // Saturday it is not: the sample stands for two-and-a-bit people each, and
+  // scaling the buyer count and the raw dollars separately then rounding
+  // both puts a report on screen that says 940 sales and a gross that is not
+  // 940 times the ticket. So the buyer count is scaled once and the gross is
+  // priced off it, and this is the crowd big enough to tell the difference.
+  let crowded = State.createInitialState();
+  crowded.cash = 200000; crowded.reputation = 90; crowded.season = 4; crowded.weekendDay = 2;
+  for (const [k, x, y] of [['stage', 3, 0], ['stage', 8, 0], ['food', 5, 3], ['vendor', 6, 3], ['demo', 8, 3]]) {
+    const r = State.buildPlot(crowded, k, x, y);
+    assert(!r.error, `crowded fixture: ${k} at ${x},${y} builds legally`);
+    crowded = r.state;
+  }
+  for (const v of ['vend_cider', 'vend_leather']) crowded = State.hireVendor(crowded, v).state;
+  const bill = ['perf_jouster_1', 'perf_musician_2', 'perf_magician_1'];
+  for (const q of bill) crowded = State.contractPerformer(crowded, q).state;
+  {
+    let i = 0;
+    for (const b of TIME_BLOCKS) for (const st of crowded.builtPlots.filter(p => p.kind === 'stage')) {
+      crowded = State.assignSchedule(crowded, b.id, st.id, bill[i++ % bill.length]).state;
+    }
+  }
+  const crowdedResult = simulateDay(crowded, 1);
+  assert(crowdedResult.attendance > GUESTS.sampleCap && crowdedResult.guests.represents > 2,
+    `the crowded fixture puts more than the sample cap through the gate (${crowdedResult.attendance}, each agent standing for ${crowdedResult.guests.represents})`);
+  let anyFractional = false;
+  for (const [id, sale] of Object.entries(crowdedResult.stallSales)) {
+    const ticket = VENDORS.find(v => v.id === sale.vendorId).avgTicket;
+    assert(sale.gross === sale.buyers * ticket, `${id}: gross is the reported buyer count times the ticket, on a crowd the sample only stands for`);
+    if (sale.gross !== Math.round(crowdedResult.guests.buyers[id] * crowdedResult.guests.represents * ticket)) anyFractional = true;
+  }
+  assert(anyFractional, 'and the fixture is one where scaling the raw till separately would have disagreed \u2014 otherwise this test proves nothing');
+  const crowdedTotal = Object.values(crowdedResult.stallSales).reduce((sum, sale) => sum + sale.gross, 0);
+  assert(crowdedResult.vendorGross === crowdedTotal && crowdedResult.guests.spent === crowdedTotal,
+    'the stall lines, the vendorGross total and the crowd\u2019s reported spend are all the same number');
 
-  let sLow = State.createInitialState();
-  sLow = State.buildPlot(sLow, 'stage', 3, 0).state;
-  sLow = State.buildPlot(sLow, 'food', 9, 3).state; // built first this time \u2014 auto-seat lands here instead
-  sLow = State.buildPlot(sLow, 'food', 6, 1).state;
-  sLow = State.hireVendor(sLow, 'vend_cider').state;
-  const resultLow = simulateDay(sLow, 1);
+  // A stall with nobody seated is a shed: it never appears in the sales
+  // ledger, however well sited it is.
+  let shed = State.createInitialState();
+  shed = State.buildPlot(shed, 'stage', 3, 0).state;
+  shed = State.buildPlot(shed, 'food', 6, 1).state;
+  const shedResult = simulateDay(shed, 1);
+  assert(Object.keys(shedResult.stallSales).length === 0 && shedResult.vendorRevenue === 0,
+    'an unstaffed stall sells nothing and shows up nowhere in the sales ledger');
 
-  assert(resultHigh.attendance === resultLow.attendance, 'attendance itself is unaffected by which stall a vendor is seated at (same seed/roster/schedule)');
-  assert(resultHigh.vendorRevenue > resultLow.vendorRevenue, 'the same vendor earns more house revenue seated at the better-trafficked stall than the worse one');
+  // (2) Two identically-staffed food stalls on a faire that has somewhere
+  // else to be — a stage running a show every block at (1,0) and a demo
+  // camp at (5,1). One stall sits at (2,3), two hops off the artery near
+  // both; the other at (9,3), seven hops further out. Same state, same
+  // seed, so the only difference is where the two stalls sit.
+  const spread = () => {
+    let s = State.createInitialState();
+    s.cash = 90000;
+    for (const [k, x, y] of [['stage', 1, 0], ['food', 2, 3], ['food', 9, 3], ['demo', 5, 1]]) {
+      const r = State.buildPlot(s, k, x, y);
+      assert(!r.error, `sitings fixture: ${k} at ${x},${y} builds legally`);
+      s = r.state;
+    }
+    for (const v of ['vend_cider', 'vend_stew']) s = State.hireVendor(s, v).state;
+    for (const q of ['perf_jester_2', 'perf_musician_1']) s = State.contractPerformer(s, q).state;
+    const stage = s.builtPlots.find(p => p.kind === 'stage');
+    let i = 0;
+    for (const b of TIME_BLOCKS) s = State.assignSchedule(s, b.id, stage.id, ['perf_jester_2', 'perf_musician_1'][i++ % 2]).state;
+    return s;
+  };
+  const sited = spread();
+  const near = sited.builtPlots.find(p => p.x === 2 && p.y === 3);
+  const far = sited.builtPlots.find(p => p.x === 9 && p.y === 3);
+  assert(near.assignedVendorId && far.assignedVendorId, 'sanity check: both stalls in the siting fixture are staffed');
+  const sitedResult = simulateDay(sited, 700);
+  assert(sitedResult.footTraffic[near.id].arrivals > sitedResult.footTraffic[far.id].arrivals * 2,
+    'the stall beside the show and the gate is walked past more than twice as often as the one seven hops out');
+  assert(sitedResult.stallSales[near.id].gross > sitedResult.stallSales[far.id].gross,
+    'the better-placed stall takes more money, on a grounds where the crowd has somewhere else to be');
+  assert(sitedResult.log.some(l => l.includes('pulled a lively crowd')),
+    'a noticeable measured foot-traffic spread between two staffed stalls surfaces as a flavor-log line');
 
-  // With two vendors seated at differently-trafficked stalls in the same
-  // day, a noticeable spread (\u2265 1.3x) surfaces as a named flavor-log line.
-  let sBoth = State.createInitialState();
-  sBoth = State.buildPlot(sBoth, 'stage', 3, 0).state;
-  sBoth = State.buildPlot(sBoth, 'food', 6, 1).state; // high-traffic, auto-seats vend_cider
-  sBoth = State.buildPlot(sBoth, 'food', 9, 3).state; // low-traffic, auto-seats vend_piepeddler
-  sBoth = State.hireVendor(sBoth, 'vend_cider').state;
-  sBoth = State.hireVendor(sBoth, 'vend_piepeddler').state;
-  const resultBoth = simulateDay(sBoth, 1);
-  assert(resultBoth.log.some(l => l.includes('pulled a lively crowd')), 'a noticeable foot-traffic spread between two staffed stalls surfaces as a flavor-log line');
+  // The spread is a fact about the day, not a fluke of one seed.
+  let nearWins = 0;
+  for (let i = 0; i < 12; i++) {
+    const d = simulateDay(sited, 700 + i);
+    if (d.stallSales[near.id].gross > d.stallSales[far.id].gross) nearWins++;
+  }
+  assert(nearWins === 12, `the well-placed stall outsells the far one on every one of twelve seeds (won ${nearWins})`);
 }
 
 // ---------------------------------------------------------------------
@@ -1892,7 +2017,20 @@ const State = await import(mod('js/state.js'));
   assert(resultNear.reachability[nearSeated.id].mult > 1, 'the near-gate stall scores above 1x reachability');
   assert(resultFar.reachability[farSeated.id].mult < 1, 'the far-from-gate stall scores below 1x reachability');
   assert(resultNear.attendance === resultFar.attendance, 'attendance itself is unaffected by a stall\u2019s distance from the gate (same seed/roster/schedule)');
-  assert(resultNear.vendorRevenue > resultFar.vendorRevenue, 'the same vendor earns more house revenue at a stall sited near the gate than one far from it');
+  // Phase 1 increment 2: this used to assert the near stall out-earned the
+  // far one on this exact fixture, and it no longer does — deliberately.
+  // The grounds here hold one seated stall and nothing else, and an agent
+  // with one place to go walks there however far it is; the whole 14-cell
+  // artery is inside one block's stride. The reachability multiplier said
+  // otherwise because it was a coefficient that never asked whether there
+  // was anywhere else to be. The claim itself is not abandoned — the Stage
+  // 14 section above pins it on a faire with a scheduled stage and a demo
+  // camp, which is the condition under which it is true — so what is
+  // asserted here is the narrower, still-true thing: gate distance is
+  // scored, it is reported, and it costs the far stall nothing on a
+  // grounds where there is nothing to compete for the walk.
+  assert(resultNear.vendorRevenue === resultFar.vendorRevenue,
+    'with one seated stall and nothing else on the grounds, the crowd finds it wherever it is \u2014 gate distance costs it nothing');
 
   // Same idea, one level up: a single state with TWO built stages (no
   // schedule, no vendors \u2014 isolating reachability's effect on stage
@@ -2799,6 +2937,99 @@ const State = await import(mod('js/state.js'));
   const saturdayCash = avg(saturday, 'cashDelta');
   assert(saturdayCash > fridayCash,
     `SIGNIFICANCE: the bigger Saturday crowd shows up as more money, not just a cosmetic attendance number (Friday $${fridayCash.toFixed(0)} -> Saturday $${saturdayCash.toFixed(0)})`);
+
+  // 8. Phase 1 increment 2: the ticket slider now has a second edge, and
+  //    checks 1-7 above cannot see it — every state they use is a bare
+  //    stage with nobody selling anything, so the only thing the price
+  //    moved was attendance. With stalls on the grounds the gate takes its
+  //    share of a guest's purse before the guest reaches a stall (#229), so
+  //    a dear ticket does not just thin the crowd, it thins what is left of
+  //    every purse that walks in. Both ends of the slider must still be
+  //    wrong, and the till has to be the thing that says so.
+  const withStalls = () => {
+    let s = base();
+    for (const [k, x, y] of [['stage', 3, 0], ['food', 5, 3], ['vendor', 6, 3]]) {
+      const r = State.buildPlot(s, k, x, y);
+      assert(!r.error, `stall-economy fixture: ${k} at ${x},${y} builds legally`);
+      s = r.state;
+    }
+    for (const v of ['vend_cider', 'vend_leather']) s = State.hireVendor(s, v).state;
+    return s;
+  };
+  const stalled = withStalls();
+  assert(stalled.builtPlots.filter(p => p.assignedVendorId).length === 2, 'sanity check: the stall-economy fixture seated both vendors');
+  const sCheap = { ...stalled, ticketPrice: CONFIG.ticketPrice.min };
+  const sDear = { ...stalled, ticketPrice: CONFIG.ticketPrice.max };
+  const sMid = { ...stalled, ticketPrice: CONFIG.priceAnchor };
+  assert(avg(sMid, 'cashDelta') > avg(sDear, 'cashDelta'), 'SIGNIFICANCE: maxing the ticket price is not cash-optimal on a faire that actually sells things either');
+  assert(avg(sMid, 'cashDelta') > avg(sCheap, 'cashDelta'), 'SIGNIFICANCE: nor is bottoming it out');
+  const perHead = (st) => avg(st, 'vendorRevenue') / avg(st, 'attendance');
+  assert(perHead(sDear) < perHead(sCheap) * 0.8,
+    `SIGNIFICANCE: a dear ticket leaves visibly less in the purse for the stalls — the gate and the till compete for the same money (dear $${perHead(sDear).toFixed(2)}/head vs cheap $${perHead(sCheap).toFixed(2)}/head)`);
+
+  // 9. Where a stall sits has to decide money, not just a tooltip. This is
+  //    the claim Stages 14 and 17 made with clamped 0.6x-1.6x and 0.8x-1.2x
+  //    coefficients; increment 2 took both out of the sales path, so if the
+  //    walk does not reproduce it, the game quietly lost a mechanic.
+  const sitedFaire = (x, y) => {
+    let s = base();
+    s.cash = 90000;
+    for (const [k, cx, cy] of [['stage', 1, 0], ['demo', 5, 1], ['food', x, y]]) {
+      const r = State.buildPlot(s, k, cx, cy);
+      assert(!r.error, `siting fixture: ${k} at ${cx},${cy} builds legally`);
+      s = r.state;
+    }
+    s = State.hireVendor(s, 'vend_stew').state;
+    s = State.contractPerformer(s, 'perf_jester_2').state;
+    const stage = s.builtPlots.find(p => p.kind === 'stage');
+    for (const b of TIME_BLOCKS) s = State.assignSchedule(s, b.id, stage.id, 'perf_jester_2').state;
+    return s;
+  };
+  const wellSited = avg(sitedFaire(3, 3), 'vendorRevenue', 40);
+  const badlySited = avg(sitedFaire(9, 3), 'vendorRevenue', 40);
+  assert(wellSited > badlySited * 1.15,
+    `SIGNIFICANCE: the same vendor makes materially more money beside the show than seven hops out (near $${wellSited.toFixed(0)} vs far $${badlySited.toFixed(0)})`);
+
+  // 10. The stalls have to be worth running and must not be the whole
+  //     business. CONFIG.wristbandCut is the one number that sets this, and
+  //     it moved from 0.28 to 0.12 in increment 2 because the gross it
+  //     multiplies stopped being a coefficient and became real purses
+  //     (#228). Raise it back toward a quarter and a built-out faire earns
+  //     roughly three times what it costs to run, which puts the $25,000
+  //     win condition inside two weekends and makes every construction and
+  //     contract decision after that free. This is the band, asserted on
+  //     the ledger rather than on the constant, so a change anywhere in the
+  //     chain trips it.
+  let developed = base();
+  developed.cash = 200000;
+  developed.reputation = 75;
+  developed.season = 4;
+  developed.weekendDay = 2;
+  for (const [k, x, y] of [['stage', 3, 0], ['stage', 8, 0], ['food', 5, 3], ['vendor', 6, 3], ['demo', 8, 3], ['food', 12, 3], ['stage', 11, 8]]) {
+    const r = State.buildPlot(developed, k, x, y);
+    if (!r.error) developed = r.state;
+  }
+  for (const v of VENDORS.slice(0, 6)) developed = State.hireVendor(developed, v.id).state;
+  for (const perf of PERFORMERS.slice(0, 6)) developed = State.contractPerformer(developed, perf.id).state;
+  {
+    let i = 0;
+    for (const b of TIME_BLOCKS) {
+      for (const stage of developed.builtPlots.filter(p => p.kind === 'stage')) {
+        developed = State.assignSchedule(developed, b.id, stage.id, PERFORMERS[i++ % 6].id).state;
+      }
+    }
+  }
+  const devVendor = avg(developed, 'vendorRevenue', 40);
+  const devTicket = avg(developed, 'ticketRevenue', 40);
+  const devCosts = avg(developed, 'costs', 40);
+  assert(devVendor > devCosts * 0.1,
+    `SIGNIFICANCE: stalls on a built-out faire are clearly worth running — their cut covers a real share of the day's costs ($${devVendor.toFixed(0)} against $${devCosts.toFixed(0)})`);
+  assert(devVendor < devTicket * 0.6,
+    `SIGNIFICANCE: stalls are not the whole business model — the gate is still the bigger half ($${devVendor.toFixed(0)} against $${devTicket.toFixed(0)})`);
+  const devNet = avg(developed, 'cashDelta', 40);
+  assert(devNet < CONFIG.winCondition.minCash / (CONFIG.seasonLength * 2),
+    `SIGNIFICANCE: a built-out faire cannot bank the win condition in two weekends — $${devNet.toFixed(0)} a day against $${(CONFIG.winCondition.minCash / (CONFIG.seasonLength * 2)).toFixed(0)}`);
+  assert(devNet > 0, `SIGNIFICANCE: a built-out faire is still profitable, or there is nothing to play toward ($${devNet.toFixed(0)} a day)`);
 }
 
 function makeMemoryStorage() {

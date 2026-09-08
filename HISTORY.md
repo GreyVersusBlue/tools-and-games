@@ -2724,6 +2724,100 @@ Two of them have moved since they were written:
    pinning nothing (#147).
    *Source: Faire Weekend Phase 1, increment 1.*
 
+226. **A stall's gross is what guests handed over at it, and
+   `computeFootTraffic` becomes the estimate rather than the number.**
+   Through Stage 22 a stall sold `attendance x 0.12 x quality/7 x
+   footTraffic x reachability` — a fixed share of the whole crowd, nudged
+   by two clamped siting bands, to a crowd nobody had modelled arriving.
+   `walkGuests` now records `spentAt` per plot, one arrival at a time out
+   of purses it tracks, and `simulateDay` scales that by `represents` and
+   takes the house cut off the top. Three things fall out rather than being
+   coded: a stall nobody can walk to earns $0 instead of the 0.8x
+   reachability floor, a stall whose crowd has already spent its purse
+   stops selling, and the 0.6x-1.6x band stops capping how much better a
+   good spot can be than a bad one. `computeFootTraffic(builtPlots)` still
+   exists and still returns the same numbers, but it no longer scales
+   anybody's sales: it is the forecast the build palette and the plot cards
+   show before the gates open, labelled "est." on the page, because terrain
+   and adjacency are all a player has to plan against. `measureFootTraffic
+   (arrivals, builtPlots)` is its measured twin — same relative-to-mean
+   shape, same clamp — and it is what the day report carries and what the
+   best/worst-sited-stall log line reads, so "barely anyone drifted past"
+   is a fact rather than a claim about the map. Both go on the report so a
+   player can see where the estimate was wrong.
+   *Source: Faire Weekend Phase 1, increment 2.*
+
+227. **The col-3 spur is disconnected on purpose, and building against it
+   is refused with its own sentence.** The authored path network has a gap
+   at (3,3), so the whole col-3 spur below the row-2 artery is path nobody
+   can walk to from `ENTRANCE`. Two stages knew and neither cared:
+   `hasPathFrontage` is a terrain question and answers yes, and
+   `reachabilityGroup` pinned such a plot to the worst multiplier, 0.8x, so
+   a stall there still sold. With sales coming off the walk the ruling costs
+   money for the first time — that stall takes $0 a day and pays full
+   upkeep — which is a trap, and a refusal in this game is a sentence that
+   comes before money moves. So `isLegalPlacement` now refuses any kind in
+   `PLACEMENT_RULES.requiresPathFrontage` whose footprint has no finite walk
+   to the gate: "That stretch of path doesn't connect to the front gate — a
+   Food Stall there would never see a guest." The terrain is not touched, so
+   a save with a plot at (3,3) still loads and a plot already built on the
+   spur is grandfathered; `simulateDay` names it in `unreachable` and the
+   warning now says it took nothing all day. Fixing the terrain instead was
+   the other option and was rejected: it would turn a clearing a save may
+   have built on into a path tile, and the map is authored content three
+   stages of tests read as fixed.
+   *Source: Faire Weekend Phase 1, increment 2.*
+
+228. **`wristbandCut` 0.28 -> 0.12, because the number it multiplies stopped
+   being a coefficient.** Stage 19 set 0.28 against a gross of about $4 a
+   head across a whole grounds. The walk hands the till real purses: about
+   $26 a head after the gate takes its share, which is what a day at a faire
+   costs a family, and 1.4 meals plus 0.9 craft buys off a $20-90 purse is
+   the part of the model that is right. Keeping 0.28 of that paid the house
+   roughly $7 a head on top of an $11 gate margin, tripled a developed
+   faire's daily net, and put the $25,000 win condition inside two weekends.
+   `perGuestCost` was tried as the counterweight first and is the wrong
+   knob: it scales with the crowd whether or not anything is being sold, and
+   at $11 a head SIGNIFICANCE 3 fails — on a faire with no stalls the crowd
+   becomes pure cost and charging the maximum is correct again. That failure
+   is the check earning its keep, and it is why the percentage moved instead
+   of the ledger. The landing: an empty field still loses $1,177 a day
+   (unchanged), a day-one build goes from -$191 to +$248, a mid faire from
+   +$2,448 to +$3,626, a built-out one from +$7,184 to +$8,980. The band is
+   pinned by SIGNIFICANCE 10 on the ledger rather than on the constant.
+   *Source: Faire Weekend Phase 1, increment 2.*
+
+229. **The gate takes its share of the purse before a guest reaches a
+   stall.** `spawnGuests(n, rng, ticketPrice)` records what a guest walked
+   up with as `arrived` and leaves `arrived - ticketPrice` for the stalls.
+   This is what couples the ticket slider to the till: charge $28 and the
+   day-tripper who brought $24 walks in broke, pulls at no stall (#225) and
+   buys nothing, so a dear ticket does not just thin the crowd, it thins
+   what is left of every purse in it. Measured, a max-price gate leaves the
+   stalls under 80% of the per-head take a minimum-price one does. It is
+   also what keeps SIGNIFICANCE 3 a real trade now that stalls are worth
+   real money — the version of that check the phase inherited used a faire
+   with nothing to sell, which is the one condition under which the price
+   question has only one force acting on it.
+   *Source: Faire Weekend Phase 1, increment 2.*
+
+230. **`GUESTS.stepsPerBlock` 12 -> 6: walking has to cost the block, or
+   gate distance costs nothing.** Increment 1 set 12 and its comment claimed
+   it made the East Meadow an afternoon's commitment. Increment 2 measured
+   it and it did not: at 12 a guest crosses the whole season-1 grounds
+   inside one time block, so a stall seven hops further out took the same
+   money as one beside the show ($442 either way over 40 seeds), and the
+   only hops above 12 are in territory a player cannot build on until
+   weekend 4. At 6 — half the grid's width — crossing the grounds costs a
+   block and the far stall drops to $351. Anything from 5 to 8 measures the
+   same, and the day's economy does not move at all across that range,
+   because the repeat penalty and not the clock is what caps a guest's
+   arrivals. The suite's old sanity check compared a day's steps against the
+   network's *size* (24 against 24, passing by one); it compares against the
+   network's diameter now, which is the number that decides whether a guest
+   can get anywhere.
+   *Source: Faire Weekend Phase 1, increment 2.*
+
 ---
 
 # The site sessions, 1–10
@@ -4177,6 +4271,95 @@ and the pull is the one rule (#225); and `hungry` read off the spent needs
 vector agreed with the meal count on every real crowd, so a crowd hungrier
 than the table allows, with a purse for exactly one meal, now pins that a
 guest who ate is not hungry.
+
+**Phase 1, increment 2 — The economy (PR #TBD).** Increment 1 walked the
+crowd and left the money alone, which meant the game had two answers to
+"how did that stall do today" and they did not have to agree. This
+increment made the walk the only answer, and the design review the phase
+owed is the SIGNIFICANCE section it rewrote getting there.
+
+A stall's gross is `spentAt` — the money guests physically handed over,
+counted one arrival at a time out of purses `walkGuests` tracks — scaled by
+`represents`, with the house taking its cut off the top (#226). The old
+`attendance x 0.12 x quality/7 x footTraffic x reachability` line is gone
+and with it both clamped siting bands, which now cap nothing.
+`computeFootTraffic` survives as the *estimate* the build palette and plot
+cards show before the gates open and says "est." on the page;
+`measureFootTraffic` is its measured twin off the walk's own arrival counts,
+and it is what the day report carries. Both go on the ticket stub, per
+stall, beside what that stall took, so a player can see where the forecast
+was wrong. The col-3 spur is ruled (#227): the terrain gap stays, an
+already-built stall there takes $0 and is named on the report, and building
+a new one is refused with its own sentence before any money moves.
+
+**Three numbers moved, and the reasoning for each is the point.** The walk
+hands the till about $26 a head, roughly five times what Stage 22's
+coefficient produced across a whole grounds, and the crowd is the part that
+is right — 1.4 meals and 0.9 craft buys off a $20-90 purse is a day at a
+faire. `perGuestCost` was tried as the counterweight first and SIGNIFICANCE
+3 refused it: at $11 a head, on a faire with nothing to sell, the crowd is
+pure cost and charging the maximum is correct again. That is the check
+doing exactly the job Stage 19 built it for, and it is why `wristbandCut`
+moved instead, 0.28 to 0.12 (#228) — a plausible concession fee on real
+money rather than a quarter of a coefficient. The gate now takes its share
+of the purse before a guest reaches a stall (#229), so a dear ticket thins
+what is left in every purse as well as thinning the crowd; a max-price gate
+leaves the stalls under 80% of the per-head take a minimum-price one does.
+And `stepsPerBlock` went 12 to 6 (#230), because at 12 a guest crossed the
+whole season-1 grounds inside one block and a stall seven hops out took
+identical money to one beside the show — $442 either way over 40 seeds,
+$442 against $351 at 6.
+
+**Where the ledger landed.** An empty field still loses $1,177 a day,
+unchanged. A day-one build goes from -$191 to +$248, a mid faire from
++$2,448 to +$3,626, a built-out one from +$7,184 to +$8,980. The shape is
+Stage 22's with a modest uplift on the thing the phase built, and the band
+is pinned on the ledger rather than on any constant.
+
+**The SIGNIFICANCE rewrite, which is the design review.** Checks 1-7 all
+passed untouched, and that was the finding: every state they use is a bare
+stage with nobody selling anything, so not one of them could see the stall
+economy at all. Three were added. **8** puts the ticket-price trade on a
+faire that actually sells things and pins the new coupling — a dear ticket
+visibly thins the till per head. **9** pins that where a stall sits decides
+money, which is the claim Stages 14 and 17 made with coefficients that
+increment 2 deleted; it is what caught `stepsPerBlock`. **10** pins the
+band `wristbandCut` sets, from both ends: stalls have to cover a real share
+of the day's costs, must stay under the gate, and a built-out faire must
+not be able to bank the $25,000 win condition in two weekends. Two Stage
+14/17 assertions were rewritten rather than kept. The one that reproduced
+the old flat formula by hand now asserts the chain the till actually runs
+through — buyers × ticket × cut, no coefficient anywhere. The one that said
+a near-gate stall out-earns a far one on a grounds holding a single seated
+stall now asserts the opposite, deliberately: an agent with one place to go
+walks there however far it is, the claim is true only where there is
+somewhere else to be, and it is pinned there instead.
+
+*Counts:* `tests/smoke.mjs` 802 → 857, `tests/guests.mjs` 151 → 168, both
+green; `play-games.mjs faire-weekend` 18 checks, 0 failed under Xvfb.
+
+*Broken on purpose (#34), fourteen, each caught by the assertion whose text
+claims it:* `stepsPerBlock` back to 12 (1 fail), `wristbandCut` back to 0.28
+(1), sales back to a conversion on attendance (4), the gate no longer taking
+its share of the purse (3 in `guests.mjs`, 1 in `smoke.mjs`), `simulateDay`
+no longer passing the ticket price to the spawn (1), the col-3 refusal
+removed (3), the report's foot traffic back to the estimate (1), the till no
+longer recording where the money went (6), `measureFootTraffic` counting
+unstaffed sheds in its mean (2), its clamp band removed (1), the house taking
+the whole till instead of its cut (4), a stall's gross scaled independently
+of its buyer count (3), and the crowd's reported spend scaled separately from
+the till (1).
+
+**Two first left the suite green**, and both for the same reason: every
+economy fixture in `smoke.mjs` draws well under `GUESTS.sampleCap`, so
+`represents` is exactly 1 and every way of scaling the sample to the crowd
+agrees. On a real Saturday it does not — the sample stands for two-and-a-bit
+people each, and scaling the buyer count and the raw dollars separately then
+rounding both would have put "940 sales" on the ticket stub beside a gross
+that is not 940 times the ticket. The fix is to scale the buyer count once
+and price the gross off it; the test is a new 900-guest fixture, and it
+asserts out loud that the scaling *would* have disagreed, so it cannot go
+back to proving nothing if the fixture ever shrinks.
 
 ---
 

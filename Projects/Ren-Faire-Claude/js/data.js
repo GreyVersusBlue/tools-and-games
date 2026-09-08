@@ -13,7 +13,21 @@ export const CONFIG = {
   // gets to do). A quarter-ish cut keeps stalls clearly worth running --
   // especially now that a staffed stall also feeds GROUNDS_DRAW -- without
   // letting them become the whole business model.
-  wristbandCut: 0.28, // fraction of a food/craft sale that goes to the house
+  //
+  // Phase 1 increment 2: 0.28 -> 0.12, and the number this multiplies is
+  // what changed, not the intent (#228). Through Stage 22 a stall's gross
+  // was `attendance x 0.12 x quality/7 x siting`, which came to about $4 a
+  // head across a whole grounds -- a coefficient, not money anybody was
+  // modelled as carrying. The walk hands the till real purses: about $26 a
+  // head after the gate takes its share, which is what a day at a faire
+  // actually costs a family. Keeping 0.28 of THAT paid the house roughly
+  // $7 a head on top of an $11 gate margin, tripled a developed faire's
+  // daily net, and put the $25,000 win condition inside two weekends. So
+  // the percentage came down to a plausible concession fee on real gross.
+  // The band this is tuned to is pinned in tests/smoke.mjs Section 1g
+  // (SIGNIFICANCE 8): raise it back toward a quarter and a built-out faire
+  // stops having to earn anything.
+  wristbandCut: 0.12, // fraction of a food/craft sale that goes to the house
   blocksPerDay: 4,
   seasonLength: 3, // days per weekend/season (Fri/Sat/Sun) — see Stage 6
   // Stage 10: planning → commit construction flow. Placing a plot is free
@@ -189,10 +203,20 @@ export const WEEKEND_DAY_ATTENDANCE = {
 // the report). 400 is enough that a single stall's arrival count is a real
 // statistic (a 5% share is 20 agents, not 2) and small enough that a day
 // costs milliseconds.
-// `stepsPerBlock`: path-tile hops a guest can walk in one time block. The
-// gate to the far end of the row-7 connector is 24 hops, so 12 means the
-// East Meadow is an afternoon's commitment from the gate, not a stroll —
-// which is the whole reason reachability was worth building.
+// `stepsPerBlock`: path-tile hops a guest can walk in one time block.
+// Increment 1 set this to 12 and claimed it made the East Meadow an
+// afternoon's commitment. Increment 2 measured it and it did not: at 12 a
+// guest crosses the whole season-1 grounds inside one block, so walking is
+// free, and a stall seven hops further out took the same money as one
+// beside the show ($442 either way over 40 seeds). Every hop above 12 is
+// East Meadow only, which is territory a player cannot build on until
+// weekend 4. At 6 — half the grid's width, so crossing the grounds costs a
+// block and crossing back costs another — the far stall drops to $351 and
+// gate distance decides money again. Anything from 5 to 8 measures the
+// same; the day's economy does not move at all between them, because the
+// repeat penalty and not the clock is what caps a guest's arrivals. This
+// is pinned by SIGNIFICANCE 9 in tests/smoke.mjs: put it back to 12 and
+// that check fails (#230).
 // `walkTolerance`: hops at which an attraction's pull is halved. Lower makes
 // the crowd cling to the gate; higher makes distance irrelevant again.
 // `satisfyRate`: the fraction of a need one arrival serves. 0.65 means a
@@ -212,7 +236,7 @@ export const WEEKEND_DAY_ATTENDANCE = {
 // buff's `affinity`).
 export const GUESTS = {
   sampleCap: 400,
-  stepsPerBlock: 12,
+  stepsPerBlock: 6,
   walkTolerance: 8,
   satisfyRate: 0.65,
   restThreshold: 0.04,
@@ -469,9 +493,11 @@ export const PERFORMERS = [
   { id: 'perf_livinghist_3', name: "The Chandler\u2019s Row", role: 'livingHistory', cost: 210, popularity: 3, quirk: null },
 ];
 
-// Vendor pool (food + craft). `takeRate` is the fraction of gross the vendor
-// keeps for themself; the house keeps the rest via CONFIG.wristbandCut,
-// modulated by vendor quality.
+// Vendor pool (food + craft). The house keeps CONFIG.wristbandCut of a
+// stall's gross and the vendor keeps the rest; `cost` is what the house
+// pays to have them on the grounds for the weekend. (This comment used to
+// describe a `takeRate` field and a quality modulation, neither of which
+// has ever existed on a vendor record or been read anywhere.)
 export const VENDORS = [
   { id: 'vend_turkeyleg', name: 'Giant Turkey Legs', type: 'food', cost: 300, quality: 7, avgTicket: 11 },
   { id: 'vend_piepeddler', name: 'The Pie Peddler', type: 'food', cost: 225, quality: 6, avgTicket: 8 },

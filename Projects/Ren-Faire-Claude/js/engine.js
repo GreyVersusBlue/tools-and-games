@@ -385,6 +385,14 @@ export function computePlotAttributes(plot, builtPlots) {
 // they sit relative to each other moves the needle. Clamped to a fairly
 // narrow band: this is meant to reward good siting, not let a pathological
 // layout zero out or multiply a stall's sales many times over.
+//
+// Phase 1 increment 2: this function no longer scales anybody's sales. It
+// is the *estimate* — the number the build palette and the plot cards show
+// before the gates open, computed from terrain and adjacency alone because
+// that is all a player has to go on while planning. What a stall actually
+// took is measureFootTraffic() below, counted off the walk. The two are
+// meant to broadly agree, and tests/smoke.mjs pins that they do: an
+// estimate that stopped predicting the walk would be a tooltip that lies.
 const FOOT_TRAFFIC_MIN_MULT = 0.6;
 const FOOT_TRAFFIC_MAX_MULT = 1.6;
 
@@ -424,6 +432,32 @@ export function computeFootTraffic(builtPlots) {
 // computePathDistances() is that Map flattened to hop counts, exactly the
 // shape it has had since Stage 17, so nothing that read it moves.
 let _pathRouteCache = null;
+// Phase 1 increment 2: the measured twin of computeFootTraffic. Same
+// shape — each stall against the day's mean, clamped to the same band —
+// but the input is the arrivals guests.js actually counted rather than a
+// terrain-and-adjacency estimate. This is what the day report carries and
+// what the best/worst-sited-stall log line reads, because "barely anyone
+// drifted past" is now a fact about the crowd rather than a claim about
+// the map. `arrivals` is the walk's raw per-plot count; scaling it by
+// `represents` would divide out of every ratio, so it is left raw.
+//
+// A stall with no arrivals at all is pinned to the floor rather than
+// dropped: it is on the grounds, it paid its upkeep, and its day was the
+// worst one available. It earns nothing regardless — sales come off
+// `spentAt`, not off this number.
+export function measureFootTraffic(arrivals, builtPlots) {
+  const stalls = (builtPlots || []).filter(p => p && p.status === 'built' && (p.kind === 'food' || p.kind === 'vendor') && p.assignedVendorId);
+  const result = {};
+  if (stalls.length === 0) return result;
+  const counts = stalls.map(p => ({ id: p.id, arrivals: (arrivals || {})[p.id] || 0 }));
+  const mean = counts.reduce((s, p) => s + p.arrivals, 0) / counts.length;
+  for (const p of counts) {
+    const raw = mean > 0 ? p.arrivals / mean : 1;
+    result[p.id] = { arrivals: p.arrivals, mult: clamp(raw, FOOT_TRAFFIC_MIN_MULT, FOOT_TRAFFIC_MAX_MULT) };
+  }
+  return result;
+}
+
 export function computePathRoutes() {
   if (_pathRouteCache) return _pathRouteCache;
   const routes = new Map();
@@ -708,6 +742,22 @@ export function isLegalPlacement(kind, x, y, builtPlots, excludeId) {
     const label = STRUCTURE_TYPES[kind] ? STRUCTURE_TYPES[kind].label : kind;
     return { ok: false, reason: `A ${label} needs to sit on or beside a path \u2014 nothing gets built away from the thoroughfare.` };
   }
+  // Phase 1 increment 2: the col-3 spur, ruled (#227). hasPathFrontage is a
+  // terrain check — it asks whether a path tile touches the footprint, not
+  // whether anybody can walk down it. The authored network has a gap at
+  // (3,3), so the whole col-3 spur below it is path nobody can reach from
+  // ENTRANCE, and through Stage 22 a stall built against it sold at the
+  // 0.8x reachability floor to a crowd that was never modelled arriving.
+  // Increment 2 made sales the walk's, so that stall now takes $0 a day
+  // while paying full upkeep. A silent trap is not this game's habit — a
+  // refusal is a sentence, and it comes before money moves — so the
+  // placement is refused outright. Already-built plots are grandfathered:
+  // this gate is only ever asked about a new placement, and simulateDay
+  // names an existing one in `unreachable` instead.
+  if (requiresFrontage && !Number.isFinite(reachabilityDistance({ kind, x, y, w, h }))) {
+    const label = STRUCTURE_TYPES[kind] ? STRUCTURE_TYPES[kind].label : kind;
+    return { ok: false, reason: `That stretch of path doesn\u2019t connect to the front gate \u2014 a ${label} there would never see a guest.` };
+  }
   return { ok: true, reason: null };
 }
 
@@ -916,53 +966,78 @@ export function simulateDay(state, seed) {
     log.push('Word got round that the gate was a bargain, and the crowd arrived in a generous mood.');
   }
 
-  // --- vendor revenue ---
-  // Stage 14: a seated vendor's buyer count now scales with their OWN
-  // stall's foot-traffic multiplier (computeFootTraffic), not just the
-  // day's total attendance — a well-sited stall (path frontage, near a
-  // packed stage or a demo camp) genuinely outsells an identically-good
-  // vendor stuck in a dead corner of the grounds.
-  // Stage 17: reachability is a second, independent siting signal (distance
-  // from the gate) layered on top of foot traffic — combined, then clamped
-  // once more so the two 0.6x-1.6x / 0.8x-1.2x bands stacking multiplicatively
-  // can never run away past a sane overall range for a single stall's day.
-  const footTraffic = computeFootTraffic(state.builtPlots);
-  const plotByVendorId = new Map(builtFoodVendorPlots.filter(p => p.assignedVendorId).map(p => [p.assignedVendorId, p]));
-  let vendorGrossTotal = 0;
-  let houseVendorRevenue = 0;
-  let bestStall = null, worstStall = null;
-  for (const vendor of activeVendorObjs) {
-    const plot = plotByVendorId.get(vendor.id);
-    const trafficMult = plot && footTraffic[plot.id] ? footTraffic[plot.id].mult : 1;
-    const reachMult = plot && reachability[plot.id] ? reachability[plot.id].mult : 1;
-    const sitingMult = clamp(trafficMult * reachMult, 0.5, 1.8);
-    const conversion = 0.12 * (vendor.quality / 7);
-    const buyers = Math.round(attendance * conversion * sitingMult);
-    const gross = buyers * vendor.avgTicket;
-    vendorGrossTotal += gross;
-    houseVendorRevenue += gross * CONFIG.wristbandCut;
-    satisfaction = clamp(satisfaction + (vendor.quality - 6) * 0.4, 0, 100);
-    if (plot) {
-      const entry = { vendor, plot, mult: sitingMult };
-      if (!bestStall || sitingMult > bestStall.mult) bestStall = entry;
-      if (!worstStall || sitingMult < worstStall.mult) worstStall = entry;
-    }
-  }
-  // Only worth remarking on when the spread between the best- and
-  // worst-sited stalls today is actually noticeable.
-  if (bestStall && worstStall && bestStall.vendor.id !== worstStall.vendor.id && bestStall.mult / worstStall.mult >= 1.3) {
-    log.push(`${bestStall.vendor.name} pulled a lively crowd from its ${bestStall.plot.name} spot, while ${worstStall.vendor.name} saw barely anyone drift past its ${worstStall.plot.name}.`);
-  }
-
   // --- the crowd walks (Phase 1) ---
   // A second rng stream, derived from the seed rather than drawn from the
   // day's own, so every event roll a seed produced before this phase is the
   // roll it produces after it. Only aggregates leave here: the guests die
   // with the report and `history` never carries a person.
+  //
+  // Increment 2 moved this above vendor revenue, because vendor revenue is
+  // now read off it.
   const guestRng = makeRng((seed ^ 0x9E3779B9) >>> 0);
-  const { guests: population, represents } = spawnGuests(attendance, guestRng);
+  const { guests: population, represents } = spawnGuests(attendance, guestRng, state.ticketPrice);
   const walk = walkGuests(state, population, guestRng);
   const scale = (n) => Math.round(n * represents);
+
+  // --- vendor revenue ---
+  // Stage 14 gave a seated vendor's buyer count a foot-traffic multiplier
+  // and Stage 17 layered gate-distance on top, but both were coefficients
+  // on `attendance`: every stall converted a fixed 12% of the whole crowd,
+  // nudged up or down by two clamped siting bands. Nobody had walked
+  // anywhere, so the crowd at a stall was an assumption.
+  //
+  // Phase 1 increment 2: a stall's gross is the money guests handed over at
+  // it — `spentAt`, one arrival at a time, out of purses the walk actually
+  // tracks — scaled from the sample to the crowd by `represents`. The house
+  // still keeps CONFIG.wristbandCut of that and nothing else, exactly as
+  // before. Three things fall out of the change rather than being coded:
+  // a stall nobody can walk to earns $0 instead of the old 0.8x floor
+  // (#227), a stall whose crowd already spent its purse stops selling, and
+  // the siting bands stop being a cap on how much better a good spot can be
+  // than a bad one.
+  //
+  // Nothing here is scaled to hit a number. The walk's per-head gross came
+  // out about five times Stage 22's coefficient, and the crowd is the part
+  // that is right — 1.4 meals and 0.9 craft buys off a $20-90 purse is what
+  // a day at a faire costs. The percentage moved instead: CONFIG.wristbandCut
+  // went 0.28 -> 0.12 because it is now a slice of real money rather than of
+  // a coefficient (#228). perGuestCost was tried first and is the wrong
+  // knob — it scales with the crowd whether or not anything is being sold,
+  // and at $11 a head SIGNIFICANCE 3 fails: on a faire with no stalls the
+  // crowd becomes pure cost and charging the maximum is correct again.
+  const footTraffic = measureFootTraffic(walk.arrivals, state.builtPlots);
+  const footTrafficEstimate = computeFootTraffic(state.builtPlots);
+  const plotByVendorId = new Map(builtFoodVendorPlots.filter(p => p.assignedVendorId).map(p => [p.assignedVendorId, p]));
+  let vendorGrossTotal = 0;
+  let houseVendorRevenue = 0;
+  let bestStall = null, worstStall = null;
+  const stallSales = {};
+  for (const vendor of activeVendorObjs) {
+    const plot = plotByVendorId.get(vendor.id);
+    // Scale the buyer count once and price off that, rather than scaling
+    // the raw till separately: rounding both independently lets the report
+    // print N sales next to a gross that is not N times the ticket, and a
+    // ledger a player can't add up is worse than a dollar of precision.
+    const buyers = plot ? scale(walk.buyers[plot.id] || 0) : 0;
+    const gross = buyers * vendor.avgTicket;
+    vendorGrossTotal += gross;
+    houseVendorRevenue += gross * CONFIG.wristbandCut;
+    satisfaction = clamp(satisfaction + (vendor.quality - 6) * 0.4, 0, 100);
+    if (plot) {
+      stallSales[plot.id] = { vendorId: vendor.id, buyers, gross, house: Math.round(gross * CONFIG.wristbandCut) };
+      const mult = footTraffic[plot.id] ? footTraffic[plot.id].mult : 1;
+      const entry = { vendor, plot, mult };
+      if (!bestStall || mult > bestStall.mult) bestStall = entry;
+      if (!worstStall || mult < worstStall.mult) worstStall = entry;
+    }
+  }
+  // Only worth remarking on when the spread between the best- and
+  // worst-visited stalls today is actually noticeable. Measured now, so
+  // "barely anyone drifted past" means barely anyone did.
+  if (bestStall && worstStall && bestStall.vendor.id !== worstStall.vendor.id && bestStall.mult / worstStall.mult >= 1.3) {
+    log.push(`${bestStall.vendor.name} pulled a lively crowd from its ${bestStall.plot.name} spot, while ${worstStall.vendor.name} saw barely anyone drift past its ${worstStall.plot.name}.`);
+  }
+
   const guests = {
     sampled: walk.sampled,
     represents: Math.round(represents * 100) / 100,
@@ -973,7 +1048,9 @@ export function simulateDay(state, seed) {
     shaded: scale(walk.served.shade),
     hungry: scale(walk.hungry),
     unspent: scale(walk.unspent),
-    spent: scale(walk.spent),
+    // The same money as the stall lines below, so "left the purses" and the
+    // stall revenue row on the ticket stub agree to the dollar.
+    spent: vendorGrossTotal,
     steps: walk.steps,
     idle: walk.idle,
     offGrid: walk.offGrid,
@@ -983,14 +1060,15 @@ export function simulateDay(state, seed) {
   };
   if (attendance > 0 && walk.sampled > 0) {
     if (guests.hungry > 0 && guests.hungry >= attendance * 0.25) {
-      warnings.push(`${guests.hungry.toLocaleString()} guests went home hungry \u2014 not enough food within a walk of where the crowd was.`);
+      warnings.push(`${guests.hungry.toLocaleString()} guests went home hungry — not enough food within a walk of where the crowd was.`);
     }
     if (guests.unspent > 0 && guests.unspent >= attendance * 0.25 && builtFoodVendorPlots.length > 0) {
       log.push(`${guests.unspent.toLocaleString()} guests left with their purse untouched.`);
     }
     if (walk.unreachable.length > 0) {
       const names = walk.unreachable.map(id => (state.builtPlots.find(p => p.id === id) || {}).name || id);
-      warnings.push(`Nobody could find a way from the gate to ${names.join(', ')} \u2014 ${walk.unreachable.length === 1 ? 'it fronts' : 'they front'} a stretch of path that does not connect.`);
+      const staffed = walk.unreachable.some(id => (state.builtPlots.find(p => p.id === id) || {}).assignedVendorId);
+      warnings.push(`Nobody could find a way from the gate to ${names.join(', ')} — ${walk.unreachable.length === 1 ? 'it fronts' : 'they front'} a stretch of path that does not connect${staffed ? ', and it took nothing all day' : ''}.`);
     }
   }
 
@@ -1053,7 +1131,14 @@ export function simulateDay(state, seed) {
     priceMult,
     priceSatDelta: Math.round(priceSatDelta * 10) / 10,
     campaignActive: state.activeCampaign ? state.activeCampaign.name : null,
+    // Phase 1 increment 2: `footTraffic` is measured off the walk;
+    // `footTrafficEstimate` is the terrain-and-adjacency forecast the build
+    // palette shows before the gates open. The report carries both so a
+    // player can see where the estimate was wrong.
     footTraffic,
+    footTrafficEstimate,
+    stallSales,
+    vendorGross: vendorGrossTotal,
     reachability,
     // Phase 1: what the crowd did on foot. Aggregates only — see guests.js.
     guests,
