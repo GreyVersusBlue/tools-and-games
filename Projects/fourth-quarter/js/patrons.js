@@ -14,6 +14,7 @@ import * as audio from "./audio.js";
 const ITEM_COLORS = { wings: 0xd97a2b, burger: 0x9c6b3f, nachos: 0xe3c14f, fries: 0xf0d264, beer: 0xe8a33d, soda: 0x5aa7d6 };
 const SHIRTS = [0x5a6b8c, 0x6b8c5a, 0x8c5a6b, 0x7a7a7a, 0x8c7a5a, 0x4f7d7d];
 const MULES_AMBER = 0xe8a33d;
+const REGULAR_JACKET = 0x8a3548;   // a regular who is not a Mules fan still reads as somebody
 
 const WALK = 1.55, SERVER_WALK = 2.0;
 let _pid = 0;
@@ -22,9 +23,12 @@ let _pid = 0;
  *  `reachable` on every seat from layout.js's nav grid; a stool walled off by
  *  the fit-out is not offered rather than claimed by a patron who then walks
  *  into the wall in front of it. */
-export function freeSeat() {
+export function freeSeat(prefer = null) {
   const open = seats.filter(s => !s.taken && s.reachable !== false);
-  return open.length ? open[Math.floor(Math.random() * open.length)] : null;
+  // a regular takes their usual stool: one at the bar, when the bar has one
+  const liked = prefer ? open.filter(s => s.kind === prefer) : [];
+  const pool = liked.length ? liked : open;
+  return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
 }
 
 export function itemMesh(itemId) {
@@ -61,6 +65,24 @@ export function personMesh(shirtColor, isServer = false) {
   return g;
 }
 
+/** The name over a regular's head: a sprite, so it faces you from any side
+ *  of the room. Sits above the order bubble (1.75) and the boss's marker
+ *  cone (2.15). */
+export function nameplate(text) {
+  const c = document.createElement("canvas"); c.width = 384; c.height = 96;
+  const ctx = c.getContext("2d");
+  ctx.font = "bold 44px Impact, sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillStyle = "#f2e9dc"; ctx.shadowColor = "#000"; ctx.shadowBlur = 10;
+  ctx.fillText(text, 192, 48);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+  sp.scale.set(1.3, 0.325, 1);
+  sp.position.y = 2.45;
+  sp.name = "nameplate";
+  return sp;
+}
+
 function bubble(itemId) {
   // floating "I want this" marker above a patron's head
   const g = new THREE.Group();
@@ -73,17 +95,24 @@ function bubble(itemId) {
 
 // ---------------------------------------------------------------- Patron
 export class Patron {
-  constructor(scene, engine, mulesFan) {
+  /** `regular` is one of campaign.js's regulars, when this body is one: they
+   *  wear a name, sit at the bar when it has a stool, and order the usual. */
+  constructor(scene, engine, mulesFan, regular = null) {
     this.id = ++_pid;
     this.engine = engine;
     this.scene = scene;
     this.mulesFan = mulesFan;
-    this.mesh = personMesh(mulesFan ? MULES_AMBER : SHIRTS[Math.floor(Math.random() * SHIRTS.length)]);
+    this.regular = regular;
+    this.snubbed = false;      // came in for the usual and the shelf was bare
+    this.comped = false;       // the boss put the first round on the house
+    this.compPending = false;  // comped before the order was in: the ticket opens at $0
+    this.mesh = personMesh(mulesFan ? MULES_AMBER : regular ? REGULAR_JACKET : SHIRTS[Math.floor(Math.random() * SHIRTS.length)]);
+    if (regular) this.mesh.add(nameplate(regular.name.split(" ")[0]));
     this.mesh.position.copy(DOOR);
     this.mesh.position.x += (Math.random() - 0.5) * 0.6;
     scene.add(this.mesh);
     this.state = "entering";
-    this.seat = freeSeat();
+    this.seat = freeSeat(regular ? "bar" : null);
     this.round = 0;
     this.timer = 0;
     this.ticket = null;
@@ -104,13 +133,20 @@ export class Patron {
   }
 
   placeOrder() {
-    let itemId = this.engine.chooseOrder(this.round);
-    let ticket = itemId ? this.engine.placeTicket(this.id, itemId) : null;
+    const r = this.regular;
+    const opts = { regularId: r ? r.id : null, comped: this.compPending };
+    // a regular's first round is the usual, pre-filled; the engine says so
+    // when the shelf is bare and picks what anyone else would get instead
+    let itemId = r ? this.engine.usualFor(r, this.round) : this.engine.chooseOrder(this.round);
+    let ticket = itemId ? this.engine.placeTicket(this.id, itemId, opts) : null;
     if (!ticket && itemId) { // lost the last serving in a race — pick again
-      itemId = this.engine.chooseOrder(this.round);
-      ticket = itemId ? this.engine.placeTicket(this.id, itemId) : null;
+      itemId = r ? this.engine.usualFor(r, this.round) : this.engine.chooseOrder(this.round);
+      ticket = itemId ? this.engine.placeTicket(this.id, itemId, opts) : null;
     }
     if (!ticket) { this.emptyShelves = true; this.stormOut(); return; }
+    if (r && this.round === 0 && itemId !== r.usual) this.snubbed = true;
+    this.compPending = false;
+    if (ticket.comped) this.comped = true;
     this.ticket = ticket;
     audio.playSfx("orderDing");
     this.bubbleMesh = bubble(itemId);
@@ -138,6 +174,27 @@ export class Patron {
   }
 
   releaseSeat() { if (this.seat) { this.seat.taken = false; this.seat = null; } }
+
+  /** Can the boss still put this one's first round on the house? Only a
+   *  regular, only their first round, only once, and only while they are in
+   *  the room — a regular on their second beer has already paid for the first. */
+  canComp() {
+    return !!this.regular && !this.comped && this.round === 0
+      && (this.state === "entering" || this.state === "settling" || this.state === "deciding" || this.state === "waiting");
+  }
+
+  /** The first round, on the house. If the ticket is already in, it rings at
+   *  $0 from here; if not, the one they are about to order opens at $0. The
+   *  engine keeps the record the books settle on. Returns false when there is
+   *  nothing to comp. */
+  compFirstRound() {
+    if (!this.canComp()) return false;
+    if (this.ticket) {
+      if (!this.engine.comp(this.ticket.id)) return false;
+    } else this.compPending = true;
+    this.comped = true;
+    return true;
+  }
 
   /** No route to the stool it claimed: hand the stool back and leave. This
    *  should not fire, because freeSeat() only offers stools the floor joins

@@ -58,6 +58,19 @@ export class Player {
   }
 
   nearStove() { return this.pos.distanceTo(eye(STOVE_STATION)) < 1.6; }
+  /** The regular in front of you whose first round can still go on the
+   *  house, or null. Tighter than a station's reach (1.1 m against 1.6), so a
+   *  regular on the stool next to the taps is comped by standing at them
+   *  rather than at the taps. */
+  nearRegular(patronsById) {
+    let best = null, bestD = 1.1;
+    for (const p of patronsById.values()) {
+      if (!p.canComp()) continue;
+      const d = this.pos.distanceTo(eye(p.pos));
+      if (d < bestD) { best = p; bestD = d; }
+    }
+    return best;
+  }
   nearTap()   { return this.pos.distanceTo(eye(TAP_STATION)) < 1.6; }
 
   // ---------------------------------------------------------------- stove/tap minigame
@@ -91,6 +104,11 @@ export class Player {
     if (this.qte) return this.scoreQte();
 
     if (!this.ticket) {
+      const reg = this.nearRegular(patronsById);
+      if (reg) {
+        reg.compFirstRound(); // nearRegular() only offers one that canComp()
+        return { msg: `${reg.regular.name.split(" ")[0]}'s first round is on the house. They'll remember that.`, good: true };
+      }
       if (this.nearStove()) {
         const tk = this.engine.oldestPrep("food");
         if (!tk) return { msg: "Nothing on the line to cook." };
@@ -155,6 +173,8 @@ export class Player {
         return "E — hand it over";
       return `Carrying ${MENU[this.ticket.itemId].name} → marked customer`;
     }
+    const reg = this.nearRegular(patronsById);
+    if (reg) return `E — ${reg.regular.name.split(" ")[0]}'s first round on the house ($${this.engine.price(reg.regular.usual)})`;
     if (this.nearStove()) {
       const tk = this.engine.oldestPrep("food");
       return tk ? "E — work the line (cook)" : "Stove's quiet — nothing to cook";

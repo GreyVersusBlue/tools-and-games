@@ -752,18 +752,112 @@ await settled(() => window.__fq.engine, "the second night to open");
 const target = await page.evaluate(() => window.__fq.engine.crowdTarget);
 ok("the crowd the door opens on is the forecast the corkboard printed", target === board.forecast, `${target} vs ${board.forecast}`);
 
-// 86 one regular's usual before last call, and leave the rest stocked
-const victim = await page.evaluate(async () => {
+group("a regular is a person on the floor");
+// Phase 7, increment 2. The night is open with three regulars on the roster
+// and the day's coin says who is in. Stock every shelf, then move the clock
+// to the hour the first one is due and watch them come through the door as a
+// body: a nameplate, a stool at the bar, the usual on the ticket, and the
+// boss walking up to put the first round on the house.
+// the settle-then-decide timers are 3.5-12.5 sim seconds; the canvas sits over the button, so click it from inside the page
+await page.evaluate(() => document.querySelector('[data-speed="2"]').click());
+const roster = await page.evaluate(async () => {
   const C = await import("./js/campaign.js");
   const { FOOD } = await import("./js/engine.js");
   const c = window.__fq.campaign;
-  const inTonight = C.regularsIn(c);
   for (const id of FOOD) c.stock[id] = 60;
-  const v = inTonight[0];
-  c.stock[v.usual] = 0;
-  return v ? { name: v.name, usual: v.usual, loyalty: v.loyalty } : null;
+  return { inTonight: C.regularsIn(c).map(r => ({ id: r.id, name: r.name, usual: r.usual, loyalty: r.loyalty })), engineRegs: window.__fq.engine.regulars.map(r => r.id) };
 });
-ok("one of tonight's regulars has had their usual 86'd", !!victim, victim && `${victim.name} — ${victim.usual}`);
+ok("the engine was handed tonight's list, the day's coin's list", roster.engineRegs.join() === roster.inTonight.map(r => r.id).join(), `${roster.engineRegs.length} handed`);
+const first = roster.inTonight[0];
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 1 + 0.01; });
+await settled(() => window.__fq.patrons.some(p => p.regular), "the first regular to come through the door");
+const arrived = await page.evaluate(() => {
+  const e = window.__fq.engine;
+  const p = window.__fq.patrons.find(p => p.regular);
+  return { name: p.regular.name, id: p.regular.id, seatKind: p.seat && p.seat.kind, nameplate: p.mesh.children.some(m => m.name === "nameplate"),
+    plates: window.__fq.patrons.filter(q => q.mesh.children.some(m => m.name === "nameplate")).length,
+    regs: window.__fq.patrons.filter(q => q.regular).length,
+    inBar: e.inBar, bodies: window.__fq.patrons.filter(q => q.state !== "gone" && q.state !== "leaving").length,
+    seated: e.regularsSeated.slice(), ticker: document.querySelector("#ticker").textContent };
+});
+ok("the first name on the list is the one who came in at hour 1", arrived.name === first.name && arrived.regs === 1, `${arrived.name} vs ${first.name}`);
+ok("they wear a nameplate, and nobody else does", arrived.nameplate && arrived.plates === 1, `${arrived.plates} plates`);
+// luck-sensitive on purpose: with the preference removed a random open
+// stool is a bar stool about a quarter of the time in this room
+ok("they took a stool at the bar", arrived.seatKind === "bar", `kind ${arrived.seatKind}`);
+ok("they came through the door as a spawn: the engine's headcount is the bodies in the room", arrived.inBar === arrived.bodies && arrived.seated.join() === first.id, `inBar ${arrived.inBar}, bodies ${arrived.bodies}`);
+ok("the ticker says they're in", arrived.ticker.includes(`${first.name.split(" ")[0]}'s in`), arrived.ticker.slice(-120));
+
+// the usual, pre-filled on the ticket
+// a walk across a big room and two timers, under a software renderer whose
+// frames cap the sim at 0.05 s each: two minutes, not the usual fifteen seconds
+const patient = (fn, label) => page.waitForFunction(fn, null, { timeout: 120000 }).catch(() => { throw new Error(`timed out waiting for ${label}`); });
+await patient(() => window.__fq.patrons.find(p => p.regular).ticket, "the regular to order");
+const usual = await page.evaluate(async () => {
+  const { MENU } = await import("./js/engine.js");
+  const p = window.__fq.patrons.find(p => p.regular);
+  return { item: p.ticket.itemId, usual: p.regular.usual, regularId: p.ticket.regularId, price: p.ticket.price, shelf: MENU[p.regular.usual].price, snubbed: p.snubbed };
+});
+// also luck-sensitive: chooseOrder() lands on the usual about a quarter of
+// the time, so a broken pre-fill passes here one run in four — the Node
+// suite's usualFor() assertions are the ones that cannot
+ok("the ticket is the usual, at the shelf price, with the regular's id on it",
+  usual.item === usual.usual && usual.regularId === first.id && usual.price === usual.shelf && !usual.snubbed, JSON.stringify(usual));
+
+// the boss walks up: the prompt offers the round, E comps it, a second E does not
+const comp = await page.evaluate(() => {
+  const p = window.__fq.patrons.find(p => p.regular);
+  const cam = window.__fq.camera, pl = window.__fq.player;
+  cam.position.set(p.pos.x + 0.4, p.pos.y + 1.62, p.pos.z + 0.4);
+  const prompt = pl.promptText(window.__fq.patronsById);
+  const r1 = pl.tryInteract(window.__fq.scene, window.__fq.patronsById);
+  const after = { price: p.ticket.price, comped: p.ticket.comped, set: [...window.__fq.engine.comped] };
+  const r2 = pl.tryInteract(window.__fq.scene, window.__fq.patronsById);
+  const promptAfter = pl.promptText(window.__fq.patronsById);
+  // a second E falls through to whatever else is in reach — a stool by the
+  // drink pass gets "Nothing on the bar yet", one further along gets nothing
+  // — so what is asserted is that it did not comp anything, not what it said
+  const after2 = { set: [...window.__fq.engine.comped], price: p.ticket.price };
+  return { prompt, r1, after, r2, after2, promptAfter, revenue: window.__fq.engine.revenue };
+});
+ok("standing at the regular, the prompt offers their first round on the house, priced", /first round on the house \(\$\d+/.test(comp.prompt), comp.prompt);
+ok("E puts it on the house: the ticket rings at $0 and the engine records who", comp.r1 && comp.r1.good && /on the house/.test(comp.r1.msg) && comp.after.price === 0 && comp.after.comped && comp.after.set.join() === first.id, JSON.stringify(comp.after));
+ok("a second E comps nothing, and the prompt no longer offers it",
+  !(comp.r2 && /on the house/.test(comp.r2.msg)) && comp.after2.set.join() === first.id && comp.after2.price === 0 && !/on the house/.test(comp.promptAfter),
+  `${JSON.stringify(comp.r2)} / ${comp.promptAfter}`);
+
+// now 86 their usual for the books: the settlement charges the 8 off the shelf
+// at close, and gives the 4 back for the round — the two numbers the floor and
+// the books each own, on one person
+const second = roster.inTonight[1] || null;
+await page.evaluate(({ first, second }) => {
+  const c = window.__fq.campaign;
+  c.stock[first.usual] = 0;
+  if (second) c.stock[second.usual] = 0; // the second regular finds theirs gone at the door
+}, { first, second });
+ok("a second regular is in tonight, so the snub can be watched on the floor", !!second, second ? second.name : "only one in");
+await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 2 + 0.01; });
+await settled(() => window.__fq.patrons.filter(p => p.regular).length >= 2, "the second regular to come in at hour 2");
+await patient(() => window.__fq.patrons.filter(p => p.regular)[1].ticket || window.__fq.patrons.filter(p => p.regular)[1].state === "leaving", "the second regular to order");
+// the snub's ticker line is an engine event, handed out on the update after the order
+// waited for as an assertion, not a throw: a snub line that never arrives
+// (written to the engine's log instead of queued as an event) is a FAIL that
+// names itself, and the run goes on to the books
+const sawSnubLine = await page.waitForFunction(() => /came in for the .* and you're out/.test(document.querySelector("#ticker").textContent), null, { timeout: 30000 }).then(() => true).catch(() => false);
+ok("the snub's ticker line arrives on the update after the order", sawSnubLine);
+const snub = await page.evaluate(() => {
+  const p = window.__fq.patrons.filter(p => p.regular)[1];
+  return { name: p.regular.name, usual: p.regular.usual, item: p.ticket && p.ticket.itemId, snubbed: p.snubbed, engine: [...window.__fq.engine.snubbed],
+    ticker: document.querySelector("#ticker").textContent };
+});
+ok("they came in for the usual, found it 86'd, and ordered something else", second && snub.name === second.name && snub.snubbed && snub.item && snub.item !== snub.usual, JSON.stringify(snub));
+ok("the engine recorded the snub and the ticker said so", snub.engine.join() === (second && second.id) && /came in for the .* and you're out/.test(snub.ticker), snub.ticker.slice(-140));
+// restock the second one's usual, so the books charge only the first — unless
+// the two share a usual, in which case the shelf is bare for both at close
+const sameUsual = !!second && second.usual === first.usual;
+await page.evaluate(({ second, sameUsual }) => { if (second && !sameUsual) window.__fq.campaign.stock[second.usual] = 60; }, { second, sameUsual });
+await page.evaluate(() => document.querySelector('[data-speed="1"]').click());
+
 await page.evaluate(() => { const e = window.__fq.engine; e.t = e.hourLenSec * 8 - 0.001; });
 await settled(() => document.querySelector("#boxOverlay").style.display === "flex", "the second box score");
 // the score bug is redrawn by the loop's 0.12 s HUD tick, not by showBoxScore(),
@@ -774,11 +868,15 @@ const after = await page.evaluate(() => {
   return { box: document.querySelector("#boxBody").textContent, rep: c.rep, bug: document.querySelector("#hRep").textContent,
     roster: c.regulars.map(r => ({ name: r.name, loyalty: r.loyalty })) };
 });
-const vRow = after.roster.find(r => r.name === victim.name);
+const fRow = after.roster.find(r => r.name === first.name);
+const sRow = second && after.roster.find(r => r.name === second.name);
 ok("the box score has a section on the room's people with the reputation move", /The Room's People/.test(after.box) && /Reputation/.test(after.box));
 ok("it names who was in tonight", board.inTonight.every(n => after.box.includes(n)), board.inTonight.join(", "));
-ok("and names the one who came in for the usual and found you out", after.box.includes("and you were out") && after.box.includes(victim.name));
-ok("that regular lost exactly 8 loyalty and the others did not", vRow && victim.loyalty - vRow.loyalty === 8, `${victim.loyalty} → ${vRow && vRow.loyalty}`);
+ok("and names the one who came in for the usual and found you out", after.box.includes("and you were out") && after.box.includes(first.name));
+ok("and the one whose first round was on the house", /First round on the house/.test(after.box) && after.box.includes(first.name));
+ok("that regular lost 8 for the 86 and got 4 back for the round: down 4", fRow && first.loyalty - fRow.loyalty === 4, `${first.loyalty} → ${fRow && fRow.loyalty}`);
+ok(sameUsual ? "the snubbed one shares the usual, so the books charge them the 8 too" : "the snubbed one, restocked before close, is up the good night's 3 and no more",
+  sRow && sRow.loyalty - second.loyalty === (sameUsual ? -8 : 3), `${second && second.loyalty} → ${sRow && sRow.loyalty}`);
 ok("the score bug's reputation is the campaign's after settlement", after.bug === String(Math.round(after.rep)), `${after.bug} vs ${after.rep}`);
 ok("no page errors through the second night", errors.length === 0, errors.join(" | "));
 

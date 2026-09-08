@@ -73,6 +73,8 @@ python3 -m http.server 8000
   ready order. A red marker appears over its customer.
 - **E** next to the marked customer: hand it over. Boss service = +$2 flat tip,
   small room-mood bump, better tips the faster the order lands.
+- **E** next to a regular (the one with a name over their head) with nothing in
+  hand: their first round on the house. Once a night, first round only.
 - **E** in a glowing ring by day: open that station's panel. **Esc** closes it.
 - **1× / 2×** in the score bug set the night sim clock (movement stays real-time).
   They are DOM buttons, so pointer lock has to be released (Esc) before one is
@@ -130,7 +132,11 @@ table and this week's fixtures.
   that drags your crowd when it outruns your name — one line in the morning
   ticker, no panel. 86 a regular's usual, run an ugly floor, or go dark for a
   move and they drift; at zero they stop coming, and a great busy night can
-  win them back.
+  win them back. On the floor a regular is a person: they come through the
+  door during hours 1-3 with a nameplate, take a stool at the bar, order the
+  usual (and say so, once, if it is 86'd), and **E** next to them puts their
+  first round on the house — $0 on the ticket, the tip on the shelf price,
+  four loyalty at close.
 - Rent is **$110/night at the Corner Tap, rising $50/rung up the ladder**
   ($160 / $210 / $260). Wages, rent, upgrade upkeep, and theme costs settle at
   close. Each rung is a bigger room too — 30, 44, 58 and 76 seats, more
@@ -167,8 +173,9 @@ table and this week's fixtures.
   the dark-night settlement instead of "Open the Doors" whenever a venue move
   is still settling in (`c.darkNightsLeft > 0`).
 - Tests: `node test/smoke-engine.mjs`, `node test/smoke-campaign.mjs`,
-  `node test/smoke-league.mjs`, `node test/smoke-layout.mjs`,
-  `node test/smoke-nav.mjs` and `node test/smoke-textures.mjs` (CI runs every
+  `node test/smoke-league.mjs`, `node test/smoke-regulars.mjs`,
+  `node test/smoke-layout.mjs`, `node test/smoke-nav.mjs` and
+  `node test/smoke-textures.mjs` (CI runs every
   `test/*.mjs`).
   `node tools/browser-check.mjs` boots the page in Chromium and is run by
   hand; it needs `playwright-core`. `node tools/measure-load.mjs` is the
@@ -302,9 +309,7 @@ On a 5 Mbps line the 2k room takes 114.5 s to finish; the 1k room, 11.7 s.
    `SPOILAGE_RATE` in `js/campaign.js` is the one number to tune if 15%/night
    feels wrong once it's been played.
 3. **Full campaign port — the league is in (wishlist Phase 6), and the
-   regulars' books are (Phase 7, increment 1).** What is left of the regulars
-   is their 3D half: a named mesh on the floor, a nameplate, their usual
-   pre-filled on the ticket, and a first-round-free interaction at the bar.
-   Still to port beyond that: distributors, a Commercial Walk-In upgrade to
+   regulars are (Phase 7, both increments: the books and the floor).**
+   Still to port: distributors, a Commercial Walk-In upgrade to
    cut the spoilage rate, events as floor moments, and a season that nudges
    rent and wages, re-balanced for the 3D serving loop.

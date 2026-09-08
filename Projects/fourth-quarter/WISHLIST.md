@@ -741,7 +741,8 @@ closed rather than left open for an increment that has nothing to do.*
 
 ## Phase 7 — Regulars, and the bar across town
 
-**Increment 1 of 2 is in. The books remember you; the floor does not.**
+**Shipped in two increments. The books remember you (increment 1), and a
+regular is a person on the floor (increment 2).**
 
 Increment 1 built `js/regulars.js` and wired it through `campaign.js`: named
 regulars with a usual, a team and a loyalty number, reputation as one number
@@ -749,37 +750,41 @@ regulars with a usual, a team and a loyalty number, reputation as one number
 against it. Who is in tonight is a pure function of the day (#207), the
 day-one forecast is unchanged (#208), the rival has no panel and a floored
 drag (#209), a regular at zero is remembered for six names and can be won back
-as themselves (#210), and a dark night costs standing (#211). `HISTORY.md`'s
-Phase 7 increment 1 entry has the whole of it.
+as themselves (#210), and a dark night costs standing (#211).
 
-**What is left is the phase's 3D half, and it is the half that earns the
-port.** A regular who shows tonight is a body in the crowd multiplier and a
-name in the box score. They are not somebody you can walk up to.
+Increment 2 put them on the floor: a regular comes through the door as a
+spawn from the engine's own arrival stream during hours 1-3, through the same
+seat gate as a walk-in (#212); wears a nameplate, takes a stool at the bar and
+orders the usual, or is snubbed once on the floor when the shelf is bare; and
+the boss can walk up and put the first round on the house — $0 on the ticket,
+the tip on the shelf price, four loyalty at close (#214). The floor reports
+three id lists at close and the books read the one only the floor can know
+(#213). `HISTORY.md`'s two Phase 7 entries have the whole of it.
 
 - [x] **Regulars in `campaign.js`, ported not copied.** A cap that grows with
   the tier (3, 5, 7, 9), the show roll weighted by loyalty, by whether their
   team is on tonight and by reputation, loyalty moving on service rate, room
   mood and stock-outs.
-- [ ] **A regular is a person on the floor.** The half the 2D build cannot do:
-  a named patron mesh, a nameplate, their usual pre-filled on the ticket, and a
-  first-round-free interaction at the bar. This is where the port earns its
-  keep. Increment 2's whole job. `patrons.js` takes a `regular` on the Patron
-  constructor; `beginNight()` already knows who is in from `regularsIn()`, and
-  the engine's arrival stream is where they have to come from so the seat cap
-  and the crowd number stay honest.
+- [x] **A regular is a person on the floor.** A named patron mesh with a
+  nameplate, a stool at the bar, the usual pre-filled on the ticket, and the
+  first round on the house at the press of E. `patrons.js` takes a `regular`
+  on the Patron constructor; `beginNight()` hands `regularsIn()` to the
+  engine, and the arrival stream is where they come from, so the seat cap and
+  the crowd number stay honest.
 - [x] **Reputation, one number, honest about what it does.** Applicant
   quality, crowd multiplier and regular retention, all three, and it is in the
   score bug beside cash.
 - [x] **The rival bar.** Buzz drifting nightly against `rep`, crowd drag when
   it outruns you, and one line in the day ticker. No rival panel. Both records
   additive in the save, defaulted in `repairCampaign()`.
-- [x] **The suite covers the drift.** `test/smoke-regulars.mjs` (89), and
-  `tools/browser-check.mjs` 162 → 178.
+- [x] **The suite covers the drift, and the floor.** `test/smoke-regulars.mjs`
+  (98), `smoke-engine.mjs` (223), and `tools/browser-check.mjs` 162 → 193.
 
 *Leans on:* phase 6's league (a regular's team plays in it), `campaign.js`,
 `patrons.js`. *Save:* additive `regulars`, `regularsLost`, `rep` and `rival`,
-all in. *Model:* **Claude Opus 5** — a port from a working, balanced reference
-onto an established save pattern, with a suite around it.
+all in; nothing new for increment 2. *Model:* **Claude Opus 5** — a port from
+a working, balanced reference onto an established save pattern, with a suite
+around it.
 
 ## Phase 8 — The night has moments
 

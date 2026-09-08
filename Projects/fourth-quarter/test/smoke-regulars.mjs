@@ -5,7 +5,7 @@
 
 import * as R from "../js/regulars.js";
 import * as C from "../js/campaign.js";
-import { FOOD, MENU } from "../js/engine.js";
+import { FOOD, MENU, HOME_TEAM } from "../js/engine.js";
 import { MULES, TEAMS } from "../js/league.js";
 
 let pass = 0, fail = 0;
@@ -355,6 +355,35 @@ const nightOf = (o = {}) => ({ total: 400, serviceRate: 95, mood: 0.8, arrivals:
   ok(R.repairRival({ buzz: 500 }).buzz === R.BUZZ_MAX && R.repairRival({ buzz: -5 }).buzz === R.BUZZ_MIN && R.repairRival(null).buzz === R.BUZZ_START,
     "buzz clamps to its band from either side, and a missing rival opens at 45");
   ok(R.repairLost([{ name: "A" }, null, { nope: 1 }, "x"]).length === 1, "a remembered name needs a name");
+}
+
+// ---- the first round on the house reaches the books (increment 2) ----
+{
+  ok(HOME_TEAM === MULES, "engine.js's HOME_TEAM is league.js's MULES");
+  const list = [{ id: "a", loyalty: 50 }, { id: "b", loyalty: 50 }, { id: "c", loyalty: 50 }];
+  R.driftLoyalty(list, { showing: new Set(["a", "b"]), stockedOut: new Set(["b"]), comped: new Set(["a", "b"]), good: true, ugly: false });
+  ok(list[0].loyalty === 50 + 3 + R.COMP_LOYALTY, `a comped regular on a good night gets the 3 and the ${R.COMP_LOYALTY} (${list[0].loyalty})`);
+  ok(list[1].loyalty === 50 - 8 + R.COMP_LOYALTY, "a comped regular whose usual was 86'd still loses the 8, and gets the round back");
+  ok(list[2].loyalty === 49, "and somebody who stayed home is untouched by it");
+  const none = [{ id: "a", loyalty: 50 }];
+  R.driftLoyalty(none, { showing: new Set(["a"]), stockedOut: new Set(), good: true, ugly: false });
+  ok(none[0].loyalty === 53, "no comped set at all is nobody comped");
+
+  // the wiring: settleNight reads the summary's ids and the box score gets names
+  const c = withRegulars(3, seeded(31));
+  const inTonight = C.regularsIn(c);
+  ok(inTonight.length >= 1, `somebody is in tonight (${inTonight.length})`);
+  const who = inTonight[0];
+  for (const id of FOOD) c.stock[id] = 40;
+  const before = who.loyalty;
+  const books = C.settleNight(c, nightOf({ comped: [who.id, "not-a-regular"] }), seeded(3));
+  ok(who.loyalty === before + 3 + R.COMP_LOYALTY, `settleNight reads summary.comped and the regular is up ${3 + R.COMP_LOYALTY} (${before} → ${who.loyalty})`);
+  ok(books.social.comped.join() === who.name, `and the books name them (${books.social.comped.join()})`);
+  const c2 = withRegulars(3, seeded(31));
+  for (const id of FOOD) c2.stock[id] = 40;
+  const who2 = C.regularsIn(c2)[0], l0 = who2.loyalty;
+  const plain = C.settleNight(c2, nightOf({ comped: "garbage" }), seeded(3));
+  ok(who2.loyalty === l0 + 3 && plain.social.comped.length === 0, "a summary with no usable comped field comps nobody");
 }
 
 // ---- the save carries it ----
