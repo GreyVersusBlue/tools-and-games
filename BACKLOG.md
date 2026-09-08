@@ -58,55 +58,82 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **the teaching-tools archive (PR #181)**, which
+The last thing that shipped is **The Fourth Quarter Phase 7, increment 1,
+"The books remember you" (PR #183)**. Sized 2+, so **rank 1 stays open** —
+this is increment 1 of 2, and `WISHLIST.md`'s Phase 7 now says what is done
+and what is left.
+
+**What it built.** Nobody who walked in had ever been here before, and no
+night you ran left a mark on the next one. `js/regulars.js` (251, pure) is
+the 2D build's regulars and its rival bar, ported: a named person with a
+usual off the menu, a MAFA team and a loyalty number; your reputation as one
+number 0-100; and The End Zone across town as a buzz 10-95 drifting against
+it. Who is in the bar tonight is not stored — `dayRoll(id, day)` is one
+generator step off a hash of the id and the day (#207), so the corkboard's
+forecast, the crowd the door opens on and the settlement's loyalty drift
+cannot disagree about who came in. **A day-one campaign forecasts exactly
+what it forecast before this phase** (#208): `repMult` is 1.00× at the
+starting reputation of 50, nobody has regulars, and the End Zone's opening 45
+sits under your 50. The one thing that does change on day one is who applies
+for work — `applicantSkillCap()` is 4 at 50 where the roll used to be a flat
+1-5 — and that is what the number is for. The rival gets no panel (#209),
+one multiplier floored at 0.85× and one line in the morning ticker; with
+reputation floored at 0.60× the worst campaign the arithmetic allows still
+draws 51% of its base. A regular at zero is remembered for six names and can
+be won back as themselves (#210), and a dark night costs standing rather
+than earning it (#211). On screen: reputation in the score bug, a Regulars
+table on the corkboard, two rows in the Tonight panel, and a "The Room's
+People" section in the box score.
+
+**Guard-rails broken on purpose (#34)**, twenty-seven in Node and six in the
+browser, each caught by the assertion whose comment claims it. **Two of them
+found the code wrong rather than the test**, both the same shape: `freshName()`
+had a retry loop *and* a " Jr." fallback, and the stocked-out penalty was
+gated both by the set's construction and by the `showing` branch — two lines
+guarding one absence, so either could be deleted and stay green. Both are one
+guard now. And one #147: the browser's determinism check asked twice, which a
+`Math.random()` coin passes about half the time; it asks twenty times.
+
+**Counts.** `test/smoke-regulars.mjs` is new (89), `smoke-engine.mjs` 194 →
+196 (`summary().arrivals`, a real headcount — `served` counts orders and
+`walkouts` counts people, so their sum never was one), Node total 1,026 →
+1,117; `tools/browser-check.mjs` 162 → 178, running a second night with three
+regulars on the floor and one of their usuals 86'd before last call.
+
+**None of the four shared things was touched** —
+`Projects/fourth-quarter/index.html` is the project's own page, not the
+site's. The two site-wide checks are still red on `main` and were red before
+this branch: `check-integrity.mjs` fails on
+`Projects/school-generator/tools/walk-shell.html` and
+`Tools/prompt-builder.html` (1,459 units, 2 broken), and `social:check`
+reports the same six pages out of sync. Outside the project: `HISTORY.md`'s
+decisions 207 through 211 and a Phase 7 increment 1 entry, and `CLAUDE.md`'s
+locked-decision count (206 to 211).
+
+**What is left of rank 1.** "A regular is a person on the floor" — a named
+patron mesh, a nameplate, their usual pre-filled on the ticket, and a
+first-round-free interaction at the bar. None of it is built; a regular who
+shows tonight is a body in the crowd multiplier and a name in the box score,
+not somebody you can walk up to. That is increment 2, and it is the half the
+port exists for.
+
+Before that: **the teaching-tools archive (PR #181)**, which
 is not a ranked row: Devon's direct instruction, worked while another session
 ran a game's rows. It took 21 rows out of the table and put them in
 `ARCHIVE.md`. The paragraph below says what it did and what it deliberately
 left ranked.
 
 Before that: **The Fourth Quarter Phase 6, "The league
-has a season" (PR #179)**, which **closes the row**: sized 2+, every bullet
+has a season" (PR #179)**, which **closed that row**: sized 2+, every bullet
 closed in one session, so it was marked shipped rather than left open for an
-increment with nothing to do.
-
-**What it built.** Game night was `weekday() in ["Thu","Sun"]` and the
-result a coin flip nothing remembered. Now `js/league.js` (319, pure) holds a
-MAFA season: eight named teams, a 14-week double round-robin dealt off a
-seed, a four-team bracket, a champion, two dark weeks, the next season. The
-calendar is the schedule: season, week, phase and tonight's games are
-arithmetic on the day number, and `c.league` carries only results, seeds,
-champions and the generator state (#203). `syncLeague()` holds one
-invariant, everything dated before today played and nothing from today on,
-on every load and after every day change, so a day-40 save from before the
-league existed loads into week 5 with 22 results behind it. There is one
-result (#204): the engine rolls the Mules' game at the league's odds with
-the league's home flag, `settleNight()` writes it into the fixture list, and
-the TV, the box score and the standings cannot disagree. The Mules play once
-a week on a slot rotating Thursday, Sunday, Sunday, Monday, the other three
-games are on the screens at 1.15×, and `forecast()` reads a crowd table
-(final 2.2, semi 1.9, the Sharks 1.75, a game 1.5, a dead rubber 1.25)
-(#205). `drawBroadcast()` names the real opponent and shows the standings
-for the first third of the hour after Q2; the corkboard's Theme panel
-carries the table, this week's fixtures and the champions.
-
-**Guard-rails broken on purpose (#34)**, nineteen of them, fifteen in Node
-and four in the browser, each caught by the assertion whose comment claims
-it. One more, `playGame()` marking a game played before rolling it, was
-caught by both Node suites dying of a `TypeError` rather than by an
-assertion, and the record says so.
-
-**Counts.** `test/smoke-league.mjs` is new (84), `smoke-campaign.mjs` 216 →
-241, `smoke-engine.mjs` 190 → 194, Node total 924 → 1,026;
-`tools/browser-check.mjs` 145 → 162, and it now runs a real night from the
-door to the morning after.
-
-**None of the four shared things was touched.** The two site-wide checks are
-still red on `main` and were red before this branch: `check-integrity.mjs`
-fails on `Projects/school-generator/tools/walk-shell.html` and
-`Tools/prompt-builder.html` (1,455 units, 2 broken), and `social:check`
-reports six pages out of sync. Outside the project: `HISTORY.md`'s decisions
-203 through 205 and a Phase 6 entry, and `CLAUDE.md`'s locked-decision count
-(202 to 205).
+increment with nothing to do. `js/league.js` (319, pure) holds a MAFA season:
+eight named teams, a 14-week double round-robin dealt off a seed, a four-team
+bracket, a champion, two dark weeks, the next season. The calendar is the
+schedule (#203), there is one result and the TV, the box score and the
+standings cannot disagree about it (#204), and `forecast()` reads a crowd
+table rather than a flat game-night 1.5 (#205). `test/smoke-league.mjs` is new
+(84), Node total 924 → 1,026, `tools/browser-check.mjs` 145 → 162; nineteen
+guard-rails broken on purpose.
 
 Before that: **The Fourth Quarter Phase 4, "The texture diet" (PR #178)**,
 which closed arc one: `js/textures.js` as the registry and `pickTier()`
@@ -232,23 +259,26 @@ site work that happens to land in that folder. Neither is
 `Tools/prompt-builder.html`, which is red on `npm run check` today and is a
 site problem.
 
-**85 ranked items**, twenty-one fewer than before PR #181. 36 of them are
-phases in one of the ten live project `WISHLIST.md` files; the other 49 are
-standalone, and live in Tier 2 below. Beyond the ranked list there are 241
-open bullets in those ten standing backlogs and 40 open questions for
-Devon — 366 open items in all, down from 415. Every rank quoted in prose in
-this file was recomputed against its row in the same pass; four of them had
-drifted, and one pointed at the wrong two rows entirely.
+**85 ranked items**, unchanged: PR #183 was one increment of a 2+ row, so
+rank 1 stays where it is. 36 of them are phases in one of the ten live
+project `WISHLIST.md` files; the other 49 are standalone, and live in Tier 2
+below. Beyond the ranked list there are 241 open bullets in those ten
+standing backlogs and 40 open questions for Devon — 366 open items in all.
+**No standing-backlog bullet changed and no question was answered** — none
+stood in front of this row.
 
-**Pick up rank 1: `Projects/fourth-quarter` Phase 7, "Regulars, and the
-bar across town" (Opus 5, size 2+).** Nobody who walks in has ever been here
-before; the phase ports the 2D build's named regulars with a usual, a team
-and a loyalty number, puts a regular on the floor as a named mesh, adds one
-reputation number and a rival bar as a pressure rather than a screen, and
-`WISHLIST.md`'s Phase 7 says how. It leans on Phase 6's league, which is
-now in. A 2+ row is the whole batch on its own: one increment, shipped, the
-row left in place with its text saying what is done. Ranks 1 through 3 are
-all Fourth Quarter.
+**Pick up rank 1 again: `Projects/fourth-quarter` Phase 7, increment 2,
+"A regular is a person on the floor" (Opus 5, size 2+).** Increment 1 (PR
+#183) built the books — regulars, reputation and the rival — and left the
+phase's other half untouched. What is open is the 3D one: a named patron
+mesh, a nameplate, their usual pre-filled on the ticket, and a
+first-round-free interaction at the bar. `campaign.js` already answers who is
+in tonight (`regularsIn()`, deterministic on the day), so the work is in
+`patrons.js`, `main.js`'s `beginNight()` and the engine's arrival stream —
+a regular has to come through the door as a spawn, not beside one, or the
+seat cap and the crowd number stop agreeing with the room. `WISHLIST.md`'s
+Phase 7 has the rewritten bullet list. A 2+ row is the whole batch on its
+own. Ranks 1 through 3 are all Fourth Quarter.
 
 **Read this before trusting the order.** Two sources rank the same work
 differently, and the table follows `UPGRADE-PATHS.md`'s order because it is
@@ -291,7 +321,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 7 — Regulars, and the bar across town | `Projects/fourth-quarter` | 2+ | Opus 5 | `claude/backlog-ranked-batch-7k5n7f` | [WISHLIST.md Phase 7](Projects/fourth-quarter/WISHLIST.md#phase-7--regulars-and-the-bar-across-town) |
+| 1 | Phase 7 — Regulars, and the bar across town (increment 2: the floor) | `Projects/fourth-quarter` | 2+ | Opus 5 |  | [WISHLIST.md Phase 7](Projects/fourth-quarter/WISHLIST.md#phase-7--regulars-and-the-bar-across-town) |
 | 2 | Phase 8 — The night has moments | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Projects/fourth-quarter/WISHLIST.md#phase-8--the-night-has-moments) |
 | 3 | Phase 9 — A night you can lose | `Projects/fourth-quarter` | 1 | Opus 5 |  | [WISHLIST.md Phase 9](Projects/fourth-quarter/WISHLIST.md#phase-9--a-night-you-can-lose) |
 | 4 | Phase 1 — Guests who walk | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/Ren-Faire-Claude/WISHLIST.md#phase-1--guests-who-walk) |
