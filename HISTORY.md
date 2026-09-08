@@ -2439,6 +2439,36 @@ Two of them have moved since they were written:
    table is one object to retune. The 2D build's League Pass, which gated
    other teams' games, was not ported. *Source: Fourth Quarter Phase 6.*
 
+206. **The five teaching tools are archived, and `ARCHIVE.md` is where work
+   that will not be done lives.** Devon, 2026-09-08: the classroom tools are
+   no longer maintained or improved on this repo. Their open work came out of
+   `BACKLOG.md` and into a new root `ARCHIVE.md` in the wording it was cut in
+   — 21 ranked rows, the four Tier 2 sections (Final Grade Checker, Image to
+   PDF, Name Picker, Seating Chart Generator), six of the 46 open questions
+   (Q4, Q5, Q6, Q37, Q50, Q51), two answered entries, five Ownership rows and
+   two "Where the sources disagree" entries. `Tools/schedule/WISHLIST.md` was
+   left in place with an archived banner rather than pasted in, because it is
+   627 lines and a live URL either way. The ranked table renumbered 106 → 85
+   and the open-item count 415 → 366. **Nothing was deleted and no tool
+   changed**: every page still serves at its current URL, the board cards are
+   untouched, and the suites still pass. Three boundaries were decided here
+   rather than read off the folder name. **`Tools/board-check/` is not a
+   teaching tool and is not archived** — it is the site-wide check and
+   regression suite that every session's definition of done runs
+   (`npm run check && npm run social:check`), and all six of its ranked rows
+   are game or site work that happens to land there. **`Tools/prompt-builder.html`
+   is not archived either**: it is owned by nothing and is one of the two
+   standing `npm run check` failures on `main`, and a red integrity check is a
+   site problem, not a tool wish. **The Name Picker rename dies with the
+   archive** — Q5 asked for three rounds whether `Tools/Name Picker.html`
+   should become `name-picker.html`, and the answer is now "leave it forever",
+   because a rename is an improvement to an unmaintained tool and it would
+   move a live URL for nothing. The FERPA rule stands unchanged: the Final
+   Grade Checker remembers nothing, archived or not. Reversing this means
+   moving rows back from `ARCHIVE.md`, which is cheap; the cost of getting it
+   wrong is a session spending an hour on a tool nobody wants improved.
+   *Source: the teaching-tools archive pass.*
+
 ---
 
 # The site sessions, 1–10
