@@ -7,10 +7,18 @@ media and JS under `assets/` and `Audio/`. Firebase Hosting serves the repo
 root whole (`firebase.json` sets `"public": "."`), so **every file here is a
 live URL**, markdown included.
 
-**`BACKLOG.md` is the entry point. `HISTORY.md` is the record.** Open work is
-ranked in `BACKLOG.md`; the per-project `WISHLIST.md` files hold the plans it
-links to. Nothing open lives in `HISTORY.md`, and nothing that already shipped
-belongs in `BACKLOG.md`.
+**`BACKLOG.md` is the entry point. `HISTORY.md` is the record. `ARCHIVE.md`
+is work that will not be done.** Open work is ranked in `BACKLOG.md`; the
+per-project `WISHLIST.md` files hold the plans it links to. Nothing open lives
+in `HISTORY.md`, and nothing that already shipped belongs in `BACKLOG.md`.
+
+**The five teaching tools under `Tools/` are archived** (locked decision #206,
+2026-09-08): the Final Grade Checker, Image to PDF, Name Picker, Seating Chart
+Generator and Schedule Visualizer are no longer maintained or improved here.
+Their pages still serve and their suites still pass — nothing was deleted — but
+do not open work against them, and do not move a row back out of `ARCHIVE.md`.
+`Tools/board-check/` is not a teaching tool and is not archived; neither is
+`Tools/prompt-builder.html`, which is red on `npm run check` today.
 
 `Projects/bell-to-bell/CLAUDE.md` governs inside its own folder; where it and
 this file disagree about anything under `Projects/bell-to-bell/`, it wins.
@@ -63,7 +71,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 205 locked decisions in full, by number.
+`HISTORY.md` carries all 206 locked decisions in full, by number.
 
 ## Writing style
 

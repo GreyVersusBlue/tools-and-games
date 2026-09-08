@@ -3,6 +3,11 @@
 The single entry point for open work on greyversusblue.com. Two tiers: a
 ranked index you scan, and the ideas underneath it that have no other home.
 
+**`ARCHIVE.md` is the third file.** `HISTORY.md` records what shipped; this
+file ranks what is open; `ARCHIVE.md` holds work that will not be done. The
+five teaching tools went there on 2026-09-08 (#206). Do not move anything back
+without Devon saying so.
+
 ## How this repo is worked
 
 **The standing instruction is: "work the next batch of ranked items in `BACKLOG.md`, open a
@@ -208,17 +213,26 @@ paths and ten phased wishlists (PR #100)**, which is where most of the ranking
 below comes from. No site version was bumped — none of these phases shipped a
 board, tool or page change.
 
-**106 ranked items**, one fewer than the last merge: rank 1 closed. 44 of
-them are phases in one of the ten project `WISHLIST.md` files; the other 62
-are standalone, and live in Tier 2 below. Beyond the ranked list there are
-263 open bullets in the eleven wishlists' standing backlogs and 46 open
-questions for Devon — 415 open items in all. **One standing-backlog bullet
-became four**, all in Fourth Quarter's "The night": the "anonymous opponent"
-bullet is gone, and in its place are a season that does not move the
-economy (rent and wages the same in season 2), the 2D build's League Pass
-not ported, standings tie-breaking on wins, losses, then id, and the
-halftime screen and corkboard table seen only in headless Chromium. No
-question was answered — none stood in front of this row.
+**The teaching tools are archived.** Devon's call, 2026-09-08, locked
+decision #206: the five classroom tools are no longer maintained or improved
+on this repo, so their open work came out of this file and went into
+`ARCHIVE.md` whole. Twenty-one ranked rows, four Tier 2 sections, six
+questions, five Ownership rows and two "sources disagree" entries. Nothing was
+deleted and no tool changed: every page still serves, the four Node suites
+that need no `puppeteer-core` pass (139, 213, 153 and 31 assertions), and
+`Tools/schedule/WISHLIST.md` stayed where it is with an archived banner on it. **`Tools/board-check/` is not archived** — it is the site's own check and
+regression suite, not a teaching tool, and its six ranked rows are game and
+site work that happens to land in that folder. Neither is
+`Tools/prompt-builder.html`, which is red on `npm run check` today and is a
+site problem.
+
+**85 ranked items**, twenty-one fewer than the last merge. 36 of them are
+phases in one of the ten live project `WISHLIST.md` files; the other 49 are
+standalone, and live in Tier 2 below. Beyond the ranked list there are 241
+open bullets in those ten standing backlogs and 40 open questions for
+Devon — 366 open items in all, down from 415. Every rank quoted in prose in
+this file was recomputed against its row in the same pass; four of them had
+drifted, and one pointed at the wrong two rows entirely.
 
 **Pick up rank 1: `Projects/fourth-quarter` Phase 7, "Regulars, and the
 bar across town" (Opus 5, size 2+).** Nobody who walks in has ever been here
@@ -241,9 +255,7 @@ the newest:
   argument for not opening with it.
 - Bell to Bell's own `docs/HANDOFF.md` said the next ticket was T8, whisper
   audio. It shipped in Phase 7, directional, in this backlog's own last round.
-- The Schedule Visualizer's storage-quota question is Phase 4 (rank 31) here
-  and #1 in its own project's notes.
-- Six more disagreements of the same kind are listed at the end of Tier 2,
+- Four more disagreements of the same kind are listed at the end of Tier 2,
   under **Where the sources disagree**.
 
 **The round system is retired.** For three rounds this repo ran a 22-prompt
@@ -300,91 +312,70 @@ after that branch merges.
 | 25 | Phase 6 — Excellencies, history, and the timeline | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Numina/WISHLIST.md#phase-6--excellencies-history-and-the-timeline) |
 | 26 | Phase 7 — The print packet and the offline kit | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Numina/WISHLIST.md#phase-7--the-print-packet-and-the-offline-kit) |
 | 27 | Phase 8 — Search and navigation, upgraded | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Numina/WISHLIST.md#phase-8--search-and-navigation-upgraded) |
-| 28 | Phase 1 — The simulation half, in numbers | `Tools/schedule` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Tools/schedule/WISHLIST.md#phase-1--the-simulation-half-in-numbers) |
-| 29 | Phase 2 — The editor under the same harness | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Tools/schedule/WISHLIST.md#phase-2--the-editor-under-the-same-harness) |
-| 30 | Phase 3 — A published file the machine can rebuild | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 3](Tools/schedule/WISHLIST.md#phase-3--a-published-file-the-machine-can-rebuild) |
-| 31 | Phase 4 — The storage answer | `Tools/schedule` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 4](Tools/schedule/WISHLIST.md#phase-4--the-storage-answer) |
-| 32 | Phase 5 — The seam at 14729 | `Tools/schedule` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Tools/schedule/WISHLIST.md#phase-5--the-seam-at-14729) |
-| 33 | Phase 6 — One conflict engine, and the constraints nobody checks | `Tools/schedule` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Tools/schedule/WISHLIST.md#phase-6--one-conflict-engine-and-the-constraints-nobody-checks) |
-| 34 | Phase 7 — Scenarios you can name and compare | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Tools/schedule/WISHLIST.md#phase-7--scenarios-you-can-name-and-compare) |
-| 35 | Phase 8 — The tool a keyboard can drive | `Tools/schedule` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Tools/schedule/WISHLIST.md#phase-8--the-tool-a-keyboard-can-drive) |
-| 36 | Phase 1 — The sim without the page | `Projects/corner-and-kettle` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/corner-and-kettle/WISHLIST.md#phase-1--the-sim-without-the-page) |
-| 37 | Phase 2 — `test/balance.mjs` | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/corner-and-kettle/WISHLIST.md#phase-2--testbalancemjs) |
-| 38 | Phase 3 — The Serve gate, decided | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 3](Projects/corner-and-kettle/WISHLIST.md#phase-3--the-serve-gate-decided) |
-| 39 | Phase 4 — The page becomes a view | `Projects/corner-and-kettle` | 2+ | Opus 5 |  | [WISHLIST.md Phase 4](Projects/corner-and-kettle/WISHLIST.md#phase-4--the-page-becomes-a-view) |
-| 40 | Phase 5 — Staff who have a week | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/corner-and-kettle/WISHLIST.md#phase-5--staff-who-have-a-week) |
-| 41 | Phase 6 — Customers who remember | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/corner-and-kettle/WISHLIST.md#phase-6--customers-who-remember) |
-| 42 | Phase 7 — A reopening worth doing | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/corner-and-kettle/WISHLIST.md#phase-7--a-reopening-worth-doing) |
-| 43 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
-| 44 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
-| 45 | Decide whether any real report card needs a second look, after the `.75`-band bug | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
-| 46 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 47 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — |  | [Questions for Devon](#questions-for-devon) |
-| 48 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
-| 49 | The `Tools/Name Picker.html` → `name-picker.html` rename, plus `newindex.html`'s one link | `site` | ¼ | — |  | [Name Picker](#name-picker) |
-| 50 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 51 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 52 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 53 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 54 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 55 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 56 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 57 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
-| 58 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 59 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 60 | Configurable grading policies and a "why this grade" audit trail | `Tools/final-grade-checker` | 1 | — |  | [Final Grade Checker](#final-grade-checker) |
-| 61 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — |  | [The site itself](#the-site-itself) |
-| 62 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
-| 63 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
-| 64 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
-| 65 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
-| 66 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
-| 67 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 68 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 69 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 70 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 71 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
-| 72 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 73 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 74 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
-| 75 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 76 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 77 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 78 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 79 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 80 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 81 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 82 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 83 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 84 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 85 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 86 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 87 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 88 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 89 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 90 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 91 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
-| 92 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
-| 93 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 94 | Get an actual screenshot from a session where the browser pane composites | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
-| 95 | The jsPDF-AutoTable column-width warning | `Tools/final-grade-checker` | ¼ | — |  | [Final Grade Checker](#final-grade-checker) |
-| 96 | Verify the EXIF fix against a real sideways phone photo | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
-| 97 | A real screenshot of the two-row mobile layout | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
-| 98 | Settings persistence — plain `localStorage`, three primitives — only if a teacher asks | `Tools/image-to-pdf` | ¼ | — |  | [Image to PDF](#image-to-pdf) |
-| 99 | The stale "twelve keys" comment in `np-store.js`; there are thirteen | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
-| 100 | Exercise multiple rosters under real use — neither browser suite has run more than one | `Tools/name-picker` | ½ | — |  | [Name Picker](#name-picker) |
-| 101 | Mobile and accessibility re-verification, carried twice | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
-| 102 | Wire `leastPicked()` into a "who's due" display | `Tools/name-picker` | ¼ | — |  | [Name Picker](#name-picker) |
-| 103 | An automated assertion for the print-all path's rotation fix | `Tools/seating-chart` | ¼ | — |  | [Seating Chart Generator](#seating-chart-generator) |
-| 104 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
-| 105 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
-| 106 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 28 | Phase 1 — The sim without the page | `Projects/corner-and-kettle` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/corner-and-kettle/WISHLIST.md#phase-1--the-sim-without-the-page) |
+| 29 | Phase 2 — `test/balance.mjs` | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/corner-and-kettle/WISHLIST.md#phase-2--testbalancemjs) |
+| 30 | Phase 3 — The Serve gate, decided | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 3](Projects/corner-and-kettle/WISHLIST.md#phase-3--the-serve-gate-decided) |
+| 31 | Phase 4 — The page becomes a view | `Projects/corner-and-kettle` | 2+ | Opus 5 |  | [WISHLIST.md Phase 4](Projects/corner-and-kettle/WISHLIST.md#phase-4--the-page-becomes-a-view) |
+| 32 | Phase 5 — Staff who have a week | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/corner-and-kettle/WISHLIST.md#phase-5--staff-who-have-a-week) |
+| 33 | Phase 6 — Customers who remember | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/corner-and-kettle/WISHLIST.md#phase-6--customers-who-remember) |
+| 34 | Phase 7 — A reopening worth doing | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/corner-and-kettle/WISHLIST.md#phase-7--a-reopening-worth-doing) |
+| 35 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
+| 36 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
+| 37 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 38 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — |  | [Questions for Devon](#questions-for-devon) |
+| 39 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
+| 40 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 41 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 42 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 43 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 44 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 45 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 46 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 47 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
+| 48 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 49 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 50 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — |  | [The site itself](#the-site-itself) |
+| 51 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
+| 52 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
+| 53 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
+| 54 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
+| 55 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
+| 56 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 57 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 58 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 59 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 60 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
+| 61 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 62 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 63 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
+| 64 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 65 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 66 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 67 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 68 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 69 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 70 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 71 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 72 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 73 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 74 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 75 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 76 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 77 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 78 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 79 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 80 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
+| 81 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
+| 82 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 83 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 84 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
+| 85 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
 
 ---
 
 # Tier 2 — the ideas with no wishlist home
 
-Sixteen projects and areas have no `WISHLIST.md`. Everything they had lives
+Twelve projects and areas have no `WISHLIST.md`. Everything they had lives
 here, carried across from their prompt file's "Your task", their notes file's
 "Next session", "Deliberately not done" and "Shared-file requests", and any
 README roadmap — in the wording those files used, not summarised. The
@@ -898,177 +889,6 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
 (still avoiding two adjacent erase-like controls with different scopes —
 "Begin the Cycle Anew" already exists).
 
-## Final Grade Checker
-
-`Tools/final_grade_checker.html`, `Tools/final-grade-checker/`.
-
-**Is this tool in a stable, finished state? No — not yet, and it's a "not yet"
-outside the code, not inside it.** The arithmetic is done, correct per Devon's
-direct confirmation, and the most-tested part of this codebase: 139 assertions,
-every QP-affected case hand-verified against a live DOM and a real exported
-CSV/PDF, the fix verified load-bearing by reintroducing the old bug and
-watching 12 assertions fail on cue.
-
-1. **Decide what, if anything, needs checking on past report cards.** This is
-   bigger than round 2's version of the question. Round 2 thought the risk
-   window was one round, because it assumed the only bug was rounding at the
-   `.5` boundary. It wasn't — the `.75` band was wrong too, and has been wrong
-   since this tool's dual-method calculation first went live, not just for one
-   round. Any student whose QP average landed on `x.75` (3.75, 2.75, 1.75 or
-   0.75 — one more A-quality quarter than B-quality, or B-quality than
-   C-quality, and so on) and whose QP method was the one reported, got a letter
-   one grade too high, for the tool's entire history until the round-3 fix. Not
-   a code decision — needs Devon's read on whether real report cards were
-   involved and what to do about it if so. See Q4.
-2. **Get an actual screenshot.** Three rounds in a row, identical failure each
-   time ("the Browser pane is not displayed, so the page is not compositing
-   frames"), including a round-3 attempt after real user interaction with the
-   page. At this point it's worth trying from a session where the pane is
-   actually displayed, rather than retrying the same approach a fourth time.
-   This is a standing gap in the tool's verification history, not a one-off
-   environment hiccup.
-3. **The jsPDF-AutoTable column-width warning.** Real, reproducible
-   (`console.warn`, "Of the table content, 162 units width could not fit
-   page"), pre-existing across three rounds, low value. The export still
-   produces a correct, readable PDF regardless.
-4. **Configurable grading policies and a "why this grade" audit trail** would
-   have surfaced the `.75`-band bug years earlier. Worth doing; not major.
-
-Deliberately not done, and still the right call:
-
-- **The jsPDF-AutoTable column-width warning.** Real, reproducible,
-  pre-existing, outside every round's assigned scope. The export still produces
-  a correct, readable PDF. Confirmed again in round 3 via the same raw-byte
-  capture; still just a `console.warn`, not a defect in the output.
-- **Checking specific old report cards for the `.75`-band bug.** Devon's answer
-  confirmed the direction of the rule but didn't resolve whether any specific
-  past report card needs re-checking, and that's not something the code can
-  determine. Flagged rather than guessed at.
-- **Building support for letter-only quarters.** Closed by round 2 — Devon
-  confirmed directly: never seen in practice. Not re-litigated.
-
-Two things stop this tool being filed as closed, and neither is in the code.
-Item 1 above is a real open question, not a formality: whether any actual
-report card was affected is something only Devon can answer. And there is no
-screenshot, three rounds running, the same failure verbatim each time — that is
-no longer a one-off environment hiccup to retry past, it is a standing gap in
-this tool's verification history that a fourth identical attempt is unlikely to
-close. Net: ship the code, it's right; don't file the tool as fully closed
-until both get resolved by someone other than a repeat of the same approach.
-
-Closed and not to be re-litigated: the QP-rounding direction question (round 3
-revealed it needed a bigger fix than round 2's own answer); the exact QP
-threshold numbers (Devon confirmed 4/3/2/1/0 directly, not 3.5/2.5/1.5/0.5);
-support for letter-only quarters. There are no `gvb-save.js` requests here and
-never will be — the standing FERPA-based decision is that this tool remembers
-nothing.
-
-## Image to PDF
-
-`Tools/image-to-pdf.html`, `Tools/image-to-pdf/`.
-
-**Nothing is outstanding as things stand.** Two purely environmental checks
-remain, worth doing if the hardware ever allows it, not worth retrying with the
-same approach a fourth time:
-
-1. **Verify the EXIF fix against a real sideways phone photo**, from an
-   environment with an actual camera or a real device to hand. Three rounds
-   running without one — the fix is reasoned correctly from documented browser
-   auto-rotation behavior (`Tools/image-to-pdf.html` lines ~899–902), but
-   reasoning from spec isn't the standard of proof this tool otherwise holds
-   itself to.
-2. **A real screenshot of the two-row mobile layout**, from an environment
-   where the browser pane actually composites a frame. Three identical failures
-   suggest this sandbox specifically can't do it, not that retrying will
-   eventually work.
-
-   If a fourth round of flagging these two doesn't get them in front of a
-   different environment, it's worth asking whether they are actually blockers
-   this tool needs closed, or accepted-permanently-open items — the code has
-   held up every other way it's been tested.
-3. **Settings persistence, only if an actual teacher asks for it.** Still just
-   a convenience, still not a gap in the tool's core job. Third round declining
-   the same speculative feature. If built: plain `localStorage` for three
-   primitive values, not `gvb-save.js`.
-
-## Name Picker
-
-`Tools/Name Picker.html`, `Tools/name-picker/`.
-
-1. **The rename**, whenever a session owning the board wants to pick it up.
-   Exact edit:
-
-   - `Tools/Name Picker.html` → `Tools/name-picker.html` (the folder is already
-     `Tools/name-picker/`, so this pairs it up)
-   - the board card's `href="Tools/Name%20Picker.html"` →
-     `href="Tools/name-picker.html"`, same commit as the rename, or the card
-     404s in between.
-
-   Raised three rounds running, and it became a structural deadlock rather than
-   repeated caution: the board's Town Services section no longer links to this
-   file directly — it links to `newindex.html`, which holds the real
-   `href="Tools/Name%20Picker.html"`. Under the old boundary rules no single
-   prompt owned both halves, and both sides declined to cross the line. **Under
-   the ownership rule in `CLAUDE.md` that blocker is gone**: a single PR can now
-   do the rename and the link together. Not urgent; the current path still
-   resolves fine. See Q5.
-2. **The stale "twelve keys" comment in `np-store.js`.** Its header comment
-   says "All twelve"; the real count is thirteen, confirmed everywhere else.
-   One line, low urgency, still there.
-3. **The three levels / multiple rosters under real use.** `np_rosters` handles
-   it structurally; no browser suite has exercised more than one roster at a
-   time.
-4. **Mobile and accessibility re-verification.** Round 1 checked 375×812 and
-   `prefers-reduced-motion`; nothing has touched CSS or layout since, so
-   nothing here could have regressed, but a fresh check is due at some point on
-   general principle, not because anything points at a problem. Carried twice.
-5. **`leastPicked()`** — written and tested, still unused. Fair rotation makes
-   it mostly redundant and the Stats tab's own "Least Picked" sort covers the
-   same need, but it's a two-line wiring job if anyone wants a "who's due"
-   display.
-6. **The rotation-persistence question** — still needs an answer to "is a
-   reload the same period or the next one," not code. Nobody's asked yet. See
-   Q51.
-
-Deliberately not done, and worth knowing why:
-
-- **Nobody has reproduced the engine-mismatch crash in a Linux environment.**
-  Round 3's session only had Windows available. The fix is verified by
-  construction and by matching every other project's identical fix that round,
-  not by watching the crash happen and then not happen.
-- **`leastPicked()` stays unwired.** Fair rotation makes it mostly redundant;
-  the Stats tab's own "Least Picked" sort covers the same need. It is written
-  and tested, so wiring it is two lines whenever somebody wants the display.
-- **The rotation-persistence question stays a question.** Same call all three
-  rounds made: it needs an answer to "is a reload the same period or the next
-  one," not code, and nobody has asked a teacher yet.
-
-No open bugs, no failing checks, no student-data gap.
-
-## Seating Chart Generator
-
-`Tools/Seating Chart Generator.html`, `Tools/seating-chart/`.
-
-**Nothing outstanding from this project's own history.** Both items carried
-into round 3 (the puppeteer-core test bug, rotated desk labels) are done, and
-the Google Fonts item confirmed clean. This was the first refresh where this
-project's own next-session list was genuinely empty of prior carryover.
-
-1. **The print-all path's rotation fix has no automated assertion**, only a
-   manual browser check. The existing print-all test's fixture never rotates a
-   desk, and reworking it felt like more churn than the one-line fix (shared
-   with the already-covered live-floor path) warranted.
-2. If a future round adds a fifth layout preset or any other place a desk gets
-   rendered, remember **the counter-rotation lives in two places**
-   (`renderFloor()` and `buildSectionPrintHTML()`) — a new render path needs the
-   same one-liner or it'll reintroduce the sideways-name bug in just that path.
-
-Worth knowing rather than doing: the rotated-label fix does not touch desk
-geometry. The solver's neighbour math (`neighborMap`, centre-to-centre
-distance) was never actually coupled to a desk's rotated width/height — a
-desk's centre doesn't move when it rotates around itself — so there was no
-"swap width and height" project hiding under this after all.
-
 ## Orbital
 
 `Projects/orbital/`. Merged directly to `main` outside the normal process
@@ -1125,10 +945,10 @@ owns its own test folder even where it imports `harness.mjs`/`drive.mjs`
 read-only.
 
 Everything open against this folder is filed under the project that needs it:
-Castle Conundrum's preview promotion (rank 49), Aphelion's airlock beat (51),
-Golden Hour's preview recapture and debug-hook beats (82, 84), Blue Hour's
-`games.mjs` entry and preview recipe (87, 88), the ownership manifest (68),
-and Corner & Kettle joining `npm run games` (rank 47, its own Phase 9 —
+Castle Conundrum's preview promotion (rank 37), Aphelion's airlock beat (39),
+Golden Hour's preview recapture and debug-hook beats (68, 70), Blue Hour's
+`games.mjs` entry and preview recipe (73, 74), the ownership manifest (54),
+and Corner & Kettle joining `npm run games` (rank 36, its own Phase 9 —
 `play-games.mjs` still has no reference to `coffee_shop_sim` or
 `corner-and-kettle`, unchanged since round 1).
 
@@ -1232,9 +1052,6 @@ live. Nothing in that column is a link to follow.
 | Q1 | **Is `Pathfinder/data/**` a published interface other projects may read, or private to the Pathfinder pages?** 24 JSON files of PF2e rules data sit there. The Absalom Inheritance reads none of it and hand-writes three stat blocks and seven commands into `content/vault.json` instead; Torchbearer would build its own monster and treasure tables if the answer is private. Both considered depending on it and both correctly stopped rather than assume. `UPGRADE-PATHS.md` calls it the highest-leverage *decision* on the site. | **6** | prompt 01's block (the central tracker), prompts 10 and 11 raising it into that block, `Projects/torchbearer/WISHLIST.md`, `Projects/absalom-inheritance/WISHLIST.md`, `UPGRADE-PATHS.md` "Close behind", `gvb-site-handoff-v10.md` "Three things" and §11.4 |
 | Q2 | **Should the Serve button require full order completion, now that baristas — not the player — are the main path to a finished cup?** The gate is `cupMatchesEnough()` at line 1392: four lines, checking that a base exists and, if the recipe needs milk, that some milk is poured. Not the right milk, not the syrup, not the toppings, not the shot count. Measured on otherwise identical days: patient serving (waits for `orderIsComplete()`) 41 offered, 41 served, $309 net, 100% accuracy, reputation 50 → 66.4; eager serving (clicks the instant `disabled` comes off) 43/43, $77, 46%, reputation 50 → 19.2. Three answers are all real: tighten the gate to `orderIsComplete()`; keep it loose and put a cue on the button ("still missing: syrup, whip"); or leave it exactly as it is, because the accuracy and reputation hits already are the consequence. **The recommendation is the cue** — `serveSlot()` already prices partial credit deliberately (`earned = recipe.price * (0.35 + 0.65 * ratio)`), so serving a wrong cup for 35% of the price is a designed mechanic, not an oversight, and a hard gate would delete the one lever a player has when four customers are about to walk. What is broken is that the tradeoff is invisible at the moment of the click. | **4** | prompt 12's block, `Projects/corner-and-kettle/WISHLIST.md`, the round-3 refresh notes, `gvb-site-handoff-v10.md` §8 |
 | Q3 | **What should "Not interested" to Earl actually do?** Choosing it at `m1_player_response` sets `GS.rels.earl = 'absent'` and `GS.flags.earlResponse = 'not_interested'`, which removes exactly three optional evening cards: the FR1 contract reading, the FR3 renegotiation, the FR4 Vegas call. Milestones 2, 3 and 4 read neither value. `_chapter_m2` picks its entry scene from `stuntOutcome`/`hubEveningsUsed` only, and `showChapter`'s subtitles are fixed strings. Earl comes back, negotiates across three rounds, and `m2_sign` sets `rels.earl = 'backer'` again. Two shapes: **(A)** keep "Earl doesn't take no for an answer" and pay it off with acknowledgment beats at M2, M3 and M4, or **(B)** write a genuinely smaller, self-financed middle game. **The recommendation is B, scoped to Milestone 2 and threaded through 3 and 4** — the FR2 debt scene, the four `debtSource` answers and the Sandra press thread are already the raw material, and A leaves a six-way choice with one cosmetic arm. Called "the single biggest open item on the site" by three separate sources. | **5** | prompt 13's block, `Projects/daredevil/WISHLIST.md` Phase 1, `gvb-site-handoff-v10.md` "Three things" and §11.1, the round-3 refresh notes, prompt 22's notes |
-| Q4 | **Does any real report card, at any point in this tool's history, need a second look?** The round-3 fix corrected a bug live since the dual-method calculation first went live — not one round, as round 2 assumed. Any student whose quality-points average landed on an `x.75` value and whose QP method was the one reported got a letter one grade too high, for as long as the tool has existed. Devon confirmed the rule ("a student should only get a letter grade if they earn the FULL quality point... it is rare... but does happen in edge cases") but not whether any specific report card needs revisiting. If this tool graded anything real, that's the same kind of call round 1's percentage fix needed: check old report cards, note it somewhere, or say nothing needs checking. | **5** | prompt 16's block, `gvb-site-handoff-v9.md` "Three things" (the narrower version), `gvb-site-handoff-v10.md` "Three things" and §11.2, the round-3 refresh notes, prompt 22's notes |
-| Q5 | **Should the `Tools/Name Picker.html` → `name-picker.html` rename be authorized?** Three rounds running, and it became a structural deadlock rather than repeated caution: the board's Town Services section links to `newindex.html`, which holds the real `href="Tools/Name%20Picker.html"`, so the same-commit change a rename needs is one line in `newindex.html` plus the file rename itself — and under the old boundary rules no single prompt owned both halves. Both sides declined to cross the line twice each. **The ownership rule in `CLAUDE.md` removes the blocker**, so the question is now only whether the rename is wanted at all, or whether "leave it forever" is the actual answer so it stops recurring. | **6** | prompts 18 and 22 carrying the same question from both sides, `gvb-site-handoff-v10.md` §9 and §11.6, prompt 18's notes, prompt 22's notes |
-| Q6 | **How should storage quota be handled for `gvb-save.js` adoption in the Schedule Visualizer?** Open three rounds; the answer has been "skip adoption" each time. Measured: 23 `localStorage` call sites remain in `app/` (13 `getItem`, 8 `setItem`, 2 `removeItem`) across seven key families plus five snapshot slots. **Every snapshot is a whole project** — `saveSnapshot` stores `serializeFullProject()`, blueprint included, so a browser with all five slots used holds six copies of the blueprint. **The save paths disagree about what a full disk means**: `saveSnapshot` is the only one that tells the user; `saveSchedules`, `saveVizPrefs` and `saveBlueprintToLocalStorage` `console.warn` and say nothing on screen — and the blueprint one leaves the autosave indicator stuck reading "Saving…", because `updateSaveIndicator()` is inside the `try`; `saveWhatIf` swallows it; **`saveSettings` and `saveLastSavedTime` have no `try`/`catch` at all** (`data-model.js:289` and `:308`) and throw out of their caller. So: (a) one slot holding the whole project — which collides with locked decision #36, since seven keys would become one — or seven slots, which needs `createSaveSlot` to grow a namespace and a shared budget? (b) When the disk is full, which write loses: the newest snapshot, the oldest, or the What-If sandbox? (c) Is IndexedDB spillover for the blueprint acceptable, when nothing else on the site uses it? | **4** | prompt 19's block, `Tools/schedule/WISHLIST.md` Phase 4, the round-3 refresh notes, `gvb-site-handoff-v10.md` §8 |
 
 ### Bell to Bell
 
@@ -1295,12 +1112,6 @@ live. Nothing in that column is a link to follow.
 | Q35 | **Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`. `site.json` and `quick-reference.md` both link `http://`; batch 1 asked and could not verify from its sandbox either. | 2 | wishlist, audit D4 |
 | Q36 | **Is a character builder welcome?** The footer says "Unofficial player reference", `expressions.md` sends players to NuminaRules@gmail.com to confirm a third-Expression build, and Excellency and Expression purchases "must be unlocked in-game". A builder that prices a legal-looking character staff would reject is worse than none. Phase 3 assumes yes with loud caveats; say so before it is built if that is wrong. | 1 | wishlist |
 
-### Schedule Visualizer
-
-| # | Question | Raised | Where |
-| --- | --- | --- | --- |
-| Q37 | **Is there a copy of the real East Middle project file anywhere?** Three rounds have been unable to regenerate `Tools/schedule-browser.html` end to end because the real blueprint lives in whoever's browser last built it. Phase 3 works around it with no data at all, but a real project export would retire the caveat outright. | 3 | `Tools/schedule/WISHLIST.md`, prompt 19, the project's notes |
-
 ### The projects with no wishlist
 
 | # | Question | Raised | Where |
@@ -1317,8 +1128,6 @@ live. Nothing in that column is a link to follow.
 | Q47 | **Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?** The tooltip already explains the cheap recipe. A design question, not a bug. | 2 | prompt 14, the project's notes |
 | Q48 | **Do Integer Foundry's two model gaps get built despite the coupling argument?** Two rounds have looked hard and declined; the third added a real argument for why they are one piece of work, not two. This is the one thing that would pull the project back off the shelf. | 2 | prompt 14, the project's notes |
 | Q49 | **Does The Fracture Cycle get a 4th prong or deeper side content?** Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
-| Q50 | **Are Image to PDF's two environment-blocked checks blockers, or accepted-permanently-open?** The EXIF verification and the mobile screenshot are verified-by-reasoning-only across three straight sessions for the same environmental reason. The code has held up every other way it's been tested. | 3 | prompt 17, and its notes across three rounds |
-| Q51 | **Name Picker's rotation persistence: is a reload the same period or the next one?** Not code. Nobody has asked a teacher yet. | 3 | prompt 18, and its notes across three rounds |
 | Q52 | **Does Orbital adopt `gvb-save.js` for save-bar UI consistency?** Not needed for correctness — round 1 proved the existing migration round-trips clean. Purely a question of whether UI consistency with the other eleven adopters is wanted. | 2 | prompt 21, the project's notes |
 
 ### Answered, kept here so they are not re-asked
@@ -1336,9 +1145,6 @@ live. Nothing in that column is a link to follow.
   Devon, 2026-08-03: **yes**, matching the precedent already set.
 - **Should The Fourth Quarter's night loop have a day-based difficulty curve?**
   Answered: **spoilage**, built in round 3. Rent already scaled with venue tier.
-- **Are the 3.5/2.5/1.5/0.5 quality-point thresholds right?** Answered: **no** —
-  they were not even the right *shape*. The correct thresholds are whole
-  numbers, 4/3/2/1/0.
 - **Should Hearth join the board's regression suite?** (was Q14) Answered by
   Hearth Phase 8, locked decision #84: **no.** `npm run games` is a headed
   desk run and an entry there would be a shallower copy of the harness's
@@ -1352,10 +1158,6 @@ live. Nothing in that column is a link to follow.
   Hearth Phase 7, locked decision #82: **kept, and named.** The cap counts
   beds and a boat has to find one; a baby is born into its parents' house. The
   one is `BIRTH_OVER` in `Projects/hearth/js/core.js` with the reason beside it.
-- **Should the committed schedule data stay?** Answered: **leave it as is.** No
-  student names, so no FERPA issue; the school-security question (34 real staff
-  surnames, rooms, and — combined with the floor plan — every teacher's
-  planning-period block, at a public URL) was decided directly: change nothing.
 
 ---
 
@@ -1384,11 +1186,6 @@ the same commit as the project change, and call it out in the PR body.
 | Daredevil | `Projects/daredevil/` (`Projects/daredevil_r4.html` is a redirect stub) | the four shared |
 | Integer Foundry | `Projects/integer-foundry.html`, `Projects/integer-foundry/` | the four shared |
 | The Fracture Cycle | `Projects/the-fracture-cycle.html`, `Projects/the-fracture-cycle/` | the four shared |
-| Final Grade Checker | `Tools/final_grade_checker.html`, `Tools/final-grade-checker/` | the four shared |
-| Image to PDF | `Tools/image-to-pdf.html`, `Tools/image-to-pdf/` | the four shared |
-| Name Picker | `Tools/Name Picker.html`, `Tools/name-picker/` | the four shared, plus `newindex.html`'s link to it |
-| Schedule Visualizer | `Tools/schedule-visualizer.html`, `Tools/schedule-browser.html` (old dated paths survive as redirect stubs), `Tools/schedule/` | the four shared |
-| Seating Chart Generator | `Tools/Seating Chart Generator.html`, `Tools/seating-chart/` | the four shared |
 | Orbital | `Projects/orbital/` | the four shared |
 | Blue Hour | `Projects/blue-hour-trail/` | the four shared |
 | Hearth | `Projects/hearth/`, `.github/workflows/hearth-ci.yml` | the four shared |
@@ -1399,9 +1196,8 @@ the same commit as the project change, and call it out in the PR body.
 
 **A project owns its own test suite**, including a browser-driven one that
 imports `Tools/board-check/harness.mjs`/`drive.mjs` read-only —
-`Projects/fourth-quarter/test/`, `Tools/name-picker/test/browser.mjs`,
-`Tools/seating-chart/test/drive-seating.mjs`,
-`Projects/integer-foundry/test/browser.mjs` and others. Those are per-project
+`Projects/fourth-quarter/test/`, `Projects/integer-foundry/test/browser.mjs`
+and others. Those are per-project
 files even though they drive a browser the same way the shared tooling does.
 
 **`Numina/test/smoke.mjs:180` enumerates Numina's allowed top-level files.**
@@ -1415,52 +1211,37 @@ generated set — and nothing else. **Do not add a new top-level file under
 
 ## Where the sources disagree
 
-Eight places two sources rank the same work differently. The table follows
+Six places two sources rank the same work differently. The table follows
 `UPGRADE-PATHS.md`, as the newest, in every case. As above, the files named
 here were deleted in this consolidation and survive only in git history.
 
-Every rank quoted below and in the `Tools/board-check` paragraph above was
-recomputed from the rows themselves when Torchbearer Phase 1 came off the table
-(126 rows), and most of them had drifted again — Daredevil's Phase 1 was quoted
-at 36 and is 32, the Schedule Visualizer's storage answer at 55 and is 51, Faire
-Weekend's review at 32 and is 28. That is the third recompute in six rounds, and
-the drift is not a shifted table: it is prose written against rows nobody
-re-derived. Ranks quoted in prose are a maintenance cost this file keeps paying;
-check one against its row before trusting it. Every one of them was checked
-against its row again when Torchbearer Phase 8 came off the table (119 rows) and
-shifted by one: Daredevil's Phase 1 was 25 then, the storage answer 44, Faire
-Weekend's review 21. **They have shifted five times since and the eight entries
-below were not rewritten**, so read every rank in them as historical: at 112
-rows Daredevil's Phase 1 is 18, the storage answer 37 and Faire Weekend's review
-14. The two cross-references above this list are the ones kept current, and the
-`Tools/board-check` paragraph's six were recomputed from the rows this round —
-four of them had drifted by seven or more, which is the same maintenance cost
-this paragraph has been describing since it was written.
+**Every rank below was recomputed against its row when the tools were archived
+and the table renumbered to 85 rows (2026-09-08).** That is the fourth recompute
+in seven rounds, and each one has found the same thing: prose written against
+rows nobody re-derived. Before this pass Daredevil's Phase 1 was quoted at 14
+and is 12, Faire Weekend's review at 11 and is 8, Castle Conundrum's preview
+promotion at 49 and is 37, and item 6's pair at 80 and 89 pointed at the touch
+playtest and the phantom's pan rather than at the two real-GPU runs they
+describe, which are 67 and 75. Ranks quoted in prose are a maintenance cost
+this file keeps paying; check one against its row before trusting it.
 
 1. **Daredevil.** `UPGRADE-PATHS.md` ranks the project 7 of 10, so its Phase 1
-   sits at rank 14. `gvb-site-handoff-v10.md` §11, the round-3 refresh notes
+   sits at rank 12. `gvb-site-handoff-v10.md` §11, the round-3 refresh notes
    and prompt 22's notes all rank the Earl decision **#1 on the site**. It is
    also blocked on Devon (Q3), which is the argument for not opening with it.
 2. **Bell to Bell's own next ticket.** Settled. The wishlist opened with the
    save-slot architecture (rank 1 at the time, shipped as PR #104) while
    `docs/HANDOFF.md` said the next ticket was **T8, whisper audio**. Both have
    shipped: T8 landed in Phase 7, directional, panned and occlusion-attenuated.
-3. **Final Grade Checker.** `UPGRADE-PATHS.md` "Close behind" calls it "worth
-   doing; not major"; `gvb-site-handoff-v10.md` §11 ranks its report-card
-   question **#2 site-wide**. Ranked here at 48 and 63.
-4. **`Pathfinder/data/`.** `UPGRADE-PATHS.md` calls it "the highest-leverage
+3. **`Pathfinder/data/`.** `UPGRADE-PATHS.md` calls it "the highest-leverage
    *decision* on the site" and then files it unphased under "Close behind";
-   v10 §11 ranks it #4. Ranked here at 50.
-5. **The Schedule Visualizer's quota question.** Its wishlist makes it Phase 4
-   (rank 33); prompt 19 and the project's own round-3 notes both rank it **#1**
-   — "the largest remaining item and the only one that cannot start without
-   Devon."
-6. **Castle Conundrum.** `UPGRADE-PATHS.md` says the piece "is finished as
+   v10 §11 ranks it #4. Ranked here at 38.
+4. **Castle Conundrum.** `UPGRADE-PATHS.md` says the piece "is finished as
    designed" and ranks nothing; v10 §11 ranks its preview promotion **#3
-   site-wide**. Ranked here at 49.
-7. **Faire Weekend's layout and density review.** Prompt 09 and the project's
+   site-wide**. Ranked here at 37.
+5. **Faire Weekend's layout and density review.** Prompt 09 and the project's
    notes call it "the headline item now", owed four rounds running; the
-   wishlist puts it at Phase 5 (rank 11), behind guest agents.
-8. **Golden Hour and Blue Hour.** `UPGRADE-PATHS.md` says both are "blocked
+   wishlist puts it at Phase 5 (rank 8), behind guest agents.
+6. **Golden Hour and Blue Hour.** `UPGRADE-PATHS.md` says both are "blocked
    first" on a real-GPU run; each project's own next-session list ranks that
-   #2 and #3 respectively. Ranked here at 80 and 89.
+   #2 and #3 respectively. Ranked here at 67 and 75.
