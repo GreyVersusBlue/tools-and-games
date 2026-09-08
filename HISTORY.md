@@ -3704,7 +3704,7 @@ interaction at the bar. None of it is built. A regular who shows tonight is
 currently a body in the crowd multiplier and a name in the box score, not
 somebody you can walk up to. Sized 2+; this is increment 1 of 2.
 
-**Phase 7, increment 2 — A regular is a person on the floor (PR #TBD).**
+**Phase 7, increment 2 — A regular is a person on the floor (PR #185).**
 The half the 2D build cannot do, and the half the port exists for. A regular
 who is in tonight comes through the door as a body: `NightEngine` takes
 `regulars`, queues the i-th name at hour `1 + i % 3`, and seats them through
