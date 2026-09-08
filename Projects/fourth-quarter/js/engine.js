@@ -27,6 +27,15 @@ export const REGULAR_HOURS = [1, 2, 3];
 // smoke-regulars.mjs holds the two equal.
 export const HOME_TEAM = "FVM";
 export const SNUB_MOOD = 0.02;   // a regular finds their usual 86'd: the room hears about it
+// The night's moments (events.js) fire at hour boundaries in this range,
+// inclusive: never as the doors open, never in last call's hour. The same
+// pair as events.js's EVENT_HOURS; smoke-events.mjs holds the two equal.
+export const EVENT_HOURS = [1, 6];
+// A dead screen on a game night thins the walk-ins and the next round to
+// 70%; dead sound to 85%. The 2D build only docked mood — "fewer folks stick
+// around" was a line, not a number. Here it is a number.
+export const TV_BROKEN_DRAW = 0.7;
+export const SOUND_BROKEN_DRAW = 0.85;
 
 export function hourName(h) {
   const hh = 17 + h;
@@ -74,6 +83,14 @@ export class NightEngine {
    *                 through the door as a spawn of its own during hours 1-3,
    *                 counted in `inBar` and `arrivals` like anyone else, so the
    *                 seat cap and the crowd number keep agreeing with the room.
+   *  moments      — the night's event cards (events.js), handed in as three
+   *                 things so this file stays import-free: `budget` (how many
+   *                 may fire tonight), `view()` (the books' half of the card
+   *                 view: rep, buzz, the roster, the season), and `roll(view)`
+   *                 (the picker: null or a card). The engine asks at every
+   *                 hour boundary in EVENT_HOURS with no moment pending, keeps
+   *                 the pending one, resolves it, and spends its effects. Omit
+   *                 for a night with no moments in it.
    */
   constructor(opts = {}) {
     // `?? default` is not enough for the numbers: it only catches null and
@@ -123,6 +140,22 @@ export class NightEngine {
     this.regularsSeated = [];      // ids, in the order they came through the door
     this.snubbed = new Set();      // ids whose usual was gone when they ordered
     this.comped = new Set();       // ids whose first round the boss comped
+    // The night's moments (Phase 8). One pending at a time; the sim runs on
+    // underneath it. Effects land here as they resolve — cash into the take,
+    // mood and stock onto the floor now — and the rest is carried to the
+    // books as a record: rep, buzz, loyalty and staff move at settlement,
+    // never here, because campaign.js owns those numbers (#213).
+    const mo = opts.moments && typeof opts.moments === "object" ? opts.moments : null;
+    this.momentBudget = mo ? Math.max(0, Math.floor(fin(mo.budget, 0))) : 0;
+    this.momentView = mo && typeof mo.view === "function" ? mo.view : () => ({});
+    this.momentRoll = mo && typeof mo.roll === "function" ? mo.roll : () => null;
+    this.moment = null;            // { event, openedAt, hour } while one waits on the boss
+    this.moments = [];             // resolved tonight: { id, choice, auto, hour }
+    this.flags = { tapBroken: false, tvBroken: false, soundBroken: false };
+    this.eventNet = 0;             // signed dollars the moments moved, in the take
+    this.eventRep = 0; this.eventBuzz = 0; this.eventLoyalty = {};
+    this.staffChanges = [];        // { name, wage } raises and { name, quit: true } walkouts, for the books
+    this.wager = 0;                // dollars on the Mules tonight; settled at the final
   }
 
   logLine(txt, cls) { this.log.push({ t: this.t, hour: Math.min(7, this.hour), txt, cls }); return { type: "log", txt, cls }; }
@@ -138,6 +171,9 @@ export class NightEngine {
     if (this.hour !== prevHour) {
       if (this.hour >= 8) {
         this.done = true;
+        // an unanswered moment does not hold the doors: it goes the way the
+        // first option goes, and the record says nobody chose it
+        if (this.moment) ev.push(...this.resolveMoment(0, true));
         ev.push({ type: "lastCall" }, this.logLine("Last call. Lights up, tabs out.", "hl"));
         return ev;
       }
@@ -164,6 +200,20 @@ export class NightEngine {
           this.logLine(this.game.win
             ? "FINAL: Mules win! The room ERUPTS."
             : "FINAL: Mules drop it. Tabs close early tonight.", this.game.win ? "g" : "b"));
+        if (this.wager > 0) {
+          this.eventNet += this.game.win ? this.wager : -this.wager;
+          ev.push(this.logLine(this.game.win
+            ? `Vic pays up. $${this.wager} out from under the register, and the story is yours.`
+            : `Vic collects. $${this.wager} walks out the door in Sharks teal.`, this.game.win ? "g" : "b"));
+        }
+      }
+      // the hour's moment, once the last one is answered: every hour between
+      // the last update and this one gets its roll, so a warped clock does
+      // not skip the hours it passed — but only one card can wait at a time
+      for (let h = prevHour + 1; h <= this.hour && !this.moment; h++) {
+        if (h < EVENT_HOURS[0] || h > EVENT_HOURS[1]) continue;
+        const card = this.momentRoll(this.view(h));
+        if (card) ev.push(...this.openMoment(card));
       }
     }
 
@@ -179,7 +229,7 @@ export class NightEngine {
         ev.push({ type: "spawn", mulesFan: r.team === HOME_TEAM, regular: r });
       }
       const perSec = (this.crowdTarget * HOUR_W[this.hour]) / this.hourLenSec;
-      this.spawnDebt += perSec * dt * (0.85 + rnd() * 0.3);
+      this.spawnDebt += perSec * dt * (0.85 + rnd() * 0.3) * this.drawMult();
       while (this.spawnDebt >= 1) {
         this.spawnDebt -= 1;
         if (this.inBar < this.seats) {
@@ -205,7 +255,87 @@ export class NightEngine {
 
   inStock(itemId) {
     if (MENU[itemId].kind === "food" && this.foodMult <= 0) return false; // no cook = kitchen's closed
+    if (itemId === "beer" && this.flags.tapBroken) return false;          // the line to the kegs is dead
     return !this.stock || (this.stock[itemId] || 0) > 0;
+  }
+
+  // ---------- the night's moments (Phase 8) ----------
+  /** How the night's flags thin the room. A dead screen on a game night
+   *  loses the walk-ins who came for it; dead sound costs less. Read by the
+   *  arrival stream and by roundChance(). */
+  drawMult() {
+    let m = 1;
+    if (this.flags.tvBroken && this.gameNight) m *= TV_BROKEN_DRAW;
+    if (this.flags.soundBroken) m *= SOUND_BROKEN_DRAW;
+    return m;
+  }
+  /** The chance a patron who just finished orders another round — the
+   *  floor's number, kept here so the night's flags reach it. */
+  roundChance() {
+    return (this.gameNight && !this.game.finished ? 0.72 : 0.45) * this.drawMult();
+  }
+  /** The card view, live: the books' half from the caller, the floor's half
+   *  from here. `hour` may be given for a roll at a boundary the clock
+   *  jumped over. */
+  view(hour = this.hour) {
+    return {
+      ...this.momentView(),
+      hour, crowd: this.inBar, crowdTarget: this.crowdTarget, mood: this.mood,
+      stock: this.stock || {}, gameNight: this.gameNight, gameDone: this.game.finished,
+      flags: { ...this.flags }, wager: this.wager,
+      fired: this.moments.map(m => m.id).concat(this.moment ? [this.moment.event.id] : []),
+      budget: this.momentBudget,
+    };
+  }
+  /** A card fires: it waits on the floor until the boss answers it or the
+   *  night ends. One at a time; a second card while one waits is refused. */
+  openMoment(card) {
+    if (this.moment || !card || !card.id || !Array.isArray(card.choices) || !card.choices.length) return [];
+    this.moment = { event: card, openedAt: this.t, hour: this.hour };
+    return [{ type: "moment", event: card }, this.logLine(`⚠ ${card.title}!`, "ev")];
+  }
+  /** The boss answers. `idx` off the table is the first option — which is
+   *  also what last call does, with `auto` set so the record says so. The
+   *  choice's effects apply here, once; the returned events carry the
+   *  choice's line and whatever the floor has to act on. Returns [] when
+   *  nothing was waiting. */
+  resolveMoment(idx, auto = false) {
+    const m = this.moment;
+    if (!m) return [];
+    this.moment = null;
+    const card = m.event;
+    const i = Number.isInteger(idx) && idx >= 0 && idx < card.choices.length ? idx : 0;
+    const out = card.choices[i].resolve(this.view(), rnd) || {};
+    const fx = Array.isArray(out.fx) ? out.fx : [];
+    this.moments.push({ id: card.id, choice: i, auto: !!auto, hour: Math.min(7, this.hour), fx });
+    const ev = [{ type: "momentClosed", event: card, choice: i, auto: !!auto }];
+    if (out.line) ev.push(this.logLine(out.line, out.cls || "hl"));
+    ev.push(...this.applyEffects(fx));
+    return ev;
+  }
+  /** Spend a list of effects (events.js's EFFECT_KINDS). What the floor has
+   *  to see — bodies leaving, a staffer walking — comes back as events;
+   *  what the books settle is accumulated for summary(). */
+  applyEffects(fx) {
+    const ev = [];
+    for (const f of fx || []) {
+      if (!f || typeof f !== "object") continue;
+      if (Number.isFinite(f.cash)) this.eventNet += f.cash;
+      if (Number.isFinite(f.mood)) this.mood = clamp(this.mood + f.mood);
+      if (Number.isFinite(f.crowd) && f.crowd < 0) { const n = Math.min(this.inBar, Math.round(-f.crowd)); if (n > 0) ev.push({ type: "clearOut", n }); }
+      if (Number.isFinite(f.crowdPct) && f.crowdPct < 0) { const n = Math.min(this.inBar, Math.round(this.inBar * -f.crowdPct)); if (n > 0) ev.push({ type: "clearOut", n }); }
+      if (f.stock && typeof f.stock === "object" && this.stock) {
+        for (const id in f.stock) if (id in MENU && Number.isFinite(f.stock[id])) this.stock[id] = Math.max(0, (this.stock[id] || 0) + f.stock[id]);
+      }
+      if (Number.isFinite(f.rep)) this.eventRep += f.rep;
+      if (Number.isFinite(f.buzz)) this.eventBuzz += f.buzz;
+      if (Number.isFinite(f.loyalty) && Array.isArray(f.who)) for (const id of f.who) this.eventLoyalty[id] = (this.eventLoyalty[id] || 0) + f.loyalty;
+      if (typeof f.flag === "string" && f.flag in this.flags) this.flags[f.flag] = true;
+      if (f.staff && typeof f.staff === "object" && typeof f.staff.name === "string" && Number.isFinite(f.staff.wage)) this.staffChanges.push({ name: f.staff.name, wage: f.staff.wage });
+      if (typeof f.staffQuit === "string") { this.staffChanges.push({ name: f.staffQuit, quit: true }); ev.push({ type: "staffQuits", name: f.staffQuit }); }
+      if (Number.isFinite(f.wager) && f.wager > 0) this.wager += f.wager;
+    }
+    return ev;
   }
 
   /** Tonight's shelf price for an item, given the promo and current hour. */
@@ -358,7 +488,15 @@ export class NightEngine {
       regularsSeated: this.regularsSeated.slice(), snubbed: [...this.snubbed], comped: [...this.comped],
       serviceRate: totalSeen ? Math.round(100 * this.served / (this.served + this.walkouts)) : 100,
       mood: this.mood, game: this.game,
-      total: Math.round(this.revenue + this.tips),
+      // the night's moments: what they moved in the till tonight (already in
+      // `total`) and what the books move at settlement
+      moments: {
+        net: Math.round(this.eventNet), rep: this.eventRep, buzz: this.eventBuzz,
+        loyalty: { ...this.eventLoyalty }, staff: this.staffChanges.map(x => ({ ...x })),
+        flags: { ...this.flags }, wager: this.wager,
+        resolved: this.moments.map(m => ({ id: m.id, choice: m.choice, auto: m.auto, hour: m.hour })),
+      },
+      total: Math.round(this.revenue + this.tips + this.eventNet),
     };
   }
 }
