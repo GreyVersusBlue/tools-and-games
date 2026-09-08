@@ -88,6 +88,10 @@ export class NightEngine {
     this.mood = 0.7;            // 0..1 room mood
     this.revenue = 0; this.tips = 0;
     this.served = 0; this.walkouts = 0; this.bossServes = 0; this.crafted = 0;
+    // bodies through the door tonight, counted at the spawn rather than derived:
+    // `served` counts orders and `walkouts` counts people, so their sum is not a
+    // headcount. campaign.js's regular-minting gate reads this one.
+    this.arrivals = 0;
     this.inBar = 0;             // agents currently seated/entering (3D layer maintains)
     this.spawnDebt = 0;         // fractional arrivals accumulator
     this.tickets = [];          // {id, patronId, itemId, kind, placedAt, readyAt, state:'prep'|'ready'|'carried'|'done'|'dead', claimedBy}
@@ -139,7 +143,7 @@ export class NightEngine {
       while (this.spawnDebt >= 1) {
         this.spawnDebt -= 1;
         if (this.inBar < this.seats) {
-          this.inBar++;
+          this.inBar++; this.arrivals++;
           ev.push({ type: "spawn", mulesFan: this.gameNight && rnd() < 0.55 });
         } // full room: they see the line out the door and keep walking — no event
       }
@@ -275,6 +279,7 @@ export class NightEngine {
     return {
       revenue: Math.round(this.revenue), tips: Math.round(this.tips * 100) / 100,
       served: this.served, walkouts: this.walkouts, bossServes: this.bossServes, crafted: this.crafted,
+      arrivals: this.arrivals,
       serviceRate: totalSeen ? Math.round(100 * this.served / (this.served + this.walkouts)) : 100,
       mood: this.mood, game: this.game,
       total: Math.round(this.revenue + this.tips),

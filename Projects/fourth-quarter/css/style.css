@@ -131,7 +131,7 @@ tr.us td{color:var(--amber);font-weight:bold} /* the Mules' row in the corkboard
 .row{display:flex;justify-content:space-between;padding:4px 0;
   border-bottom:1px dotted #2b2115;font-size:14px}
 .row.bad{color:var(--red);border-bottom:none;font-size:13px}
-#hCash.hurt{color:var(--red)}
+#hCash.hurt,#hRep.hurt{color:var(--red)}
 .card button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);
   font-size:13px;margin-top:8px}
 .card button.ghost:hover{color:var(--amber);border-color:var(--amber)}

@@ -2439,6 +2439,70 @@ Two of them have moved since they were written:
    table is one object to retune. The 2D build's League Pass, which gated
    other teams' games, was not ported. *Source: Fourth Quarter Phase 6.*
 
+206. **Who is in the bar tonight is arithmetic, not a stored roll.** The 2D
+   build rolls `regularShows()` once at the top of the night and keeps the
+   answer on the night object. `regulars.js` does not store it at all:
+   `dayRoll(id, day)` is one mulberry32 step off an FNV hash of the regular's
+   id XORed with the day, so the same person on the same day gives the same
+   number forever, from nothing on disk. The corkboard's forecast, the number
+   the door opens on, the morning's "good for tonight" line and the loyalty
+   drift at settlement therefore cannot disagree about who came in, and the
+   whole class of reroll bug — asked twice, answered differently — is not
+   reachable, because there is nothing to reroll. This is #203's reasoning
+   (the calendar is the schedule) applied to nine people instead of eight
+   teams, and it is why `regularsIn()` is safe to call from a render path.
+   *Source: Fourth Quarter Phase 7.*
+
+207. **Reputation opens at 50, because 50 is the identity.** `repMult()` is
+   `0.6 + rep/125`: 0.60x at 0, exactly 1.00x at 50, 1.40x at 100. The 2D
+   build starts a campaign at 35 and therefore ships a 0.88x opening night;
+   this build does not, and a save written before this phase forecasts the
+   number it forecast before it, to the person. The same rule covers the
+   other two new multipliers: nobody has regulars on day one, and the End
+   Zone's opening buzz of 45 sits under 50 so it drags nothing. A phase that
+   adds a lever must not silently retune the game it is added to.
+   The one exception is deliberate and is the point of the number:
+   `applicantSkillCap()` is 2 at reputation 0, 4 at the starting 50 and 5
+   from 75 up, so the flat 1-5 applicant roll every campaign used to get is
+   now what a well-run bar gets. Reputation has to buy something, and the 2D
+   build sells it for who walks in looking for work.
+   *Source: Fourth Quarter Phase 7.*
+
+208. **The rival is a pressure, not a screen, and the drag has a floor.** The
+   End Zone gets no panel, no tab and no page: it is one multiplier on the
+   forecast (`1 - clamp((buzz - rep) * 0.003, 0, 0.15)`) and one line in the
+   morning ticker about what they did last night. The bound matters as much
+   as the mechanic. Reputation bottoms out at 0.60x and the rival's drag at
+   0.85x, so the worst campaign the arithmetic can produce still draws 51% of
+   its base crowd: a bad streak costs you the room, never the game. Buzz
+   itself is clamped to 10-95 on the way in and on the way out of
+   `driftBuzz()`, and Vic scraps back off the floor (+1 under 35) while hype
+   that hot cools (-1 over 80), so neither side of the street can run away
+   with it. *Source: Fourth Quarter Phase 7.*
+
+209. **A regular at zero is remembered, not replaced.** Loyalty moves once a
+   night and in one place: `settleSocial()`. A regular who came in and found
+   their usual 86'd loses 8, and loses it once, because the 86 is a `Set` of
+   ids built from exactly the people who showed — a regular who stayed home
+   cannot be 86'd by a bare shelf. At zero they leave the roster and stop
+   showing, and the door keeps their name, their usual and their team for six
+   names. A great, busy night mints a regular, and half the time it is one of
+   those six walking back in as themselves rather than a stranger with the
+   same job. "Can be re-earned" means the same person; a replacement is not a
+   reconciliation. *Source: Fourth Quarter Phase 7.*
+
+210. **A dark night is not a night anyone saw.** Moving in used to cost
+   money and stock and nothing else. It now costs standing: no reputation
+   moves either way (nobody was there to form an opinion, and the alternative
+   — running the drift on a service rate of 1 — *raised* it for closing the
+   doors), every regular takes 6, the stay-home 1 plus 5 for the closed
+   doors, nothing can be minted, and the End Zone gets a free +1 before its
+   own drift. Two dark nights into the flagship take a shaky 20-loyalty
+   regular to 8. The 2D build charges the whole move at once (10 + 8 per
+   night); charging it per night makes a one-night move genuinely cheaper
+   than a two-night one, which is the shape the ladder already has.
+   *Source: Fourth Quarter Phase 7.*
+
 ---
 
 # The site sessions, 1–10
@@ -3262,7 +3326,7 @@ file did the same for the one seed it touched. Save: none.
 
 ---
 
-# The Fourth Quarter, Phases 1 through 6
+# The Fourth Quarter, Phases 1 through 7
 
 **Phase 1 — The room is a description.** `js/layout.js`, pure, zero imports:
 one description per venue tier (all four the Corner Tap until Phase 2), and
@@ -3494,6 +3558,82 @@ by a `TypeError` in `records()` rather than an assertion; the suite exits 1
 and the stack names the line. *Left:* the economy does not move with the
 season, League Pass, and a tie-break beyond wins-losses-id, all in the
 standing backlog. Sized 2+, closed in one session because every bullet was.
+
+**Phase 7, increment 1 — The books remember you (PR #TBD).** Nobody who
+walked in had ever been here before, and no night you ran left a mark on the
+next one. `js/regulars.js` (251, pure, imports `engine.js` and `league.js`
+only) is the 2D build's regulars and its rival bar, ported: a named person
+with a usual off the menu, a MAFA team, a loyalty number and a visit count;
+your reputation as one number 0-100; and The End Zone across town as a buzz
+number 10-95 that drifts against it. `campaign.js` owns the three fields and
+asks `regulars.js` the questions — `regularsIn()`, `regularCap()`,
+`rivalLine()` — and `settleSocial()` is the one place any of them moves for a
+night.
+
+**Who is in tonight is not stored** (#206). `dayRoll(id, day)` is one
+mulberry32 step off a hash of the regular's id and the day, so the corkboard's
+forecast, the crowd the door opens on, the morning's "good for tonight" line
+and the settlement's loyalty drift all get the same list without a field to go
+stale. **The forecast does not move on a day-one campaign** (#207): `repMult`
+is exactly 1.00 at the starting reputation of 50, nobody has regulars, and the
+End Zone opens at 45 under your 50, so a save written before this phase
+forecasts the same number to the person. The one thing that does change on day
+one is who applies for work — `applicantSkillCap()` is 4 at 50, where the flat
+roll used to be 5 — and that is what reputation is for. **The rival gets no
+panel** (#208): one multiplier, floored at 0.85x, and one line in the morning
+ticker; with reputation floored at 0.60x the worst campaign the arithmetic
+allows still draws 51% of its base. **A regular at zero is remembered** (#209)
+for six names, and half the time a great, busy night wins one of them back as
+themselves. **A dark night is not a night anyone saw** (#210): no reputation
+either way, 6 off every regular, nothing minted, a free +1 for Vic.
+
+On screen: reputation in the score bug beside cash, a Regulars table on the
+corkboard next to the standings (name, usual, team, loyalty, who is in
+tonight), two rows in the Tonight panel, a "The Room's People" section in the
+box score naming who came in, who was 86'd, who left and who was earned, and
+dev-menu buttons for reputation, buzz and minting a regular.
+
+*Counts:* `test/smoke-regulars.mjs` is new (89), `smoke-engine.mjs` 194 → 196
+(`summary().arrivals`, a real headcount — served counts orders and walkouts
+counts people, so their sum never was one), Node total 1,026 → 1,117;
+`tools/browser-check.mjs` 162 → 178, and it now runs a second night with three
+regulars on the floor and one of their usuals 86'd before last call.
+
+*Broken on purpose (#34), twenty-seven in Node and six in the browser, each
+caught by the assertion whose comment claims it:* the day coin replaced with
+`Math.random()`, `showChance` unbounded, reputation opened at the 2D build's
+35, `repMult` off the identity, the rival's drag unbounded, loyalty and buzz
+unclamped after a drift, the 86 charged to everyone rather than who came in,
+the 86 charged twice, nobody pruned at zero, the door forgetting who left, a
+minted regular always a stranger, the door remembering forever, `repDrift`
+unclamped, the regulars' cushion removed, the applicant cap removed, a dark
+night moving reputation, a dark night costing a regular nothing extra, repair
+not clamping a loaded loyalty or buzz, repair keeping a zero-loyalty regular,
+the over-cap trim removed, the engine not counting a body through the door,
+the namer not skipping taken names, a repaired duplicate id kept, and the 86
+checked after the walk-in rots; in the browser, the score bug, the ticker
+line, the corkboard table, the Tonight panel rows, the box score section, and
+the day coin again.
+
+*Two of those breaks found the code wrong rather than the test.* `freshName()`
+drew a name and retried on a collision, then fell back to appending " Jr." —
+two lines guarding one absence, and deleting the retry loop left every test
+green because the fallback caught it. It now picks out of the 300 open
+combinations, which is one guard and cheaper than the second one was. The
+stocked-out penalty had the same shape: the set was built from who showed
+*and* the penalty was applied inside the `showing` branch, so either could go
+untouched. The penalty is now charged outside that branch and the caller's
+filter is the only guard. *Also #147:* the browser's "asking who is in tonight
+twice gives the same answer" sat green against a `Math.random()` coin — three
+regulars at 0.82 agree by luck about half the time — and asks twenty times
+now.
+
+*Left, and why the row stays open:* "a regular is a person on the floor" is
+the phase's second bullet and its whole 3D half — a named patron mesh, a
+nameplate, their usual pre-filled on the ticket, and a first-round-free
+interaction at the bar. None of it is built. A regular who shows tonight is
+currently a body in the crowd multiplier and a name in the box score, not
+somebody you can walk up to. Sized 2+; this is increment 1 of 2.
 
 ---
 

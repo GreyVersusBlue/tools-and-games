@@ -7,6 +7,7 @@
 
 import * as C from "./campaign.js";
 import * as LG from "./league.js";
+import * as RG from "./regulars.js";
 
 const $ = s => document.querySelector(s);
 
@@ -68,6 +69,17 @@ export class DevPanel {
       <div class="row" style="gap:8px;flex-wrap:wrap">${venueBtns}</div>
       ${c.darkNightsLeft ? `<button class="btn small ghost" style="margin-top:8px" data-cleardark="1">Clear dark nights</button>` : ""}
 
+      <div class="sec">Your name — reputation ${Math.round(c.rep)}, ${RG.RIVAL.name} at ${Math.round(c.rival.buzz)} (${C.rivalWord(c)})</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button class="btn small" data-rep="10">Rep +10</button>
+        <button class="btn small ghost" data-rep="-10">Rep −10</button>
+        <button class="btn small" data-buzz="10">Their buzz +10</button>
+        <button class="btn small ghost" data-buzz="-10">Their buzz −10</button>
+      </div>
+
+      <div class="sec">Regulars — ${c.regulars.length} of ${C.regularCap(c)}${c.regulars.length ? `, ${C.regularsIn(c).length} in tonight` : ""}</div>
+      <button class="btn small" data-addregular="1" ${c.regulars.length >= C.regularCap(c) ? "disabled" : ""}>Add a regular</button>
+
       <div class="sec">Stock</div>
       <button class="btn small" data-fillstock="1">Fill all stock to 500</button>
 
@@ -116,6 +128,19 @@ export class DevPanel {
       // The box score comes up 2.5s after last call, on the engine's own timer.
       if (this.cb.skipToClose()) { this.close(); this.cb.flash("Last call.", true); }
       else this.cb.flash("No night running — open the doors first.");
+    }
+    if (t.dataset.rep) {
+      C.devSetRep(c, c.rep + +t.dataset.rep);
+      this.cb.save(); this.render();
+    }
+    if (t.dataset.buzz) {
+      C.devSetBuzz(c, c.rival.buzz + +t.dataset.buzz);
+      this.cb.save(); this.render();
+    }
+    if (t.dataset.addregular) {
+      const r = C.devAddRegular(c);
+      this.cb.save(); this.render();
+      this.cb.flash(r ? `${r.name} is a regular now — ${RG.usualName(r)}.` : "Roster's full for this room.", !!r);
     }
     if (t.dataset.fillstock) {
       C.devFillStock(c, 500);

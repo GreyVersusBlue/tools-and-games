@@ -7,10 +7,12 @@ import { MENU, FOOD } from "./engine.js";
 // test/smoke-campaign.mjs under plain Node, which cannot resolve a site-absolute
 // specifier. The relative path resolves the same in both.
 import { LAYOUTS, seatsFor } from "./layout.js";
-import { DAYS, MULES, newLeague, validLeague, syncLeague, settleLeagueNight, tonight as leagueTonight, winProb } from "./league.js";
+import { DAYS, MULES, TEAMS as LEAGUE_TEAMS, newLeague, validLeague, syncLeague, settleLeagueNight, tonight as leagueTonight, winProb } from "./league.js";
+import * as R from "./regulars.js";
 import { createSaveSlot } from "../../../assets/js/gvb-save.js";
 
 export { DAYS };
+export { RIVAL } from "./regulars.js";
 export const SAVE_KEY = "fq3d-save";
 export const RENT = 110;
 export const BASE_CROWD = { Mon: 26, Tue: 20, Wed: 28, Thu: 34, Fri: 44, Sat: 48, Sun: 38 };
@@ -89,11 +91,20 @@ export function settleDarkNight(c, rand = Math.random) {
   const spoilage = applySpoilage(c);
   // the league plays on whether the doors were open or not
   const games = settleLeagueNight(c.league, c.day, null);
+  const final = games.find(x => x.playoff === "final");
+  // A dark night is the worst night your regulars can have: nobody showed,
+  // because there was nothing to show up to. They all take the stay-home
+  // drift, the floor was neither good nor ugly so nothing offsets it, and Vic
+  // gets a free night. Move for long enough and you come back to an empty room.
+  const social = settleSocial(c, {
+    serviceRate: 1, mood: 0.6, arrivals: 0, postWin: false,
+    showing: [], champion: final ? final.winner : null, dark: true,
+  }, rand);
   c.day++;
   syncLeague(c.league, c.day);
   c.darkNightsLeft = Math.max(0, (c.darkNightsLeft || 0) - 1);
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, upgFees, net, spoilage, games };
+  return { wages, rent: rentDue, upgFees, net, spoilage, games, social };
 }
 
 // ---------- spoilage: this session's answer to "day 40 is as easy as day 4" ----------
@@ -139,6 +150,16 @@ export function devWarpVenue(c, venueId) {
 }
 export function devClearDarkNights(c) { c.darkNightsLeft = 0; }
 export function devFillStock(c, amount = 500) { for (const id in c.stock) c.stock[id] = amount; }
+export function devSetRep(c, rep) { c.rep = Math.max(0, Math.min(100, Math.round(rep))); }
+export function devSetBuzz(c, buzz) { c.rival.buzz = Math.max(R.BUZZ_MIN, Math.min(R.BUZZ_MAX, Math.round(buzz))); }
+/** Mint a regular on the spot, cap and all — the earned path needs a good busy
+ *  night, which is a slow way to look at the corkboard's table. */
+export function devAddRegular(c, rand = Math.random) {
+  if (c.regulars.length >= regularCap(c)) return null;
+  const r = R.mkRegular(freshName(c, rand), c.day, rand);
+  c.regulars.push(r);
+  return r;
+}
 
 // ---------- upgrades (both-edged: every one helps AND costs upkeep) ----------
 // `tier` is the VENUES `order` a room has to be at before the upgrade can be
@@ -255,6 +276,10 @@ export function newCampaign() {
     upgrades: [],
     stats: { nights: 0, bestNight: 0, lifetimeNet: 0 },
     league: newLeague(Math.floor(Math.random() * 4294967296)),
+    rep: R.REP_START,
+    regulars: R.newRegulars(),
+    regularsLost: [],
+    rival: R.newRival(),
   };
   rollApplicants(c, Math.random);
   return c;
@@ -282,28 +307,94 @@ export function mulesWinProb(c) {
   return g.home === MULES ? pHome : 1 - pHome;
 }
 
+// ---------- regulars, your name, and the bar across town ----------
+// regulars.js owns the arithmetic; these are the campaign's questions of it.
+// Nothing here stores who is in tonight — see that file's header for why.
+
+/** Every team on a screen tonight, the Mules' game included. */
+function teamsPlaying(c) {
+  const s = new Set();
+  for (const g of tonight(c).games) { s.add(g.home); s.add(g.away); }
+  return s;
+}
+/** How many regulars this room can hold: 3, 5, 7, 9 up the ladder. */
+export function regularCap(c) { return R.regularCap(venueDef(c).order); }
+/** Who walks in tonight. A pure function of the day, so the corkboard's
+ *  forecast, the door and the settlement all get the same list. */
+export function regularsIn(c) { return R.regularsTonight(c.regulars, c.day, c.rep, teamsPlaying(c)); }
+/** The rival's own line for the day ticker. `d` is last night's drift when the
+ *  settlement is still in hand; a reload has no drift to report and gets the
+ *  standing line, so the morning always says something about across town. */
+export function rivalWord(c) { return R.rivalWord(c.rival.buzz); }
+export function rivalLine(c, d = 0) { return R.rivalLine(c.rival.buzz, d, c.rep); }
+
 export function promoDef(c) {
   const p = PROMOS[c.promoTonight] || PROMOS.none;
   return (p.needsGame && !isGameNight(c)) ? { ...p, crowd: 1 } : p;
 }
 
+/**
+ * Tonight's expected bodies.
+ *
+ * Phase 7 hung three more multipliers off this, and all three are 1.00 on a
+ * day-one campaign on purpose: `repMult` is the identity at the starting
+ * reputation of 50, nobody has any regulars yet, and the End Zone's opening
+ * buzz of 45 sits under that 50 so it drags nothing. A save from before this
+ * phase forecasts exactly the number it forecast before it.
+ *
+ * The floor is real and worth knowing: reputation bottoms out at 0.60x and the
+ * rival's drag at 0.85x, so the worst campaign on the site still draws 51% of
+ * its base. A bad streak costs you the room, not the game.
+ */
 export function forecast(c) {
   const base = BASE_CROWD[weekday(c)];
   const game = tonight(c).crowd; // a rivalry, a bracket game and a dead rubber are not the same crowd
   const upgMult = owned(c, "broadcast") ? 1.15 : 1;
-  return Math.round(base * game * promoDef(c).crowd * upgMult * venueDef(c).buzzMult);
+  const social = R.repMult(c.rep) * R.regularCrowdMult(regularsIn(c).length) * R.rivalMult(c.rival.buzz, c.rep);
+  return Math.round(base * game * promoDef(c).crowd * upgMult * venueDef(c).buzzMult * social);
 }
 
+/**
+ * A name nobody in this campaign already answers to.
+ *
+ * The crew, the pile of applicants and the regulars all draw from the same
+ * twenty first names and fifteen last, and two people with one name break
+ * `hire()`, `fire()` and a regular's ticket alike.
+ *
+ * This picks out of the open combinations rather than drawing and retrying on
+ * purpose. Draw-and-retry needs a second guard for the case where the retries
+ * run out, and two lines guarding the same absence both stay green when either
+ * one is deleted (#34) — the first draft of this function had exactly that, a
+ * retry loop and a " Jr." fallback, and deleting the loop changed nothing any
+ * test could see. Three hundred combinations against at most fifteen people is
+ * a 300-entry array built three times a night; that is cheaper than the second
+ * guard was.
+ */
+function freshName(c, rand, extra = []) {
+  const used = new Set([...c.staff, ...c.applicants, ...(c.regulars || [])].map(p => p.name).concat(extra));
+  const open = [];
+  for (const f of FIRST) for (const l of LAST) { const n = `${f} ${l}`; if (!used.has(n)) open.push(n); }
+  return open[Math.floor(rand() * open.length)];
+}
+
+/**
+ * Three people looking for work.
+ *
+ * Phase 7 put your name on the top of that pile: `applicantSkillCap()` is 2 at
+ * a reputation of 0, 4 at the starting 50 and 5 from 75 up, so the pre-phase
+ * flat 1-5 is now what a well-run bar sees rather than what everyone sees. It
+ * is the one place this phase makes a day-one campaign harder than it was, and
+ * it is deliberate: reputation has to buy something, and "who applies" is what
+ * the 2D build sells it for.
+ */
 export function rollApplicants(c, rand = Math.random) {
   c.applicants = [];
-  const used = new Set(c.staff.map(s => s.name));
+  const taken = [];
   for (let i = 0; i < 3; i++) {
-    let name;
-    do { name = FIRST[Math.floor(rand() * FIRST.length)] + " " + LAST[Math.floor(rand() * LAST.length)]; }
-    while (used.has(name));
-    used.add(name);
+    const name = freshName(c, rand, taken);
+    taken.push(name);
     const role = ROLE_KEYS[Math.floor(rand() * ROLE_KEYS.length)];
-    const skill = 1 + Math.floor(rand() * 5); // 1-5
+    const skill = 1 + Math.floor(rand() * R.applicantSkillCap(c.rep));
     const wage = wageForSkill(skill, Math.floor(rand() * 16) - 6);
     c.applicants.push(mkStaff(role, skill, wage, name));
   }
@@ -341,6 +432,67 @@ export function orderCost(order) {
 
 export function wageBill(c) { return c.staff.reduce((s, x) => s + effWage(c, x), 0); }
 
+/**
+ * The half of settlement that is people rather than money.
+ *
+ * Runs on a played night and a dark one alike, before the day advances, and it
+ * is the only place `rep`, `loyalty` and `buzz` move for a night — which is
+ * what makes "a stocked-out usual costs loyalty exactly once per night" true
+ * by construction rather than by care.
+ *
+ * `showing` is the list `regularsIn()` gave the door; a dark night passes an
+ * empty one, so every regular takes the stay-home drift. Returns what moved,
+ * for the box score, the ticker and the tests.
+ */
+function settleSocial(c, { serviceRate, mood, arrivals, postWin, showing, champion, dark = false }, rand) {
+  // A dark night is not a night anyone saw, so it is not a night that can be
+  // good or ugly: no reputation moves either way, nothing is minted, and the
+  // only marks it leaves are the ones below — every regular takes the
+  // stay-home drift plus the closed-doors penalty, and Vic gets a free night.
+  const { good, ugly } = dark ? { good: false, ugly: false } : R.nightVerdict(serviceRate, mood);
+  const showingIds = new Set(showing.map(r => r.id));
+  // 86'd before the shelves rot: a regular who came in for the usual and found
+  // the walk-in bare. This filter is the only thing that keeps a regular who
+  // stayed home from being 86'd by a shelf they never looked at —
+  // driftLoyalty() charges the 8 to whatever is in this set (see its note).
+  const stockedOut = new Set(showing.filter(r => (c.stock[r.usual] || 0) <= 0).map(r => r.id));
+  const snubbed = showing.filter(r => stockedOut.has(r.id)).map(r => r.name);
+
+  const dRep = dark ? 0 : R.repDrift(c.rep, serviceRate, mood, c.regulars.length, postWin);
+  c.rep = Math.max(0, Math.min(100, c.rep + dRep));
+
+  R.driftLoyalty(c.regulars, { showing: showingIds, stockedOut, good, ugly });
+  if (dark) for (const r of c.regulars) r.loyalty = Math.max(0, r.loyalty - R.DARK_NIGHT_LOYALTY);
+  const lost = R.pruneRegulars(c.regulars, c.regularsLost);
+  // a name walking out is a name walking out — the street hears about it
+  if (lost.length) c.rep = Math.max(0, c.rep - lost.length);
+
+  const gained = R.mintRegular(c.regulars, c.regularsLost, {
+    cap: regularCap(c), good, arrivals, day: c.day,
+    nameFor: () => freshName(c, rand), rand,
+  });
+
+  // the league moves both needles: a Mules banner is your parade too, and a
+  // Sharks title makes the End Zone the Sharks bar
+  if (champion === MULES) c.rep = Math.min(100, c.rep + 4);
+  if (champion && champion === RIVAL_TEAM) c.rival.buzz = Math.min(R.BUZZ_MAX, c.rival.buzz + 6);
+
+  const drift = R.driftBuzz(dark ? Math.min(R.BUZZ_MAX, c.rival.buzz + 1) : c.rival.buzz, { good, ugly, arrivals }, rand);
+  const dBuzz = drift.buzz - c.rival.buzz;
+  c.rival.buzz = drift.buzz;
+  const buzz = drift.buzz;
+
+  return {
+    dRep, rep: c.rep, showing: showing.map(r => r.name), snubbed, lost,
+    gained: gained ? { name: gained.name, returning: !!gained.returning } : null,
+    dBuzz, buzz, rivalLine: R.rivalLine(buzz, dBuzz, c.rep), good, ugly,
+  };
+}
+
+/** The one team whose title is the End Zone's win: league.js's rival flag,
+ *  read once rather than spelled "HCS" here. */
+const RIVAL_TEAM = (LEAGUE_TEAMS.find(t => t.rival) || {}).id || null;
+
 /** Close the books on a finished night. Mutates cash/day/stats; reroll happens here. */
 export function settleNight(c, summary, rand = Math.random) {
   const wages = wageBill(c);
@@ -353,16 +505,28 @@ export function settleNight(c, summary, rand = Math.random) {
   c.stats.nights++;
   c.stats.bestNight = Math.max(c.stats.bestNight, take);
   c.stats.lifetimeNet += net;
-  const spoilage = applySpoilage(c);
+  // people before spoilage: a regular's usual is 86'd if the shelf was bare
+  // when they wanted it, not if the walk-in rotted it overnight
+  const showing = regularsIn(c);
   // the Mules' result is the engine's, so the standings say what the room saw;
   // the other games tonight are the league's own rolls
   const g = summary.game;
   const games = settleLeagueNight(c.league, c.day, g && g.finished && typeof g.win === "boolean" ? g.win : null);
+  const final = games.find(x => x.playoff === "final");
+  const social = settleSocial(c, {
+    serviceRate: (summary.serviceRate ?? 100) / 100,
+    mood: summary.mood,
+    arrivals: summary.arrivals ?? (summary.served + summary.walkouts),
+    postWin: !!(g && g.finished && g.win === true),
+    showing,
+    champion: final ? final.winner : null,
+  }, rand);
+  const spoilage = applySpoilage(c);
   c.day++;
   syncLeague(c.league, c.day);
   c.promoTonight = "none";
   rollApplicants(c, rand);
-  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games };
+  return { wages, rent: rentDue, promoCost, upgFees, take, net, spoilage, games, social };
 }
 
 // ---- persistence: the shared save system ------------------------------------
@@ -496,6 +660,23 @@ export function repairCampaign(c) {
 
   if (!validLeague(c.league)) c.league = newLeague(c.day);
   syncLeague(c.league, c.day);
+
+  // Phase 7's three fields, all additive: a save from before this phase has no
+  // `rep`, no `regulars` and no `rival`, and gets the opening numbers — which
+  // are the numbers that leave its forecast exactly where it was. Every one of
+  // them is arithmetic in forecast(), so every one gets a finite fallback.
+  c.rep = Math.max(0, Math.min(100, num(c.rep, R.REP_START)));
+  c.regulars = R.repairRegulars(c.regulars, c.day);
+  c.regularsLost = R.repairLost(c.regularsLost);
+  c.rival = R.repairRival(c.rival);
+  // A save moved down the ladder by the dev menu can be over the smaller room's
+  // cap; the shakiest go rather than the newest, and the door remembers them.
+  while (c.regulars.length > R.regularCap(venueDef(c).order)) {
+    const shakiest = c.regulars.reduce((a, b) => (b.loyalty < a.loyalty ? b : a));
+    c.regulars = c.regulars.filter(r => r !== shakiest);
+    c.regularsLost.push({ name: shakiest.name, usual: shakiest.usual, team: shakiest.team });
+  }
+  c.regularsLost = c.regularsLost.slice(-R.LOST_MEMORY);
   return c;
 }
 

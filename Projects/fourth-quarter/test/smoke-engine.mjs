@@ -45,6 +45,12 @@ ok(e.served > 0 && e.walkouts === 0, "served counted, zero walkouts under instan
 ok(e.bossServes === 1, "exactly one boss serve recorded");
 const s = e.summary();
 ok(s.serviceRate === 100, "service rate 100 with no walkouts");
+// `arrivals` is a headcount, counted at the spawn. It exists because
+// served + walkouts is not one: `served` counts orders and `walkouts` counts
+// people, so a night where everyone had three rounds inflates the sum. The
+// regular-minting gate in campaign.js reads this number.
+ok(s.arrivals === spawns, `summary().arrivals is the spawn count (${s.arrivals} vs ${spawns})`);
+ok(e.served > s.arrivals, "and it is not served + walkouts: this night served more orders than it saw people");
 ok(s.total === Math.round(e.revenue + e.tips), "total = revenue + tips");
 ok(Math.abs(s.revenue - e.served * avgCheck()) < s.revenue, "revenue tracks orders");
 function avgCheck() { return Object.values(MENU).reduce((a, m) => a + m.price, 0) / 6; }
