@@ -3036,6 +3036,75 @@ Two of them have moved since they were written:
    day's 24 steps, and a connector reaching col 4 put its far end at 25.
    *Source: Faire Weekend Phase 4.*
 
+246. **The plat column is the current tier's width, threaded from the
+   state, not the widest tier's.** `main.js` sets `--cols` on `#board`
+   every render and `style.css` sizes the first column as
+   `fit-content(calc(cols × cell + (cols − 1) × 1px + 34px + 1.4rem))`,
+   the plat's width to the pixel. Stage 23 capped it at a fixed 710px and
+   wrote down that an adaptive version needed the variable threaded up
+   from `ui.js`; a custom property only flows down, so the ancestor has to
+   carry it, and `main.js` is already the one file that touches the DOM.
+   Measured on a 1280 desktop: the Home Grounds column 710 → 525px, the
+   desk 517 → 702px. Section 24 adds the constants up from the sheet's
+   own rules, which caught the first draft's 32px. `--cols` defaults to 14
+   so a page without `main.js` lays out as Stage 23 did. This answers
+   Questions for Devon Q30. *Source: Faire Weekend Phase 5.*
+
+247. **The map is its tracks.** `.grounds-map` is `width: max-content`
+   with auto margins. A block-level grid is as wide as its container
+   whatever its tracks add up to, and this one paints its gap colour, so
+   everything east of the last column was a brown slab rather than the
+   plat's paper: 187px of it beside the 10-wide Home Grounds at 1280,
+   445px beside the 14-wide Deep Woods Trail at 1080, and Q30's "~54px of
+   empty mat" was an undercount of a thing that was not even mat. The
+   auto margins centre the map on a wider sheet and resolve to zero when
+   the map is the wider one, which is what keeps the panning sheet's
+   scroll origin at the west edge (#132). *Source: Faire Weekend Phase 5.*
+
+248. **A table that is wider than the desk scrolls inside its own box,
+   and the page never scrolls sideways.** Every roster and schedule
+   table sits in a `.table-scroll` (`overflow-x: auto`). Before: the Fair
+   Floor with five stages was 1,820px wide at a 1280 viewport because five
+   175px schedule `<select>`s plus the time column cannot fit a 514px
+   desk, and Backstage was 1,310 on a fresh game because a nowrap
+   "Season Contract unlocks Weekend 3" tag set the roster table's minimum
+   at 541px. The schedule `<select>` fills its column down to 7.5em so
+   three stages fit without scrolling and five scroll in the box; the tag
+   wraps inside a cell. Shrinking the `<select>`s to fit five stages in
+   514px was tried on paper and refused: 80px shows four letters of
+   "Master Aldric of the Hollow". *Source: Faire Weekend Phase 5.*
+
+249. **A width is not a pointer.** The 1080px breakpoint's 38px cell is
+   gone: it existed so the widest tier fit the narrow end of the band
+   without scrolling, and it put every plot marker at 34px on every
+   tablet, which is what the 721–1080 band is (an iPad is 768–834
+   portrait, 1024–1194 landscape). The cell stays at the desktop 46px at
+   every width and the sheet's pan and scroll-shadow moved up from the
+   720px block to the 1080 one, where the map can now be wider than the
+   viewport. The touch sizes hang off `(pointer: coarse)`, which the
+   browser answers for itself: a 48px cell (44px markers), the 44px
+   floors on the four button classes, and 44px on the ticket-price slider
+   and every `<select>`. On a fine pointer those stay at their measured
+   16px, 31px and 32px, because a mouse does not need them. The 720px
+   block keeps its own copies, because a phone-sized window is a phone in
+   every case that matters and Section 23 reads them there. This answers
+   Questions for Devon Q29. One finding for the next person with a
+   browser: Playwright's `hasTouch` sets the query, and a full-page
+   screenshot resets it, so measure before shooting.
+   *Source: Faire Weekend Phase 5.*
+
+250. **The phone HUD is 137px, not 191.** On a 375×812 phone the sticky
+   HUD measured 191px tall, 242 with a long sky name, a quarter of the
+   screen held above every scroll of a 6,000px Backstage with the fixed
+   run bar taking another 70px under it. The wordmark's second line (the
+   version string) is hidden below 720px and the six figures sit in a
+   three-column grid at 1rem rather than wrapping at whatever width their
+   text takes. Still sticky: cash and the day are what a player glances
+   at mid-scroll, and 17% of the screen is the price of that. The 820px
+   tablet HUD wraps to two rows at 142px and was left alone; it is not
+   sticky-cost there the way the phone's was. *Source: Faire Weekend
+   Phase 5.*
+
 ---
 
 # The site sessions, 1–10
@@ -4855,6 +4924,88 @@ Section 27 in jsdom), `tests/guests.mjs` 168 unchanged and the suite that
 caught the first draft of the meadow's connector; the export-envelope
 assertion moved from version 1 to 2. `play-games.mjs faire-weekend`
 18 checks, 0 failed under Xvfb, no page or console errors.
+
+**Phase 5 — The review that has been owed four rounds.** Stage 20 audited
+contrast with arithmetic because no browser was available, round 3
+measured tap targets on one 375×812 page, and four rounds since wrote
+"layout review, needs a browser and eyes" into the backlog and spent
+their browser on something else. This one spent it on the review.
+
+**The camera.** `tools/shoot-states.mjs` plays a scripted season under
+Node (Section 1k's manager), writes seventeen states into the save slot
+— four plan states across the three desk tabs, a ghost-marker palette,
+an open offer row, a report, three weekend-ends, the victory screen, a
+game over — and boots the real page in Chromium at 1280×900, 1080×900,
+820×1180 (touch) and 375×812 (touch), one full-page PNG per state per
+viewport and a `measurements.json` of live rectangles beside them:
+the two `#board` columns, the map's tracks against its box and its
+sheet, every table against its parent, the slider, every `<select>`,
+the tallest plot card and its tag count, the HUD's height and rows.
+Sixty-eight PNGs a set, before and after, in
+`Tools/board-check/shots/games/faire-weekend/`. It asserts nothing.
+
+**What the before set measured.** The Fair Floor tab 1,820px wide at a
+1280 viewport, 1,100 at 1080 and 1,093 at 375, because five 175px
+schedule `<select>`s cannot fit a 514px desk and nothing boxed them;
+Backstage 1,310 at 1280 on a fresh game and 576 at 375, a nowrap tag in
+the roster's buttons column setting the table's minimum at 541px. The
+plat column 710px on the 10-wide Home Grounds with 469px of map in it,
+and the 187px beside the map painted in the grid's brown gap colour, not
+the plat's paper, because a block-level grid is as wide as its container
+(445px of it at 1080 beside Deep Woods Trail, the 38px cell making the
+map 545 in a 990 sheet). The sticky HUD 191px on the phone, 242 with
+"Warm and clear" in the sky slot. The price slider 275×16 and the
+`<select>`s 31 and 32px tall everywhere, touch or not, and the slider
+running 19px past a 340px panel. "200 guests" over two lines in every
+ledger. And the three offenders the wishlist named — a plot card's tags,
+the meters, the sparkline — measured and found not wrong: four tags at
+most in two lines at 0.78rem, 108×5 meters, a 42px sparkline of 21 bars.
+
+**What changed.** Five rulings, #246 through #250: the plat column is a
+`calc()` off `--cols`, which `main.js` now sets on `#board` (710 → 525px
+on the Home Grounds, the desk 517 → 702); the map is `max-content` wide
+with auto margins, so the slab is gone at every width and the map sits
+centred on its paper at 1080; every roster and schedule table is in a
+`.table-scroll` box, the schedule `<select>` fills its column down to
+7.5em and the roster tag wraps, so no state at any width scrolls the page
+sideways; the 38px cell is gone and the sheet's pan moved up to the
+1080px block, with the touch sizes — 48px cell, 44px buttons, 44px
+slider and `<select>`s — hanging off `(pointer: coarse)` rather than a
+width; the phone HUD is 137px. Plus the two small ones: a ledger figure
+never wraps, and the slider may shrink. **Left in place and written into
+the standing backlog:** thirteen plot cards in one 1,450px column on a
+1280 desktop (a 220px minimum wraps every card's buttons for about 20px a
+row; the fix is a denser card, which is design rather than measurement),
+and the 820px HUD at two rows.
+
+**Two questions answered.** Q29 ("is the 1080px breakpoint a touch
+device?"): a width is not a pointer (#249). Q30 ("does the fixed
+`fit-content(710px)` bother you?"): threaded (#246), and its "~54px of
+empty mat" was 187px of not-mat (#247). Both struck.
+
+**Guard-rails broken on purpose (#34), twenty-seven, every one caught by
+the assertion whose text claims it:** the map's `max-content` dropped and
+its auto margins dropped (1 each); the 1080 block setting 38px again (2);
+the coarse block's cell dropped and set to 46 (1 each); the coarse
+slider, `<select>` and offer-row floors dropped (1, 2, 1); the coarse
+button floor at 40px (4); `.table-scroll` not scrolling; the schedule
+`<select>` at its intrinsic width; the roster tag nowrap again; the
+slider's `min-width` dropped; the ledger figure wrapping; the phone
+subtitle shown; the phone ledger a flex row again; the calc's constants
+at 32px (the bug the first draft actually had); the calc nested in
+`minmax` (8); the fixed 710px cap back (7); the `--cols` fallback
+dropped; the sheet's pan turned off at 1080 and re-declared at 720 (1
+each); the sheet's padding at 10px (the calc drifts, caught by name);
+`main.js` not setting `--cols` (3) and setting it to 14 (1); a roster
+table and the schedule table unwrapped (1 each).
+
+*Counts:* `tests/smoke.mjs` 1,825 → 1,859 in Section 28, with Sections 23
+and 24 rewritten for the rules that moved; `tests/guests.mjs` 168
+unchanged; `play-games.mjs faire-weekend` 18 checks, 0 failed headless,
+no page or console errors. `style.css` 1,148 → 1,244.
+
+**None of the four shared things was touched.** `Tools/board-check/
+shots/` received pictures, which it is for and which are gitignored.
 
 ---
 

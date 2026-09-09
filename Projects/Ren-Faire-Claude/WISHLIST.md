@@ -1,9 +1,9 @@
 # Faire Weekend — Feature Wishlist
 
 **Status: twenty-two stages are shipped, three rounds of site-wide review have
-run over them, and Phases 1, 2, 3 and 4 are done.** The suites stand at **1,825
+run over them, and Phases 1 through 5 are done.** The suites stand at **1,859
 passed** (`node tests/smoke.mjs`) plus **168 passed** (`node tests/guests.mjs`),
-0 failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed under Xvfb.
+0 failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed headless.
 Round 3 closed the mobile tap-target debt, found one more never-clicked action
 (`cancelMove`) after round 2 had called that audit closed, and left the
 layout/density review owed for a fourth round running. Every stage's plan and
@@ -115,14 +115,24 @@ coefficient on the average.
   after every action, mounts gvb-save's export/import bar in `#footer`; its
   `handleAction` is a 28-case switch, and `ui.negotiating` is the one piece
   of view state Backstage reads.
-- **`css/style.css` (1,148)** — the "operations room" palette and the
-  surveyor's-plat map. Two breakpoints, 1080px and 720px; `--cell` is 46px,
-  38px, 48px respectively.
-- **`tests/smoke.mjs` (4,812)** — the largest test file in the repo, 1,825
+- **`css/style.css` (1,244)** — the "operations room" palette and the
+  surveyor's-plat map. Two width breakpoints, 1080px and 720px, and one
+  pointer query: `--cell` is 46px at any width, 48px on a coarse pointer
+  (#249), and the plat column is sized off `--cols` from Phase 5 (#246).
+- **`tools/shoot-states.mjs` (Phase 5)** — the camera. Plays a scripted
+  season under Node, writes seventeen states into the save slot, boots the
+  real page in Chromium at 1280, 1080, 820 (touch) and 375 (touch), clicks
+  through the desk tabs, and writes a full-page PNG per state per viewport
+  into `Tools/board-check/shots/games/faire-weekend/` with a
+  `measurements.json` of live rectangles beside them. `npm run shoot`, or
+  `--label before` / `--label after` for a pair. Needs `playwright-core`
+  (a devDependency) and a Chromium on disk (`CHROME=` overrides the
+  container's path). It asserts nothing; Section 28 is the guard.
+- **`tests/smoke.mjs` (4,941)** — the largest test file in the repo, 1,859
   assertions, no framework: an `assert()` counter and a `mod()` helper turning
   a path into a `file://` URL so Windows can run it. Sections 1–1g and 1i–1k
-  are pure; 20, 21, 23 and 24 parse `style.css` and `index.html` as text; 1h,
-  22, 25, 26 and 27 build a JSDOM and re-import `js/main.js` cache-busted, which
+  are pure; 20, 21, 23, 24 and the first half of 28 parse `style.css` and
+  `index.html` as text; 1h, 22, 25, 26, 27 and the rest of 28 build a JSDOM and re-import `js/main.js` cache-busted, which
   is a reload. **A second JSDOM steals the first one's renders** — `main.js`'s `$`
   reads `globalThis.document` — so everything a boot needs to assert has to
   happen before the next boot.
@@ -248,26 +258,39 @@ notes and handoff have deferred rather than answered.
   winning does not end the run and closing the season is the player's
   call, from the victory screen or the weekend-end desk at Weekend 6 or
   later, with or without the win. The second track is renown.*
-- **Is the 1080px breakpoint a touch device?** Round 3 fixed 720px to a 44px
-  floor and deliberately left 1080px at `--cell: 38px` (34px markers), reading
-  a narrow laptop window as mouse-driven. A named exclusion that wants a
-  ruling.
-- **Does the fixed `fit-content(710px)` board column bother you?** Sized to
-  the widest tier, so a Home Grounds save carries ~54px of empty mat right of
-  the map; adaptive means threading `--cols`/`--cell` from `ui.js` onto
-  `#board`.
+- ~~**Is the 1080px breakpoint a touch device?**~~ *Answered by Phase 5
+  (#249): a width is not a pointer. The 721–1080 band is where every iPad
+  lives, so the 38px cell is gone at every width, and the touch sizes (a
+  48px cell, 44px buttons, slider and `<select>`s) hang off
+  `(pointer: coarse)`, which the browser answers for itself.*
+- ~~**Does the fixed `fit-content(710px)` board column bother you?**~~
+  *Answered by Phase 5 (#246), and the "~54px" was an undercount: the Home
+  Grounds column measured 710px with 469px of map in it, and the empty
+  187px was the map's brown gap colour, not paper (#247). `main.js` sets
+  `--cols` on `#board` and the column is a `calc()` off it: 525px on the
+  Home Grounds, the desk 517 → 702px.*
 
 ## The standing backlog
 
 Open and unclaimed. Add here rather than starting a new list.
 
 **Surface**
-- Layout/spacing/density review, owed since Stage 20 and now four rounds
-  running. Needs a browser and eyes, not arithmetic.
-- `#board`'s `fit-content(710px)` cap is a fixed worst case, not adaptive
-  (round 3's own named follow-up); the 1080px breakpoint's cell size was
-  scoped out of round 3's fix; and the slider and two `<select>`s have never
-  been measured for touch size at all.
+- ~~Layout/spacing/density review, owed since Stage 20 and now four rounds
+  running. Needs a browser and eyes, not arithmetic.~~ *Phase 5, with
+  `tools/shoot-states.mjs` as the browser.*
+- ~~`#board`'s `fit-content(710px)` cap is a fixed worst case, not adaptive;
+  the 1080px breakpoint's cell size was scoped out of round 3's fix; and the
+  slider and two `<select>`s have never been measured for touch size at
+  all.~~ *Phase 5: #246, #249, and measured (16px, 31px, 32px on a fine
+  pointer; 44px on a coarse one).*
+- The plot cards are one column on a 1280 desktop: the desk is 514px on
+  Deep Woods Trail and `.plot-grid`'s 240px minimum needs 491px inside
+  `#content`'s 45px of padding. Thirteen cards run 1,450px tall. Phase 5
+  measured it and left it, because a 220px minimum makes every card's
+  three buttons wrap and gains about 20px a row; the honest fix is a
+  denser card, which is a design question rather than a measurement.
+- The HUD at 820px wraps its six figures into two rows (142px tall). It is
+  not sticky-cost on a tablet the way the phone's was; noted, not fixed.
 - ~~Mobile tap targets all under 44px.~~ *Closed round 3: `--cell` 30px → 48px
   at the 720px breakpoint (exactly 44px of marker given the 2px margin), a
   `min-height: 44px` floor on the four button classes, and a scroll-shadow on
@@ -575,31 +598,50 @@ cheapest phase here. The arc ships on arc one's terms unchanged, model named
 per phase. **Ranked by impact, and the order is the recommendation**; the last
 phase is an and-also for the machine rather than for the player.
 
-## Phase 5 — The review that has been owed four rounds
+## Phase 5 — The review that has been owed four rounds — **shipped**
 
 **Nobody has ever looked at this game's layout with a real eye and a real
-browser.**
+browser.** *Phase 5 did, with `tools/shoot-states.mjs`: 17 states × 4
+viewports, before and after, and every number below is off a live
+`getBoundingClientRect`.*
 
 Stage 20 audited contrast with arithmetic because no browser was available;
 round 3 measured tap targets in a live 375×812 page and fixed them. Neither is
 a design review. This phase spends a browser on one deliberately.
 
-- [ ] **Shoot the states first.** `shots/games/` before-and-afters at
-  1280×900, 1080 and 375×812 across all five phases and all three desk tabs.
-  The before set is the argument.
-- [ ] **Fix density where it is measurably wrong**, naming the measurement
-  each time. Likely offenders: a `.plot-card` can carry five stat tags at once
-  (sightline/shade/traffic/cap, adjacency, demo camp, foot traffic, gate
-  reach), `#ledger`'s meters, the Office price sparkline.
-- [ ] **Settle the `fit-content(710px)` board column.** Either thread the live
-  `--cols`/`--cell` from `ui.js` onto `#board` so a `calc()` sizes it off the
-  current tier, or keep the fixed cap and write down why.
-- [ ] **Rule on the 1080px breakpoint's 38px cell**, and **measure the slider
-  and the two `<select>`s** — neither was ever measured, which is why round 3
-  correctly declined to resize them.
-- [ ] **Guard what you fix** the way Sections 23 and 24 do: parse the value
-  back out of `style.css`, assert it, reintroduce the bug, watch it fail by
-  name (#34).
+- [x] **Shoot the states first.** *`Tools/board-check/shots/games/faire-
+  weekend/{before,after}/`, 68 PNGs a set, at 1280×900, 1080×900, 820×1180
+  and 375×812: four plan states across the three tabs plus a ghost-marker
+  palette and an open offer row, a report, three weekend-ends, the victory
+  screen and a game over. The before set was the argument: the Fair Floor
+  was 1,820px wide at a 1280 viewport, Backstage 1,310, the phone 1,093.*
+- [x] **Fix density where it is measurably wrong**, naming the measurement
+  each time. *The three named offenders were measured and are not: a plot
+  card carries at most four tags in two lines at 0.78rem, the meters are
+  108×5, the sparkline 42px tall with 21 bars. What was wrong: a 187px
+  brown slab east of the Home Grounds map (445px at 1080) because
+  `.grounds-map` stretched to the sheet (#247); the schedule table's five
+  175px `<select>`s pushing the page out to 1,820px and the roster table's
+  nowrap tag setting it at 541px in a 517px desk, both now inside
+  `.table-scroll` boxes (#248); a 191px sticky HUD on a 375×812 phone, now
+  137 (#250); "200 guests" wrapping in the ledger; the price slider running
+  19px past a 340px panel.*
+- [x] **Settle the `fit-content(710px)` board column.** *Threaded: `main.js`
+  sets `--cols` on `#board` and the column is
+  `fit-content(calc(cols × cell + gaps + 34px + 1.4rem))`, which Section 24
+  adds up from the sheet's own rules — the first draft said 32px and the
+  suite caught it. Home Grounds 710 → 525px, desk 517 → 702px (#246).*
+- [x] **Rule on the 1080px breakpoint's 38px cell**, and **measure the slider
+  and the two `<select>`s**. *The 38px cell is gone: the band is the tablet
+  band, and a 657px map pans on a sheet that already knew how. Touch
+  sizes hang off `(pointer: coarse)` (#249). Measured on a fine pointer and
+  left alone: slider 275×16 at 1280, 129×16 at 375; schedule `<select>`s
+  175×31, offer-row 190×32 and 134×32. On a coarse pointer all are 44px
+  tall, and the schedule `<select>`s are 102px wide so three stages fit.*
+- [x] **Guard what you fix.** *Section 28, 34 assertions, and Sections 23
+  and 24 rewritten for the rules that moved. Twenty-seven breaks, every one
+  caught by the assertion whose text claims it, three of them by more than
+  one (the nested `minmax` by eight).*
 
 *Leans on:* `css/style.css`, `Tools/board-check`'s `shots/`. *Save:* none.
 *Model:* **Claude Opus 5** — CSS and judgement, with a browser open.

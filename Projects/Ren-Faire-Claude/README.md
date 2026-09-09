@@ -115,6 +115,7 @@ account's other GitHub Pages projects.
 - **Phase 1 increment 2 changed what those two multipliers are for.** Neither `computeFootTraffic` nor `computeReachability` scales a stall's sales any more: the gross is `spentAt` off the walk. `computeFootTraffic` is the *estimate* the build palette and plot cards show before the gates open (and the page labels it "est."); `measureFootTraffic(arrivals, builtPlots)` is its measured twin, computed off the walk's own arrival counts with the same relative-to-mean shape and the same 0.6×-1.6× clamp, and it is what the day report carries and what the best/worst-sited-stall log line reads. Reachability still scales a stage's per-block draw weight, and is a reported statistic for stalls. `isLegalPlacement` also refuses a stall or demo camp whose only path frontage cannot be walked from the gate — the col-3 spur ruling (#227).
 - `js/guests.js` — Phase 1 (guests who walk): the crowd as people. `spawnGuests(n, rng)` turns the attendance number into at most 400 typed agents (families, revellers, history buffs, day-trippers, from `GUESTS` in `data.js`), each standing for `attendance / sampled` people; `buildAttractions(state)` gives every built stage, seated stall and demo camp the reachable path cell it is served from, and names the ones no walk from the gate reaches; `walkGuests(state, guests, rng)` steps each guest up to `GUESTS.stepsPerBlock` hops per time block toward whatever pulls hardest (need × quality × archetype taste × shade-in-heat × a repeat penalty, over distance), serves the need on arrival and takes the stall's ticket out of the purse. Pure; `simulateDay` calls it with its own rng stream and puts the aggregates on the report as `guests`. Increment 2 made this the economy: `spentAt` is the money each stall took, and `simulateDay` bills the vendor's gross off it rather than off a conversion rate on attendance. The gate takes its share of the purse first, so `spawnGuests` takes the ticket price.
 - `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test` runs it and `tests/guests.mjs`)
+- `tools/shoot-states.mjs` — Phase 5's camera, run by hand (`npm run shoot`): a scripted season under Node, seventeen states written into the save slot, the real page in Chromium at 1280, 1080, 820 (touch) and 375 (touch), one full-page PNG per state per viewport in `Tools/board-check/shots/games/faire-weekend/` and a `measurements.json` of live rectangles beside them. Needs `playwright-core` (a devDependency) and a Chromium on disk; asserts nothing
 - `tests/guests.mjs` — Phase 1's suite, pure Node: the route tree, routes between cells, spawning, attractions, the walk's invariants (nobody off-grid, purse + spent is the purse they came with, arrivals sum every way), taste, heat, distance, the unreachable spur, the seam into `simulateDay`, a forty-seed event fingerprint pinned against the Stage 22 engine, and a 30-day run through the state layer
 - `package.json` / `package-lock.json` / `.gitignore` — dev-only. They exist
   solely so `npm test` can install jsdom; nothing in them runs on the static
@@ -131,7 +132,7 @@ npm install
 npm test
 ```
 
-1,825 checks in `tests/smoke.mjs` and 168 in `tests/guests.mjs` (see the file
+1,859 checks in `tests/smoke.mjs` and 168 in `tests/guests.mjs` (see the file
 list above for what the second one covers). The first: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
@@ -380,3 +381,20 @@ renown on the way in, so Section 27's `boot` stamps `__v: 2` unless the
 fixture says otherwise. And `main.js`'s `$` reads `globalThis.document`, so booting a
 second JSDOM steals the first one's renders. Everything a boot needs to
 assert has to happen before the next boot starts.
+
+**Phase 5, 1,825 → 1,859 checks.** The layout review, guarded. **Section
+28** parses Phase 5's rules back out of `style.css` — the map at
+`max-content` with auto margins, no 38px cell anywhere, the
+`(pointer: coarse)` block with its 48px cell and 44px slider, `<select>`s
+and buttons, the `.table-scroll` box and the schedule `<select>` that
+fills its column, the roster tag that wraps, the slider that may shrink,
+the ledger figure that may not, the phone HUD's hidden version line and
+three-column grid — and boots the page in jsdom to read `--cols` off
+`#board` on the Home Grounds and on Deep Woods Trail and to find every
+roster and schedule table inside its box. **Section 24** now adds the
+plat column's `calc()` up from the sheet's own padding and border rules
+and evaluates it for every tier, which is how the first draft's 32px was
+caught (the map's 1px border a side was missing). **Section 23** reads the
+sheet's pan and scroll-shadow from the 1080px block, where they moved,
+and checks the 720px block does not carry a second copy. Twenty-seven
+breaks, every one caught by the assertion whose text claims it.

@@ -398,18 +398,18 @@ export function renderBackstage(state, warn, negotiating = null) {
       <p class="hint">Day Rate has no commitment — release anytime for free. Weekend Package is cheaper per day but locks the act in; breaking it early costs a fee. Or negotiate: a longer commitment and a stiffer fee for breaking it buy a lower rate, and an act that likes the house asks less.</p>
       ${warn ? `<p class="warn">${warn}</p>` : ''}
       ${renderBeatCards(state)}
-      <table class="roster-table">
+      <div class="table-scroll"><table class="roster-table">
         <thead><tr><th>Performer</th><th>Role</th><th>Draw</th><th>Cost</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
-      </table>
+      </table></div>
 
       <h3>Vendors &amp; Stalls</h3>
       <p class="hint">Stalls only sell if you've built the plot for them on the Fair Floor first, hired a matching vendor, and seated them there — hiring auto-seats them into an open stall, but check Fair Floor if you've been moving people around.</p>
       ${renderStallSummary(state)}
-      <table class="roster-table">
+      <div class="table-scroll"><table class="roster-table">
         <thead><tr><th>Vendor</th><th>Type</th><th>Quality</th><th>Cost</th><th></th></tr></thead>
         <tbody>${vendorRows}</tbody>
-      </table>
+      </table></div>
     </section>
   `;
 }
@@ -760,7 +760,7 @@ export function renderFairFloor(state, conflicts, warn) {
   const scheduleGrid = builtStages.length === 0
     ? `<p class="hint">Build at least one stage to start scheduling acts.</p>`
     : `
-    <table class="schedule-table">
+    <div class="table-scroll"><table class="schedule-table">
       <thead>
         <tr><th>Time block</th>${builtStages.map(s => `<th>${s.name}</th>`).join('')}</tr>
       </thead>
@@ -781,7 +781,7 @@ export function renderFairFloor(state, conflicts, warn) {
             }).join('')}
           </tr>`).join('')}
       </tbody>
-    </table>
+    </table></div>
     <p class="hint">Sun pips mark the hot blocks, at today's sky rather than an average one \u2014 ${sky.name.toLowerCase()} runs every block's sun at ${sky.heatMult.toFixed(2)}&times;. A shaded grove stage is worth more to the crowd in the hot blocks; an open hilltop is better in the cool ones, where its long sightlines carry.</p>`;
 
   return `

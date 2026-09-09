@@ -283,16 +283,25 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
      game — squeezed to its 340px floor. Found by hiding each child of
      .plat in turn and re-measuring: the map/legend/status alone need
      ~546px, and the palette's unwrapped row was the other ~293px.
-     fit-content(710px) — the widest any tier's map legitimately needs
-     (Deep Woods Trail, 14x10, is 703px including both paddings) — caps it,
-     so the palette's own width can no longer set the column's size. Desk
-     width on a 1280px desktop: 373px -> 502px. Note this cap is fixed at
-     the largest tier's size rather than shrinking further for a smaller
-     one still in progress (see WISHLIST.md's standing backlog) — a genuinely adaptive version
-     would need the current --cols/--cell threaded up from ui.js into a
-     calc() on this rule, which is more than this pass's remaining budget
-     covered. */
-  grid-template-columns: fit-content(710px) minmax(340px, 1fr);
+     fit-content() caps it, so the palette's own width can no longer set
+     the column's size.
+
+     Phase 5: the cap is the current tier's own width rather than a fixed
+     710px (#246). Stage 23 sized it to the widest tier, Deep Woods Trail,
+     and wrote down that an adaptive version needed --cols threaded up
+     from ui.js. main.js sets --cols on #board every render, and the
+     calc() below is the plat's width to the pixel: the tracks
+     (cols x cell + (cols - 1) x 1px gap + 2px .grounds-map border), the
+     sheet's 12px padding and 3px double border each side, and .plat's
+     0.7rem padding and 1px border each side: 34px + 1.4rem, and Section
+     24 of the suite adds those up from the rules themselves, which is how
+     the first draft's 32px was caught. Measured on a 1280px desktop
+     before: the Home Grounds column was 710px with 469px of map in it and
+     the desk 517px; after, the column is 525px and the desk 702px.
+     --cols defaults to the widest tier so a page without main.js still
+     lays out as it did. */
+  --cols: 14;
+  grid-template-columns: fit-content(calc(var(--cols) * var(--cell) + (var(--cols) - 1) * 1px + 34px + 1.4rem)) minmax(340px, 1fr);
   gap: 1.1rem;
   align-items: start;
 }
@@ -362,6 +371,17 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
   gap: 1px;
   background: #6B5433;
   border: 1px solid #6B5433;
+  /* Phase 5: a block-level grid is as wide as its container whatever its
+     tracks add up to, and this one paints its gap colour, so everything
+     east of the last column was a brown slab rather than the plat's
+     paper: 187px of it beside the 10-wide Home Grounds on a 1280px
+     desktop, 445px beside the 14-wide Deep Woods Trail at 1080 (#247).
+     max-content is the tracks exactly. The auto margins centre the map
+     on the sheet when the sheet is wider, and resolve to zero when the
+     map is wider than the sheet, so the panning sheet below keeps its
+     scroll origin at the west edge (#132). */
+  width: max-content;
+  margin: 0 auto;
 }
 
 /* --- terrain, each with its own texture rather than a flat fill --- */
@@ -599,6 +619,11 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
 }
 input[type=range] {
   flex: 1;
+  /* Phase 5: a range input's minimum width is its own 129px, so on a
+     375px phone the price row (label 87px + slider + readout 72px + two
+     gaps) ran 19px past the panel and the readout hung off the edge.
+     A flex item shrinks below its content only when told it may. */
+  min-width: 0;
   accent-color: var(--brass);
   background: transparent;
 }
@@ -660,7 +685,9 @@ select {
   border-bottom: 1px solid var(--bark-line);
   font-size: 0.94rem;
 }
-.ledger-table td:last-child { text-align: right; font-family: var(--font-ui); font-variant-numeric: tabular-nums; }
+/* Phase 5: "200 guests" broke across two lines at every viewport, the one
+   figure in the table that is two words. A figure column does not wrap. */
+.ledger-table td:last-child { text-align: right; font-family: var(--font-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ledger-table td.neg { color: var(--wine-text); }
 .ledger-table .total-row td {
   font-weight: 700;
@@ -724,6 +751,20 @@ select {
 .roster-table tr.is-contracted { background: rgba(210, 162, 76, 0.07); }
 .roster-table tr.is-contracted td:first-child { box-shadow: inset 3px 0 0 var(--brass); }
 .roster-table td .btn { margin: 0.12rem 0.15rem 0.12rem 0; }
+/* Phase 5: a nowrap tag ("Season Contract unlocks Weekend 3") in the
+   buttons column set the roster table's minimum width at 541px inside a
+   517px desk on a fresh game at 1280, and the page scrolled sideways for
+   it. Inside a table cell a tag wraps like the prose beside it. */
+.roster-table td .hint-tag, .roster-table td .warn-tag { white-space: normal; }
+
+/* Phase 5: every roster and schedule table sits in one of these, so a
+   table that is wider than the desk scrolls inside its own box and the
+   page never does. Before: the Fair Floor with five stages was 1,820px
+   wide at a 1280px viewport and 1,082px at 375, because five 175px
+   <select>s plus the time column cannot fit 514px. (#248) */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.table-scroll > table { margin-top: 0; }
+.table-scroll { margin: 0.6rem 0 1rem; }
 .stars { color: var(--brass); letter-spacing: 0.1em; }
 
 .stall-summary {
@@ -829,6 +870,10 @@ select {
   font-size: 0.88rem;
 }
 .schedule-table td:first-child { color: var(--vellum-dim); white-space: nowrap; }
+/* A schedule <select> fills its column down to 7.5em (about 100px), so
+   three stages fit a 514px desk without scrolling and five scroll inside
+   .table-scroll rather than pushing the page out to 1,820px. */
+.schedule-table select { width: 100%; min-width: 7.5em; }
 /* Stage 19: a sun pip on a time-block row tells the player at a glance
    which blocks punish an unshaded hilltop stage. */
 .heat-pip {
@@ -1026,9 +1071,43 @@ select {
    Responsive + accessibility
    ============================================================ */
 @media (max-width: 1080px) {
-  :root { --cell: 38px; }
+  /* Phase 5: through Phase 4 this breakpoint also set --cell to 38px, so
+     the widest tier (14 x 38 + 13 = 545px) fit the narrow end of the band
+     without scrolling. That made every plot marker 34px here, and the
+     band is where every tablet lives — an iPad is 768 to 834px portrait
+     and 1024 to 1194px landscape. The cell stays at the desktop 46px; the
+     sheet below pans the way it does on a phone when the map is wider
+     than the viewport, which at 46px happens only below 750px; and a
+     coarse pointer gets 48px whatever the width (#249). */
   #board { grid-template-columns: minmax(0, 1fr); }
   #grounds { position: static; }
+
+  /* The map can run wider than the viewport from here down (the Deep
+     Woods Trail tier is 14 cells * 46px = 657px, or 685px on a coarse
+     pointer), so panning to the eastern columns is normal, not an edge
+     case — and nothing on screen said so. This is the standard "scroll
+     shadow" technique: two gradients painted in the map's own paper
+     colour scroll WITH the content (background-attachment: local) and
+     mask two more gradients painted in shadow that stay fixed to the
+     viewport (background-attachment: scroll). The shadow only shows
+     through where the paper-coloured cover has scrolled clear of that
+     edge, so the fade appears on the right on load, moves to both edges
+     mid-scroll, and disappears on the left once fully panned — an
+     affordance that reflects actual scroll position rather than a static
+     hint that goes stale. Stage 23 wrote this for the 720px breakpoint;
+     Phase 5 moved it up to 1080 with the cell it serves. */
+  .plat-sheet {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background-image:
+      linear-gradient(to right, var(--map-mat) 40%, transparent),
+      linear-gradient(to left, var(--map-mat) 40%, transparent) 100% 0,
+      linear-gradient(to right, rgba(20, 17, 14, 0.55), transparent 24px),
+      linear-gradient(to left, rgba(20, 17, 14, 0.55), transparent 24px) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 24px 100%, 24px 100%, 24px 100%, 24px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
 }
 @media (max-width: 720px) {
   /* Stage 23: through Stage 22, this breakpoint *shrank* the grid to
@@ -1043,36 +1122,25 @@ select {
      on 44px. */
   :root { --cell: 48px; }
   body { font-size: 15px; }
-  #hud { flex-direction: column; gap: 0.6rem; padding: 0.6rem 1rem; }
-  .wordmark { border-right: none; border-bottom: 1px solid var(--bark-line); padding: 0 0 0.5rem; }
-  #ledger { gap: 1rem; justify-content: space-between; }
-  .ledger-label { font-size: 1.1rem; }
 
-  /* The grounds grid now regularly runs wider than the viewport (the Deep
-     Woods Trail tier is 14 cells * 48px = 672px), so panning to the eastern
-     columns is now the normal case, not an edge case — and nothing on
-     screen said so. This is the standard "scroll shadow" technique: two
-     gradients painted in the map's own paper colour scroll WITH the
-     content (background-attachment: local) and mask two more gradients
-     painted in shadow that stay fixed to the viewport
-     (background-attachment: scroll). The shadow only shows through where
-     the paper-coloured cover has scrolled clear of that edge, so the fade
-     appears on the right on load, moves to both edges mid-scroll, and
-     disappears on the left once fully panned — an affordance that reflects
-     actual scroll position rather than a static hint that goes stale. */
-  .plat-sheet {
-    padding: 7px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    background-image:
-      linear-gradient(to right, var(--map-mat) 40%, transparent),
-      linear-gradient(to left, var(--map-mat) 40%, transparent) 100% 0,
-      linear-gradient(to right, rgba(20, 17, 14, 0.55), transparent 24px),
-      linear-gradient(to left, rgba(20, 17, 14, 0.55), transparent 24px) 100% 0;
-    background-repeat: no-repeat;
-    background-size: 24px 100%, 24px 100%, 24px 100%, 24px 100%;
-    background-attachment: local, local, scroll, scroll;
-  }
+  /* Phase 5: the sticky HUD measured 191px tall on a 375x812 phone, 242px
+     with a long sky name — a quarter of the screen held above every scroll
+     of a 6,000px Backstage, with the fixed run bar taking another 70px
+     under it. The wordmark's second line (the version string) goes; the
+     six figures sit in a three-column grid at 1rem rather than wrapping
+     at whatever width their text happens to take. Measured after: 137px
+     (#250). */
+  #hud { flex-direction: column; gap: 0.45rem; padding: 0.5rem 1rem 0.55rem; }
+  .wordmark { border-right: none; border-bottom: 1px solid var(--bark-line); padding: 0 0 0.35rem; }
+  .wordmark h1 { font-size: 1.2rem; }
+  .wordmark .subtitle { display: none; }
+  #ledger { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.35rem 0.6rem; }
+  .ledger-label { font-size: 1rem; }
+  .ledger-label.text { font-size: 0.9rem; }
+  .ledger-sub { font-size: 0.6rem; letter-spacing: 0.1em; white-space: normal; }
+  .meter { width: 100%; max-width: 108px; margin-top: 0.22rem; }
+
+  .plat-sheet { padding: 7px; }
   #content { padding: 1rem; }
   .plot-grid, .campaign-grid { grid-template-columns: 1fr; }
   .roster-table { font-size: 0.86rem; }
@@ -1089,6 +1157,34 @@ select {
     justify-content: center;
   }
   #resetBtn, #save-bar button { padding: 0.4rem 0.9rem; }
+}
+
+/* Phase 5: a width is not a pointer. Stage 23 gave the phone breakpoint
+   its 44px targets and left the 721-1080 band at 34px markers, reading a
+   narrow laptop window as mouse-driven, and Questions for Devon carried
+   "is the 1080px breakpoint a touch device?" for two rounds. The browser
+   knows: (pointer: coarse) is true on a phone, a tablet and a touch
+   laptop at any width, and false for a mouse in a narrow window. So the
+   touch sizes hang off the pointer here, and the 720px block above keeps
+   its own copies because a phone-sized window is a phone in every case
+   that matters and Section 23 of the suite reads them there (#249).
+
+   Measured before on a fine pointer, and left alone there because a
+   mouse does not need them: the ticket-price slider is 275x16 at 1280
+   and 129x16 at 375; the schedule <select>s are 175x31 and the two
+   offer-row <select>s 190x32 and 134x32. On a coarse pointer every one
+   of them now clears 44px tall: a range input's hit area is its box, and
+   the thumb stays where it was. */
+@media (pointer: coarse) {
+  :root { --cell: 48px; }
+  .btn, .tab-btn, #save-bar button, #resetBtn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  select, .offer-terms select { min-height: 44px; }
+  input[type=range] { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

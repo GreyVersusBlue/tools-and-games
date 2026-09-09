@@ -3559,17 +3559,25 @@ function makeMemoryStorage() {
   // Woods Trail: 14 * 48px = 672px against a 375px phone) — confirm the
   // scroll-shadow affordance (paper-coloured cover scrolling WITH the
   // content, shadow gradient fixed to the viewport) is actually wired, not
-  // just an unused overflow-x: auto.
-  const plotSheetMobile = (mobile.match(/\.plat-sheet\s*\{([\s\S]*?)\}/) || [])[1] || '';
-  assert(/overflow-x:\s*auto/.test(plotSheetMobile), '.plat-sheet still scrolls horizontally on mobile');
+  // just an unused overflow-x: auto. Phase 5 moved the rule up to the
+  // 1080px block, because the 721-1080 band lost its 38px cell (#249) and
+  // a 657px map no longer fits a 721px window either; the 720px block
+  // inherits it. So this reads the 1080 block, and the block after it
+  // checks the phone block does not quietly re-declare a shrunken one.
+  const wideBlockMatch = css.match(/@media \(max-width:\s*1080px\)\s*\{([\s\S]*?)\r?\n\}\r?\n/);
+  assert(!!wideBlockMatch, 'style.css still has its max-width: 1080px breakpoint');
+  const plotSheetMobile = ((wideBlockMatch || [])[1] || '').match(/\.plat-sheet\s*\{([\s\S]*?)\}/)?.[1] || '';
+  assert(/overflow-x:\s*auto/.test(plotSheetMobile), '.plat-sheet scrolls horizontally from the 1080px breakpoint down');
   assert(/background-attachment:\s*local,\s*local,\s*scroll,\s*scroll/.test(plotSheetMobile),
     '.plat-sheet pairs two locally-scrolling cover gradients with two viewport-fixed shadow gradients \u2014 the scroll-shadow technique that makes panning to the eastern columns visible');
   const shadowLayers = (plotSheetMobile.match(/linear-gradient/g) || []).length;
   assert(shadowLayers === 4, `the scroll-shadow effect layers exactly 4 gradients \u2014 2 covers + 2 shadows (found ${shadowLayers})`);
+  const plotSheetPhone = (mobile.match(/\.plat-sheet\s*\{([\s\S]*?)\}/) || [])[1] || '';
+  assert(!/overflow-x|background-attachment/.test(plotSheetPhone), 'the 720px block does not re-declare the sheet\u2019s scrolling, which would be a second copy to drift');
 }
 
 // ---------------------------------------------------------------------
-// Section 24: #board's desktop column split (Stage 23)
+// Section 24: #board's desktop column split (Stage 23, Phase 5)
 //
 // A live-browser measurement (not reproducible in jsdom, which does no real
 // layout) found the desk column \u2014 Office/Backstage/Fair Floor, i.e. most of
@@ -3584,23 +3592,49 @@ function makeMemoryStorage() {
 // of beside it. That regression is invisible to this suite (jsdom does not
 // validate grid-track syntax the way a real layout engine does), so this
 // guards the specific shape of the fix rather than its rendered effect.
+//
+// Phase 5 made the cap the current tier's width rather than a fixed 710px
+// (#246): fit-content(calc(...)) reading --cols, which main.js sets on
+// #board (Section 28 checks that), and --cell. The calc is evaluated here
+// for every tier against the plat's real width, so a constant that drifts
+// from the sheet's padding fails by name.
 // ---------------------------------------------------------------------
 {
   const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
   const boardRule = (css.match(/#board\s*\{([\s\S]*?)\}/) || [])[1] || '';
 
-  assert(/grid-template-columns:\s*fit-content\(\d+px\)\s+minmax\(340px,\s*1fr\)/.test(boardRule),
-    '#board\u2019s first column is capped with a bare fit-content(), not nested inside minmax() \u2014 minmax(0, fit-content(...)) is invalid CSS and silently drops the whole rule');
+  const shape = boardRule.match(/grid-template-columns:\s*fit-content\(calc\(var\(--cols\)\s*\*\s*var\(--cell\)\s*\+\s*\(var\(--cols\)\s*-\s*1\)\s*\*\s*1px\s*\+\s*(\d+)px\s*\+\s*([\d.]+)rem\)\)\s+minmax\(340px,\s*1fr\)/);
+  assert(!!shape,
+    '#board\u2019s first column is a bare fit-content(calc()) off --cols and --cell, not nested inside minmax() \u2014 minmax(0, fit-content(...)) is invalid CSS and silently drops the whole rule');
   assert(!/minmax\([^)]*fit-content/.test(boardRule),
     '#board never nests fit-content() inside minmax() \u2014 the exact invalid shape that collapsed the two-column layout to one column pre-fix');
+  assert(/--cols:\s*14\s*;/.test(boardRule), '#board declares a --cols fallback of 14, the widest tier, so a page without main.js lays out as Stage 23 did');
 
-  const cap = Number((boardRule.match(/fit-content\((\d+)px\)/) || [])[1]);
-  // Deep Woods Trail (14x10, the widest GRID_EXPANSIONS tier) at the
-  // desktop --cell of 46px: 14*46 + 13*1px gaps + 12px*2 sheet padding +
-  // 0.7rem*2 plat padding = 703.4px. The cap has to clear that or the
-  // widest unlocked grounds would be squeezed narrower than its own cells.
-  assert(Number.isFinite(cap) && cap >= 704,
-    `the fit-content() cap (${cap}px) clears the widest grounds tier\u2019s real width (~703.4px for Deep Woods Trail at the desktop 46px cell)`);
+  // The plat's real width around the tracks: .grounds-map's 1px border a
+  // side, .plat-sheet's 12px padding and 3px double border a side, .plat's
+  // 0.7rem padding and 1px border a side = 32px + 1.4rem. Each of those
+  // is parsed back out rather than assumed.
+  const px = n => Number((n || [])[1]);
+  const sheetPad = px(css.match(/\.plat-sheet\s*\{[^}]*?padding:\s*(\d+)px/));
+  const sheetBorder = px(css.match(/\.plat-sheet\s*\{[^}]*?border:\s*(\d+)px double/));
+  const mapBorder = px(css.match(/\.grounds-map\s*\{[^}]*?border:\s*(\d+)px solid/));
+  const platPadRem = Number((css.match(/\.plat\s*\{[^}]*?padding:\s*([\d.]+)rem/) || [])[1]);
+  const platBorder = px(css.match(/\.plat\s*\{[^}]*?border:\s*(\d+)px solid/));
+  const chromePx = 2 * (sheetPad + sheetBorder + mapBorder + platBorder);
+  const chromeRem = 2 * platPadRem;
+  assert(Number.isFinite(chromePx) && Number.isFinite(chromeRem), 'the sheet\u2019s and plat\u2019s padding and borders parse out of style.css');
+  const capPx = shape ? Number(shape[1]) : NaN, capRem = shape ? Number(shape[2]) : NaN;
+  assert(capPx === chromePx && capRem === chromeRem,
+    `the calc\u2019s constants (${capPx}px + ${capRem}rem) are the chrome around the tracks (${chromePx}px + ${chromeRem}rem) \u2014 a padding edited on one side and not the other reopens a gap or clips a column`);
+  const desktopCell = Number((css.match(/:root\s*\{[\s\S]*?--cell:\s*(\d+)px/) || [])[1]);
+  const widthFor = cols => cols * desktopCell + (cols - 1) + capPx + capRem * 16;
+  for (const tier of GRID_EXPANSIONS) {
+    const w = widthFor(tier.cols);
+    assert(w >= tier.cols * desktopCell + (tier.cols - 1) + 2 * (sheetPad + sheetBorder + mapBorder) && w < 760,
+      `${tier.label} (${tier.cols} wide) gets a ${w.toFixed(1)}px column at the desktop ${desktopCell}px cell \u2014 wide enough for its own map and narrower than the 760px that would squeeze the desk under 500 on a 1280 desktop`);
+  }
+  assert(widthFor(10) < widthFor(14) - 180,
+    `the Home Grounds column (${widthFor(10).toFixed(1)}px) is at least 180px narrower than Deep Woods Trail\u2019s (${widthFor(14).toFixed(1)}px) \u2014 Stage 23\u2019s fixed cap gave every tier the widest one\u2019s 710px`);
 }
 
 // ---------------------------------------------------------------------
@@ -4805,6 +4839,101 @@ function makeMemoryStorage() {
     const hud = [...doc.querySelectorAll('#ledger .ledger-item')].find(el => /renown/.test(el.textContent));
     assert(hud && hud.querySelector('.ledger-label').textContent.trim() === String(RENOWN.moodPoints), 'the HUD shows the renown its one completed weekend was credited on the way in');
     assert(saved(storage).__v === 2 && saved(storage).carryover.run === 1, 'and the save on disk is now version 2');
+  }
+}
+
+// ---------------------------------------------------------------------
+// Section 28: Phase 5 \u2014 the layout review, guarded.
+//
+// tools/shoot-states.mjs put the page in a real Chromium at 1280, 1080,
+// 820 and 375 across every phase and desk tab, and these are the numbers
+// it found wrong: a 710px plat column on the 10-wide Home Grounds with
+// 187px of the map\u2019s brown gap colour painted east of the last column
+// (445px at 1080); the Fair Floor 1,820px wide at a 1280 viewport because
+// five 175px schedule <select>s cannot fit a 514px desk; the roster table
+// 541px in a 517px desk on a fresh game; a 191px sticky HUD on a 375x812
+// phone; 34px plot markers on every tablet; a 16px slider and 31px
+// <select>s on touch; "200 guests" broken over two lines. Each fix is
+// parsed back out of style.css or read off a jsdom boot here, and each
+// was reintroduced on purpose and watched fail by name (#34).
+// ---------------------------------------------------------------------
+{
+  const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
+  const block = (query) => (css.match(new RegExp(`@media \\(${query}\\)\\s*\\{([\\s\\S]*?)\\r?\\n\\}\\r?\\n`)) || [])[1] || '';
+  const rule = (selector, from = css) => (from.match(new RegExp(`(?:^|\\n)\\s*${selector.replace(/[.#[\]=*+?()|]/g, '\\$&')}\\s*\\{([^}]*)\\}`)) || [])[1] || '';
+
+  // --- the map is its tracks (#247) ---
+  const map = rule('.grounds-map');
+  assert(/width:\s*max-content/.test(map), '.grounds-map is max-content wide, so the brown gap colour stops at the last column instead of filling the sheet');
+  assert(/margin:\s*0 auto/.test(map), '.grounds-map centres on a wider sheet with auto margins, which resolve to zero when the map is the wider one (#132)');
+
+  // --- the 1080 band keeps the desktop cell; a coarse pointer gets 48 (#249) ---
+  assert(!/--cell:\s*38px/.test(css), 'no breakpoint shrinks --cell to 38px any more \u2014 that was 34px markers on every tablet');
+  assert(!/--cell:\s*\d/.test(block('max-width:\\s*1080px')), 'the 1080px block does not set --cell at all; the sheet pans instead');
+  const coarse = block('pointer:\\s*coarse');
+  assert(coarse.length > 0, 'style.css has a (pointer: coarse) block \u2014 the touch sizes hang off the pointer, not the width');
+  const coarseCell = Number((coarse.match(/--cell:\s*(\d+)px/) || [])[1]);
+  const markerMargin = Number((css.match(/\.plot-marker\s*\{[^}]*?margin:\s*(\d+)px/) || [])[1]);
+  assert(coarseCell - markerMargin * 2 >= 44, `a plot marker on a coarse pointer (cell ${coarseCell}px \u2212 margin ${markerMargin}px \u00d7 2) is at least 44px at any width (got ${coarseCell - markerMargin * 2}px)`);
+  for (const selector of ['.btn', '.tab-btn', '#save-bar button', '#resetBtn']) {
+    const escaped = selector.replace(/[.#]/g, '\\$&');
+    assert(new RegExp(`${escaped}[^{]*\\{[^}]*min-height:\\s*44px`).test(coarse), `${selector} has a 44px min-height on a coarse pointer, whatever the viewport width`);
+  }
+  assert(/input\[type=range\]\s*\{[^}]*min-height:\s*44px/.test(coarse), 'the ticket-price slider is 44px tall on a coarse pointer \u2014 it measured 16px on a phone before');
+  assert(/(?:^|[\s,])select[^{]*\{[^}]*min-height:\s*44px/.test(coarse), 'every <select> is 44px tall on a coarse pointer \u2014 the schedule\u2019s measured 31px and the offer row\u2019s 32px before');
+  assert(/\.offer-terms select[^{]*\{[^}]*min-height:\s*44px/.test(coarse), 'including the two offer-row <select>s, whose own 32px rule would otherwise win on specificity');
+
+  // --- nothing pushes the page sideways (#248) ---
+  const scroll = rule('.table-scroll');
+  assert(/overflow-x:\s*auto/.test(scroll), '.table-scroll scrolls a wide table inside its own box');
+  const sched = rule('.schedule-table select');
+  assert(/width:\s*100%/.test(sched) && /min-width:\s*7\.5em/.test(sched), 'a schedule <select> fills its column down to 7.5em rather than sitting at its 175px intrinsic width');
+  assert(/\.roster-table td \.hint-tag,\s*\.roster-table td \.warn-tag\s*\{[^}]*white-space:\s*normal/.test(css), 'a tag inside a roster cell wraps \u2014 a nowrap "Season Contract unlocks Weekend 3" set the table\u2019s minimum at 541px');
+  assert(/min-width:\s*0/.test(rule('input[type=range]')), 'the slider may shrink below its 129px intrinsic width, so the price row fits a 340px panel');
+  assert(/white-space:\s*nowrap/.test(rule('.ledger-table td:last-child')), 'a ledger figure never wraps \u2014 "200 guests" broke over two lines at every width');
+
+  // --- the phone HUD (#250) ---
+  const phone = block('max-width:\\s*720px');
+  assert(/\.wordmark \.subtitle\s*\{[^}]*display:\s*none/.test(phone), 'the wordmark\u2019s version line is hidden on a phone');
+  assert(/#ledger\s*\{[^}]*grid-template-columns:\s*repeat\(3,/.test(phone), 'the six HUD figures sit in a three-column grid on a phone rather than wrapping at their own widths');
+
+  // --- main.js threads the tier onto #board, and every table has its box (#246, #248) ---
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  const boot = async (save) => {
+    const storage = makeMemoryStorage();
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify({ ...save, __v: 2 }));
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return dom.window.document;
+  };
+  const click = (doc, sel) => {
+    const el = doc.querySelector(sel);
+    if (el) el.dispatchEvent(new el.ownerDocument.defaultView.Event('click', { bubbles: true }));
+    return !!el;
+  };
+  {
+    const doc = await boot(State.createInitialState());
+    assert(doc.querySelector('#board').style.getPropertyValue('--cols') === String(GRID_EXPANSIONS[0].cols), `a fresh game sets --cols ${GRID_EXPANSIONS[0].cols} on #board`);
+    click(doc, '[data-tab="backstage"]');
+    const rosters = [...doc.querySelectorAll('table.roster-table')];
+    assert(rosters.length === 2 && rosters.every(t => t.parentElement.classList.contains('table-scroll')), 'both Backstage roster tables sit in a .table-scroll box');
+  }
+  {
+    const deep = GRID_EXPANSIONS.find(g => g.label === 'Deep Woods Trail');
+    let s = State.createInitialState();
+    s.season = deep.unlockSeason;
+    s = State.buildPlot(s, 'stage', 3, 0).state || s;
+    const doc = await boot(s);
+    assert(doc.querySelector('#board').style.getPropertyValue('--cols') === String(deep.cols), `at Weekend ${deep.unlockSeason} #board carries --cols ${deep.cols}`);
+    click(doc, '[data-tab="fairfloor"]');
+    const sched = doc.querySelector('table.schedule-table');
+    assert(!!sched && sched.parentElement.classList.contains('table-scroll'), 'the schedule table sits in a .table-scroll box');
+    click(doc, '[data-action="openGates"]');
+    assert(!!doc.querySelector('.ticket-stub') && doc.querySelector('#board').style.getPropertyValue('--cols') === String(deep.cols), 'and the variable is still set on a report screen, so the next planning render starts from the right width');
   }
 }
 
