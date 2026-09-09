@@ -58,15 +58,67 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Faire Weekend Phase 5, "The review that
-has been owed four rounds" (PR #201)**, which **closed rank 1** — a
-1-session row, closed in one session, so it comes out of the ranked table
-and everything below it moves up one. **77 ranked items remain.** The new
-rank 1 is **Faire Weekend Phase 6 — A map you can pan, zoom and preview
-into**, sized 2+, on **Claude Fable 5.1**. A 2+ row is the whole batch on
-its own: do one increment, ship it, and leave the row in place with its
-text rewritten to say what is done. The next row after it, Phase 7 "A
-third crew", is a 1-session row on Opus 5.
+The last thing that shipped is **Faire Weekend Phase 6, increment 1, "A
+map you can pan, zoom and preview into" (PR #203)**, one increment of a
+2+ row, so **rank 1 stays in place** with its text rewritten and **77
+ranked items remain**. The next session takes rank 1 again, **increment
+2 of Phase 6**, on **Claude Fable 5.1**: the build preview (splice the
+candidate into `builtPlots`, show the draw, traffic and reachability
+delta before the player pays) and a tap readout for the refusal sentence
+on touch. A 2+ row is the whole batch on its own. The row after it, Phase
+7 "A third crew", is a 1-session row on Opus 5.
+
+**What increment 1 built.** The ground is a canvas and the map is a view.
+`js/mapview.js` (pure, 172 checks in `tests/mapview.mjs`) is the plat's
+geometry: the tracks and the paper frame as content, a view as that
+content under one scale-then-translate transform into a `.plat-stage`,
+cell ↔ screen (the 1px gap is nobody's), the pan clamp, a zoom that
+keeps the point under the cursor still, pinch, the arrow keys, and the
+rest rules: never above scale 1, never under the coarse pointer's floor
+(44px markers at any stage width, which at a 48px cell is exactly scale
+1, so a phone pans rather than shrinks), the stage's height fixed at rest.
+`js/plat.js` paints the double rule, the tracks' rule exactly
+`trackSize()` big, every unlocked cell's terrain with the textures the
+CSS used to paint, a cartouche, a compass, and a shade on any edge the
+map runs past. The markers stayed in the DOM under the same transform
+(#251), so every `title`, focus target and `data-action` is where it was;
+the 70 to 168 `.terrain-cell` divs and the SVG compass are gone. Drag,
+pinch, Ctrl+wheel, the keys and three buttons are ruled in #252; the
+sheet no longer scrolls sideways at any width.
+
+**Shot after with Phase 5's camera** (11 plan states × 4 viewports): the
+Home Grounds column 549px at 1280 and Deep Woods Trail 737, the calc to
+the pixel; scale 1 centred at 1080 and 820; scale 1 at the west edge on a
+295px phone stage with 491px of tracks, panning, the east shade on. No
+page scrolls sideways. `play-games.mjs faire-weekend` 18 checks, 0
+failed, no page or console errors. The shoot caught one thing: a
+block-level grid is its container's width whatever its tracks add up to
+(the same trap as #247), so `.grounds-map` kept `width: max-content`.
+
+**Guard-rails broken on purpose (#34), thirty-two; thirty-one caught by
+the assertion whose text claims it**, and one test rewritten because it
+could not tell: a `+` dispatched on the desk stayed green with the key
+handler's target check deleted, because the listener is on `#grounds`.
+One finding about the round trip: a cell origin that drops the gap is
+caught by the gap assertion, the origin arithmetic and the layer
+agreement, not by the centre round trip, which tolerates a one-pixel-
+per-column drift for 23 columns; the suite's comment says so.
+
+**Counts.** `tests/smoke.mjs` 1,859 → 1,902 (Section 29 new; 23, 24 and
+28 rewritten); `tests/mapview.mjs` new, 172; `tests/guests.mjs` 168
+unchanged.
+
+**None of the four shared things was touched.** The two site-wide checks
+are still red on `main` and were red before this branch: `check-
+integrity.mjs` fails on `Projects/school-generator/tools/walk-shell.html`
+and `Tools/prompt-builder.html` (1,478 units, 2 broken), and
+`social:check` reports the same six pages out of sync. `check-
+collisions.mjs` passes. Outside the project: `HISTORY.md`'s decisions 251
+and 252 and a Phase 6 increment 1 entry, and `CLAUDE.md`'s locked-
+decision count (250 to 252).
+
+Before that: **Faire Weekend Phase 5, "The review that has been owed
+four rounds" (PR #201)**, which closed the previous rank 1.
 
 **What Phase 5 built.** A camera, and the fixes it measured.
 `Projects/Ren-Faire-Claude/tools/shoot-states.mjs` plays a scripted
@@ -440,12 +492,17 @@ numbers are still open) and is kept in the list rather than struck, because
 the part that needs a real season played is the part still standing.
 
 **Pick up rank 1: `Projects/Ren-Faire-Claude` Phase 6, "A map you can
-pan, zoom and preview into" (Fable 5.1, size 2+).** The grounds are a CSS
-grid of DOM markers and the fix for a phone was to let the page scroll
-sideways; Phase 5 left the camera (`tools/shoot-states.mjs`) that phase
-will want. A 2+ row is the whole batch on its own and will not finish in
-one session: one increment, shipped, the row left in place. The Ren-Faire
-rows now run ranks 1 through 3, ending with the ½ wiring audit.
+pan, zoom and preview into", increment 2 (Fable 5.1, size 2+).**
+Increment 1 (PR #203) built the canvas, the view and the gestures and
+left the two bullets that need them: the build preview, which the
+wishlist calls the point of the phase (`computeGroundsDraw`,
+`computeFootTraffic` and `computeReachability` are pure functions of a
+plots array; splice the candidate in and show the delta before the
+player pays), and a tap readout for the refusal sentence, because a
+`title` never shows on touch. `mapview.js` has `screenToCell` for the
+readout and `tools/shoot-states.mjs` measures the stage and the view. A
+2+ row is the whole batch on its own. The Ren-Faire rows still run ranks
+1 through 3, ending with the ½ wiring audit.
 
 **Read this before trusting the order.** Two sources rank the same work
 differently, and the table follows `UPGRADE-PATHS.md`'s order because it is
@@ -488,7 +545,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 6 — A map you can pan, zoom and preview into | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-prk1ve` | [WISHLIST.md Phase 6](Projects/Ren-Faire-Claude/WISHLIST.md#phase-6--a-map-you-can-pan-zoom-and-preview-into) |
+| 1 | Phase 6 — A map you can pan, zoom and preview into. **Increment 1 shipped (PR #203):** the canvas, `mapview.js` and its suite, pan/zoom/pinch on every width. **Left:** the build preview and a tap readout for the refusal sentence on touch | `Projects/Ren-Faire-Claude` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/Ren-Faire-Claude/WISHLIST.md#phase-6--a-map-you-can-pan-zoom-and-preview-into) |
 | 2 | Phase 7 — A third crew | `Projects/Ren-Faire-Claude` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/Ren-Faire-Claude/WISHLIST.md#phase-7--a-third-crew) |
 | 3 | Phase 8 — The wiring audit, automatic | `Projects/Ren-Faire-Claude` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/Ren-Faire-Claude/WISHLIST.md#phase-8--the-wiring-audit-automatic) |
 | 4 | Phase 1 — The backer-less middle game | `Projects/daredevil` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/daredevil/WISHLIST.md#phase-1--the-backer-less-middle-game) |
