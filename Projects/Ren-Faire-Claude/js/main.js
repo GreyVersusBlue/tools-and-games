@@ -6,7 +6,7 @@
 
 import * as State from './state.js';
 import * as UI from './ui.js';
-import { validateSchedule, summarizeWeekend } from './engine.js';
+import { validateSchedule, summarizeWeekend, currentGridSize } from './engine.js';
 import { CONFIG } from './data.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 
@@ -42,6 +42,11 @@ function render() {
   const terminalPhases = { report: 1, victory: 1, gameOver: 1, weekendEnd: 1 };
   const isTerminal = !!terminalPhases[state.phase] && (state.phase !== 'report' || !!state.lastResult);
   board.classList.toggle('is-fullwidth', isTerminal);
+  // Phase 5: the plat column is sized off the tier the player has
+  // reached, not the widest one (#246). style.css reads --cols here in a
+  // calc(); ui.js already sets the same number on .grounds-map, but a
+  // custom property only flows down, and #board is the ancestor.
+  board.style.setProperty('--cols', String(currentGridSize(state).cols));
 
   if (isTerminal) {
     $('#grounds').innerHTML = '';

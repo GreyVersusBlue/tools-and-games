@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/smoke.mjs && node tests/guests.mjs"
+    "test": "node tests/smoke.mjs && node tests/guests.mjs",
+    "shoot": "node tools/shoot-states.mjs"
   },
   "devDependencies": {
-    "jsdom": "^24.0.0"
+    "jsdom": "^24.0.0",
+    "playwright-core": "^1.63.0"
   }
 }
