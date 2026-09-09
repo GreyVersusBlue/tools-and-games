@@ -2,7 +2,7 @@
 // main.js wires all interaction via event delegation on #content.
 
 import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, RELATIONSHIP, NEGOTIATION, RENOWN, CARRYOVER } from './data.js';
-import { performerById, vendorById, terrainAt, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf, renownOf, signingBar } from './engine.js';
+import { performerById, vendorById, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf, renownOf, signingBar } from './engine.js';
 import { canCloseSeason, seasonRecord, carryoverPreview } from './state.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
@@ -431,13 +431,13 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
   // yet. The map footprint (and the CSS grid it sits in) simply grows once
   // a new GRID_EXPANSIONS tier unlocks.
   const size = currentGridSize(state);
-  const cells = [];
-  for (let y = 0; y < size.rows; y++) {
-    for (let x = 0; x < size.cols; x++) {
-      const terrain = terrainAt(x, y) || 'clearing';
-      cells.push(`<div class="terrain-cell" data-terrain="${terrain}" style="grid-column:${x + 1};grid-row:${y + 1};"></div>`);
-    }
-  }
+  // Phase 6: the terrain is no longer a .terrain-cell per cell. plat.js
+  // paints it on the .plat-canvas under this grid, in the same cell units
+  // under the same view transform (mapview.js), so the 70 to 168 divs that
+  // used to carry a background each are gone and the grid below holds
+  // only the things a player can point at: the gate, the plots, and the
+  // ghosts. main.js sizes the stage, paints the canvas and applies the
+  // transform after every render; this function stays pure.
   // Stage 17: the gate itself, so a player can see at a glance which cells
   // in the grounds map below actually sit close to it.
   let gateMarker = '';
@@ -516,24 +516,19 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
 
   return `
     <div class="plat-sheet">
-      <div class="grounds-map" style="--cols:${size.cols};--rows:${size.rows};">${cells.join('')}${gateMarker}${builtMarkers}${ghostMarkers}</div>
-      ${COMPASS_ROSE}
+      <div class="plat-stage" tabindex="0" role="group" aria-label="Site plan. Drag to pan; pinch, Ctrl and the mouse wheel, or the zoom buttons to zoom; when focused, the arrow keys pan and plus, minus and zero zoom.">
+        <canvas class="plat-canvas" aria-hidden="true"></canvas>
+        <div class="grounds-map" style="--cols:${size.cols};--rows:${size.rows};">${gateMarker}${builtMarkers}${ghostMarkers}</div>
+      </div>
+    </div>
+    <div class="plat-tools">
+      <button class="btn small" data-action="mapZoomOut" aria-label="Zoom the site plan out" title="Zoom out">\u2212</button>
+      <button class="btn small" data-action="mapFit" aria-label="Fit the site plan to its sheet" title="Fit">Fit</button>
+      <button class="btn small" data-action="mapZoomIn" aria-label="Zoom the site plan in" title="Zoom in">+</button>
     </div>
     <p class="map-legend mono">Everything built must sit on or beside a path &middot; \u{1F3AD} stages need a clear 2\u00d72 &middot; \u{1F357}\u{1F6D2} stalls can't take hill ground</p>
   `;
 }
-
-// A plat sheet gets a compass rose. Inline SVG rather than a glyph so it
-// inherits the sheet's ink colour and stays crisp at any cell size.
-const COMPASS_ROSE = `
-  <svg class="compass" viewBox="0 0 40 40" aria-hidden="true">
-    <circle cx="20" cy="20" r="15" fill="none" stroke="#6B5433" stroke-width="0.8"/>
-    <path d="M20 3 L23.2 18.2 L20 21 L16.8 18.2 Z" fill="#6B5433"/>
-    <path d="M20 37 L16.8 21.8 L20 19 L23.2 21.8 Z" fill="#6B5433" opacity="0.45"/>
-    <path d="M37 20 L21.8 23.2 L19 20 L21.8 16.8 Z" fill="#6B5433" opacity="0.3"/>
-    <path d="M3 20 L18.2 16.8 L21 20 L18.2 23.2 Z" fill="#6B5433" opacity="0.3"/>
-    <text x="20" y="12" text-anchor="middle" font-size="6" fill="#F2E6C6" font-family="serif">N</text>
-  </svg>`;
 
 // Stage 19: the site plan is now a permanent fixture beside the desk rather
 // than a section buried inside the Fair Floor tab, so it gets its own

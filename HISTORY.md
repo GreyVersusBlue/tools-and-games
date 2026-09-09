@@ -3105,6 +3105,52 @@ Two of them have moved since they were written:
    sticky-cost there the way the phone's was. *Source: Faire Weekend
    Phase 5.*
 
+251. **The canvas paints the ground; the markers stay in the DOM, under
+   the same transform.** Phase 6's wishlist text pictured the plots drawn
+   on the canvas too, with a hover readout, keyboard cell selection and a
+   text list of plots built to replace what the DOM gave for free. The
+   DOM gives it for free: every `title` (the refusal sentence on a blocked
+   cell), every focus target, and the 25 `data-action` wirings Section 22
+   guards are on the markers, and nothing about a canvas makes any of
+   them better. So `plat.js` paints the terrain, the tracks' rule, the
+   double rule, the cartouche and the compass on a `.plat-canvas`, and the
+   marker grid rides `mapview.js`'s view as a CSS transform from its own
+   origin, so a marker sits on its terrain at every scale and pan (the
+   suite checks `trackTransform()` and `cellToRect()` agree cell by cell).
+   The 70 to 168 `.terrain-cell` divs a render used to emit are gone. The
+   44px touch guarantee is the view's floor scale rather than a cell size
+   alone: on a coarse pointer `minScaleFor` keeps a marker at 44px however
+   the stage is sized, which at a 48px cell is exactly scale 1, so a phone
+   pans rather than shrinks. What is still owed from that bullet is a tap
+   readout, because a `title` never shows on touch and never did.
+   *Source: Faire Weekend Phase 6, increment 1.*
+
+252. **How the map moves, and what it settles at.** The stage rests at the
+   scale that fits its width, never above 1 (a wider sheet centres the map
+   rather than enlarging it, which keeps #247) and never under the
+   pointer's floor; its height is the content's at that rest scale, set
+   once per layout, so a zoom never grows the page. A drag pans, with a
+   6px slop, and the click that ends a drag longer than that is swallowed
+   so a pan that finishes over a ghost "+" does not place a stall there;
+   no pointer capture, because with it Chromium retargets the click to
+   the capturing element and every ghost button goes dead. Two fingers
+   pinch about their midpoint. `touch-action: pan-y` hands a vertical
+   swipe to the page, which is what a thumb over a map at the top of a
+   phone screen most often means, and keeps horizontal drags and every
+   two-finger gesture for the map. Ctrl or Cmd plus the wheel zooms at the
+   cursor; a plain wheel scrolls the page, because the map is sticky
+   beside the desk on a desktop and sits under the cursor for most of a
+   session. The focused stage takes the arrow keys, plus, minus and zero,
+   and three buttons under the sheet do the same for anyone who never
+   finds a key. The sheet no longer scrolls sideways at any width (the
+   half of #249 that moved the scroll-shadow to the 1080 block is
+   superseded); the "more this way" shade is painted on the canvas from
+   the view's own edges, so it cannot disagree with where the map is. Pan
+   and zoom are session state in `main.js`'s `ui`, kept across renders
+   while the tier, the cell and the stage width hold and refitted when
+   any of them moves; nothing about them is saved. *Source: Faire Weekend
+   Phase 6, increment 1.*
+
 ---
 
 # The site sessions, 1–10
@@ -4924,6 +4970,68 @@ Section 27 in jsdom), `tests/guests.mjs` 168 unchanged and the suite that
 caught the first draft of the meadow's connector; the export-envelope
 assertion moved from version 1 to 2. `play-games.mjs faire-weekend`
 18 checks, 0 failed under Xvfb, no page or console errors.
+
+**Phase 6, increment 1 — A map you can pan, zoom and preview into (PR
+#203).** The grounds were a CSS grid of 70 to 168 `.terrain-cell` divs
+under a grid of markers, and the fix for a phone was to make the cells
+bigger and let the sheet scroll sideways under a four-gradient scroll
+shadow. This increment made the ground a canvas and the map a view.
+`js/mapview.js` (pure) is the geometry: the tracks and the paper margin
+around them as content, a view as that content under one scale-then-
+translate transform into the stage, `cellToRect`/`screenToCell` (the 1px
+gap belongs to nobody), the pan clamp, a zoom that keeps the point under
+the cursor still, pinch, the keys, and the rest rules of #252. `js/plat.js`
+paints onto a `.plat-canvas` under that transform: the double rule, the
+tracks' brown rule exactly `trackSize()` big, every unlocked cell in its
+terrain with the textures the CSS used to paint, a cartouche with the
+tier's name and a scale bar, a compass, and in screen space a shade on any
+edge the content runs past. The markers stayed in the DOM (#251) and ride
+the same view as a CSS transform from their own origin. `main.js` owns the
+view in `ui`, lays the stage out after every render (keeping the view
+while the tier, the cell and the stage width hold), and wires drag, pinch,
+Ctrl+wheel, the arrow keys and three zoom buttons. The plat column's
+`calc()` grew by the 24px frame (58px + 1.4rem), and Section 24 now adds
+`FRAME` to the chrome it sums.
+
+**Shot after, with Phase 5's camera** (`--label phase6 --only plan`, 11
+states x 4 viewports): the Home Grounds column 549px at 1280 (the calc to
+the pixel), Deep Woods Trail 737; at 1080 the map rests at scale 1
+centred on a 990px stage; at 820 (touch) scale 1 centred; at 375 (touch)
+scale 1 at the west edge on a 295px stage with 491px of tracks, panning,
+the east shade on. No page scrolls sideways. `play-games.mjs
+faire-weekend` 18 checks, 0 failed, no page or console errors. The shoot
+found one thing: the grid's box read 271px on the phone, because a
+block-level grid is its container's width whatever its tracks add up to,
+the same trap #247 recorded; `width: max-content` went back on for that
+reason and Section 28 says so.
+
+**Guard-rails broken on purpose (#34), thirty-two.** Thirty-one caught by
+the assertion whose text claims it: the cell origin without its gap (by
+the origin arithmetic, the gap assertion and the layer agreement — not
+by the centre round trip, which tolerates a one-pixel-per-column drift
+for 23 columns, and the suite's comment now says so); the gap given to a
+cell; a zoom that slides its anchor; a pan past the edge; the coarse
+floor dropped; a wide stage enlarging the map; the layer transform
+without the frame; a pinch that never zooms; ArrowRight going west;
+`FRAME.left` 10; `TRACK.gap` 2; the slab 40px wide; the last column
+unpainted; every cell painted clearing; the east shade dropped; cells
+painted 3px off; `main.js` forgetting the static frame offset, never
+setting the stage height, not swallowing the post-drag click, a zero
+slop, a plain wheel zooming, a zoom button re-rendering, a refit on every
+render; terrain cells emitted again; the stage not focusable; and in the
+CSS `touch-action: none`, a grid background, the calc's 34px, the sheet
+scrolling again at 1080, `transform-origin: center`, and the stage's
+padding at 10. The one that was the test's fault: a `+` dispatched on the
+desk stayed green with the key handler's target check deleted, because
+the listener is on `#grounds` and the desk is not (#147); the key now
+lands on the zoom button, and the check catches its deletion.
+
+**Counts.** `tests/smoke.mjs` 1,859 → 1,902 (Section 29 new; 23, 24 and 28
+rewritten); `tests/mapview.mjs` new, 172; `tests/guests.mjs` 168 unchanged.
+**None of the four shared things was touched.** Left for increment 2: the
+build preview (splice the candidate into `builtPlots`, show the draw,
+traffic and reachability delta before the player pays) and a tap readout
+for the refusal sentence on touch.
 
 **Phase 5 — The review that has been owed four rounds.** Stage 20 audited
 contrast with arithmetic because no browser was available, round 3

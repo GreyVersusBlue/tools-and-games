@@ -114,7 +114,10 @@ account's other GitHub Pages projects.
   and it makes bankruptcy a real loss rather than something you reload past.
 - **Phase 1 increment 2 changed what those two multipliers are for.** Neither `computeFootTraffic` nor `computeReachability` scales a stall's sales any more: the gross is `spentAt` off the walk. `computeFootTraffic` is the *estimate* the build palette and plot cards show before the gates open (and the page labels it "est."); `measureFootTraffic(arrivals, builtPlots)` is its measured twin, computed off the walk's own arrival counts with the same relative-to-mean shape and the same 0.6×-1.6× clamp, and it is what the day report carries and what the best/worst-sited-stall log line reads. Reachability still scales a stage's per-block draw weight, and is a reported statistic for stalls. `isLegalPlacement` also refuses a stall or demo camp whose only path frontage cannot be walked from the gate — the col-3 spur ruling (#227).
 - `js/guests.js` — Phase 1 (guests who walk): the crowd as people. `spawnGuests(n, rng)` turns the attendance number into at most 400 typed agents (families, revellers, history buffs, day-trippers, from `GUESTS` in `data.js`), each standing for `attendance / sampled` people; `buildAttractions(state)` gives every built stage, seated stall and demo camp the reachable path cell it is served from, and names the ones no walk from the gate reaches; `walkGuests(state, guests, rng)` steps each guest up to `GUESTS.stepsPerBlock` hops per time block toward whatever pulls hardest (need × quality × archetype taste × shade-in-heat × a repeat penalty, over distance), serves the need on arrival and takes the stall's ticket out of the purse. Pure; `simulateDay` calls it with its own rng stream and puts the aggregates on the report as `guests`. Increment 2 made this the economy: `spentAt` is the money each stall took, and `simulateDay` bills the vendor's gross off it rather than off a conversion rate on attendance. The gate takes its share of the purse first, so `spawnGuests` takes the ticket price.
-- `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test` runs it and `tests/guests.mjs`)
+- `js/mapview.js` — Phase 6: the plat's geometry, pure. The tracks (`TRACK`, which is `.grounds-map`'s 1px gap and 1px border), the paper margin around them (`FRAME`, which `.plat-stage`'s padding copies), and a *view*: the content under one scale-then-translate transform into the stage. `createView`/`fit`/`restScale` (never above 1, never under the pointer's floor), `clampPan`/`panBy`, `zoomAt` (the point under the cursor stays put), `pinch`, `keyboardStep`, `cellToRect`/`screenToCell` (the 1px gap is nobody's), `trackTransform` (what the marker grid's CSS transform is), `stageHeight`, `edges`, and `minScaleFor`/`markerSize`, which is where the 44px touch guarantee lives now: on a coarse pointer the floor scale keeps a marker at 44px however the stage is sized. Nothing in it reads the document
+- `js/plat.js` — Phase 6: `paintPlat(ctx, view, opts)` draws the ground on the `.plat-canvas` under the view's transform: the double rule, the tracks' brown rule exactly `trackSize()` big, every unlocked cell in its terrain with the textures the old `.terrain-cell` CSS painted, a cartouche and a compass in the bottom band, and in screen space a shade on any edge the content runs past. The ctx is a parameter, so `tests/mapview.mjs` paints into a recorder and counts the cells
+- `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test` runs it, `tests/guests.mjs` and `tests/mapview.mjs`)
+- `tests/mapview.mjs` — Phase 6's suite, pure Node: every function in `mapview.js` round-tripped against its inverse or its invariant (cell ↔ screen at five scales and two cell sizes, the pan clamp, a zoom that does not slide the anchor, pinch, the keys, the 44px floor on every tier at five stage widths), and `plat.js` painted into a recording ctx: one fill per cell of the unlocked tier at `cellOrigin()` in its terrain's colour, the slab not a pixel wider, the edge shades only where the map runs past
 - `tools/shoot-states.mjs` — Phase 5's camera, run by hand (`npm run shoot`): a scripted season under Node, seventeen states written into the save slot, the real page in Chromium at 1280, 1080, 820 (touch) and 375 (touch), one full-page PNG per state per viewport in `Tools/board-check/shots/games/faire-weekend/` and a `measurements.json` of live rectangles beside them. Needs `playwright-core` (a devDependency) and a Chromium on disk; asserts nothing
 - `tests/guests.mjs` — Phase 1's suite, pure Node: the route tree, routes between cells, spawning, attractions, the walk's invariants (nobody off-grid, purse + spent is the purse they came with, arrivals sum every way), taste, heat, distance, the unreachable spur, the seam into `simulateDay`, a forty-seed event fingerprint pinned against the Stage 22 engine, and a 30-day run through the state layer
 - `package.json` / `package-lock.json` / `.gitignore` — dev-only. They exist
@@ -132,8 +135,9 @@ npm install
 npm test
 ```
 
-1,859 checks in `tests/smoke.mjs` and 168 in `tests/guests.mjs` (see the file
-list above for what the second one covers). The first: pure engine/state logic (RNG determinism, terrain/grid data
+1,902 checks in `tests/smoke.mjs`, 168 in `tests/guests.mjs` and 172 in
+`tests/mapview.mjs` (see the file list above for what the second and third
+cover). The first: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to
@@ -398,3 +402,28 @@ caught (the map's 1px border a side was missing). **Section 23** reads the
 sheet's pan and scroll-shadow from the 1080px block, where they moved,
 and checks the 720px block does not carry a second copy. Twenty-seven
 breaks, every one caught by the assertion whose text claims it.
+
+**Phase 6, increment 1, 1,859 → 1,902 checks, plus a third suite:
+`tests/mapview.mjs` (172).** The map is a canvas under the marker grid,
+both under one view. **Section 29** boots the page with the stage's
+rectangle stubbed to 330px so the view is real, and reads everything off
+the transform the page wrote: the rest scale and translate against
+`trackTransform()`, the stage's height against `stageHeight()`, the three
+zoom buttons (and that they do not re-render), a 40px drag that pans and
+swallows the click that ends it while a 3px wobble does neither, the view
+surviving the render that places a plot, Ctrl+wheel against a plain wheel,
+the arrow keys on the stage and not off it, a wider tier resting at its
+own fit, and a report having no stage. **Section 23** now reads the
+stage's clip, `touch-action`, padding (against `FRAME`), the grid's gap
+and border (against `TRACK`), the marker margin (against
+`MARKER_MARGIN`), that neither breakpoint scrolls the sheet any more, and
+proves the 44px floor through the view. **Section 24** adds `FRAME` to
+the chrome it sums. **Section 28** guards the slab cure its new way: a
+grid with no background. Thirty-two breaks; thirty-one caught by the
+assertion whose text claims it, and one that was the test's fault: a `+`
+dispatched on the desk stayed green with the key handler's target check
+deleted, because the listener is on `#grounds` and the desk is not, so
+the key now lands on the zoom button. And one finding about the round
+trip: a cell origin that drops the gap is caught by the gap assertion, the
+origin arithmetic and the layer agreement, not by the centre round trip,
+which tolerates a one-pixel-per-column drift for 23 columns.

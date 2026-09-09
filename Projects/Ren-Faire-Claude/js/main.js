@@ -6,8 +6,10 @@
 
 import * as State from './state.js';
 import * as UI from './ui.js';
-import { validateSchedule, summarizeWeekend, currentGridSize } from './engine.js';
+import { validateSchedule, summarizeWeekend, currentGridSize, terrainAt } from './engine.js';
 import { CONFIG } from './data.js';
+import * as MapView from './mapview.js';
+import { paintPlat } from './plat.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 
 // Phase 2: newGame(), not createInitialState() — the latter is deterministic
@@ -16,7 +18,11 @@ import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 let state = State.loadState() || State.newGame();
 // Phase 3: `negotiating` is { kind, id, commitDays, cancelFeeMult } while an
 // offer row is open on Backstage, and null otherwise. View state, not save.
-const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: null, negotiating: null };
+// Phase 6: `view` is the plat's pan and zoom (mapview.js), session state
+// like the rest of this object and never saved; layoutMap() below keeps it
+// across renders while the tier and the stage width hold, and refits it
+// when either moves.
+const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: null, negotiating: null, view: null };
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -82,12 +88,182 @@ function render() {
     </div>
   `;
   ui.flash = null;
+  layoutMap(false);
+}
+
+// ---------------------------------------------------------------------
+// Phase 6: the map is a canvas under a DOM marker layer, both under one
+// view. The canvas paints the ground; the grid keeps the markers, because
+// they are the focus targets, the refusal titles and the 25 data-action
+// wirings Section 22 guards, and nothing about a canvas makes those better.
+// ---------------------------------------------------------------------
+
+// --cell is CSS's number (46, or 48 on a phone or a coarse pointer), and the
+// canvas has to draw at exactly the size the grid lays out at, so it is read
+// off the document rather than assumed. A boot with no layout engine (jsdom)
+// answers '' and gets the desktop cell.
+function readCell() {
+  const raw = window.getComputedStyle(document.documentElement).getPropertyValue('--cell');
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : 46;
+}
+
+function isCoarsePointer() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+}
+
+// After every render: size the stage, keep or refit the view, apply it.
+function layoutMap(refit) {
+  const stage = $('.plat-stage');
+  if (!stage) { ui.view = null; return; }
+  const size = currentGridSize(state);
+  const cell = readCell();
+  const stageW = Math.round(stage.getBoundingClientRect().width);
+  const minScale = MapView.minScaleFor({ cell, coarse: isCoarsePointer() });
+  let view = ui.view;
+  const same = view && view.cols === size.cols && view.rows === size.rows && view.cell === cell
+    && view.viewport.w === stageW && view.minScale === minScale;
+  if (!same || refit) {
+    view = MapView.createView({ cols: size.cols, rows: size.rows, cell, viewport: { w: stageW, h: 0 }, minScale });
+    view = MapView.fit(MapView.withViewport(view, { w: stageW, h: MapView.stageHeight(view) }));
+  }
+  stage.style.height = `${view.viewport.h}px`;
+  applyView(view);
+}
+
+// The one place the view reaches the page: the marker layer's transform and
+// the canvas repaint. Cheap enough to run on every pointer move.
+function applyView(view) {
+  ui.view = view;
+  const stage = $('.plat-stage');
+  if (!stage) return;
+  const map = stage.querySelector('.grounds-map');
+  const t = MapView.trackTransform(view);
+  // The grid sits in flow at (FRAME.left, FRAME.top) inside the stage's
+  // padding, so the translate is measured from there.
+  const dx = t.x - MapView.FRAME.left, dy = t.y - MapView.FRAME.top;
+  if (map) map.style.transform = `translate(${dx}px, ${dy}px) scale(${t.scale})`;
+
+  const canvas = stage.querySelector('.plat-canvas');
+  // jsdom has no 2D context and says so on stderr for every getContext();
+  // a window without CanvasRenderingContext2D cannot paint, so don't ask.
+  if (!canvas || typeof window.CanvasRenderingContext2D !== 'function') return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(view.viewport.w * dpr)), h = Math.max(1, Math.round(view.viewport.h * dpr));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const size = currentGridSize(state);
+  paintPlat(ctx, view, { terrainAt, dpr, cell: view.cell, label: size.label, sub: `${size.cols} \u00d7 ${size.rows} \u00b7 Weekend ${state.season}` });
+}
+
+// Drag to pan, pinch to zoom, Ctrl+wheel to zoom at the cursor, arrow keys
+// and +/-/0 on the focused stage. A drag that moves more than DRAG_SLOP
+// screen px swallows the click that follows it, so a pan that ends over a
+// ghost "+" does not place a stall there; a tap or a still click goes to
+// the button underneath as it always has. No pointer capture: with it,
+// Chromium retargets the click to the capturing element and every ghost
+// button on the map goes dead.
+const DRAG_SLOP = 6;
+const gesture = { pointers: new Map(), moved: 0, stage: null, suppressClick: false };
+
+function stagePoint(e) {
+  const r = gesture.stage.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function onMapPointerDown(e) {
+  const stage = e.target.closest('.plat-stage');
+  if (!stage || !ui.view) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  gesture.stage = stage;
+  if (gesture.pointers.size === 0) {
+    gesture.moved = 0;
+    window.addEventListener('pointermove', onMapPointerMove);
+    window.addEventListener('pointerup', onMapPointerUp);
+    window.addEventListener('pointercancel', onMapPointerUp);
+  }
+  gesture.pointers.set(e.pointerId, stagePoint(e));
+}
+
+function onMapPointerMove(e) {
+  const prev = gesture.pointers.get(e.pointerId);
+  if (!prev || !ui.view) return;
+  const next = stagePoint(e);
+  if (gesture.pointers.size >= 2) {
+    const [idA, idB] = [...gesture.pointers.keys()];
+    const a0 = gesture.pointers.get(idA), b0 = gesture.pointers.get(idB);
+    const a1 = e.pointerId === idA ? next : a0, b1 = e.pointerId === idB ? next : b0;
+    gesture.moved = DRAG_SLOP + 1;
+    applyView(MapView.pinch(ui.view, [a0, b0], [a1, b1]));
+  } else {
+    const dx = next.x - prev.x, dy = next.y - prev.y;
+    gesture.moved += Math.abs(dx) + Math.abs(dy);
+    if (gesture.moved > DRAG_SLOP) applyView(MapView.panBy(ui.view, dx, dy));
+  }
+  gesture.pointers.set(e.pointerId, next);
+  if (gesture.moved > DRAG_SLOP && e.cancelable) e.preventDefault();
+}
+
+function onMapPointerUp(e) {
+  gesture.pointers.delete(e.pointerId);
+  if (gesture.moved > DRAG_SLOP) {
+    gesture.suppressClick = true;
+    setTimeout(() => { gesture.suppressClick = false; }, 0);
+  }
+  if (gesture.pointers.size === 0) {
+    window.removeEventListener('pointermove', onMapPointerMove);
+    window.removeEventListener('pointerup', onMapPointerUp);
+    window.removeEventListener('pointercancel', onMapPointerUp);
+  }
+}
+
+function onMapWheel(e) {
+  const stage = e.target.closest('.plat-stage');
+  if (!stage || !ui.view || !(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  gesture.stage = stage;
+  const p = stagePoint(e);
+  applyView(MapView.zoomAt(ui.view, p.x, p.y, Math.exp(-e.deltaY * 0.01)));
+}
+
+function onMapKey(e) {
+  if (!ui.view || !e.target.classList || !e.target.classList.contains('plat-stage')) return;
+  const next = MapView.keyboardStep(ui.view, e.key);
+  if (!next) return;
+  e.preventDefault();
+  applyView(next);
+}
+
+function wireMap() {
+  const grounds = $('#grounds');
+  grounds.addEventListener('pointerdown', onMapPointerDown);
+  grounds.addEventListener('wheel', onMapWheel, { passive: false });
+  grounds.addEventListener('keydown', onMapKey);
+  grounds.addEventListener('click', (e) => {
+    if (!gesture.suppressClick || !e.target.closest('.plat-stage')) return;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+  window.addEventListener('resize', () => layoutMap(false));
 }
 
 function handleAction(action, el) {
   const id = el.dataset.id;
   let res;
   switch (action) {
+    // Phase 6: the three zoom buttons touch the view and nothing else, so
+    // they apply it without a render (a render would drop nothing, but
+    // it would repaint a map that only needed its transform changed).
+    case 'mapZoomIn':
+      if (ui.view) applyView(MapView.zoomCentred(ui.view, MapView.KEY_ZOOM));
+      return;
+    case 'mapZoomOut':
+      if (ui.view) applyView(MapView.zoomCentred(ui.view, 1 / MapView.KEY_ZOOM));
+      return;
+    case 'mapFit':
+      if (ui.view) applyView(MapView.fit(ui.view));
+      return;
     case 'selectBuild':
       ui.pendingBuild = el.dataset.kind;
       render();
@@ -347,5 +523,6 @@ function mountSave() {
 }
 
 wire();
+wireMap();
 mountSave();
 render();
