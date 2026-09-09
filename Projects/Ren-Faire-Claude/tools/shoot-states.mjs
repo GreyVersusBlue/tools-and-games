@@ -206,8 +206,16 @@ const MEASURE = () => {
     coarse: matchMedia('(pointer: coarse)').matches,
     // The map's *tracks*, as opposed to the .grounds-map box, which through
     // Phase 4 stretched to the sheet's width and painted its brown gap
-    // colour over everything east of the last column.
-    tracks: (() => { const cs = [...document.querySelectorAll('.terrain-cell')]; if (!cs.length) return null; const l = Math.min(...cs.map(c => c.getBoundingClientRect().left)), r = Math.max(...cs.map(c => c.getBoundingClientRect().right)); return { w: Math.round(r - l), left: Math.round(l) }; })(),
+    // colour over everything east of the last column. Phase 6: the grid
+    // holds no terrain cells any more and is exactly its tracks under the
+    // view transform, so its own rectangle is the tracks' — on screen, at
+    // whatever scale the view rests at. `stage` is the viewport the map
+    // pans in, `canvas` the ground under it, `view` the transform applied.
+    tracks: (() => { const m = document.querySelector('.grounds-map'); if (!m) return null; const b = m.getBoundingClientRect(); return { w: Math.round(b.width), left: Math.round(b.left) }; })(),
+    stage: r('.plat-stage'),
+    canvas: r('.plat-canvas'),
+    view: (() => { const m = document.querySelector('.grounds-map'); const t = m && m.style.transform.match(/translate\(([-\d.e]+)px, ([-\d.e]+)px\) scale\(([\d.e-]+)\)/); return t ? { x: Number(t[1]), y: Number(t[2]), scale: Number(t[3]) } : null; })(),
+    markerCount: document.querySelectorAll('.plot-marker').length,
     tables: [...document.querySelectorAll('table')].map(t => ({ cls: t.className, w: Math.round(t.getBoundingClientRect().width), scrolls: t.parentElement.scrollWidth > t.parentElement.clientWidth })),
     marker: (() => { const m = all('.plot-marker'); return m.length ? m[0] : null; })(),
     slider: r('input[type=range]'),
@@ -256,7 +264,7 @@ for (const vp of VIEWPORTS) {
     const bits = [
       `page ${m.page.w}x${m.page.h}${m.overflowX ? ' OVERFLOW-X' : ''}`,
       m.hud ? `hud ${m.hud.h}h/${m.hudRows}row` : '',
-      m.plat ? `plat ${m.plat.w}w (tracks ${m.tracks.w}, slab ${m.slab}, mat-right ${m.matRight}, cell ${m.cell}${m.coarse ? ' coarse' : ''})` : '',
+      m.plat ? `plat ${m.plat.w}w (tracks ${m.tracks.w}, slab ${m.slab}, mat-right ${m.matRight}, cell ${m.cell}${m.coarse ? ' coarse' : ''}${m.view ? `, scale ${m.view.scale.toFixed(3)} at ${m.view.x.toFixed(0)},${m.view.y.toFixed(0)}` : ''}${m.stage ? `, stage ${m.stage.w}x${m.stage.h}` : ''}${m.marker ? `, marker ${m.marker.w}x${m.marker.h}` : ''})` : '',
       m.tables.length ? `tables ${m.tables.map(t => `${t.cls.replace(/-table/, '')}:${t.w}${t.scrolls ? '↔' : ''}`).join(' ')}` : '',
       m.desk ? `desk ${m.desk.w}w` : '',
       m.slider ? `slider ${m.slider.w}x${m.slider.h}` : '',

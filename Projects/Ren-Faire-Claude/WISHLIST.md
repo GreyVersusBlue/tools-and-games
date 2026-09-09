@@ -646,10 +646,14 @@ a design review. This phase spends a browser on one deliberately.
 *Leans on:* `css/style.css`, `Tools/board-check`'s `shots/`. *Save:* none.
 *Model:* **Claude Opus 5** — CSS and judgement, with a browser open.
 
-## Phase 6 — A map you can pan, zoom and preview into
+## Phase 6 — A map you can pan, zoom and preview into — **increment 1 shipped**
 
 **The grounds are a CSS grid of DOM markers, and the fix for a phone was to
-make them bigger and let the page scroll sideways.**
+make them bigger and let the page scroll sideways.** *Increment 1 (PR #203)
+made the ground a canvas and the map a view: it pans, zooms and pinches on
+every width, the sheet no longer scrolls, and the markers stayed in the DOM
+under the same transform (#251, #252). What is left is the preview and the
+touch readout, below.*
 
 `renderGroundsMap` emits a `.terrain-cell` per cell of the unlocked grid — 70
 on Home Grounds, 140 on Deep Woods Trail — plus a marker per plot and, while a
@@ -658,25 +662,43 @@ build kind is selected, a ghost or blocked marker on every open cell. At
 round 3 had to add a scroll shadow. A real plat pans and zooms, and that same
 surface is where a build preview belongs.
 
-- [ ] **Canvas, with the plat drawn on it** — double rule, cartouche, compass
+- [x] **Canvas, with the plat drawn on it** — double rule, cartouche, compass
   rose, per-terrain textures — in grid units under one pan/zoom transform.
-- [ ] **`mapview.js`, pure, with its suite.** Screen point → cell, cell →
+  *`js/plat.js`. The `.terrain-cell` divs are gone (70 to 168 nodes a
+  render); the grid holds the gate, the plots and the ghosts and rides the
+  view as a CSS transform from its own origin. The SVG compass left the
+  sheet for the canvas's bottom band, with the tier's name and a scale
+  bar. The "more this way" shade is painted from the view's own edges
+  rather than from a scroll position.*
+- [x] **`mapview.js`, pure, with its suite.** Screen point → cell, cell →
   rect, pan clamped to content bounds, pinch midpoint → new scale. This is the
   half where a wrong answer is silent: the map still draws, it just puts the
-  stall one cell over.
+  stall one cell over. *`tests/mapview.mjs`, 172 checks. Also the rest
+  rules: never above scale 1 (#247 kept), never under the pointer's floor
+  (44px markers on a coarse pointer at any stage width), the stage's height
+  fixed at rest so a zoom does not grow the page.*
 - [ ] **Build preview, which is the point.** `computeGroundsDraw` is a pure
   function of a plots array and the handoff already names it ready for exactly
   this: splice the candidate into a copy of `builtPlots`, call it, show the
   delta *before* the player pays. Same for foot traffic and reachability.
+  *Increment 2. The ghost buttons still quote cost only.*
 - [ ] **Keep the refusals, and the focus targets.** A blocked cell carries
   `isLegalPlacement`'s reason in a `title` and a canvas has no `title`, so
   that sentence needs a hover/tap readout; the DOM markers were also free
   focus targets, so keyboard cell selection and a text list of plots have to
-  be built or the map becomes pointer-only.
-- [ ] **Rewrite Sections 23 and 24 against the canvas, not around it.** They
+  be built or the map becomes pointer-only. *Kept, by keeping the markers
+  in the DOM (#251): every `title`, every focus target and every
+  `data-action` is where it was, and Section 22 did not change. Still
+  owed, for increment 2: a tap readout, because a `title` never shows on
+  touch and never did.*
+- [x] **Rewrite Sections 23 and 24 against the canvas, not around it.** They
   assert `.plot-marker` and `.plat-sheet` geometry and they will break; the
   44px guarantee still has to be provable through the canvas's own hit-test.
-  Reintroduce each bug and watch it fail (#34).
+  Reintroduce each bug and watch it fail (#34). *Section 23 reads the stage
+  and proves the floor through `mapview.js`; Section 24 adds `FRAME` to its
+  sum; Section 28's slab guard is a grid with no background; Section 29 is
+  the page under gestures. Thirty-two breaks, thirty-one caught by name and
+  one test rewritten because it could not tell (#147).*
 
 *Leans on:* `renderGroundsPanel`/`renderGroundsMap`, `engine.js`'s pure
 draw/traffic/reachability functions, `.plat-sheet`. *Save:* none — pan and

@@ -299,9 +299,14 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
      before: the Home Grounds column was 710px with 469px of map in it and
      the desk 517px; after, the column is 525px and the desk 702px.
      --cols defaults to the widest tier so a page without main.js still
-     lays out as it did. */
+     lays out as it did.
+
+     Phase 6: the tracks sit inside the stage's 12px paper margin each
+     side (mapview.js's FRAME, which .plat-stage's padding below copies),
+     so the constant is 34px + 24px. Section 24 imports FRAME and adds it
+     to the chrome it parses out of the rules here. */
   --cols: 14;
-  grid-template-columns: fit-content(calc(var(--cols) * var(--cell) + (var(--cols) - 1) * 1px + 34px + 1.4rem)) minmax(340px, 1fr);
+  grid-template-columns: fit-content(calc(var(--cols) * var(--cell) + (var(--cols) - 1) * 1px + 58px + 1.4rem)) minmax(340px, 1fr);
   gap: 1.1rem;
   align-items: start;
 }
@@ -346,7 +351,8 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
 }
 
 /* The paper the plan is drawn on: a double rule, the way a real plat sheet
-   is bordered, with the compass rose tucked into the corner. */
+   is bordered. Phase 6 moved the compass rose onto the canvas, in the
+   cartouche band the map itself carries. */
 .plat-sheet {
   position: relative;
   background: var(--map-mat);
@@ -354,58 +360,75 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
   border-radius: 3px;
   padding: 12px;
 }
-.compass {
+
+/* Phase 6: the map is a canvas under a grid of markers, both under one
+   pan/zoom transform that mapview.js computes and main.js applies. The
+   stage is the viewport: it clips, it takes the gestures, and its height
+   is set inline by main.js to the content's height at rest scale, so a
+   zoom never grows the page. Its padding is mapview.js's FRAME, the paper
+   margin the double rule and the cartouche are painted in; the grid sits
+   in flow inside that padding, which is what gives the plat column its
+   intrinsic width (the canvas is absolute and contributes none).
+
+   touch-action: pan-y hands a vertical swipe to the page, which is the
+   thing a thumb on a phone most often means over a map at the top of the
+   screen, and keeps horizontal drags and every two-finger gesture for the
+   map. Ctrl+wheel zooms; a plain wheel scrolls the page, because the map
+   is sticky beside the desk on a desktop and sits under the cursor for
+   most of a session. */
+.plat-stage {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  padding: 12px 12px 34px 12px;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+  border-radius: 2px;
+}
+.plat-stage:active { cursor: grabbing; }
+.plat-stage:focus-visible { outline: 2px solid var(--lantern); outline-offset: 2px; }
+.plat-canvas {
   position: absolute;
-  right: 9px;
-  bottom: 7px;
-  width: 40px;
-  height: 40px;
-  opacity: 0.4;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
   pointer-events: none;
 }
+.plat-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  padding: 0.45rem 0.1rem 0;
+}
+.plat-tools .btn { min-width: 2.4rem; }
 
 .grounds-map {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(var(--cols), var(--cell));
   grid-template-rows: repeat(var(--rows), var(--cell));
   gap: 1px;
-  background: #6B5433;
-  border: 1px solid #6B5433;
-  /* Phase 5: a block-level grid is as wide as its container whatever its
-     tracks add up to, and this one paints its gap colour, so everything
-     east of the last column was a brown slab rather than the plat's
-     paper: 187px of it beside the 10-wide Home Grounds on a 1280px
-     desktop, 445px beside the 14-wide Deep Woods Trail at 1080 (#247).
-     max-content is the tracks exactly. The auto margins centre the map
-     on the sheet when the sheet is wider, and resolve to zero when the
-     map is wider than the sheet, so the panning sheet below keeps its
-     scroll origin at the west edge (#132). */
+  /* Phase 6: the tracks' brown rule and the terrain are painted on the
+     canvas underneath, so this grid paints nothing of its own. The border
+     stays, transparent, because the cell arithmetic in mapview.js (and
+     Section 24's chrome) counts it; the canvas paints the same 1px in
+     ink. The auto margins of #247 are gone with the slab they cured: a
+     grid with no background has no colour to spill, and the view
+     transform, not a margin, centres the map on a wider sheet. The
+     max-content width stays, for a different reason: a block-level grid's
+     box is its container's width whatever its tracks add up to (the
+     Phase 6 shoot read the 491px Home Grounds tracks as a 271px box on a
+     375 phone), and the box is what shoot-states.mjs measures and what
+     the transform is anchored to. */
   width: max-content;
-  margin: 0 auto;
-}
-
-/* --- terrain, each with its own texture rather than a flat fill --- */
-.terrain-cell { position: relative; }
-.terrain-cell[data-terrain="clearing"] {
-  background-color: var(--t-clearing);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.13) 1px, transparent 1.4px);
-  background-size: 9px 9px;
-}
-.terrain-cell[data-terrain="hill"] {
-  background-color: var(--t-hill);
-  background-image: repeating-linear-gradient(58deg, rgba(94, 68, 26, 0.24) 0 1px, transparent 1px 7px);
-}
-.terrain-cell[data-terrain="woods"] {
-  background-color: var(--t-woods);
-  background-image:
-    radial-gradient(rgba(126, 168, 106, 0.5) 1.6px, transparent 2px),
-    radial-gradient(rgba(18, 36, 20, 0.55) 1.6px, transparent 2px);
-  background-size: 11px 11px, 11px 11px;
-  background-position: 0 0, 5px 6px;
-}
-.terrain-cell[data-terrain="path"] {
-  background-color: var(--t-path);
-  background-image: repeating-linear-gradient(90deg, rgba(255, 240, 214, 0.16) 0 1px, transparent 1px 5px);
+  background: none;
+  border: 1px solid transparent;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 
 /* --- structures render as raised tokens sitting ON the plan --- */
@@ -1082,32 +1105,13 @@ select {
   #board { grid-template-columns: minmax(0, 1fr); }
   #grounds { position: static; }
 
-  /* The map can run wider than the viewport from here down (the Deep
-     Woods Trail tier is 14 cells * 46px = 657px, or 685px on a coarse
-     pointer), so panning to the eastern columns is normal, not an edge
-     case — and nothing on screen said so. This is the standard "scroll
-     shadow" technique: two gradients painted in the map's own paper
-     colour scroll WITH the content (background-attachment: local) and
-     mask two more gradients painted in shadow that stay fixed to the
-     viewport (background-attachment: scroll). The shadow only shows
-     through where the paper-coloured cover has scrolled clear of that
-     edge, so the fade appears on the right on load, moves to both edges
-     mid-scroll, and disappears on the left once fully panned — an
-     affordance that reflects actual scroll position rather than a static
-     hint that goes stale. Stage 23 wrote this for the 720px breakpoint;
-     Phase 5 moved it up to 1080 with the cell it serves. */
-  .plat-sheet {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    background-image:
-      linear-gradient(to right, var(--map-mat) 40%, transparent),
-      linear-gradient(to left, var(--map-mat) 40%, transparent) 100% 0,
-      linear-gradient(to right, rgba(20, 17, 14, 0.55), transparent 24px),
-      linear-gradient(to left, rgba(20, 17, 14, 0.55), transparent 24px) 100% 0;
-    background-repeat: no-repeat;
-    background-size: 24px 100%, 24px 100%, 24px 100%, 24px 100%;
-    background-attachment: local, local, scroll, scroll;
-  }
+  /* Phase 6: through Phase 5 the sheet itself scrolled sideways here
+     (overflow-x: auto with a scroll-shadow painted in four gradients),
+     because a 657px map does not fit a 720px window. The stage pans
+     instead now at every width, and the "more this way" shade is painted
+     on the canvas from the view's own edges (plat.js), so it can never
+     disagree with where the map actually is. The sheet no longer scrolls,
+     and Section 23 checks that it does not quietly start again. */
 }
 @media (max-width: 720px) {
   /* Stage 23: through Stage 22, this breakpoint *shrank* the grid to

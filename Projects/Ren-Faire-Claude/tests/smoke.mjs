@@ -29,6 +29,9 @@ function assert(cond, msg) {
 const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather, performerFor, vendorFor, traitRateMult, relationshipOf, relationshipTier, contractedActIds, bestBlockFor, offerDiscount, relationshipRateMult, quoteContract, beatById, actNameOf, pendingBeats, performerById, vendorById, isExpansionUnlocked, renownOf, moodRenown, weekendRenown, signingBar, nextRunSeed, reachabilityDistance: reachabilityDistanceOf } = await import(mod('js/engine.js'));
 const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS, RENOWN, CARRYOVER } = await import(mod('js/data.js'));
 const State = await import(mod('js/state.js'));
+// Phase 6: the plat's geometry, read here for the CSS-agreement checks in
+// Sections 23, 24 and 29. Its own suite is tests/mapview.mjs.
+const { TRACK, FRAME, MARKER_MARGIN, createView, minScaleFor, markerSize, fit, withViewport, trackTransform, stageHeight, contentSize, KEY_ZOOM } = await import(mod('js/mapview.js'));
 
 // --- RNG determinism ---
 {
@@ -3555,25 +3558,49 @@ function makeMemoryStorage() {
     assert(rule.test(mobile), `${selector} has a 44px min-height inside the mobile breakpoint (was ${selector === '.tab-btn' ? '40px' : selector === '.plot-marker' ? '26px' : 'under 44px'} pre-Stage-23)`);
   }
 
-  // The grounds map now regularly overflows the viewport on mobile (Deep
-  // Woods Trail: 14 * 48px = 672px against a 375px phone) — confirm the
-  // scroll-shadow affordance (paper-coloured cover scrolling WITH the
-  // content, shadow gradient fixed to the viewport) is actually wired, not
-  // just an unused overflow-x: auto. Phase 5 moved the rule up to the
-  // 1080px block, because the 721-1080 band lost its 38px cell (#249) and
-  // a 657px map no longer fits a 721px window either; the 720px block
-  // inherits it. So this reads the 1080 block, and the block after it
-  // checks the phone block does not quietly re-declare a shrunken one.
+  // Phase 6: the map is wider than a phone at every tier (Home Grounds at
+  // 48px is 489px of tracks plus the frame), and through Phase 5 the fix
+  // was the sheet scrolling sideways with a four-gradient scroll shadow.
+  // The stage pans now, under mapview.js's view, at every width. So this
+  // checks the mechanism that replaced it: the stage clips, it hands
+  // vertical swipes to the page and keeps the rest, the grid rides the
+  // transform from its own origin, the sheet does not scroll in either
+  // breakpoint any more, and the 44px guarantee is provable through the
+  // view rather than through a cell size alone: on a coarse pointer the
+  // view's floor scale keeps a marker at 44px however the stage is sized.
+  const rule = (selector, from = css) => (from.match(new RegExp(`(?:^|\\n)\\s*${selector.replace(/[.#[\]=*+?()|]/g, '\\$&')}\\s*\\{([^}]*)\\}`)) || [])[1] || '';
+  const stage = rule('.plat-stage');
+  assert(/overflow:\s*hidden/.test(stage), '.plat-stage clips the map: the stage is the viewport the view pans inside');
+  assert(/touch-action:\s*pan-y/.test(stage), '.plat-stage leaves vertical swipes to the page (touch-action: pan-y) and keeps horizontal drags and pinches for the map');
+  assert(/user-select:\s*none/.test(stage), '.plat-stage does not select text while a mouse drags it');
+  const stagePad = stage.match(/padding:\s*(\d+)px\s+(\d+)px\s+(\d+)px\s+(\d+)px/);
+  assert(stagePad && Number(stagePad[1]) === FRAME.top && Number(stagePad[2]) === FRAME.right && Number(stagePad[3]) === FRAME.bottom && Number(stagePad[4]) === FRAME.left,
+    `.plat-stage\u2019s padding is mapview.js\u2019s FRAME (${FRAME.top} ${FRAME.right} ${FRAME.bottom} ${FRAME.left}), so the grid sits where the canvas paints the tracks`);
+  const canvasRule = rule('.plat-canvas');
+  assert(/position:\s*absolute/.test(canvasRule) && /inset:\s*0/.test(canvasRule) && /pointer-events:\s*none/.test(canvasRule), '.plat-canvas fills the stage behind the grid and takes no pointer events, so every tap reaches the marker under it');
+  const map = rule('.grounds-map');
+  assert(/transform-origin:\s*0 0/.test(map), '.grounds-map scales from its own top-left, which is what trackTransform() assumes');
+  assert(/position:\s*relative/.test(map), '.grounds-map sits in flow inside the stage\u2019s padding, so the plat column keeps its intrinsic width');
+  const mapGap = Number((map.match(/gap:\s*(\d+)px/) || [])[1]);
+  const mapBorderW = Number((map.match(/border:\s*(\d+)px solid/) || [])[1]);
+  assert(mapGap === TRACK.gap && mapBorderW === TRACK.border, `.grounds-map\u2019s gap (${mapGap}px) and border (${mapBorderW}px) are mapview.js\u2019s TRACK (${TRACK.gap}, ${TRACK.border}) \u2014 a drift here puts every marker off its terrain by a cell\u2019s worth per column`);
+  assert(markerMargin === MARKER_MARGIN, `.plot-marker\u2019s margin (${markerMargin}px) is mapview.js\u2019s MARKER_MARGIN (${MARKER_MARGIN}), the number the 44px floor is computed from`);
   const wideBlockMatch = css.match(/@media \(max-width:\s*1080px\)\s*\{([\s\S]*?)\r?\n\}\r?\n/);
   assert(!!wideBlockMatch, 'style.css still has its max-width: 1080px breakpoint');
-  const plotSheetMobile = ((wideBlockMatch || [])[1] || '').match(/\.plat-sheet\s*\{([\s\S]*?)\}/)?.[1] || '';
-  assert(/overflow-x:\s*auto/.test(plotSheetMobile), '.plat-sheet scrolls horizontally from the 1080px breakpoint down');
-  assert(/background-attachment:\s*local,\s*local,\s*scroll,\s*scroll/.test(plotSheetMobile),
-    '.plat-sheet pairs two locally-scrolling cover gradients with two viewport-fixed shadow gradients \u2014 the scroll-shadow technique that makes panning to the eastern columns visible');
-  const shadowLayers = (plotSheetMobile.match(/linear-gradient/g) || []).length;
-  assert(shadowLayers === 4, `the scroll-shadow effect layers exactly 4 gradients \u2014 2 covers + 2 shadows (found ${shadowLayers})`);
+  const plotSheetWide = ((wideBlockMatch || [])[1] || '').match(/\.plat-sheet\s*\{([\s\S]*?)\}/)?.[1] || '';
   const plotSheetPhone = (mobile.match(/\.plat-sheet\s*\{([\s\S]*?)\}/) || [])[1] || '';
-  assert(!/overflow-x|background-attachment/.test(plotSheetPhone), 'the 720px block does not re-declare the sheet\u2019s scrolling, which would be a second copy to drift');
+  assert(!/overflow-x|background-attachment/.test(plotSheetWide) && !/overflow-x|background-attachment/.test(plotSheetPhone),
+    'neither breakpoint scrolls the sheet sideways any more \u2014 the stage pans, and a scrolling sheet under a panning stage would be two ways to move the map that disagree');
+  assert(!/\.terrain-cell/.test(css), 'no .terrain-cell rule survives \u2014 the terrain is painted on the canvas, and a rule here would be dead CSS waiting to be trusted');
+
+  // The floor, through the view: a coarse pointer at the phone cell on a
+  // 330px stage (a 375 phone less the chrome) settles at scale 1 and its
+  // markers measure 44px; a mouse on the same stage may shrink to fit.
+  const coarseView = createView({ cols: 10, rows: 7, cell: mobileCell, viewport: { w: 330, h: 0 }, minScale: minScaleFor({ cell: mobileCell, coarse: true }) });
+  assert(coarseView.scale === 1 && markerSize(coarseView) >= 44,
+    `on a coarse pointer a 330px stage settles at scale ${coarseView.scale} with ${markerSize(coarseView)}px markers \u2014 the map pans rather than shrinking under 44px`);
+  const fineView = createView({ cols: 10, rows: 7, cell: mobileCell, viewport: { w: 330, h: 0 }, minScale: minScaleFor({ cell: mobileCell, coarse: false }) });
+  assert(fineView.scale < 1 && markerSize(fineView) < 44, `a mouse on the same stage fits the map at scale ${fineView.scale.toFixed(3)}, because a mouse does not need 44px`);
 }
 
 // ---------------------------------------------------------------------
@@ -3624,14 +3651,17 @@ function makeMemoryStorage() {
   const chromeRem = 2 * platPadRem;
   assert(Number.isFinite(chromePx) && Number.isFinite(chromeRem), 'the sheet\u2019s and plat\u2019s padding and borders parse out of style.css');
   const capPx = shape ? Number(shape[1]) : NaN, capRem = shape ? Number(shape[2]) : NaN;
-  assert(capPx === chromePx && capRem === chromeRem,
-    `the calc\u2019s constants (${capPx}px + ${capRem}rem) are the chrome around the tracks (${chromePx}px + ${chromeRem}rem) \u2014 a padding edited on one side and not the other reopens a gap or clips a column`);
+  // Phase 6: the stage's paper margin (mapview.js's FRAME, which the
+  // stage's padding copies and Section 23 checks) sits inside the chrome.
+  const framePx = FRAME.left + FRAME.right;
+  assert(capPx === chromePx + framePx && capRem === chromeRem,
+    `the calc\u2019s constants (${capPx}px + ${capRem}rem) are the chrome around the tracks plus the frame (${chromePx}px + ${framePx}px + ${chromeRem}rem) \u2014 a padding edited on one side and not the other reopens a gap or clips a column`);
   const desktopCell = Number((css.match(/:root\s*\{[\s\S]*?--cell:\s*(\d+)px/) || [])[1]);
   const widthFor = cols => cols * desktopCell + (cols - 1) + capPx + capRem * 16;
   for (const tier of GRID_EXPANSIONS) {
     const w = widthFor(tier.cols);
-    assert(w >= tier.cols * desktopCell + (tier.cols - 1) + 2 * (sheetPad + sheetBorder + mapBorder) && w < 760,
-      `${tier.label} (${tier.cols} wide) gets a ${w.toFixed(1)}px column at the desktop ${desktopCell}px cell \u2014 wide enough for its own map and narrower than the 760px that would squeeze the desk under 500 on a 1280 desktop`);
+    assert(w >= tier.cols * desktopCell + (tier.cols - 1) + 2 * (sheetPad + sheetBorder + mapBorder) + framePx && w < 780,
+      `${tier.label} (${tier.cols} wide) gets a ${w.toFixed(1)}px column at the desktop ${desktopCell}px cell \u2014 wide enough for its own map and frame and narrower than the 780px that would squeeze the desk under 480 on a 1280 desktop`);
   }
   assert(widthFor(10) < widthFor(14) - 180,
     `the Home Grounds column (${widthFor(10).toFixed(1)}px) is at least 180px narrower than Deep Woods Trail\u2019s (${widthFor(14).toFixed(1)}px) \u2014 Stage 23\u2019s fixed cap gave every tier the widest one\u2019s 710px`);
@@ -4825,7 +4855,10 @@ function makeMemoryStorage() {
     assert(note && note.textContent.includes(meadow.label) && new RegExp(`once the faire has ${meadow.unlockRenown} renown`).test(note.textContent), 'the weekend-end unlock notice names the meadow with its renown condition rather than promising it');
     let s4 = { ...State.createInitialState(), season: meadow.unlockSeason, renown: meadow.unlockRenown };
     const b4 = await boot(s4);
-    assert(b4.doc.querySelector('.plat-title').textContent.trim() === meadow.label && b4.doc.querySelectorAll('.terrain-cell').length === meadow.cols * meadow.rows, 'with both gates met the plat draws the South Meadow');
+    // Phase 6: the terrain is on the canvas, so the tier the grid lays out
+    // is read off its own --cols/--rows rather than counted as cells.
+    const b4map = b4.doc.querySelector('.grounds-map');
+    assert(b4.doc.querySelector('.plat-title').textContent.trim() === meadow.label && b4map && b4map.style.getPropertyValue('--cols') === String(meadow.cols) && b4map.style.getPropertyValue('--rows') === String(meadow.rows), 'with both gates met the plat draws the South Meadow');
   }
 
   // --- a pre-carryover save boots straight into the new shape ---
@@ -4862,10 +4895,16 @@ function makeMemoryStorage() {
   const block = (query) => (css.match(new RegExp(`@media \\(${query}\\)\\s*\\{([\\s\\S]*?)\\r?\\n\\}\\r?\\n`)) || [])[1] || '';
   const rule = (selector, from = css) => (from.match(new RegExp(`(?:^|\\n)\\s*${selector.replace(/[.#[\]=*+?()|]/g, '\\$&')}\\s*\\{([^}]*)\\}`)) || [])[1] || '';
 
-  // --- the map is its tracks (#247) ---
+  // --- the map is its tracks (#247, kept by Phase 6 a different way) ---
+  // Phase 5 cured the brown slab east of the last column with max-content
+  // and auto margins. Phase 6 took the grid's background away altogether:
+  // the canvas paints the tracks to the pixel (plat.js fills exactly
+  // trackSize()), and a grid with no background has no colour to spill
+  // whatever its box measures. So the guard is that nothing gives it one.
   const map = rule('.grounds-map');
-  assert(/width:\s*max-content/.test(map), '.grounds-map is max-content wide, so the brown gap colour stops at the last column instead of filling the sheet');
-  assert(/margin:\s*0 auto/.test(map), '.grounds-map centres on a wider sheet with auto margins, which resolve to zero when the map is the wider one (#132)');
+  assert(/background:\s*none/.test(map) && !/background(?:-color)?:\s*#/.test(map), '.grounds-map paints no background of its own \u2014 the brown gap colour is the canvas\u2019s to paint, exactly the tracks wide (#247)');
+  assert(/border:\s*1px solid transparent/.test(map), '.grounds-map keeps its 1px border, transparent: the cell arithmetic counts it and the canvas paints it in ink');
+  assert(/width:\s*max-content/.test(map), '.grounds-map is still max-content wide, so its box is its tracks \u2014 a block-level grid is otherwise its container\u2019s width, and the Phase 6 shoot read 491px of tracks as a 271px box on a phone');
 
   // --- the 1080 band keeps the desktop cell; a coarse pointer gets 48 (#249) ---
   assert(!/--cell:\s*38px/.test(css), 'no breakpoint shrinks --cell to 38px any more \u2014 that was 34px markers on every tablet');
@@ -4935,6 +4974,166 @@ function makeMemoryStorage() {
     click(doc, '[data-action="openGates"]');
     assert(!!doc.querySelector('.ticket-stub') && doc.querySelector('#board').style.getPropertyValue('--cols') === String(deep.cols), 'and the variable is still set on a report screen, so the next planning render starts from the right width');
   }
+}
+
+// ---------------------------------------------------------------------
+// Section 29: Phase 6, increment 1 — the map is a canvas under a grid,
+// both under one view.
+//
+// renderGroundsMap no longer emits a .terrain-cell per cell; plat.js
+// paints the ground on a .plat-canvas and the marker grid rides the same
+// view transform (mapview.js) as a CSS transform, so a marker sits on its
+// terrain at every scale and pan. main.js owns the view in `ui`, sizes the
+// stage after every render, and wires drag, pinch, Ctrl+wheel, the arrow
+// keys and three zoom buttons. jsdom lays nothing out, so the stage's
+// rectangle is stubbed to 330px here — a phone's worth of sheet — and
+// everything below is read off the transform the page actually wrote.
+// ---------------------------------------------------------------------
+{
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  const STAGE_W = 330;
+  const boot = async (save) => {
+    const storage = makeMemoryStorage();
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify({ ...save, __v: 2 }));
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    // The stage is the one element whose size the view depends on.
+    const zero = { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+    dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+      return this.classList && this.classList.contains('plat-stage')
+        ? { left: 0, top: 0, right: STAGE_W, bottom: 400, width: STAGE_W, height: 400 }
+        : zero;
+    };
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return { dom, doc: dom.window.document };
+  };
+  const click = (doc, sel) => {
+    const el = doc.querySelector(sel);
+    if (el) el.dispatchEvent(new el.ownerDocument.defaultView.Event('click', { bubbles: true }));
+    return !!el;
+  };
+  const transformOf = (doc) => {
+    const m = (doc.querySelector('.grounds-map')?.style.transform || '').match(/translate\(([-\d.e]+)px, ([-\d.e]+)px\) scale\(([\d.e-]+)\)/);
+    return m ? { x: Number(m[1]), y: Number(m[2]), scale: Number(m[3]) } : null;
+  };
+  const cellOf = (doc) => parseFloat(doc.defaultView.getComputedStyle(doc.documentElement).getPropertyValue('--cell')) || 46;
+  const tick = () => new Promise(r => setTimeout(r, 5));
+
+  const { dom, doc } = await boot(State.createInitialState());
+  const win = dom.window;
+  const stage = doc.querySelector('.plat-stage');
+  assert(!!stage && stage.getAttribute('tabindex') === '0' && /pan/i.test(stage.getAttribute('aria-label') || ''), 'the map sits in a focusable .plat-stage whose label says how to pan it');
+  assert(!!stage.querySelector('canvas.plat-canvas') && !!stage.querySelector('.grounds-map'), 'the stage holds the canvas and the marker grid');
+  assert(doc.querySelectorAll('.terrain-cell').length === 0, 'no .terrain-cell is emitted any more — the terrain is the canvas’s');
+  assert(!!doc.querySelector('.gate-marker') && doc.querySelector('#grounds .grounds-map').style.getPropertyValue('--cols') === String(GRID_EXPANSIONS[0].cols), 'the gate and the grid’s tracks are still in the DOM');
+  assert(!doc.querySelector('.compass') && !doc.querySelector('svg.compass'), 'the SVG compass is gone from the sheet; the canvas draws its own');
+  for (const a of ['mapZoomIn', 'mapZoomOut', 'mapFit']) assert(!!doc.querySelector(`[data-action="${a}"]`), `a ${a} button is on the page`);
+
+  // The rest view: a 330px stage with a mouse fits the 10-wide Home Grounds.
+  const cell = cellOf(doc);
+  // Built the way layoutMap() builds it: the stage's height is the view's
+  // viewport height, so a map shorter than its stage centres vertically.
+  const restView = (tier) => {
+    const v = createView({ cols: tier.cols, rows: tier.rows, cell, viewport: { w: STAGE_W, h: 0 }, minScale: minScaleFor({ cell, coarse: false }) });
+    return fit(withViewport(v, { w: STAGE_W, h: stageHeight(v) }));
+  };
+  const expected = restView(GRID_EXPANSIONS[0]);
+  const t0 = transformOf(doc);
+  assert(!!t0, 'the marker grid carries a translate(...) scale(...) transform');
+  assert(t0 && Math.abs(t0.scale - expected.scale) < 1e-9 && expected.scale < 1, `at rest the grid is scaled to fit the stage (${t0 && t0.scale.toFixed(4)}, expected ${expected.scale.toFixed(4)})`);
+  const tt = trackTransform(expected);
+  assert(t0 && Math.abs(t0.x - (tt.x - FRAME.left)) < 1e-9 && Math.abs(t0.y - (tt.y - FRAME.top)) < 1e-9, 'and its translate is trackTransform() less the static FRAME offset the padding already gives it');
+  assert(stage.style.height === `${stageHeight(expected)}px`, `the stage’s height is stageHeight() for the tier at the rest scale (${stage.style.height})`);
+
+  // Zoom buttons change the transform without a render.
+  click(doc, '[data-action="selectBuild"][data-kind="food"]');
+  const ghostsBefore = doc.querySelectorAll('.plot-marker.ghost').length;
+  assert(ghostsBefore > 0, 'ghost markers render in the grid while a kind is selected');
+  const stageAfterSelect = doc.querySelector('.plat-stage');
+  click(doc, '[data-action="mapZoomIn"]');
+  const t1 = transformOf(doc);
+  assert(t1 && Math.abs(t1.scale - expected.scale * KEY_ZOOM) < 1e-9, `mapZoomIn multiplies the scale by KEY_ZOOM (${t1 && t1.scale.toFixed(4)})`);
+  assert(doc.querySelector('.plat-stage') === stageAfterSelect && doc.querySelectorAll('.plot-marker.ghost').length === ghostsBefore, 'a zoom button does not re-render the grounds; the ghosts are the same nodes');
+  click(doc, '[data-action="mapZoomIn"]');
+  const t2 = transformOf(doc);
+  assert(t2 && t2.scale > 1 && t2.x < 0, 'two zooms in put the map wider than the stage, panned to keep the centre');
+  click(doc, '[data-action="mapFit"]');
+  const t3 = transformOf(doc);
+  assert(t3 && Math.abs(t3.scale - expected.scale) < 1e-9 && Math.abs(t3.x - t0.x) < 1e-9, 'mapFit returns to the rest transform');
+  click(doc, '[data-action="mapZoomOut"]');
+  const t4 = transformOf(doc);
+  assert(t4 && Math.abs(t4.scale - expected.scale / KEY_ZOOM) < 1e-9, 'mapZoomOut divides by KEY_ZOOM (a mouse may go under the fit)');
+  click(doc, '[data-action="mapZoomIn"]');
+  click(doc, '[data-action="mapZoomIn"]');
+  click(doc, '[data-action="mapZoomIn"]');
+  const zoomed = transformOf(doc);
+  assert(zoomed && zoomed.scale > 1, `zoomed in for the gestures below (scale ${zoomed && zoomed.scale.toFixed(3)})`);
+
+  // A drag pans, and swallows the click that ends it.
+  const stageEl = doc.querySelector('.plat-stage');
+  const ghost = doc.querySelector('.plot-marker.ghost');
+  const mouse = (type, target, x, y) => target.dispatchEvent(new win.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }));
+  mouse('pointerdown', ghost, 100, 100);
+  mouse('pointermove', ghost, 60, 100);
+  mouse('pointerup', ghost, 60, 100);
+  const dragged = transformOf(doc);
+  assert(dragged && Math.abs(dragged.x - (zoomed.x - 40)) < 1e-9 && Math.abs(dragged.y - zoomed.y) < 1e-9, `a 40px drag west pans the map 40px (x ${zoomed && zoomed.x.toFixed(1)} → ${dragged && dragged.x.toFixed(1)})`);
+  click(doc, '.plot-marker.ghost');
+  assert(!doc.querySelector('.plot-marker.planning') && doc.querySelectorAll('.plot-marker.ghost').length === ghostsBefore, 'the click that ends a drag is swallowed: nothing was placed under it');
+  await tick();
+  // A still click still places.
+  mouse('pointerdown', doc.querySelector('.plot-marker.ghost'), 100, 100);
+  mouse('pointermove', doc.querySelector('.plot-marker.ghost'), 102, 101);
+  mouse('pointerup', doc.querySelector('.plot-marker.ghost'), 102, 101);
+  assert(Math.abs(transformOf(doc).x - dragged.x) < 1e-9, 'a 3px wobble inside the slop does not pan');
+  click(doc, '.plot-marker.ghost');
+  assert(!!doc.querySelector('.plot-marker.planning'), 'a still click on a ghost places the plot as before');
+  const afterPlace = transformOf(doc);
+  assert(afterPlace && Math.abs(afterPlace.scale - zoomed.scale) < 1e-9 && Math.abs(afterPlace.x - dragged.x) < 1e-9, 'the render that placed it kept the zoom and the pan — the view survives a re-render while the tier and stage hold');
+
+  // Ctrl+wheel zooms at the cursor; a plain wheel is the page’s.
+  const wheel = (ctrl) => doc.querySelector('.plat-stage').dispatchEvent(new win.WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 50, clientY: 50, deltaY: -50, ctrlKey: ctrl }));
+  wheel(false);
+  assert(Math.abs(transformOf(doc).scale - afterPlace.scale) < 1e-9, 'a plain wheel leaves the map alone, so the page can scroll under the cursor');
+  wheel(true);
+  const wheeled = transformOf(doc);
+  assert(wheeled.scale > afterPlace.scale, `Ctrl+wheel up zooms in (${afterPlace.scale.toFixed(3)} → ${wheeled.scale.toFixed(3)})`);
+
+  // Arrow keys on the focused stage.
+  const key = (k) => doc.querySelector('.plat-stage').dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+  key('ArrowRight');
+  const keyed = transformOf(doc);
+  assert(Math.abs(keyed.x - (wheeled.x - 40)) < 1e-9 || Math.abs(keyed.x - wheeled.x) < 1e-9 && wheeled.x <= STAGE_W - contentSize(GRID_EXPANSIONS[0].cols, GRID_EXPANSIONS[0].rows, cell).w * wheeled.scale + 1e-9, 'ArrowRight pans 40px east, or stays if already at the east edge');
+  key('0');
+  assert(Math.abs(transformOf(doc).scale - expected.scale) < 1e-9, '0 fits the map again');
+  // The same key on something else inside #grounds — the zoom button is
+  // the nearest focusable thing — does nothing to the map. (Dispatched on
+  // the desk it would prove only that the listener is on #grounds, which
+  // is true by construction: the first draft of this line did that and
+  // stayed green with the target check deleted.)
+  doc.querySelector('[data-action="mapZoomIn"]').dispatchEvent(new win.KeyboardEvent('keydown', { key: '+', bubbles: true }));
+  assert(Math.abs(transformOf(doc).scale - expected.scale) < 1e-9, 'a + typed anywhere but the stage is not a zoom');
+
+  // A new tier refits.
+  click(doc, '[data-action="cancelBuild"]');
+  click(doc, '[data-action="mapZoomIn"]');
+  const beforeTier = transformOf(doc);
+  assert(beforeTier.scale > expected.scale, 'zoomed before the tier changes');
+  const deep = GRID_EXPANSIONS.find(g => g.label === 'Deep Woods Trail');
+  const { doc: doc2 } = await boot({ ...State.createInitialState(), season: deep.unlockSeason });
+  const deepExpected = restView(deep);
+  const t5 = transformOf(doc2);
+  assert(t5 && Math.abs(t5.scale - deepExpected.scale) < 1e-9 && doc2.querySelector('.plat-stage').style.height === `${stageHeight(deepExpected)}px`, `a wider tier rests at its own fit (${t5 && t5.scale.toFixed(4)}) with its own stage height`);
+
+  // A report screen has no stage, and coming back from one lays the map out again.
+  click(doc2, '[data-action="openGates"]');
+  assert(!doc2.querySelector('.plat-stage') && !!doc2.querySelector('.ticket-stub'), 'a report has no stage');
+  click(doc2, '[data-action="nextDay"]');
+  const t6 = transformOf(doc2);
+  assert(t6 && Math.abs(t6.scale - deepExpected.scale) < 1e-9, 'and the next planning day comes back at the rest view');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
