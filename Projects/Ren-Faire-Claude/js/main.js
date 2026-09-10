@@ -398,6 +398,15 @@ function handleAction(action, el) {
       res = State.launchCampaign(state, id);
       if (res.error) ui.flash = res.error; else state = res.state;
       break;
+    case 'contractCrew':
+      res = State.contractCrew(state, id, el.dataset.contract || 'open');
+      if (res.error) ui.flash = res.error; else state = res.state;
+      break;
+    case 'releaseCrew':
+      res = State.releaseCrew(state, id);
+      state = res.state;
+      if (res.fee > 0) ui.flash = `Let a crew go early \u2014 $${res.fee} cancellation fee.`;
+      break;
     case 'fireVendor':
       res = State.fireVendor(state, id);
       state = res.state;
@@ -412,7 +421,9 @@ function handleAction(action, el) {
     case 'signOffer': {
       if (!ui.negotiating || ui.negotiating.id !== id) return;
       const terms = { commitDays: ui.negotiating.commitDays, cancelFeeMult: ui.negotiating.cancelFeeMult };
-      res = ui.negotiating.kind === 'vendor' ? State.hireVendor(state, id, terms) : State.contractPerformer(state, id, terms);
+      res = ui.negotiating.kind === 'vendor' ? State.hireVendor(state, id, terms)
+        : ui.negotiating.kind === 'crew' ? State.contractCrew(state, id, terms)
+        : State.contractPerformer(state, id, terms);
       if (res.error) ui.flash = res.error; else { state = res.state; ui.negotiating = null; }
       break;
     }

@@ -62,10 +62,22 @@ export const CONFIG = {
   // it is the one cost that lands whether or not the day goes well: it is
   // what makes a bad weekend actually hurt, and what makes "open the gates
   // on a thin lineup" a decision instead of free money.
-  baseOverhead: 2200,
+  //
+  // Phase 7: 2200 -> 1900. The paragraph above named "gate staff" as part
+  // of what this nut covers, and through Phase 6 that was a stand-in for
+  // people the player never hired. CREW below makes them a line the player
+  // signs, so the stand-in comes out: 300 is roughly what the entry gate
+  // crew and the entry watch ask between them. Only the gate's share is
+  // refunded, not the whole crew bill — an announcer and a second gate
+  // company are services this faire never had, not costs it was already
+  // paying quietly. Every SIGNIFICANCE check tuned against the old nut was
+  // re-run against this one; see tests/smoke.mjs Section 1g.
+  baseOverhead: 1900,
   // Stage 19: the cost of every guest who walks through the gate —
-  // sanitation, water, waste haulage, gate and grounds staffing, the
-  // insurance rider that's priced per head. This is the structural half of
+  // sanitation, water, waste haulage, grounds staffing, the insurance
+  // rider that's priced per head. (This used to say "gate and grounds
+  // staffing"; Phase 7 took the gate out of it, because the gate is a
+  // crew you hire now — see CREW.) This is the structural half of
   // the cost-rescale problem: baseOverhead alone is a fixed nut that a
   // growing faire simply outruns, so margin widened forever as attendance
   // climbed. A per-guest cost makes the ticket price a *margin* decision
@@ -655,16 +667,119 @@ export const VENDORS = [
   { id: 'vend_herbalist', name: "The Herbwife\u2019s Basket", type: 'craft', cost: 110, quality: 7, avgTicket: 15 },
 ];
 
+// ---------- Phase 7: a third crew ----------
+// You contracted performers and hired vendors, and nobody worked the gate.
+// CONFIG.baseOverhead's own paragraph said the flat nut covered "gate staff
+// and insurance", and CONFIG.perGuestCost said it covered "gate and grounds
+// staffing" as well: the same people, stood in for twice, in two numbers
+// nobody could hire or fire. This is the table that makes them a decision.
+//
+// Three roles, two tiers each, and every row is the shape a performer or a
+// vendor row already is — an id, a name, a listed `cost` per day, an
+// `unlockSeason` — so they sign through CONTRACT_OPTIONS and NEGOTIATION
+// exactly like an act does. `covers` is the one field they add, and it is
+// the whole design of the phase: a crew is worth what the crowd it covers
+// is worth, and nothing at all to a faire whose crowd it already covers
+// twice over. Nobody here gets a flat bonus for existing.
+//
+//   gate      raises the number of guests the gate can process in a day
+//             (CREW_RULES.baseCapacity plus every gate hire's `covers`).
+//             Anybody past that is turned away at the fence — they do not
+//             pay, they do not buy, and the crowd notices.
+//   security  holds down the incident half of EVENT_POOL. What it reads is
+//             the crowd it did NOT cover, above the size a faire polices
+//             by itself; see CREW_RULES.calmCrowd.
+//   announcer moves the crowd that cannot get near a stage to a block that
+//             has room for it. Worth a great deal to a faire whose afternoon
+//             overflows its stages, and exactly nothing to one whose bill is
+//             already spread across the day.
+//
+// A crew member is staff, not an act: no relationship, no arc, no tenure
+// toward renown (locked decision #256). They are hired and released, and
+// that is the whole of the story they have.
+export const CREW = [
+  { id: 'crew_gate_1', name: 'The Gatehouse Watch', role: 'gate', cost: 330, covers: 400, unlockSeason: 1, desc: 'Two more hands on the ticket table and a second lane through the fence.' },
+  { id: 'crew_gate_2', name: 'The Toll-Gate Company', role: 'gate', cost: 600, covers: 900, unlockSeason: 2, desc: 'A full gate crew with their own tally-sticks and a spare cash box. They have worked bigger fields than this.' },
+  { id: 'crew_watch_1', name: "The Bailiff\u2019s Men", role: 'security', cost: 150, covers: 600, unlockSeason: 1, desc: 'Four large men who walk the grounds slowly and are very good at being seen.' },
+  { id: 'crew_watch_2', name: "The Sheriff\u2019s Retinue", role: 'security', cost: 270, covers: 1200, unlockSeason: 3, desc: 'The shire\u2019s own, on loan for the weekend. Trouble tends to happen somewhere else.' },
+  { id: 'crew_crier_1', name: 'Halloran the Herald', role: 'announcer', cost: 170, covers: 350, unlockSeason: 1, desc: 'One voice, and a good one, calling the next set from the crossing.' },
+  { id: 'crew_crier_2', name: 'The Marshal of the Field', role: 'announcer', cost: 310, covers: 750, unlockSeason: 2, desc: 'A marshal with criers posted at every path head, moving the crowd along all day.' },
+];
+
+// What a crew role does, in numbers. Every one of these is read by
+// engine.js and nowhere else; data.js still has no logic.
+export const CREW_RULES = {
+  // --- gate ---
+  // How many guests an unstaffed gate can get through the fence in a day.
+  // 550 is deliberately above every crowd a faire draws in its first two
+  // or three weekends (an empty field is about 95, one stage about 250, a
+  // stage with two stalls about 320) and below what a developed grounds at
+  // a good reputation pulls on a Saturday (650-850). So the gate is free
+  // for as long as the faire is small, and the first weekend it binds is
+  // the weekend the player notices they are running a real faire. A faire
+  // played all the way out pulls past 1,500 on a Weekend 6 Saturday (and
+  // the suite's deliberately maximal fixture past 2,000), which
+  // is why the two gate crews add 1,300 between them: fully staffed, the
+  // fence stops being the thing holding a faire back. It is meant to be a
+  // decision the player can eventually win, not a permanent tax.
+  baseCapacity: 550,
+  // What being turned away at the fence does to the mood of the crowd that
+  // did get in, at the extreme where nobody got in at all. Scaled by the
+  // share turned away, so a 20% overflow costs about 3.6 satisfaction. The
+  // money is the bigger half of this by an order of magnitude — a turned
+  // away guest is a ticket and a purse that never walked through — and
+  // that is on purpose. This is the part the player feels tomorrow.
+  turnedAwayPenalty: -18,
+
+  // --- security ---
+  // The crowd a faire polices by itself. Below this, an unguarded day rolls
+  // exactly the events it rolled before this phase existed and an incident
+  // costs exactly what it used to; the watch is a wage for nothing. That
+  // floor is what keeps every early-game seed in the suite reading the same
+  // as it did in Phase 6.
+  calmCrowd: 400,
+  // Heads of *uncovered* crowd above calmCrowd for the pressure to be full.
+  exposureScale: 700,
+  // At full pressure, an incident's weight in EVENT_POOL is multiplied by
+  // 1 + this, so trouble finds a big unguarded faire more often...
+  weightPressure: 1.6,
+  // ...and costs 1 + this times as much when it does. The frequency term
+  // alone could never pay a watchman's wage: EVENT_EFFECTS' cash numbers
+  // are Stage 9's, written against a day that grossed a few hundred
+  // dollars, and a $60 wagon wheel is a rounding error on a $10,000 day.
+  // What scales with the crowd is the damage, not the bad luck: nine
+  // hundred people with nobody marshalling them break more rails, lose more
+  // purses and take longer to sort out than ninety do. Satisfaction is
+  // deliberately NOT scaled — more people means more broken things, not a
+  // sadder crowd per head.
+  costPressure: 7,
+
+  // --- announcer ---
+  // What share of a block's overflow a fully-heard herald moves into the
+  // blocks that still have room. Half of it: enough to take a stage well
+  // off its capacity ceiling without emptying the block the good act is
+  // playing in. A faire with nothing overflowing has nothing here to buy,
+  // and engine.js's relieveOverflow hands its counts straight back.
+  blockPull: 0.5,
+};
+
 // Random event pool. Each entry has a `weight` (relative chance per day),
 // an optional `requires` predicate (state) => bool, and an `effect`
 // (state, rng) => { cashDelta, repDelta, satisfactionDelta, message }.
 // Kept data-only where possible; engine.js interprets the string effect ids.
+//
+// Phase 7: `incident: true` marks the rows a watch is hired against -- the
+// two that go wrong on the grounds themselves, in front of the crowd. It is
+// deliberately not every row that costs money: a diva standoff and an act
+// missing their call are backstage, and no number of bailiffs prevents
+// either. engine.js's rollEvents reads the flag for the weight, and
+// EVENT_EFFECTS reads it for the bill.
 export const EVENT_POOL = [
   { id: 'evt_perfect_weather', weight: 3, effectId: 'perfect_weather' },
   { id: 'evt_dropped_prop', weight: 2, effectId: 'dropped_prop_recovery' },
-  { id: 'evt_wagon_wheel', weight: 2, effectId: 'broken_wagon_wheel' },
+  { id: 'evt_wagon_wheel', weight: 2, effectId: 'broken_wagon_wheel', incident: true },
   { id: 'evt_noble_visit', weight: 1, effectId: 'noble_visit' },
-  { id: 'evt_rowdy_crowd', weight: 2, effectId: 'rowdy_crowd', requires: 'hasChaosProne' },
+  { id: 'evt_rowdy_crowd', weight: 2, effectId: 'rowdy_crowd', requires: 'hasChaosProne', incident: true },
   { id: 'evt_sellout_stall', weight: 2, effectId: 'sellout_stall', requires: 'hasVendor' },
   // Stage 9 additions — "backstage drama" events, gated on roster
   // composition rather than a single quirk/vendor flag. See engine.js's

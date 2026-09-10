@@ -3,7 +3,7 @@
 // this module for the math. That split is what makes the smoke tests able
 // to run simulateDay() hundreds of times in plain Node with no jsdom.
 
-import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS, RENOWN } from './data.js';
+import { CONFIG, TIME_BLOCKS, PERFORMERS, VENDORS, EVENT_POOL, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS, RENOWN, CREW, CREW_RULES } from './data.js';
 // Phase 1 (guests who walk): guests.js imports this module's path and plot
 // helpers and this module calls its walk from simulateDay. The cycle is
 // safe because neither file reads the other at load time — only inside
@@ -38,6 +38,7 @@ export function clamp(n, lo, hi) {
 export function performerById(id) { return PERFORMERS.find(p => p.id === id); }
 export function vendorById(id) { return VENDORS.find(v => v.id === id); }
 export function campaignById(id) { return AD_CAMPAIGNS.find(c => c.id === id); }
+export function crewById(id) { return CREW.find(c => c.id === id); }
 
 // Stage 10: a VENDORS entry's `type` ('food'/'craft') and a built plot's
 // `kind` ('food'/'vendor') use different vocabularies for the same two
@@ -58,27 +59,136 @@ export function stallSummary(state) {
   return { food: summarize('food'), vendor: summarize('vendor') };
 }
 
-// A contracted performer's actual daily rate depends on which contract type
-// they were signed under (Stage 5) — a Weekend Package pays less per day
-// than the listed cost, an open day-rate pays the listed cost exactly.
-// Falls back to the listed cost for a performer with no contract record
+// What somebody under contract actually costs per day. The rate depends on
+// which contract they were signed under (Stage 5) — a Weekend Package pays
+// less per day than the listed cost, an open day-rate pays the listed cost
+// exactly — so the record is the answer and the catalog is the fallback.
+// Falls back to the listed cost for somebody with no contract record
 // (shouldn't normally happen if they're on the roster, but keeps this safe
-// to call defensively).
+// to call defensively), and to 0 for an id no catalog knows.
+//
+// Phase 7: this used to be written out twice, once for performers and once
+// for vendors, and the phase needed a third. One shape, three callers —
+// crew ride the same CONTRACT_OPTIONS deals performers and vendors already
+// do, so they are a caller here, not a third cost path.
+function contractedCost(act, contract) {
+  if (!act) return 0;
+  return contract ? contract.dailyCost : act.cost;
+}
 export function effectivePerformerCost(state, performerId) {
-  const perf = performerById(performerId);
-  if (!perf) return 0;
-  const contract = state.contracts && state.contracts[performerId];
-  return contract ? contract.dailyCost : perf.cost;
+  return contractedCost(performerById(performerId), state.contracts && state.contracts[performerId]);
+}
+// Stage 7: vendors can now be signed under the same CONTRACT_OPTIONS deals
+// as performers (see state.js's hireVendor).
+export function effectiveVendorCost(state, vendorId) {
+  return contractedCost(vendorById(vendorId), state.vendorContracts && state.vendorContracts[vendorId]);
+}
+// Phase 7: and so is the crew (see state.js's contractCrew).
+export function effectiveCrewCost(state, crewId) {
+  return contractedCost(crewById(crewId), state.crewContracts && state.crewContracts[crewId]);
 }
 
-// Stage 7: vendors can now be signed under the same CONTRACT_OPTIONS deals
-// as performers (see state.js's hireVendor). Mirrors effectivePerformerCost
-// exactly — a vendor with no contract record falls back to the listed cost.
-export function effectiveVendorCost(state, vendorId) {
-  const vendor = vendorById(vendorId);
-  if (!vendor) return 0;
-  const contract = state.vendorContracts && state.vendorContracts[vendorId];
-  return contract ? contract.dailyCost : vendor.cost;
+// ---------- a third crew (Phase 7) ----------
+// Everything the three crew roles do, as pure reads of the state. Each one
+// is a number of heads against a number of heads: a crew is worth what the
+// crowd it covers is worth, and a crew whose role is already covered twice
+// over is worth nothing at all. Nobody here gets a bonus for being on the
+// payroll.
+
+/** The crew records currently on the payroll, catalog order. */
+export function crewOf(state) {
+  return (state && state.crew ? state.crew : []).map(crewById).filter(Boolean);
+}
+/** Total `covers` across every hired crew member in one role. */
+export function crewCovers(state, role) {
+  return crewOf(state).reduce((sum, c) => sum + (c.role === role ? c.covers : 0), 0);
+}
+
+// How many guests the gate can get through the fence today. An unstaffed
+// gate is CREW_RULES.baseCapacity and nothing else; every gate hire adds
+// its own `covers` on top.
+export function gateCapacity(state) {
+  return CREW_RULES.baseCapacity + crewCovers(state, 'gate');
+}
+// The crowd that turned up against the crowd that got in. Anybody past the
+// capacity is turned away at the fence: they pay no ticket, they buy
+// nothing, they cost nothing to host, and the people who did get in spend
+// the day in a queue that never cleared.
+export function admitAtGate(raw, capacity) {
+  const admitted = Math.max(0, Math.min(raw, capacity));
+  return { raw, admitted, turnedAway: Math.max(0, raw - admitted), capacity };
+}
+// What being turned away does to the mood of the crowd that got in, in the
+// same satisfaction points priceSatisfactionDelta returns. Zero when
+// nobody was turned away, which is every day a faire is under its ceiling.
+export function turnedAwaySatisfactionDelta(gate) {
+  if (!gate || !gate.raw || gate.turnedAway <= 0) return 0;
+  return CREW_RULES.turnedAwayPenalty * (gate.turnedAway / gate.raw);
+}
+
+// How exposed today's crowd is, 0 to 1 — the security read. `crowd` is the
+// crowd the player *staffed for*, not the one the sky delivered: see
+// expectedCrowd in simulateDay and locked decision #257. Below
+// CREW_RULES.calmCrowd a faire polices itself and this is 0, which is what
+// makes an unguarded early-game day roll exactly the events and pay exactly
+// the bills it did before this phase existed.
+export function crowdExposure(state, crowd) {
+  const exposed = Math.max(0, (crowd || 0) - crewCovers(state, 'security') - CREW_RULES.calmCrowd);
+  return Math.min(1, exposed / CREW_RULES.exposureScale);
+}
+/** What an exposed crowd does to an incident's weight in the pool. */
+export function incidentWeightMult(exposure) {
+  return 1 + CREW_RULES.weightPressure * (exposure || 0);
+}
+/** And to its bill when it lands. */
+export function incidentCostMult(exposure) {
+  return 1 + CREW_RULES.costPressure * (exposure || 0);
+}
+
+// How far the herald can pull the day's shape, 0 to CREW_RULES.blockPull.
+// An announcer covers so many heads and no more, so a crowd that outgrows
+// them is a crowd that stops hearing them.
+export function announcerPull(state, attendance) {
+  if (!attendance || attendance <= 0) return 0;
+  const heard = Math.min(1, crewCovers(state, 'announcer') / attendance);
+  return CREW_RULES.blockPull * heard;
+}
+// The day's shape, with the herald's thumb on it. `counts` is heads per
+// block and `caps` is how many each block can COMFORTABLY take — the
+// crowding line, not the capacity — and the herald moves `pull` of every
+// block's excess into the blocks with room, in proportion to how much room
+// each one has.
+//
+// Two wrong drafts are worth recording, because the suite caught both and
+// neither was obvious. The first pulled every block toward an even quarter
+// of the day, which on a bill already spread across four blocks moved the
+// crowd OUT of the blocks with the best acts in them: a point and a half of
+// satisfaction lost for $480 a day. A herald is not a man who flattens a
+// schedule; he is the man who tells the four hundred people who cannot see
+// the joust that the falconer is on at the Grove in ten minutes. The second
+// moved the overflow correctly and then filled the receiving blocks to the
+// rail, where simulateDay's crowding penalty lives — it took three empty
+// stages from 116 to exactly 143 heads, tripped CROWDING_PENALTY on all
+// 429 of them, and cost five points of mood to save 81 people from standing
+// at the back. Hence CROWDING_FILL here rather than capacity: the herald
+// fills a block to comfortable and stops.
+//
+// On a faire with no overflow he has nothing to say, and this hands back
+// the counts it was given, to the head.
+export function relieveOverflow(counts, caps, pull) {
+  const out = counts.slice();
+  if (!pull) return out;
+  const excess = out.map((n, i) => Math.max(0, n - (caps[i] || 0)));
+  const room = out.map((n, i) => Math.max(0, (caps[i] || 0) - n));
+  const totalExcess = excess.reduce((a, b) => a + b, 0);
+  const totalRoom = room.reduce((a, b) => a + b, 0);
+  const moved = Math.min(pull * totalExcess, totalRoom);
+  if (moved <= 0) return out;
+  for (let i = 0; i < out.length; i++) {
+    if (excess[i] > 0) out[i] -= moved * (excess[i] / totalExcess);
+    if (room[i] > 0) out[i] += moved * (room[i] / totalRoom);
+  }
+  return out;
 }
 
 // ---------- acts with a story (Phase 3) ----------
@@ -172,7 +282,7 @@ export function relationshipRateMult(state, id) {
   return 1 - NEGOTIATION.relationshipSwing * ((rel - RELATIONSHIP.neutral) / RELATIONSHIP.neutral);
 }
 export function quoteContract(state, kind, id, terms) {
-  const act = kind === 'vendor' ? vendorById(id) : performerById(id);
+  const act = kind === 'vendor' ? vendorById(id) : kind === 'crew' ? crewById(id) : performerById(id);
   if (!act) return null;
   let base, commitDays, cancelFeeMult, label, contractId;
   if (terms && typeof terms.priceMult === 'number') {
@@ -715,6 +825,26 @@ export function computePlotAttributes(plot, builtPlots) {
 // took is measureFootTraffic() below, counted off the walk. The two are
 // meant to broadly agree, and tests/smoke.mjs pins that they do: an
 // estimate that stopped predicting the walk would be a tooltip that lies.
+
+// Phase 7: what a day is worth to somebody who came for the show and stood
+// too far back to see it. The quality scale the block loop works on runs 0
+// to about 1 and an ordinary stage scores about 0.5, so this says a day at
+// the faire where you never got near a show is worth half a day where you
+// did. Not zero: they were still at a faire, with stalls and a demo camp
+// and a crowd around them. This is the number that makes stage capacity a
+// real ceiling rather than a warning string, and it is what gives an
+// announcer something to sell; see the block loop in simulateDay.
+const OVERFLOW_QUALITY = 0.25;
+
+// The crowding line, lifted out of simulateDay's block loop as a pair of
+// names because Phase 7 gave a second reader a reason to know where it is.
+// A stage filled past CROWDING_FILL of its capacity is uncomfortable and
+// every head in it scores CROWDING_PENALTY less; the herald's job is to
+// move people to a block with room, and a herald who fills that block to
+// the rail has moved them into the penalty. He stops at the line.
+const CROWDING_FILL = 0.95;
+const CROWDING_PENALTY = 0.15;
+
 const FOOT_TRAFFIC_MIN_MULT = 0.6;
 const FOOT_TRAFFIC_MAX_MULT = 1.6;
 
@@ -1341,13 +1471,30 @@ export function simulateDay(state, seed) {
   // state built with a plain object literal, mainly — rather than NaN-ing
   // the whole attendance formula.
   const weekendDayFactor = WEEKEND_DAY_ATTENDANCE[state.weekendDay] || 1;
+  // Phase 7: the crowd the player is *running a faire for* — everything in
+  // the formula they decided, with the sky and the day's jitter left out.
+  // This is what security is priced against (#257): a watch is hired days
+  // ahead, against the size of faire this is, and the fact that it rained
+  // on Saturday is not something anybody staffed for. Keeping the sky out
+  // of it is also what keeps the weather-determinism check honest — the
+  // same seed still rolls the same events under any sky, because nothing
+  // downstream of `weather` reaches the event pool.
+  const expectedCrowd = Math.max(0, Math.round(baseAttendance * priceMult * popularityFactor * adFactor * groundsDraw.mult * weekendDayFactor));
+  const exposure = crowdExposure(state, expectedCrowd);
   // Phase 2: the sky gets a vote in how many people turn out. Read off the
   // state rather than rolled here (#231) — state.js stamps the day's
   // weather when the day begins, so this is a lookup, not a draw, and no
   // seed's event rolls moved when the phase landed.
   const weather = weatherFor(state);
   const jitter = 0.9 + rng() * 0.2;
-  const attendance = Math.max(0, Math.round(baseAttendance * priceMult * popularityFactor * adFactor * groundsDraw.mult * weekendDayFactor * weather.attendanceMult * jitter));
+  const turnout = Math.max(0, Math.round(baseAttendance * priceMult * popularityFactor * adFactor * groundsDraw.mult * weekendDayFactor * weather.attendanceMult * jitter));
+  // Phase 7: and the gate can only get so many of them through the fence.
+  // Everything downstream of this line — the walk, the till, the guest
+  // costs, the ticket revenue — reads `attendance`, which is the crowd that
+  // got IN. The ones turned away are counted, and they are the whole reason
+  // to hire a gate crew.
+  const gate = admitAtGate(turnout, gateCapacity(state));
+  const attendance = gate.admitted;
 
   // --- satisfaction (attendance-weighted across block/stage slots) ---
   let satWeightSum = 0;
@@ -1355,9 +1502,20 @@ export function simulateDay(state, seed) {
   let overCapacityHit = false;
   const totalWeightAllBlocks = blockBreakdown.reduce((s, b) => s + b.stageEntries.reduce((s2, e) => s2 + e.weight, 0), 0) || 1;
 
+  // Phase 7: the herald moves the crowd that cannot get near a stage to a
+  // block that has room for them. `blockCaps` is the seating each block
+  // has — every built stage, in every block, since a stage stands in all
+  // four — and the pull is 0 with no announcer on the payroll, which makes
+  // these three lines hand back exactly the head counts this loop has
+  // always used.
+  const rawCounts = blockBreakdown.map(b => Math.round(attendance * ((b.stageEntries.reduce((s, e) => s + e.weight, 0) || 1) / totalWeightAllBlocks)));
+  const blockCaps = blockBreakdown.map(b => b.stageEntries.reduce((s, e) => s + Math.floor((e.stage.capacity || 0) * CROWDING_FILL), 0));
+  const blockCounts = relieveOverflow(rawCounts, blockCaps, announcerPull(state, attendance));
+  let blockIndex = -1;
   for (const { block, stageEntries } of blockBreakdown) {
+    blockIndex++;
     const blockWeightSum = stageEntries.reduce((s, e) => s + e.weight, 0) || 1;
-    const blockAttendance = Math.round(attendance * (blockWeightSum / totalWeightAllBlocks));
+    const blockAttendance = Math.round(blockCounts[blockIndex]);
     // Stage 19: sightline/shade/popularity weights are per-block now, not
     // constant — shade only counts while the sun is actually on the crowd.
     // Phase 2: and how much sun that is now depends on the day as well as
@@ -1368,12 +1526,21 @@ export function simulateDay(state, seed) {
       const share = e.weight / blockWeightSum;
       const stageAttendance = Math.round(blockAttendance * share);
       const capped = Math.min(stageAttendance, e.stage.capacity);
-      if (stageAttendance > e.stage.capacity) { overCapacityHit = true; e._overflowed = true; }
+      const overflow = Math.max(0, stageAttendance - e.stage.capacity);
+      if (overflow > 0) { overCapacityHit = true; e._overflowed = true; }
       let quality = e.attrs.sightline * qw.sightline + e.attrs.shade * qw.shade + (e.drawPop / 10) * qw.pop;
       if (e._sulking) quality -= 0.3;
-      if (capped > e.stage.capacity * 0.95) quality -= 0.15; // crowding discomfort near cap
-      satWeightSum += capped;
-      satTotal += quality * capped;
+      if (capped > e.stage.capacity * CROWDING_FILL) quality -= CROWDING_PENALTY; // crowding discomfort near cap
+      // Phase 7: and the people who could not get near it at all count too,
+      // at OVERFLOW_QUALITY. Through Phase 6 they were dropped from the
+      // average outright, which meant a stage that turned five hundred
+      // people away from the view scored exactly what a stage that seated
+      // its whole crowd did, less the 0.15 above — the warning said "some
+      // folks were turned away from the best view" and not one number in
+      // the day agreed with it. It is also what gives an announcer anything
+      // to sell: relieving an overflow is worth something now.
+      satWeightSum += capped + overflow;
+      satTotal += quality * capped + OVERFLOW_QUALITY * overflow;
     }
   }
   let satisfaction = satWeightSum > 0 ? clamp((satTotal / satWeightSum) * 100, 0, 100) : 45;
@@ -1396,6 +1563,13 @@ export function simulateDay(state, seed) {
     warnings.push(`${weather.name} all day \u2014 ${weather.note}`);
   } else if (weatherSatDelta >= 2) {
     log.push(`${weather.name}, and the crowd was in no hurry to leave.`);
+  }
+  // Phase 7: and what the queue at the fence did to it. Zero on every day
+  // the gate kept up, which is every day a small faire has.
+  const gateSatDelta = turnedAwaySatisfactionDelta(gate);
+  satisfaction = clamp(satisfaction + gateSatDelta, 0, 100);
+  if (gate.turnedAway > 0) {
+    warnings.push(`The gate could only get ${gate.admitted.toLocaleString()} people through \u2014 ${gate.turnedAway.toLocaleString()} were turned away at the fence, and the queue soured the ones who made it in.`);
   }
   if (priceSatDelta <= -6) {
     warnings.push(`At ${'$' + state.ticketPrice} a head, plenty of folk grumbled about the price on the way in.`);
@@ -1513,6 +1687,10 @@ export function simulateDay(state, seed) {
   const ticketRevenue = attendance * state.ticketPrice;
   const performerCosts = rosterPerformers.reduce((s, p) => s + effectivePerformerCost(state, p.id), 0);
   const vendorCosts = hiredVendorObjs.reduce((s, v) => s + effectiveVendorCost(state, v.id), 0);
+  // Phase 7: the people who work the gate, the grounds and the crossings.
+  // CONFIG.baseOverhead came down 300 when this line went in — see the
+  // paragraph on it in data.js.
+  const crewCosts = crewOf(state).reduce((s, c) => s + effectiveCrewCost(state, c.id), 0);
   // Stage 13: real per-plot upkeep (any built kind, not just stages)
   // replaces the old flat "+20/stage" stand-in; overhead is now just the
   // flat cost of running the grounds at all, independent of what's built.
@@ -1521,7 +1699,7 @@ export function simulateDay(state, seed) {
   // Stage 19: the cost of hosting the crowd itself, which scales with the
   // crowd — see CONFIG.perGuestCost.
   const guestCosts = Math.round(attendance * CONFIG.perGuestCost);
-  const costs = performerCosts + vendorCosts + upkeep + overhead + guestCosts;
+  const costs = performerCosts + vendorCosts + crewCosts + upkeep + overhead + guestCosts;
 
   // --- what the day did to the acts (Phase 3) ---
   // Pure arithmetic on what already happened above: who played, in which
@@ -1574,12 +1752,16 @@ export function simulateDay(state, seed) {
     hasDevotedAct: contractedIds.some(id => actRelationship(id) >= RELATIONSHIP.devotedAt),
     hasSourAct: contractedIds.some(id => actRelationship(id) <= RELATIONSHIP.sourAt),
   };
-  const events = rollEvents(rng, ctx);
+  // Phase 7: an exposed crowd is a crowd trouble finds more often, and a
+  // crowd that costs more to put right when it does. Both multipliers are
+  // exactly 1 at exposure 0, so an unwatched small faire draws from the
+  // pool it always drew from.
+  const events = rollEvents(rng, ctx, exposure);
   let eventCashDelta = 0, eventRepDelta = 0, eventSatDelta = 0;
   for (const evt of events) {
     const eff = EVENT_EFFECTS[evt.effectId];
     if (!eff) continue;
-    const result = eff(rng, state);
+    const result = eff(rng, state, evt.incident ? incidentCostMult(exposure) : 1);
     eventCashDelta += result.cashDelta || 0;
     eventRepDelta += result.repDelta || 0;
     eventSatDelta += result.satisfactionDelta || 0;
@@ -1594,9 +1776,20 @@ export function simulateDay(state, seed) {
   return {
     day: state.day,
     attendance,
+    // Phase 7: the crowd that turned up, the crowd that got in, and the
+    // ceiling that decided which. `attendance` above is gate.admitted, so a
+    // report reads the number it has always read.
+    turnout: gate.raw,
+    turnedAway: gate.turnedAway,
+    gateCapacity: gate.capacity,
+    gateSatDelta: Math.round(gateSatDelta * 10) / 10,
+    // What the watch was and was not covering, so the report can say why an
+    // incident cost what it did.
+    expectedCrowd,
+    exposure: Math.round(exposure * 100) / 100,
     ticketRevenue: Math.round(ticketRevenue),
     vendorRevenue: Math.round(houseVendorRevenue),
-    performerCosts, vendorCosts, upkeep, overhead, guestCosts,
+    performerCosts, vendorCosts, crewCosts, upkeep, overhead, guestCosts,
     costs: Math.round(costs),
     cashDelta,
     satisfaction: Math.round(satisfaction),
@@ -1661,12 +1854,19 @@ export const EVENT_REQUIREMENTS = {
   hasSourAct: (ctx) => ctx.hasSourAct,
 };
 
-function rollEvents(rng, ctx) {
+// Phase 7: `exposure` (0..1, from crowdExposure) is how much of today's
+// crowd the watch is not covering. It scales the weight of every row flagged
+// `incident` in EVENT_POOL and nothing else, so trouble finds a big
+// unguarded faire more often than a small one or a well-watched one. At
+// exposure 0 the multiplier is exactly 1 and every weight, every total and
+// every roll is what it was before the phase landed.
+function rollEvents(rng, ctx, exposure = 0) {
+  const mult = incidentWeightMult(exposure);
   const eligible = EVENT_POOL.filter(e => {
     if (!e.requires) return true;
     const check = EVENT_REQUIREMENTS[e.requires];
     return check ? check(ctx) : false;
-  });
+  }).map(e => (e.incident && mult !== 1 ? { ...e, weight: e.weight * mult } : e));
   const totalWeight = eligible.reduce((s, e) => s + e.weight, 0);
   const events = [];
   // At most one event per day for stage 1 — keeps the report readable and
@@ -1690,8 +1890,14 @@ export const EVENT_EFFECTS = {
     cashDelta: 0, repDelta: 1, satisfactionDelta: 4,
     message: 'A performer fumbled a prop and turned it into a bit — the crowd loved the save.',
   }),
-  broken_wagon_wheel: (rng) => {
-    const cost = 60 + Math.floor(rng() * 60);
+  // Phase 7: the two rows EVENT_POOL flags `incident` take a third
+  // argument, the bill multiplier an exposed crowd earns them (see
+  // CREW_RULES.costPressure). It defaults to 1, which is both what every
+  // other effect gets handed and what these two get on any day the watch
+  // has the crowd covered — and the rng draw is taken before the multiplier
+  // is applied, so a seed's roll is the roll it always was.
+  broken_wagon_wheel: (rng, state, mult = 1) => {
+    const cost = Math.round((60 + Math.floor(rng() * 60)) * mult);
     return {
       cashDelta: -cost, repDelta: 0, satisfactionDelta: -3,
       message: `A supply wagon threw a wheel on the dirt path — $${cost} to get it moving again.`,
@@ -1701,12 +1907,12 @@ export const EVENT_EFFECTS = {
     cashDelta: 120, repDelta: 3, satisfactionDelta: 5,
     message: 'A minor noble made a surprise visit and was delighted — word will spread.',
   }),
-  rowdy_crowd: (rng) => {
+  rowdy_crowd: (rng, state, mult = 1) => {
     const roll = rng();
     if (roll < 0.5) {
       return { cashDelta: 0, repDelta: 0, satisfactionDelta: 5, message: 'The jester whipped the crowd into a roar of laughter.' };
     }
-    const cost = 40 + Math.floor(rng() * 40);
+    const cost = Math.round((40 + Math.floor(rng() * 40)) * mult);
     return { cashDelta: -cost, repDelta: -1, satisfactionDelta: -2, message: `The rowdy crowd knocked over a stall rail — $${cost} in repairs.` };
   },
   sellout_stall: (rng) => ({

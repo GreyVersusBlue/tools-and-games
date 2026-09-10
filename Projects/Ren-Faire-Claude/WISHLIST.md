@@ -70,7 +70,11 @@ coefficient on the average.
   From Phase 4: the grid is 14×12 (two South Meadow rows), a fourth
   `GRID_EXPANSIONS` tier carries `unlockRenown`, the sixteenth performer
   carries one too, and `RENOWN` and `CARRYOVER` say what the second track
-  pays for and what crosses a closed season.
+  pays for and what crosses a closed season. From Phase 7: `CREW` (six
+  rows, three roles, a `covers` in heads), `CREW_RULES` (the gate ceiling,
+  the mood a queue costs, the watch's two pressure numbers and the
+  herald's pull), an `incident: true` flag on the two `EVENT_POOL` rows a
+  watch is hired against, and `baseOverhead` down to 1,900.
 - **`js/engine.js` (1,653)** — pure, no DOM. Fifty-odd exports: `makeRng`, the
   footprint primitives, `isLegalPlacement`, `quoteBuild`, `computeFootTraffic`,
   `computePathDistances`/`computeReachability`, `computeGroundsDraw`, the
@@ -81,8 +85,11 @@ coefficient on the average.
   `relationshipOf`/`relationshipTier`, `bestBlockFor`, `quoteContract` and
   `offerDiscount`, `pendingBeats`/`beatById`), the Phase 4 set
   (`renownOf`, `moodRenown`/`weekendRenown`, `isExpansionUnlocked`,
-  `signingBar`, `nextRunSeed`) — and `simulateDay`, 290 lines that read
-  all of it and return a day, its relationship deltas included.
+  `signingBar`, `nextRunSeed`), the Phase 7 set (`crewById`/`crewOf`/
+  `crewCovers`, `gateCapacity`/`admitAtGate`/`turnedAwaySatisfactionDelta`,
+  `crowdExposure`/`incidentWeightMult`/`incidentCostMult`, `announcerPull`/
+  `relieveOverflow`, `effectiveCrewCost`) — and `simulateDay`, 300-odd lines
+  that read all of it and return a day, its relationship deltas included.
 - **`js/state.js` (1,016)** — the state object and ~28 actions, each returning
   `{ state, error }` with a *new* state. Owns the planning→commit build flow,
   performer and vendor contracts, the weekend boundary (`nextDay` parks in
@@ -103,18 +110,28 @@ coefficient on the average.
   ticks tenure and awards the weekend at the boundary; `closeSeason` is
   the run boundary, with `canCloseSeason`, `seasonRecord` and
   `carryoverPreview` as the pure reads the screens share with it.
+  Phase 7 added `crew` and `crewContracts` (additive, filled by `repair`,
+  which also prunes an id the catalog has dropped), `contractCrew` and
+  `releaseCrew` — the same resolveTerms/quoteContract path the two older
+  payrolls use — and one more commitment loop in `nextDay`. Crew take no
+  relationship and no tenure (#256).
 - **`js/ui.js` (1,156)** — state → HTML strings, eleven renderers, no listeners.
   `renderGroundsPanel` owns the plat map, status line and build palette;
   `renderFairFloor` owns plot cards and the schedule; `renderForecast` owns
   tomorrow's sky on the Office desk; `renderBackstage` owns the mood tags,
   the beat cards and the negotiation row; the four end-of-something screens
   share one ticket-stub shell, and from Phase 4 the victory screen and the
-  weekend-end desk at the target weekend share `renderCarryLedger`.
+  weekend-end desk at the target weekend share `renderCarryLedger`. Phase 7 hung a third roster
+  table off the Tiring House (`renderCrewTable` plus `renderCrewCoverage`,
+  three gauges reading the last day actually played) and gave the ticket
+  stub a `renderGateRow` that only draws on a day the fence held somebody
+  back.
 - **`js/main.js` (346)** — the only file that touches `document`. Holds the
   mutable state, delegates `click`/`change`/`input` off `#app`, re-renders
   after every action, mounts gvb-save's export/import bar in `#footer`; its
-  `handleAction` is a 28-case switch, and `ui.negotiating` is the one piece
-  of view state Backstage reads.
+  `handleAction` is a 30-case switch, and `ui.negotiating` is the one piece
+  of view state Backstage reads — and, from Phase 7, it carries `kind:
+  'crew'` as well as `'performer'` and `'vendor'`.
 - **`css/style.css` (1,244)** — the "operations room" palette and the
   surveyor's-plat map. Two width breakpoints, 1080px and 720px, and one
   pointer query: `--cell` is 46px at any width, 48px on a coarse pointer
@@ -731,32 +748,45 @@ the model the session actually ran on; the row named Fable 5.1 and the batch
 rule says to say so). Nothing was saved: pan, zoom and the readout are all
 session state in `ui`.
 
-## Phase 7 — A third crew
+## Phase 7 — A third crew — **shipped**
 
-**You contract performers and hire vendors, and nobody works the gate.**
+**You contracted performers and hired vendors, and nobody worked the gate.**
 
-`baseOverhead` is $2,200 a day and its own comment says it covers gate staff
-and insurance; `perGuestCost` at $5 says it covers gate and grounds staffing
-too. Both stand in for people the player never hires.
+`baseOverhead` was $2,200 a day and its own comment said it covered gate staff
+and insurance; `perGuestCost` at $5 said it covered gate and grounds staffing
+too. Both stood in for people the player never hired.
 
-- [ ] **A `CREW` table in `data.js`** — gate staff, security, an announcer —
-  with `unlockSeason` gating like every other catalog.
-- [ ] **They read off the crowd, not off a flat bonus.** Gate staff raise an
-  attendance ceiling, security suppresses the incident half of `EVENT_POOL`,
-  an announcer shifts crowd weight between blocks.
-- [ ] **They ride the existing contract catalog**, so cost is
-  `effectivePerformerCost`'s shape with a third caller, not a third path.
-- [ ] **Lower `baseOverhead` by what the crew now costs explicitly.** That
-  moves the fixed nut the seven `SIGNIFICANCE:` checks were tuned against —
-  expect at least one threshold to need re-deriving rather than nudging.
-- [ ] **A `SIGNIFICANCE:` check of its own**: an unstaffed gate at a large
-  attendance costs measurably more than the crew's wages, or the role is
-  decoration.
+- [x] **A `CREW` table in `data.js`** — six rows, three roles, two tiers each,
+  every one gated by `unlockSeason` like the rest of the catalogs. `covers`
+  is the one field they add and the whole design of the phase: a crew is
+  worth what the crowd it covers is worth, and nothing to a faire whose crowd
+  it already covers twice over.
+- [x] **They read off the crowd, not off a flat bonus.** Gate staff raise the
+  number of guests the fence can pass (`CREW_RULES.baseCapacity` 550, +1,300
+  across both tiers); everybody past it is turned away, pays nothing, buys
+  nothing and sours the crowd that got in. The watch scales both the weight
+  and the bill of every `incident:`-flagged row in `EVENT_POOL`, against the
+  crowd it did *not* cover above `calmCrowd`. The herald moves a block's
+  overflow into the blocks with room — not toward an even quarter of the day,
+  which was draft one and cost mood on a spread bill (#259).
+- [x] **They ride the existing contract catalog.** One `contractedCost(act,
+  contract)` with three callers replaced two copies of the same six lines,
+  and `quoteContract` gained a `'crew'` kind and nothing else (#258).
+- [x] **Lowered `baseOverhead` by what the crew now costs explicitly**:
+  2,200 → 1,900, the gate's share of the stand-in and not the whole crew
+  bill (#255). Every `SIGNIFICANCE:` check was re-run against it; the one
+  that had to be re-derived was the full-run test's season-one headliner
+  signing, and Section 1g's `base()` turned out to have been building
+  fixtures nobody could be scheduled on since Stage 19 (#260).
+- [x] **Three `SIGNIFICANCE:` checks of its own**, 14 through 16 — the
+  mandated one (an unstaffed gate costs far more than the wages), its
+  counterpart (a crowd let in with nowhere to stand is not a happier crowd,
+  so the gate buys money and owes stages), the watch's two claims, and the
+  herald's two.
 
-*Leans on:* `CONTRACT_OPTIONS`, `engine.js`'s cost functions, `simulateDay`.
-*Save:* additive — a `crew` list and `crewContracts` map, filled by `repair`.
-*Model:* **Claude Opus 5** — a content table on a cost path two existing roles
-already shaped.
+*Leaned on:* `CONTRACT_OPTIONS`, `engine.js`'s cost functions, `simulateDay`.
+*Save:* additive — `crew` and `crewContracts`, filled by `repair`, slot still
+at version 2. *Model:* **Claude Opus 5**.
 
 ## Phase 8 — The wiring audit, automatic
 
