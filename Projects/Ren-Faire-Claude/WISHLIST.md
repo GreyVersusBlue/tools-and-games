@@ -291,6 +291,14 @@ Open and unclaimed. Add here rather than starting a new list.
   denser card, which is a design question rather than a measurement.
 - The HUD at 820px wraps its six figures into two rows (142px tall). It is
   not sticky-cost on a tablet the way the phone's was; noted, not fixed.
+- The readout under the plat has a two-line floor and no ceiling, so a long
+  preview on a 375px phone runs to three or four lines and pushes the build
+  palette down by that much. Phase 6 increment 2 measured it (69px against a
+  51px floor on a phone, 51px on a tablet) and left it: the sentence would
+  have to lose the drops clause or the gate hops to fit two lines at 315px,
+  and both are the parts a player is building for. A denser readout — the
+  numbers as a small row rather than a sentence — is a design question, not
+  a measurement.
 - ~~Mobile tap targets all under 44px.~~ *Closed round 3: `--cell` 30px → 48px
   at the 720px breakpoint (exactly 44px of marker given the 2px margin), a
   `min-height: 44px` floor on the four button classes, and a scroll-shadow on
