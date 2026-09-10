@@ -283,9 +283,9 @@ starting a new list.
 
 Three rounds made the game work, made it modular, and made its prose agree with
 its own state. Arc one builds for the player who declines something. The phases
-are **ranked by impact and the order is the recommendation**. Phase 1 is no
-longer blocked: the session answered the question (decision #265) and shipped
-the first increment.
+are **ranked by impact and the order is the recommendation**. Phase 1 is
+finished: the session answered the question (decision #265) and shipped it in
+two increments (PRs #212 and #214). Phase 2 is next.
 
 The model convention here: most phases run on **Claude Opus 5**. **Claude Fable
 5.1** is named only where a wrong answer would be silent — authoring that must
