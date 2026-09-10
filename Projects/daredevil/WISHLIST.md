@@ -1,10 +1,11 @@
 # Daredevil — Feature Wishlist
 
-**Status: three rounds are shipped and the game is stable — 53/53 on
-`smoke-save.mjs`, 44/44 on `smoke-page.mjs`, four transcript baselines diffed
-line-for-line clean — and the first open phase is Phase 1, the backer-less
-middle game, on Claude Fable 5.1, which is blocked on Devon answering the one
-question in this file.**
+**Status: three rounds and the first increment of Phase 1 are shipped —
+53/53 on `smoke-save.mjs`, 61/61 on `smoke-page.mjs`, five transcript
+baselines diffed line-for-line — and the open phase is still Phase 1, the
+backer-less middle game, on Claude Fable 5.1: Milestone 2 and Free Roam 2
+know Earl was turned down, and Milestones 3, 4 and the epilogue do not yet.
+The question that blocked it was answered by the session (decision #265).**
 Round 1 made the game finishable for the first time and gave it a save and a
 suite; round 2 split the 356 KB monolith into modules and placed a minigame
 that had never had a call site; round 3 measured what two rounds had deferred
@@ -24,11 +25,11 @@ You play Duke Harlan, whose name and hometown you set on the setup screen and
 which the text then uses throughout. Five milestones separated by four
 free-roam evening hubs: the county fair, the investor offer, the big break, the
 defining moment, and the question of when a man in this line of work is
-supposed to stop. 207 scenes, 23,295 words inside the scene database's template
-literals, 126 choices, eight endings, three canvas minigames. A clean run reads
-89 of the 207 scenes in about 45 minutes. The whole thing — scenes, engine,
-save — is 359 KB raw and 101 KB gzipped, measured, which is why nobody is
-splitting `scenes.js` into fetched chunks.
+supposed to stop. 221 scenes, 26,384 words inside the scene database's template
+literals, 134 choices, eight endings, three canvas minigames. A clean run reads
+89 of the 221 scenes in about 45 minutes. The whole thing — scenes, engine,
+save — was 359 KB raw and 101 KB gzipped before Phase 1 added 30 KB of scenes,
+measured, which is why nobody is splitting `scenes.js` into fetched chunks.
 
 The writing is finished: consistent voice, no placeholder prose, and Duke's
 interiority rendered as "He thought:", which reads like a tic written down and
@@ -59,12 +60,13 @@ them (`<script type="module" src="./js/engine.js">`); the rest are imported.
   so if those bindings lived in `engine.js` the two modules would import each
   other and the second to evaluate would read the first out of the temporal
   dead zone.
-- **`js/scenes.js`** (4,318 lines, 213 KB) — the story, as data. One `SCENES`
-  object, 207 keys, each with `lines[]`, optional `choices[]`, an optional
+- **`js/scenes.js`** (4,664 lines, 244 KB) — the story, as data. One `SCENES`
+  object, 221 keys, each with `lines[]`, optional `choices[]`, an optional
   `statUpdate` and `next`. Branch logic lives in three optional closures:
-  `_requires` (hide a choice, 4 uses), `_gateCheck`/`_gateReason` (show it
-  locked, 3 uses), `_gateRoute` (redirect on entry, 3 uses).
-- **`js/engine.js`** (2,113 lines, 107 KB, 60 top-level `function`
+  `_requires` (hide a choice, 5 uses), `_gateCheck`/`_gateReason` (show it
+  locked, 3 uses), `_gateRoute` (redirect on entry, 3 uses). A `statUpdate`'s
+  `reason` may be a function since Phase 1.
+- **`js/engine.js`** (2,146 lines, 109 KB, 60 top-level `function`
   declarations) — everything else: screens, `goToScene`'s 26 procedural
   `_`-prefixed routes, `buildLines`/`showSceneEnd`, four hand-written hub
   renderers, `launchMinigame` and the three games, the epilogue in
@@ -73,7 +75,7 @@ them (`<script type="module" src="./js/engine.js">`); the rest are imported.
 The load-bearing habit is **story-as-data, engine-as-code**, and it is real for
 prose and false for structure. A line can be a function
 (`N(()=> GS.rels.ruthie === 'solid' ? 'a' : 'b')`) that `buildLines()` calls at
-render time, and 26 lines already do this. Where it breaks down:
+render time, and 57 lines do this (26 before Phase 1). Where it breaks down:
 
 - **The four hubs are four near-identical hand-written renderers**
   (`renderHubFR1`/`FR2`/`FR3`/`FR4`, ~100 lines each) with their card lists as
@@ -96,13 +98,14 @@ The suite is the other load-bearing thing:
 - **`test/drive-daredevil.mjs`** (221 lines) — how to boot, snapshot, click a
   labelled control and drive a minigame. Written once, imported by the rest.
 - **`test/smoke-save.mjs`** (176 lines, 53 assertions) — plain Node, fast.
-- **`test/smoke-page.mjs`** (293 lines, 44 assertions) — the regression suite:
-  real Chromium, checks every `goto`/`next` target against `SCENES` and the
-  source of `goToScene`, then plays two full runs to endings. ~15 minutes.
-- **`test/transcript.mjs`** (224 lines) — plays a planned run and writes down
-  every line, every choice offered and every scene id. Four committed
-  baselines: `clean` (1,534 lines), `no_earl` (1,515), `no_pete` (1,399),
-  `rough` (1,311).
+- **`test/smoke-page.mjs`** (61 assertions) — the regression suite: real
+  Chromium, checks every `goto`/`next` target against `SCENES` and the source
+  of `goToScene`, then plays three full runs to endings — clean, crashed, and
+  "Not interested". ~25 minutes.
+- **`test/transcript.mjs`** — plays a planned run and writes down every line,
+  every choice offered and every scene id. Five committed baselines: `clean`,
+  `rough`, `no_earl`, `no_pete`, and `no_earl_solo` (Phase 1: the other way
+  through the backer-less Milestone 2).
 - **`test/verify-touch-375.mjs`** (142 lines) — a one-off, kept as a tool.
 
 `.github/workflows/` carries a job for the School Generator and one for Numina.
@@ -167,29 +170,22 @@ The invocations that work, from the repo root:
 
 ```
 node Projects/daredevil/test/smoke-save.mjs          # 53 passed, 0 failed
-node Projects/daredevil/test/smoke-page.mjs          # 44 passed, 0 failed, ~15 min
-node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete
+node Projects/daredevil/test/smoke-page.mjs          # 61 passed, 0 failed, ~25 min
+node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete, no_earl_solo
 node Projects/daredevil/test/verify-touch-375.mjs    # one-off, 375px, touch-emulated
 cd Tools/board-check && npm run check
 ```
 
 ## Questions for Devon
 
-**What should "Not interested" to Earl actually do?** Choosing it at
-`m1_player_response` sets `GS.rels.earl = 'absent'` and
-`GS.flags.earlResponse = 'not_interested'`, and that removes exactly three
-optional evening cards: the FR1 contract reading, the FR3 renegotiation, the
-FR4 Vegas call. Milestones 2, 3 and 4 read neither value. `_chapter_m2` picks
-its entry scene from `stuntOutcome`/`hubEveningsUsed` only, and `showChapter`'s
-subtitles are fixed strings ("Earl Maddox is waiting. The contract is on the
-table."). Earl comes back, negotiates across three rounds, and `m2_sign` sets
-`rels.earl = 'backer'` again. Two shapes, both carried by Phase 1: **(A)** keep
-"Earl doesn't take no for an answer" and pay it off with acknowledgment beats
-at M2, M3 and M4, or **(B)** write a genuinely smaller, self-financed middle
-game. **This wishlist recommends B, scoped to Milestone 2 and threaded through
-3 and 4** — the FR2 debt scene, the four `debtSource` answers and the Sandra
-press thread are already the raw material, and A leaves a six-way choice with
-one cosmetic arm.
+**What should "Not interested" to Earl actually do?** — *answered by the
+session, 2026-09-10, as locked decision #265 in the root `HISTORY.md`: shape
+B, the self-financed middle game.* Before Phase 1, choosing it at
+`m1_player_response` set `GS.rels.earl = 'absent'` and removed exactly three
+optional evening cards; `_chapter_m2` went to Earl's office regardless and
+`m2_sign` set him back to `'backer'`. Now `_chapter_m2` routes `'absent'` to
+`m2_solo_entry`, nothing sets Earl back, and Free Roam 2 opens on the debt.
+Reversible by rerouting one arm, if A turns out to be wanted after all.
 
 **Is the six-way Earl response at the fair the shape it should be?** Open since
 round 1. Only option 5, "I need to talk to someone first," reaches `m1_ruthie`
@@ -205,26 +201,37 @@ Everything below is open and unclaimed. Pull from here; add to it rather than
 starting a new list.
 
 **Story and state**
-- The Earl rejection changes three evening cards and nothing else. See above.
+- The Earl rejection now changes Milestone 2 and Free Roam 2 (Phase 1,
+  increment 1). Milestones 3 and 4 and the epilogue still read as a backer
+  run on that branch — the open half of the Phase 1 row.
 - Ruthie is reachable through one of six answers to one question, in one scene.
 - `GS.rels.tommy` is never assigned anywhere in `scenes.js` — `'hanger_on'`
   from `freshState()` to the ending screen, while `engine.js` tests it against
   `'absent'` twice and `'unknown'` once. Danny is only ever `'frenemy'` or
   `'nemesis'`, only in Free Roam 2. Neither has a true never-met state.
-- 31 flags are written and never read, including `familyOrigin` (the cold
+- 30 flags are written and never read, including `familyOrigin` (the cold
   open's "what he came from" fork, whose only lasting effect is +1 Hustle on
-  one arm), `debtSource`, `peteMistakeResponse` and `m5Decision`.
+  one arm), `peteMistakeResponse` and `m5Decision`. `debtSource` came off
+  the list in Phase 1: `fr2_close`'s solo arm reads it, and the FR2 milestone
+  button routes the solo branch through `_chapter_fr2_end` so that arm is
+  actually reached.
 - `GS.flags.pressAtFair` is read in `buildLines()` and set by nothing, so five
   lines of Earl noticing the press man are dead.
 - The stat-update screen's relationship table lacks `pete` and `hanger_on` and
   renders both raw.
+- A scene reached by a choice and carrying a `statUpdate` shows its stat
+  screen twice: `handleChoice` fires it before the scene and `afterScene`
+  fires it again at the end. Visible in every transcript as a doubled
+  `> **title** — reason` line (`$135 and a Name in Print`, the fourteen
+  `m2_solo_*` updates). Found while diffing Phase 1's transcripts; not
+  fixed there, since it moves every transcript at once.
 
 **Reachable content**
 - `fr4_close` — a finished scene in which Duke calls Earl and takes the Vegas
   date — is not named by any `goto`, `next`, hub card or route. It is the only
   scene id in the file that appears nowhere else as a string.
 - `fr2_close` is reachable only through `_chapter_fr2_end`, which nothing
-  names; `_chapter_fr2` is handled and never named either, so its "You signed."
+  names on the backer branch (Phase 1 routes the solo branch through it); `_chapter_fr2` is handled and never named either, so its "You signed."
   stat update never fires.
 - `m5Outcome` never takes the value `'last_stunt_earl'` — `m5_last_stunt_earl`
   routes through the stunt run, which reports `last_stunt_win`/`_loss` — so
@@ -260,8 +267,10 @@ starting a new list.
 
 **Verification and tooling**
 - No GitHub Actions workflow runs this project's suite.
-- `smoke-page.mjs` plays two runs, both with Earl as a backer; no committed
-  assertion plays the rejection branch to an ending.
+- `smoke-page.mjs`'s third run plays the rejection branch to an ending and
+  asserts where it landed (Phase 1). Nothing yet plays a crashed rejection
+  run, or a rejection with Ruthie — the latter is impossible until the
+  six-way choice changes shape (the question below, still open).
 - Nothing checks reachability, orphan scenes, or read-but-never-written flags.
 - A physical touch-device pass is outstanding; `verify-touch-375.mjs` is real
   evidence and is still emulation.
@@ -272,9 +281,9 @@ starting a new list.
 
 Three rounds made the game work, made it modular, and made its prose agree with
 its own state. Arc one builds for the player who declines something. The phases
-are **ranked by impact and the order is the recommendation**, with one caveat:
-Phase 1 is blocked on Devon answering the question above, and Phase 2 is what
-to run while waiting.
+are **ranked by impact and the order is the recommendation**. Phase 1 is no
+longer blocked: the session answered the question (decision #265) and shipped
+the first increment.
 
 The model convention here: most phases run on **Claude Opus 5**. **Claude Fable
 5.1** is named only where a wrong answer would be silent — authoring that must
@@ -300,29 +309,50 @@ either. M3 and M4 keep their spines and change their framing. Under A the same
 money buys three acknowledgment beats and one arm of the choice stays
 cosmetic.
 
-- [ ] **Branch the chapter entries on relationship state, not just flags.**
-  `_chapter_m2`/`m3`/`m4` read `stuntOutcome`/`hubEveningsUsed` and hand
-  `showChapter` a fixed subtitle; add the `rels.earl === 'absent'` arm and make
-  the subtitle a function of state.
-- [ ] **Write `m2_solo_*`** — the self-financed Milestone 2, ending where
-  `m2_sign` ends so FR2 opens unchanged. Reuse the negotiation's three-round
-  structure against a bank, a promoter and Duke's own arithmetic.
-- [ ] **Give FR2 a backer-less card set.** `renderHubFR2`'s array literal holds
-  the Earl-shaped cards; `fr2_debt_01` becomes mandatory on this branch, and
-  `debtSource` finally gets read by something.
-- [ ] **Thread it through M3, M4 and the epilogue.** `m3_entry`'s TV crew
-  arrives differently; `m4_entry`'s "Earl has proposals" needs a source;
-  `showGameEnd`'s eight endings need reading against a run with no backer.
-- [ ] **A fifth transcript plan, `no_earl_solo`**, played to an ending, plus a
-  committed `smoke-page.mjs` run that answers "Not interested" and asserts it
-  lands in the new content and not in `m2_entry`. Diff all five before and
-  after; every hunk intended, nothing else moved.
+**Increment 1 shipped 2026-09-10** (decisions #265 and #266; the full account
+is under "Daredevil, arc one" in the root `HISTORY.md`). Shape B.
+
+- [x] **Branch the chapter entry on relationship state.** `_chapter_m2` has
+  the `rels.earl === 'absent'` arm — chapter "The Other Way", subtitle a
+  function of state on both arms, `GS.flags.soloM2 = true` — and FR1's
+  milestone button names the chapter it leads to. `_chapter_m3`/`m4` are
+  still fixed strings: that is the next increment's first line.
+- [x] **`m2_solo_*`**, fourteen scenes: the promoter (Perkins dials, Duke
+  dials, or Dot Kessler's twelve percent of the Speedway gate), the bank
+  (collateral, walk out, or Tommy co-signs), and the arithmetic at Cal's
+  calculator, ending on whether to book the car show before the page can pay
+  for the cars. `m2_solo_close` ends where `m2_sign` ends. Flags:
+  `soloCircuit`, `soloBank`, `soloPlan`, and `perkinsBooking`/`perkinsFee`
+  from the four FR1 Perkins outcomes.
+- [x] **FR2's backer-less card set.** `fr2_debt_01` is the only card until it
+  is played, every evening is locked behind it, the Milestone 3 button waits
+  (#266), "Borrow from Earl" is hidden, and `fr2_close`'s solo arm reads
+  `debtSource`. On this branch the Milestone 3 button goes through
+  `_chapter_fr2_end`, so `fr2_close` is read for the first time by any run;
+  the backer button still skips it, which is Phase 2's first bullet and would
+  move three baseline transcripts. Eleven `N(fn)`/`C(name, fn)` branches
+  across the FR2 scenes that named Earl; `fr2_close` is a `get lines()`.
+- [ ] **Thread it through M3, M4 and the epilogue.** Untouched. `m3_entry`
+  still has a sponsor's logo on the ramp and a TV crew nobody on this branch
+  arranged (the solo `fr2_close` says Kessler's crew is there for the feature
+  race — `m3_entry` should agree); `m4_entry`'s "Earl has proposals" needs a
+  source; `fr4_close` and `showGameEnd`'s eight endings need reading against
+  a run with no backer. FR3 and FR4 already hide their Earl cards, so the run
+  finishes; it does not yet notice. `m2_entry_waited`'s absent-Earl arms were
+  deleted as dead.
+- [x] **`no_earl_solo`** in `transcript.mjs`'s `RUNS`, played to an ending,
+  and a third `smoke-page.mjs` run that answers "Not interested" and asserts
+  `m2_solo_entry`, never `m2_entry*`/`m2_sign`, the debt before any other FR2
+  card, one unlocked card and no Milestone 3 button on the first FR2 board,
+  Earl `'absent'` on the ending screen. Five transcripts diffed; the three
+  backer runs moved by stunt scores only.
 
 *Leans on:* `js/scenes.js`, `goToScene`/`showChapter`/`renderHubFR2` in
 `engine.js`, `transcript.mjs`'s `RUNS` table. *Save:* none — `rels.earl` and
-`earlResponse` already persist. *Model:* **Claude Fable 5.1** — authoring a new
-chapter that has to stay coherent with 4,318 lines of existing prose and land
-correctly in all eight endings.
+`earlResponse` already persist, and the six new flags are read by truthiness
+or equality and need no `freshState` entry. *Model:* **Claude Fable 5.1** —
+authoring a new chapter that has to stay coherent with 4,664 lines of existing
+prose and land correctly in all eight endings.
 
 ## Phase 2 — Everything the game already wrote and cannot show
 

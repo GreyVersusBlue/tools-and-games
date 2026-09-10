@@ -13,14 +13,14 @@ daredevil/
   index.html        entry point — head, CSS, body markup, one module script tag
   js/
     state.js         the leaf: GS, STAT_LABELS, N/D/C/NF — see its own header for why
-    scenes.js        the story, as data — SCENES, 208 KB, 62% of the old monolith
+    scenes.js        the story, as data — SCENES, 244 KB (208 KB before Phase 1)
     engine.js        the runtime — screens, hubs, minigames, epilogue, boot
     save.js          the save format, on top of assets/js/gvb-save.js
   fonts/            7 woff2, 100.3 KB — see fonts/README.md
   test/
     drive-daredevil.mjs   how to get into the game and through it, written once
     smoke-save.mjs        53 assertions, plain Node, no browser
-    smoke-page.mjs        the regression suite: real browser, plays to an ending twice
+    smoke-page.mjs        the regression suite: real browser, plays to an ending three times
     transcript.mjs        plays a run and writes down every line of it
     transcripts/          output of the above; the record of what the game is
 ```
@@ -29,11 +29,12 @@ daredevil/
 
 ```
 node Projects/daredevil/test/smoke-save.mjs      # fast, no browser
-node Projects/daredevil/test/smoke-page.mjs      # the real one, ~15 minutes
+node Projects/daredevil/test/smoke-page.mjs      # the real one, ~25 minutes
 node Projects/daredevil/test/transcript.mjs clean
 node Projects/daredevil/test/transcript.mjs rough
 node Projects/daredevil/test/transcript.mjs no_earl   # answers "Not interested" at the fair
 node Projects/daredevil/test/transcript.mjs no_pete   # declines the Young Wannabe
+node Projects/daredevil/test/transcript.mjs no_earl_solo   # "Not interested", then the other answer at every solo fork
 node Projects/daredevil/test/verify-touch-375.mjs     # 375px, touch-emulated pointer input
 ```
 
@@ -52,9 +53,9 @@ finish, and **not one of them throws or logs anything a player would see**:
 - two hub cards were gated on flags their own scenes never set
 
 The only thing that catches that class of bug is playing to the end and checking
-where you landed. So `smoke-page.mjs` does exactly that, twice — once clean, once
-crashing at the county fair — and fails on a dead end, a loop, or an ending it
-did not expect.
+where you landed. So `smoke-page.mjs` does exactly that, three times — once
+clean, once crashing at the county fair, once turning Earl Maddox down — and
+fails on a dead end, a loop, or an ending it did not expect.
 
 `transcript.mjs` is the exploratory half. It is what produced the description of
 the game in `HISTORY.md`, round 1, and re-running it before

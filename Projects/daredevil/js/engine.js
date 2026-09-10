@@ -143,13 +143,31 @@ function goToScene(id){
     return;
   }
   if(id === '_chapter_m2'){
+    // Phase 1 (shape B, decision #265): a player who said "Not interested" at
+    // the fair gets a self-financed Milestone 2, not Earl's office with a
+    // different opening line. rels.earl stays 'absent' from here on; nothing
+    // downstream sets it back. soloM2 records that this branch was taken, so
+    // later phases can read it even if Earl's state moves again.
+    if(GS.rels.earl === 'absent'){
+      GS.flags.soloM2 = true;
+      const desc = GS.flags.stuntOutcome === 'crash_bad'
+        ? `The shoulder is still wrong. There is no contract on the table, because you told the man holding it no.`
+        : GS.flags.perkinsBooking === 'booked'
+        ? `Nobody is waiting. Lloyd Perkins has next August. Everything between now and then is yours to find.`
+        : `Nobody is waiting. Nobody is calling for you, either. The next show is yours to find.`;
+      showChapter('Milestone 2','The Other Way', desc, 'Make the Calls', 'm2_solo_entry');
+      return;
+    }
     let entryScene = 'm2_entry';
     if(GS.flags.stuntOutcome === 'crash_bad'){
       entryScene = 'm2_entry_recovery';
     } else if(GS.flags.hubEveningsUsed >= 3){
       entryScene = 'm2_entry_waited';
     }
-    showChapter('Milestone 2','The Investor Offer',`Earl Maddox is waiting. The contract is on the table.`,'Take the Meeting', entryScene);
+    const desc = GS.flags.stuntOutcome === 'crash_bad'
+      ? `Earl Maddox sent word through Cal. The offer is still on the table. So is the shoulder.`
+      : `Earl Maddox is waiting. The contract is on the table.`;
+    showChapter('Milestone 2','The Investor Offer', desc,'Take the Meeting', entryScene);
     return;
   }
   if(id === '_chapter_fr2'){
@@ -581,7 +599,7 @@ function triggerStatUpdate(update, afterTarget){
   if(update.flags) for(const[k,v] of Object.entries(update.flags)) GS.flags[k]=v;
 
   document.getElementById('stat-update-h').textContent = update.title||'— Update —';
-  document.getElementById('stat-update-reason').textContent = update.reason||'';
+  document.getElementById('stat-update-reason').textContent = (typeof update.reason === 'function' ? update.reason() : update.reason)||'';
 
   // Build stat bars (before state)
   const barsEl = document.getElementById('stat-bars');
@@ -1146,7 +1164,7 @@ function renderHubFR1(){
     m2btn.style.textAlign='center'; m2btn.style.marginTop='24px';
     const b=document.createElement('button'); b.className='btn-main';
     b.style.fontSize='16px';
-    b.textContent='Milestone 2 — The Investor Offer';
+    b.textContent = GS.rels.earl === 'absent' ? 'Milestone 2 — The Other Way' : 'Milestone 2 — The Investor Offer';
     b.onclick=()=> goToScene('_chapter_m2');
     m2btn.appendChild(b);
     sectionsEl.appendChild(m2btn);
@@ -1256,16 +1274,28 @@ function renderHubFR2(){
   const done2 = GS.flags.fr2DayScenesDone || [];
   const eveDone2 = GS.flags.fr2EveningsDone || [];
 
+  // The backer-less branch (Phase 1, decision #266). With no Earl there is no
+  // advance, so the twelve hundred dollars is not one card among seven: until
+  // `fr2_debt_01` is played it is the only card on the board, every evening is
+  // locked behind it, and the Milestone 3 button waits. `debtSource` is what
+  // the rest of the branch reads.
+  const solo = GS.rels.earl === 'absent';
+  const debtDone = done2.includes('fr2_debt_01') || eveDone2.includes('fr2_debt_01');
+  const debtFirst = solo && !debtDone;
+
   // Day scenes
   const dayCards = [];
-  if(GS.flags.dannyMet || GS.flags.dannySchemed){
-    dayCards.push({ id:'fr2_danny_01', name:'Diamondback Danny', sub:"He's on the circuit. He noticed you signed with Earl.", tag:'Available · Free', _done: done2.includes('fr2_danny_01') });
+  if(debtFirst){
+    dayCards.push({ id:'fr2_debt_01', name:'The Cost', sub:'A twelve-hundred dollar problem. The cars for the season closer, and nobody to advance it.', tag:'First · Free — one time', _done: false });
+  }
+  if(!debtFirst && (GS.flags.dannyMet || GS.flags.dannySchemed)){
+    dayCards.push({ id:'fr2_danny_01', name:'Diamondback Danny', sub: solo ? "He's on the circuit. He heard you turned Earl down." : "He's on the circuit. He noticed you signed with Earl.", tag:'Available · Free', _done: done2.includes('fr2_danny_01') });
     // Danny follow-up: public challenge
     if(GS.flags.fr2Danny01Done && !GS.flags.fr2Danny02Done && (GS.rels.danny==='nemesis'||GS.rels.danny==='frenemy')){
       dayCards.push({ id:'fr2_danny_02', name:'The Public Challenge', sub:"Danny went to the papers. Sandra has the quote.", tag:'Available · Free', _done: done2.includes('fr2_danny_02') });
     }
   }
-  if(GS.flags.wannabeMet){
+  if(!debtFirst && GS.flags.wannabeMet){
     dayCards.push({ id:'fr2_pete_01', name:'Pete Garland', sub:"He's gotten better. He has a fair coming up.", tag:'Available · Free', _done: done2.includes('fr2_pete_01') });
     // Pete mistake follow-up
     // Gate on the day scene actually having been played. This read
@@ -1277,7 +1307,7 @@ function renderHubFR2(){
       dayCards.push({ id:'fr2_pete_02', name:"Pete's Mistake", sub:'Cal heard about it. So did half the county.', tag:'Available · Free', _done: false });
     }
   }
-  if(!done2.includes('fr2_debt_01') && !eveDone2.includes('fr2_debt_01')){
+  if(!solo && !debtDone){
     dayCards.push({ id:'fr2_debt_01', name:'The Cost', sub:'A twelve-hundred dollar problem. The cars for the next show.', tag:'Available · Free — one time', _done: false });
   }
 
@@ -1304,7 +1334,7 @@ function renderHubFR2(){
     { id:'fr2_eve_ruthie', name:'Stay Home With Ruthie', sub:'She wants to come to a show. Find the right one.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':'Costs 1 Evening', _disabled: GS.rels.ruthie==='unknown' },
     { id:'fr2_eve_practice', name:'New Distances', sub:'Five cars. The geometry is different from three cows.', tag:'Costs 1 Evening' },
     { id:'fr2_eve_bar', name:'Bar With Tommy', sub:'He has a theory about Diamondback Danny. He might be right.', tag:'Costs 1 Evening' },
-    { id:'fr2_eve_press', name:'Call Sandra', sub:'Earl announced you before you knew you were being announced.', tag:'Costs 1 Evening' },
+    { id:'fr2_eve_press', name:'Call Sandra', sub: solo ? "Somebody at Earl's office told the paper you said no." : 'Earl announced you before you knew you were being announced.', tag:'Costs 1 Evening' },
   ];
 
   // Second Cal evening — available if first is done
@@ -1319,20 +1349,27 @@ function renderHubFR2(){
   eveCards.forEach(card=>{
     card._done = eveDone2.includes(card.id);
     if(eveRemaining<=0 && !card._done) card._disabled=true;
+    if(debtFirst && !card._done){ card._disabled = true; card.tag = '(The cars first)'; }
     const el = buildHubCard(card, true, 'fr2');
     grid2.appendChild(el);
   });
   sec2.appendChild(grid2);
   sectionsEl.appendChild(sec2);
 
-  // Milestone 3 trigger. See hubExhausted().
-  if(hubExhausted(eveRemaining, eveCards)){
+  // Milestone 3 trigger. See hubExhausted(). Not while the cars are unpaid:
+  // with every evening locked, hubExhausted() would say "nothing to spend one
+  // on" and offer Milestone 3 over a debt scene nobody has played.
+  if(!debtFirst && hubExhausted(eveRemaining, eveCards)){
     const m3btn = document.createElement('div');
     m3btn.style.textAlign='center'; m3btn.style.marginTop='24px';
     const b=document.createElement('button'); b.className='btn-main';
     b.style.fontSize='16px';
     b.textContent='Milestone 3 — The Big Break';
-    b.onclick=()=> goToScene('_chapter_m3');
+    // The backer-less branch goes through fr2_close (the solo arm reads
+    // debtSource); nothing names _chapter_fr2_end on the backer branch, which
+    // is Phase 2's first bullet, and routing it here would move three
+    // baseline transcripts.
+    b.onclick=()=> goToScene(solo ? '_chapter_fr2_end' : '_chapter_m3');
     m3btn.appendChild(b);
     sectionsEl.appendChild(m3btn);
   }

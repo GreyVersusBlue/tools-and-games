@@ -1,8 +1,8 @@
-# Daredevil — transcript: `no_earl`
+# Daredevil — transcript: `no_earl_solo`
 
-Played as Ray Dockery of Split Oak, stunt policy `good`.
+Played as Wade Corliss of Harlow Bend, stunt policy `good`.
 
-**Scene path (85):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_perkins_calls` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_collateral` → `m2_solo_round3` → `m2_solo_plan_slow` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_bank` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
+**Scene path (85):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_perkins_names` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_walk` → `m2_solo_round3` → `m2_solo_plan_fast` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
 
 ---
 
@@ -11,12 +11,12 @@ Played as Ray Dockery of Split Oak, stunt policy `good`.
 
 
 ### `cold_open_01`
-There's a place in Split Oak where the county road dips before the bridge. On a bike, if you hit it right, you leave the ground.
+There's a place in Harlow Bend where the county road dips before the bridge. On a bike, if you hit it right, you leave the ground.
 Everyone in town knew about that dip. Most people lifted off the seat, held on, came down.
 He didn't do it that way.
 
 ### `cold_open_02`
-Split Oak had a grain elevator, two churches, and one stoplight that nobody paid much attention to. It had a fairground that smelled like cut grass and motor oil every summer.
+Harlow Bend had a grain elevator, two churches, and one stoplight that nobody paid much attention to. It had a fairground that smelled like cut grass and motor oil every summer.
 It had people who were going places and people who knew they weren't. The difference was something you could feel in a handshake.
 He didn't know yet which kind he was. He had some guesses.
 
@@ -61,7 +61,7 @@ He wanted the feeling. That was the best he could do. The moment at the top of t
 You can't explain that to most people. He'd stopped trying.
 
 ### `cold_open_08`
-The Split Oak Fair. August. Hot the way August is hot in the middle of the country, like the air forgot to move.
+The Harlow Bend Fair. August. Hot the way August is hot in the middle of the country, like the air forgot to move.
 He'd been at the fairground since six. The ramp had been measured four times. The cows were in a pen by the east fence, doing what cows do, which is stand there and make the whole thing seem simultaneously more and less reasonable.
 Three cows. He was going to jump three cows on a dirt bike in front of a few hundred people and one man he'd heard was coming to look.
 He was ready. He'd been ready for a long time.
@@ -221,7 +221,7 @@ He had some decisions to make.
 **→ took:** Lloyd Perkins The fair organizer has a booking offer for next August. Available · Free
 
 ### `fr1_organizer`
-Lloyd Perkins had run the booking side of the Split Oak Fair for eleven years. He had a clipboard, a short-sleeved button-up, and the careful confidence of a man who was a big fish in a pond he understood precisely.
+Lloyd Perkins had run the booking side of the Harlow Bend Fair for eleven years. He had a clipboard, a short-sleeved button-up, and the careful confidence of a man who was a big fish in a pond he understood precisely.
 He found Duke outside the auto parts store.
 **ORGANIZER:** Mr. Harlan. Got a minute?
 **DUKE:** I've got a few.
@@ -236,23 +236,24 @@ He said the last part in the way that people say things they know aren't entirel
 - Option C"I need to think about it. I've got other conversations happening."Leverage what you have — even if it's mostly potential.
 - Option D"I appreciate the offer. I'll pass for now."Keep the table clean for Earl's conversation.
 
-**→ took:** Option A"I'd need a hundred and fifty."Counter high. See what he's actually got.
+**→ took:** Option D"I appreciate the offer. I'll pass for now."Keep the table clean for Earl's conversation.
 
-> **$135 and a Name in Print** — You pushed. He moved. First real negotiation.
+> **Table Stays Clean** — "I'd rather not overcommit." Sometimes that's the right move.
 
-### `fr1_org_counter`
-**DUKE:** I'd need a hundred and fifty.
-Perkins wrote something on his clipboard.
-**ORGANIZER:** I can do a hundred and thirty-five. And I'll put you in the program by name, not just "motorcycle demonstration."
-**DUKE:** Deal.
-**ORGANIZER:** Good. I'll draw something up.
-He turned to go and then stopped.
-**ORGANIZER:** You're going to want to get bigger before next year. People are going to expect more.
-**DUKE:** Yeah.
-**ORGANIZER:** Not saying that as a threat. Just — I've seen this go a few ways.
-He said it like someone who'd watched a few too many county fair acts reach the edge of what county fairs could hold.
+### `fr1_org_decline`
+**DUKE:** I appreciate the offer. I'll pass for now.
+Perkins blinked.
+**ORGANIZER:** Can I ask why?
+**DUKE:** I've got something I'm figuring out first. I'd rather not overcommit.
+**ORGANIZER:** Fair enough.
+He wrote something on the clipboard and flipped it shut. He didn't argue. Duke respected that.
+**ORGANIZER:** If you change your mind in the next couple of weeks—
+**DUKE:** I know where to find you.
+**ORGANIZER:** Right. Good luck, then.
+Duke watched him walk back toward the fairground parking lot.
+He didn't know yet if that was the right call. He'd know at Milestone 2.
 
-> **$135 and a Name in Print** — You pushed. He moved. First real negotiation.
+> **Table Stays Clean** — "I'd rather not overcommit." Sometimes that's the right move.
 
 
 ## HUB — Free Roam — Early Days
@@ -385,7 +386,7 @@ That was fair.
 ### `m2_solo_entry`
 There was no office. There was the kitchen table, the notebook, and the card Earl had left on the ramp, which was in the drawer under the phone book because throwing it away had felt like a statement and keeping it out had felt like another one.
 Three weeks since the fair. The phone had rung twice. Once was Tommy. Once was a man selling aluminum siding.
-Lloyd Perkins had next August in writing — $135 and a name in the program. August was eleven months off. Eleven months was a long time to be a marquee act with no marquee.
+He'd told Lloyd Perkins he'd pass for now, to keep the table clean for a conversation he had then ended in two words. The table was clean. There was nothing on it.
 He'd made ninety dollars at the fair. He had the truck, the bike, a trailer with one bad tire, and a mechanic who had not asked once what the plan was, which meant he was waiting to be told.
 Cal came by at seven. He sat down across the table and looked at the notebook upside down.
 **CAL:** What's that?
@@ -399,9 +400,9 @@ Cal read it upside down. It was not a long list.
 He thought: three calls. A man who books rooms, a man who lends money, and the arithmetic. He thought: nobody makes them for you. That was the whole idea.
 
 ### `m2_solo_round1`
-Perkins took the call on the second ring. He had the clipboard voice on before Duke finished saying his name.
-**ORGANIZER:** Mr. Harlan. August is still August. What can I do for you?
-**DUKE:** I need between now and August.
+Perkins took the call like a man who had once written "difficult" on a clipboard and was now being proven right. He didn't say so. He let Duke get all the way through the sentence.
+**ORGANIZER:** Changed your mind about August, then.
+**DUKE:** About August. And about between now and August.
 A pause with paper in it.
 **ORGANIZER:** I book one fair. I know the people who book the others. That's a different thing from being able to book them for you.
 **DUKE:** I know the difference.
@@ -412,20 +413,19 @@ He thought: Earl would have had the Speedway on the phone before the sentence wa
 - Option B"Give me the names. I'll call them myself."No middleman. You get talked down by strangers instead of friends.
 - Option C"Give me Dot Kessler's number."The bigger room. A cut of the gate, and nothing if it rains.
 
-**→ took:** Option A"Make the Tri-County calls. I'll take the Saturdays."Small, steady, and somebody else dials. He will want something for it.
+**→ took:** Option B"Give me the names. I'll call them myself."No middleman. You get talked down by strangers instead of friends.
 
-> **Six Saturdays** — Perkins dialed. Fifty-five a show, the cows, and August locked. You owe him one.
+> **Five Dates, Your Voice** — Talked down by strangers. Two hundred and eighty-five dollars nobody takes a cut of.
 
-### `m2_solo_perkins_calls`
-**DUKE:** Make the calls. I'll take the Saturdays.
-**ORGANIZER:** I can do that.
-He could. It took him four days and he came back with six Saturdays at fifty-five dollars, the cows, a lot in Tri-County that was mostly gravel, and one condition.
-**ORGANIZER:** August stays where it is. Same number we agreed. I don't want to hear about a bigger offer in July.
-**DUKE:** Done.
-No percentage. No paper past a handshake. Six Saturdays that added up to three hundred and thirty dollars if it didn't rain on any of them, and a man who now felt, correctly, that Duke owed him one.
-He thought: that's the shape of it without Earl. Smaller numbers, and you can count the people you owe on one hand.
+### `m2_solo_perkins_names`
+**DUKE:** Give me the names. I'll call them myself.
+Perkins gave him the names. He gave them a little slowly, the way a man hands over something he thinks you're going to drop.
+Duke made the calls from the pay phone outside the auto parts store, because the kitchen phone was a party line and the woman two houses down had opinions about motorcycles.
+Tri-County offered sixty. He asked for seventy-five and got sixty. A fair in the next county over offered forty-five and a place to park the trailer, and when he asked for more the man said "Son, I don't know who you are," which was accurate.
+He got five dates. He wrote each one down with the number next to it. Two hundred and eighty-five dollars, if it didn't rain.
+He thought: Earl gets seventy-five where I get sixty, and he gets it in one call. He thought: Earl also keeps thirty of it. He did that arithmetic twice and it came out the same both times, which was the annoying part.
 
-> **Six Saturdays** — Perkins dialed. Fifty-five a show, the cows, and August locked. You owe him one.
+> **Five Dates, Your Voice** — Talked down by strangers. Two hundred and eighty-five dollars nobody takes a cut of.
 
 ### `m2_solo_round2_enter`
 Dates were one problem. The dates cost money before they paid any. A second set of ramps, because the ones he had did not travel. The trailer tire. Gas to Tri-County and back six times. Cal's parts invoice, which Cal had not mentioned, which was how Duke knew it was overdue.
@@ -449,27 +449,27 @@ He was being a little difficult. He was also right, which was worse.
 - Option B"Forget the note. I'll do it on cash."Walk out with nothing but your own name. Then make the math work.
 - Option C"Tommy'll co-sign."He would. He'll never mention it. You'll both know.
 
-**→ took:** Option A"The equipment. The bike, the truck, the trailer."Put up everything you own. Twelve months, eight percent, real.
+**→ took:** Option B"Forget the note. I'll do it on cash."Walk out with nothing but your own name. Then make the math work.
 
-> **Paper on the Bike** — Thirty-seven dollars a month, twelve times, rain or not. Pyle owns the downside now.
+> **On Cash** — No note. Plywood on credit, a used tire, and favors nobody wrote down.
 
-### `m2_solo_bank_collateral`
-**DUKE:** The equipment. The bike, the truck, the trailer.
-**PYLE:** A motorcycle. A truck with — how many miles?
-**DUKE:** A lot.
-**PYLE:** And a trailer with a bad tire, against which you are borrowing money to fix the tire.
-**DUKE:** That's the shape of it.
-Pyle looked at him for a long moment. Then he did the thing Duke had not expected, which was laugh, once, and approve it.
-**PYLE:** Four hundred and ten. Twelve months. Eight percent. If you go off a ramp wrong, this bank owns a motorcycle it does not want.
-**DUKE:** Then I won't.
-The monthly number was thirty-seven dollars. He wrote it in the notebook on its own page. It was the first number in there that was going to arrive whether he did or not.
+### `m2_solo_bank_walk`
+**DUKE:** Forget the note. I'll do it on cash.
+**PYLE:** You don't have the cash. That's why you're here.
+**DUKE:** I'll have it.
+He got up. Pyle didn't. Pyle looked, briefly, like a man who wanted to say something that wasn't bank policy, and then didn't.
+**PYLE:** The offer stands if you change your mind. Collateral or a co-signer.
+**DUKE:** I know where you are.
+He built the second set of ramps out of the first set and two sheets of three-quarter plywood from the lumber yard, on credit, which was a loan by another name and he knew it. Cal welded the frame and did not send an invoice for the welding, which was another one.
+The tire he bought used. It was fine. It was fine for about five weeks.
+He thought: nobody holds paper on the bike. He thought: four people hold something smaller instead, and none of them wrote it down, and that is not the same thing as free.
 
-> **Paper on the Bike** — Thirty-seven dollars a month, twelve times, rain or not. Pyle owns the downside now.
+> **On Cash** — No note. Plywood on credit, a used tire, and favors nobody wrote down.
 
 ### `m2_solo_round3`
 Round three was at the garage, because that was where the calculator was. It was Cal's and it had grease in the keys.
-Six Saturdays at fifty-five. Perkins in August. The cows, the gas, the tire.
-Thirty-seven dollars a month to Pyle, on its own line, underlined.
+Five dates at his own numbers. Perkins in August, maybe. The cows, the gas, the tire.
+No line for the bank. Four favors that didn't fit on a line.
 It came out ahead. Barely. It came out ahead the way a man comes out ahead of a dog that has stopped chasing him.
 Cal looked at the page for a while.
 **CAL:** There's no line for when you go down.
@@ -485,18 +485,20 @@ Then Cal said the other thing, the thing he'd come to say.
 - Option A"We don't book the cars until we can pay for the cars."Slow. Cows all fall; the car show when the page says so.
 - Option B"Book it. I'll find the money when it's due."Fast. Five cars on a page that barely holds three cows.
 
-**→ took:** Option A"We don't book the cars until we can pay for the cars."Slow. Cows all fall; the car show when the page says so.
+**→ took:** Option B"Book it. I'll find the money when it's due."Fast. Five cars on a page that barely holds three cows.
 
-> **Cars When the Page Says Cars** — Slow, and yours. Cows through October.
+> **Booked It Anyway** — Five cars on a page that barely holds three cows. Cal called it a Maddox sentence.
 
-### `m2_solo_plan_slow`
-**DUKE:** We don't book the cars until we can pay for the cars.
-**CAL:** Alright.
-He said it the way he said everything he agreed with, which was exactly the way he said everything he didn't.
-Duke wrote it at the bottom of the page. Cows through October. Cars when the page says cars.
-He thought: this is what it looks like when nobody's pushing. He thought: it looks slow. He thought: it looks like mine.
+### `m2_solo_plan_fast`
+**DUKE:** Book it. I'll find the money when it's due.
+Cal didn't say anything for long enough that it counted as saying something.
+**CAL:** That's a Maddox sentence.
+**DUKE:** Maddox would've found it by now.
+**CAL:** Maddox would've *had* it by now. Different thing.
+Duke wrote it at the bottom of the page anyway. Season closer. Five cars. A number he didn't have next to a date he did.
+He thought: that's the whole difference, right there in Cal's grammar. Had it. Find it.
 
-> **Cars When the Page Says Cars** — Slow, and yours. Cows through October.
+> **Booked It Anyway** — Five cars on a page that barely holds three cows. Cal called it a Maddox sentence.
 
 ### `m2_solo_close`
 There was no handshake, because there was nobody to shake with. Cal turned the calculator off and put it back in the drawer with the feeler gauges.
@@ -523,26 +525,28 @@ There was more to do than there used to be. That was the simple version.
 **→ took:** The Cost A twelve-hundred dollar problem. The cars for the season closer, and nobody to advance it. First · Free — one time
 
 ### `fr2_debt_01`
-He'd said cars when the page said cars. The page said cars in October — the Speedway's season closer, a row of them that had to be acquired, positioned, and cleared. Kessler didn't cover it. Nobody's office was going to. The cars were Duke's problem, which was the deal he'd made at a kitchen table.
+The season closer needed a row of cars — acquired, positioned, and cleared. Kessler didn't cover it. Nobody's office was going to. The cars were Duke's problem, which was the deal he'd made at a kitchen table, and the money he'd said he'd find was now due.
 Twelve hundred dollars. That was the number.
-He'd made six hundred and forty at the last five shows combined. He also had rent, the truck payment, thirty-seven dollars a month to Pyle, and a parts invoice from Cal that was sitting on the counter.
+He'd made six hundred and forty at the last five shows combined. He also had rent, the truck payment, the lumber yard, and a parts invoice from Cal that was sitting on the counter.
 The math was specific.
 
 - Option BLocal bank loan.Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.
 - Option CBorrow from Tommy.He has it. He'll lend it. That'll be a thing.
 - Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean.
 
-**→ took:** Option BLocal bank loan.Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.
+**→ took:** Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean.
 
-### `fr2_debt_bank`
-Garrett Pyle already held paper on the bike. He looked like a man being asked how he felt about the truck.
-Garrett Pyle looked at the loan application like it was a document he was being asked to sign in another language.
-**PYLE:** What's the collateral?
-**DUKE:** The equipment. The bike.
-**PYLE:** A motorcycle.
-**DUKE:** There's an income stream. The shows. Fridays at the Speedway, Perkins in August.
-**PYLE:** I've seen the Speedway's gate on a wet night.
-He approved it. Twelve hundred dollars, twelve months, eight percent. Duke drove home and thought about the monthly number and how many shows it took to make that number disappear. Neither number was alarming. They were just real. The realness was new.
+> **Self-Funded** — Nobody holds the number. That's worth the two Saturdays.
+
+### `fr2_debt_self`
+He went through the numbers three times.
+If he pushed the truck payment to the end of the month. If he used the parts money he'd been holding and called Cal about deferring the invoice — Cal would defer it, without being asked to be thanked for it.
+It came out to eleven-forty. He needed twelve hundred.
+He did one more show — a small one, the kind he'd have passed on before — and made enough.
+He bought the cars himself. Which meant he had to sell them after. That took two Saturdays. He got nine hundred back.
+He told no one. It was the cleanest solution and also slightly exhausting and he was proud of it in the way you're proud of something only you know about.
+
+> **Self-Funded** — Nobody holds the number. That's worth the two Saturdays.
 
 
 ## HUB — Free Roam — Building the Act
@@ -933,7 +937,7 @@ Cal looked at him. Then he picked the wrench back up.
 ### `fr2_close`
 By the time Milestone 3 was on the horizon, the shape of things had changed.
 Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. The notebook had dates in it that were two states away, and every one of them was in his own handwriting.
-He'd made money. He'd spent most of it, and a set amount of it went to Garrett Pyle on the first of every month whether he'd made any or not. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.
+He'd made money. He'd spent most of it, two Saturdays of it selling cars back to the people he'd bought them from. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.
 And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
 Duke thought about Danny more than he wanted to.
 Then Dot Kessler called about the car show. The real one. Five cars, the Speedway's season closer, and a regional TV crew that was coming for the feature race and would point the camera at whatever was in the lot. No sponsor. The cars were his.
@@ -1436,7 +1440,7 @@ He thought: it's enough.
 
 ## ENDING REACHED
 
-"He Fell Three Times and Got Up Four — The Ray Dockery Story"
+"He Fell Three Times and Got Up Four — The Wade Corliss Story"
 CAREER TRACK
 The Businessman
 Duke walked away from Earl's deal. The story he built is entirely his own.

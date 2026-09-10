@@ -13,10 +13,11 @@
 // catches this class of bug is playing the game to the end and checking where
 // you landed, so that is what this does.
 //
-// Two runs, deliberately different: one clean, one that crashes at the fair and
-// takes the other side of every fork it can reach. Between them they cover both
-// stunt outcomes, both Milestone 1 aftermaths, and the two ends of the Ruthie
-// thread — which is the branch that used to decide whether the game soft-locked.
+// Three runs, deliberately different: one clean, one that crashes at the fair
+// and takes the other side of every fork it can reach, and one that turns Earl
+// down. Between them they cover both stunt outcomes, both Milestone 1
+// aftermaths, the two ends of the Ruthie thread — which is the branch that used
+// to decide whether the game soft-locked — and both Milestone 2s.
 
 import { boot, open, snapshot, pick, autopilot, wait, SAVE_KEY } from './drive-daredevil.mjs';
 
@@ -43,6 +44,10 @@ async function playToEnd(page, base, plan) {
   let lastScene = null, fingerprint = '', stalled = 0;
   const stunts = [];
   const visits = {};
+  // The first sight of each hub, as rendered: which cards were up and which
+  // were locked. Assert against this for anything about what a hub offered,
+  // not against the save (#39).
+  const hubs = {};
 
   await open(page, base, { name: plan.name, town: plan.town });
 
@@ -68,7 +73,7 @@ async function playToEnd(page, base, plan) {
         `loop: entered "${s.scene}" ${n} times. Last 10: ${seen.slice(-10).join(' → ')}`);
     }
 
-    if (s.screen === 'end') return { seen, stunts, stats: s.stats, rels: s.rels, flags: s.flags };
+    if (s.screen === 'end') return { seen, stunts, hubs, stats: s.stats, rels: s.rels, flags: s.flags };
     if (s.screen === 'reporter') { stunts.push({ verdict: s.verdict, score: Number(s.score) }); await pick(page, 'Accept Result'); await wait(280); continue; }
     if (s.screen === 'minigame') { await autopilot(page, plan.stunt); continue; }
     if (s.screen === 'chapter') { await pick(page, s.buttons[0].label); await wait(650); continue; }
@@ -88,6 +93,7 @@ async function playToEnd(page, base, plan) {
     }
 
     if (s.screen === 'hub') {
+      if (!hubs[s.hub]) hubs[s.hub] = s.buttons.filter(b => !b.save).map(b => ({ label: b.label, locked: b.locked }));
       const cards = s.buttons.filter(b => !b.save && !b.locked);
       if (!cards.length) throw new Error(`hub "${s.hub}" has nothing clickable and no way forward`);
       const advance = cards.find(c => /^Milestone \d/.test(c.label));
@@ -266,6 +272,47 @@ try {
   ok(rough.seen.includes('m5_decision'), 'a run that started badly still reaches the Milestone 5 decision');
   ok(rough.seen.join() !== clean.seen.join(), 'the two runs take genuinely different paths');
   eq(t.page.__errs.length, 0, `no page errors across the crash run (${t.page.__errs.slice(0, 3).join('; ')})`);
+
+  /* ================= a third run: "Not interested", and the game notices */
+
+  // Phase 1. Before it, five of six answers to Earl and the sixth all led to
+  // `m2_entry*`, where Earl negotiated anyway and `m2_sign` set rels.earl back
+  // to 'backer'. Answering "Not interested" now has to land in the solo
+  // chapter, keep Earl absent to the ending, and put the twelve hundred
+  // dollars in front of the player before Free Roam 2 offers anything else.
+  const solo = await playToEnd(t.page, t.base, {
+    name: 'Ray Dockery', town: 'Split Oak', stunt: 'good',
+    rules: ['Not interested'],
+  });
+
+  ok(solo.seen.includes('m1_r6'), 'the run answered "Not interested" at the fair');
+  ok(solo.seen.includes('m2_solo_entry'), 'a rejected Earl routes Milestone 2 to the solo chapter');
+  ok(solo.seen.includes('m2_solo_close'), 'and the solo chapter plays through to its close');
+  ok(!solo.seen.some(s => s === 'm2_entry' || s === 'm2_entry_waited' || s === 'm2_entry_recovery'),
+     "it never enters Earl's office");
+  ok(!solo.seen.includes('m2_sign'), 'and never signs with him');
+  ok(solo.seen.includes('fr2_hub_open'), 'the solo close still opens Free Roam 2 on the same scene');
+  {
+    const debtAt = solo.seen.indexOf('fr2_debt_01');
+    const firstFr2Other = solo.seen.findIndex(s => /^fr2_/.test(s) && s !== 'fr2_hub_open' && !/^fr2_debt/.test(s));
+    ok(debtAt > -1, 'the twelve hundred dollars comes up on the solo branch');
+    ok(debtAt > -1 && (firstFr2Other === -1 || debtAt < firstFr2Other),
+       `and it comes before any other Free Roam 2 card (debt at ${debtAt}, first other at ${firstFr2Other})`);
+    ok(!solo.seen.includes('fr2_debt_earl'), 'the "Borrow from Earl" answer is not offered');
+    // The hub as first rendered, not the path the driver took through it: the
+    // driver drains cards before it takes a milestone button, so a Milestone 3
+    // button offered over the unpaid cars would never show in `seen` (#266).
+    const fr2 = solo.hubs['Free Roam — Building the Act'] || [];
+    const open2 = fr2.filter(b => !b.locked).map(b => b.label);
+    eq(open2.length, 1, `the first Free Roam 2 board has exactly one unlocked card (${open2.map(l => l.slice(0, 30)).join(' | ')})`);
+    ok(/^The Cost/.test(open2[0] || ''), 'and it is The Cost');
+    ok(!fr2.some(b => /^Milestone 3/.test(b.label)), 'no Milestone 3 button is offered while the cars are unpaid');
+    ok(fr2.some(b => b.locked && /The cars first/.test(b.label)), 'the locked evenings say why they are locked');
+  }
+  eq(solo.rels && solo.rels.earl, 'absent', 'Earl is still absent on the ending screen');
+  eq(solo.flags && solo.flags.soloM2, true, 'the save records that the solo chapter was taken');
+  ok(solo.seen.includes('m5_decision'), 'the solo run reaches the Milestone 5 decision');
+  eq(t.page.__errs.length, 0, `no page errors across the solo run (${t.page.__errs.slice(0, 3).join('; ')})`);
 
   /* ================================================================ mobile */
 
