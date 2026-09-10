@@ -1,19 +1,23 @@
 # Faire Weekend — Feature Wishlist
 
 **Status: twenty-two stages are shipped, three rounds of site-wide review have
-run over them, and Phases 1 through 5 are done.** The suites stand at **1,859
-passed** (`node tests/smoke.mjs`) plus **168 passed** (`node tests/guests.mjs`),
-0 failed, and `play-games.mjs faire-weekend` at 18 checks, 0 failed headless.
-Round 3 closed the mobile tap-target debt, found one more never-clicked action
-(`cancelMove`) after round 2 had called that audit closed, and left the
-layout/density review owed for a fourth round running. Every stage's plan and
-how it landed is in the repo root's `HISTORY.md` and in `README.md`; nothing
-here repeats them. **Phase 1 closed in two increments** — the crowd, then the
-economy it spends in — **Phase 2 gave the season weather**, **Phase 3
-gave the acts a story**, and **Phase 4 gave the faire a life past its
-season**: renown, a run boundary, and the carryover schema. Arc one is
-closed. The open phase is now **Phase 5 — The review that has been owed
-four rounds**, on **Claude Opus 5**.
+run over them, and Phases 1 through 8 are done — every phase in this file.**
+The suites stand at **2,118 passed** (`node tests/smoke.mjs`), **168 passed**
+(`node tests/guests.mjs`), **172 passed** (`node tests/mapview.mjs`) and **136
+passed** (`node tests/wiring.mjs`), 0 failed, with `play-games.mjs
+faire-weekend` at 18 checks and `tools/touch-readout.mjs` at 24, 0 failed.
+Every stage's plan and how it landed is in the repo root's `HISTORY.md` and in
+`README.md`; nothing here repeats them. **Phase 1 closed in two increments** —
+the crowd, then the economy it spends in — **Phase 2 gave the season
+weather**, **Phase 3 gave the acts a story**, **Phase 4 gave the faire a life
+past its season**, **Phase 5 was the layout review owed for four rounds**,
+**Phase 6 made the ground a canvas and the map a view**, **Phase 7 put a crew
+on the gate**, and **Phase 8 made the wiring audit a test instead of a
+person**. Arc one and arc two are both closed.
+
+**There is no open phase.** What is left is in *What this leaves for a later
+arc* at the bottom of this file, and none of it is ranked on `BACKLOG.md`; a
+new arc needs a row there first.
 
 ## What it is
 
@@ -788,37 +792,50 @@ too. Both stood in for people the player never hired.
 *Save:* additive — `crew` and `crewContracts`, filled by `repair`, slot still
 at version 2. *Model:* **Claude Opus 5**.
 
-## Phase 8 — The wiring audit, automatic
+## Phase 8 — The wiring audit, automatic — DONE
 
-**The audit that found ten dead actions in one round and one more in the next
-is a person with grep, and it has to be re-run by hand forever.**
+Shipped as `tests/wiring.mjs`, 136 checks, run by `npm test` after the other
+three suites. Decisions #262, #263 and #264.
 
-Round 2 mapped every `data-action` against both suites and found ten
-player-facing actions no test had ever clicked, plus the whole `change`/`input`
-family with zero coverage. Round 3 re-ran it after round 2 called it closed
-and found `cancelMove`. There are 25 distinct action names — 23 with a case in
-`handleAction`, plus `schedule` and `assignVendor` on the `change` listener —
-and nothing but a human knows whether each is exercised.
+- [x] **Extract the inventory.** The audit reads `js/ui.js` and `js/main.js`
+  as text: thirty `data-action` names off the markup, thirty-three `case`
+  labels off `handleAction`, three `dataset.action` branches and one
+  id-matched input off the delegated change listener. An action nothing
+  answers and a case nothing emits each fail by name.
+- [x] **Extract the coverage.** `tests/smoke.mjs` and
+  `Tools/board-check/play-games.mjs` are read as text, read-only, and every
+  action has to appear in one of them. **This is why the audit is its own
+  file and not a Section of `smoke.mjs`** (#262): a text scan that lives in a
+  file it scans reads its own inventory back as coverage and passes forever.
+- [x] **The interpolated emitter is resolved, not listed** (#263). `ui.js`'s
+  three contract buttons interpolate their action name, so `contract`,
+  `contractCrew` and `hireVendor` are literals nowhere; the audit finds the
+  enclosing function, works out which parameter it is, and reads that
+  argument off every call site. A non-literal argument fails by name, and a
+  second interpolation site anywhere fails until it is resolved too.
+- [x] **An allowlist that deletes itself** (#264). `placeAt` (through
+  `.plot-marker.ghost[data-x][data-y]`), `offerTerm` (through
+  `select[data-term=`) and `commitAll` (play-games only) each carry their
+  reason, and each entry is checked from both ends — the selector has to
+  still be in the suite it names, and the entry has to still be needed.
+  Clicking `placeAt` by name fails the audit until its entry is deleted.
+- [x] **The other event path is covered.** `ticketPrice` is matched by
+  element id rather than by action, so it is inventoried separately and
+  asserted both to exist in `ui.js` and to be reached by a suite.
+- [x] **What it found on its first run:** `contractCrew` and `releaseCrew`,
+  shipped by Phase 7 the round before, had never been clicked by anything.
+  Section 22 now contracts a gate crew through its Day Rate button, lets a
+  day-rate crew go for nothing, and breaks a crew's Weekend Package for the
+  fee. `tests/smoke.mjs` 2,108 → 2,118.
+- [x] **Broken on purpose fifteen times** (#34), including both mandated
+  breaks. Two assertion wordings were wrong and were rewritten: a coverage
+  loop that ran over emitted-plus-handled claimed the page emitted an action
+  it did not (#147), and the resolver's spot-check named a cause that was
+  false the moment a fourth call site made it fail the other way.
 
-- [ ] **Extract the inventory.** A test that reads `js/ui.js` and `js/main.js`
-  as text, collects every `data-action` literal and every `case` label, and
-  asserts the two sets agree — an action with no case, or a case nothing
-  emits, fails by name.
-- [ ] **Extract the coverage.** Read `tests/smoke.mjs` and `play-games.mjs`'s
-  `faire-weekend` block and assert every action appears in one of them.
-  Read-only: a change under `Tools/` is a shared-file request.
-- [ ] **An allowlist with reasons, not a coverage number** (#13 — a check that
-  only prints gets ignored). `commitAll` is covered in `play-games.mjs` and
-  not in `smoke.mjs`; that is fine, and the *reason* belongs beside the name.
-- [ ] **Cover the other event path too** — `ticketPrice`, `schedule` and
-  `assignVendor` arrive through `change`/`input`, which had no coverage at all
-  until Stage 22.
-- [ ] **Reintroduce both bugs** (#34): delete a `case` and watch it fail by
-  name; add a `data-action` nothing clicks and watch that fail by name too.
-
-*Leans on:* Section 22, `main.js`'s `handleAction`, `play-games.mjs`
-(read-only). *Save:* none. *Model:* **Claude Opus 5** — test wiring around a
-pattern Section 22 already established.
+*Left for whoever wants it:* the audit says nothing about `data-tab`, and
+nothing about whether an action's *outcome* is asserted rather than just its
+click. Both are real, neither is what round 2 and round 3 kept finding.
 
 ## What this leaves for a later arc
 

@@ -3316,6 +3316,43 @@ Two of them have moved since they were written:
    one left. *Source: School Generator, the standing integrity failure,
    September 2026.*
 
+262. **A test that reads other tests as text lives in its own file, never in
+   one of them.** `tests/wiring.mjs` answers "is every player-facing action
+   exercised by a suite?" by looking for each action's name in
+   `tests/smoke.mjs` and `Tools/board-check/play-games.mjs`. Written as a
+   Section of `smoke.mjs` it would have read its own inventory back as
+   coverage and reported every action clicked, forever, whatever the suites
+   actually did. That is #34's re-implementation trap with the pieces
+   rearranged: the check and the thing checked cannot share a source file
+   when the check is a text scan. The same rule binds anything else that
+   greps a suite. *Source: Faire Weekend Phase 8.*
+
+263. **An audit that scans source for a pattern resolves the pattern's
+   escape hatches rather than listing them.** `js/ui.js` interpolates the
+   action name into its three contract buttons, so `contract`, `contractCrew`
+   and `hireVendor` are literals nowhere. `tests/wiring.mjs` finds the
+   enclosing function, works out which parameter the interpolation is, and
+   reads that argument off every call site. A hardcoded list of the three
+   would have been the audit reporting something it never read, and would
+   have gone quiet the day a fourth call site appeared. Two failures back
+   the rule: an interpolation the resolver cannot reduce to string literals
+   fails by name, and a second interpolation site anywhere in either file
+   fails until it is resolved as well. A hole in a literal scan is only safe
+   while the scan knows how many holes there are. *Source: Faire Weekend
+   Phase 8.*
+
+264. **An allowlist is checked from both ends or it is a comment.** Every
+   entry in `tests/wiring.mjs`'s two lists — the actions reached by a
+   selector other than `[data-action]`, and the one action covered by only
+   one of the two suites — is asserted to still be a real action, to carry a
+   reason longer than a name, to have its named selector still present in
+   the suite it names, and to still be *needed*. That last one is the point:
+   an action listed as reached the awkward way fails the moment a suite
+   starts clicking it by name, so the list can only shrink on its own. This
+   is #13 for exemptions rather than checks — a list of things a check
+   skips, with nothing that ever removes an entry, is a list that grows
+   until the check means nothing. *Source: Faire Weekend Phase 8.*
+
 ---
 
 # The site sessions, 1–10
@@ -5459,6 +5496,92 @@ errors.
 
 **None of the four shared things was touched.** `Tools/board-check/shots/`
 received pictures, which it is for and which are gitignored.
+
+**Phase 8 — The wiring audit, automatic (PR #TBD).** Three rounds of this
+project's review have run the same audit by hand: grep every `data-action`
+out of the page, cross-reference it against both suites, and see what has
+never been clicked. Round 2 found ten player-facing actions no test had ever
+touched, plus the whole `change`/`input` family with no coverage at all.
+Round 3 re-ran it after round 2 called it closed and found `cancelMove`. A
+check that depends on somebody remembering to re-run a grep is not a check.
+
+`tests/wiring.mjs` is that grep, and it exits non-zero (#13). It reads
+`js/ui.js` and `js/main.js` as text and answers three questions: does every
+action the page emits have somewhere to land, does every `case` and every
+change branch have something that emits it, and is every one of them
+exercised by `tests/smoke.mjs` or `Tools/board-check/play-games.mjs`. Thirty
+actions come off the markup, thirty-three `case` labels off `handleAction`,
+three `dataset.action` branches and one id-matched input off the delegated
+change listener.
+
+**It found two on its first run.** Phase 7 shipped six crew rows last round;
+`contractCrew` and `releaseCrew` had never been clicked by anything. The
+engine calls behind them were covered in Section 1 and Section 1l, the
+buttons were not, which is the exact shape of the gap round 2 found ten of.
+Section 22 now contracts a gate crew through its Day Rate button, lets a
+day-rate crew go for nothing, and breaks a crew's Weekend Package for the
+fee. That last assertion had to read `#content p.warn` rather than the
+panel's innerHTML: a committed crew row wears a `warn-tag` whose tooltip
+also says "cancellation fee", and a whole-panel search finds the tooltip
+instead of the message.
+
+**Why it is its own file** (#262). Question three reads the suites as text
+and looks for each action's name in them. A scanner living inside a file it
+scans satisfies itself — every name it looks for is written down in its own
+source, so everything comes back covered. That is #34's re-implementation
+trap with the pieces rearranged. `tests/wiring.mjs` reads `smoke.mjs` and
+`play-games.mjs` and never itself.
+
+**The interpolated emitter** (#263). `ui.js` builds the three contract
+buttons through one helper and interpolates the action name, so `contract`,
+`contractCrew` and `hireVendor` are literals nowhere in the file. A hardcoded
+list of the three would be the audit lying about what it read, so it resolves
+them: find the function the interpolation sits in, work out which parameter
+it is, and read that argument off every call site. A fourth call site with a
+new action is resolved and then judged like any other; an argument that is
+not a string literal fails by name; a second interpolation site anywhere in
+either file fails until it is resolved too.
+
+**The allowlist deletes itself** (#264). Two actions are reached by another
+selector for a reason — `placeAt` through `.plot-marker.ghost[data-x][data-y]`,
+because which cell was placed on is the whole assertion, and `offerTerm`
+through `select[data-term=`, because the two negotiation selects are told
+apart by their term. `commitAll` is clicked in `play-games.mjs` and not in
+`smoke.mjs`, also for a reason. All three entries carry that reason and all
+three are checked from both ends: the selector has to still be in the suite
+it names, and the entry has to still be *needed*. Clicking `placeAt` by name
+in `smoke.mjs` fails the audit until its entry is deleted.
+
+**Guard-rails broken on purpose (#34), fifteen, every one caught by an
+assertion whose text says so.** Deleting `releaseCrew`'s case, renaming a
+`data-action` in the markup, adding a `data-action` nothing handles, taking
+`unassignVendor`'s selector out of `smoke.mjs`, a fourth `contractButtons`
+call, a non-literal action argument, a second interpolation site, both stale
+allowlist shapes, renaming `#ticketPrice`, and three breaks in `state.js`
+against the new crew assertions. Two rounds of wording came out of it. The
+first draft ran its coverage loop over emitted-plus-handled, so deleting a
+case produced a second failure claiming the page emitted a `data-action` it
+did not (#147); the loop runs over what is emitted now. And the resolver's
+own spot-check said "if this fails the resolver stopped reading call sites",
+which was false the moment a fourth call site made it fail for the opposite
+reason; it names the three actions instead. Emptying the comment stripper —
+the one break that could have made every loop pass by having nothing to loop
+over — trips twelve named assertions, four of them written for exactly that.
+
+*Counts:* `tests/wiring.mjs` 136 checks, new; `tests/smoke.mjs` 2,108 →
+2,118; `tests/guests.mjs` 168 and `tests/mapview.mjs` 172 unchanged;
+`play-games.mjs faire-weekend` 18 checks, 0 failed, no page or console
+errors, no offsite requests. `npm test` runs the new file after the other
+three.
+
+**No game code changed in this phase.** `js/` is byte-identical to what
+Phase 7 shipped; the only edits are the two suites and `package.json`'s test
+script.
+
+**None of the four shared things was touched.** `play-games.mjs` is read as
+text by the new suite and was not edited. `npm run check` is red on
+`Tools/prompt-builder.html` (1,481 units, 1 broken) and `social:check`
+reports the same six pages out of sync, both exactly as on `main`.
 
 ---
 
