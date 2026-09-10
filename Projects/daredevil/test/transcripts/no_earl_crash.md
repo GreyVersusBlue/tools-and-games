@@ -2,7 +2,7 @@
 
 Played as Curtis Vane of Ashby Fork, stunt policy `good then crash`.
 
-**Scene path (89):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_kessler` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_tommy` → `m2_solo_round3` → `m2_solo_plan_fast` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_tommy` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_check` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_failure_buses` → `fr4_hub_open_failure` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_california` → `fr4_california_close` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_disappear`
+**Scene path (89):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_kessler` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_tommy` → `m2_solo_round3` → `m2_solo_plan_fast` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_tommy` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_failure_buses` → `fr4_hub_open_failure` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_california` → `fr4_california_close` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_disappear`
 
 ---
 
@@ -1096,22 +1096,25 @@ He thought about the man from Los Angeles in the fourth row.
 - Option B"I need to check something first."The Speedway's Friday card. Kessler gets a call.
 - Option C"Tell them I want approval over the narrative."You want control. Sandra will negotiate it.
 
-**→ took:** Option B"I need to check something first."The Speedway's Friday card. Kessler gets a call.
+**→ took:** Option C"Tell them I want approval over the narrative."You want control. Sandra will negotiate it.
 
-> **Checked the Card** — No consulting credit. Four days on the phone. The feature ran, and the fee went against the cars.
+> **The True Version** — Sandra wrote what she saw. It was true. Duke read it seventeen times.
 
-### `fr3_press_sandra_check`
-**DUKE:** I need to check something in my contract first.
-**SANDRA:** The television clause.
-**DUKE:** You know about it.
-**SANDRA:** I'm a reporter.
-Duke thought: of course she does.
-**DUKE:** I'll call you in two days.
-He called Kessler. Kessler already knew — Sandra had reached out to the Speedway the same day, which was Sandra being a reporter.
-The negotiation between Duke and the station lasted four days, with nobody in the middle. The result: Duke did the feature, the station paid an appearance fee that went straight into the notebook against the cars, and Sandra wrote the piece the way she wrote all her pieces — without asking anyone's permission for the important parts.
-Duke thought: it worked out. He also thought: four days on the phone is what a percentage buys you. He thought: I'd still rather have the four days.
+### `fr3_press_sandra_control`
+**DUKE:** Tell them I want approval over the narrative.
+A pause.
+**SANDRA:** They won't give you that.
+**DUKE:** Then we negotiate down to something.
+**SANDRA:** Duke. I'm the one who writes it.
+He thought about that.
+**DUKE:** What do you want out of this piece?
+**SANDRA:** The true version.
+**DUKE:** That's what I want too.
+**SANDRA:** Then we're already in agreement.
+The feature ran without narrative approval from Duke. It was the true version, which was most of what he'd wanted. There was one line — about the county fair, about the way Cal had been standing twenty feet away after the landing — that Duke read seventeen times.
+It wasn't wrong. That was the thing. It was just very true.
 
-> **Checked the Card** — No consulting credit. Four days on the phone. The feature ran, and the fee went against the cars.
+> **The True Version** — Sandra wrote what she saw. It was true. Duke read it seventeen times.
 
 
 ## HUB — Free Roam — The Price of Fame
