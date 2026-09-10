@@ -2,7 +2,7 @@
 // main.js wires all interaction via event delegation on #content.
 
 import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, RELATIONSHIP, NEGOTIATION, RENOWN, CARRYOVER } from './data.js';
-import { performerById, vendorById, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf, renownOf, signingBar } from './engine.js';
+import { performerById, vendorById, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf, renownOf, signingBar, previewPlacement } from './engine.js';
 import { canCloseSeason, seasonRecord, carryoverPreview } from './state.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
@@ -424,7 +424,7 @@ export function renderBackstage(state, warn, negotiating = null) {
 // fresh placement, just excluding the plot's own current cell (so it's a
 // legal target for a same-cell no-op, though there's little reason to) and
 // wiring ghosts to `moveTo` instead of `placeAt`.
-function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachability) {
+function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachability, readout) {
   // Stage 8: only render the grounds the player has actually reached — the
   // full TERRAIN_ROWS/GRID extent is authored ahead of time, but cells past
   // the current fence line (see currentGridSize) aren't shown or buildable
@@ -505,7 +505,7 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
           continue;
         }
         if (pendingMove) {
-          ghosts.push(`<button class="plot-marker ghost" style="${style}" title="Move here \u2014 ${quote.name}" data-action="moveTo" data-plot="${pendingMove.plotId}" data-x="${x}" data-y="${y}">\u2794</button>`);
+          ghosts.push(`<button class="plot-marker ghost" style="${style}" title="Move here \u2014 ${quote.name}" data-action="moveTo" data-plot="${pendingMove.plotId}" data-kind="${ghostKind}" data-x="${x}" data-y="${y}">\u2794</button>`);
         } else {
           ghosts.push(`<button class="plot-marker ghost" style="${style}" title="${quote.name} \u2014 ${money(quote.cost)}" data-action="placeAt" data-kind="${pendingBuild}" data-x="${x}" data-y="${y}">+</button>`);
         }
@@ -526,8 +526,67 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
       <button class="btn small" data-action="mapFit" aria-label="Fit the site plan to its sheet" title="Fit">Fit</button>
       <button class="btn small" data-action="mapZoomIn" aria-label="Zoom the site plan in" title="Zoom in">+</button>
     </div>
+    <p class="plat-readout" role="status" aria-live="polite">${readout || readoutDefault(!!ghostKind)}</p>
     <p class="map-legend mono">Everything built must sit on or beside a path &middot; \u{1F3AD} stages need a clear 2\u00d72 &middot; \u{1F357}\u{1F6D2} stalls can't take hill ground</p>
   `;
+}
+
+// Phase 6 increment 2: the readout, and the two pure functions that fill
+// it. A canvas has no `title` and a touch screen has never shown one, so
+// every sentence the map carries — a blocked cell's refusal, a built
+// plot's stats, and the build preview that never existed at all — goes
+// into one live region under the sheet. main.js writes it on pointerover
+// (a tap fires that too, before the click) and on focusin (the keyboard's
+// way through the ghosts); these two say what it writes, out of a DOM, so
+// the suite can read the sentence rather than infer it.
+export function readoutDefault(placing) {
+  return placing
+    ? 'Point at or tap a spot to see what it would do there. A crossed cell says why it can\u2019t take one.'
+    : 'Whatever you point at or tap on the plan is read out here. Choose a structure below to price and preview a spot.';
+}
+
+// One previewPlacement() result as one sentence. A refusal is
+// isLegalPlacement's own wording, unchanged — it is the sentence the
+// `title` has carried since Stage 11 and the one Section 22 already
+// guards, and rewriting it here would give the game two ways to say no.
+export function previewLine(preview) {
+  if (!preview) return readoutDefault(true);
+  if (!preview.ok) return preview.reason;
+  const once = (preview.kind === 'food' || preview.kind === 'vendor') ? 'built and staffed' : 'built';
+  const parts = [`${preview.name} \u2014 ${money(preview.cost)}.`];
+  if (preview.capacity) parts.push(`Seats ${preview.capacity}.`);
+  const d = preview.draw;
+  parts.push(d.delta === 0
+    ? `Grounds draw stays at ${d.after.toFixed(2)}\u00d7 once ${once}.`
+    : `Grounds draw ${d.before.toFixed(2)}\u00d7 \u2192 ${d.after.toFixed(2)}\u00d7 once ${once}.`);
+  if (preview.reach) {
+    parts.push(`${preview.reach.hops} hop${preview.reach.hops === 1 ? '' : 's'} from the gate, ${preview.reach.mult.toFixed(2)}\u00d7 gate reach.`);
+  }
+  if (preview.traffic) parts.push(`Foot traffic ${preview.traffic.mult.toFixed(2)}\u00d7 est.`);
+  if (preview.drops.length > 0) {
+    const worst = preview.drops[0];
+    parts.push(preview.drops.length === 1
+      ? `${worst.name} drops ${worst.drop.toFixed(2)}\u00d7 across traffic and reach to pay for it.`
+      : `${preview.drops.length} built plots drop with it, ${worst.name} hardest at ${worst.drop.toFixed(2)}\u00d7.`);
+  }
+  return parts.join(' ');
+}
+
+// What main.js writes when the pointer is over a marker: a ghost gets the
+// preview it never had, and everything else gets the `title` it already
+// carried. Reading the attribute rather than rebuilding the sentence is
+// deliberate — a marker's tooltip and its readout cannot drift apart if
+// there is only one of them.
+export function readoutFor(el, builtPlots) {
+  if (!el || !el.dataset) return null;
+  const action = el.dataset.action;
+  if (action === 'placeAt' || action === 'moveTo') {
+    const kind = el.dataset.kind;
+    const excludeId = action === 'moveTo' ? el.dataset.plot : null;
+    if (!kind) return null;
+    return previewLine(previewPlacement(kind, Number(el.dataset.x), Number(el.dataset.y), builtPlots, excludeId));
+  }
+  return el.getAttribute('title') || null;
 }
 
 // Stage 19: the site plan is now a permanent fixture beside the desk rather
@@ -536,12 +595,12 @@ function renderGroundsMap(state, pendingBuild, pendingMove, footTraffic, reachab
 // map, which grounds tier is unlocked, and the build palette — lives here;
 // everything that is paperwork about what sits on it (plot cards, the day's
 // schedule) stays in renderFairFloor.
-export function renderGroundsPanel(state, pendingBuild, pendingMove, warn) {
+export function renderGroundsPanel(state, pendingBuild, pendingMove, warn, readout) {
   const footTraffic = computeFootTraffic(state.builtPlots);
   const reachability = computeReachability(state.builtPlots);
   const size = currentGridSize(state);
   const next = nextGridExpansion(state);
-  const mapHtml = renderGroundsMap(state, pendingMove ? null : pendingBuild, pendingMove, footTraffic, reachability);
+  const mapHtml = renderGroundsMap(state, pendingMove ? null : pendingBuild, pendingMove, footTraffic, reachability, readout);
   const paletteHtml = pendingMove ? renderMoveBanner(state, pendingMove) : renderBuildPalette(state, pendingBuild);
   const built = state.builtPlots.filter(p => p.status === 'built').length;
   const planned = state.builtPlots.length - built;

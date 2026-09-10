@@ -26,8 +26,9 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather, performerFor, vendorFor, traitRateMult, relationshipOf, relationshipTier, contractedActIds, bestBlockFor, offerDiscount, relationshipRateMult, quoteContract, beatById, actNameOf, pendingBeats, performerById, vendorById, isExpansionUnlocked, renownOf, moodRenown, weekendRenown, signingBar, nextRunSeed, reachabilityDistance: reachabilityDistanceOf } = await import(mod('js/engine.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather, performerFor, vendorFor, traitRateMult, relationshipOf, relationshipTier, contractedActIds, bestBlockFor, offerDiscount, relationshipRateMult, quoteContract, beatById, actNameOf, pendingBeats, performerById, vendorById, isExpansionUnlocked, renownOf, moodRenown, weekendRenown, signingBar, nextRunSeed, previewPlacement, PREVIEW_PLOT_ID, reachabilityDistance: reachabilityDistanceOf } = await import(mod('js/engine.js'));
 const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS, RENOWN, CARRYOVER } = await import(mod('js/data.js'));
+const { previewLine, readoutDefault, readoutFor } = await import(mod('js/ui.js'));
 const State = await import(mod('js/state.js'));
 // Phase 6: the plat's geometry, read here for the CSS-agreement checks in
 // Sections 23, 24 and 29. Its own suite is tests/mapview.mjs.
@@ -5134,6 +5135,271 @@ function makeMemoryStorage() {
   click(doc2, '[data-action="nextDay"]');
   const t6 = transformOf(doc2);
   assert(t6 && Math.abs(t6.scale - deepExpected.scale) < 1e-9, 'and the next planning day comes back at the rest view');
+}
+
+// ---------------------------------------------------------------------
+// Section 30: Phase 6, increment 2 — the build preview, and the readout
+// that finally shows a sentence on a phone.
+//
+// Increment 1 kept every marker in the DOM so its `title` survived the
+// canvas (#251). That was the right call and it did not fix anything: a
+// `title` has never shown on a touch screen, so the refusal a blocked
+// cell has carried since Stage 11 has never been read by anybody holding
+// a phone, and the numbers a build would move were not written down
+// anywhere at all — the ghost buttons quoted a price and stopped.
+//
+// The two halves below. previewPlacement() splices the candidate into a
+// copy of builtPlots and runs the three functions the day itself runs;
+// the strongest check here is that its promise matches what actually
+// happens when the plot gets built for real. previewLine() turns that
+// into one sentence, out of a DOM. Then the wiring: pointerover — the
+// event a tap fires before its click, and the only one a phone ever
+// gives the map — writes that sentence into a live region under the
+// sheet.
+// ---------------------------------------------------------------------
+{
+  // --- the splice is 'built', and staffed for a stall ---
+  {
+    const s = State.createInitialState();
+    const p = previewPlacement('food', 6, 2, s.builtPlots);
+    assert(p.ok && p.cost === quoteBuild('food', 6, 2, s.builtPlots).cost,
+      'a legal cell previews at exactly quoteBuild’s price, not a second cost formula');
+    assert(p.draw.before === computeGroundsDraw(s.builtPlots).mult,
+      'the preview’s "before" is the grounds as they stand');
+    assert(p.draw.after > p.draw.before && p.draw.delta > 0,
+      `a stall on empty grounds raises the draw (${p.draw.before} → ${p.draw.after}) — spliced as planning, or as a stall with nobody in it, every cell on the map would read +0.00`);
+    assert(s.builtPlots.length === 0 && !s.builtPlots.some(q => q.id === PREVIEW_PLOT_ID),
+      'and the candidate never lands in the caller’s array');
+  }
+
+  // --- the promise is the outcome: build it for real and compare ---
+  {
+    let s = State.createInitialState();
+    s = State.buildPlot(s, 'food', 6, 2).state;
+    s = State.hireVendor(s, 'vend_cider', 'open').state;
+    s = State.buildPlot(s, 'stage', 8, 5).state;
+    const p = previewPlacement('food', 1, 2, s.builtPlots);
+    assert(p.ok, 'the second stall at (1,2) is a legal placement');
+    // Build the previewed stall for real, seat somebody in it, and read
+    // the same three numbers off the state the day would use.
+    let after = State.buildPlot(s, 'food', 1, 2).state;
+    after = State.hireVendor(after, 'vend_piepeddler', 'open').state;
+    const realPlot = after.builtPlots.find(q => q.x === 1 && q.y === 2);
+    assert(!!realPlot && realPlot.assignedVendorId === 'vend_piepeddler', 'the real stall got built and seated at (1,2)');
+    // The preview rounds to two places to be readable; the comparison is
+    // against the same rounding, not a looser tolerance that would hide a
+    // real disagreement in the third place.
+    const realDraw = Math.round(computeGroundsDraw(after.builtPlots).mult * 100) / 100;
+    assert(realDraw === p.draw.after,
+      `the previewed draw is the draw the built grounds actually have (${p.draw.after} against ${realDraw})`);
+    const realReach = computeReachability(after.builtPlots)[realPlot.id];
+    assert(p.reach && Math.abs(realReach.mult - p.reach.mult) < 0.005 && realReach.distance === p.reach.hops,
+      `the previewed gate reach is the one the built stall actually gets (${JSON.stringify(p.reach)} against ${realReach.distance} hops, ${realReach.mult.toFixed(2)}×)`);
+    const realTraffic = computeFootTraffic(after.builtPlots)[realPlot.id];
+    assert(p.traffic && Math.abs(realTraffic.mult - p.traffic.mult) < 0.005,
+      `the previewed foot traffic is the one the built stall actually gets (${JSON.stringify(p.traffic)} against ${realTraffic.mult.toFixed(2)}×)`);
+    // What it costs the neighbours. The stall already at (6,2) is five
+    // hops out; a second one on the gate itself drops its reach.
+    const existing = s.builtPlots.find(q => q.x === 6 && q.y === 2);
+    assert(p.drops.length === 1 && p.drops[0].id === existing.id && p.drops[0].drop > 0,
+      `the preview names the plot that pays for it (${p.drops.map(d => d.name).join(', ') || 'none'})`);
+    const beforeReach = computeReachability(s.builtPlots)[existing.id].mult;
+    const afterReach = computeReachability(after.builtPlots)[existing.id].mult;
+    assert(beforeReach > afterReach && Math.abs((beforeReach - afterReach) - (p.drops[0] || {}).drop) < 0.02,
+      `and the drop it names (${(p.drops[0] || {}).drop}) is the one the build actually deals (${(beforeReach - afterReach).toFixed(2)})`);
+  }
+
+  // --- the drop is the net of both halves, and they can pull apart ---
+  // Found by breaking the traffic term's sign and watching the suite stay
+  // green (#34): every scenario above moved a neighbour's gate reach and
+  // left its foot traffic alone, so half of `drops` was unguarded. A stall
+  // at (0,1) and a second at (2,2) move both, in opposite directions.
+  {
+    let s = State.buildPlot(State.createInitialState(), 'food', 0, 1).state;
+    s = State.hireVendor(s, 'vend_cider', 'open').state;
+    const existing = s.builtPlots[0];
+    assert(existing.assignedVendorId === 'vend_cider', 'the stall at (0,1) is built and seated');
+    const p = previewPlacement('food', 2, 2, s.builtPlots);
+    let after = State.buildPlot(s, 'food', 2, 2).state;
+    after = State.hireVendor(after, 'vend_piepeddler', 'open').state;
+    const t0 = computeFootTraffic(s.builtPlots)[existing.id].mult;
+    const t1 = computeFootTraffic(after.builtPlots)[existing.id].mult;
+    const r0 = computeReachability(s.builtPlots)[existing.id].mult;
+    const r1 = computeReachability(after.builtPlots)[existing.id].mult;
+    assert(t1 < t0 && r1 > r0,
+      `the second stall costs the first its foot traffic (${t0.toFixed(2)} → ${t1.toFixed(2)}) and hands it gate reach (${r0.toFixed(2)} → ${r1.toFixed(2)})`);
+    const net = Math.round(((t0 - t1) + (r0 - r1)) * 100) / 100;
+    assert(p.drops.length === 1 && Math.abs((p.drops[0] || {}).drop - net) < 1e-9,
+      `and the reported drop is the net of both, not whichever one is bigger (${(p.drops[0] || {}).drop} against ${net})`);
+  }
+
+  // --- a first plot costs nobody anything; a stage is not a stall ---
+  {
+    const s = State.createInitialState();
+    assert(previewPlacement('food', 6, 2, s.builtPlots).drops.length === 0,
+      'the first stall on empty grounds takes nothing from anybody');
+    const stage = previewPlacement('stage', 0, 0, s.builtPlots);
+    assert(stage.ok && stage.traffic === null && stage.capacity > 0 && stage.reach !== null,
+      'a stage previews a capacity and a gate reach, and no foot traffic — traffic is a stall’s number');
+    const demo = previewPlacement('demo', 0, 1, s.builtPlots);
+    assert(demo.ok && demo.reach === null && demo.traffic === null && demo.draw.delta > 0,
+      'a demo camp is in neither reachability group and neither traffic group, and still moves the draw');
+  }
+
+  // --- a refusal is isLegalPlacement's own sentence, once ---
+  {
+    const s = State.createInitialState();
+    const hill = [];
+    for (let y = 0; y < 7 && hill.length === 0; y++) {
+      for (let x = 0; x < 10; x++) if (terrainAt(x, y) === 'hill') { hill.push({ x, y }); break; }
+    }
+    assert(hill.length === 1, 'the Home Grounds have a hill cell to refuse a stall on');
+    const legal = isLegalPlacement('food', hill[0].x, hill[0].y, s.builtPlots);
+    const p = previewPlacement('food', hill[0].x, hill[0].y, s.builtPlots);
+    assert(!legal.ok && !p.ok && p.reason === legal.reason && p.draw === undefined,
+      'a refused cell previews no numbers and carries isLegalPlacement’s exact sentence, not a second wording of it');
+    assert(previewLine(p) === legal.reason,
+      'and the readout line for it is that sentence and nothing else');
+  }
+
+  // --- previewLine, out of a DOM ---
+  {
+    const s = State.createInitialState();
+    const stall = previewPlacement('food', 6, 2, s.builtPlots);
+    const line = previewLine(stall);
+    assert(line.includes(`$${stall.cost.toLocaleString()}`) && line.includes(stall.name),
+      `the preview line names the structure and its price (${line})`);
+    assert(line.includes(stall.draw.before.toFixed(2)) && line.includes(stall.draw.after.toFixed(2)),
+      'and both sides of the draw, so the delta is readable rather than asserted');
+    assert(stall.reach && line.includes(`${stall.reach.hops} hops from the gate`), 'and how far the gate is');
+    assert(/built and staffed/.test(line), 'a stall’s line says "built and staffed" — the splice seated a vendor and the sentence has to admit it');
+    const stageLine = previewLine(previewPlacement('stage', 0, 0, s.builtPlots));
+    assert(/once built\./.test(stageLine) && !/staffed/.test(stageLine),
+      'a stage’s line says "once built" and nothing about staffing');
+    assert(!/drop/.test(line), 'a preview that costs nobody anything says nothing about drops');
+    let s2 = State.buildPlot(s, 'food', 6, 2).state;
+    s2 = State.hireVendor(s2, 'vend_cider', 'open').state;
+    const costly = previewLine(previewPlacement('food', 1, 2, s2.builtPlots));
+    assert(/drops 0\.\d\d× across traffic and reach/.test(costly),
+      `and one that does names it (${costly})`);
+  }
+
+  // --- the readout on the page ---
+  const rawHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script[^>]*main\.js[^>]*><\/script>/, '');
+  const boot = async (save) => {
+    const storage = makeMemoryStorage();
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify({ ...save, __v: 2 }));
+    const dom = new JSDOM(rawHtml, { url: `file://${root}/index.html`, pretendToBeVisual: true });
+    const zero = { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+    dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+      return this.classList && this.classList.contains('plat-stage')
+        ? { left: 0, top: 0, right: 330, bottom: 400, width: 330, height: 400 }
+        : zero;
+    };
+    globalThis.window = dom.window;
+    globalThis.document = dom.window.document;
+    globalThis.localStorage = storage;
+    globalThis.confirm = () => true;
+    await import(mod('js/main.js') + `?t=${Date.now()}${Math.random()}`);
+    return { dom, doc: dom.window.document, storage };
+  };
+  const readout = (doc) => doc.querySelector('.plat-readout').textContent;
+  {
+    let s = State.createInitialState();
+    s = State.buildPlot(s, 'food', 6, 2).state;
+    s = State.hireVendor(s, 'vend_cider', 'open').state;
+    const { dom, doc, storage } = await boot(s);
+    const win = dom.window;
+    const over = (el) => el.dispatchEvent(new win.MouseEvent('pointerover', { bubbles: true, clientX: 10, clientY: 10 }));
+    const click = (el) => el.dispatchEvent(new win.Event('click', { bubbles: true }));
+
+    const region = doc.querySelector('.plat-readout');
+    assert(!!region && region.getAttribute('role') === 'status' && region.getAttribute('aria-live') === 'polite',
+      'the sheet carries a .plat-readout live region, so a sentence written into it is announced rather than just drawn');
+    assert(readoutDefault(false) !== readoutDefault(true) && readoutDefault(false).length > 20 && readoutDefault(true).length > 20,
+      'the two defaults are two different sentences — comparing the page against readoutDefault() proves nothing if both sides are the same empty string');
+    assert(region.textContent === readoutDefault(false), 'at rest it says what the map is for');
+    assert(doc.querySelector('.plat-sheet').compareDocumentPosition(region) & win.Node.DOCUMENT_POSITION_FOLLOWING,
+      'and it sits after the sheet, where a thumb over the map is not covering it');
+
+    // A built plot's stats, which no phone has ever seen.
+    const built = doc.querySelector('.plot-marker.built');
+    assert(!!built && built.getAttribute('title').includes('sightline'), 'the built stall still carries its stats in a title');
+    over(built);
+    assert(readout(doc) === built.getAttribute('title'),
+      'pointing at a built plot reads its title out into the readout — the same string, so the tooltip and the readout cannot drift');
+
+    doc.querySelector('[data-action="selectBuild"][data-kind="food"]').dispatchEvent(new win.Event('click', { bubbles: true }));
+    assert(readout(doc) === readoutDefault(true),
+      'choosing a kind re-renders the map and the readout says what to do with it now');
+
+    // The refusal. This is the sentence the wishlist has owed a phone
+    // since Stage 11.
+    const blocked = doc.querySelector('.plot-marker.blocked');
+    assert(!!blocked && !!blocked.getAttribute('title'), 'blocked cells are on the map with their reason in a title');
+    over(blocked);
+    assert(readout(doc) === blocked.getAttribute('title') && readout(doc) !== readoutDefault(true),
+      `a pointerover on a blocked cell — the event a tap fires before its click — writes the refusal where a touch screen can read it ("${readout(doc)}")`);
+
+    // The preview, on a ghost.
+    const ghost = [...doc.querySelectorAll('.plot-marker.ghost')].find(g => g.dataset.x === '1' && g.dataset.y === '2');
+    assert(!!ghost, 'there is a ghost at (1,2)');
+    over(ghost);
+    const expected = previewLine(previewPlacement('food', 1, 2, State.loadState().builtPlots));
+    assert(readout(doc) === expected, `pointing at a ghost previews the build (${readout(doc)})`);
+    assert(/×/.test(readout(doc)) && readout(doc).includes('$'),
+      'and that preview carries multipliers as well as a price — a price is what the ghost’s own title already said');
+
+    // Focus is the keyboard's way in. Re-query the built marker: choosing
+    // a kind re-rendered the map, and the first draft of this line pointed
+    // at the detached node from before that render, so the readout never
+    // moved off the preview and the assertion held with the focusin
+    // listener deleted.
+    const builtNow = doc.querySelector('.plot-marker.built');
+    over(builtNow);
+    assert(readout(doc) === builtNow.getAttribute('title') && readout(doc) !== expected, 'the readout is off the preview before the focus test starts');
+    ghost.dispatchEvent(new win.Event('focusin', { bubbles: true }));
+    assert(readout(doc) === expected, 'focusing a ghost previews it too, so the keyboard gets the same sentence the pointer does');
+
+    // Mid-drag the pointer crosses cells nobody is asking about.
+    const stage = doc.querySelector('.plat-stage');
+    const mouse = (type, target, x, y) => target.dispatchEvent(new win.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }));
+    mouse('pointerdown', stage, 100, 100);
+    const held = readout(doc);
+    over(blocked);
+    assert(readout(doc) === held, 'a pointer crossing the map with a button down does not rewrite the readout under the drag');
+    mouse('pointerup', stage, 100, 100);
+    await new Promise(r => setTimeout(r, 5));
+
+    // Placing keeps the numbers on screen through the re-render, and
+    // spends nothing.
+    const cashBefore = JSON.parse(storage.getItem('renn-faire-sim-save-v1')).cash;
+    click(doc.querySelector('.plot-marker.ghost[data-x="1"][data-y="2"]'));
+    const saved = JSON.parse(storage.getItem('renn-faire-sim-save-v1'));
+    assert(saved.cash === cashBefore && saved.builtPlots.some(p => p.x === 1 && p.y === 2 && p.status === 'planning'),
+      'the ghost placed a planning plot and took no money for it');
+    assert(readout(doc).startsWith('Planned, nothing spent yet.') && readout(doc).includes(expected),
+      `and the readout keeps the preview through the render that placed it (${readout(doc)})`);
+    assert(!doc.querySelector('.plot-marker.ghost'), 'the ghosts are gone with the pending build, so the readout is the only place those numbers still are');
+
+    // One render, then it is the map's again.
+    doc.querySelector('[data-tab="backstage"]').dispatchEvent(new win.Event('click', { bubbles: true }));
+    assert(readout(doc) === readoutDefault(false),
+      'the placement readout is spent by one render, like a flash — a stale sentence about a plot that has since moved is worse than none');
+    dom.window.close();
+  }
+
+  // readoutFor is the one place the choice is made, so it is checked
+  // directly rather than only through the listener above.
+  {
+    const el = { dataset: { action: 'placeAt', kind: 'food', x: '6', y: '2' }, getAttribute: () => 'a title nobody should read here' };
+    const s = State.createInitialState();
+    assert(readoutFor(el, s.builtPlots) === previewLine(previewPlacement('food', 6, 2, s.builtPlots)),
+      'readoutFor previews a ghost rather than reading its title');
+    const plain = { dataset: {}, getAttribute: (n) => (n === 'title' ? 'The Cider Tent — built' : null) };
+    assert(readoutFor(plain, s.builtPlots) === 'The Cider Tent — built', 'and hands back the title for anything else');
+    assert(readoutFor(null, s.builtPlots) === null, 'and nothing for nothing');
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

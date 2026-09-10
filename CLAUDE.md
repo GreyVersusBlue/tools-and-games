@@ -71,7 +71,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 252 locked decisions in full, by number.
+`HISTORY.md` carries all 254 locked decisions in full, by number.
 
 ## Writing style
 
@@ -89,7 +89,7 @@ There is no root `package.json`. Five `package.json` files exist, and only
 | --- | --- |
 | `Tools/board-check/` | `check` (integrity + collisions), `integrity`, `collisions`, `play` (Castle Conundrum), `games`, `tools`, `shoot`, `previews`, `promote`, `social`, `social:check` |
 | `Numina/` | `build`, `clean`, `serve`, `test` |
-| `Projects/Ren-Faire-Claude/` | `test` |
+| `Projects/Ren-Faire-Claude/` | `test`, `shoot` (the layout camera), `touch` (the readout on a real touchscreen) |
 | `Projects/hearth/test/` | `soak`, `determinism`, `save`, `nan` |
 | `Projects/bell-to-bell/` | none — run `node tests/smoke.mjs` and `node tests/balance.mjs` directly |
 

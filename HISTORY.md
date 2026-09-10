@@ -3151,6 +3151,55 @@ Two of them have moved since they were written:
    any of them moves; nothing about them is saved. *Source: Faire Weekend
    Phase 6, increment 1.*
 
+253. **A build preview splices a candidate into the plots array and runs
+   the day's own functions; it never re-derives them.** `previewPlacement`
+   copies `builtPlots`, puts the candidate in, and calls
+   `computeGroundsDraw`, `computeFootTraffic` and `computeReachability` —
+   the three the simulation calls. A preview that re-implements the numbers
+   it is previewing is a second implementation to keep in step with the
+   first, and it goes out of step silently, which is #34's lesson pointed
+   at a feature rather than a test. The candidate goes in as `status:
+   'built'`, and a stall goes in with a vendor seated, because all three
+   skip a planning plot and the draw skips an empty stall: spliced any
+   other way every cell on the map reads +0.00, so the readout says "once
+   built and staffed" and means it. It reports `drops` as well as the
+   candidate's own numbers — foot traffic and gate reach are both scored
+   against their group's mean, so a new plot moves every plot already in
+   its group, and that is the half of the trade a cost quote can never
+   show. Both halves are netted into one number per plot, and they can
+   pull opposite ways: a second stall on the gate takes 0.25x of the
+   first's foot traffic and hands it back 0.20x of gate reach. The suite
+   checks the promise against the outcome — build the previewed plot for
+   real, seat it, and the three numbers match — rather than against a
+   second copy of the arithmetic. *Source: Faire Weekend Phase 6,
+   increment 2.*
+
+254. **Every sentence the map has goes into one readout under the sheet,
+   and `title` stays the only place it is written.** A `title` has never
+   shown on a touch screen, on this page or any other, so the refusal a
+   blocked cell has carried since Stage 11 was invisible to anybody
+   holding a phone, and a built plot's stats were too. `.plat-readout` is
+   a `role="status"` live region below the sheet; `main.js` writes it on
+   `pointerover` — the event a tap fires before its click, and the only
+   one a phone ever gives the map — and on `focusin`, which is the
+   keyboard's way through the ghosts. A ghost gets its preview; everything
+   else gets its own `title` attribute read back, not a rebuilt sentence,
+   so the tooltip and the readout cannot drift apart. Nothing clears it: a
+   status line that empties when a thumb lifts is one nobody on a phone
+   ever finishes reading, so the last answer stands until there is a next
+   one. It is skipped while a drag is in flight, because a pointer
+   crossing forty cells is not asking about any of them. The one thing
+   that survives a render is the placement line: a tap on a ghost is the
+   same tap that takes the ghosts off the map, so `placeAt` reads the
+   preview before it places and leaves it in `ui.readout`, spent by one
+   render like `flash`. Placing spends nothing (Stage 10 — a fresh plot is
+   'planning' until committed), so that is still the delta in front of the
+   player while the money is still theirs. Proved on a real coarse-pointer
+   Chromium at 375 and 820 by `tools/touch-readout.mjs` (`npm run touch`,
+   24 checks), because jsdom has no layout, no clipping stage and no
+   pointer type, and its `pointerover` is whatever the suite dispatches.
+   *Source: Faire Weekend Phase 6, increment 2.*
+
 ---
 
 # The site sessions, 1–10
@@ -5032,6 +5081,80 @@ rewritten); `tests/mapview.mjs` new, 172; `tests/guests.mjs` 168 unchanged.
 build preview (splice the candidate into `builtPlots`, show the draw,
 traffic and reachability delta before the player pays) and a tap readout
 for the refusal sentence on touch.
+
+**Phase 6, increment 2 — the preview, and a sentence a phone can read
+(PR #205).** Increment 1 kept every marker in the DOM so its `title`
+survived the canvas (#251). That was the right call and it fixed nothing
+for a phone: a `title` has never shown on a touch screen, so the refusal
+a blocked cell has carried since Stage 11 was invisible to anybody
+holding one, and the numbers a build would move were not written down
+anywhere at all — the ghost buttons quoted a price and stopped.
+
+`previewPlacement(kind, x, y, builtPlots, excludeId)` in `engine.js` is
+the preview, pure (#253): splice the candidate into a copy of the plots
+array, run `computeGroundsDraw`, `computeFootTraffic` and
+`computeReachability`, and report the draw both sides, the candidate's
+own gate reach and foot traffic, and `drops` — the built plots whose own
+multipliers fall to pay for it. A refused cell comes back
+`{ ok: false, reason }` carrying `isLegalPlacement`'s own sentence, so
+one call answers both "why not" and "what would it do".
+
+`.plat-readout` is where all of it goes (#254): a `role="status"` live
+region under the sheet, written on `pointerover` and `focusin`, holding a
+ghost's preview or any other marker's `title` read straight back off the
+attribute. `ui.js` owns the three pure functions that decide the text
+(`readoutDefault`, `previewLine`, `readoutFor`); `main.js` owns the two
+listeners and `ui.readout`, the one-render slot that carries the preview
+through the re-render a placement causes.
+
+**Two findings from a real browser, neither visible in jsdom.** The first
+draft's `min-height: 2.9em` measured 36px on a tablet — one line and a
+bit, because `box-sizing: border-box` puts the padding inside it — so the
+floor is `calc(2 * 1.45em + 0.9rem)` and the check derives two lines from
+the element's own computed metrics rather than a magic number. And the
+default sentence said "Point at", which is not what a phone does; it says
+"point at or tap" now.
+
+`tools/touch-readout.mjs` (`npm run touch`) is the check that can prove
+any of this: real Chromium launched with Blink's coarse-pointer flags
+(Playwright's `hasTouch` leaves `(pointer: coarse)` answering false, which
+no real phone does), 375 and 820, `page.touchscreen.tap` on a blocked
+cell and on a ghost, the live region read back. 24 checks, 0 failed;
+exits non-zero (#13), and deleting the `pointerover` listener fails it on
+the assertion that names the refusal. It lied twice before it told the
+truth, both times for its own reasons rather than the page's: it tapped
+the first marker in the DOM, which on a 375px phone is outside the
+clipping stage, and then it tapped inside the stage after the palette
+click had scrolled the whole stage 297px above the viewport. It now takes
+the first marker inside the stage *and* on screen, and confirms with
+`elementFromPoint` that a tap there reaches it.
+
+**Guard-rails broken on purpose (#34), thirty-two, every one caught by
+the assertion whose text claims it and none of them by a crash.** Two of
+the thirty-two were green on the first pass and both were real gaps.
+Flipping the sign of the foot-traffic term in `drops` changed nothing,
+because every scenario in the section moved a neighbour's gate reach and
+left its foot traffic alone — half of `drops` was unguarded, and the case
+that guards it is a stall at (0,1) and a second at (2,2), which move both
+in opposite directions. Deleting the `focusin` listener changed nothing,
+because the line that was supposed to reset the readout first pointed at
+a node detached by an earlier re-render; the readout never moved off the
+preview, so focusing the ghost had nothing to prove. Four more breaks
+killed the suite outright instead of failing it — a message template read
+`p.drops[0].drop` on an empty array — which is not catching a bug, it is
+dying next to one, so every template in the section is null-safe now.
+
+*Counts:* `tests/smoke.mjs` 1,902 → 1,951 (Section 30 new); `tests/mapview.mjs`
+172 and `tests/guests.mjs` 168 unchanged. `play-games.mjs faire-weekend`
+18 checks, 0 failed, no page or console errors, no offsite requests.
+`npm run touch` 24 checks, 0 failed.
+
+**None of the four shared things was touched.** The two site-wide checks
+are still red on `main` and were red before this branch: `check-integrity.mjs`
+fails on `Projects/school-generator/tools/walk-shell.html` and
+`Tools/prompt-builder.html` (1,479 units, 2 broken), and `social:check`
+reports the same six pages out of sync. `check-collisions.mjs` passes,
+0 collisions.
 
 **Phase 5 — The review that has been owed four rounds.** Stage 20 audited
 contrast with arithmetic because no browser was available, round 3

@@ -646,14 +646,14 @@ a design review. This phase spends a browser on one deliberately.
 *Leans on:* `css/style.css`, `Tools/board-check`'s `shots/`. *Save:* none.
 *Model:* **Claude Opus 5** — CSS and judgement, with a browser open.
 
-## Phase 6 — A map you can pan, zoom and preview into — **increment 1 shipped**
+## Phase 6 — A map you can pan, zoom and preview into — **shipped, two increments**
 
 **The grounds are a CSS grid of DOM markers, and the fix for a phone was to
 make them bigger and let the page scroll sideways.** *Increment 1 (PR #203)
 made the ground a canvas and the map a view: it pans, zooms and pinches on
 every width, the sheet no longer scrolls, and the markers stayed in the DOM
-under the same transform (#251, #252). What is left is the preview and the
-touch readout, below.*
+under the same transform (#251, #252). Increment 2 built the preview and the
+readout that shows it, and the refusal, on a phone (#253, #254).*
 
 `renderGroundsMap` emits a `.terrain-cell` per cell of the unlocked grid — 70
 on Home Grounds, 140 on Deep Woods Trail — plus a marker per plot and, while a
@@ -677,20 +677,31 @@ surface is where a build preview belongs.
   rules: never above scale 1 (#247 kept), never under the pointer's floor
   (44px markers on a coarse pointer at any stage width), the stage's height
   fixed at rest so a zoom does not grow the page.*
-- [ ] **Build preview, which is the point.** `computeGroundsDraw` is a pure
+- [x] **Build preview, which is the point.** `computeGroundsDraw` is a pure
   function of a plots array and the handoff already names it ready for exactly
   this: splice the candidate into a copy of `builtPlots`, call it, show the
   delta *before* the player pays. Same for foot traffic and reachability.
-  *Increment 2. The ghost buttons still quote cost only.*
+  *`previewPlacement(kind, x, y, builtPlots, excludeId)` in `engine.js`,
+  pure: the candidate goes in as `status: 'built'` and, for a stall, with a
+  vendor seated, because all three functions skip a planning plot and the
+  draw skips an empty stall — spliced any other way every cell on the map
+  reads +0.00. It returns the draw both sides, the candidate's own gate
+  reach and foot traffic, and `drops`, the built plots whose own numbers
+  fall to pay for it, which is the half of the trade a cost quote can never
+  show. The suite checks the promise against the outcome: build the
+  previewed plot for real, seat it, and the three numbers match.*
 - [ ] **Keep the refusals, and the focus targets.** A blocked cell carries
   `isLegalPlacement`'s reason in a `title` and a canvas has no `title`, so
   that sentence needs a hover/tap readout; the DOM markers were also free
   focus targets, so keyboard cell selection and a text list of plots have to
   be built or the map becomes pointer-only. *Kept, by keeping the markers
   in the DOM (#251): every `title`, every focus target and every
-  `data-action` is where it was, and Section 22 did not change. Still
-  owed, for increment 2: a tap readout, because a `title` never shows on
-  touch and never did.*
+  `data-action` is where it was, and Section 22 did not change. Increment 2
+  paid the rest: a `.plat-readout` live region under the sheet takes
+  whatever the pointer, a tap or the keyboard is on — a blocked cell's
+  refusal, a built plot's stats, the build preview — written on
+  `pointerover`, which is the event a tap fires before its click and the
+  only one a phone ever gives the map (#254).*
 - [x] **Rewrite Sections 23 and 24 against the canvas, not around it.** They
   assert `.plot-marker` and `.plat-sheet` geometry and they will break; the
   44px guarantee still has to be provable through the canvas's own hit-test.
@@ -706,6 +717,11 @@ zoom are session state and belong in `main.js`'s `ui` object beside
 `pendingBuild`/`pendingMove`. *Model:* **Claude Fable 5.1** — hit-test
 geometry, plus a refactor that removes the DOM assertions currently serving as
 its own safety net.
+
+*Shipped as:* increment 1 PR #203 (Fable 5.1), increment 2 PR #205 (Opus 5 —
+the model the session actually ran on; the row named Fable 5.1 and the batch
+rule says to say so). Nothing was saved: pan, zoom and the readout are all
+session state in `ui`.
 
 ## Phase 7 — A third crew
 
