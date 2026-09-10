@@ -3296,6 +3296,26 @@ Two of them have moved since they were written:
    again. Fixing it moved nothing in either check's verdict and a great
    deal in the numbers underneath them. *Source: Faire Weekend Phase 7.*
 
+261. **The walk shell's bundle marker is a JavaScript comment, `/*SG-BUNDLE*/`,
+   not an HTML one.** `tools/walk-shell.html` had carried `<!--SG-BUNDLE-->`
+   inside its `<script type="module">` since Phase 27, and `check-integrity.mjs`
+   had been red on it since decision #58 taught the sweep to parse inline
+   scripts: an HTML comment is a SyntaxError in a module. Nothing in the
+   project noticed because the bundler replaces the marker before anything
+   parses the result, and `walk-template.html` — the only file a browser ever
+   opens — was always clean. The marker text changed in the two places that
+   agree on it, the shell and `export-walk.mjs`; the committed template
+   rebuilds byte-identical, so no walk export changes. `test/export-walk.test.mjs`
+   now reads the shell itself and refuses an HTML comment in its module
+   script, so the project's own CI catches the next one without waiting for
+   the site sweep. Broken on purpose twice (#34): reverting the marker was
+   caught first by `buildTemplate`'s "lost a splice marker" throw, which is
+   the wrong assertion, so the second break kept the marker and added a stray
+   `<!-- -->` beside it, and the new assertion failed by name. `npm run check`
+   goes from 2 broken units to 1; `Tools/prompt-builder.html` (rank 44) is the
+   one left. *Source: School Generator, the standing integrity failure,
+   September 2026.*
+
 ---
 
 # The site sessions, 1–10

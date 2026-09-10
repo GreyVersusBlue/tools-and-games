@@ -64,7 +64,11 @@ const ENTRY = join(PROJECT, 'js', 'walk-main.js');
 // marker is never spliced opens on live lighting.
 export const DESIGN_MARKER = '<!--SG-DESIGN-->';
 export const BAKE_MARKER = '<!--SG-BAKE-->';
-const BUNDLE_MARKER = '<!--SG-BUNDLE-->';
+// The bundle marker sits inside a <script type="module">, so it has to be a
+// JavaScript comment: an HTML comment there is a SyntaxError in a module,
+// and check-integrity.mjs parsed the shell as one and was red on it from
+// the day the sweep learned to read inline scripts.
+const BUNDLE_MARKER = '/*SG-BUNDLE*/';
 
 // The stated ceiling for the committed template, bytes. See the header.
 export const TEMPLATE_BUDGET = 4 * 1024 * 1024;

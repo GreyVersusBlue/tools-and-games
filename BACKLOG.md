@@ -1311,10 +1311,11 @@ Five things came up in more than one survey and belong to no single project.
 
    so the fonts are a real, currently-red, one-session fix, and the ownership
    manifest is the separate thing that would catch the next unowned page before
-   it gets that far. (The other standing failure is
-   `Projects/school-generator/tools/walk-shell.html` — an inline script the
-   parser reads as a module, `SyntaxError: HTML comments are not allowed in
-   modules`, at line 290. Both predate this consolidation.)
+   it gets that far. (It used to have company:
+   `Projects/school-generator/tools/walk-shell.html` carried an HTML comment
+   inside its module script, `SyntaxError: HTML comments are not allowed in
+   modules`, at line 290, from Phase 27 until September 2026. Decision #261
+   made the marker a JavaScript comment, and the sweep is down to this one.)
 
 One more, from Hearth's own wishlist rather than a site survey, recorded here
 because it is a board question: **Hearth is on the homepage (`index.html:492`,

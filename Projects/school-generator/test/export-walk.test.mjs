@@ -118,6 +118,20 @@ test('the committed template is the one this tree builds (stale? run: node tools
     'walk-template.html is stale — rebuild it with `node tools/export-walk.mjs` and commit the result');
 });
 
+// The bundle marker lives inside a <script type="module">, where an HTML
+// comment is a SyntaxError. The shell shipped one from Phase 27 to September
+// 2026 and only the site-wide sweep (Tools/board-check/check-integrity.mjs)
+// saw it, because the bundler replaces the marker before anything here parses
+// the result. This reads the shell itself, so the project's own CI is red on it
+// the next time.
+test('the shell\'s module script holds no HTML comment (a SyntaxError in a module)', async () => {
+  const shell = await readFile(new URL('../tools/walk-shell.html', import.meta.url), 'utf8');
+  const bodies = [...shell.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.equal(bodies.length, 1, 'the shell has exactly one module script, the bundle slot');
+  assert.ok(!/<!--/.test(bodies[0]), 'the bundle marker must be a JavaScript comment, not <!-- -->');
+  assert.ok(/\/\*SG-BUNDLE\*\//.test(bodies[0]), 'the module script is where the bundle is spliced');
+});
+
 test('the template keeps its design slot, and stays under the stated budget', () => {
   assert.ok(built.html.includes(DESIGN_MARKER), 'the design marker survives bundling');
   assert.ok(built.html.includes(BAKE_MARKER), 'so does the bake slot (Phase 27)');
