@@ -58,16 +58,27 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Faire Weekend Phase 7, "A third crew"
-(PR #207)**, which **closed rank 1** — a 1-session row, closed in one
-session, so it comes out of the ranked table and everything below it
-moves up one. **75 ranked items remain.** The new rank 1 is **Faire
-Weekend Phase 8 — The wiring audit, automatic**, a ½ row on **Claude
-Opus 5**: a test that reads `js/ui.js` and `js/main.js` as text, collects
-every `data-action` literal and every `case` label, and asserts the two
-sets agree, then asserts every action is exercised by a suite. **It goes
-alone.** A ½ row would normally take two, but rank 2 is `Projects/
-daredevil` Phase 1, a 2+ row, and a 2+ row is never mixed into a batch.
+The last thing that shipped is **the School Generator walk shell's bundle
+marker (PR #208)**, which closed no ranked row: it was the standing
+`check-integrity.mjs` failure recorded under "The site itself" below, an
+HTML comment inside `tools/walk-shell.html`'s module script, there since
+Phase 27. The marker is `/*SG-BUNDLE*/` now (decision #261), the committed
+`walk-template.html` rebuilt byte-identical, and `test/export-walk.test.mjs`
+refuses the next one. **`npm run check` is down to one broken unit**,
+`Tools/prompt-builder.html`, which is rank 44's. **75 ranked items remain,
+unchanged**, and rank 1 is still **Faire Weekend Phase 8 — The wiring
+audit, automatic**, a ½ row on **Claude Opus 5**: a test that reads
+`js/ui.js` and `js/main.js` as text, collects every `data-action` literal
+and every `case` label, and asserts the two sets agree, then asserts every
+action is exercised by a suite. **It goes alone.** A ½ row would normally
+take two, but rank 2 is `Projects/daredevil` Phase 1, a 2+ row, and a 2+
+row is never mixed into a batch. The School Generator itself has no
+ranked row; its next work comes from the standing backlog in its
+`WISHLIST.md`, and needs a row here first.
+
+Before that: **Faire Weekend Phase 7, "A third crew" (PR #207)**, which
+**closed the old rank 1** — a 1-session row, closed in one session, so it
+came out of the ranked table and everything below it moved up one.
 
 **What Phase 7 built.** `CREW`, six rows across three roles, two tiers
 each, `unlockSeason`-gated like every other catalog and signed through
