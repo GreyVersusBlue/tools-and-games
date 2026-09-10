@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -1076,8 +1076,8 @@ He thought about the man from Los Angeles in the fourth row.
 > **Checked the Card** — No consulting credit. Four days on the phone. The feature ran, and the fee went against the cars.
 
 ### `fr3_press_sandra_check`
-**DUKE:** I need to check something in my contract first.
-**SANDRA:** The television clause.
+**DUKE:** I need to check something first.
+**SANDRA:** The Friday card.
 **DUKE:** You know about it.
 **SANDRA:** I'm a reporter.
 Duke thought: of course she does.
