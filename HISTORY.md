@@ -5793,7 +5793,10 @@ for exactly that reason), says "Not interested", then crashes at the
 Speedway and on the Milestone 4 stunt — `stunt` may now be a list, one
 policy per run — and reads the failure arms, Kessler's option, Tommy's
 co-sign, the third answer at both new forks and the disappearance;
-`no_earl_solo` takes the second answer at both and walks away quietly.
+`no_earl_solo` takes the second answer at both and walks away quietly. All
+six transcripts re-taken and diffed: `clean` moved by one stunt point (#53),
+`no_pete` and `rough` by the counted option line only, the three solo runs by
+the new prose.
 
 ---
 
