@@ -5653,7 +5653,10 @@ with two lines of "you're a hard man to reach", and `m2_sign` set him back to
   `fr2_debt_01` is the only card on the board until it is played, every
   evening is locked behind it, and the Milestone 3 button waits (#266).
   "Borrow from Earl" is `_requires`-hidden, and `debtSource` is finally read
-  — `fr2_close`'s solo arm says who got paid. Eleven lines across
+  — `fr2_close`'s solo arm says who got paid, and the solo branch's
+  Milestone 3 button routes through `_chapter_fr2_end` so that scene, which
+  no run had ever reached (nothing names the route on the backer branch;
+  Phase 2's job), is read on this one. Eleven lines across
   `fr2_hub_open`, `fr2_eve_cal`, `fr2_eve_practice`, `fr2_eve_press`,
   `fr2_danny_01`, `fr2_debt_01`, `fr2_debt_bank` and `fr2_debt_tommy`
   became `N(fn)`/`C(name, fn)` branches; `fr2_close` became a `get lines()`

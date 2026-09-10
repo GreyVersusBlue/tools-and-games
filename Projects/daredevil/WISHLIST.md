@@ -212,7 +212,9 @@ starting a new list.
 - 30 flags are written and never read, including `familyOrigin` (the cold
   open's "what he came from" fork, whose only lasting effect is +1 Hustle on
   one arm), `peteMistakeResponse` and `m5Decision`. `debtSource` came off
-  the list in Phase 1: `fr2_close`'s solo arm reads it.
+  the list in Phase 1: `fr2_close`'s solo arm reads it, and the FR2 milestone
+  button routes the solo branch through `_chapter_fr2_end` so that arm is
+  actually reached.
 - `GS.flags.pressAtFair` is read in `buildLines()` and set by nothing, so five
   lines of Earl noticing the press man are dead.
 - The stat-update screen's relationship table lacks `pete` and `hanger_on` and
@@ -229,7 +231,7 @@ starting a new list.
   date — is not named by any `goto`, `next`, hub card or route. It is the only
   scene id in the file that appears nowhere else as a string.
 - `fr2_close` is reachable only through `_chapter_fr2_end`, which nothing
-  names; `_chapter_fr2` is handled and never named either, so its "You signed."
+  names on the backer branch (Phase 1 routes the solo branch through it); `_chapter_fr2` is handled and never named either, so its "You signed."
   stat update never fires.
 - `m5Outcome` never takes the value `'last_stunt_earl'` — `m5_last_stunt_earl`
   routes through the stunt run, which reports `last_stunt_win`/`_loss` — so
@@ -325,8 +327,11 @@ is under "Daredevil, arc one" in the root `HISTORY.md`). Shape B.
 - [x] **FR2's backer-less card set.** `fr2_debt_01` is the only card until it
   is played, every evening is locked behind it, the Milestone 3 button waits
   (#266), "Borrow from Earl" is hidden, and `fr2_close`'s solo arm reads
-  `debtSource`. Eleven `N(fn)`/`C(name, fn)` branches across the FR2 scenes
-  that named Earl; `fr2_close` is a `get lines()`.
+  `debtSource`. On this branch the Milestone 3 button goes through
+  `_chapter_fr2_end`, so `fr2_close` is read for the first time by any run;
+  the backer button still skips it, which is Phase 2's first bullet and would
+  move three baseline transcripts. Eleven `N(fn)`/`C(name, fn)` branches
+  across the FR2 scenes that named Earl; `fr2_close` is a `get lines()`.
 - [ ] **Thread it through M3, M4 and the epilogue.** Untouched. `m3_entry`
   still has a sponsor's logo on the ramp and a TV crew nobody on this branch
   arranged (the solo `fr2_close` says Kessler's crew is there for the feature
