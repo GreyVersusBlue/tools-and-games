@@ -4,7 +4,7 @@
 // action and tests can assert on plain objects.
 
 import { CONFIG, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, DEFAULT_WEATHER_ID, RELATIONSHIP, CARRYOVER } from './data.js';
-import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition, rollWeather, quoteContract, offerDiscount, relationshipOf, beatById, pendingBeats, clamp, summarizeWeekend, weekendRenown, moodRenown, signingBar, nextRunSeed, contractedActIds } from './engine.js';
+import { simulateDay, performerById, vendorById, campaignById, validateSchedule, terrainAt, quoteBuild, isSeasonUnlocked, isLegalPlacement, isFootprintWithinCurrentGrid, footprintFor, STALL_KIND_BY_VENDOR_TYPE, previewCommitAll, checkBankruptcy, checkWinCondition, rollWeather, quoteContract, offerDiscount, relationshipOf, beatById, pendingBeats, clamp, summarizeWeekend, weekendRenown, moodRenown, signingBar, nextRunSeed, contractedActIds, crewById } from './engine.js';
 // Relative, not "/assets/js/gvb-save.js": tests/smoke.mjs imports this module
 // under plain Node, which cannot resolve a leading slash. The relative form
 // resolves identically in the browser (v7 §1 documented the same trap for
@@ -51,6 +51,11 @@ export function createInitialState(weatherSeed = DEFAULT_WEATHER_SEED) {
     contracts: {}, // performerId -> { contractId, dailyCost, commitDaysRemaining }
     hiredVendors: [],
     vendorContracts: {}, // vendorId -> { contractId, dailyCost, commitDaysRemaining } (Stage 7)
+    // Phase 7: the third payroll. Same two shapes the roster and the vendor
+    // list already use, signed through the same CONTRACT_OPTIONS deals, and
+    // both additive so repair fills them for any save written before this.
+    crew: [], // crew ids on the payroll
+    crewContracts: {}, // crewId -> { contractId, dailyCost, commitDaysRemaining, cancelFeeMult, label }
     schedule: Object.fromEntries(TIME_BLOCKS.map(b => [b.id, {}])),
     activeCampaign: null, // { id, name, attendanceMult, daysRemaining, cooldownDays } or null
     campaignCooldowns: {}, // campaignId -> days remaining before it can be relaunched
@@ -106,6 +111,8 @@ function clone(state) {
     contracts: Object.fromEntries(Object.entries(state.contracts).map(([k, v]) => [k, { ...v }])),
     hiredVendors: [...state.hiredVendors],
     vendorContracts: Object.fromEntries(Object.entries(state.vendorContracts).map(([k, v]) => [k, { ...v }])),
+    crew: [...(state.crew || [])],
+    crewContracts: Object.fromEntries(Object.entries(state.crewContracts || {}).map(([k, v]) => [k, { ...v }])),
     schedule: Object.fromEntries(Object.entries(state.schedule).map(([k, v]) => [k, { ...v }])),
     activeCampaign: state.activeCampaign ? { ...state.activeCampaign } : null,
     campaignCooldowns: { ...state.campaignCooldowns },
@@ -523,6 +530,53 @@ export function fireVendor(state, vendorId) {
   return { state: next, error: null, fee };
 }
 
+// ---------- the crew (Phase 7) ----------
+// Hiring and releasing a crew member, and deliberately nothing else. They
+// ride resolveTerms and quoteContract exactly as a performer or a vendor
+// does, so a Weekend Package on the gate crew is the same deal shape and
+// the same cancellation arithmetic it is on a jouster. What they do NOT get
+// is a relationship, an arc or a tenure count (#256): a crew is staff, and
+// staff do not have a story the faire tends. quoteContract's relationship
+// swing reads neutral for them and multiplies by exactly 1.
+export function contractCrew(state, crewId, contractId = 'open') {
+  const member = crewById(crewId);
+  if (!member) return { state, error: 'Unknown crew.' };
+  if ((state.crew || []).includes(crewId)) return { state, error: 'Already on the payroll.' };
+  if (!isSeasonUnlocked(state, member.unlockSeason)) {
+    return { state, error: `${member.name} is not available until Weekend ${member.unlockSeason}.` };
+  }
+  const resolved = resolveTerms(state, contractId);
+  if (resolved.error) return { state, error: resolved.error };
+  const quote = quoteContract(state, 'crew', crewId, resolved.terms);
+  const next = clone(state);
+  next.crew.push(crewId);
+  next.crewContracts[crewId] = {
+    contractId: quote.contractId,
+    label: quote.label,
+    dailyCost: quote.dailyCost,
+    commitDaysRemaining: quote.commitDays,
+    cancelFeeMult: quote.cancelFeeMult,
+  };
+  return { state: next, error: null };
+}
+
+// Mirrors releasePerformer and fireVendor: free on a day rate or once the
+// commitment has run out, a fee against the days still owed otherwise.
+export function releaseCrew(state, crewId) {
+  const next = clone(state);
+  const contract = next.crewContracts[crewId];
+  let fee = 0;
+  if (contract && contract.commitDaysRemaining > 0) {
+    const option = CONTRACT_OPTIONS[contract.contractId];
+    const feeMult = typeof contract.cancelFeeMult === 'number' ? contract.cancelFeeMult : (option?.cancelFeeMult || 0);
+    fee = Math.round(contract.dailyCost * contract.commitDaysRemaining * feeMult);
+    next.cash -= fee;
+  }
+  delete next.crewContracts[crewId];
+  next.crew = next.crew.filter(id => id !== crewId);
+  return { state: next, error: null, fee };
+}
+
 export function assignSchedule(state, blockId, stageId, performerId) {
   if (!state.schedule[blockId]) return { state, error: 'Unknown time block.' };
   if (!state.roster.includes(performerId)) return { state, error: 'Performer is not on the roster.' };
@@ -629,6 +683,13 @@ export function nextDay(state) {
   // Stage 7: vendor contracts tick down exactly the same way.
   for (const id of Object.keys(next.vendorContracts)) {
     const contract = next.vendorContracts[id];
+    if (contract.commitDaysRemaining > 0) contract.commitDaysRemaining -= 1;
+  }
+  // Phase 7: and so do crew contracts. Crew take no tenure and earn no
+  // renown (#256) — a weekend held is an act's story, not a gatekeeper's —
+  // so this loop is the whole of what the boundary does to them.
+  for (const id of Object.keys(next.crewContracts)) {
+    const contract = next.crewContracts[id];
     if (contract.commitDaysRemaining > 0) contract.commitDaysRemaining -= 1;
   }
 
@@ -924,6 +985,16 @@ function repairSave(parsed) {
     if (typeof parsed.tenure[id] !== 'number') parsed.tenure[id] = 0;
   }
   if (typeof parsed.demolished !== 'number') parsed.demolished = 0;
+  // Phase 7: a save from before the crew existed has an empty payroll and
+  // an unstaffed gate, which is exactly what it was playing with. Content
+  // drift, filled every load (#37) — there is nothing to tally and nothing
+  // to reshape, so it has no business in migrate.
+  // One line, not two: written as a missing-field default followed by a
+  // separate prune, deleting the default made the prune throw inside the
+  // load and the suite caught the break as a crash rather than by name
+  // (#34 — a break caught by a stack trace is a break nobody can read).
+  parsed.crew = Array.isArray(parsed.crew) ? parsed.crew.filter(id => crewById(id)) : [];
+  if (!parsed.crewContracts || typeof parsed.crewContracts !== 'object') parsed.crewContracts = {};
   if (parsed.lastRenown !== null && (typeof parsed.lastRenown !== 'object' || !Array.isArray(parsed.lastRenown.lines))) parsed.lastRenown = null;
 
   // Stage 10: planning/build status + per-plot vendor seating are new

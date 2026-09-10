@@ -1,8 +1,8 @@
 // ui.js — turns state into HTML strings. No event listeners live here;
 // main.js wires all interaction via event delegation on #content.
 
-import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, RELATIONSHIP, NEGOTIATION, RENOWN, CARRYOVER } from './data.js';
-import { performerById, vendorById, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf, renownOf, signingBar, previewPlacement } from './engine.js';
+import { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, STRUCTURE_TYPES, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, ENTRANCE, PLACEMENT_RULES, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, RELATIONSHIP, NEGOTIATION, RENOWN, CARRYOVER, CREW, CREW_RULES } from './data.js';
+import { performerById, vendorById, computePlotAttributes, quoteBuild, isLegalPlacement, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, currentGridSize, nextGridExpansion, stallSummary, footprintFor, footprintCells, plotFootprintCells, STALL_KIND_BY_VENDOR_TYPE, totalUpkeep, computeFootTraffic, countBuiltOfKind, previewCommitAll, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, weatherFor, forecastWeather, nextCalendarDay, blockQualityWeights, performerFor, vendorFor, relationshipOf, relationshipTier, quoteContract, pendingBeats, actNameOf, renownOf, signingBar, previewPlacement, crewCovers, gateCapacity, effectiveCrewCost } from './engine.js';
 import { canCloseSeason, seasonRecord, carryoverPreview } from './state.js';
 
 const money = (n) => `$${Math.round(n).toLocaleString()}`;
@@ -314,6 +314,71 @@ function renderBeatCards(state) {
       <div class="beat-cards">${cards}</div>`;
 }
 
+// Phase 7: the crew, and the three numbers that say what they are for. A
+// crew whose role reads "covered" is a wage buying nothing, and a player
+// has to be able to see that before they sign — which is why the gauge is
+// above the table and not a tooltip on it. The crowd it measures against is
+// the last day actually played, because that is the only crowd the game can
+// honestly claim to know; before the first day it says so.
+function renderCrewCoverage(state) {
+  const last = state.history && state.history.length ? state.history[state.history.length - 1] : null;
+  const crowd = last ? (last.turnout || last.attendance) : 0;
+  const gauge = (label, covered, note) => {
+    const covers = crowd > 0 && crowd <= covered;
+    return `<div class="stall-gauge${covers ? ' full' : ''}" title="${note}">${label} <span class="mono">${covered.toLocaleString()}${crowd ? ` of ${crowd.toLocaleString()}` : ''}</span></div>`;
+  };
+  const gate = gateCapacity(state);
+  const turned = last && last.turnedAway ? last.turnedAway : 0;
+  return `
+    <div class="stall-summary crew-summary">
+      ${gauge('Gate', gate, `The gate can process ${gate.toLocaleString()} guests a day. Anyone past that is turned away at the fence — ${turned ? `${turned.toLocaleString()} were, last time out` : 'nobody was, last time out'}.`)}
+      ${gauge('Watch', crewCovers(state, 'security'), 'A crowd the watch does not cover finds more trouble, and the trouble costs more to put right. Under ' + CREW_RULES.calmCrowd.toLocaleString() + ' guests a faire polices itself.')}
+      ${gauge('Herald', crewCovers(state, 'announcer'), 'A herald moves the crowd that cannot get near a stage to a block with room for it. Worth nothing on a bill nothing overflows.')}
+    </div>
+    ${crowd ? '' : '<p class="hint">These read against the last day you played. Open the gates once and they will have a crowd to measure.</p>'}
+  `;
+}
+
+const CREW_ROLE_LABEL = { gate: 'gate', security: 'watch', announcer: 'herald' };
+
+function renderCrewTable(state, negotiating) {
+  const rows = CREW.map(c => {
+    const hired = (state.crew || []).includes(c.id);
+    const costCell = hired ? `${money(effectiveCrewCost(state, c.id))}/day` : `${money(c.cost)}/day`;
+    let actionCell;
+    if (hired) {
+      const contract = state.crewContracts[c.id];
+      const option = CONTRACT_OPTIONS[contract.contractId];
+      const label = contract.label || (option ? option.label : contract.contractId);
+      const lockNote = contract.commitDaysRemaining > 0
+        ? `<span class="warn-tag" title="Letting them go before the commitment ends charges a cancellation fee">${label} — ${contract.commitDaysRemaining} day${contract.commitDaysRemaining === 1 ? '' : 's'} left</span>`
+        : `<span class="hint-tag">${label}</span>`;
+      actionCell = `${lockNote}<br><button class="btn small danger" data-action="releaseCrew" data-id="${c.id}">Let go</button>`;
+    } else if (!isSeasonUnlocked(state, c.unlockSeason)) {
+      actionCell = `<span class="warn-tag">Available Weekend ${c.unlockSeason}</span>`;
+    } else {
+      actionCell = contractButtons(state, 'crew', c, 'contractCrew');
+    }
+    return `
+      <tr class="${hired ? 'is-contracted' : ''}">
+        <td>${c.name}<br><span class="hint">${c.desc}</span></td>
+        <td class="mono">${CREW_ROLE_LABEL[c.role] || c.role}</td>
+        <td class="mono">${c.covers.toLocaleString()}</td>
+        <td class="mono">${costCell}</td>
+        <td>${actionCell}</td>
+      </tr>${hired ? '' : renderOfferRow(state, negotiating, 'crew', c)}`;
+  }).join('');
+  return `
+      <h3>The Crew</h3>
+      <p class="hint">Gate staff decide how many guests get through the fence at all. The watch holds down what a big crowd breaks. A herald moves the people who cannot see one stage to a block with room at another. Every one of them is worth exactly what the crowd they cover is worth, and nothing on a faire that has already covered it.</p>
+      ${renderCrewCoverage(state)}
+      <div class="table-scroll"><table class="roster-table">
+        <thead><tr><th>Crew</th><th>Post</th><th>Covers</th><th>Cost</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+}
+
+
 export function renderBackstage(state, warn, negotiating = null) {
   const rows = PERFORMERS.map(base => {
     const p = performerFor(state, base.id);
@@ -410,6 +475,8 @@ export function renderBackstage(state, warn, negotiating = null) {
         <thead><tr><th>Vendor</th><th>Type</th><th>Quality</th><th>Cost</th><th></th></tr></thead>
         <tbody>${vendorRows}</tbody>
       </table></div>
+
+      ${renderCrewTable(state, negotiating)}
     </section>
   `;
 }
@@ -1018,6 +1085,17 @@ function renderMoodRow(result) {
   return `<div class="ticket-row" title="${detail}"><span>Backstage</span><span class="mono">${up} pleased, ${down} sore <span class="hint">(hover)</span></span></div>`;
 }
 
+// Phase 7: the fence. Only drawn on a day the gate actually held somebody
+// back — a report from before this phase has no `turnedAway` at all, and a
+// day that got its whole crowd in has nothing to say. The money is the
+// point: every one of these was a ticket and a purse that never walked
+// through, which is what makes a gate crew a decision rather than a wage.
+function renderGateRow(result) {
+  if (!result.turnedAway) return '';
+  const lost = result.turnedAway * (result.attendance > 0 ? result.ticketRevenue / result.attendance : 0);
+  return `<div class="ticket-row" title="The gate can process ${(result.gateCapacity || 0).toLocaleString()} guests a day. Hire gate crew on the Tiring House to raise it."><span class="warn-tag">Turned away at the fence</span><span class="mono bad">${result.turnedAway.toLocaleString()} <span class="hint">(about ${money(lost)} of gate, and the mood ${result.gateSatDelta})</span></span></div>`;
+}
+
 export function renderReport(state, result) {
   const netClass = result.cashDelta >= 0 ? 'good' : 'bad';
   const satLabel = result.satisfaction >= 75 ? 'Delighted' : result.satisfaction >= 55 ? 'Content' : result.satisfaction >= 35 ? 'Grumbling' : 'Miserable';
@@ -1025,6 +1103,7 @@ export function renderReport(state, result) {
     <div class="ticket-stub">
       <h2>Day ${result.day} \u2014 Closed the Gates</h2>
       <div class="ticket-row"><span>Attendance</span><span class="mono">${result.attendance.toLocaleString()}</span></div>
+      ${renderGateRow(result)}
       ${renderDrawBreakdown(result)}
       ${result.campaignActive ? `<div class="ticket-row"><span>${result.campaignActive}</span><span class="mono">+${Math.round((result.adFactor - 1) * 100)}% draw</span></div>` : ''}
       <div class="ticket-row"><span>Crowd mood</span><span class="mono">${satLabel} (${result.satisfaction}/100)</span></div>
@@ -1037,6 +1116,7 @@ export function renderReport(state, result) {
       ${renderStallTill(state, result)}
       <div class="ticket-row"><span>Performer wages</span><span class="mono">-${money(result.performerCosts)}</span></div>
       <div class="ticket-row"><span>Stall staffing</span><span class="mono">-${money(result.vendorCosts)}</span></div>
+      ${result.crewCosts ? `<div class="ticket-row"><span>Crew wages</span><span class="mono">-${money(result.crewCosts)}</span></div>` : ''}
       <div class="ticket-row"><span>Plot upkeep</span><span class="mono">-${money(result.upkeep)}</span></div>
       <div class="ticket-row"><span>Hosting the crowd <span class="hint">(${result.attendance.toLocaleString()} &times; ${money(CONFIG.perGuestCost)})</span></span><span class="mono">-${money(result.guestCosts || 0)}</span></div>
       <div class="ticket-row"><span>Grounds overhead</span><span class="mono">-${money(result.overhead)}</span></div>

@@ -3200,6 +3200,102 @@ Two of them have moved since they were written:
    pointer type, and its `pointerover` is whatever the suite dispatches.
    *Source: Faire Weekend Phase 6, increment 2.*
 
+255. **The gate is a ceiling, and `baseOverhead` came down 300 to pay for
+   the people who hold it.** Through Phase 6 the flat nut was $2,200 a day
+   and its own paragraph said it covered gate staff and general insurance,
+   while `perGuestCost` said it covered gate and grounds staffing: the same
+   people, stood in for twice, in two numbers nobody could hire or fire.
+   `CREW_RULES.baseCapacity` is 550 guests a day through an unstaffed
+   fence, and everybody past that is turned away at it — no ticket, no
+   purse, no cost to host, and `CREW_RULES.turnedAwayPenalty` of mood on
+   the crowd that did get in, scaled by the share that did not. 550 is
+   above every crowd a faire draws in its first two or three weekends (an
+   empty field is about 95, one stage about 250, a stage with two stalls
+   about 320) and well below what a developed grounds pulls on a Weekend 6
+   Saturday: a played-out run reaches 1,500 and the suite's deliberately
+   maximal fixture past 2,000. The two gate crews add 1,300 between
+   them, so the fence is a decision the player can eventually win rather
+   than a permanent tax. `baseOverhead` went 2,200 → 1,900: the gate's
+   share of the stand-in comes out, and the announcer and the second gate
+   company do not, because they are services this faire never had rather
+   than costs it was already paying quietly. *Source: Faire Weekend Phase 7.*
+
+256. **A crew is staff, not an act.** No relationship, no arc beat, no
+   tenure toward renown, and `contractedActIds` does not know them. They
+   are hired and released and that is the whole of the story they have.
+   The alternative was tempting and wrong in a specific way: the renown
+   line that pays 1 point per act kept a third weekend, up to 5, would
+   have been trivially farmable by signing three gatekeepers on a season
+   contract and never touching them again, which would have made Phase 4's
+   second track cheaper the weekend Phase 7 landed. *Source: Faire Weekend
+   Phase 7.*
+
+257. **The watch is priced against the crowd the player staffed for, not
+   the one the sky delivered.** `simulateDay` now computes
+   `expectedCrowd` — reputation, price, bill, campaign, grounds draw and
+   the weekday multiplier, with weather and the day's jitter left out —
+   and `crowdExposure` reads that. Two reasons, and the second is the load
+   bearing one. A watch is hired days ahead against the size of faire this
+   is, and the fact that it rained on Saturday is not something anybody
+   staffed for. And it keeps the claim the Phase 2 weather check makes
+   true: nothing downstream of `weather` may reach the event pool, and an
+   exposure read off the delivered crowd would have. That second half was
+   written first as "the Phase 2 check would otherwise fail", and the
+   guard-rail breaks proved it false — that check runs on a one-stage
+   faire whose expected crowd is under `calmCrowd`, so its exposure is 0
+   under every sky and multiplying the weather back in left it green. It
+   was the one break of twenty-eight that nothing caught. The invariant is
+   real and was simply unguarded; Section 1l now asserts it on a faire big
+   enough to have an exposure. *Source: Faire Weekend Phase 7.*
+
+258. **The crew ride the contract catalog as a third caller, not a third
+   cost path.** `effectivePerformerCost` and `effectiveVendorCost` were
+   the same six lines written twice; Phase 7 needed a third, so all three
+   became callers of one `contractedCost(act, contract)` — the record's
+   `dailyCost` if there is a record, the catalog's `cost` if there is not,
+   zero if no catalog knows the id. `quoteContract` gained a `'crew'` kind
+   and nothing else: a crew's relationship reads neutral and multiplies by
+   exactly 1, so a Weekend Package on the gate crew is the same deal shape
+   and the same cancellation arithmetic it is on a jouster. *Source: Faire
+   Weekend Phase 7.*
+
+259. **The crowd that cannot get near a stage counts against the mood, and
+   the herald is who moves them.** Through Phase 6 `simulateDay` dropped
+   the over-capacity crowd out of the satisfaction average outright, so a
+   stage that turned five hundred people away from the view scored exactly
+   what a stage that seated its whole crowd did, less a 0.15 crowding
+   penalty — the warning said "some folks were turned away from the best
+   view" and not one number in the day agreed with it. They count now, at
+   `OVERFLOW_QUALITY` 0.25 against an ordinary stage's 0.5-ish: a day where
+   you never got near a show is worth half a day where you did. That is
+   what gives an announcer anything to sell. Two drafts of the herald were
+   wrong before this one and the suite caught both. The first pulled every
+   block toward an even quarter of the day, which on a bill already spread
+   across four blocks moved the crowd out of the blocks with the best acts
+   in them: a point and a half of mood lost for $480 a day. The second
+   moved the overflow correctly and then filled the receiving blocks to
+   the rail, where the crowding penalty lives — three empty stages went
+   from 116 heads to exactly 143, tripped the penalty on all 429 of them,
+   and cost five points of mood to save 81 people from standing at the
+   back. What shipped moves `pull` of each block's excess into the blocks
+   with room, measured against `CROWDING_FILL` rather than capacity, and
+   hands back the counts it was given on a bill nothing overflows.
+   *Source: Faire Weekend Phase 7.*
+
+260. **`tests/smoke.mjs` Section 1g built its fixtures with `schedule: {}`,
+   and had done since Stage 19.** `state.js`'s `assignSchedule` refuses a
+   block it has no key for and returns the state it was handed, so every
+   act SIGNIFICANCE 9 and 10 thought they were putting on a stage went
+   nowhere, silently, for six stages and four phases. "A built-out faire"
+   was a faire with nobody on any stage in any block. Both checks passed
+   the whole time, because both compare two states built the same wrong
+   way — which is #34's lesson from the other end: a check whose two sides
+   share a defect cannot see it. The literal now writes the keys
+   `createInitialState` has always written, and an assertion under it puts
+   an act on a stage and reads it back off the day, so it cannot go quiet
+   again. Fixing it moved nothing in either check's verdict and a great
+   deal in the numbers underneath them. *Source: Faire Weekend Phase 7.*
+
 ---
 
 # The site sessions, 1–10
@@ -5237,6 +5333,112 @@ no page or console errors. `style.css` 1,148 → 1,244.
 
 **None of the four shared things was touched.** `Tools/board-check/
 shots/` received pictures, which it is for and which are gitignored.
+
+**Phase 7 — A third crew (PR #TBD).** You contracted sixteen performers
+and twelve vendors and nobody worked the gate. `CONFIG.baseOverhead`'s own
+paragraph said its $2,200 flat nut covered gate staff and insurance, and
+`perGuestCost`'s said it covered gate and grounds staffing too: the same
+people, stood in for twice, in two numbers nobody could hire or fire.
+
+`CREW` is six rows across three roles, two tiers each, `unlockSeason`-gated
+like every other catalog and signed through the same `CONTRACT_OPTIONS`
+deals and the same negotiation form an act signs. One field is new and it is
+the whole design: `covers`, in heads. A crew is worth what the crowd it
+covers is worth and nothing at all to a faire whose crowd it already covers
+twice over.
+
+**The gate is a ceiling** (#255). `CREW_RULES.baseCapacity` is 550 guests a
+day through an unstaffed fence, and everybody past it is turned away at it:
+no ticket, no purse, nothing to host, and `turnedAwayPenalty` of mood on the
+crowd that did get in, scaled by the share that did not. The two gate crews
+add 1,300 between them, so the fence is a decision a player can eventually
+win rather than a permanent tax. `baseOverhead` came down to 1,900 — the
+gate's share of the stand-in, not the whole crew bill, because an announcer
+and a second gate company are services this faire never had.
+
+**The watch reads the crowd it did not cover** (#257). `simulateDay`
+computes an `expectedCrowd` — everything in the attendance formula the
+player decided, with the sky and the day's jitter left out — and
+`crowdExposure` measures the heads above `calmCrowd` that the watch is not
+covering, on a 0-to-1 ramp. That number scales the weight of every
+`incident:`-flagged row in `EVENT_POOL` and the bill when one lands. Both
+multipliers are exactly 1 at exposure 0, which is what lets an unwatched
+early-game faire draw from the pool it always drew from and pay what it
+always paid.
+
+**The herald moves the overflow, and took two wrong drafts to get there**
+(#259). Draft one pulled every block toward an even quarter of the day and
+cost a point and a half of mood on a bill already spread across four blocks,
+because it moved the crowd out of the blocks with the best acts in them.
+Draft two moved the overflow correctly and then filled the receiving blocks
+to the rail, where the crowding penalty lives: three empty stages went from
+116 heads to exactly 143, tripped the penalty on all 429 of them, and cost
+five points of mood to save 81 people from standing at the back. What
+shipped moves `pull` of each block's excess into the blocks with room,
+measured against `CROWDING_FILL`.
+
+**What made any of that measurable.** Through Phase 6 `simulateDay` dropped
+the over-capacity crowd out of the satisfaction average outright, so a stage
+that turned five hundred people away from the view scored what a stage that
+seated its whole crowd did, less a 0.15 crowding penalty. The warning said
+"some folks were turned away from the best view" and not one number in the
+day agreed with it. They count now, at `OVERFLOW_QUALITY` 0.25 against an
+ordinary stage's 0.5-ish.
+
+**One cost path, three callers** (#258). `effectivePerformerCost` and
+`effectiveVendorCost` were the same six lines written twice; all three are
+now callers of one `contractedCost(act, contract)`, and `quoteContract`
+gained a `'crew'` kind and nothing else. Crew are staff, not acts (#256):
+no relationship, no arc, no tenure toward renown, because the renown line
+that pays a point per act kept a third weekend would otherwise have been
+farmable with three gatekeepers on a season contract.
+
+**What the numbers say.** On the suite's deliberately maximal fixture — a
+Weekend 6 Saturday at reputation 95, eight plots, every vendor, eight acts
+and a Kingdom Proclamation — an unstaffed gate turns away 1,567 of 2,117 and
+nets $364 a day; both gate crews cost $930 of wages and net $17,808. It is
+not a free upgrade: the same fixture's mood goes 53.6 → 46.2, because
+eighteen hundred people against three stages is what that looks like, which
+is the mechanic that finally makes SIGNIFICANCE 6's claim about stage
+capacity bite. The scripted full-run manager, which now staffs the grounds
+the morning after the first day anybody was turned away, wins season one on
+$106,556 at reputation 74 with all six crew signed. **That last number is
+worth Devon's attention against Q27:** Phase 4 recorded that no manager the
+suite could write took reputation past 63 from 50, and the fixture seeds it
+at 70 and says so. Staffing the grounds moves it up rather than sideways.
+
+**Two things the guard-rails found, and one they did not.** Section 1g's
+`base()` had built its fixtures with `schedule: {}` since Stage 19, which
+`assignSchedule` refuses outright, so SIGNIFICANCE 9 and 10 had never once
+put an act on a stage — both passed anyway because both sides of each
+comparison shared the defect (#260). And the full-run test's season-one
+headliner signing turned out to have been riding on a Weekend 4 mood line
+that came in at exactly 70/100, the bar to the point; the run diverges under
+crew wages, that weekend now averages 68, renown closes Weekend 5 at 19, and
+the headliner signs in season two instead. The season-one assertion was
+re-derived to guard the bar rather than the luck. What the breaks did *not*
+find, until a break went looking for it, was that nothing guarded #257's
+weather-blindness at all.
+
+**Guard-rails broken on purpose (#34), thirty-four.** Twenty-eight in the
+first pass. Three of those arrived as stack traces rather than sentences —
+a null quote inside `contractCrew`, a `.error.includes` on a refusal that
+had stopped refusing, and a `repair` written as a default plus a separate
+prune where deleting the default made the prune throw — and all three were
+restructured until the break fails by name, then re-broken. One was not
+caught at all: multiplying the weather back into `expectedCrowd` left the
+suite green, because the Phase 2 determinism check runs on a faire too small
+to have an exposure. That is now Section 1l's own check, and breaking it
+again fails by name.
+
+*Counts:* `tests/smoke.mjs` 1,951 → 2,108, in a new Section 1l plus
+SIGNIFICANCE 14-16 and a crew-catalog block in Section 1; `tests/guests.mjs`
+168 and `tests/mapview.mjs` 172 unchanged; `play-games.mjs faire-weekend` 18
+checks and `tools/touch-readout.mjs` 24 checks, 0 failed, no page or console
+errors.
+
+**None of the four shared things was touched.** `Tools/board-check/shots/`
+received pictures, which it is for and which are gitignored.
 
 ---
 

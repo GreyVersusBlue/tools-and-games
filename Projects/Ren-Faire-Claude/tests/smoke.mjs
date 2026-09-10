@@ -26,8 +26,8 @@ function assert(cond, msg) {
 // ---------------------------------------------------------------------
 // Section 1: pure engine.js logic (no DOM)
 // ---------------------------------------------------------------------
-const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather, performerFor, vendorFor, traitRateMult, relationshipOf, relationshipTier, contractedActIds, bestBlockFor, offerDiscount, relationshipRateMult, quoteContract, beatById, actNameOf, pendingBeats, performerById, vendorById, isExpansionUnlocked, renownOf, moodRenown, weekendRenown, signingBar, nextRunSeed, previewPlacement, PREVIEW_PLOT_ID, reachabilityDistance: reachabilityDistanceOf } = await import(mod('js/engine.js'));
-const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS, RENOWN, CARRYOVER } = await import(mod('js/data.js'));
+const { makeRng, validateSchedule, simulateDay, QUIRKS, terrainAt, chebyshevDistance, computePlotAttributes, quoteBuild, isLegalPlacement, campaignById, effectivePerformerCost, effectiveVendorCost, isSeasonUnlocked, summarizeWeekend, currentGridSize, nextGridExpansion, isWithinCurrentGrid, effectivePopularity, EVENT_REQUIREMENTS, EVENT_EFFECTS, stallSummary, STALL_KIND_BY_VENDOR_TYPE, footprintFor, footprintCells, plotFootprintCells, isFootprintWithinCurrentGrid, hasPathFrontage, plotUpkeep, totalUpkeep, computeFootTraffic, measureFootTraffic, countBuiltOfKind, previewCommitAll, checkBankruptcy, checkWinCondition, computePathDistances, reachabilityDistance, computeReachability, computeGroundsDraw, priceFactor, ticketRevenueIndex, priceSatisfactionDelta, blockQualityWeights, weatherById, weatherFor, weatherWeightAt, rollWeather, nextCalendarDay, forecastWeather, performerFor, vendorFor, traitRateMult, relationshipOf, relationshipTier, contractedActIds, bestBlockFor, offerDiscount, relationshipRateMult, quoteContract, beatById, actNameOf, pendingBeats, performerById, vendorById, isExpansionUnlocked, renownOf, moodRenown, weekendRenown, signingBar, nextRunSeed, previewPlacement, PREVIEW_PLOT_ID, crewById, crewOf, crewCovers, gateCapacity, admitAtGate, turnedAwaySatisfactionDelta, crowdExposure, incidentWeightMult, incidentCostMult, announcerPull, relieveOverflow, effectiveCrewCost, reachabilityDistance: reachabilityDistanceOf } = await import(mod('js/engine.js'));
+const { CONFIG, PERFORMERS, VENDORS, TIME_BLOCKS, GRID, TERRAIN_ROWS, TERRAIN_LEGEND, TERRAIN_BASE, STRUCTURE_TYPES, TERRAIN_BUILD_MODIFIERS, TERRAIN_NAME, KIND_NOUN, AD_CAMPAIGNS, CONTRACT_OPTIONS, GRID_EXPANSIONS, PLACEMENT_RULES, EVENT_POOL, ENTRANCE, GROUNDS_DRAW, WEEKEND_DAY_ATTENDANCE, GUESTS, WEATHER, WEATHER_SEASON_SPAN, WEATHER_SHADE_CEILING, DEFAULT_WEATHER_ID, RELATIONSHIP, NEGOTIATION, ARCS, RENOWN, CARRYOVER, CREW, CREW_RULES } = await import(mod('js/data.js'));
 const { previewLine, readoutDefault, readoutFor } = await import(mod('js/ui.js'));
 const State = await import(mod('js/state.js'));
 // Phase 6: the plat's geometry, read here for the CSS-agreement checks in
@@ -139,6 +139,23 @@ const { TRACK, FRAME, MARKER_MARGIN, createView, minScaleFor, markerSize, fit, w
   assert(effectivePopularity(owl, 'afternoon') === 10, 'night_owl has no effect in Afternoon');
   assert(effectivePopularity(owl, undefined) === 10, 'night_owl has no effect with no block context (ambient/overall popularity calc)');
   assert(effectivePopularity(owl, 'golden') > effectivePopularity(owl, 'morning'), 'night_owl draws strictly better in Golden Hour than in Morning Procession');
+}
+
+// --- crew catalog integrity (Phase 7) ---
+// Up here rather than down in Section 1l with the rest of the crew, and
+// for one reason: Section 1 already signs a gate crew into the `crowded`
+// fixture below, and contractCrew reads quoteContract's answer without
+// checking it. With this assertion after that, taking the crew branch out
+// of quoteContract crashed on a null quote and the break arrived as a
+// stack trace instead of a sentence (#34). Asserted before anybody signs,
+// it fails by name.
+{
+  const bare = { ...State.createInitialState(), season: 6 };
+  const quote = quoteContract(bare, 'crew', 'crew_watch_1', CONTRACT_OPTIONS.season);
+  assert(quote && quote.dailyCost > 0 && quote.dailyCost < crewById('crew_watch_1').cost,
+    'quoteContract prices a crew through the same catalog it prices an act through');
+  assert(quote && quote.commitDays === CONTRACT_OPTIONS.season.commitDays && quote.cancelFeeMult === CONTRACT_OPTIONS.season.cancelFeeMult,
+    'and hands back the terms it was priced under, for the record to carry (#237)');
 }
 
 // --- random event catalog integrity (Stage 9: backstage drama events) ---
@@ -1919,6 +1936,10 @@ const { TRACK, FRAME, MARKER_MARGIN, createView, minScaleFor, markerSize, fit, w
     crowded = r.state;
   }
   for (const v of ['vend_cider', 'vend_leather']) crowded = State.hireVendor(crowded, v).state;
+  // Phase 7: and it staffs its gate, because a crowd this size does not get
+  // through an unstaffed one — CREW_RULES.baseCapacity would hold it to 550
+  // and this fixture exists to put more than that through the fence.
+  for (const c of ['crew_gate_1', 'crew_gate_2']) crowded = State.contractCrew(crowded, c).state;
   const bill = ['perf_jouster_1', 'perf_musician_2', 'perf_magician_1'];
   for (const q of bill) crowded = State.contractPerformer(crowded, q).state;
   {
@@ -2877,11 +2898,32 @@ const { TRACK, FRAME, MARKER_MARGIN, createView, minScaleFor, markerSize, fit, w
 // quietly made part of the game pointless.
 // ---------------------------------------------------------------------
 {
+  // Phase 7 found this literal wrong and it had been wrong since Stage 19:
+  // `schedule` was `{}`, and state.js's assignSchedule refuses a block it
+  // has no key for — "Unknown time block." — returning the state it was
+  // handed. So every act checks 9 and 10 below thought they were putting on
+  // a stage went nowhere, silently, and "a built-out faire" was a faire
+  // with nobody on any stage in any block. Both checks passed anyway
+  // because both compare two states built the same wrong way. The keys are
+  // what createInitialState has always written; the assertion under this
+  // is what stops it going quiet again (#34: a check that cannot fail is
+  // not a check).
   const base = () => ({
     day: 1, season: 1, cash: 20000, reputation: 55, ticketPrice: CONFIG.priceAnchor,
-    builtPlots: [], roster: [], hiredVendors: [], schedule: {}, contracts: {}, vendorContracts: {},
+    builtPlots: [], roster: [], hiredVendors: [],
+    schedule: Object.fromEntries(TIME_BLOCKS.map(b => [b.id, {}])),
+    contracts: {}, vendorContracts: {},
     activeCampaign: null, campaignCooldowns: {}, history: [],
   });
+  {
+    let s = State.buildPlot(base(), 'stage', 3, 0).state;
+    s = State.contractPerformer(s, 'perf_jester_2').state;
+    const stage = s.builtPlots.find(p => p.kind === 'stage');
+    const put = State.assignSchedule(s, TIME_BLOCKS[0].id, stage.id, 'perf_jester_2');
+    assert(!put.error && put.state.schedule[TIME_BLOCKS[0].id][stage.id] === 'perf_jester_2',
+      'a fixture built from this literal can actually put an act on a stage — the thing checks 9 and 10 spent six stages failing to do');
+    assert(simulateDay(put.state, 11).scheduledCount > 0, 'and the day sees them there');
+  }
   const avg = (state, key, n = 120) => {
     let total = 0;
     for (let i = 0; i < n; i++) total += simulateDay(state, 77000 + i)[key];
@@ -3040,6 +3082,110 @@ const { TRACK, FRAME, MARKER_MARGIN, createView, minScaleFor, markerSize, fit, w
   assert(devNet < CONFIG.winCondition.minCash / (CONFIG.seasonLength * 2),
     `SIGNIFICANCE: a built-out faire cannot bank the win condition in two weekends — $${devNet.toFixed(0)} a day against $${(CONFIG.winCondition.minCash / (CONFIG.seasonLength * 2)).toFixed(0)}`);
   assert(devNet > 0, `SIGNIFICANCE: a built-out faire is still profitable, or there is nothing to play toward ($${devNet.toFixed(0)} a day)`);
+
+  // 14. Phase 7: an unstaffed gate at a large attendance has to cost
+  //     measurably more than the crew's wages, or the role is decoration.
+  //     This is the check the phase was written against. It is asserted on
+  //     the ledger — the same faire, the same forty seeds, the only
+  //     difference being who is on the payroll — because a gate crew is
+  //     only ever worth the crowd it lets through, and the crowd is the
+  //     part that has to show up in money.
+  let bigFaire = base();
+  bigFaire.cash = 400000; bigFaire.reputation = 95; bigFaire.season = 6; bigFaire.weekendDay = 2;
+  for (const [k, x, y] of [['stage', 3, 0], ['stage', 8, 0], ['stage', 11, 8], ['food', 5, 3], ['vendor', 6, 3], ['demo', 8, 3], ['food', 12, 3], ['vendor', 12, 6]]) {
+    const r = State.buildPlot(bigFaire, k, x, y);
+    assert(!r.error, `big-faire fixture: ${k} at ${x},${y} builds legally`);
+    bigFaire = r.state;
+  }
+  for (const v of VENDORS) { const r = State.hireVendor(bigFaire, v.id); if (!r.error) bigFaire = r.state; }
+  for (const p of PERFORMERS.slice(0, 8)) { const r = State.contractPerformer(bigFaire, p.id); if (!r.error) bigFaire = r.state; }
+  {
+    let i = 0;
+    for (const b of TIME_BLOCKS) for (const st of bigFaire.builtPlots.filter(p => p.kind === 'stage')) {
+      const r = State.assignSchedule(bigFaire, b.id, st.id, PERFORMERS[i++ % 8].id);
+      assert(!r.error, 'big-faire fixture: the bill actually goes on the stages');
+      bigFaire = r.state;
+    }
+  }
+  bigFaire = State.launchCampaign(bigFaire, 'ad_proclamation').state;
+  const gateStaffed = State.contractCrew(State.contractCrew(bigFaire, 'crew_gate_1').state, 'crew_gate_2').state;
+  const shutOut = avg(bigFaire, 'cashDelta', 40);
+  const letIn = avg(gateStaffed, 'cashDelta', 40);
+  const wages = crewById('crew_gate_1').cost + crewById('crew_gate_2').cost;
+  assert(avg(bigFaire, 'turnedAway', 40) > 500, 'sanity check: the big-faire fixture badly outruns an unstaffed gate');
+  assert(letIn - shutOut > wages,
+    `SIGNIFICANCE: staffing the gate on a big faire earns back far more than the crew costs (net $${shutOut.toFixed(0)} unstaffed against $${letIn.toFixed(0)} staffed, on $${wages} of wages)`);
+  const smallFaire = base();
+  assert(avg(State.contractCrew(smallFaire, 'crew_gate_1').state, 'cashDelta', 40) < avg(smallFaire, 'cashDelta', 40),
+    'SIGNIFICANCE: and a gate crew on a faire nobody is queuing at is a wage buying nothing — the role reads the crowd, it is not a bonus for hiring');
+  // The other half of the same trade, and it is not the half anybody
+  // expects: opening the fence on three stages makes the day far more money
+  // and a visibly WORSE afternoon, because eighteen hundred people and four
+  // hundred and twenty seats a block is what that looks like. The gate is
+  // not a free upgrade. It is the mechanic that makes the next stage the
+  // obvious thing to build, which is what SIGNIFICANCE 6 has claimed about
+  // stage capacity since Stage 19 without anything enforcing it.
+  const shutMood = avg(bigFaire, 'satisfaction', 40);
+  const letInMood = avg(gateStaffed, 'satisfaction', 40);
+  assert(letInMood < shutMood,
+    `SIGNIFICANCE: and a crowd let in with nowhere to stand is not a happier crowd (mood ${shutMood.toFixed(1)} behind the fence against ${letInMood.toFixed(1)} through it) — the gate buys money and owes stages`);
+
+  // 15. Phase 7: the watch. A big crowd nobody is marshalling has to find
+  //     trouble more often AND pay more for it, or CREW_RULES' two pressure
+  //     numbers are decoration. Counted over four hundred seeds so it is a
+  //     rate rather than a coin flip, on the same fixture with the same
+  //     gate on it, so the only thing that moves is who is watching.
+  const incidentIds = EVENT_POOL.filter(e => e.incident).map(e => e.id);
+  const incidentRate = (st, n = 400) => {
+    let hits = 0;
+    for (let i = 0; i < n; i++) if (simulateDay(st, 31000 + i).events.some(e => incidentIds.includes(e.id))) hits++;
+    return hits / n;
+  };
+  const guarded = State.contractCrew(State.contractCrew(gateStaffed, 'crew_watch_1').state, 'crew_watch_2').state;
+  const looseExposure = simulateDay(gateStaffed, 31000).exposure;
+  assert(looseExposure > 0, 'sanity check: the big-faire fixture is a crowd nobody is covering');
+  assert(simulateDay(guarded, 31000).exposure === 0, 'and the same fixture with both watches on it is covered whole');
+  const looseRate = incidentRate(gateStaffed);
+  const watchedRate = incidentRate(guarded);
+  assert(looseRate > watchedRate * 1.15,
+    `SIGNIFICANCE: trouble finds an unguarded crowd measurably more often than a watched one (${(looseRate * 100).toFixed(1)}% of days against ${(watchedRate * 100).toFixed(1)}%)`);
+  // ...and costs more when it lands. Read off the effect the pool would
+  // actually run, at the exposure the fixture actually has, so a change to
+  // either CREW_RULES pressure number or to what an incident charges trips
+  // this rather than sliding past it.
+  const looseWheel = EVENT_EFFECTS.broken_wagon_wheel(makeRng(5), null, incidentCostMult(looseExposure));
+  const coveredWheel = EVENT_EFFECTS.broken_wagon_wheel(makeRng(5), null, 1);
+  assert(looseWheel.cashDelta < coveredWheel.cashDelta * 2,
+    `SIGNIFICANCE: and costs an unguarded crowd more than double what it costs a covered one ($${-looseWheel.cashDelta} against $${-coveredWheel.cashDelta})`);
+
+  // 16. Phase 7: the herald. A bill stacked into one block has to be worth
+  //     less mood than the same act spread across four, and hiring a herald
+  //     has to claw some of that back — otherwise "shifts crowd weight
+  //     between blocks" is a sentence with no number under it. Asserted on
+  //     mood, because a herald moves nobody through the gate and never
+  //     touches the day's cash except as a wage.
+  let stacked = base();
+  stacked.cash = 400000; stacked.reputation = 95; stacked.season = 6; stacked.weekendDay = 2;
+  for (const [k, x, y] of [['stage', 3, 0], ['food', 5, 3], ['vendor', 6, 3], ['demo', 8, 3], ['food', 12, 3]]) {
+    const r = State.buildPlot(stacked, k, x, y);
+    assert(!r.error, `herald fixture: ${k} at ${x},${y} builds legally`);
+    stacked = r.state;
+  }
+  for (const v of VENDORS.slice(0, 4)) stacked = State.hireVendor(stacked, v.id).state;
+  stacked = State.contractPerformer(stacked, 'perf_jouster_2').state;
+  stacked = State.contractCrew(State.contractCrew(stacked, 'crew_gate_1').state, 'crew_gate_2').state;
+  const onlyStage = stacked.builtPlots.find(p => p.kind === 'stage');
+  const spreadOut = TIME_BLOCKS.reduce((acc, b) => State.assignSchedule(acc, b.id, onlyStage.id, 'perf_jouster_2').state, stacked);
+  stacked = State.assignSchedule(stacked, 'afternoon', onlyStage.id, 'perf_jouster_2').state;
+  assert(simulateDay(stacked, 8080).warnings.some(w => w.includes('overflowed its capacity')), 'sanity check: the stacked bill overflows the one stage');
+  assert(simulateDay(stacked, 8080).turnedAway === 0, 'and its gate is staffed, so the fence is not what is being measured');
+  const heralded = State.contractCrew(State.contractCrew(stacked, 'crew_crier_1').state, 'crew_crier_2').state;
+  const stackedMood = avg(stacked, 'satisfaction', 40);
+  const heraldedMood = avg(heralded, 'satisfaction', 40);
+  assert(heraldedMood > stackedMood + 1,
+    `SIGNIFICANCE: a herald is worth real mood on a bill that overflows a stage (${stackedMood.toFixed(1)} against ${heraldedMood.toFixed(1)})`);
+  assert(avg(spreadOut, 'satisfaction', 40) > heraldedMood,
+    `SIGNIFICANCE: and spreading the same act across the day still beats hiring somebody to shout about it (${avg(spreadOut, 'satisfaction', 40).toFixed(1)} against ${heraldedMood.toFixed(1)}) — the schedule is the decision, the herald is the patch`);
 
   // 11. Phase 2: the sky has to change which ground is the good ground.
   //     TIME_BLOCKS already made terrain schedule-dependent — a hilltop is
@@ -4615,6 +4761,24 @@ function makeMemoryStorage() {
   };
   const manage = (s, o) => {
     const cnt = k => s.builtPlots.filter(p => p.kind === k && p.status === 'built').length;
+    // Phase 7: it staffs the grounds first, ahead of the next building.
+    // It reads the last day it actually played and buys the next crew in
+    // any role that day's crowd outran, so the gate crew arrives the
+    // morning after the first day anybody was turned away. Ahead of the
+    // builds on purpose: a crew is a daily wage and no money down, and a
+    // manager that spends the gate's fare on a fourth stage is buying more
+    // crowd for a fence that already cannot pass the crowd it has.
+    {
+      const last = s.history[s.history.length - 1];
+      const crowd = last ? (last.turnout || last.attendance) : 0;
+      for (const c of CREW) {
+        if (s.crew.includes(c.id)) continue;
+        const covered = c.role === 'gate' ? gateCapacity(s) : crewCovers(s, c.role);
+        if (crowd <= covered) continue;
+        const r = State.contractCrew(s, c.id, 'weekend');
+        if (!r.error) s = r.state;
+      }
+    }
     const plan = [['stage', 1], ['food', 2], ['vendor', 2], ['stage', 2], ['demo', 1], ['food', o.stalls], ['vendor', o.stalls], ['stage', o.stages], ['demo', 2]];
     for (let i = 0; i < 16; i++) {
       const before = s.cash;
@@ -4676,7 +4840,22 @@ function makeMemoryStorage() {
     assert(one.s.cash >= CONFIG.winCondition.minCash, 'the cash bar is cleared by play, not by the fixture');
     assert(one.trace.every((t, i) => i === 0 || t.renown >= one.trace[i - 1].renown), 'renown never goes down across the season');
     assert(one.s.renown >= headliner.unlockRenown, `and reaches the headliner's bar by the close (${one.s.renown} against ${headliner.unlockRenown})`);
-    assert(one.s.roster.includes(headliner.id), 'the manager signed the headliner the weekend they would sign');
+    // Phase 7 re-derived this one, and it is worth saying why rather than
+    // quietly rewriting it. Through Phase 6 the manager cleared the
+    // headliner's 20 renown at the close of Weekend 5 and signed them
+    // during Weekend 6 — and it did that on a single mood line at Weekend 4
+    // that came in at exactly 70/100, the bar to the point. Staffing the
+    // grounds changes what the manager can afford to build and when, so the
+    // run diverges: that weekend now averages 68, the mood line does not
+    // fire, and renown closes Weekend 5 at 19. One short, with no weekend
+    // left to spend it in. The headliner signs in season two instead, on
+    // carried renown, which is asserted below and is the same mechanic. So
+    // what is guarded here is the bar itself: it is cleared by the close,
+    // and it is the only thing that kept them off the roster.
+    assert(signingBar(one.s, headliner) === null, `the headliner's bar is cleared by the close of season one (${one.s.renown} renown)`);
+    const lastBoundary = one.trace[one.trace.length - 1];
+    assert(!one.s.roster.includes(headliner.id) && lastBoundary.renown < headliner.unlockRenown,
+      `but not in time to sign inside it \u2014 ${lastBoundary.renown} renown at the last boundary a signing could have followed, against ${headliner.unlockRenown}`);
     assert(one.s.renown < meadow.unlockRenown, `but not the meadow's (${one.s.renown} against ${meadow.unlockRenown}): that is the second season's prize`);
     assert(one.trace.some(t => t.award && t.award.lines.some(l => l.id === 'kept')) && one.trace.some(t => t.award && t.award.lines.some(l => l.id === 'intact')), 'the kept and intact lines both fired during the season');
     assert(currentGridSize(one.s).label === 'Deep Woods Trail', 'season one ends on Deep Woods Trail');
@@ -4960,7 +5139,7 @@ function makeMemoryStorage() {
     assert(doc.querySelector('#board').style.getPropertyValue('--cols') === String(GRID_EXPANSIONS[0].cols), `a fresh game sets --cols ${GRID_EXPANSIONS[0].cols} on #board`);
     click(doc, '[data-tab="backstage"]');
     const rosters = [...doc.querySelectorAll('table.roster-table')];
-    assert(rosters.length === 2 && rosters.every(t => t.parentElement.classList.contains('table-scroll')), 'both Backstage roster tables sit in a .table-scroll box');
+    assert(rosters.length === 3 && rosters.every(t => t.parentElement.classList.contains('table-scroll')), 'all three Backstage roster tables — performers, vendors and the Phase 7 crew — sit in a .table-scroll box');
   }
   {
     const deep = GRID_EXPANSIONS.find(g => g.label === 'Deep Woods Trail');
@@ -5399,6 +5578,226 @@ function makeMemoryStorage() {
     const plain = { dataset: {}, getAttribute: (n) => (n === 'title' ? 'The Cider Tent — built' : null) };
     assert(readoutFor(plain, s.builtPlots) === 'The Cider Tent — built', 'and hands back the title for anything else');
     assert(readoutFor(null, s.builtPlots) === null, 'and nothing for nothing');
+  }
+}
+
+// ---------------------------------------------------------------------
+// Section 1l: Phase 7 — a third crew. The catalog, the three reads, the
+// cost path they share with performers and vendors, and the save.
+// ---------------------------------------------------------------------
+{
+  // --- the catalog ---
+  {
+    const ids = CREW.map(c => c.id);
+    assert(new Set(ids).size === ids.length, 'every CREW id is unique');
+    for (const c of CREW) {
+      assert(typeof c.name === 'string' && c.name.length > 0, `${c.id} has a name`);
+      assert(typeof c.desc === 'string' && c.desc.length > 0, `${c.id} says what it is`);
+      assert(['gate', 'security', 'announcer'].includes(c.role), `${c.id}'s role is one the engine reads`);
+      assert(Number.isInteger(c.covers) && c.covers > 0, `${c.id} covers a whole number of heads`);
+      assert(Number.isInteger(c.cost) && c.cost > 0, `${c.id} costs real money`);
+      assert(Number.isInteger(c.unlockSeason) && c.unlockSeason >= 1, `${c.id} is gated like every other catalog`);
+    }
+    for (const role of ['gate', 'security', 'announcer']) {
+      assert(CREW.filter(c => c.role === role).length >= 2, `${role} has more than one tier to choose between`);
+    }
+    assert(crewById('crew_gate_1') && !crewById('nobody_at_all'), 'crewById finds a row and refuses one that is not there');
+  }
+
+  // --- the gate ---
+  {
+    const bare = { ...State.createInitialState(), season: 6 };
+    assert(gateCapacity(bare) === CREW_RULES.baseCapacity, 'an unstaffed gate is exactly CREW_RULES.baseCapacity');
+    const staffed = State.contractCrew(bare, 'crew_gate_1').state;
+    assert(gateCapacity(staffed) === CREW_RULES.baseCapacity + crewById('crew_gate_1').covers, 'and a gate crew adds its own covers');
+    const both = State.contractCrew(staffed, 'crew_gate_2').state;
+    assert(gateCapacity(both) === CREW_RULES.baseCapacity + crewById('crew_gate_1').covers + crewById('crew_gate_2').covers, 'and two of them add both');
+    assert(crewCovers(both, 'security') === 0, 'a gate crew covers nothing for the watch');
+
+    const under = admitAtGate(100, 550);
+    assert(under.admitted === 100 && under.turnedAway === 0, 'a crowd under the ceiling all gets in');
+    const over = admitAtGate(900, 550);
+    assert(over.admitted === 550 && over.turnedAway === 350, 'and a crowd over it is held at the ceiling, with the rest counted');
+    assert(turnedAwaySatisfactionDelta(under) === 0, 'nobody turned away is no mood at all');
+    assert(turnedAwaySatisfactionDelta(over) < 0 && turnedAwaySatisfactionDelta(over) > CREW_RULES.turnedAwayPenalty,
+      'and turning some away costs mood, short of the penalty for turning away everyone');
+    assert(Math.abs(turnedAwaySatisfactionDelta(admitAtGate(1000, 0)) - CREW_RULES.turnedAwayPenalty) < 1e-9,
+      'a gate that admits nobody costs the whole penalty');
+  }
+
+  // --- the watch ---
+  {
+    const bare = { ...State.createInitialState(), season: 6 };
+    assert(crowdExposure(bare, CREW_RULES.calmCrowd) === 0, 'a faire at the calm crowd polices itself, watch or no watch');
+    assert(crowdExposure(bare, CREW_RULES.calmCrowd + CREW_RULES.exposureScale) === 1, 'and one a full exposureScale past it is as exposed as it gets');
+    const mid = crowdExposure(bare, CREW_RULES.calmCrowd + CREW_RULES.exposureScale / 2);
+    assert(Math.abs(mid - 0.5) < 1e-9, 'and halfway is halfway');
+    const watched = State.contractCrew(bare, 'crew_watch_1').state;
+    assert(crowdExposure(watched, CREW_RULES.calmCrowd + crewById('crew_watch_1').covers) === 0,
+      'a watch that covers the crowd above the calm line takes the exposure back to nothing');
+    const partly = CREW_RULES.calmCrowd + crewById('crew_watch_1').covers + CREW_RULES.exposureScale / 2;
+    assert(crowdExposure(watched, partly) < crowdExposure(bare, partly) && crowdExposure(watched, partly) > 0,
+      'a watch that covers some of a crowd it cannot cover whole takes some of the exposure off, not all');
+    assert(crowdExposure(watched, 50000) === 1 && crowdExposure(bare, 50000) === 1,
+      'and past the far end of exposureScale both read fully exposed — the pressure has a ceiling, and a watch cannot be bought out of a crowd that size');
+    assert(incidentWeightMult(0) === 1 && incidentCostMult(0) === 1, 'at no exposure an incident is exactly the incident it always was');
+    assert(incidentWeightMult(1) > 1 && incidentCostMult(1) > incidentWeightMult(1),
+      'and at full exposure it is likelier, and worse by more than it is likelier');
+    const flagged = EVENT_POOL.filter(e => e.incident);
+    assert(flagged.length >= 2, 'the pool flags the rows a watch is hired against');
+    for (const e of flagged) {
+      const eff = EVENT_EFFECTS[e.effectId];
+      const rng = makeRng(9);
+      const plain = eff(rng, null, 1);
+      const rng2 = makeRng(9);
+      const heavy = eff(rng2, null, 4);
+      assert(plain.cashDelta <= 0 && heavy.cashDelta <= plain.cashDelta, `${e.id} costs more on an exposed crowd than a covered one`);
+      assert(heavy.satisfactionDelta === plain.satisfactionDelta, `${e.id} costs the same mood either way — more people means more broken things, not a sadder crowd`);
+    }
+  }
+
+  // --- the herald ---
+  {
+    const bare = { ...State.createInitialState(), season: 6 };
+    assert(announcerPull(bare, 500) === 0, 'no herald is no pull');
+    const heard = State.contractCrew(bare, 'crew_crier_2').state;
+    const covers = crewById('crew_crier_2').covers;
+    assert(Math.abs(announcerPull(heard, covers) - CREW_RULES.blockPull) < 1e-9, 'a herald heard by the whole crowd pulls the full distance');
+    assert(announcerPull(heard, covers * 2) < announcerPull(heard, covers), 'and a crowd that outgrows them stops hearing them');
+    assert(announcerPull(heard, 0) === 0, 'and an empty field has nothing to pull');
+
+    const counts = [400, 100, 100, 100];
+    const caps = [200, 200, 200, 200];
+    assert(JSON.stringify(relieveOverflow(counts, caps, 0)) === JSON.stringify(counts), 'at no pull the counts come back untouched');
+    const moved = relieveOverflow(counts, caps, 1);
+    assert(Math.abs(moved.reduce((a, b) => a + b, 0) - 700) < 1e-9, 'the herald moves the crowd, it does not conjure or lose any');
+    assert(moved[0] < counts[0] && moved[1] > counts[1], 'the overflowing block sheds and a block with room takes');
+    assert(moved[0] === caps[0], 'and the overflowing block comes down to its own seating and no further');
+    const nothingToDo = relieveOverflow([100, 100, 100, 100], caps, 1);
+    assert(JSON.stringify(nothingToDo) === JSON.stringify([100, 100, 100, 100]), 'and on a bill nothing overflows, a herald has nothing to say');
+    const noRoom = relieveOverflow([400, 400, 400, 400], caps, 1);
+    assert(JSON.stringify(noRoom) === JSON.stringify([400, 400, 400, 400]), 'nor on one where every block is already full');
+  }
+
+  // --- one cost path, three callers ---
+  {
+    let s = State.createInitialState();
+    s.cash = 40000;
+    s.season = 2; // crew_watch_2 is a Weekend 3 hire, and stays refused below
+    assert(effectiveCrewCost(s, 'crew_gate_1') === crewById('crew_gate_1').cost, 'an unsigned crew reads its listed cost, like an unsigned act');
+    assert(effectiveCrewCost(s, 'no_such_crew') === 0, 'and an id no catalog knows reads zero');
+    assert(effectivePerformerCost(s, 'no_such_act') === 0 && effectiveVendorCost(s, 'no_such_vendor') === 0, 'which the other two callers still do too');
+    s = State.contractCrew(s, 'crew_gate_1', 'weekend').state;
+    const contract = s.crewContracts.crew_gate_1;
+    assert(contract.dailyCost < crewById('crew_gate_1').cost, 'a Weekend Package on the gate is cheaper per day than the day rate');
+    assert(effectiveCrewCost(s, 'crew_gate_1') === contract.dailyCost, 'and the record is what the cost path reads');
+    assert(contract.commitDays === undefined && contract.commitDaysRemaining === CONTRACT_OPTIONS.weekend.commitDays, 'the record carries the days still owed, like every other contract');
+    assert(contract.cancelFeeMult === CONTRACT_OPTIONS.weekend.cancelFeeMult, 'and its own break fee (#237)');
+    // Crew are staff, not acts: no relationship, no tenure, no renown.
+    assert(s.relationships.crew_gate_1 === undefined, 'signing a crew writes no relationship (#256)');
+    assert(s.tenure.crew_gate_1 === undefined, 'and no tenure, so a kept gatekeeper earns no renown');
+    assert(!contractedActIds(s).includes('crew_gate_1'), 'and they are not an act by any read that counts acts');
+    assert(State.contractCrew(s, 'crew_gate_1').error === 'Already on the payroll.', 'nobody signs twice');
+    assert(String(State.contractCrew(s, 'crew_watch_2').error || '').includes('Weekend'),
+      'and a crew whose weekend has not come says which weekend that is');
+    assert(State.contractCrew(s, 'nobody').error === 'Unknown crew.', 'and an id off the catalog is refused');
+
+    // Breaking the commitment early costs, the way it does for an act.
+    const early = State.releaseCrew(s, 'crew_gate_1');
+    assert(early.fee > 0 && early.state.cash === s.cash - early.fee, 'letting a committed crew go early charges the days still owed');
+    assert(!early.state.crew.includes('crew_gate_1') && !early.state.crewContracts.crew_gate_1, 'and takes them off the payroll and out of the book');
+    let ticked = s;
+    for (let i = 0; i < CONTRACT_OPTIONS.weekend.commitDays; i++) ticked = State.nextDay(State.runDay(ticked, 700 + i).state).state;
+    assert(ticked.crewContracts.crew_gate_1.commitDaysRemaining === 0, 'a weekend of days ticks the commitment out');
+    assert(State.releaseCrew(ticked, 'crew_gate_1').fee === 0, 'and then it is free to let them go');
+  }
+
+  // --- the save ---
+  {
+    const fresh = State.createInitialState();
+    assert(Array.isArray(fresh.crew) && fresh.crew.length === 0 && fresh.crewContracts && Object.keys(fresh.crewContracts).length === 0,
+      'a new faire opens with nobody on the payroll and an unstaffed gate');
+    const signed = State.contractCrew(fresh, 'crew_gate_1').state;
+    assert(fresh.crew.length === 0, 'and signing returns a new state rather than mutating the old one');
+    const storage = makeMemoryStorage();
+    const slot = State.saveSlot(storage);
+    slot.save(signed);
+    const back = slot.load();
+    assert(back.crew.includes('crew_gate_1') && back.crewContracts.crew_gate_1.dailyCost === signed.crewContracts.crew_gate_1.dailyCost,
+      'a reload keeps the payroll and what it costs (#39)');
+    // A save from before the phase, and a save carrying a crew id no
+    // catalog knows any more.
+    const old = State.createInitialState();
+    delete old.crew; delete old.crewContracts;
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify({ ...old, __v: 2 }));
+    const repaired = State.saveSlot(storage).load();
+    assert(Array.isArray(repaired.crew) && repaired.crew.length === 0 && repaired.crewContracts && typeof repaired.crewContracts === 'object',
+      'a pre-Phase-7 save loads with an empty payroll — repair, not migrate (#37)');
+    storage.setItem('renn-faire-sim-save-v1', JSON.stringify({ ...State.createInitialState(), crew: ['crew_gate_1', 'crew_retired'], __v: 2 }));
+    const pruned = State.saveSlot(storage).load();
+    assert(pruned.crew.join(',') === 'crew_gate_1', 'and a crew id the catalog has dropped is pruned rather than crashing the wage line');
+  }
+
+  // --- the watch is priced against the crowd, not the sky (#257) ---
+  // This is the assertion the decision claimed the Phase 2 weather check
+  // already made, and it did not: that check runs on a one-stage faire
+  // whose expected crowd is under CREW_RULES.calmCrowd, so its exposure is
+  // 0 under every sky and multiplying the sky back into expectedCrowd left
+  // it green. Twenty-eight guard-rail breaks and this was the one nothing
+  // caught. It needs a faire big enough to have an exposure at all.
+  {
+    let s = State.createInitialState();
+    s.cash = 400000; s.reputation = 95; s.season = 6; s.weekendDay = 2;
+    for (const [k, x, y] of [['stage', 3, 0], ['stage', 8, 0], ['food', 5, 3], ['vendor', 6, 3], ['demo', 8, 3], ['food', 12, 3]]) {
+      s = State.buildPlot(s, k, x, y).state;
+    }
+    for (const v of VENDORS.slice(0, 4)) s = State.hireVendor(s, v.id).state;
+    for (const p of PERFORMERS.slice(0, 4)) s = State.contractPerformer(s, p.id).state;
+    const stages = s.builtPlots.filter(p => p.kind === 'stage');
+    let i = 0;
+    for (const b of TIME_BLOCKS) for (const st of stages) s = State.assignSchedule(s, b.id, st.id, PERFORMERS[i++ % 4].id).state;
+    const dry = simulateDay({ ...s, weather: 'scorcher' }, 4711);
+    const wet = simulateDay({ ...s, weather: 'downpour' }, 4711);
+    assert(dry.exposure > 0 && dry.exposure < 1, `sanity check: this faire has an exposure worth reading (${dry.exposure})`);
+    assert(dry.attendance !== wet.attendance, 'sanity check: and the two skies really do deliver different crowds');
+    assert(dry.expectedCrowd === wet.expectedCrowd && dry.exposure === wet.exposure,
+      'the crowd the watch is priced against is the same under either sky — a watch is hired days ahead, and it did not rain then (#257)');
+    assert(JSON.stringify(dry.events.map(e => e.id)) === JSON.stringify(wet.events.map(e => e.id)),
+      'so the same seed still rolls the same events under either sky, on a faire big enough for the incident pressure to be doing something');
+  }
+
+  // --- the day, end to end ---
+  {
+    let s = State.createInitialState();
+    s.cash = 400000; s.reputation = 95; s.season = 6; s.weekendDay = 2;
+    for (const [k, x, y] of [['stage', 3, 0], ['stage', 8, 0], ['food', 5, 3], ['vendor', 6, 3], ['demo', 8, 3], ['food', 12, 3]]) {
+      const r = State.buildPlot(s, k, x, y);
+      assert(!r.error, `crew fixture: ${k} at ${x},${y} builds legally`);
+      s = r.state;
+    }
+    for (const v of VENDORS.slice(0, 4)) s = State.hireVendor(s, v.id).state;
+    for (const p of PERFORMERS.slice(0, 4)) s = State.contractPerformer(s, p.id).state;
+    const stages = s.builtPlots.filter(p => p.kind === 'stage');
+    let i = 0;
+    for (const b of TIME_BLOCKS) for (const st of stages) s = State.assignSchedule(s, b.id, st.id, PERFORMERS[i++ % 4].id).state;
+
+    const shut = simulateDay(s, 314);
+    assert(shut.turnout > shut.gateCapacity, 'the crew fixture draws more than an unstaffed gate can pass');
+    assert(shut.attendance === shut.gateCapacity && shut.turnedAway === shut.turnout - shut.attendance,
+      'so the day admits exactly the ceiling and counts the rest');
+    assert(shut.gateSatDelta < 0 && shut.warnings.some(w => w.includes('turned away at the fence')),
+      'and the report says so in a sentence as well as a number (a refusal is a sentence, not a silent no-op)');
+    assert(shut.guestCosts === Math.round(shut.attendance * CONFIG.perGuestCost),
+      'a guest turned away at the fence costs nothing to host');
+    assert(shut.ticketRevenue === shut.attendance * s.ticketPrice, 'and pays no ticket');
+
+    const open = simulateDay(State.contractCrew(State.contractCrew(s, 'crew_gate_1').state, 'crew_gate_2').state, 314);
+    assert(open.turnedAway === 0 && open.attendance === open.turnout, 'a staffed gate passes the whole crowd');
+    assert(open.gateSatDelta === 0, 'and costs no mood at the fence');
+    assert(open.crewCosts === crewById('crew_gate_1').cost + crewById('crew_gate_2').cost, 'the wages are on the ledger, at the listed day rate');
+    assert(open.costs === open.performerCosts + open.vendorCosts + open.crewCosts + open.upkeep + open.overhead + open.guestCosts,
+      'and the ledger adds up to the day’s costs');
+    assert(simulateDay(s, 314).crewCosts === 0, 'a faire with no crew pays no crew wages');
   }
 }
 
