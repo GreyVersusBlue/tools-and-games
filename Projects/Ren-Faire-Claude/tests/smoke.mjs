@@ -2700,6 +2700,51 @@ const { TRACK, FRAME, MARKER_MARGIN, createView, minScaleFor, markerSize, fit, w
     dom.window.close();
   }
 
+  // --- contractCrew / releaseCrew (Backstage): the two actions Phase 8's
+  // automatic audit found on its first run. Phase 7 shipped six crew rows,
+  // the two engine calls behind them are covered in Section 1 and Section
+  // 1l, and the buttons that reach them had never been clicked by anything
+  // — the same shape of gap round 2 found ten of by hand. tests/wiring.mjs
+  // is what will not let the next one sit for a round. ---
+  {
+    let s = State.createInitialState();
+    s = State.contractCrew(s, 'crew_watch_1', 'open').state;      // day rate, for a free let-go
+    s = State.contractCrew(s, 'crew_crier_1', 'weekend').state;   // three days owed, for the fee path
+    s = { ...s, cash: 20000 };
+
+    const { dom, doc, storage } = await boot(s);
+    click(doc, '[data-tab="backstage"]');
+
+    assert(click(doc, '[data-action="contractCrew"][data-id="crew_gate_1"][data-contract="open"]'),
+      'Phase 8: an unhired crew row’s Day Rate button is clickable');
+    assert(saved(storage).crew.includes('crew_gate_1'),
+      'Phase 8: clicking it actually puts the gate crew on the payroll — never exercised before this session');
+    assert(saved(storage).crewContracts.crew_gate_1?.contractId === 'open',
+      'Phase 8: and signs them to the terms the button named, not a default');
+
+    assert(click(doc, '[data-action="releaseCrew"][data-id="crew_watch_1"]'),
+      'Phase 8: a hired crew row’s Let go button is clickable');
+    assert(!saved(storage).crew.includes('crew_watch_1'),
+      'Phase 8: clicking Let go actually takes them off the payroll — never exercised before this session');
+    assert(saved(storage).crewContracts.crew_watch_1 === undefined,
+      'Phase 8: and takes their contract with them, so a reload does not keep paying a crew that has gone');
+    // Read the flash paragraph, not the panel: the committed crier's row
+    // carries a warn-tag whose tooltip says "cancellation fee" too, and a
+    // whole-panel innerHTML search finds that instead of the message.
+    assert(!doc.querySelector('#content p.warn'),
+      'Phase 8: letting a Day Rate crew go charges no fee, so there is no message about one');
+
+    const cashBeforeFee = saved(storage).cash;
+    assert(click(doc, '[data-action="releaseCrew"][data-id="crew_crier_1"]'),
+      'Phase 8: a committed crew row’s Let go button is clickable too');
+    assert(saved(storage).cash < cashBeforeFee,
+      'Phase 8: breaking a crew’s Weekend Package mid-commitment actually charges the cancellation fee');
+    assert(/cancellation fee/.test(doc.querySelector('#content p.warn')?.textContent || ''),
+      'Phase 8: and says so on the page, the same sentence a performer and a vendor get');
+
+    dom.window.close();
+  }
+
   // --- the schedule <select>'s change event (Fair Floor) ---
   {
     let s = State.createInitialState();
