@@ -3479,8 +3479,8 @@ fr3_press_sandra_check: {
   art:'fr3', artLabel:'Free Roam 3 · Day',
   bgText:'PAGE SEVEN',
   lines:[
-    D(`I need to check something in my contract first.`),
-    C('SANDRA',`The television clause.`),
+    D(()=> solo() ? `I need to check something first.` : `I need to check something in my contract first.`),
+    C('SANDRA',()=> solo() ? `The Friday card.` : `The television clause.`),
     D(`You know about it.`),
     C('SANDRA',`I'm a reporter.`),
     N(`Duke thought: of course she does.`),
