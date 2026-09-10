@@ -5786,10 +5786,13 @@ matches `\bEarl\b` (the solo Milestone 2 and Free Roam 2 name him on
 purpose, as the man who was turned down), that Kessler is in it, that `fr4_eve_california` and
 `fr4_close` are read, that `m4_prestunt_earl_m4` and `fr4_eve_earl` are not,
 and that the first Free Roam 4 board offers the man from California and no
-Earl Maddox card. A sixth transcript plan, `no_earl_crash`, crashes at the
-fair, says "Not interested" with the shoulder wrong, crashes at the Speedway
-and on the Milestone 4 stunt, and reads the failure arms, Kessler's option,
-Tommy's co-sign, the third answer at both new forks and the disappearance;
+Earl Maddox card. A sixth transcript plan, `no_earl_crash`, lands the fair
+(a crashed fair never reaches the six-way answer; Earl sends word through
+Cal, and the first version of this plan ended with Earl as Business Partner
+for exactly that reason), says "Not interested", then crashes at the
+Speedway and on the Milestone 4 stunt — `stunt` may now be a list, one
+policy per run — and reads the failure arms, Kessler's option, Tommy's
+co-sign, the third answer at both new forks and the disappearance;
 `no_earl_solo` takes the second answer at both and walks away quietly.
 
 ---
