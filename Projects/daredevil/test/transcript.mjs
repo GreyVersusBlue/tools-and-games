@@ -76,6 +76,30 @@ const RUNS = {
       { on: 'Forget the note' },
       { on: 'Book it' },
       { on: 'Self-fund' },
+      // Increment 2: the second answer at the solo branch's two new forks —
+      // Sandra's offer checked against the Friday card rather than a contract
+      // clause, and the man from California asked for the paper first.
+      { on: 'check something first' },
+      { on: 'Send me the paper' },
+      { on: 'Walk away quietly' },
+    ],
+  },
+  // The solo branch's failure arms. Crashes at the fair, says "Not interested"
+  // with the shoulder still wrong, crashes again at the Speedway (Kessler's
+  // envelope, Petersen's forty seconds), goes down on the Milestone 4 stunt
+  // and takes the recovery version of the California call. Third answer at
+  // both new forks, and the disappearance at the end.
+  no_earl_crash: {
+    name: 'Curtis Vane', town: 'Ashby Fork',
+    stunt: 'crash',
+    rules: [
+      { on: 'Not interested' },
+      { on: 'Kessler' },
+      { on: 'Tommy' },
+      { on: 'Book it' },
+      { on: 'approval over the narrative' },
+      { on: 'Say the other one' },
+      { on: 'Disappear' },
     ],
   },
   // Turns the Young Wannabe down at the gas station, so wannabeMet never gets

@@ -103,9 +103,10 @@ The suite is the other load-bearing thing:
   of `goToScene`, then plays three full runs to endings — clean, crashed, and
   "Not interested". ~25 minutes.
 - **`test/transcript.mjs`** — plays a planned run and writes down every line,
-  every choice offered and every scene id. Five committed baselines: `clean`,
-  `rough`, `no_earl`, `no_pete`, and `no_earl_solo` (Phase 1: the other way
-  through the backer-less Milestone 2).
+  every choice offered and every scene id. Six committed baselines: `clean`,
+  `rough`, `no_earl`, `no_pete`, `no_earl_solo` (Phase 1: the other way
+  through the backer-less Milestone 2) and `no_earl_crash` (Phase 1: the
+  solo branch's failure arms).
 - **`test/verify-touch-375.mjs`** (142 lines) — a one-off, kept as a tool.
 
 `.github/workflows/` carries a job for the School Generator and one for Numina.
@@ -171,7 +172,7 @@ The invocations that work, from the repo root:
 ```
 node Projects/daredevil/test/smoke-save.mjs          # 53 passed, 0 failed
 node Projects/daredevil/test/smoke-page.mjs          # 61 passed, 0 failed, ~25 min
-node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete, no_earl_solo
+node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete, no_earl_solo, no_earl_crash
 node Projects/daredevil/test/verify-touch-375.mjs    # one-off, 375px, touch-emulated
 cd Tools/board-check && npm run check
 ```
@@ -268,9 +269,10 @@ starting a new list.
 **Verification and tooling**
 - No GitHub Actions workflow runs this project's suite.
 - `smoke-page.mjs`'s third run plays the rejection branch to an ending and
-  asserts where it landed (Phase 1). Nothing yet plays a crashed rejection
-  run, or a rejection with Ruthie — the latter is impossible until the
-  six-way choice changes shape (the question below, still open).
+  asserts where it landed and what it read (Phase 1). The `no_earl_crash`
+  transcript plays a crashed rejection run, but nothing asserts on it. A
+  rejection with Ruthie is impossible until the six-way choice changes shape
+  (the question below, still open).
 - Nothing checks reachability, orphan scenes, or read-but-never-written flags.
 - A physical touch-device pass is outstanding; `verify-touch-375.mjs` is real
   evidence and is still emulation.
@@ -311,6 +313,8 @@ cosmetic.
 
 **Increment 1 shipped 2026-09-10** (decisions #265 and #266; the full account
 is under "Daredevil, arc one" in the root `HISTORY.md`). Shape B.
+**Increment 2 shipped the same day** (decisions #267, #268 and #269): the
+thread through Milestones 3 and 4, Free Roam 3 and 4, and the endings.
 
 - [x] **Branch the chapter entry on relationship state.** `_chapter_m2` has
   the `rels.earl === 'absent'` arm — chapter "The Other Way", subtitle a
@@ -332,20 +336,33 @@ is under "Daredevil, arc one" in the root `HISTORY.md`). Shape B.
   the backer button still skips it, which is Phase 2's first bullet and would
   move three baseline transcripts. Eleven `N(fn)`/`C(name, fn)` branches
   across the FR2 scenes that named Earl; `fr2_close` is a `get lines()`.
-- [ ] **Thread it through M3, M4 and the epilogue.** Untouched. `m3_entry`
-  still has a sponsor's logo on the ramp and a TV crew nobody on this branch
-  arranged (the solo `fr2_close` says Kessler's crew is there for the feature
-  race — `m3_entry` should agree); `m4_entry`'s "Earl has proposals" needs a
-  source; `fr4_close` and `showGameEnd`'s eight endings need reading against
-  a run with no backer. FR3 and FR4 already hide their Earl cards, so the run
-  finishes; it does not yet notice. `m2_entry_waited`'s absent-Earl arms were
-  deleted as dead.
+- [x] **Thread it through M3, M4 and the epilogue.** A `solo()` helper at the
+  top of `scenes.js`; every line from `m3_entry` to the endings that named
+  Earl reads it first. Kessler meets him off the ramp at the Speedway and
+  brings the fee envelope after the bad crash (#268); Roy Petersen is the
+  feature-race crew's cameraman, established in `m3_entry`'s solo arm; the
+  Sandra thread has no page seven and its second answer checks the Friday
+  card; `m4_entry` is Duke's own folder and his own Friday; the buses
+  triumph is Cal's third "yeah"; `fr4_eve_california` stands where
+  `fr4_eve_earl` would (#267) and the solo Milestone 5 button reads
+  `fr4_close`; "Earl picks" is hidden and the option count counts (#269);
+  `showGameEnd`'s absent line names who booked him and who paid for the
+  cars. Choice `text`/`subtext` and `statUpdate.title` may be functions.
+  Left for a later phase, not this row: the Legend track still requires
+  Earl, and the backer branch still never reads `fr4_close` (Phase 2).
 - [x] **`no_earl_solo`** in `transcript.mjs`'s `RUNS`, played to an ending,
   and a third `smoke-page.mjs` run that answers "Not interested" and asserts
   `m2_solo_entry`, never `m2_entry*`/`m2_sign`, the debt before any other FR2
   card, one unlocked card and no Milestone 3 button on the first FR2 board,
   Earl `'absent'` on the ending screen. Five transcripts diffed; the three
   backer runs moved by stunt scores only.
+- [x] **The sweep, as a guard-rail.** `playToEnd` keeps every piece of text
+  the run was shown, by scene, and the solo run asserts none of it from
+  `m3_entry` on matches `\bEarl\b`, that Kessler is in it, that
+  `fr4_eve_california` and `fr4_close` are read and `m4_prestunt_earl_m4`
+  and `fr4_eve_earl` are not, and that the first FR4 board offers the man
+  from California and no Earl Maddox card. A sixth transcript plan,
+  `no_earl_crash`, reads the solo branch's failure arms.
 
 *Leans on:* `js/scenes.js`, `goToScene`/`showChapter`/`renderHubFR2` in
 `engine.js`, `transcript.mjs`'s `RUNS` table. *Save:* none — `rels.earl` and

@@ -78,6 +78,7 @@ export const snapshot = page => page.evaluate(([scanSrc, ctlSrc, lockSrc]) => {
     speaker: t(document.getElementById('speaker-tag')),
     text: t(document.getElementById('panel-text')),
     chapter: t(document.getElementById('ct-title')),
+    chapterDesc: t(document.getElementById('ct-desc')),
     update: t(document.getElementById('stat-update-h')),
     reason: t(document.getElementById('stat-update-reason')),
     hub: t(document.getElementById('hub-title')),

@@ -41,13 +41,20 @@ const STALL_LIMIT = 6;
  */
 async function playToEnd(page, base, plan) {
   const seen = [];
-  let lastScene = null, fingerprint = '', stalled = 0;
+  let lastScene = null, lastText = null, fingerprint = '', stalled = 0;
   const stunts = [];
   const visits = {};
   // The first sight of each hub, as rendered: which cards were up and which
   // were locked. Assert against this for anything about what a hub offered,
   // not against the save (#39).
   const hubs = {};
+  // Everything the run was shown, in order, tagged with the scene it was on:
+  // prose and choice labels off the panel, stat-update titles and reasons,
+  // chapter cards, hub cards. A branch that quietly reads the other branch's
+  // line throws nothing; the only way to catch it is to read what the player
+  // read and grep it (#39, and the wishlist's "grep a transcript for a name").
+  const texts = [];
+  const shown = (where, text) => { if (text) texts.push({ scene: lastScene, where, text }); };
 
   await open(page, base, { name: plan.name, town: plan.town });
 
@@ -73,16 +80,18 @@ async function playToEnd(page, base, plan) {
         `loop: entered "${s.scene}" ${n} times. Last 10: ${seen.slice(-10).join(' → ')}`);
     }
 
-    if (s.screen === 'end') return { seen, stunts, hubs, stats: s.stats, rels: s.rels, flags: s.flags };
+    if (s.screen === 'end') return { seen, stunts, hubs, texts, stats: s.stats, rels: s.rels, flags: s.flags };
     if (s.screen === 'reporter') { stunts.push({ verdict: s.verdict, score: Number(s.score) }); await pick(page, 'Accept Result'); await wait(280); continue; }
     if (s.screen === 'minigame') { await autopilot(page, plan.stunt); continue; }
-    if (s.screen === 'chapter') { await pick(page, s.buttons[0].label); await wait(650); continue; }
-    if (s.screen === 'stats') { await pick(page, 'Continue'); await wait(180); continue; }
+    if (s.screen === 'chapter') { shown('chapter', s.chapter + ' — ' + s.chapterDesc); await pick(page, s.buttons[0].label); await wait(650); continue; }
+    if (s.screen === 'stats') { shown('stats', s.update + ' — ' + s.reason); await pick(page, 'Continue'); await wait(180); continue; }
 
     if (s.screen === 'panel') {
       const play = s.buttons.filter(b => !b.save);
       const choices = play.filter(b => !/^— Continue —$|^Continue ›$/.test(b.label));
+      if (s.text !== lastText) { lastText = s.text; shown('panel', s.speaker + ': ' + s.text); }
       if (!choices.length) { await pick(page, 'Continue'); continue; }
+      shown('choices', choices.map(c => c.label).join(' | '));
       const rule = plan.rules.find(r => choices.some(c => !c.locked && c.label.toLowerCase().includes(r.toLowerCase())));
       const target = rule
         ? choices.find(c => !c.locked && c.label.toLowerCase().includes(rule.toLowerCase()))
@@ -93,7 +102,7 @@ async function playToEnd(page, base, plan) {
     }
 
     if (s.screen === 'hub') {
-      if (!hubs[s.hub]) hubs[s.hub] = s.buttons.filter(b => !b.save).map(b => ({ label: b.label, locked: b.locked }));
+      if (!hubs[s.hub]) { hubs[s.hub] = s.buttons.filter(b => !b.save).map(b => ({ label: b.label, locked: b.locked })); shown('hub', s.buttons.filter(b => !b.save).map(b => b.label).join(' | ')); }
       const cards = s.buttons.filter(b => !b.save && !b.locked);
       if (!cards.length) throw new Error(`hub "${s.hub}" has nothing clickable and no way forward`);
       const advance = cards.find(c => /^Milestone \d/.test(c.label));
@@ -312,6 +321,32 @@ try {
   eq(solo.rels && solo.rels.earl, 'absent', 'Earl is still absent on the ending screen');
   eq(solo.flags && solo.flags.soloM2, true, 'the save records that the solo chapter was taken');
   ok(solo.seen.includes('m5_decision'), 'the solo run reaches the Milestone 5 decision');
+
+  // Phase 1, increment 2: Milestones 3 and 4, Free Roam 3 and 4 and the
+  // endings on a run with no backer. Before it, the solo run read a sponsor's
+  // logo on the ramp, Earl at the bottom of it, Earl's folder of proposals,
+  // Earl told first at the retirement — thirty-one lines of a deal it never
+  // signed. The rule now: from Milestone 3's first scene to the ending
+  // screen, nothing the player is shown names Earl. (The solo Milestone 2 and
+  // Free Roam 2 name him on purpose — the card he left on the ramp, the rider
+  // who said no — so the sweep starts where increment 2's work starts.) The
+  // ending screen's own line about walking away from him is not in the log.
+  {
+    const start = solo.texts.findIndex(t => t.scene === 'm3_entry');
+    ok(start > -1, 'the text log has Milestone 3 in it');
+    const earl = solo.texts.slice(start).filter(t => /\bEarl\b/.test(t.text));
+    eq(earl.length, 0, `nothing shown from Milestone 3 on names Earl (${earl.slice(0, 4).map(t => `${t.scene}/${t.where}: ${t.text.slice(0, 50)}`).join(' | ') || 'none'})`);
+    ok(solo.texts.slice(start).some(t => /Kessler/.test(t.text)), 'and the Speedway promoter is who is there instead');
+  }
+  ok(!solo.seen.includes('m4_prestunt_earl_m4'), 'the Milestone 4 eve is never spent with Earl');
+  ok(solo.seen.includes('fr4_eve_california'), 'the man from California calls for himself in Free Roam 4');
+  ok(!solo.seen.includes('fr4_eve_earl'), "and Earl's Free Roam 4 evening is never played");
+  ok(solo.seen.includes('fr4_close'), 'the solo branch reads fr4_close on the way to Milestone 5');
+  {
+    const fr4 = solo.hubs['Free Roam — Aftermath'] || [];
+    ok(fr4.some(b => /^The Man from California/.test(b.label)), 'the first Free Roam 4 board offers the man from California');
+    ok(!fr4.some(b => /^Earl Maddox/.test(b.label)), 'and no Earl Maddox card');
+  }
   eq(t.page.__errs.length, 0, `no page errors across the solo run (${t.page.__errs.slice(0, 3).join('; ')})`);
 
   /* ================================================================ mobile */

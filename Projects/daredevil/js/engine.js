@@ -195,7 +195,12 @@ function goToScene(id){
     return;
   }
   if(id === '_chapter_m3'){
-    showChapter('Milestone 3','The Big Break',`Five cars. A stadium lot. A TV crew on a scaffold. This is what bigger looks like.`,'Take the Run','m3_entry');
+    // The solo branch's car show is the one fr2_close's solo arm set up: the
+    // Speedway's season closer, a crew that came for the feature race, his cars.
+    const desc = GS.rels.earl === 'absent'
+      ? `Five cars. The Speedway's back lot. A TV crew that came for the feature race. The cars are yours.`
+      : `Five cars. A stadium lot. A TV crew on a scaffold. This is what bigger looks like.`;
+    showChapter('Milestone 3','The Big Break', desc,'Take the Run','m3_entry');
     return;
   }
   if(id === '_game_end'){
@@ -217,7 +222,10 @@ function goToScene(id){
     return;
   }
   if(id === '_chapter_m4'){
-    showChapter('Milestone 4','The Defining Moment',`The next stunt is on the table. Earl has proposals. The decision is yours.`,'See the Options','m4_entry');
+    const desc = GS.rels.earl === 'absent'
+      ? `The next stunt is on the table. Nobody has proposals but you. The decision is yours.`
+      : `The next stunt is on the table. Earl has proposals. The decision is yours.`;
+    showChapter('Milestone 4','The Defining Moment', desc,'See the Options','m4_entry');
     return;
   }
   if(id === '_m4_launch'){
@@ -493,9 +501,14 @@ function showSceneEnd(){
       const btn = document.createElement('button');
       btn.className = 'choice-btn' + (locked ? ' disabled' : '');
       const label = ch.label ? `<span class="choice-label">Option ${ch.label}</span>` : '';
-      const sub = ch.subtext ? `<br><span style="font-size:11px;color:var(--cream-faint);font-weight:400">${ch.subtext}</span>` : '';
+      // `text` and `subtext` may be functions of state, like a line (Phase 1):
+      // the Sandra offer's second answer is a contract clause on one branch
+      // and a Friday card on the other.
+      const text = typeof ch.text === 'function' ? ch.text() : ch.text;
+      const subtext = typeof ch.subtext === 'function' ? ch.subtext() : ch.subtext;
+      const sub = subtext ? `<br><span style="font-size:11px;color:var(--cream-faint);font-weight:400">${subtext}</span>` : '';
       const lockNote = locked && ch._gateReason ? `<br><span style="font-size:11px;color:var(--oxblood);font-weight:600">🔒 ${ch._gateReason}</span>` : '';
-      btn.innerHTML = `${label}${ch.text}${sub}${lockNote}`;
+      btn.innerHTML = `${label}${text}${sub}${lockNote}`;
       if(!locked) btn.onclick = ()=> handleChoice(ch);
       list.appendChild(btn);
     });
@@ -598,7 +611,7 @@ function triggerStatUpdate(update, afterTarget){
   if(update.rels) for(const[k,v] of Object.entries(update.rels)) GS.rels[k]=v;
   if(update.flags) for(const[k,v] of Object.entries(update.flags)) GS.flags[k]=v;
 
-  document.getElementById('stat-update-h').textContent = update.title||'— Update —';
+  document.getElementById('stat-update-h').textContent = (typeof update.title === 'function' ? update.title() : update.title)||'— Update —';
   document.getElementById('stat-update-reason').textContent = (typeof update.reason === 'function' ? update.reason() : update.reason)||'';
 
   // Build stat bars (before state)
@@ -977,7 +990,12 @@ function showGameEnd(){
     mentor: `Earl Maddox called it right at the county fair. He's been right about most of it since.`,
     backer: `Earl Maddox got his return on investment. So did Duke. They're both professionals about it.`,
     antagonist: `Earl Maddox was in the business of other people's ceilings. Duke found his own.`,
-    absent: `Duke walked away from Earl's deal. The story he built is entirely his own.`,
+    absent: (()=>{
+      const paid = { bank:"Garrett Pyle's bank", tommy:'Tommy', self:'two Saturdays of selling cars back' }[GS.flags.debtSource];
+      return paid
+        ? `Duke walked away from Earl's deal at the county fair. Dot Kessler booked him, ${paid} paid for the cars, and the story he built is entirely his own.`
+        : `Duke walked away from Earl's deal. The story he built is entirely his own.`;
+    })(),
     unknown: `Earl Maddox. The relationship is still being decided.`
   }[earlState] || '';
 
@@ -1032,7 +1050,7 @@ function showGameEnd(){
   let m5PanelHTML = '';
   if(m5Complete){
     const panelLines = {
-      retire_clean: ['He made the call. Earl first, then Cal, then Ruthie.', 'The announcement ran in three papers. Sandra got the county fair detail right.', 'He thought: that\'s the story. He thought: it\'s enough.'],
+      retire_clean: [GS.rels.earl === 'absent' ? 'He made the call. Cal first. There was nobody in front of Cal.' : 'He made the call. Earl first, then Cal, then Ruthie.', 'The announcement ran in three papers. Sandra got the county fair detail right.', 'He thought: that\'s the story. He thought: it\'s enough.'],
       last_stunt_win: ['He cleared it.', 'He held the landing. He looked at the gap from the other side.', 'He thought: that\'s the last number. He thought: I\'m done.'],
       last_stunt_loss: ['He didn\'t clear it.', 'He got up.', 'He thought: that\'s the last time I\'m going to make that sound happen. He thought: I\'m done.'],
       last_stunt_earl: ['Earl picked the canyon. Duke drove out alone the morning of.', 'He sat at the rim until the gap was just information.', 'He thought: alright. Let\'s go find out.'],
@@ -1599,12 +1617,19 @@ function renderHubFR4(){
     eveCards.push({ id:'fr4_eve_tommy', name:'Tommy', sub:"He was at the canyon. He saw you clear it. He said something true.", tag:'Costs 1 Evening' });
   }
 
-  // Earl — if not absent
+  // Earl — if not absent. On the backer-less branch the same evening is the
+  // man from California calling for himself (Phase 1): the offer Earl relays
+  // on the other branch reaches Duke through the Speedway office instead.
   if(GS.rels.earl !== 'absent'){
     const earlSub = isFailure
       ? 'He has a recovery package. The terms are worth reading carefully.'
       : 'The man from California is on the line. The Vegas offer is real.';
     eveCards.push({ id:'fr4_eve_earl', name:'Earl Maddox', sub: earlSub, tag:'Costs 1 Evening' });
+  } else {
+    const caSub = isFailure
+      ? 'He watched you get up. He got your number from the Speedway. He is calling himself.'
+      : 'He was in the fourth row at the Speedway. He got your number from Kessler. He is calling himself.';
+    eveCards.push({ id:'fr4_eve_california', name:'The Man from California', sub: caSub, tag:'Costs 1 Evening' });
   }
 
   // Special: Ruthie thread close (only if ruthie=solid and near the end)
@@ -1628,7 +1653,10 @@ function renderHubFR4(){
     const b=document.createElement('button'); b.className='btn-main';
     b.style.fontSize='16px';
     b.textContent='Milestone 5 — The Question';
-    b.onclick=()=> goToScene('_chapter_m5');
+    // The solo branch reads fr4_close on the way out — the phone call that
+    // says yes to Vegas — as FR2 does with fr2_close. The backer branch still
+    // skips it (Phase 2's first bullet).
+    b.onclick=()=> goToScene(GS.rels.earl === 'absent' ? 'fr4_close' : '_chapter_m5');
     m5btn.appendChild(b);
     const hint = document.createElement('div');
     hint.style.cssText='font-size:11px;color:var(--cream-faint);margin-top:8px;letter-spacing:.05em;';
