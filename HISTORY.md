@@ -3353,6 +3353,34 @@ Two of them have moved since they were written:
    skips, with nothing that ever removes an entry, is a list that grows
    until the check means nothing. *Source: Faire Weekend Phase 8.*
 
+265. **"Not interested" to Earl means a self-financed middle game, not
+   Earl's office with a different opening line.** The question had stood
+   in `Projects/daredevil/WISHLIST.md` since round 3 with two shapes: (A)
+   keep "Earl doesn't take no for an answer" and pay it off with
+   acknowledgment beats, or (B) write a smaller, backer-less Milestone 2
+   and thread it through 3 and 4. B, as the wishlist recommended. A leaves
+   a six-way choice with one cosmetic arm, and the raw material for B was
+   already in the file: the FR2 debt scene, its four `debtSource` answers,
+   Lloyd Perkins' August booking, Garrett Pyle's bank, the Sandra press
+   thread. `_chapter_m2` routes `rels.earl === 'absent'` to `m2_solo_entry`
+   and nothing downstream sets Earl back to `'backer'`; the run carries
+   `'absent'` to the ending screen, which is what the epilogue already
+   knew how to print. `m2_entry_waited`'s two "you're a hard man to reach"
+   arms, the only prose that ever acknowledged the rejection, were deleted
+   rather than left as a branch that cannot fire. Answered by the session,
+   under the 2026-09-05 working mode; reversible by rerouting one arm.
+   *Source: Daredevil Phase 1.*
+
+266. **A card the branch requires is the only card until it is played, and
+   the milestone button waits.** On the backer-less branch `fr2_debt_01` is
+   not one day scene among seven: `renderHubFR2` shows it alone, locks every
+   evening behind it with a tag that says so, and does not offer Milestone 3
+   until it is done. The last part is the rule. `hubExhausted()` reads
+   "nothing left to spend an evening on" as "the hub is finished", so a hub
+   that locks all its evenings without also holding the milestone button
+   back offers the next chapter over a scene nobody has played. A required
+   card is a gate on the hub, not a card in it. *Source: Daredevil Phase 1.*
+
 ---
 
 # The site sessions, 1–10
@@ -5582,6 +5610,78 @@ script.
 text by the new suite and was not edited. `npm run check` is red on
 `Tools/prompt-builder.html` (1,481 units, 1 broken) and `social:check`
 reports the same six pages out of sync, both exactly as on `main`.
+
+---
+
+# Daredevil, arc one
+
+The per-round history of the game — three prompt rounds that made it
+finishable, split it into modules, and measured what the first two deferred
+— is under **The prompt rounds, 1–3** above. Arc one, "the branch that answers
+back", builds for the player who declines something. Its phases are ranked in
+`BACKLOG.md` and specified in `Projects/daredevil/WISHLIST.md`.
+
+## Phase 1 — The backer-less middle game, increment 1 (2026-09-10)
+
+**The finding this arc is about:** answering "Not interested" to Earl Maddox
+at the county fair set `rels.earl = 'absent'`, removed three optional evening
+cards, and changed nothing else. Milestone 2 was Earl's office regardless,
+with two lines of "you're a hard man to reach", and `m2_sign` set him back to
+`'backer'`. Five of six answers and the sixth all played the same game.
+
+**What shipped.** Shape B (decision #265): a self-financed Milestone 2 on the
+`rels.earl === 'absent'` branch, and a Free Roam 2 that knows it happened.
+
+- `_chapter_m2` has the absent arm. Chapter card "The Other Way", subtitle a
+  function of state on both arms (the shoulder, Perkins' booking), entry
+  `m2_solo_entry`, and `GS.flags.soloM2 = true` so later phases can read
+  that the branch was taken whatever Earl's state does afterwards. FR1's
+  milestone button names the chapter it leads to.
+- **Fourteen new scenes, `m2_solo_*`**, the same three-round shape as the
+  negotiation: a promoter (Lloyd Perkins dials Tri-County, or Duke dials
+  them himself, or Dot Kessler's Friday card at the Smithson Speedway for
+  twelve percent of the gate and nothing if it rains), a bank (Garrett Pyle:
+  collateral on everything Duke owns, or walk out and do it on plywood and
+  favors, or Tommy co-signs in his work boots), and Duke's own arithmetic at
+  Cal's calculator, which ends on the car show and whether to book it before
+  the page can pay for the cars. `m2_solo_close` ends where `m2_sign` ends:
+  `m2Complete`, `next:'fr2_hub_open'`. Six flags carry the answers
+  (`soloM2`, `soloCircuit`, `soloBank`, `soloPlan`, and `perkinsBooking` /
+  `perkinsFee` written by the four FR1 Perkins outcomes); all are read by
+  truthiness or an equality test and none needed `freshState`.
+- **Free Roam 2's backer-less card set.** With no Earl there is no advance:
+  `fr2_debt_01` is the only card on the board until it is played, every
+  evening is locked behind it, and the Milestone 3 button waits (#266).
+  "Borrow from Earl" is `_requires`-hidden, and `debtSource` is finally read
+  — `fr2_close`'s solo arm says who got paid. Eleven lines across
+  `fr2_hub_open`, `fr2_eve_cal`, `fr2_eve_practice`, `fr2_eve_press`,
+  `fr2_danny_01`, `fr2_debt_01`, `fr2_debt_bank` and `fr2_debt_tommy`
+  became `N(fn)`/`C(name, fn)` branches; `fr2_close` became a `get lines()`
+  because the closing phone call has a different speaker. The Sandra thread
+  turned out to be the best of them: Earl's office tells the story either
+  way, and on this branch the story is the rider who said no.
+- `triggerStatUpdate` accepts a function for `reason`, so a stat screen's
+  one line can depend on state without duplicating the scene.
+
+**Verification.** A fifth transcript plan, `no_earl_solo`, declines Perkins
+in FR1 so the solo entry has to go back to him, dials the promoters itself,
+walks out of the bank, books the cars it cannot pay for, and self-funds the
+twelve hundred; with `no_earl` taking the first answer at every solo fork,
+every one of the fourteen scenes is read by a committed transcript.
+`smoke-page.mjs` plays a third full run that answers "Not interested" and
+asserts it enters `m2_solo_entry` and never `m2_entry*` or `m2_sign`, that
+`fr2_debt_01` precedes every other FR2 card, that `fr2_debt_earl` is never
+offered, that `rels.earl` is `'absent'` on the ending screen and `soloM2` is
+in the save, and that the run reaches the Milestone 5 decision with no page
+errors. All five transcripts diffed before and after; the three backer runs
+moved by nothing but stunt scores (±1, real-time physics under software
+rendering, inconclusive per #53).
+
+**Left for the next increment, and written into the row:** M3, M4 and the
+epilogue still read as a backer run — `m3_entry`'s sponsor logo and TV crew,
+`m4_entry`'s "Earl has proposals", `fr4_close`, and the eight endings against
+a run with no backer. FR3 and FR4 already hide their Earl cards on
+`'absent'`, so the run finishes; it just does not yet notice.
 
 ---
 

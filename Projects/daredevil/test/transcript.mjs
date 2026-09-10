@@ -59,6 +59,25 @@ const RUNS = {
       { on: 'Not interested' },
     ],
   },
+  // The other way through the backer-less Milestone 2 (Phase 1). `no_earl`
+  // above takes the first answer at every solo fork: Perkins dials, paper on
+  // the bike, the slow page, then the bank again for the twelve hundred. This
+  // one declines Perkins in Free Roam 1 so the solo entry has to go back to
+  // him, then dials the promoters itself, walks out of the bank, books the car
+  // show before it can pay for the cars, and self-funds the debt. Between the
+  // two, every solo scene is read by a committed transcript.
+  no_earl_solo: {
+    name: 'Wade Corliss', town: 'Harlow Bend',
+    stunt: 'good',
+    rules: [
+      { on: 'Not interested' },
+      { on: "I'll pass for now" },
+      { on: 'Give me the names' },
+      { on: 'Forget the note' },
+      { on: 'Book it' },
+      { on: 'Self-fund' },
+    ],
+  },
   // Turns the Young Wannabe down at the gas station, so wannabeMet never gets
   // set and rels.pete stays undefined for the whole run — the "thread never
   // opened" case, not the "opened then walked away" case fr2_pete_soft covers.

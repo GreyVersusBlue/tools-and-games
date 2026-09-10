@@ -815,7 +815,7 @@ fr1_org_counter: {
     C('ORGANIZER', `Not saying that as a threat. Just — I've seen this go a few ways.`),
     N(`He said it like someone who'd watched a few too many county fair acts reach the edge of what county fairs could hold.`),
   ],
-  statUpdate:{ title:'$135 and a Name in Print', reason:'You pushed. He moved. First real negotiation.', deltas:{ hustle:0 }, flags:{ fairOrganizerDone:true } },
+  statUpdate:{ title:'$135 and a Name in Print', reason:'You pushed. He moved. First real negotiation.', deltas:{ hustle:0 }, flags:{ fairOrganizerDone:true, perkinsBooking:'booked', perkinsFee:135 } },
   next:'_hub_fr1'
 },
 fr1_org_accept: {
@@ -828,7 +828,7 @@ fr1_org_accept: {
     N(`He liked it because it meant he'd won. Duke knew that about five seconds after he said it.`),
     N(`He took the deal. He didn't think about it again right away. He thought about it later, once.`),
   ],
-  statUpdate:{ title:'Done Deal', reason:'Clean. Fast. Lloyd got the better end.', deltas:{}, flags:{ fairOrganizerDone:true } },
+  statUpdate:{ title:'Done Deal', reason:'Clean. Fast. Lloyd got the better end.', deltas:{}, flags:{ fairOrganizerDone:true, perkinsBooking:'booked', perkinsFee:120 } },
   next:'_hub_fr1'
 },
 fr1_org_wait: {
@@ -846,7 +846,7 @@ fr1_org_wait: {
     C('ORGANIZER', `I can do a hundred and forty. But I'd need an answer by end of the week.`),
     D(`That works.`),
   ],
-  statUpdate:{ title:'$140 — Hustle Pays', reason:`Strategic delay. He respected that you had other conversations — even the forty-percent-true kind.`, deltas:{ hustle:1 }, flags:{ fairOrganizerDone:true } },
+  statUpdate:{ title:'$140 — Hustle Pays', reason:`Strategic delay. He respected that you had other conversations — even the forty-percent-true kind.`, deltas:{ hustle:1 }, flags:{ fairOrganizerDone:true, perkinsBooking:'booked', perkinsFee:140 } },
   next:'_hub_fr1'
 },
 fr1_org_decline: {
@@ -865,7 +865,7 @@ fr1_org_decline: {
     N(`Duke watched him walk back toward the fairground parking lot.`),
     N(`He didn't know yet if that was the right call. He'd know at Milestone 2.`),
   ],
-  statUpdate:{ title:'Table Stays Clean', reason:`"I'd rather not overcommit." Sometimes that's the right move.`, deltas:{}, flags:{ fairOrganizerDone:true } },
+  statUpdate:{ title:'Table Stays Clean', reason:`"I'd rather not overcommit." Sometimes that's the right move.`, deltas:{}, flags:{ fairOrganizerDone:true, perkinsBooking:'declined' } },
   next:'_hub_fr1'
 },
 
@@ -1062,13 +1062,11 @@ m2_entry_waited: {
   art:'m2', artLabel:'Milestone 2',
   bgText:'THE OFFER',
   lines:[
-    N(()=> GS.rels.earl === 'absent'
-      ? `Earl's office. Duke hadn't called. He'd told the man to lose his number, and the man had left a card on a ramp anyway, and here they both were three weeks later — Earl's people had tracked him down through Perkins.`
-      : `Earl's office. He'd kept Duke waiting a week and a half before calling back, and Duke had let him — the calculation being that a man who called first was the buyer, not the seller.`),
+    N(`Earl's office. He'd kept Duke waiting a week and a half before calling back, and Duke had let him — the calculation being that a man who called first was the buyer, not the seller.`),
     N(`Earl was standing when they came in. He let them sit first.`),
-    C('EARL',()=> GS.rels.earl === 'absent' ? `You're a hard man to reach.` : `You made me work for it.`),
-    D(()=> GS.rels.earl === 'absent' ? `I told you I wasn't interested.` : `You said call when I was ready.`),
-    C('EARL',()=> GS.rels.earl === 'absent' ? `You told me a lot of things. I heard the part that mattered.` : `Fair enough.`),
+    C('EARL',`You made me work for it.`),
+    D(`You said call when I was ready.`),
+    C('EARL',`Fair enough.`),
     N(`He sat. He put his hands on the table in the way of a man who had done this a hundred times and planned to do it a hundred more.`),
     C('EARL',`Forty percent. That's the opening number.`),
     N(`Duke had read the contract. He knew what forty percent meant in practice. He also knew what the insurance clause on page three meant.`),
@@ -1555,6 +1553,297 @@ m2_sign: {
 },
 
 /* ============================================================
+   MILESTONE 2 — SOLO. The backer-less middle game (Phase 1, shape B).
+   Reached only from _chapter_m2 when GS.rels.earl === 'absent': the
+   player said "Not interested" at the fair and nothing since has
+   changed that. The same three-round shape as the negotiation above —
+   a promoter, a bank, and Duke's own arithmetic — and it ends where
+   m2_sign ends, at fr2_hub_open, so Free Roam 2 opens on the same scene.
+   Every line that depends on state is a function; nothing here joins
+   patchDynamicScenes().
+   ============================================================ */
+m2_solo_entry: {
+  art:'m2', artLabel:'Milestone 2 · Solo',
+  bgText:'NO CONTRACT',
+  lines:[
+    N(`There was no office. There was the kitchen table, the notebook, and the card Earl had left on the ramp, which was in the drawer under the phone book because throwing it away had felt like a statement and keeping it out had felt like another one.`),
+    N(()=> GS.flags.stuntOutcome === 'crash_bad'
+      ? `His left shoulder still did the thing when he reached across himself. He'd stopped mentioning it. Nobody was sending a card through Cal about it, either, because nobody was sending anything.`
+      : `Three weeks since the fair. The phone had rung twice. Once was Tommy. Once was a man selling aluminum siding.`),
+    N(()=> GS.flags.perkinsBooking === 'booked'
+      ? `Lloyd Perkins had next August in writing — $${GS.flags.perkinsFee || 120} and a name in the program. August was eleven months off. Eleven months was a long time to be a marquee act with no marquee.`
+      : GS.flags.perkinsBooking === 'declined'
+      ? `He'd told Lloyd Perkins he'd pass for now, to keep the table clean for a conversation he had then ended in two words. The table was clean. There was nothing on it.`
+      : `Lloyd Perkins had said something about next August, back at the fair, and Duke had never followed up. It was the only lead he had that came with a phone number.`),
+    N(`He'd made ninety dollars at the fair. He had the truck, the bike, a trailer with one bad tire, and a mechanic who had not asked once what the plan was, which meant he was waiting to be told.`),
+    N(`Cal came by at seven. He sat down across the table and looked at the notebook upside down.`),
+    C('CAL',`What's that?`),
+    D(`A list.`),
+    C('CAL',`Of what?`),
+    D(`People who book things.`),
+    N(`Cal read it upside down. It was not a long list.`),
+    C('CAL',`Maddox would've made these calls.`),
+    D(`Maddox would've taken forty percent to make these calls.`),
+    C('CAL',`I'm not arguing. I'm saying it's the trade.`),
+    N(`He thought: three calls. A man who books rooms, a man who lends money, and the arithmetic. He thought: nobody makes them for you. That was the whole idea.`),
+  ],
+  next:'m2_solo_round1'
+},
+
+/* --- SOLO ROUND 1: THE PROMOTER --- */
+m2_solo_round1: {
+  art:'m2', artLabel:'Solo · Round 1 · The Promoter',
+  bgText:'THE ROOMS',
+  lines:[
+    N(()=> GS.flags.perkinsBooking === 'declined'
+      ? `Perkins took the call like a man who had once written "difficult" on a clipboard and was now being proven right. He didn't say so. He let Duke get all the way through the sentence.`
+      : `Perkins took the call on the second ring. He had the clipboard voice on before Duke finished saying his name.`),
+    C('ORGANIZER',()=> GS.flags.perkinsBooking === 'declined'
+      ? `Changed your mind about August, then.`
+      : `Mr. Harlan. August is still August. What can I do for you?`),
+    D(()=> GS.flags.perkinsBooking === 'declined' ? `About August. And about between now and August.` : `I need between now and August.`),
+    N(`A pause with paper in it.`),
+    C('ORGANIZER',`I book one fair. I know the people who book the others. That's a different thing from being able to book them for you.`),
+    D(`I know the difference.`),
+    C('ORGANIZER',`Alright. Here's what there is. Tri-County runs a Saturday program through October — fifty, sixty dollars a show, gravel lots, they'll want the cows. And there's the Smithson Speedway. Dot Kessler runs a Friday night card there and she's been asking me who the motorcycle was. She doesn't pay a fee. She pays a cut of the gate, and if it rains you drive home with nothing.`),
+    N(`He thought: Earl would have had the Speedway on the phone before the sentence was over. He thought: Earl would also have had the gate.`),
+  ],
+  choices:[
+    { label:'A', text:`"Make the Tri-County calls. I'll take the Saturdays."`, subtext:'Small, steady, and somebody else dials. He will want something for it.', effects:{}, goto:'m2_solo_perkins_calls' },
+    { label:'B', text:`"Give me the names. I'll call them myself."`, subtext:'No middleman. You get talked down by strangers instead of friends.', effects:{ stats:{ hustle:1 } }, goto:'m2_solo_perkins_names' },
+    { label:'C', text:`"Give me Dot Kessler's number."`, subtext:'The bigger room. A cut of the gate, and nothing if it rains.', effects:{ stats:{ nerve:1 } }, goto:'m2_solo_kessler' },
+  ]
+},
+
+m2_solo_perkins_calls: {
+  art:'m2', artLabel:'Solo · Perkins Dials',
+  bgText:'SATURDAYS',
+  lines:[
+    D(`Make the calls. I'll take the Saturdays.`),
+    C('ORGANIZER',`I can do that.`),
+    N(`He could. It took him four days and he came back with six Saturdays at fifty-five dollars, the cows, a lot in Tri-County that was mostly gravel, and one condition.`),
+    C('ORGANIZER',()=> GS.flags.perkinsBooking === 'booked'
+      ? `August stays where it is. Same number we agreed. I don't want to hear about a bigger offer in July.`
+      : `August. Marquee, a hundred and twenty, and I don't want to hear about a bigger offer in July.`),
+    D(`Done.`),
+    N(`No percentage. No paper past a handshake. Six Saturdays that added up to three hundred and thirty dollars if it didn't rain on any of them, and a man who now felt, correctly, that Duke owed him one.`),
+    N(`He thought: that's the shape of it without Earl. Smaller numbers, and you can count the people you owe on one hand.`),
+  ],
+  statUpdate:{ title:'Six Saturdays', reason:'Perkins dialed. Fifty-five a show, the cows, and August locked. You owe him one.', deltas:{}, flags:{ soloCircuit:'perkins', perkinsBooking:'booked' } },
+  next:'m2_solo_round2_enter'
+},
+
+m2_solo_perkins_names: {
+  art:'m2', artLabel:'Solo · Your Own Voice',
+  bgText:'THE PAY PHONE',
+  lines:[
+    D(`Give me the names. I'll call them myself.`),
+    N(`Perkins gave him the names. He gave them a little slowly, the way a man hands over something he thinks you're going to drop.`),
+    N(`Duke made the calls from the pay phone outside the auto parts store, because the kitchen phone was a party line and the woman two houses down had opinions about motorcycles.`),
+    N(`Tri-County offered sixty. He asked for seventy-five and got sixty. A fair in the next county over offered forty-five and a place to park the trailer, and when he asked for more the man said "Son, I don't know who you are," which was accurate.`),
+    N(`He got five dates. He wrote each one down with the number next to it. Two hundred and eighty-five dollars, if it didn't rain.`),
+    N(`He thought: Earl gets seventy-five where I get sixty, and he gets it in one call. He thought: Earl also keeps thirty of it. He did that arithmetic twice and it came out the same both times, which was the annoying part.`),
+  ],
+  statUpdate:{ title:'Five Dates, Your Voice', reason:'Talked down by strangers. Two hundred and eighty-five dollars nobody takes a cut of.', deltas:{}, flags:{ soloCircuit:'self' } },
+  next:'m2_solo_round2_enter'
+},
+
+m2_solo_kessler: {
+  art:'m2', artLabel:'Solo · Dot Kessler',
+  bgText:'THE GATE',
+  lines:[
+    D(`Give me Dot Kessler's number.`),
+    N(`Perkins gave it to him and said "she's direct" in the tone of a man who had been on the receiving end.`),
+    N(`She was. She met him in the Speedway's ticket booth, which was where she did business because it had the only working heater.`),
+    C('KESSLER',`Perkins says you jumped three cows and a man in a hat tried to buy you.`),
+    D(`That's about the size of it.`),
+    C('KESSLER',`I don't buy anybody. I've got a Friday night card, a grandstand that holds nineteen hundred, and a gate that averages eleven. You go on between the modifieds and the feature. Twelve percent of the gate.`),
+    D(`Fifteen.`),
+    C('KESSLER',`Twelve. You're not the reason they're here yet. Be the reason and we'll talk.`),
+    N(`Twelve percent of eleven hundred people at a dollar and a half was a hundred and ninety-eight dollars on a good Friday and nothing on a wet one. She said the last part herself so he wouldn't have to.`),
+    C('KESSLER',`No fee. No advance. I don't hold your money and I don't hold your leash. You want somebody to do either of those, Perkins says you already met him.`),
+    N(`He thought: that's the opposite of the man in the hat. He thought: it's also nothing at all if it rains.`),
+    D(`Fridays. Twelve percent.`),
+    C('KESSLER',`Bring your own cows.`),
+  ],
+  statUpdate:{ title:'Twelve Percent of Whatever Shows Up', reason:'The Speedway. No fee, no advance, no leash. Bring your own cows.', deltas:{}, flags:{ soloCircuit:'speedway' } },
+  next:'m2_solo_round2_enter'
+},
+
+/* --- SOLO ROUND 2: THE BANK --- */
+m2_solo_round2_enter: {
+  art:'m2', artLabel:'Solo · Round 2',
+  bgText:'THE BANK',
+  lines:[
+    N(`Dates were one problem. The dates cost money before they paid any. A second set of ramps, because the ones he had did not travel. The trailer tire. Gas to Tri-County and back six times. Cal's parts invoice, which Cal had not mentioned, which was how Duke knew it was overdue.`),
+    N(`He added it up. Four hundred and ten dollars he did not have, needed by a Saturday he already had booked.`),
+    N(`He thought: this is the part Earl's forty percent was for. Not the calls. This.`),
+  ],
+  next:'m2_solo_round2'
+},
+
+m2_solo_round2: {
+  art:'m2', artLabel:'Solo · Round 2 · The Bank',
+  bgText:'COLLATERAL',
+  lines:[
+    N(`The loan officer at Buford County Savings was a man named Garrett Pyle, who had grown up two streets over from Duke and had last spoken to him at a funeral five years ago.`),
+    N(`He looked at the application the way he would have looked at a motorcycle parked in his lobby.`),
+    C('PYLE',`Four hundred and ten dollars.`),
+    D(`That's right.`),
+    C('PYLE',`For ramps.`),
+    D(`And a tire.`),
+    C('PYLE',`Who's behind you on this? Is there a promoter? A sponsor?`),
+    D(`No.`),
+    N(`Pyle wrote that down. Duke watched him write it. It was one word and it took him a while.`),
+    C('PYLE',`Then it's a personal note and I need collateral or a co-signer. Bank policy. I'm not being difficult.`),
+    N(`He was being a little difficult. He was also right, which was worse.`),
+  ],
+  choices:[
+    { label:'A', text:`"The equipment. The bike, the truck, the trailer."`, subtext:'Put up everything you own. Twelve months, eight percent, real.', effects:{}, goto:'m2_solo_bank_collateral' },
+    { label:'B', text:`"Forget the note. I'll do it on cash."`, subtext:'Walk out with nothing but your own name. Then make the math work.', effects:{ stats:{ hustle:1 } }, goto:'m2_solo_bank_walk' },
+    { label:'C', text:`"Tommy'll co-sign."`, subtext:"He would. He\'ll never mention it. You\'ll both know.", effects:{}, goto:'m2_solo_bank_tommy' },
+  ]
+},
+
+m2_solo_bank_collateral: {
+  art:'m2', artLabel:'Solo · Paper on the Bike',
+  bgText:'EIGHT PERCENT',
+  lines:[
+    D(`The equipment. The bike, the truck, the trailer.`),
+    C('PYLE',`A motorcycle. A truck with — how many miles?`),
+    D(`A lot.`),
+    C('PYLE',`And a trailer with a bad tire, against which you are borrowing money to fix the tire.`),
+    D(`That's the shape of it.`),
+    N(`Pyle looked at him for a long moment. Then he did the thing Duke had not expected, which was laugh, once, and approve it.`),
+    C('PYLE',`Four hundred and ten. Twelve months. Eight percent. If you go off a ramp wrong, this bank owns a motorcycle it does not want.`),
+    D(`Then I won't.`),
+    N(`The monthly number was thirty-seven dollars. He wrote it in the notebook on its own page. It was the first number in there that was going to arrive whether he did or not.`),
+  ],
+  statUpdate:{ title:'Paper on the Bike', reason:'Thirty-seven dollars a month, twelve times, rain or not. Pyle owns the downside now.', deltas:{}, flags:{ soloBank:'collateral' } },
+  next:'m2_solo_round3'
+},
+
+m2_solo_bank_walk: {
+  art:'m2', artLabel:'Solo · On Cash',
+  bgText:'NO NOTE',
+  lines:[
+    D(`Forget the note. I'll do it on cash.`),
+    C('PYLE',`You don't have the cash. That's why you're here.`),
+    D(`I'll have it.`),
+    N(`He got up. Pyle didn't. Pyle looked, briefly, like a man who wanted to say something that wasn't bank policy, and then didn't.`),
+    C('PYLE',`The offer stands if you change your mind. Collateral or a co-signer.`),
+    D(`I know where you are.`),
+    N(`He built the second set of ramps out of the first set and two sheets of three-quarter plywood from the lumber yard, on credit, which was a loan by another name and he knew it. Cal welded the frame and did not send an invoice for the welding, which was another one.`),
+    N(`The tire he bought used. It was fine. It was fine for about five weeks.`),
+    N(`He thought: nobody holds paper on the bike. He thought: four people hold something smaller instead, and none of them wrote it down, and that is not the same thing as free.`),
+  ],
+  statUpdate:{ title:'On Cash', reason:'No note. Plywood on credit, a used tire, and favors nobody wrote down.', deltas:{}, flags:{ soloBank:'none' } },
+  next:'m2_solo_round3'
+},
+
+m2_solo_bank_tommy: {
+  art:'m2', artLabel:'Solo · A Second Name',
+  bgText:'CO-SIGNED',
+  lines:[
+    D(`Tommy'll co-sign.`),
+    N(`Tommy co-signed. He did it on his lunch break from the lot job, in work boots, and he read the whole form, which Duke had not expected, and then signed it without asking a single question, which he had.`),
+    C('TOMMY',`That it?`),
+    D(`That's it.`),
+    C('TOMMY',`Alright. I've got to get back.`),
+    N(`He went. Pyle stamped the thing. Four hundred and ten dollars, twelve months, eight percent, and a second name under Duke's that would be there for a year whether either of them thought about it or not.`),
+    N(`At the bar that weekend Tommy did not mention it. He did not mention it so carefully that it was in the room the whole time, sitting between them like a third glass.`),
+    N(`He thought: Earl would have held the number. Tommy's holding it instead, and Tommy will never say so, and that's worse in a way he couldn't have explained to Pyle.`),
+  ],
+  statUpdate:{ title:'A Second Name', reason:"Tommy co-signed in his work boots and read the whole form. He'll never mention it.", deltas:{}, flags:{ soloBank:'tommy' } },
+  next:'m2_solo_round3'
+},
+
+/* --- SOLO ROUND 3: THE ARITHMETIC --- */
+m2_solo_round3: {
+  art:'m2', artLabel:'Solo · Round 3 · The Arithmetic',
+  bgText:'THE MATH',
+  lines:[
+    N(`Round three was at the garage, because that was where the calculator was. It was Cal's and it had grease in the keys.`),
+    N(()=> GS.flags.soloCircuit === 'speedway'
+      ? `Twelve percent of a Friday gate that averaged eleven hundred. Perkins in August. The cows, the gas, the tire.`
+      : GS.flags.soloCircuit === 'self'
+      ? `Five dates at his own numbers. Perkins in August, maybe. The cows, the gas, the tire.`
+      : `Six Saturdays at fifty-five. Perkins in August. The cows, the gas, the tire.`),
+    N(()=> GS.flags.soloBank === 'collateral'
+      ? `Thirty-seven dollars a month to Pyle, on its own line, underlined.`
+      : GS.flags.soloBank === 'tommy'
+      ? `Thirty-seven dollars a month to Pyle, on its own line, with Tommy's name next to it in Duke's handwriting because it had felt wrong to leave it off.`
+      : `No line for the bank. Four favors that didn't fit on a line.`),
+    N(`It came out ahead. Barely. It came out ahead the way a man comes out ahead of a dog that has stopped chasing him.`),
+    N(`Cal looked at the page for a while.`),
+    C('CAL',`There's no line for when you go down.`),
+    D(`I'm not going down.`),
+    C('CAL',`Everybody's not going down. Maddox had a clause for it. Page three. You'd have hated it and it would've paid the hospital.`),
+    N(`That was true. Duke had not read the contract, because he had not taken the contract, and Cal knew that, and had read it anyway, because somebody should.`),
+    D(`What's the number?`),
+    C('CAL',`For a bad one? More than everything on that page.`),
+    N(`He thought: that's the trade. Nobody takes forty percent. Nobody catches you, either.`),
+    N(`Then Cal said the other thing, the thing he'd come to say.`),
+    C('CAL',()=> GS.flags.soloCircuit === 'speedway'
+      ? `Kessler's people were asking about a car show. Season closer at the Speedway. Five cars. Somebody's got to buy the cars.`
+      : `Perkins says the Speedway's doing a car show for the season closer. Five cars. They asked him who the motorcycle was. Somebody's got to buy the cars.`),
+  ],
+  choices:[
+    { label:'A', text:`"We don't book the cars until we can pay for the cars."`, subtext:'Slow. Cows all fall; the car show when the page says so.', effects:{ stats:{ precision:1 } }, goto:'m2_solo_plan_slow' },
+    { label:'B', text:`"Book it. I'll find the money when it's due."`, subtext:'Fast. Five cars on a page that barely holds three cows.', effects:{ stats:{ nerve:1 } }, goto:'m2_solo_plan_fast' },
+  ]
+},
+
+m2_solo_plan_slow: {
+  art:'m2', artLabel:'Solo · The Slow Page',
+  bgText:'WHEN THE PAGE SAYS',
+  lines:[
+    D(`We don't book the cars until we can pay for the cars.`),
+    C('CAL',`Alright.`),
+    N(`He said it the way he said everything he agreed with, which was exactly the way he said everything he didn't.`),
+    N(`Duke wrote it at the bottom of the page. Cows through October. Cars when the page says cars.`),
+    N(`He thought: this is what it looks like when nobody's pushing. He thought: it looks slow. He thought: it looks like mine.`),
+  ],
+  statUpdate:{ title:'Cars When the Page Says Cars', reason:'Slow, and yours. Cows through October.', deltas:{}, flags:{ soloPlan:'slow' } },
+  next:'m2_solo_close'
+},
+
+m2_solo_plan_fast: {
+  art:'m2', artLabel:'Solo · Booked Anyway',
+  bgText:'FIND IT',
+  lines:[
+    D(`Book it. I'll find the money when it's due.`),
+    N(`Cal didn't say anything for long enough that it counted as saying something.`),
+    C('CAL',`That's a Maddox sentence.`),
+    D(`Maddox would've found it by now.`),
+    C('CAL',`Maddox would've *had* it by now. Different thing.`),
+    N(`Duke wrote it at the bottom of the page anyway. Season closer. Five cars. A number he didn't have next to a date he did.`),
+    N(`He thought: that's the whole difference, right there in Cal's grammar. Had it. Find it.`),
+  ],
+  statUpdate:{ title:'Booked It Anyway', reason:'Five cars on a page that barely holds three cows. Cal called it a Maddox sentence.', deltas:{}, flags:{ soloPlan:'fast' } },
+  next:'m2_solo_close'
+},
+
+m2_solo_close: {
+  art:'m2', artLabel:'Solo · No Signature',
+  bgText:'NOBODY\'S',
+  lines:[
+    N(`There was no handshake, because there was nobody to shake with. Cal turned the calculator off and put it back in the drawer with the feeler gauges.`),
+    N(`The drive home was quiet. Duke thought about the page — the dates, the thirty-seven dollars or the favors, the line Cal had said wasn't there.`),
+    N(`He thought: nobody called him *son* tonight. He thought: nobody's going to.`),
+    N(`He didn't know yet whether that was the good version or the other one. He was about to find out.`),
+  ],
+  statUpdate:{
+    title:'No Deal Signed',
+    reason:'Nobody holds a percentage. Nobody makes the calls, either. The bigger world starts Saturday, if you can get there.',
+    deltas:{ hustle:1 },
+    rels:{},
+    flags:{ m2Complete:true }
+  },
+  next:'fr2_hub_open'
+},
+
+/* ============================================================
    FREE ROAM 2 — HUB OPEN
    ============================================================ */
 fr2_hub_open: {
@@ -1562,7 +1851,9 @@ fr2_hub_open: {
   bgText:'BUILDING THE ACT',
   lines:[
     N(`The shows got bigger. Not dramatically — not overnight — but in the way things actually grow, which is incrementally and without announcement until you look back and the county fair is a different category of thing from where you are now.`),
-    N(`Earl's people called about dates. Duke wrote them down in a notebook he kept in the truck. Cal had opinions about the suspension, which turned out to be the right opinions, as Cal's opinions about mechanical things always did.`),
+    N(()=> GS.rels.earl === 'absent'
+      ? `Nobody called about dates. Duke made the calls himself, from the pay phone outside the auto parts store, and wrote what he got in a notebook he kept in the truck. Cal had opinions about the suspension, which turned out to be the right opinions, as Cal's opinions about mechanical things always did.`
+      : `Earl's people called about dates. Duke wrote them down in a notebook he kept in the truck. Cal had opinions about the suspension, which turned out to be the right opinions, as Cal's opinions about mechanical things always did.`),
     N(`There was more to do than there used to be. That was the simple version.`),
   ],
   next:'_hub_fr2'
@@ -1574,7 +1865,9 @@ fr2_eve_cal: {
   bgText:'THE GARAGE',
   _isEvening:true,
   lines:[
-    N(`Cal had said "come by this week" the night of the signing. Duke came by on Thursday.`),
+    N(()=> GS.rels.earl === 'absent'
+      ? `Cal had said "come by this week" the night they did the arithmetic. Duke came by on Thursday.`
+      : `Cal had said "come by this week" the night of the signing. Duke came by on Thursday.`),
     N(`The garage smelled the same as it always had — oil and cold concrete and something electrical that Cal could never quite locate the source of. The bike was up on the stand.`),
     C('CAL',`Left fork seal's been weeping since the fair.`),
     D(`I know.`),
@@ -1584,10 +1877,14 @@ fr2_eve_cal: {
     D(`Can we have that conversation?`),
     C('CAL',`We're having it.`),
     N(`He handed Duke a sketch on the back of an invoice — measurements, load tolerances, a note in the margin that said: *clearance — don't go wider than this.*`),
-    C('CAL',`One other thing. Earl's people are going to want input on the bike setup eventually.`),
+    C('CAL',()=> GS.rels.earl === 'absent'
+      ? `One other thing. Somebody with money's going to show up again. When they do, they're going to want input on the bike setup.`
+      : `One other thing. Earl's people are going to want input on the bike setup eventually.`),
     D(`What do you say when that happens?`),
     C('CAL',`I say the bike does what it does or it doesn't work at all.`),
-    N(`He picked up a wrench. That was the end of the conversation about Earl.`),
+    N(()=> GS.rels.earl === 'absent'
+      ? `He picked up a wrench. That was the end of the conversation about money.`
+      : `He picked up a wrench. That was the end of the conversation about Earl.`),
   ],
   statUpdate:{ title:'The Suspension Talk', reason:'Cal already fixed the seal. He\'s telling you why. That\'s the difference.', deltas:{ precision:1 }, _isEvening:true },
   next:'_hub_fr2'
@@ -1624,7 +1921,9 @@ fr2_eve_practice: {
   lines:[
     N(`He set up a longer approach. Not a different stunt — just more runway, which changed the math in ways that weren't entirely about distance.`),
     N(`He ran it six times. The first three were an argument with the approach. The last three were a conversation with it.`),
-    N(`He thought about the car show on Earl's calendar. Five cars. He'd jumped three cows. The geometry was different in ways he needed to understand before the day of.`),
+    N(()=> GS.rels.earl === 'absent'
+      ? `He thought about the car show on his own page. Five cars, if the page ever said cars. He'd jumped three cows. The geometry was different in ways he needed to understand before the day of.`
+      : `He thought about the car show on Earl's calendar. Five cars. He'd jumped three cows. The geometry was different in ways he needed to understand before the day of.`),
     N(`He worked until the light went and then a little past that.`),
   ],
   statUpdate:{ title:'New Distances', reason:'The cows were a county fair. This is something else. Better to know that now.', deltas:{ precision:1, nerve:1 }, _isEvening:true },
@@ -1660,9 +1959,13 @@ fr2_eve_press: {
   _isEvening:true,
   lines:[
     N(`Sandra called about a feature.`),
-    C('SANDRA',`Regional paper. Not the Courier — the Smithson Standard. They want a half-page spread on the deal with Maddox.`),
+    C('SANDRA',()=> GS.rels.earl === 'absent'
+      ? `Regional paper. Not the Courier — the Smithson Standard. They want a half-page on the rider who turned Earl Maddox down. That's the angle. That's the headline, probably.`
+      : `Regional paper. Not the Courier — the Smithson Standard. They want a half-page spread on the deal with Maddox.`),
     D(`Who told them about Maddox?`),
-    C('SANDRA',`Someone at his office. That's how he works — he announces the talent before the talent knows they're being announced. It's a technique.`),
+    C('SANDRA',()=> GS.rels.earl === 'absent'
+      ? `Someone at his office. He tells the story either way, Duke. If you'd signed, it'd be his find. You didn't, so it's the one that got away, and he still comes out of it as the man with the eye.`
+      : `Someone at his office. That's how he works — he announces the talent before the talent knows they're being announced. It's a technique.`),
     D(`Mm.`),
     C('SANDRA',`Do you want to get ahead of it or react to it?`),
     D(`What do I get ahead of it with?`),
@@ -1671,7 +1974,7 @@ fr2_eve_press: {
     D(`Set it up.`),
     C('SANDRA',`I'll call you Monday.`),
   ],
-  statUpdate:{ title:'The Feature', reason:'Earl announced you before you announced yourself. Now you respond.', deltas:{ showmanship:1, hustle:1 }, _isEvening:true },
+  statUpdate:{ title:'The Feature', reason:()=> GS.rels.earl === 'absent' ? 'Earl told the story of the man who said no before you told it. Now you respond.' : 'Earl announced you before you announced yourself. Now you respond.', deltas:{ showmanship:1, hustle:1 }, _isEvening:true },
   next:'_hub_fr2'
 },
 
@@ -1684,9 +1987,11 @@ fr2_danny_01: {
     N(`Danny was signing something for a kid. He looked up when Duke walked past.`),
     C('DANNY',`Duke Harlan.`),
     D(`Danny.`),
-    C('DANNY',`Heard you signed with Maddox.`),
+    C('DANNY',()=> GS.rels.earl === 'absent' ? `Heard Maddox made you an offer.` : `Heard you signed with Maddox.`),
     D(`News travels.`),
-    C('DANNY',`It does. I had a conversation with his office eight months ago. They passed.`),
+    C('DANNY',()=> GS.rels.earl === 'absent'
+      ? `It does. Heard you passed, too. I had a conversation with his office eight months ago. They passed on me.`
+      : `It does. I had a conversation with his office eight months ago. They passed.`),
     N(`He said it without malice. He was stating a fact and watching to see what Duke did with it.`),
     D(`What did they say?`),
     C('DANNY',`They said I was too polished. Whatever that means.`),
@@ -1829,13 +2134,22 @@ fr2_debt_01: {
   art:'fr2', artLabel:'The Cost',
   bgText:'TWELVE HUNDRED',
   lines:[
-    N(`The next show on Earl's calendar required a specific setup — a row of cars that had to be acquired, positioned, and cleared. The venue didn't cover it. The cars were Duke's problem.`),
+    N(()=> GS.rels.earl !== 'absent'
+      ? `The next show on Earl's calendar required a specific setup — a row of cars that had to be acquired, positioned, and cleared. The venue didn't cover it. The cars were Duke's problem.`
+      : GS.flags.soloPlan === 'slow'
+      ? `He'd said cars when the page said cars. The page said cars in October — the Speedway's season closer, a row of them that had to be acquired, positioned, and cleared. Kessler didn't cover it. Nobody's office was going to. The cars were Duke's problem, which was the deal he'd made at a kitchen table.`
+      : `The season closer needed a row of cars — acquired, positioned, and cleared. Kessler didn't cover it. Nobody's office was going to. The cars were Duke's problem, which was the deal he'd made at a kitchen table, and the money he'd said he'd find was now due.`),
     N(`Twelve hundred dollars. That was the number.`),
-    N(`He'd made eighteen hundred at the last three shows combined. He also had rent, the truck payment, and a parts invoice from Cal that was sitting on the counter.`),
+    N(()=> GS.rels.earl !== 'absent'
+      ? `He'd made eighteen hundred at the last three shows combined. He also had rent, the truck payment, and a parts invoice from Cal that was sitting on the counter.`
+      : GS.flags.soloBank === 'none'
+      ? `He'd made six hundred and forty at the last five shows combined. He also had rent, the truck payment, the lumber yard, and a parts invoice from Cal that was sitting on the counter.`
+      : `He'd made six hundred and forty at the last five shows combined. He also had rent, the truck payment, thirty-seven dollars a month to Pyle, and a parts invoice from Cal that was sitting on the counter.`),
     N(`The math was specific.`),
   ],
   choices:[
-    { label:'A', text:`Borrow from Earl.`, subtext:"He\'ll advance it against the next show. No interest. But he holds the number.", effects:{ flags:{ debtSource:'earl' } }, goto:'fr2_debt_earl' },
+    { label:'A', text:`Borrow from Earl.`, subtext:"He\'ll advance it against the next show. No interest. But he holds the number.", effects:{ flags:{ debtSource:'earl' } }, goto:'fr2_debt_earl',
+      _requires: ()=> GS.rels.earl !== 'absent' },
     { label:'B', text:`Local bank loan.`, subtext:'Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.', effects:{ flags:{ debtSource:'bank' } }, goto:'fr2_debt_bank' },
     { label:'C', text:`Borrow from Tommy.`, subtext:"He has it. He\'ll lend it. That\'ll be a thing.", effects:{ flags:{ debtSource:'tommy' } }, goto:'fr2_debt_tommy' },
     { label:'D', text:`Self-fund. Make the math work.`, subtext:'Cut expenses. Call in favors. Keep it clean.', effects:{ stats:{ hustle:1 }, flags:{ debtSource:'self' } }, goto:'fr2_debt_self' },
@@ -1863,13 +2177,19 @@ fr2_debt_bank: {
   art:'fr2', artLabel:'Debt · Bank',
   bgText:'COLLATERAL',
   lines:[
-    N(`The loan officer at Buford County Savings was a man named Garrett Pyle, who had grown up two streets over from Duke and had last spoken to him at a funeral five years ago.`),
+    N(()=> GS.rels.earl !== 'absent'
+      ? `The loan officer at Buford County Savings was a man named Garrett Pyle, who had grown up two streets over from Duke and had last spoken to him at a funeral five years ago.`
+      : GS.flags.soloBank === 'none'
+      ? `Garrett Pyle had said the offer stood if Duke changed his mind. Duke had changed his mind by twelve hundred dollars.`
+      : `Garrett Pyle already held paper on the bike. He looked like a man being asked how he felt about the truck.`),
     N(`Garrett Pyle looked at the loan application like it was a document he was being asked to sign in another language.`),
     C('PYLE',`What's the collateral?`),
     D(`The equipment. The bike.`),
     C('PYLE',`A motorcycle.`),
-    D(`There's an income stream. The shows. Earl Maddox is the promoter. You know who Earl Maddox is.`),
-    C('PYLE',`I've heard the name.`),
+    D(()=> GS.rels.earl === 'absent'
+      ? `There's an income stream. The shows. Fridays at the Speedway, Perkins in August.`
+      : `There's an income stream. The shows. Earl Maddox is the promoter. You know who Earl Maddox is.`),
+    C('PYLE',()=> GS.rels.earl === 'absent' ? `I've seen the Speedway's gate on a wet night.` : `I've heard the name.`),
     N(`He approved it. Twelve hundred dollars, twelve months, eight percent. Duke drove home and thought about the monthly number and how many shows it took to make that number disappear. Neither number was alarming. They were just real. The realness was new.`),
   ],
   next:'_hub_fr2'
@@ -1879,7 +2199,9 @@ fr2_debt_tommy: {
   art:'fr2', artLabel:'Debt · Tommy',
   bgText:'THE ASK',
   lines:[
-    N(`He hated asking. He asked anyway.`),
+    N(()=> GS.flags.soloBank === 'tommy'
+      ? `He hated asking. He'd asked once already this year, in a bank lobby, and Tommy had read the whole form. He asked anyway.`
+      : `He hated asking. He asked anyway.`),
     D(`I need to borrow twelve hundred.`),
     C('TOMMY',`When do you need it?`),
     D(`By the end of the week.`),
@@ -1915,7 +2237,31 @@ fr2_debt_self: {
 fr2_close: {
   art:'fr2', artLabel:'Free Roam 2 · Close',
   bgText:'MILESTONE 3',
-  lines:[
+  // A getter rather than N(fn) lines: the phone call at the end has a different
+  // speaker on each branch, and C()'s speaker is not a function.
+  get lines(){
+    if(GS.rels.earl === 'absent'){
+      const debt = GS.flags.debtSource;
+      return [
+        N(`By the time Milestone 3 was on the horizon, the shape of things had changed.`),
+        N(`Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. The notebook had dates in it that were two states away, and every one of them was in his own handwriting.`),
+        N(debt === 'bank'
+          ? `He'd made money. He'd spent most of it, and a set amount of it went to Garrett Pyle on the first of every month whether he'd made any or not. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.`
+          : debt === 'tommy'
+          ? `He'd made money. He'd spent most of it, and twelve hundred of it had gone back to Tommy, who had not made it a thing, which was its own kind of thing. Cal said the suspension geometry was right. Sandra had run two pieces.`
+          : `He'd made money. He'd spent most of it, two Saturdays of it selling cars back to the people he'd bought them from. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.`),
+        N(`And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.`),
+        N(`Duke thought about Danny more than he wanted to.`),
+        N(`Then Dot Kessler called about the car show. The real one. Five cars, the Speedway's season closer, and a regional TV crew that was coming for the feature race and would point the camera at whatever was in the lot. No sponsor. The cars were his.`),
+        N(`He listened to the whole pitch without interrupting. It was not a long pitch. She didn't do long.`),
+        N(`When she finished she said:`),
+        C('KESSLER',`Well?`),
+        D(`I think I'm ready.`),
+        N(`A pause. Not a tell. Just a woman in a ticket booth deciding whether to believe him.`),
+        C('KESSLER',`Then be the reason they're here.`),
+      ];
+    }
+    return [
     N(`By the time Milestone 3 was on the horizon, the shape of things had changed.`),
     N(`Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.`),
     N(`He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.`),
@@ -1928,7 +2274,8 @@ fr2_close: {
     D(`I think I'm ready.`),
     N(`A pause. Earl's tell — not tapping a pen. Just quiet.`),
     C('EARL',`Good. Because this one matters.`),
-  ],
+    ];
+  },
   next:'_chapter_m3'
 },
 
