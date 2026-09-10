@@ -3381,6 +3381,48 @@ Two of them have moved since they were written:
    back offers the next chapter over a scene nobody has played. A required
    card is a gate on the hub, not a card in it. *Source: Daredevil Phase 1.*
 
+267. **On the backer-less branch the Vegas offer reaches Duke directly, and
+   the Milestone 5 button reads `fr4_close` on the way out.** Vegas is not
+   Earl's: it is in `fr4_eve_cal` ("Vegas specs came in"), `fr4_eve_tommy`
+   (the entrance), the Milestone 5 chapter card and `fr4_close`, none of
+   which the solo branch can skip. So the man from California exists on
+   both branches — he was in the fourth row at the Speedway, and the crew
+   filmed it — and on the solo branch he gets Duke's number from Kessler's
+   office and calls for himself. `fr4_eve_california` is offered where
+   `fr4_eve_earl` would be, one card or the other by `rels.earl`, with the
+   same three-way shape (take it, paper first, hold the number). The solo
+   Milestone 5 button goes to `fr4_close`, whose solo arm makes the same
+   call without anyone to say "good work" to, as the FR2 button goes
+   through `fr2_close` (#265's increment). The backer button still skips
+   `fr4_close`, which is Phase 2's first bullet, not this one's. *Source:
+   Daredevil Phase 1, increment 2.*
+
+268. **Roy Petersen is the regional crew's cameraman on the solo branch, and
+   Dot Kessler is who meets Duke off the ramp.** Round 4's scenes lean on
+   Roy — his footage of the three seconds after, the shot Fisk has watched
+   three times, the correction he was watching for at Dallas — and on the
+   backer branch he arrives with Earl ("no lawyers, no press contacts, no
+   Roy Petersen"). The solo branch never says who he is. `m3_entry`'s solo
+   arm establishes him as the man behind the feature-race camera who walked
+   over during setup and looked at the ramp, so every later Roy line reads
+   on both branches unchanged. Kessler takes Earl's place at the bottom of
+   the ramp at Milestone 3 and at the tent for the inferno, and the fee
+   envelope replaces the photograph speech after the bad crash. Neither is
+   a new character; both were already in the file. *Source: Daredevil
+   Phase 1, increment 2.*
+
+269. **"One last stunt — Earl picks" is hidden on the solo branch, not
+   reassigned, and the option count on `m5_decision` counts.** Nobody picks
+   a stunt for a man who turned the picker down at the county fair, and
+   handing the choice to Kessler would make her the backer with a different
+   name. The choice carries `_requires: ()=> !solo()`, which leaves seven
+   endings on that branch (six with Pete turned down too). The line above
+   the choices said "Eight options" as a plain literal for three rounds,
+   over seven buttons on every run that declined the Young Wannabe; it now
+   counts what the list below it offers. The Legend career track still
+   requires Earl (`showGameEnd`'s existing rule); that was not re-decided
+   here. *Source: Daredevil Phase 1, increment 2.*
+
 ---
 
 # The site sessions, 1–10
@@ -5685,6 +5727,76 @@ epilogue still read as a backer run — `m3_entry`'s sponsor logo and TV crew,
 `m4_entry`'s "Earl has proposals", `fr4_close`, and the eight endings against
 a run with no backer. FR3 and FR4 already hide their Earl cards on
 `'absent'`, so the run finishes; it just does not yet notice.
+
+## Phase 1 — The backer-less middle game, increment 2 (2026-09-10)
+
+**The finding:** after increment 1, a run that answered "Not interested"
+played a self-financed Milestone 2 and a Free Roam 2 that knew it, then read
+a backer run from Milestone 3 to the ending screen. `grep -c Earl` on the
+`no_earl` transcript from `m3_entry` on came to 31 lines: a sponsor's logo on
+the ramp, Earl at the bottom of it, Earl's phone call about the fist, Earl's
+photograph speech after the bad crash, "Earl had calls to make", "Earl's
+talking about buses", page seven of a contract that was never signed, Earl's
+folder of three proposals, "Earl said son", Earl told first at the
+retirement, and "One last stunt — Earl picks" offered as a choice.
+
+**What shipped.** Decisions #267, #268 and #269. Every one of those lines
+reads `solo()` first — a one-line helper at the top of `scenes.js`,
+`GS.rels.earl === 'absent'` — and says who is there instead.
+
+- **Milestone 3.** `_chapter_m3`'s card, `m3_entry` (the Speedway's back
+  lot, his cars, the crew's camera pointed at the grid, Roy Petersen
+  established), `m3_prestunt_alone`, all four outcomes and `m3_aftermath`.
+  Kessler meets him off the ramp with the cash box ("They came for the
+  race." / "They'll say they came for this."), tells him the last ten feet
+  are what the parking lot will talk about, and after the bad crash brings
+  the fee envelope and Petersen's forty seconds in place of Earl's
+  photograph. After the walk-off crash nobody calls, and Duke runs Earl's
+  three lines about the fist on himself in the truck. Four scenes became
+  `get lines()` because the speaker changes; the rest are `N(fn)`.
+- **Free Roam 3.** `fr3_hub_open`, `fr3_eve_cal` ("I'm thinking about
+  buses"), `fr3_eve_tommy`, and the Sandra thread: no page seven, the
+  second answer is "I need to check something first" against the Speedway's
+  Friday card, the accept arm has nobody to call next and calls Cal, the
+  check arm is four days on the phone with nobody in the middle and a fee
+  against the cars. Choice `text` and `subtext` may now be functions of
+  state, and so may a `statUpdate.title`.
+- **Milestone 4.** `_chapter_m4`'s card, `m4_entry` (Duke's own folder,
+  three proposals in his handwriting, a Friday nobody set but him),
+  `m4_stunt_select` (a Fort Worth lot against a percentage, a school
+  district's buses against a deposit he does not have), the buses triumph
+  (Cal's third "yeah", counted) and the inferno (Kessler at the tent).
+- **Free Roam 4.** `fr4_eve_california` and `fr4_california_close`, the
+  solo branch's evening where Earl's would be (#267); `fr4_eve_cal`'s "Earl
+  sent them"; `fr4_close`'s solo arm; the Milestone 5 button routed through
+  it. The one Earl line increment 1 missed, in `fr2_danny_event`, is Cal at
+  the fence now.
+- **Milestone 5 and the epilogue.** "Earl picks" hidden (#269), the option
+  count counted, `m5_retire_clean` (Cal first, nobody in front of Cal),
+  `m5_walk_quiet` (Kessler figures it out when the season card goes out),
+  `m5_disappear`. `showGameEnd`'s absent line names who booked him and who
+  paid for the cars off `debtSource`, and the retire-clean retrospective
+  panel no longer tells Earl first.
+
+**Verification.** `smoke-page.mjs`'s `playToEnd` now keeps every piece of
+text the run was shown — panel prose, choice labels, stat-update titles and
+reasons, chapter cards, hub cards — tagged with the scene it was on, and the
+solo run asserts that from `m3_entry` to the ending screen none of it
+matches `\bEarl\b` (the solo Milestone 2 and Free Roam 2 name him on
+purpose, as the man who was turned down), that Kessler is in it, that `fr4_eve_california` and
+`fr4_close` are read, that `m4_prestunt_earl_m4` and `fr4_eve_earl` are not,
+and that the first Free Roam 4 board offers the man from California and no
+Earl Maddox card. A sixth transcript plan, `no_earl_crash`, lands the fair
+(a crashed fair never reaches the six-way answer; Earl sends word through
+Cal, and the first version of this plan ended with Earl as Business Partner
+for exactly that reason), says "Not interested", then crashes at the
+Speedway and on the Milestone 4 stunt — `stunt` may now be a list, one
+policy per run — and reads the failure arms, Kessler's option, Tommy's
+co-sign, the third answer at both new forks and the disappearance;
+`no_earl_solo` takes the second answer at both and walks away quietly. All
+six transcripts re-taken and diffed: `clean` moved by one stunt point (#53),
+`rough` by the counted option line only, `no_pete` by that line and two stunt
+points, the three solo runs by the new prose.
 
 ---
 

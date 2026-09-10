@@ -27,6 +27,14 @@
 
 import { GS, N, D, C, NF } from './state.js';
 
+// Phase 1, the backer-less branch. "Not interested" at the fair leaves
+// rels.earl 'absent' from Milestone 2 to the ending screen (decision #265), so
+// from m2_solo_entry on, every line that names Earl, his sponsor, his calendar
+// or his phone reads this first and says who is actually there instead. On the
+// solo branch that is Dot Kessler, the Speedway's promoter, Roy Petersen, the
+// regional crew's cameraman who came for the feature race, and Cal.
+const solo = ()=> GS.rels.earl === 'absent';
+
 export const SCENES = {
 
 /* ============================================================
@@ -2286,8 +2294,12 @@ m3_entry: {
   art:'m3', artLabel:'Milestone 3',
   bgText:'THE BIG BREAK',
   lines:[
-    N(`Five cars. A row of them in a stadium parking lot that smelled like asphalt and sunscreen and the specific kind of hope that collects where large crowds gather.`),
-    N(`The regional TV crew had a camera on a scaffold. The sponsor's logo was on the ramp.`),
+    N(()=> solo()
+      ? `Five cars. A row of them in the Smithson Speedway's back lot, which smelled like asphalt and sunscreen and the specific kind of hope that collects where large crowds gather. His cars. The receipts were in the glovebox.`
+      : `Five cars. A row of them in a stadium parking lot that smelled like asphalt and sunscreen and the specific kind of hope that collects where large crowds gather.`),
+    N(()=> solo()
+      ? `The regional TV crew had a camera on the infield scaffold, pointed at the grid for the feature race. Nothing was on the ramp but the ramp. The man behind the camera — Roy Petersen, the crew called him — had walked over during setup, looked at the ramp for a long time, said nothing, and walked back.`
+      : `The regional TV crew had a camera on a scaffold. The sponsor's logo was on the ramp.`),
     N(`Cal had checked everything twice. He'd been quiet since they arrived, which meant he'd found something he didn't like and fixed it and wasn't going to say what it was.`),
     N(`Duke stood at the end of the approach and looked at the five cars and felt the distance in the way you feel something you've run a thousand times in your head and never once in your body.`),
     N(`He thought: this is the part where you find out.`),
@@ -2354,11 +2366,15 @@ m3_prestunt_alone: {
   lines:[
     N(`He walked the approach a fifth time. Not because he needed to. Because it was something to do that was in the direction of the thing.`),
     N(`Nobody came to find him. He'd stopped expecting them.`),
-    N(`Earl had his own preparations. Cal did the bike and didn't add anything to it. The TV crew was its own organism.`),
+    N(()=> solo()
+      ? `Kessler had a feature race to run. Cal did the bike and didn't add anything to it. The TV crew was the race's, not his.`
+      : `Earl had his own preparations. Cal did the bike and didn't add anything to it. The TV crew was its own organism.`),
     N(`He stood at the lip of the ramp and looked at five cars and thought about the county fair. Three cows. The dirt under his wheels. The crowd.`),
     N(`The crowd here was ten times that. He'd stopped thinking about crowds as a fixed category — there was the county fair crowd and there was this, and the number in between was not a meaningful number, it was just more.`),
     N(`He was not scared. He thought about whether not being scared was itself something to worry about. He decided it wasn't.`),
-    N(`He had no voice in his head telling him anything — no Cal, no Ruthie, no Earl. Just the ramp. Just the five cars. Just him.`),
+    N(()=> solo()
+      ? `He had no voice in his head telling him anything — no Cal, no Ruthie, no promoter with a number. Just the ramp. Just the five cars. Just him.`
+      : `He had no voice in his head telling him anything — no Cal, no Ruthie, no Earl. Just the ramp. Just the five cars. Just him.`),
     N(`He thought: that's information. Not triumph. Not recovery declared.`),
     N(`Just information. He knew what he was doing. He'd go find out.`),
   ],
@@ -2372,17 +2388,32 @@ m3_prestunt_alone: {
 m3_triumph_clean: {
   art:'m3', artLabel:'Milestone 3 · Triumph',
   bgText:'CLEAN',
-  lines:[
+  // A getter, like fr2_close: the person who meets him off the ramp has a
+  // different name on each branch, and C()'s speaker is not a function.
+  get lines(){
+    const head = [
     N(`Clean arc. Clean landing. The back wheel kissed the ramp mat with the specific weight of something that had gone exactly right — every calculation confirmed in the same half-second.`),
     N(`The crowd noise was the kind that doesn't build. It arrives all at once, like a weather event.`),
     N(`Duke held it for a moment — hands on the bars, feet down, the bike still running. He looked at the five cars and then at the scaffold camera and then at Cal, who was standing twenty feet away doing nothing, which was Cal's version of a standing ovation.`),
+    ];
+    if(solo()) return [...head,
+    N(`He rode off the ramp. Nobody was there, which was the arrangement. Then Petersen's camera came off the grid and found him and stayed, and Kessler was walking across the lot from the ticket booth with the cash box under her arm.`),
+    C('KESSLER',`They came for the race.`),
+    D(`I know.`),
+    C('KESSLER',`They'll say they came for this.`),
+    N(`She said it simply. Duke thought about the ticket booth — the pause, the deciding whether to believe him — and thought: she's not deciding any more.`),
+    ];
+    return [...head,
     N(`He rode off the ramp. Earl was there.`),
     C('EARL',`That's what I've been waiting for.`),
     N(`He said it simply. Duke thought about the tell — the three taps — and thought: he's not performing that one.`),
-  ],
+    ];
+  },
   statUpdate:{
     title:'Five Cars Clean',
-    reason:'The TV crew got it. Earl got it. Cal got it. The crowd got it. Nothing left on the table.',
+    reason:()=> solo()
+      ? 'Petersen turned the camera. Kessler got it. Cal got it. The crowd got it. Nothing left on the table.'
+      : 'The TV crew got it. Earl got it. Cal got it. The crowd got it. Nothing left on the table.',
     deltas:{ nerve:2, showmanship:2, precision:1 },
     flags:{ m3Complete:true, m3Outcome:'triumph_clean' }
   },
@@ -2392,21 +2423,35 @@ m3_triumph_clean: {
 m3_triumph_messy: {
   art:'m3', artLabel:'Milestone 3 · Triumph',
   bgText:'HELD IT',
-  lines:[
+  get lines(){
+    const head = [
     N(`He cleared it. The last ten feet were not the plan — the rear wheel kicked on landing and he felt the whole back end slide two feet to the right before his body decided what to do about it, which was: weight left, grip, don't let go.`),
     N(`He didn't let go. The bike straightened. The crowd had already made its noise — the one where nobody was sure yet — and then he was upright and they made a different noise.`),
     N(`He got off the ramp. His hands had that specific vibration in them that isn't quite shaking.`),
+    ];
+    const tail = [
+    N(`Cal looked at the tire marks. He didn't say anything for a while.`),
+    C('CAL',`Rear suspension compressed early. We'll look at it.`),
+    N(`That was Cal's version of: *you made it, let's not do that again.*`),
+    ];
+    if(solo()) return [...head,
+    N(`Kessler came over. She wasn't moving fast, which was how she moved.`),
+    C('KESSLER',`That last ten feet. That's what they'll be talking about in the parking lot.`),
+    D(`I didn't plan that.`),
+    C('KESSLER',`I know. They can't tell.`),
+    ...tail];
+    return [...head,
     N(`Earl came over. He wasn't moving fast, which was the tell.`),
     C('EARL',`That last ten feet — that's what I'm buying.`),
     D(`I didn't plan that.`),
     C('EARL',`I know. That's why I'm buying it.`),
-    N(`Cal looked at the tire marks. He didn't say anything for a while.`),
-    C('CAL',`Rear suspension compressed early. We'll look at it.`),
-    N(`That was Cal's version of: *you made it, let's not do that again.*`),
-  ],
+    ...tail];
+  },
   statUpdate:{
     title:'Five Cars — Held It',
-    reason:"Cleared it messy. The crowd saw the recovery. Earl saw something he can sell. Cal saw something to fix.",
+    reason:()=> solo()
+      ? "Cleared it messy. The crowd saw the recovery. Kessler saw something she can book again. Cal saw something to fix."
+      : "Cleared it messy. The crowd saw the recovery. Earl saw something he can sell. Cal saw something to fix.",
     deltas:{ nerve:1, showmanship:2, condition:-1 },
     flags:{ m3Complete:true, m3Outcome:'triumph_messy' }
   },
@@ -2416,21 +2461,33 @@ m3_triumph_messy: {
 m3_failure_walk: {
   art:'m3', artLabel:'Milestone 3 · Failure',
   bgText:'DOWN',
-  lines:[
+  get lines(){
+    const head = [
     N(`He clipped the fourth car. The bike went sideways and he let it go — the thing you train for, the thing Cal had made him practice until it was reflex: let the bike go, tuck, roll.`),
     N(`He came up in the gravel. His left shoulder took the weight.`),
     N(`The crowd made a sound. Not panic — that specific tight silence of two thousand people waiting to see if something was wrong.`),
     N(`He got up. His left shoulder disagreed with this plan but he got up anyway.`),
     N(`He raised his right fist.`),
     N(`The crowd came back to itself.`),
+    ];
+    if(solo()) return [...head,
+    N(`Cal reached him first. Nobody called that evening. He sat in the truck with the shoulder packed in ice from the concession stand and ran it back himself.`),
+    N(`He thought: the fist. Did I plan that?`),
+    N(`He thought: no.`),
+    N(`He thought: plan it next time.`),
+    ];
+    return [...head,
     N(`Cal reached him first. Earl called that evening.`),
     C('EARL',`The fist. Did you plan that?`),
     D(`No.`),
     C('EARL',`Plan it next time.`),
-  ],
+    ];
+  },
   statUpdate:{
     title:'Down on Four',
-    reason:'The fist mattered. Cal was right about the shoulder. Earl is already thinking about next time.',
+    reason:()=> solo()
+      ? 'The fist mattered. Cal was right about the shoulder. Nobody called, so he is already thinking about next time himself.'
+      : 'The fist mattered. Cal was right about the shoulder. Earl is already thinking about next time.',
     deltas:{ condition:-2, showmanship:1, nerve:-1 },
     flags:{ m3Complete:true, m3Outcome:'failure_walk' }
   },
@@ -2445,9 +2502,13 @@ m3_failure_bad: {
     N(`The landing was wrong in a way that was over before he could correct it. The bike went left, he went right, and the tarmac came up faster than the tarmac was supposed to.`),
     N(`He didn't get up right away.`),
     N(`He knew he should. He'd done it before — the count, the fist, the crowd comes back. He knew the sequence. His body was not interested in the sequence.`),
-    N(`Cal was there. Then the medical crew. He heard Earl's voice somewhere behind him — not close. Assessing.`),
-    N(`He thought: I'm on the ground and I can't tell Earl it's fine because Earl can see it isn't fine.`),
-    N(`He thought: this is going to be a conversation.`),
+    N(()=> solo()
+      ? `Cal was there. Then the medical crew. He heard the track announcer somewhere behind him, over the PA, saying something calm about a delay. Not close. Professional.`
+      : `Cal was there. Then the medical crew. He heard Earl's voice somewhere behind him — not close. Assessing.`),
+    N(()=> solo()
+      ? `He thought: I'm on the ground and there's nobody to tell it's fine. That was the arrangement. It had sounded better in Cal's garage.`
+      : `He thought: I'm on the ground and I can't tell Earl it's fine because Earl can see it isn't fine.`),
+    N(()=> solo() ? `He thought: this is going to be a bill.` : `He thought: this is going to be a conversation.`),
   ],
   next:'_m3_recovery_then_fail'
 },
@@ -2458,7 +2519,9 @@ m3_aftermath: {
   lines:[
     N(`That was one thing taken care of.`),
     N(`Cal loaded the ramp into the trailer without speaking. Duke watched him do it.`),
-    N(`The show had already moved on to whatever comes after a show. The crowd, the sponsor's people, the TV crew folding cable. Earl somewhere doing what Earl did after a show.`),
+    N(()=> solo()
+      ? `The show had already moved on to whatever comes after a show. The crowd, the feature race's winner in the infield, the TV crew folding cable. Nobody doing anything on his behalf, which was the deal he'd made, and which he noticed.`
+      : `The show had already moved on to whatever comes after a show. The crowd, the sponsor's people, the TV crew folding cable. Earl somewhere doing what Earl did after a show.`),
     N(`Duke sat on the tailgate and thought: that was one thing. Now there's another.`),
     N(`There's always another.`),
   ],
@@ -2471,9 +2534,24 @@ m3_aftermath: {
 m3_failure_bad_after: {
   art:'m3', artLabel:'Milestone 3 · Aftermath',
   bgText:'STILL HERE',
-  lines:[
+  get lines(){
+    const head = [
     N(`The medical crew helped him to the folding table behind the gate. He sat. His left hip was going to be a conversation. His right wrist was already changing color.`),
     N(`Cal came and stood next to him and didn't say anything, which was what Duke needed him to do.`),
+    ];
+    if(solo()) return [...head,
+    N(`Kessler came after the feature race, with a bank envelope. She set it on the folding table next to his wrist. Whatever the gate had been, his piece of it was in there, counted.`),
+    C('KESSLER',`How bad?`),
+    D(`I don't know yet.`),
+    C('KESSLER',`The camera was on you.`),
+    D(`I couldn't get up to do the fist.`),
+    C('KESSLER',`No. I know. Petersen stayed on you anyway. Forty seconds, he told me. He's never held a shot forty seconds on my track.`),
+    N(`Duke looked at her.`),
+    C('KESSLER',`A man on the ground who hasn't got up yet is a different picture than the fist. It's not the one you wanted. It's the one they've got.`),
+    N(`Duke thought: she's not wrong. He also thought: I'd rather have the fist.`),
+    N(`He didn't say it. He looked at his wrist. He looked at the envelope. He thought about the next part, which was the part he was going to have to build from, and pay for.`),
+    ];
+    return [...head,
     N(`Earl arrived five minutes later. He sat down across from Duke. He looked at him for a long moment.`),
     C('EARL',`How bad?`),
     D(`I don't know yet.`),
@@ -2484,7 +2562,8 @@ m3_failure_bad_after: {
     C('EARL',`The photograph of a man who went down and hasn't gotten up yet is a different kind of story. It's not the fist. But it's something.`),
     N(`Duke thought: he's not wrong. He also thought: I'd rather have the fist.`),
     N(`He didn't say it. He looked at his wrist. He thought about the next part, which was the part he was going to have to build from.`),
-  ],
+    ];
+  },
   statUpdate:{
     title:'Down — Hard',
     reason:'The crash was the show. Recovery starts now. Cal is already thinking about what comes next.',
@@ -2550,7 +2629,9 @@ fr2_danny_event: {
     N(`Danny showed up. That was the first thing — he actually showed up, which some part of Duke had not completely assumed.`),
     N(`The white leather jacket was gone. He was in red, which was a better call. Someone had advised him.`),
     N(`The crowd was bigger than any Duke had drawn in the county. That was Danny's doing — his people had promoted it, which meant his people were competent, which meant he had people.`),
-    N(`They went in the order determined by a coin flip that Duke won and chose to go second on, which Earl — watching from the fence — nodded at once and only.`),
+    N(()=> solo()
+      ? `They went in the order determined by a coin flip that Duke won and chose to go second on, which Cal — watching from the fence — nodded at once and only.`
+      : `They went in the order determined by a coin flip that Duke won and chose to go second on, which Earl — watching from the fence — nodded at once and only.`),
     N(`Danny went first. Fifty-three feet, clean. The crowd liked it.`),
     N(`Duke's turn.`),
   ],
@@ -3002,7 +3083,9 @@ fr3_hub_open: {
   bgText:'WHAT COMES NEXT',
   lines:[
     N(`The show was done. Not the career — just the show. There was a difference. He was getting better at knowing the difference.`),
-    N(`Earl had calls to make. Cal had a trailer to load. The TV people had their tape.`),
+    N(()=> solo()
+      ? `Cal had a trailer to load. The TV people had their tape. The calls were his to make, and he would make them Monday.`
+      : `Earl had calls to make. Cal had a trailer to load. The TV people had their tape.`),
     N(`Duke sat on the tailgate in the empty lot and looked at where the five cars had been and thought about whatever came after five cars.`),
     N(`There was going to be a whatever-came-after. He'd known it since before the stunt. You don't clear something like that and walk away from the thing that got you there. You walk toward the next version of it.`),
     N(`The circuit was talking. The papers had a story. A man from Los Angeles had been in the fourth row.`),
@@ -3219,7 +3302,7 @@ fr3_eve_cal: {
     C('CAL',`You're going to want more distance.`),
     D(`Probably.`),
     C('CAL',`What are you thinking.`),
-    D(`Earl's talking about buses.`),
+    D(()=> solo() ? `I'm thinking about buses.` : `Earl's talking about buses.`),
     N(`Cal set down the wrench.`),
     N(`That was a thing Cal did when the conversation had moved past maintenance into something else.`),
     C('CAL',`How many.`),
@@ -3267,7 +3350,9 @@ fr3_eve_tommy: {
     D(`But they watch.`),
     C('TOMMY',`Yeah. They watch.`),
     N(`He said it like the two words meant more than two words, which they did.`),
-    C('TOMMY',`I thought I wanted what you have. The big crowds. Earl. Sandra writing about me.`),
+    C('TOMMY',()=> solo()
+      ? `I thought I wanted what you have. The big crowds. The Speedway. Sandra writing about me.`
+      : `I thought I wanted what you have. The big crowds. Earl. Sandra writing about me.`),
     D(`Do you?`),
     N(`Tommy looked at his drink for a while. A real while.`),
     C('TOMMY',`I think I want the twelve people who are there for me.`),
@@ -3336,16 +3421,18 @@ fr3_press_sandra: {
     C('SANDRA',`The regional TV station wants to do a profile. Not a spot — a real feature. Thirty minutes, prime time, regional broadcast.`),
     N(`Duke said nothing.`),
     C('SANDRA',`I'm the reporter attached to it. Meaning I'd write the piece and conduct the interview. The station does the production.`),
-    D(`What does Earl know about this.`),
-    C('SANDRA',`Nothing yet. That's why I'm calling you first.`),
-    N(`Duke thought about that. He thought about page seven of the new contract — the television clause. He thought about Earl's version of first right of refusal.`),
+    D(()=> solo() ? `Who else knows about this.` : `What does Earl know about this.`),
+    C('SANDRA',()=> solo() ? `Nobody yet. That's why I'm calling you first.` : `Nothing yet. That's why I'm calling you first.`),
+    N(()=> solo()
+      ? `Duke thought about that. He thought about the fact that there was no page seven. No television clause, no first right of refusal, nobody's signature on what he could say into a camera but his own. It was the thing he'd chosen. It was also, he noticed, a thing nobody had ever asked him to read.`
+      : `Duke thought about that. He thought about page seven of the new contract — the television clause. He thought about Earl's version of first right of refusal.`),
     N(`He thought about the man from Los Angeles in the fourth row.`),
     D(`How much time do I have.`),
     C('SANDRA',`Two weeks to decide. They want to air before end of quarter.`),
   ],
   choices:[
-    { label:'A', text:`"I'm in. Set it up."`, subtext:'Move fast. Control the narrative before Earl does.', effects:{ stats:{ showmanship:2 }, flags:{ fr3SandraTV:true, sandraResponse:'accept' } }, goto:'fr3_press_sandra_accept' },
-    { label:'B', text:`"I need to check something in my contract first."`, subtext:'Page seven. Earl gets a call.', effects:{ stats:{ hustle:1 }, flags:{ fr3SandraTV:true, sandraResponse:'check' } }, goto:'fr3_press_sandra_check' },
+    { label:'A', text:`"I'm in. Set it up."`, subtext:()=> solo() ? 'Move fast. Nobody else is going to.' : 'Move fast. Control the narrative before Earl does.', effects:{ stats:{ showmanship:2 }, flags:{ fr3SandraTV:true, sandraResponse:'accept' } }, goto:'fr3_press_sandra_accept' },
+    { label:'B', text:()=> solo() ? `"I need to check something first."` : `"I need to check something in my contract first."`, subtext:()=> solo() ? "The Speedway's Friday card. Kessler gets a call." : 'Page seven. Earl gets a call.', effects:{ stats:{ hustle:1 }, flags:{ fr3SandraTV:true, sandraResponse:'check' } }, goto:'fr3_press_sandra_check' },
     { label:'C', text:`"Tell them I want approval over the narrative."`, subtext:'You want control. Sandra will negotiate it.', effects:{ stats:{ showmanship:1, hustle:1 }, flags:{ fr3SandraTV:true, sandraResponse:'control' } }, goto:'fr3_press_sandra_control' },
   ]
 },
@@ -3353,20 +3440,32 @@ fr3_press_sandra: {
 fr3_press_sandra_accept: {
   art:'fr3', artLabel:'Free Roam 3 · Day',
   bgText:'SET IT UP',
-  lines:[
+  get lines(){
+    const head = [
     D(`I'm in. Set it up.`),
     N(`A pause.`),
     C('SANDRA',`That's fast.`),
     D(`Is that a problem?`),
     C('SANDRA',`No. I just — okay. I'll set it up.`),
+    ];
+    const feature = N(`The feature ran six weeks later. Thirty minutes, prime time. Sandra asked two questions that were harder than they sounded. Duke answered them the way he'd learned to answer things: directly, and only as much as was true.`);
+    if(solo()) return [...head,
+    N(`Duke hung up. He noticed there was nobody to call next — that on the other side of things, this was where you called the man with the calendar. He called Cal.`),
+    C('CAL',`Okay.`),
+    N(`That was the whole call.`),
+    feature,
+    N(`The man from Los Angeles called the Speedway office the day after it aired. Kessler gave him Duke's number, and then called Duke to say she had.`),
+    ];
+    return [...head,
     N(`Duke hung up and then called Earl, which was the right order. He told Earl what was happening. Earl was quiet for a moment.`),
     C('EARL',`You called her before me.`),
     D(`She called me first.`),
     C('EARL',`I see.`),
     N(`He said it in a way that had two meanings. Duke filed both of them.`),
-    N(`The feature ran six weeks later. Thirty minutes, prime time. Sandra asked two questions that were harder than they sounded. Duke answered them the way he'd learned to answer things: directly, and only as much as was true.`),
+    feature,
     N(`The man from Los Angeles called Earl the day after it aired.`),
-  ],
+    ];
+  },
   statUpdate:{
     title:'Regional TV Feature',
     reason:"Thirty minutes, prime time. The profile ran. The man from LA made the call.",
@@ -3380,19 +3479,27 @@ fr3_press_sandra_check: {
   art:'fr3', artLabel:'Free Roam 3 · Day',
   bgText:'PAGE SEVEN',
   lines:[
-    D(`I need to check something in my contract first.`),
-    C('SANDRA',`The television clause.`),
+    D(()=> solo() ? `I need to check something first.` : `I need to check something in my contract first.`),
+    C('SANDRA',()=> solo() ? `The Friday card.` : `The television clause.`),
     D(`You know about it.`),
     C('SANDRA',`I'm a reporter.`),
     N(`Duke thought: of course she does.`),
     D(`I'll call you in two days.`),
-    N(`He called Earl. Earl already knew — Sandra had apparently reached out to him the same day, which was Sandra being a reporter.`),
-    N(`The negotiation between Earl and the station, with Duke in the middle, lasted four days. The result: Duke did the feature, Earl got a consulting credit and a production fee, and Sandra wrote the piece the way she wrote all her pieces — without asking anyone's permission for the important parts.`),
-    N(`Duke thought: it worked out. He also thought: Earl will do something with that consulting credit.`),
+    N(()=> solo()
+      ? `He called Kessler. Kessler already knew — Sandra had reached out to the Speedway the same day, which was Sandra being a reporter.`
+      : `He called Earl. Earl already knew — Sandra had apparently reached out to him the same day, which was Sandra being a reporter.`),
+    N(()=> solo()
+      ? `The negotiation between Duke and the station lasted four days, with nobody in the middle. The result: Duke did the feature, the station paid an appearance fee that went straight into the notebook against the cars, and Sandra wrote the piece the way she wrote all her pieces — without asking anyone's permission for the important parts.`
+      : `The negotiation between Earl and the station, with Duke in the middle, lasted four days. The result: Duke did the feature, Earl got a consulting credit and a production fee, and Sandra wrote the piece the way she wrote all her pieces — without asking anyone's permission for the important parts.`),
+    N(()=> solo()
+      ? `Duke thought: it worked out. He also thought: four days on the phone is what a percentage buys you. He thought: I'd still rather have the four days.`
+      : `Duke thought: it worked out. He also thought: Earl will do something with that consulting credit.`),
   ],
   statUpdate:{
-    title:'Checked the Contract',
-    reason:"Earl got his consulting credit. The feature ran. Duke knows more about how Earl operates than he did before.",
+    title:()=> solo() ? 'Checked the Card' : 'Checked the Contract',
+    reason:()=> solo()
+      ? "No consulting credit. Four days on the phone. The feature ran, and the fee went against the cars."
+      : "Earl got his consulting credit. The feature ran. Duke knows more about how Earl operates than he did before.",
     deltas:{ hustle:1, showmanship:1 },
     flags:{ sandraFeatureDone:true }
   },
@@ -3432,12 +3539,20 @@ fr3_press_sandra_control: {
 m4_entry: {
   art:'m4', artLabel:'Milestone 4',
   bgText:'THE DEFINING MOMENT',
-  lines:[
+  get lines(){
+    if(solo()) return [
+    N(`Duke put the folder on the table himself.`),
+    N(`Inside: three proposals, in his own handwriting, worked out over four weeks of evenings with Cal's calculator and a road atlas. Three different versions of what the next stunt could be. Each one bigger than five cars. Each one requiring a different thing from him, and each one with a number at the bottom that was his to find.`),
+    N(`Nobody needed an answer by Friday. That was the trouble with Friday: nobody was going to set it but him.`),
+    N(`He set it for Friday. He picked up the folder.`),
+    ];
+    return [
     N(`Earl put the folder on the table.`),
     N(`Inside: three proposals. Three different versions of what the next stunt could be. Each one bigger than five cars. Each one requiring a different thing from Duke.`),
     C('EARL',`Take your time. I need an answer by Friday.`),
     N(`Duke picked up the folder.`),
-  ],
+    ];
+  },
   next:'m4_stunt_select'
 },
 
@@ -3446,9 +3561,13 @@ m4_stunt_select: {
   bgText:'WHAT\'S NEXT',
   lines:[
     N(`Three options. He read them the way Cal read an engine — looking for the thing underneath the thing.`),
-    N(`The bus stack was the obvious one. Thirteen buses, end to end. Longer than anything he'd attempted. Earl had a stadium booked.`),
+    N(()=> solo()
+      ? `The bus stack was the obvious one. Thirteen buses, end to end. Longer than anything he'd attempted. There was a stadium in Fort Worth that would rent him the lot against a percentage of the gate, and a school district that would rent him the buses against a deposit he did not have yet.`
+      : `The bus stack was the obvious one. Thirteen buses, end to end. Longer than anything he'd attempted. Earl had a stadium booked.`),
     N(()=> GS.flags.nextStuntBuses ? `Cal had already started working on the ramp geometry for it. Duke had not asked him to. That was Cal.` : `The geometry was straightforward on paper. Everything was straightforward on paper.`),
-    N(`The inferno tunnel was the theatrical one. A ring of fire on a quarter-mile straight. National TV interest. High risk in a different way than the buses.`),
+    N(()=> solo()
+      ? `The inferno tunnel was the theatrical one. A ring of fire on a quarter-mile straight. The station that had filmed the Speedway had asked what came after five cars; this was an answer they could point a camera at. High risk in a different way than the buses.`
+      : `The inferno tunnel was the theatrical one. A ring of fire on a quarter-mile straight. National TV interest. High risk in a different way than the buses.`),
     N(`The third was smaller. A symbolic stunt at the county fair — where it started. Local crowd, people who knew him before any of this. Lower risk, but a different kind of statement.`),
     N(`He set the folder down and looked at the window for a while.`),
   ],
@@ -3465,7 +3584,7 @@ m4_stunt_select: {
     {
       label:'B',
       text:`The Inferno — fire tunnel.`,
-      subtext:`Requires Nerve ≥ 4. Theatrical. National TV.`,
+      subtext:()=> solo() ? `Requires Nerve ≥ 4. Theatrical. Regional TV, and whoever they sell it to.` : `Requires Nerve ≥ 4. Theatrical. National TV.`,
       effects:{ flags:{ m4Choice:'inferno' } },
       goto:'m4_prestunt',
       _gateCheck:()=> GS.stats.nerve >= 4,
@@ -3579,19 +3698,32 @@ m4_prestunt_nobody_m4: {
 m4_triumph_buses: {
   art:'m4', artLabel:'Milestone 4 · Triumph',
   bgText:'THIRTEEN CLEAN',
-  lines:[
+  get lines(){
+    const head = [
     N(`Thirteen buses. He cleared all of them.`),
     N(`The crowd sound was different from any crowd sound he'd heard before — not louder, exactly, but denser, like the same amount of noise compressed into half the space.`),
     N(`He landed on the mat. Cal was twenty feet away, hands in his jacket pockets, which was not the way Cal stood when something had gone wrong.`),
+    ];
+    if(solo()) return [...head,
+    N(`Nobody got there after Cal. Cal took his hands out of his pockets.`),
+    C('CAL',`Yeah.`),
+    N(`He said it the way he said it when he meant it. This was the third time. Duke had been counting.`),
+    N(`He thought: that's the third time. He thought: I should probably tell him I noticed.`),
+    N(`He didn't. But he filed it for later.`),
+    ];
+    return [...head,
     N(`Earl got there three seconds after Cal.`),
     C('EARL',`Son.`),
     N(`He said it the way he said it when he meant it. This was the third time. Duke had been counting.`),
     N(`He thought: that's the third time. He thought: I should probably tell him I noticed.`),
     N(`He didn't. But he filed it for later.`),
-  ],
+    ];
+  },
   statUpdate:{
     title:'Thirteen Buses',
-    reason:"The Legend ceiling. Earl said son. Cal had his hands in his pockets. The LA man was in the fourth row again.",
+    reason:()=> solo()
+      ? "The Legend ceiling. Cal said yeah. Nobody's name on the ramp but his. The LA man was in the fourth row again."
+      : "The Legend ceiling. Earl said son. Cal had his hands in his pockets. The LA man was in the fourth row again.",
     deltas:{ nerve:2, showmanship:3, precision:1 },
     flags:{ m4Complete:true, m4Outcome:'triumph', m4Stunt:'buses' }
   },
@@ -3607,12 +3739,16 @@ m4_triumph_inferno: {
     N(`The crowd had been quiet for eight seconds. They'd never been that quiet at any show he'd done. He thought: that was the fire. Not him — the fire. Even the people who came to watch couldn't look straight at it for very long.`),
     N(`He rode out the other end and the sound came back all at once.`),
     N(`His jacket was warm on the outside. He unzipped it.`),
-    N(`Earl was standing at the tent, talking on the phone. He looked up. He gave a single nod.`),
-    N(`That was the Earl version of a standing ovation.`),
+    N(()=> solo()
+      ? `Kessler was standing at the tent. She'd driven up for it, which she had not said she would do. She looked at him. She gave a single nod.`
+      : `Earl was standing at the tent, talking on the phone. He looked up. He gave a single nod.`),
+    N(()=> solo() ? `That was the Kessler version of a standing ovation.` : `That was the Earl version of a standing ovation.`),
   ],
   statUpdate:{
     title:'Through the Fire',
-    reason:"Eight seconds. Quarter mile. The crowd went quiet. Earl nodded once.",
+    reason:()=> solo()
+      ? "Eight seconds. Quarter mile. The crowd went quiet. Kessler nodded once."
+      : "Eight seconds. Quarter mile. The crowd went quiet. Earl nodded once.",
     deltas:{ nerve:2, showmanship:2 },
     flags:{ m4Complete:true, m4Outcome:'triumph', m4Stunt:'inferno' }
   },
@@ -3951,7 +4087,7 @@ fr4_eve_cal: {
     N(`Cal was there, which was not surprising. Cal was usually in the garage in the evening when there was a bike that needed attention, and there was always a bike that needed attention.`),
     N(`Duke pulled up a stool.`),
     C('CAL',`Vegas specs came in.`),
-    D(`Earl sent them.`),
+    D(()=> solo() ? `The man from California sent them. To the house. There was nobody else to send them to.` : `Earl sent them.`),
     C('CAL',`Stadium floor. Sealed concrete. I want to run different tire pressure than the canyon.`),
     D(`How different.`),
     C('CAL',`I'll tell you when I know.`),
@@ -4141,6 +4277,60 @@ fr4_earl_direct: {
   next:'_hub_fr4'
 },
 
+// The backer-less branch's version of fr4_eve_earl (Phase 1, increment 2).
+// On the other branch the Vegas offer arrives through Earl, who holds the
+// other line; here the man from California got the number from the Speedway
+// office and is calling for himself, and there is nobody to hand the phone to.
+// renderHubFR4 offers exactly one of the two cards, by rels.earl.
+fr4_eve_california: {
+  art:'fr4', artLabel:'Free Roam 4 · Evening',
+  bgText:'THE MAN FROM CALIFORNIA',
+  lines:[
+    N(`The phone rang at seven in the evening. Duke had been expecting it for a week, since Kessler called to say she'd given out his number.`),
+    N(`It was the man from California. He said his name, which Duke had heard twice now and could not have spelled. He said he'd been in the fourth row at the Speedway.`),
+    N(()=> GS.flags.fr4Failure
+      ? `He said he'd watched Duke get up. He said that twice, in two different sentences, like a man making sure it was on the record.`
+      : `He said he'd been in the fourth row again for the last one. He said he didn't fly out for many things.`),
+    N(`Then he said Vegas.`),
+    N(()=> GS.flags.fr4Failure
+      ? `Not a recovery package. He didn't have the word for that, or didn't use it. A date, a stadium floor, a gate split — sixty-forty, Duke's side of it — and the footage his. He said the date was far enough out to heal into.`
+      : `A date, a stadium floor, a gate split — sixty-forty, Duke's side of it — and the footage his. Two appearances, one interview, one print piece. He read it off something.`),
+    N(`There was nobody on the other line. There was nobody to hand the phone to. There was the kitchen, and the man from California, and whatever Duke said next.`),
+    N(`He thought: this is what the percentage was for. He thought: alright.`),
+  ],
+  choices:[
+    { label:'A', text:`"Yes. Set the date."`, subtext:'Take it as read. He said the number; you heard it.', effects:{ flags:{ fr4VegasDeal:'yes' } }, goto:'fr4_california_close' },
+    { label:'B', text:`"Send me the paper first."`, subtext:'Garrett Pyle taught you to read a page before you sign it.', effects:{ stats:{ hustle:1 }, flags:{ fr4VegasDeal:'paper' } }, goto:'fr4_california_close' },
+    { label:'C', text:`"Sixty-forty is the opening number. Say the other one."`, subtext:'Nobody is holding the number for you. Hold it yourself.', effects:{ stats:{ hustle:1, nerve:1 }, flags:{ fr4VegasDeal:'counter' } }, goto:'fr4_california_close' },
+  ]
+},
+
+fr4_california_close: {
+  art:'fr4', artLabel:'Free Roam 4 · Evening',
+  bgText:'THE KITCHEN',
+  lines:[
+    N(()=> ({
+      yes: `He said yes. The man from California said: good. He said he'd have the paper out by Friday. Duke said: Friday. That was the call.`,
+      paper: `He said: send me the paper first. A pause — the kind Duke recognized from the other side of the bank's desk. Then: of course. It came Thursday, eleven pages. He read all eleven at the kitchen table with a pencil, and on page seven, where a television clause would go, there wasn't one. He signed it on the porch.`,
+      counter: `He said sixty-forty was the opening number. He said: say the other one. A pause. The man from California said sixty-five. Duke said: alright. He thought: that was a hundred and twenty dollars at Perkins' fairground once. He thought: it's the same conversation.`,
+    })[GS.flags.fr4VegasDeal] || `That was the call.`),
+    N(`He hung up. He sat at the table for a while.`),
+    N(`He thought: nobody advanced anything. Nobody took a percentage. Nobody made the call for him, and nobody would have.`),
+    N(`He thought: Vegas.`),
+  ],
+  statUpdate:{
+    title:'The Man from California',
+    reason:()=> ({
+      yes: 'Vegas, direct. No middleman, because there was never one.',
+      paper: 'Eleven pages, read with a pencil. Vegas, on paper.',
+      counter: 'Sixty-five. He held the number himself.',
+    })[GS.flags.fr4VegasDeal] || 'Vegas.',
+    deltas:{ showmanship:1 },
+    flags:{}
+  },
+  next:'_hub_fr4'
+},
+
 fr4_biographer: {
   art:'fr4', artLabel:'Free Roam 4 · Day',
   bgText:'THE BOOK',
@@ -4289,11 +4479,32 @@ fr4_ruthie_thread_close: {
 fr4_close: {
   art:'fr4', artLabel:'Free Roam 4 · Close',
   bgText:'VEGAS',
-  lines:[
+  // Reached by the solo branch's Milestone 5 button (renderHubFR4); nothing
+  // names it on the backer branch, which is Phase 2's first bullet.
+  get lines(){
+    const head = [
     N(`He sat at the kitchen table with the piece of paper.`),
     N(`Stunts. What else. The thing before the jump.`),
     N(`He had an answer now. He had had it for a while — it had arrived somewhere in the night rides and the garage with Cal and the porch on Wednesday. He had not announced it to himself when it arrived. It had just been there.`),
     N(`He thought: that's the question.`),
+    ];
+    const tail = [
+    N(`Duke hung up. He sat at the table. The kitchen was quiet. Out the window, the street. The lawn, mowed. The truck in the driveway. The sky — through the glass, going dark at the edge — the same as it had always been.`),
+    N(`He thought: some things you just remember.`),
+    N(`He thought: Vegas.`),
+    ];
+    if(solo()) return [...head,
+    N(`He folded the piece of paper and put it in his jacket pocket and called California. The number was on the wall by the phone, in his own handwriting, which was where every number he had was.`),
+    N(()=> GS.flags.fr4VegasDeal
+      ? `The man from California picked up on the second ring. Duke said: set the date. A pause. Not the pause-before-numbers. The other kind. The man said: alright. He said he'd call tomorrow.`
+      : `The man from California picked up on the second ring. He'd been in the fourth row at the Speedway. He'd been calling. Duke said: yes. Set the date. A pause. Not the pause-before-numbers. The other kind. The man said: alright. He said he'd call tomorrow.`),
+    N(`Duke hung up. He thought: on the other side of things, this is where somebody says good work. He sat with that. Then he picked the phone back up and called the garage, and when Cal answered he said it himself.`),
+    D(`Good work.`),
+    C('CAL',`Yeah.`),
+    N(`A longer pause.`),
+    C('CAL',`You too.`),
+    ...tail];
+    return [...head,
     N(`He folded the piece of paper and put it in his jacket pocket and called Earl.`),
     C('EARL',`Duke.`),
     D(`Tell the man from California yes.`),
@@ -4306,10 +4517,8 @@ fr4_close: {
     D(`Good work.`),
     N(`A longer pause.`),
     C('EARL',`You too.`),
-    N(`Duke hung up. He sat at the table. The kitchen was quiet. Out the window, the street. The lawn, mowed. The truck in the driveway. The sky — through the glass, going dark at the edge — the same as it had always been.`),
-    N(`He thought: some things you just remember.`),
-    N(`He thought: Vegas.`),
-  ],
+    ...tail];
+  },
   next:'_chapter_m5'
 },
 
@@ -4404,7 +4613,15 @@ m5_decision: {
   bgText:'WHAT NOW',
   lines:[
     N(`He held the question for a while.`),
-    N(`Eight options. Not choices exactly — more like the eight things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.`),
+    N(()=>{
+      // Count what the choice list below actually offers: F needs Pete, C
+      // needs Earl. "Eight" was a plain literal for three rounds, and read
+      // "Eight options" over seven buttons on every run that turned Pete down.
+      const peteActive = GS.rels.pete && GS.rels.pete !== 'absent' && GS.rels.pete !== 'unknown';
+      const n = 8 - (peteActive ? 0 : 1) - (solo() ? 1 : 0);
+      const word = { 8:'Eight', 7:'Seven', 6:'Six' }[n];
+      return `${word} options. Not choices exactly — more like the ${word.toLowerCase()} things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.`;
+    }),
   ],
   choices:[
     {
@@ -4426,7 +4643,9 @@ m5_decision: {
       text:`One last stunt — Earl picks.`,
       subtext:"Earl's choice. Higher risk. Higher payout. His agenda, not Duke's.",
       effects:{ flags:{ m5Decision:'last_stunt_earl' } },
-      goto:'m5_last_stunt_earl'
+      goto:'m5_last_stunt_earl',
+      // Nobody picks for a man who turned the picker down at the county fair.
+      _requires:()=> !solo()
     },
     {
       label:'D',
@@ -4472,10 +4691,14 @@ m5_retire_clean: {
   bgText:'THE TOP',
   lines:[
     N(`He made the call.`),
-    N(`He told Earl first — that was the right order. Earl was quiet for a moment. Then he said: I had a feeling. Duke said: no you didn't. Earl said: no, I didn't. But I thought it was possible.`),
-    N(`He told Cal next. Cal said: I figured. Duke said: how long. Cal said: since the canyon. He said it without sentiment. He meant it as a compliment.`),
+    N(()=> solo()
+      ? `He told Cal first. There was nobody in front of Cal to tell — there hadn't been since the county fair, and he noticed, dialing, that he'd stopped minding somewhere around the Speedway. Cal said: I figured. Duke said: how long. Cal said: since the canyon. He said it without sentiment. He meant it as a compliment.`
+      : `He told Earl first — that was the right order. Earl was quiet for a moment. Then he said: I had a feeling. Duke said: no you didn't. Earl said: no, I didn't. But I thought it was possible.`),
+    N(()=> solo() ? `` : `He told Cal next. Cal said: I figured. Duke said: how long. Cal said: since the canyon. He said it without sentiment. He meant it as a compliment.`),
     N(()=> (GS.rels.ruthie && GS.rels.ruthie !== 'absent' && GS.rels.ruthie !== 'unknown')
-      ? `He told Ruthie last. She already knew. He thought: she probably knew before Earl. He thought: the hands.`
+      ? (solo()
+        ? `He told Ruthie last. She already knew. He thought: she probably knew before Cal. He thought: the hands.`
+        : `He told Ruthie last. She already knew. He thought: she probably knew before Earl. He thought: the hands.`)
       : `There was no Ruthie to tell. He thought about the fork at the county fair more than once over the years. Mostly he didn't regret it. Mostly.`
     ),
     N(`The announcement ran in three papers and the circuit wire. Sandra wrote it herself. She got the county fair detail right.`),
@@ -4566,7 +4789,9 @@ m5_walk_quiet: {
   lines:[
     N(`He didn't announce it.`),
     N(`He told Cal on a Tuesday. Cal said: okay. He didn't ask why Tuesday. He asked about the bike — what Duke wanted to do with it. Duke said: keep it right. Cal said: okay.`),
-    N(`He didn't tell Earl right away. When Earl figured it out, a month later, he called and said: you could have told me. Duke said: I know. Earl said: alright.`),
+    N(()=> solo()
+      ? `There was nobody else who needed telling right away. Kessler figured it out a month later, when the season card went out without him on it, and called and said: you could have told me. Duke said: I know. She said: alright.`
+      : `He didn't tell Earl right away. When Earl figured it out, a month later, he called and said: you could have told me. Duke said: I know. Earl said: alright.`),
     N(`Some people never knew he retired. They thought he was between shows, between seasons, between whatever came before and whatever came next.`),
     N(`He thought: that's fine. He thought: the ones who need to know know.`),
     N(`He thought: some things don't need a headline.`),
@@ -4645,7 +4870,9 @@ m5_disappear: {
   bgText:'JUST GONE',
   lines:[
     N(`He left.`),
-    N(`He didn't announce it. He didn't tell Earl. He told Cal — not that he was leaving, but where the bike keys were and that the service manual was on the second shelf and that the fork seal was recently replaced.`),
+    N(()=> solo()
+      ? `He didn't announce it. There was nobody to not tell, which on his side of things had been true for a while. He told Cal — not that he was leaving, but where the bike keys were and that the service manual was on the second shelf and that the fork seal was recently replaced.`
+      : `He didn't announce it. He didn't tell Earl. He told Cal — not that he was leaving, but where the bike keys were and that the service manual was on the second shelf and that the fork seal was recently replaced.`),
     N(`Cal said: okay.`),
     N(`That was the last conversation. Duke didn't know, in the moment, that it was the last one. He found out later, which was the only way to find out.`),
     N(`He drove north. He thought about the county fair. He thought about the number — the one in the air, not on the ground. He thought: I've been finding it long enough. I want to see what it's like to not be looking for it.`),

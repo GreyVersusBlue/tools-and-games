@@ -1261,7 +1261,7 @@ Duke thought: Cal has been waiting to say that for a long time. He thought: Cal 
 
 ### `m5_decision`
 He held the question for a while.
-Eight options. Not choices exactly — more like the eight things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.
+Seven options. Not choices exactly — more like the seven things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.
 
 - Option ARetire clean on top.Walk away while the name still means something. Classic ending.
 - Option BOne last stunt — planned, on his terms.Duke picks the stunt. Prepared. Medium risk.

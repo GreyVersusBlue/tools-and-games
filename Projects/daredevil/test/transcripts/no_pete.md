@@ -829,7 +829,7 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cars and landed dead level
+> **STUNT RESULT — SUCCESS / 96** — Cleared the cars and landed dead level
 
 ### `m3_triumph_clean`
 Clean arc. Clean landing. The back wheel kissed the ramp mat with the specific weight of something that had gone exactly right — every calculation confirmed in the same half-second.
@@ -1118,7 +1118,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 94** — Cleared the buses and landed dead level
+> **STUNT RESULT — SUCCESS / 95** — Cleared the buses and landed dead level
 
 ### `m4_triumph_buses`
 Thirteen buses. He cleared all of them.
@@ -1347,7 +1347,7 @@ Duke thought: Cal has been waiting to say that for a long time. He thought: Cal 
 
 ### `m5_decision`
 He held the question for a while.
-Eight options. Not choices exactly — more like the eight things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.
+Seven options. Not choices exactly — more like the seven things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.
 
 - Option ARetire clean on top.Walk away while the name still means something. Classic ending.
 - Option BOne last stunt — planned, on his terms.Duke picks the stunt. Prepared. Medium risk.

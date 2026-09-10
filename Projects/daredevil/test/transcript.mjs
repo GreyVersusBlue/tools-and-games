@@ -76,6 +76,32 @@ const RUNS = {
       { on: 'Forget the note' },
       { on: 'Book it' },
       { on: 'Self-fund' },
+      // Increment 2: the second answer at the solo branch's two new forks —
+      // Sandra's offer checked against the Friday card rather than a contract
+      // clause, and the man from California asked for the paper first.
+      { on: 'check something first' },
+      { on: 'Send me the paper' },
+      { on: 'Walk away quietly' },
+    ],
+  },
+  // The solo branch's failure arms. Lands the fair — a crashed fair never
+  // reaches the six-way answer to Earl, he sends word through Cal instead —
+  // then crashes everything after it: down hard at the Speedway (Kessler's
+  // envelope, Petersen's forty seconds), down on the Milestone 4 stunt, and
+  // the recovery version of the California call. Third answer at both new
+  // forks, and the disappearance at the end. `stunt` as a list is one policy
+  // per stunt run in order, the last one repeating.
+  no_earl_crash: {
+    name: 'Curtis Vane', town: 'Ashby Fork',
+    stunt: ['good', 'crash'],
+    rules: [
+      { on: 'Not interested' },
+      { on: 'approval over the narrative' },
+      { on: 'Kessler' },
+      { on: 'Tommy' },
+      { on: 'Book it' },
+      { on: 'Say the other one' },
+      { on: 'Disappear' },
     ],
   },
   // Turns the Young Wannabe down at the gas station, so wannabeMet never gets
@@ -107,7 +133,7 @@ async function run(key, headed) {
   const say = s => { log.push(s); };
   let lastScene = null, lastText = null;
   const spent = new Set();
-  let fingerprint = '', stalled = 0;
+  let fingerprint = '', stalled = 0, stuntsPlayed = 0;
   const visits = {};
 
   try {
@@ -156,7 +182,8 @@ async function run(key, headed) {
 
       if (s.screen === 'minigame') {
         say(`\n> _[minigame: ${await t.page.evaluate(() => document.getElementById('stageTitle').textContent)}]_`);
-        await autopilot(t.page, plan.stunt);
+        const policy = Array.isArray(plan.stunt) ? plan.stunt[Math.min(stuntsPlayed++, plan.stunt.length - 1)] : plan.stunt;
+        await autopilot(t.page, policy);
         continue;
       }
 
@@ -217,7 +244,7 @@ async function run(key, headed) {
     const out = path.join(dir, key + '.md');
     fs.writeFileSync(out,
       `# Daredevil — transcript: \`${key}\`\n\n` +
-      `Played as ${plan.name} of ${plan.town}, stunt policy \`${plan.stunt}\`.\n\n` +
+      `Played as ${plan.name} of ${plan.town}, stunt policy \`${[].concat(plan.stunt).join(' then ')}\`.\n\n` +
       `**Scene path (${scenePath.length}):** ${scenePath.map(s => '`' + s + '`').join(' → ')}\n\n---\n` +
       log.join('\n') + '\n');
     console.log(`  ${scenePath.length} scenes → ${path.relative(process.cwd(), out)}`);

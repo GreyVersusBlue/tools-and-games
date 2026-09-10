@@ -35,6 +35,7 @@ node Projects/daredevil/test/transcript.mjs rough
 node Projects/daredevil/test/transcript.mjs no_earl   # answers "Not interested" at the fair
 node Projects/daredevil/test/transcript.mjs no_pete   # declines the Young Wannabe
 node Projects/daredevil/test/transcript.mjs no_earl_solo   # "Not interested", then the other answer at every solo fork
+node Projects/daredevil/test/transcript.mjs no_earl_crash  # "Not interested" and a crash at every stunt: the solo failure arms
 node Projects/daredevil/test/verify-touch-375.mjs     # 375px, touch-emulated pointer input
 ```
 
