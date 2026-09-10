@@ -114,8 +114,10 @@ account's other GitHub Pages projects.
   and it makes bankruptcy a real loss rather than something you reload past.
 - **Phase 1 increment 2 changed what those two multipliers are for.** Neither `computeFootTraffic` nor `computeReachability` scales a stall's sales any more: the gross is `spentAt` off the walk. `computeFootTraffic` is the *estimate* the build palette and plot cards show before the gates open (and the page labels it "est."); `measureFootTraffic(arrivals, builtPlots)` is its measured twin, computed off the walk's own arrival counts with the same relative-to-mean shape and the same 0.6×-1.6× clamp, and it is what the day report carries and what the best/worst-sited-stall log line reads. Reachability still scales a stage's per-block draw weight, and is a reported statistic for stalls. `isLegalPlacement` also refuses a stall or demo camp whose only path frontage cannot be walked from the gate — the col-3 spur ruling (#227).
 - `js/guests.js` — Phase 1 (guests who walk): the crowd as people. `spawnGuests(n, rng)` turns the attendance number into at most 400 typed agents (families, revellers, history buffs, day-trippers, from `GUESTS` in `data.js`), each standing for `attendance / sampled` people; `buildAttractions(state)` gives every built stage, seated stall and demo camp the reachable path cell it is served from, and names the ones no walk from the gate reaches; `walkGuests(state, guests, rng)` steps each guest up to `GUESTS.stepsPerBlock` hops per time block toward whatever pulls hardest (need × quality × archetype taste × shade-in-heat × a repeat penalty, over distance), serves the need on arrival and takes the stall's ticket out of the purse. Pure; `simulateDay` calls it with its own rng stream and puts the aggregates on the report as `guests`. Increment 2 made this the economy: `spentAt` is the money each stall took, and `simulateDay` bills the vendor's gross off it rather than off a conversion rate on attendance. The gate takes its share of the purse first, so `spawnGuests` takes the ticket price.
+- **Phase 6, increment 2** added `previewPlacement(kind, x, y, builtPlots, excludeId)` to `engine.js`: what building there would actually do, worked out by splicing the candidate into a copy of `builtPlots` and running `computeGroundsDraw`, `computeFootTraffic` and `computeReachability` — the same three functions the day runs, not a second copy of their arithmetic. The candidate goes in as `status: 'built'`, and a stall goes in with a vendor seated, because all three skip a planning plot and the draw skips an empty stall; spliced any other way every cell on the map reads +0.00. Returns the draw both sides, the candidate's own gate reach and foot traffic, `drops` (the built plots whose own multipliers fall to pay for it — both halves netted, and they can pull in opposite directions), or `{ ok: false, reason }` carrying `isLegalPlacement`'s own sentence
 - `js/mapview.js` — Phase 6: the plat's geometry, pure. The tracks (`TRACK`, which is `.grounds-map`'s 1px gap and 1px border), the paper margin around them (`FRAME`, which `.plat-stage`'s padding copies), and a *view*: the content under one scale-then-translate transform into the stage. `createView`/`fit`/`restScale` (never above 1, never under the pointer's floor), `clampPan`/`panBy`, `zoomAt` (the point under the cursor stays put), `pinch`, `keyboardStep`, `cellToRect`/`screenToCell` (the 1px gap is nobody's), `trackTransform` (what the marker grid's CSS transform is), `stageHeight`, `edges`, and `minScaleFor`/`markerSize`, which is where the 44px touch guarantee lives now: on a coarse pointer the floor scale keeps a marker at 44px however the stage is sized. Nothing in it reads the document
 - `js/plat.js` — Phase 6: `paintPlat(ctx, view, opts)` draws the ground on the `.plat-canvas` under the view's transform: the double rule, the tracks' brown rule exactly `trackSize()` big, every unlocked cell in its terrain with the textures the old `.terrain-cell` CSS painted, a cartouche and a compass in the bottom band, and in screen space a shade on any edge the content runs past. The ctx is a parameter, so `tests/mapview.mjs` paints into a recorder and counts the cells
+- **Phase 6, increment 2** also added the readout: `ui.js` renders a `.plat-readout` live region under the sheet and exports `readoutDefault(placing)`, `previewLine(preview)` and `readoutFor(el, builtPlots)` — the three pure functions that decide what goes in it — and `main.js` writes it on `pointerover` and `focusin`. `title` is the only place this map has ever put a sentence and a touch screen has never shown one, so the refusal on a blocked cell, a built plot's stats and the preview all land there instead
 - `tests/smoke.mjs` — jsdom-based smoke test suite (`npm test` runs it, `tests/guests.mjs` and `tests/mapview.mjs`)
 - `tests/mapview.mjs` — Phase 6's suite, pure Node: every function in `mapview.js` round-tripped against its inverse or its invariant (cell ↔ screen at five scales and two cell sizes, the pan clamp, a zoom that does not slide the anchor, pinch, the keys, the 44px floor on every tier at five stage widths), and `plat.js` painted into a recording ctx: one fill per cell of the unlocked tier at `cellOrigin()` in its terrain's colour, the slab not a pixel wider, the edge shades only where the map runs past
 - `tools/shoot-states.mjs` — Phase 5's camera, run by hand (`npm run shoot`): a scripted season under Node, seventeen states written into the save slot, the real page in Chromium at 1280, 1080, 820 (touch) and 375 (touch), one full-page PNG per state per viewport in `Tools/board-check/shots/games/faire-weekend/` and a `measurements.json` of live rectangles beside them. Needs `playwright-core` (a devDependency) and a Chromium on disk; asserts nothing
@@ -135,9 +137,13 @@ npm install
 npm test
 ```
 
-1,902 checks in `tests/smoke.mjs`, 168 in `tests/guests.mjs` and 172 in
+1,951 checks in `tests/smoke.mjs`, 168 in `tests/guests.mjs` and 172 in
 `tests/mapview.mjs` (see the file list above for what the second and third
-cover). The first: pure engine/state logic (RNG determinism, terrain/grid data
+cover). Two more scripts need a real Chromium and are not part of `npm
+test`: `npm run shoot` (Phase 5's layout camera, `tools/shoot-states.mjs`)
+and `npm run touch` (Phase 6 increment 2's readout check,
+`tools/touch-readout.mjs` — 24 checks on a real touchscreen at 375 and
+820, exits non-zero on failure). Both take `CHROME=/path/to/chrome`. The first: pure engine/state logic (RNG determinism, terrain/grid data
 integrity, buildable-structure catalog integrity, terrain-driven cost/
 capacity quoting, stage-adjacency effects on sightline/traffic, scheduling
 conflicts, day-simulation invariants, attendance responding sensibly to
@@ -427,3 +433,32 @@ the key now lands on the zoom button. And one finding about the round
 trip: a cell origin that drops the gap is caught by the gap assertion, the
 origin arithmetic and the layer agreement, not by the centre round trip,
 which tolerates a one-pixel-per-column drift for 23 columns.
+
+**Phase 6, increment 2, 1,902 → 1,951 checks, plus a browser check of its
+own: `tools/touch-readout.mjs` (`npm run touch`, 24).** **Section 30** is
+the preview and the readout. Its strongest assertion is not about the
+preview's arithmetic at all: it builds the previewed plot for real, seats
+it, and checks the draw, the gate reach and the foot traffic against what
+the built grounds actually have — the promise against the outcome, rather
+than against a second copy of the sum. The rest: the splice is `built`
+and staffed (planning or unstaffed, every cell reads +0.00), the
+candidate never lands in the caller's array, a refused cell carries
+`isLegalPlacement`'s exact sentence and no numbers, `drops` names the
+plots that pay for it and nets both halves, and the DOM half — a live
+region under the sheet, `pointerover` and `focusin` filling it, a drag
+not filling it, the placement line surviving one render and no more.
+Thirty-two breaks, every one caught by the assertion whose text claims
+it. Two were green on the first pass and both were real gaps: a
+sign-flipped foot-traffic term (every scenario moved gate reach and left
+traffic alone) and a deleted `focusin` listener (the line meant to reset
+the readout first pointed at a node an earlier re-render had detached).
+Four more killed the suite instead of failing it, on a message template
+reading `p.drops[0].drop` off an empty array, which is dying next to a
+bug rather than catching it; the templates are null-safe now.
+
+`npm run touch` is the half jsdom cannot do: real Chromium with Blink's
+coarse-pointer flags (Playwright's `hasTouch` leaves `(pointer: coarse)`
+answering false), 375 and 820, `page.touchscreen.tap` on a blocked cell
+and on a ghost, the live region read back, the page not scrolling
+sideways. It found the `min-height` that measured one line and a bit on a
+tablet, and a default sentence that said "Point at" to a phone.

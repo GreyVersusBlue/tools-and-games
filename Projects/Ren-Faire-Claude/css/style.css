@@ -502,6 +502,29 @@ h4 { font-family: var(--font-ui); font-weight: 600; font-size: 1rem; margin: 0; 
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
+/* Phase 6 increment 2: the readout. Every sentence this map has ever had
+   lived in a `title` — the refusal on a blocked cell, a built plot's
+   stats — and a touch screen has never shown one of them, on this page or
+   any other. They come out here instead, along with the build preview
+   that had nowhere to live at all. The min-height is a floor of two lines
+   plus the padding (box-sizing is border-box here, so the padding has to
+   be in the calc — a flat 2.9em measured 36px on a tablet, which is one
+   line and a bit). It stops the box collapsing between a one-line refusal
+   and a two-line preview; a long preview on a narrow phone still grows it,
+   and the build palette below still moves when it does. */
+.plat-readout {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--vellum);
+  background: rgba(0, 0, 0, 0.26);
+  border-left: 3px solid var(--lantern);
+  border-radius: 2px;
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0.6rem;
+  min-height: calc(2 * 1.45em + 0.9rem);
+}
+
 .map-legend {
   font-family: var(--font-ui);
   font-size: 0.74rem;

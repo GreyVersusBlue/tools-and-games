@@ -1083,6 +1083,100 @@ export function isLegalPlacement(kind, x, y, builtPlots, excludeId) {
   return { ok: true, reason: null };
 }
 
+// ---------- build preview (Phase 6, increment 2) ----------
+// What building a kind at (x,y) would actually do to the grounds, worked
+// out the only honest way there is: splice the candidate into a copy of
+// `builtPlots` and run the same three pure functions the day itself runs.
+// Nothing below re-derives a draw, a traffic mult or a gate reach — a
+// preview that re-implements the numbers it is previewing is a second
+// implementation to keep in step with the first, and it goes out of step
+// silently. (#34's lesson, pointed at a feature rather than a test.)
+//
+// The candidate is spliced as `status: 'built'`, and a stall is spliced
+// with a vendor seated, because all three functions skip a planning plot
+// and computeGroundsDraw skips an unstaffed stall. A preview off a
+// planning splice would read "no change" on every cell of the map and be
+// worse than no preview at all, so the readout says "once built and
+// staffed" and means it.
+//
+// A cell isLegalPlacement refuses comes back { ok: false, reason } with
+// that same sentence, so one call answers both "why not" and "what would
+// it do" and a caller never has to ask twice.
+export const PREVIEW_PLOT_ID = '__preview__';
+
+// Below this, a mult has moved by less than a cent on the dollar and
+// saying so is noise.
+const PREVIEW_DROP_EPSILON = 0.005;
+
+export function previewPlacement(kind, x, y, builtPlots = [], excludeId = null) {
+  const quote = quoteBuild(kind, x, y, builtPlots, excludeId);
+  const legal = isLegalPlacement(kind, x, y, builtPlots, excludeId);
+  if (!legal.ok) {
+    return { ok: false, reason: legal.reason, kind, x, y, name: quote ? quote.name : null, cost: quote ? quote.cost : null };
+  }
+  // quoteBuild returns null for an unknown kind or an off-grid footprint;
+  // isLegalPlacement refuses both first, so reaching here with no quote
+  // would mean the two disagree. Say so rather than reading fields off null.
+  if (!quote) {
+    return { ok: false, reason: 'That doesn\u2019t fit within the surveyed grounds.', kind, x, y, name: null, cost: null };
+  }
+
+  const before = (builtPlots || []).filter(p => p && p.id !== excludeId);
+  const isStall = kind === 'food' || kind === 'vendor';
+  const candidate = {
+    id: PREVIEW_PLOT_ID,
+    kind, x, y, w: quote.w, h: quote.h,
+    name: quote.name,
+    cost: quote.cost,
+    status: 'built',
+    assignedVendorId: isStall ? PREVIEW_PLOT_ID : undefined,
+  };
+  const after = [...before, candidate];
+
+  const drawBefore = computeGroundsDraw(before).mult;
+  const drawAfter = computeGroundsDraw(after).mult;
+  const trafficBefore = computeFootTraffic(before);
+  const trafficAfter = computeFootTraffic(after);
+  const reachBefore = computeReachability(before);
+  const reachAfter = computeReachability(after);
+
+  // Both foot traffic and gate reach are scored against their group's own
+  // mean (see computeFootTraffic and reachabilityGroup), so a new plot
+  // moves every plot already in its group. That is the half of the trade a
+  // cost quote can never show, and it is the half a player is most likely
+  // to regret, so it gets counted instead of left implicit.
+  const drops = [];
+  for (const p of before) {
+    if (p.status !== 'built') continue;
+    let drop = 0;
+    const t0 = trafficBefore[p.id], t1 = trafficAfter[p.id];
+    if (t0 && t1) drop += t0.mult - t1.mult;
+    const r0 = reachBefore[p.id], r1 = reachAfter[p.id];
+    if (r0 && r1) drop += r0.mult - r1.mult;
+    if (drop > PREVIEW_DROP_EPSILON) drops.push({ id: p.id, name: p.name, drop: round2(drop) });
+  }
+  drops.sort((a, b) => b.drop - a.drop || (a.name < b.name ? -1 : 1));
+
+  const ownTraffic = trafficAfter[PREVIEW_PLOT_ID] || null;
+  const ownReach = reachAfter[PREVIEW_PLOT_ID] || null;
+  return {
+    ok: true,
+    reason: null,
+    kind, x, y,
+    name: quote.name,
+    cost: quote.cost,
+    capacity: quote.capacity,
+    draw: { before: round2(drawBefore), after: round2(drawAfter), delta: round2(drawAfter - drawBefore) },
+    traffic: ownTraffic ? { mult: round2(ownTraffic.mult), score: ownTraffic.traffic } : null,
+    reach: ownReach ? { hops: ownReach.distance, mult: round2(ownReach.mult) } : null,
+    drops,
+  };
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
 // Quirk effects are looked up by id rather than storing functions in data.js,
 // keeping data.js pure content. Each quirk fn: (performer, ctx) => modifier info.
 export const QUIRKS = {

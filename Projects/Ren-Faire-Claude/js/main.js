@@ -6,7 +6,7 @@
 
 import * as State from './state.js';
 import * as UI from './ui.js';
-import { validateSchedule, summarizeWeekend, currentGridSize, terrainAt } from './engine.js';
+import { validateSchedule, summarizeWeekend, currentGridSize, terrainAt, previewPlacement } from './engine.js';
 import { CONFIG } from './data.js';
 import * as MapView from './mapview.js';
 import { paintPlat } from './plat.js';
@@ -22,7 +22,11 @@ let state = State.loadState() || State.newGame();
 // like the rest of this object and never saved; layoutMap() below keeps it
 // across renders while the tier and the stage width hold, and refits it
 // when either moves.
-const ui = { activeTab: 'office', flash: null, pendingBuild: null, pendingMove: null, negotiating: null, view: null };
+// Phase 6 increment 2: `readout` is the sentence under the plat when an
+// action has one to leave there — set like `flash`, rendered once, then
+// cleared. Hovering a marker writes the same element straight through the
+// DOM instead, because a pointer crossing the map is not worth a render.
+const ui = { activeTab: 'office', flash: null, readout: null, pendingBuild: null, pendingMove: null, negotiating: null, view: null };
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -72,7 +76,7 @@ function render() {
   const groundsFlash = placing ? ui.flash : null;
   const panelFlash = placing ? null : ui.flash;
 
-  $('#grounds').innerHTML = UI.renderGroundsPanel(state, ui.pendingBuild, ui.pendingMove, groundsFlash);
+  $('#grounds').innerHTML = UI.renderGroundsPanel(state, ui.pendingBuild, ui.pendingMove, groundsFlash, ui.readout);
   $('#tabs').innerHTML = UI.renderTabs(ui.activeTab, state.phase);
 
   const conflicts = validateSchedule(state.schedule);
@@ -88,6 +92,7 @@ function render() {
     </div>
   `;
   ui.flash = null;
+  ui.readout = null;
   layoutMap(false);
 }
 
@@ -235,11 +240,33 @@ function onMapKey(e) {
   applyView(next);
 }
 
+// Phase 6 increment 2: the readout under the sheet. `title` is the only
+// place the map has ever put a sentence, and a touch screen has never
+// shown one — not the refusal on a blocked cell, not a built plot's
+// stats. This writes whatever the pointer or the keyboard is on into the
+// live region ui.js renders, and ui.js decides what that text is.
+//
+// Nothing clears it. A status line that empties itself the moment a thumb
+// lifts is a status line nobody on a phone ever finishes reading, so the
+// last answer stands until there is a next one or the panel re-renders.
+function showReadout(target) {
+  // Mid-drag the pointer crosses a cell every few frames and none of them
+  // is a thing the player is asking about.
+  if (gesture.pointers.size > 0) return;
+  const el = target && target.closest ? target.closest('.plot-marker') : null;
+  if (!el) return;
+  const text = UI.readoutFor(el, state.builtPlots);
+  const out = $('.plat-readout');
+  if (out && text) out.textContent = text;
+}
+
 function wireMap() {
   const grounds = $('#grounds');
   grounds.addEventListener('pointerdown', onMapPointerDown);
   grounds.addEventListener('wheel', onMapWheel, { passive: false });
   grounds.addEventListener('keydown', onMapKey);
+  grounds.addEventListener('pointerover', (e) => showReadout(e.target));
+  grounds.addEventListener('focusin', (e) => showReadout(e.target));
   grounds.addEventListener('click', (e) => {
     if (!gesture.suppressClick || !e.target.closest('.plat-stage')) return;
     e.stopPropagation();
@@ -275,9 +302,23 @@ function handleAction(action, el) {
     case 'placeAt': {
       const x = Number(el.dataset.x);
       const y = Number(el.dataset.y);
+      // Phase 6 increment 2: read the preview off the grounds the click is
+      // about to change, because the readout under the map is wiped by the
+      // re-render that follows and a thumb never saw it anyway — on touch
+      // the tap that shows a cell's numbers is the same tap that takes
+      // them off the map. Placing spends nothing (Stage 10: a fresh plot
+      // is 'planning' until it is committed), so this is still the delta
+      // in front of the player while the money is still theirs.
+      const preview = previewPlacement(el.dataset.kind, x, y, state.builtPlots);
       // Stage 10: fresh placement is free and non-final — see placePlot.
       res = State.placePlot(state, el.dataset.kind, x, y);
-      if (res.error) { ui.flash = res.error; } else { state = res.state; ui.pendingBuild = null; }
+      if (res.error) {
+        ui.flash = res.error;
+      } else {
+        state = res.state;
+        ui.pendingBuild = null;
+        ui.readout = `Planned, nothing spent yet. ${UI.previewLine(preview)}`;
+      }
       break;
     }
     case 'commitPlot':
