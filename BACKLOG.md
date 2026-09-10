@@ -58,15 +58,42 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Faire Weekend Phase 8, "The wiring audit,
-automatic" (PR #210)**, which **closed the old rank 1** — a ½ row, closed in
-one session, so it came out of the ranked table and everything below it moved
-up one. **74 ranked items remain**, and **rank 1 is now `Projects/daredevil`
-Phase 1 — The backer-less middle game**, a **2+** row on **Fable 5.1**. A 2+
-row **is the whole batch**: never pair it with anything, do one increment,
-ship it, and leave the row in place with its Item text rewritten to say what
-is done and what is left. **`npm run check` is still down to one broken
-unit**, `Tools/prompt-builder.html`, which is rank 43's now.
+The last thing that shipped is **Daredevil Phase 1, increment 1 — the
+backer-less Milestone 2 (PR #212)**, one increment of the **2+** row at rank
+1, which **stays at rank 1** with its Item text rewritten to say what is done
+and what is left. **74 ranked items remain**, unchanged, and **rank 1 is still
+`Projects/daredevil` Phase 1 — The backer-less middle game**, on **Fable
+5.1**. A 2+ row **is the whole batch**: never pair it with anything, do one
+increment, ship it, and leave the row in place. The next increment's first
+line is written into the row: `_chapter_m3`/`m4` and the epilogue. **`npm run
+check` is still down to one broken unit**, `Tools/prompt-builder.html`,
+which is rank 43's now.
+
+**What increment 1 built.** Answering "Not interested" to Earl at the fair
+used to remove three optional evening cards and change nothing else; Earl
+negotiated at M2 regardless and `m2_sign` set him back to `'backer'`. Now
+`_chapter_m2` routes `rels.earl === 'absent'` to `m2_solo_entry` (chapter
+"The Other Way"), fourteen `m2_solo_*` scenes run the negotiation's
+three-round shape against a promoter, a bank and Duke's own arithmetic, and
+`m2_solo_close` ends where `m2_sign` ends. Free Roam 2 knows it happened:
+`fr2_debt_01` is the only card until it is played and the Milestone 3 button
+waits (#266), "Borrow from Earl" is hidden, `debtSource` is read by
+`fr2_close`'s solo arm, and the solo branch's Milestone 3 button routes
+through `_chapter_fr2_end` so `fr2_close` is reached by a run for the first
+time. **Q3 was answered by the session** — shape B, decision #265 — and moved
+to the answered list. `smoke-page.mjs` 44 → 61 with a third full run that
+answers "Not interested"; a fifth transcript plan, `no_earl_solo`; two
+guard-rails broken on purpose. The full account is under "Daredevil, arc one"
+in `HISTORY.md`.
+
+**Milestones 3 and 4 and the epilogue still read as a backer run on that
+branch.** FR3 and FR4 already hide their Earl cards, so the run finishes; it
+does not yet notice. That is the next increment, and it is the row's text.
+
+Before that: **Faire Weekend Phase 8, "The wiring audit,
+automatic" (PR #210)**, which **closed the rank 1 of its day** — a ½ row,
+closed in one session, so it came out of the ranked table and everything
+below it moved up one.
 
 **Faire Weekend has no ranked row any more.** Phase 8 was the last phase in
 that project's `WISHLIST.md`; what is left there is the standing backlog at
@@ -593,37 +620,38 @@ site work that happens to land in that folder. Neither is
 `Tools/prompt-builder.html`, which is red on `npm run check` today and is a
 site problem.
 
-**74 ranked items**, one fewer: PR #210 closed Faire Weekend Phase 8, a ½ row
-closed in one session, so it comes out of the table and everything below moved
-up one. 25 of them are phases in a live project `WISHLIST.md`; the other 49
-are standalone, and live in Tier 2 below. Beyond the ranked list there are 239
-open bullets in the projects' standing backlogs and 38 open questions for
-Devon — 351 open items in all. **Q27 is partly answered**
+**74 ranked items**, unchanged by PR #212, which shipped one increment of the
+2+ row at rank 1 and left the row standing. 25 of them are phases in a live
+project `WISHLIST.md`; the other 49 are standalone, and live in Tier 2 below.
+Beyond the ranked list there are 240 open bullets in the projects' standing
+backlogs (Daredevil gained one: the doubled stat screen) and 37 open questions
+for Devon (Q3 answered, #265) — 351 open items in all. **Q27 is partly answered**
 (`perGuestCost` stays at 5, ruled rather than assumed; its other three
 numbers are still open) and is kept in the list rather than struck, because
 the part that needs a real season played is the part still standing.
 
-**Pick up rank 1: `Projects/daredevil` Phase 1, "The backer-less middle game"
-(Fable 5.1, size 2+).** A player can turn down the man with the money and the
-next three chapters do not notice: "Not interested" at `m1_player_response`
-sets `rels.earl = 'absent'` and removes exactly three optional evening cards,
-while `_chapter_m2`/`m3`/`m4` read `stuntOutcome`/`hubEveningsUsed` only and
-Earl walks back in at M2 to negotiate as if nothing happened. Three separate
-sources call this the single biggest open item on the site.
+**Pick up rank 1 again: `Projects/daredevil` Phase 1, "The backer-less middle
+game" (Fable 5.1, size 2+), increment 2.** Increment 1 (PR #212) gave the
+"Not interested" branch its own Milestone 2 and a Free Roam 2 that knows.
+What is left is the threading: `_chapter_m3`/`m4` still hand `showChapter`
+fixed strings, `m3_entry` has a sponsor's logo on the ramp and a TV crew
+nobody on this branch arranged (the solo `fr2_close` says Kessler's crew is
+there for the feature race — `m3_entry` should agree), `m4_entry`'s "Earl has
+proposals" needs a source, and `showGameEnd`'s eight endings need reading
+against a run with no backer. `GS.flags.soloM2` and `rels.earl === 'absent'`
+are both there to branch on. Take fresh transcripts first; `no_earl` and
+`no_earl_solo` are the two that should move.
 
 **It is a 2+ row, so it is the whole batch.** Do one increment, ship it, and
 leave the row in place with its Item text rewritten to say what is done and
 what is left. Do not pair it with anything, including the ½ and 1 rows behind
 it.
 
-**Q3 stands in front of it, and a session may answer it.** The question is
-whether "Not interested" gets **(A)** acknowledgment beats at M2, M3 and M4
-that keep "Earl doesn't take no for an answer", or **(B)** a genuinely
-smaller, self-financed middle game. Q3's own entry recommends B and the
-wishlist is written against B. A question in "Questions for Devon" no longer
-blocks its row: decide it, ship it, and record the call in `HISTORY.md` as a
-locked decision so it can be reversed cheaply. Answer that one question only —
-the rest of the list is Devon's to work through.
+**Q3 no longer stands in front of it.** The session answered it on
+2026-09-10 as decision #265: **(B)**, the self-financed middle game, as Q3's
+own entry and the wishlist recommended. It is in the answered list below.
+Q31, the six-way shape of the fair response, is still open and is not in
+front of this row.
 
 **Phase 2 is the cheap one if Phase 1 stalls**, and the wishlist says so: five
 routing bugs of the shape round 1 found, content that exists with no way to
@@ -671,7 +699,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 1 — The backer-less middle game | `Projects/daredevil` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-kb014x` | [WISHLIST.md Phase 1](Projects/daredevil/WISHLIST.md#phase-1--the-backer-less-middle-game) |
+| 1 | Phase 1 — The backer-less middle game — increment 1 shipped (PR #212): solo Milestone 2 and FR2; left: M3, M4 and the epilogue on the `rels.earl === 'absent'` branch | `Projects/daredevil` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/daredevil/WISHLIST.md#phase-1--the-backer-less-middle-game) |
 | 2 | Phase 2 — Everything the game already wrote and cannot show | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 2](Projects/daredevil/WISHLIST.md#phase-2--everything-the-game-already-wrote-and-cannot-show) |
 | 3 | Phase 3 — Relationships as a declared thing | `Projects/daredevil` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/daredevil/WISHLIST.md#phase-3--relationships-as-a-declared-thing) |
 | 4 | Phase 4 — Danny and Tommy get a way out | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/daredevil/WISHLIST.md#phase-4--danny-and-tommy-get-a-way-out) |
@@ -1443,7 +1471,6 @@ live. Nothing in that column is a link to follow.
 | --- | --- | --- | --- |
 | Q1 | **Is `Pathfinder/data/**` a published interface other projects may read, or private to the Pathfinder pages?** 24 JSON files of PF2e rules data sit there. The Absalom Inheritance reads none of it and hand-writes three stat blocks and seven commands into `content/vault.json` instead; Torchbearer would build its own monster and treasure tables if the answer is private. Both considered depending on it and both correctly stopped rather than assume. `UPGRADE-PATHS.md` calls it the highest-leverage *decision* on the site. | **6** | prompt 01's block (the central tracker), prompts 10 and 11 raising it into that block, `Projects/torchbearer/WISHLIST.md`, `Projects/absalom-inheritance/WISHLIST.md`, `UPGRADE-PATHS.md` "Close behind", `gvb-site-handoff-v10.md` "Three things" and §11.4 |
 | Q2 | **Should the Serve button require full order completion, now that baristas — not the player — are the main path to a finished cup?** The gate is `cupMatchesEnough()` at line 1392: four lines, checking that a base exists and, if the recipe needs milk, that some milk is poured. Not the right milk, not the syrup, not the toppings, not the shot count. Measured on otherwise identical days: patient serving (waits for `orderIsComplete()`) 41 offered, 41 served, $309 net, 100% accuracy, reputation 50 → 66.4; eager serving (clicks the instant `disabled` comes off) 43/43, $77, 46%, reputation 50 → 19.2. Three answers are all real: tighten the gate to `orderIsComplete()`; keep it loose and put a cue on the button ("still missing: syrup, whip"); or leave it exactly as it is, because the accuracy and reputation hits already are the consequence. **The recommendation is the cue** — `serveSlot()` already prices partial credit deliberately (`earned = recipe.price * (0.35 + 0.65 * ratio)`), so serving a wrong cup for 35% of the price is a designed mechanic, not an oversight, and a hard gate would delete the one lever a player has when four customers are about to walk. What is broken is that the tradeoff is invisible at the moment of the click. | **4** | prompt 12's block, `Projects/corner-and-kettle/WISHLIST.md`, the round-3 refresh notes, `gvb-site-handoff-v10.md` §8 |
-| Q3 | **What should "Not interested" to Earl actually do?** Choosing it at `m1_player_response` sets `GS.rels.earl = 'absent'` and `GS.flags.earlResponse = 'not_interested'`, which removes exactly three optional evening cards: the FR1 contract reading, the FR3 renegotiation, the FR4 Vegas call. Milestones 2, 3 and 4 read neither value. `_chapter_m2` picks its entry scene from `stuntOutcome`/`hubEveningsUsed` only, and `showChapter`'s subtitles are fixed strings. Earl comes back, negotiates across three rounds, and `m2_sign` sets `rels.earl = 'backer'` again. Two shapes: **(A)** keep "Earl doesn't take no for an answer" and pay it off with acknowledgment beats at M2, M3 and M4, or **(B)** write a genuinely smaller, self-financed middle game. **The recommendation is B, scoped to Milestone 2 and threaded through 3 and 4** — the FR2 debt scene, the four `debtSource` answers and the Sandra press thread are already the raw material, and A leaves a six-way choice with one cosmetic arm. Called "the single biggest open item on the site" by three separate sources. | **5** | prompt 13's block, `Projects/daredevil/WISHLIST.md` Phase 1, `gvb-site-handoff-v10.md` "Three things" and §11.1, the round-3 refresh notes, prompt 22's notes |
 
 ### Bell to Bell
 
@@ -1523,6 +1550,11 @@ live. Nothing in that column is a link to follow.
 
 ### Answered, kept here so they are not re-asked
 
+- **What should "Not interested" to Earl actually do?** Answered by the
+  session that shipped Daredevil Phase 1's first increment, 2026-09-10:
+  **(B), the self-financed middle game** — locked decision #265. `_chapter_m2`
+  routes `rels.earl === 'absent'` to `m2_solo_entry`, nothing sets Earl back,
+  and Free Roam 2 opens on the debt. Reversible by rerouting one arm. Was Q3.
 - **Does the engine (Torchbearer) grow past level 3?** Answered by the
   session that opened Phase 6, 2026-09-06: **yes, to 10** — locked decision
   #111. The level is a field on the build, `MAX_LEVEL` is 10, and guide §13's
