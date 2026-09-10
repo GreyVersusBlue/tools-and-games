@@ -96,10 +96,10 @@ const RUNS = {
     stunt: ['good', 'crash'],
     rules: [
       { on: 'Not interested' },
+      { on: 'approval over the narrative' },
       { on: 'Kessler' },
       { on: 'Tommy' },
       { on: 'Book it' },
-      { on: 'approval over the narrative' },
       { on: 'Say the other one' },
       { on: 'Disappear' },
     ],
