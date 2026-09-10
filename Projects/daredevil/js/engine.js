@@ -1365,7 +1365,11 @@ function renderHubFR2(){
     const b=document.createElement('button'); b.className='btn-main';
     b.style.fontSize='16px';
     b.textContent='Milestone 3 — The Big Break';
-    b.onclick=()=> goToScene('_chapter_m3');
+    // The backer-less branch goes through fr2_close (the solo arm reads
+    // debtSource); nothing names _chapter_fr2_end on the backer branch, which
+    // is Phase 2's first bullet, and routing it here would move three
+    // baseline transcripts.
+    b.onclick=()=> goToScene(solo ? '_chapter_fr2_end' : '_chapter_m3');
     m3btn.appendChild(b);
     sectionsEl.appendChild(m3btn);
   }
