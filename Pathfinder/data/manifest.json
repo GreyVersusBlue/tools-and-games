@@ -60,7 +60,7 @@
     "sizeMB": 0.87
   },
   "equipment": {
-    "count": 2389,
+    "count": 2388,
     "file": "equipment.json",
     "sizeMB": 3.55
   },
@@ -70,7 +70,7 @@
     "sizeMB": 0.01
   },
   "feat": {
-    "count": 7633,
+    "count": 7632,
     "file": "feat.json",
     "sizeMB": 7.46
   },
@@ -90,7 +90,7 @@
     "sizeMB": 0.0
   },
   "npc": {
-    "count": 6393,
+    "count": 6392,
     "sharded": true,
     "shards": {
       "-1": {
@@ -104,17 +104,17 @@
         "sizeMB": 0.76
       },
       "1": {
-        "count": 504,
+        "count": 503,
         "file": "npcs/npc-level-1.json",
-        "sizeMB": 3.42
+        "sizeMB": 3.4
       },
       "2": {
-        "count": 514,
+        "count": 513,
         "file": "npcs/npc-level-2.json",
-        "sizeMB": 3.98
+        "sizeMB": 3.97
       },
       "3": {
-        "count": 521,
+        "count": 522,
         "file": "npcs/npc-level-3.json",
         "sizeMB": 4.63
       },
@@ -229,7 +229,7 @@
         "sizeMB": 0.15
       }
     },
-    "sizeMB": 86.87
+    "sizeMB": 86.88
   },
   "shield": {
     "count": 126,
