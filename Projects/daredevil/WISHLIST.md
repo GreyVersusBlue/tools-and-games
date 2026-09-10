@@ -217,6 +217,12 @@ starting a new list.
   lines of Earl noticing the press man are dead.
 - The stat-update screen's relationship table lacks `pete` and `hanger_on` and
   renders both raw.
+- A scene reached by a choice and carrying a `statUpdate` shows its stat
+  screen twice: `handleChoice` fires it before the scene and `afterScene`
+  fires it again at the end. Visible in every transcript as a doubled
+  `> **title** — reason` line (`$135 and a Name in Print`, the fourteen
+  `m2_solo_*` updates). Found while diffing Phase 1's transcripts; not
+  fixed there, since it moves every transcript at once.
 
 **Reachable content**
 - `fr4_close` — a finished scene in which Duke calls Earl and takes the Vegas
