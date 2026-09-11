@@ -35,6 +35,23 @@ import { GS, N, D, C, NF } from './state.js';
 // regional crew's cameraman who came for the feature race, and Cal.
 const solo = ()=> GS.rels.earl === 'absent';
 
+// Milestone 5's last stunt has two ways in — Duke picked it
+// (m5_last_stunt_setup) or Earl did (m5_last_stunt_earl) — and one pair of
+// outcome scenes between them. Both scenes named `last_stunt_win` /
+// `last_stunt_loss` flatly, so `m5Outcome === 'last_stunt_earl'` — a headline,
+// a nerve verdict and a three-line retrospective, all written — could never be
+// true on any run. The decision rides through now (Phase 2), and
+// `m5StuntCleared` keeps the one thing the flatten would otherwise lose:
+// whether he made it. The outcome scene knows that — m5_stunt_win passes true —
+// and the ending screen's retrospective reads it.
+const m5StuntFlags = cleared => ({
+  m5Complete: true,
+  m5StuntCleared: cleared,
+  m5Outcome: GS.flags.m5Decision === 'last_stunt_earl'
+    ? 'last_stunt_earl'
+    : (cleared ? 'last_stunt_win' : 'last_stunt_loss'),
+});
+
 export const SCENES = {
 
 /* ============================================================
@@ -1550,12 +1567,19 @@ m2_sign: {
     N(`He thought: there's a version of this where that's true. He thought: there's a version where it isn't.`),
     N(`He didn't know which one yet. He was about to find out.`),
   ],
+  // The two flags here used to sit on one choice — "Accept and shake" at
+  // m2_round3_cal — so a run that used Cal's tell instead reached the ending
+  // with rels.earl still 'unknown' after signing a contract with the man:
+  // no Earl row on the ending screen, none of the `backer` epilogue, and
+  // `m2Complete` false, which is what currentHubRoute() reads to know it is
+  // in Free Roam 2. They belong on the signing, which is the one scene every
+  // backer path passes through (Phase 2).
   statUpdate:{
     title:'The Deal Is Signed',
     reason:'Earl Maddox. Percentage settled. Cal in the room. The bigger world starts Thursday.',
     deltas:{ showmanship:1 },
-    rels:{},
-    flags:{}
+    rels:{ earl:'backer' },
+    flags:{ m2Complete:true }
   },
   next:'fr2_hub_open'
 },
@@ -4479,8 +4503,9 @@ fr4_ruthie_thread_close: {
 fr4_close: {
   art:'fr4', artLabel:'Free Roam 4 · Close',
   bgText:'VEGAS',
-  // Reached by the solo branch's Milestone 5 button (renderHubFR4); nothing
-  // names it on the backer branch, which is Phase 2's first bullet.
+  // Reached by the Milestone 5 button on both branches (renderHubFR4). Until
+  // Phase 2 only the solo arm was named by anything, and the backer arm below
+  // — the whole reason the scene exists — had never been read by a run.
   get lines(){
     const head = [
     N(`He sat at the kitchen table with the piece of paper.`),
@@ -4504,10 +4529,18 @@ fr4_close: {
     N(`A longer pause.`),
     C('CAL',`You too.`),
     ...tail];
+    // What Duke says next depends on what he already told Earl in Free Roam 4.
+    // `signed` means Earl said "I'll tell him tonight" that evening and there
+    // is nothing left to authorise; `direct` means Duke asked to make the call
+    // himself. The rest of the exchange is the same in all three, and is the
+    // point of the scene.
+    const dealt = GS.flags.fr4EarlDeal;
     return [...head,
     N(`He folded the piece of paper and put it in his jacket pocket and called Earl.`),
     C('EARL',`Duke.`),
-    D(`Tell the man from California yes.`),
+    dealt === 'signed' ? D(`The Vegas date. Put it on the calendar.`)
+    : dealt === 'direct' ? D(`I talked to him myself. The answer's yes.`)
+    : D(`Tell the man from California yes.`),
     N(`A pause. Not the pause-before-numbers or the pause-before-leverage. The other kind.`),
     C('EARL',`Alright.`),
     D(`Set the date.`),
@@ -4738,12 +4771,12 @@ m5_stunt_win: {
     N(`Cal was there. He didn't say anything. He picked up his clipboard.`),
     N(`Duke thought: that's the one. He thought: I'm done.`),
   ],
-  statUpdate:{
+  get statUpdate(){ return {
     title:'The Last Jump',
     reason:"He cleared it. He held the landing. He said: I'm done.",
     deltas:{ nerve:1, showmanship:2 },
-    flags:{ m5Complete:true, m5Outcome:'last_stunt_win' }
-  },
+    flags: m5StuntFlags(true)
+  }; },
   next:'_game_end'
 },
 
@@ -4759,12 +4792,12 @@ m5_stunt_loss: {
     N(`He thought: that's the last time I'm going to make that sound happen.`),
     N(`He thought: I'm done.`),
   ],
-  statUpdate:{
+  get statUpdate(){ return {
     title:'Down. Up. Done.',
     reason:"He didn't clear it. He got up. He said: I'm done.",
     deltas:{ condition:-2, nerve:1 },
-    flags:{ m5Complete:true, m5Outcome:'last_stunt_loss' }
-  },
+    flags: m5StuntFlags(false)
+  }; },
   next:'_game_end'
 },
 

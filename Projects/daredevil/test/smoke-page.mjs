@@ -80,11 +80,22 @@ async function playToEnd(page, base, plan) {
         `loop: entered "${s.scene}" ${n} times. Last 10: ${seen.slice(-10).join(' → ')}`);
     }
 
-    if (s.screen === 'end') return { seen, stunts, hubs, texts, stats: s.stats, rels: s.rels, flags: s.flags };
+    if (s.screen === 'end') {
+      const summary = await page.evaluate(() =>
+        document.getElementById('end-summary').innerText.replace(/\s+/g, ' ').trim());
+      return { seen, stunts, hubs, texts, summary, stats: s.stats, rels: s.rels, flags: s.flags };
+    }
     if (s.screen === 'reporter') { stunts.push({ verdict: s.verdict, score: Number(s.score) }); await pick(page, 'Accept Result'); await wait(280); continue; }
     if (s.screen === 'minigame') { await autopilot(page, plan.stunt); continue; }
     if (s.screen === 'chapter') { shown('chapter', s.chapter + ' — ' + s.chapterDesc); await pick(page, s.buttons[0].label); await wait(650); continue; }
-    if (s.screen === 'stats') { shown('stats', s.update + ' — ' + s.reason); await pick(page, 'Continue'); await wait(180); continue; }
+    if (s.screen === 'stats') {
+      // The rel rows go in the log with the headline. They are the only place
+      // the game announces a relationship move, and the Earl sweep below reads
+      // them: a solo run that quietly set rels.earl would say so here.
+      shown('stats', s.update + ' — ' + s.reason
+        + s.relRows.map(r => ` [${r.who}: ${r.state}]`).join(''));
+      await pick(page, 'Continue'); await wait(180); continue;
+    }
 
     if (s.screen === 'panel') {
       const play = s.buttons.filter(b => !b.save);
@@ -199,6 +210,18 @@ try {
   ok(clean.seen.includes('m5_decision'), 'it reaches the Milestone 5 decision');
   ok(clean.seen.some(s => s.startsWith('m5_')), 'it takes one of the eight endings');
   ok(clean.stunts.length >= 2, `it played at least two stunt runs (${clean.stunts.map(s => s.verdict + '/' + s.score).join(', ')})`);
+
+  // Phase 2. Both Free Roam closes were written with an arm for each branch,
+  // and on the backer branch nothing named either: `fr2_close`'s phone call
+  // from Earl about the car show and `fr4_close`'s "tell the man from
+  // California yes" had been in the file, finished, unread by any run.
+  ok(clean.seen.includes('fr2_close'), 'the backer branch closes Free Roam 2 through fr2_close');
+  ok(clean.seen.includes('fr4_close'), 'and Free Roam 4 through fr4_close');
+  {
+    const closes = clean.texts.filter(x => x.scene === 'fr2_close' || x.scene === 'fr4_close');
+    ok(closes.some(x => /\bEarl\b/.test(x.text)),
+       `and reads the arm of each with Earl in it (${closes.length} lines across the two)`);
+  }
   ok(clean.stunts.every(s => s.verdict === 'SUCCESS' || s.verdict === 'PARTIAL'),
      'the autopilot landed every stunt it was asked to land');
   eq(t.page.__errs.length, 0, `no page errors across the whole clean run (${t.page.__errs.slice(0, 3).join('; ')})`);
@@ -280,6 +303,26 @@ try {
      'a crashed Milestone 1 routes to a crash aftermath');
   ok(rough.seen.includes('m5_decision'), 'a run that started badly still reaches the Milestone 5 decision');
   ok(rough.seen.join() !== clean.seen.join(), 'the two runs take genuinely different paths');
+
+  // Phase 2, and the reason transcript.mjs now writes the rel rows down. This
+  // is the run that answers Cal's tell at Milestone 2 instead of shaking on
+  // the spot, and until now that one fork was the only thing that set
+  // `rels.earl` and `m2Complete`. Take the other and Duke signed Earl's
+  // contract, shook his hand, took his percentage and reached the ending with
+  // Earl 'unknown': no Earl row, none of the `backer` epilogue, and
+  // currentHubRoute() unable to tell Free Roam 2 from Free Roam 1.
+  ok(rough.seen.includes('m2_use_tell'), 'the crash run signs by way of Cal\'s tell, not the straight handshake');
+  {
+    const signing = rough.texts.find(x => x.scene === 'm2_sign' && x.where === 'stats');
+    ok(signing && /\[Earl Maddox: Business Partner\]/.test(signing.text),
+       `the signing screen says what the signing did (${signing ? signing.text : 'no stat screen at m2_sign'})`);
+  }
+  ok(/Earl Maddox: Business Partner/.test(rough.summary),
+     'and the ending screen lists him');
+  ok(/return on investment/.test(rough.summary),
+     "and reads the backer paragraph, not \"still being decided\"");
+  eq(rough.flags && rough.flags.m2Complete, true,
+     'm2Complete is set by the signing, which is what currentHubRoute reads');
   eq(t.page.__errs.length, 0, `no page errors across the crash run (${t.page.__errs.slice(0, 3).join('; ')})`);
 
   /* ================= a third run: "Not interested", and the game notices */
@@ -342,12 +385,92 @@ try {
   ok(solo.seen.includes('fr4_eve_california'), 'the man from California calls for himself in Free Roam 4');
   ok(!solo.seen.includes('fr4_eve_earl'), "and Earl's Free Roam 4 evening is never played");
   ok(solo.seen.includes('fr4_close'), 'the solo branch reads fr4_close on the way to Milestone 5');
+  ok(solo.seen.includes('fr2_close'), 'and fr2_close on the way to Milestone 3');
   {
     const fr4 = solo.hubs['Free Roam — Aftermath'] || [];
     ok(fr4.some(b => /^The Man from California/.test(b.label)), 'the first Free Roam 4 board offers the man from California');
     ok(!fr4.some(b => /^Earl Maddox/.test(b.label)), 'and no Earl Maddox card');
   }
   eq(t.page.__errs.length, 0, `no page errors across the solo run (${t.page.__errs.slice(0, 3).join('; ')})`);
+
+  /* ============== Milestone 5's last stunt carries the decision (Phase 2) */
+
+  // Two ways into the last stunt — Duke picked it (`m5_last_stunt_setup`) or
+  // Earl did (`m5_last_stunt_earl`) — and one pair of outcome scenes between
+  // them. Both scenes named `last_stunt_win`/`last_stunt_loss` flatly, so
+  // `m5Outcome === 'last_stunt_earl'` — a headline, a nerve verdict and a
+  // three-line retrospective, all written — was true on no run ever played.
+  //
+  // Driven, not replayed: the decision is set and the real outcome scene is
+  // entered, and everything after it is the game's own — the scene's own
+  // statUpdate, afterScene(), triggerStatUpdate(), showGameEnd(). Nothing here
+  // knows the mapping it is checking. A fourth full playthrough would cost
+  // eight minutes to reach the same two scenes.
+  const endFromScene = async (patch, scene) => {
+    await open(t.page, t.base, { name: 'Hal Mercer', town: 'Kestrel' });
+    const first = await snapshot(t.page);
+    if (first.screen === 'chapter') { await pick(t.page, first.buttons[0].label); await wait(650); }
+    await t.page.evaluate(([p, sc]) => {
+      Object.assign(window.__dd.GS.flags, p.flags || {});
+      Object.assign(window.__dd.GS.rels, p.rels || {});
+      window.__dd.goToScene(sc);
+    }, [patch, scene]);
+    for (let i = 0; i < 60; i++) {
+      const s = await snapshot(t.page);
+      if (s.screen === 'end') break;
+      await pick(t.page, 'Continue');
+      await wait(150);
+    }
+    const s = await snapshot(t.page);
+    if (s.screen !== 'end') throw new Error(`${scene} never reached an ending (stuck on ${s.screen})`);
+    return {
+      outcome: s.flags.m5Outcome,
+      summary: await t.page.evaluate(() =>
+        document.getElementById('end-summary').innerText.replace(/\s+/g, ' ').trim()),
+    };
+  };
+
+  {
+    const planned = await endFromScene({ flags: { m5Decision: 'last_stunt_planned' } }, 'm5_stunt_win');
+    eq(planned.outcome, 'last_stunt_win', 'a last stunt Duke picked and cleared is still last_stunt_win');
+
+    const earlWin = await endFromScene({ flags: { m5Decision: 'last_stunt_earl' } }, 'm5_stunt_win');
+    eq(earlWin.outcome, 'last_stunt_earl', 'a last stunt Earl picked is last_stunt_earl');
+    ok(/Greatest Act Was a Man Named Duke/.test(earlWin.summary), 'and it gets its own headline');
+    ok(/trusted Earl with the last call/.test(earlWin.summary), 'and its own nerve verdict');
+    ok(/Earl picked the canyon/.test(earlWin.summary), 'and its own retrospective');
+    ok(/cleared it\. He thought: alright\. That was somebody else's number, and I found it anyway/.test(earlWin.summary),
+       'whose third line says he cleared it when he did');
+
+    const earlLoss = await endFromScene({ flags: { m5Decision: 'last_stunt_earl' } }, 'm5_stunt_loss');
+    eq(earlLoss.outcome, 'last_stunt_earl', 'whether or not he cleared it');
+    ok(/didn't clear it\. He got up\. He thought: alright\. That was somebody else's number\./.test(earlLoss.summary),
+       'and says he did not when he did not');
+  }
+
+  /* ================ the ending screen names the right people (Phase 2) */
+
+  {
+    // The mentor ending is Pete Garland's: `m5_mentor` is Duke calling Pete,
+    // the choice is gated on rels.pete, and the retrospective is three lines
+    // about Pete. The headline and the coda both credited Danny Reeves, who is
+    // the rival and has nothing to do with it.
+    const mentor = await endFromScene(
+      { flags: { m5Decision: 'mentor' }, rels: { pete: 'ally', earl: 'backer' } }, 'm5_mentor');
+    eq(mentor.outcome, 'mentor', 'the mentor ending sets its outcome');
+    ok(/Pete Garland Remembers Duke/.test(mentor.summary), 'the mentor headline credits Pete');
+    ok(/Pete Garland remembers Duke/.test(mentor.summary), 'and so does the coda');
+    ok(!/Reeves [Rr]emembers Duke/.test(mentor.summary), 'and neither credits Danny');
+
+    // One relationship label table, not two (Phase 2). The ending screen and
+    // the stat-update panel read the same one now. The stat panel's copy
+    // called Earl "Earl", called `backer` "Business Deal", and had never heard
+    // of Pete or `hanger_on` — the rough run's signing row above is the other
+    // end of this, and says "Earl Maddox: Business Partner" in the same words.
+    ok(/Earl Maddox: Business Partner/.test(mentor.summary),
+       'the ending screen labels off the shared table');
+    ok(/Pete: Ally/.test(mentor.summary), 'and the shared table knows Pete');
+  }
 
   /* ================================================================ mobile */
 

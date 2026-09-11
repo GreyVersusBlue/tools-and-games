@@ -3394,8 +3394,8 @@ Two of them have moved since they were written:
    Milestone 5 button goes to `fr4_close`, whose solo arm makes the same
    call without anyone to say "good work" to, as the FR2 button goes
    through `fr2_close` (#265's increment). The backer button still skips
-   `fr4_close`, which is Phase 2's first bullet, not this one's. *Source:
-   Daredevil Phase 1, increment 2.*
+   `fr4_close`, which is Phase 2's first bullet, not this one's. (#270
+   routed both on both branches.) *Source: Daredevil Phase 1, increment 2.*
 
 268. **Roy Petersen is the regional crew's cameraman on the solo branch, and
    Dot Kessler is who meets Duke off the ramp.** Round 4's scenes lean on
@@ -3422,6 +3422,74 @@ Two of them have moved since they were written:
    counts what the list below it offers. The Legend career track still
    requires Earl (`showGameEnd`'s existing rule); that was not re-decided
    here. *Source: Daredevil Phase 1, increment 2.*
+
+270. **Both Free Roam closes are read by both branches, and `_chapter_fr2`
+   is deleted.** `fr2_close` and `fr4_close` were each written with an arm
+   for the backer branch and an arm without one, and on the backer branch
+   nothing named either: Earl's phone call about the car show and "tell the
+   man from California yes" had been finished, in the file, unread by any
+   run. Both hub milestone buttons go through them unconditionally now. The
+   third handler in that family, `_chapter_fr2`, is deleted rather than
+   routed: it was named by nothing and its stat update said the same thing
+   `m2_sign`'s already says, so routing it would have shown the player two
+   in a row. Its `m2Complete` moved to `m2_sign`, which is the one scene
+   every backer path passes through. The cost is that three baseline
+   transcripts moved, which is what a baseline is for. *Source: Daredevil
+   Phase 2.*
+
+271. **The signing sets the relationship it creates, and `pressAtFair` and
+   `earlApproached` are cut rather than given a writer.** `m2_sign` set
+   neither `rels.earl` nor `m2Complete`; both lived on "Accept and shake"
+   at `m2_round3_cal`, three scenes earlier, so a run that used Cal's tell
+   instead signed Earl's contract, shook his hand, took his percentage and
+   reached the ending screen with Earl `'unknown'` — no Earl row, the
+   "still being decided" paragraph over a finished deal, and
+   `currentHubRoute()` unable to tell Free Roam 2 from Free Roam 1. State a
+   scene creates belongs on that scene. The two flags go the other way:
+   `pressAtFair` guarded five written lines about a press man at the county
+   fair, nothing ever set it, and the fair has no press man — the game's
+   reporter is Sandra Voss, two chapters later. Writing a character to
+   justify a dead flag is the wrong direction; the branch and the flag are
+   gone. `earlApproached` was the same shape with nothing behind it at all.
+   *Source: Daredevil Phase 2.*
+
+272. **The ending Earl picked is its own outcome, and the retrospective says
+   whether Duke made it.** Milestone 5's last stunt has two ways in and one
+   pair of outcome scenes, and both scenes named `last_stunt_win` /
+   `last_stunt_loss` flatly — so `m5Outcome === 'last_stunt_earl'`, which
+   guards a headline, a nerve verdict and a three-line retrospective, was
+   true on no run ever played. `m5StuntFlags()` reads `m5Decision` now. The
+   flatten it replaces did carry one real thing, whether he cleared it, so
+   `m5StuntCleared` carries that instead and the retrospective's third line
+   reads it: the Earl-picked ending is about whose number it was, and it
+   should not be silent about what happened to it. *Source: Daredevil
+   Phase 2.*
+
+273. **One relationship label table, in `state.js`, and the ending's wording
+   wins.** The stat-update panel and the ending screen each carried a
+   literal, and the two had drifted: the panel called Earl "Earl", called
+   `backer` "Business Deal", and had never heard of Pete or `hanger_on`, so
+   a player met one set of names between scenes and a different set at the
+   end. `REL_NAMES` and `REL_STATES` are exported from `state.js` and both
+   screens read them. The ending's wording is the one kept — it is the
+   complete table and the one a player reads last. The suite proves there
+   is only one by moving a single entry and watching both screens change.
+   *Source: Daredevil Phase 2.*
+
+274. **A flag read by nothing and a flag written by nothing are both bugs,
+   and `flags.mjs` counts them; the twenty-eight that exist are frozen, not
+   fixed.** Every wiring bug this game has shipped is content that exists
+   over routing that does not, and the flag bag is where half of them live.
+   The audit reads `engine.js` and `scenes.js` as text, resolves every
+   `flags:` site (an object literal, or a helper resolved off its call site
+   per #263 — an unresolved one fails), and checks four things: a read with
+   no writer, a `false` default with no writer, a default nothing touches,
+   and the write-only list. That list is twenty-eight names long. They are
+   breadcrumbs for Phases 3 to 7 rather than defects, and emptying it is
+   not Phase 2's to spend — so it is frozen, checked from both ends (#264):
+   it can shrink, a twenty-ninth fails, and a name that finds a reader
+   fails too. The audit is its own file, not a section of `smoke-page.mjs`,
+   for the reason #262 gives. *Source: Daredevil Phase 2.*
 
 ---
 
@@ -5797,6 +5865,116 @@ co-sign, the third answer at both new forks and the disappearance;
 six transcripts re-taken and diffed: `clean` moved by one stunt point (#53),
 `rough` by the counted option line only, `no_pete` by that line and two stunt
 points, the three solo runs by the new prose.
+
+## Phase 2 — Everything the game already wrote and cannot show (2026-09-11)
+
+**The finding, restated as a number.** The game had four finished pieces of
+writing that no run could reach and two flags that could not be true. The
+suite was green over all of it, and had been for three rounds, because none of
+it throws: a scene nothing routes to is not an error, it is a scene nobody
+visits.
+
+**What shipped.** Decisions #270 to #274.
+
+- **Both Free Roam closes, on both branches** (#270). `fr2_close` and
+  `fr4_close` were each written with a backer arm and a backer-less one, and
+  increment 2 had routed only the backer-less side. Earl's phone call about
+  the car show at the end of Free Roam 2, and "Tell the man from California
+  yes" at the end of Free Roam 4, had been in the file since round 1 and read
+  by nobody. Both milestone buttons go through them unconditionally now. What
+  Duke says on the Vegas call reads `fr4EarlDeal`: a run that already told
+  Earl yes that evening asks for the date, a run that said it would call
+  California itself says it did, and a run that never played the card says the
+  line that was always there. `_chapter_fr2` is deleted rather than routed —
+  its stat update said what `m2_sign`'s already says, and routing it would
+  have put two in a row in front of the player.
+
+- **The signing signs** (#271). `m2_sign` set neither `rels.earl` nor
+  `m2Complete`. Both sat on "Accept and shake" at `m2_round3_cal`, three
+  scenes earlier, and the other answer — use Cal's tell, which is the better
+  play and the one the `rough` transcript takes — goes to `m2_sign` through
+  `m2_use_tell` without them. So a run could sign Earl's contract, shake his
+  hand, spend three chapters on his percentage, and reach the ending screen
+  with him `'unknown'`: no Earl row in the relationships list, "Earl Maddox.
+  The relationship is still being decided." over a finished deal, and
+  `currentHubRoute()` — which reads `m2Complete` — unable to tell Free Roam 2
+  from Free Roam 1 if a scene ever fell off the end of its chapter. That is
+  on record in the committed `rough.md` from increment 2 and is fixed in the
+  one committed here.
+
+- **The ending Earl picked** (#272). Both Milestone 5 stunt outcomes named
+  `last_stunt_win`/`last_stunt_loss` flatly, so `m5Outcome ===
+  'last_stunt_earl'` — a headline, a nerve verdict and a three-line
+  retrospective, all written — was true on no run ever played.
+  `m5StuntFlags()` in `scenes.js` reads `m5Decision`; `m5StuntCleared` keeps
+  whether he made it, and the retrospective's third line says so.
+
+- **The mentor ending is Pete's.** No decision needed; it is a name that was
+  simply wrong. `m5_mentor` is Duke calling Pete Garland, the choice is gated on
+  `rels.pete`, and the retrospective is three lines about Pete — and the
+  headline and the coda both credited Danny 'Diamondback' Reeves, who is the
+  rival. Both name Pete now.
+
+- **One relationship label table** (#273), `REL_NAMES` and `REL_STATES` in
+  `state.js`. The stat-update panel's copy called Earl "Earl", called `backer`
+  "Business Deal", and had never heard of Pete or `hanger_on`, so the two
+  screens a player reads disagreed about the same five people.
+
+- **`pressAtFair` is cut**, branch and flag (#271), and `earlApproached` with
+  it. Five finished lines about a press man with a notepad at the county fair,
+  guarded by a flag nothing has ever set. The fair has no press man; the
+  game's reporter is Sandra Voss, two chapters later. Writing a character to
+  justify a dead flag is the wrong direction.
+
+- **`transcript.mjs` logs the stat-update relationship rows.** That screen is
+  the only place the game ever tells a player a relationship moved, and the
+  tool wrote down the headline and not the rows underneath it — which is how
+  `m2_sign` survived three rounds of line-for-line transcript diffing.
+
+**The new suite** (#274). `test/flags.mjs`, seven assertions, no browser.
+It reads `engine.js` and `scenes.js` as text with comments stripped, resolves
+every `flags:` site — an object literal, or a helper resolved off its call
+site rather than off a hardcoded list of what it writes (#263) — and asserts
+four things: no flag is read that nothing writes or seeds, no flag defaults to
+`false` with nothing able to set it, no default is untouched by the game, and
+the write-only list is exactly what it says. That list is twenty-eight names.
+They are breadcrumbs for Phases 3 to 7, not defects, so it is frozen rather
+than emptied and checked from both ends (#264): it can shrink, a twenty-ninth
+fails, and a name that finds a reader fails too. Two of its seven assertions
+found the two dead flags on its first run; `earlApproached` was not on the
+list the phase started with.
+
+**Guard-rails broken on purpose (#34), eighteen.** All six of `flags.mjs`'s
+assertion families, each from a green baseline, each failing by name: a
+restored `pressAtFair`, a typo'd `fr4Started`, a twenty-ninth write-only flag,
+a `WRITE_ONLY` name given a reader, an unresolvable `flags:` helper, a third
+plumbing site. Then two browser rounds. The first reverted both routings,
+flattened `m5StuntFlags()` and changed one entry in `REL_STATES`: eleven
+assertions failed, including — from that single table entry — both the signing
+row on the stat panel and the relationship row on the ending screen, which is
+the proof that there is one table and not two. The second removed `m2_sign`'s
+flags and put Danny back in the mentor headline: seven failed.
+
+**Two assertions were rewritten because the break did not move them** (#147).
+"which says he cleared it when he did" and its twin matched `He cleared it.`
+and `didn't clear it`, which the plain win and loss retrospectives also say —
+so both stayed green under a flattened `m5Outcome`, asserting nothing the
+assertion above them had not already asserted. They match the Earl
+retrospective's own third line now, and were re-broken: each is true on its
+own arm and false on the other and false under the flatten.
+
+**Counts.** `smoke-page.mjs` 70 → 93; `flags.mjs` 7 new; `smoke-save.mjs` 53
+unchanged; `verify-touch-375.mjs` unchanged. All six transcripts re-taken and
+diffed: the three backer runs gained `fr2_close`, `fr4_close` and the signing's
+relationship row (`rough` also gains Earl in the ending screen's relationships
+and the backer paragraph over "still being decided"), the three solo runs gain
+relationship rows only.
+
+**None of the four shared things was touched.** The two site-wide checks are
+exactly as they were on `main`: `check-integrity.mjs` fails on
+`Tools/prompt-builder.html` alone (1,483 units, 1 broken — the extra unit is
+`test/flags.mjs`), `social:check` reports the same six pages out of sync,
+`check-collisions.mjs` passes.
 
 ---
 

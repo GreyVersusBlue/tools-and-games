@@ -1,11 +1,9 @@
 # Daredevil — Feature Wishlist
 
-**Status: three rounds and the first increment of Phase 1 are shipped —
-53/53 on `smoke-save.mjs`, 61/61 on `smoke-page.mjs`, five transcript
-baselines diffed line-for-line — and the open phase is still Phase 1, the
-backer-less middle game, on Claude Fable 5.1: Milestone 2 and Free Roam 2
-know Earl was turned down, and Milestones 3, 4 and the epilogue do not yet.
-The question that blocked it was answered by the session (decision #265).**
+**Status: three rounds, all of Phase 1 and all of Phase 2 are shipped —
+53/53 on `smoke-save.mjs`, 93/93 on `smoke-page.mjs`, 7/7 on the new
+`flags.mjs`, six transcript baselines diffed line-for-line — and the open
+phase is Phase 3, relationships as a declared thing, on Claude Fable 5.1.**
 Round 1 made the game finishable for the first time and gave it a save and a
 suite; round 2 split the 356 KB monolith into modules and placed a minigame
 that had never had a call site; round 3 measured what two rounds had deferred
@@ -285,7 +283,7 @@ Three rounds made the game work, made it modular, and made its prose agree with
 its own state. Arc one builds for the player who declines something. The phases
 are **ranked by impact and the order is the recommendation**. Phase 1 is
 finished: the session answered the question (decision #265) and shipped it in
-two increments (PRs #212 and #214). Phase 2 is next.
+two increments (PRs #212 and #214). Phase 2 is finished too. Phase 3 is next.
 
 The model convention here: most phases run on **Claude Opus 5**. **Claude Fable
 5.1** is named only where a wrong answer would be silent — authoring that must
@@ -333,8 +331,7 @@ thread through Milestones 3 and 4, Free Roam 3 and 4, and the endings.
   (#266), "Borrow from Earl" is hidden, and `fr2_close`'s solo arm reads
   `debtSource`. On this branch the Milestone 3 button goes through
   `_chapter_fr2_end`, so `fr2_close` is read for the first time by any run;
-  the backer button still skips it, which is Phase 2's first bullet and would
-  move three baseline transcripts. Eleven `N(fn)`/`C(name, fn)` branches
+  the backer button still skipped it until Phase 2 routed both. Eleven `N(fn)`/`C(name, fn)` branches
   across the FR2 scenes that named Earl; `fr2_close` is a `get lines()`.
 - [x] **Thread it through M3, M4 and the epilogue.** A `solo()` helper at the
   top of `scenes.js`; every line from `m3_entry` to the endings that named
@@ -349,7 +346,7 @@ thread through Milestones 3 and 4, Free Roam 3 and 4, and the endings.
   `showGameEnd`'s absent line names who booked him and who paid for the
   cars. Choice `text`/`subtext` and `statUpdate.title` may be functions.
   Left for a later phase, not this row: the Legend track still requires
-  Earl, and the backer branch still never reads `fr4_close` (Phase 2).
+  Earl. (The backer branch's `fr4_close` was Phase 2's, and is routed.)
 - [x] **`no_earl_solo`** in `transcript.mjs`'s `RUNS`, played to an ending,
   and a third `smoke-page.mjs` run that answers "Not interested" and asserts
   `m2_solo_entry`, never `m2_entry*`/`m2_sign`, the debt before any other FR2
@@ -371,37 +368,45 @@ or equality and need no `freshState` entry. *Model:* **Claude Fable 5.1** —
 authoring a new chapter that has to stay coherent with 4,664 lines of existing
 prose and land correctly in all eight endings.
 
-## Phase 2 — Everything the game already wrote and cannot show
+## Phase 2 — Everything the game already wrote and cannot show — DONE
 
-**There is a finished scene in this file that no player has ever read, and the
-suite is green.**
+**Shipped.** Every item below is closed, and the sweep that found them is now a
+suite of its own: `test/flags.mjs`, seven assertions, no browser.
 
-Round 1's five wiring bugs were all this shape: content that exists, routing
-that does not, and nothing that throws. The same class is still here in smaller
-pieces, and every item below was found by reading rather than by playing, which
-is the argument for Phase 5. Cheap, needs no decision, and the thing to run
-while Phase 1 waits on an answer.
+- [x] **`fr4_close` is routed** — on both branches, not just the backer-less
+  one. The backer arm was written from the start and named by nothing.
+  `renderHubFR4`'s Milestone 5 button goes there unconditionally, and what Duke
+  says on the call reads `fr4EarlDeal` now, so a run that already told Earl yes
+  that evening asks for the date rather than authorising it twice.
+- [x] **`fr2_close` is routed** on both branches, through `_chapter_fr2_end`.
+  `_chapter_fr2` is deleted: it was named by nothing and its stat update
+  duplicated `m2_sign`'s, which is where its `m2Complete` went.
+- [x] **The Earl-picked-the-canyon ending has its own outcome.** `m5StuntFlags()`
+  in `scenes.js` reads `m5Decision`, so `m5Outcome === 'last_stunt_earl'` is
+  reachable and its headline, its nerve verdict and its retrospective render.
+  `m5StuntCleared` carries the one thing the flatten would have lost, and the
+  retrospective's third line says whether he made it.
+- [x] **The mentor ending credits Pete Garland**, who is who `m5_mentor` is
+  about, not Danny Reeves. **`pressAtFair` is cut**, branch and flag: nothing
+  at the county fair is a press man, and inventing one to justify a dead flag
+  is the wrong direction. `earlApproached`, found by the same sweep, went with
+  it.
+- [x] **One relationship label table**, `REL_NAMES` and `REL_STATES` in
+  `state.js`. The stat panel's copy called Earl "Earl", called `backer`
+  "Business Deal", and had never heard of Pete or `hanger_on`.
+- [x] **`transcript.mjs` logs the stat-update relationship rows**, and it
+  earned itself on the first regeneration: `m2_sign` set neither `rels.earl`
+  nor `m2Complete`. Both lived on one answer three scenes earlier, so a run
+  that used Cal's tell signed Earl's contract and reached the ending with him
+  'unknown' — no Earl row, none of the `backer` epilogue, and
+  `currentHubRoute()` unable to tell Free Roam 2 from Free Roam 1.
 
-- [ ] **Route `fr4_close`.** A written Vegas-decision beat — Duke folds the
-  paper and calls Earl — reachable from nothing. It belongs between the FR4 hub
-  emptying and `_chapter_m5`, and it needs a no-Earl variant.
-- [ ] **Route `fr2_close`, or delete `_chapter_fr2_end` and `_chapter_fr2`.**
-  Both are handled and named by nothing; `m2_sign` goes straight to
-  `fr2_hub_open`.
-- [ ] **Give the Earl-picked-the-canyon ending its own outcome.** Carry
-  `m5Decision` into the win/loss handler so the four epilogue pieces keyed to
-  `m5Outcome === 'last_stunt_earl'` can render.
-- [ ] **Fix the mentor ending's attribution** (`engine.js:916`, `:1006`), and
-  **set `pressAtFair` or cut the branch it guards** — five lines in
-  `buildLines()` no run can reach.
-- [ ] **One relationship label table, not two.** Move `engine.js:610` and
-  `:891` into `state.js` and have both screens read it.
-- [ ] **Teach `transcript.mjs` to log the stat-update relationship rows.** That
-  bug survived three rounds of diffing because the tool never wrote them down.
+**What is left in this class, deliberately.** Twenty-eight flags are written
+and read by nothing. They are breadcrumbs for later phases rather than bugs, so
+`flags.mjs` freezes the list instead of emptying it: it can shrink, a
+twenty-ninth fails the suite, and a name that finds a reader fails too.
 
-*Leans on:* `goToScene`, `showGameEnd`, `buildLines`, `transcript.mjs`.
-*Save:* none. *Model:* **Claude Opus 5** — routing repairs and one table move,
-all pinned by transcripts.
+*Shipped by:* **Claude Opus 5**.
 
 ## Phase 3 — Relationships as a declared thing
 

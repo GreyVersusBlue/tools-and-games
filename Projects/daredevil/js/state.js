@@ -40,3 +40,23 @@ export function NF(fn){ return { speaker:null, _fn:fn } } // dynamic narration
 
 export function makeName(){ return GS.name; }
 export function makeTown(){ return GS.town; }
+
+/* ================================================================
+   RELATIONSHIP LABELS
+   ================================================================ */
+// One table, not two (Phase 2). Both screens that print a relationship read
+// these: the stat-update panel between scenes, and the ending screen. They
+// used to carry a literal each, and the two had drifted — the stat panel
+// called Earl "Earl" and `backer` "Business Deal", the ending called them
+// "Earl Maddox" and "Business Partner", and only the ending knew Pete or
+// `hanger_on` existed at all. The ending's wording wins because it is the one
+// a player reads last and the only one that was complete.
+export const REL_NAMES = {
+  cal:'Cal', ruthie:'Ruthie', tommy:'Tommy', earl:'Earl Maddox', danny:'Danny', pete:'Pete',
+};
+export const REL_STATES = {
+  loyal:'Loyal Partner', warm:'Warming Up', neutral:'Neutral', strained:'Strained',
+  solid:'Solid', absent:'Absent', backer:'Business Partner', unknown:'—',
+  mentor:'Mentor', antagonist:'Antagonist', poached:'Poached', frenemy:'Frenemy',
+  nemesis:'Nemesis', ally:'Ally', hanger_on:'Hanger-On',
+};

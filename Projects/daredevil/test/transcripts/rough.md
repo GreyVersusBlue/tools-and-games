@@ -2,7 +2,7 @@
 
 Played as Mack Teller of Cold Spring, stunt policy `crash`.
 
-**Scene path (78):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_direct` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
+**Scene path (80):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_direct` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
 
 ---
 
@@ -491,6 +491,7 @@ He thought: there's a version of this where that's true. He thought: there's a v
 He didn't know which one yet. He was about to find out.
 
 > **The Deal Is Signed** — Earl Maddox. Percentage settled. Cal in the room. The bigger world starts Thursday.
+> - _Earl Maddox_ → **Business Partner**
 
 ### `fr2_hub_open`
 The shows got bigger. Not dramatically — not overnight — but in the way things actually grow, which is incrementally and without announcement until you look back and the county fair is a different category of thing from where you are now.
@@ -675,6 +676,22 @@ Cal looked at him. Then he picked the wrench back up.
 - Milestone 3 — The Big Break
 
 **→ took:** Milestone 3 — The Big Break
+
+> **Free Roam 2 Complete** — The act got bigger. Some things held. Some things shifted. Milestone 3 is on the calendar.
+
+### `fr2_close`
+By the time Milestone 3 was on the horizon, the shape of things had changed.
+Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.
+He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.
+And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
+Duke thought about Danny more than he wanted to.
+Then Earl called about the car show. The real one. Five cars, a national sponsor interested, a regional TV crew.
+He listened to the whole pitch without interrupting.
+When Earl finished he said:
+**EARL:** What do you think?
+**DUKE:** I think I'm ready.
+A pause. Earl's tell — not tapping a pen. Just quiet.
+**EARL:** Good. Because this one matters.
 
 
 ## The Big Break
@@ -913,6 +930,7 @@ And there it was — the *we.* Not a question about the schedule. A statement ab
 He went back to work. Duke sat with the word *right* for a while.
 
 > **Six Months** — Cal's in. The planning starts now. Buses are different from cars — he's already thinking about how.
+> - _Cal_ → **Loyal Partner**
 
 
 ## HUB — Free Roam — The Price of Fame
@@ -1240,6 +1258,27 @@ Duke thought: Earl gave him that line. He thought: that might have been a gift o
 
 **→ took:** Milestone 5 — The Question
 
+### `fr4_close`
+He sat at the kitchen table with the piece of paper.
+Stunts. What else. The thing before the jump.
+He had an answer now. He had had it for a while — it had arrived somewhere in the night rides and the garage with Cal and the porch on Wednesday. He had not announced it to himself when it arrived. It had just been there.
+He thought: that's the question.
+He folded the piece of paper and put it in his jacket pocket and called Earl.
+**EARL:** Duke.
+**DUKE:** I talked to him myself. The answer's yes.
+A pause. Not the pause-before-numbers or the pause-before-leverage. The other kind.
+**EARL:** Alright.
+**DUKE:** Set the date.
+**EARL:** I'll call you tomorrow.
+**DUKE:** Earl.
+**EARL:** Yeah.
+**DUKE:** Good work.
+A longer pause.
+**EARL:** You too.
+Duke hung up. He sat at the table. The kitchen was quiet. Out the window, the street. The lawn, mowed. The truck in the driveway. The sky — through the glass, going dark at the edge — the same as it had always been.
+He thought: some things you just remember.
+He thought: Vegas.
+
 
 ## The Question
 
@@ -1292,7 +1331,7 @@ He thought: some things don't need a headline.
 "Nobody Remembers the Promoter's Handshake. They Remember the Fist."
 CAREER TRACK
 The Legend
-Earl Maddox. The relationship is still being decided.
+Earl Maddox got his return on investment. So did Duke. They're both professionals about it.
 RETROSPECTIVE
 He told Cal on a Tuesday. Cal said: okay.
 Some people never knew he retired.
@@ -1306,6 +1345,7 @@ NERVE — He went out quietly. That takes its own kind of nerve.
 RELATIONSHIPS
 Cal: Loyal Partner
 Tommy: Hanger-On
+Earl Maddox: Business Partner
 "The kid in the front row — the one Duke nodded to — started riding at fourteen."
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5
