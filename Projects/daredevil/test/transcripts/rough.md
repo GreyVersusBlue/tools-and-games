@@ -2,7 +2,7 @@
 
 Played as Mack Teller of Cold Spring, stunt policy `crash`.
 
-**Scene path (80):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_direct` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
+**Scene path (82):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_job` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_scout` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_direct` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
 
 ---
 
@@ -327,7 +327,26 @@ Tommy considered this with the seriousness of a man on his third beer.
 **TOMMY:** I think you're going somewhere. I also think that cow was in the wrong spot.
 That was fair.
 
-> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
+- Option A"Drink your beer."Let it be a bar night. He's good at those.
+- Option B"Come out to the next one. Tell me where the cow is."Give him a job. He'll take it more seriously than you mean it.
+
+**→ took:** Option B"Come out to the next one. Tell me where the cow is."Give him a job. He'll take it more seriously than you mean it.
+
+> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy has a job now.
+> - _Tommy_ → **Ally**
+
+### `fr1_eve_bar_job`
+**DUKE:** Come out to the next one. Tell me where the cow is.
+Tommy put his glass down.
+**TOMMY:** You mean that?
+**DUKE:** I mean stand where you can see the landing and tell me what you saw. Not what you told the table. What you saw.
+Tommy looked at him for a second the way he looked at things he was about to take seriously, which was not a look Duke had seen on him often.
+**TOMMY:** I can do that.
+**DUKE:** I know.
+He wasn't sure he did know. But Tommy had been at every show since before there was anything to watch, standing somewhere, and it had cost Duke nothing to give that a name.
+
+> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy has a job now.
+> - _Tommy_ → **Ally**
 
 
 ## HUB — Free Roam — Early Days
@@ -604,10 +623,28 @@ Duke let that sit.
 **DUKE:** You think that bothers me.
 **TOMMY:** I think it should. Because if you're not paying attention to who's behind you, you'll be the guy they tell stories about at the next guy's show.
 It was the smartest thing Tommy had said in a while. Duke let it land without commenting.
-On the walk home he thought about Danny's setup at the fair. The fire trick.
+
+- Option A"Noted."Let it land. Don't give him the satisfaction of agreeing out loud.
+- Option B"Keep watching him for me."Make the theory a job. He'll file reports you didn't ask for.
+
+**→ took:** Option B"Keep watching him for me."Make the theory a job. He'll file reports you didn't ask for.
+
+> **Night at the Bar** — Tommy said something true. Now it's his job to.
+> - _Tommy_ → **Ally**
+
+### `fr2_eve_bar_scout`
+**DUKE:** Keep watching him for me.
+**TOMMY:** Watching him how?
+**DUKE:** Where he's booked. What he's jumping. Who's in his crowd that used to be in mine.
+Tommy sat up. He had been waiting, Duke realized, for about a year, for somebody to ask him for something he was actually good at.
+**TOMMY:** I can do that. I know a guy at the Larkin paper.
+**DUKE:** Of course you do.
+He already had the job, from the Nail. This was the second half of it, and he took it the same way — like a man being handed something he'd been carrying anyway.
+On the walk home he thought about the fire trick Tommy kept describing. He hadn't watched it. He'd heard it from the ramp — the crowd, then the whump of the fuel catching, then the crowd again.
 He thought: *fire's a good idea. I should think about fire.*
 
-> **Night at the Bar** — Tommy said something true. He does that sometimes.
+> **Night at the Bar** — Tommy said something true. Now it's his job to.
+> - _Tommy_ → **Ally**
 
 
 ## HUB — Free Roam — Building the Act
@@ -682,9 +719,8 @@ Cal looked at him. Then he picked the wrench back up.
 ### `fr2_close`
 By the time Milestone 3 was on the horizon, the shape of things had changed.
 Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.
-He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.
-And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
-Duke thought about Danny more than he wanted to.
+He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces.
+Tommy was in his corner, which turned out to be a place Tommy could stand.
 Then Earl called about the car show. The real one. Five cars, a national sponsor interested, a regional TV crew.
 He listened to the whole pitch without interrupting.
 When Earl finished he said:
@@ -1201,7 +1237,7 @@ Duke looked at him.
 He shrugged.
 **TOMMY:** That's all.
 Duke thought about the county fair. He thought about Tommy in the early days, bar nights, enthusiastic and unreliable and there. He thought about lawn chairs.
-He thought: Tommy had been at more of his shows than he'd kept track of. He thought: that was a fact. He was going to have to figure out what to do with it.
+He thought: Tommy is going to be in Roy's film whether Roy knows it or not. He thought: there he is is probably the most accurate thing Tommy has ever said about him.
 **DUKE:** I know the entrance I want.
 **TOMMY:** Yeah?
 **DUKE:** I'll tell you when it's real.
@@ -1345,7 +1381,7 @@ NERVE — He went out quietly. That takes its own kind of nerve.
 RELATIONSHIPS
 Cal: Loyal Partner
 Earl Maddox: Business Partner
-Tommy: Hanger-On
+Tommy: Ally
 "The kid in the front row — the one Duke nodded to — started riding at fourteen."
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5

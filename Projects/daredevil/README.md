@@ -39,6 +39,9 @@ node Projects/daredevil/test/transcript.mjs no_earl   # answers "Not interested"
 node Projects/daredevil/test/transcript.mjs no_pete   # declines the Young Wannabe
 node Projects/daredevil/test/transcript.mjs no_earl_solo   # "Not interested", then the other answer at every solo fork
 node Projects/daredevil/test/transcript.mjs no_earl_crash  # "Not interested" and a crash at every stunt: the solo failure arms
+node Projects/daredevil/test/transcript.mjs no_tommy   # borrows from Tommy, tells him to leave it there; ignores Danny's challenge
+node Projects/daredevil/test/transcript.mjs no_danny   # "Doesn't matter" at the fair: Danny never met
+node Projects/daredevil/test/transcript.mjs danny_bill # the challenge on Duke's terms: Danny poached onto the bill
 node Projects/daredevil/test/verify-touch-375.mjs     # 375px, touch-emulated pointer input
 ```
 

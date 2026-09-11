@@ -178,9 +178,9 @@ Nothing runs Daredevil's suite on a pull request.
 The invocations that work, from the repo root:
 
 ```
-node Projects/daredevil/test/smoke-save.mjs          # 110 passed, 0 failed
-node Projects/daredevil/test/smoke-page.mjs          # 61 passed, 0 failed, ~25 min
-node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete, no_earl_solo, no_earl_crash
+node Projects/daredevil/test/smoke-save.mjs          # 116 passed, 0 failed
+node Projects/daredevil/test/smoke-page.mjs          # 93 passed, 0 failed, ~25 min
+node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete, no_earl_solo, no_earl_crash, no_tommy, no_danny, danny_bill
 node Projects/daredevil/test/verify-touch-375.mjs    # one-off, 375px, touch-emulated
 cd Tools/board-check && npm run check
 ```
@@ -214,10 +214,14 @@ starting a new list.
   increment 1). Milestones 3 and 4 and the epilogue still read as a backer
   run on that branch — the open half of the Phase 1 row.
 - Ruthie is reachable through one of six answers to one question, in one scene.
-- `GS.rels.tommy` is never assigned anywhere in `scenes.js` — `'hanger_on'`
-  from `freshState()` to the ending screen, while `engine.js` tests it against
-  `'absent'` twice and `'unknown'` once. Danny is only ever `'frenemy'` or
-  `'nemesis'`, only in Free Roam 2. Neither has a true never-met state.
+- **Three relationship states nothing can write**, found by Phase 4's
+  reachability check on its first run and frozen there rather than fixed
+  (they are not that row's): Ruthie `'strained'` and `'absent'`, and Earl
+  `'antagonist'`. Each has something behind it — two ending verdicts, the
+  Free Roam 4 Ruthie card's "He thought about calling her" sub, and the
+  whole of `fr4_ruthie_gone`, gated on a state no scene sets. Giving one a
+  writer means taking it off `NOT_YET_WRITTEN` in `smoke-save.mjs`, which
+  fails until you do. Ruthie's two belong with Q31.
 - 30 flags are written and never read, including `familyOrigin` (the cold
   open's "what he came from" fork, whose only lasting effect is +1 Hustle on
   one arm), `peteMistakeResponse` and `m5Decision`. `debtSource` came off
@@ -293,8 +297,8 @@ Three rounds made the game work, made it modular, and made its prose agree with
 its own state. Arc one builds for the player who declines something. The phases
 are **ranked by impact and the order is the recommendation**. Phase 1 is
 finished: the session answered the question (decision #265) and shipped it in
-two increments (PRs #212 and #214). Phases 2 and 3 are finished too. Phase 4
-is next.
+two increments (PRs #212 and #214). Phases 2, 3 and 4 are finished too. Arc
+one is closed; Phase 5 opens arc two.
 
 The model convention here: most phases run on **Claude Opus 5**. **Claude Fable
 5.1** is named only where a wrong answer would be silent — authoring that must
@@ -452,34 +456,50 @@ happily write `rels.peet = 'aly'` and tell nobody.** Not any more.
 
 *Shipped by:* **Claude Fable 5.1**.
 
-## Phase 4 — Danny and Tommy get a way out
+## Phase 4 — Danny and Tommy get a way out — DONE
 
-**Tommy is assigned once, in `freshState()`, and the engine tests him against
-two states he can never hold.**
+**Shipped 2026-09-11** (decisions #279 to #283; the account is under
+"Daredevil, arc one" in the root `HISTORY.md`).
 
-Rounds 2 and 3 ran the absent-relationship prose sweep for Ruthie, then Earl
-and Pete, and found a real bug each time. Danny and Tommy were skipped on the
-honest grounds that neither has a true absent state — which is the thing to
-fix. `GS.rels.tommy` is `'hanger_on'` for the whole game while `renderHubFR3`
-and `renderHubFR4` both gate his card on him not being `'absent'`; Danny is
-only ever `'frenemy'` or `'nemesis'`, and only in Free Roam 2, so
-`dannyMet`/`dannySchemed` are the real switches.
+**Tommy was assigned once, in `freshState()`, and the engine tested him
+against two states he could never hold.** Danny was only ever `'frenemy'` or
+`'nemesis'`, and only in Free Roam 2.
 
-- [ ] **Give Tommy a real track.** `fr4_eve_tommy` reads
-  `GS.rels.tommy === 'ally'` for a line nothing can make true. Wire the FR1/FR2
-  bar evenings to move him, and give the debt scene's "Borrow from Tommy" arm a
-  lasting cost.
-- [ ] **Give Danny a `'poached'` and an `'absent'`.** Both labels already exist
-  in the epilogue's table; neither is reachable.
-- [ ] **Two transcript plans, `no_tommy` and `no_danny`**, on round 3's method
-  exactly: play them, grep the output for the name, read every unconditional
-  mention, then fix what the grep finds as `N(fn)` prose swaps.
-- [ ] **Extend the epilogue roster** so a character who was never in the story
-  is omitted rather than printed as "—".
+- [x] **Tommy has a track.** The Free Roam 1 bar evening ends in a choice:
+  "Drink your beer" leaves him where he is, "Come out to the next one. Tell me
+  where the cow is" makes him `'ally'`. The Free Roam 2 bar does the same
+  with "Keep watching him for me", and co-signing the solo bank loan does it
+  without asking. `fr4_eve_tommy`'s `'ally'` line is reachable. The neutral
+  answer is first on both, so a run that falls through keeps him a hanger-on
+  (#280).
+- [x] **Borrow from Tommy costs something.** The six-weeks-later bar ends in
+  a choice: "I paid you back" keeps him, and Free Roam 3 remembers the money;
+  "We're square. Leave it there" sends him `'absent'` — the Free Roam 2 bar
+  card and both later Tommy evenings leave the board (#281).
+- [x] **Danny has a `'poached'` and an `'absent'`.** Counter terms on the
+  public challenge put him on Duke's bill; no answer sends him to a Fort
+  Worth promoter and out of the story (#282). "Doesn't matter" at the fair
+  is the never-met case, as it always was.
+- [x] **Three transcript plans**, `no_tommy`, `no_danny` and `danny_bill`, on
+  round 3's method. The grep found the Free Roam 2 close naming Danny and
+  Tommy's corner regardless, and the bar evening's walk home thinking about a
+  setup Duke never watched; all are `N(fn)` swaps now, and a Danny Duke never
+  met is not in the paragraph at all.
+- [x] **The roster reads the table.** `rosterOf()` in `cast.js` lists every
+  character not at their never-met state, in the cast's order; the ending
+  screen uses it, and `smoke-save.mjs` tests it as data.
+- [x] **Every state has a writer, or is on a frozen list.** `smoke-save.mjs`
+  110 → 116: every non-start state in the cast is written by some scene, and
+  the three that were not on the first run — Ruthie `'strained'`/`'absent'`,
+  Earl `'antagonist'` — are frozen, checked from both ends (#283). They are in
+  the standing backlog above.
 
-*Leans on:* Phase 3's `CAST`, `scenes.js`, `transcript.mjs`'s `RUNS`.
-*Save:* none beyond Phase 3's. *Model:* **Claude Opus 5** — prose and card
-wiring against an established method.
+Also: Tommy's row lost its never-met state (#279), and `fr2_danny_03`'s
+"The appropriate dialogue entered then, based on how the event went" — a
+stage direction that had shipped as prose — is two lines keyed to the event's
+outcome, which takes `dannyEventOutcome` off the write-only list.
+
+*Shipped by:* **Claude Fable 5.1** (the row named Claude Opus 5).
 
 ## Arc two — the machine under the story
 

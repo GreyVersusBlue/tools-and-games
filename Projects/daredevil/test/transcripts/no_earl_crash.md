@@ -2,7 +2,7 @@
 
 Played as Curtis Vane of Ashby Fork, stunt policy `good then crash`.
 
-**Scene path (89):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_kessler` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_tommy` → `m2_solo_round3` → `m2_solo_plan_fast` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_tommy` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_failure_buses` → `fr4_hub_open_failure` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_california` → `fr4_california_close` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_disappear`
+**Scene path (92):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_late` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_kessler` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_tommy` → `m2_solo_round3` → `m2_solo_plan_fast` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_tommy` → `fr2_debt_tommy_glad` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_noted` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_failure_buses` → `fr4_hub_open_failure` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_california` → `fr4_california_close` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_disappear`
 
 ---
 
@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -367,6 +367,18 @@ Tommy considered this with the seriousness of a man on his third beer.
 **TOMMY:** I think you're going somewhere. I also think that cow was in the wrong spot.
 That was fair.
 
+- Option A"Drink your beer."Let it be a bar night. He's good at those.
+- Option B"Come out to the next one. Tell me where the cow is."Give him a job. He'll take it more seriously than you mean it.
+
+**→ took:** Option A"Drink your beer."Let it be a bar night. He's good at those.
+
+> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
+
+### `fr1_eve_bar_late`
+**DUKE:** Drink your beer.
+Tommy drank his beer. He told the story about the cow twice more before closing, to two different tables, and the cow got a little further out of position each time.
+Duke let him. It was Tommy's story too, in the way that everything Duke did was a little bit Tommy's story. That was the arrangement. Nobody had ever said it out loud.
+
 > **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
 
 
@@ -460,6 +472,7 @@ He was being a little difficult. He was also right, which was worse.
 **→ took:** Option C"Tommy'll co-sign."He would. He'll never mention it. You'll both know.
 
 > **A Second Name** — Tommy co-signed in his work boots and read the whole form. He'll never mention it.
+> - _Tommy_ → **Ally**
 
 ### `m2_solo_bank_tommy`
 **DUKE:** Tommy'll co-sign.
@@ -472,6 +485,7 @@ At the bar that weekend Tommy did not mention it. He did not mention it so caref
 He thought: Earl would have held the number. Tommy's holding it instead, and Tommy will never say so, and that's worse in a way he couldn't have explained to Pyle.
 
 > **A Second Name** — Tommy co-signed in his work boots and read the whole form. He'll never mention it.
+> - _Tommy_ → **Ally**
 
 ### `m2_solo_round3`
 Round three was at the garage, because that was where the calculator was. It was Cal's and it had grease in the keys.
@@ -554,9 +568,17 @@ He hated asking. He'd asked once already this year, in a bank lobby, and Tommy h
 He paid him back after the show. Tommy didn't make it a thing. The thing that would not be a thing was already a thing, though — both of them knew it. The twelve hundred lived in the friendship from then on, very small, very quiet. Not poisonous. Just present.
 At a bar six weeks later:
 **TOMMY:** You know, when you needed that twelve hundred —
+
+- Option A"I paid you back."It's a fact. Let him finish anyway.
+- Option B"We're square. Leave it there."End it. He'll take you at your word, which is the problem.
+
+**→ took:** Option A"I paid you back."It's a fact. Let him finish anyway.
+
+### `fr2_debt_tommy_glad`
 **DUKE:** I paid you back.
 **TOMMY:** I know. I just — I was glad to. That's what I was going to say.
 He meant it. He also needed Duke to know he meant it. Those were two separate things.
+He was at the next show, standing somewhere. He always was. He did not bring up the twelve hundred again, and Duke understood that not bringing it up was going to be the shape of it from now on.
 
 
 ## HUB — Free Roam — Building the Act
@@ -676,7 +698,8 @@ Not intentionally. He'd gone for water.
 Danny was already there. His jacket was off. Without it, he looked like what he was — a man who jumps motorcycles for a living, which meant he looked slightly worn and slightly careful and significantly more real than the jacket allowed.
 **DANNY:** Harlan.
 **DUKE:** Danny.
-The appropriate dialogue entered then, based on how the event went. They stood at the barrel. Danny refilled his cup and handed the ladle over without comment.
+"Fifty-five," Danny said, to the water. "Tell your mechanic I've got something to say about it. I don't know what yet."
+They stood at the barrel. Danny refilled his cup and handed the ladle over without comment.
 It was the closest they'd come to each other as people. Duke thought: this is the version of him nobody in the circuit sees. He didn't know what to do with that, so he did nothing with it and went back to the show.
 
 > **Water Barrel** — No crowd. No jacket. Just two men who do the same thing.
@@ -863,6 +886,19 @@ Duke let that sit.
 **DUKE:** You think that bothers me.
 **TOMMY:** I think it should. Because if you're not paying attention to who's behind you, you'll be the guy they tell stories about at the next guy's show.
 It was the smartest thing Tommy had said in a while. Duke let it land without commenting.
+
+- Option A"Noted."Let it land. Don't give him the satisfaction of agreeing out loud.
+- Option B"Keep watching him for me."Make the theory a job. He'll file reports you didn't ask for.
+
+**→ took:** Option A"Noted."Let it land. Don't give him the satisfaction of agreeing out loud.
+
+> **Night at the Bar** — Tommy said something true. He does that sometimes.
+
+### `fr2_eve_bar_noted`
+**DUKE:** Noted.
+**TOMMY:** That's it? Noted?
+**DUKE:** That's it.
+Tommy shook his head and finished his beer, satisfied in the way he got when he'd been right and nobody had said so.
 On the walk home he thought about Danny's setup at the fair. The fire trick.
 He thought: *fire's a good idea. I should think about fire.*
 
@@ -1160,7 +1196,7 @@ He went back to work. Duke sat with the word *right* for a while.
 **→ took:** Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
 
 ### `fr3_eve_tommy`
-Tommy found him at the bar after the Dallas coverage ran in the regional paper. He'd been there a while before Duke arrived, which was a certain kind of tell.
+Tommy found him at the bar after the Dallas coverage ran in the regional paper. He'd been there a while before Duke arrived, which was a certain kind of tell. He had not mentioned the twelve hundred since the night he'd tried to, and he did not mention it now.
 **TOMMY:** I saw the piece.
 **DUKE:** Sandra's piece?
 **TOMMY:** She wrote you up good.
@@ -1409,7 +1445,7 @@ Duke looked at him.
 He shrugged.
 **TOMMY:** That's all.
 Duke thought about the county fair. He thought about Tommy in the early days, bar nights, enthusiastic and unreliable and there. He thought about lawn chairs.
-He thought: Tommy had been at more of his shows than he'd kept track of. He thought: that was a fact. He was going to have to figure out what to do with it.
+He thought: Tommy is going to be in Roy's film whether Roy knows it or not. He thought: there he is is probably the most accurate thing Tommy has ever said about him.
 **DUKE:** I know the entrance I want.
 **TOMMY:** Yeah?
 **DUKE:** I'll tell you when it's real.
@@ -1545,7 +1581,7 @@ RELATIONSHIPS
 Cal: Loyal Partner
 Pete: Hanger-On
 Earl Maddox: Absent
-Tommy: Hanger-On
+Tommy: Ally
 Danny: Nemesis
 "He disappeared in 1974. Some say he's still out there."
 

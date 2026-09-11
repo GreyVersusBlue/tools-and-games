@@ -2,7 +2,7 @@
 
 Played as Duke Harlan of Buford County, stunt policy `good`.
 
-**Scene path (91):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
+**Scene path (93):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_late` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_noted` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
 
 ---
 
@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -364,6 +364,18 @@ Tommy knew everybody at the Rusty Nail and everybody knew Tommy. That was a doub
 Tommy considered this with the seriousness of a man on his third beer.
 **TOMMY:** I think you're going somewhere. I also think that cow was in the wrong spot.
 That was fair.
+
+- Option A"Drink your beer."Let it be a bar night. He's good at those.
+- Option B"Come out to the next one. Tell me where the cow is."Give him a job. He'll take it more seriously than you mean it.
+
+**→ took:** Option A"Drink your beer."Let it be a bar night. He's good at those.
+
+> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
+
+### `fr1_eve_bar_late`
+**DUKE:** Drink your beer.
+Tommy drank his beer. He told the story about the cow twice more before closing, to two different tables, and the cow got a little further out of position each time.
+Duke let him. It was Tommy's story too, in the way that everything Duke did was a little bit Tommy's story. That was the arrangement. Nobody had ever said it out loud.
 
 > **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
 
@@ -633,7 +645,8 @@ Not intentionally. He'd gone for water.
 Danny was already there. His jacket was off. Without it, he looked like what he was — a man who jumps motorcycles for a living, which meant he looked slightly worn and slightly careful and significantly more real than the jacket allowed.
 **DANNY:** Harlan.
 **DUKE:** Danny.
-The appropriate dialogue entered then, based on how the event went. They stood at the barrel. Danny refilled his cup and handed the ladle over without comment.
+"Fifty-five," Danny said, to the water. "Tell your mechanic I've got something to say about it. I don't know what yet."
+They stood at the barrel. Danny refilled his cup and handed the ladle over without comment.
 It was the closest they'd come to each other as people. Duke thought: this is the version of him nobody in the circuit sees. He didn't know what to do with that, so he did nothing with it and went back to the show.
 
 > **Water Barrel** — No crowd. No jacket. Just two men who do the same thing.
@@ -859,6 +872,19 @@ Duke let that sit.
 **DUKE:** You think that bothers me.
 **TOMMY:** I think it should. Because if you're not paying attention to who's behind you, you'll be the guy they tell stories about at the next guy's show.
 It was the smartest thing Tommy had said in a while. Duke let it land without commenting.
+
+- Option A"Noted."Let it land. Don't give him the satisfaction of agreeing out loud.
+- Option B"Keep watching him for me."Make the theory a job. He'll file reports you didn't ask for.
+
+**→ took:** Option A"Noted."Let it land. Don't give him the satisfaction of agreeing out loud.
+
+> **Night at the Bar** — Tommy said something true. He does that sometimes.
+
+### `fr2_eve_bar_noted`
+**DUKE:** Noted.
+**TOMMY:** That's it? Noted?
+**DUKE:** That's it.
+Tommy shook his head and finished his beer, satisfied in the way he got when he'd been right and nobody had said so.
 On the walk home he thought about Danny's setup at the fair. The fire trick.
 He thought: *fire's a good idea. I should think about fire.*
 
@@ -943,7 +969,8 @@ Cal looked at him. Then he picked the wrench back up.
 ### `fr2_close`
 By the time Milestone 3 was on the horizon, the shape of things had changed.
 Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.
-He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.
+He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces.
+Tommy was either in his corner or not, depending on the week.
 And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
 Duke thought about Danny more than he wanted to.
 Then Earl called about the car show. The real one. Five cars, a national sponsor interested, a regional TV crew.
@@ -1272,7 +1299,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the buses and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the buses and landed dead level
 
 ### `m4_triumph_buses`
 Thirteen buses. He cleared all of them.
@@ -1561,7 +1588,7 @@ He made the call. Earl first, then Cal, then Ruthie.
 The announcement ran in three papers. Sandra got the county fair detail right.
 He thought: that's the story. He thought: it's enough.
 VERDICTS
-BODY — Carrying some damage. He knows where it is.
+BODY — The body kept its own account.
 LEGACY — They know the name. They know what it means.
 HOME — The circuit was home. That might be enough.
 THE WORK — Cal's still got the bike. It's right.
@@ -1573,4 +1600,4 @@ Earl Maddox: Business Partner
 Tommy: Hanger-On
 Danny: Nemesis
 
-**Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 1 HUSTLE 5
+**Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5

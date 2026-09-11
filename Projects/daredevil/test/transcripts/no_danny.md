@@ -1,8 +1,8 @@
-# Daredevil — transcript: `no_pete`
+# Daredevil — transcript: `no_danny`
 
-Played as Ellis Boone of Cutter Ridge, stunt policy `good`.
+Played as Amos Kittredge of Wolf Hollow, stunt policy `good`.
 
-**Scene path (88):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_late` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_noted` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
+**Scene path (86):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_late` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_noted` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
 
 ---
 
@@ -11,12 +11,12 @@ Played as Ellis Boone of Cutter Ridge, stunt policy `good`.
 
 
 ### `cold_open_01`
-There's a place in Cutter Ridge where the county road dips before the bridge. On a bike, if you hit it right, you leave the ground.
+There's a place in Wolf Hollow where the county road dips before the bridge. On a bike, if you hit it right, you leave the ground.
 Everyone in town knew about that dip. Most people lifted off the seat, held on, came down.
 He didn't do it that way.
 
 ### `cold_open_02`
-Cutter Ridge had a grain elevator, two churches, and one stoplight that nobody paid much attention to. It had a fairground that smelled like cut grass and motor oil every summer.
+Wolf Hollow had a grain elevator, two churches, and one stoplight that nobody paid much attention to. It had a fairground that smelled like cut grass and motor oil every summer.
 It had people who were going places and people who knew they weren't. The difference was something you could feel in a handshake.
 He didn't know yet which kind he was. He had some guesses.
 
@@ -61,7 +61,7 @@ He wanted the feeling. That was the best he could do. The moment at the top of t
 You can't explain that to most people. He'd stopped trying.
 
 ### `cold_open_08`
-The Cutter Ridge Fair. August. Hot the way August is hot in the middle of the country, like the air forgot to move.
+The Wolf Hollow Fair. August. Hot the way August is hot in the middle of the country, like the air forgot to move.
 He'd been at the fairground since six. The ramp had been measured four times. The cows were in a pen by the east fence, doing what cows do, which is stand there and make the whole thing seem simultaneously more and less reasonable.
 Three cows. He was going to jump three cows on a dirt bike in front of a few hundred people and one man he'd heard was coming to look.
 He was ready. He'd been ready for a long time.
@@ -83,14 +83,14 @@ Tommy said the last part a half-beat too carefully.
 - Option B"I'll go introduce myself."Friendly competition. See what you're dealing with.
 - Option C"Doesn't matter. I've got my own show."Stay focused. Nothing else needs your attention right now.
 
-**→ took:** Option A"What time is he on?"Get on right before him. Make the contrast work in your favor.
+**→ took:** Option C"Doesn't matter. I've got my own show."Stay focused. Nothing else needs your attention right now.
 
-### `m1_b1_scheme`
-**DUKE:** What time is he on?
-**TOMMY:** Two o'clock, I think. Why?
-**DUKE:** Because I want to go on at one-thirty.
-Tommy grinned. He always grinned when Duke decided something. It was one of the better things about Tommy.
-**TOMMY:** I'll go find the schedule man.
+### `m1_b1_ignore`
+**DUKE:** Doesn't matter.
+**TOMMY:** He's good, Duke. People are saying—
+**DUKE:** Tommy.
+Tommy stopped talking. He usually did, eventually.
+Duke went back to the ramp. He had his own work.
 
 ### `m1_beat_2`
 Cal Briggs had come with the truck and hadn't said much since. He had his hands in the engine bay of the flatbed, though there was nothing wrong with it that Duke knew of. Cal did that — kept his hands busy when he was thinking.
@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -165,10 +165,6 @@ He let that sit.
 Duke knew the name. He'd done his research.
 
 ### `m1_earl_modifiers`
-Earl's eyes had moved across the crowd. He'd found Danny in it.
-**EARL:** Diamondback. He's good.
-A beat.
-**EARL:** You're interesting. There's a difference.
 
 ### `m1_player_response`
 Earl had finished saying whatever he'd come to say. The space where Duke answered opened up.
@@ -219,7 +215,7 @@ He had some decisions to make.
 **→ took:** Lloyd Perkins The fair organizer has a booking offer for next August. Available · Free
 
 ### `fr1_organizer`
-Lloyd Perkins had run the booking side of the Cutter Ridge Fair for eleven years. He had a clipboard, a short-sleeved button-up, and the careful confidence of a man who was a big fish in a pond he understood precisely.
+Lloyd Perkins had run the booking side of the Wolf Hollow Fair for eleven years. He had a clipboard, a short-sleeved button-up, and the careful confidence of a man who was a big fish in a pond he understood precisely.
 He found Duke outside the auto parts store.
 **ORGANIZER:** Mr. Harlan. Got a minute?
 **DUKE:** I've got a few.
@@ -278,16 +274,34 @@ He stopped himself and recalibrated.
 - Option B"I'm pretty busy right now. Maybe later."Defer but don't close.
 - Option C"This isn't something I can teach."Be straight with him.
 
-**→ took:** Option C"This isn't something I can teach."Be straight with him.
+**→ took:** Option A"Show me what you've got."Go see. Doesn't cost you anything but an hour.
 
-### `fr1_wannabe_close`
-**DUKE:** This isn't something I can teach.
-The kid looked at him for a moment.
-**WANNABE:** I wasn't asking you to teach me anything. Just to look.
-Duke looked at him. The kid had a point.
-**DUKE:** Go find yourself a better ramp setup. The plywood over tires thing — that angle's going to hurt you.
-**WANNABE:** Yeah. Okay.
-He went. Duke watched him go. He thought: that was probably not the right call. He filed it away.
+> **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
+> - _Pete_ → **Hanger-On**
+
+### `fr1_wannabe_look`
+**DUKE:** Show me what you've got.
+The kid's face changed the way faces change when something goes better than expected.
+**WANNABE:** Yeah? Right now?
+**DUKE:** You got somewhere else to be?
+**WANNABE:** No sir. I mean — no.
+The uncle's lot was three blocks away. The setup was exactly what Duke had expected: plywood over tires, too steep an angle, bicycle that had been modified more than was advisable.
+The kid went over it twice. The second pass was cleaner than the first.
+**DUKE:** The angle's wrong on the ramp.
+**WANNABE:** I know. I can't get it right.
+**DUKE:** It's the legs. They're not even. You need to—
+He stopped. He got down and showed him.
+It took about ten minutes. The kid watched the whole time with the specific attention of someone memorizing something.
+**DUKE:** Try it now.
+He did. It was better. Not good yet — but the improvement was visible.
+**WANNABE:** Huh.
+**DUKE:** Yeah.
+Duke stood up and dusted his hands.
+**DUKE:** What's your name?
+**WANNABE:** Pete. Pete Garland.
+
+> **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
+> - _Pete_ → **Hanger-On**
 
 
 ## HUB — Free Roam — Early Days
@@ -509,7 +523,7 @@ There was more to do than there used to be. That was the simple version.
 
 
 ## HUB — Free Roam — Building the Act
-- Diamondback Danny He's on the circuit. He noticed you signed with Earl. Available · Free
+- Pete Garland He's gotten better. He has a fair coming up. Available · Free
 - The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
@@ -517,43 +531,39 @@ There was more to do than there used to be. That was the simple version.
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
 - Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 
-**→ took:** Diamondback Danny He's on the circuit. He noticed you signed with Earl. Available · Free
+**→ took:** Pete Garland He's gotten better. He has a fair coming up. Available · Free
 
-### `fr2_danny_01`
-He was at the regional show in Smithson. Duke saw him from across the lot — the truck with the custom lettering, the bike that cost more than it needed to.
-Danny was signing something for a kid. He looked up when Duke walked past.
-**DANNY:** Duke Harlan.
-**DUKE:** Danny.
-**DANNY:** Heard you signed with Maddox.
-**DUKE:** News travels.
-**DANNY:** It does. I had a conversation with his office eight months ago. They passed.
-He said it without malice. He was stating a fact and watching to see what Duke did with it.
-**DUKE:** What did they say?
-**DANNY:** They said I was too polished. Whatever that means.
-Duke thought he knew what it meant. He didn't say.
-**DANNY:** I'm jumping seven barrels at the end of the second set. You should stay and watch.
+### `fr2_pete_01`
+Pete had gotten better. That was the simple fact of it — he'd been working on his own, mostly, and the improvement was visible in the things Duke hadn't taught him.
+He found Duke at the practice lot.
+**PETE:** I'm doing the county fair in Hagerstown. In three weeks.
+**DUKE:** What are you jumping?
+**PETE:** Three barrels. Maybe four if the ramp holds.
+**DUKE:** The ramp.
+**PETE:** I know. I'm fixing the legs.
+Duke looked at him. He was sixteen. He had the focus Duke remembered having at sixteen except Duke at sixteen hadn't known what to do with it yet.
+**PETE:** You don't have to come.
+**DUKE:** I know I don't have to.
 
-- Option A"Good for you."Flat. Let him figure out what it means.
-- Option B"Good setup?"Professional interest. Slightly wrong-foots him.
-- Option C"I'll stay."Watch him. Know what you're dealing with.
+- Option A"Send me the date."You'll try to make it. Both of you know what that means.
+- Option B"I'll be there."Commit. See what he does with it.
+- Option C"Here's what you need to watch on the approach."Teach him something specific. Better than showing up.
 
-**→ took:** Option A"Good for you."Flat. Let him figure out what it means.
+**→ took:** Option A"Send me the date."You'll try to make it. Both of you know what that means.
 
-> **Danny — First Contact** — Filed. Circuit noted.
-
-### `fr2_danny_01_flat`
-**DUKE:** Good for you.
-Danny clocked it. Filed it. The smile didn't change.
-**DANNY:** See you on the circuit, Harlan.
-Duke walked on. He heard the show. Seven barrels, clean landing. The crowd noise was genuine.
-He thought: that was probably the wrong call. He'd made it anyway.
-
-> **Danny — First Contact** — Filed. Circuit noted.
+### `fr2_pete_01_maybe`
+**DUKE:** Send me the date. I'll try to make it.
+Pete absorbed this with the practiced evenness of someone who'd heard "maybe" before.
+**PETE:** Sure.
+He sent the date. Duke looked at the calendar. He had a show two counties over the same weekend.
+He sent Pete a note: *can't make it. Send me the landing footage.*
+Pete sent the footage. Three barrels, clean. The ramp held.
+Duke watched the footage once and put it away.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
-- The Public Challenge Danny went to the papers. Sandra has the quote. Available · Free
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
+- Pete's Mistake Cal heard about it. So did half the county. Available · Free
 - The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
@@ -561,79 +571,65 @@ He thought: that was probably the wrong call. He'd made it anyway.
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
 - Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 
-**→ took:** The Public Challenge Danny went to the papers. Sandra has the quote. Available · Free
+**→ took:** Pete's Mistake Cal heard about it. So did half the county. Available · Free
 
-### `fr2_danny_02`
-Danny had gone to the papers. Not the big papers — the circuit papers, the regional stuff that circulates at fairgrounds and reaches exactly the people whose opinion matters in this particular world.
-Sandra read the quote to Duke over the phone:
-"Duke Harlan's good. I'd like to see if he's good in the same zip code as me at the same time. Open invitation."
-She'd read it twice. The first time she was trying not to laugh.
-**SANDRA:** He called it an 'open invitation.'
-**DUKE:** I heard.
-**SANDRA:** Do you want to respond?
-**DUKE:** What did you print?
-**SANDRA:** Nothing yet. I wanted to ask you first.
-**DUKE:** That's generous.
-**SANDRA:** I thought so.
+### `fr2_pete_02`
+Cal told him. Which meant Cal had heard it from someone, which meant it had moved through the county.
+**CAL:** Your kid did a jump.
+**DUKE:** My kid.
+**CAL:** Pete Garland. Community day at the park. Borrowed Elden Marsh's Honda.
+**DUKE:** How'd it go.
+**CAL:** He went about fifteen feet. Didn't account for the grass.
+**DUKE:** He land it?
+**CAL:** He landed something.
+Duke thought about it.
+**CAL:** He told the kids he learned from you.
+**DUKE:** Did he.
+**CAL:** That's why I'm telling you.
+He found Pete at the lot where Pete usually showed up.
 
-- Option A"Tell him I'm available the fifteenth."Give him a date. See if it was really an open invitation.
-- Option B"Tell him I'll do it. My show, my date, my conditions."Control the terms. He'll think about it.
-- Option C"Tell him I'm focused on my own calendar."Decline with grace. Danny loses some credibility for pushing it.
-- Option DDon't respond.Let it sit. The circuit will decide what that means.
+### `fr2_pete_mistake_confrontation`
+Pete saw him coming and the expression on Pete's face was the expression of a sixteen-year-old who knows exactly what the conversation is going to be.
+**PETE:** I was going to tell you.
+**DUKE:** Were you.
+**PETE:** Yeah.
+**DUKE:** When?
+**PETE:** ...After.
+**DUKE:** After what?
+Pete had the decency not to answer that.
 
-**→ took:** Option A"Tell him I'm available the fifteenth."Give him a date. See if it was really an open invitation.
+- Option ACome down hard.Make the authority clear. Pete stops overstepping.
+- Option BCome down measured.Best outcome — Pete understands without shutting down.
+- Option CLet it go.Pete will interpret this as permission.
+- Option D"Why'd you do it?"Pete's answer reveals his character. You learn something true.
 
-### `fr2_danny_headtohead_accept`
-**DUKE:** Tell him I'm available the fifteenth.
-Sandra said nothing for a beat.
-**SANDRA:** The fifteenth.
-**DUKE:** He wants an open invitation, give him a date.
-**SANDRA:** He might not be available.
-**DUKE:** Then he doesn't get to call it an open invitation anymore.
-Sandra was quiet in the way she was quiet when she was deciding whether to print something.
-**SANDRA:** I'll pass it along.
-**DUKE:** You're going to write about it.
-**SANDRA:** I'm a reporter.
-**DUKE:** I know.
-The fifteenth. He had three weeks. He called Cal.
+**→ took:** Option ACome down hard.Make the authority clear. Pete stops overstepping.
 
-### `fr2_danny_event`
-Danny showed up. That was the first thing — he actually showed up, which some part of Duke had not completely assumed.
-The white leather jacket was gone. He was in red, which was a better call. Someone had advised him.
-The crowd was bigger than any Duke had drawn in the county. That was Danny's doing — his people had promoted it, which meant his people were competent, which meant he had people.
-They went in the order determined by a coin flip that Duke won and chose to go second on, which Earl — watching from the fence — nodded at once and only.
-Danny went first. Fifty-three feet, clean. The crowd liked it.
-Duke's turn.
+> **Hard Lesson** — Pete understands now. He won't overstep again. He'll get good on earned terms.
 
-- Option AGo all out — fifty-five feet.Cal worked the numbers. You trust the numbers.
-- Option BFifty-two. Controlled run.It's one foot short. But it's clean.
+### `fr2_pete_hard`
+**DUKE:** You told those kids you learned from me.
+**PETE:** I did learn from you.
+**DUKE:** And when you hit the grass in front of them, who does that land on?
+**PETE:** Me.
+**DUKE:** You think those kids know the difference?
+Pete looked at the ground.
+**DUKE:** You're not ready for a crowd. You know that.
+**PETE:** I thought—
+**DUKE:** I know what you thought. You thought the feeling you get in practice is the same as the feeling in front of people. It's not. The crowd changes the math.
+**PETE:** I wanted to see if I could do it.
+**DUKE:** Then do it in an empty field. You want to find out what you can do, find out what you can do. You want to perform — that's different. That's something you earn.
+Pete nodded. He was sixteen; he was trying not to show how much the conversation was costing him.
+**DUKE:** You back here Thursday?
+**PETE:** Yeah.
+**DUKE:** Then we'll work on the grass landing.
+He walked off. It was not a warm conversation. It was the right one.
 
-**→ took:** Option AGo all out — fifty-five feet.Cal worked the numbers. You trust the numbers.
-
-### `fr2_danny_event_win`
-He cleared fifty-five feet, and the crowd made the noise it makes when something is decided, and Danny was standing next to the ramp with his arms crossed, and when Duke rode past him Danny said something that the engine noise swallowed.
-Duke didn't ask him to repeat it.
-Afterward, Sandra asked if he had a comment.
-**DUKE:** He's good.
-**SANDRA:** That's it?
-**DUKE:** That's it.
-Danny who loses cleanly is more dangerous than Danny who wins, because losing cleanly means he has to invent a reason.
-
-### `fr2_danny_03`
-He found Danny at the water barrel behind the venue about twenty minutes after everything.
-Not intentionally. He'd gone for water.
-Danny was already there. His jacket was off. Without it, he looked like what he was — a man who jumps motorcycles for a living, which meant he looked slightly worn and slightly careful and significantly more real than the jacket allowed.
-**DANNY:** Harlan.
-**DUKE:** Danny.
-"Fifty-five," Danny said, to the water. "Tell your mechanic I've got something to say about it. I don't know what yet."
-They stood at the barrel. Danny refilled his cup and handed the ladle over without comment.
-It was the closest they'd come to each other as people. Duke thought: this is the version of him nobody in the circuit sees. He didn't know what to do with that, so he did nothing with it and went back to the show.
-
-> **Water Barrel** — No crowd. No jacket. Just two men who do the same thing.
+> **Hard Lesson** — Pete understands now. He won't overstep again. He'll get good on earned terms.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
@@ -669,7 +665,7 @@ He thought: twelve hundred is not a lot of money in the sense that it doesn't ch
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
@@ -698,7 +694,7 @@ He picked up a wrench. That was the end of the conversation about Earl.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
@@ -718,7 +714,7 @@ He worked until the light went and then a little past that.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
@@ -753,14 +749,14 @@ It was the smartest thing Tommy had said in a while. Duke let it land without co
 **TOMMY:** That's it? Noted?
 **DUKE:** That's it.
 Tommy shook his head and finished his beer, satisfied in the way he got when he'd been right and nobody had said so.
-On the walk home he thought about Danny's setup at the fair. The fire trick.
+On the walk home he thought about the fire trick Tommy kept describing. He hadn't watched it. He'd heard it from the ramp — the crowd, then the whump of the fuel catching, then the crowd again.
 He thought: *fire's a good idea. I should think about fire.*
 
 > **Night at the Bar** — Tommy said something true. He does that sometimes.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
@@ -787,7 +783,7 @@ Duke thought about that.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
@@ -819,7 +815,7 @@ Cal looked at him. Then he picked the wrench back up.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
@@ -836,8 +832,6 @@ By the time Milestone 3 was on the horizon, the shape of things had changed.
 Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.
 He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces.
 Tommy was either in his corner or not, depending on the week.
-And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
-Duke thought about Danny more than he wanted to.
 Then Earl called about the car show. The real one. Five cars, a national sponsor interested, a regional TV crew.
 He listened to the whole pitch without interrupting.
 When Earl finished he said:
@@ -1200,7 +1194,7 @@ He had Roy's footage on a reel he'd watched three times. He had a contract in hi
 **FISK:** There's a book here. I don't mean the stunts — I mean the thing underneath the stunts. What you're actually doing.
 Duke looked at him.
 **FISK:** I've been doing this for twenty years. I know the difference between a career and a story. You have a story.
-The second section of the contract he'd seen briefly was a paragraph about narrative rights. He thought about the number — the one you found in the air, not on the ground. He thought about Fisk sitting across from him with the footage already in his head.
+The second section of the contract he'd seen briefly was a paragraph about narrative rights. He thought about Pete's sentence. He finds the number in the air, not on the ground. He thought about Fisk sitting across from him with the footage already in his head.
 He thought: Fisk had gotten there on his own.
 
 - Option A"Let's talk."The story will be told. Duke can shape it.
@@ -1235,7 +1229,7 @@ He thought: that's going to be in the book. He thought: that's fine. That's true
 He took the bike out after dark.
 Not to practice. Not toward anything. The road north of town went flat for twenty-two miles before it hit anything worth stopping for, and he had been on it enough times that he could feel the surface through the tires like a conversation he knew by heart.
 He thought about the canyon. He thought about Vegas. He thought about the number — the one you found in the air, not on the ground.
-He thought about Roy filming the three seconds after.
+He thought about Pete finding it in Lubbock. He thought about Roy filming the three seconds after.
 He thought: some things are the same from the inside and the outside. The ones that matter usually are.
 He turned around at mile twenty-two.
 The fork seal, which Cal had replaced, held.
@@ -1414,13 +1408,14 @@ Duke thought: Cal has been waiting to say that for a long time. He thought: Cal 
 
 ### `m5_decision`
 He held the question for a while.
-Seven options. Not choices exactly — more like the seven things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.
+Eight options. Not choices exactly — more like the eight things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.
 
 - Option ARetire clean on top.Walk away while the name still means something. Classic ending.
 - Option BOne last stunt — planned, on his terms.Duke picks the stunt. Prepared. Medium risk.
 - Option COne last stunt — Earl picks.Earl's choice. Higher risk. Higher payout. His agenda, not Duke's.
 - Option DWalk away quietly.No announcement. Some people never know he retired.
 - Option EKeep going.The circuit continues. Condition-dependent. Duke knows the cost.
+- Option FMentor the apprentice.Duke steps back. Pete steps forward. Legacy continues through him.
 - Option GSymbolic stunt — own terms.Not dangerous. Meaningful. The crowd that matters most.
 - Option HDisappear.Duke leaves. No retirement, no announcement. Just gone.
 
@@ -1443,7 +1438,7 @@ He thought: it's enough.
 
 ## ENDING REACHED
 
-"Ellis Boone: America's Last Real Daredevil"
+"Amos Kittredge: America's Last Real Daredevil"
 CAREER TRACK
 The Legend
 Earl Maddox got his return on investment. So did Duke. They're both professionals about it.
@@ -1459,8 +1454,8 @@ THE WORK — Cal's still got the bike. It's right.
 NERVE — He went out as himself. No diminished version.
 RELATIONSHIPS
 Cal: Loyal Partner
+Pete: Hanger-On
 Earl Maddox: Business Partner
 Tommy: Hanger-On
-Danny: Nemesis
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5

@@ -6084,6 +6084,118 @@ on `Tools/prompt-builder.html` alone (1,485 units, 1 broken; `js/cast.js` is
 one of the two new units), `social:check` reports the same six
 pages out of sync, `check-collisions.mjs` passes.
 
+## Phase 4 — Danny and Tommy get a way out (2026-09-11)
+
+**The finding, restated as a number.** `GS.rels.tommy` was written by nothing
+in 4,964 lines of `scenes.js`: `'hanger_on'` from `freshState()` to the
+ending screen, while two hub cards tested him for `'absent'` and
+`fr4_eve_tommy` had a line for `'ally'`. Danny had five states in the table
+and could reach two of them. The row's first job was a check that says so,
+and its first run against the Phase 3 game named **eight** unreachable states
+across four characters, not the five the row was about: Ruthie's
+`'strained'` and `'absent'` and Earl's `'antagonist'` are written by nothing
+either, with two ending verdicts, a hub sub and the whole of
+`fr4_ruthie_gone` behind them.
+
+**What shipped.** Decisions #279 to #283. The row named Claude Opus 5; the
+session ran on Claude Fable 5.1.
+
+- **Tommy has no never-met state** (#279). His row carried `'unknown'` as
+  its `unmet` while starting at `'hanger_on'`; nothing could ever put him
+  there, and the only reader was the engine's `TOMMY_NOT_GONE` list, which
+  existed to exclude it. He dares Duke up the water tower in one origin and
+  finds him before nine at the fair in all of them. The state is gone, one
+  constant serves the three hub cards, and `repair` still puts `tommy: 42`
+  back to `'hanger_on'`.
+
+- **The ally track is three choices and one loan, and the neutral answer is
+  first** (#280). The Free Roam 1 bar evening ends in "Drink your beer" or
+  "Come out to the next one. Tell me where the cow is"; the Free Roam 2 one
+  in "Noted" or "Keep watching him for me"; co-signing the solo bank loan
+  moves him without asking, because a man who reads the whole form in his
+  work boots has already decided. The neutral answer leads on both so a
+  driver that falls through keeps him a hanger-on: `clean` does, `rough`
+  (which prefers B) gives him the job, and the `'ally'` line in
+  `fr4_eve_tommy` is on a transcript for the first time.
+
+- **Borrow from Tommy ends in a choice, and one arm ends Tommy** (#281).
+  The six-weeks-later bar used to run straight through "I paid you back" /
+  "I was glad to." Now that is arm A, and it carries no relationship change
+  — the cost is that Free Roam 3 remembers the money (`debtSource` was
+  already read there for nothing else). Arm B, "We're square. Leave it
+  there", sends him `'absent'`: he does what Duke said for the first time in
+  his life. The Free Roam 2 bar card gains `_needs` so it leaves the board
+  with him. The row asked for a lasting cost; the session made it a fork
+  rather than a tax on the ally track, because a scene reached from a
+  choice cannot see the state the choice replaced, and a demotion the
+  player is never told about is not a cost.
+
+- **Danny's `'poached'` is Duke's doing and his `'absent'` is Duke's not
+  doing** (#282). The counter-terms arm of the public challenge already
+  said it in prose — "his issue was never the competition, it was the lack
+  of a platform; Duke's show would give him one" — so that arm writes
+  `'poached'` and says the word. The silence arm gets three sentences:
+  Danny signs with a Fort Worth promoter and takes the stage to Texas. The
+  decline arm leaves him where he was; "I hope he's ready when the calendar
+  clears" is a man who is staying. "Doesn't matter" at the fair was always
+  the never-met case and still is. The label `Poached` was in the epilogue's
+  table with no meaning attached; this gives it the one the counter arm had
+  already written.
+
+- **A reachability check with a frozen list** (#283). `smoke-save.mjs` walks
+  every `effects.rels` and `statUpdate.rels` in `SCENES` and asserts each
+  non-start state in the cast is written by one of them. Naming is not
+  writing: a route or a closure that tests a state does not count. The three
+  states that are not this row's are on `NOT_YET_WRITTEN`, checked from both
+  ends the way `flags.mjs` freezes its write-only list (#264): a fourth
+  fails, and an entry that has since found a writer fails too. They are in
+  the project's standing backlog with what each one gates.
+
+**Also.** The ending roster reads the table: `rosterOf()` in `cast.js` lists
+every character not at their never-met state, in the cast's order, and the
+engine's `'unknown'` literal is gone. `fr2_danny_03` carried the sentence
+"The appropriate dialogue entered then, based on how the event went" — a
+stage direction that had shipped as prose through three rounds that read
+every transcript for Danny's name — and is two lines keyed to the event's
+outcome now, which takes `dannyEventOutcome` off the write-only list.
+
+**The transcripts.** All six re-taken and diffed line for line, three new.
+The six move only where the row wrote: the two bar evenings now show their
+choice and its follow-up scene, the water-barrel line, and the Free Roam 2
+close's Tommy sentence on its own line. `rough`, which prefers option B,
+gives Tommy the job at both bars, drops Danny from the close entirely
+(never met), and prints the `fr4_eve_tommy` `'ally'` line — "Tommy is going
+to be in Roy's film whether Roy knows it or not" — for the first time in
+the game's record, with `Tommy: Ally` on the roster. `no_earl_crash`, which
+co-signs with Tommy at the bank and then borrows from him, comes out an ally
+who takes arm A, and its Free Roam 3 bar remembers the money. Stunt verdicts
+drifted by a point on four runs, as they do (#53). The three new plans:
+`no_tommy` (borrow, "We're square", and no answer to Danny) shows the bar
+card gone from Free Roam 2 and no Tommy evening in 3 or 4 — after the
+`Square` update the only Tommy lines are the ones written for his absence,
+and the only Danny lines after `No Answer Given` are the Texas ones;
+`no_danny` ("Doesn't matter") names Danny five times, all Tommy's mouth at
+the fair and the bar, and the close has no Danny paragraph; `danny_bill`
+(counter terms) reads `Poached` on the update screen, the bar's theory
+"which Tommy did not feel changed anything", and the close's poster line.
+Nine runs, nine endings reached, no page errors.
+
+**Guard-rails broken on purpose (#34), five.** The silence arm's
+`danny: 'absent'` removed (the check names `danny=absent`); `ruthie=absent`
+taken off the frozen list (named); `cal=warm`, which is written, put on it
+(the stale check names it); `rosterOf` made to keep never-met characters
+(both roster assertions, printing `Ruthie: —`); `'unknown'` put back on
+Tommy's row (three assertions: no label, the no-never-met check, and
+`tommy=unknown` unreachable). All from the green 116.
+
+**Counts.** `smoke-save.mjs` 110 → 116; `flags.mjs` 7, one name shorter on
+the frozen list; `smoke-page.mjs` 93, unchanged and green.
+
+**None of the four shared things was touched.** `check-integrity.mjs` fails
+on `Tools/prompt-builder.html` alone (1,493 units, 1 broken), `social:check`
+reports the same six pages out of sync, `check-collisions.mjs` passes with
+0 collisions.
+
 ---
 
 # Bell to Bell, through Phase 3
