@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -1137,7 +1137,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the buses and landed dead level
+> **STUNT RESULT — SUCCESS / 96** — Cleared the buses and landed dead level
 
 ### `m4_triumph_buses`
 Thirteen buses. He cleared all of them.
@@ -1432,8 +1432,8 @@ THE WORK — Cal's still got the bike. It's right.
 NERVE — He went out as himself. No diminished version.
 RELATIONSHIPS
 Cal: Loyal Partner
-Tommy: Hanger-On
 Earl Maddox: Business Partner
+Tommy: Hanger-On
 Danny: Nemesis
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 1 HUSTLE 5

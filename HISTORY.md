@@ -6073,8 +6073,11 @@ turns a throw into the failure's text now, so the break reads as two named
 failures with the count underneath.
 
 **Counts.** `smoke-save.mjs` 53 → 110; `flags.mjs` 7, unchanged and green;
-`smoke-page.mjs` 93, unchanged and green. Transcripts: see the pull request
-for the diff.
+`smoke-page.mjs` 93, unchanged and green. All six transcripts re-taken and
+diffed: stunt scores moved by a point or two (#53), and the ending screen's
+relationship roster prints Pete before Tommy now, in the cast's order, where
+he used to be appended to the bag the moment his thread opened. Not a line of
+prose moved, and `no_pete` shows him nowhere, as before.
 
 **None of the four shared things was touched.** `check-integrity.mjs` fails
 on `Tools/prompt-builder.html` alone (1,485 units, 1 broken; `js/cast.js` is
