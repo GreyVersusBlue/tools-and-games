@@ -1,10 +1,10 @@
 # Daredevil — Feature Wishlist
 
-**Status: three rounds, all four phases of arc one and Phase 5 of arc two
-are shipped — 134/134 on `smoke-save.mjs`, 136/136 on `smoke-page.mjs`, 7/7
+**Status: three rounds, all four phases of arc one and Phases 5 and 6 of arc
+two are shipped — 199/199 on `smoke-save.mjs`, 172/172 on `smoke-page.mjs`, 7/7
 on `flags.mjs`, `graph.mjs` walking 232 scenes with no findings, nine
-transcript baselines diffed line-for-line — and the open phase is Phase 6,
-Evenings that cost something, on Claude Opus 5.**
+transcript baselines re-taken — and the open phase is Phase 7, Three stunts
+that are three stunts, on Claude Opus 5.**
 Round 1 made the game finishable for the first time and gave it a save and a
 suite; round 2 split the 356 KB monolith into modules and placed a minigame
 that had never had a call site; round 3 measured what two rounds had deferred
@@ -36,16 +36,19 @@ works in play. The branches reconverge and the divergence is carried in state
 rather than in the graph, so two runs with different relationships see most of
 the database between them.
 
-The *systems* are not finished. The evening pips are almost always decoration,
-the thirteen-bus jump is mechanically the three-cow jump, the recovery minigame
-computes an outcome nothing reads, and turning down the man with the money
-removes three optional evening cards and changes nothing else about the next
-three chapters. Round 3 called that last one "technically non-broken but
-narratively hollow" and was being generous.
+The *systems* are not all finished. The evening pips mean something now
+(Phase 6): every hub hands out fewer evenings than it has cards, an evening
+costs dollars and sometimes Condition, and thirteen buses want a deposit on the
+branch where nobody else is paying it. What is left is the thirteen-bus jump
+being mechanically the three-cow jump and the recovery minigame computing an
+outcome nothing reads — both Phase 7. Turning down the man with the money used
+to remove three optional evening cards and change nothing else about the next
+three chapters; arc one's four phases are the answer to that, and round 3's
+"technically non-broken but narratively hollow" no longer describes it.
 
 ## The architecture that is there
 
-Five ES modules under `js/`, no bundler. `index.html` loads exactly one of
+Six ES modules under `js/`, no bundler. `index.html` loads exactly one of
 them (`<script type="module" src="./js/engine.js">`); the rest are imported.
 
 - **`js/save.js`** (167 lines) — the save format, on top of the shared
@@ -155,9 +158,24 @@ Nothing runs Daredevil's suite on a pull request.
   the tool.
 - **A hub is done when the player is out of evenings OR out of anything to
   spend one on.** `hubExhausted()` exists because every hub used to gate its
-  milestone button on `eveRemaining <= 0` alone, and FR3 hands out seven
+  milestone button on `eveRemaining <= 0` alone, and FR3 handed out seven
   evenings against at most four cards — so the counter could not reach zero and
-  nobody had ever seen Milestone 4.
+  nobody had ever seen Milestone 4. Both arms still matter after Phase 6 set
+  every budget below its hub's card count: a run that lost a relationship loses
+  that character's cards, and Free Roam 3 and 4 drop such a card rather than
+  greying it, so those two hubs can still end on the cards. An evening the run
+  cannot pay for is `_disabled` too, which means a broke hub closes the same
+  way — correctly, and on purpose.
+- **Dollars go on a choice's `effects`, never on a scene's `statUpdate`.** A
+  choice-reached scene fires its update twice (the double-apply frozen in
+  `smoke-save.mjs`), which does nothing to a flag or a relationship write and
+  doubles a running total. `triggerStatUpdate` no longer reads `money` or
+  `owePerMonth` at all, and the suite fails on a `statUpdate` that carries one.
+- **An evening card needs a price.** `EVENING_COST` in `money.js` is the one
+  place an evening's dollars and Condition live, `buildHubCard` prints it into
+  the tag slot, and `smoke-save.mjs` fails on a card with no row and on a row
+  naming no card. Do not give a card its own `tag:` unless the tag is saying
+  why the card is shut.
 - **Save-format changes stay additive, and `daredevil-save-v1` never changes**
   (locked decision #36). Fill-ins go in `repair`, which runs on every accepted
   load; `migrate` is for version drift only (#37). A flag whose value is a list
@@ -618,37 +636,64 @@ scene or a route.
 
 *Shipped by:* **Claude Fable 5.1**, the row's named model.
 
-## Phase 6 — Evenings that cost something
+## Phase 6 — Evenings that cost something — DONE
 
-**The hub hands out seven evenings and builds four cards, and the pips are
-decoration.**
+**Shipped 2026-09-11** (decisions #286 to #289; the account is under
+"Daredevil, arc two" in the root `HISTORY.md`).
 
-Free roam is most of the choice the player gets, and in three hubs out of four
-the choice is "read all of these in some order". `hubExhausted()` fires because
-the cards ran out, not because the evenings did — correct behaviour for a
-broken economy, and the reason Milestone 4 was unreachable before round 1.
+**The hub handed out seven evenings and built four cards, and the pips were
+decoration.** `hubExhausted()` fired because the cards ran out, not because the
+evenings did — correct behaviour for a broken economy, and the reason Milestone
+4 was unreachable before round 1. Free Roam 2 was the only hub in the game
+where a budget bound anything.
 
-- [ ] **Budget against the card count, per hub** — fewer evenings than cards,
-  so an evening spent is a card not read. FR2 is the only hub where that is
-  true today.
-- [ ] **Money as a held number.** `fr2_debt_01`'s twelve hundred dollars, the
-  four `debtSource` answers and Earl's percentage describe an economy the game
-  does not hold. One integer in `GS`, spent by the debt scene and the bigger
-  stunts, read by the epilogue.
-- [ ] **Condition as a cost.** The bar evening already says "Condition down";
-  make a hub's worth of evenings something a body notices, feeding the stunt
-  physics that already read `SKILLS.condition`.
-- [ ] **A milestone consequence.** M4's stunt availability reads two stats; it
-  should also read whether the act could afford the buses.
-- [ ] **Show the trade on the card** — `buildHubCard`'s tag slot says what an
-  evening costs, not just that it costs one.
-- [ ] **Assert the budget binds** in `smoke-page.mjs`: a run that spends every
-  evening reaches the milestone with cards still unread.
+- [x] **Budget against the card count, per hub.** `HUB_EVENINGS` in the new
+  `js/money.js`: 3 evenings for Free Roam 1's 5 cards, 4 for Free Roam 2's 7,
+  3 for Free Roam 3's 4, 4 for Free Roam 4's 7 (3 after a failed Milestone 4,
+  the discount that hub always had). Was 5/6/7/6. `smoke-save.mjs` scrapes each
+  renderer's own `eveCards` list and fails if any budget stops being the
+  smaller number.
+- [x] **Money as a held number.** `GS.flags.money`, whole dollars, seeded at 0
+  and coerced back by `repair` (#286). Credited once per hub as what that
+  stretch of shows paid, net of `monthlyOutgo` times the months — 90 at the
+  fair on both branches, then 540/330, 1240/860, 1600/1100 backer/solo. Spent
+  by the evening cards, by self-funding the cars, and by the Milestone 4
+  deposit. Read by the hub shelf, by the Milestone 4 gate and by a new "The
+  Books" verdict on the ending screen.
+- [x] **Condition as a cost.** Every priced evening carries a signed
+  `condition`, and every hub has at least one card that gives a point back —
+  Free Roam 4's is the night ride, which is on every board. Floored at 1 (#287):
+  an evening out is not what puts a man in the hospital, and `createStuntRun`'s
+  drift constant at zero Condition is 202 against 112 at three.
+- [x] **A milestone consequence.** The Bus Stack's third requirement, which the
+  prose has carried since Phase 1 and nothing read: "a school district that
+  would rent him the buses against a deposit he did not have yet". $900, and
+  only on the solo branch, because the same paragraph says Earl has the stadium
+  booked on the other one (#288). One `M4_STUNT_GATES` table in `scenes.js`
+  read by the three choices and by Free Roam 3's "Available stunts:" hint,
+  which used to re-derive the two stat thresholds itself.
+- [x] **Show the trade on the card.** `costTag()` fills the tag slot that read
+  "Costs 1 Evening" on all twenty-three of them: "1 Evening · $55 · Condition
+  −1", and "— short $35" when the run cannot pay. A card keeps its own `tag`
+  only when the tag is saying why the card is shut.
+- [x] **Assert the budget binds**, in two halves. `smoke-page.mjs` 136 → 172:
+  every hub on the clean run now ends with every pip spent, and the two hubs
+  that offer more cards than evenings on that run end with a priced card
+  unread. Free Roam 3 and 4 drop a card whose `_needs` a run fails rather than
+  greying it, so a run that never established Ruthie reaches both with exactly
+  as many cards as evenings; those two are driven against a full cast, where
+  they build 4 cards for 3 evenings and 5 for 4 (#289).
 
-*Leans on:* the four `renderHubFRn` functions, `buildHubCard`, `freshState`.
-*Save:* additive — a money integer and per-hub budgets, defaulted in
-`freshState` and filled by `repair`. *Model:* **Claude Opus 5** — card wiring
-around an existing pattern, with the suite already pinning hub exhaustion.
+**What the transcripts caught that no assertion did.** The first version put
+the solo bank note's monthly on `m2_solo_bank_collateral`'s `statUpdate`, and
+the nine re-taken transcripts came back reading "$182 a month still going out"
+on a run whose two notes are thirty-seven and a hundred and eight. A scene
+reached by a choice fires its `statUpdate` twice, which is invisible for a flag
+or a relationship write and is not for a running total. `triggerStatUpdate` no
+longer looks at `money` or `owePerMonth`; both go through `effects`, and
+`smoke-save.mjs` fails on a `statUpdate` that starts carrying either (#289).
+
+*Shipped by:* **Claude Opus 5**, the row's named model.
 
 ## Phase 7 — Three stunts that are three stunts
 

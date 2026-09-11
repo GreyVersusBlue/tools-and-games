@@ -26,6 +26,10 @@
 // alternative (SCENES importing GS from engine.js) does not work.
 
 import { GS, N, D, C, NF, statesOf, presentStates, isPresent } from './state.js';
+// The hub economy (Phase 6). The story needs three of these: the twelve
+// hundred `fr2_debt_01` is about, the deposit thirteen buses want, and the
+// integer both are measured against.
+import { CAR_MONEY, SOLO_LOAN, SELF_FUND_NET, BUS_DEPOSIT, monthlyOn, money, canAffordBuses } from './money.js';
 
 // Relationship requirements are data (Phase 3). A choice or a hub card that
 // exists only for some state of a character says so as `_needs: { id: [state,
@@ -56,6 +60,39 @@ const tommyAtFR2Close = ()=> GS.rels.tommy === 'ally'
   : GS.flags.debtSource === 'tommy'
   ? `Tommy was owed nothing now, and both of them knew what the twelve hundred had cost anyway.`
   : `Tommy was either in his corner or not, depending on the week.`;
+
+/**
+ * The three Milestone 4 stunts and what each one wants (Phase 6).
+ *
+ * `m4_stunt_select`'s choices carried these tests inline, and Free Roam 3's
+ * "Available stunts:" hint carried a second copy — `canBuses` and `canInferno`
+ * in `renderHubFR3`, re-derived from the same stats. One table now, read by
+ * both ends, so a fourth stunt or a changed threshold is one row.
+ *
+ * The Bus Stack's third requirement is the one this phase added, and it was
+ * already written: on the backer branch Earl has the stadium booked, and on
+ * the solo branch the same paragraph says "a school district that would rent
+ * him the buses against a deposit he did not have yet". Nothing read it.
+ */
+export const M4_STUNT_GATES = [
+  {
+    choice: 'buses',
+    label: 'Bus Stack',
+    check: ()=> GS.stats.showmanship >= 4 && GS.stats.precision >= 3 && canAffordBuses(GS),
+    reason: ()=> {
+      const want = [];
+      if(GS.stats.showmanship < 4) want.push('Showmanship ≥ 4');
+      if(GS.stats.precision < 3) want.push('Precision ≥ 3');
+      if(!canAffordBuses(GS)) want.push(`a $${BUS_DEPOSIT} deposit (short $${BUS_DEPOSIT - money(GS)})`);
+      return `Requires ${want.join(' · ')}`;
+    },
+  },
+  { choice: 'inferno',  label: 'Inferno',  check: ()=> GS.stats.nerve >= 4, reason: 'Requires Nerve ≥ 4' },
+  { choice: 'symbolic', label: 'Symbolic', check: ()=> true },
+];
+
+/** The row for one stunt, by its `m4Choice` value. */
+export const m4Gate = choice => M4_STUNT_GATES.find(g => g.choice === choice);
 
 // Who Duke talks to before a stunt, and who asks him the question at the end,
 // as tables (Phase 3): the engine takes the first row whose character is in
@@ -1847,9 +1884,16 @@ m2_solo_round2: {
     N(`He was being a little difficult. He was also right, which was worse.`),
   ],
   choices:[
-    { label:'A', text:`"The equipment. The bike, the truck, the trailer."`, subtext:'Put up everything you own. Twelve months, eight percent, real.', effects:{}, goto:'m2_solo_bank_collateral' },
+    // Phase 6: the monthly number goes on the CHOICE, not on the scene's
+    // `statUpdate`. A scene reached by a choice fires its statUpdate twice —
+    // the standing-backlog double-apply, frozen in `smoke-save.mjs` — and the
+    // doubling is invisible for a flag or a relationship write and is not for
+    // an accumulating number. The first version of this put it on the update
+    // and the solo transcripts came out at seventy-four dollars a month
+    // against a prose line that says thirty-seven.
+    { label:'A', text:`"The equipment. The bike, the truck, the trailer."`, subtext:'Put up everything you own. Twelve months, eight percent, real.', effects:{ owePerMonth: monthlyOn(SOLO_LOAN) }, goto:'m2_solo_bank_collateral' },
     { label:'B', text:`"Forget the note. I'll do it on cash."`, subtext:'Walk out with nothing but your own name. Then make the math work.', effects:{ stats:{ hustle:1 } }, goto:'m2_solo_bank_walk' },
-    { label:'C', text:`"Tommy'll co-sign."`, subtext:"He would. He\'ll never mention it. You\'ll both know.", effects:{}, goto:'m2_solo_bank_tommy' },
+    { label:'C', text:`"Tommy'll co-sign."`, subtext:"He would. He\'ll never mention it. You\'ll both know.", effects:{ owePerMonth: monthlyOn(SOLO_LOAN) }, goto:'m2_solo_bank_tommy' },
   ]
 },
 
@@ -1867,6 +1911,10 @@ m2_solo_bank_collateral: {
     D(`Then I won't.`),
     N(`The monthly number was thirty-seven dollars. He wrote it in the notebook on its own page. It was the first number in there that was going to arrive whether he did or not.`),
   ],
+  // The monthly number has been in this scene's prose since Phase 1 — "It was
+  // the first number in there that was going to arrive whether he did or not"
+  // — and nothing held it. It comes off every later hub's take now (Phase 6),
+  // written by the choice that leads here rather than by this update.
   statUpdate:{ title:'Paper on the Bike', reason:'Thirty-seven dollars a month, twelve times, rain or not. Pyle owns the downside now.', deltas:{}, flags:{ soloBank:'collateral' } },
   next:'m2_solo_round3'
 },
@@ -2359,11 +2407,19 @@ fr2_debt_01: {
     N(`The math was specific.`),
   ],
   choices:[
+    // Phase 6: each answer sources the twelve hundred differently, and now the
+    // difference is a number. Earl advances it against the next show and holds
+    // it; the bank hands it over and takes a hundred and eight dollars a month
+    // back for a year, priced the way this game has always priced a note
+    // (`monthlyOn`); Tommy lends it and is paid back out of the show, which
+    // costs nothing but him; self-funding is the only one that comes out of
+    // Duke's own pocket — twelve hundred for the cars, nine hundred back when
+    // he sells them, and one more small show to cover the rest.
     { label:'A', text:`Borrow from Earl.`, subtext:"He\'ll advance it against the next show. No interest. But he holds the number.", effects:{ flags:{ debtSource:'earl' } }, goto:'fr2_debt_earl',
       _needs:{ earl: EARL_PRESENT } },
-    { label:'B', text:`Local bank loan.`, subtext:'Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.', effects:{ flags:{ debtSource:'bank' } }, goto:'fr2_debt_bank' },
+    { label:'B', text:`Local bank loan.`, subtext:'Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.', effects:{ flags:{ debtSource:'bank' }, owePerMonth: monthlyOn(CAR_MONEY) }, goto:'fr2_debt_bank' },
     { label:'C', text:`Borrow from Tommy.`, subtext:"He has it. He\'ll lend it. That\'ll be a thing.", effects:{ flags:{ debtSource:'tommy' } }, goto:'fr2_debt_tommy' },
-    { label:'D', text:`Self-fund. Make the math work.`, subtext:'Cut expenses. Call in favors. Keep it clean.', effects:{ stats:{ hustle:1 }, flags:{ debtSource:'self' } }, goto:'fr2_debt_self' },
+    { label:'D', text:`Self-fund. Make the math work.`, subtext:'Cut expenses. Call in favors. Keep it clean. It comes out of what you have.', effects:{ stats:{ hustle:1 }, flags:{ debtSource:'self' }, money: SELF_FUND_NET }, goto:'fr2_debt_self' },
   ]
 },
 
@@ -3918,7 +3974,7 @@ m4_stunt_select: {
   lines:[
     N(`Three options. He read them the way Cal read an engine — looking for the thing underneath the thing.`),
     N(()=> solo()
-      ? `The bus stack was the obvious one. Thirteen buses, end to end. Longer than anything he'd attempted. There was a stadium in Fort Worth that would rent him the lot against a percentage of the gate, and a school district that would rent him the buses against a deposit he did not have yet.`
+      ? `The bus stack was the obvious one. Thirteen buses, end to end. Longer than anything he'd attempted. There was a stadium in Fort Worth that would rent him the lot against a percentage of the gate, and a school district that wanted $${BUS_DEPOSIT} in hand before it would let thirteen buses out of the yard.`
       : `The bus stack was the obvious one. Thirteen buses, end to end. Longer than anything he'd attempted. Earl had a stadium booked.`),
     N(()=> GS.flags.nextStuntBuses ? `Cal had already started working on the ramp geometry for it. Duke had not asked him to. That was Cal.` : `The geometry was straightforward on paper. Everything was straightforward on paper.`),
     N(()=> solo()
@@ -3931,11 +3987,17 @@ m4_stunt_select: {
     {
       label:'A',
       text:`The Bus Stack — thirteen buses.`,
-      subtext:`Requires Showmanship ≥ 4 and Precision ≥ 3. The Legend ceiling.`,
-      effects:{ flags:{ m4Choice:'buses' } },
+      subtext:()=> solo()
+        ? `Requires Showmanship ≥ 4, Precision ≥ 3 and $${BUS_DEPOSIT} for the school district. The Legend ceiling.`
+        : `Requires Showmanship ≥ 4 and Precision ≥ 3. Earl has the stadium. The Legend ceiling.`,
+      // The deposit is spent here rather than at the ramp, because that is
+      // when a school district cashes it, and only on the branch where it is
+      // Duke's to find. `effects.money` resolves a function, the same way a
+      // line or a subtext does.
+      effects:{ flags:{ m4Choice:'buses' }, money: ()=> solo() ? -BUS_DEPOSIT : 0 },
       goto:'m4_prestunt',
-      _gateCheck:()=> GS.stats.showmanship >= 4 && GS.stats.precision >= 3,
-      _gateReason:`Requires Showmanship ≥ 4 · Precision ≥ 3`
+      _gateCheck: m4Gate('buses').check,
+      _gateReason: m4Gate('buses').reason
     },
     {
       label:'B',
@@ -3943,8 +4005,8 @@ m4_stunt_select: {
       subtext:()=> solo() ? `Requires Nerve ≥ 4. Theatrical. Regional TV, and whoever they sell it to.` : `Requires Nerve ≥ 4. Theatrical. National TV.`,
       effects:{ flags:{ m4Choice:'inferno' } },
       goto:'m4_prestunt',
-      _gateCheck:()=> GS.stats.nerve >= 4,
-      _gateReason:`Requires Nerve ≥ 4`
+      _gateCheck: m4Gate('inferno').check,
+      _gateReason: m4Gate('inferno').reason
     },
     {
       label:'C',

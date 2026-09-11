@@ -48,6 +48,12 @@ async function playToEnd(page, base, plan) {
   // were locked. Assert against this for anything about what a hub offered,
   // not against the save (#39).
   const hubs = {};
+  // The LAST sight of each hub — specifically the render that offers the
+  // milestone button, which is the only board that can say whether the hub
+  // ended because the evenings ran out or because the cards did (Phase 6).
+  const hubsEnd = {};
+  // What the purse shelf said, per hub, the first time each was seen.
+  const purses = {};
   // Everything the run was shown, in order, tagged with the scene it was on:
   // prose and choice labels off the panel, stat-update titles and reasons,
   // chapter cards, hub cards. A branch that quietly reads the other branch's
@@ -83,7 +89,7 @@ async function playToEnd(page, base, plan) {
     if (s.screen === 'end') {
       const summary = await page.evaluate(() =>
         document.getElementById('end-summary').innerText.replace(/\s+/g, ' ').trim());
-      return { seen, stunts, hubs, texts, summary, stats: s.stats, rels: s.rels, flags: s.flags };
+      return { seen, stunts, hubs, hubsEnd, purses, texts, summary, stats: s.stats, rels: s.rels, flags: s.flags };
     }
     if (s.screen === 'reporter') { stunts.push({ verdict: s.verdict, score: Number(s.score) }); await pick(page, 'Accept Result'); await wait(280); continue; }
     if (s.screen === 'minigame') { await autopilot(page, plan.stunt); continue; }
@@ -114,6 +120,10 @@ async function playToEnd(page, base, plan) {
 
     if (s.screen === 'hub') {
       if (!hubs[s.hub]) { hubs[s.hub] = s.buttons.filter(b => !b.save).map(b => ({ label: b.label, locked: b.locked })); shown('hub', s.buttons.filter(b => !b.save).map(b => b.label).join(' | ')); }
+      if (!purses[s.hub]) purses[s.hub] = s.purse;
+      const board = s.buttons.filter(b => !b.save);
+      if (board.some(b => /^Milestone \d/.test(b.label)))
+        hubsEnd[s.hub] = { pips: s.pips, board: board.map(b => ({ label: b.label, locked: b.locked })) };
       const cards = s.buttons.filter(b => !b.save && !b.locked);
       if (!cards.length) throw new Error(`hub "${s.hub}" has nothing clickable and no way forward`);
       const advance = cards.find(c => /^Milestone \d/.test(c.label));
@@ -213,7 +223,11 @@ try {
     for (let i = 0; i < 60; i++) {
       const s = await snapshot(t.page);
       if (s.screen !== 'panel')
-        return { texts, screen: s.screen, relRows: s.relRows || [], cards: s.buttons.filter(b => !b.save).map(b => b.label), choices: [] };
+        return { texts, screen: s.screen, relRows: s.relRows || [],
+                 cards: s.buttons.filter(b => !b.save).map(b => b.label),
+                 // Phase 6 needs the lock state and the pips, not just the labels.
+                 board: s.buttons.filter(b => !b.save).map(b => ({ label: b.label, locked: b.locked })),
+                 pips: s.pips, purse: s.purse, choices: [] };
       if (s.text && s.text !== texts[texts.length - 1]) texts.push(s.text);
       const choices = s.buttons.filter(b => !b.save && !/^— Continue —$|^Continue ›$/.test(b.label));
       if (choices.length) return { texts, screen: 'panel', relRows: [], cards: [], choices: choices.map(c => c.label) };
@@ -297,6 +311,75 @@ try {
   ok(/He made the call\. Earl first, then Cal, then Tommy\./.test(clean.summary),
      'and it names the three people who are there, in the order the line has always implied');
   eq(t.page.__errs.length, 0, `no page errors across the whole clean run (${t.page.__errs.slice(0, 3).join('; ')})`);
+
+  /* =============================== Phase 6: the evenings cost something now */
+
+  // The row's last bullet: "a run that spends every evening reaches the
+  // milestone with cards still unread". Read off the board the game drew on
+  // the render that offered the milestone, not off the save (#39).
+  //
+  // The claim is two halves, and the clean run can only carry one of them
+  // everywhere.
+  //
+  // FIRST, on all four hubs: the hub ends because the evenings ran out, which
+  // is every pip on the closing board spent. That half was false before this
+  // phase — Free Roam 3 offered Milestone 4 with four of its seven pips gone
+  // and Free Roam 1 with four of five, and `hubExhausted()` fired on the cards
+  // in both — so restoring either budget fails this immediately.
+  //
+  // SECOND, on the two hubs that can show it: an evening spent is a card not
+  // read. The evidence is a card still on the closing board, locked, priced,
+  // and not "✓ Done" — this run could have read it and the budget is the only
+  // reason it did not. A card locked with a reason instead ("(Ruthie not
+  // established)") proves nothing about evenings, and a done card cannot carry
+  // it either, because a spent evening and a spent day scene both label as
+  // just "✓ Done" — counting those would count Free Roam 2's five day cards as
+  // evenings and claim a surplus the hub does not have.
+  //
+  // Free Roam 3 and 4 cannot carry half two on this run: it never established
+  // Ruthie, and those two hubs drop a card whose `_needs` a run fails rather
+  // than greying it, so both arrive with exactly as many cards as evenings.
+  // They are driven against a full cast further down, where they build 4 cards
+  // for 3 evenings and 5 for 4.
+  const leftUnread = [];
+  for (const hub of ['Free Roam — Early Days', 'Free Roam — Building the Act',
+                     'Free Roam — The Price of Fame', 'Free Roam — Aftermath']) {
+    const end = clean.hubsEnd[hub];
+    ok(!!end, `${hub} offered its milestone`);
+    if (!end) continue;
+    eq(end.pips.used, end.pips.total,
+       `${hub} ended because the evenings ran out, not the cards`);
+    const unread = end.board.filter(b => b.locked && /1 Evening/.test(b.label) && !/✓ Done/.test(b.label));
+    if (unread.length) leftUnread.push(`${hub}: ${unread.map(b => b.label.slice(0, 26)).join(' + ')}`);
+  }
+  eq(leftUnread.length, 2,
+     "two of the clean run's four hubs end with a priced card unread — before this phase " +
+     'Free Roam 2 was the only hub in the game that could, and the other two are driven ' +
+     `below against a full cast (${leftUnread.join(' ;; ') || 'none'})`);
+
+  // The trade is on the card, in the tag slot that used to read "Costs 1
+  // Evening" on all twenty-three of them.
+  {
+    const allCards = Object.values(clean.hubs).flat().map(b => b.label);
+    ok(allCards.some(l => /1 Evening · \$\d+/.test(l)),
+       `a hub card names the dollars an evening costs (${(allCards.find(l => /1 Evening · \$\d+/.test(l)) || '').slice(0, 50)})`);
+    ok(allCards.some(l => /1 Evening · \$\d+ · Condition −1/.test(l)),
+       'and one names the Condition as well as the dollars');
+    ok(Object.values(clean.hubs).flat().every(b => !/Costs 1 Evening/.test(b.label)),
+       'and nothing still says the old "Costs 1 Evening"');
+  }
+
+  // The purse is on the shelf beside the pips, with the fair's ninety dollars
+  // in it on the first board of the run.
+  eq(clean.purses['Free Roam — Early Days'], '$90',
+     'Free Roam 1 opens with the ninety dollars the fair paid');
+  ok(/^\$[\d,]+$/.test(clean.purses['Free Roam — The Price of Fame'] || ''),
+     `and every later hub shows a figure too (${clean.purses['Free Roam — The Price of Fame']})`);
+  ok(typeof (clean.flags || {}).money === 'number' && clean.flags.money >= 0,
+     `the save carries the purse as a number (${clean.flags && clean.flags.money})`);
+  // The label span is `text-transform:uppercase`, and `innerText` honours it.
+  ok(/THE BOOKS — /.test(clean.summary),
+     `and the ending screen reads it back (${(clean.summary.match(/THE BOOKS — .{0,60}/) || ['no Books verdict'])[0]})`);
 
   /* ================================== the save round trip, mid-run, for real */
 
@@ -496,6 +579,40 @@ try {
     ok(fr4.some(b => /^The Man from California/.test(b.label)), 'the first Free Roam 4 board offers the man from California');
     ok(!fr4.some(b => /^Earl Maddox/.test(b.label)), 'and no Earl Maddox card');
   }
+  /* ------------- Phase 6: the solo branch is the one that pays for things */
+
+  // Two pieces of paper the prose has always named and nothing held: the
+  // thirty-seven dollars a month against the bike at the solo Milestone 2
+  // ("the first number in there that was going to arrive whether he did or
+  // not") and the hundred and four a month on the twelve hundred for the cars.
+  // They come off every later hub's take, which is what makes the Milestone 4
+  // deposit a real question on this branch.
+  ok((solo.flags || {}).monthlyOutgo > 0,
+     `the solo run signed paper with a monthly number on it ($${solo.flags && solo.flags.monthlyOutgo}/month)`);
+  eq(solo.flags && solo.flags.debtSource, 'bank', 'it took the bank loan for the cars');
+  ok(/\$\d+\/month owed/.test(solo.purses['Free Roam — The Price of Fame'] || ''),
+     `and the hub shelf says so (${solo.purses['Free Roam — The Price of Fame']})`);
+
+  // The milestone consequence. `m4_stunt_select` has said "a school district
+  // that would rent him the buses against a deposit he did not have yet" since
+  // Phase 1 and nothing read it; this run reaches the choice screen with the
+  // stats for the Bus Stack and without the nine hundred dollars, and the
+  // screen says which of the three requirements it is short of, and by how
+  // much.
+  {
+    const select = solo.texts.filter(x => x.scene === 'm4_stunt_select' && x.where === 'choices');
+    ok(select.length > 0, 'the solo run reaches the Milestone 4 stunt choice');
+    const line = select.map(x => x.text).join(' ');
+    ok(/school district/.test(solo.texts.filter(x => x.scene === 'm4_stunt_select').map(x => x.text).join(' ')),
+       'and reads the solo paragraph about the school district');
+    ok(/deposit \(short \$\d+\)/.test(line),
+       `the Bus Stack names the deposit it is short of (${(line.match(/Requires[^|]{0,90}/) || ['no lock note'])[0]})`);
+    ok(!/m4_triumph_buses|m4_failure_buses/.test(solo.seen.join(' ')),
+       'so the run does not ride thirteen buses it could not rent');
+  }
+  ok(/THE BOOKS — /.test(solo.summary),
+     `the solo ending reads the books back (${(solo.summary.match(/THE BOOKS — .{0,70}/) || ['no Books verdict'])[0]})`);
+
   eq(t.page.__errs.length, 0, `no page errors across the solo run (${t.page.__errs.slice(0, 3).join('; ')})`);
 
   /* ============== Milestone 5's last stunt carries the decision (Phase 2) */
@@ -551,6 +668,38 @@ try {
     eq(earlLoss.outcome, 'last_stunt_earl', 'whether or not he cleared it');
     ok(/didn't clear it\. He got up\. He thought: alright\. That was somebody else's number\./.test(earlLoss.summary),
        'and says he did not when he did not');
+  }
+
+  /* ============ Phase 6: the two hubs a stripped run cannot prove */
+
+  // Free Roam 3 and 4 drop a card whose `_needs` the run does not meet rather
+  // than greying it, so a clean run that never established Ruthie reaches both
+  // with exactly as many cards as evenings and ends on the cards. Against a
+  // full cast they are the hubs the phase changed most: Free Roam 3 handed out
+  // seven evenings for four cards before this, which is why nobody had ever
+  // seen Milestone 4 before round 1.
+  //
+  // Driven the way Phase 4 drove Danny's card: a real run, the bag and the
+  // spent-evening counters patched, and then the game's own `renderHubFRn`
+  // draws the board. Nothing here re-implements `hubExhausted()`.
+  for (const [hub, route, spent, milestone] of [
+    ['Free Roam 3', '_hub_fr3', { fr3EveningsUsed: 3, fr3Started: true }, 'Milestone 4'],
+    ['Free Roam 4', '_hub_fr4', { fr4EveningsUsed: 4 }, 'Milestone 5'],
+  ]) {
+    const full = { rels: { ruthie: 'solid', cal: 'loyal', tommy: 'ally', earl: 'backer', danny: 'nemesis' },
+                   flags: { ...spent, money: 400, ruthieAsked: true } };
+    const shown = await fromScene(full, route);
+    const priced = shown.board.filter(b => /1 Evening/.test(b.label));
+    const unread = priced.filter(b => b.locked && !/✓ Done/.test(b.label));
+    eq(shown.pips && shown.pips.used, shown.pips && shown.pips.total,
+       `${hub} with every evening spent shows every pip used`);
+    ok(priced.length > shown.pips.total,
+       `${hub} builds more cards than it hands out evenings for (${priced.length} cards, ${shown.pips.total} evenings)`);
+    ok(unread.length > 0,
+       `and offers ${milestone} with ${unread.length} of them unread ` +
+       `(${unread.map(b => b.label.slice(0, 26)).join(' | ') || 'NONE'})`);
+    ok(shown.board.some(b => !b.locked && new RegExp('^' + milestone).test(b.label)),
+       `and the ${milestone} button is the way out`);
   }
 
   /* ================================ Danny gets a way out of it (Phase 4) */
@@ -659,6 +808,37 @@ try {
     const overflow = await m.evaluate(() =>
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     ok(overflow <= 0, `no horizontal overflow at 375x812 (${overflow}px)`);
+
+    // And a hub, which this section never rendered before Phase 6 put a
+    // dollar figure on the same shelf as the pips. The widest case the game
+    // can reach: Free Roam 4's four pips, a five-figure purse and a monthly
+    // line under it, against a 375px viewport with `margin-left:auto` between
+    // them. A label, seven pips and "$12,345" is what would push it over.
+    await open(m, t.base, { name: 'Duke Harlan', town: 'Buford County' });
+    const firstM = await snapshot(m);
+    if (firstM.screen === 'chapter') { await pick(m, firstM.buttons[0].label); await wait(650); }
+    await m.evaluate(() => {
+      Object.assign(window.__dd.GS.flags, { fr4EveningsUsed: 1, money: 12345, monthlyOutgo: 145 });
+      Object.assign(window.__dd.GS.rels, { ruthie: 'solid', cal: 'loyal', tommy: 'ally', earl: 'backer' });
+      window.__dd.goToScene('_hub_fr4');
+    });
+    await wait(300);
+    const hubShelf = await m.evaluate(() => {
+      const el = document.getElementById('hub-purse');
+      return { purse: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+               over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+               shelfOver: (() => { const s = document.getElementById('hub-evenings');
+                 return s.scrollWidth - s.clientWidth; })() };
+    });
+    // Not the seeded number: entering the hub credits Free Roam 4's take on
+    // top of it, which is the point — $12,345 plus 1,600 less four months of
+    // paper is $13,365. What matters here is that five figures and a monthly
+    // line both render and neither pushes the page sideways.
+    ok(/\$\d{2},\d{3}/.test(hubShelf.purse), `the purse renders a five-figure number (${hubShelf.purse})`);
+    ok(/\$145\/month owed/.test(hubShelf.purse), 'with the monthly paper under it');
+    ok(hubShelf.over <= 0, `no horizontal overflow on a hub at 375x812 (${hubShelf.over}px)`);
+    ok(hubShelf.shelfOver <= 0, `and the evenings shelf itself does not overflow (${hubShelf.shelfOver}px)`);
+
     eq(m.__errs.length, 0, `no errors on mobile (${m.__errs.join('; ')})`);
     await m.close();
   }

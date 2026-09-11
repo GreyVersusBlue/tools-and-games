@@ -89,6 +89,17 @@ export const snapshot = page => page.evaluate(([scanSrc, ctlSrc, lockSrc]) => {
       who: t(r.querySelector('.rel-row-name')), state: t(r.querySelector('.rel-row-state')),
     })),
     hub: t(document.getElementById('hub-title')),
+    // The purse shelf (Phase 6). Read off the DOM, not GS, because what the
+    // player was told about the money is the thing worth asserting (#39).
+    purse: t(document.getElementById('hub-purse')),
+    // And the pips beside it, which are the hub's budget as drawn: `total` is
+    // how many evenings this hub handed out, `used` how many are spent. This
+    // is what says whether a hub ended because the evenings ran out or
+    // because the cards did — the distinction the whole phase is about.
+    pips: {
+      total: document.querySelectorAll('#evening-pips .pip').length,
+      used: document.querySelectorAll('#evening-pips .pip.used').length,
+    },
     verdict: t(document.getElementById('rVerdict')),
     score: t(document.getElementById('rScore')),
     detail: t(document.getElementById('rDetail')),

@@ -2,7 +2,7 @@
 
 Played as Mack Teller of Cold Spring, stunt policy `crash`.
 
-**Scene path (82):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_fair` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_danny` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `fr3_eve_tommy_measured` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_earl` → `fr4_earl_direct` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
+**Scene path (80):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_fair` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_danny` → `fr2_eve_press` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `fr3_eve_tommy_measured` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_earl` → `fr4_earl_direct` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
 
 ---
 
@@ -190,10 +190,10 @@ He had some decisions to make.
 - Lloyd Perkins The fair organizer has a booking offer for next August. Available · Free
 - The Young Wannabe A kid found you at the gas station. He has a setup in his uncle's lot. Available · Free
 - 🔒 Stay Home With Ruthie Rebuild Nerve. Reset fatigue. (Ruthie not established)
-- Work With Cal Precision up. Cal sometimes says something true. Costs 1 Evening
-- Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
-- Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
+- Work With Cal Precision up. Cal sometimes says something true. 1 Evening · $8
+- Practice Alone Precision and Nerve. The honest version of the work. 1 Evening · $14
+- Bar With Tommy Showmanship up. Condition down. Contacts possible. 1 Evening · $12
+- Read the Contract Earl's terms. Page fourteen has something worth finding. 1 Evening
 
 **→ took:** Lloyd Perkins The fair organizer has a booking offer for next August. Available · Free
 
@@ -236,10 +236,10 @@ He didn't know yet if that was the right call. He'd know at Milestone 2.
 ## HUB — Free Roam — Early Days
 - The Young Wannabe A kid found you at the gas station. He has a setup in his uncle's lot. Available · Free
 - 🔒 Stay Home With Ruthie Rebuild Nerve. Reset fatigue. (Ruthie not established)
-- Work With Cal Precision up. Cal sometimes says something true. Costs 1 Evening
-- Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
-- Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
+- Work With Cal Precision up. Cal sometimes says something true. 1 Evening · $8
+- Practice Alone Precision and Nerve. The honest version of the work. 1 Evening · $14
+- Bar With Tommy Showmanship up. Condition down. Contacts possible. 1 Evening · $12
+- Read the Contract Earl's terms. Page fourteen has something worth finding. 1 Evening
 
 **→ took:** The Young Wannabe A kid found you at the gas station. He has a setup in his uncle's lot. Available · Free
 
@@ -272,12 +272,12 @@ He went. Duke watched him go. He thought: that was probably not the right call. 
 
 ## HUB — Free Roam — Early Days
 - 🔒 Stay Home With Ruthie Rebuild Nerve. Reset fatigue. (Ruthie not established)
-- Work With Cal Precision up. Cal sometimes says something true. Costs 1 Evening
-- Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
-- Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
+- Work With Cal Precision up. Cal sometimes says something true. 1 Evening · $8
+- Practice Alone Precision and Nerve. The honest version of the work. 1 Evening · $14
+- Bar With Tommy Showmanship up. Condition down. Contacts possible. 1 Evening · $12
+- Read the Contract Earl's terms. Page fourteen has something worth finding. 1 Evening
 
-**→ took:** Work With Cal Precision up. Cal sometimes says something true. Costs 1 Evening
+**→ took:** Work With Cal Precision up. Cal sometimes says something true. 1 Evening · $8
 
 ### `fr1_eve_cal`
 Cal's garage smelled like motor oil and metal dust and a coffee that had been sitting on the workbench too long.
@@ -294,11 +294,11 @@ Duke was starting to pay attention.
 ## HUB — Free Roam — Early Days
 - 🔒 Stay Home With Ruthie Rebuild Nerve. Reset fatigue. (Ruthie not established)
 - 🔒 Work With Cal Precision up. Cal sometimes says something true. ✓ Done
-- Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
-- Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
+- Practice Alone Precision and Nerve. The honest version of the work. 1 Evening · $14
+- Bar With Tommy Showmanship up. Condition down. Contacts possible. 1 Evening · $12
+- Read the Contract Earl's terms. Page fourteen has something worth finding. 1 Evening
 
-**→ took:** Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
+**→ took:** Practice Alone Precision and Nerve. The honest version of the work. 1 Evening · $14
 
 ### `fr1_eve_practice`
 The fairground in the off-season had a specific quiet to it. No crowd sounds to fill the air. Just the engine and the ramp and the sound of his own breathing.
@@ -312,10 +312,10 @@ Around the eighth pass, something clicked. He didn't know what exactly. He just 
 - 🔒 Stay Home With Ruthie Rebuild Nerve. Reset fatigue. (Ruthie not established)
 - 🔒 Work With Cal Precision up. Cal sometimes says something true. ✓ Done
 - 🔒 Practice Alone Precision and Nerve. The honest version of the work. ✓ Done
-- Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
+- Bar With Tommy Showmanship up. Condition down. Contacts possible. 1 Evening · $12
+- Read the Contract Earl's terms. Page fourteen has something worth finding. 1 Evening
 
-**→ took:** Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
+**→ took:** Bar With Tommy Showmanship up. Condition down. Contacts possible. 1 Evening · $12
 
 ### `fr1_eve_bar`
 Tommy knew everybody at the Rusty Nail and everybody knew Tommy. That was a double-edged thing, and Duke understood it better by the end of the evening than he had at the start.
@@ -349,27 +349,7 @@ On the drive home Duke could not have said what Tommy had done with the last eig
 - 🔒 Work With Cal Precision up. Cal sometimes says something true. ✓ Done
 - 🔒 Practice Alone Precision and Nerve. The honest version of the work. ✓ Done
 - 🔒 Bar With Tommy Showmanship up. Condition down. Contacts possible. ✓ Done
-- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
-
-**→ took:** Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
-
-### `fr1_eve_contract`
-He sat at the kitchen table with Earl's preliminary terms and a notepad and went through it three times.
-It was twenty-two pages. He read all twenty-two.
-Around page fourteen, he found the clause.
-It was the insurance clause. Earl's version of it put the full cost of medical care back on Duke in the event of "non-approved stunt activities." The phrase "non-approved" was not defined.
-He wrote that down.
-He thought: I'll need to know what that phrase means before I sign anything.
-
-> **The Fine Print** — You found the insurance clause. Page fourteen. Not defined. That matters.
-
-
-## HUB — Free Roam — Early Days
-- 🔒 Stay Home With Ruthie Rebuild Nerve. Reset fatigue. (Ruthie not established)
-- 🔒 Work With Cal Precision up. Cal sometimes says something true. ✓ Done
-- 🔒 Practice Alone Precision and Nerve. The honest version of the work. ✓ Done
-- 🔒 Bar With Tommy Showmanship up. Condition down. Contacts possible. ✓ Done
-- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. ✓ Done
+- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. 1 Evening
 - Milestone 2 — The Investor Offer
 
 **→ took:** Milestone 2 — The Investor Offer
@@ -515,11 +495,11 @@ There was more to do than there used to be. That was the simple version.
 
 ## HUB — Free Roam — Building the Act
 - The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
-- Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
+- Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. 1 Evening · $18
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
-- New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
-- Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
+- New Distances Five cars. The geometry is different from three cows. 1 Evening · $55 · Condition −1
+- Bar With Tommy He has a theory about Diamondback Danny. He might be right. 1 Evening · $16
+- Call Sandra Earl announced you before you knew you were being announced. 1 Evening · $6
 
 **→ took:** The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
 
@@ -532,9 +512,9 @@ The math was specific.
 - Option ABorrow from Earl.He'll advance it against the next show. No interest. But he holds the number.
 - Option BLocal bank loan.Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.
 - Option CBorrow from Tommy.He has it. He'll lend it. That'll be a thing.
-- Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean.
+- Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean. It comes out of what you have.
 
-**→ took:** Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean.
+**→ took:** Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean. It comes out of what you have.
 
 > **Self-Funded** — Nobody holds the number. That's worth the two Saturdays.
 
@@ -550,13 +530,13 @@ He told no one. It was the cleanest solution and also slightly exhausting and he
 
 
 ## HUB — Free Roam — Building the Act
-- Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
+- Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. 1 Evening · $18
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
-- New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
-- Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
+- New Distances Five cars. The geometry is different from three cows. 1 Evening · $55 · Condition −1
+- Bar With Tommy He has a theory about Diamondback Danny. He might be right. 1 Evening · $16
+- Call Sandra Earl announced you before you knew you were being announced. 1 Evening · $6
 
-**→ took:** Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
+**→ took:** Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. 1 Evening · $18
 
 ### `fr2_eve_cal`
 Cal had said "come by this week" the night of the signing. Duke came by on Thursday.
@@ -580,12 +560,12 @@ He picked up a wrench. That was the end of the conversation about Earl.
 ## HUB — Free Roam — Building the Act
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
-- New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
-- Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
-- Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
+- New Distances Five cars. The geometry is different from three cows. 1 Evening · $55 · Condition −1
+- Bar With Tommy He has a theory about Diamondback Danny. He might be right. 1 Evening · $16
+- Call Sandra Earl announced you before you knew you were being announced. 1 Evening · $6
+- Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. 1 Evening · $12
 
-**→ took:** New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
+**→ took:** New Distances Five cars. The geometry is different from three cows. 1 Evening · $55 · Condition −1
 
 ### `fr2_eve_practice`
 He set up a longer approach. Not a different stunt — just more runway, which changed the math in ways that weren't entirely about distance.
@@ -600,11 +580,11 @@ He worked until the light went and then a little past that.
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
-- Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
-- Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
+- Bar With Tommy He has a theory about Diamondback Danny. He might be right. 1 Evening · $16
+- Call Sandra Earl announced you before you knew you were being announced. 1 Evening · $6
+- Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. 1 Evening · $12
 
-**→ took:** Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
+**→ took:** Bar With Tommy He has a theory about Diamondback Danny. He might be right. 1 Evening · $16
 
 ### `fr2_eve_bar`
 Tommy had a theory about Diamondback Danny.
@@ -643,10 +623,10 @@ They closed the place out talking about fire, and ramps, and a man in Larkin wit
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
 - 🔒 Bar With Tommy He has a theory about Diamondback Danny. He might be right. ✓ Done
-- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
-- Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. 1 Evening · $6
+- Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. 1 Evening · $12
 
-**→ took:** Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
+**→ took:** Call Sandra Earl announced you before you knew you were being announced. 1 Evening · $6
 
 ### `fr2_eve_press`
 Sandra called about a feature.
@@ -670,37 +650,7 @@ Duke thought about that.
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
 - 🔒 Bar With Tommy He has a theory about Diamondback Danny. He might be right. ✓ Done
 - 🔒 Call Sandra Earl announced you before you knew you were being announced. ✓ Done
-- Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
-
-**→ took:** Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
-
-### `fr2_eve_cal_02`
-It happened on a Tuesday. Not even a show night — just a Tuesday, Cal under the bike, Duke sitting on an overturned bucket watching him work.
-**DUKE:** You'd tell me if something was wrong with it.
-**CAL:** I'm a mechanic. That's all I do.
-**DUKE:** I mean before I ride it.
-**CAL:** I know what you meant.
-A pause. Cal kept working.
-**CAL:** That what you're worried about?
-**DUKE:** I'm not worried.
-**CAL:** Mm.
-Another pause. Cal set down the wrench.
-**CAL:** The bike's right. I'll tell you when it isn't.
-**DUKE:** Okay.
-**CAL:** You could just ask about the bike.
-**DUKE:** I am asking about the bike.
-Cal looked at him. Then he picked the wrench back up.
-**CAL:** Bike's right.
-
-> **Bike's Right** — Cal said it. That's the whole conversation.
-
-
-## HUB — Free Roam — Building the Act
-- 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
-- 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
-- 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
-- 🔒 Bar With Tommy He has a theory about Diamondback Danny. He might be right. ✓ Done
-- 🔒 Call Sandra Earl announced you before you knew you were being announced. ✓ Done
+- 🔒 Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. 1 Evening · $12
 - Milestone 3 — The Big Break
 
 **→ took:** Milestone 3 — The Big Break
@@ -747,7 +697,7 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — FAIL / 17** — Overshot the ramp. Recovered 0 of 4 rounds.
+> **STUNT RESULT — FAIL / 16** — Overshot the ramp. Recovered 0 of 4 rounds.
 
 ### `m3_failure_bad`
 He knew before he left the ramp that something was wrong. He went anyway, which was either courage or the inability to stop — he'd never been entirely sure of the boundary between those two things.
@@ -800,9 +750,9 @@ He thought: I should use it well.
 ## HUB — Free Roam — The Price of Fame
 - Reverend Hollis He was at the Dallas show. He wants to say something different this time. Available · Free
 - Sandra Blaine She has a bigger offer. Regional TV, prime time, thirty minutes. Available · Free
-- Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
-- Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
-- Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
+- Earl Maddox He wants to renegotiate. The split and the extension are on the table. 1 Evening
+- Work With Cal He has a question about what comes next. Buses are different from cars. 1 Evening · $40
+- Tommy He's at the bar. He has something true to say and doesn't know it yet. 1 Evening · $14 · Condition −1
 
 **→ took:** Reverend Hollis He was at the Dallas show. He wants to say something different this time. Available · Free
 
@@ -837,9 +787,9 @@ Duke stood in the hardware store aisle for a moment. He thought: that was not th
 
 ## HUB — Free Roam — The Price of Fame
 - Sandra Blaine She has a bigger offer. Regional TV, prime time, thirty minutes. Available · Free
-- Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
-- Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
-- Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
+- Earl Maddox He wants to renegotiate. The split and the extension are on the table. 1 Evening
+- Work With Cal He has a question about what comes next. Buses are different from cars. 1 Evening · $40
+- Tommy He's at the bar. He has something true to say and doesn't know it yet. 1 Evening · $14 · Condition −1
 
 **→ took:** Sandra Blaine She has a bigger offer. Regional TV, prime time, thirty minutes. Available · Free
 
@@ -883,11 +833,11 @@ It wasn't wrong. That was the thing. It was just very true.
 
 
 ## HUB — Free Roam — The Price of Fame
-- Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
-- Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
-- Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
+- Earl Maddox He wants to renegotiate. The split and the extension are on the table. 1 Evening
+- Work With Cal He has a question about what comes next. Buses are different from cars. 1 Evening · $40
+- Tommy He's at the bar. He has something true to say and doesn't know it yet. 1 Evening · $14 · Condition −1
 
-**→ took:** Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
+**→ took:** Earl Maddox He wants to renegotiate. The split and the extension are on the table. 1 Evening
 
 ### `fr3_eve_earl`
 Earl came to him, not the other way around. That was the first tell.
@@ -926,10 +876,10 @@ He hung up. He thought: that was a negotiation. He'd had them before. This one f
 
 ## HUB — Free Roam — The Price of Fame
 - 🔒 Earl Maddox He wants to renegotiate. The split and the extension are on the table. ✓ Done
-- Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
-- Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
+- Work With Cal He has a question about what comes next. Buses are different from cars. 1 Evening · $40
+- Tommy He's at the bar. He has something true to say and doesn't know it yet. 1 Evening · $14 · Condition −1
 
-**→ took:** Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
+**→ took:** Work With Cal He has a question about what comes next. Buses are different from cars. 1 Evening · $40
 
 ### `fr3_eve_cal`
 Cal had a question.
@@ -962,9 +912,9 @@ He went back to work. Duke sat with the word *right* for a while.
 ## HUB — Free Roam — The Price of Fame
 - 🔒 Earl Maddox He wants to renegotiate. The split and the extension are on the table. ✓ Done
 - 🔒 Work With Cal He has a question about what comes next. Buses are different from cars. ✓ Done
-- Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
+- Tommy He's at the bar. He has something true to say and doesn't know it yet. 1 Evening · $14 · Condition −1
 
-**→ took:** Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
+**→ took:** Tommy He's at the bar. He has something true to say and doesn't know it yet. 1 Evening · $14 · Condition −1
 
 ### `fr3_eve_tommy`
 Tommy found him at the bar after the Dallas coverage ran in the regional paper. He'd been there a while before Duke arrived, which was a certain kind of tell.
@@ -1035,7 +985,7 @@ The inferno tunnel was the theatrical one. A ring of fire on a quarter-mile stra
 The third was smaller. A symbolic stunt at the county fair — where it started. Local crowd, people who knew him before any of this. Lower risk, but a different kind of statement.
 He set the folder down and looked at the window for a while.
 
-- Option AThe Bus Stack — thirteen buses.Requires Showmanship ≥ 4 and Precision ≥ 3. The Legend ceiling.
+- Option AThe Bus Stack — thirteen buses.Requires Showmanship ≥ 4 and Precision ≥ 3. Earl has the stadium. The Legend ceiling.
 - Option BThe Inferno — fire tunnel.Requires Nerve ≥ 4. Theatrical. National TV.
 - Option CThe Symbolic Stunt — county fair, full circle.Always available. Low danger. High emotional payoff.
 
@@ -1104,9 +1054,9 @@ He thought: that's always been true. He thought: this time I know it.
 
 ## HUB — Free Roam — Aftermath
 - The Biographer A man named Fisk flew in from New York. He has a contract in his briefcase. Available · Free
-- Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
-- Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
-- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
+- Night Ride Twenty-two miles north. The fork seal holds. Just the road. 1 Evening · $6 · Condition +1
+- Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. 1 Evening · $35
+- Earl Maddox The man from California is on the line. The Vegas offer is real. 1 Evening
 
 **→ took:** The Biographer A man named Fisk flew in from New York. He has a contract in his briefcase. Available · Free
 
@@ -1142,11 +1092,11 @@ He thought: he finds the number in the air, not on the ground. Some numbers were
 
 
 ## HUB — Free Roam — Aftermath
-- Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
-- Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
-- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
+- Night Ride Twenty-two miles north. The fork seal holds. Just the road. 1 Evening · $6 · Condition +1
+- Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. 1 Evening · $35
+- Earl Maddox The man from California is on the line. The Vegas offer is real. 1 Evening
 
-**→ took:** Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
+**→ took:** Night Ride Twenty-two miles north. The fork seal holds. Just the road. 1 Evening · $6 · Condition +1
 
 ### `fr4_night_ride`
 He took the bike out after dark.
@@ -1162,10 +1112,10 @@ The fork seal, which Cal had replaced, held.
 
 ## HUB — Free Roam — Aftermath
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
-- Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
-- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
+- Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. 1 Evening · $35
+- Earl Maddox The man from California is on the line. The Vegas offer is real. 1 Evening
 
-**→ took:** Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
+**→ took:** Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. 1 Evening · $35
 
 ### `fr4_eve_cal`
 He went to the garage.
@@ -1203,9 +1153,9 @@ Duke thought: that's the whole conversation. He thought: I'll need to sit with t
 ## HUB — Free Roam — Aftermath
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
 - 🔒 Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. ✓ Done
-- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
+- Earl Maddox The man from California is on the line. The Vegas offer is real. 1 Evening
 
-**→ took:** Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
+**→ took:** Earl Maddox The man from California is on the line. The Vegas offer is real. 1 Evening
 
 ### `fr4_eve_earl`
 Earl called at seven in the evening. Duke had been expecting the call.
@@ -1325,10 +1275,11 @@ He told Cal on a Tuesday. Cal said: okay.
 Some people never knew he retired.
 He thought: the ones who need to know know.
 VERDICTS
-BODY — The body kept its own account.
+BODY — Carrying some damage. He knows where it is.
 LEGACY — They know the name. They know what it means.
 HOME — The circuit was home. That might be enough.
 THE WORK — Cal's still got the bike. It's right.
+THE BOOKS — $3,106 in hand. He made the shows pay.
 NERVE — He went out quietly. That takes its own kind of nerve.
 RELATIONSHIPS
 Cal: Loyal Partner
@@ -1336,4 +1287,4 @@ Earl Maddox: Business Partner
 Tommy: Absent
 "The kid in the front row — the one Duke nodded to — started riding at fourteen."
 
-**Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5
+**Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 2 HUSTLE 5
