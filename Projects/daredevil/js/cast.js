@@ -16,9 +16,14 @@
 //
 // The array order is the order the two screens that list relationships print
 // them in, and the order the pre-stunt routes ask in: Cal before Ruthie before
-// Pete before Earl. Tommy and Danny have no route of their own yet (Phase 4
-// gives them a way out), so they come last. Milestone 5's question is the one
-// route that departs from it (Ruthie before Cal), and its table says so.
+// Pete before Earl. Tommy and Danny have no pre-stunt route of their own, so
+// they come last. Milestone 5's question is the one route that departs from it
+// (Ruthie before Cal), and its table says so.
+//
+// Phase 4 gave Tommy and Danny a way out. Every state listed below is written
+// by something now except three — `ruthie: 'strained'`, `ruthie: 'absent'` and
+// `earl: 'antagonist'` — which six lines of prose and a verdict read and no
+// scene sets. smoke-save.mjs freezes that list and fails on a fourth.
 
 export const CAST = [
   {
@@ -107,6 +112,32 @@ export function presentStates(id) {
 
 /** Is the character in the story right now — met, and not gone? */
 export function isPresent(id, rels) { return presentStates(id).includes(rels[id]); }
+
+/** Was this character ever in the story at all? Anyone off the never-met
+ *  state, which includes 'absent': somebody who left is somebody the run had.
+ *  Cal has no never-met state, so he is always true. */
+export function wasMet(id, rels) {
+  const c = BY_ID[id];
+  if (!c) throw new Error(`cast: no character '${id}'`);
+  return c.unmet === null || rels[id] !== c.unmet;
+}
+
+/**
+ * The roster the ending screen prints: every character the run actually had,
+ * in the table's own order, each with the label for the state they ended in.
+ *
+ * The ending screen used to build this itself, from `Object.entries(GS.rels)`
+ * filtered on the literal `'unknown'`. Two things were wrong with that. The
+ * literal is this table's business — `unmet` is per character and Cal's is
+ * null — and a save's own key order is not the table's: `repairState` fills a
+ * character the save is missing in at the end of the bag, so a save written
+ * before `pete` was seeded comes back and prints Pete after Danny.
+ */
+export function rosterFor(rels) {
+  return CAST
+    .filter(c => wasMet(c.id, rels))
+    .map(c => ({ id: c.id, name: c.name, state: rels[c.id], label: relLabel(c.id, rels[c.id]) }));
+}
 
 /**
  * Does a relationship bag satisfy a `_needs` declaration? `needs` is

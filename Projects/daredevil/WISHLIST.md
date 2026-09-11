@@ -207,17 +207,26 @@ still being decided." after a run in which he backed every show.
 ## The standing backlog
 
 Everything below is open and unclaimed. Pull from here; add to it rather than
-starting a new list.
+starting a new list. **The list predates arc one and has not been swept since**
+— several entries under "Reachable content" were closed by Phases 1 to 4 and
+are still written here as open. Check a bullet against `HISTORY.md` before you
+take it.
 
 **Story and state**
 - The Earl rejection now changes Milestone 2 and Free Roam 2 (Phase 1,
   increment 1). Milestones 3 and 4 and the epilogue still read as a backer
   run on that branch — the open half of the Phase 1 row.
 - Ruthie is reachable through one of six answers to one question, in one scene.
-- `GS.rels.tommy` is never assigned anywhere in `scenes.js` — `'hanger_on'`
-  from `freshState()` to the ending screen, while `engine.js` tests it against
-  `'absent'` twice and `'unknown'` once. Danny is only ever `'frenemy'` or
-  `'nemesis'`, only in Free Roam 2. Neither has a true never-met state.
+- Three states in the cast table are still written by nothing (Phase 4 closed
+  Tommy's two and Danny's two and left these). `ruthie: 'strained'` and
+  `ruthie: 'absent'` are read by an ending verdict apiece, the Free Roam 4
+  card's subtitle, `fr4_eve_ruthie`'s `_gateRoute` and two prose closures — six
+  `rels.ruthie` comparisons — and `earl: 'antagonist'` has a written paragraph
+  in the ending screen's Earl narrative. Seven reads, no writer. It is
+  a prose row: the Ruthie thread sets `ruthieStrainSeed` at `fr2_ruthie_q_c`,
+  Free Roam 2's deflection, and nothing downstream of it reads the flag or
+  moves her off `'solid'`. `smoke-save.mjs` freezes the
+  three so the list can shrink and not grow.
 - 30 flags are written and never read, including `familyOrigin` (the cold
   open's "what he came from" fork, whose only lasting effect is +1 Hustle on
   one arm), `peteMistakeResponse` and `m5Decision`. `debtSource` came off
@@ -234,6 +243,17 @@ starting a new list.
   `> **title** — reason` line (`$135 and a Name in Print`, the fourteen
   `m2_solo_*` updates). Found while diffing Phase 1's transcripts; not
   fixed there, since it moves every transcript at once.
+  **Phase 4 measured it: both calls apply `deltas`.** `fr2_danny_01` option B
+  grants +1 showmanship on the choice and +1 on the target's `statUpdate`, and
+  a run that takes it goes from 0 to **3**. Thirty-three choice-reached scenes
+  carry non-empty deltas, `m2_sign` and six of the eight endings among them, so
+  the game is quietly paying double on all of them. `smoke-save.mjs` freezes
+  the list of thirty-three, checked from both ends: it can shrink, a
+  thirty-fourth fails, and a name that stops doubling fails too. Fixing the
+  engine is a row of its own — it rebalances the game and moves every
+  transcript — and until it happens new content puts its numbers on the
+  choice's `effects` and keeps only relationship and flag writes, which are
+  idempotent, on the `statUpdate`.
 
 **Reachable content**
 - `fr4_close` — a finished scene in which Duke calls Earl and takes the Vegas
@@ -452,34 +472,81 @@ happily write `rels.peet = 'aly'` and tell nobody.** Not any more.
 
 *Shipped by:* **Claude Fable 5.1**.
 
-## Phase 4 — Danny and Tommy get a way out
+## Phase 4 — Danny and Tommy get a way out — DONE
 
-**Tommy is assigned once, in `freshState()`, and the engine tests him against
-two states he can never hold.**
+**Shipped 2026-09-11** (decisions #279 to #282; the account is under
+"Daredevil, arc one" in the root `HISTORY.md`).
 
-Rounds 2 and 3 ran the absent-relationship prose sweep for Ruthie, then Earl
-and Pete, and found a real bug each time. Danny and Tommy were skipped on the
-honest grounds that neither has a true absent state — which is the thing to
-fix. `GS.rels.tommy` is `'hanger_on'` for the whole game while `renderHubFR3`
-and `renderHubFR4` both gate his card on him not being `'absent'`; Danny is
-only ever `'frenemy'` or `'nemesis'`, and only in Free Roam 2, so
-`dannyMet`/`dannySchemed` are the real switches.
+**The finding, restated as a number.** Seven of the cast table's legal states
+were written by nothing. Tommy was `'hanger_on'` at the first line of the game
+and `'hanger_on'` at the ending screen on every run ever played, while
+`renderHubFR3` and `renderHubFR4` gated his two cards on him not being
+`'absent'` and `fr4_eve_tommy` carried a paragraph behind `=== 'ally'`. Danny
+could only be `'frenemy'` or `'nemesis'`, both from one Free Roam 2 card, and
+the table had labels for `'poached'` and `'absent'` no run could print.
 
-- [ ] **Give Tommy a real track.** `fr4_eve_tommy` reads
-  `GS.rels.tommy === 'ally'` for a line nothing can make true. Wire the FR1/FR2
-  bar evenings to move him, and give the debt scene's "Borrow from Tommy" arm a
-  lasting cost.
-- [ ] **Give Danny a `'poached'` and an `'absent'`.** Both labels already exist
-  in the epilogue's table; neither is reachable.
-- [ ] **Two transcript plans, `no_tommy` and `no_danny`**, on round 3's method
-  exactly: play them, grep the output for the name, read every unconditional
-  mention, then fix what the grep finds as `N(fn)` prose swaps.
-- [ ] **Extend the epilogue roster** so a character who was never in the story
-  is omitted rather than printed as "—".
+- [x] **Tommy has a track, and it is three evenings long.** Free Roam 1's bar
+  night forks: ask him what he does, or let him finish the flatbed story. The
+  first sets `tommyAsked`, and that is the only thing that puts the car-show
+  warm-up answer on Free Roam 2's bar night — the one place in the game that
+  writes `tommy: 'ally'` before Free Roam 3. Free Roam 3's "something true"
+  evening forks too: let the twelve people stand, or measure them against a
+  career, which is how he leaves.
+- [x] **The debt scene's "Borrow from Tommy" arm has a lasting cost.** It
+  writes `tommy: 'hanger_on'` flat. A man you owe is not a man beside you, the
+  stat screen says so in the only place the game ever announces a relationship
+  move, and the Free Roam 4 ally paragraph goes away. Free Roam 3's evening is
+  the way back and it costs an evening.
+- [x] **Danny has a `'poached'` and an `'absent'`,** through one new Free Roam 3
+  day card gated on `_needs: { danny: DANNY_ON_CIRCUIT }`, so it is only on the
+  board for a run that met him at the fair. Somebody signed him — Earl on the
+  backer branch, a Fort Worth syndicate on the solo one, which is Tommy's Free
+  Roam 2 theory coming true — and Duke's answer, not the signing, decides which
+  of the two the ending screen prints. Free Roam 3's day cards go through
+  `met()` now; Free Roam 2's already did.
+- [x] **Three transcript plans**, `no_tommy`, `no_danny` and `danny_gone`, and
+  all nine re-taken. Three prose swaps came out of it. Free Roam 3's "Cal
+  mentioned it" is wrong on a run where Tommy told Duke himself. The Free Roam
+  4 bar scene now reads `tommyKnowsWhatHeWants`, which two phases had written
+  and nothing had read. And the retirement retrospective said "He made the
+  call. Earl first, then Cal, then Ruthie" on the clean run, which never
+  establishes Ruthie and prints no Ruthie row six lines below it — the same
+  unconditional-prose bug Phase 1 fixed in `m5_retire_clean`'s own lines, one
+  panel over. It is built from `isPresent` now.
+- [x] **Four more unconditional mentions, found by `no_danny`,** which is what
+  that transcript was for. Free Roam 2's bar night remembered "Danny's setup at
+  the fair. The fire trick" on a run that never went and looked at the ramp;
+  Free Roam 2's close, on both branches, had Danny "still doing the thing where
+  he said the accurate thing in the wrong way" and Duke thinking about him
+  "more than he wanted to", a two-year acquaintance the run does not have; and
+  the same paragraph said "Tommy was either in his corner or not, depending on
+  the week" in three places, which the car-show warm-up slot made false. All of
+  them read the run now.
+- [x] **The epilogue roster is the cast table's**, `rosterFor()` — who was in
+  the run, in the table's order, with each state's label. It was built inline
+  from `Object.entries(GS.rels)` filtered on the literal `'unknown'`, which is
+  two assumptions the table owns: that `'unknown'` is what never-met means for
+  everybody, and that a save's key order is the table's. It is not —
+  `repairState` fills a missing character in at the end of the bag.
 
-*Leans on:* Phase 3's `CAST`, `scenes.js`, `transcript.mjs`'s `RUNS`.
-*Save:* none beyond Phase 3's. *Model:* **Claude Opus 5** — prose and card
-wiring against an established method.
+**The guard-rail.** `smoke-save.mjs` gained a reachability check: every legal
+state in the cast table has to be written by some scene or engine call, because
+a state nothing writes is a state every gate, label and prose closure keyed to
+it is dead against and nothing throws. Three are still dead and frozen in a
+list that can shrink and not grow — `ruthie: 'strained'`, `ruthie: 'absent'`,
+`earl: 'antagonist'`. They are read by an ending verdict, a Free Roam 4 card's
+subtitle, a `_gateRoute` and two prose closures, and they are a prose row on
+`BACKLOG.md`, not this one's.
+
+**What this phase measured and did not fix.** A scene reached by a choice and
+carrying a `statUpdate` fires it twice and applies its `deltas` twice. Six new
+scenes would have inherited that — the two bar evenings would have paid +2
+showmanship where the unforked evening paid +1 — so this row routes around it:
+numbers on the choice's `effects`, relationship and flag writes on the
+`statUpdate`. The bug itself is thirty-three scenes wide and is in the standing
+backlog above with the number attached.
+
+*Shipped by:* **Claude Opus 5**.
 
 ## Arc two — the machine under the story
 

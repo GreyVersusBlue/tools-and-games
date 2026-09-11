@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createDaredevilSlot, freshState, validateState, repairState, KEY, VERSION, STAT_MAX,
 } from '../js/save.js';
-import { CAST, castFor, isLegalRel, setRel, meetsNeeds, routeByCast, statesOf, relLabel } from '../js/cast.js';
+import { CAST, castFor, isLegalRel, setRel, meetsNeeds, routeByCast, statesOf, relLabel, wasMet, rosterFor } from '../js/cast.js';
 import {
   SCENES,
   M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
@@ -236,6 +236,49 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
 }
 
 {
+  // Phase 4: the ending screen's roster. It used to be built inline from
+  // `Object.entries(GS.rels)` filtered on the literal 'unknown', which is two
+  // assumptions the cast table owns — that 'unknown' is what never-met means
+  // for everybody, and that the save's key order is the table's.
+  //
+  // One honest limit first (#147). Every never-met state in the table today is
+  // the string 'unknown', and Cal's is null, so `rels[id] !== 'unknown'` and
+  // `rels[id] !== castFor(id).unmet` agree on every character the game has.
+  // Replacing the table read with the literal leaves all of this green; it was
+  // broken on purpose to check. What these three catch is a character dropped
+  // from the roster or added to it, not which of the two tests was used. The
+  // order assertion below is the one that fails on the old inline version.
+  const fresh = freshState().rels;
+  eq(rosterFor(fresh).map(r => r.id), ['cal', 'tommy'],
+     'a run that has met nobody lists only the two characters who start in the story');
+  ok(!wasMet('danny', fresh), 'Danny starts never-met');
+  ok(wasMet('cal', fresh), 'Cal is on the list at a fresh start');
+  ok(wasMet('tommy', fresh), 'and so is Tommy, who starts as a hanger-on rather than as nobody');
+
+  const full = { ...fresh, ruthie: 'solid', pete: 'ally', earl: 'backer', danny: 'poached' };
+  eq(rosterFor(full).map(r => r.id), ['cal', 'ruthie', 'pete', 'earl', 'tommy', 'danny'],
+     'a full roster prints in the cast table\'s order');
+  eq(rosterFor(full).map(r => r.label).join(' / '),
+     'Neutral / Solid / Ally / Business Partner / Hanger-On / Poached',
+     'and each row carries the table\'s label for the state');
+
+  // The order a repaired save hands back is not the table's: repairState fills
+  // a character the save was missing in at the end of the bag. A save written
+  // before `pete` was seeded comes back with him last, and the old inline
+  // version printed him there.
+  const scrambled = repairState({ name: 'x', stats: {}, flags: {},
+    rels: { danny: 'nemesis', cal: 'loyal', tommy: 'ally', earl: 'mentor', ruthie: 'solid' } });
+  ok(Object.keys(scrambled.rels).indexOf('pete') > Object.keys(scrambled.rels).indexOf('danny'),
+     'a repaired save really does carry Pete after Danny');
+  eq(rosterFor(scrambled.rels).map(r => r.id), ['cal', 'ruthie', 'earl', 'tommy', 'danny'],
+     'and the roster still prints in table order, with the never-met Pete left off');
+
+  // A character who left is a character the run had: Absent is a row, not a gap.
+  eq(rosterFor({ ...fresh, tommy: 'absent' }).map(r => `${r.name}: ${r.label}`),
+     ['Cal: Neutral', 'Tommy: Absent'], 'somebody who left still has a row');
+}
+
+{
   // `_needs` and the route tables, as data.
   const rels = freshState().rels;
   ok(meetsNeeds(undefined, rels), 'no _needs is always met');
@@ -322,6 +365,112 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
   const closures = [...files['scenes.js'].matchAll(/_requires\s*:[^\n]*/g)].map(m => m[0]);
   const relClosures = closures.filter(c => /\brels\b|\bsolo\(/.test(c));
   ok(relClosures.length === 0, `no _requires closure tests a relationship (${relClosures.join(' | ') || 'none'})`);
+}
+
+{
+  // Phase 4: reachability, which is the other direction from the sweep above.
+  // That one asks whether every state the game *names* is legal. This one asks
+  // whether every state the cast table *declares* can ever be written, because
+  // a state nothing writes is a state every gate, label and prose closure
+  // keyed to it is dead against, and nothing throws.
+  //
+  // That was the whole of this phase's row. `rels.tommy` was 'hanger_on' at
+  // the first line of the game and 'hanger_on' at the ending screen on every
+  // run ever played, while two hub cards gated on him not being 'absent' and a
+  // Free Roam 4 line read `=== 'ally'`. Danny could only be 'frenemy' or
+  // 'nemesis', and the epilogue had labels for 'poached' and 'absent' that no
+  // run could print.
+  const strip = src => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  const both = ['engine.js', 'scenes.js']
+    .map(f => strip(fs.readFileSync(path.join(JS, f), 'utf8'))).join('\n\n');
+
+  // Every writer, from the story as data and from both files as text. The
+  // data walk is what counts; the text scan is there so a `setRel` or a direct
+  // assignment the engine makes on its own is not read as unreachable.
+  const written = new Set();
+  const where = {};
+  const wrote = (k, v, at) => { written.add(`${k}:${v}`); (where[`${k}:${v}`] ||= []).push(at); };
+  for (const [id, sc] of Object.entries(SCENES)) {
+    if (sc.statUpdate && sc.statUpdate.rels)
+      for (const [k, v] of Object.entries(sc.statUpdate.rels)) wrote(k, v, `${id}.statUpdate`);
+    for (const ch of sc.choices || [])
+      if (ch.effects && ch.effects.rels)
+        for (const [k, v] of Object.entries(ch.effects.rels)) wrote(k, v, `${id} choice`);
+  }
+  for (const m of both.matchAll(/setRel\(\s*[^,]+,\s*'([^']+)'\s*,\s*'([^']+)'/g)) wrote(m[1], m[2], 'setRel call');
+  for (const m of both.matchAll(/GS\.rels\.([A-Za-z_$][\w$]*)\s*=\s*'([^']+)'/g)) wrote(m[1], m[2], 'direct assignment');
+
+  // The three that are still dead, frozen the way flags.mjs freezes its
+  // write-only list (#264) so the list can shrink and not grow. Seven places
+  // read them and nothing writes them: six `rels.ruthie` comparisons — an
+  // ending verdict apiece, the Free Roam 4 card's subtitle, `fr4_eve_ruthie`'s
+  // `_gateRoute` and two prose closures — and a written paragraph in the
+  // ending screen's Earl narrative for `antagonist`. They are a prose row, not
+  // this one's, and they are on Projects/daredevil/WISHLIST.md.
+  const UNREACHABLE = ['earl:antagonist', 'ruthie:absent', 'ruthie:strained'];
+
+  const dead = [];
+  for (const c of CAST) {
+    for (const st of c.states) {
+      if (st === c.start || st === c.unmet) continue;
+      if (!written.has(`${c.id}:${st}`)) dead.push(`${c.id}:${st}`);
+    }
+  }
+  const newlyDead = dead.filter(d => !UNREACHABLE.includes(d)).sort();
+  const nowReachable = UNREACHABLE.filter(d => !dead.includes(d)).sort();
+  ok(newlyDead.length === 0,
+     `every state in the cast table is written by something (unreachable: ${newlyDead.join(', ') || 'none'})`);
+  ok(nowReachable.length === 0,
+     `every name on the frozen-unreachable list is still unreachable (stale: ${nowReachable.join(', ') || 'none'})`);
+
+  // The four this row was for, named rather than counted: a regression that
+  // deletes one writer and leaves the state on no list has to say which.
+  for (const pair of ['tommy:ally', 'tommy:absent', 'danny:poached', 'danny:absent']) {
+    ok(written.has(pair), `${pair} is written by a scene (${(where[pair] || []).join(', ') || 'nothing'})`);
+  }
+  console.log(`\n  reachability: ${written.size} (character, state) writers, ${UNREACHABLE.length} states still dead`);
+}
+
+{
+  // Phase 4, and the reason this row's six new scenes put their numbers on the
+  // choice rather than on the scene. A scene named by a choice's `goto` and
+  // carrying a `statUpdate` fires it TWICE: `handleChoice` triggers it before
+  // the scene and `afterScene` triggers it again at the end. Both calls apply
+  // `deltas`. Measured in a real browser on `fr2_danny_01` option B, which
+  // grants +1 showmanship on the choice and +1 on the target's statUpdate:
+  // showmanship 0 goes to 3, and the stat screen is shown twice.
+  //
+  // The standing backlog has carried this as "a doubled `> title — reason`
+  // line in every transcript" without a number. Thirty-three scenes do it.
+  // Fixing the engine moves every transcript and rebalances the game, so it
+  // is a row of its own; this freezes the inventory the way flags.mjs freezes
+  // its write-only list (#264), so the list can shrink and a thirty-fourth
+  // fails here. New content routes around it: numbers through `effects`, which
+  // `applyEffects` runs once, and relationship and flag writes on the
+  // `statUpdate`, which are idempotent.
+  const DOUBLE_APPLIES = [
+    'fr1_org_wait', 'fr2_danny_01_pro', 'fr2_danny_01_watch', 'fr2_danny_event_narrow',
+    'fr2_danny_headtohead_counter', 'fr2_danny_headtohead_silence', 'fr2_pete_measured',
+    'fr2_pete_soft', 'fr2_pete_why', 'fr2_ruthie_q_a', 'fr2_ruthie_q_d', 'fr3_eve_earl_cal',
+    'fr3_eve_earl_engage', 'fr3_eve_earl_read', 'fr3_press_sandra_accept',
+    'fr3_press_sandra_check', 'fr3_press_sandra_control', 'fr3_ruthie_ask',
+    'fr3_ruthie_honest', 'fr4_biographer_no', 'fr4_biographer_yes', 'fr4_california_close',
+    'fr4_earl_direct', 'm1_r4', 'm1_ruthie_a', 'm1_ruthie_b', 'm2_sign', 'm5_disappear',
+    'm5_keep_going', 'm5_mentor', 'm5_retire_clean', 'm5_symbolic_own', 'm5_walk_quiet',
+  ];
+  const reachedByChoice = new Set();
+  for (const sc of Object.values(SCENES)) for (const ch of sc.choices || []) if (ch.goto) reachedByChoice.add(ch.goto);
+  const doubling = [...reachedByChoice]
+    .filter(id => SCENES[id] && SCENES[id].statUpdate
+                  && Object.values(SCENES[id].statUpdate.deltas || {}).some(v => v))
+    .sort();
+  const added = doubling.filter(id => !DOUBLE_APPLIES.includes(id));
+  const fixed = DOUBLE_APPLIES.filter(id => !doubling.includes(id));
+  ok(added.length === 0,
+     `no new scene applies its stat deltas twice (new: ${added.join(', ') || 'none'})`);
+  ok(fixed.length === 0,
+     `every name on the doubling list still doubles (stale: ${fixed.join(', ') || 'none'})`);
+  console.log(`  double-apply: ${doubling.length} choice-reached scenes carry non-empty deltas`);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

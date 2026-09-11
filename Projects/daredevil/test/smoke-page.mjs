@@ -192,6 +192,39 @@ try {
     eq(missing.length, 0, `every goto/next target is routable (unrouted: ${missing.join(', ') || 'none'})`);
   }
 
+  /* ---------------------------------------------------- Phase 4 drive helpers */
+
+  // Two small drivers for things no full run reaches. Both start a real run,
+  // patch the relationship bag and the flags, and then let the game do the
+  // rest: goToScene, buildLines, the hub renderers, afterScene and
+  // triggerStatUpdate are all the game's own. Nothing here re-implements a
+  // rule it is checking (#34) — the pair only reads what the page drew.
+  const fromScene = async (patch, scene) => {
+    await open(t.page, t.base, { name: 'Jo Reyes', town: 'Marfa' });
+    const first = await snapshot(t.page);
+    if (first.screen === 'chapter') { await pick(t.page, first.buttons[0].label); await wait(650); }
+    await t.page.evaluate(([p, sc]) => {
+      Object.assign(window.__dd.GS.flags, p.flags || {});
+      Object.assign(window.__dd.GS.rels, p.rels || {});
+      window.__dd.goToScene(sc);
+    }, [patch, scene]);
+    await wait(220);
+    const texts = [];
+    for (let i = 0; i < 60; i++) {
+      const s = await snapshot(t.page);
+      if (s.screen !== 'panel')
+        return { texts, screen: s.screen, relRows: s.relRows || [], cards: s.buttons.filter(b => !b.save).map(b => b.label), choices: [] };
+      if (s.text && s.text !== texts[texts.length - 1]) texts.push(s.text);
+      const choices = s.buttons.filter(b => !b.save && !/^— Continue —$|^Continue ›$/.test(b.label));
+      if (choices.length) return { texts, screen: 'panel', relRows: [], cards: [], choices: choices.map(c => c.label) };
+      await pick(t.page, 'Continue');
+      await wait(110);
+    }
+    throw new Error(`${scene} never settled`);
+  };
+  // What a hub put on the board for a given relationship bag.
+  const hubCards = async (patch, route) => (await fromScene(patch, route)).cards;
+
   /* ================================================ a full run, clean stunts */
 
   const clean = await playToEnd(t.page, t.base, {
@@ -224,6 +257,45 @@ try {
   }
   ok(clean.stunts.every(s => s.verdict === 'SUCCESS' || s.verdict === 'PARTIAL'),
      'the autopilot landed every stunt it was asked to land');
+
+  // Phase 4. `rels.tommy` was 'hanger_on' at the first line and 'hanger_on' at
+  // the ending screen on every run this suite had ever played, while
+  // `fr4_eve_tommy` carried a paragraph behind `=== 'ally'`. The clean run
+  // takes the first answer at every fork, which is now the whole track: ask
+  // him what he does (Free Roam 1), hand him the car show's warm-up slot
+  // (Free Roam 2), let the twelve people be a good thing to want (Free Roam 3).
+  eq(clean.rels && clean.rels.tommy, 'ally', 'the clean run ends with Tommy an ally, not a hanger-on');
+  ok(clean.seen.includes('fr1_eve_bar_him'), 'it asked him what he had been doing');
+  ok(clean.seen.includes('fr2_eve_bar_hinkle'), 'and gave him the forty minutes before the gate');
+  ok(clean.seen.includes('fr3_eve_tommy_true'), 'and let the twelve people stand');
+  ok(/Tommy: Ally/.test(clean.summary), 'and the ending screen says Ally');
+  {
+    const bar4 = clean.texts.filter(x => x.scene === 'fr4_eve_tommy');
+    ok(bar4.some(x => /there he is is probably the most accurate thing/.test(x.text)),
+       `the Free Roam 4 ally paragraph is read by a real run (${bar4.length} lines at fr4_eve_tommy)`);
+    ok(bar4.some(x => /nineteen Tommy was expecting next time/.test(x.text)),
+       'and the line that reads tommyKnowsWhatHeWants');
+  }
+
+  // Phase 4, Danny. Every run goes through `m1_rival_rumor`; the clean run
+  // takes the first answer there, which schemes, which is what puts the Free
+  // Roam 2 card on the board and `danny: 'nemesis'` in the bag. Free Roam 3's
+  // new card is the rest of it.
+  ok(clean.seen.includes('fr3_danny'), 'the clean run is told somebody signed Danny');
+  ok(clean.seen.includes('fr3_danny_call'), 'and calls him');
+  eq(clean.rels && clean.rels.danny, 'poached', 'which leaves him poached rather than a rival');
+  ok(/Danny: Poached/.test(clean.summary), 'and the ending screen says Poached');
+
+  // Found by this phase's own transcripts, and the same bug Phase 1 fixed one
+  // panel over: the clean run retires to a retrospective that read "He made
+  // the call. Earl first, then Cal, then Ruthie" — on a run where Ruthie was
+  // never established and has no row in the Relationships block six lines
+  // below it. The line is built from who is actually in the run now.
+  ok(!/Ruthie:/.test(clean.summary), 'the clean run never established Ruthie');
+  ok(!/then Ruthie/.test(clean.summary),
+     `so the retirement retrospective does not call her either (${(clean.summary.match(/He made the call\..{0,70}/) || ['no retrospective line'])[0]})`);
+  ok(/He made the call\. Earl first, then Cal, then Tommy\./.test(clean.summary),
+     'and it names the three people who are there, in the order the line has always implied');
   eq(t.page.__errs.length, 0, `no page errors across the whole clean run (${t.page.__errs.slice(0, 3).join('; ')})`);
 
   /* ================================== the save round trip, mid-run, for real */
@@ -323,6 +395,39 @@ try {
      "and reads the backer paragraph, not \"still being decided\"");
   eq(rough.flags && rough.flags.m2Complete, true,
      'm2Complete is set by the signing, which is what currentHubRoute reads');
+  // Phase 4, the other end of the same track. The crash run takes the last
+  // answer it can find at every fork: it never asks Tommy about Tommy, so the
+  // car-show answer is not on the Free Roam 2 board at all, and it measures
+  // twelve people against a career in Free Roam 3. `TOMMY_NOT_GONE` and
+  // `TOMMY_PRESENT` gate two hub cards on a state nothing could write until
+  // now; this is the run where the second one closes.
+  eq(rough.rels && rough.rels.tommy, 'absent', 'the crash run loses Tommy');
+  ok(rough.seen.includes('fr1_eve_bar_fair'), 'it let him finish the flatbed story instead');
+  ok(!rough.seen.includes('fr2_eve_bar_hinkle'), 'so the car-show answer was never offered');
+  ok(rough.seen.includes('fr3_eve_tommy_measured'), 'and it measured the twelve people against a career');
+  ok(!rough.seen.includes('fr4_eve_tommy'), "so his Free Roam 4 evening is off the board");
+  ok(/Tommy: Absent/.test(rough.summary), 'and the ending screen says Absent');
+  // The same run declines Danny at the fair, so he is never in the story and
+  // the roster leaves him off rather than printing him at '—'.
+  eq(rough.rels && rough.rels.danny, 'unknown', 'the crash run never meets Danny');
+  ok(!rough.seen.includes('fr3_danny'), 'so the Free Roam 3 card is never on its board');
+  ok(!/Danny:/.test(rough.summary), 'and he has no row on its ending screen');
+  {
+    // The `no_danny` transcript's real finding. Two scenes carried a history
+    // with Danny in it unconditionally: `fr2_eve_bar`'s walk home remembering
+    // "Danny's setup at the fair. The fire trick" — on a run that never went
+    // and looked at his ramp — and `fr2_close`'s "still doing the thing where
+    // he said the accurate thing in the wrong way", which is a two-year
+    // acquaintance the run does not have.
+    const assumed = rough.texts.filter(x =>
+      /Danny's setup|still doing the thing where he said the accurate thing|thought about Danny more than he wanted to/.test(x.text));
+    eq(assumed.length, 0,
+       `nothing the crash run is shown claims a history with Danny (${assumed.map(x => x.scene + ': ' + x.text.slice(0, 45)).join(' | ') || 'none'})`);
+    const cleanAssumed = clean.texts.filter(x =>
+      /Danny's setup|still doing the thing where he said the accurate thing/.test(x.text));
+    ok(cleanAssumed.length >= 2,
+       `and a run that did meet him still reads both lines (${cleanAssumed.length})`);
+  }
   eq(t.page.__errs.length, 0, `no page errors across the crash run (${t.page.__errs.slice(0, 3).join('; ')})`);
 
   /* ================= a third run: "Not interested", and the game notices */
@@ -448,6 +553,47 @@ try {
        'and says he did not when he did not');
   }
 
+  /* ================================ Danny gets a way out of it (Phase 4) */
+
+  // Diamondback Danny could only ever be 'frenemy' or 'nemesis', both written
+  // by the same Free Roam 2 card, and the cast table carried labels for
+  // 'poached' and 'absent' that no run could reach. The clean run above plays
+  // the 'poached' half for real — every run passes through `m1_rival_rumor`,
+  // and the clean run schemes there — so what is driven here is the rest: the
+  // card's gate in both directions, the answer that loses him, and the two
+  // branches of the signing, which no run in this suite can reach at once.
+  {
+    const met = { rels: { danny: 'nemesis' }, flags: { fr3Started: true } };
+    const board = await hubCards(met, '_hub_fr3');
+    ok(board.some(l => /^Diamondback Danny/.test(l)),
+       `Free Roam 3 offers the Danny card to a run that met him (${board.map(l => l.split('\n')[0]).join(' | ')})`);
+    const cold = await hubCards({ flags: { fr3Started: true } }, '_hub_fr3');
+    ok(!cold.some(l => /^Diamondback Danny/.test(l)),
+       'and does not offer it to a run that never did');
+    const already = await hubCards({ ...met, flags: { fr3Started: true, fr3DannySigned: true } }, '_hub_fr3');
+    ok(!already.some(l => /^Diamondback Danny/.test(l)), 'and offers it once');
+
+    const called = await fromScene(met, 'fr3_danny_call');
+    eq(called.screen, 'stats', 'calling him lands on a stat update');
+    ok(called.relRows.some(r => r.who === 'Danny' && r.state === 'Poached'),
+       `and the update says Poached (${called.relRows.map(r => r.who + ': ' + r.state).join(', ') || 'no rows'})`);
+    const quiet = await fromScene(met, 'fr3_danny_quiet');
+    ok(quiet.relRows.some(r => r.who === 'Danny' && r.state === 'Absent'),
+       `saying nothing loses him (${quiet.relRows.map(r => r.who + ': ' + r.state).join(', ') || 'no rows'})`);
+
+    // The solo branch may not name Earl from Milestone 3 on (#265), and this
+    // card is a Free Roam 3 card. The sweep over the solo run cannot see it,
+    // because that run never meets Danny.
+    const soloDanny = await fromScene({ rels: { danny: 'frenemy', earl: 'absent' } }, 'fr3_danny');
+    ok(soloDanny.texts.length > 3, `the solo arm of the Danny card reads (${soloDanny.texts.length} lines)`);
+    ok(!soloDanny.texts.some(x => /\bEarl\b/.test(x)),
+       `and names nobody who is not there (${soloDanny.texts.filter(x => /\bEarl\b/.test(x)).join(' | ') || 'none'})`);
+    ok(soloDanny.texts.some(x => /Fort Worth/.test(x)), 'it is a syndicate out of Fort Worth instead');
+    const backerDanny = await fromScene({ rels: { danny: 'frenemy', earl: 'backer' } }, 'fr3_danny');
+    ok(backerDanny.texts.some(x => /Earl Maddox had signed/.test(x)),
+       'and on the backer branch it is Earl who signed him');
+  }
+
   /* ================ the ending screen names the right people (Phase 2) */
 
   {
@@ -470,6 +616,36 @@ try {
     ok(/Earl Maddox: Business Partner/.test(mentor.summary),
        'the ending screen labels off the shared table');
     ok(/Pete: Ally/.test(mentor.summary), 'and the shared table knows Pete');
+
+    // Phase 4. The roster is the cast table's, in the table's order, minus
+    // anyone the run never met. Danny is never met on this drive and has no
+    // row; Ruthie is not either.
+    ok(!/Danny:/.test(mentor.summary), 'a character the run never met has no row at all');
+    ok(!/Ruthie:/.test(mentor.summary), 'and neither does Ruthie');
+    const order = ['Cal:', 'Pete:', 'Earl Maddox:', 'Tommy:'].map(n => mentor.summary.indexOf(n));
+    ok(order.every((v, i) => v > -1 && (i === 0 || v > order[i - 1])),
+       `and the rows print in the cast table's order (${order.join(', ')})`);
+
+    // The other side of the retirement retrospective: a run with everybody in
+    // it still reads the full line.
+    const full = await endFromScene(
+      { flags: { m5Decision: 'retire_clean' },
+        rels: { earl: 'backer', cal: 'loyal', ruthie: 'solid', tommy: 'ally' } }, 'm5_retire_clean');
+    ok(/He made the call\. Earl first, then Cal, then Ruthie, then Tommy\./.test(full.summary),
+       `a run with all four calls all four (${(full.summary.match(/He made the call\..{0,70}/) || ['none'])[0]})`);
+    const alone = await endFromScene(
+      { flags: { m5Decision: 'retire_clean' },
+        rels: { earl: 'absent', cal: 'loyal', tommy: 'absent' } }, 'm5_retire_clean');
+    ok(/There was nobody in front of Cal\./.test(alone.summary),
+       'and a run with only Cal in it says there was nobody in front of Cal');
+
+    const rival = await endFromScene(
+      { flags: { m5Decision: 'mentor' },
+        rels: { pete: 'ally', earl: 'backer', danny: 'poached', ruthie: 'absent' } }, 'm5_mentor');
+    ok(/Danny: Poached/.test(rival.summary), 'a poached rival is a row on the ending screen');
+    ok(/Ruthie: Absent/.test(rival.summary), 'and somebody who left is a row, not a gap');
+    ok(rival.summary.indexOf('Ruthie:') < rival.summary.indexOf('Danny:'),
+       'still in table order with five of the six on the board');
   }
 
   /* ================================================================ mobile */

@@ -1,8 +1,8 @@
-# Daredevil — transcript: `no_earl_crash`
+# Daredevil — transcript: `danny_gone`
 
-Played as Curtis Vane of Ashby Fork, stunt policy `good then crash`.
+Played as Vern Straley of Antler, stunt policy `good`.
 
-**Scene path (94):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_him` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_kessler` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_tommy` → `m2_solo_round3` → `m2_solo_plan_fast` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_tommy` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_hinkle` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_danny` → `fr3_danny_call` → `fr3_eve_cal` → `fr3_eve_tommy` → `fr3_eve_tommy_true` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_failure_buses` → `fr4_hub_open_failure` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_california` → `fr4_california_close` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_disappear`
+**Scene path (96):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_introduce` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_him` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_hinkle` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_danny` → `fr3_danny_quiet` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `fr3_eve_tommy_true` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
 
 ---
 
@@ -11,12 +11,12 @@ Played as Curtis Vane of Ashby Fork, stunt policy `good then crash`.
 
 
 ### `cold_open_01`
-There's a place in Ashby Fork where the county road dips before the bridge. On a bike, if you hit it right, you leave the ground.
+There's a place in Antler where the county road dips before the bridge. On a bike, if you hit it right, you leave the ground.
 Everyone in town knew about that dip. Most people lifted off the seat, held on, came down.
 He didn't do it that way.
 
 ### `cold_open_02`
-Ashby Fork had a grain elevator, two churches, and one stoplight that nobody paid much attention to. It had a fairground that smelled like cut grass and motor oil every summer.
+Antler had a grain elevator, two churches, and one stoplight that nobody paid much attention to. It had a fairground that smelled like cut grass and motor oil every summer.
 It had people who were going places and people who knew they weren't. The difference was something you could feel in a handshake.
 He didn't know yet which kind he was. He had some guesses.
 
@@ -34,7 +34,7 @@ His was—
 - Option CThe Founders' Day parade. He crashed his trick. The crowd laughed.He stood up, took a bow. They weren't laughing anymore.
 - Option DThe ravine jump. He made it, mostly. Two years of a shoulder that didn't sit right.He was back on the bike in a week. Because the alternative didn't make sense.
 
-**→ took:** Option BThe water tower. Tommy dared him. Everyone was watching.He got to the third rung and stopped. He never forgot it.
+**→ took:** Option AThe irrigation ditch. Twelve feet across. Nobody thought he'd clear it.He didn't think about clearing it. He thought about the other
 
 ### `cold_open_04`
 Everyone came from somewhere. He came from—
@@ -61,7 +61,7 @@ He wanted the feeling. That was the best he could do. The moment at the top of t
 You can't explain that to most people. He'd stopped trying.
 
 ### `cold_open_08`
-The Ashby Fork Fair. August. Hot the way August is hot in the middle of the country, like the air forgot to move.
+The Antler Fair. August. Hot the way August is hot in the middle of the country, like the air forgot to move.
 He'd been at the fairground since six. The ramp had been measured four times. The cows were in a pen by the east fence, doing what cows do, which is stand there and make the whole thing seem simultaneously more and less reasonable.
 Three cows. He was going to jump three cows on a dirt bike in front of a few hundred people and one man he'd heard was coming to look.
 He was ready. He'd been ready for a long time.
@@ -83,14 +83,20 @@ Tommy said the last part a half-beat too carefully.
 - Option B"I'll go introduce myself."Friendly competition. See what you're dealing with.
 - Option C"Doesn't matter. I've got my own show."Stay focused. Nothing else needs your attention right now.
 
-**→ took:** Option A"What time is he on?"Get on right before him. Make the contrast work in your favor.
+**→ took:** Option B"I'll go introduce myself."Friendly competition. See what you're dealing with.
 
-### `m1_b1_scheme`
-**DUKE:** What time is he on?
-**TOMMY:** Two o'clock, I think. Why?
-**DUKE:** Because I want to go on at one-thirty.
-Tommy grinned. He always grinned when Duke decided something. It was one of the better things about Tommy.
-**TOMMY:** I'll go find the schedule man.
+### `m1_b1_introduce`
+**DUKE:** Point me at him.
+Danny Reeves was twenty-two or twenty-three, good-looking in the way that made you want to dislike him before you had a reason. He was checking his own ramp when Duke walked up.
+**DUKE:** Duke Harlan. I hear we're both performing today.
+**DANNY:** Diamondback Danny.
+He said it like he was introducing himself at a press conference. Duke liked him slightly despite himself.
+**DANNY:** What are you doing?
+**DUKE:** Three cows. You?
+**DANNY:** Five barrels, fire trick, trick finish.
+**DUKE:** Hm.
+**DANNY:** Hm what?
+**DUKE:** Nothing. Good luck.
 
 ### `m1_beat_2`
 Cal Briggs had come with the truck and hadn't said much since. He had his hands in the engine bay of the flatbed, though there was nothing wrong with it that Duke knew of. Cal did that — kept his hands busy when he was thinking.
@@ -136,7 +142,7 @@ The ramp was twelve inches of plywood over a steel frame. The cows were lined up
 He sat on the bike at the end of the track and let the engine idle.
 This was the part he didn't talk about. This moment, right here, before anything happened. The noise of the crowd went somewhere he couldn't hear it. Everything went very specific.
 The bike. The ramp. The sky. Three cows.
-He waited for the voice that asked if he'd back out. He waited. It didn't come. That was the best part.
+He thought about the other side of the ramp. He always thought about the other side.
 He revved the engine once.
 Then he went.
 
@@ -154,7 +160,7 @@ He brought the bike to a stop and turned it around. He raised one hand. He wasn'
 
 > _[minigame: Work the Crowd]_
 
-> **STUNT RESULT — FAIL / 31** — Worked the crowd to 31% energy over 3 calls.
+> **STUNT RESULT — SUCCESS / 100** — Worked the crowd to 100% energy over 3 calls.
 
 ### `m1_earl_approach_perfect`
 He didn't get far. A man materialized at his elbow — big brimmed hat, unlit cigar, the kind of silver belt buckle that announces its own opinion.
@@ -180,18 +186,16 @@ Earl had finished saying whatever he'd come to say. The space where Duke answere
 - Option 5"I need to talk to someone first."There's a person in the crowd you want to find.
 - Option 6"Not interested."You don't need this man.
 
-**→ took:** Option 6"Not interested."You don't need this man.
+**→ took:** Option 1"I'm listening."Let him set the pace.
 
-### `m1_r6`
-**DUKE:** Not interested.
-Earl looked at him. He didn't look offended. He looked like a man recalculating.
-**EARL:** Alright.
-He reached into his jacket. He set a card on the ramp.
-**EARL:** That's for when you change your mind.
-**DUKE:** I said not interested.
-**EARL:** I heard what you said.
-He walked off through the crowd. He didn't look back.
-Duke left the card on the ramp for ten minutes before he picked it up.
+### `m1_r1`
+**DUKE:** I'm listening.
+Earl smiled. It was a small smile, and it had experience in it.
+**EARL:** Good. Then let's find somewhere that isn't a fairground.
+He produced a card. He set it in Duke's hand.
+**EARL:** I'll be in town through tomorrow. You call when you're ready.
+He walked off through the crowd and the crowd parted for him, though he didn't ask it to.
+Duke looked at the card. It had Earl's name and a telephone number and nothing else. People with a certain kind of money don't need to explain what they do.
 
 ### `m1_close`
 The fair went on. People ate things on sticks and watched the livestock judging and played games that were rigged the way carnival games are always rigged.
@@ -216,12 +220,12 @@ He had some decisions to make.
 - Work With Cal Precision up. Cal sometimes says something true. Costs 1 Evening
 - Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
 - Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. (No contract yet)
+- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
 
 **→ took:** Lloyd Perkins The fair organizer has a booking offer for next August. Available · Free
 
 ### `fr1_organizer`
-Lloyd Perkins had run the booking side of the Ashby Fork Fair for eleven years. He had a clipboard, a short-sleeved button-up, and the careful confidence of a man who was a big fish in a pond he understood precisely.
+Lloyd Perkins had run the booking side of the Antler Fair for eleven years. He had a clipboard, a short-sleeved button-up, and the careful confidence of a man who was a big fish in a pond he understood precisely.
 He found Duke outside the auto parts store.
 **ORGANIZER:** Mr. Harlan. Got a minute?
 **DUKE:** I've got a few.
@@ -261,7 +265,7 @@ He said it like someone who'd watched a few too many county fair acts reach the 
 - Work With Cal Precision up. Cal sometimes says something true. Costs 1 Evening
 - Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
 - Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. (No contract yet)
+- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
 
 **→ took:** The Young Wannabe A kid found you at the gas station. He has a setup in his uncle's lot. Available · Free
 
@@ -315,7 +319,7 @@ Duke stood up and dusted his hands.
 - Work With Cal Precision up. Cal sometimes says something true. Costs 1 Evening
 - Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
 - Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. (No contract yet)
+- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
 
 **→ took:** Work With Cal Precision up. Cal sometimes says something true. Costs 1 Evening
 
@@ -336,7 +340,7 @@ Duke was starting to pay attention.
 - 🔒 Work With Cal Precision up. Cal sometimes says something true. ✓ Done
 - Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
 - Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. (No contract yet)
+- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
 
 **→ took:** Practice Alone Precision and Nerve. The honest version of the work. Costs 1 Evening
 
@@ -353,7 +357,7 @@ Around the eighth pass, something clicked. He didn't know what exactly. He just 
 - 🔒 Work With Cal Precision up. Cal sometimes says something true. ✓ Done
 - 🔒 Practice Alone Precision and Nerve. The honest version of the work. ✓ Done
 - Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
-- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. (No contract yet)
+- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
 
 **→ took:** Bar With Tommy Showmanship up. Condition down. Contacts possible. Costs 1 Evening
 
@@ -397,216 +401,167 @@ Tommy looked at him. Then he got out a pen and wrote it on the back of the bar r
 - 🔒 Work With Cal Precision up. Cal sometimes says something true. ✓ Done
 - 🔒 Practice Alone Precision and Nerve. The honest version of the work. ✓ Done
 - 🔒 Bar With Tommy Showmanship up. Condition down. Contacts possible. ✓ Done
-- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. (No contract yet)
-- Milestone 2 — The Other Way
+- Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
 
-**→ took:** Milestone 2 — The Other Way
+**→ took:** Read the Contract Earl's terms. Page fourteen has something worth finding. Costs 1 Evening
+
+### `fr1_eve_contract`
+He sat at the kitchen table with Earl's preliminary terms and a notepad and went through it three times.
+It was twenty-two pages. He read all twenty-two.
+Around page fourteen, he found the clause.
+It was the insurance clause. Earl's version of it put the full cost of medical care back on Duke in the event of "non-approved stunt activities." The phrase "non-approved" was not defined.
+He wrote that down.
+He thought: I'll need to know what that phrase means before I sign anything.
+
+> **The Fine Print** — You found the insurance clause. Page fourteen. Not defined. That matters.
 
 
-## The Other Way
+## HUB — Free Roam — Early Days
+- 🔒 Stay Home With Ruthie Rebuild Nerve. Reset fatigue. (Ruthie not established)
+- 🔒 Work With Cal Precision up. Cal sometimes says something true. ✓ Done
+- 🔒 Practice Alone Precision and Nerve. The honest version of the work. ✓ Done
+- 🔒 Bar With Tommy Showmanship up. Condition down. Contacts possible. ✓ Done
+- 🔒 Read the Contract Earl's terms. Page fourteen has something worth finding. ✓ Done
+- Milestone 2 — The Investor Offer
+
+**→ took:** Milestone 2 — The Investor Offer
 
 
-### `m2_solo_entry`
-There was no office. There was the kitchen table, the notebook, and the card Earl had left on the ramp, which was in the drawer under the phone book because throwing it away had felt like a statement and keeping it out had felt like another one.
-Three weeks since the fair. The phone had rung twice. Once was Tommy. Once was a man selling aluminum siding.
-Lloyd Perkins had next August in writing — $135 and a name in the program. August was eleven months off. Eleven months was a long time to be a marquee act with no marquee.
-He'd made ninety dollars at the fair. He had the truck, the bike, a trailer with one bad tire, and a mechanic who had not asked once what the plan was, which meant he was waiting to be told.
-Cal came by at seven. He sat down across the table and looked at the notebook upside down.
-**CAL:** What's that?
-**DUKE:** A list.
-**CAL:** Of what?
-**DUKE:** People who book things.
-Cal read it upside down. It was not a long list.
-**CAL:** Maddox would've made these calls.
-**DUKE:** Maddox would've taken forty percent to make these calls.
-**CAL:** I'm not arguing. I'm saying it's the trade.
-He thought: three calls. A man who books rooms, a man who lends money, and the arithmetic. He thought: nobody makes them for you. That was the whole idea.
+## The Investor Offer
 
-### `m2_solo_round1`
-Perkins took the call on the second ring. He had the clipboard voice on before Duke finished saying his name.
-**ORGANIZER:** Mr. Harlan. August is still August. What can I do for you?
-**DUKE:** I need between now and August.
-A pause with paper in it.
-**ORGANIZER:** I book one fair. I know the people who book the others. That's a different thing from being able to book them for you.
-**DUKE:** I know the difference.
-**ORGANIZER:** Alright. Here's what there is. Tri-County runs a Saturday program through October — fifty, sixty dollars a show, gravel lots, they'll want the cows. And there's the Smithson Speedway. Dot Kessler runs a Friday night card there and she's been asking me who the motorcycle was. She doesn't pay a fee. She pays a cut of the gate, and if it rains you drive home with nothing.
-He thought: Earl would have had the Speedway on the phone before the sentence was over. He thought: Earl would also have had the gate.
 
-- Option A"Make the Tri-County calls. I'll take the Saturdays."Small, steady, and somebody else dials. He will want something for it.
-- Option B"Give me the names. I'll call them myself."No middleman. You get talked down by strangers instead of friends.
-- Option C"Give me Dot Kessler's number."The bigger room. A cut of the gate, and nothing if it rains.
+### `m2_entry_waited`
+Earl's office. He'd kept Duke waiting a week and a half before calling back, and Duke had let him — the calculation being that a man who called first was the buyer, not the seller.
+Earl was standing when they came in. He let them sit first.
+**EARL:** You made me work for it.
+**DUKE:** You said call when I was ready.
+**EARL:** Fair enough.
+He sat. He put his hands on the table in the way of a man who had done this a hundred times and planned to do it a hundred more.
+**EARL:** Forty percent. That's the opening number.
+Duke had read the contract. He knew what forty percent meant in practice. He also knew what the insurance clause on page three meant.
+**EARL:** You want to counter or do you want the rest of the pitch first?
 
-**→ took:** Option C"Give me Dot Kessler's number."The bigger room. A cut of the gate, and nothing if it rains.
+- Option A"Give me the rest of the pitch first."Make him work. More information is always useful.
+- Option B"Thirty percent."Come in low. See how he reacts.
+- Option C"Before we get to percentages — I want to talk about the insurance clause."You read the contract. Use it.
 
-> **Twelve Percent of Whatever Shows Up** — The Speedway. No fee, no advance, no leash. Bring your own cows.
+**→ took:** Option A"Give me the rest of the pitch first."Make him work. More information is always useful.
 
-### `m2_solo_kessler`
-**DUKE:** Give me Dot Kessler's number.
-Perkins gave it to him and said "she's direct" in the tone of a man who had been on the receiving end.
-She was. She met him in the Speedway's ticket booth, which was where she did business because it had the only working heater.
-**KESSLER:** Perkins says you jumped three cows and a man in a hat tried to buy you.
-**DUKE:** That's about the size of it.
-**KESSLER:** I don't buy anybody. I've got a Friday night card, a grandstand that holds nineteen hundred, and a gate that averages eleven. You go on between the modifieds and the feature. Twelve percent of the gate.
-**DUKE:** Fifteen.
-**KESSLER:** Twelve. You're not the reason they're here yet. Be the reason and we'll talk.
-Twelve percent of eleven hundred people at a dollar and a half was a hundred and ninety-eight dollars on a good Friday and nothing on a wet one. She said the last part herself so he wouldn't have to.
-**KESSLER:** No fee. No advance. I don't hold your money and I don't hold your leash. You want somebody to do either of those, Perkins says you already met him.
-He thought: that's the opposite of the man in the hat. He thought: it's also nothing at all if it rains.
-**DUKE:** Fridays. Twelve percent.
-**KESSLER:** Bring your own cows.
+### `m2_round1_pitch`
+**EARL:** The pitch. Alright.
+He leaned back.
+**EARL:** You've done county fairs. They're good for what they are — local exposure, a check, a place to work out the rough edges. I'm not going to tell you they're bad. I'm going to tell you they've got a ceiling and you can feel it.
+Duke didn't say anything.
+**EARL:** I book regional venues. Stadiums, not fields. I've got press contacts in four states and a relationship with a TV producer who's looking for exactly what you do — which is not quite a stunt show and not quite a circus act. It's a kind of performance that's harder to find than you'd think.
+**EARL:** That's the pitch. The number is forty percent. Now what do you want to counter with?
 
-> **Twelve Percent of Whatever Shows Up** — The Speedway. No fee, no advance, no leash. Bring your own cows.
+- Option A"Thirty percent."Low counter. Anchor the negotiation on your side.
+- Option B"Thirty-five. And we talk about the clause on page three."You found the problem. Put it on the table.
+- Option C"What happened to the twelve acts?"He mentioned them twice. Make him account for them.
 
-### `m2_solo_round2_enter`
-Dates were one problem. The dates cost money before they paid any. A second set of ramps, because the ones he had did not travel. The trailer tire. Gas to Tri-County and back six times. Cal's parts invoice, which Cal had not mentioned, which was how Duke knew it was overdue.
-He added it up. Four hundred and ten dollars he did not have, needed by a Saturday he already had booked.
-He thought: this is the part Earl's forty percent was for. Not the calls. This.
+**→ took:** Option A"Thirty percent."Low counter. Anchor the negotiation on your side.
 
-### `m2_solo_round2`
-The loan officer at Buford County Savings was a man named Garrett Pyle, who had grown up two streets over from Duke and had last spoken to him at a funeral five years ago.
-He looked at the application the way he would have looked at a motorcycle parked in his lobby.
-**PYLE:** Four hundred and ten dollars.
+### `m2_counter_30`
+**DUKE:** Thirty percent.
+Earl looked at him the way a man looks at someone who has said an entertaining thing.
+**EARL:** Thirty.
 **DUKE:** That's right.
-**PYLE:** For ramps.
-**DUKE:** And a tire.
-**PYLE:** Who's behind you on this? Is there a promoter? A sponsor?
-**DUKE:** No.
-Pyle wrote that down. Duke watched him write it. It was one word and it took him a while.
-**PYLE:** Then it's a personal note and I need collateral or a co-signer. Bank policy. I'm not being difficult.
-He was being a little difficult. He was also right, which was worse.
+**EARL:** Duke. You're talented. You don't have regional bookings, press contacts, or a relationship with anyone who books stadiums. You've got a county fair and a mechanic. I appreciate both of those things. They aren't worth thirty percent.
+Duke didn't say anything.
+**EARL:** But I'll tell you what they're worth. Thirty-five. If you sit still and listen to what the clause actually says.
 
-- Option A"The equipment. The bike, the truck, the trailer."Put up everything you own. Twelve months, eight percent, real.
-- Option B"Forget the note. I'll do it on cash."Walk out with nothing but your own name. Then make the math work.
-- Option C"Tommy'll co-sign."He would. He'll never mention it. You'll both know.
+### `m2_round2_enter`
+**EARL:** There's a clause I want to include. Standard in my deals. I want you to hear it before we get to signing.
+Duke waited.
 
-**→ took:** Option C"Tommy'll co-sign."He would. He'll never mention it. You'll both know.
+### `m2_round2_clause`
+**EARL:** Insurance clause. Medical costs fall to you in the event of a non-approved stunt activity.
+Duke had read this one. Page three of the preliminary contract. He had a word written next to it.
+**EARL:** It's standard language in this business. Most performers don't read it.
+**DUKE:** I read it.
+Earl nodded slowly.
+**EARL:** I see that.
 
-> **A Second Name** — Tommy co-signed in his work boots and read the whole form. He'll never mention it.
+- Option A"That clause doesn't work for me as written."Push back. Make him revise or drop it.
+- Option B"I can live with it."Accept. It's the cost of the deal.
+- Option C"That's a deal-breaker."Draw the line. See if he flinches.
 
-### `m2_solo_bank_tommy`
-**DUKE:** Tommy'll co-sign.
-Tommy co-signed. He did it on his lunch break from the lot job, in work boots, and he read the whole form, which Duke had not expected, and then signed it without asking a single question, which he had.
-**TOMMY:** That it?
-**DUKE:** That's it.
-**TOMMY:** Alright. I've got to get back.
-He went. Pyle stamped the thing. Four hundred and ten dollars, twelve months, eight percent, and a second name under Duke's that would be there for a year whether either of them thought about it or not.
-At the bar that weekend Tommy did not mention it. He did not mention it so carefully that it was in the room the whole time, sitting between them like a third glass.
-He thought: Earl would have held the number. Tommy's holding it instead, and Tommy will never say so, and that's worse in a way he couldn't have explained to Pyle.
+**→ took:** Option A"That clause doesn't work for me as written."Push back. Make him revise or drop it.
 
-> **A Second Name** — Tommy co-signed in his work boots and read the whole form. He'll never mention it.
+### `m2_clause_negotiate`
+He laid out the problem. Earl listened. Cal was still studying the wall.
+**EARL:** What do you want instead?
+Duke had thought about this during the wait. He had an answer.
+**DUKE:** A time limit. Eighteen months. After that, we renegotiate the clause or it lapses.
+Earl looked at him.
+**EARL:** Twelve months.
+**DUKE:** Fifteen.
+**EARL:** Done.
+He wrote it down. Just like that. Duke thought: he expected that. He'd built room for it. That meant the clause wasn't the thing he actually cared about most.
+He filed that thought away.
 
-### `m2_solo_round3`
-Round three was at the garage, because that was where the calculator was. It was Cal's and it had grease in the keys.
-Twelve percent of a Friday gate that averaged eleven hundred. Perkins in August. The cows, the gas, the tire.
-Thirty-seven dollars a month to Pyle, on its own line, with Tommy's name next to it in Duke's handwriting because it had felt wrong to leave it off.
-It came out ahead. Barely. It came out ahead the way a man comes out ahead of a dog that has stopped chasing him.
-Cal looked at the page for a while.
-**CAL:** There's no line for when you go down.
-**DUKE:** I'm not going down.
-**CAL:** Everybody's not going down. Maddox had a clause for it. Page three. You'd have hated it and it would've paid the hospital.
-That was true. Duke had not read the contract, because he had not taken the contract, and Cal knew that, and had read it anyway, because somebody should.
-**DUKE:** What's the number?
-**CAL:** For a bad one? More than everything on that page.
-He thought: that's the trade. Nobody takes forty percent. Nobody catches you, either.
-Then Cal said the other thing, the thing he'd come to say.
-**CAL:** Kessler's people were asking about a car show. Season closer at the Speedway. Five cars. Somebody's got to buy the cars.
+### `m2_round3_enter`
+**EARL:** We're close. One more thing before we shake on it.
+He put his pen down. That was the tell — pen down meant what came next was personal, not business.
+**EARL:** I've made twelve men famous. I want to make you the thirteenth. But I want you to know something: I'm not doing this out of generosity. I think you're going to make me money. I think you know that.
+**DUKE:** I know that.
+**EARL:** Good. Then we're starting honest, which is better than most.
 
-- Option A"We don't book the cars until we can pay for the cars."Slow. Cows all fall; the car show when the page says so.
-- Option B"Book it. I'll find the money when it's due."Fast. Five cars on a page that barely holds three cows.
+### `m2_round3_cal`
+Cal stepped forward. He didn't speak loudly. He spoke toward Duke, not at Earl.
+**CAL:** He tapped his pen three times before he wrote down the thirty-seven. First two numbers, third offer.
+Duke looked at him.
+**CAL:** He's got a tell. Three taps. He did it every time he was going to move.
+He stepped back. Earl had heard it. Earl was looking at Cal with something that was almost respect.
+**EARL:** Your mechanic watches things.
+**DUKE:** That's why he's in the contract.
 
-**→ took:** Option B"Book it. I'll find the money when it's due."Fast. Five cars on a page that barely holds three cows.
+- Option AAccept and shake.You've heard what you need to hear. Sign the deal.
+- Option B"One more thing before we shake."Cal gave you something. Use it.
 
-> **Booked It Anyway** — Five cars on a page that barely holds three cows. Cal called it a Maddox sentence.
+**→ took:** Option AAccept and shake.You've heard what you need to hear. Sign the deal.
 
-### `m2_solo_plan_fast`
-**DUKE:** Book it. I'll find the money when it's due.
-Cal didn't say anything for long enough that it counted as saying something.
-**CAL:** That's a Maddox sentence.
-**DUKE:** Maddox would've found it by now.
-**CAL:** Maddox would've *had* it by now. Different thing.
-Duke wrote it at the bottom of the page anyway. Season closer. Five cars. A number he didn't have next to a date he did.
-He thought: that's the whole difference, right there in Cal's grammar. Had it. Find it.
+> **The Deal Is Signed** — Earl Maddox. Percentage settled. Cal in the room. The bigger world starts Thursday.
+> - _Earl Maddox_ → **Business Partner**
 
-> **Booked It Anyway** — Five cars on a page that barely holds three cows. Cal called it a Maddox sentence.
+### `m2_sign`
+Earl extended his hand. Duke shook it.
+**EARL:** Welcome to the bigger world, son.
+He'd said it simply. Duke heard the word — *son* — and filed it.
+Cal didn't say anything. He picked up his jacket from the back of the chair. That was his version of congratulations.
+The drive home was quiet. Duke thought about the percentage and the clause and the tell and the way Earl had said *son* like it was a thing he meant.
+He thought: there's a version of this where that's true. He thought: there's a version where it isn't.
+He didn't know which one yet. He was about to find out.
 
-### `m2_solo_close`
-There was no handshake, because there was nobody to shake with. Cal turned the calculator off and put it back in the drawer with the feeler gauges.
-The drive home was quiet. Duke thought about the page — the dates, the thirty-seven dollars or the favors, the line Cal had said wasn't there.
-He thought: nobody called him *son* tonight. He thought: nobody's going to.
-He didn't know yet whether that was the good version or the other one. He was about to find out.
-
-> **No Deal Signed** — Nobody holds a percentage. Nobody makes the calls, either. The bigger world starts Saturday, if you can get there.
+> **The Deal Is Signed** — Earl Maddox. Percentage settled. Cal in the room. The bigger world starts Thursday.
+> - _Earl Maddox_ → **Business Partner**
 
 ### `fr2_hub_open`
 The shows got bigger. Not dramatically — not overnight — but in the way things actually grow, which is incrementally and without announcement until you look back and the county fair is a different category of thing from where you are now.
-Nobody called about dates. Duke made the calls himself, from the pay phone outside the auto parts store, and wrote what he got in a notebook he kept in the truck. Cal had opinions about the suspension, which turned out to be the right opinions, as Cal's opinions about mechanical things always did.
+Earl's people called about dates. Duke wrote them down in a notebook he kept in the truck. Cal had opinions about the suspension, which turned out to be the right opinions, as Cal's opinions about mechanical things always did.
 There was more to do than there used to be. That was the simple version.
 
 
 ## HUB — Free Roam — Building the Act
-- The Cost A twelve-hundred dollar problem. The cars for the season closer, and nobody to advance it. First · Free — one time
-- 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. (The cars first)
-- 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (The cars first)
-- 🔒 New Distances Five cars. The geometry is different from three cows. (The cars first)
-- 🔒 Bar With Tommy He has a theory about Diamondback Danny. He might be right. (The cars first)
-- 🔒 Call Sandra Somebody at Earl's office told the paper you said no. (The cars first)
-
-**→ took:** The Cost A twelve-hundred dollar problem. The cars for the season closer, and nobody to advance it. First · Free — one time
-
-### `fr2_debt_01`
-The season closer needed a row of cars — acquired, positioned, and cleared. Kessler didn't cover it. Nobody's office was going to. The cars were Duke's problem, which was the deal he'd made at a kitchen table, and the money he'd said he'd find was now due.
-Twelve hundred dollars. That was the number.
-He'd made six hundred and forty at the last five shows combined. He also had rent, the truck payment, thirty-seven dollars a month to Pyle, and a parts invoice from Cal that was sitting on the counter.
-The math was specific.
-
-- Option BLocal bank loan.Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.
-- Option CBorrow from Tommy.He has it. He'll lend it. That'll be a thing.
-- Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean.
-
-**→ took:** Option CBorrow from Tommy.He has it. He'll lend it. That'll be a thing.
-
-> **Twelve Hundred** — He had it and he lent it and he read nothing. That sits where a partnership was going to.
-> - _Tommy_ → **Hanger-On**
-
-### `fr2_debt_tommy`
-He hated asking. He'd asked once already this year, in a bank lobby, and Tommy had read the whole form. He asked anyway.
-**DUKE:** I need to borrow twelve hundred.
-**TOMMY:** When do you need it?
-**DUKE:** By the end of the week.
-**TOMMY:** Okay.
-**DUKE:** Tommy.
-**TOMMY:** I've got it. From the lot job.
-He paid him back after the show. Tommy didn't make it a thing. The thing that would not be a thing was already a thing, though — both of them knew it. The twelve hundred lived in the friendship from then on, very small, very quiet. Not poisonous. Just present.
-At a bar six weeks later:
-**TOMMY:** You know, when you needed that twelve hundred —
-**DUKE:** I paid you back.
-**TOMMY:** I know. I just — I was glad to. That's what I was going to say.
-He meant it. He also needed Duke to know he meant it. Those were two separate things.
-Whatever else Tommy was after that, he was a man Duke had needed. That is a specific thing to be, and it is not the same thing as a partner, and it does not go away when the money does.
-
-> **Twelve Hundred** — He had it and he lent it and he read nothing. That sits where a partnership was going to.
-> - _Tommy_ → **Hanger-On**
-
-
-## HUB — Free Roam — Building the Act
-- Diamondback Danny He's on the circuit. He heard you turned Earl down. Available · Free
+- Diamondback Danny He's on the circuit. He noticed you signed with Earl. Available · Free
 - Pete Garland He's gotten better. He has a fair coming up. Available · Free
+- The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 
-**→ took:** Diamondback Danny He's on the circuit. He heard you turned Earl down. Available · Free
+**→ took:** Diamondback Danny He's on the circuit. He noticed you signed with Earl. Available · Free
 
 ### `fr2_danny_01`
 He was at the regional show in Smithson. Duke saw him from across the lot — the truck with the custom lettering, the bike that cost more than it needed to.
 Danny was signing something for a kid. He looked up when Duke walked past.
 **DANNY:** Duke Harlan.
 **DUKE:** Danny.
-**DANNY:** Heard Maddox made you an offer.
+**DANNY:** Heard you signed with Maddox.
 **DUKE:** News travels.
-**DANNY:** It does. Heard you passed, too. I had a conversation with his office eight months ago. They passed on me.
+**DANNY:** It does. I had a conversation with his office eight months ago. They passed.
 He said it without malice. He was stating a fact and watching to see what Duke did with it.
 **DUKE:** What did they say?
 **DANNY:** They said I was too polished. Whatever that means.
@@ -632,14 +587,15 @@ He thought: that was probably the wrong call. He'd made it anyway.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - The Public Challenge Danny went to the papers. Sandra has the quote. Available · Free
 - Pete Garland He's gotten better. He has a fair coming up. Available · Free
+- The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 
 **→ took:** The Public Challenge Danny went to the papers. Sandra has the quote. Available · Free
 
@@ -681,7 +637,7 @@ The fifteenth. He had three weeks. He called Cal.
 Danny showed up. That was the first thing — he actually showed up, which some part of Duke had not completely assumed.
 The white leather jacket was gone. He was in red, which was a better call. Someone had advised him.
 The crowd was bigger than any Duke had drawn in the county. That was Danny's doing — his people had promoted it, which meant his people were competent, which meant he had people.
-They went in the order determined by a coin flip that Duke won and chose to go second on, which Cal — watching from the fence — nodded at once and only.
+They went in the order determined by a coin flip that Duke won and chose to go second on, which Earl — watching from the fence — nodded at once and only.
 Danny went first. Fifty-three feet, clean. The crowd liked it.
 Duke's turn.
 
@@ -712,13 +668,14 @@ It was the closest they'd come to each other as people. Duke thought: this is th
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - Pete Garland He's gotten better. He has a fair coming up. Available · Free
+- The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 
 **→ took:** Pete Garland He's gotten better. He has a fair coming up. Available · Free
 
@@ -751,14 +708,15 @@ Duke watched the footage once and put it away.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - Pete's Mistake Cal heard about it. So did half the county. Available · Free
+- The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 
 **→ took:** Pete's Mistake Cal heard about it. So did half the county. Available · Free
 
@@ -818,18 +776,55 @@ He walked off. It was not a warm conversation. It was the right one.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
+- 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
+- The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
+- Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
+- 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
+- New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
+- Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
+
+**→ took:** The Cost A twelve-hundred dollar problem. The cars for the next show. Available · Free — one time
+
+### `fr2_debt_01`
+The next show on Earl's calendar required a specific setup — a row of cars that had to be acquired, positioned, and cleared. The venue didn't cover it. The cars were Duke's problem.
+Twelve hundred dollars. That was the number.
+He'd made eighteen hundred at the last three shows combined. He also had rent, the truck payment, and a parts invoice from Cal that was sitting on the counter.
+The math was specific.
+
+- Option ABorrow from Earl.He'll advance it against the next show. No interest. But he holds the number.
+- Option BLocal bank loan.Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.
+- Option CBorrow from Tommy.He has it. He'll lend it. That'll be a thing.
+- Option DSelf-fund. Make the math work.Cut expenses. Call in favors. Keep it clean.
+
+**→ took:** Option ABorrow from Earl.He'll advance it against the next show. No interest. But he holds the number.
+
+### `fr2_debt_earl`
+He called Earl.
+**EARL:** Twelve hundred. I'll advance it against your next show.
+No negotiation. No pause.
+**DUKE:** That simple?
+**EARL:** It's not simple. It's an advance. You know the difference.
+**DUKE:** I know the difference.
+**EARL:** Good. Call my office. They'll have the paperwork Thursday.
+He hung up. Duke sat there.
+He thought: twelve hundred is not a lot of money in the sense that it doesn't change his life. He thought: twelve hundred is a lot of money in the sense that Earl now has the number. He thought: Earl has had the number since the signing. This is just the first time it has a dollar sign on it.
+
+
+## HUB — Free Roam — Building the Act
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 
 **→ took:** Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. Costs 1 Evening
 
 ### `fr2_eve_cal`
-Cal had said "come by this week" the night they did the arithmetic. Duke came by on Thursday.
+Cal had said "come by this week" the night of the signing. Duke came by on Thursday.
 The garage smelled the same as it always had — oil and cold concrete and something electrical that Cal could never quite locate the source of. The bike was up on the stand.
 **CAL:** Left fork seal's been weeping since the fair.
 **DUKE:** I know.
@@ -839,22 +834,22 @@ That was an accurate distinction.
 **DUKE:** Can we have that conversation?
 **CAL:** We're having it.
 He handed Duke a sketch on the back of an invoice — measurements, load tolerances, a note in the margin that said: *clearance — don't go wider than this.*
-**CAL:** One other thing. Somebody with money's going to show up again. When they do, they're going to want input on the bike setup.
+**CAL:** One other thing. Earl's people are going to want input on the bike setup eventually.
 **DUKE:** What do you say when that happens?
 **CAL:** I say the bike does what it does or it doesn't work at all.
-He picked up a wrench. That was the end of the conversation about money.
+He picked up a wrench. That was the end of the conversation about Earl.
 
 > **The Suspension Talk** — Cal already fixed the seal. He's telling you why. That's the difference.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 - Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
 
 **→ took:** New Distances Five cars. The geometry is different from three cows. Costs 1 Evening
@@ -862,20 +857,20 @@ He picked up a wrench. That was the end of the conversation about money.
 ### `fr2_eve_practice`
 He set up a longer approach. Not a different stunt — just more runway, which changed the math in ways that weren't entirely about distance.
 He ran it six times. The first three were an argument with the approach. The last three were a conversation with it.
-He thought about the car show on his own page. Five cars, if the page ever said cars. He'd jumped three cows. The geometry was different in ways he needed to understand before the day of.
+He thought about the car show on Earl's calendar. Five cars. He'd jumped three cows. The geometry was different in ways he needed to understand before the day of.
 He worked until the light went and then a little past that.
 
 > **New Distances** — The cows were a county fair. This is something else. Better to know that now.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
 - Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
-- Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 - Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
 
 **→ took:** Bar With Tommy He has a theory about Diamondback Danny. He might be right. Costs 1 Evening
@@ -923,22 +918,22 @@ Duke thought: he has been in every crowd I have ever had. He thought: that is no
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
 - 🔒 Bar With Tommy He has a theory about Diamondback Danny. He might be right. ✓ Done
-- Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+- Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 - Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
 
-**→ took:** Call Sandra Somebody at Earl's office told the paper you said no. Costs 1 Evening
+**→ took:** Call Sandra Earl announced you before you knew you were being announced. Costs 1 Evening
 
 ### `fr2_eve_press`
 Sandra called about a feature.
-**SANDRA:** Regional paper. Not the Courier — the Smithson Standard. They want a half-page on the rider who turned Earl Maddox down. That's the angle. That's the headline, probably.
+**SANDRA:** Regional paper. Not the Courier — the Smithson Standard. They want a half-page spread on the deal with Maddox.
 **DUKE:** Who told them about Maddox?
-**SANDRA:** Someone at his office. He tells the story either way, Duke. If you'd signed, it'd be his find. You didn't, so it's the one that got away, and he still comes out of it as the man with the eye.
+**SANDRA:** Someone at his office. That's how he works — he announces the talent before the talent knows they're being announced. It's a technique.
 **DUKE:** Mm.
 **SANDRA:** Do you want to get ahead of it or react to it?
 **DUKE:** What do I get ahead of it with?
@@ -947,17 +942,17 @@ Duke thought about that.
 **DUKE:** Set it up.
 **SANDRA:** I'll call you Monday.
 
-> **The Feature** — Earl told the story of the man who said no before you told it. Now you respond.
+> **The Feature** — Earl announced you before you announced yourself. Now you respond.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
 - 🔒 Bar With Tommy He has a theory about Diamondback Danny. He might be right. ✓ Done
-- 🔒 Call Sandra Somebody at Earl's office told the paper you said no. ✓ Done
+- 🔒 Call Sandra Earl announced you before you knew you were being announced. ✓ Done
 - Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
 
 **→ took:** Cal — Bike's Right A Tuesday. Not a show night. He says the thing you were actually asking about. Costs 1 Evening
@@ -984,13 +979,13 @@ Cal looked at him. Then he picked the wrench back up.
 
 
 ## HUB — Free Roam — Building the Act
-- 🔒 Diamondback Danny He's on the circuit. He heard you turned Earl down. ✓ Done
+- 🔒 Diamondback Danny He's on the circuit. He noticed you signed with Earl. ✓ Done
 - 🔒 Pete Garland He's gotten better. He has a fair coming up. ✓ Done
 - 🔒 Work With Cal Suspension geometry. He already fixed the seal. He's telling you why. ✓ Done
 - 🔒 Stay Home With Ruthie She wants to come to a show. Find the right one. (Ruthie not established)
 - 🔒 New Distances Five cars. The geometry is different from three cows. ✓ Done
 - 🔒 Bar With Tommy He has a theory about Diamondback Danny. He might be right. ✓ Done
-- 🔒 Call Sandra Somebody at Earl's office told the paper you said no. ✓ Done
+- 🔒 Call Sandra Earl announced you before you knew you were being announced. ✓ Done
 - Milestone 3 — The Big Break
 
 **→ took:** Milestone 3 — The Big Break
@@ -999,25 +994,25 @@ Cal looked at him. Then he picked the wrench back up.
 
 ### `fr2_close`
 By the time Milestone 3 was on the horizon, the shape of things had changed.
-Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. The notebook had dates in it that were two states away, and every one of them was in his own handwriting.
-He'd made money. He'd spent most of it, and twelve hundred of it had gone back to Tommy, who had not made it a thing, which was its own kind of thing. Cal said the suspension geometry was right. Sandra had run two pieces.
+Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.
+He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy had a date in October and a plank ramp to rebuild before it.
 And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
 Duke thought about Danny more than he wanted to.
-Then Dot Kessler called about the car show. The real one. Five cars, the Speedway's season closer, and a regional TV crew that was coming for the feature race and would point the camera at whatever was in the lot. No sponsor. The cars were his.
-He listened to the whole pitch without interrupting. It was not a long pitch. She didn't do long.
-When she finished she said:
-**KESSLER:** Well?
+Then Earl called about the car show. The real one. Five cars, a national sponsor interested, a regional TV crew.
+He listened to the whole pitch without interrupting.
+When Earl finished he said:
+**EARL:** What do you think?
 **DUKE:** I think I'm ready.
-A pause. Not a tell. Just a woman in a ticket booth deciding whether to believe him.
-**KESSLER:** Then be the reason they're here.
+A pause. Earl's tell — not tapping a pen. Just quiet.
+**EARL:** Good. Because this one matters.
 
 
 ## The Big Break
 
 
 ### `m3_entry`
-Five cars. A row of them in the Smithson Speedway's back lot, which smelled like asphalt and sunscreen and the specific kind of hope that collects where large crowds gather. His cars. The receipts were in the glovebox.
-The regional TV crew had a camera on the infield scaffold, pointed at the grid for the feature race. Nothing was on the ramp but the ramp. The man behind the camera — Roy Petersen, the crew called him — had walked over during setup, looked at the ramp for a long time, said nothing, and walked back.
+Five cars. A row of them in a stadium parking lot that smelled like asphalt and sunscreen and the specific kind of hope that collects where large crowds gather.
+The regional TV crew had a camera on a scaffold. The sponsor's logo was on the ramp.
 Cal had checked everything twice. He'd been quiet since they arrived, which meant he'd found something he didn't like and fixed it and wasn't going to say what it was.
 Duke stood at the end of the approach and looked at the five cars and felt the distance in the way you feel something you've run a thousand times in your head and never once in your body.
 He thought: this is the part where you find out.
@@ -1025,11 +1020,11 @@ He thought: this is the part where you find out.
 ### `m3_prestunt_alone`
 He walked the approach a fifth time. Not because he needed to. Because it was something to do that was in the direction of the thing.
 Nobody came to find him. He'd stopped expecting them.
-Kessler had a feature race to run. Cal did the bike and didn't add anything to it. The TV crew was the race's, not his.
+Earl had his own preparations. Cal did the bike and didn't add anything to it. The TV crew was its own organism.
 He stood at the lip of the ramp and looked at five cars and thought about the county fair. Three cows. The dirt under his wheels. The crowd.
 The crowd here was ten times that. He'd stopped thinking about crowds as a fixed category — there was the county fair crowd and there was this, and the number in between was not a meaningful number, it was just more.
 He was not scared. He thought about whether not being scared was itself something to worry about. He decided it wasn't.
-He had no voice in his head telling him anything — no Cal, no Ruthie, no promoter with a number. Just the ramp. Just the five cars. Just him.
+He had no voice in his head telling him anything — no Cal, no Ruthie, no Earl. Just the ramp. Just the five cars. Just him.
 He thought: that's information. Not triumph. Not recovery declared.
 Just information. He knew what he was doing. He'd go find out.
 
@@ -1039,41 +1034,22 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — FAIL / 17** — Overshot the ramp. Recovered 0 of 4 rounds.
+> **STUNT RESULT — SUCCESS / 95** — Cleared the cars and landed dead level
 
-### `m3_failure_bad`
-He knew before he left the ramp that something was wrong. He went anyway, which was either courage or the inability to stop — he'd never been entirely sure of the boundary between those two things.
-The landing was wrong in a way that was over before he could correct it. The bike went left, he went right, and the tarmac came up faster than the tarmac was supposed to.
-He didn't get up right away.
-He knew he should. He'd done it before — the count, the fist, the crowd comes back. He knew the sequence. His body was not interested in the sequence.
-Cal was there. Then the medical crew. He heard the track announcer somewhere behind him, over the PA, saying something calm about a delay. Not close. Professional.
-He thought: I'm on the ground and there's nobody to tell it's fine. That was the arrangement. It had sounded better in Cal's garage.
-He thought: this is going to be a bill.
+### `m3_triumph_clean`
+Clean arc. Clean landing. The back wheel kissed the ramp mat with the specific weight of something that had gone exactly right — every calculation confirmed in the same half-second.
+The crowd noise was the kind that doesn't build. It arrives all at once, like a weather event.
+Duke held it for a moment — hands on the bars, feet down, the bike still running. He looked at the five cars and then at the scaffold camera and then at Cal, who was standing twenty feet away doing nothing, which was Cal's version of a standing ovation.
+He rode off the ramp. Earl was there.
+**EARL:** That's what I've been waiting for.
+He said it simply. Duke thought about the tell — the three taps — and thought: he's not performing that one.
 
-> _[minigame: The Recovery]_
-
-> **STUNT RESULT — FAIL / 12** — Cleared 0 of 4 rounds. It will take more than one session.
-
-### `m3_failure_bad_after`
-The medical crew helped him to the folding table behind the gate. He sat. His left hip was going to be a conversation. His right wrist was already changing color.
-Cal came and stood next to him and didn't say anything, which was what Duke needed him to do.
-Kessler came after the feature race, with a bank envelope. She set it on the folding table next to his wrist. Whatever the gate had been, his piece of it was in there, counted.
-**KESSLER:** How bad?
-**DUKE:** I don't know yet.
-**KESSLER:** The camera was on you.
-**DUKE:** I couldn't get up to do the fist.
-**KESSLER:** No. I know. Petersen stayed on you anyway. Forty seconds, he told me. He's never held a shot forty seconds on my track.
-Duke looked at her.
-**KESSLER:** A man on the ground who hasn't got up yet is a different picture than the fist. It's not the one you wanted. It's the one they've got.
-Duke thought: she's not wrong. He also thought: I'd rather have the fist.
-He didn't say it. He looked at his wrist. He looked at the envelope. He thought about the next part, which was the part he was going to have to build from, and pay for.
-
-> **Down — Hard** — The crash was the show. Recovery starts now. Cal is already thinking about what comes next.
+> **Five Cars Clean** — The TV crew got it. Earl got it. Cal got it. The crowd got it. Nothing left on the table.
 
 ### `m3_aftermath`
 That was one thing taken care of.
 Cal loaded the ramp into the trailer without speaking. Duke watched him do it.
-The show had already moved on to whatever comes after a show. The crowd, the feature race's winner in the infield, the TV crew folding cable. Nobody doing anything on his behalf, which was the deal he'd made, and which he noticed.
+The show had already moved on to whatever comes after a show. The crowd, the sponsor's people, the TV crew folding cable. Earl somewhere doing what Earl did after a show.
 Duke sat on the tailgate and thought: that was one thing. Now there's another.
 There's always another.
 
@@ -1081,7 +1057,7 @@ There's always another.
 
 ### `fr3_hub_open`
 The show was done. Not the career — just the show. There was a difference. He was getting better at knowing the difference.
-Cal had a trailer to load. The TV people had their tape. The calls were his to make, and he would make them Monday.
+Earl had calls to make. Cal had a trailer to load. The TV people had their tape.
 Duke sat on the tailgate in the empty lot and looked at where the five cars had been and thought about whatever came after five cars.
 There was going to be a whatever-came-after. He'd known it since before the stunt. You don't clear something like that and walk away from the thing that got you there. You walk toward the next version of it.
 The circuit was talking. The papers had a story. A man from Los Angeles had been in the fourth row.
@@ -1093,6 +1069,7 @@ He thought: I should use it well.
 - Reverend Hollis He was at the Dallas show. He wants to say something different this time. Available · Free
 - Sandra Blaine She has a bigger offer. Regional TV, prime time, thirty minutes. Available · Free
 - Diamondback Danny Sandra has it before the circuit papers do. Somebody signed him. Available · Free
+- Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
 - Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
 - Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
 
@@ -1130,6 +1107,7 @@ Duke stood in the hardware store aisle for a moment. He thought: that was not th
 ## HUB — Free Roam — The Price of Fame
 - Sandra Blaine She has a bigger offer. Regional TV, prime time, thirty minutes. Available · Free
 - Diamondback Danny Sandra has it before the circuit papers do. Somebody signed him. Available · Free
+- Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
 - Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
 - Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
 
@@ -1142,82 +1120,118 @@ Sandra called on a Wednesday. She'd been calling on Wednesdays for two years now
 **SANDRA:** The regional TV station wants to do a profile. Not a spot — a real feature. Thirty minutes, prime time, regional broadcast.
 Duke said nothing.
 **SANDRA:** I'm the reporter attached to it. Meaning I'd write the piece and conduct the interview. The station does the production.
-**DUKE:** Who else knows about this.
-**SANDRA:** Nobody yet. That's why I'm calling you first.
-Duke thought about that. He thought about the fact that there was no page seven. No television clause, no first right of refusal, nobody's signature on what he could say into a camera but his own. It was the thing he'd chosen. It was also, he noticed, a thing nobody had ever asked him to read.
+**DUKE:** What does Earl know about this.
+**SANDRA:** Nothing yet. That's why I'm calling you first.
+Duke thought about that. He thought about page seven of the new contract — the television clause. He thought about Earl's version of first right of refusal.
 He thought about the man from Los Angeles in the fourth row.
 **DUKE:** How much time do I have.
 **SANDRA:** Two weeks to decide. They want to air before end of quarter.
 
-- Option A"I'm in. Set it up."Move fast. Nobody else is going to.
-- Option B"I need to check something first."The Speedway's Friday card. Kessler gets a call.
+- Option A"I'm in. Set it up."Move fast. Control the narrative before Earl does.
+- Option B"I need to check something in my contract first."Page seven. Earl gets a call.
 - Option C"Tell them I want approval over the narrative."You want control. Sandra will negotiate it.
 
-**→ took:** Option C"Tell them I want approval over the narrative."You want control. Sandra will negotiate it.
+**→ took:** Option A"I'm in. Set it up."Move fast. Control the narrative before Earl does.
 
-> **The True Version** — Sandra wrote what she saw. It was true. Duke read it seventeen times.
+> **Regional TV Feature** — Thirty minutes, prime time. The profile ran. The man from LA made the call.
 
-### `fr3_press_sandra_control`
-**DUKE:** Tell them I want approval over the narrative.
+### `fr3_press_sandra_accept`
+**DUKE:** I'm in. Set it up.
 A pause.
-**SANDRA:** They won't give you that.
-**DUKE:** Then we negotiate down to something.
-**SANDRA:** Duke. I'm the one who writes it.
-He thought about that.
-**DUKE:** What do you want out of this piece?
-**SANDRA:** The true version.
-**DUKE:** That's what I want too.
-**SANDRA:** Then we're already in agreement.
-The feature ran without narrative approval from Duke. It was the true version, which was most of what he'd wanted. There was one line — about the county fair, about the way Cal had been standing twenty feet away after the landing — that Duke read seventeen times.
-It wasn't wrong. That was the thing. It was just very true.
+**SANDRA:** That's fast.
+**DUKE:** Is that a problem?
+**SANDRA:** No. I just — okay. I'll set it up.
+Duke hung up and then called Earl, which was the right order. He told Earl what was happening. Earl was quiet for a moment.
+**EARL:** You called her before me.
+**DUKE:** She called me first.
+**EARL:** I see.
+He said it in a way that had two meanings. Duke filed both of them.
+The feature ran six weeks later. Thirty minutes, prime time. Sandra asked two questions that were harder than they sounded. Duke answered them the way he'd learned to answer things: directly, and only as much as was true.
+The man from Los Angeles called Earl the day after it aired.
 
-> **The True Version** — Sandra wrote what she saw. It was true. Duke read it seventeen times.
+> **Regional TV Feature** — Thirty minutes, prime time. The profile ran. The man from LA made the call.
 
 
 ## HUB — Free Roam — The Price of Fame
 - Diamondback Danny Sandra has it before the circuit papers do. Somebody signed him. Available · Free
+- Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
 - Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
 - Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
 
 **→ took:** Diamondback Danny Sandra has it before the circuit papers do. Somebody signed him. Available · Free
 
 ### `fr3_danny`
-Sandra had it before the circuit papers did. A syndicate out of Fort Worth had signed Diamondback Danny for twelve half-hours. Studio audience, a ramp built indoors, a man in a jacket saying the name.
+Sandra had it before the circuit papers did. Earl Maddox had signed Diamondback Danny. Same office, same letterhead, a Thursday.
 **SANDRA:** I wanted you to hear it from me.
 **DUKE:** Why?
 **SANDRA:** Because you're going to hear it from four people today and I'd like to have been the first one.
-Twelve half-hours. Duke did the arithmetic on the back of an envelope while she was still talking, and the number at the end of it was larger than every gate he had taken that year put together.
+Duke sat with it. It was not a betrayal — there was nothing in the contract about a roster of one, and he had read the contract — but it was a fact with a shape, and the shape took a while to turn around.
 Tommy had said it at a bar in the spring. He had said it about the name. He had been right about the name.
 Sandra waited. She had the patience of somebody who does this for a living.
 
 - Option A"Get me his number."Say it to him. Whatever it turns out to be.
 - Option B"Nothing from me."Let him have it. Let the calendar do the rest.
 
-**→ took:** Option A"Get me his number."Say it to him. Whatever it turns out to be.
+**→ took:** Option B"Nothing from me."Let him have it. Let the calendar do the rest.
 
-> **Diamondback Danny** — Twelve half-hours and a ramp drawn by a man who has never seen one. Duke called him anyway.
-> - _Danny_ → **Poached**
+> **Diamondback Danny** — He raised a hand across a parking lot in Amarillo. That was the whole of it.
+> - _Danny_ → **Absent**
 
-### `fr3_danny_call`
-He called from the shop phone, with Cal pretending to be busy eight feet away.
-**DANNY:** Duke Harlan.
-**DUKE:** Congratulations.
-A pause long enough that Duke checked the line.
-**DANNY:** You're the second person to say that and mean it.
-**DUKE:** Who was the first?
-**DANNY:** My mother.
-Duke laughed. So did Danny, and it sounded like a man who had been holding his breath for a day and a half.
-**DANNY:** They want twelve. They've got a ramp angle drawn by a man who has never seen a ramp. I'm going to spend a year jumping somebody's idea of a jump.
-**DUKE:** Take it anyway.
-**DANNY:** I already did.
-They talked for eleven minutes about ramp lips and landing slope, which is the only subject on earth the two of them had ever been able to discuss without either one of them performing.
-Duke thought: he said the accurate thing in the wrong way for two years and I never once asked him a question. He thought: that is a thing I keep doing.
+### `fr3_danny_quiet`
+**DUKE:** Nothing from me.
+**SANDRA:** That's a quote I can't use.
+**DUKE:** It isn't a quote.
+She wrote the piece without him in it, which was the correct decision and which Duke felt for about nine days.
+The dates stopped overlapping after that. Not deliberately — a man on somebody else's calendar is on somebody else's calendar, and the circuit is a set of fairgrounds that either intersect or do not.
+Duke saw him once more that year, across a parking lot in Amarillo, getting into a car with a driver. Danny raised a hand. Duke raised a hand. Then the car went, and that was the whole of it.
+He thought about Danny more than he wanted to. He had thought that before, standing in a lot behind a venue with a ladle in his hand, and he had not done anything about it that time either.
 
-> **Diamondback Danny** — Twelve half-hours and a ramp drawn by a man who has never seen one. Duke called him anyway.
-> - _Danny_ → **Poached**
+> **Diamondback Danny** — He raised a hand across a parking lot in Amarillo. That was the whole of it.
+> - _Danny_ → **Absent**
 
 
 ## HUB — Free Roam — The Price of Fame
+- Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
+- Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
+- Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
+
+**→ took:** Earl Maddox He wants to renegotiate. The split and the extension are on the table. Costs 1 Evening
+
+### `fr3_eve_earl`
+Earl came to him, not the other way around. That was the first tell.
+He sat down across the table with a folder and a glass of water and said what he'd come to say with the specific directness he used when he'd already decided something.
+**EARL:** The Dallas show changed some numbers. I want to talk about them.
+**DUKE:** What numbers.
+**EARL:** The split.
+Duke looked at him.
+**EARL:** You've earned a better split. I'm not saying that as a favor. I'm saying it because the man from Los Angeles wants to do business, and to do business with him I need you to be a partner in this, not a performer on salary.
+He waited. Duke thought about the clause — the exclusivity clause, the thing from M2 that was still in the contract somewhere. He thought about the tell.
+
+- Option A"What's the new number?"Engage. See what he's actually offering.
+- Option B"I want Cal in the room."If this is a real conversation, it's a real meeting.
+- Option C"Let me read it before we talk."The contract first. The conversation after.
+
+**→ took:** Option A"What's the new number?"Engage. See what he's actually offering.
+
+> **The New Numbers** — Sixty-forty. Five-year extension. Duke has the week to decide.
+
+### `fr3_eve_earl_engage`
+**DUKE:** What's the new number.
+**EARL:** Sixty-forty. Your favor.
+Duke looked at him for a moment.
+**DUKE:** What's in the new clause.
+Earl didn't blink.
+**EARL:** Extension. Five years instead of three.
+Duke thought: there it is. The thing under the thing. The better split was real. The extension was the cost.
+**DUKE:** I'll need a few days.
+**EARL:** Take the week.
+He said it like a man who was already planning around the answer.
+
+> **The New Numbers** — Sixty-forty. Five-year extension. Duke has the week to decide.
+
+
+## HUB — Free Roam — The Price of Fame
+- 🔒 Earl Maddox He wants to renegotiate. The split and the extension are on the table. ✓ Done
 - Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
 - Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
 
@@ -1229,7 +1243,7 @@ He asked it sideways, the way he asked things — through the bike, not at Duke.
 **CAL:** You're going to want more distance.
 **DUKE:** Probably.
 **CAL:** What are you thinking.
-**DUKE:** I'm thinking about buses.
+**DUKE:** Earl's talking about buses.
 Cal set down the wrench.
 That was a thing Cal did when the conversation had moved past maintenance into something else.
 **CAL:** How many.
@@ -1252,6 +1266,7 @@ He went back to work. Duke sat with the word *right* for a while.
 
 
 ## HUB — Free Roam — The Price of Fame
+- 🔒 Earl Maddox He wants to renegotiate. The split and the extension are on the table. ✓ Done
 - 🔒 Work With Cal He has a question about what comes next. Buses are different from cars. ✓ Done
 - Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
 
@@ -1274,7 +1289,7 @@ Tommy nodded. He picked up his glass and set it down.
 **DUKE:** But they watch.
 **TOMMY:** Yeah. They watch.
 He said it like the two words meant more than two words, which they did.
-**TOMMY:** I thought I wanted what you have. The big crowds. The Speedway. Sandra writing about me.
+**TOMMY:** I thought I wanted what you have. The big crowds. Earl. Sandra writing about me.
 **DUKE:** Do you?
 Tommy looked at his drink for a while. A real while.
 **TOMMY:** I think I want the twelve people who are there for me.
@@ -1301,6 +1316,7 @@ He said, at the door, that the Hinkle crowd was going to be nineteen next time, 
 
 
 ## HUB — Free Roam — The Price of Fame
+- 🔒 Earl Maddox He wants to renegotiate. The split and the extension are on the table. ✓ Done
 - 🔒 Work With Cal He has a question about what comes next. Buses are different from cars. ✓ Done
 - 🔒 Tommy He's at the bar. He has something true to say and doesn't know it yet. ✓ Done
 - Milestone 4 — The Defining Moment
@@ -1312,21 +1328,21 @@ He said, at the door, that the Hinkle crowd was going to be nineteen next time, 
 
 
 ### `m4_entry`
-Duke put the folder on the table himself.
-Inside: three proposals, in his own handwriting, worked out over four weeks of evenings with Cal's calculator and a road atlas. Three different versions of what the next stunt could be. Each one bigger than five cars. Each one requiring a different thing from him, and each one with a number at the bottom that was his to find.
-Nobody needed an answer by Friday. That was the trouble with Friday: nobody was going to set it but him.
-He set it for Friday. He picked up the folder.
+Earl put the folder on the table.
+Inside: three proposals. Three different versions of what the next stunt could be. Each one bigger than five cars. Each one requiring a different thing from Duke.
+**EARL:** Take your time. I need an answer by Friday.
+Duke picked up the folder.
 
 ### `m4_stunt_select`
 Three options. He read them the way Cal read an engine — looking for the thing underneath the thing.
-The bus stack was the obvious one. Thirteen buses, end to end. Longer than anything he'd attempted. There was a stadium in Fort Worth that would rent him the lot against a percentage of the gate, and a school district that would rent him the buses against a deposit he did not have yet.
+The bus stack was the obvious one. Thirteen buses, end to end. Longer than anything he'd attempted. Earl had a stadium booked.
 Cal had already started working on the ramp geometry for it. Duke had not asked him to. That was Cal.
-The inferno tunnel was the theatrical one. A ring of fire on a quarter-mile straight. The station that had filmed the Speedway had asked what came after five cars; this was an answer they could point a camera at. High risk in a different way than the buses.
+The inferno tunnel was the theatrical one. A ring of fire on a quarter-mile straight. National TV interest. High risk in a different way than the buses.
 The third was smaller. A symbolic stunt at the county fair — where it started. Local crowd, people who knew him before any of this. Lower risk, but a different kind of statement.
 He set the folder down and looked at the window for a while.
 
 - Option AThe Bus Stack — thirteen buses.Requires Showmanship ≥ 4 and Precision ≥ 3. The Legend ceiling.
-- Option BThe Inferno — fire tunnel.Requires Nerve ≥ 4. Theatrical. Regional TV, and whoever they sell it to.
+- Option BThe Inferno — fire tunnel.Requires Nerve ≥ 4. Theatrical. National TV.
 - Option CThe Symbolic Stunt — county fair, full circle.Always available. Low danger. High emotional payoff.
 
 **→ took:** Option AThe Bus Stack — thirteen buses.Requires Showmanship ≥ 4 and Precision ≥ 3. The Legend ceiling.
@@ -1360,28 +1376,25 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — FAIL / 17** — Overshot the ramp. Recovered 0 of 4 rounds.
+> **STUNT RESULT — SUCCESS / 95** — Cleared the buses and landed dead level
 
-### `m4_failure_buses`
-He cleared twelve of the thirteen.
-The thirteenth — the last one — he caught the rear. The bike went right, he went left, and the tarmac was immediate in the way tarmac is when you're going seventy miles an hour and suddenly aren't.
-He was down for a long moment. He was aware of the crowd going quiet.
-He got up. Slower than usual. But he got up.
-He didn't raise the fist — he didn't have it in him for the fist. He just stood there. He looked at the thirteen buses.
-Twelve.
-The crowd started again after a moment. Not the triumph sound — a different sound. The sound of people watching a man stand up.
-**CAL:** How bad.
-**DUKE:** I don't know yet.
-**CAL:** Walk first. Then we figure it out.
-He walked. He figured it out.
+### `m4_triumph_buses`
+Thirteen buses. He cleared all of them.
+The crowd sound was different from any crowd sound he'd heard before — not louder, exactly, but denser, like the same amount of noise compressed into half the space.
+He landed on the mat. Cal was twenty feet away, hands in his jacket pockets, which was not the way Cal stood when something had gone wrong.
+Earl got there three seconds after Cal.
+**EARL:** Son.
+He said it the way he said it when he meant it. This was the third time. Duke had been counting.
+He thought: that's the third time. He thought: I should probably tell him I noticed.
+He didn't. But he filed it for later.
 
-> **Twelve of Thirteen** — One short. He got up. The crowd saw a man stand up from something big.
+> **Thirteen Buses** — The Legend ceiling. Earl said son. Cal had his hands in his pockets. The LA man was in the fourth row again.
 
-> **Down.** — He got up. That's what happened first. What comes after takes longer.
+> **Milestone 4 — Complete** — The defining moment. Whatever comes next is different from what came before.
 
-### `fr4_hub_open_failure`
-He got up. That was the thing that happened first.
-What came after the getting up was going to take longer to figure out.
+### `fr4_hub_open`
+The show was done. Whatever came next was going to be different from whatever had come before.
+He thought: that's always been true. He thought: this time I know it.
 
 
 ## HUB — Free Roam — Aftermath
@@ -1389,7 +1402,7 @@ What came after the getting up was going to take longer to figure out.
 - Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
 - Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
 - Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
-- The Man from California He watched you get up. He got your number from the Speedway. He is calling himself. Costs 1 Evening
+- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
 **→ took:** The Biographer A man named Fisk flew in from New York. He has a contract in his briefcase. Available · Free
 
@@ -1426,7 +1439,7 @@ He thought: that's going to be in the book. He thought: that's fine. That's true
 - Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
 - Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
 - Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
-- The Man from California He watched you get up. He got your number from the Speedway. He is calling himself. Costs 1 Evening
+- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
 **→ took:** Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
 
@@ -1446,7 +1459,7 @@ The fork seal, which Cal had replaced, held.
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
 - Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
 - Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
-- The Man from California He watched you get up. He got your number from the Speedway. He is calling himself. Costs 1 Evening
+- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
 **→ took:** Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
 
@@ -1455,7 +1468,7 @@ He went to the garage.
 Cal was there, which was not surprising. Cal was usually in the garage in the evening when there was a bike that needed attention, and there was always a bike that needed attention.
 Duke pulled up a stool.
 **CAL:** Vegas specs came in.
-**DUKE:** The man from California sent them. To the house. There was nobody else to send them to.
+**DUKE:** Earl sent them.
 **CAL:** Stadium floor. Sealed concrete. I want to run different tire pressure than the canyon.
 **DUKE:** How different.
 **CAL:** I'll tell you when I know.
@@ -1487,7 +1500,7 @@ Duke thought: that's the whole conversation. He thought: I'll need to sit with t
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
 - 🔒 Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. ✓ Done
 - Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
-- The Man from California He watched you get up. He got your number from the Speedway. He is calling himself. Costs 1 Evening
+- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
 **→ took:** Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
 
@@ -1533,41 +1546,41 @@ He thought about the twelve people at the Hinkle lot, and the nineteen Tommy was
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
 - 🔒 Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. ✓ Done
 - 🔒 Tommy He was at the canyon. He saw you clear it. He said something true. ✓ Done
-- The Man from California He watched you get up. He got your number from the Speedway. He is calling himself. Costs 1 Evening
+- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
-**→ took:** The Man from California He watched you get up. He got your number from the Speedway. He is calling himself. Costs 1 Evening
+**→ took:** Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
-### `fr4_eve_california`
-The phone rang at seven in the evening. Duke had been expecting it for a week, since Kessler called to say she'd given out his number.
-It was the man from California. He said his name, which Duke had heard twice now and could not have spelled. He said he'd been in the fourth row at the Speedway.
-He said he'd watched Duke get up. He said that twice, in two different sentences, like a man making sure it was on the record.
-Then he said Vegas.
-Not a recovery package. He didn't have the word for that, or didn't use it. A date, a stadium floor, a gate split — sixty-forty, Duke's side of it — and the footage his. He said the date was far enough out to heal into.
-There was nobody on the other line. There was nobody to hand the phone to. There was the kitchen, and the man from California, and whatever Duke said next.
-He thought: this is what the percentage was for. He thought: alright.
+### `fr4_eve_earl`
+Earl called at seven in the evening. Duke had been expecting the call.
+**EARL:** I've got the man from California on the other line.
+**DUKE:** I know.
+There was a pause. The pause-before-real-numbers.
+**EARL:** He has a venue. Vegas. A specific evening. He says the canyon is the reason he's calling — he watched the reel, he wants what comes next.
+**DUKE:** What are the terms.
+**EARL:** Standard gate split, sixty-forty in your favor. Licensing rights for the footage — he's already talking to Roy. Promotional obligations: two appearances, one interview, one print piece.
 
-- Option A"Yes. Set the date."Take it as read. He said the number; you heard it.
-- Option B"Send me the paper first."Garrett Pyle taught you to read a page before you sign it.
-- Option C"Sixty-forty is the opening number. Say the other one."Nobody is holding the number for you. Hold it yourself.
+- Option A"Tell him yes."Take the deal. Vegas or recovery — whatever Earl is offering.
+- Option B"Get me the full terms in writing first."Professional caution. Earl respects this.
+- Option C"Tell him I'll call him myself."Cut out the middleman. Earl notes this.
 
-**→ took:** Option C"Sixty-forty is the opening number. Say the other one."Nobody is holding the number for you. Hold it yourself.
+**→ took:** Option A"Tell him yes."Take the deal. Vegas or recovery — whatever Earl is offering.
 
-> **The Man from California** — Sixty-five. He held the number himself.
-
-### `fr4_california_close`
-He said sixty-forty was the opening number. He said: say the other one. A pause. The man from California said sixty-five. Duke said: alright. He thought: that was a hundred and twenty dollars at Perkins' fairground once. He thought: it's the same conversation.
-He hung up. He sat at the table for a while.
-He thought: nobody advanced anything. Nobody took a percentage. Nobody made the call for him, and nobody would have.
-He thought: Vegas.
-
-> **The Man from California** — Sixty-five. He held the number himself.
+### `fr4_earl_signed`
+**EARL:** I'll tell him tonight.
+A pause. Not the numbers-pause. The other kind.
+**EARL:** Duke.
+**DUKE:** Yeah.
+**EARL:** Good.
+That was all. Duke hung up. He sat with the phone for a moment.
+He thought: Vegas. He thought: that's information. Not triumph. Not recovery declared.
+He thought: that's the next thing.
 
 
 ## HUB — Free Roam — Aftermath
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
 - 🔒 Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. ✓ Done
 - 🔒 Tommy He was at the canyon. He saw you clear it. He said something true. ✓ Done
-- 🔒 The Man from California He watched you get up. He got your number from the Speedway. He is calling himself. ✓ Done
+- 🔒 Earl Maddox The man from California is on the line. The Vegas offer is real. ✓ Done
 - Milestone 5 — The Question
 
 **→ took:** Milestone 5 — The Question
@@ -1577,13 +1590,18 @@ He sat at the kitchen table with the piece of paper.
 Stunts. What else. The thing before the jump.
 He had an answer now. He had had it for a while — it had arrived somewhere in the night rides and the garage with Cal and the porch on Wednesday. He had not announced it to himself when it arrived. It had just been there.
 He thought: that's the question.
-He folded the piece of paper and put it in his jacket pocket and called California. The number was on the wall by the phone, in his own handwriting, which was where every number he had was.
-The man from California picked up on the second ring. Duke said: set the date. A pause. Not the pause-before-numbers. The other kind. The man said: alright. He said he'd call tomorrow.
-Duke hung up. He thought: on the other side of things, this is where somebody says good work. He sat with that. Then he picked the phone back up and called the garage, and when Cal answered he said it himself.
+He folded the piece of paper and put it in his jacket pocket and called Earl.
+**EARL:** Duke.
+**DUKE:** The Vegas date. Put it on the calendar.
+A pause. Not the pause-before-numbers or the pause-before-leverage. The other kind.
+**EARL:** Alright.
+**DUKE:** Set the date.
+**EARL:** I'll call you tomorrow.
+**DUKE:** Earl.
+**EARL:** Yeah.
 **DUKE:** Good work.
-**CAL:** Yeah.
 A longer pause.
-**CAL:** You too.
+**EARL:** You too.
 Duke hung up. He sat at the table. The kitchen was quiet. Out the window, the street. The lawn, mowed. The truck in the driveway. The sky — through the glass, going dark at the edge — the same as it had always been.
 He thought: some things you just remember.
 He thought: Vegas.
@@ -1609,55 +1627,55 @@ Duke thought: Cal has been waiting to say that for a long time. He thought: Cal 
 
 ### `m5_decision`
 He held the question for a while.
-Seven options. Not choices exactly — more like the seven things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.
+Eight options. Not choices exactly — more like the eight things a man in his position could do next, and only one of them was the right one, and he'd know it when he found it.
 
 - Option ARetire clean on top.Walk away while the name still means something. Classic ending.
 - Option BOne last stunt — planned, on his terms.Duke picks the stunt. Prepared. Medium risk.
+- Option COne last stunt — Earl picks.Earl's choice. Higher risk. Higher payout. His agenda, not Duke's.
 - Option DWalk away quietly.No announcement. Some people never know he retired.
 - Option EKeep going.The circuit continues. Condition-dependent. Duke knows the cost.
 - Option FMentor the apprentice.Duke steps back. Pete steps forward. Legacy continues through him.
 - Option GSymbolic stunt — own terms.Not dangerous. Meaningful. The crowd that matters most.
 - Option HDisappear.Duke leaves. No retirement, no announcement. Just gone.
 
-**→ took:** Option HDisappear.Duke leaves. No retirement, no announcement. Just gone.
+**→ took:** Option ARetire clean on top.Walk away while the name still means something. Classic ending.
 
-> **Gone** — No announcement. No retirement. Duke left. That's what happened.
+> **Clean Exit** — On top. The name means something. It always will.
 
-### `m5_disappear`
-He left.
-He didn't announce it. There was nobody to not tell, which on his side of things had been true for a while. He told Cal — not that he was leaving, but where the bike keys were and that the service manual was on the second shelf and that the fork seal was recently replaced.
-Cal said: okay.
-That was the last conversation. Duke didn't know, in the moment, that it was the last one. He found out later, which was the only way to find out.
-He drove north. He thought about the county fair. He thought about the number — the one in the air, not on the ground. He thought: I've been finding it long enough. I want to see what it's like to not be looking for it.
-He stopped at a motor inn somewhere he'd never been. He slept for eleven hours.
-In the morning he drove further north.
+### `m5_retire_clean`
+He made the call.
+He told Earl first — that was the right order. Earl was quiet for a moment. Then he said: I had a feeling. Duke said: no you didn't. Earl said: no, I didn't. But I thought it was possible.
+He told Cal next. Cal said: I figured. Duke said: how long. Cal said: since the canyon. He said it without sentiment. He meant it as a compliment.
+There was no Ruthie to tell. He thought about the fork at the county fair more than once over the years. Mostly he didn't regret it. Mostly.
+The announcement ran in three papers and the circuit wire. Sandra wrote it herself. She got the county fair detail right.
+He thought: that's the story. He thought: that's actually the story.
+He thought: it's enough.
 
-> **Gone** — No announcement. No retirement. Duke left. That's what happened.
+> **Clean Exit** — On top. The name means something. It always will.
 
 ---
 
 ## ENDING REACHED
 
-"He Disappeared in 1974. Some Say He's Still Out There."
+"Vern Straley: America's Last Real Daredevil"
 CAREER TRACK
-The Businessman
-Duke walked away from Earl's deal at the county fair. Dot Kessler booked him, Tommy paid for the cars, and the story he built is entirely his own.
+The Legend
+Earl Maddox got his return on investment. So did Duke. They're both professionals about it.
 RETROSPECTIVE
-He left.
-He drove north. He slept for eleven hours.
-In the morning he drove further north.
+He made the call. Earl first, then Cal, then Tommy.
+The announcement ran in three papers. Sandra got the county fair detail right.
+He thought: that's the story. He thought: it's enough.
 VERDICTS
-BODY — The body kept its own account.
+BODY — Carrying some damage. He knows where it is.
 LEGACY — They know the name. They know what it means.
 HOME — The circuit was home. That might be enough.
 THE WORK — Cal's still got the bike. It's right.
-NERVE — He went out on nobody's terms but his own.
+NERVE — He went out as himself. No diminished version.
 RELATIONSHIPS
 Cal: Loyal Partner
 Pete: Hanger-On
-Earl Maddox: Absent
+Earl Maddox: Business Partner
 Tommy: Ally
-Danny: Poached
-"He disappeared in 1974. Some say he's still out there."
+Danny: Absent
 
-**Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5
+**Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 1 HUSTLE 5

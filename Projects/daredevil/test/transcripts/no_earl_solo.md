@@ -2,7 +2,7 @@
 
 Played as Wade Corliss of Harlow Bend, stunt policy `good`.
 
-**Scene path (88):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_perkins_names` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_walk` → `m2_solo_round3` → `m2_solo_plan_fast` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_check` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_california` → `fr4_california_close` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
+**Scene path (93):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r6` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_him` → `m2_solo_entry` → `m2_solo_round1` → `m2_solo_perkins_names` → `m2_solo_round2_enter` → `m2_solo_round2` → `m2_solo_bank_walk` → `m2_solo_round3` → `m2_solo_plan_fast` → `m2_solo_close` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_hinkle` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_check` → `fr3_danny` → `fr3_danny_call` → `fr3_eve_cal` → `fr3_eve_tommy` → `fr3_eve_tommy_true` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_california` → `fr4_california_close` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
 
 ---
 
@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -367,8 +367,30 @@ Tommy knew everybody at the Rusty Nail and everybody knew Tommy. That was a doub
 Tommy considered this with the seriousness of a man on his third beer.
 **TOMMY:** I think you're going somewhere. I also think that cow was in the wrong spot.
 That was fair.
+The bar got louder around them. Tommy was three deep into a story Duke had heard twice, about a man in Larkin and a flatbed, and he was going to get to the end of it whether anyone was listening or not.
 
-> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
+- Option A"What have you been doing?"He has been waiting eight months for somebody to ask.
+- Option BLet him finish the flatbed story.It's a good story. It is also the easy version of the evening.
+
+**→ took:** Option A"What have you been doing?"He has been waiting eight months for somebody to ask.
+
+> **Night at the Nail** — Good for Showmanship. Hard on Condition. He wrote it on a receipt.
+
+### `fr1_eve_bar_him`
+**DUKE:** What have you been doing?
+Tommy stopped mid-flatbed. It took him a second.
+**TOMMY:** Me?
+**DUKE:** You.
+**TOMMY:** Hinkle's got a lot out past the grain elevator. Sundays, when it's closed.
+**DUKE:** Doing what?
+**TOMMY:** Two cars. Off a plank ramp I built. It's not — it's not what you do.
+He said it fast, to get in front of it. Duke let it go by.
+**DUKE:** How's the ramp?
+**TOMMY:** It's a plank.
+**DUKE:** Angle it two more degrees and nail a lip on the end.
+Tommy looked at him. Then he got out a pen and wrote it on the back of the bar receipt, which was the most serious Duke had ever seen him about anything.
+
+> **Night at the Nail** — Good for Showmanship. Hard on Condition. He wrote it on a receipt.
 
 
 ## HUB — Free Roam — Early Days
@@ -857,8 +879,32 @@ Duke let that sit.
 It was the smartest thing Tommy had said in a while. Duke let it land without commenting.
 On the walk home he thought about Danny's setup at the fair. The fire trick.
 He thought: *fire's a good idea. I should think about fire.*
+He also thought about the car show in October, and the forty minutes before the gate that nobody was going to fill.
 
-> **Night at the Bar** — Tommy said something true. He does that sometimes.
+- Option A"Do the warm-up at the car show."Forty minutes before the gate. His name on the handbill.
+- Option B"He's not behind me. He's beside me."Keep it about Danny. That is what the evening was about.
+
+**→ took:** Option A"Do the warm-up at the car show."Forty minutes before the gate. His name on the handbill.
+
+> **Night at the Bar** — Forty minutes and a handbill. He stopped being somebody who watches.
+> - _Tommy_ → **Ally**
+
+### `fr2_eve_bar_hinkle`
+**DUKE:** The car show in October. There's forty minutes before the gate and nothing in it.
+**TOMMY:** So?
+**DUKE:** So do the warm-up.
+Tommy laughed. Then he stopped laughing, because Duke had not.
+**TOMMY:** Two cars off a plank ramp.
+**DUKE:** Two cars off a plank ramp, in front of eleven hundred people, with your name on the handbill.
+**TOMMY:** My name.
+**DUKE:** Your name. On the handbill, under mine.
+Tommy looked at the bar for a while. When he looked up he had the expression of a man doing arithmetic he had never been allowed to do before.
+**TOMMY:** I'd need the ramp built by September.
+**DUKE:** Then build it by September.
+Duke thought: he has been in every crowd I have ever had. He thought: that is not the same as being in this.
+
+> **Night at the Bar** — Forty minutes and a handbill. He stopped being somebody who watches.
+> - _Tommy_ → **Ally**
 
 
 ## HUB — Free Roam — Building the Act
@@ -939,7 +985,7 @@ Cal looked at him. Then he picked the wrench back up.
 ### `fr2_close`
 By the time Milestone 3 was on the horizon, the shape of things had changed.
 Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. The notebook had dates in it that were two states away, and every one of them was in his own handwriting.
-He'd made money. He'd spent most of it, two Saturdays of it selling cars back to the people he'd bought them from. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.
+He'd made money. He'd spent most of it, two Saturdays of it selling cars back to the people he'd bought them from. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy had a date in October and a plank ramp to rebuild before it.
 And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
 Duke thought about Danny more than he wanted to.
 Then Dot Kessler called about the car show. The real one. Five cars, the Speedway's season closer, and a regional TV crew that was coming for the feature race and would point the camera at whatever was in the lot. No sponsor. The cars were his.
@@ -1014,6 +1060,7 @@ He thought: I should use it well.
 ## HUB — Free Roam — The Price of Fame
 - Reverend Hollis He was at the Dallas show. He wants to say something different this time. Available · Free
 - Sandra Blaine She has a bigger offer. Regional TV, prime time, thirty minutes. Available · Free
+- Diamondback Danny Sandra has it before the circuit papers do. Somebody signed him. Available · Free
 - Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
 - Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
 
@@ -1050,6 +1097,7 @@ Duke stood in the hardware store aisle for a moment. He thought: that was not th
 
 ## HUB — Free Roam — The Price of Fame
 - Sandra Blaine She has a bigger offer. Regional TV, prime time, thirty minutes. Available · Free
+- Diamondback Danny Sandra has it before the circuit papers do. Somebody signed him. Available · Free
 - Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
 - Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
 
@@ -1089,6 +1137,49 @@ The negotiation between Duke and the station lasted four days, with nobody in th
 Duke thought: it worked out. He also thought: four days on the phone is what a percentage buys you. He thought: I'd still rather have the four days.
 
 > **Checked the Card** — No consulting credit. Four days on the phone. The feature ran, and the fee went against the cars.
+
+
+## HUB — Free Roam — The Price of Fame
+- Diamondback Danny Sandra has it before the circuit papers do. Somebody signed him. Available · Free
+- Work With Cal He has a question about what comes next. Buses are different from cars. Costs 1 Evening
+- Tommy He's at the bar. He has something true to say and doesn't know it yet. Costs 1 Evening
+
+**→ took:** Diamondback Danny Sandra has it before the circuit papers do. Somebody signed him. Available · Free
+
+### `fr3_danny`
+Sandra had it before the circuit papers did. A syndicate out of Fort Worth had signed Diamondback Danny for twelve half-hours. Studio audience, a ramp built indoors, a man in a jacket saying the name.
+**SANDRA:** I wanted you to hear it from me.
+**DUKE:** Why?
+**SANDRA:** Because you're going to hear it from four people today and I'd like to have been the first one.
+Twelve half-hours. Duke did the arithmetic on the back of an envelope while she was still talking, and the number at the end of it was larger than every gate he had taken that year put together.
+Tommy had said it at a bar in the spring. He had said it about the name. He had been right about the name.
+Sandra waited. She had the patience of somebody who does this for a living.
+
+- Option A"Get me his number."Say it to him. Whatever it turns out to be.
+- Option B"Nothing from me."Let him have it. Let the calendar do the rest.
+
+**→ took:** Option A"Get me his number."Say it to him. Whatever it turns out to be.
+
+> **Diamondback Danny** — Twelve half-hours and a ramp drawn by a man who has never seen one. Duke called him anyway.
+> - _Danny_ → **Poached**
+
+### `fr3_danny_call`
+He called from the shop phone, with Cal pretending to be busy eight feet away.
+**DANNY:** Duke Harlan.
+**DUKE:** Congratulations.
+A pause long enough that Duke checked the line.
+**DANNY:** You're the second person to say that and mean it.
+**DUKE:** Who was the first?
+**DANNY:** My mother.
+Duke laughed. So did Danny, and it sounded like a man who had been holding his breath for a day and a half.
+**DANNY:** They want twelve. They've got a ramp angle drawn by a man who has never seen a ramp. I'm going to spend a year jumping somebody's idea of a jump.
+**DUKE:** Take it anyway.
+**DANNY:** I already did.
+They talked for eleven minutes about ramp lips and landing slope, which is the only subject on earth the two of them had ever been able to discuss without either one of them performing.
+Duke thought: he said the accurate thing in the wrong way for two years and I never once asked him a question. He thought: that is a thing I keep doing.
+
+> **Diamondback Danny** — Twelve half-hours and a ramp drawn by a man who has never seen one. Duke called him anyway.
+> - _Danny_ → **Poached**
 
 
 ## HUB — Free Roam — The Price of Fame
@@ -1142,7 +1233,7 @@ Tommy looked at his drink. He was in that mode Duke recognized — not drunk eno
 **TOMMY:** I've been doing the Hinkle lot jumps.
 **DUKE:** I know.
 **TOMMY:** You heard.
-**DUKE:** Cal mentioned it.
+**DUKE:** You told me. At the Nail, before any of this started.
 Tommy nodded. He picked up his glass and set it down.
 **TOMMY:** The crowd's small. Twelve, fifteen people. Half of them are there for the used cars.
 **DUKE:** But they watch.
@@ -1153,13 +1244,25 @@ He said it like the two words meant more than two words, which they did.
 Tommy looked at his drink for a while. A real while.
 **TOMMY:** I think I want the twelve people who are there for me.
 He said it like he was discovering it as he said it. Duke thought: that's the most honest thing Tommy has ever said. Possibly the most honest thing he's capable of saying. He thought: Tommy is figuring himself out, which was something Tommy had needed to do for a long time.
-He didn't say any of that.
+He didn't say any of that. He had to say something.
+
+- Option A"That's a good thing to want."Say it flat. Let it be true.
+- Option B"Twelve people isn't a career."Measure it against what you have. He half asked you to.
+
+**→ took:** Option A"That's a good thing to want."Say it flat. Let it be true.
+
+> **Something True** — Tommy said the thing he needed to say. Duke let him say it.
+> - _Tommy_ → **Ally**
+
+### `fr3_eve_tommy_true`
 **DUKE:** That's a good thing to want.
 **TOMMY:** Yeah?
 **DUKE:** Yeah.
 Tommy nodded. He drank. He was quiet for a while after, which was its own kind of answer.
+He said, at the door, that the Hinkle crowd was going to be nineteen next time, because the lot next door had started doing a chicken thing on the same afternoon. He had counted ahead. Duke thought about that the whole drive back.
 
 > **Something True** — Tommy said the thing he needed to say. Duke let him say it.
+> - _Tommy_ → **Ally**
 
 
 ## HUB — Free Roam — The Price of Fame
@@ -1378,7 +1481,8 @@ Duke looked at him.
 He shrugged.
 **TOMMY:** That's all.
 Duke thought about the county fair. He thought about Tommy in the early days, bar nights, enthusiastic and unreliable and there. He thought about lawn chairs.
-He thought: Tommy had been at more of his shows than he'd kept track of. He thought: that was a fact. He was going to have to figure out what to do with it.
+He thought: Tommy is going to be in Roy's film whether Roy knows it or not. He thought: there he is is probably the most accurate thing Tommy has ever said about him.
+He thought about the twelve people at the Hinkle lot, and the nineteen Tommy was expecting next time, and the fact that Tommy had counted ahead.
 **DUKE:** I know the entrance I want.
 **TOMMY:** Yeah?
 **DUKE:** I'll tell you when it's real.
@@ -1513,7 +1617,7 @@ RELATIONSHIPS
 Cal: Loyal Partner
 Pete: Hanger-On
 Earl Maddox: Absent
-Tommy: Hanger-On
-Danny: Nemesis
+Tommy: Ally
+Danny: Poached
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 1 HUSTLE 5

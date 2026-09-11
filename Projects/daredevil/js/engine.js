@@ -14,7 +14,7 @@
 
 import { createDaredevilSlot, mountSaveBar, STAT_NAMES, STAT_MAX } from './save.js';
 // `D` went with the pressAtFair block — nothing in the engine speaks as Duke.
-import { GS, STAT_LABELS, N, C, castName, relLabel, statesOf, presentStates, isPresent, meetsNeeds, setRel, routeByCast } from './state.js';
+import { GS, STAT_LABELS, N, C, castName, relLabel, statesOf, presentStates, isPresent, rosterFor, meetsNeeds, setRel, routeByCast } from './state.js';
 import {
   SCENES,
   M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
@@ -32,6 +32,9 @@ const RUTHIE_MET = statesOf('ruthie', { not: ['unknown'] });
 const RUTHIE_PRESENT = presentStates('ruthie');
 const TOMMY_PRESENT = presentStates('tommy');
 const TOMMY_NOT_GONE = statesOf('tommy', { not: ['absent'] });
+// Danny before somebody else signs him. `poached` and `absent` are both after
+// the Free Roam 3 card, and `unknown` is a run that never met him at all.
+const DANNY_ON_CIRCUIT = statesOf('danny', { not: ['unknown', 'poached', 'absent'] });
 const met = card => meetsNeeds(card._needs, GS.rels);
 
 /* ================================================================
@@ -1031,7 +1034,22 @@ function showGameEnd(){
   let m5PanelHTML = '';
   if(m5Complete){
     const panelLines = {
-      retire_clean: [GS.rels.earl === 'absent' ? 'He made the call. Cal first. There was nobody in front of Cal.' : 'He made the call. Earl first, then Cal, then Ruthie.', 'The announcement ran in three papers. Sandra got the county fair detail right.', 'He thought: that\'s the story. He thought: it\'s enough.'],
+      // Who he called, from the people who are actually in the run. This line
+      // read "Earl first, then Cal, then Ruthie" on every backer run,
+      // including the ones where Ruthie was never established — the same
+      // unconditional-prose bug Phase 1 fixed in `m5_retire_clean` and
+      // `fr4_night_ride`, one panel over, found by Phase 4's transcripts.
+      // `rosterFor` is the same list the Relationships block below prints.
+      retire_clean: [(()=>{
+        // The order the line has always implied: the business call first, then
+        // the garage, then home, then the bar. Not the cast table's order —
+        // that one is for printing a roster, and this is who he telephones.
+        // Anyone not in the run is not on it.
+        const called = [['earl','Earl'],['cal','Cal'],['ruthie','Ruthie'],['tommy','Tommy']]
+          .filter(([id]) => isPresent(id, GS.rels)).map(([,name]) => name);
+        if(called.length <= 1) return 'He made the call. Cal first. There was nobody in front of Cal.';
+        return `He made the call. ${called[0]} first, then ${called.slice(1).join(', then ')}.`;
+      })(), 'The announcement ran in three papers. Sandra got the county fair detail right.', 'He thought: that\'s the story. He thought: it\'s enough.'],
       last_stunt_win: ['He cleared it.', 'He held the landing. He looked at the gap from the other side.', 'He thought: that\'s the last number. He thought: I\'m done.'],
       last_stunt_loss: ['He didn\'t clear it.', 'He got up.', 'He thought: that\'s the last time I\'m going to make that sound happen. He thought: I\'m done.'],
       last_stunt_earl: ['Earl picked the canyon. Duke drove out alone the morning of.',
@@ -1054,10 +1072,15 @@ function showGameEnd(){
   }
 
   // ── Assemble HTML ─────────────────────────────────────────────
-  let relLines = Object.entries(GS.rels)
-    .filter(([,v])=> v && v !== 'unknown')
-    .map(([k,v])=>
-      `<div style="margin-bottom:4px;"><strong style="color:var(--gold)">${castName(k)}:</strong> ${relLabel(k, v)}</div>`
+  // The cast table decides who is on this list and in what order (Phase 4).
+  // This was `Object.entries(GS.rels)` filtered on the literal 'unknown',
+  // which is the table's own `unmet` under another name — and it printed the
+  // save's key order, which is not the table's for any save repairState had to
+  // fill a character into. Anyone the run never met is off the list; anyone
+  // who left is on it, as Absent.
+  let relLines = rosterFor(GS.rels)
+    .map(r=>
+      `<div style="margin-bottom:4px;"><strong style="color:var(--gold)">${r.name}:</strong> ${r.label}</div>`
     ).join('');
 
   const verdictHTML = verdicts.map(v=>
@@ -1461,12 +1484,23 @@ function renderHubFR3(){
   if(!done3.includes('fr3_press_sandra')){
     dayCards.push({ id:'fr3_press_sandra', name:'Sandra Blaine', sub:'She has a bigger offer. Regional TV, prime time, thirty minutes.', tag:'Available · Free', _done:false });
   }
+  // Phase 4. Only on a run that met Danny, and only once. `_needs` is what
+  // keeps it off a board where he was never in the story: the three Free Roam
+  // 2 answers that write `frenemy` or `nemesis` are the only way onto it.
+  if(!GS.flags.fr3DannySigned && !done3.includes('fr3_danny')){
+    dayCards.push({ id:'fr3_danny', name:'Diamondback Danny', sub:'Sandra has it before the circuit papers do. Somebody signed him.', tag:'Available · Free', _done:false, _needs:{ danny: DANNY_ON_CIRCUIT } });
+  }
 
-  if(dayCards.length > 0){
+  // Free Roam 2 already filters its day cards through the cast's `_needs`;
+  // this hub did not, because until Phase 4 nothing on it had one. (Free Roam
+  // 4's one day card has no `_needs`; its evenings are filtered.)
+  const dayCards3 = dayCards.filter(met);
+
+  if(dayCards3.length > 0){
     const sec = document.createElement('div');
     sec.innerHTML = `<div class="hub-section-label">Day Scenes — No Evening Cost</div>`;
     const grid = document.createElement('div'); grid.className='hub-cards';
-    dayCards.forEach(card=>{
+    dayCards3.forEach(card=>{
       const el = buildHubCard(card, false, 'fr3');
       grid.appendChild(el);
     });

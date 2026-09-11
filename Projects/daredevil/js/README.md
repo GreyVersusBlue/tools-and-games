@@ -26,9 +26,17 @@ engine.js  <- scenes.js, state.js, save.js
   tests one, `setRel()` is the one door for writes and throws on a character
   or state the table does not know, `routeByCast()` scans a route table, and
   `castName()`/`relLabel()` are what the two screens that print a relationship
-  read. A leaf below `state.js` because `save.js` needs it and `state.js`
-  imports `save.js`; `state.js` re-exports all of it, so story and engine keep
-  one import.
+  read, and `rosterFor()` is the whole of the ending screen's relationship
+  list — who was in the run, in the table's order, with each state's label. A
+  leaf below `state.js` because `save.js` needs it and `state.js` imports
+  `save.js`; `state.js` re-exports all of it, so story and engine keep one
+  import.
+  **Adding a state to a character means writing something that sets it.**
+  `smoke-save.mjs`'s reachability check fails on a legal state no scene and no
+  engine call can write, because a state nothing writes is a state every gate,
+  label and prose closure keyed to it is dead against and nothing throws. Three
+  are still dead — `ruthie: 'strained'`, `ruthie: 'absent'`, `earl:
+  'antagonist'` — and are frozen in a list there that can shrink and not grow.
 - **`save.js`** — the save format, on top of `assets/js/gvb-save.js`. Seeds
   the relationships from the cast and repairs a loaded one against it: an
   illegal state goes back to the character's start state, a key the cast does
@@ -108,9 +116,22 @@ my_scene_id: {
   Hub cards in `engine.js` carry the same field.
 - **`_requires: () => bool`** on a choice hides it entirely (not disables —
   `showSceneEnd()` in `engine.js` skips it) when false. For anything genuinely
-  computed; nothing in the file uses it today.
+  computed that is not a relationship — one use in the file, the car-show
+  answer at `fr2_eve_bar`, which is only there when Free Roam 1's bar night
+  set `tommyAsked`. A relationship gate goes in `_needs`, and `smoke-save.mjs`
+  fails on a `_requires` that reads `GS.rels`.
 - **`_gateCheck: () => bool`** on a choice shows it disabled, with
   `_gateReason` as the lock note, when false.
+- **Stat numbers go on the choice, not on the scene the choice names.** A
+  scene reached by a `goto` and carrying a `statUpdate` fires it twice —
+  `handleChoice()` before the scene and `afterScene()` at the end — and both
+  calls apply `deltas`. Measured: `fr2_danny_01` option B takes showmanship
+  from 0 to 3 for +1 on the choice and +1 on the scene. So put `stats` in the
+  choice's `effects`, where `applyEffects()` runs them once, and keep `rels`
+  and `flags` on the `statUpdate`, where the stat screen announces the
+  relationship move and a second write changes nothing. `smoke-save.mjs`
+  freezes the thirty-three scenes that already do it and fails on a
+  thirty-fourth.
 - **`_gateRoute: () => id | null`** on a scene redirects on entry when it
   returns a truthy id — see `fr3_eve_ruthie` for the pattern (splits on
   `GS.flags.ruthieAsked`).

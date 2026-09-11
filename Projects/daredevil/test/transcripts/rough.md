@@ -2,7 +2,7 @@
 
 Played as Mack Teller of Cold Spring, stunt policy `crash`.
 
-**Scene path (80):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_direct` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
+**Scene path (82):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_ignore` → `m1_beat_2` → `m1_b2_credit` → `m1_beat_3` → `m1_b3_legacy` → `m1_stunt_approach` → `m1_stunt_crash_bad` → `m1_earl_card` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_decline` → `fr1_wannabe_intro` → `fr1_wannabe_close` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_bar_fair` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_clause_first` → `m2_deal_40_defined` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_walkaway` → `m2_walkaway_hold` → `m2_round3_enter` → `m2_round3_cal` → `m2_use_tell` → `m2_sign` → `fr2_hub_open` → `fr2_debt_01` → `fr2_debt_self` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_bar_danny` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_failure_bad` → `m3_failure_bad_after` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_control` → `fr3_eve_earl` → `fr3_eve_earl_read` → `fr3_eve_cal` → `fr3_eve_tommy` → `fr3_eve_tommy_measured` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_prestunt_cal_detail` → `m4_triumph_symbolic` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_no` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_earl` → `fr4_earl_direct` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_walk_quiet`
 
 ---
 
@@ -326,6 +326,20 @@ Tommy knew everybody at the Rusty Nail and everybody knew Tommy. That was a doub
 Tommy considered this with the seriousness of a man on his third beer.
 **TOMMY:** I think you're going somewhere. I also think that cow was in the wrong spot.
 That was fair.
+The bar got louder around them. Tommy was three deep into a story Duke had heard twice, about a man in Larkin and a flatbed, and he was going to get to the end of it whether anyone was listening or not.
+
+- Option A"What have you been doing?"He has been waiting eight months for somebody to ask.
+- Option BLet him finish the flatbed story.It's a good story. It is also the easy version of the evening.
+
+**→ took:** Option BLet him finish the flatbed story.It's a good story. It is also the easy version of the evening.
+
+> **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
+
+### `fr1_eve_bar_fair`
+The flatbed story ended the way it always ended, with the man from Larkin in a ditch and Tommy delighted about it.
+Then it was about the fair again, and the cow, and what people were saying, and Duke let it be about that, because it was easier and because it was pleasant to be talked about.
+Tommy walked him out to the truck at closing. He said something about next Saturday. Duke said sure.
+On the drive home Duke could not have said what Tommy had done with the last eight months, and it did not occur to him that this was a thing a person might know.
 
 > **Night at the Nail** — Good for Showmanship. Hard on Condition. Tommy means well.
 
@@ -604,8 +618,22 @@ Duke let that sit.
 **DUKE:** You think that bothers me.
 **TOMMY:** I think it should. Because if you're not paying attention to who's behind you, you'll be the guy they tell stories about at the next guy's show.
 It was the smartest thing Tommy had said in a while. Duke let it land without commenting.
-On the walk home he thought about Danny's setup at the fair. The fire trick.
+On the walk home he thought about the one thing Tommy had said that he could use, which was that a show is a thing people describe to each other afterwards.
 He thought: *fire's a good idea. I should think about fire.*
+He also thought about the car show in October, and the forty minutes before the gate that nobody was going to fill.
+
+- Option B"He's not behind me. He's beside me."Keep it about Danny. That is what the evening was about.
+
+**→ took:** Option B"He's not behind me. He's beside me."Keep it about Danny. That is what the evening was about.
+
+> **Night at the Bar** — Tommy said something true. He does that sometimes.
+
+### `fr2_eve_bar_danny`
+**DUKE:** He's not behind me. He's beside me. That's a different problem.
+**TOMMY:** Is it?
+**DUKE:** It's the one I can do something about.
+Tommy accepted this, or at least stopped arguing with it, which with Tommy was the same transaction.
+They closed the place out talking about fire, and ramps, and a man in Larkin with a flatbed. Tommy paid for the last round, which he did about a third of the time and never mentioned either way.
 
 > **Night at the Bar** — Tommy said something true. He does that sometimes.
 
@@ -683,8 +711,6 @@ Cal looked at him. Then he picked the wrench back up.
 By the time Milestone 3 was on the horizon, the shape of things had changed.
 Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.
 He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.
-And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
-Duke thought about Danny more than he wanted to.
 Then Earl called about the car show. The real one. Five cars, a national sponsor interested, a regional TV crew.
 He listened to the whole pitch without interrupting.
 When Earl finished he said:
@@ -962,19 +988,31 @@ He said it like the two words meant more than two words, which they did.
 Tommy looked at his drink for a while. A real while.
 **TOMMY:** I think I want the twelve people who are there for me.
 He said it like he was discovering it as he said it. Duke thought: that's the most honest thing Tommy has ever said. Possibly the most honest thing he's capable of saying. He thought: Tommy is figuring himself out, which was something Tommy had needed to do for a long time.
-He didn't say any of that.
-**DUKE:** That's a good thing to want.
-**TOMMY:** Yeah?
-**DUKE:** Yeah.
-Tommy nodded. He drank. He was quiet for a while after, which was its own kind of answer.
+He didn't say any of that. He had to say something.
 
-> **Something True** — Tommy said the thing he needed to say. Duke let him say it.
+- Option A"That's a good thing to want."Say it flat. Let it be true.
+- Option B"Twelve people isn't a career."Measure it against what you have. He half asked you to.
+
+**→ took:** Option B"Twelve people isn't a career."Measure it against what you have. He half asked you to.
+
+> **Twelve People** — He offered the one honest thing he had. Duke measured it against something else.
+> - _Tommy_ → **Absent**
+
+### `fr3_eve_tommy_measured`
+**DUKE:** Twelve people isn't a career.
+It came out of him in somebody else's cadence. Sandra's, or the regional paper's, or the man who reads the introduction before a show. Not his own.
+Tommy didn't argue. That was the part Duke thought about later. Tommy argued about everything, all the time, cheerfully, for sport, and he did not argue about this.
+**TOMMY:** No. Probably not.
+He finished his drink. He paid for it himself, which he never did when Duke was at the table, and he said something about Sunday and the lot and getting out ahead of the weather.
+He was not at the bar the next week, or the week after. Cal mentioned, without being asked, that Tommy was still doing the Hinkle jumps. Duke said good. That was where it stayed.
+
+> **Twelve People** — He offered the one honest thing he had. Duke measured it against something else.
+> - _Tommy_ → **Absent**
 
 
 ## HUB — Free Roam — The Price of Fame
 - 🔒 Earl Maddox He wants to renegotiate. The split and the extension are on the table. ✓ Done
 - 🔒 Work With Cal He has a question about what comes next. Buses are different from cars. ✓ Done
-- 🔒 Tommy He's at the bar. He has something true to say and doesn't know it yet. ✓ Done
 - Milestone 4 — The Defining Moment
 
 **→ took:** Milestone 4 — The Defining Moment
@@ -1068,7 +1106,6 @@ He thought: that's always been true. He thought: this time I know it.
 - The Biographer A man named Fisk flew in from New York. He has a contract in his briefcase. Available · Free
 - Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
 - Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
-- Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
 - Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
 **→ took:** The Biographer A man named Fisk flew in from New York. He has a contract in his briefcase. Available · Free
@@ -1107,7 +1144,6 @@ He thought: he finds the number in the air, not on the ground. Some numbers were
 ## HUB — Free Roam — Aftermath
 - Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
 - Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
-- Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
 - Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
 **→ took:** Night Ride Twenty-two miles north. The fork seal holds. Just the road. Costs 1 Evening
@@ -1127,7 +1163,6 @@ The fork seal, which Cal had replaced, held.
 ## HUB — Free Roam — Aftermath
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
 - Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
-- Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
 - Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
 **→ took:** Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. Costs 1 Evening
@@ -1168,52 +1203,6 @@ Duke thought: that's the whole conversation. He thought: I'll need to sit with t
 ## HUB — Free Roam — Aftermath
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
 - 🔒 Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. ✓ Done
-- Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
-- Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
-
-**→ took:** Tommy He was at the canyon. He saw you clear it. He said something true. Costs 1 Evening
-
-### `fr4_eve_tommy`
-Tommy had opinions about Vegas.
-**TOMMY:** What you need is an entrance.
-**DUKE:** I have an entrance.
-**TOMMY:** A real entrance. Like—
-He gestured broadly, which was Tommy's primary conversational tool.
-**TOMMY:** Pyrotechnics. Or a car. You come in on a motorcycle through the doors of the place—
-**DUKE:** It's an amphitheater, Tommy.
-**TOMMY:** Through the doors of the amphitheater. The crowd's already there and you just — come in. From outside.
-Duke drank his beer.
-**DUKE:** I'll think about it.
-**TOMMY:** Don't think about it, do it.
-**DUKE:** I'll think about doing it.
-Tommy considered this and apparently found it satisfactory. He flagged down the bartender.
-**TOMMY:** The canyon.
-**DUKE:** Mm.
-**TOMMY:** I was there, you know.
-**DUKE:** I know, Tommy.
-**TOMMY:** I saw the whole thing.
-**DUKE:** I know.
-**TOMMY:** From the bleachers.
-Duke waited. With Tommy, this was always the preamble to something he'd thought about more than he was letting on.
-**TOMMY:** When you came over the rim — the second you cleared — I said 'there he is.' Out loud. I don't know who I said it to. Nobody around me. I just said it.
-Duke looked at him.
-**TOMMY:** There he is.
-He shrugged.
-**TOMMY:** That's all.
-Duke thought about the county fair. He thought about Tommy in the early days, bar nights, enthusiastic and unreliable and there. He thought about lawn chairs.
-He thought: Tommy had been at more of his shows than he'd kept track of. He thought: that was a fact. He was going to have to figure out what to do with it.
-**DUKE:** I know the entrance I want.
-**TOMMY:** Yeah?
-**DUKE:** I'll tell you when it's real.
-**TOMMY:** Deal.
-
-> **Bar With Tommy** — There he is. Tommy was at the canyon.
-
-
-## HUB — Free Roam — Aftermath
-- 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
-- 🔒 Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. ✓ Done
-- 🔒 Tommy He was at the canyon. He saw you clear it. He said something true. ✓ Done
 - Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
 
 **→ took:** Earl Maddox The man from California is on the line. The Vegas offer is real. Costs 1 Evening
@@ -1252,7 +1241,6 @@ Duke thought: Earl gave him that line. He thought: that might have been a gift o
 ## HUB — Free Roam — Aftermath
 - 🔒 Night Ride Twenty-two miles north. The fork seal holds. Just the road. ✓ Done
 - 🔒 Work With Cal Garage. Vegas specs. The fork seal is ritual now. He has a question. ✓ Done
-- 🔒 Tommy He was at the canyon. He saw you clear it. He said something true. ✓ Done
 - 🔒 Earl Maddox The man from California is on the line. The Vegas offer is real. ✓ Done
 - Milestone 5 — The Question
 
@@ -1345,7 +1333,7 @@ NERVE — He went out quietly. That takes its own kind of nerve.
 RELATIONSHIPS
 Cal: Loyal Partner
 Earl Maddox: Business Partner
-Tommy: Hanger-On
+Tommy: Absent
 "The kid in the front row — the one Duke nodded to — started riding at fourteen."
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5
