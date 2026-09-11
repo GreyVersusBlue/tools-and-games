@@ -6297,6 +6297,105 @@ of check, and only one could land. Nothing from #222 was carried forward.
   it is visible to the session that made it and nobody else until it merges.
   `BACKLOG.md`'s Tier 1 preamble and the root `CLAUDE.md` both say so now.
 
+# Daredevil, arc two
+
+Arc one built for the player who declines something. Arc two builds for the
+builder: a tool that answers "what did this change make unreachable", a hub
+economy where the pips mean something, three stunts that are three different
+stunts, and a workflow that runs the suite. Ranked in `BACKLOG.md`, specified
+in `Projects/daredevil/WISHLIST.md`.
+
+## Phase 5 — A walker that knows what it did not reach (2026-09-11)
+
+**The finding, restated as a number.** Nine transcripts proved nine paths
+existed, and `smoke-page.mjs` proved every `goto`/`next` target was
+*routable* — that `goToScene()` would answer it. Nothing in the project
+checked that anything *named* a scene or a route, which is how three
+procedural routes sat handled and unreachable for three rounds and how the
+one orphaned scene in the file took a static grep to find. The tool's first
+run against the game named two things in 0.4 seconds: a route nothing has
+named since round 1, and a finished scene no relationship state can reach.
+
+**What shipped.** Decisions #284 and #285. The row named Claude Fable 5.1;
+the session ran on it.
+
+- **`test/graph.mjs`** builds the story's graph from every edge source the
+  game has. From `SCENES` as data: `next`, `choices[].goto`, and the string
+  literals in a `_gateRoute` closure's source. From `engine.js` as text:
+  goToScene()'s twenty-four `if(id === '_x'){...}` blocks, brace-matched,
+  each contributing every quoted literal in it that is a scene id or a route
+  id, plus the body of any handler a `launchMinigame(..., handler)` call
+  names (that is where the stunt outcome scenes live), plus a route table's
+  scenes when the block calls `routeByCast(TABLE, ...)`; and the four hub
+  renderers, for their card ids and their milestone buttons. 232 scenes, 24
+  routes, 412 edges. Reading the engine as text is an over-approximation on
+  purpose: a literal behind an `if` the tool cannot evaluate is still an
+  edge, so the tool can miss an orphan but never invent one.
+
+- **Two walks.** Plain reachability from `cold_open_01` over every edge, and
+  a search over (scene, relationship bag) pairs from a fresh bag: a choice
+  or a hub card with `_needs` is taken only when the bag meets it, a
+  route-table block answers exactly what `routeByCast()` would (with Cal's
+  Milestone 5 row also taken when the flag that lets him ask first could be
+  set), a choice's `effects.rels` and a scene's `statUpdate.rels` move the
+  bag, and every gate on a flag or a stat is open both ways. 103,443 states.
+  The row said "walk relationship permutations"; this walks the bags the
+  story can actually produce, which is fewer than the product and cannot
+  include a bag no path makes. A scene the walk never reaches is one no
+  relationship state reaches, whatever the flags do.
+
+- **`_fr3_ruthie_route` deleted** (#284). Handled in goToScene() since
+  round 1, named by nothing since the Free Roam 3 Ruthie split moved onto
+  `fr3_eve_ruthie`'s own `_gateRoute`; the conventions section had listed it
+  as handled-and-unreachable for three rounds without a check that would
+  fail on it. The block is a comment now, and the tool fails on the next
+  one.
+
+- **`m5_question_earl` is frozen, not fixed** (#285). Milestone 5's question
+  asked by Earl, behind the route table's `earl: mentor` row. The only way to
+  `'mentor'` is "I want Cal in the room" on `fr3_eve_earl`, and that choice
+  writes `cal: 'loyal'` twice — on the choice and on `fr3_eve_earl_cal`'s
+  update. Cal's row is above Earl's and nothing after Milestone 1 moves Cal
+  off loyal, so Cal asks on every run in which Earl could. Reordering the
+  table changes who asks, which #277 already ruled was not a session's call,
+  and a second road to a mentor is prose. The scene is on
+  `UNREACHABLE_BY_RELS` in `graph.mjs`, checked from both ends (#264): a
+  second name fails, and the day somebody gives Earl his road the entry
+  goes stale and fails too. It is in the project's standing backlog.
+
+**The flag-audit bullet was already done.** The row asked for a
+read-but-never-written check and a written-but-never-read allowlist; that is
+`test/flags.mjs`, shipped in Phase 2 with a frozen list checked from both
+ends. The row's text predated it. Nothing was added.
+
+**Wired into `smoke-save.mjs`**, 127 → 134: the four findings as
+assertions, the frozen list from both ends, the hub cards' `_needs` read as
+data (the tool resolves `EARL_PRESENT` and the rest by parsing their
+`statesOf`/`presentStates` declarations and evaluating them against the
+cast), and the three route-table blocks walked exactly. The CLI prints the
+same report and exits 1 on a finding (#13).
+
+**Guard-rails broken on purpose (#34), seven.** The Free Roam 4 button to
+`fr4_close` deleted — the row's own test — names `fr4_close` as an orphan,
+and names `m5_question_nobody` as reachable under no bag, because Milestone
+5 is then reachable only through Ruthie's Wednesday and every bag that gets
+there has her solid. A route handled by nobody-names-it added to goToScene():
+named. A choice `goto` misspelt: the unrouted line names the edge and the
+orphan line names the scene it left behind. `m5_question_earl` taken off the
+frozen list: named as under none. `cold_open_01` put on it: stale. And the
+one that read green first: removing `cal: 'loyal'` from `fr3_eve_earl_cal`'s
+update alone changes nothing, because the choice that leads there writes it
+too — the walker was right and the break was half a break, and the frozen
+list's comment says so now; removing both writes makes the entry stale and
+fails. Changing the Earl row to `backer` fails the same way.
+
+**Counts.** `smoke-save.mjs` 127 → 134; `flags.mjs` 7; `smoke-page.mjs`
+136, unchanged and green. No transcript moved: the one deleted route was reached by nothing.
+None of the four shared things was touched: `check-integrity.mjs` fails on
+`Tools/prompt-builder.html` alone (1,495 units, 1 broken; `test/graph.mjs` is
+the new unit), `check-collisions.mjs` 0 collisions, `social:check` the same
+six pages out of sync.
+
 ---
 
 # Bell to Bell, through Phase 3

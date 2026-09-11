@@ -20,7 +20,8 @@ daredevil/
   fonts/            7 woff2, 100.3 KB — see fonts/README.md
   test/
     drive-daredevil.mjs   how to get into the game and through it, written once
-    smoke-save.mjs        110 assertions, plain Node, no browser: the save format and the cast table
+    smoke-save.mjs        134 assertions, plain Node, no browser: the save format, the cast table, and graph.mjs's findings
+    graph.mjs             the story as a graph: every edge the game has, walked plain and over relationship state, no browser
     flags.mjs             7 assertions, plain Node: who writes each flag against who reads it
     smoke-page.mjs        the regression suite: real browser, plays to an ending three times
     transcript.mjs        plays a run and writes down every line of it
@@ -32,6 +33,7 @@ daredevil/
 ```
 node Projects/daredevil/test/smoke-save.mjs      # fast, no browser
 node Projects/daredevil/test/flags.mjs           # fast, no browser
+node Projects/daredevil/test/graph.mjs           # fast, no browser: orphans, dead routes, scenes no relationship state reaches
 node Projects/daredevil/test/smoke-page.mjs      # the real one, ~25 minutes
 node Projects/daredevil/test/transcript.mjs clean
 node Projects/daredevil/test/transcript.mjs rough

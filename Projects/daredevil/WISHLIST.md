@@ -1,9 +1,10 @@
 # Daredevil — Feature Wishlist
 
-**Status: three rounds and Phases 1 to 3 of arc one are shipped —
-110/110 on `smoke-save.mjs`, 93/93 on `smoke-page.mjs`, 7/7 on `flags.mjs`,
-six transcript baselines diffed line-for-line — and the open phase is Phase
-4, Danny and Tommy get a way out, on Claude Opus 5.**
+**Status: three rounds, all four phases of arc one and Phase 5 of arc two
+are shipped — 134/134 on `smoke-save.mjs`, 136/136 on `smoke-page.mjs`, 7/7
+on `flags.mjs`, `graph.mjs` walking 232 scenes with no findings, nine
+transcript baselines diffed line-for-line — and the open phase is Phase 6,
+Evenings that cost something, on Claude Opus 5.**
 Round 1 made the game finishable for the first time and gave it a save and a
 suite; round 2 split the 356 KB monolith into modules and placed a minigame
 that had never had a call site; round 3 measured what two rounds had deferred
@@ -103,9 +104,16 @@ The suite is the other load-bearing thing:
 
 - **`test/drive-daredevil.mjs`** (221 lines) — how to boot, snapshot, click a
   labelled control and drive a minigame. Written once, imported by the rest.
-- **`test/smoke-save.mjs`** (110 assertions) — plain Node, fast. The save
+- **`test/smoke-save.mjs`** (134 assertions) — plain Node, fast. The save
   format, and since Phase 3 the cast: every (character, state) pair the story,
-  the routes or the engine name is one the table allows and has a label.
+  the routes or the engine name is one the table allows and has a label. Since
+  Phase 5 it also asserts `graph.mjs`'s findings.
+- **`test/graph.mjs`** (Phase 5) — the story as a graph, no browser: `next`,
+  `goto`, `_gateRoute` targets, goToScene()'s procedural blocks and the hub
+  renderers read as text. Walked plain for orphans, dead routes and edges to
+  nothing, and over (scene, relationship bag) pairs — `_needs` and the route
+  tables exact, flags open — for scenes no relationship state reaches. Its
+  own CLI prints the report and exits 1 on a finding.
 - **`test/smoke-page.mjs`** (61 assertions) — the regression suite: real
   Chromium, checks every `goto`/`next` target against `SCENES` and the source
   of `goToScene`, then plays three full runs to endings — clean, crashed, and
@@ -130,10 +138,13 @@ Nothing runs Daredevil's suite on a pull request.
   `N(()=> ...)`, which `buildLines()` calls every render.
 - **A `goto`/`next` target starting with `_` needs a matching
   `if(id === '_your_id')` block in `goToScene()`.** `smoke-page.mjs` fails on a
-  missing route — but not on a route nothing names, which is how
-  `_chapter_fr2`, `_chapter_fr2_end` and `_fr3_ruthie_route` came to be handled
-  and unreachable. A new hub card also needs an entry in the relevant
-  `renderHubFRn()`; the hubs do not read a list out of `SCENES`.
+  missing route, and since Phase 5 `test/graph.mjs` (run by `smoke-save.mjs`)
+  fails on the other direction too — a route handled and named by nothing,
+  which is how `_chapter_fr2`, `_chapter_fr2_end` and `_fr3_ruthie_route` sat
+  unreachable for three rounds; the last of them was deleted the day the
+  walker first ran. A new hub card also needs an entry in the relevant
+  `renderHubFRn()`; the hubs do not read a list out of `SCENES`, and the walker
+  reads the renderers as text to find the cards.
 - **Before any story-logic edit, take fresh transcripts; after it, diff them
   line for line.** A narrative game that quietly loses a branch throws nothing.
   Every real bug in rounds 2 and 3 was found by grepping a transcript for a
@@ -178,9 +189,10 @@ Nothing runs Daredevil's suite on a pull request.
 The invocations that work, from the repo root:
 
 ```
-node Projects/daredevil/test/smoke-save.mjs          # 110 passed, 0 failed
-node Projects/daredevil/test/smoke-page.mjs          # 61 passed, 0 failed, ~25 min
-node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete, no_earl_solo, no_earl_crash
+node Projects/daredevil/test/smoke-save.mjs          # 134 passed, 0 failed; runs graph.mjs too
+node Projects/daredevil/test/graph.mjs               # the walker's own report, under a second
+node Projects/daredevil/test/smoke-page.mjs          # 136 passed, 0 failed, ~25 min
+node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete, no_earl_solo, no_earl_crash, no_tommy, no_danny, danny_gone
 node Projects/daredevil/test/verify-touch-375.mjs    # one-off, 375px, touch-emulated
 cd Tools/board-check && npm run check
 ```
@@ -227,6 +239,15 @@ take it.
   Free Roam 2's deflection, and nothing downstream of it reads the flag or
   moves her off `'solid'`. `smoke-save.mjs` freezes the
   three so the list can shrink and not grow.
+- **`m5_question_earl` is a written scene no run can reach** — the first
+  thing Phase 5's walker found. It is Milestone 5's question asked by Earl,
+  behind the route table's `earl: mentor` row. The only way to `'mentor'` is
+  "I want Cal in the room" on `fr3_eve_earl`, and that choice writes
+  `cal: 'loyal'` twice (on the choice and on `fr3_eve_earl_cal`'s update);
+  Cal's row is above Earl's and nothing after Milestone 1 moves Cal off
+  loyal, so Cal asks on every run in which Earl could. A story call — who
+  asks, or a second road to a mentor — frozen on `UNREACHABLE_BY_RELS` in
+  `test/graph.mjs` until somebody makes it (#285).
 - 30 flags are written and never read, including `familyOrigin` (the cold
   open's "what he came from" fork, whose only lasting effect is +1 Hustle on
   one arm), `peteMistakeResponse` and `m5Decision`. `debtSource` came off
@@ -556,40 +577,46 @@ the pips mean something, three stunts that are three different stunts, and a
 workflow that runs the suite. Same ranking rule, same model convention, same
 definition of finished.
 
-## Phase 5 — A walker that knows what it did not reach
+## Phase 5 — A walker that knows what it did not reach — DONE
 
-**Four transcripts prove four paths exist. Nothing in this project can tell
-you about the other 118 scenes.**
+**Shipped 2026-09-11** (decisions #284 and #285; the account is under
+"Daredevil, arc two" in the root `HISTORY.md`).
 
-`smoke-page.mjs` checks that every `goto`/`next` target is *routable* — that
-`goToScene` will answer it. It does not check that anything *names* it, which
-is why three procedural routes and two finished scenes are unreachable under a
-green suite, and why the one orphaned scene in the file took three rounds and a
-static grep to find. This phase turns `transcript.mjs`'s knowledge of how to
-walk the game into a graph tool that walks it with no browser.
+**Four transcripts proved four paths existed. Nothing in this project could
+tell you about the other scenes.** `smoke-page.mjs` checked that every
+`goto`/`next` target was *routable*; nothing checked that anything *named* a
+scene or a route.
 
-- [ ] **`test/graph.mjs`, pure, with its suite.** Import `SCENES` under Node
-  and build the directed graph over `next`, `choices[].goto`, `_gateRoute`
-  targets, the hub card ids and `goToScene`'s `_` routes. Card ids and outcome
-  scenes are `engine.js` string literals today; Phase 3's data forms make them
-  readable, and anything still hand-written gets one table the tool reads.
-- [ ] **Report orphans and unreachables** — a scene named by nothing, a route
-  handled and never named, a `_needs` no path can satisfy. Fail, do not print
-  (#13).
-- [ ] **Walk relationship permutations** over the `CAST` states rather than
-  every flag combination (earl × ruthie × pete × danny × tommy is small), and
-  report which scenes are reachable under none of them.
-- [ ] **The read/write flag audit.** Read but never written (three today:
-  `pressAtFair`, `hubEvenings`, `fr2Pete01Done`) must be empty; written but
-  never read (31 today) is a report with an allowlist.
-- [ ] **Wire it into `smoke-save.mjs`** so it costs nothing, then **verify by
-  reintroducing the bug** (#34): delete the route to `fr4_close` and watch the
-  tool name it.
+- [x] **`test/graph.mjs`, pure, with its suite.** Imports `SCENES` under
+  Node and builds the graph over `next`, `choices[].goto`, the literals in a
+  `_gateRoute` closure, goToScene()'s 24 `if(id === '_x')` blocks read as
+  text (plus the body of any minigame handler a block names, plus a route
+  table's scenes when a block calls `routeByCast`), and the four hub
+  renderers' card ids and milestone buttons. 232 scenes, 412 edges, under a
+  second. The engine is read as text on purpose: a literal behind an `if`
+  the tool cannot evaluate is still an edge, which never reports a false
+  orphan.
+- [x] **Reports orphans and unreachables, and fails.** A scene named by
+  nothing, a route handled and never named, an edge to a scene that is not
+  there. First run: `_fr3_ruthie_route`, handled since round 1 and named by
+  nothing since the split moved onto `fr3_eve_ruthie`'s `_gateRoute` —
+  deleted (#284).
+- [x] **Walks relationship state.** Not permutations: a search over (scene,
+  relationship bag) from the cold open with a fresh bag, where `_needs` on
+  choices and hub cards and the three route-table blocks are exact and every
+  gate on a flag or a stat is open. 103,443 states. First run:
+  `m5_question_earl`, a written scene under no bag at all — frozen, checked
+  from both ends, and in the standing backlog (#285).
+- [x] **The read/write flag audit** was already `test/flags.mjs` (Phase 2):
+  read-never-written must be empty, written-never-read is frozen. Nothing to
+  add; the row's text predated it.
+- [x] **Wired into `smoke-save.mjs`** (127 → 134) and **verified by
+  reintroducing the bug**: the Free Roam 4 button to `fr4_close` deleted, and
+  the tool names `fr4_close` — and, because Milestone 5 is then reachable
+  only through Ruthie's Wednesday, names `m5_question_nobody` as reachable
+  under no bag. Seven breaks in all.
 
-*Leans on:* `scenes.js` under a plain Node import, Phase 3's declared
-requirements. *Save:* none. *Model:* **Claude Fable 5.1** — reachability over a
-207-node graph with five state dimensions, where a wrong answer is a green
-suite over content nobody can reach.
+*Shipped by:* **Claude Fable 5.1**, the row's named model.
 
 ## Phase 6 — Evenings that cost something
 
