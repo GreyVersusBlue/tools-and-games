@@ -1,9 +1,9 @@
 # Daredevil — Feature Wishlist
 
-**Status: three rounds, all of Phase 1 and all of Phase 2 are shipped —
-53/53 on `smoke-save.mjs`, 93/93 on `smoke-page.mjs`, 7/7 on the new
-`flags.mjs`, six transcript baselines diffed line-for-line — and the open
-phase is Phase 3, relationships as a declared thing, on Claude Fable 5.1.**
+**Status: three rounds and Phases 1 to 3 of arc one are shipped —
+110/110 on `smoke-save.mjs`, 93/93 on `smoke-page.mjs`, 7/7 on `flags.mjs`,
+six transcript baselines diffed line-for-line — and the open phase is Phase
+4, Danny and Tommy get a way out, on Claude Opus 5.**
 Round 1 made the game finishable for the first time and gave it a save and a
 suite; round 2 split the 356 KB monolith into modules and placed a minigame
 that had never had a call site; round 3 measured what two rounds had deferred
@@ -44,7 +44,7 @@ narratively hollow" and was being generous.
 
 ## The architecture that is there
 
-Four ES modules under `js/`, no bundler. `index.html` loads exactly one of
+Five ES modules under `js/`, no bundler. `index.html` loads exactly one of
 them (`<script type="module" src="./js/engine.js">`); the rest are imported.
 
 - **`js/save.js`** (167 lines) — the save format, on top of the shared
@@ -58,12 +58,20 @@ them (`<script type="module" src="./js/engine.js">`); the rest are imported.
   so if those bindings lived in `engine.js` the two modules would import each
   other and the second to evaluate would read the first out of the temporal
   dead zone.
-- **`js/scenes.js`** (4,664 lines, 244 KB) — the story, as data. One `SCENES`
+- **`js/cast.js`** (Phase 3) — the six characters as one table: legal states
+  in order, a label per state, the never-met state and the start state, plus
+  the helpers that read it. `setRel()` is the one door for a relationship
+  write and throws on a name the table does not know.
+- **`js/scenes.js`** (4,964 lines, 260 KB) — the story, as data. One `SCENES`
   object, 221 keys, each with `lines[]`, optional `choices[]`, an optional
-  `statUpdate` and `next`. Branch logic lives in three optional closures:
-  `_requires` (hide a choice, 5 uses), `_gateCheck`/`_gateReason` (show it
-  locked, 3 uses), `_gateRoute` (redirect on entry, 3 uses). A `statUpdate`'s
-  `reason` may be a function since Phase 1.
+  `statUpdate` and `next`. A relationship requirement is data since Phase 3:
+  `_needs: { earl: [...] }` on a choice, a list of the states that satisfy it.
+  Branch logic that is genuinely computed lives in three optional closures:
+  `_requires` (hide a choice, 0 uses today), `_gateCheck`/`_gateReason` (show
+  it locked, 3 uses), `_gateRoute` (redirect on entry, 3 uses). The three
+  route tables — who Duke talks to before the Milestone 3 and 4 stunts, who
+  asks the question in Milestone 5 — are at the top of the file. A
+  `statUpdate`'s `reason` may be a function since Phase 1.
 - **`js/engine.js`** (2,146 lines, 109 KB, 60 top-level `function`
   declarations) — everything else: screens, `goToScene`'s 26 procedural
   `_`-prefixed routes, `buildLines`/`showSceneEnd`, four hand-written hub
@@ -81,21 +89,23 @@ render time, and 57 lines do this (26 before Phase 1). Where it breaks down:
   scenes likewise carry their dynamic content there, keyed on
   `currentScene === '...'` inside `buildLines()`, though `N(fn)` exists to do
   it in the data.
-- **Relationship requirements are ad-hoc `if` chains.** `_m4_prestunt_route`
-  and `_m5_question_route` hard-code a priority ladder each; the hubs spell out
-  their own `!== 'absent'` tests; `applyEffects` writes any key with any value
-  into `GS.rels` with no schema and no complaint.
-- **The relationship label tables exist twice and disagree.** `engine.js:610`
-  (the mid-run stat screen) has no `pete` and no `hanger_on` and calls `backer`
-  "Business Deal"; `engine.js:891` (the epilogue) has both and calls it
-  "Business Partner". `fr1_wannabe_intro`'s statUpdate has therefore rendered a
-  row reading literally `pete` / `hanger_on` since round 1.
+- **Relationship requirements were ad-hoc `if` chains** until Phase 3.
+  `_m4_prestunt_route` and `_m5_question_route` hard-coded a priority ladder
+  each, the hubs spelled out their own `!== 'absent'` tests, and
+  `applyEffects` wrote any key with any value into `GS.rels` with no schema
+  and no complaint. The ladders are tables in `scenes.js` now, the hub cards
+  and the choices carry `_needs`, and a write the cast does not allow throws.
+- **The relationship label tables existed twice and disagreed** until Phase
+  2, and were one flat list until Phase 3; they are one table per character
+  in `cast.js` now.
 
 The suite is the other load-bearing thing:
 
 - **`test/drive-daredevil.mjs`** (221 lines) — how to boot, snapshot, click a
   labelled control and drive a minigame. Written once, imported by the rest.
-- **`test/smoke-save.mjs`** (176 lines, 53 assertions) — plain Node, fast.
+- **`test/smoke-save.mjs`** (110 assertions) — plain Node, fast. The save
+  format, and since Phase 3 the cast: every (character, state) pair the story,
+  the routes or the engine name is one the table allows and has a label.
 - **`test/smoke-page.mjs`** (61 assertions) — the regression suite: real
   Chromium, checks every `goto`/`next` target against `SCENES` and the source
   of `goToScene`, then plays three full runs to endings — clean, crashed, and
@@ -168,7 +178,7 @@ Nothing runs Daredevil's suite on a pull request.
 The invocations that work, from the repo root:
 
 ```
-node Projects/daredevil/test/smoke-save.mjs          # 53 passed, 0 failed
+node Projects/daredevil/test/smoke-save.mjs          # 110 passed, 0 failed
 node Projects/daredevil/test/smoke-page.mjs          # 61 passed, 0 failed, ~25 min
 node Projects/daredevil/test/transcript.mjs clean    # also: rough, no_earl, no_pete, no_earl_solo, no_earl_crash
 node Projects/daredevil/test/verify-touch-375.mjs    # one-off, 375px, touch-emulated
@@ -283,7 +293,8 @@ Three rounds made the game work, made it modular, and made its prose agree with
 its own state. Arc one builds for the player who declines something. The phases
 are **ranked by impact and the order is the recommendation**. Phase 1 is
 finished: the session answered the question (decision #265) and shipped it in
-two increments (PRs #212 and #214). Phase 2 is finished too. Phase 3 is next.
+two increments (PRs #212 and #214). Phases 2 and 3 are finished too. Phase 4
+is next.
 
 The model convention here: most phases run on **Claude Opus 5**. **Claude Fable
 5.1** is named only where a wrong answer would be silent — authoring that must
@@ -408,38 +419,38 @@ twenty-ninth fails the suite, and a name that finds a reader fails too.
 
 *Shipped by:* **Claude Opus 5**.
 
-## Phase 3 — Relationships as a declared thing
+## Phase 3 — Relationships as a declared thing — DONE
 
-**Six characters, five stored keys, no schema, and `applyEffects` will happily
-write `rels.peet = 'aly'` and tell nobody.**
+**Shipped 2026-09-11** (decisions #275 to #278; the account is under
+"Daredevil, arc one" in the root `HISTORY.md`).
 
-Every relationship rule is an `if` somewhere in `engine.js`: two priority
-ladders in `goToScene`, a `!== 'absent'` test per hub card, two disagreeing
-label tables, and the epilogue's own idea of who exists. `GS.rels.pete` is not
-in `freshState()` at all, so it is `undefined` until Free Roam 1 writes it and
-`repairState` cannot normalise a key it does not know. This phase makes the
-cast a declared table and a scene's relationship requirement a piece of data
-readable without running the game — which is what Phase 5 needs to exist.
+**Six characters, five stored keys, no schema, and `applyEffects` would
+happily write `rels.peet = 'aly'` and tell nobody.** Not any more.
 
-- [ ] **`CAST` in `state.js`.** One record per character: id, display name,
-  ordered legal states, a display label for each, which state means "never
-  met", and the default. `pete` joins `freshState().rels`.
-- [ ] **`repairState` validates against it** — a relationship holding an
-  illegal state repairs to the default instead of rendering raw — and
-  **`applyEffects` refuses an unknown key or value, loudly** (#13).
-- [ ] **`_requires` gets a data form.** A choice or card may declare
-  `_needs: { earl: ['backer','mentor'] }`; the closure form stays for anything
-  genuinely computed. Convert the seven closures and the hubs' inline tests.
-- [ ] **The two priority ladders read the table.** `_m4_prestunt_route` and
-  `_m5_question_route` become a scan over `CAST` in declared order.
-- [ ] **A suite in `smoke-save.mjs`**: every state named anywhere is legal for
-  that character and has a label. Break one on purpose and watch it fail.
+- [x] **`CAST`**, in `js/cast.js`, re-exported by `state.js` (#276). One
+  record per character: id, display name, ordered legal states, a label for
+  each, which state means never met, and the start state. `pete` joins
+  `freshState().rels` as `'unknown'` (#275).
+- [x] **`repairState` validates against it** — an illegal state repairs to
+  the start state, a key the cast does not know is dropped — and
+  **`applyEffects` and `triggerStatUpdate` write through `setRel()`**, which
+  throws with the name in the message (#278).
+- [x] **`_needs` is the data form.** A choice or a hub card declares
+  `_needs: { earl: [...] }`, a list built from the table. The three
+  relationship `_requires` closures are converted, the trivial fourth
+  (`()=> true`) is deleted, and every hub card that was an `if` around a
+  `push` is a card with `_needs` and one filter. `_requires` stays for
+  anything genuinely computed; `smoke-save.mjs` fails on one that reads
+  `GS.rels`.
+- [x] **The priority ladders are tables.** `M3_PRESTUNT_ROUTES`,
+  `M4_PRESTUNT_ROUTES` and `M5_QUESTION_ROUTES` in `scenes.js`, scanned by
+  `routeByCast()`. The M5 ladder tested Ruthie for `'warm'`, a state she has
+  never held; the table does not, and a row on such a state throws (#277).
+- [x] **The suite**, in `smoke-save.mjs`: 53 → 110. Every (character, state)
+  the story, the routes, the hub cards and the prose closures name is legal
+  and labelled. Nine guard-rails broken on purpose.
 
-*Leans on:* `state.js`, `save.js`'s `repairState`, `applyEffects`,
-`showSceneEnd`, the four hub renderers. *Save:* additive — `pete` joins the
-stored `rels`, repaired in on load; the key does not change. *Model:*
-**Claude Fable 5.1** — a new state layer with invariants that every hub, both
-route ladders, the epilogue and the save all inherit.
+*Shipped by:* **Claude Fable 5.1**.
 
 ## Phase 4 — Danny and Tommy get a way out
 

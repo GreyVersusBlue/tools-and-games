@@ -5976,6 +5976,111 @@ exactly as they were on `main`: `check-integrity.mjs` fails on
 `test/flags.mjs`), `social:check` reports the same six pages out of sync,
 `check-collisions.mjs` passes.
 
+## Phase 3 — Relationships as a declared thing (2026-09-11)
+
+**The finding, restated as a number.** Six characters, five stored keys, and
+every rule about them an `if` somewhere in `engine.js`: two priority ladders,
+one `!== 'absent'` per hub card, and `applyEffects` writing any key with any
+value into `GS.rels`. `rels.pete` was not seeded at all. And the Milestone 5
+ladder tested Ruthie for `'warm'`, a state no line in the game has ever given
+her — a test that could not be true, green for three rounds, because a
+comparison against a state nobody can reach is not an error, it is a branch
+nobody takes.
+
+**What shipped.** Decisions #275 to #278.
+
+- **`pete` is seeded** (#275), as `'unknown'`. The backlog's pick-up note said
+  not to regularise this without deciding it, because several guards read
+  `undefined` as "thread never opened". Every one of those guards was read:
+  four prose closures and both ladders test `pete && pete !== 'absent' &&
+  pete !== 'unknown'`, the ending screen's roster filters `'unknown'`, and
+  the two mentor-ending tests that did not — `pete && pete !== 'absent'`,
+  reachable only behind a choice gated on the same thing — now read
+  `isPresent('pete')`. `'unknown'` and `undefined` answer every test the same
+  way. An older save comes through `repair` with him filled in. The `no_pete`
+  transcript is byte-identical.
+
+- **The cast is a leaf below `state.js`** (#276). The row said `CAST` in
+  `state.js`, and every importer still gets it from there. It lives in
+  `js/cast.js` because `save.js` has to read it to seed and repair a run and
+  `state.js` imports `save.js`: putting the table in `state.js` would have
+  made the one file whose header exists to explain a circular-import hazard
+  into half of a circular import. `cast.js` imports nothing. `state.js`
+  re-exports it whole, and Phase 2's `REL_NAMES`/`REL_STATES` pair is folded
+  into it — one table per character now, not one flat list of every state
+  anyone can be in, so `earl: backer` reads "Business Partner" and a state
+  Earl cannot hold has no label to borrow.
+
+- **The route tables carry their own order, and the Milestone 5 one keeps
+  Ruthie before Cal** (#277). The row's wording was "a scan over `CAST` in
+  declared order", and the Milestone 3 and 4 tables are in that order. The
+  Milestone 5 ladder was not: the game has always let Ruthie ask the question
+  before Cal (unless Cal already asked it in Free Roam 4, which the engine
+  still checks first), and changing who asks was not this row's to do.
+  `routeByCast()` walks the table in the table's order, and a row naming a
+  state its character cannot hold throws the first time it is scanned —
+  which is how `ruthie === 'warm'` would have surfaced in one run instead of
+  never. The table simply does not list it.
+
+- **Repair and refusal** (#278). `repairState` puts an illegal state back to
+  the character's start state and drops a key the cast does not know; a
+  key can only have got there by hand, and nothing reads it. The game's two
+  writers — `applyEffects` and `triggerStatUpdate` — go through `setRel()`,
+  which throws with the character and the state in the message (#13). Both
+  were `GS.rels[k] = v`.
+
+- **`_needs` is the data form.** `_needs: { earl: [...] }` on a choice or a
+  hub card, a list of the states that satisfy it, built from the table by
+  `statesOf()`/`presentStates()` so a typo throws at import rather than gating
+  on nothing. The three relationship `_requires` closures are converted and
+  the fourth, `()=> true` on the fair's option 5, is deleted. The hubs' seven
+  `if (rels...) push(...)` cards and the four `_disabled: rels...` cards carry
+  `_needs` and go through one `met()` test; the two Free Roam 1 and 2 cards
+  that grey out rather than leave the board set `_disabled` from it. The
+  Free Roam 2 Danny follow-up, gated on `nemesis || frenemy` inline, is the
+  eighth. `_requires` stays for anything genuinely computed, and nothing in
+  the file uses it today.
+
+**The suite** is a section of `smoke-save.mjs`, 53 → 110, where the row put
+it. The table's own contract first — unique ids, a legal start state, a label
+for every state and no label for a state that does not exist, `setRel`
+refusing by name, repair putting `earl: 'boss'` back, `_needs` as lists, every
+route row naming a real scene. Then the sweep: it imports `scenes.js` under
+Node and walks every `statUpdate.rels`, `effects.rels` and `_needs`, reads the
+three route tables, and reads both source files as text (comments stripped,
+the way `flags.mjs` does) for every `rels.x === 'y'` a prose closure or the
+epilogue makes and every `_needs` literal the hubs carry — 135 (character,
+state) mentions — and asserts each is legal for that character and labelled.
+Last, no `_requires` in `scenes.js` reads `rels` or `solo()`.
+
+**Guard-rails broken on purpose (#34), nine.** `'warm'` restored on the M5
+Ruthie row (two assertions, the route call and the sweep, both naming
+`ruthie='warm'`); a scene writing `pete:'aly'` (the sweep names the scene and
+the choice); Earl's mentor label removed (two, the table check and the
+sweep); the debt scene's gate put back as a closure; `repairState` back to
+the old string test; a hub card needing `danny='friend'`; an M4 route naming a
+scene that is not there; repair keeping an unknown key. All from the green
+110. The ninth, `pete` misspelt in the cast, does not fail an assertion: the
+suite dies at import with `cast: no character 'pete'`, because `scenes.js`
+builds its `_needs` lists from the table at module evaluation. That is the
+throw doing its job — the page would not boot either — and it is written
+here so nobody mistakes the dead suite for a caught bug.
+
+**One suite rewrite from a break** (#147). The first version called
+`routeByCast` directly, and the `'warm'` break made it throw before the sweep
+ran: no count, no name, a dead suite. The calls go through a wrapper that
+turns a throw into the failure's text now, so the break reads as two named
+failures with the count underneath.
+
+**Counts.** `smoke-save.mjs` 53 → 110; `flags.mjs` 7, unchanged and green;
+`smoke-page.mjs` 93, unchanged and green. Transcripts: see the pull request
+for the diff.
+
+**None of the four shared things was touched.** `check-integrity.mjs` fails
+on `Tools/prompt-builder.html` alone (1,485 units, 1 broken; `js/cast.js` is
+one of the two new units), `social:check` reports the same six
+pages out of sync, `check-collisions.mjs` passes.
+
 ---
 
 # Bell to Bell, through Phase 3

@@ -750,7 +750,7 @@ after that branch merges.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 3 — Relationships as a declared thing | `Projects/daredevil` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 3](Projects/daredevil/WISHLIST.md#phase-3--relationships-as-a-declared-thing) |
+| 1 | Phase 3 — Relationships as a declared thing | `Projects/daredevil` | 1 | Fable 5.1 | `claude/backlog-ranked-batch-a8vr35` | [WISHLIST.md Phase 3](Projects/daredevil/WISHLIST.md#phase-3--relationships-as-a-declared-thing) |
 | 2 | Phase 4 — Danny and Tommy get a way out | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Projects/daredevil/WISHLIST.md#phase-4--danny-and-tommy-get-a-way-out) |
 | 3 | Phase 5 — A walker that knows what it did not reach | `Projects/daredevil` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 5](Projects/daredevil/WISHLIST.md#phase-5--a-walker-that-knows-what-it-did-not-reach) |
 | 4 | Phase 6 — Evenings that cost something | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Projects/daredevil/WISHLIST.md#phase-6--evenings-that-cost-something) |

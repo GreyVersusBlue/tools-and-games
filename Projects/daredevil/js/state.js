@@ -42,21 +42,13 @@ export function makeName(){ return GS.name; }
 export function makeTown(){ return GS.town; }
 
 /* ================================================================
-   RELATIONSHIP LABELS
+   THE CAST
    ================================================================ */
-// One table, not two (Phase 2). Both screens that print a relationship read
-// these: the stat-update panel between scenes, and the ending screen. They
-// used to carry a literal each, and the two had drifted — the stat panel
-// called Earl "Earl" and `backer` "Business Deal", the ending called them
-// "Earl Maddox" and "Business Partner", and only the ending knew Pete or
-// `hanger_on` existed at all. The ending's wording wins because it is the one
-// a player reads last and the only one that was complete.
-export const REL_NAMES = {
-  cal:'Cal', ruthie:'Ruthie', tommy:'Tommy', earl:'Earl Maddox', danny:'Danny', pete:'Pete',
-};
-export const REL_STATES = {
-  loyal:'Loyal Partner', warm:'Warming Up', neutral:'Neutral', strained:'Strained',
-  solid:'Solid', absent:'Absent', backer:'Business Partner', unknown:'—',
-  mentor:'Mentor', antagonist:'Antagonist', poached:'Poached', frenemy:'Frenemy',
-  nemesis:'Nemesis', ally:'Ally', hanger_on:'Hanger-On',
-};
+// The six characters, their legal states, the label for each and the priority
+// order the routes scan in, live in cast.js (Phase 3) — a leaf below this one,
+// because save.js needs the table to seed and repair a run and this file
+// imports save.js. Re-exported here so the story and the engine keep one
+// import for everything about state. Phase 2's REL_NAMES / REL_STATES pair
+// was folded into it: one table, and now one per character rather than one
+// flat list of every state anyone can be in.
+export { CAST, castFor, castName, relLabel, statesOf, presentStates, isPresent, meetsNeeds, setRel, routeByCast } from './cast.js';

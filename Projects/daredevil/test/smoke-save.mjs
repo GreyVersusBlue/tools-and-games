@@ -1,4 +1,4 @@
-// smoke-save.mjs — the save format, under plain Node.
+// smoke-save.mjs — the save format and the cast table, under plain Node.
 //
 //   node Projects/daredevil/test/smoke-save.mjs
 //
@@ -9,9 +9,21 @@
 // Locked decision #34: several of these break the guard on purpose first and
 // assert that it refuses, rather than only asserting the happy path.
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   createDaredevilSlot, freshState, validateState, repairState, KEY, VERSION, STAT_MAX,
 } from '../js/save.js';
+import { CAST, castFor, isLegalRel, setRel, meetsNeeds, routeByCast, statesOf, relLabel } from '../js/cast.js';
+import {
+  SCENES,
+  M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
+  M4_PRESTUNT_ROUTES, M4_PRESTUNT_FALLBACK,
+  M5_QUESTION_ROUTES, M5_QUESTION_FALLBACK,
+} from '../js/scenes.js';
+
+const JS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'js');
 
 let pass = 0, fail = 0;
 const ok = (cond, what) => { if (cond) { pass++; } else { fail++; console.error('  FAIL ' + what); } };
@@ -170,6 +182,146 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
   ok(after !== null, 'reset hands back a usable fresh state, not null');
   eq(after.scene, null, 'the fresh state from reset is at the beginning');
   eq(after.stats.nerve, 3, 'the fresh state from reset has starting stats');
+}
+
+/* ------------------------------------------------------------ the cast */
+// Phase 3. The six characters and their legal states are one table, cast.js,
+// and everything that names a relationship — the save's defaults, a scene's
+// effects, a choice's `_needs`, a route table, a hub card, a prose closure —
+// has to agree with it. The first four blocks test the table's own contract;
+// the sweep at the end reads the story and the engine and asserts every
+// (character, state) pair either of them names is one the table allows and
+// has a label. That sweep is what found `ruthie === 'warm'` in the Milestone 5
+// ladder, a state she has never been able to hold.
+
+{
+  const ids = CAST.map(c => c.id);
+  eq(ids.length, new Set(ids).size, 'every cast id is unique');
+  eq(Object.keys(freshState().rels).sort(), [...ids].sort(), "a fresh run's rels are exactly the cast");
+  for (const c of CAST) {
+    ok(c.states.includes(c.start), `${c.id} starts in a legal state (${c.start})`);
+    ok(c.unmet === null || c.states.includes(c.unmet), `${c.id}'s never-met state is legal`);
+    const unlabelled = c.states.filter(st => typeof c.labels[st] !== 'string' || !c.labels[st]);
+    ok(unlabelled.length === 0, `every state of ${c.id} has a label (missing: ${unlabelled.join(', ') || 'none'})`);
+    const extra = Object.keys(c.labels).filter(st => !c.states.includes(st));
+    ok(extra.length === 0, `${c.id} labels no state it cannot hold (extra: ${extra.join(', ') || 'none'})`);
+  }
+  ok(castFor('pete') && freshState().rels.pete === 'unknown', "pete is seeded, as never met");
+}
+
+{
+  // The one door for writes refuses what the table does not know (#13).
+  const rels = freshState().rels;
+  let threw = null;
+  try { setRel(rels, 'peet', 'ally'); } catch (e) { threw = e.message; }
+  ok(/peet/.test(threw || ''), `an unknown character is refused by name (${threw})`);
+  threw = null;
+  try { setRel(rels, 'pete', 'aly'); } catch (e) { threw = e.message; }
+  ok(/'pete' cannot be 'aly'/.test(threw || ''), `an illegal state is refused by name (${threw})`);
+  eq(rels.pete, 'unknown', 'and neither refusal wrote anything');
+  setRel(rels, 'pete', 'ally');
+  eq(rels.pete, 'ally', 'a legal write goes through');
+}
+
+{
+  // repair: an illegal state goes back to the start state, a key the cast does
+  // not know is dropped, and an older save with no pete gets him filled in.
+  const s = repairState({ name: 'A', town: 'B', stats: {}, flags: {}, scene: 'm3_entry', screen: 'panel',
+                          rels: { cal: 'loyal', earl: 'boss', peet: 'ally', tommy: 42 } });
+  eq(s.rels.cal, 'loyal', 'a legal relationship survives repair');
+  eq(s.rels.earl, 'unknown', 'an illegal state repairs to the start state');
+  eq(s.rels.tommy, 'hanger_on', 'a non-string state repairs to the start state');
+  ok(!('peet' in s.rels), 'a key the cast does not know is dropped');
+  eq(s.rels.pete, 'unknown', 'a save from before pete was seeded gets him as never met');
+}
+
+{
+  // `_needs` and the route tables, as data.
+  const rels = freshState().rels;
+  ok(meetsNeeds(undefined, rels), 'no _needs is always met');
+  ok(meetsNeeds({ earl: ['unknown', 'backer'] }, rels), 'a list holding the current state is met');
+  ok(!meetsNeeds({ earl: ['backer'] }, rels), 'a list not holding it is not');
+  let threw = false;
+  try { meetsNeeds({ earl: 'backer' }, rels); } catch { threw = true; }
+  ok(threw, 'a _needs value that is not a list throws rather than passing');
+  eq(statesOf('earl', { not: ['absent'] }), ['unknown', 'backer', 'mentor', 'antagonist'], 'statesOf lists the legal states minus the excluded');
+  threw = false;
+  try { statesOf('earl', { not: ['gone'] }); } catch { threw = true; }
+  ok(threw, 'excluding a state the character cannot hold throws');
+
+  // A route table with a state its character cannot hold makes routeByCast
+  // throw; here that has to read as a failure with the sweep still to come,
+  // not as the suite dying.
+  const route = (...a) => { try { return routeByCast(...a); } catch (e) { return `threw: ${e.message}`; } };
+  eq(route(M4_PRESTUNT_ROUTES, rels, M4_PRESTUNT_FALLBACK), 'm4_prestunt_nobody_m4', 'a fresh run has nobody before the M4 stunt');
+  eq(route(M4_PRESTUNT_ROUTES, { ...rels, cal: 'loyal', pete: 'ally' }, M4_PRESTUNT_FALLBACK), 'm4_prestunt_cal_m4', 'the first matching row wins');
+  eq(route(M5_QUESTION_ROUTES, { ...rels, cal: 'loyal', ruthie: 'solid' }, M5_QUESTION_FALLBACK), 'm5_question_ruthie', 'Ruthie asks the question before Cal');
+  threw = null;
+  try { routeByCast([{ who: 'ruthie', states: ['warm'], scene: 'x' }], rels, 'y'); } catch (e) { threw = e.message; }
+  ok(/'ruthie' has no state warm/.test(threw || ''), `a route on a state the character cannot hold throws (${threw})`);
+
+  for (const [routes, fallback, what] of [
+    [M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK, 'M3 pre-stunt'],
+    [M4_PRESTUNT_ROUTES, M4_PRESTUNT_FALLBACK, 'M4 pre-stunt'],
+    [M5_QUESTION_ROUTES, M5_QUESTION_FALLBACK, 'M5 question'],
+  ]) {
+    const missing = [...routes.map(r => r.scene), fallback].filter(id => !SCENES[id]);
+    ok(missing.length === 0, `every ${what} route names a scene (missing: ${missing.join(', ') || 'none'})`);
+  }
+}
+
+{
+  // The sweep. Every (character, state) the story or the engine names.
+  const named = [];   // { who, state, where }
+  const note = (who, state, where) => named.push({ who, state, where });
+
+  // From the story, walked as data.
+  for (const [id, sc] of Object.entries(SCENES)) {
+    if (sc.statUpdate && sc.statUpdate.rels) for (const [k, v] of Object.entries(sc.statUpdate.rels)) note(k, v, `${id}.statUpdate`);
+    for (const ch of sc.choices || []) {
+      if (ch.effects && ch.effects.rels) for (const [k, v] of Object.entries(ch.effects.rels)) note(k, v, `${id} choice ${ch.label || ch.text}`);
+      if (ch._needs) {
+        for (const [k, list] of Object.entries(ch._needs)) {
+          ok(Array.isArray(list) && list.length > 0, `${id}'s _needs.${k} is a non-empty list`);
+          for (const v of list || []) note(k, v, `${id} _needs`);
+        }
+      }
+    }
+  }
+  for (const [routes, what] of [[M3_PRESTUNT_ROUTES, 'M3'], [M4_PRESTUNT_ROUTES, 'M4'], [M5_QUESTION_ROUTES, 'M5']]) {
+    for (const r of routes) for (const st of r.states) note(r.who, st, `${what} route`);
+  }
+
+  // From both source files as text: the comparisons prose closures and the
+  // epilogue make, and the engine's own hub-card lists. Comments stripped, the
+  // way flags.mjs does it, so a comment quoting an old bug is not a read.
+  const strip = src => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  const files = { 'engine.js': strip(fs.readFileSync(path.join(JS, 'engine.js'), 'utf8')),
+                  'scenes.js': strip(fs.readFileSync(path.join(JS, 'scenes.js'), 'utf8')) };
+  let comparisons = 0;
+  for (const [f, src] of Object.entries(files)) {
+    for (const m of src.matchAll(/\brels\.([A-Za-z_$][\w$]*)\s*[!=]==?\s*'([^']*)'/g)) { note(m[1], m[2], `${f} comparison`); comparisons++; }
+    for (const m of src.matchAll(/_needs\s*:\s*\{([^}]*)\}/g)) {
+      for (const pair of m[1].matchAll(/([A-Za-z_$][\w$]*)\s*:\s*\[([^\]]*)\]/g)) {
+        for (const q of pair[2].matchAll(/'([^']*)'/g)) note(pair[1], q[1], `${f} _needs literal`);
+      }
+    }
+  }
+  ok(comparisons > 20, `the sweep saw the prose closures' comparisons (${comparisons})`);
+
+  const badWho = named.filter(n => !castFor(n.who));
+  ok(badWho.length === 0, `every character named is in the cast (not: ${[...new Set(badWho.map(n => `${n.who} at ${n.where}`))].join('; ') || 'none'})`);
+  const badState = named.filter(n => castFor(n.who) && !isLegalRel(n.who, n.state));
+  ok(badState.length === 0, `every state named is one its character can hold (not: ${[...new Set(badState.map(n => `${n.who}='${n.state}' at ${n.where}`))].join('; ') || 'none'})`);
+  const badLabel = named.filter(n => isLegalRel(n.who, n.state) && relLabel(n.who, n.state) === n.state);
+  ok(badLabel.length === 0, `every state named has a label (not: ${[...new Set(badLabel.map(n => `${n.who}='${n.state}'`))].join('; ') || 'none'})`);
+  console.log(`\n  cast sweep: ${named.length} (character, state) mentions across the story, the routes and both sources`);
+
+  // The closure form is for what is computed, not for relationships: a
+  // `_requires` that reads rels is a requirement the walker cannot see.
+  const closures = [...files['scenes.js'].matchAll(/_requires\s*:[^\n]*/g)].map(m => m[0]);
+  const relClosures = closures.filter(c => /\brels\b|\bsolo\(/.test(c));
+  ok(relClosures.length === 0, `no _requires closure tests a relationship (${relClosures.join(' | ') || 'none'})`);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

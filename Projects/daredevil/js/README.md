@@ -1,11 +1,17 @@
 # Daredevil's `js/` — module map
 
-Four ES modules, no bundler, no build step. `index.html` loads exactly one of
+Five ES modules, no bundler, no build step. `index.html` loads exactly one of
 them directly (`<script type="module" src="./js/engine.js">`); the rest are
 imported.
 
 ```
-state.js    <- save.js
+cast.js     <- nothing
+   ^
+   |
+save.js     <- cast.js
+   ^
+   |
+state.js    <- save.js (re-exports cast.js)
    ^
    |
 scenes.js --+
@@ -13,8 +19,20 @@ scenes.js --+
 engine.js  <- scenes.js, state.js, save.js
 ```
 
-- **`save.js`** — the save format, on top of `assets/js/gvb-save.js`. Unchanged
-  by the round-2 restructure; see its own header.
+- **`cast.js`** — the six characters as one table (Phase 3): id, display
+  name, legal states in order, a label per state, which state means never met,
+  and the start state. With it, the helpers everything else uses to read the
+  table: `statesOf()`/`presentStates()` build a `_needs` list, `meetsNeeds()`
+  tests one, `setRel()` is the one door for writes and throws on a character
+  or state the table does not know, `routeByCast()` scans a route table, and
+  `castName()`/`relLabel()` are what the two screens that print a relationship
+  read. A leaf below `state.js` because `save.js` needs it and `state.js`
+  imports `save.js`; `state.js` re-exports all of it, so story and engine keep
+  one import.
+- **`save.js`** — the save format, on top of `assets/js/gvb-save.js`. Seeds
+  the relationships from the cast and repairs a loaded one against it: an
+  illegal state goes back to the character's start state, a key the cast does
+  not know is dropped.
 - **`state.js`** — `GS` (live game state), `STAT_LABELS`, and the line-builder
   helpers `N()`/`D()`/`C()`/`NF()`. This is its own module, not folded into
   `engine.js`, for one reason: `scenes.js`'s `SCENES` object calls `N()`/`D()`/
@@ -81,8 +99,16 @@ my_scene_id: {
   unconditionally, so both lines ran on runs where she was never established.
   The epilogue's own relationship roster correctly omits her when absent — the
   game was contradicting itself. Fixed by switching both to the function form.
+- **`_needs: { id: [state, ...] }`** on a choice hides it entirely unless
+  every named character is in one of the listed states. Build the list from
+  the cast — `statesOf('earl', { not: ['absent'] })`, `presentStates('pete')`,
+  or a literal like `['solid']` — and a typo throws at import. This is the
+  form for any relationship gate: it is data a walker can read without running
+  the game, and `smoke-save.mjs` fails on a `_requires` that tests `GS.rels`.
+  Hub cards in `engine.js` carry the same field.
 - **`_requires: () => bool`** on a choice hides it entirely (not disables —
-  `showSceneEnd()` in `engine.js` skips it) when false.
+  `showSceneEnd()` in `engine.js` skips it) when false. For anything genuinely
+  computed; nothing in the file uses it today.
 - **`_gateCheck: () => bool`** on a choice shows it disabled, with
   `_gateReason` as the lock note, when false.
 - **`_gateRoute: () => id | null`** on a scene redirects on entry when it
@@ -99,7 +125,16 @@ my_scene_id: {
 - The four free-roam hubs build their own card lists in `engine.js`
   (`renderHubFR1`/`renderHubFR2`/`renderHubFR3`/`renderHubFR4`) rather than
   reading a list out of `SCENES` — a new hub card needs an entry in the
-  relevant `renderHubFRn()` function, not just a new scene id here.
+  relevant `renderHubFRn()` function, not just a new scene id here. A card
+  that exists only for some state of a character says so with `_needs`, the
+  same field a choice uses.
+- **Who Duke talks to before the Milestone 3 and 4 stunts, and who asks him
+  the question in Milestone 5**, are the three route tables at the top of this
+  file (`M3_PRESTUNT_ROUTES` and its siblings): rows of `{ who, states,
+  scene }` in priority order, plus a fallback scene for nobody. `goToScene()`
+  scans them with `routeByCast()`. A row on a state the character cannot hold
+  throws the first time it is scanned, and `smoke-save.mjs` checks every row
+  names a real scene.
 
 ## Verifying a change
 
