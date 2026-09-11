@@ -46,6 +46,27 @@ const PETE_PRESENT = presentStates('pete');
 // regional crew's cameraman who came for the feature race, and Cal.
 const solo = ()=> GS.rels.earl === 'absent';
 
+// Phase 4: the two characters Free Roam 2 can move, as one sentence each for
+// the chapter's close. `''` is a line buildLines() drops, which is how a Danny
+// Duke never met stays out of a paragraph that used to name him regardless.
+const tommyCorner = ()=> GS.rels.tommy === 'absent'
+  ? `Tommy had stopped coming to the Nail on show nights. Duke had noticed in October and had not said anything to anyone about it.`
+  : GS.rels.tommy === 'ally'
+  ? `Tommy was in his corner, which turned out to be a place Tommy could stand.`
+  : `Tommy was either in his corner or not, depending on the week.`;
+const dannyStill = ()=> GS.rels.danny === 'unknown' ? ''
+  : GS.rels.danny === 'absent'
+  ? `Danny Reeves was in Texas. Sandra had run a paragraph on it. He'd taken the stage Duke hadn't given him and found a bigger one.`
+  : GS.rels.danny === 'poached'
+  ? `And there was Danny Reeves — on Duke's bill now, on Duke's date, still doing the thing where he said the accurate thing in the wrong way.`
+  : `And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.`;
+const dannyThought = ()=> GS.rels.danny === 'unknown' ? ''
+  : GS.rels.danny === 'absent'
+  ? `Duke thought about Danny less than he'd expected to, and more than he'd have admitted.`
+  : GS.rels.danny === 'poached'
+  ? `Duke thought about Danny more than he wanted to, which was a strange thing to say about a man on his own poster.`
+  : `Duke thought about Danny more than he wanted to.`;
+
 // Who Duke talks to before a stunt, and who asks him the question at the end,
 // as tables (Phase 3): the engine takes the first row whose character is in
 // one of the listed states, and the fallback is the scene for nobody. These
@@ -1079,7 +1100,38 @@ fr1_eve_bar: {
     C('TOMMY', `I think you're going somewhere. I also think that cow was in the wrong spot.`),
     N(`That was fair.`),
   ],
+  choices:[
+    { label:'A', text:`"Drink your beer."`, subtext:"Let it be a bar night. He\'s good at those.", effects:{}, goto:'fr1_eve_bar_late' },
+    { label:'B', text:`"Come out to the next one. Tell me where the cow is."`, subtext:"Give him a job. He\'ll take it more seriously than you mean it.", effects:{}, goto:'fr1_eve_bar_job' },
+  ]
+},
+fr1_eve_bar_late: {
+  art:'fr1', artLabel:'Evening · Bar',
+  bgText:'THE BAR',
+  _isEvening: true,
+  lines:[
+    D(`Drink your beer.`),
+    N(`Tommy drank his beer. He told the story about the cow twice more before closing, to two different tables, and the cow got a little further out of position each time.`),
+    N(`Duke let him. It was Tommy's story too, in the way that everything Duke did was a little bit Tommy's story. That was the arrangement. Nobody had ever said it out loud.`),
+  ],
   statUpdate:{ title:'Night at the Nail', reason:'Good for Showmanship. Hard on Condition. Tommy means well.', deltas:{ showmanship:1, condition:-1 }, _isEvening:true },
+  next:'_hub_fr1'
+},
+fr1_eve_bar_job: {
+  art:'fr1', artLabel:'Evening · Bar',
+  bgText:'THE BAR',
+  _isEvening: true,
+  lines:[
+    D(`Come out to the next one. Tell me where the cow is.`),
+    N(`Tommy put his glass down.`),
+    C('TOMMY', `You mean that?`),
+    D(`I mean stand where you can see the landing and tell me what you saw. Not what you told the table. What you saw.`),
+    N(`Tommy looked at him for a second the way he looked at things he was about to take seriously, which was not a look Duke had seen on him often.`),
+    C('TOMMY', `I can do that.`),
+    D(`I know.`),
+    N(`He wasn't sure he did know. But Tommy had been at every show since before there was anything to watch, standing somewhere, and it had cost Duke nothing to give that a name.`),
+  ],
+  statUpdate:{ title:'Night at the Nail', reason:'Good for Showmanship. Hard on Condition. Tommy has a job now.', deltas:{ showmanship:1, condition:-1 }, rels:{ tommy:'ally' }, flags:{ tommyJob:true }, _isEvening:true },
   next:'_hub_fr1'
 },
 fr1_eve_contract: {
@@ -1826,7 +1878,7 @@ m2_solo_bank_tommy: {
     N(`At the bar that weekend Tommy did not mention it. He did not mention it so carefully that it was in the room the whole time, sitting between them like a third glass.`),
     N(`He thought: Earl would have held the number. Tommy's holding it instead, and Tommy will never say so, and that's worse in a way he couldn't have explained to Pyle.`),
   ],
-  statUpdate:{ title:'A Second Name', reason:"Tommy co-signed in his work boots and read the whole form. He'll never mention it.", deltas:{}, flags:{ soloBank:'tommy' } },
+  statUpdate:{ title:'A Second Name', reason:"Tommy co-signed in his work boots and read the whole form. He'll never mention it.", deltas:{}, rels:{ tommy:'ally' }, flags:{ soloBank:'tommy' } },
   next:'m2_solo_round3'
 },
 
@@ -2007,7 +2059,11 @@ fr2_eve_bar: {
   bgText:'THE BAR',
   _isEvening:true,
   lines:[
-    N(`Tommy had a theory about Diamondback Danny.`),
+    N(()=> GS.rels.danny === 'absent'
+      ? `Tommy had a theory about Diamondback Danny, who was in Texas now, which Tommy felt proved it.`
+      : GS.rels.danny === 'poached'
+      ? `Tommy had a theory about Diamondback Danny, who was on Duke's bill now, which Tommy did not feel changed anything.`
+      : `Tommy had a theory about Diamondback Danny.`),
     C('TOMMY',`He's going to end up on TV.`),
     D(`Maybe.`),
     C('TOMMY',`He's got the look. The name. The name especially — "Diamondback Danny." You can't compete with that from a naming standpoint.`),
@@ -2018,10 +2074,49 @@ fr2_eve_bar: {
     D(`You think that bothers me.`),
     C('TOMMY',`I think it should. Because if you're not paying attention to who's behind you, you'll be the guy they tell stories about at the next guy's show.`),
     N(`It was the smartest thing Tommy had said in a while. Duke let it land without commenting.`),
-    N(`On the walk home he thought about Danny's setup at the fair. The fire trick.`),
+  ],
+  choices:[
+    { label:'A', text:`"Noted."`, subtext:"Let it land. Don\'t give him the satisfaction of agreeing out loud.", effects:{}, goto:'fr2_eve_bar_noted' },
+    { label:'B', text:`"Keep watching him for me."`, subtext:"Make the theory a job. He\'ll file reports you didn\'t ask for.", effects:{}, goto:'fr2_eve_bar_scout' },
+  ]
+},
+fr2_eve_bar_noted: {
+  art:'fr2', artLabel:'Evening · Bar',
+  bgText:'THE BAR',
+  _isEvening:true,
+  lines:[
+    D(`Noted.`),
+    C('TOMMY',`That's it? Noted?`),
+    D(`That's it.`),
+    N(`Tommy shook his head and finished his beer, satisfied in the way he got when he'd been right and nobody had said so.`),
+    N(()=> (GS.flags.dannyMet || GS.flags.dannySchemed)
+      ? `On the walk home he thought about Danny's setup at the fair. The fire trick.`
+      : `On the walk home he thought about the fire trick Tommy kept describing. He hadn't watched it. He'd heard it from the ramp — the crowd, then the whump of the fuel catching, then the crowd again.`),
     N(`He thought: *fire's a good idea. I should think about fire.*`),
   ],
   statUpdate:{ title:'Night at the Bar', reason:'Tommy said something true. He does that sometimes.', deltas:{ showmanship:1, condition:-1 }, _isEvening:true },
+  next:'_hub_fr2'
+},
+fr2_eve_bar_scout: {
+  art:'fr2', artLabel:'Evening · Bar',
+  bgText:'THE BAR',
+  _isEvening:true,
+  lines:[
+    D(`Keep watching him for me.`),
+    C('TOMMY',`Watching him how?`),
+    D(`Where he's booked. What he's jumping. Who's in his crowd that used to be in mine.`),
+    N(`Tommy sat up. He had been waiting, Duke realized, for about a year, for somebody to ask him for something he was actually good at.`),
+    C('TOMMY',`I can do that. I know a guy at the Larkin paper.`),
+    D(`Of course you do.`),
+    N(()=> GS.flags.tommyJob
+      ? `He already had the job, from the Nail. This was the second half of it, and he took it the same way — like a man being handed something he'd been carrying anyway.`
+      : `It was the first thing Duke had ever asked him to do that wasn't stand somewhere. Tommy took it like a man being handed something he'd been carrying anyway.`),
+    N(()=> (GS.flags.dannyMet || GS.flags.dannySchemed)
+      ? `On the walk home he thought about Danny's setup at the fair. The fire trick.`
+      : `On the walk home he thought about the fire trick Tommy kept describing. He hadn't watched it. He'd heard it from the ramp — the crowd, then the whump of the fuel catching, then the crowd again.`),
+    N(`He thought: *fire's a good idea. I should think about fire.*`),
+  ],
+  statUpdate:{ title:'Night at the Bar', reason:"Tommy said something true. Now it's his job to.", deltas:{ showmanship:1, condition:-1 }, rels:{ tommy:'ally' }, _isEvening:true },
   next:'_hub_fr2'
 },
 
@@ -2283,10 +2378,36 @@ fr2_debt_tommy: {
     N(`He paid him back after the show. Tommy didn't make it a thing. The thing that would not be a thing was already a thing, though — both of them knew it. The twelve hundred lived in the friendship from then on, very small, very quiet. Not poisonous. Just present.`),
     N(`At a bar six weeks later:`),
     C('TOMMY',`You know, when you needed that twelve hundred —`),
+  ],
+  choices:[
+    { label:'A', text:`"I paid you back."`, subtext:"It\'s a fact. Let him finish anyway.", effects:{}, goto:'fr2_debt_tommy_glad' },
+    { label:'B', text:`"We're square. Leave it there."`, subtext:"End it. He\'ll take you at your word, which is the problem.", effects:{}, goto:'fr2_debt_tommy_square' },
+  ]
+},
+
+fr2_debt_tommy_glad: {
+  art:'fr2', artLabel:'Debt · Tommy',
+  bgText:'THE ASK',
+  lines:[
     D(`I paid you back.`),
     C('TOMMY',`I know. I just — I was glad to. That's what I was going to say.`),
     N(`He meant it. He also needed Duke to know he meant it. Those were two separate things.`),
+    N(`He was at the next show, standing somewhere. He always was. He did not bring up the twelve hundred again, and Duke understood that not bringing it up was going to be the shape of it from now on.`),
   ],
+  next:'_hub_fr2'
+},
+
+fr2_debt_tommy_square: {
+  art:'fr2', artLabel:'Debt · Tommy',
+  bgText:'SQUARE',
+  lines:[
+    D(`We're square. Leave it there.`),
+    N(`Tommy left it there.`),
+    N(`He left it there so completely that he did not come to the Nail the following Friday, or the one after. Cal said he'd seen him at the lot. Cal said he'd seemed fine.`),
+    N(`He thought: I told him to leave it there. He thought: he did what I said. He thought: that is the first time in his life Tommy has done exactly what I said, and I would hand the twelve hundred back to undo it.`),
+    N(`He didn't call. Tommy didn't either. The thing that would not be a thing had turned out to be the whole thing.`),
+  ],
+  statUpdate:{ title:'Square', reason:"He said leave it there. Tommy left it there, and then he left.", deltas:{}, rels:{ tommy:'absent' } },
   next:'_hub_fr2'
 },
 
@@ -2318,12 +2439,15 @@ fr2_close: {
         N(`By the time Milestone 3 was on the horizon, the shape of things had changed.`),
         N(`Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. The notebook had dates in it that were two states away, and every one of them was in his own handwriting.`),
         N(debt === 'bank'
-          ? `He'd made money. He'd spent most of it, and a set amount of it went to Garrett Pyle on the first of every month whether he'd made any or not. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.`
+          ? `He'd made money. He'd spent most of it, and a set amount of it went to Garrett Pyle on the first of every month whether he'd made any or not. Cal said the suspension geometry was right. Sandra had run two pieces.`
           : debt === 'tommy'
-          ? `He'd made money. He'd spent most of it, and twelve hundred of it had gone back to Tommy, who had not made it a thing, which was its own kind of thing. Cal said the suspension geometry was right. Sandra had run two pieces.`
-          : `He'd made money. He'd spent most of it, two Saturdays of it selling cars back to the people he'd bought them from. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.`),
-        N(`And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.`),
-        N(`Duke thought about Danny more than he wanted to.`),
+          ? (GS.rels.tommy === 'absent'
+            ? `He'd made money. He'd spent most of it, and twelve hundred of it had gone back to Tommy, and that had turned out to be the last thing between them. Cal said the suspension geometry was right. Sandra had run two pieces.`
+            : `He'd made money. He'd spent most of it, and twelve hundred of it had gone back to Tommy, who had not made it a thing, which was its own kind of thing. Cal said the suspension geometry was right. Sandra had run two pieces.`)
+          : `He'd made money. He'd spent most of it, two Saturdays of it selling cars back to the people he'd bought them from. Cal said the suspension geometry was right. Sandra had run two pieces.`),
+        N(debt === 'tommy' ? '' : tommyCorner()),
+        N(dannyStill()),
+        N(dannyThought()),
         N(`Then Dot Kessler called about the car show. The real one. Five cars, the Speedway's season closer, and a regional TV crew that was coming for the feature race and would point the camera at whatever was in the lot. No sponsor. The cars were his.`),
         N(`He listened to the whole pitch without interrupting. It was not a long pitch. She didn't do long.`),
         N(`When she finished she said:`),
@@ -2336,9 +2460,10 @@ fr2_close: {
     return [
     N(`By the time Milestone 3 was on the horizon, the shape of things had changed.`),
     N(`Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.`),
-    N(`He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.`),
-    N(`And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.`),
-    N(`Duke thought about Danny more than he wanted to.`),
+    N(`He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces.`),
+    N(tommyCorner()),
+    N(dannyStill()),
+    N(dannyThought()),
     N(`Then Earl called about the car show. The real one. Five cars, a national sponsor interested, a regional TV crew.`),
     N(`He listened to the whole pitch without interrupting.`),
     N(`When Earl finished he said:`),
@@ -2755,12 +2880,14 @@ fr2_danny_headtohead_counter: {
     D(`Thank you, Sandra.`),
     C('SANDRA',`I'll print 'Duke Harlan accepts, terms pending.' Does that work?`),
     D(`That works.`),
-    N(`Danny, when Sandra passed it along, said: "Fine." He said it too fast, which meant he wanted to accept all along. His issue was never the competition — it was the lack of a platform. Duke's show would give him one. The Frenemy seed planted itself quietly even on the Nemesis track.`),
+    N(`Danny, when Sandra passed it along, said: "Fine." He said it too fast, which meant he wanted to accept all along. His issue was never the competition — it was the lack of a platform. Duke's show would give him one.`),
+    N(`Danny Reeves was on Duke's bill, on Duke's date. Duke had poached him, was what it was, and neither of them was going to use the word.`),
   ],
   statUpdate:{
     title:'Counter Accepted',
-    reason:'Duke controlled the terms. The event is booked on his calendar.',
+    reason:"Duke controlled the terms. Danny is on his calendar now, and on his bill.",
     deltas:{ hustle:1, showmanship:1 },
+    rels:{ danny:'poached' },
     flags:{ fr2Danny02Done:true, fr2DannyEventDone:true, dannyChallenge:'counter', dannyEventOutcome:'counter_terms' }
   },
   next:'_hub_fr2'
@@ -2799,11 +2926,13 @@ fr2_danny_headtohead_silence: {
     N(`Danny's next quote, one week later: "I guess he's busy."`),
     N(`It was a small quote. It landed large.`),
     N(`Duke's thought, privately: he wasn't scared. He just didn't want to give Danny the stage. The distinction felt important and also somewhat academic, given that the circuit had already made up its mind.`),
+    N(`Two weeks after that, Danny Reeves signed with a promoter out of Fort Worth. The circuit papers ran it above the fold. He was gone by the end of the month, and the stage went with him.`),
   ],
   statUpdate:{
     title:'No Answer Given',
-    reason:'The circuit read the silence. Danny got the stage anyway.',
+    reason:'The circuit read the silence. Danny took the stage to Texas.',
     deltas:{ showmanship:-1 },
+    rels:{ danny:'absent' },
     flags:{ fr2Danny02Done:true, fr2DannyEventDone:true, dannyChallenge:'silence' }
   },
   next:'_hub_fr2'
@@ -2818,7 +2947,10 @@ fr2_danny_03: {
     N(`Danny was already there. His jacket was off. Without it, he looked like what he was — a man who jumps motorcycles for a living, which meant he looked slightly worn and slightly careful and significantly more real than the jacket allowed.`),
     C('DANNY',`Harlan.`),
     D(`Danny.`),
-    N(`The appropriate dialogue entered then, based on how the event went. They stood at the barrel. Danny refilled his cup and handed the ladle over without comment.`),
+    N(()=> GS.flags.dannyEventOutcome === 'win'
+      ? `"Fifty-five," Danny said, to the water. "Tell your mechanic I've got something to say about it. I don't know what yet."`
+      : `"One foot," Danny said, to the water. "You know that's the one they'll write down. Not the fifty-two."`),
+    N(`They stood at the barrel. Danny refilled his cup and handed the ladle over without comment.`),
     N(`It was the closest they'd come to each other as people. Duke thought: this is the version of him nobody in the circuit sees. He didn't know what to do with that, so he did nothing with it and went back to the show.`),
   ],
   statUpdate:{
@@ -3398,7 +3530,9 @@ fr3_eve_tommy: {
   art:'fr3', artLabel:'Free Roam 3 · Evening',
   bgText:'SOMETHING TRUE',
   lines:[
-    N(`Tommy found him at the bar after the Dallas coverage ran in the regional paper. He'd been there a while before Duke arrived, which was a certain kind of tell.`),
+    N(()=> GS.flags.debtSource === 'tommy'
+      ? `Tommy found him at the bar after the Dallas coverage ran in the regional paper. He'd been there a while before Duke arrived, which was a certain kind of tell. He had not mentioned the twelve hundred since the night he'd tried to, and he did not mention it now.`
+      : `Tommy found him at the bar after the Dallas coverage ran in the regional paper. He'd been there a while before Duke arrived, which was a certain kind of tell.`),
     C('TOMMY',`I saw the piece.`),
     D(`Sandra's piece?`),
     C('TOMMY',`She wrote you up good.`),

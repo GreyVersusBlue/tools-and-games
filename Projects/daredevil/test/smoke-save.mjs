@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createDaredevilSlot, freshState, validateState, repairState, KEY, VERSION, STAT_MAX,
 } from '../js/save.js';
-import { CAST, castFor, isLegalRel, setRel, meetsNeeds, routeByCast, statesOf, relLabel } from '../js/cast.js';
+import { CAST, castFor, isLegalRel, setRel, meetsNeeds, routeByCast, statesOf, relLabel, rosterOf, startingRels } from '../js/cast.js';
 import {
   SCENES,
   M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
@@ -207,6 +207,21 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
     ok(extra.length === 0, `${c.id} labels no state it cannot hold (extra: ${extra.join(', ') || 'none'})`);
   }
   ok(castFor('pete') && freshState().rels.pete === 'unknown', "pete is seeded, as never met");
+  ok(castFor('tommy').unmet === null && !castFor('tommy').states.includes('unknown'),
+     'tommy has no never-met state: he is in the story from the cold open (Phase 4)');
+}
+
+{
+  // The ending screen's roster, as data (Phase 4). Never-met characters are
+  // left out rather than printed as "—"; a character met and then gone stays,
+  // as Absent; the order is the cast's, whatever order the bag is in.
+  const fresh = startingRels();
+  eq(rosterOf(fresh).map(r => r.id), ['cal', 'tommy'], 'a fresh run lists only the two characters who are met from the start');
+  const late = { danny: 'absent', earl: 'absent', cal: 'loyal', tommy: 'ally', ruthie: 'unknown', pete: 'ally' };
+  eq(rosterOf(late).map(r => `${r.name}: ${r.label}`),
+     ['Cal: Loyal Partner', 'Pete: Ally', 'Earl Maddox: Absent', 'Tommy: Ally', 'Danny: Absent'],
+     'absent characters are kept, never-met are dropped, and the order is the cast\'s');
+  eq(rosterOf({}).length, 0, 'an empty bag lists nobody');
 }
 
 {
@@ -322,6 +337,37 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
   const closures = [...files['scenes.js'].matchAll(/_requires\s*:[^\n]*/g)].map(m => m[0]);
   const relClosures = closures.filter(c => /\brels\b|\bsolo\(/.test(c));
   ok(relClosures.length === 0, `no _requires closure tests a relationship (${relClosures.join(' | ') || 'none'})`);
+}
+
+{
+  // Phase 4. A state the table lists that no scene can write is a label with
+  // nothing behind it. `fr4_eve_tommy` read `tommy === 'ally'` for three
+  // rounds, and the epilogue's table labelled `danny: poached` and
+  // `danny: absent`, and nothing in the story could put either of them there.
+  // Every state that is not a character's start state has to be written by
+  // some choice's `effects.rels` or some scene's `statUpdate.rels`. Walked as
+  // data, so a state that only a route or a closure names does not count as
+  // reached: naming is not writing.
+  const written = new Set();
+  for (const sc of Object.values(SCENES)) {
+    if (sc.statUpdate && sc.statUpdate.rels) for (const [k, v] of Object.entries(sc.statUpdate.rels)) written.add(`${k}=${v}`);
+    for (const ch of sc.choices || []) if (ch.effects && ch.effects.rels) for (const [k, v] of Object.entries(ch.effects.rels)) written.add(`${k}=${v}`);
+  }
+  // The first run of this check, against the game as Phase 3 left it, named
+  // three states that are not this row's: Ruthie's `strained` and `absent`,
+  // and Earl's `antagonist`. Each has an ending verdict, a hub sub or a whole
+  // scene (`fr4_ruthie_gone`) behind it, and nothing that writes it. They are
+  // frozen here the way flags.mjs freezes its write-only list, checked from
+  // both ends (locked decision #264): the list can shrink when a phase gives
+  // one of them a writer, a fourth entry fails, and an entry that has since
+  // found a writer fails too, so the list cannot rot.
+  const NOT_YET_WRITTEN = ['ruthie=strained', 'ruthie=absent', 'earl=antagonist'];
+  const dead = [];
+  for (const c of CAST) for (const s of c.states) if (s !== c.start && !written.has(`${c.id}=${s}`)) dead.push(`${c.id}=${s}`);
+  const newDead = dead.filter(d => !NOT_YET_WRITTEN.includes(d));
+  ok(newDead.length === 0, `every state the cast lists is written by some scene, or is on the frozen list (unreachable: ${newDead.join(', ') || 'none'})`);
+  const stale = NOT_YET_WRITTEN.filter(d => !dead.includes(d));
+  ok(stale.length === 0, `every state on the frozen list is still written by nothing (stale: ${stale.join(', ') || 'none'})`);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

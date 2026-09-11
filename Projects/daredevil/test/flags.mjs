@@ -143,7 +143,7 @@ ok(plumbing === 2, `exactly two \`flags:\` sites are pass-through plumbing (foun
 //    that has since found a reader fails too, so the list cannot rot.
 const WRITE_ONLY = [
   'biographerLater', 'biographerNo', 'biographerYes', 'calStrained', 'calWarmed',
-  'dannyChallenge', 'dannyEventOutcome', 'familyOrigin', 'fr2Cal02Done',
+  'dannyChallenge', 'familyOrigin', 'fr2Cal02Done',
   'fr2Danny03Done', 'fr2DannyEventDone', 'fr3CalTalked', 'fr3EarlCalTalked',
   'fr3EarlDeal', 'fr3EarlTalked', 'fr3HollisTalked', 'fr3RuthieTalked',
   'fr3SandraTV', 'fr3TommyTalked', 'm3Complete', 'm4Complete', 'peteGone',

@@ -114,6 +114,42 @@ const RUNS = {
       { on: "isn't something I can teach" },
     ],
   },
+  // Phase 4. Borrows the twelve hundred from Tommy and, six weeks later, tells
+  // him to leave it there: rels.tommy is 'absent' from Free Roam 2 on, so the
+  // bar card and both later Tommy evenings should be off the board and no
+  // prose after fr2_debt_tommy_square should have him in the room. The same
+  // run does not answer Danny's public challenge, which sends Danny to Texas
+  // — the other new way out, on the same hub.
+  no_tommy: {
+    name: 'Hollis Tate', town: 'Dry Creek',
+    stunt: 'good',
+    rules: [
+      { on: 'Borrow from Tommy' },
+      { on: "We're square" },
+      { on: "Don't respond" },
+    ],
+  },
+  // "Doesn't matter. I've got my own show." at the fair: neither dannyMet nor
+  // dannySchemed is set, rels.danny stays 'unknown', and no Free Roam 2 Danny
+  // card ever appears. Tommy still says the name at the fair, which is fine —
+  // Duke heard it and chose not to care. Everything else that names Danny
+  // after that is what this run is for.
+  no_danny: {
+    name: 'Amos Kittredge', town: 'Wolf Hollow',
+    stunt: 'good',
+    rules: [
+      { on: "Doesn't matter" },
+    ],
+  },
+  // Takes the public challenge on Duke's terms: Danny on Duke's bill, on
+  // Duke's date, which is the 'poached' state. Otherwise a clean run.
+  danny_bill: {
+    name: 'Lyle Brannock', town: 'Cinder Flats',
+    stunt: 'good',
+    rules: [
+      { on: 'My show, my date' },
+    ],
+  },
 };
 
 const MAX_STEPS = 2000;

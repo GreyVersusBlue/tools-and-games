@@ -14,7 +14,7 @@
 
 import { createDaredevilSlot, mountSaveBar, STAT_NAMES, STAT_MAX } from './save.js';
 // `D` went with the pressAtFair block — nothing in the engine speaks as Duke.
-import { GS, STAT_LABELS, N, C, castName, relLabel, statesOf, presentStates, isPresent, meetsNeeds, setRel, routeByCast } from './state.js';
+import { GS, STAT_LABELS, N, C, castName, relLabel, statesOf, presentStates, isPresent, rosterOf, meetsNeeds, setRel, routeByCast } from './state.js';
 import {
   SCENES,
   M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
@@ -30,8 +30,9 @@ import {
 const EARL_PRESENT = statesOf('earl', { not: ['absent'] });
 const RUTHIE_MET = statesOf('ruthie', { not: ['unknown'] });
 const RUTHIE_PRESENT = presentStates('ruthie');
+// Tommy has no never-met state (Phase 4), so "present" and "not gone" are the
+// same list, and the Free Roam 2, 3 and 4 cards share it.
 const TOMMY_PRESENT = presentStates('tommy');
-const TOMMY_NOT_GONE = statesOf('tommy', { not: ['absent'] });
 const met = card => meetsNeeds(card._needs, GS.rels);
 
 /* ================================================================
@@ -1054,10 +1055,12 @@ function showGameEnd(){
   }
 
   // ── Assemble HTML ─────────────────────────────────────────────
-  let relLines = Object.entries(GS.rels)
-    .filter(([,v])=> v && v !== 'unknown')
-    .map(([k,v])=>
-      `<div style="margin-bottom:4px;"><strong style="color:var(--gold)">${castName(k)}:</strong> ${relLabel(k, v)}</div>`
+  // Everyone who was ever in the story, in the cast's order; a character
+  // still at the never-met state is left out rather than printed as "—".
+  // The table decides what never-met means for each character (Phase 4).
+  let relLines = rosterOf(GS.rels)
+    .map(r =>
+      `<div style="margin-bottom:4px;"><strong style="color:var(--gold)">${r.name}:</strong> ${r.label}</div>`
     ).join('');
 
   const verdictHTML = verdicts.map(v=>
@@ -1340,7 +1343,7 @@ function renderHubFR2(){
     { id:'fr2_eve_cal', name:'Work With Cal', sub:"Suspension geometry. He already fixed the seal. He's telling you why.", tag:'Costs 1 Evening' },
     { id:'fr2_eve_ruthie', name:'Stay Home With Ruthie', sub:'She wants to come to a show. Find the right one.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':'Costs 1 Evening', _needs:{ ruthie: RUTHIE_MET } },
     { id:'fr2_eve_practice', name:'New Distances', sub:'Five cars. The geometry is different from three cows.', tag:'Costs 1 Evening' },
-    { id:'fr2_eve_bar', name:'Bar With Tommy', sub:'He has a theory about Diamondback Danny. He might be right.', tag:'Costs 1 Evening' },
+    { id:'fr2_eve_bar', name:'Bar With Tommy', sub:'He has a theory about Diamondback Danny. He might be right.', tag:'Costs 1 Evening', _needs:{ tommy: TOMMY_PRESENT } },
     { id:'fr2_eve_press', name:'Call Sandra', sub: solo ? "Somebody at Earl's office told the paper you said no." : 'Earl announced you before you knew you were being announced.', tag:'Costs 1 Evening' },
   ];
 
@@ -1487,7 +1490,7 @@ function renderHubFR3(){
     { id:'fr3_eve_earl', name:'Earl Maddox', sub:'He wants to renegotiate. The split and the extension are on the table.', tag:'Costs 1 Evening', _needs:{ earl: EARL_PRESENT } },
     { id:'fr3_eve_ruthie', name:'Ruthie', sub: ruthieSub3, tag:'Costs 1 Evening', _needs:{ ruthie: RUTHIE_PRESENT } },
     { id:'fr3_eve_cal', name:'Work With Cal', sub:'He has a question about what comes next. Buses are different from cars.', tag:'Costs 1 Evening' },
-    { id:'fr3_eve_tommy', name:'Tommy', sub:"He's at the bar. He has something true to say and doesn't know it yet.", tag:'Costs 1 Evening', _needs:{ tommy: TOMMY_NOT_GONE } },
+    { id:'fr3_eve_tommy', name:'Tommy', sub:"He's at the bar. He has something true to say and doesn't know it yet.", tag:'Costs 1 Evening', _needs:{ tommy: TOMMY_PRESENT } },
   ].filter(met);
 
   eveCards.forEach(card=>{

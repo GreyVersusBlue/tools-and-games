@@ -16,9 +16,9 @@
 //
 // The array order is the order the two screens that list relationships print
 // them in, and the order the pre-stunt routes ask in: Cal before Ruthie before
-// Pete before Earl. Tommy and Danny have no route of their own yet (Phase 4
-// gives them a way out), so they come last. Milestone 5's question is the one
-// route that departs from it (Ruthie before Cal), and its table says so.
+// Pete before Earl. Tommy and Danny have no route of their own, so they come
+// last. Milestone 5's question is the one route that departs from it (Ruthie
+// before Cal), and its table says so.
 
 export const CAST = [
   {
@@ -46,10 +46,14 @@ export const CAST = [
     unmet: 'unknown', start: 'unknown',
   },
   {
+    // No never-met state: Tommy dared Duke up the water tower as a boy and
+    // finds him before nine on the morning of the fair. He starts as the guy
+    // at the bar, can be given a job (Phase 4), and can be sent away by the
+    // twelve hundred dollars.
     id: 'tommy', name: 'Tommy',
-    states: ['unknown', 'hanger_on', 'ally', 'absent'],
-    labels: { unknown: '—', hanger_on: 'Hanger-On', ally: 'Ally', absent: 'Absent' },
-    unmet: 'unknown', start: 'hanger_on',
+    states: ['hanger_on', 'ally', 'absent'],
+    labels: { hanger_on: 'Hanger-On', ally: 'Ally', absent: 'Absent' },
+    unmet: null, start: 'hanger_on',
   },
   {
     id: 'danny', name: 'Danny',
@@ -107,6 +111,19 @@ export function presentStates(id) {
 
 /** Is the character in the story right now — met, and not gone? */
 export function isPresent(id, rels) { return presentStates(id).includes(rels[id]); }
+
+/**
+ * What the ending screen lists: every character who was ever in the story,
+ * in the cast's order, with the label for where things stand. A character
+ * still at the never-met state is left out rather than printed as "—"; one
+ * who was met and then went is kept, as "Absent", because that is a thing
+ * that happened. A state the table does not know prints raw, as elsewhere.
+ */
+export function rosterOf(rels) {
+  return CAST
+    .filter(c => rels[c.id] !== undefined && rels[c.id] !== c.unmet)
+    .map(c => ({ id: c.id, name: c.name, label: relLabel(c.id, rels[c.id]) }));
+}
 
 /**
  * Does a relationship bag satisfy a `_needs` declaration? `needs` is
