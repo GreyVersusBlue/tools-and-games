@@ -2,7 +2,7 @@
 
 Played as Duke Harlan of Buford County, stunt policy `good`.
 
-**Scene path (89):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
+**Scene path (91):** `cold_open_01` → `cold_open_02` → `cold_open_03` → `cold_open_origin_choice` → `cold_open_04` → `cold_open_05` → `cold_open_06` → `cold_open_07` → `cold_open_08` → `m1_rival_rumor` → `m1_b1_scheme` → `m1_beat_2` → `m1_b2_accept` → `m1_beat_3` → `m1_b3_sign` → `m1_stunt_approach` → `m1_stunt_perfect` → `m1_earl_approach_perfect` → `m1_earl_modifiers` → `m1_player_response` → `m1_r1` → `m1_close` → `fr1_hub_open` → `fr1_organizer` → `fr1_org_counter` → `fr1_wannabe_intro` → `fr1_wannabe_look` → `fr1_eve_cal` → `fr1_eve_practice` → `fr1_eve_bar` → `fr1_eve_contract` → `m2_entry_waited` → `m2_round1_pitch` → `m2_counter_30` → `m2_round2_enter` → `m2_round2_clause` → `m2_clause_negotiate` → `m2_round3_enter` → `m2_round3_cal` → `m2_sign` → `fr2_hub_open` → `fr2_danny_01` → `fr2_danny_01_flat` → `fr2_danny_02` → `fr2_danny_headtohead_accept` → `fr2_danny_event` → `fr2_danny_event_win` → `fr2_danny_03` → `fr2_pete_01` → `fr2_pete_01_maybe` → `fr2_pete_02` → `fr2_pete_mistake_confrontation` → `fr2_pete_hard` → `fr2_debt_01` → `fr2_debt_earl` → `fr2_eve_cal` → `fr2_eve_practice` → `fr2_eve_bar` → `fr2_eve_press` → `fr2_eve_cal_02` → `fr2_close` → `m3_entry` → `m3_prestunt_alone` → `m3_triumph_clean` → `m3_aftermath` → `fr3_hub_open` → `fr3_hollis` → `fr3_press_sandra` → `fr3_press_sandra_accept` → `fr3_eve_earl` → `fr3_eve_earl_engage` → `fr3_eve_cal` → `fr3_eve_tommy` → `m4_entry` → `m4_stunt_select` → `m4_prestunt` → `m4_prestunt_cal_m4` → `m4_triumph_buses` → `fr4_hub_open` → `fr4_biographer` → `fr4_biographer_yes` → `fr4_night_ride` → `fr4_eve_cal` → `fr4_eve_tommy` → `fr4_eve_earl` → `fr4_earl_signed` → `fr4_close` → `m5_entry` → `m5_question_cal` → `m5_decision` → `m5_retire_clean`
 
 ---
 
@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -281,6 +281,7 @@ He stopped himself and recalibrated.
 **→ took:** Option A"Show me what you've got."Go see. Doesn't cost you anything but an hour.
 
 > **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
+> - _Pete_ → **Hanger-On**
 
 ### `fr1_wannabe_look`
 **DUKE:** Show me what you've got.
@@ -304,6 +305,7 @@ Duke stood up and dusted his hands.
 **WANNABE:** Pete. Pete Garland.
 
 > **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
+> - _Pete_ → **Hanger-On**
 
 
 ## HUB — Free Roam — Early Days
@@ -492,6 +494,7 @@ He stepped back. Earl had heard it. Earl was looking at Cal with something that 
 **→ took:** Option AAccept and shake.You've heard what you need to hear. Sign the deal.
 
 > **The Deal Is Signed** — Earl Maddox. Percentage settled. Cal in the room. The bigger world starts Thursday.
+> - _Earl Maddox_ → **Business Partner**
 
 ### `m2_sign`
 Earl extended his hand. Duke shook it.
@@ -503,6 +506,7 @@ He thought: there's a version of this where that's true. He thought: there's a v
 He didn't know which one yet. He was about to find out.
 
 > **The Deal Is Signed** — Earl Maddox. Percentage settled. Cal in the room. The bigger world starts Thursday.
+> - _Earl Maddox_ → **Business Partner**
 
 ### `fr2_hub_open`
 The shows got bigger. Not dramatically — not overnight — but in the way things actually grow, which is incrementally and without announcement until you look back and the county fair is a different category of thing from where you are now.
@@ -934,6 +938,22 @@ Cal looked at him. Then he picked the wrench back up.
 
 **→ took:** Milestone 3 — The Big Break
 
+> **Free Roam 2 Complete** — The act got bigger. Some things held. Some things shifted. Milestone 3 is on the calendar.
+
+### `fr2_close`
+By the time Milestone 3 was on the horizon, the shape of things had changed.
+Not all at once — incrementally, in the way he was starting to expect things to change. The shows were bigger. The distances were longer. Earl's calendar had dates in it that were three states away.
+He'd made money. He'd spent most of it. Cal said the suspension geometry was right. Sandra had run two pieces. Tommy was either in his corner or not, depending on the week.
+And there was Danny Reeves — still performing, still watching, still doing the thing where he said the accurate thing in the wrong way.
+Duke thought about Danny more than he wanted to.
+Then Earl called about the car show. The real one. Five cars, a national sponsor interested, a regional TV crew.
+He listened to the whole pitch without interrupting.
+When Earl finished he said:
+**EARL:** What do you think?
+**DUKE:** I think I'm ready.
+A pause. Earl's tell — not tapping a pen. Just quiet.
+**EARL:** Good. Because this one matters.
+
 
 ## The Big Break
 
@@ -1150,6 +1170,7 @@ And there it was — the *we.* Not a question about the schedule. A statement ab
 He went back to work. Duke sat with the word *right* for a while.
 
 > **Six Months** — Cal's in. The planning starts now. Buses are different from cars — he's already thinking about how.
+> - _Cal_ → **Loyal Partner**
 
 
 ## HUB — Free Roam — The Price of Fame
@@ -1458,6 +1479,27 @@ He thought: that's the next thing.
 - Milestone 5 — The Question
 
 **→ took:** Milestone 5 — The Question
+
+### `fr4_close`
+He sat at the kitchen table with the piece of paper.
+Stunts. What else. The thing before the jump.
+He had an answer now. He had had it for a while — it had arrived somewhere in the night rides and the garage with Cal and the porch on Wednesday. He had not announced it to himself when it arrived. It had just been there.
+He thought: that's the question.
+He folded the piece of paper and put it in his jacket pocket and called Earl.
+**EARL:** Duke.
+**DUKE:** The Vegas date. Put it on the calendar.
+A pause. Not the pause-before-numbers or the pause-before-leverage. The other kind.
+**EARL:** Alright.
+**DUKE:** Set the date.
+**EARL:** I'll call you tomorrow.
+**DUKE:** Earl.
+**EARL:** Yeah.
+**DUKE:** Good work.
+A longer pause.
+**EARL:** You too.
+Duke hung up. He sat at the table. The kitchen was quiet. Out the window, the street. The lawn, mowed. The truck in the driveway. The sky — through the glass, going dark at the edge — the same as it had always been.
+He thought: some things you just remember.
+He thought: Vegas.
 
 
 ## The Question

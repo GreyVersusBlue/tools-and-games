@@ -81,6 +81,13 @@ export const snapshot = page => page.evaluate(([scanSrc, ctlSrc, lockSrc]) => {
     chapterDesc: t(document.getElementById('ct-desc')),
     update: t(document.getElementById('stat-update-h')),
     reason: t(document.getElementById('stat-update-reason')),
+    // The relationship rows on the stat-update screen. They are the only place
+    // a rel change is ever announced to the player, and nothing read them
+    // until Phase 2 — which is how `m2_sign` reached the ending screen having
+    // signed a contract with Earl Maddox and never once said so.
+    relRows: [...document.querySelectorAll('#rel-update-list .rel-row')].map(r => ({
+      who: t(r.querySelector('.rel-row-name')), state: t(r.querySelector('.rel-row-state')),
+    })),
     hub: t(document.getElementById('hub-title')),
     verdict: t(document.getElementById('rVerdict')),
     score: t(document.getElementById('rScore')),

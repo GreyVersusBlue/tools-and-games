@@ -20,6 +20,7 @@ daredevil/
   test/
     drive-daredevil.mjs   how to get into the game and through it, written once
     smoke-save.mjs        53 assertions, plain Node, no browser
+    flags.mjs             7 assertions, plain Node: who writes each flag against who reads it
     smoke-page.mjs        the regression suite: real browser, plays to an ending three times
     transcript.mjs        plays a run and writes down every line of it
     transcripts/          output of the above; the record of what the game is
@@ -29,6 +30,7 @@ daredevil/
 
 ```
 node Projects/daredevil/test/smoke-save.mjs      # fast, no browser
+node Projects/daredevil/test/flags.mjs           # fast, no browser
 node Projects/daredevil/test/smoke-page.mjs      # the real one, ~25 minutes
 node Projects/daredevil/test/transcript.mjs clean
 node Projects/daredevil/test/transcript.mjs rough
@@ -56,7 +58,18 @@ finish, and **not one of them throws or logs anything a player would see**:
 The only thing that catches that class of bug is playing to the end and checking
 where you landed. So `smoke-page.mjs` does exactly that, three times — once
 clean, once crashing at the county fair, once turning Earl Maddox down — and
-fails on a dead end, a loop, or an ending it did not expect.
+fails on a dead end, a loop, or an ending it did not expect. After the three
+runs it drives four endings straight from their outcome scene, which is how the
+two Milestone 5 scenes a full run reaches only one of at a time get checked
+without a fourth playthrough.
+
+`flags.mjs` is the other half, and needs no browser. The same bug wears a
+second face: a flag read by a guard and written by nothing, or written by a
+scene and read by nothing. `pressAtFair` guarded five finished lines and could
+only ever be `false`; `m5Decision` was written by all eight Milestone 5 choices
+and read by nothing, so an entire ending's epilogue was dead. The audit counts
+writers against readers and exits non-zero, and it lives outside the files it
+scans on purpose (locked decision #262).
 
 `transcript.mjs` is the exploratory half. It is what produced the description of
 the game in `HISTORY.md`, round 1, and re-running it before

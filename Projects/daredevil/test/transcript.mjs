@@ -195,7 +195,13 @@ async function run(key, headed) {
       }
 
       if (s.screen === 'stats') {
+        // The relationship rows as well as the title and the reason. This
+        // screen is the only place the game ever tells a player a relationship
+        // moved, and three rounds of diffing transcripts missed `m2_sign`
+        // leaving rels.earl 'unknown' after the contract was signed, because
+        // the tool wrote the headline down and not the rows underneath it.
         say(`\n> **${s.update}** — ${s.reason}`);
+        for (const r of s.relRows) say(`> - _${r.who}_ → **${r.state}**`);
         await pick(t.page, 'Continue');
         await wait(200);
         continue;

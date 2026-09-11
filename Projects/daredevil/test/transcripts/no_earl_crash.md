@@ -283,6 +283,7 @@ He stopped himself and recalibrated.
 **→ took:** Option A"Show me what you've got."Go see. Doesn't cost you anything but an hour.
 
 > **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
+> - _Pete_ → **Hanger-On**
 
 ### `fr1_wannabe_look`
 **DUKE:** Show me what you've got.
@@ -306,6 +307,7 @@ Duke stood up and dusted his hands.
 **WANNABE:** Pete. Pete Garland.
 
 > **Pete Garland** — You showed him the ramp angle. He memorized every move. Thread active.
+> - _Pete_ → **Hanger-On**
 
 
 ## HUB — Free Roam — Early Days
@@ -1148,6 +1150,7 @@ And there it was — the *we.* Not a question about the schedule. A statement ab
 He went back to work. Duke sat with the word *right* for a while.
 
 > **Six Months** — Cal's in. The planning starts now. Buses are different from cars — he's already thinking about how.
+> - _Cal_ → **Loyal Partner**
 
 
 ## HUB — Free Roam — The Price of Fame

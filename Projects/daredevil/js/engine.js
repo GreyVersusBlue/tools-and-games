@@ -13,7 +13,8 @@
 "use strict";
 
 import { createDaredevilSlot, mountSaveBar, STAT_NAMES, STAT_MAX } from './save.js';
-import { GS, STAT_LABELS, N, C, D } from './state.js';
+// `D` went with the pressAtFair block — nothing in the engine speaks as Duke.
+import { GS, STAT_LABELS, REL_NAMES, REL_STATES, N, C } from './state.js';
 import { SCENES } from './scenes.js';
 
 /* ================================================================
@@ -168,16 +169,6 @@ function goToScene(id){
       ? `Earl Maddox sent word through Cal. The offer is still on the table. So is the shoulder.`
       : `Earl Maddox is waiting. The contract is on the table.`;
     showChapter('Milestone 2','The Investor Offer', desc,'Take the Meeting', entryScene);
-    return;
-  }
-  if(id === '_chapter_fr2'){
-    triggerStatUpdate({
-      title:'The Deal Is Real',
-      reason:'You signed. Earl shook your hand. Cal picked up his jacket. Now comes the work.',
-      deltas:{},
-      rels:{},
-      flags:{ m2Complete: true }
-    }, 'fr2_hub_open');
     return;
   }
   if(id === '_hub_fr2'){
@@ -399,13 +390,12 @@ function buildLines(scene){
 
   // Dynamic: Earl approach modifiers
   if(scene._dynamic && currentScene === 'm1_earl_modifiers'){
-    if(GS.flags.pressAtFair){
-      lines.push(N(`Earl glanced toward the press man with the notepad.`));
-      lines.push(C('EARL',`That fellow writes for the Register?`));
-      lines.push(D(`Covering the fair.`));
-      lines.push(C('EARL',`He'll write about this. That changes some things.`));
-      lines.push(N(`Earl looked back at Duke. The word leverage went through Duke's head without him saying it.`));
-    }
+    // There was a `GS.flags.pressAtFair` block here: five lines about a press
+    // man with a notepad at the county fair. Nothing in the game ever set the
+    // flag, and nothing at the fair is a press man — the game's reporter is
+    // Sandra Voss, who turns up two chapters later in Free Roam 2. Inventing a
+    // character to justify a dead flag is the wrong direction, so the branch
+    // is gone and so is the flag (Phase 2). test/flags.mjs fails on the next one.
     if(GS.flags.dannyMet || GS.flags.dannySchemed){
       lines.push(N(`Earl's eyes had moved across the crowd. He'd found Danny in it.`));
       lines.push(C('EARL',`Diamondback. He's good.`));
@@ -638,12 +628,10 @@ function triggerStatUpdate(update, afterTarget){
   const relEl = document.getElementById('rel-update-list');
   relEl.innerHTML = '';
   if(update.rels){
-    const relNames = { cal:'Cal', ruthie:'Ruthie', tommy:'Tommy', earl:'Earl', danny:'Danny' };
-    const relStateNames = { loyal:'Loyal Partner', warm:'Warming Up', neutral:'Neutral', strained:'Strained', solid:'Solid', absent:'Absent', backer:'Business Deal', unknown:'—', mentor:'Mentor', antagonist:'Antagonist', poached:'Poached', frenemy:'Frenemy', nemesis:'Nemesis', ally:'Ally' };
     for(const [k,v] of Object.entries(update.rels)){
       const row = document.createElement('div');
       row.className = 'rel-row';
-      row.innerHTML = `<span class="rel-row-name">${relNames[k]||k}</span><span class="rel-row-state">${relStateNames[v]||v}</span>`;
+      row.innerHTML = `<span class="rel-row-name">${REL_NAMES[k]||k}</span><span class="rel-row-state">${REL_STATES[v]||v}</span>`;
       relEl.appendChild(row);
     }
   }
@@ -919,8 +907,6 @@ function showGameEnd(){
   const m5Complete = GS.flags.m5Complete || false;
   const outcome = GS.flags.m4Outcome || GS.flags.m3Outcome || 'unknown';
   const m4Stunt = GS.flags.m4Stunt || null;
-  const relNames = { cal:'Cal', ruthie:'Ruthie', tommy:'Tommy', earl:'Earl Maddox', danny:'Danny', pete:'Pete' };
-  const relStateNames = { loyal:'Loyal Partner', warm:'Warming Up', neutral:'Neutral', strained:'Strained', solid:'Solid', absent:'Absent', backer:'Business Partner', unknown:'—', mentor:'Mentor', antagonist:'Antagonist', poached:'Poached', frenemy:'Frenemy', nemesis:'Nemesis', ally:'Ally', hanger_on:'Hanger-On' };
 
   // Career track inference
   let track = 'Regional King';
@@ -944,7 +930,7 @@ function showGameEnd(){
     } else if(m5Outcome === 'walk_quiet'){
       headlineText = `"Nobody Remembers the Promoter's Handshake. They Remember the Fist."`;
     } else if(m5Outcome === 'mentor' && GS.rels.pete && GS.rels.pete !== 'absent'){
-      headlineText = `"He Taught Me Everything — Danny 'Diamondback' Reeves Remembers Duke"`;
+      headlineText = `"He Taught Me Everything — Pete Garland Remembers Duke"`;
     } else if(m5Outcome === 'symbolic_own'){
       headlineText = `"${GS.town||'Buford County'}'s Own: ${name} Comes Home — And Stays"`;
     } else if(m5Outcome === 'retire_clean' && track === 'The Legend'){
@@ -1039,7 +1025,7 @@ function showGameEnd(){
   } else if(GS.rels.ruthie === 'solid' && m5Outcome === 'symbolic_own'){
     codaText = `"Ruthie Harlan: 'I always knew he'd come home.'"`;
   } else if(m5Outcome === 'mentor' && GS.rels.pete && GS.rels.pete !== 'absent'){
-    codaText = `"He taught me everything — Danny 'Diamondback' Reeves remembers Duke."`;
+    codaText = `"He taught me everything — Pete Garland remembers Duke."`;
   } else if(m5Outcome === 'disappear'){
     codaText = `"He disappeared in 1974. Some say he's still out there."`;
   } else if(m4Stunt === 'symbolic' && GS.flags.m4Outcome === 'triumph'){
@@ -1053,7 +1039,11 @@ function showGameEnd(){
       retire_clean: [GS.rels.earl === 'absent' ? 'He made the call. Cal first. There was nobody in front of Cal.' : 'He made the call. Earl first, then Cal, then Ruthie.', 'The announcement ran in three papers. Sandra got the county fair detail right.', 'He thought: that\'s the story. He thought: it\'s enough.'],
       last_stunt_win: ['He cleared it.', 'He held the landing. He looked at the gap from the other side.', 'He thought: that\'s the last number. He thought: I\'m done.'],
       last_stunt_loss: ['He didn\'t clear it.', 'He got up.', 'He thought: that\'s the last time I\'m going to make that sound happen. He thought: I\'m done.'],
-      last_stunt_earl: ['Earl picked the canyon. Duke drove out alone the morning of.', 'He sat at the rim until the gap was just information.', 'He thought: alright. Let\'s go find out.'],
+      last_stunt_earl: ['Earl picked the canyon. Duke drove out alone the morning of.',
+        'He sat at the rim until the gap was just information.',
+        GS.flags.m5StuntCleared
+          ? 'He cleared it. He thought: alright. That was somebody else\'s number, and I found it anyway.'
+          : 'He didn\'t clear it. He got up. He thought: alright. That was somebody else\'s number.'],
       walk_quiet: ['He told Cal on a Tuesday. Cal said: okay.', 'Some people never knew he retired.', 'He thought: the ones who need to know know.'],
       keep_going: ['He didn\'t stop.', 'The shows got smaller. The name didn\'t.', 'He thought: this is what continuing looks like.'],
       mentor: ['He called Pete. Pete said: I know.', 'The first time Duke watched Pete clear a distance he\'d cleared himself, he thought about the county fair.', 'He thought: the number went somewhere. He was glad it did.'],
@@ -1072,7 +1062,7 @@ function showGameEnd(){
   let relLines = Object.entries(GS.rels)
     .filter(([,v])=> v && v !== 'unknown')
     .map(([k,v])=>
-      `<div style="margin-bottom:4px;"><strong style="color:var(--gold)">${relNames[k]||k}:</strong> ${relStateNames[v]||v}</div>`
+      `<div style="margin-bottom:4px;"><strong style="color:var(--gold)">${REL_NAMES[k]||k}:</strong> ${REL_STATES[v]||v}</div>`
     ).join('');
 
   const verdictHTML = verdicts.map(v=>
@@ -1383,11 +1373,11 @@ function renderHubFR2(){
     const b=document.createElement('button'); b.className='btn-main';
     b.style.fontSize='16px';
     b.textContent='Milestone 3 — The Big Break';
-    // The backer-less branch goes through fr2_close (the solo arm reads
-    // debtSource); nothing names _chapter_fr2_end on the backer branch, which
-    // is Phase 2's first bullet, and routing it here would move three
-    // baseline transcripts.
-    b.onclick=()=> goToScene(solo ? '_chapter_fr2_end' : '_chapter_m3');
+    // Both branches close Free Roam 2 through fr2_close, which has an arm
+    // for each (Phase 2). Before it, only the backer-less branch did, and
+    // the backer arm — Earl's phone call about the car show, twelve lines —
+    // was written and reachable from nothing.
+    b.onclick=()=> goToScene('_chapter_fr2_end');
     m3btn.appendChild(b);
     sectionsEl.appendChild(m3btn);
   }
@@ -1653,10 +1643,10 @@ function renderHubFR4(){
     const b=document.createElement('button'); b.className='btn-main';
     b.style.fontSize='16px';
     b.textContent='Milestone 5 — The Question';
-    // The solo branch reads fr4_close on the way out — the phone call that
-    // says yes to Vegas — as FR2 does with fr2_close. The backer branch still
-    // skips it (Phase 2's first bullet).
-    b.onclick=()=> goToScene(GS.rels.earl === 'absent' ? 'fr4_close' : '_chapter_m5');
+    // Both branches read fr4_close on the way out — the phone call that says
+    // yes to Vegas — as FR2 does with fr2_close (Phase 2). The backer arm
+    // was written from the start and named by nothing until now.
+    b.onclick=()=> goToScene('fr4_close');
     m5btn.appendChild(b);
     const hint = document.createElement('div');
     hint.style.cssText='font-size:11px;color:var(--cream-faint);margin-top:8px;letter-spacing:.05em;';
@@ -1669,11 +1659,10 @@ function renderHubFR4(){
 function handleStuntRunM5(res){
   syncSkillsFromStats();
   const outcome = res.result;   // see handleStuntRunM3
-  if(outcome === 'SUCCESS' || outcome === 'PARTIAL'){
-    goToScene('m5_stunt_win');
-  } else {
-    goToScene('m5_stunt_loss');
-  }
+  // The two outcome scenes no longer name their outcome flatly: m5StuntFlags()
+  // in scenes.js reads m5Decision so the ending Earl picked can be its own
+  // thing. See the comment there (Phase 2).
+  goToScene(outcome === 'SUCCESS' || outcome === 'PARTIAL' ? 'm5_stunt_win' : 'm5_stunt_loss');
 }
 
 /* ================================================================
