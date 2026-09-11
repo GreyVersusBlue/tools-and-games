@@ -826,7 +826,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 6 — Evenings that cost something | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Projects/daredevil/WISHLIST.md#phase-6--evenings-that-cost-something) |
+| 1 | Phase 6 — Evenings that cost something | `Projects/daredevil` | 1 | Opus 5 | `claude/fervent-hypatia-verftz` | [WISHLIST.md Phase 6](Projects/daredevil/WISHLIST.md#phase-6--evenings-that-cost-something) |
 | 2 | Phase 7 — Three stunts that are three stunts | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/daredevil/WISHLIST.md#phase-7--three-stunts-that-are-three-stunts) |
 | 3 | Phase 8 — A workflow that runs the suite, and a real thumb | `Projects/daredevil` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/daredevil/WISHLIST.md#phase-8--a-workflow-that-runs-the-suite-and-a-real-thumb) |
 | 4 | Phase 1 — The skill table becomes a record | `Numina` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Numina/WISHLIST.md#phase-1--the-skill-table-becomes-a-record) |
