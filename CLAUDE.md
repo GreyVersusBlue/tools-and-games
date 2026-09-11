@@ -71,7 +71,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 282 locked decisions in full, by number.
+`HISTORY.md` carries all 283 locked decisions in full, by number.
 
 ## Writing style
 
@@ -130,7 +130,10 @@ retired. Two things replace it:
    which shared paths it may not touch on its own.
 2. **The `Claimed` column in `BACKLOG.md`'s ranked table.** Write your branch
    name into the row before you start; clear it after your merge is confirmed.
-   A row with somebody else's branch in it is taken.
+   A row with somebody else's branch in it is taken. **The claim has to be on
+   `main` to be seen** (#283): commit it alone, open a PR, merge it, then
+   start. Two sessions once built the same row in full because each had
+   claimed it on a branch the other could not read.
 
 **Shared-file edits go in the same PR as the project change now, not in a
 request queue.** The four shared things — `index.html`, `assets/js/gvb-save.js`,

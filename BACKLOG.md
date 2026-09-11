@@ -798,11 +798,15 @@ One line per item, for scanning. `Area` is the folder the work lands in.
 — the wishlists name Claude Opus 5 or Claude Fable 5.1 per phase, and that is
 carried here unchanged, not re-decided; `—` means no source named one.
 `Claimed` is blank until a session writes its branch name in, and is cleared
-after that branch merges.
+after that branch merges. **A claim counts only once it is on `main`** (#283):
+write it, open a one-line PR, merge it, then start. On 2026-09-11 two
+sessions each wrote their branch into this row on their own branch, neither
+could see the other's, and both built Daredevil Phase 4 in full — #220 merged
+and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 5 — A walker that knows what it did not reach | `Projects/daredevil` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 5](Projects/daredevil/WISHLIST.md#phase-5--a-walker-that-knows-what-it-did-not-reach) |
+| 1 | Phase 5 — A walker that knows what it did not reach | `Projects/daredevil` | 1 | Fable 5.1 | `claude/daredevil-phase5-walker` | [WISHLIST.md Phase 5](Projects/daredevil/WISHLIST.md#phase-5--a-walker-that-knows-what-it-did-not-reach) |
 | 2 | Phase 6 — Evenings that cost something | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Projects/daredevil/WISHLIST.md#phase-6--evenings-that-cost-something) |
 | 3 | Phase 7 — Three stunts that are three stunts | `Projects/daredevil` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/daredevil/WISHLIST.md#phase-7--three-stunts-that-are-three-stunts) |
 | 4 | Phase 8 — A workflow that runs the suite, and a real thumb | `Projects/daredevil` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/daredevil/WISHLIST.md#phase-8--a-workflow-that-runs-the-suite-and-a-real-thumb) |

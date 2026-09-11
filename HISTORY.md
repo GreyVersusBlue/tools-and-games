@@ -6276,6 +6276,27 @@ on `main`: `check-integrity.mjs` fails on `Tools/prompt-builder.html` alone
 (1,485 units, 1 broken), `social:check` reports the same six pages out of sync,
 `check-collisions.mjs` passes.
 
+## Between Phases 4 and 5 — the claim nobody could see (2026-09-11)
+
+**Phase 4 was built twice.** Two sessions took rank 1 on the same day. Each
+wrote its branch name into `BACKLOG.md`'s `Claimed` column, as the rule says,
+and committed that on its own branch — where the other session, reading
+`main`, could not see it. The first to finish shipped as PR #220 and re-ranked
+the list in #221; the second finished an hour of transcripts and one
+25-minute page suite later, found its merge refused on eighteen files, and
+closed its PR (#222) unmerged. The two designs were not the same — the second
+gave Tommy his job at the Free Roam 1 bar and Danny his two states from the
+public challenge's counter and silence arms — but they answered the same
+row, both found the same three dead Ruthie and Earl states with the same kind
+of check, and only one could land. Nothing from #222 was carried forward.
+
+- **A claim counts only once it is on `main`** (#283). Write the branch name
+  into the row, open a PR carrying nothing else, merge it, then start. The
+  cost is one Cloudflare Pages check, about two minutes. The `Claimed` column
+  was written as if a branch were visible to the repo the moment it existed;
+  it is visible to the session that made it and nobody else until it merges.
+  `BACKLOG.md`'s Tier 1 preamble and the root `CLAUDE.md` both say so now.
+
 ---
 
 # Bell to Bell, through Phase 3
