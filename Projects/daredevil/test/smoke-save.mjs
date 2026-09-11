@@ -16,13 +16,20 @@ import {
   createDaredevilSlot, freshState, validateState, repairState, KEY, VERSION, STAT_MAX,
 } from '../js/save.js';
 import { CAST, castFor, isLegalRel, setRel, meetsNeeds, routeByCast, statesOf, relLabel, wasMet, rosterFor } from '../js/cast.js';
-import { findings, UNREACHABLE_BY_RELS } from './graph.mjs';
+import { findings, UNREACHABLE_BY_RELS, eveningCards } from './graph.mjs';
 import {
   SCENES,
   M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
   M4_PRESTUNT_ROUTES, M4_PRESTUNT_FALLBACK,
   M5_QUESTION_ROUTES, M5_QUESTION_FALLBACK,
+  M4_STUNT_GATES, m4Gate,
 } from '../js/scenes.js';
+import {
+  HUB_EVENINGS, EVENING_COST, HUB_TAKE, BUS_DEPOSIT,
+  CAR_MONEY, CAR_RESALE, SMALL_SHOW, SELF_FUND_NET, SOLO_LOAN, monthlyOn,
+  money, earn, spend, owePerMonth, payHubTake, spendEveningCost,
+  eveningAffordable, costTag, canAffordBuses,
+} from '../js/money.js';
 
 const JS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'js');
 
@@ -84,7 +91,7 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
   eq(s.stats.hustle, 2, 'a missing stat is filled in');
   eq(s.rels.cal, 'neutral', 'a null rels object is rebuilt');
   eq(s.flags.hubEveningsDone, [], 'a list flag that is not a list is forced back to a list');
-  eq(s.flags.hubEvenings, 5, 'a missing flag is filled in');
+  eq(s.flags.hubEvenings, HUB_EVENINGS.fr1, 'a missing flag is filled in');
   eq(s.screen, 'hub', 'an unknown screen with no scene resolves to the hub');
 }
 {
@@ -472,6 +479,218 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
   ok(fixed.length === 0,
      `every name on the doubling list still doubles (stale: ${fixed.join(', ') || 'none'})`);
   console.log(`  double-apply: ${doubling.length} choice-reached scenes carry non-empty deltas`);
+}
+
+/* ------------------------------------------------- the hub economy (Phase 6) */
+// The four hubs handed out seven evenings and built four cards, and the pips
+// were decoration. Free Roam 2 was the only hub where the budget bound
+// anything, which is why `hubExhausted()` fired on cards rather than evenings.
+// Everything below is pure: money.js imports nothing, so the whole economy is
+// testable without a browser and without a run.
+{
+  const eves = eveningCards();
+
+  // 1. The budget binds, per hub, by construction. This is the row's first
+  // bullet and the number the browser suite then proves a real run hits.
+  for (const [hub, key] of [['_hub_fr1', 'fr1'], ['_hub_fr2', 'fr2'], ['_hub_fr3', 'fr3'], ['_hub_fr4', 'fr4']]) {
+    const cards = eves.get(hub).length;
+    ok(HUB_EVENINGS[key] < cards,
+       `${hub} hands out fewer evenings than it has cards (${HUB_EVENINGS[key]} of ${cards})`);
+  }
+  // A Milestone 4 failure keeps the discount Free Roam 4 always had.
+  ok(HUB_EVENINGS.fr4_failure === HUB_EVENINGS.fr4 - 1,
+     `a failed Milestone 4 costs one evening (${HUB_EVENINGS.fr4_failure} against ${HUB_EVENINGS.fr4})`);
+  eq(freshState().flags.hubEvenings, HUB_EVENINGS.fr1,
+     "Free Roam 1's budget is the one the save seeds");
+
+  // 2. The price list and the boards agree, from both ends (#264). A card with
+  // no row would render "Costs 1 Evening" and charge nothing; a row naming no
+  // card is a price nobody can be asked to pay.
+  const onBoards = [...eves.values()].flat();
+  const unpriced = onBoards.filter(id => !EVENING_COST[id]).sort();
+  const unbuilt = Object.keys(EVENING_COST).filter(id => !onBoards.includes(id)).sort();
+  ok(unpriced.length === 0, `every hub evening card has a price (unpriced: ${unpriced.join(', ') || 'none'})`);
+  ok(unbuilt.length === 0, `every price names a card a hub builds (unbuilt: ${unbuilt.join(', ') || 'none'})`);
+  // And every priced card is a real scene, or the click goes nowhere.
+  const noScene = Object.keys(EVENING_COST).filter(id => !SCENES[id]).sort();
+  ok(noScene.length === 0, `every priced evening is a scene (missing: ${noScene.join(', ') || 'none'})`);
+
+  // 3. Every hub can give a point of Condition back. Without this the budget
+  // is a one-way ratchet on the stat the stunt physics read.
+  for (const [hub] of [...eves]) {
+    const gives = eves.get(hub).filter(id => (EVENING_COST[id] || {}).condition < 0
+      || (SCENES[id] && ((SCENES[id].statUpdate || {}).deltas || {}).condition > 0));
+    ok(gives.length > 0, `${hub} has an evening that gives Condition back (${gives.join(', ') || 'none'})`);
+  }
+
+  // 4. The integer. `money()` never reads back negative or fractional, and
+  // `spend` refuses what is not there rather than going under.
+  {
+    const g = { flags: { money: 0, monthlyOutgo: 0, hubTakePaid: [] }, stats: { condition: 3 }, rels: { earl: 'backer' } };
+    eq(earn(g, 250), 250, 'earn adds');
+    ok(!spend(g, 400), 'spend refuses what is not there');
+    eq(money(g), 250, 'and takes nothing when it refuses');
+    ok(spend(g, 250), 'spend takes what is there');
+    eq(money(g), 0, 'down to nothing, not under it');
+    eq(earn(g, -500), 0, 'a negative earn floors at zero');
+    g.flags.money = 'twelve hundred';
+    eq(money(g), 0, 'a non-numeric save reads as zero rather than NaN');
+    g.flags.money = 17.6;
+    eq(money(g), 18, 'and dollars are whole');
+  }
+
+  // 5. The take is credited once per hub, and the paper comes off it. Before
+  // the `hubTakePaid` guard this was eight credits a hub, because
+  // `showHubFRn()` runs again every time a card returns to the board.
+  {
+    const g = { flags: { money: 0, monthlyOutgo: 0, hubTakePaid: [] }, stats: { condition: 3 }, rels: { earl: 'backer' } };
+    eq(payHubTake(g, 'fr2'), HUB_TAKE.fr2.backer, 'the backer arm takes the backer number');
+    eq(payHubTake(g, 'fr2'), 0, 'and a second render credits nothing');
+    eq(money(g), HUB_TAKE.fr2.backer, 'so the purse holds one take, not two');
+
+    const solo = { flags: { money: 0, monthlyOutgo: 0, hubTakePaid: [] }, stats: { condition: 3 }, rels: { earl: 'absent' } };
+    owePerMonth(solo, 37);
+    owePerMonth(solo, 104);
+    eq(solo.flags.monthlyOutgo, 141, 'two pieces of paper add up');
+    eq(payHubTake(solo, 'fr3'), HUB_TAKE.fr3.solo - 141 * HUB_TAKE.fr3.months,
+       'the solo take comes in net of four months of paper');
+  }
+
+  // 6. The Condition floor (#287). An evening out is not what puts a man in
+  // the hospital; `createStuntRun`'s drift constant at zero Condition is 202
+  // against 112 at three, and a hub that could take the last point would hand
+  // the next stunt a run nothing can ride.
+  {
+    const g = { flags: { money: 500, monthlyOutgo: 0, hubTakePaid: [] }, stats: { condition: 1 }, rels: { earl: 'backer' } };
+    spendEveningCost(g, 'fr3_eve_tommy');
+    eq(g.stats.condition, 1, 'an evening never takes the last point of Condition');
+    eq(money(g), 500 - EVENING_COST.fr3_eve_tommy.money, 'but it still costs its money');
+    g.stats.condition = 4;
+    spendEveningCost(g, 'fr3_eve_tommy');
+    eq(g.stats.condition, 3, 'above the floor it costs what it says');
+    spendEveningCost(g, 'fr3_eve_ruthie');
+    eq(g.stats.condition, 4, 'and a negative cost gives a point back');
+    g.stats.condition = 5;
+    spendEveningCost(g, 'fr3_eve_ruthie');
+    eq(g.stats.condition, 5, 'a point back at the ceiling stays at the ceiling');
+  }
+
+  // 7. The card says the trade, not just that there is one (the row's fifth
+  // bullet). An evening the run cannot pay for names the shortfall, because
+  // "unavailable" with no number is the thing this phase set out to fix.
+  {
+    const g = { flags: { money: 1000, monthlyOutgo: 0, hubTakePaid: [] }, stats: { condition: 3 }, rels: { earl: 'backer' } };
+    ok(/\$55/.test(costTag(g, 'fr2_eve_practice')), `a priced evening names its price (${costTag(g, 'fr2_eve_practice')})`);
+    ok(/Condition −1/.test(costTag(g, 'fr2_eve_practice')), 'and the Condition it takes');
+    ok(/Condition \+1/.test(costTag(g, 'fr4_night_ride')), `and a restful one says it gives a point (${costTag(g, 'fr4_night_ride')})`);
+    eq(costTag(g, 'fr3_eve_earl'), '1 Evening', 'an evening that costs only the evening says only that');
+    g.flags.money = 20;
+    ok(!eveningAffordable(g, 'fr2_eve_practice'), 'a $55 evening on $20 is not affordable');
+    ok(/short \$35/.test(costTag(g, 'fr2_eve_practice')), `and the card says by how much (${costTag(g, 'fr2_eve_practice')})`);
+    ok(eveningAffordable(g, 'fr3_eve_earl'), 'a free evening is always affordable');
+  }
+
+  // 8. The Milestone 4 gate (the row's fourth bullet). `m4_stunt_select` has
+  // said "a school district that would rent him the buses against a deposit he
+  // did not have yet" on the solo branch since Phase 1, and nothing read it.
+  // On the backer branch Earl has the stadium booked, which the same paragraph
+  // also says, so money is not a requirement there.
+  {
+    const rich = { flags: { money: BUS_DEPOSIT, monthlyOutgo: 0 }, stats: { showmanship: 4, precision: 3, nerve: 2 }, rels: { earl: 'absent' } };
+    const broke = { flags: { money: BUS_DEPOSIT - 1, monthlyOutgo: 0 }, stats: { showmanship: 4, precision: 3, nerve: 2 }, rels: { earl: 'absent' } };
+    ok(canAffordBuses(rich), 'the deposit exactly covers the buses');
+    ok(!canAffordBuses(broke), 'a dollar short does not');
+    ok(canAffordBuses({ ...broke, rels: { earl: 'backer' } }), "on the backer branch it is Earl's deposit, not Duke's");
+
+    // The three choices read the one table rather than re-deriving it.
+    const bus = SCENES.m4_stunt_select.choices.find(c => c.effects.flags.m4Choice === 'buses');
+    const inf = SCENES.m4_stunt_select.choices.find(c => c.effects.flags.m4Choice === 'inferno');
+    ok(bus._gateCheck === m4Gate('buses').check, 'the Bus Stack choice IS the table row');
+    ok(inf._gateCheck === m4Gate('inferno').check, 'and so is the Inferno');
+    eq(M4_STUNT_GATES.map(g => g.choice), ['buses', 'inferno', 'symbolic'], 'three stunts, in the order the screen offers them');
+    ok(M4_STUNT_GATES.every(g => typeof g.check === 'function'), 'every row can be asked');
+    ok(m4Gate('symbolic').check(), 'the symbolic stunt is always available');
+  }
+
+  // 9. And the hint the hub prints no longer re-derives the thresholds. It
+  // promised a Bus Stack the choice screen then refused, and it knew nothing
+  // at all about the deposit.
+  {
+    const engine = fs.readFileSync(path.join(JS, 'engine.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    ok(!/const\s+canBuses\s*=/.test(engine), 'renderHubFR3 no longer computes its own canBuses');
+    ok(!/const\s+canInferno\s*=/.test(engine), 'nor its own canInferno');
+    ok(/M4_STUNT_GATES\.filter/.test(engine), 'it filters the shared table instead');
+  }
+
+  // 10. The twelve hundred's four answers. Only one of them comes out of
+  // Duke's pocket; the other three source the money somewhere else and what
+  // they cost him is not money. And a month on a note is priced the way this
+  // game has priced one since Phase 1 — `m2_solo_round2_collateral` printed
+  // "The monthly number was thirty-seven dollars" against four hundred and ten
+  // at eight percent over twelve months, and `monthlyOn` has to reproduce it
+  // rather than invent a second arithmetic.
+  {
+    eq(monthlyOn(SOLO_LOAN), 37, "a month on the bike note is the thirty-seven the prose printed");
+    eq(SELF_FUND_NET, SMALL_SHOW - (CAR_MONEY - CAR_RESALE), 'self-funding costs the resale gap less the extra show');
+    ok(SELF_FUND_NET < 0, `and it is a cost, not a windfall (${SELF_FUND_NET})`);
+
+    const arms = SCENES.fr2_debt_01.choices;
+    eq(arms.length, 4, 'four answers to the twelve hundred');
+    // Indexed off a filtered list, so read through `&&`: a break that empties
+    // either list has to fail these by name rather than throw a TypeError out
+    // of the suite three assertions early (#34 — read WHICH assertion fails).
+    const pocket = arms.filter(c => c.effects.money);
+    eq(pocket.length, 1, 'exactly one of them comes out of his pocket');
+    eq(pocket[0] && pocket[0].effects.flags.debtSource, 'self', 'and it is the self-funded one');
+    eq(pocket[0] && pocket[0].effects.money, SELF_FUND_NET, 'for what the resale arithmetic says');
+    const paper = arms.filter(c => c.effects.owePerMonth);
+    eq(paper.length, 1, 'exactly one of them signs paper with a monthly number');
+    eq(paper[0] && paper[0].effects.flags.debtSource, 'bank', 'and it is the bank');
+    eq(paper[0] && paper[0].effects.owePerMonth, monthlyOn(CAR_MONEY), 'priced off the twelve hundred');
+    const free = arms.filter(c => !c.effects.money && !c.effects.owePerMonth).map(c => c.effects.flags.debtSource);
+    eq(free.sort(), ['earl', 'tommy'], "Earl's advance and Tommy's loan cost no dollars — they cost him something else");
+  }
+
+  // 11. No accumulating number on a `statUpdate`, ever.
+  //
+  // A scene reached by a choice fires its statUpdate twice — the double-apply
+  // frozen thirty-three scenes above — and the doubling is invisible for a
+  // flag or a relationship write, which are idempotent, and is not for a
+  // running total. This phase shipped its first version with the solo bank
+  // note's monthly on `m2_solo_bank_collateral`'s update, and the solo
+  // transcripts came out at $74 a month against a prose line that says
+  // thirty-seven. `triggerStatUpdate` no longer looks at either key; this
+  // fails on a scene that starts carrying one anyway, so the next author finds
+  // out from the suite rather than from a transcript.
+  {
+    const carriers = Object.entries(SCENES)
+      .filter(([, sc]) => sc.statUpdate && (sc.statUpdate.money || sc.statUpdate.owePerMonth))
+      .map(([id]) => id).sort();
+    ok(carriers.length === 0,
+       `no statUpdate carries money or owePerMonth — those go on effects (carriers: ${carriers.join(', ') || 'none'})`);
+    // And the ones that do carry them are on choices, which run once.
+    const onEffects = [];
+    for (const [id, sc] of Object.entries(SCENES))
+      for (const ch of sc.choices || [])
+        if (ch.effects && (ch.effects.money || ch.effects.owePerMonth)) onEffects.push(`${id}/${ch.label}`);
+    ok(onEffects.length >= 4,
+       `the dollars the story moves are on choices instead (${onEffects.length}: ${onEffects.join(', ')})`);
+  }
+
+  // 12. The save carries it, and `repair` coerces it back.
+  {
+    const r = repairState({ name: 'A', town: 'B', stats: {}, scene: 'fr3_eve_cal',
+                            flags: { money: 'lots', monthlyOutgo: -12, hubTakePaid: 'fr2' } });
+    eq(r.flags.money, 0, 'a string in the purse repairs to the default');
+    eq(r.flags.monthlyOutgo, 0, 'and a negative monthly to zero');
+    eq(r.flags.hubTakePaid, [], 'and the take list back to a list');
+  }
+
+  const priced = Object.keys(EVENING_COST).length;
+  const dollars = Object.values(EVENING_COST).reduce((n, c) => n + c.money, 0);
+  console.log(`\n  economy: ${priced} priced evenings, $${dollars} to read every one of them, ` +
+              `${HUB_EVENINGS.fr1 + HUB_EVENINGS.fr2 + HUB_EVENINGS.fr3 + HUB_EVENINGS.fr4} evenings across the four hubs`);
 }
 
 /* ---------------------------------------------------------- the graph */

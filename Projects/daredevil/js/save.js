@@ -37,6 +37,10 @@
 
 import { createSaveSlot, mountSaveBar } from '../../../assets/js/gvb-save.js';
 import { CAST, startingRels, isLegalRel } from './cast.js';
+// money.js imports nothing, on purpose: this file seeds the economy in
+// `freshState`, and a money module that reached for GS itself would close the
+// loop save.js -> money.js -> state.js -> save.js. See money.js's header.
+import { HUB_EVENINGS } from './money.js';
 
 export { mountSaveBar };
 
@@ -55,7 +59,14 @@ const LIST_FLAGS = [
   'fr2DayScenesDone', 'fr2EveningsDone',
   'fr3DayScenesDone', 'fr3EveningsDone',
   'fr4DayScenesDone', 'fr4EveningsDone',
+  'hubTakePaid',
 ];
+
+/** Flags whose value is a whole number of dollars. A hand-edited save with a
+ *  string in one of these turns every sum after it into NaN, and a NaN in
+ *  `money` renders as "$NaN" on a hub card and compares false against every
+ *  price, which reads as "you cannot afford anything" with no error anywhere. */
+const MONEY_FLAGS = ['money', 'monthlyOutgo'];
 
 /**
  * A brand-new run.
@@ -85,10 +96,19 @@ export function freshState() {
       rickyLegacy: false,
       fairOrganizerDone: false,
       wannabeMet: false,
-      hubEvenings: 5,
+      hubEvenings: HUB_EVENINGS.fr1,
       hubEveningsUsed: 0,
       hubDayScenesDone: [],
       hubEveningsDone: [],
+      // The hub economy (Phase 6). `money` is whole dollars on hand;
+      // `monthlyOutgo` is what the paper Duke signed takes every month whether
+      // he rides or not; `hubTakePaid` names the hubs whose stretch of shows
+      // has already been credited. The three later budgets are seeded by their
+      // own `showHubFRn()` rather than here, because Free Roam 4's depends on
+      // whether Milestone 4 went down — see money.js's HUB_EVENINGS.
+      money: 0,
+      monthlyOutgo: 0,
+      hubTakePaid: [],
     },
     scene: null,
     screen: 'panel',
@@ -146,6 +166,10 @@ export function repairState(s) {
   }
   for (const k of LIST_FLAGS) {
     if (s.flags[k] !== undefined && !Array.isArray(s.flags[k])) s.flags[k] = [];
+  }
+  for (const k of MONEY_FLAGS) {
+    const v = Number(s.flags[k]);
+    s.flags[k] = Number.isFinite(v) ? Math.max(0, Math.round(v)) : base.flags[k];
   }
 
   if (!SCREENS.includes(s.screen)) s.screen = 'panel';

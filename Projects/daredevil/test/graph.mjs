@@ -267,6 +267,42 @@ export function walkWithRels(g, root = ROOT) {
  */
 export const UNREACHABLE_BY_RELS = ['m5_question_earl'];
 
+/**
+ * Which of each hub's cards cost an evening (Phase 6).
+ *
+ * Scraped out of the renderers' own `eveCards` arrays and pushes, not off
+ * money.js's price list — the whole point of the check that uses this is that
+ * the two sides agree, and a scan that read the price list to decide what an
+ * evening is would be re-implementing the thing it checks (#34).
+ *
+ * Returns Map hub -> [id, ...].
+ */
+export function eveningCards() {
+  const engine = strip(fs.readFileSync(path.join(JS, 'engine.js'), 'utf8'));
+  const out = new Map();
+  for (const [hub, fn] of [['_hub_fr1', 'renderHubFR1'], ['_hub_fr2', 'renderHubFR2'],
+                           ['_hub_fr3', 'renderHubFR3'], ['_hub_fr4', 'renderHubFR4']]) {
+    const body = fnBody(engine, fn);
+    const ids = new Set();
+    // `const eveCards = [ ... ]` / `let eveCards = [ ... ]` / `eveCards = [ ... ]`
+    for (const m of body.matchAll(/eveCards\s*=\s*\[/g)) {
+      const open = m.index + m[0].length - 1;
+      let depth = 0, end = -1;
+      for (let i = open; i < body.length; i++) {
+        if (body[i] === '[') depth++;
+        else if (body[i] === ']') { depth--; if (depth === 0) { end = i; break; } }
+      }
+      if (end < 0) throw new Error(`graph: unbalanced eveCards array in ${fn}`);
+      for (const c of body.slice(open, end).matchAll(/\{\s*id\s*:\s*'([\w]+)'/g)) ids.add(c[1]);
+    }
+    // `eveCards.push({ id:'x', ... })`
+    for (const m of body.matchAll(/eveCards\.push\(\s*\{\s*id\s*:\s*'([\w]+)'/g)) ids.add(m[1]);
+    if (!ids.size) throw new Error(`graph: ${fn} builds no evening cards, which cannot be right`);
+    out.set(hub, [...ids]);
+  }
+  return out;
+}
+
 /** Everything the report asserts, as data, so a suite can assert it too. */
 export function findings(g = buildGraph()) {
   const plain = walk(g);

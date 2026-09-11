@@ -1,22 +1,22 @@
 # Daredevil's `js/` — module map
 
-Five ES modules, no bundler, no build step. `index.html` loads exactly one of
+Six ES modules, no bundler, no build step. `index.html` loads exactly one of
 them directly (`<script type="module" src="./js/engine.js">`); the rest are
 imported.
 
 ```
-cast.js     <- nothing
-   ^
-   |
-save.js     <- cast.js
-   ^
-   |
-state.js    <- save.js (re-exports cast.js)
-   ^
-   |
-scenes.js --+
-   |
-engine.js  <- scenes.js, state.js, save.js
+money.js    <- nothing        cast.js  <- nothing
+   ^                             ^
+   |                             |
+   +-------- save.js -------------+
+                ^
+                |
+             state.js   <- save.js (re-exports cast.js)
+                ^
+                |
+             scenes.js --+     <- state.js, money.js
+                |
+             engine.js         <- scenes.js, state.js, save.js, money.js
 ```
 
 - **`cast.js`** — the six characters as one table (Phase 3): id, display
@@ -37,10 +37,30 @@ engine.js  <- scenes.js, state.js, save.js
   label and prose closure keyed to it is dead against and nothing throws. Three
   are still dead — `ruthie: 'strained'`, `ruthie: 'absent'`, `earl:
   'antagonist'` — and are frozen in a list there that can shrink and not grow.
+- **`money.js`** — the hub economy as one table (Phase 6): how many evenings
+  each hub hands out, what each evening card costs in dollars and Condition,
+  what a stretch of shows pays on each branch, the twelve hundred for the cars
+  and the nine hundred the school district wants for thirteen buses. With it,
+  the functions that move `GS.flags.money`: `payHubTake()` credits a hub's take
+  once, `spendEveningCost()` takes a card's price, `costTag()` is the string the
+  card's tag slot prints, `canAffordBuses()` is the Milestone 4 gate, and
+  `spend()` refuses what is not there rather than going negative.
+  **It imports nothing, and it has to.** `save.js` seeds `money` and Free Roam
+  1's budget in `freshState`, so a money module that reached for `GS` itself
+  would close the loop `save.js -> money.js -> state.js -> save.js` and read
+  `GS` out of the temporal dead zone — the same trap `state.js` exists to
+  avoid, one level down. Every function here takes the state it works on as an
+  argument, which also makes the whole economy testable under plain Node.
+  **Adding a hub evening card means adding a price row.** `smoke-save.mjs`
+  scrapes each renderer's own `eveCards` list and fails on a card with no price
+  and on a price naming no card.
 - **`save.js`** — the save format, on top of `assets/js/gvb-save.js`. Seeds
   the relationships from the cast and repairs a loaded one against it: an
   illegal state goes back to the character's start state, a key the cast does
-  not know is dropped.
+  not know is dropped. The purse comes back through the same door: `money` and
+  `monthlyOutgo` are coerced to whole non-negative numbers, because a string in
+  either turns every later sum into `NaN` and a `NaN` purse compares false
+  against every price with no error anywhere.
 - **`state.js`** — `GS` (live game state), `STAT_LABELS`, and the line-builder
   helpers `N()`/`D()`/`C()`/`NF()`. This is its own module, not folded into
   `engine.js`, for one reason: `scenes.js`'s `SCENES` object calls `N()`/`D()`/
@@ -143,6 +163,19 @@ my_scene_id: {
   so a new special id needs a matching `if(id === '_your_id')` block in
   `goToScene()`, and a new scene id just needs to exist in this file. Either
   way, run that check after adding one.
+- **Dollars go on `effects`, never on a `statUpdate`.** `effects: { money: -300 }`
+  is a signed delta (a flag write would set the integer, not add to it), and
+  `effects: { owePerMonth: 108 }` adds to the monthly paper; either may be a
+  function, resolved at apply time the way a line or a subtext is. Do NOT put
+  them on a scene's `statUpdate`: a scene reached by a choice fires its update
+  twice, which does nothing to a flag or a relationship write and doubles a
+  running total. `triggerStatUpdate` no longer reads either key and
+  `smoke-save.mjs` fails on a `statUpdate` that carries one.
+- An evening card needs a row in `money.js`'s `EVENING_COST`, and the hub's
+  budget in `HUB_EVENINGS` has to stay below the number of cards the renderer
+  can build. `buildHubCard` prints the price into the tag slot off that row, so
+  a card no longer carries a `tag:` of its own unless the tag is saying why the
+  card is shut — "(Ruthie not established)", "(The cars first)".
 - The four free-roam hubs build their own card lists in `engine.js`
   (`renderHubFR1`/`renderHubFR2`/`renderHubFR3`/`renderHubFR4`) rather than
   reading a list out of `SCENES` — a new hub card needs an entry in the

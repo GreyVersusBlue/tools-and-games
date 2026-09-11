@@ -6396,6 +6396,195 @@ None of the four shared things was touched: `check-integrity.mjs` fails on
 the new unit), `check-collisions.mjs` 0 collisions, `social:check` the same
 six pages out of sync.
 
+## Phase 6 — Evenings that cost something (2026-09-11)
+
+**The finding, restated as a number.** Free roam is most of the choice this
+game gives a player, and in three hubs out of four the choice was "read all of
+these in some order". Free Roam 3 handed out seven evenings and built at most
+four cards; Free Roam 1 five for five; Free Roam 4 six for seven declared but
+at most six reachable. Only Free Roam 2 could ever run a player out of
+evenings. `hubExhausted()` — the function round 1 added because the milestone
+button gated on `eveRemaining <= 0` and the counter could not reach zero — was
+firing on the cards, not the evenings, and the pips were decoration.
+
+The second half was money. `fr2_debt_01` is a scene about twelve hundred
+dollars with four answers. `m2_solo_round2_collateral` prints "The monthly
+number was thirty-seven dollars… the first number in there that was going to
+arrive whether he did or not". `m4_stunt_select` says, on the solo branch, "a
+school district that would rent him the buses against a deposit he did not have
+yet". The game held none of it. There was no integer.
+
+**What shipped.** Decisions #286 to #289. The row named Claude Opus 5; the
+session ran on it.
+
+- **`js/money.js`, a sixth module, and it imports nothing** (#286). The hub
+  economy as data: `HUB_EVENINGS` (the four budgets), `EVENING_COST` (23 priced
+  evenings), `HUB_TAKE` (what a stretch of shows pays on each branch), the
+  twelve hundred for the cars, the four hundred and ten the solo Milestone 2
+  needs, and the nine hundred thirteen buses want. Plus the functions that move
+  the integer: `payHubTake`, `spendEveningCost`, `costTag`, `canAffordBuses`,
+  `spend` (which refuses what is not there rather than going negative).
+  **It has to import nothing.** `save.js` seeds `money` and Free Roam 1's
+  budget in `freshState`, so a money module that reached for `GS` itself would
+  close the loop `save.js -> money.js -> state.js -> save.js` and read `GS` out
+  of the temporal dead zone — the trap `state.js`'s header describes, one level
+  down. Every function takes the state it works on as an argument, which is
+  also what makes the whole economy testable under plain Node with no browser
+  and no run.
+  **The integer lives in the flag bag**, `GS.flags.money`, not beside `stats`:
+  that is where this game already keeps the run's numbers that are not stats
+  (`hubEvenings`, `perkinsFee`), and `repairState`'s fill-in for a missing
+  default then covers it for nothing. `money` and `monthlyOutgo` join a new
+  `MONEY_FLAGS` list and are coerced to whole non-negative numbers on every
+  load, because a string in either turns every later sum into `NaN`, and a
+  `NaN` purse renders as "$NaN" on a card and compares false against every
+  price with no error anywhere.
+
+- **Every budget is below its hub's card count, and an evening costs money**
+  (#286, same row). 3 evenings for Free Roam 1's five cards, 4 for Free Roam
+  2's seven, 3 for Free Roam 3's four, 4 for Free Roam 4's seven — 3 after a
+  failed Milestone 4, the discount that hub always had and the reason Free Roam
+  4's budget is not a plain `freshState` default. The take is credited once per
+  hub on its first render: 90 at the fair on both branches ("He'd made ninety
+  dollars at the fair", `m2_solo_entry`), then 540/330, 1240/860 and 1600/1100
+  backer/solo, each net of `monthlyOutgo` times that stretch's months. Once
+  matters: `showHubFRn()` runs again every time a card returns to the board,
+  which is what the `||` seeding in those functions has always been for, so an
+  ungarded take was eight credits a hub — the break that proves it reads
+  "got 1080, want 540".
+  A month on a note is `monthlyOn(principal)`, whole principal plus whole eight
+  percent over twelve, rounded — which reproduces the thirty-seven dollars the
+  game has printed since Phase 1 for the four hundred and ten, and prices the
+  twelve hundred for the cars at a hundred and eight the same way rather than
+  inventing a second arithmetic.
+  Of `fr2_debt_01`'s four answers, exactly one moves the integer: self-funding,
+  at the resale gap less the extra show, which is the prose's own three numbers
+  (twelve hundred out, nine hundred back, one small show). Earl's advance and
+  Tommy's loan cost no dollars — what they cost is the number Earl now holds
+  and the thing that sits where a partnership was going to, which Phase 4
+  already wrote as `tommy: 'hanger_on'`. The bank's costs a hundred and eight a
+  month. The suite checks the split from both ends, so an advance that starts
+  costing dollars fails by name.
+
+- **An evening's Condition cost is floored at 1** (#287). Every priced evening
+  carries a signed `condition` and every hub has at least one card that gives a
+  point back — Free Roam 4's is the night ride, which is on every board. But an
+  evening never takes the last point. `createStuntRun`'s `DRIFT_A` is
+  `52 + (1 - condition/5) * 150`: 112 at Condition 3, 172 at 1, 202 at 0. A hub
+  that could take a player to zero would hand the next stunt a drift constant
+  nothing can ride, and the clean run already finishes at Condition 1. An
+  evening out is not what puts a man in the hospital. The stunts and the
+  crashes still go all the way down — `m5_stunt_loss` is −2 and `m1_stunt_crash`
+  is −2 — and they are the things that should.
+
+- **Thirteen buses want a deposit, on the branch where nobody else is paying
+  it** (#288). $900, spent at the choice rather than at the ramp, because that
+  is when a school district cashes it. Only when `rels.earl === 'absent'`: on
+  the backer branch the same paragraph in `m4_stunt_select` says Earl has the
+  stadium booked, so the deposit is his. The three stunts and what each wants
+  are one exported table, `M4_STUNT_GATES`, read by the choices' `_gateCheck`
+  and by Free Roam 3's "Available stunts:" hint — which carried a second copy
+  of the two stat thresholds and could promise a Bus Stack the choice screen
+  then refused, and knew nothing at all about money. `_gateReason` may be a
+  function now, so the lock note names which of the three requirements is
+  missing and by how much: "Requires a $900 deposit (short $478)".
+  `effects.money` and `effects.owePerMonth` resolve a function the same way a
+  line or a subtext does, which is how one choice can owe a deposit on one
+  branch and not the other.
+
+- **The trade is on the card** (#288, same row). `costTag()` fills the tag slot
+  that read "Costs 1 Evening" on all twenty-three of them: "1 Evening · $55 ·
+  Condition −1", or "1 Evening" for the ones that cost only the evening, or
+  "— short $35" when the run cannot pay. A card keeps a `tag:` of its own only
+  when the tag is saying why the card is shut — "(Ruthie not established)",
+  "(No contract yet)", "(The cars first)" — because a price is not an answer to
+  that question. The purse is on the shelf beside the pips, with the month's
+  paper under it when there is any, and the four copies of the pip-drawing loop
+  became one `renderHubShelf()`, which is three fewer places for a new readout
+  to be forgotten.
+  The ending screen reads the books back as a fifth verdict. The `keep_going`
+  headline has said "Made $4 Million and Spent $4.2 Million" since round 1
+  against a game that held no money at all.
+
+- **An accumulating number never goes on a `statUpdate`** (#289). A scene
+  reached by a choice fires its `statUpdate` twice — the double-apply the
+  standing backlog has carried since Phase 1, with thirty-three scenes frozen
+  in `smoke-save.mjs` — and the doubling is invisible for a flag or a
+  relationship write, which are idempotent, and is not for a running total.
+  This phase shipped its first version with the solo bank note's monthly on
+  `m2_solo_bank_collateral`'s update, and the nine re-taken transcripts came
+  back reading "$182 a month still going out" on a run whose two notes are
+  thirty-seven and a hundred and eight: seventy-four plus a hundred and eight,
+  the thirty-seven charged twice. Nothing threw and no assertion caught it —
+  the transcripts did, which is what they are for (and is the third round in
+  this project where the real finding came out of a transcript rather than out
+  of code). `triggerStatUpdate` no longer looks at `money` or `owePerMonth` at
+  all; both go through `effects`, which `applyEffects` runs once, and
+  `smoke-save.mjs` fails on a `statUpdate` that starts carrying either and on a
+  story that stops moving dollars through choices.
+
+- **The budget's proof is in two halves, because a stripped run cannot give
+  both** (#289, same row). Half one holds on any run: every hub ends with every pip
+  spent. Before this phase Free Roam 3 offered Milestone 4 with four of seven
+  pips gone and Free Roam 1 with four of five, so restoring either budget fails
+  this immediately. Half two — an evening spent is a card not read — needs a
+  board with more cards on it than the hub hands out evenings for, and the
+  clean run's Free Roam 3 and 4 do not have one: it never establishes Ruthie,
+  and those two hubs drop a card whose `_needs` a run fails rather than greying
+  it, so both arrive with exactly as many cards as evenings. Free Roam 1 and 2
+  carry half two on the clean run; Free Roam 3 and 4 are driven against a full
+  cast, where they build 4 cards for 3 evenings and 5 for 4 and offer the
+  milestone with every one of them unread. The first version of this assertion
+  demanded both halves of all four hubs and failed on two of them, and the
+  right answer was to say what each hub can prove rather than to move a budget
+  until the test went green.
+
+**Wired into the suites.** `smoke-save.mjs` 134 → 199: the budgets against the
+card lists scraped out of each renderer, the price list checked from both ends
+(#264) and against `SCENES`, every hub's Condition-restoring card, the integer's
+refusals, the take's once-per-hub guard and its paper, the Condition floor, the
+tag strings, the Milestone 4 gate on both branches, the four debt answers, and
+`repair`'s coercions. `graph.mjs` gained `eveningCards()`, which scrapes the
+renderers' own `eveCards` arrays and pushes — deliberately not the price list,
+because a scan that read the price list to decide what an evening is would be
+re-implementing the thing it checks (#34). `flags.mjs` scans `money.js` now:
+without it the audit reported `money` and `hubTakePaid` as flags the save seeds
+and the game ignores, which is exactly what it did on the first run of this
+change.
+
+**Guard-rails broken on purpose (#34), eighteen.** Free Roam 3's budget back to
+seven: "hands out fewer evenings than it has cards (7 of 4)". A new evening
+card with no price: named. A price naming no card: named twice, once as unbuilt
+and once as not-a-scene. The Condition floor lowered to 0: "got 0, want 1". The
+take's once-per-hub guard deleted: "got 1080, want 540". The monthly paper
+stopped coming off the take: "got 860, want 296". `canAffordBuses` made to
+charge the backer branch too: named. `spend` allowed to go negative: named
+twice. Free Roam 3's hint made to re-derive `canBuses` and `canInferno`: three
+failures. The bus choice's `_gateCheck` unhooked from the table: "the Bus Stack
+choice IS the table row". `repair`'s money coercion removed: "got \"lots\",
+want 0". `money.js` dropped from the flag audit: "leftovers: hubTakePaid,
+money". `monthlyOn` given its own arithmetic: "got 34, want 37". Earl's advance
+given a dollar cost: four failures. The monthly put back on the bank note's
+`statUpdate` — the bug the transcripts found: "carriers:
+m2_solo_bank_collateral". Every dollar-moving choice emptied: five failures,
+after three of them were made to read through `&&` — the first version of that
+break threw a TypeError out of the suite three assertions early instead of
+failing by name, which is #34's "read WHICH assertion fails" the other way
+round. And two of the sixteen fail as a thrown
+error rather than a failed assertion — renaming a renderer's `eveCards`, and
+deleting either half of the scraper — because `eveningCards()` refuses a hub it
+found no cards in by name and exits non-zero (#13). Both scan paths are
+load-bearing, not redundant: the array literal is the only source for Free Roam
+1 and 3 and the pushes are the only source for Free Roam 4, so deleting either
+kills two hubs loudly rather than leaving the pair green (#34's "two lines
+guarding the same absence").
+
+**One shared thing was touched**, `BACKLOG.md`'s `Claimed` column, and it went
+to `main` on its own before the work started (#283). `check-integrity.mjs`
+fails on `Tools/prompt-builder.html` alone — 1,489 units, 1 broken, two of the
+units new with `js/money.js` — `check-collisions.mjs` 0 collisions,
+`social:check` the same six pages out of sync (the same six as on `main`).
+
 ---
 
 # Bell to Bell, through Phase 3

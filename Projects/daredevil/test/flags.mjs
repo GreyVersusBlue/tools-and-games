@@ -69,8 +69,13 @@ function topLevelKeys(body) {
   return keys;
 }
 
+// money.js joined the scan in Phase 6. It is where `money`, `monthlyOutgo`
+// and `hubTakePaid` are read and written, and an audit that does not read it
+// reports all three as flags the save seeds and the game ignores — which is
+// what it did on the first run of this change. A new module that touches
+// GS.flags has to be added here or the audit fails, loudly, by name.
 const src = stripComments(
-  ['engine.js', 'scenes.js'].map(f => fs.readFileSync(path.join(JS, f), 'utf8')).join('\n\n'));
+  ['engine.js', 'scenes.js', 'money.js'].map(f => fs.readFileSync(path.join(JS, f), 'utf8')).join('\n\n'));
 
 /* ------------------------------------------------------------------ reads */
 

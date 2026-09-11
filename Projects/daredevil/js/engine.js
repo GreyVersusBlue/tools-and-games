@@ -20,7 +20,14 @@ import {
   M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
   M4_PRESTUNT_ROUTES, M4_PRESTUNT_FALLBACK,
   M5_QUESTION_ROUTES, M5_QUESTION_FALLBACK,
+  M4_STUNT_GATES,
 } from './scenes.js';
+// The hub economy (Phase 6). One table of budgets, one price list, one take
+// per hub, and one integer; see money.js for the numbers and the reasoning.
+import {
+  HUB_EVENINGS, money, earn, owePerMonth, payHubTake, spendEveningCost,
+  eveningAffordable, costTag,
+} from './money.js';
 
 // Relationship gates on hub cards are data too (Phase 3): a card may carry
 // `_needs: { id: [state, ...] }`, and these are the lists the four hubs share.
@@ -489,7 +496,10 @@ function showSceneEnd(){
       const text = typeof ch.text === 'function' ? ch.text() : ch.text;
       const subtext = typeof ch.subtext === 'function' ? ch.subtext() : ch.subtext;
       const sub = subtext ? `<br><span style="font-size:11px;color:var(--cream-faint);font-weight:400">${subtext}</span>` : '';
-      const lockNote = locked && ch._gateReason ? `<br><span style="font-size:11px;color:var(--oxblood);font-weight:600">🔒 ${ch._gateReason}</span>` : '';
+      // A function, resolved here, so the reason can name which requirement
+      // is missing and by how much — the Milestone 4 deposit is a number.
+      const gateReason = typeof ch._gateReason === 'function' ? ch._gateReason() : ch._gateReason;
+      const lockNote = locked && gateReason ? `<br><span style="font-size:11px;color:var(--oxblood);font-weight:600">🔒 ${gateReason}</span>` : '';
       btn.innerHTML = `${label}${text}${sub}${lockNote}`;
       if(!locked) btn.onclick = ()=> handleChoice(ch);
       list.appendChild(btn);
@@ -575,6 +585,13 @@ function applyEffects(effects){
       GS.flags[k] = v;
     }
   }
+  // Dollars are a signed DELTA, not a flag write (Phase 6). `flags: { money:
+  // 300 }` would set the integer to three hundred rather than add three
+  // hundred to it, which is the whole reason this is its own key. A function
+  // is resolved here, the way a line or a subtext is, so one choice can owe
+  // the Milestone 4 deposit on the solo branch and nothing on the other.
+  if(effects.money) earn(GS, typeof effects.money === 'function' ? effects.money() : effects.money);
+  if(effects.owePerMonth) owePerMonth(GS, typeof effects.owePerMonth === 'function' ? effects.owePerMonth() : effects.owePerMonth);
 }
 
 /* ================================================================
@@ -589,7 +606,18 @@ function triggerStatUpdate(update, afterTarget){
   _beforeStats = {...GS.stats};
   _pendingDeltas = update.deltas||{};
 
-  // Apply flags and rels right away (not stats — those animate)
+  // Apply flags and rels right away (not stats — those animate).
+  //
+  // Deliberately NOT dollars (Phase 6). A scene reached by a choice fires its
+  // statUpdate twice — the double-apply the standing backlog has carried since
+  // Phase 1, with thirty-three scenes frozen in `smoke-save.mjs` — and the
+  // doubling is invisible for a flag or a relationship write, which are
+  // idempotent, and is not for an accumulating number. The first version of
+  // this phase put the solo bank note's monthly on its statUpdate and the
+  // transcripts came out at seventy-four dollars a month against a prose line
+  // that says thirty-seven. Money and monthly paper go through `effects`,
+  // which `applyEffects` runs once, and `smoke-save.mjs` fails on a
+  // `statUpdate` that carries either key.
   if(update.rels) for(const[k,v] of Object.entries(update.rels)) setRel(GS.rels, k, v);
   if(update.flags) for(const[k,v] of Object.entries(update.flags)) GS.flags[k]=v;
 
@@ -995,6 +1023,20 @@ function showGameEnd(){
   if(GS.rels.cal === 'loyal') verdicts.push({ label:'The Work', val:"Cal's still got the bike. It's right." });
   else verdicts.push({ label:'The Work', val:'The bike is what it is. Duke knows every inch of it.' });
 
+  // The Books (Phase 6). The `keep_going` headline has said "Made $4 Million
+  // and Spent $4.2 Million" since round 1 against a game that held no money at
+  // all; this is the run's own arithmetic, in the dollars it actually passed
+  // through. `monthlyOutgo` is the part that outlives the ending: paper Duke
+  // signed and the run finished still paying.
+  {
+    const left = money(GS);
+    const owed = Math.max(0, Math.round(Number(GS.flags.monthlyOutgo) || 0));
+    const val = left >= 1200 ? `$${left.toLocaleString('en-US')} in hand. He made the shows pay.`
+      : left >= 300 ? `$${left.toLocaleString('en-US')} in hand. Enough to go again, not enough to stop.`
+      : `$${left.toLocaleString('en-US')} in hand. Every dollar went back into the act.`;
+    verdicts.push({ label:'The Books', val: owed ? `${val} $${owed} a month still going out.` : val });
+  }
+
   if(m5Complete && m5Outcome){
     const nerveVerdicts = {
       retire_clean: 'He went out as himself. No diminished version.',
@@ -1105,6 +1147,10 @@ function showGameEnd(){
 }
 
 function showHub(){
+  // Free Roam 1's budget is the one `freshState` seeds, so there is nothing to
+  // fill in here — but the fair's ninety dollars is credited the same way
+  // every later hub's take is, once, on the first arrival (Phase 6).
+  payHubTake(GS, 'fr1');
   showScreen('hub');
   renderHubFR1();
 }
@@ -1113,17 +1159,9 @@ function renderHubFR1(){
   document.getElementById('hub-title').textContent = 'Free Roam — Early Days';
   document.getElementById('hub-sub').textContent = 'The weeks after the fair. Choose how to spend your time.';
 
-  const eveningsEl = document.getElementById('hub-evenings');
-  const pipsEl = document.getElementById('evening-pips');
-  const total = GS.flags.hubEvenings;
+  const total = GS.flags.hubEvenings || HUB_EVENINGS.fr1;
   const used = GS.flags.hubEveningsUsed;
-  eveningsEl.style.display = 'flex';
-  pipsEl.innerHTML = '';
-  for(let i=0;i<total;i++){
-    const pip = document.createElement('div');
-    pip.className = 'pip' + (i<used?' used':'');
-    pipsEl.appendChild(pip);
-  }
+  renderHubShelf(total, used);
 
   const sectionsEl = document.getElementById('hub-sections');
   sectionsEl.innerHTML = '';
@@ -1162,11 +1200,11 @@ function renderHubFR1(){
   const grid2 = document.createElement('div'); grid2.className='hub-cards';
 
   const eveCards = [
-    { id:'fr1_eve_ruthie', name:'Stay Home With Ruthie', sub:'Rebuild Nerve. Reset fatigue.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':'Costs 1 Evening', _needs:{ ruthie: RUTHIE_MET } },
-    { id:'fr1_eve_cal', name:'Work With Cal', sub:'Precision up. Cal sometimes says something true.', tag:'Costs 1 Evening' },
-    { id:'fr1_eve_practice', name:'Practice Alone', sub:'Precision and Nerve. The honest version of the work.', tag:'Costs 1 Evening' },
-    { id:'fr1_eve_bar', name:'Bar With Tommy', sub:'Showmanship up. Condition down. Contacts possible.', tag:'Costs 1 Evening' },
-    { id:'fr1_eve_contract', name:'Read the Contract', sub:`Earl's terms. Page fourteen has something worth finding.`, tag: GS.flags.earlResponse==='not_interested'?'(No contract yet)':'Costs 1 Evening', _needs:{ earl: EARL_PRESENT } },
+    { id:'fr1_eve_ruthie', name:'Stay Home With Ruthie', sub:'Rebuild Nerve. Reset fatigue.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':null, _needs:{ ruthie: RUTHIE_MET } },
+    { id:'fr1_eve_cal', name:'Work With Cal', sub:'Precision up. Cal sometimes says something true.' },
+    { id:'fr1_eve_practice', name:'Practice Alone', sub:'Precision and Nerve. The honest version of the work.' },
+    { id:'fr1_eve_bar', name:'Bar With Tommy', sub:'Showmanship up. Condition down. Contacts possible.' },
+    { id:'fr1_eve_contract', name:'Read the Contract', sub:`Earl's terms. Page fourteen has something worth finding.`, tag: GS.flags.earlResponse==='not_interested'?'(No contract yet)':null, _needs:{ earl: EARL_PRESENT } },
   ];
 
   eveCards.forEach(card=>{
@@ -1175,6 +1213,7 @@ function renderHubFR1(){
     if(!met(card)) card._disabled = true;
     card._done = GS.flags.hubEveningsDone.includes(card.id);
     if(eveRemaining<=0 && !card._done) card._disabled=true;
+    if(!card._done && !eveningAffordable(GS, card.id)) card._disabled=true;
     const el = buildHubCard(card, true, 'fr1');
     grid2.appendChild(el);
   });
@@ -1191,6 +1230,29 @@ function renderHubFR1(){
     b.onclick=()=> goToScene('_chapter_m2');
     m2btn.appendChild(b);
     sectionsEl.appendChild(m2btn);
+  }
+}
+
+/**
+ * The pips and the purse, for whichever hub is rendering.
+ *
+ * Four copies of the same eight lines before Phase 6, which is three places
+ * for the purse to be forgotten.
+ */
+function renderHubShelf(total, used){
+  document.getElementById('hub-evenings').style.display = 'flex';
+  const pipsEl = document.getElementById('evening-pips');
+  pipsEl.innerHTML = '';
+  for(let i=0;i<total;i++){
+    const pip = document.createElement('div');
+    pip.className = 'pip' + (i<used?' used':'');
+    pipsEl.appendChild(pip);
+  }
+  const purseEl = document.getElementById('hub-purse');
+  if(purseEl){
+    const owed = Math.max(0, Math.round(Number(GS.flags.monthlyOutgo) || 0));
+    purseEl.innerHTML = `$${money(GS).toLocaleString('en-US')}` +
+      (owed ? `<span class="owed">$${owed}/month owed</span>` : '');
   }
 }
 
@@ -1221,14 +1283,26 @@ function buildHubCard(card, isEvening, hubType){
   el.type = 'button';
   el.className = 'hub-card' + (card._disabled?' disabled':'') + (card._done?' completed':'');
   el.disabled = !!card._disabled || !!card._done;
+  // The tag slot says what the evening costs (Phase 6), off the one price list
+  // in money.js. A card's own `tag` still wins when it has one, because the
+  // only cards that set one are the ones saying why they are shut — "(Ruthie
+  // not established)", "(No contract yet)", "(The cars first)" — and a price
+  // is not an answer to that question.
+  const tagText = card._done ? '✓ Done'
+    : card.tag ? card.tag
+    : isEvening ? costTag(GS, card.id)
+    : 'Available · Free';
   el.innerHTML = `
     <div class="hub-card-name">${card.name}</div>
     <div class="hub-card-sub">${card.sub}</div>
-    <div class="hub-card-tag ${card._done?'done':isEvening?'cost':'available'}">${card._done?'✓ Done':card.tag}</div>
+    <div class="hub-card-tag ${card._done?'done':isEvening?'cost':'available'}">${tagText}</div>
   `;
   if(!card._disabled && !card._done){
     el.onclick = ()=>{
       if(isEvening){
+        // The declared cost comes off before the scene runs, so a scene that
+        // reads Condition reads it after the evening was paid for.
+        spendEveningCost(GS, card.id);
         if(hubType==='fr2'){
           GS.flags.fr2EveningsUsed = (GS.flags.fr2EveningsUsed||0)+1;
           GS.flags.fr2EveningsDone = GS.flags.fr2EveningsDone||[];
@@ -1267,10 +1341,11 @@ function buildHubCard(card, isEvening, hubType){
 }
 
 function showHubFR2(){
-  GS.flags.fr2Evenings = GS.flags.fr2Evenings || 6;
+  GS.flags.fr2Evenings = GS.flags.fr2Evenings || HUB_EVENINGS.fr2;
   GS.flags.fr2EveningsUsed = GS.flags.fr2EveningsUsed || 0;
   GS.flags.fr2EveningsDone = GS.flags.fr2EveningsDone || [];
   GS.flags.fr2DayScenesDone = GS.flags.fr2DayScenesDone || [];
+  payHubTake(GS, 'fr2');
   showScreen('hub');
   renderHubFR2();
 }
@@ -1279,17 +1354,9 @@ function renderHubFR2(){
   document.getElementById('hub-title').textContent = 'Free Roam — Building the Act';
   document.getElementById('hub-sub').textContent = 'The shows are bigger. The distances are longer. Choose how to spend your time.';
 
-  const eveningsEl = document.getElementById('hub-evenings');
-  const pipsEl = document.getElementById('evening-pips');
-  const total = GS.flags.fr2Evenings || 6;
+  const total = GS.flags.fr2Evenings || HUB_EVENINGS.fr2;
   const used = GS.flags.fr2EveningsUsed || 0;
-  eveningsEl.style.display = 'flex';
-  pipsEl.innerHTML = '';
-  for(let i=0;i<total;i++){
-    const pip = document.createElement('div');
-    pip.className = 'pip' + (i<used?' used':'');
-    pipsEl.appendChild(pip);
-  }
+  renderHubShelf(total, used);
 
   const sectionsEl = document.getElementById('hub-sections');
   sectionsEl.innerHTML = '';
@@ -1354,20 +1421,20 @@ function renderHubFR2(){
   const grid2 = document.createElement('div'); grid2.className='hub-cards';
 
   let eveCards = [
-    { id:'fr2_eve_cal', name:'Work With Cal', sub:"Suspension geometry. He already fixed the seal. He's telling you why.", tag:'Costs 1 Evening' },
-    { id:'fr2_eve_ruthie', name:'Stay Home With Ruthie', sub:'She wants to come to a show. Find the right one.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':'Costs 1 Evening', _needs:{ ruthie: RUTHIE_MET } },
-    { id:'fr2_eve_practice', name:'New Distances', sub:'Five cars. The geometry is different from three cows.', tag:'Costs 1 Evening' },
-    { id:'fr2_eve_bar', name:'Bar With Tommy', sub:'He has a theory about Diamondback Danny. He might be right.', tag:'Costs 1 Evening' },
-    { id:'fr2_eve_press', name:'Call Sandra', sub: solo ? "Somebody at Earl's office told the paper you said no." : 'Earl announced you before you knew you were being announced.', tag:'Costs 1 Evening' },
+    { id:'fr2_eve_cal', name:'Work With Cal', sub:"Suspension geometry. He already fixed the seal. He's telling you why." },
+    { id:'fr2_eve_ruthie', name:'Stay Home With Ruthie', sub:'She wants to come to a show. Find the right one.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':null, _needs:{ ruthie: RUTHIE_MET } },
+    { id:'fr2_eve_practice', name:'New Distances', sub:'Five cars. The geometry is different from three cows.' },
+    { id:'fr2_eve_bar', name:'Bar With Tommy', sub:'He has a theory about Diamondback Danny. He might be right.' },
+    { id:'fr2_eve_press', name:'Call Sandra', sub: solo ? "Somebody at Earl's office told the paper you said no." : 'Earl announced you before you knew you were being announced.' },
   ];
 
   // Second Cal evening — available if first is done
   if(eveDone2.includes('fr2_eve_cal') && !eveDone2.includes('fr2_eve_cal_02')){
-    eveCards.push({ id:'fr2_eve_cal_02', name:"Cal — Bike's Right", sub:"A Tuesday. Not a show night. He says the thing you were actually asking about.", tag:'Costs 1 Evening' });
+    eveCards.push({ id:'fr2_eve_cal_02', name:"Cal — Bike's Right", sub:"A Tuesday. Not a show night. He says the thing you were actually asking about." });
   }
   // Second Ruthie evening — available if first is done and relationship is solid
   if((eveDone2.includes('fr2_eve_ruthie')) && !eveDone2.includes('fr2_eve_ruthie_02')){
-    eveCards.push({ id:'fr2_eve_ruthie_02', name:"Ruthie's Question", sub:"Out of nowhere: what do you get out of it?", tag:'Costs 1 Evening', _needs:{ ruthie:['solid'] } });
+    eveCards.push({ id:'fr2_eve_ruthie_02', name:"Ruthie's Question", sub:"Out of nowhere: what do you get out of it?", _needs:{ ruthie:['solid'] } });
   }
 
   // The first Ruthie evening greys out until she is met; the second is not on
@@ -1377,6 +1444,7 @@ function renderHubFR2(){
     if(!met(card)) card._disabled = true;
     card._done = eveDone2.includes(card.id);
     if(eveRemaining<=0 && !card._done) card._disabled=true;
+    if(!card._done && !eveningAffordable(GS, card.id)) card._disabled=true;
     if(debtFirst && !card._done){ card._disabled = true; card.tag = '(The cars first)'; }
     const el = buildHubCard(card, true, 'fr2');
     grid2.appendChild(el);
@@ -1440,10 +1508,11 @@ function handleStuntRunM4(res){
 }
 
 function showHubFR3(){
-  GS.flags.fr3Evenings = GS.flags.fr3Evenings || 7;
+  GS.flags.fr3Evenings = GS.flags.fr3Evenings || HUB_EVENINGS.fr3;
   GS.flags.fr3EveningsUsed = GS.flags.fr3EveningsUsed || 0;
   GS.flags.fr3EveningsDone = GS.flags.fr3EveningsDone || [];
   GS.flags.fr3DayScenesDone = GS.flags.fr3DayScenesDone || [];
+  payHubTake(GS, 'fr3');
   showScreen('hub');
   renderHubFR3();
 }
@@ -1452,17 +1521,9 @@ function renderHubFR3(){
   document.getElementById('hub-title').textContent = 'Free Roam — The Price of Fame';
   document.getElementById('hub-sub').textContent = 'Peak and early cracks. The cost is becoming visible. Choose how to spend your time.';
 
-  const eveningsEl = document.getElementById('hub-evenings');
-  const pipsEl = document.getElementById('evening-pips');
-  const total = GS.flags.fr3Evenings || 7;
+  const total = GS.flags.fr3Evenings || HUB_EVENINGS.fr3;
   const used = GS.flags.fr3EveningsUsed || 0;
-  eveningsEl.style.display = 'flex';
-  pipsEl.innerHTML = '';
-  for(let i=0;i<total;i++){
-    const pip = document.createElement('div');
-    pip.className = 'pip' + (i<used?' used':'');
-    pipsEl.appendChild(pip);
-  }
+  renderHubShelf(total, used);
 
   const sectionsEl = document.getElementById('hub-sections');
   sectionsEl.innerHTML = '';
@@ -1512,15 +1573,16 @@ function renderHubFR3(){
     ? "She saw how close it was. She's proud. Something shifted."
     : "She was in the sixth row. She wants to tell you what she saw.";
   const eveCards = [
-    { id:'fr3_eve_earl', name:'Earl Maddox', sub:'He wants to renegotiate. The split and the extension are on the table.', tag:'Costs 1 Evening', _needs:{ earl: EARL_PRESENT } },
-    { id:'fr3_eve_ruthie', name:'Ruthie', sub: ruthieSub3, tag:'Costs 1 Evening', _needs:{ ruthie: RUTHIE_PRESENT } },
-    { id:'fr3_eve_cal', name:'Work With Cal', sub:'He has a question about what comes next. Buses are different from cars.', tag:'Costs 1 Evening' },
-    { id:'fr3_eve_tommy', name:'Tommy', sub:"He's at the bar. He has something true to say and doesn't know it yet.", tag:'Costs 1 Evening', _needs:{ tommy: TOMMY_NOT_GONE } },
+    { id:'fr3_eve_earl', name:'Earl Maddox', sub:'He wants to renegotiate. The split and the extension are on the table.', _needs:{ earl: EARL_PRESENT } },
+    { id:'fr3_eve_ruthie', name:'Ruthie', sub: ruthieSub3, _needs:{ ruthie: RUTHIE_PRESENT } },
+    { id:'fr3_eve_cal', name:'Work With Cal', sub:'He has a question about what comes next. Buses are different from cars.' },
+    { id:'fr3_eve_tommy', name:'Tommy', sub:"He's at the bar. He has something true to say and doesn't know it yet.", _needs:{ tommy: TOMMY_NOT_GONE } },
   ].filter(met);
 
   eveCards.forEach(card=>{
     card._done = eveDone3.includes(card.id);
     if(eveRemaining<=0 && !card._done) card._disabled=true;
+    if(!card._done && !eveningAffordable(GS, card.id)) card._disabled=true;
     const el = buildHubCard(card, true, 'fr3');
     grid2.appendChild(el);
   });
@@ -1529,9 +1591,11 @@ function renderHubFR3(){
 
   // Milestone 4 trigger when the hub is spent. See hubExhausted().
   if(hubExhausted(eveRemaining, eveCards)){
-    const canBuses = GS.stats.showmanship >= 4 && GS.stats.precision >= 3;
-    const canInferno = GS.stats.nerve >= 4;
-    const stuntsAvail = [canBuses?'Bus Stack':null, canInferno?'Inferno':null, 'Symbolic'].filter(Boolean);
+    // One table, in scenes.js, read by this hint and by the three choices at
+    // `m4_stunt_select` (Phase 6). This hint used to re-derive the two stat
+    // thresholds itself, which is how it could promise a Bus Stack the choice
+    // screen then refused — and it knew nothing at all about the deposit.
+    const stuntsAvail = M4_STUNT_GATES.filter(g => g.check()).map(g => g.label);
     const m4btn = document.createElement('div');
     m4btn.style.textAlign='center'; m4btn.style.marginTop='24px';
     const b=document.createElement('button'); b.className='btn-main';
@@ -1552,10 +1616,11 @@ function renderHubFR3(){
    ================================================================ */
 function showHubFR4(){
   const isFailure = GS.flags.fr4Failure;
-  GS.flags.fr4Evenings = GS.flags.fr4Evenings || (isFailure ? 5 : 6);
+  GS.flags.fr4Evenings = GS.flags.fr4Evenings || (isFailure ? HUB_EVENINGS.fr4_failure : HUB_EVENINGS.fr4);
   GS.flags.fr4EveningsUsed = GS.flags.fr4EveningsUsed || 0;
   GS.flags.fr4EveningsDone = GS.flags.fr4EveningsDone || [];
   GS.flags.fr4DayScenesDone = GS.flags.fr4DayScenesDone || [];
+  payHubTake(GS, 'fr4');
   showScreen('hub');
   renderHubFR4();
 }
@@ -1567,17 +1632,9 @@ function renderHubFR4(){
     ? 'After the fall. Some things are still standing. Choose how to spend your time.'
     : 'After the peak. The name means something now. Choose how to spend your time.';
 
-  const eveningsEl = document.getElementById('hub-evenings');
-  const pipsEl = document.getElementById('evening-pips');
-  const total = GS.flags.fr4Evenings || 6;
+  const total = GS.flags.fr4Evenings || HUB_EVENINGS.fr4;
   const used = GS.flags.fr4EveningsUsed || 0;
-  eveningsEl.style.display = 'flex';
-  pipsEl.innerHTML = '';
-  for(let i=0;i<total;i++){
-    const pip = document.createElement('div');
-    pip.className = 'pip' + (i<used?' used':'');
-    pipsEl.appendChild(pip);
-  }
+  renderHubShelf(total, used);
 
   const sectionsEl = document.getElementById('hub-sections');
   sectionsEl.innerHTML = '';
@@ -1612,7 +1669,7 @@ function renderHubFR4(){
   let eveCards = [];
 
   // Night ride — always available
-  eveCards.push({ id:'fr4_night_ride', name:'Night Ride', sub:'Twenty-two miles north. The fork seal holds. Just the road.', tag:'Costs 1 Evening' });
+  eveCards.push({ id:'fr4_night_ride', name:'Night Ride', sub:'Twenty-two miles north. The fork seal holds. Just the road.' });
 
   // Ruthie — once met, even when she has gone: the card is the thought of
   // calling her.
@@ -1621,13 +1678,13 @@ function renderHubFR4(){
     : GS.rels.ruthie === 'solid'
       ? 'She cooked. She mentioned the hands. The thing Roy filmed.'
       : 'She\'s there. Careful with it. The thread is still warm.';
-  eveCards.push({ id:'fr4_eve_ruthie', name:'Ruthie', sub: ruthieSub, tag:'Costs 1 Evening', _needs:{ ruthie: RUTHIE_MET } });
+  eveCards.push({ id:'fr4_eve_ruthie', name:'Ruthie', sub: ruthieSub, _needs:{ ruthie: RUTHIE_MET } });
 
   // Cal — always
-  eveCards.push({ id:'fr4_eve_cal', name:'Work With Cal', sub:'Garage. Vegas specs. The fork seal is ritual now. He has a question.', tag:'Costs 1 Evening' });
+  eveCards.push({ id:'fr4_eve_cal', name:'Work With Cal', sub:'Garage. Vegas specs. The fork seal is ritual now. He has a question.' });
 
   // Tommy — while he is in the story
-  eveCards.push({ id:'fr4_eve_tommy', name:'Tommy', sub:"He was at the canyon. He saw you clear it. He said something true.", tag:'Costs 1 Evening', _needs:{ tommy: TOMMY_PRESENT } });
+  eveCards.push({ id:'fr4_eve_tommy', name:'Tommy', sub:"He was at the canyon. He saw you clear it. He said something true.", _needs:{ tommy: TOMMY_PRESENT } });
 
   // Earl — unless absent. On the backer-less branch the same evening is the
   // man from California calling for himself (Phase 1): the offer Earl relays
@@ -1635,21 +1692,22 @@ function renderHubFR4(){
   const earlSub = isFailure
     ? 'He has a recovery package. The terms are worth reading carefully.'
     : 'The man from California is on the line. The Vegas offer is real.';
-  eveCards.push({ id:'fr4_eve_earl', name:'Earl Maddox', sub: earlSub, tag:'Costs 1 Evening', _needs:{ earl: EARL_PRESENT } });
+  eveCards.push({ id:'fr4_eve_earl', name:'Earl Maddox', sub: earlSub, _needs:{ earl: EARL_PRESENT } });
   const caSub = isFailure
     ? 'He watched you get up. He got your number from the Speedway. He is calling himself.'
     : 'He was in the fourth row at the Speedway. He got your number from Kessler. He is calling himself.';
-  eveCards.push({ id:'fr4_eve_california', name:'The Man from California', sub: caSub, tag:'Costs 1 Evening', _needs:{ earl: ['absent'] } });
+  eveCards.push({ id:'fr4_eve_california', name:'The Man from California', sub: caSub, _needs:{ earl: ['absent'] } });
 
   // Special: Ruthie thread close (only if ruthie=solid and near the end)
   if(!eveDone4.includes('fr4_ruthie_thread_close') && eveDone4.includes('fr4_eve_ruthie')){
-    eveCards.push({ id:'fr4_ruthie_thread_close', name:'Wednesday Evening — Ruthie', sub:"She drove out on a weekday. She'll be there. That's what she said.", tag:'Costs 1 Evening', _needs:{ ruthie: ['solid'] } });
+    eveCards.push({ id:'fr4_ruthie_thread_close', name:'Wednesday Evening — Ruthie', sub:"She drove out on a weekday. She'll be there. That's what she said.", _needs:{ ruthie: ['solid'] } });
   }
 
   eveCards = eveCards.filter(met);
   eveCards.forEach(card=>{
     card._done = eveDone4.includes(card.id);
     if(eveRemaining<=0 && !card._done) card._disabled=true;
+    if(!card._done && !eveningAffordable(GS, card.id)) card._disabled=true;
     const el = buildHubCard(card, true, 'fr4');
     grid2.appendChild(el);
   });
