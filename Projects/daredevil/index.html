@@ -239,9 +239,10 @@ body::after{ content:""; position:fixed; inset:0; pointer-events:none; z-index:9
 .stage-tag{ margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--cream-faint); }
 .scale-row{ display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
 .scale-lbl{ font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--cream-faint); }
-.pill{ font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:11px; color:var(--cream-dim);
-  background:var(--bg2); border:1px solid var(--line-soft); border-radius:20px; padding:6px 13px; cursor:pointer; }
-.pill.active{ color:var(--bg); background:var(--gold); border-color:var(--gold); }
+/* The Scale pill row retired in Phase 7 — the scale is the story's call now,
+   not the player's, so what sat here is a label rather than three buttons. */
+.scale-name{ font-weight:600; letter-spacing:.08em; text-transform:uppercase; font-size:11px; color:var(--gold);
+  background:var(--bg2); border:1px solid var(--line-soft); border-radius:20px; padding:6px 13px; }
 .screen{ position:relative; background:#120b06; border:3px solid var(--line); border-radius:12px;
   box-shadow:inset 0 0 40px rgba(0,0,0,.6),inset 0 0 0 2px #3a2a1c; overflow:hidden; }
 canvas{ display:block; width:100%; height:auto; touch-action:none; }
@@ -355,7 +356,7 @@ canvas{ display:block; width:100%; height:auto; touch-action:none; }
    backgrounds. A narrative game has the least excuse for that. */
 .btn-main:focus-visible, .choice-btn:focus-visible, .hub-card:focus-visible,
 .panel-continue:focus-visible, .pedal:focus-visible, .dirbtn:focus-visible,
-.choicebtn:focus-visible, .pill:focus-visible, .ticket button:focus-visible,
+.choicebtn:focus-visible, .ticket button:focus-visible,
 .setup-input:focus-visible{
   outline:3px solid var(--gold); outline-offset:3px;
 }

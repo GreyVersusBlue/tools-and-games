@@ -163,6 +163,7 @@ He didn't extend a hand right away. He stood there and looked at Duke the way yo
 He let that sit.
 **EARL:** Earl Maddox.
 Duke knew the name. He'd done his research.
+**EARL:** And you worked them after. On the ground, helmet still on. Most men get off the bike and go looking for their mother.
 
 ### `m1_earl_modifiers`
 Earl's eyes had moved across the crowd. He'd found Danny in it.

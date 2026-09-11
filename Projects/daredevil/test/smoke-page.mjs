@@ -445,6 +445,49 @@ try {
        "another game's save is not offered as a Daredevil save");
   }
 
+  /* ================================ the retry has a price, and the pills are gone */
+  // Phase 7. `smoke-save.mjs` proves `canRetry` and that the handler asks it;
+  // this is the part only a real ticket on a real screen can say (#39). The
+  // Scale pill row is checked the same way — from the DOM the player gets,
+  // not from a grep.
+  {
+    await open(t.page, t.base, { name: 'Vee Carr', town: 'Marlow' });
+    let guard = 0, s = await snapshot(t.page);
+    while (s.screen !== 'minigame') {
+      if (++guard > 300) throw new Error('never reached the first stunt');
+      if (s.screen === 'chapter') { await pick(t.page, s.buttons[0].label); await wait(650); }
+      else { await pick(t.page, s.buttons.filter(b => !b.save && !b.locked)[0].label); await wait(150); }
+      s = await snapshot(t.page);
+    }
+
+    const shelf = await t.page.evaluate(() => ({
+      pills: document.getElementById('extraControls').querySelectorAll('button').length,
+      name: (document.getElementById('mg-scale-name') || {}).textContent || '',
+    }));
+    eq(shelf.pills, 0, 'the minigame screen has no Scale pills left to press');
+    ok(/Cows/.test(shelf.name), `and announces the scale instead (${shelf.name || 'nothing'})`);
+
+    await autopilot(t.page, 'good');
+    const before = await t.page.evaluate(() => window.__dd.GS.stats.condition);
+    const first = await snapshot(t.page);
+    const again = first.buttons.find(b => /Try Again/.test(b.label));
+    ok(!!again, 'the result ticket offers a retry');
+    ok(again && /Condition/.test(again.label), `and the button says what it costs (${again ? again.label : 'no button'})`);
+
+    await pick(t.page, 'Try Again');
+    await wait(400);
+    eq(await t.page.evaluate(() => window.__dd.GS.stats.condition), before - 1,
+       'taking it costs a point of Condition');
+    eq((await snapshot(t.page)).screen, 'minigame', 'and puts the run back on the ramp');
+
+    await autopilot(t.page, 'good');
+    const second = await snapshot(t.page);
+    ok(!second.buttons.some(b => /Try Again/.test(b.label)),
+       'the second result stands — one retry, not a re-roll until the player likes it');
+    ok(second.buttons.some(b => /Accept Result/.test(b.label)),
+       'and Accept Result is the only way off the ticket');
+  }
+
   /* ============================== a second run: crash at the fair, other forks */
 
   const rough = await playToEnd(t.page, t.base, {

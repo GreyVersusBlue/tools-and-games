@@ -163,6 +163,7 @@ He didn't extend a hand right away. He stood there and looked at Duke the way yo
 He let that sit.
 **EARL:** Earl Maddox.
 Duke knew the name. He'd done his research.
+**EARL:** And you worked them after. On the ground, helmet still on. Most men get off the bike and go looking for their mother.
 
 ### `m1_earl_modifiers`
 
@@ -1139,7 +1140,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the buses and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the buses and landed dead level
 
 ### `m4_triumph_buses`
 Thirteen buses. He cleared all of them.

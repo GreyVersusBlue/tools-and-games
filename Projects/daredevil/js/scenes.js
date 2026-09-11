@@ -50,6 +50,25 @@ const PETE_PRESENT = presentStates('pete');
 // regional crew's cameraman who came for the feature race, and Cal.
 const solo = ()=> GS.rels.earl === 'absent';
 
+// Phase 7. The Recovery's ticket, in three words. `RecoveryCore` has always
+// reported SUCCESS/PARTIAL/FAIL and the rounds cleared; until this phase both
+// crash aftermaths threw it away, so a body that came all the way back and a
+// body that never got off the mat paid the same two points of Condition and
+// read the same paragraph. `recovered()` is what the scene asks.
+const recovered = ()=> GS.flags.recovery || 'poor';
+// What the crash costs after the body has had its say. `base` is the old flat
+// number; clearing every round gives a point of it back, clearing badly takes
+// another. Nothing here is a running total, so it stays on the statUpdate
+// (#289 is about dollars, not stats).
+const recoveryCondition = base => base + (recovered() === 'strong' ? 1 : recovered() === 'poor' ? -1 : 0);
+// The rounds, as the player was shown them on the ticket.
+const recoveryRounds = ()=> `${GS.flags.recoveryRounds||0} of ${GS.flags.recoveryReps||0}`;
+
+// Phase 7. How the encore went, for the one scene that follows it. Work the
+// Crowd reports SUCCESS/PARTIAL/FAIL and `handleCrowdM1Result` used to read
+// only the first; `crowdWork` is 'read', 'half' or 'lost'.
+const crowdWork = ()=> GS.flags.crowdWork || 'half';
+
 // Where Tommy stands at the close of Free Roam 2, in one clause. He was
 // "either in his corner or not, depending on the week" on every run, in three
 // versions of the same paragraph, which stopped being true the moment Free
@@ -550,8 +569,21 @@ m1_stunt_crash_bad: {
     N(`He stayed there.`),
     N(`Somewhere at the edge of the scene, a man in a brimmed hat watched from behind the fence. He watched for a long time. Then he turned and said something to the man next to him and took out a card and set it on the rail.`),
     N(`Someone told Cal about the card later.`),
+    // Phase 7. The Recovery is played between the crash and this scene, and
+    // what it was worth is now on the record instead of on the floor.
+    N(()=> recovered() === 'strong'
+      ? `The leg came back faster than the doctor in Sandersville said it would. ${recoveryRounds()} sessions went the way they were supposed to go, which Duke knew because he counted them, because counting was the only part of it he could do anything about.`
+      : recovered() === 'partial'
+      ? `The leg came back. Not all the way, and not on the schedule anyone wrote down. ${recoveryRounds()} sessions went the way they were supposed to go. The rest he got through.`
+      : `The leg came back late and came back wrong. ${recoveryRounds()} sessions went the way they were supposed to go. He stopped counting after that, which is its own kind of answer.`),
   ],
-  statUpdate:{ title:'Hard Down', reason:'The body took a real hit. This will need time.', deltas:{ nerve:-2, precision:-1, condition:-2 } },
+  get statUpdate(){ return { title:'Hard Down',
+    reason: recovered() === 'strong'
+      ? 'The body took a real hit and gave most of it back. This still needs time.'
+      : recovered() === 'poor'
+      ? 'The body took a real hit and did not come back clean. This needs more time than he has.'
+      : 'The body took a real hit. This will need time.',
+    deltas:{ nerve:-2, precision:-1, condition: recoveryCondition(-2) } }; },
   next:'m1_earl_card'
 },
 
@@ -566,6 +598,14 @@ m1_earl_approach_perfect: {
     N(`He let that sit.`),
     C('EARL', `Earl Maddox.`),
     N(`Duke knew the name. He'd done his research.`),
+    // Phase 7. Work the Crowd sits between the landing and this scene, and
+    // until now it could only ever pay. What Earl watched on the walk over is
+    // the third thing he says.
+    C('EARL', ()=> crowdWork() === 'read'
+      ? `And you worked them after. On the ground, helmet still on. Most men get off the bike and go looking for their mother.`
+      : crowdWork() === 'lost'
+      ? `You lost them after, though. Two minutes and they were looking at the funnel cake stand. That part's learnable. I'd learn it.`
+      : `You held about half of them after. That part's learnable.`),
   ],
   next:'m1_earl_modifiers'
 },
@@ -2826,6 +2866,9 @@ m3_failure_bad_after: {
     C('KESSLER',`A man on the ground who hasn't got up yet is a different picture than the fist. It's not the one you wanted. It's the one they've got.`),
     N(`Duke thought: she's not wrong. He also thought: I'd rather have the fist.`),
     N(`He didn't say it. He looked at his wrist. He looked at the envelope. He thought about the next part, which was the part he was going to have to build from, and pay for.`),
+    N(()=> recovered() === 'strong'
+      ? `The wrist was a cast and then it wasn't. He did the work in Cal's garage with a radio on, ${recoveryRounds()} rounds the way they were written, and came out of it closer to where he started than he had any right to be.`
+      : `He did the work in Cal's garage with a radio on. ${recoveryRounds()} rounds went the way they were written. The hip kept its own opinion about the rest.`),
     ];
     return [...head,
     N(`Earl arrived five minutes later. He sat down across from Duke. He looked at him for a long moment.`),
@@ -2838,14 +2881,21 @@ m3_failure_bad_after: {
     C('EARL',`The photograph of a man who went down and hasn't gotten up yet is a different kind of story. It's not the fist. But it's something.`),
     N(`Duke thought: he's not wrong. He also thought: I'd rather have the fist.`),
     N(`He didn't say it. He looked at his wrist. He thought about the next part, which was the part he was going to have to build from.`),
+    N(()=> recovered() === 'strong'
+      ? `The wrist was a cast and then it wasn't. He did the work in Cal's garage with a radio on, ${recoveryRounds()} rounds the way they were written, and came out of it closer to where he started than he had any right to be.`
+      : `He did the work in Cal's garage with a radio on. ${recoveryRounds()} rounds went the way they were written. The hip kept its own opinion about the rest.`),
     ];
   },
-  statUpdate:{
+  get statUpdate(){ return {
     title:'Down — Hard',
-    reason:'The crash was the show. Recovery starts now. Cal is already thinking about what comes next.',
-    deltas:{ condition:-3, nerve:-1, showmanship:1 },
+    reason: recovered() === 'strong'
+      ? `The crash was the show. The body answered — ${recoveryRounds()} rounds — and Cal is already thinking about what comes next.`
+      : recovered() === 'poor'
+      ? `The crash was the show. The body did not answer — ${recoveryRounds()} rounds — and Cal is already thinking about what comes next.`
+      : 'The crash was the show. Recovery starts now. Cal is already thinking about what comes next.',
+    deltas:{ condition: recoveryCondition(-3), nerve:-1, showmanship:1 },
     flags:{ m3Complete:true, m3Outcome:'failure_bad' }
-  },
+  }; },
   next:'m3_aftermath'
 },
 

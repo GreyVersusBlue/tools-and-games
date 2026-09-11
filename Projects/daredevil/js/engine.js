@@ -28,6 +28,10 @@ import {
   HUB_EVENINGS, money, earn, owePerMonth, payHubTake, spendEveningCost,
   eveningAffordable, costTag,
 } from './money.js';
+// The stunt run's geometry (Phase 7). A seventh module, and like money.js it
+// imports nothing: three scales are three sets of numbers derived from one
+// count, provable under plain Node.
+import { GEO, SCALES, stuntTuning, canRetry, RETRY_CONDITION_COST } from './stunt.js';
 
 // Relationship gates on hub cards are data too (Phase 3): a card may carry
 // `_needs: { id: [state, ...] }`, and these are the lists the four hubs share.
@@ -274,7 +278,8 @@ function goToScene(id){
     return;
   }
   if(id === '_m3_recovery_then_fail'){
-    launchMinigame('recovery', null, ()=>{
+    launchMinigame('recovery', null, (recovRes)=>{
+      recordRecovery(recovRes);
       goToScene('m3_failure_bad_after');
     });
     return;
@@ -721,6 +726,10 @@ const C_pal={ cream:'#ede3d0', creamDim:'#b09a76', faint:'#7a684c', orange:'#e07
   gold:'#d99a2b', avocado:'#9aab4e', avocadoDim:'#5c6a2e', oxblood:'#a8392a', line:'#5a4329' };
 
 let mgActive=null, mgRafId=0, mgLastTs=0, mgCurrentDef=null, mgCurrentOpt={scale:'cows'};
+// Which minigame is up, and how many times it has been re-ridden this launch
+// (Phase 7). Both reset in launchMinigame, not in mgStartInstance — a retry
+// restarts the instance and must not reset its own counter.
+let mgCurrentId='run', mgRetries=0;
 const mgKeys={};
 const mgCanvas = ()=>document.getElementById('gameCanvas');
 let mgCtx = null;
@@ -730,6 +739,8 @@ function getCtx(){ if(!mgCtx) mgCtx=mgCanvas().getContext('2d'); return mgCtx; }
 function launchMinigame(gameId, scale, onComplete){
   syncSkillsFromStats();
   mgCurrentOpt.scale = scale||'cows';
+  mgCurrentId = gameId;
+  mgRetries = 0;
   GS.afterMinigameHandler = onComplete;
 
   const defs = { run: mgStuntRunDef, recovery: mgRecoveryDef, crowd: mgCrowdDef };
@@ -748,19 +759,25 @@ function launchMinigame(gameId, scale, onComplete){
   document.getElementById('stageTitle').textContent = mgCurrentDef.name;
   document.getElementById('stageTag').textContent = `N${GS.stats.nerve} P${GS.stats.precision} S${GS.stats.showmanship} C${GS.stats.condition}`;
 
-  // Extra controls
+  // Extra controls.
+  //
+  // Phase 7 retired the Scale pill row that used to live here. It was a
+  // leftover from the minigame test bed: three buttons that let a player
+  // standing at the Milestone 4 gate ride the Bus Stack as three cows and
+  // still collect the Bus Stack's framing. Now that the scale decides the gap,
+  // the required speed and the landing window, that is a difficulty switch on
+  // the defining moment, and there is no reading of the story where the player
+  // has it. `window.__dd.launchMinigame` is the door for riding a scale out of
+  // order, which is the same door the regression suite already comes through.
   const ec = document.getElementById('extraControls');
   ec.innerHTML = '';
+  // The scale is announced instead, because it is now load-bearing.
   if(mgCurrentDef.scales && gameId==='run'){
-    const row = document.createElement('div'); row.className='scale-row';
-    row.innerHTML='<span class="scale-lbl">Scale</span>';
-    [['cows','Cows ×3'],['cars','Cars ×9'],['buses','Buses ×13']].forEach(([id,label])=>{
-      const b=document.createElement('button');
-      b.className='pill'+(mgCurrentOpt.scale===id?' active':''); b.textContent=label;
-      b.onclick=()=>{ mgCurrentOpt.scale=id; [...row.querySelectorAll('.pill')].forEach(p=>p.classList.remove('active')); b.classList.add('active'); mgStartInstance(); };
-      row.appendChild(b);
-    });
-    ec.appendChild(row);
+    const tag = document.createElement('div'); tag.className='scale-row';
+    tag.innerHTML = '<span class="scale-lbl">Scale</span><span class="scale-name" id="mg-scale-name"></span>';
+    tag.querySelector('#mg-scale-name').textContent =
+      (SCALES[mgCurrentOpt.scale]||SCALES.cows).label;
+    ec.appendChild(tag);
   }
 
   showScreen('minigame');
@@ -870,10 +887,31 @@ function showMgResult(res){
   const v=document.getElementById('rVerdict'); v.textContent=res.result; v.className='verdict '+res.result.toLowerCase();
   document.getElementById('rScore').textContent=res.score;
   document.getElementById('rDetail').textContent=res.details;
+
+  // "Try Again" restarted any run for free, so the outcome that decides
+  // `GS.flags.stuntOutcome` and three chapters of framing was re-rollable
+  // until the player liked it (Phase 7, #291). One retry, and it costs a point
+  // of Condition — the stat the run's own drift term reads, so the second
+  // attempt is measurably shakier than the first. With no Condition left there
+  // is nothing to spend and the result stands. The Recovery is never re-ridden:
+  // spending the body to re-roll how well the body came back is not a trade
+  // this game should offer.
+  const again=document.getElementById('rAgain');
+  again.hidden=!canRetry(mgCurrentId, mgRetries, GS.stats.condition);
+  again.textContent='Try Again · −'+RETRY_CONDITION_COST+' Condition';
+
   document.getElementById('reporter').classList.add('on');
 }
 
-document.getElementById('rAgain').onclick=()=>{ document.getElementById('reporter').classList.remove('on'); mgStartInstance(); };
+document.getElementById('rAgain').onclick=()=>{
+  if(!canRetry(mgCurrentId, mgRetries, GS.stats.condition)) return;
+  mgRetries++;
+  applyEffects({ stats:{ condition:-RETRY_CONDITION_COST } });
+  syncSkillsFromStats();   // the drift term reads Condition; the retry is shakier
+  updateStatsHUD();
+  document.getElementById('reporter').classList.remove('on');
+  mgStartInstance();
+};
 document.getElementById('rOut').onclick=()=>{
   document.getElementById('reporter').classList.remove('on');
   cancelAnimationFrame(mgRafId);
@@ -887,8 +925,36 @@ document.getElementById('rOut').onclick=()=>{
  *  Earl as before. See notes for why this placement and not Danny's FR2
  *  head-to-head, the other candidate this session considered. */
 function handleCrowdM1Result(res){
-  if(res.result === 'SUCCESS') applyEffects({ stats:{ showmanship:1 } });
+  // Phase 7. Upside-only was right when this was a bonus dropped into round 2
+  // and is wrong now that it is the only thing standing between the stunt and
+  // Earl's opening line. Three verdicts, three prices: a crowd read clean is
+  // worth the point of Showmanship it always was, a half-read one is worth
+  // nothing, and a crowd that was drifting by the third call takes the point
+  // instead — the encore can cost you something the stunt earned.
+  //
+  // Duke still walks to the same man. Earl bought the jump, not the encore;
+  // what `crowdWork` changes is what Earl saw on the way over.
+  const r = res && res.result;
+  if(r === 'SUCCESS') applyEffects({ stats:{ showmanship:1 }, flags:{ crowdWork:'read' } });
+  else if(r === 'PARTIAL') applyEffects({ flags:{ crowdWork:'half' } });
+  else applyEffects({ stats:{ showmanship:-1 }, flags:{ crowdWork:'lost' } });
   goToScene('m1_earl_approach_perfect');
+}
+
+/**
+ * What the Recovery was worth (Phase 7).
+ *
+ * `RecoveryCore.result()` has always returned SUCCESS/PARTIAL/FAIL, the rounds
+ * cleared and a score, and both call sites took the ticket and dropped it on
+ * the floor: a player who cleared all four rounds and a player who cleared
+ * none walked into the same scene and paid the same Condition. The two crash
+ * aftermaths read these three flags now.
+ */
+function recordRecovery(res){
+  const r = res && res.result;
+  GS.flags.recovery = r === 'SUCCESS' ? 'strong' : r === 'PARTIAL' ? 'partial' : 'poor';
+  GS.flags.recoveryRounds = (res && typeof res.ok === 'number') ? res.ok : 0;
+  GS.flags.recoveryReps = (res && typeof res.reps === 'number') ? res.reps : 0;
 }
 
 /* ---- Route stunt result to outcome scene ---- */
@@ -911,6 +977,7 @@ function handleStuntRunResult(res){
   if(outcomeScene === 'm1_stunt_crash_bad'){
     // Launch recovery minigame, then go to scene
     launchMinigame('recovery', null, (recovRes)=>{
+      recordRecovery(recovRes);
       goToScene('m1_stunt_crash_bad');
     });
   } else {
@@ -1823,22 +1890,18 @@ function RecoveryCore(){
 /* ---- Stunt Run ---- */
 function createStuntRun(opts){
   const scale=(opts&&opts.scale)||'cows';
-  const nerve=SKILLS.nerve, prec=SKILLS.precision, show=SKILLS.showmanship, cond=SKILLS.condition;
-  const GY=420, START=80, RAMP_START=760, LIP=980, LAND_TOP=1600, LAND_END=2000, FINISH=2300, WORLD_END=2480;
-  const RAMP_DEG=36, LAND_DEG=18, GRAV=340, WB=46, WR=13, LAND_LIP_H=70;
-  const LIP_TOP_Y=GY-(LIP-RAMP_START)*tan(RAMP_DEG);
-  const SCALES={ cows:{n:3,unit:'cows',label:'Milestone 1 · Cows'}, cars:{n:9,unit:'cars',label:'Milestone 3 · Cars'}, buses:{n:13,unit:'buses',label:'Milestone 4 · Bus Stack'} };
-  const S=SCALES[scale]||SCALES.cows;
-  const ACCEL=235, BRAKE=300, FRICT=26, VMAX=590;
-  const GREEN_C=485, greenHalf=30+(nerve/100)*0.45*100*0.45;
-  const yellowHalf=greenHalf*2.0;
-  const TARGET_ANG=-LAND_DEG;
-  const BAL_BAND=22+(prec/100)*14;
-  const CTRL=150+(nerve/100)*170;
-  const DRIFT_A=52+(1-cond/100)*150;
-  const DRIFT_F1=2.1, DRIFT_F2=3.7;
-  const WMAX=160;
-  const TOL=16+(prec/100)*22;
+  const show=SKILLS.showmanship;
+  // Phase 7. Everything that used to be a constant here, and the same constant
+  // for all three scales, now comes out of stunt.js derived from the count of
+  // things being jumped. The gap, the run-up, the top end, the landing zone's
+  // width, the speed the approach has to find and the tolerance the body angle
+  // is judged in all move with the tier; the ramp, gravity and the bike do not.
+  const T=stuntTuning(scale,SKILLS);
+  const { GY, RAMP_START, LIP, RAMP_DEG, LAND_DEG, GRAV, WB, WR, LAND_LIP_H,
+          ACCEL, BRAKE, FRICT, DRIFT_F1, DRIFT_F2, WMAX } = GEO;
+  const { S, START, VMAX, LAND_TOP, LAND_END, FINISH, WORLD_END, WORLD_START,
+          LIP_TOP_Y, GREEN_C, greenHalf, yellowHalf, TOL, DRIFT_A, BAL_BAND,
+          CTRL, TARGET_ANG } = T;
   function terrainY(x){ if(x<RAMP_START)return GY; if(x<LIP)return GY-(x-RAMP_START)*tan(RAMP_DEG); if(x<LAND_TOP)return GY; if(x<LAND_END)return (GY-LAND_LIP_H)+(x-LAND_TOP)*tan(LAND_DEG); return GY; }
   function surfaceDeg(x){ if(x>=RAMP_START&&x<LIP)return RAMP_DEG; if(x>=LAND_TOP&&x<LAND_END)return -LAND_DEG; return 0; }
   let phase,v,gas,lean,cx,cy,vx,vy,th,w,totalRot,launchSpeed,approachScore,contactX,contactErr,crashT,crashSpin,landRes,rec,finished,cam,camY,dust,shakeT,airT,drift,balIn,balTot,driftSeed;
@@ -1865,7 +1928,11 @@ function createStuntRun(opts){
       // Debug/telemetry channel. Nothing in the game reads it; the regression
       // suite steers the run off `th` and `w`, and a proportional loop on angle
       // alone oscillates straight through the landing band without `w`.
-      this.tele={phase,v:round(v),th:round(th),w:round(w),totalRot:round(totalRot),launchSpeed:round(launchSpeed),cx:round(cx),cy:round(cy),vy:round(vy),contactX:round(contactX)};
+      this.tele={phase,v:round(v),th:round(th),w:round(w),totalRot:round(totalRot),launchSpeed:round(launchSpeed),cx:round(cx),cy:round(cy),vy:round(vy),contactX:round(contactX),
+        // Phase 7. The two numbers a closed loop has to aim at are no longer
+        // the same on every scale, so the run says what they are rather than
+        // leaving 485 and -18 hard-coded in test/drive-daredevil.mjs.
+        greenC:GREEN_C,targetTh:TARGET_ANG,vmax:VMAX,tier:round(T.tier*100)/100};
       for(const p of dust){ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=200*dt; p.life-=dt; }
       dust=dust.filter(p=>p.life>0);
       if(shakeT>0)shakeT-=dt;
@@ -1936,7 +2003,7 @@ function createStuntRun(opts){
     _finishRun(res){ this.finish(res); },
     render(g,W,H){
       const viewW=1020, scale_=W/viewW, viewH=H/scale_;
-      cam=clamp(cx-viewW*0.34,0,WORLD_END-viewW+200);
+      cam=clamp(cx-viewW*0.34,WORLD_START,WORLD_END-viewW+200);
       const baseCamY=GY-viewH*0.78; camY=Math.min(baseCamY,cy-viewH*0.40);
       const sx=x=>(x-cam)*scale_, sy=y=>(y-camY)*scale_;
       let shx=0,shy=0; if(shakeT>0){ shx=rnd(6,-6)*shakeT; shy=rnd(6,-6)*shakeT; }
@@ -1946,8 +2013,8 @@ function createStuntRun(opts){
       g.fillStyle='rgba(224,116,47,.45)'; g.beginPath(); g.arc(sx(1300),sy(120),46*scale_,0,TAU); g.fill();
       g.fillStyle='#4a3622'; g.beginPath(); const hb=sy(GY); g.moveTo(-10,hb);
       for(let i=0;i<=10;i++){ const hx=-10+(W+20)*i/10; g.lineTo(hx,sy(GY)-(40+30*Math.sin(i*1.3+cam*0.0006))*scale_); } g.lineTo(W+10,hb); g.fill();
-      g.fillStyle='#2a1d10'; g.beginPath(); g.moveTo(sx(0),H+10);
-      for(let x=0;x<=WORLD_END;x+=14){ g.lineTo(sx(x),sy(terrainY(x))); } g.lineTo(sx(WORLD_END),H+10); g.closePath(); g.fill();
+      g.fillStyle='#2a1d10'; g.beginPath(); g.moveTo(sx(WORLD_START),H+10);
+      for(let x=WORLD_START;x<=WORLD_END;x+=14){ g.lineTo(sx(x),sy(terrainY(x))); } g.lineTo(sx(WORLD_END),H+10); g.closePath(); g.fill();
       g.strokeStyle=C_pal.line; g.lineWidth=3*scale_; g.beginPath();
       g.moveTo(sx(RAMP_START),sy(terrainY(RAMP_START))); g.lineTo(sx(LIP),sy(terrainY(LIP-0.1))); g.stroke();
       g.beginPath(); g.moveTo(sx(LAND_TOP),sy(terrainY(LAND_TOP))); g.lineTo(sx(LAND_END),sy(terrainY(LAND_END-0.1))); g.stroke();
@@ -1962,7 +2029,7 @@ function createStuntRun(opts){
       if(phase!=='recovery'){ g.save(); g.translate(sx(cx),sy(cy)); g.rotate(-th*D2R); g.scale(scale_,scale_); drawBikeBig(g,phase==='crashing'); g.restore(); }
       for(const p of dust){ g.fillStyle='rgba(180,150,110,'+clamp(p.life,0,1)+')'; g.beginPath(); g.arc(sx(p.x),sy(p.y),3*scale_,0,TAU); g.fill(); }
       g.restore();
-      if(phase==='approach'){ drawSpeedo(g,W,H,v,VMAX,GREEN_C,greenHalf,yellowHalf,cond,(LIP-cx)); }
+      if(phase==='approach'){ drawSpeedo(g,W,H,v,VMAX,GREEN_C,greenHalf,yellowHalf,SKILLS.condition,(LIP-cx)); }
       else if(phase==='air'){ drawBalanceHUD(g,W,H,th,TARGET_ANG,BAL_BAND,drift,balTot>0?balIn/balTot:0,totalRot); }
       else if(phase==='recovery'){ rec.render(g,W,H); }
       if(phase==='runout'&&landRes){ g.fillStyle=C_pal.cream; g.font='400 22px "Alfa Slab One",serif'; g.textAlign='center'; g.fillText('STUCK IT!',W/2,40); }
@@ -1978,6 +2045,9 @@ function createRecovery(){
     init(){ core=RecoveryCore(); },
     onDir(dir,down){ core.onDir(dir,down); }, onGas(){}, onLean(){}, onTap(){}, onChoice(){},
     update(dt){ if(core.update(dt)){ const r=core.result(); this.finish({result:r.result,score:r.score,
+      // ok/reps ride out on the ticket now (Phase 7). `recordRecovery` puts
+      // them in the flag bag and the two crash aftermaths say the number.
+      ok:r.ok, reps:r.reps,
       details:'Cleared '+r.ok+' of '+r.reps+' rounds. '+(r.ok===r.reps?'Body came all the way back.':'It will take more than one session.')}); } },
     render(g,W,H){ g.fillStyle='#150e08'; g.fillRect(0,0,W,H); core.render(g,W,H); } };
 }
@@ -2240,6 +2310,11 @@ mountSaveBar(document.getElementById('save-bar-title'), slot, {
 window.__dd = {
   GS, SCENES, slot,
   goToScene, applyState, persist, currentHubRoute,
+  // Phase 7. The Scale pill row came off the minigame screen; riding a scale
+  // out of order goes through here now, which is where every other out-of-band
+  // move in this game already lives:
+  //   __dd.launchMinigame('run', 'buses', r => console.log(r))
+  launchMinigame, SCALES, stuntTuning,
   get scene(){ return currentScene; },
   get mg(){ return mgActive; },
 };

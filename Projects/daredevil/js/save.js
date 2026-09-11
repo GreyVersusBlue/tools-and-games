@@ -91,6 +91,14 @@ export function freshState() {
       dannySchemed: false,
       dannyMet: false,
       stuntOutcome: null,
+      // What the Recovery was worth, and what the encore was (Phase 7). Both
+      // used to be thrown away at the call site: every hard crash cost the
+      // same Condition however well the body came back, and Work the Crowd
+      // could only ever pay out.
+      recovery: null,
+      recoveryRounds: 0,
+      recoveryReps: 0,
+      crowdWork: null,
       earlResponse: null,
       rickySigned: false,
       rickyLegacy: false,

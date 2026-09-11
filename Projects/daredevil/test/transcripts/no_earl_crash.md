@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -163,6 +163,7 @@ He didn't extend a hand right away. He stood there and looked at Duke the way yo
 He let that sit.
 **EARL:** Earl Maddox.
 Duke knew the name. He'd done his research.
+**EARL:** You lost them after, though. Two minutes and they were looking at the funnel cake stand. That part's learnable. I'd learn it.
 
 ### `m1_earl_modifiers`
 Earl's eyes had moved across the crowd. He'd found Danny in it.
@@ -1007,7 +1008,7 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — FAIL / 17** — Overshot the ramp. Recovered 0 of 4 rounds.
+> **STUNT RESULT — FAIL / 19** — Overshot the ramp. Recovered 0 of 4 rounds.
 
 ### `m3_failure_bad`
 He knew before he left the ramp that something was wrong. He went anyway, which was either courage or the inability to stop — he'd never been entirely sure of the boundary between those two things.
@@ -1035,8 +1036,9 @@ Duke looked at her.
 **KESSLER:** A man on the ground who hasn't got up yet is a different picture than the fist. It's not the one you wanted. It's the one they've got.
 Duke thought: she's not wrong. He also thought: I'd rather have the fist.
 He didn't say it. He looked at his wrist. He looked at the envelope. He thought about the next part, which was the part he was going to have to build from, and pay for.
+He did the work in Cal's garage with a radio on. 0 of 4 rounds went the way they were written. The hip kept its own opinion about the rest.
 
-> **Down — Hard** — The crash was the show. Recovery starts now. Cal is already thinking about what comes next.
+> **Down — Hard** — The crash was the show. The body did not answer — 0 of 4 rounds — and Cal is already thinking about what comes next.
 
 ### `m3_aftermath`
 That was one thing taken care of.
@@ -1328,7 +1330,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — FAIL / 17** — Overshot the ramp. Recovered 0 of 4 rounds.
+> **STUNT RESULT — FAIL / 19** — Overshot the ramp. Recovered 0 of 4 rounds.
 
 ### `m4_failure_inferno`
 He went in at the right speed. He went in right. At the midpoint something changed — the bike started to drift, he corrected, the correction was a degree off.

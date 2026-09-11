@@ -695,39 +695,79 @@ longer looks at `money` or `owePerMonth`; both go through `effects`, and
 
 *Shipped by:* **Claude Opus 5**, the row's named model.
 
-## Phase 7 — Three stunts that are three stunts
+## Phase 7 — Three stunts that are three stunts — DONE
 
-**Thirteen buses is three cows with ten more silhouettes drawn.**
+**Shipped 2026-09-11** (decisions #290 to #293; the account is under
+"Daredevil, arc two" in the root `HISTORY.md`).
 
-`SCALES` in `createStuntRun` carries `{n, unit, label}` and nothing else: ramp
-angle, gravity, green speed band, landing tolerance and drift are identical at
-Milestone 1 and Milestone 4. Meanwhile "Try Again" restarts any run for free,
-so the outcome that decides `GS.flags.stuntOutcome` and three chapters of
-framing is re-rollable until the player likes it.
+**Thirteen buses was three cows with ten more silhouettes drawn.** `SCALES` in
+`createStuntRun` carried `{n, unit, label}` and nothing else: ramp angle,
+gravity, green speed band, landing tolerance and drift were identical at
+Milestone 1 and Milestone 4. And "Try Again" restarted any run for free, so the
+outcome that decides `GS.flags.stuntOutcome` and three chapters of framing was
+re-rollable until the player liked it.
 
-- [ ] **Make scale mean something** — longer gap, tighter landing window,
-  higher required launch speed per tier, derived from `S.n` rather than a third
-  table, so a fourth scale is one row.
-- [ ] **Retire the Scale pill row** from `launchMinigame`'s `extraControls`, or
-  gate it behind the same debug door `window.__dd` is. `drive-daredevil.mjs`
-  does not use it.
-- [ ] **Decide what "Try Again" means.** Either it costs something or the game
-  stops pretending the outcome was earned; one retry at a Condition cost is the
-  smallest version that keeps both.
-- [ ] **Read the Recovery's result.** `RecoveryCore.result()` returns
-  SUCCESS/PARTIAL/FAIL, `roundsCleared` and a score, and both call sites throw
-  the argument away. Route `m1_stunt_crash_bad` and `m3_failure_bad_after` on
-  it, and let a good recovery cost less Condition.
-- [ ] **Give Work the Crowd a PARTIAL.** Upside-only was right for placing it
-  in round 2 and is wrong now that it is load-bearing.
-- [ ] **Extend the autopilot and re-pin the suite.** "Every stunt the autopilot
-  was asked to land, it landed" has to keep holding at the new tolerances —
-  that is the check that a difficulty change did not make the game unwinnable.
+- [x] **Scale means something**, out of `js/stunt.js`, a seventh module that
+  imports nothing. One number per scale — the count of things being jumped —
+  and everything else is derived from it: the gap (620 px over three cows,
+  1,140 over thirteen buses), the start line (80 → −180, because the Milestone
+  1 straight cannot build the speed the Bus Stack wants), the bike's top end
+  (590 → 680), the landing zone (400 px → 310), the green band's half-width
+  (×0.65 at the top tier), the body-angle tolerance (×0.75) and the drift
+  amplitude (×1.35). A fourth scale is one row in `SCALES`.
+- [x] **The required launch speed is solved, not chosen.** `speedForContact()`
+  inverts one quadratic — the flight parabola against the landing ramp's line —
+  for the speed that puts the wheel down 52.7% along the ramp: 485 over cows,
+  580 over cars, 636 over buses. A longer gap demands a faster approach by
+  construction, so the two cannot drift apart the way a second hand-kept table
+  would, and 0.527 is not a taste — it is where 485 already landed, read back
+  off the old constants so Milestone 1 does not move at all.
+- [x] **The Scale pill row is off the minigame screen.** It let a player
+  standing at the Milestone 4 gate ride the Bus Stack as three cows and collect
+  the Bus Stack's framing; now that the scale decides the gap, that is a
+  difficulty switch on the defining moment. What sits there is the scale's name.
+  `window.__dd.launchMinigame` is the door for riding one out of order, which
+  is the door the suite already came through.
+- [x] **"Try Again" costs a point of Condition, once** (#290). Condition is the
+  stat the run's own drift term reads, so the second attempt is measurably
+  shakier than the first; with none left there is nothing to spend and the
+  result stands. Never on the Recovery — spending the body to re-roll how well
+  the body came back is not a trade this game should offer.
+- [x] **The Recovery's result is read** (#291). `RecoveryCore.result()` has
+  always returned SUCCESS/PARTIAL/FAIL and the rounds cleared, and both call
+  sites took the ticket and dropped it. `recordRecovery()` puts it in the flag
+  bag, and `m1_stunt_crash_bad` and `m3_failure_bad_after` read it: the
+  Condition cost moves by a point in each direction (−1/−2/−3 and −2/−3/−4),
+  and each scene's closing paragraph names the rounds off the ticket.
+- [x] **Work the Crowd has a downside** (#292). Upside-only was right when it
+  was a bonus dropped into round 2 and wrong once it became the only thing
+  between the stunt and Earl's opening line: SUCCESS is still the point of
+  Showmanship, PARTIAL is nothing, FAIL takes the point. Earl's third line is
+  one of three, on `crowdWork`.
+- [x] **The autopilot reads the tier and the suite is re-pinned** (#293).
+  `tele` carries `greenC` and `targetTh` now, and `drive-daredevil.mjs` aims at
+  them instead of the 485 and −18 it held. `smoke-page.mjs` 172 → 180, all four
+  stunts SUCCESS (95, 100, 95, 96). `smoke-save.mjs` 199 → 246, with the
+  whole geometry checked under plain Node: three scales strictly ordered in
+  seven directions at once, the green centre landing where it says on every
+  tier, and full throttle finding it with run-up to spare — which is the check
+  that a difficulty change did not make the game unwinnable, without a browser.
 
-*Leans on:* `createStuntRun`, `createRecovery`, the four `handleStuntRun*`
-handlers, `handleCrowdM1Result`, `autopilot()`. *Save:* none. *Model:*
-**Claude Opus 5** — physics constants and result plumbing, with the autopilot
-as a live check on every change.
+**Break it on purpose, and it fails by name** (#34). Nineteen deliberate breaks
+were planted from a green baseline and every one was caught by
+the assertion whose comment claims it: a flat gap, a constant green centre, a
+flat top end, a flat tolerance, a flat drift, an unclamped tier, a NaN contact,
+a re-rideable Recovery, a free retry in `stunt.js` and again in `engine.js`, a
+dropped Recovery ticket, upside-only crowd work, a flat crash cost, an
+aftermath that stops naming the rounds, and the pill row put back in the
+source. Two more make the last two claims against a real screen rather than a
+grep (#39) and fail separately: `again.hidden` pinned false, and one pill
+button appended to the scale shelf. The nineteenth is the one that matters:
+with `drive-daredevil.mjs` holding the old 485, "the autopilot landed every
+stunt it was asked to land" fails, because the Bus Stack it lands short of is
+151 units of speed away.
+
+*Shipped by:* **Claude Opus 5**, the row's named model.
 
 ## Phase 8 — A workflow that runs the suite, and a real thumb
 
