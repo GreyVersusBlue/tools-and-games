@@ -114,6 +114,48 @@ const RUNS = {
       { on: "isn't something I can teach" },
     ],
   },
+  // Phase 4, and the same method rounds 2 and 3 used on Ruthie, Earl and Pete:
+  // play a run the character is not in, grep the output for the name, and read
+  // every mention that is not inside an N(()=>...). Tommy is the harder of the
+  // two, because until this phase he could not leave: he was 'hanger_on' from
+  // the first line to the ending screen on every run. This one never asks him
+  // what he does, so the car-show answer is not on the Free Roam 2 board, and
+  // then it measures his twelve people against a career.
+  no_tommy: {
+    name: 'Hollis Gray', town: 'Denton Flats',
+    stunt: 'good',
+    rules: [
+      { on: 'Let him finish the flatbed story' },
+      { on: "Twelve people isn't a career" },
+    ],
+  },
+  // The other absence. Every run passes through `m1_rival_rumor` — Tommy
+  // brings Danny up at the county fair — so declining there is the only way he
+  // stays out, and it is the case the sweep is for: the name is said out loud
+  // and then nobody arrives. `rels.danny` stays 'unknown' and the ending
+  // roster has to leave him off rather than print him at '—'. `rough` takes
+  // the same answer, but it crashes at the fair and takes the other side of
+  // every fork after it; this one is a clean run that simply says no.
+  no_danny: {
+    name: 'Arliss Poe', town: 'Kettleman',
+    stunt: 'good',
+    rules: [
+      { on: "I've got my own show" },
+    ],
+  },
+  // The other answer at the same card. `clean` schemes at the fair and calls
+  // Danny in Free Roam 3, which is the route to 'poached'; this one introduces
+  // itself at the fair and then says nothing when somebody signs him, which is
+  // the route to 'absent'. Both states had a label in the cast table and no
+  // writer for the game's whole life.
+  danny_gone: {
+    name: 'Vern Straley', town: 'Antler',
+    stunt: 'good',
+    rules: [
+      { on: 'introduce myself' },
+      { on: 'Nothing from me' },
+    ],
+  },
 };
 
 const MAX_STEPS = 2000;

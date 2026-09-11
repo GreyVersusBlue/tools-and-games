@@ -51,4 +51,4 @@ export function makeTown(){ return GS.town; }
 // import for everything about state. Phase 2's REL_NAMES / REL_STATES pair
 // was folded into it: one table, and now one per character rather than one
 // flat list of every state anyone can be in.
-export { CAST, castFor, castName, relLabel, statesOf, presentStates, isPresent, meetsNeeds, setRel, routeByCast } from './cast.js';
+export { CAST, castFor, castName, relLabel, statesOf, presentStates, isPresent, wasMet, rosterFor, meetsNeeds, setRel, routeByCast } from './cast.js';

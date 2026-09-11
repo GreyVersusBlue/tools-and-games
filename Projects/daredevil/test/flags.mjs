@@ -136,9 +136,12 @@ ok(plumbing === 2, `exactly two \`flags:\` sites are pass-through plumbing (foun
 
 // 3. The other direction. A flag written and never read is a breadcrumb: it
 //    costs a save slot and pays nothing, and it is exactly what `m5Decision`
-//    was until Phase 2 gave the Earl-picked ending its own outcome. Twenty-eight
+//    was until Phase 2 gave the Earl-picked ending its own outcome. Twenty-seven
 //    are left and they are not this row's to spend, so the list is frozen
-//    rather than emptied: it can shrink, and a twenty-ninth fails here.
+//    rather than emptied: it can shrink, and a twenty-eighth fails here.
+//    `tommyKnowsWhatHeWants` came off it in Phase 4: the Free Roam 3 evening
+//    had set it for two phases and nothing read it, and the Free Roam 4 bar
+//    scene reads it now.
 //    Every entry is checked from both ends (locked decision #264) — a name
 //    that has since found a reader fails too, so the list cannot rot.
 const WRITE_ONLY = [
@@ -148,7 +151,7 @@ const WRITE_ONLY = [
   'fr3EarlDeal', 'fr3EarlTalked', 'fr3HollisTalked', 'fr3RuthieTalked',
   'fr3SandraTV', 'fr3TommyTalked', 'm3Complete', 'm4Complete', 'peteGone',
   'peteMistakeResponse', 'ruthieEstablished', 'ruthieStrainSeed',
-  'sandraFeatureDone', 'sandraResponse', 'tommyKnowsWhatHeWants',
+  'sandraFeatureDone', 'sandraResponse',
 ];
 {
   const actual = [...writes].filter(f => !reads.has(f)).sort();
