@@ -16,6 +16,7 @@ import {
   createDaredevilSlot, freshState, validateState, repairState, KEY, VERSION, STAT_MAX,
 } from '../js/save.js';
 import { CAST, castFor, isLegalRel, setRel, meetsNeeds, routeByCast, statesOf, relLabel, wasMet, rosterFor } from '../js/cast.js';
+import { findings, UNREACHABLE_BY_RELS } from './graph.mjs';
 import {
   SCENES,
   M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
@@ -471,6 +472,31 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
   ok(fixed.length === 0,
      `every name on the doubling list still doubles (stale: ${fixed.join(', ') || 'none'})`);
   console.log(`  double-apply: ${doubling.length} choice-reached scenes carry non-empty deltas`);
+}
+
+/* ---------------------------------------------------------- the graph */
+// Phase 5. test/graph.mjs builds the story's graph — scene `next`/`goto`,
+// `_gateRoute` targets, goToScene()'s procedural blocks read as text, the
+// hub renderers' cards and buttons — and walks it twice: plain, and over
+// (scene, relationship bag) pairs with `_needs` and the route tables exact.
+// The same findings its CLI prints are asserted here so they cost nothing.
+{
+  const f = findings();
+  ok(f.unrouted.length === 0, `graph: every edge lands on a scene or a handled route (unrouted: ${f.unrouted.join(', ') || 'none'})`);
+  ok(f.orphans.length === 0, `graph: every scene is reachable from the cold open (orphans: ${f.orphans.join(', ') || 'none'})`);
+  ok(f.unnamedRoutes.length === 0, `graph: every route goToScene handles is named by something (dead routes: ${f.unnamedRoutes.join(', ') || 'none'})`);
+  const newNoRels = f.noRels.filter(id => !UNREACHABLE_BY_RELS.includes(id));
+  const staleNoRels = UNREACHABLE_BY_RELS.filter(id => !f.noRels.includes(id));
+  ok(newNoRels.length === 0, `graph: every reachable scene is reachable under some relationship state, or is frozen (under none: ${newNoRels.join(', ') || 'none'})`);
+  ok(staleNoRels.length === 0, `graph: every frozen scene is still reachable under no relationship state (stale: ${staleNoRels.join(', ') || 'none'})`);
+  // The graph has to see what the story declares: every choice `_needs` and
+  // every hub card `_needs` is a gate the relationship walk applied, and the
+  // known gated cards are on it by name.
+  const gated = [...f.g.cards.values()].flat().filter(c => c.needs).map(c => c.id).sort();
+  ok(gated.includes('fr4_eve_california') && gated.includes('fr3_eve_tommy') && gated.includes('fr2_danny_02'),
+     `graph: the hub cards' _needs are read as data (gated cards: ${gated.length})`);
+  ok(f.g.tables.size === 3, `graph: the three route-table blocks are walked exactly (${[...f.g.tables.keys()].join(', ')})`);
+  console.log(`\n  graph: ${f.g.known.size} scenes, ${f.g.routes.length} routes, ${[...f.plain].filter(id => f.g.known.has(id)).length} reached plain, ${[...f.withRels.scenes].filter(id => f.g.known.has(id)).length} reached by the relationship walk over ${f.withRels.states} states`);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

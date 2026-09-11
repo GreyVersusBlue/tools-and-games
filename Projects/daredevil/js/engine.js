@@ -272,16 +272,10 @@ function goToScene(id){
     });
     return;
   }
-  if(id === '_fr3_ruthie_route'){
-    // FR3 Ruthie split: if ruthieAsked, go to already_asked version
-    if(GS.flags.ruthieAsked){
-      goToScene('fr3_ruthie_already_asked');
-    } else {
-      // Should not reach here if scene has choices; safety fallback
-      goToScene('fr3_ruthie_honest');
-    }
-    return;
-  }
+  // There was an `_fr3_ruthie_route` block here — the Free Roam 3 Ruthie
+  // split on `ruthieAsked` — that nothing in scenes.js has named since the
+  // split moved onto `fr3_eve_ruthie`'s own `_gateRoute`. Handled and never
+  // named for three rounds; test/graph.mjs (Phase 5) fails on the next one.
   if(id === '_chapter_fr4'){
     triggerStatUpdate({
       title:'Milestone 4 — Complete',
