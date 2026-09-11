@@ -1,0 +1,175 @@
+# Checks for Daredevil. Eight phases shipped and every one of them ran its
+# suites in a session's terminal and nowhere else: 433 assertions across four
+# suites, nine committed transcripts, and no workflow path-matching
+# Projects/daredevil/**. Nothing in the deploy path executes a line of the
+# game — Firebase copies files — so without this job a commit that makes the
+# game uncompletable again reaches production unremarked. That is not a
+# hypothetical here: the game shipped with four wiring bugs that between them
+# made it impossible to finish and not one of which threw, logged, or showed a
+# player anything (see the project README).
+#
+# Three jobs, cheapest first, and the two slow ones wait on the cheap one so a
+# broken cast table does not spend forty minutes of browser time to say so:
+#
+#   suite        smoke-save, flags and graph — plain Node, no browser, no
+#                dependency, ~15 seconds for 246 + 7 assertions and a 232-scene
+#                graph walk over 103,443 relationship states
+#   browser      smoke-page (plays to an ending three times, then drives four
+#                endings from their outcome scene) and verify-touch-375
+#                (375px, touch-emulated pointer input) — ~30 minutes
+#   transcripts  the nine committed runs, replayed and compared — one job per
+#                run, in parallel, ~4 minutes each
+#
+# The browser jobs install Tools/board-check's dependencies, because
+# test/drive-daredevil.mjs drives the page through that harness: puppeteer-core
+# against @sparticuz/chromium's bundled build on Linux, plus the @fontsource
+# packages the harness serves in place of fonts.googleapis.com so a render is
+# the real thing. `--ignore-scripts` is deliberate: board-check's postinstall
+# installs two copies of three.js for the pages that need it, and Daredevil is
+# 2D canvas and has no use for either.
+#
+# Why no browser pin here, when school-generator-ci.yml and hearth-ci.yml both
+# pin one to an exact Playwright version: those two compare pixels and V8
+# arithmetic against committed baselines, and a browser bump moves both. This
+# suite compares scene ids, DOM text and save JSON, and the one number a
+# transcript carries that a browser could move — the stunt score — is
+# normalised out by transcript.mjs's NORMALISE() for exactly that reason (#53).
+# The version that matters is the lockfile's, and the lockfile is in the path
+# filter below.
+#
+# This is one project's job, not the site-wide "CI runs almost nothing" row in
+# BACKLOG.md. That row is still open and is still larger than this: nothing
+# runs Tools/board-check's own checks or gvb-save.test.mjs, and the
+# per-project workflows are seven copies of each other rather than one
+# template.
+
+name: Daredevil CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/daredevil/**"
+      - "assets/js/gvb-save.js"
+      - "Tools/board-check/harness.mjs"
+      - "Tools/board-check/package-lock.json"
+      - ".github/workflows/daredevil-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Projects/daredevil/**"
+      - "assets/js/gvb-save.js"
+      - "Tools/board-check/harness.mjs"
+      - "Tools/board-check/package-lock.json"
+      - ".github/workflows/daredevil-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daredevil-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    name: smoke-save, flags, graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Named one step each so a red job says which one, rather than "the
+      # tests". All three exit non-zero on a failed assertion already (#13).
+      - name: smoke-save (the save format, the cast table, the economy, the stunt geometry)
+        run: node Projects/daredevil/test/smoke-save.mjs
+
+      - name: flags (who writes each flag against who reads it)
+        run: node Projects/daredevil/test/flags.mjs
+
+      - name: graph (orphans, dead routes, scenes no relationship state reaches)
+        run: node Projects/daredevil/test/graph.mjs
+
+  browser:
+    name: smoke-page + touch at 375px
+    needs: suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Tools/board-check/package-lock.json
+
+      - name: Install the harness's dependencies
+        working-directory: Tools/board-check
+        run: npm ci --ignore-scripts
+
+      # The regression suite: three playthroughs to an ending, then four
+      # endings driven straight from their outcome scene. It is the only thing
+      # that catches a hub that cannot be emptied or a minigame that routes to
+      # a scene id nothing answers.
+      - name: smoke-page
+        run: node Projects/daredevil/test/smoke-page.mjs
+
+      # Pointer events, hit targets and touch-action on a 375px viewport. What
+      # it cannot prove is OS-level scroll-gesture suppression; that is parked
+      # in the wishlist rather than pretended at here (#294).
+      - name: verify-touch-375
+        run: node Projects/daredevil/test/verify-touch-375.mjs
+
+  transcripts:
+    name: transcript · ${{ matrix.run }}
+    needs: suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # Every run reports, rather than the first failure hiding the other
+      # eight: which runs moved is the diagnosis.
+      fail-fast: false
+      matrix:
+        run:
+          - clean
+          - rough
+          - no_earl
+          - no_pete
+          - no_earl_solo
+          - no_earl_crash
+          - no_tommy
+          - no_danny
+          - danny_gone
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Tools/board-check/package-lock.json
+
+      - name: Install the harness's dependencies
+        working-directory: Tools/board-check
+        run: npm ci --ignore-scripts
+
+      # Replays the run and compares it to the committed transcript instead of
+      # overwriting it. Nine transcripts have been the record of what this game
+      # is since round 1, re-taken by hand whenever somebody remembered; this
+      # is the step that makes "re-take the transcripts" an assertion.
+      - name: ${{ matrix.run }}
+        run: node Projects/daredevil/test/transcript.mjs ${{ matrix.run }} --check
+
+      # The run that did not match, so a red job can be read without a browser.
+      - name: Keep the run that differed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daredevil-transcript-${{ matrix.run }}
+          path: Projects/daredevil/test/transcripts/${{ matrix.run }}.actual.md
+          if-no-files-found: ignore

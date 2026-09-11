@@ -6722,6 +6722,123 @@ to `main` on its own before the work started (#283).
 
 ---
 
+## Phase 8 — A workflow that runs the suite, and a real thumb (2026-09-11)
+
+**The finding, restated as a number.** Eight phases, 433 assertions across four
+suites, nine committed transcripts, and nothing in `.github/workflows/`
+path-matched `Projects/daredevil/**`. Every one of those checks ran when a
+session remembered to run it, in a terminal, and nowhere else. Firebase Hosting
+copies files, so nothing in the deploy path executes a line of this game — the
+exact condition under which it shipped the first time with four wiring bugs
+that between them made it impossible to finish and not one of which threw,
+logged, or showed a player anything.
+
+**What shipped.** Decisions #294 to #296. The row named Claude Opus 5; the
+session ran on it.
+
+- **`daredevil-ci.yml`, three jobs, and the two slow ones wait on the cheap
+  one.** `suite` runs `smoke-save.mjs`, `flags.mjs` and `graph.mjs` under plain
+  Node — 246 + 7 assertions and a 232-scene walk over 103,443 relationship
+  states, about fifteen seconds. `browser` installs `Tools/board-check`'s
+  dependencies and runs `smoke-page.mjs` (180 assertions, three playthroughs to
+  an ending and then four endings driven from their outcome scene) and
+  `verify-touch-375.mjs`. `transcripts` is a nine-way matrix, one job per
+  committed run. `needs: suite` on both slow jobs is the whole scheduling
+  decision: a broken cast table should not spend forty minutes of browser time
+  to say so.
+  **The path filter is wider than the folder**, because two things outside it
+  can break this game without touching it: `assets/js/gvb-save.js`, which
+  `js/save.js` is a thin layer over, and `Tools/board-check/harness.mjs` plus
+  its lockfile, which is what `drive-daredevil.mjs` imports to get a browser at
+  all. The rest of `Tools/board-check/**` is not in the list — a change to
+  `shoot-board.mjs` has nothing to say about Daredevil.
+
+- **The nine transcripts are an assertion now** (#295). `transcript.mjs <run>
+  --check` replays the run and compares it against the committed file instead
+  of overwriting it, prints where the two part, and exits non-zero (#13). The
+  transcripts have been the record of what this game *is* since round 1 — the
+  thing that produced its description in this file — and re-taking them was a
+  convention somebody either remembered or did not.
+  **One line cannot be compared byte for byte, and it is normalised to its
+  verdict.** The stunt result carries a score and a detail sentence that both
+  fall out of a real-time physics run: `clean` re-taken on this machine landed
+  the Bus Stack at 95 one afternoon and 94 the next off the same commit, and
+  the detail sentence has bands of its own ("dead level" under 0.4 of
+  tolerance, "a touch nose-high" over it, plus a flip count). Comparing those
+  across two machines is asserting that both rasterize the same number of
+  frames (#53). SUCCESS vs PARTIAL vs FAIL is a different thing: it is what
+  routes the story, and every scene id downstream of it is in the diff anyway.
+  The nine committed scores sit far from the two thresholds that route anything
+  — 94-100 against 80 and 85, 12-19 against 30 — so a score that moved far
+  enough to matter would move the scene path, and the report leads with the
+  scene path.
+
+- **`verify-touch-375.mjs` is promoted, and the physical pass is parked**
+  (#294). The phase asked for a thumb on real glass and then "retire or promote
+  the one-off against that result", which is a step no unattended session can
+  take. So the two halves were separated. What the one-off proves without
+  hardware — pointer events reaching the throttle, `.held` going on and off,
+  a 300x87 hit target, `touch-action: none` as *computed* on both pedal and
+  canvas, no horizontal overflow at 375px — is worth twenty seconds on every
+  commit, so it runs in the `browser` job. What it cannot prove is OS-level
+  scroll-gesture suppression, which is the thing `touch-action: none` exists
+  for: a thumb that holds the throttle and drags a few pixels either scrolls
+  the page out from under the stunt run or it does not, and no synthetic
+  pointer event knows which. That is now a parked item in the project's
+  wishlist, under a heading that says it needs a person holding a phone, which
+  is `BACKLOG.md`'s rule 2 applied inside a wishlist rather than the ranked
+  table. Parked is not verified, and the note says so.
+
+- **No browser pin here, and that is a decision rather than an omission**
+  (#296). `school-generator-ci.yml` and `hearth-ci.yml` both pin Playwright to
+  1.56.1 and say why at length: one compares pixels against committed
+  screenshots, the other compares V8 arithmetic against committed hashes, and a
+  browser bump moves both. This suite compares scene ids, DOM text and save
+  JSON, and the one number in it a browser could move is normalised out on
+  purpose. So it installs what the harness's lockfile already pins —
+  `puppeteer-core` against `@sparticuz/chromium`'s bundled build, the same
+  browser every board-check script has used on Linux — and the lockfile is in
+  the path filter, so a bump reruns this suite.
+  **`npm ci --ignore-scripts`** is the other half: board-check's `postinstall`
+  installs two copies of three.js for the pages that need them, and Daredevil
+  is 2D canvas with no use for either.
+
+**Break it on purpose, and it fails by name** (#34). Three breaks were planted
+from a green baseline, and the one that matters is the third.
+
+- One word of the game's prose changed — `js/scenes.js`'s "It was one of the
+  better things about Tommy." to "...about him." — and `clean --check` fails at
+  line 92 of 1,632, printing the committed line and the played one under each
+  other. Exit 1.
+- One choice re-routed, `m1_rival_rumor`'s option A from `m1_b1_scheme` to
+  `m1_b1_ignore`, and it fails with the diagnosis on its own line: "scene path:
+  94 committed, 94 played; they part at scene 11 — committed `m1_b1_scheme`,
+  played `m1_b1_ignore`". That is the branch-quietly-stopped-existing case the
+  transcripts were written for, caught by a machine for the first time.
+- The third break is the one that had to *pass*: the committed transcript's
+  stunt line rewritten from "SUCCESS / 95 — Cleared the cows and landed dead
+  level" to "SUCCESS / 42 — Cleared the cows and landed a touch nose-high 3
+  flips!", which `--check` accepts, exit 0. A normaliser that quietly compared
+  the score would have failed there, and the nine-way matrix would have gone
+  red on the first afternoon a runner rendered a frame late (#53).
+
+**Counts.** `smoke-save.mjs` 246, `flags.mjs` 7, `graph.mjs` 232 scenes and no
+findings, `smoke-page.mjs` 180 passed 0 failed, `verify-touch-375.mjs` all
+checks passed, `clean --check` matched its committed transcript. A transcript
+run is about 2m15s on this machine; the browser suite is about twenty-five
+minutes.
+
+**One shared thing was touched**, `.github/workflows/`, which no project owns,
+plus `.gitignore` (the `*.actual.md` a failed check leaves behind),
+`CLAUDE.md`'s locked-decision count and `BACKLOG.md`'s `Claimed` column, which
+went to `main` on its own before the work started (#283).
+
+**This closes arc two.** Phases 5 through 8 were the machine under the story: a
+walker that knows what it did not reach, an economy, three stunts that are
+three stunts, and now something that runs all of it without being asked.
+
+---
+
 # Bell to Bell, through Phase 3
 
 The vertical slice: one first-person class period built on *Withitness* as a

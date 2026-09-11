@@ -12,6 +12,17 @@
 //
 // This is exploration, not assertion. The suite that fails on regression is
 // smoke.mjs; this is the thing that told us what to assert.
+//
+// Except with `--check`, which turns the nine committed transcripts from a
+// convention into an assertion (Phase 8):
+//
+//   node Projects/daredevil/test/transcript.mjs clean --check
+//
+// The run is played the same way, and instead of overwriting
+// transcripts/<run>.md it is compared against it. A difference prints where
+// the two part, writes the fresh run to transcripts/<run>.actual.md and exits
+// non-zero (#13). What it compares is NORMALISE()d first — see there for the
+// one line that cannot be compared byte for byte and why.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -165,7 +176,35 @@ const MAX_STEPS = 2000;
 // buttons exactly where they were. To a driver that reads like a slow scene.
 const STALL_LIMIT = 6;
 
-async function run(key, headed) {
+/* What a transcript can be compared on, and what it cannot.
+ *
+ * Everything a transcript writes down is decided by the story except one line:
+ * the stunt result, whose score and detail sentence both fall out of a
+ * real-time physics run. `clean` re-taken on this machine landed the Bus Stack
+ * at 95 one afternoon and 94 the next, off the same commit, and the detail
+ * sentence has bands of its own — "dead level" below 0.4 of tolerance, "a
+ * touch nose-high" above it, plus a flip count. Comparing those byte for byte
+ * would be asserting that two machines rasterize the same number of frames
+ * (#53), which they do not.
+ *
+ * The verdict is a different thing. SUCCESS vs PARTIAL vs FAIL is what
+ * `handleStuntRunResult()` reads, it is why the next scene is the one it is, and
+ * every scene id after it is in the diff anyway. So the line collapses to its
+ * verdict and nothing else is touched.
+ *
+ * The nine committed scores sit far from the two thresholds that route the
+ * story — 94-100 against 80 and 85, 12-19 against 30 — so a score that moved
+ * far enough to change a route would change the scene path, and the diff would
+ * say so in scene ids rather than in a number. That is the one failure here
+ * worth re-running once before believing (#53).
+ */
+const NORMALISE = text => text.replace(
+  /^> \*\*STUNT RESULT — (SUCCESS|PARTIAL|FAIL) \/ \d+\*\* — .*$/gm,
+  '> **STUNT RESULT — $1**');
+
+/** Returns true if the run is good: it reached an ending, and under --check it
+ *  matched the committed transcript. */
+async function run(key, headed, check = false) {
   const plan = RUNS[key];
   if (!plan) throw new Error(`no run "${key}". Try: ${Object.keys(RUNS).join(', ')}`);
 
@@ -176,6 +215,7 @@ async function run(key, headed) {
   let lastScene = null, lastText = null;
   const spent = new Set();
   let fingerprint = '', stalled = 0, stuntsPlayed = 0;
+  let stopped = null, ok = false;
   const visits = {};
 
   try {
@@ -282,6 +322,7 @@ async function run(key, headed) {
       throw new Error(`stuck on screen "${s.screen}" with nothing to do`);
     }
   } catch (e) {
+    stopped = e.message;
     say(`\n\n---\n\n## RUN STOPPED\n\n\`\`\`\n${e.message}\n\`\`\``);
     console.error('\n  ✗ ' + e.message + '\n');
   } finally {
@@ -289,16 +330,70 @@ async function run(key, headed) {
     if (errs.length) say('\n\n## Page errors\n\n' + errs.map(e => '- `' + e + '`').join('\n'));
     const dir = path.join(HERE, 'transcripts');
     fs.mkdirSync(dir, { recursive: true });
-    const out = path.join(dir, key + '.md');
-    fs.writeFileSync(out,
+    const out = path.join(dir, key + (check ? '.actual' : '') + '.md');
+    const text =
       `# Daredevil — transcript: \`${key}\`\n\n` +
       `Played as ${plan.name} of ${plan.town}, stunt policy \`${[].concat(plan.stunt).join(' then ')}\`.\n\n` +
       `**Scene path (${scenePath.length}):** ${scenePath.map(s => '`' + s + '`').join(' → ')}\n\n---\n` +
-      log.join('\n') + '\n');
-    console.log(`  ${scenePath.length} scenes → ${path.relative(process.cwd(), out)}`);
-    console.log('  path: ' + scenePath.join(' → '));
+      log.join('\n') + '\n';
+
+    if (!check) {
+      fs.writeFileSync(out, text);
+      console.log(`  ${scenePath.length} scenes → ${path.relative(process.cwd(), out)}`);
+      console.log('  path: ' + scenePath.join(' → '));
+      ok = !stopped;
+    } else {
+      const want = path.join(dir, key + '.md');
+      console.log(`  ${scenePath.length} scenes played`);
+      if (!fs.existsSync(want)) {
+        console.error(`  ✗ no committed transcript at ${path.relative(process.cwd(), want)} to compare against`);
+        fs.writeFileSync(out, text);
+        ok = false;
+      } else {
+        const committed = fs.readFileSync(want, 'utf8');
+        ok = NORMALISE(committed) === NORMALISE(text) && !stopped;
+        if (ok) {
+          console.log(`  ✓ matches ${path.relative(process.cwd(), want)}`);
+        } else {
+          fs.writeFileSync(out, text);
+          report(NORMALISE(committed), NORMALISE(text));
+          console.error(`  ✗ ${key} differs from its committed transcript — the run just played is at ` +
+            path.relative(process.cwd(), out));
+        }
+      }
+    }
     await t.done();
   }
+  return ok;
+}
+
+/* The first place two transcripts stop agreeing, with the lines either side of
+ * it. A real unified diff would need an LCS and a dependency; the first
+ * divergence is the whole story anyway, because one changed choice shifts
+ * every line after it. The scene-path line is called out separately: it is
+ * line 5 of every transcript and it is the one that says "the game goes
+ * somewhere else now" rather than "a sentence was reworded". */
+function report(want, got) {
+  const a = want.split('\n'), b = got.split('\n');
+  const pathLine = t => (t.match(/^\*\*Scene path \(\d+\):\*\* (.*)$/m)?.[1] || '')
+    .split(' → ').map(x => x.replace(/`/g, ''));
+  const [pa, pb] = [pathLine(want), pathLine(got)];
+  if (pa.join() !== pb.join()) {
+    let k = 0;
+    while (k < pa.length && k < pb.length && pa[k] === pb[k]) k++;
+    console.error(`  scene path: ${pa.length} committed, ${pb.length} played; ` +
+      `they part at scene ${k + 1} — committed "${pa[k] ?? '(end)'}", played "${pb[k] ?? '(end)'}"`);
+  }
+  // Clipped, because the scene-path line is line 5 of every transcript and it
+  // is 94 scene ids long: a re-routed choice printed the whole path twice and
+  // buried the one-line summary above it.
+  const clip = t => (t.length > 150 ? t.slice(0, 147) + '...' : t);
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  console.error(`  first differing line: ${i + 1} (committed ${a.length} lines, played ${b.length})`);
+  for (let j = Math.max(0, i - 3); j < i; j++) console.error(`      ${clip(a[j])}`);
+  console.error(`    - ${a[i] === undefined ? '(committed transcript ends here)' : clip(a[i])}`);
+  console.error(`    + ${b[i] === undefined ? '(the run just played ends here)' : clip(b[i])}`);
 }
 
 async function choose(page, plan, s, spent) {
@@ -315,4 +410,17 @@ async function choose(page, plan, s, spent) {
 }
 
 const key = process.argv[2] || 'clean';
-await run(key, process.argv.includes('--headed'));
+if (key === '--all-check' || (key === 'all' && process.argv.includes('--check'))) {
+  // Every run, in one process. Slower than nine jobs in parallel but it is the
+  // form a desk wants, and daredevil-ci.yml uses the matrix instead.
+  let bad = 0;
+  for (const k of Object.keys(RUNS)) {
+    console.log(`\n=== ${k}`);
+    if (!(await run(k, false, true))) bad++;
+  }
+  console.log(bad ? `\n${bad} of ${Object.keys(RUNS).length} transcripts differ` : `\nall ${Object.keys(RUNS).length} transcripts match`);
+  process.exitCode = bad ? 1 : 0;
+} else {
+  const ok = await run(key, process.argv.includes('--headed'), process.argv.includes('--check'));
+  if (!ok) process.exitCode = 1;
+}
