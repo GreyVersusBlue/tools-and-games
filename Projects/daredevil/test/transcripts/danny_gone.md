@@ -169,6 +169,7 @@ He didn't extend a hand right away. He stood there and looked at Duke the way yo
 He let that sit.
 **EARL:** Earl Maddox.
 Duke knew the name. He'd done his research.
+**EARL:** And you worked them after. On the ground, helmet still on. Most men get off the bike and go looking for their mother.
 
 ### `m1_earl_modifiers`
 Earl's eyes had moved across the crowd. He'd found Danny in it.
@@ -982,7 +983,7 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cars and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the cars and landed dead level
 
 ### `m3_triumph_clean`
 Clean arc. Clean landing. The back wheel kissed the ramp mat with the specific weight of something that had gone exactly right — every calculation confirmed in the same half-second.
@@ -1324,7 +1325,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the buses and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the buses and landed dead level
 
 ### `m4_triumph_buses`
 Thirteen buses. He cleared all of them.

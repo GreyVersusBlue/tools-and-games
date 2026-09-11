@@ -30,12 +30,26 @@ import {
   money, earn, spend, owePerMonth, payHubTake, spendEveningCost,
   eveningAffordable, costTag, canAffordBuses,
 } from '../js/money.js';
+// The stunt run's geometry (Phase 7). Like money.js it imports nothing, so
+// the claim that three scales are three stunts is arithmetic and provable
+// here rather than only in a fifteen-minute browser run.
+import {
+  SCALES, GEO, LAND_FRAC, TIER_FLOOR, TIER_SPAN, tierOf, lipTopY,
+  contactXFor, speedForContact, stuntTuning, canRetry,
+  RETRY_LIMIT, RETRY_CONDITION_COST,
+} from '../js/stunt.js';
+// The flag bag itself, for the two crash aftermaths: their Condition cost is a
+// getter over GS.flags.recovery now, which is readable without a browser.
+import { GS } from '../js/state.js';
 
 const JS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'js');
 
 let pass = 0, fail = 0;
 const ok = (cond, what) => { if (cond) { pass++; } else { fail++; console.error('  FAIL ' + what); } };
 const eq = (a, b, what) => ok(JSON.stringify(a) === JSON.stringify(b), `${what} (got ${JSON.stringify(a)}, want ${JSON.stringify(b)})`);
+/** Three decimals. The stunt tuning is float arithmetic; comparing it exactly
+ *  would make the pin fail on a reordered multiply that changed nothing. */
+const round3 = v => Math.round(v * 1000) / 1000;
 
 /** Minimal in-memory Storage. */
 function stubStore() {
@@ -716,6 +730,176 @@ ok(validateState({ name: 'x', stats: {}, flags: {}, scene: null }), 'a null scen
      `graph: the hub cards' _needs are read as data (gated cards: ${gated.length})`);
   ok(f.g.tables.size === 3, `graph: the three route-table blocks are walked exactly (${[...f.g.tables.keys()].join(', ')})`);
   console.log(`\n  graph: ${f.g.known.size} scenes, ${f.g.routes.length} routes, ${[...f.plain].filter(id => f.g.known.has(id)).length} reached plain, ${[...f.withRels.scenes].filter(id => f.g.known.has(id)).length} reached by the relationship walk over ${f.withRels.states} states`);
+}
+
+
+/* --------------------------------------------- three stunts (Phase 7) */
+// `SCALES` carried {n, unit, label} and nothing else: ramp angle, gravity,
+// green speed band, landing tolerance and drift were identical at Milestone 1
+// and Milestone 4, and thirteen buses was three cows with ten more silhouettes
+// drawn between the ramps. Everything below is pure arithmetic over one number
+// per scale, which is the whole reason stunt.js imports nothing.
+{
+  const SK = { nerve: 60, precision: 60, showmanship: 60, condition: 60 };
+  const order = ['cows', 'cars', 'buses'];
+  const tune = Object.fromEntries(order.map(k => [k, stuntTuning(k, SK)]));
+
+  // 1. Milestone 1 did not move. Every number the game shipped with is what
+  //    three cows still solves to, so the first stunt a player ever rides is
+  //    the one the nine committed transcripts were taken against.
+  const cows = tune.cows;
+  eq(cows.GREEN_C, 485, 'three cows still want 485 at the lip');
+  eq([cows.START, cows.VMAX], [80, 590], 'and the same run-up and top end');
+  eq([cows.LAND_TOP, cows.LAND_END, cows.FINISH, cows.WORLD_END], [1600, 2000, 2300, 2480],
+     'and the same ramps');
+  eq(cows.WORLD_START, 0, "and the same camera stop, so Milestone 1's pan does not move");
+  ok(tune.cars.WORLD_START < 0 && tune.buses.WORLD_START < tune.cars.WORLD_START,
+     'while the longer run-ups move the world left of zero');
+  eq(round3(cows.greenHalf), round3(30 + (SK.nerve / 100) * 0.45 * 100 * 0.45),
+     "and the old green band's half-width");
+  eq(round3(cows.TOL), round3(16 + (SK.precision / 100) * 22), 'and the old landing tolerance');
+  eq(round3(cows.DRIFT_A), round3(52 + (1 - SK.condition / 100) * 150), 'and the old drift');
+
+  // 2. Three scales are three stunts, in five directions at once. A fourth row
+  //    that clamps onto an existing tier — n past thirteen — comes out
+  //    identical to buses and fails here rather than shipping as more
+  //    silhouettes.
+  const rises = (f, what) => ok(f(tune.cows) < f(tune.cars) && f(tune.cars) < f(tune.buses),
+    `${what} rises with the scale (${order.map(k => round3(f(tune[k]))).join(' < ')})`);
+  const falls = (f, what) => ok(f(tune.cows) > f(tune.cars) && f(tune.cars) > f(tune.buses),
+    `${what} falls with the scale (${order.map(k => round3(f(tune[k]))).join(' > ')})`);
+  rises(t => t.LAND_TOP - GEO.LIP, 'the gap');
+  rises(t => t.GREEN_C, 'the speed the approach has to find');
+  rises(t => t.DRIFT_A, 'the drift');
+  rises(t => t.VMAX, "the bike's top end");
+  falls(t => t.LAND_END - t.LAND_TOP, 'the landing zone');
+  falls(t => t.TOL, 'the body-angle tolerance');
+  falls(t => t.greenHalf, 'the green band');
+  falls(t => t.START, 'the start line moves back');
+
+  // 3. The required speed is not a number somebody picked. It is solved out of
+  //    the geometry, so it lands where it says it lands — 52.7% along the
+  //    landing ramp — on every scale. A gap that grew without the speed
+  //    growing with it would put the ideal approach in the dirt, silently.
+  for (const k of order) {
+    const t = tune[k];
+    const x = contactXFor(t.GREEN_C, t.LAND_TOP);
+    const frac = (x - t.LAND_TOP) / (t.LAND_END - t.LAND_TOP);
+    ok(Math.abs(frac - LAND_FRAC) < 0.02,
+       `${k}: the green centre lands ${(frac * 100).toFixed(1)}% along the ramp, not ${(LAND_FRAC * 100).toFixed(1)}%`);
+  }
+
+  // 4. And it is reachable. Full throttle from the start line to the lip, on
+  //    the run's own numbers, has to find the green centre with ramp to spare
+  //    — otherwise the tier is unwinnable and no amount of skill helps. This
+  //    is the check a difficulty change has to survive without a browser; the
+  //    autopilot is the same check with a real canvas under it.
+  for (const k of order) {
+    const t = tune[k];
+    const D2R = Math.PI / 180, cos = d => Math.cos(d * D2R);
+    let v = 0, x = t.START, dt = 1 / 240, hit = null;
+    for (let i = 0; i < 40000 && x < GEO.LIP; i++) {
+      v = Math.min(v + GEO.ACCEL * dt - GEO.FRICT * dt * 0.2, t.VMAX);
+      x += v * cos(x >= GEO.RAMP_START && x < GEO.LIP ? GEO.RAMP_DEG : 0) * dt;
+      if (hit === null && v >= t.GREEN_C) hit = x;
+    }
+    ok(hit !== null && GEO.LIP - hit >= 150,
+       `${k}: full throttle finds ${t.GREEN_C} with ${hit === null ? 'never' : Math.round(GEO.LIP - hit) + 'px'} of run left`);
+  }
+
+  // 5. There is room to be wrong. The band of launch speeds that lands inside
+  //    the zone at all has to sit around the green centre with real margin on
+  //    both sides, or the stunt is a coin flip dressed as a skill check.
+  for (const k of order) {
+    const t = tune[k];
+    const lo = speedForContact(t.LAND_TOP, t.LAND_TOP), hi = speedForContact(t.LAND_END, t.LAND_TOP);
+    ok(t.GREEN_C - lo >= 20 && hi - t.GREEN_C >= 20,
+       `${k}: the landing window is ${Math.round(lo)}..${Math.round(hi)} around ${t.GREEN_C}`);
+  }
+
+  // 6. The tier is clamped at both ends, and `tierOf` is the only place the
+  //    count becomes a difficulty.
+  eq([tierOf(1), tierOf(TIER_FLOOR), tierOf(TIER_FLOOR + TIER_SPAN), tierOf(99)], [0, 0, 1, 1],
+     'the tier clamps to 0..1');
+  eq(stuntTuning('nonsense', SK).scale, 'cows', 'an unknown scale falls back to three cows');
+  // And a speed too slow to reach the landing ramp reports short rather than
+  // NaN — the quadratic has no root there, and a NaN contact would compare
+  // false against both ends of the zone and read as a clean landing.
+  ok(contactXFor(120, tune.buses.LAND_TOP) < tune.buses.LAND_TOP,
+     'a launch too slow to reach the ramp lands short, not NaN');
+  eq(Math.round(lipTopY() * 10) / 10, 260.2, 'the lip is where the ramp puts it');
+}
+
+/* ------------------------------------------- the retry has a price (Phase 7) */
+// "Try Again" restarted any run for free, so the outcome that decides
+// `GS.flags.stuntOutcome` and three chapters of framing was re-rollable until
+// the player liked it.
+{
+  eq([RETRY_LIMIT, RETRY_CONDITION_COST], [1, 1], 'one retry, one point of Condition');
+  ok(canRetry('run', 0, 3), 'a first retry is on the table');
+  ok(!canRetry('run', 1, 3), 'a second one is not');
+  ok(!canRetry('run', 0, 0), 'and neither is the first with no Condition to spend');
+  ok(canRetry('crowd', 0, 1), 'the crowd can be worked again');
+  ok(!canRetry('recovery', 0, 5), 'the Recovery is never re-ridden');
+  // The engine has to actually ask. A `rAgain` handler that restarts without
+  // going through canRetry is the bug this row exists to close, and it reads
+  // exactly like the old one-liner did.
+  const eng = fs.readFileSync(path.join(JS, 'engine.js'), 'utf8');
+  const again = eng.slice(eng.indexOf("getElementById('rAgain').onclick"));
+  ok(/canRetry\(/.test(again.slice(0, 400)) && /RETRY_CONDITION_COST/.test(again.slice(0, 400)),
+     'the Try Again handler asks canRetry and charges the Condition');
+  ok(!/scale-row[\s\S]{0,400}pill/.test(eng), 'the Scale pill row is off the minigame screen');
+}
+
+/* ------------------------------- the Recovery's result is read (Phase 7) */
+// `RecoveryCore.result()` has always returned SUCCESS/PARTIAL/FAIL and the
+// rounds cleared, and both call sites took the ticket and dropped it: a player
+// who cleared all four rounds and one who cleared none walked into the same
+// scene and paid the same Condition.
+{
+  const eng = fs.readFileSync(path.join(JS, 'engine.js'), 'utf8');
+  const sites = [...eng.matchAll(/launchMinigame\('recovery'[\s\S]{0,160}?\}\);/g)].map(m => m[0]);
+  eq(sites.length, 2, 'there are two standalone Recovery call sites');
+  ok(sites.every(t => /recordRecovery\(/.test(t)),
+     'and both hand the ticket to recordRecovery instead of dropping it');
+
+  const before = { ...GS.flags };
+  const cost = (scene, rec) => {
+    GS.flags.recovery = rec; GS.flags.recoveryRounds = 3; GS.flags.recoveryReps = 4;
+    return SCENES[scene].statUpdate.deltas.condition;
+  };
+  eq([cost('m1_stunt_crash_bad', 'strong'), cost('m1_stunt_crash_bad', 'partial'), cost('m1_stunt_crash_bad', 'poor')],
+     [-1, -2, -3], 'the Milestone 1 hard fall costs less Condition after a good recovery');
+  eq([cost('m3_failure_bad_after', 'strong'), cost('m3_failure_bad_after', 'partial'), cost('m3_failure_bad_after', 'poor')],
+     [-2, -3, -4], 'and so does the Milestone 3 one');
+  // A run that somehow reaches either scene without the flag pays what the
+  // scene always cost, rather than the good-recovery discount.
+  GS.flags.recovery = null;
+  eq([SCENES.m1_stunt_crash_bad.statUpdate.deltas.condition,
+      SCENES.m3_failure_bad_after.statUpdate.deltas.condition], [-3, -4],
+     'no recovery on the record reads as a poor one');
+
+  // And the player is told. The tail paragraph names the rounds off the ticket.
+  const tail = SCENES.m1_stunt_crash_bad.lines.at(-1);
+  GS.flags.recovery = 'strong'; GS.flags.recoveryRounds = 4; GS.flags.recoveryReps = 4;
+  const strongTail = typeof tail.text === 'function' ? tail.text() : '';
+  GS.flags.recovery = 'poor'; GS.flags.recoveryRounds = 0;
+  const poorTail = typeof tail.text === 'function' ? tail.text() : '';
+  ok(/4 of 4/.test(strongTail), 'the Milestone 1 aftermath says how many rounds the body cleared');
+  ok(/0 of 4/.test(poorTail), 'and says the real number when it cleared none');
+  ok(strongTail !== poorTail, 'and the paragraph itself is not the same one either way');
+
+  // Work the Crowd's three verdicts reach Earl's third line.
+  const earl = SCENES.m1_earl_approach_perfect.lines.at(-1);
+  GS.flags.crowdWork = 'read'; const read = earl.text();
+  GS.flags.crowdWork = 'half'; const half = earl.text();
+  GS.flags.crowdWork = 'lost'; const lost = earl.text();
+  ok(new Set([read, half, lost]).size === 3,
+     'Earl says a different third line for each of the crowd three verdicts');
+  ok(/showmanship:\s*-1/.test(eng.slice(eng.indexOf('function handleCrowdM1Result'), eng.indexOf('function handleCrowdM1Result') + 1200)),
+     'and a crowd that drifted costs the point rather than paying nothing');
+
+  Object.assign(GS.flags, before);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

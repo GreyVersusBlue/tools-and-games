@@ -17,10 +17,12 @@ daredevil/
     scenes.js        the story, as data — SCENES, 244 KB (208 KB before Phase 1)
     engine.js        the runtime — screens, hubs, minigames, epilogue, boot
     save.js          the save format, on top of assets/js/gvb-save.js
+    money.js         the hub economy: budgets, prices, takes — imports nothing (Phase 6)
+    stunt.js         the stunt run's geometry: what a scale is worth — imports nothing (Phase 7)
   fonts/            7 woff2, 100.3 KB — see fonts/README.md
   test/
     drive-daredevil.mjs   how to get into the game and through it, written once
-    smoke-save.mjs        134 assertions, plain Node, no browser: the save format, the cast table, and graph.mjs's findings
+    smoke-save.mjs        246 assertions, plain Node, no browser: the save format, the cast table, the economy, the stunt geometry, and graph.mjs's findings
     graph.mjs             the story as a graph: every edge the game has, walked plain and over relationship state, no browser
     flags.mjs             7 assertions, plain Node: who writes each flag against who reads it
     smoke-page.mjs        the regression suite: real browser, plays to an ending three times
@@ -81,13 +83,22 @@ stopped existing.
 
 ## The one thing the game exposes for tests
 
-`window.__dd` — `GS`, `SCENES`, the save slot, `goToScene`, and getters for the
-live scene id and minigame. The inline script is a module, so nothing in it is
-global any more; this is the deliberate door.
+`window.__dd` — `GS`, `SCENES`, the save slot, `goToScene`, `launchMinigame`,
+`SCALES`, `stuntTuning`, and getters for the live scene id and minigame. The
+inline script is a module, so nothing in it is global any more; this is the
+deliberate door. Phase 7 put `launchMinigame` on it when the Scale pill row
+came off the minigame screen: riding the Bus Stack out of order is a console
+move now, not a button beside the pedals.
+
+    __dd.launchMinigame('run', 'buses', r => console.log(r))
 
 The stunt run's `tele` object also carries `w` (angular velocity). It is a debug
 channel nothing in the game reads, and `autopilot()` cannot steer a landing
 without it — a proportional loop on angle alone swings straight through the band.
+Since Phase 7 it also carries `greenC` and `targetTh`, the two numbers a closed
+loop aims at, because they are no longer the same on all three scales: 485 at
+the lip over three cows, 636 over thirteen buses. A driver holding the old
+constants lands every Bus Stack short.
 
 Work the Crowd (round 2, `js/engine.js`'s `createCrowd()`) carries the same kind
 of hook for the same reason: `mg.correctCall`, the id of the card that matches

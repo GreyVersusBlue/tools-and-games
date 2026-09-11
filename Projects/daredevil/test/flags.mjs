@@ -74,8 +74,12 @@ function topLevelKeys(body) {
 // reports all three as flags the save seeds and the game ignores — which is
 // what it did on the first run of this change. A new module that touches
 // GS.flags has to be added here or the audit fails, loudly, by name.
+// stunt.js joined the list in Phase 7. It touches no flag today — it is pure
+// geometry over a scale's count — and it is here anyway, because the rule is
+// that a module holding game state is scanned, and the cost of remembering to
+// add it later is a flag reported as write-only by a file that never read it.
 const src = stripComments(
-  ['engine.js', 'scenes.js', 'money.js'].map(f => fs.readFileSync(path.join(JS, f), 'utf8')).join('\n\n'));
+  ['engine.js', 'scenes.js', 'money.js', 'stunt.js'].map(f => fs.readFileSync(path.join(JS, f), 'utf8')).join('\n\n'));
 
 /* ------------------------------------------------------------------ reads */
 

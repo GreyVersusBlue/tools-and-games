@@ -6585,6 +6585,141 @@ fails on `Tools/prompt-builder.html` alone — 1,489 units, 1 broken, two of the
 units new with `js/money.js` — `check-collisions.mjs` 0 collisions,
 `social:check` the same six pages out of sync (the same six as on `main`).
 
+## Phase 7 — Three stunts that are three stunts (2026-09-11)
+
+**The finding, restated as a number.** `SCALES` in `createStuntRun` carried
+`{n, unit, label}` and nothing else. Ramp angle, gravity, green speed band,
+landing tolerance and drift were identical at Milestone 1 and Milestone 4, so
+thirteen buses was three cows with ten more silhouettes drawn between the
+ramps — 41.7 px apart, overlapping, which is what thirteen of anything looks
+like in a 500 px gap. The Milestone 4 screen also carried a Scale pill row
+left over from the minigame test bed: three buttons that let a player standing
+at the defining moment ride it as three cows and collect the Bus Stack's
+framing. And "Try Again" restarted any run for free, so the outcome that
+decides `GS.flags.stuntOutcome` and three chapters of framing was re-rollable
+until the player liked it.
+
+**What shipped.** Decisions #290 to #293. The row named Claude Opus 5; the
+session ran on it.
+
+- **`js/stunt.js`, a seventh module, and it imports nothing** (#290). One
+  number per scale — the count of things being jumped — and everything a tier
+  changes is derived from it. The gap goes 620 → 932 → 1,140 px. The start line
+  goes 80 → −76 → −180, because the Milestone 1 straight cannot build the speed
+  the Bus Stack wants and a run-up that does not lengthen makes the tier
+  unwinnable rather than hard. The bike's top end goes 590 → 644 → 680. The
+  landing zone narrows 400 → 346 → 310, the green band's half-width scales by
+  0.65 at the top tier, the body-angle tolerance by 0.75, the drift amplitude
+  by 1.35. `tierOf()` is the single place a count becomes a difficulty, and a
+  fourth scale is one row in `SCALES`.
+  **It imports nothing for money.js's reason**, and the payoff is the same:
+  the whole of "three scales are three stunts" is arithmetic `smoke-save.mjs`
+  proves under plain Node in milliseconds, rather than a claim that can only
+  be tested by a fifteen-minute browser run.
+
+- **The required launch speed is solved out of the geometry, not chosen**
+  (#290, same row). `contactXFor(v, landTop)` is one quadratic — the flight
+  parabola against the landing ramp's line — and `speedForContact()` bisects it
+  for the speed that puts the wheel down 52.7% along the ramp: 485, 580, 636.
+  A longer gap therefore demands a faster approach **by construction**. The
+  alternative, a second hand-kept table of green centres beside the table of
+  gaps, is two numbers that have to be edited together forever, and the failure
+  when they are not is a Milestone 4 whose ideal approach lands in the dirt with
+  nothing thrown and no assertion touched. 0.527 is not a taste either: it is
+  where 485 already landed, read back off the old constants, so Milestone 1
+  rides exactly as it did and the nine committed transcripts still describe the
+  first stunt a player ever sees.
+
+- **"Try Again" costs a point of Condition, once** (#291). Either the retry
+  costs something or the game stops pretending the outcome was earned, and one
+  retry at a Condition cost is the smallest version that keeps both. Condition
+  is the stat `DRIFT_A` reads, so the second attempt is measurably shakier than
+  the first rather than nominally penalized; with no Condition left there is
+  nothing to spend and the result stands. **Never on the Recovery**: spending
+  the body to re-roll how well the body came back is not a trade this game
+  should offer, and the Recovery is the one minigame whose subject is the cost
+  itself. `canRetry(gameId, retriesUsed, condition)` is the whole rule and it
+  lives in `stunt.js`, so the engine cannot quietly grow a second opinion.
+
+- **The Scale pill row is retired, and `window.__dd` is where a scale gets
+  ridden out of order** (#291, same row). `drive-daredevil.mjs` never used it.
+  What sits in `extraControls` now is the scale's name, because the scale is
+  load-bearing and worth announcing. `launchMinigame` went on the debug door,
+  which is the door the suite already comes through.
+
+- **The Recovery's result is read** (#292). `RecoveryCore.result()` has always
+  returned SUCCESS/PARTIAL/FAIL, `roundsCleared` and a score, and both call
+  sites — Milestone 1's hard fall and Milestone 3's — took the ticket and
+  dropped it on the floor: a player who cleared four rounds of four and one who
+  cleared none walked into the same scene and paid the same Condition.
+  `recordRecovery()` puts it in the flag bag as `recovery` / `recoveryRounds` /
+  `recoveryReps`; `m1_stunt_crash_bad` and `m3_failure_bad_after` read it
+  through `recovered()` and `recoveryCondition(base)` in `scenes.js`. The
+  Condition cost moves a point in each direction — −1/−2/−3 and −2/−3/−4 — and
+  each scene's closing paragraph names the rounds off the ticket rather than
+  gesturing at "this will need time". A run that somehow reaches either scene
+  with no recovery on the record pays what the scene always cost.
+
+- **Work the Crowd has a downside** (#293). Upside-only was right when it was a
+  bonus dropped into round 2 and is wrong now that it is the only thing
+  standing between a clean stunt and Earl's opening line. SUCCESS is still the
+  point of Showmanship, PARTIAL is nothing, FAIL takes the point back. Duke
+  walks to the same man either way — Earl bought the jump, not the encore — and
+  what `crowdWork` changes is the third thing Earl says, which is one of three.
+
+- **The autopilot reads the tier off the run** (#293, same row). `tele` carries
+  `greenC`, `targetTh`, `vmax` and `tier` now, and `drive-daredevil.mjs` aims
+  at the first two instead of the 485 and −18 it had held since round 1. This
+  is the hunk that makes the whole phase checkable: the difficulty change and
+  the check on it are the same change, so a tier that became unwinnable shows
+  up as a FAIL rather than as a game nobody plays.
+
+**Wired into the suites.** `smoke-save.mjs` 199 → 246. Milestone 1's every
+number pinned to what shipped; the three scales strictly ordered in eight
+directions at once (gap, speed, drift and top end up; landing zone, tolerance,
+green band and start line down), which is what fails if a fourth row is added
+past thirteen and clamps onto the Bus Stack; the green centre landing at 52.7%
+on every tier; full throttle finding that centre with at least 150 px of run-up
+left, which is the unwinnability check without a browser; a launch window of
+real width around the centre on each scale; the retry rule from four
+directions; and the two crash scenes' Condition costs read straight off the
+getter with the flag set three ways. `flags.mjs` scans `stunt.js` now — it
+holds no flag today, and the rule is that a module holding game state is
+scanned, because the cost of remembering later is a flag reported as write-only
+by a file that never read it.
+
+**Guard-rails broken on purpose (#34), nineteen.** Sixteen were planted one at
+a time into `smoke-save.mjs`'s green baseline and every one failed by the
+assertion whose comment claims it: a flat gap ("620 < 620 < 620"), a constant
+green centre ("cars: the green centre lands −78.6% along the ramp"), a flat top
+end ("buses: full throttle finds 636 with never of run left"), a flat
+tolerance, a flat drift, an unclamped tier ("got [−0.2,0,1,9.6]"), a NaN
+contact, a re-rideable Recovery, a free retry in `stunt.js` and again in
+`engine.js`, one of the two Recovery tickets dropped back on the floor,
+upside-only crowd work, a flat Milestone 1 crash cost ("got [−2,−2,−2], want
+[−1,−2,−3]"), an aftermath that stops naming the rounds, and the pill row put
+back into `launchMinigame`'s source.
+Two more are the same claims made against a real screen instead of a grep
+(#39), planted together and failing separately: an `again.hidden` pinned false
+takes down "the second result stands — one retry, not a re-roll until the
+player likes it" and nothing else, and one pill button appended to the scale
+shelf takes down "the minigame screen has no Scale pills left to press" and
+nothing else. 178 passed, 2 failed.
+The nineteenth is the one worth the fifteen minutes. With
+`drive-daredevil.mjs` holding the old 485, the browser suite reports
+`SUCCESS/95, SUCCESS/100, FAIL/16, FAIL/12, FAIL/14` and "the autopilot landed
+every stunt it was asked to land" fails. Three cows still land on the old
+constant; the cars and the buses do not, because they are 95 and 151 units of
+speed away. That is the phase's entire claim, measured: the three scales were
+one scale, and now they are three.
+
+**Counts.** `smoke-save.mjs` 199 → 246, `smoke-page.mjs` 172 → 180 (all four
+stunt tickets SUCCESS: 95, 100, 95, 96), `flags.mjs` 7, `graph.mjs` 232 scenes
+and no findings. Nine transcripts re-taken.
+
+**One shared thing was touched**, `BACKLOG.md`'s `Claimed` column, and it went
+to `main` on its own before the work started (#283).
+
 ---
 
 # Bell to Bell, through Phase 3

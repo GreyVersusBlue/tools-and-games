@@ -1,22 +1,23 @@
 # Daredevil's `js/` — module map
 
-Six ES modules, no bundler, no build step. `index.html` loads exactly one of
+Seven ES modules, no bundler, no build step. `index.html` loads exactly one of
 them directly (`<script type="module" src="./js/engine.js">`); the rest are
 imported.
 
 ```
-money.js    <- nothing        cast.js  <- nothing
-   ^                             ^
-   |                             |
-   +-------- save.js -------------+
-                ^
-                |
-             state.js   <- save.js (re-exports cast.js)
-                ^
-                |
-             scenes.js --+     <- state.js, money.js
-                |
-             engine.js         <- scenes.js, state.js, save.js, money.js
+cast.js  <- nothing        money.js <- nothing        stunt.js <- nothing
+   ^                          ^                           ^
+   |                          |                           |
+save.js  <- cast.js           |                           |
+   ^                          |                           |
+   |                          |                           |
+state.js <- save.js (re-exports cast.js)                  |
+   ^                          |                           |
+   |                          |                           |
+scenes.js <- state.js, money.js                           |
+   ^                          |                           |
+   |                          |                           |
+engine.js <- scenes.js, state.js, save.js, money.js, stunt.js
 ```
 
 - **`cast.js`** — the six characters as one table (Phase 3): id, display
@@ -54,6 +55,31 @@ money.js    <- nothing        cast.js  <- nothing
   **Adding a hub evening card means adding a price row.** `smoke-save.mjs`
   scrapes each renderer's own `eveCards` list and fails on a card with no price
   and on a price naming no card.
+- **`stunt.js`** — the stunt run's geometry, and what a scale is worth
+  (Phase 7). `SCALES` used to carry `{n, unit, label}` and nothing else, so
+  ramp angle, gravity, green speed band, landing tolerance and drift were
+  identical at Milestone 1 and Milestone 4 and thirteen buses was three cows
+  with ten more silhouettes drawn between the ramps. Everything a tier changes
+  is derived from `n` here: `stuntTuning(scale, skills)` returns the gap, the
+  start line, the bike's top end, the landing zone, the green band, the
+  body-angle tolerance and the drift amplitude, and `createStuntRun`
+  destructures it.
+  **The required launch speed is solved, not chosen.** `speedForContact()`
+  inverts `contactXFor()` — one quadratic, the flight parabola against the
+  landing ramp's line — to find the speed that puts the wheel down 52.7% along
+  the ramp. A longer gap therefore demands a faster approach by construction,
+  and the two cannot drift apart the way a second hand-kept table would. At
+  three cows it solves to 485, the constant the game shipped with, so
+  Milestone 1 rides exactly as it did.
+  Also here: `canRetry()`, which is the whole of the Try Again rule — one
+  retry, a point of Condition, never on the Recovery.
+  **It imports nothing**, for the same reason `money.js` does not, and so the
+  claim that three scales are three stunts is arithmetic `smoke-save.mjs`
+  checks without a browser.
+  **Adding a scale is one row in `SCALES`.** `tierOf()` clamps to the three
+  cows / thirteen buses range the run-up was solved for, so a row past thirteen
+  comes out identical to the Bus Stack — and `smoke-save.mjs` fails on that,
+  along with any tier whose green centre full throttle cannot reach.
 - **`save.js`** — the save format, on top of `assets/js/gvb-save.js`. Seeds
   the relationships from the cast and repairs a loaded one against it: an
   illegal state goes back to the character's start state, a key the cast does
@@ -76,10 +102,9 @@ money.js    <- nothing        cast.js  <- nothing
   See "Authoring a scene" below.
 - **`engine.js`** — everything else: screen management, scene rendering, the
   four free-roam hubs, the three canvas minigames (the Stunt Run, the
-  Recovery, and — newly wired this round — Work the Crowd), the epilogue, and
-  the boot block. Imports `SCENES` and renders it; never mutates its own
-  behavior based on which scenes exist beyond what `SCENES[id]` naturally
-  provides.
+  Recovery, and Work the Crowd), the epilogue, and the boot block. Imports
+  `SCENES` and renders it; never mutates its own behavior based on which scenes
+  exist beyond what `SCENES[id]` naturally provides.
 
 ## Authoring a scene
 
@@ -176,6 +201,17 @@ my_scene_id: {
   can build. `buildHubCard` prints the price into the tag slot off that row, so
   a card no longer carries a `tag:` of its own unless the tag is saying why the
   card is shut — "(Ruthie not established)", "(The cars first)".
+- **A minigame's ticket is `{ result, score, details }`, and a handler has to
+  read all of it.** Three of the four stunt handlers read `res.outcome`, which
+  the run never set, for long enough that every stunt from Milestone 3 on fell
+  through to its failure branch however well it was ridden. The Recovery's
+  `{ result, ok, reps }` went the same way in the other direction: both call
+  sites took the ticket and dropped it until Phase 7, so a body that cleared
+  four rounds and one that cleared none paid the same Condition.
+  `recordRecovery()` puts it in the flag bag as `recovery` / `recoveryRounds` /
+  `recoveryReps`, and `m1_stunt_crash_bad` and `m3_failure_bad_after` read it
+  through `recovered()` and `recoveryCondition(base)` in `scenes.js`. Work the
+  Crowd's is `crowdWork`: 'read', 'half' or 'lost'.
 - The four free-roam hubs build their own card lists in `engine.js`
   (`renderHubFR1`/`renderHubFR2`/`renderHubFR3`/`renderHubFR4`) rather than
   reading a list out of `SCENES` — a new hub card needs an entry in the

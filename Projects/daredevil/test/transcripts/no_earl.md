@@ -163,6 +163,7 @@ He didn't extend a hand right away. He stood there and looked at Duke the way yo
 He let that sit.
 **EARL:** Earl Maddox.
 Duke knew the name. He'd done his research.
+**EARL:** And you worked them after. On the ground, helmet still on. Most men get off the bike and go looking for their mother.
 
 ### `m1_earl_modifiers`
 Earl's eyes had moved across the crowd. He'd found Danny in it.
@@ -1290,7 +1291,7 @@ He thought: the bike is right. Let's go find out what I am.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 96** — Cleared the cars and landed dead level
+> **STUNT RESULT — SUCCESS / 95** — Cleared the cars and landed dead level
 
 ### `m4_triumph_inferno`
 The fire tunnel: a quarter mile, two hundred and forty feet of flame on each side, close enough that he felt the heat through the jacket sleeves.

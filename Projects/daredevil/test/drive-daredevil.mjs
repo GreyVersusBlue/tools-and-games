@@ -142,10 +142,12 @@ export async function pick(page, needle) {
  * Play the active canvas minigame to its result ticket.
  *
  * `mode` is "good" (aim for a clean landing) or "crash" (pin the throttle and
- * let the drift take it). The stunt run's own numbers decide the rest: the
- * approach wants speed near GREEN_C=485 at the lip, and the air wants the body
- * angle at the landing slope, -18deg. `w` is in the error term because a plain
- * proportional loop on angle alone swings straight through the band and back.
+ * let the drift take it). The stunt run's own numbers decide the rest, and
+ * since Phase 7 they are different numbers per scale: the approach wants the
+ * speed the run publishes as `tele.greenC` (485 over three cows, 636 over
+ * thirteen buses), and the air wants the body angle at the landing slope,
+ * `tele.targetTh`. `w` is in the error term because a plain proportional loop
+ * on angle alone swings straight through the band and back.
  *
  * The recovery minigame is a timing exercise with a per-round clock; the driver
  * lets it time out, which finishes it honestly with a low score and only ever
@@ -164,12 +166,19 @@ export async function pick(page, needle) {
 export async function autopilot(page, mode = 'good', timeoutMs = 60000) {
   await page.evaluate(m => {
     window.__apStop = false;
-    const TARGET_V = m === 'crash' ? 9999 : 485;
-    const TARGET_TH = -18;
     const tick = () => {
       if (window.__apStop) return;
       const a = (window.__dd && window.__dd.mg) || null;
       const t = a && a.tele;
+      // Phase 7. Three scales are three sets of numbers now, so the two the
+      // loop aims at come off the telemetry rather than being 485 and -18 in
+      // this file. The fallbacks are Milestone 1's, which is what a run that
+      // predates `tele.greenC` would have wanted; a driver that kept the old
+      // constants pins the throttle at 485 into a bus stack that wants 636 and
+      // lands every Milestone 4 short, which is what happened on the first run
+      // of this change before this hunk existed.
+      const TARGET_V = m === 'crash' ? 9999 : ((t && t.greenC) || 485);
+      const TARGET_TH = (t && typeof t.targetTh === 'number') ? t.targetTh : -18;
       if (a && a.controlSpec && a.controlSpec.type === 'choices') {
         if (m !== 'crash' && typeof a.correctCall === 'string') a.onChoice(a.correctCall);
       } else if (a && t && a.onGas) {

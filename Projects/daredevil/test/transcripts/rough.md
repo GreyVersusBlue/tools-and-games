@@ -159,8 +159,9 @@ Duke heard the crowd and then he stopped hearing it.
 He stayed there.
 Somewhere at the edge of the scene, a man in a brimmed hat watched from behind the fence. He watched for a long time. Then he turned and said something to the man next to him and took out a card and set it on the rail.
 Someone told Cal about the card later.
+The leg came back late and came back wrong. 0 of 4 sessions went the way they were supposed to go. He stopped counting after that, which is its own kind of answer.
 
-> **Hard Down** — The body took a real hit. This will need time.
+> **Hard Down** — The body took a real hit and did not come back clean. This needs more time than he has.
 
 ### `m1_earl_card`
 He didn't meet Earl Maddox that day. He was in too much pain, and Earl — whoever he was — seemed to understand that.
@@ -697,7 +698,7 @@ Just information. He knew what he was doing. He'd go find out.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — FAIL / 16** — Overshot the ramp. Recovered 0 of 4 rounds.
+> **STUNT RESULT — FAIL / 18** — Overshot the ramp. Recovered 0 of 4 rounds.
 
 ### `m3_failure_bad`
 He knew before he left the ramp that something was wrong. He went anyway, which was either courage or the inability to stop — he'd never been entirely sure of the boundary between those two things.
@@ -725,8 +726,9 @@ Duke looked at him.
 **EARL:** The photograph of a man who went down and hasn't gotten up yet is a different kind of story. It's not the fist. But it's something.
 Duke thought: he's not wrong. He also thought: I'd rather have the fist.
 He didn't say it. He looked at his wrist. He thought about the next part, which was the part he was going to have to build from.
+He did the work in Cal's garage with a radio on. 0 of 4 rounds went the way they were written. The hip kept its own opinion about the rest.
 
-> **Down — Hard** — The crash was the show. Recovery starts now. Cal is already thinking about what comes next.
+> **Down — Hard** — The crash was the show. The body did not answer — 0 of 4 rounds — and Cal is already thinking about what comes next.
 
 ### `m3_aftermath`
 That was one thing taken care of.
