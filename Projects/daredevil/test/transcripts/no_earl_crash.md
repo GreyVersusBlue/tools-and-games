@@ -1543,10 +1543,10 @@ THE WORK — Cal's still got the bike. It's right.
 NERVE — He went out on nobody's terms but his own.
 RELATIONSHIPS
 Cal: Loyal Partner
-Tommy: Hanger-On
-Earl Maddox: Absent
-Danny: Nemesis
 Pete: Hanger-On
+Earl Maddox: Absent
+Tommy: Hanger-On
+Danny: Nemesis
 "He disappeared in 1974. Some say he's still out there."
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5

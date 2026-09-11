@@ -12,14 +12,15 @@ the repo root's `HISTORY.md`, round 2, for the full account.
 daredevil/
   index.html        entry point — head, CSS, body markup, one module script tag
   js/
-    state.js         the leaf: GS, STAT_LABELS, N/D/C/NF — see its own header for why
+    cast.js          the six characters: legal states, labels, start state — the schema the save and the routes read
+    state.js         GS, STAT_LABELS, N/D/C/NF, and cast.js re-exported — see its own header for why
     scenes.js        the story, as data — SCENES, 244 KB (208 KB before Phase 1)
     engine.js        the runtime — screens, hubs, minigames, epilogue, boot
     save.js          the save format, on top of assets/js/gvb-save.js
   fonts/            7 woff2, 100.3 KB — see fonts/README.md
   test/
     drive-daredevil.mjs   how to get into the game and through it, written once
-    smoke-save.mjs        53 assertions, plain Node, no browser
+    smoke-save.mjs        110 assertions, plain Node, no browser: the save format and the cast table
     flags.mjs             7 assertions, plain Node: who writes each flag against who reads it
     smoke-page.mjs        the regression suite: real browser, plays to an ending three times
     transcript.mjs        plays a run and writes down every line of it

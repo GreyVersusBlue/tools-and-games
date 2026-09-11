@@ -142,7 +142,7 @@ Then he went.
 
 > _[minigame: The Stunt Run]_
 
-> **STUNT RESULT — SUCCESS / 95** — Cleared the cows and landed dead level
+> **STUNT RESULT — SUCCESS / 94** — Cleared the cows and landed dead level
 
 ### `m1_stunt_perfect`
 He hit the ramp at exactly the speed he intended.
@@ -1568,9 +1568,9 @@ THE WORK — Cal's still got the bike. It's right.
 NERVE — He went out as himself. No diminished version.
 RELATIONSHIPS
 Cal: Loyal Partner
-Tommy: Hanger-On
-Earl Maddox: Business Partner
-Danny: Nemesis
 Pete: Hanger-On
+Earl Maddox: Business Partner
+Tommy: Hanger-On
+Danny: Nemesis
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 1 HUSTLE 5

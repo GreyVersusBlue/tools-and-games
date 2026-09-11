@@ -105,7 +105,7 @@ const RUNS = {
     ],
   },
   // Turns the Young Wannabe down at the gas station, so wannabeMet never gets
-  // set and rels.pete stays undefined for the whole run — the "thread never
+  // set and rels.pete stays 'unknown' for the whole run — the "thread never
   // opened" case, not the "opened then walked away" case fr2_pete_soft covers.
   no_pete: {
     name: 'Ellis Boone', town: 'Cutter Ridge',

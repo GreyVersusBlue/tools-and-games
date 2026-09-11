@@ -25,7 +25,18 @@
 // design — see state.js's own header for why the natural-looking
 // alternative (SCENES importing GS from engine.js) does not work.
 
-import { GS, N, D, C, NF } from './state.js';
+import { GS, N, D, C, NF, statesOf, presentStates } from './state.js';
+
+// Relationship requirements are data (Phase 3). A choice or a hub card that
+// exists only for some state of a character says so as `_needs: { id: [state,
+// ...] }` — a list of the states that satisfy it, built from the cast table so
+// a typo throws at import rather than gating on nothing. goToScene() drops a
+// choice whose `_needs` the run does not meet, the way it always dropped one
+// whose `_requires()` was false. `_requires` is still here for anything
+// genuinely computed; nothing in this file uses it to test a relationship, and
+// smoke-save.mjs fails if something starts to.
+const EARL_PRESENT = statesOf('earl', { not: ['absent'] });
+const PETE_PRESENT = presentStates('pete');
 
 // Phase 1, the backer-less branch. "Not interested" at the fair leaves
 // rels.earl 'absent' from Milestone 2 to the ending screen (decision #265), so
@@ -34,6 +45,36 @@ import { GS, N, D, C, NF } from './state.js';
 // solo branch that is Dot Kessler, the Speedway's promoter, Roy Petersen, the
 // regional crew's cameraman who came for the feature race, and Cal.
 const solo = ()=> GS.rels.earl === 'absent';
+
+// Who Duke talks to before a stunt, and who asks him the question at the end,
+// as tables (Phase 3): the engine takes the first row whose character is in
+// one of the listed states, and the fallback is the scene for nobody. These
+// replaced two `if` ladders in goToScene() and one in `_m3_prestunt`, and the
+// rows are in the order those ladders asked in. The pre-stunt tables follow
+// the cast's order; Milestone 5's does not — the game has always let Ruthie
+// ask before Cal, and this row was not the one to change who asks. The one
+// thing the table cannot say is Milestone 5's exception, which the engine
+// keeps: if Cal already asked the question in Free Roam 4
+// (`calAskedTheQuestion`), he comes first. The old ladder also tested Ruthie
+// for `'warm'`, a state she has never had; the table does not.
+export const M3_PRESTUNT_ROUTES = [
+  { who: 'cal',    states: ['loyal'], scene: 'm3_prestunt_cal' },
+  { who: 'ruthie', states: ['solid'], scene: 'm3_prestunt_ruthie' },
+];
+export const M3_PRESTUNT_FALLBACK = 'm3_prestunt_alone';
+export const M4_PRESTUNT_ROUTES = [
+  { who: 'cal',    states: ['loyal'],         scene: 'm4_prestunt_cal_m4' },
+  { who: 'ruthie', states: ['solid'],         scene: 'm4_prestunt_ruthie_m4' },
+  { who: 'pete',   states: presentStates('pete'), scene: 'm4_prestunt_pete_m4' },
+  { who: 'earl',   states: presentStates('earl'), scene: 'm4_prestunt_earl_m4' },
+];
+export const M4_PRESTUNT_FALLBACK = 'm4_prestunt_nobody_m4';
+export const M5_QUESTION_ROUTES = [
+  { who: 'ruthie', states: ['solid'],         scene: 'm5_question_ruthie' },
+  { who: 'cal',    states: ['loyal', 'warm'], scene: 'm5_question_cal' },
+  { who: 'earl',   states: ['mentor'],        scene: 'm5_question_earl' },
+];
+export const M5_QUESTION_FALLBACK = 'm5_question_nobody';
 
 // Milestone 5's last stunt has two ways in — Duke picked it
 // (m5_last_stunt_setup) or Earl did (m5_last_stunt_earl) — and one pair of
@@ -565,8 +606,7 @@ m1_player_response: {
       effects:{ stats:{ hustle:2 }, rels:{ earl:'backer' } }, goto:'m1_r4' },
     { label:'5', text:`"I need to talk to someone first."`,
       subtext:`There's a person in the crowd you want to find.`,
-      effects:{ flags:{ ruthieEstablished:true } }, goto:'m1_r5',
-      _requires: ()=> true },
+      effects:{ flags:{ ruthieEstablished:true } }, goto:'m1_r5' },
     { label:'6', text:`"Not interested."`,
       subtext:`You don't need this man.`,
       effects:{ rels:{ earl:'absent' }, flags:{ earlResponse:'not_interested' } }, goto:'m1_r6' },
@@ -947,7 +987,7 @@ fr1_wannabe_look: {
   ],
   // `rels.pete` was read in five places and assigned in none, so it was always
   // undefined — which silently removed Milestone 5's "mentor the apprentice"
-  // ending from the list (its `_requires` tests exactly that) and made
+  // ending from the list (its `_needs` tests exactly that) and made
   // `m4_prestunt_pete_m4` unreachable. The thread starts here.
   statUpdate:{ title:'Pete Garland', reason:`You showed him the ramp angle. He memorized every move. Thread active.`, deltas:{ showmanship:0 }, rels:{ pete:'hanger_on' }, flags:{ wannabeMet:true } },
   next:'_hub_fr1'
@@ -2181,7 +2221,7 @@ fr2_debt_01: {
   ],
   choices:[
     { label:'A', text:`Borrow from Earl.`, subtext:"He\'ll advance it against the next show. No interest. But he holds the number.", effects:{ flags:{ debtSource:'earl' } }, goto:'fr2_debt_earl',
-      _requires: ()=> GS.rels.earl !== 'absent' },
+      _needs:{ earl: EARL_PRESENT } },
     { label:'B', text:`Local bank loan.`, subtext:'Straightforward. Twelve months. Eight percent. Garrett Pyle will have opinions.', effects:{ flags:{ debtSource:'bank' } }, goto:'fr2_debt_bank' },
     { label:'C', text:`Borrow from Tommy.`, subtext:"He has it. He\'ll lend it. That\'ll be a thing.", effects:{ flags:{ debtSource:'tommy' } }, goto:'fr2_debt_tommy' },
     { label:'D', text:`Self-fund. Make the math work.`, subtext:'Cut expenses. Call in favors. Keep it clean.', effects:{ stats:{ hustle:1 }, flags:{ debtSource:'self' } }, goto:'fr2_debt_self' },
@@ -4678,7 +4718,7 @@ m5_decision: {
       effects:{ flags:{ m5Decision:'last_stunt_earl' } },
       goto:'m5_last_stunt_earl',
       // Nobody picks for a man who turned the picker down at the county fair.
-      _requires:()=> !solo()
+      _needs:{ earl: EARL_PRESENT }
     },
     {
       label:'D',
@@ -4700,7 +4740,7 @@ m5_decision: {
       subtext:"Duke steps back. Pete steps forward. Legacy continues through him.",
       effects:{ flags:{ m5Decision:'mentor' } },
       goto:'m5_mentor',
-      _requires:()=> GS.rels.pete && GS.rels.pete !== 'absent' && GS.rels.pete !== 'unknown'
+      _needs:{ pete: PETE_PRESENT }
     },
     {
       label:'G',

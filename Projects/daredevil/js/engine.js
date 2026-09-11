@@ -14,8 +14,25 @@
 
 import { createDaredevilSlot, mountSaveBar, STAT_NAMES, STAT_MAX } from './save.js';
 // `D` went with the pressAtFair block — nothing in the engine speaks as Duke.
-import { GS, STAT_LABELS, REL_NAMES, REL_STATES, N, C } from './state.js';
-import { SCENES } from './scenes.js';
+import { GS, STAT_LABELS, N, C, castName, relLabel, statesOf, presentStates, isPresent, meetsNeeds, setRel, routeByCast } from './state.js';
+import {
+  SCENES,
+  M3_PRESTUNT_ROUTES, M3_PRESTUNT_FALLBACK,
+  M4_PRESTUNT_ROUTES, M4_PRESTUNT_FALLBACK,
+  M5_QUESTION_ROUTES, M5_QUESTION_FALLBACK,
+} from './scenes.js';
+
+// Relationship gates on hub cards are data too (Phase 3): a card may carry
+// `_needs: { id: [state, ...] }`, and these are the lists the four hubs share.
+// A card whose `_needs` the run does not meet is not on the board at all; the
+// two Free Roam 1 and 2 cards that stay on the board greyed out set
+// `_disabled` from the same test.
+const EARL_PRESENT = statesOf('earl', { not: ['absent'] });
+const RUTHIE_MET = statesOf('ruthie', { not: ['unknown'] });
+const RUTHIE_PRESENT = presentStates('ruthie');
+const TOMMY_PRESENT = presentStates('tommy');
+const TOMMY_NOT_GONE = statesOf('tommy', { not: ['absent'] });
+const met = card => meetsNeeds(card._needs, GS.rels);
 
 /* ================================================================
    SCREEN MANAGEMENT
@@ -230,20 +247,9 @@ function goToScene(id){
     return;
   }
   if(id === '_m4_prestunt_route'){
-    // Priority: Cal loyal → Ruthie solid → Pete active → Earl active → Nobody
-    const peteActive = GS.rels.pete && GS.rels.pete !== 'absent' && GS.rels.pete !== 'unknown';
-    const earlActive = GS.rels.earl && GS.rels.earl !== 'absent' && GS.rels.earl !== 'unknown';
-    if(GS.rels.cal === 'loyal'){
-      goToScene('m4_prestunt_cal_m4');
-    } else if(GS.rels.ruthie === 'solid'){
-      goToScene('m4_prestunt_ruthie_m4');
-    } else if(peteActive){
-      goToScene('m4_prestunt_pete_m4');
-    } else if(earlActive){
-      goToScene('m4_prestunt_earl_m4');
-    } else {
-      goToScene('m4_prestunt_nobody_m4');
-    }
+    // Cal loyal → Ruthie solid → Pete present → Earl present → nobody. The
+    // table is in scenes.js (Phase 3).
+    goToScene(routeByCast(M4_PRESTUNT_ROUTES, GS.rels, M4_PRESTUNT_FALLBACK));
     return;
   }
   if(id === '_minigame_stunt_m3'){
@@ -254,13 +260,7 @@ function goToScene(id){
     return;
   }
   if(id === '_m3_prestunt'){
-    if(GS.rels.cal === 'loyal'){
-      goToScene('m3_prestunt_cal');
-    } else if(GS.rels.ruthie === 'solid'){
-      goToScene('m3_prestunt_ruthie');
-    } else {
-      goToScene('m3_prestunt_alone');
-    }
+    goToScene(routeByCast(M3_PRESTUNT_ROUTES, GS.rels, M3_PRESTUNT_FALLBACK));
     return;
   }
   if(id === '_m3_recovery_then_fail'){
@@ -308,21 +308,14 @@ function goToScene(id){
     return;
   }
   if(id === '_m5_question_route'){
-    // Route to whichever character has highest relationship, with fallback
-    const calActive = GS.rels.cal === 'loyal' || GS.rels.cal === 'warm';
-    const ruthieActive = GS.rels.ruthie === 'solid' || GS.rels.ruthie === 'warm';
-    const earlActive = GS.rels.earl === 'mentor';
-    const peteActive = GS.rels.pete && GS.rels.pete !== 'absent' && GS.rels.pete !== 'unknown';
-    if(calActive && GS.flags.calAskedTheQuestion){
-      goToScene('m5_question_cal');
-    } else if(ruthieActive){
-      goToScene('m5_question_ruthie');
-    } else if(calActive){
-      goToScene('m5_question_cal');
-    } else if(earlActive){
-      goToScene('m5_question_earl');
+    // Ruthie solid → Cal loyal or warm → Earl mentor → nobody, from the table
+    // in scenes.js (Phase 3) — except that Cal, if he already asked the
+    // question in Free Roam 4, asks it again first.
+    const calRow = M5_QUESTION_ROUTES.find(r => r.who === 'cal');
+    if(GS.flags.calAskedTheQuestion && calRow.states.includes(GS.rels.cal)){
+      goToScene(calRow.scene);
     } else {
-      goToScene('m5_question_nobody');
+      goToScene(routeByCast(M5_QUESTION_ROUTES, GS.rels, M5_QUESTION_FALLBACK));
     }
     return;
   }
@@ -485,7 +478,9 @@ function showSceneEnd(){
     const list = document.createElement('div');
     list.className = 'choices-list';
     scene.choices.forEach(ch=>{
-      if(ch._requires && !ch._requires()) return; // gate
+      // Gate: the data form first (Phase 3), then anything computed.
+      if(!met(ch)) return;
+      if(ch._requires && !ch._requires()) return;
       // Stat gate check
       const locked = ch._gateCheck && !ch._gateCheck();
       const btn = document.createElement('button');
@@ -573,10 +568,10 @@ function applyEffects(effects){
       }
     }
   }
+  // Through the cast's one door: an unknown character or a state that
+  // character cannot hold throws, with the name in it (Phase 3, #13).
   if(effects.rels){
-    for(const [k,v] of Object.entries(effects.rels)){
-      GS.rels[k] = v;
-    }
+    for(const [k,v] of Object.entries(effects.rels)) setRel(GS.rels, k, v);
   }
   if(effects.flags){
     for(const [k,v] of Object.entries(effects.flags)){
@@ -598,7 +593,7 @@ function triggerStatUpdate(update, afterTarget){
   _pendingDeltas = update.deltas||{};
 
   // Apply flags and rels right away (not stats — those animate)
-  if(update.rels) for(const[k,v] of Object.entries(update.rels)) GS.rels[k]=v;
+  if(update.rels) for(const[k,v] of Object.entries(update.rels)) setRel(GS.rels, k, v);
   if(update.flags) for(const[k,v] of Object.entries(update.flags)) GS.flags[k]=v;
 
   document.getElementById('stat-update-h').textContent = (typeof update.title === 'function' ? update.title() : update.title)||'— Update —';
@@ -631,7 +626,7 @@ function triggerStatUpdate(update, afterTarget){
     for(const [k,v] of Object.entries(update.rels)){
       const row = document.createElement('div');
       row.className = 'rel-row';
-      row.innerHTML = `<span class="rel-row-name">${REL_NAMES[k]||k}</span><span class="rel-row-state">${REL_STATES[v]||v}</span>`;
+      row.innerHTML = `<span class="rel-row-name">${castName(k)}</span><span class="rel-row-state">${relLabel(k, v)}</span>`;
       relEl.appendChild(row);
     }
   }
@@ -929,7 +924,7 @@ function showGameEnd(){
       headlineText = `"He Disappeared in 1974. Some Say He's Still Out There."`;
     } else if(m5Outcome === 'walk_quiet'){
       headlineText = `"Nobody Remembers the Promoter's Handshake. They Remember the Fist."`;
-    } else if(m5Outcome === 'mentor' && GS.rels.pete && GS.rels.pete !== 'absent'){
+    } else if(m5Outcome === 'mentor' && isPresent('pete', GS.rels)){
       headlineText = `"He Taught Me Everything — Pete Garland Remembers Duke"`;
     } else if(m5Outcome === 'symbolic_own'){
       headlineText = `"${GS.town||'Buford County'}'s Own: ${name} Comes Home — And Stays"`;
@@ -1024,7 +1019,7 @@ function showGameEnd(){
     codaText = `"Cal Briggs kept the bike ready for twelve years, just in case."`;
   } else if(GS.rels.ruthie === 'solid' && m5Outcome === 'symbolic_own'){
     codaText = `"Ruthie Harlan: 'I always knew he'd come home.'"`;
-  } else if(m5Outcome === 'mentor' && GS.rels.pete && GS.rels.pete !== 'absent'){
+  } else if(m5Outcome === 'mentor' && isPresent('pete', GS.rels)){
     codaText = `"He taught me everything — Pete Garland remembers Duke."`;
   } else if(m5Outcome === 'disappear'){
     codaText = `"He disappeared in 1974. Some say he's still out there."`;
@@ -1062,7 +1057,7 @@ function showGameEnd(){
   let relLines = Object.entries(GS.rels)
     .filter(([,v])=> v && v !== 'unknown')
     .map(([k,v])=>
-      `<div style="margin-bottom:4px;"><strong style="color:var(--gold)">${REL_NAMES[k]||k}:</strong> ${REL_STATES[v]||v}</div>`
+      `<div style="margin-bottom:4px;"><strong style="color:var(--gold)">${castName(k)}:</strong> ${relLabel(k, v)}</div>`
     ).join('');
 
   const verdictHTML = verdicts.map(v=>
@@ -1150,14 +1145,17 @@ function renderHubFR1(){
   const grid2 = document.createElement('div'); grid2.className='hub-cards';
 
   const eveCards = [
-    { id:'fr1_eve_ruthie', name:'Stay Home With Ruthie', sub:'Rebuild Nerve. Reset fatigue.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':'Costs 1 Evening', _disabled: GS.rels.ruthie==='unknown' },
+    { id:'fr1_eve_ruthie', name:'Stay Home With Ruthie', sub:'Rebuild Nerve. Reset fatigue.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':'Costs 1 Evening', _needs:{ ruthie: RUTHIE_MET } },
     { id:'fr1_eve_cal', name:'Work With Cal', sub:'Precision up. Cal sometimes says something true.', tag:'Costs 1 Evening' },
     { id:'fr1_eve_practice', name:'Practice Alone', sub:'Precision and Nerve. The honest version of the work.', tag:'Costs 1 Evening' },
     { id:'fr1_eve_bar', name:'Bar With Tommy', sub:'Showmanship up. Condition down. Contacts possible.', tag:'Costs 1 Evening' },
-    { id:'fr1_eve_contract', name:'Read the Contract', sub:`Earl's terms. Page fourteen has something worth finding.`, tag: GS.flags.earlResponse==='not_interested'?'(No contract yet)':'Costs 1 Evening', _disabled: GS.rels.earl==='absent' },
+    { id:'fr1_eve_contract', name:'Read the Contract', sub:`Earl's terms. Page fourteen has something worth finding.`, tag: GS.flags.earlResponse==='not_interested'?'(No contract yet)':'Costs 1 Evening', _needs:{ earl: EARL_PRESENT } },
   ];
 
   eveCards.forEach(card=>{
+    // These two stay on the board greyed out rather than leaving it: the tag
+    // says what would open them.
+    if(!met(card)) card._disabled = true;
     card._done = GS.flags.hubEveningsDone.includes(card.id);
     if(eveRemaining<=0 && !card._done) card._disabled=true;
     const el = buildHubCard(card, true, 'fr1');
@@ -1299,8 +1297,8 @@ function renderHubFR2(){
   if(!debtFirst && (GS.flags.dannyMet || GS.flags.dannySchemed)){
     dayCards.push({ id:'fr2_danny_01', name:'Diamondback Danny', sub: solo ? "He's on the circuit. He heard you turned Earl down." : "He's on the circuit. He noticed you signed with Earl.", tag:'Available · Free', _done: done2.includes('fr2_danny_01') });
     // Danny follow-up: public challenge
-    if(GS.flags.fr2Danny01Done && !GS.flags.fr2Danny02Done && (GS.rels.danny==='nemesis'||GS.rels.danny==='frenemy')){
-      dayCards.push({ id:'fr2_danny_02', name:'The Public Challenge', sub:"Danny went to the papers. Sandra has the quote.", tag:'Available · Free', _done: done2.includes('fr2_danny_02') });
+    if(GS.flags.fr2Danny01Done && !GS.flags.fr2Danny02Done){
+      dayCards.push({ id:'fr2_danny_02', name:'The Public Challenge', sub:"Danny went to the papers. Sandra has the quote.", tag:'Available · Free', _done: done2.includes('fr2_danny_02'), _needs:{ danny:['nemesis','frenemy'] } });
     }
   }
   if(!debtFirst && GS.flags.wannabeMet){
@@ -1318,12 +1316,13 @@ function renderHubFR2(){
   if(!solo && !debtDone){
     dayCards.push({ id:'fr2_debt_01', name:'The Cost', sub:'A twelve-hundred dollar problem. The cars for the next show.', tag:'Available · Free — one time', _done: false });
   }
+  const dayCards2 = dayCards.filter(met);
 
-  if(dayCards.length > 0){
+  if(dayCards2.length > 0){
     const sec = document.createElement('div');
     sec.innerHTML = `<div class="hub-section-label">Day Scenes — No Evening Cost</div>`;
     const grid = document.createElement('div'); grid.className='hub-cards';
-    dayCards.forEach(card=>{
+    dayCards2.forEach(card=>{
       const el = buildHubCard(card, false, 'fr2');
       grid.appendChild(el);
     });
@@ -1337,9 +1336,9 @@ function renderHubFR2(){
   sec2.innerHTML = `<div class="hub-section-label">Evening — ${eveRemaining} remaining</div>`;
   const grid2 = document.createElement('div'); grid2.className='hub-cards';
 
-  const eveCards = [
+  let eveCards = [
     { id:'fr2_eve_cal', name:'Work With Cal', sub:"Suspension geometry. He already fixed the seal. He's telling you why.", tag:'Costs 1 Evening' },
-    { id:'fr2_eve_ruthie', name:'Stay Home With Ruthie', sub:'She wants to come to a show. Find the right one.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':'Costs 1 Evening', _disabled: GS.rels.ruthie==='unknown' },
+    { id:'fr2_eve_ruthie', name:'Stay Home With Ruthie', sub:'She wants to come to a show. Find the right one.', tag: GS.rels.ruthie==='unknown'?'(Ruthie not established)':'Costs 1 Evening', _needs:{ ruthie: RUTHIE_MET } },
     { id:'fr2_eve_practice', name:'New Distances', sub:'Five cars. The geometry is different from three cows.', tag:'Costs 1 Evening' },
     { id:'fr2_eve_bar', name:'Bar With Tommy', sub:'He has a theory about Diamondback Danny. He might be right.', tag:'Costs 1 Evening' },
     { id:'fr2_eve_press', name:'Call Sandra', sub: solo ? "Somebody at Earl's office told the paper you said no." : 'Earl announced you before you knew you were being announced.', tag:'Costs 1 Evening' },
@@ -1350,11 +1349,15 @@ function renderHubFR2(){
     eveCards.push({ id:'fr2_eve_cal_02', name:"Cal — Bike's Right", sub:"A Tuesday. Not a show night. He says the thing you were actually asking about.", tag:'Costs 1 Evening' });
   }
   // Second Ruthie evening — available if first is done and relationship is solid
-  if((eveDone2.includes('fr2_eve_ruthie')) && !eveDone2.includes('fr2_eve_ruthie_02') && GS.rels.ruthie==='solid'){
-    eveCards.push({ id:'fr2_eve_ruthie_02', name:"Ruthie's Question", sub:"Out of nowhere: what do you get out of it?", tag:'Costs 1 Evening' });
+  if((eveDone2.includes('fr2_eve_ruthie')) && !eveDone2.includes('fr2_eve_ruthie_02')){
+    eveCards.push({ id:'fr2_eve_ruthie_02', name:"Ruthie's Question", sub:"Out of nowhere: what do you get out of it?", tag:'Costs 1 Evening', _needs:{ ruthie:['solid'] } });
   }
 
+  // The first Ruthie evening greys out until she is met; the second is not on
+  // the board at all until she is solid.
+  eveCards = eveCards.filter(c => c.id === 'fr2_eve_ruthie' || met(c));
   eveCards.forEach(card=>{
+    if(!met(card)) card._disabled = true;
     card._done = eveDone2.includes(card.id);
     if(eveRemaining<=0 && !card._done) card._disabled=true;
     if(debtFirst && !card._done){ card._disabled = true; card.tag = '(The cars first)'; }
@@ -1477,21 +1480,15 @@ function renderHubFR3(){
   sec2.innerHTML = `<div class="hub-section-label">Evening — ${eveRemaining} remaining</div>`;
   const grid2 = document.createElement('div'); grid2.className='hub-cards';
 
-  const eveCards = [];
-
-  if(GS.rels.earl !== 'absent'){
-    eveCards.push({ id:'fr3_eve_earl', name:'Earl Maddox', sub:'He wants to renegotiate. The split and the extension are on the table.', tag:'Costs 1 Evening' });
-  }
-  if(GS.rels.ruthie !== 'unknown' && GS.rels.ruthie !== 'absent'){
-    const ruthieSub = GS.flags.ruthieAsked
-      ? "She saw how close it was. She's proud. Something shifted."
-      : "She was in the sixth row. She wants to tell you what she saw.";
-    eveCards.push({ id:'fr3_eve_ruthie', name:'Ruthie', sub: ruthieSub, tag:'Costs 1 Evening' });
-  }
-  eveCards.push({ id:'fr3_eve_cal', name:'Work With Cal', sub:'He has a question about what comes next. Buses are different from cars.', tag:'Costs 1 Evening' });
-  if(GS.rels.tommy !== 'absent'){
-    eveCards.push({ id:'fr3_eve_tommy', name:'Tommy', sub:"He's at the bar. He has something true to say and doesn't know it yet.", tag:'Costs 1 Evening' });
-  }
+  const ruthieSub3 = GS.flags.ruthieAsked
+    ? "She saw how close it was. She's proud. Something shifted."
+    : "She was in the sixth row. She wants to tell you what she saw.";
+  const eveCards = [
+    { id:'fr3_eve_earl', name:'Earl Maddox', sub:'He wants to renegotiate. The split and the extension are on the table.', tag:'Costs 1 Evening', _needs:{ earl: EARL_PRESENT } },
+    { id:'fr3_eve_ruthie', name:'Ruthie', sub: ruthieSub3, tag:'Costs 1 Evening', _needs:{ ruthie: RUTHIE_PRESENT } },
+    { id:'fr3_eve_cal', name:'Work With Cal', sub:'He has a question about what comes next. Buses are different from cars.', tag:'Costs 1 Evening' },
+    { id:'fr3_eve_tommy', name:'Tommy', sub:"He's at the bar. He has something true to say and doesn't know it yet.", tag:'Costs 1 Evening', _needs:{ tommy: TOMMY_NOT_GONE } },
+  ].filter(met);
 
   eveCards.forEach(card=>{
     card._done = eveDone3.includes(card.id);
@@ -1584,49 +1581,44 @@ function renderHubFR4(){
   sec2.innerHTML = `<div class="hub-section-label">Evening — ${eveRemaining} remaining</div>`;
   const grid2 = document.createElement('div'); grid2.className='hub-cards';
 
-  const eveCards = [];
+  let eveCards = [];
 
   // Night ride — always available
   eveCards.push({ id:'fr4_night_ride', name:'Night Ride', sub:'Twenty-two miles north. The fork seal holds. Just the road.', tag:'Costs 1 Evening' });
 
-  // Ruthie — if not absent
-  if(GS.rels.ruthie !== 'unknown'){
-    const ruthieSub = GS.rels.ruthie === 'absent'
-      ? 'He thought about calling her. He didn\'t.'
-      : GS.rels.ruthie === 'solid'
-        ? 'She cooked. She mentioned the hands. The thing Roy filmed.'
-        : 'She\'s there. Careful with it. The thread is still warm.';
-    eveCards.push({ id:'fr4_eve_ruthie', name:'Ruthie', sub: ruthieSub, tag:'Costs 1 Evening' });
-  }
+  // Ruthie — once met, even when she has gone: the card is the thought of
+  // calling her.
+  const ruthieSub = GS.rels.ruthie === 'absent'
+    ? 'He thought about calling her. He didn\'t.'
+    : GS.rels.ruthie === 'solid'
+      ? 'She cooked. She mentioned the hands. The thing Roy filmed.'
+      : 'She\'s there. Careful with it. The thread is still warm.';
+  eveCards.push({ id:'fr4_eve_ruthie', name:'Ruthie', sub: ruthieSub, tag:'Costs 1 Evening', _needs:{ ruthie: RUTHIE_MET } });
 
   // Cal — always
   eveCards.push({ id:'fr4_eve_cal', name:'Work With Cal', sub:'Garage. Vegas specs. The fork seal is ritual now. He has a question.', tag:'Costs 1 Evening' });
 
-  // Tommy — if not absent
-  if(GS.rels.tommy !== 'absent' && GS.rels.tommy !== 'unknown'){
-    eveCards.push({ id:'fr4_eve_tommy', name:'Tommy', sub:"He was at the canyon. He saw you clear it. He said something true.", tag:'Costs 1 Evening' });
-  }
+  // Tommy — while he is in the story
+  eveCards.push({ id:'fr4_eve_tommy', name:'Tommy', sub:"He was at the canyon. He saw you clear it. He said something true.", tag:'Costs 1 Evening', _needs:{ tommy: TOMMY_PRESENT } });
 
-  // Earl — if not absent. On the backer-less branch the same evening is the
+  // Earl — unless absent. On the backer-less branch the same evening is the
   // man from California calling for himself (Phase 1): the offer Earl relays
   // on the other branch reaches Duke through the Speedway office instead.
-  if(GS.rels.earl !== 'absent'){
-    const earlSub = isFailure
-      ? 'He has a recovery package. The terms are worth reading carefully.'
-      : 'The man from California is on the line. The Vegas offer is real.';
-    eveCards.push({ id:'fr4_eve_earl', name:'Earl Maddox', sub: earlSub, tag:'Costs 1 Evening' });
-  } else {
-    const caSub = isFailure
-      ? 'He watched you get up. He got your number from the Speedway. He is calling himself.'
-      : 'He was in the fourth row at the Speedway. He got your number from Kessler. He is calling himself.';
-    eveCards.push({ id:'fr4_eve_california', name:'The Man from California', sub: caSub, tag:'Costs 1 Evening' });
-  }
+  const earlSub = isFailure
+    ? 'He has a recovery package. The terms are worth reading carefully.'
+    : 'The man from California is on the line. The Vegas offer is real.';
+  eveCards.push({ id:'fr4_eve_earl', name:'Earl Maddox', sub: earlSub, tag:'Costs 1 Evening', _needs:{ earl: EARL_PRESENT } });
+  const caSub = isFailure
+    ? 'He watched you get up. He got your number from the Speedway. He is calling himself.'
+    : 'He was in the fourth row at the Speedway. He got your number from Kessler. He is calling himself.';
+  eveCards.push({ id:'fr4_eve_california', name:'The Man from California', sub: caSub, tag:'Costs 1 Evening', _needs:{ earl: ['absent'] } });
 
   // Special: Ruthie thread close (only if ruthie=solid and near the end)
-  if(GS.rels.ruthie === 'solid' && !eveDone4.includes('fr4_ruthie_thread_close') && eveDone4.includes('fr4_eve_ruthie')){
-    eveCards.push({ id:'fr4_ruthie_thread_close', name:'Wednesday Evening — Ruthie', sub:"She drove out on a weekday. She'll be there. That's what she said.", tag:'Costs 1 Evening' });
+  if(!eveDone4.includes('fr4_ruthie_thread_close') && eveDone4.includes('fr4_eve_ruthie')){
+    eveCards.push({ id:'fr4_ruthie_thread_close', name:'Wednesday Evening — Ruthie', sub:"She drove out on a weekday. She'll be there. That's what she said.", tag:'Costs 1 Evening', _needs:{ ruthie: ['solid'] } });
   }
 
+  eveCards = eveCards.filter(met);
   eveCards.forEach(card=>{
     card._done = eveDone4.includes(card.id);
     if(eveRemaining<=0 && !card._done) card._disabled=true;

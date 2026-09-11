@@ -7,7 +7,13 @@
 // WHAT THE SAVE HOLDS, AND WHY
 //
 // A scene id, the five stats, the six relationships, and the flag bag. That is
-// all. It deliberately does NOT hold:
+// all. The relationships are the six characters in cast.js, each at a state
+// that table says it may hold; a save that holds anything else is repaired to
+// the character's start state (Phase 3). `pete` joined the seeded six on
+// 2026-09-11 — he used to be `undefined` until Free Roam 1 wrote him, and
+// every guard that read that as "thread never opened" reads `'unknown'` the
+// same way, so an older save comes through `repair` with him filled in and
+// nothing downstream can tell. It deliberately does NOT hold:
 //
 //   - the current line index inside a scene. Resume lands at the top of the
 //     scene you were in, so re-reading three paragraphs is the worst case and
@@ -30,6 +36,7 @@
 // resolve it. Node cannot resolve a leading slash.
 
 import { createSaveSlot, mountSaveBar } from '../../../assets/js/gvb-save.js';
+import { CAST, startingRels, isLegalRel } from './cast.js';
 
 export { mountSaveBar };
 
@@ -63,7 +70,7 @@ export function freshState() {
     name: 'Duke Harlan',
     town: 'Buford County',
     stats: { nerve: 3, precision: 3, showmanship: 3, condition: 3, hustle: 2 },
-    rels: { cal: 'neutral', ruthie: 'unknown', tommy: 'hanger_on', earl: 'unknown', danny: 'unknown' },
+    rels: startingRels(),
     flags: {
       originTrait: null,
       familyOrigin: null,
@@ -108,9 +115,11 @@ export function validateState(s) {
 /**
  * Every accepted load, from every door. Idempotent and cheap.
  *
- * The two things this exists for: a stat outside 0..5 drives the bar renderer
- * off the end of its track, and a list flag that is not a list throws on
- * `.includes()` the first time a hub renders.
+ * The three things this exists for: a stat outside 0..5 drives the bar renderer
+ * off the end of its track, a list flag that is not a list throws on
+ * `.includes()` the first time a hub renders, and a relationship holding a
+ * state its character cannot be in would render raw on two screens and match
+ * no route.
  */
 export function repairState(s) {
   const base = freshState();
@@ -124,8 +133,12 @@ export function repairState(s) {
     s.stats[k] = Number.isFinite(v) ? Math.max(0, Math.min(STAT_MAX, Math.round(v))) : base.stats[k];
   }
 
+  // Every character in the cast, at a state the cast says it may hold. A key
+  // the cast does not know is dropped: it can only have come from a hand edit
+  // or a rename, and nothing reads it.
   s.rels = (s.rels && typeof s.rels === 'object' && !Array.isArray(s.rels)) ? s.rels : {};
-  for (const [k, v] of Object.entries(base.rels)) if (typeof s.rels[k] !== 'string') s.rels[k] = v;
+  for (const k of Object.keys(s.rels)) if (!CAST.some(c => c.id === k)) delete s.rels[k];
+  for (const c of CAST) if (!isLegalRel(c.id, s.rels[c.id])) s.rels[c.id] = base.rels[c.id];
 
   s.flags = (s.flags && typeof s.flags === 'object' && !Array.isArray(s.flags)) ? s.flags : {};
   for (const [k, v] of Object.entries(base.flags)) {

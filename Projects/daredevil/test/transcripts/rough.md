@@ -1344,8 +1344,8 @@ THE WORK — Cal's still got the bike. It's right.
 NERVE — He went out quietly. That takes its own kind of nerve.
 RELATIONSHIPS
 Cal: Loyal Partner
-Tommy: Hanger-On
 Earl Maddox: Business Partner
+Tommy: Hanger-On
 "The kid in the front row — the one Duke nodded to — started riding at fourteen."
 
 **Stats:** NERVE 5 PRECISION 5 SHOWMANSHIP 5 CONDITION 0 HUSTLE 5
