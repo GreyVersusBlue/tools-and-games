@@ -247,6 +247,7 @@ const cardFloor = cardOf({ ...fifty, attributes: { prowess: 3, purpose: 6 } });
 ok(/data-exact="false"/.test(cardFloor) && /<strong>At least 54 CP<\/strong> of 50 spent, at most -4 remaining\./.test(cardFloor), "a raised Prowess makes the CP line a floor");
 ok(!/<strong>\d+ CP<\/strong> of/.test(cardFloor), "and the card prints no total anywhere (#305)");
 ok(/Attributes bought: Prowess \+1 \(unpriced\), Purpose \+1 \(4 CP\)\./.test(cardFloor), "attribute purchases print with their price, or unpriced");
+ok(rowsOf(cardFloor) === rowsOf(cardExact), "and are not rows in the skill table");
 ok(/Not in the total:<\/strong> Prowess \+1 — the chart says “Cost of next attribute”\./.test(cardFloor), "and the unpriced one is named in the chart's own words");
 ok(/data-sheet-attribute="prowess">3</.test(cardFloor) && /data-sheet-attribute="purpose">6</.test(cardFloor), "the raised attributes print at their raised values");
 ok(/1 problem — not a legal build as it stands:<\/strong> 54 CP spent of 50/.test(cardOf({ ...fifty, attributes: { purpose: 6 } })), "an over-budget build's card says so, not just the verdict");
