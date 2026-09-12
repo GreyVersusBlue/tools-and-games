@@ -58,55 +58,82 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Numina Phase 4 — The accessibility and mobile
-pass (PR #251)**, which **closed the old rank 1**: a 1-session row, taken on
-its own. **62 ranked items remain**, and **rank 1 is now `Numina` Phase 5 —
-Come play**, a half-session row on **Claude Opus 5**, which means a batch of
-**2, occasionally 3** half-session rows — rank 2 is `Numina` Phase 6, a
-1-session row, so pairing them is not allowed; the next half-session row after
-Phase 5 is rank 16, Aphelion's airlock beat. Read `Numina/WISHLIST.md` Phase 5
-first, then `Numina/CONTENT-GUIDE.md` — its rule about dates, prices and
-registration mechanics never going into the markup is the whole shape of that
-row. **Q32, the attribute cost curve, is still open and was not pre-answered.**
-**`npm run check` is still down to one broken unit**, `Tools/prompt-builder.html`,
-which is rank 31's now.
+The last thing that shipped is **Numina Phases 5 and 6 — Come play, and the
+chapter nobody had converted (PR #254)**, which **closed the old ranks 1 and
+2** together: Devon said to take both this round, overriding the size rule for
+that batch only. **60 ranked items remain**, and **rank 1 is now `Numina`
+Phase 7 — The print packet and the offline kit**, a 1-session row on
+**Claude Opus 5**, which means **a batch of one**. Rank 2 is `Numina` Phase 8,
+also 1-session, so it is the batch after. Read `Numina/WISHLIST.md` Phase 7
+first: its sharp edge is determinism, because `sw.js` becomes a generated
+top-level entry and `tools/clean.mjs`'s `GENERATED` list and `test/smoke.mjs`'s
+deliberate copy of it both have to move in the same commit, and the precache
+manifest has to be sorted or CI's rebuild check fails on it. **Q32, the
+attribute cost curve, is still open and was not pre-answered.**
+**`npm run check` is still down to one broken unit**,
+`Tools/prompt-builder.html`, which is rank 29's now.
+
+**What Phases 5 and 6 built.** **The Excellencies chapter was never withheld;
+it was never converted** — that was Q33, answered by #318. It runs pages 60 to
+75 of `rules-2026-v3.51.pdf`, printed in full: 30 Excellencies and 239 skills
+in the same five-column tables the rest of the rulebook uses, thirteen aligned
+to a single Domain and seventeen Multi-Aligned. Read out with `pdfplumber`'s
+table finder rather than by hand, then checked back against the PDF.
+`skills.json` goes **189 skills in 29 tables to 428 in 59**; the extractor's
+walk needed no special case but five cell shapes had to be named (`See
+Formula`, `At will`, `Extra Thread Skill`, `Expend one tinkered item`, and a
+`uses` whose `per` is `event`) plus one new table header, because an unknown
+cell stops the run rather than becoming a zero. `history.md` is 919 words from
+183 and the glossary is 952 from 635, ten rules terms it lacked; cross-links
+go 122 on 43 pages to 194 on 45. Phase 5 is a come-play partial on the home
+page, the New to Numina landing page and the foot of `new-players.md`, three
+links all off `site.official.*` with no date, price or registration mechanic
+in the markup, one plain sentence in the hero saying what a LARP is, and all
+four landing pages indexed (56 of 57 built pages; search deliberately out).
+385 assertions to 394, `test/a11y/`'s 32 green. Eleven guard-rails broken on
+purpose.
+
+**Three things Phases 5 and 6 found, all now locked decisions.** **#318:** the
+Excellencies chapter was unconverted, not withheld, and is ported — Q33 is
+struck. **#319:** `site.official.website` stays `http://`. Phase 5's checklist
+said check and upgrade; two sessions have now tried and both were refused at
+the environment's network egress before a request left the box, which says
+nothing about the host. A `http://` link to a host that redirects still works;
+a `https://` link to a host that does not serve it fails outright, so the safe
+reading holds and the reason is a `websiteSchemeNote` key beside it in
+`site.json` rather than a checklist line. One person with a browser closes it.
+**#320:** the book's Historical Timeline was already ported whole, and the
+campaign book has no AW or AF date anywhere outside that one table, so
+extending the timeline means inventing a date. The work became enrichment
+instead: every event resolves an `href` and carries a `nations` where one
+applies, and the book's 124 row, which prints two unrelated events in one
+cell, is split into the two events it is.
+
+**One thing worth reading.** A quoted `'N/A'` in Dervish's Strong winds was
+being stored as a verbal, because `parseVerbal` tested for N/A before it
+stripped the quotes. Reverting the fix **failed nothing** — every count right,
+every id unique, the record well-formed — so two assertions were written for
+it, and the second one catches five pre-existing Aspect records the moment it
+is broken.
+
+Shared things touched: none of the four. `CLAUDE.md`'s locked-decision count,
+317 → 320. `check-integrity.mjs` is 1,539 units with the same one broken,
+`social:check` reports the same six pages out of sync, `check-collisions.mjs`
+passes at 0. This file's `Claimed` column is cleared.
 
 **What Phase 4 built.** All seven of the August 2026 audit's section B, and
 the two visual nits beside them. The map is `role="group"` so its 16 nation
 links stay in the accessibility tree; a skip link is the first focusable thing
 on every page, landing on a `<main>` that carries `id="main"` and
 `tabindex="-1"` in all nine templates; `table { display: block }` is gone and
-`div.table-scroll` carries the horizontal scroll (markdown by a markdown-it
-renderer rule, `all-skills.njk` and `build-view.js`'s three runtime tables by
-hand, `print.css` turning the wrapper off on paper); the timeline's era is an
-`<h2>`; the theme button carries `aria-pressed` and `theme.js` keeps it in
-step; `--gold-text` (#7d5f18, 4.80:1) is every run of gold text and `--gold`
-(3.11:1) is left to the ornaments. 373 assertions to 385, plus a new
-`Numina/test/a11y/` package — a pinned Playwright and axe-core, 16 assertions
-in `axe.mjs` and 16 in `layout.mjs` — and an `a11y` job in `numina-ci.yml`
-that installs it. Eleven guard-rails broken on purpose; the one that matters
-is that reverting the era heading was **not** caught by the heading-order
-check whose comment claimed it was the reason that check existed, so both
-comments were rewritten and the check re-verified on its own terms (#147).
-
-**Two things Phase 4 found, both now locked decisions.** **#316:** the
-standing backlog said `--header-h` (5rem) *overstates* the real header so the
-sticky era chips float with a gap. Measured at three widths the header is
-80.97px, so a stuck chip sat 0.97px *under* it — the note was backwards, and
-is corrected rather than deleted so nobody re-fixes it the wrong way. It is
-5.0625rem now and `layout.mjs` measures it. **#317:** axe's `color-contrast`
-rule is blind on this site — every surface is a colour under a noise texture,
-so axe returns "incomplete" rather than a ratio for 642 of 710 text nodes on
-Core Rules, `.hero__kicker` included. Found by breaking the gold token and
-watching axe stay green. `axe.mjs` runs a second contrast pass with the
-decoration flattened, and `smoke.mjs` computes the ratio from the token values
-with no browser at all.
-
-Shared things touched: none of the four. `CLAUDE.md`'s locked-decision count,
-315 → 317, and its npm-scripts table gains the `a11y` package (six
-`package.json` files now, not five). `check-integrity.mjs` is 1,538 units with
-the same one broken, `social:check` reports the same six pages out of sync,
-`check-collisions.mjs` passes at 0. This file's `Claimed` column is cleared.
+`div.table-scroll` carries the horizontal scroll; the timeline's era is an
+`<h2>`; the theme button carries `aria-pressed`; `--gold-text` (#7d5f18,
+4.80:1) is every run of gold text and `--gold` (3.11:1) is left to the
+ornaments. 373 assertions to 385, plus a new `Numina/test/a11y/` package and
+an `a11y` job in `numina-ci.yml`. Decisions #316 (`--header-h` understated the
+header, it did not overstate it) and #317 (axe's contrast rule is blind on
+this site, so the contrast pass runs with the decoration flattened and the
+token arithmetic is the gate that needs no browser).
 
 **What Phase 3's increment 3 built.** `renderCard()` in `build-view.js`, a "Your card"
 section on `/mechanics/character-builder/` with a print button, `cardsheet:
@@ -1001,68 +1028,66 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 5 — Come play | `Numina` | ½ | Opus 5 | `claude/backlog-ranked-batch-wgvbbm` | [WISHLIST.md Phase 5](Numina/WISHLIST.md#phase-5--come-play) |
-| 2 | Phase 6 — Excellencies, history, and the timeline | `Numina` | 1 | Opus 5 | `claude/backlog-ranked-batch-wgvbbm` | [WISHLIST.md Phase 6](Numina/WISHLIST.md#phase-6--excellencies-history-and-the-timeline) |
-| 3 | Phase 7 — The print packet and the offline kit | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Numina/WISHLIST.md#phase-7--the-print-packet-and-the-offline-kit) |
-| 4 | Phase 8 — Search and navigation, upgraded | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Numina/WISHLIST.md#phase-8--search-and-navigation-upgraded) |
-| 5 | Phase 1 — The sim without the page | `Projects/corner-and-kettle` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/corner-and-kettle/WISHLIST.md#phase-1--the-sim-without-the-page) |
-| 6 | Phase 2 — `test/balance.mjs` | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/corner-and-kettle/WISHLIST.md#phase-2--testbalancemjs) |
-| 7 | Phase 3 — The Serve gate, decided | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 3](Projects/corner-and-kettle/WISHLIST.md#phase-3--the-serve-gate-decided) |
-| 8 | Phase 4 — The page becomes a view | `Projects/corner-and-kettle` | 2+ | Opus 5 |  | [WISHLIST.md Phase 4](Projects/corner-and-kettle/WISHLIST.md#phase-4--the-page-becomes-a-view) |
-| 9 | Phase 5 — Staff who have a week | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/corner-and-kettle/WISHLIST.md#phase-5--staff-who-have-a-week) |
-| 10 | Phase 6 — Customers who remember | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/corner-and-kettle/WISHLIST.md#phase-6--customers-who-remember) |
-| 11 | Phase 7 — A reopening worth doing | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/corner-and-kettle/WISHLIST.md#phase-7--a-reopening-worth-doing) |
-| 12 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
-| 13 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
-| 14 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 15 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — |  | [Questions for Devon](#questions-for-devon) |
-| 16 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
-| 17 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 18 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 19 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 20 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 21 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 22 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 23 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 24 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
-| 25 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 26 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 27 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — |  | [The site itself](#the-site-itself) |
-| 28 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
-| 29 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
-| 30 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
-| 31 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
-| 32 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
-| 33 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 34 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 35 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 36 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 37 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
-| 38 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 39 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 40 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
-| 41 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 42 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 43 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 44 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 45 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 46 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 47 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 48 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 49 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 50 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 51 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 52 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 53 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 54 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 55 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 56 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 57 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
-| 58 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
-| 59 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 60 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
-| 61 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
-| 62 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 1 | Phase 7 — The print packet and the offline kit | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Numina/WISHLIST.md#phase-7--the-print-packet-and-the-offline-kit) |
+| 2 | Phase 8 — Search and navigation, upgraded | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 8](Numina/WISHLIST.md#phase-8--search-and-navigation-upgraded) |
+| 3 | Phase 1 — The sim without the page | `Projects/corner-and-kettle` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 1](Projects/corner-and-kettle/WISHLIST.md#phase-1--the-sim-without-the-page) |
+| 4 | Phase 2 — `test/balance.mjs` | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 2](Projects/corner-and-kettle/WISHLIST.md#phase-2--testbalancemjs) |
+| 5 | Phase 3 — The Serve gate, decided | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 3](Projects/corner-and-kettle/WISHLIST.md#phase-3--the-serve-gate-decided) |
+| 6 | Phase 4 — The page becomes a view | `Projects/corner-and-kettle` | 2+ | Opus 5 |  | [WISHLIST.md Phase 4](Projects/corner-and-kettle/WISHLIST.md#phase-4--the-page-becomes-a-view) |
+| 7 | Phase 5 — Staff who have a week | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/corner-and-kettle/WISHLIST.md#phase-5--staff-who-have-a-week) |
+| 8 | Phase 6 — Customers who remember | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/corner-and-kettle/WISHLIST.md#phase-6--customers-who-remember) |
+| 9 | Phase 7 — A reopening worth doing | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/corner-and-kettle/WISHLIST.md#phase-7--a-reopening-worth-doing) |
+| 10 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
+| 11 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
+| 12 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 13 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — |  | [Questions for Devon](#questions-for-devon) |
+| 14 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
+| 15 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 16 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 17 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 18 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 19 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 20 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 21 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 22 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
+| 23 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 24 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 25 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — |  | [The site itself](#the-site-itself) |
+| 26 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
+| 27 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
+| 28 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
+| 29 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
+| 30 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
+| 31 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 32 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 33 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 34 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 35 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
+| 36 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 37 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 38 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
+| 39 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 40 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 41 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 42 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 43 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 44 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 45 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 46 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 47 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 48 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 49 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 50 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 51 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 52 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 53 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 54 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 55 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
+| 56 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
+| 57 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 58 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 59 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
+| 60 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
 
 ---
 
@@ -1638,10 +1663,10 @@ owns its own test folder even where it imports `harness.mjs`/`drive.mjs`
 read-only.
 
 Everything open against this folder is filed under the project that needs it:
-Castle Conundrum's preview promotion (rank 15), Aphelion's airlock beat (17),
-Golden Hour's preview recapture and debug-hook beats (46, 48), Blue Hour's
-`games.mjs` entry and preview recipe (51, 52), the ownership manifest (32),
-and Corner & Kettle joining `npm run games` (rank 14, its own Phase 9 —
+Castle Conundrum's preview promotion (rank 12), Aphelion's airlock beat (14),
+Golden Hour's preview recapture and debug-hook beats (43, 45), Blue Hour's
+`games.mjs` entry and preview recipe (48, 49), the ownership manifest (29),
+and Corner & Kettle joining `npm run games` (rank 11, its own Phase 9 —
 `play-games.mjs` still has no reference to `coffee_shop_sim` or
 `corner-and-kettle`, unchanged since round 1).
 
@@ -1756,8 +1781,10 @@ that the builder refuses to invent a number (#305). The full answer is in the
 answered list at the foot of this section. **Q32, the attribute cost curve, is
 not answered by it and was deliberately not pre-answered** — the module leaves
 those purchases unpriced instead, so the question is still Devon's and still
-open. Numina has four open questions left (Q32 to Q35), none of them blocking
-anything ranked.
+open. **Q33, whether the Excellencies chapter should be ported at all, was
+answered by Phases 5 and 6 and is struck** — locked #318, and the full answer is
+in the answered list at the foot of this section. Numina has three open
+questions left (Q32, Q34 and Q35), none of them blocking anything ranked.
 
 **The `Where` column names files that no longer exist.** The prompts, the
 notes files and the ten handoffs were deleted in this consolidation; they are
@@ -1824,9 +1851,8 @@ live. Nothing in that column is a link to follow.
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
 | Q32 | **What is the attribute cost curve?** `skills/attributes-vitality.md` gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight, Fortitude and Vitality — circular, and the escalating numbers appear nowhere in `src/` or `source-material/markdown/`. Are they in the PDF's chart and the conversion dropped it, or genuinely unpublished? **This no longer blocks the builder:** `build-rules.js` leaves those purchases in `cp.unpriced` and flips `cp.exact` false (#305), so a build that raises an attribute comes back with a floor rather than a total. An answer here turns that floor into a number. | 1 | `Numina/WISHLIST.md` |
-| Q33 | **Should the Excellencies chapter be ported at all?** `skills/excellencies.md` is 34 words of developer-facing stub and there is no `source-material/markdown/skills/excellencies.md` — the one skills chapter with no conversion behind it. Meanwhile `hidden-excellencies-expressions.md` names 21 hidden ones openly. Withheld deliberately, or just unconverted? | 2 | wishlist, `numina-audit-2026-08.md` A3 |
 | Q34 | **Do the eight nations with a blank `capital` have one?** Kindaria, Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach, Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are `demonym: ""` (the Five Duchies' entry says outright that it has none). If the book does not name them, the infobox should collapse rather than render a flag chip over one "See also" row. | 2 | wishlist, audit A4 |
-| Q35 | **Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`. `site.json` and `quick-reference.md` both link `http://`; batch 1 asked and could not verify from its sandbox either. | 2 | wishlist, audit D4 |
+| Q35 | **Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`. **The HTTPS half now needs one person and one page load, and nothing else.** Batch 1 could not verify it from its sandbox, and neither could Phase 5, which was refused at the environment's network egress before a request left the box — that says nothing about the host. The links stay `http://` until somebody can load it, because an `http://` link to a host that redirects still works and a `https://` link to a host that does not serve it fails outright (locked #319); the reasoning is a `websiteSchemeNote` key in `site.json` now rather than a checklist line. | 3 | wishlist, audit D4, Numina Phase 5 |
 
 ### The projects with no wishlist
 
@@ -1847,6 +1873,18 @@ live. Nothing in that column is a link to follow.
 | Q52 | **Does Orbital adopt `gvb-save.js` for save-bar UI consistency?** Not needed for correctness — round 1 proved the existing migration round-trips clean. Purely a question of whether UI consistency with the other eleven adopters is wanted. | 2 | prompt 21, the project's notes |
 
 ### Answered, kept here so they are not re-asked
+
+- **Should the Excellencies chapter be ported at all?** (was Q33) Answered by
+  the session that shipped Numina Phases 5 and 6, 2026-09-12: **it was never
+  withheld, it was never converted, and it is ported now** — locked decision
+  #318. The chapter runs pages 60 to 75 of `rules-2026-v3.51.pdf`, printed in
+  full, 30 Excellencies and 239 skills in exactly the five-column tables the
+  rest of the rulebook uses. Nothing about it reads as held back; what was
+  missing was a `source-material/markdown/` file, which is a gap in the
+  conversion rather than a decision by staff. `skills.json` went 189 skills to
+  428. The hidden Excellencies table is a separate and still-hidden thing and
+  was not touched. Reversible: delete one markdown file and re-run the
+  extractor.
 
 - **Is a character builder welcome?** (was Q36) Answered by the session that
   shipped Numina Phase 3's first increment, 2026-09-12: **yes, on the
@@ -1975,13 +2013,13 @@ below was re-derived against its row, not decremented.
    shipped: T8 landed in Phase 7, directional, panned and occlusion-attenuated.
 3. **`Pathfinder/data/`.** `UPGRADE-PATHS.md` calls it "the highest-leverage
    *decision* on the site" and then files it unphased under "Close behind";
-   v10 §11 ranks it #4. Ranked here at 24.
+   v10 §11 ranks it #4. Ranked here at 13.
 4. **Castle Conundrum.** `UPGRADE-PATHS.md` says the piece "is finished as
    designed" and ranks nothing; v10 §11 ranks its preview promotion **#3
-   site-wide**. Ranked here at 23.
+   site-wide**. Ranked here at 12.
 5. **Faire Weekend's layout and density review.** Prompt 09 and the project's
    notes call it "the headline item now", owed four rounds running; the
    wishlist puts it at Phase 5 (rank 4), behind guest agents.
 6. **Golden Hour and Blue Hour.** `UPGRADE-PATHS.md` says both are "blocked
    first" on a real-GPU run; each project's own next-session list ranks that
-   #2 and #3 respectively. Ranked here at 53 and 61.
+   #2 and #3 respectively. Ranked here at 42 and 50.
