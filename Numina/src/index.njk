@@ -1,12 +1,13 @@
 ---
 layout: layouts/base.njk
 ---
-<main id="main" tabindex="-1" class="home">
+<main id="main" tabindex="-1" class="home" data-pagefind-body data-pagefind-meta="section:Numina">
   <section class="hero">
     {% include "partials/ornaments/arch.njk" %}
     <p class="hero__kicker">Numina III · The Age of Works</p>
     <h1>{{ site.title }}</h1>
     <p class="hero__tagline">{{ site.tagline }} — where Fortune's Bend has appeared once more, and heroes gather to shape history.</p>
+    <p class="hero__plain">A LARP is a game you play by being there: you dress as your character, speak as them, and swing a padded sword as them, for a weekend at a time. Numina meets in person, and anyone can come.</p>
     {% include "partials/ornaments/rule.njk" %}
     <p class="hero__actions">
       <a class="button" href="/new-to-numina/">New player? Start here</a>
@@ -32,6 +33,8 @@ layout: layouts/base.njk
       <p>Find any rule, nation, or term across the whole site.</p>
     </a>
   </section>
+
+  {% include "partials/come-play.njk" %}
 
   <section class="home-map">
     {% set mapClass = "world-map--home" %}

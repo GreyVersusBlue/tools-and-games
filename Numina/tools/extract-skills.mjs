@@ -31,6 +31,7 @@ const GROUP_KIND = {
   "cultures": "Culture",
   "domains": "Domain",
   "expressions": "Expression",
+  "excellencies": "Excellency",
   "foundations": "Foundation type",
   "index": "Adventurer",
   "open-skills": "Open",
@@ -43,6 +44,8 @@ const SHAPES = {
   "Skill Name|Cost|Verbal|Description": "skill",
   "Skill Name|CP Cost|Verbal|Description": "skill",
   "Skill Name|Cost|Verbal|Description|Attribute": "skill",
+  // Inferno's table alone heads its Verbal column "Effect / Verbal".
+  "Skill Name|Cost|Effect / Verbal|Description|Attribute": "skill",
   "Culture|Research Topic": "culture",
   "Attribute|Starting Value|Cost to Increase|Max": "attribute",
   "Name|Alignment|Primary Skill": "hidden",
@@ -115,17 +118,33 @@ function parseAttribute(raw, where) {
   // A bare attribute name (Greater Aspect Attack: "Prowess", whose description
   // says "Spend one attribute") is read as a spend of one.
   if (ATTRIBUTE_NAMES.includes(raw)) return { amount: 1, kind: "spend", name: raw, raw };
-  m = raw.match(/^(\d+)x \/ (Short|Long) Rest$/);
-  if (m) return { count: Number(m[1]), kind: "uses", per: `${m[2]} Rest`, raw };
+  m = raw.match(/^(\d+)x \/ ((?:Short|Long) Rest|event)$/);
+  if (m) return { count: Number(m[1]), kind: "uses", per: m[2], raw };
+  // The crafting Excellencies (Alchemist, Arcaneer, Tinkerer, Poison Blade) put
+  // "See Formula" where the others put a spend: the cost is coin, components
+  // and/or attributes named by the item's formula, which lives in the crafting
+  // chapter and is not parsed at all. It is not see-description — nothing in
+  // the row's own description says what is spent.
+  if (/^see formula$/i.test(raw)) return { kind: "see-formula", raw };
+  // Tempest's Touch Death has no limit and no spend: it triggers when you die.
+  if (/^at will$/i.test(raw)) return { kind: "at-will", raw };
+  // Dervish's Strong winds: a Thread Skill whose own description says it breaks
+  // the three-Thread-Skills-per-effect rule. `raw` keeps the "Extra".
+  if (/^extra thread skill$/i.test(raw)) return { kind: "thread", raw };
+  // Tinkerer's Just use anything spends a charge off a tinkered item.
+  if (/^expend one tinkered item$/i.test(raw)) return { kind: "expend", raw };
   fail(where, `unrecognised Attribute cell ${JSON.stringify(raw)}`);
 }
 
 // "Thread Skill" in the Verbal column is a flag, not something anyone says.
 function parseVerbal(raw) {
-  if (raw === "" || /^n\/a$/i.test(raw)) return { thread: false, verbal: null };
-  if (/^thread skill$/i.test(raw)) return { thread: true, verbal: null };
+  // Dervish's Strong winds prints its N/A inside quotes. A quoted nothing is
+  // still nothing, so the quotes come off before the N/A test, not after.
   const m = raw.match(/^(['"])(.*)\1$/);
-  return { thread: false, verbal: m ? m[2] : raw };
+  const inner = m ? m[2] : raw;
+  if (inner === "" || /^n\/a$/i.test(inner)) return { thread: false, verbal: null };
+  if (/^thread skill$/i.test(inner)) return { thread: true, verbal: null };
+  return { thread: false, verbal: inner };
 }
 
 function parseName(raw) {

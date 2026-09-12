@@ -132,7 +132,7 @@ Nation slugs: `aluvair`, `dovenost`, `mists-of-eltiel`, `five-duchies`,
 | Foundations | `src/mechanics/skills/foundations.md` |
 | Cultures | `src/mechanics/skills/cultures.md` |
 | Domains | `src/mechanics/skills/domains.md` |
-| Excellencies | `src/mechanics/skills/excellencies.md` (still a stub — not yet converted from the PDF) |
+| Excellencies | `src/mechanics/skills/excellencies.md` (converted from the PDF directly in Phase 6; there is no `source-material/markdown/` file behind it) |
 | Expressions | `src/mechanics/skills/expressions.md` |
 | Open Skills | `src/mechanics/skills/open-skills.md` |
 | Attributes + Vitality | `src/mechanics/skills/attributes-vitality.md` |
@@ -179,7 +179,7 @@ digests under `summaries/`, and question-and-answer versions under
 ## Skill data (`src/_data/skills.json`)
 
 Generated, never hand-edited. `tools/extract-skills.mjs` reads the pipe tables
-in `src/mechanics/skills/*.md` and writes one record per row: 189 skills in 29
+in `src/mechanics/skills/*.md` and writes one record per row: 428 skills in 59
 tables under `skills`, plus `tables` (one entry per table, with its row count),
 `cultures` (16 research topics), `attributes` (the two charts, 6 rows),
 `hidden` (22 hidden Excellencies and Expressions) and `currency` (3 coins).
@@ -212,8 +212,12 @@ A skill record:
 - `cost.kind` is `cp` (with `cp`), `included` or `see-description`.
 - `attribute.kind` is `spend` (with `amount` and `name`), `none` (`N/A`),
   `thread`, `uses` (with `count` and `per`), `see-description`, `blank`, or
-  `unlisted` when the table has no Attribute column. Every non-numeric shape
-  keeps the cell's `raw` text.
+  `unlisted` when the table has no Attribute column. The Excellencies chapter
+  added four more: `see-formula` (the four crafting Excellencies, whose cost is
+  named by an item formula in the crafting chapter and not by the row),
+  `at-will`, `expend` (Tinkerer's Just use anything spends a charge off a
+  tinkered item), and a `uses` whose `per` is `event` rather than a Rest. Every
+  non-numeric shape keeps the cell's `raw` text.
 - `verbal` is the call with its quotes stripped, or `null` for `N/A` and blank.
   `Thread Skill` in the Verbal column is not a call: it sets `thread` and
   leaves `verbal` null. `thread` is also set by an Attribute cell that says so
@@ -273,7 +277,7 @@ When a new rulebook PDF arrives (v3.52 and on):
    document order mean a changed cost is a two-line hunk and a renamed skill is
    a removed record beside an added one. Read it against the book's changelog.
 4. `npm run build`, then `npm test`. If the counts moved, update the pins at
-   the top of `test/skills.test.mjs` (189 / 29 / 16 / 6 / 22) in the same
+   the top of `test/skills.test.mjs` (428 / 59 / 16 / 6 / 22) in the same
    commit, and say in the commit message what the diff showed.
 5. Commit the markdown, the JSON and the rebuilt output together. CI's rebuild
    check and the test's freshness check each fail if one of the three is
@@ -300,8 +304,15 @@ One object per dated event, oldest first. Schema:
 - `era`: groups events under a sticky header; keep era names consistent.
 - `nations` (optional): slugs, colors the event's timeline dot.
 - `href` (optional): "read more" link.
-- The file is seeded with real events from the book's Historical Timeline —
-  correct or extend freely.
+- The file carries **every row of the book's Historical Timeline**, and has
+  since before Phase 6 went looking for more to add: the table is 17 rows, the
+  file is 18 objects (the book's 124 row prints two unrelated events in one
+  cell and they are split here), and the whole campaign book contains no other
+  AW or AF date anywhere. Extending it means dating something the prose leaves
+  undated, which is inventing a fact. Correct freely; add only from a source.
+- Every event should carry an `href`, and a `nations` where the event happened
+  somewhere with a page. `test/smoke.mjs` resolves the `href`, fragment and
+  all.
 
 ## Glossary (`src/lore/glossary.md`)
 
@@ -343,7 +354,7 @@ To keep one page out of the linker entirely, put `data-autolink="off"` on its
 
 ## The All Skills index (`src/mechanics/skills/all-skills.njk`)
 
-Generated from `skills.json`, so it cannot drift from the chapters: 189 rows,
+Generated from `skills.json`, so it cannot drift from the chapters: 428 rows,
 each linked to its own anchor by the `skillHref` filter, filtered client-side
 by `src/js/skill-filter.js`. The filter form ships `hidden` and JS reveals it,
 so a browser without JS, a print, and Pagefind all see the whole list. A new

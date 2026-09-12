@@ -11,7 +11,7 @@
 //   - every `source` anchor is an id the built HTML actually emits;
 //   - ids are unique, and a handful are pinned literally so a change to the
 //     slug rule is a visible break, not a silent re-key of every record;
-//   - the totals (189 skills, 29 tables, 9 aspects, 20 foundations, 16
+//   - the totals (428 skills, 59 tables, 9 aspects, 20 foundations, 16
 //     cultures, 6 attribute rows, 22 hidden) so a table dropped by a bad merge
 //     fails instead of shrinking;
 //   - the two heading-derived lists: nine Aspects and twenty Foundations, each
@@ -56,8 +56,8 @@ ok(records === sourceRows, `every source table row is a record exactly once (${r
 
 // Totals, pinned. Update these when the rulebook changes, in the same commit
 // as the JSON diff that explains them.
-ok(data.skills.length === 189, `189 skills (${data.skills.length})`);
-ok(data.tables.length === 29, `29 skill tables (${data.tables.length})`);
+ok(data.skills.length === 428, `428 skills (${data.skills.length})`);
+ok(data.tables.length === 59, `59 skill tables (${data.tables.length})`);
 ok(data.cultures.length === 16, `16 cultures (${data.cultures.length})`);
 ok(data.attributes.length === 6, `6 attribute chart rows (${data.attributes.length})`);
 ok(data.hidden.length === 22, `22 hidden Excellencies and Expressions (${data.hidden.length})`);
@@ -116,7 +116,7 @@ for (const id of [
 
 console.log("# shapes");
 const COST_KINDS = new Set(["cp", "included", "see-description"]);
-const ATTR_KINDS = new Set(["unlisted", "blank", "none", "see-description", "thread", "spend", "uses"]);
+const ATTR_KINDS = new Set(["unlisted", "blank", "none", "see-description", "thread", "spend", "uses", "see-formula", "at-will", "expend"]);
 const badCost = data.skills.filter((s) => !COST_KINDS.has(s.cost.kind) || (s.cost.kind === "cp") !== Number.isInteger(s.cost.cp));
 ok(badCost.length === 0, `every cost is cp/included/see-description with cp only on cp${badCost.length ? `: ${badCost.map((s) => s.id).join(", ")}` : ""}`);
 const badAttr = data.skills.filter((s) => !ATTR_KINDS.has(s.attribute.kind));
@@ -124,15 +124,50 @@ ok(badAttr.length === 0, `every attribute cell has a named shape${badAttr.length
 const badSpend = data.skills.filter((s) => s.attribute.kind === "spend" && !(s.attribute.amount >= 1 && ["Prowess", "Insight", "Fortitude"].includes(s.attribute.name)));
 ok(badSpend.length === 0, "every spend names Prowess, Insight or Fortitude with an amount ≥ 1");
 const numericCp = data.skills.filter((s) => s.cost.kind === "cp").length;
-ok(numericCp === 157, `157 skills carry a numeric CP cost (${numericCp}); 30 Included, 2 See Description`);
+ok(numericCp === 366, `366 skills carry a numeric CP cost (${numericCp}); 60 Included, 2 See Description`);
 const empty = data.skills.filter((s) => !s.name || !s.description || !s.group || !s.groupKind);
 ok(empty.length === 0, `no record with an empty name, description or group${empty.length ? `: ${empty.map((s) => s.id).join(", ")}` : ""}`);
 ok(data.skills.every((s) => typeof s.thread === "boolean"), "thread is a boolean on every skill");
+// A verbal is what somebody says. "N/A" is not, and neither is a quoted "N/A":
+// Dervish's Strong winds prints its N/A inside quotes and the naive reading
+// stores that as the call. Nothing else in the file notices — the record stays
+// well-formed and every count stays right — so this is the assertion.
+const fakeVerbals = data.skills.filter((s) => s.verbal !== null && /^['"]*n\/a['"]*$/i.test(s.verbal));
+ok(fakeVerbals.length === 0, `no skill's verbal is a way of writing N/A${fakeVerbals.length ? `: ${fakeVerbals.map((s) => `${s.id} → ${JSON.stringify(s.verbal)}`).join(", ")}` : ""}`);
+// The quotes come off, too: a verbal is the call, not the call in quotes.
+const quoted = data.skills.filter((s) => s.verbal !== null && /^['"]/.test(s.verbal) && /['"]$/.test(s.verbal));
+ok(quoted.length === 0, `no verbal keeps its quote marks${quoted.length ? `: ${quoted.slice(0, 5).map((s) => s.id).join(", ")}` : ""}`);
 ok(data.attributes.every((a) => ["cp", "none", "unpublished"].includes(a.costToIncrease.kind)), "attribute chart costs are cp/none/unpublished");
 ok(data.hidden.every((h) => (h.kind === "Expression") === (h.elements.length === 0)), "hidden Expressions have no elements; hidden Excellencies have at least one");
 
 // Every source anchor resolves to an id the built page emits. Read from the
 // committed build, the same thing smoke.mjs checks and Firebase serves.
+// The Excellencies chapter (Phase 6). It is the one skills chapter with no
+// source-material/markdown conversion behind it, so nothing but this says it
+// came out whole: thirty Excellencies, each with exactly one Included skill,
+// which is the shape the book uses to mark the one you get for buying it.
+console.log("# excellencies");
+const excellencyTables = data.tables.filter((t) => t.groupKind === "Excellency");
+ok(excellencyTables.length === 30, `30 Excellencies (${excellencyTables.length})`);
+const included = new Map();
+for (const s of data.skills.filter((s) => s.groupKind === "Excellency")) {
+  if (s.cost.kind === "included") included.set(s.group, (included.get(s.group) ?? 0) + 1);
+}
+const wrongIncluded = excellencyTables.filter((t) => included.get(t.group) !== 1);
+ok(
+  wrongIncluded.length === 0,
+  `every Excellency has exactly one Included skill${wrongIncluded.length ? `: ${wrongIncluded.map((t) => `${t.group} has ${included.get(t.group) ?? 0}`).join(", ")}` : ""}`
+);
+// The book groups them under the six Domains and then under Multi-Aligned, and
+// the group heading is what the extractor keys an id on, so a lost `##` would
+// re-key every record beneath it without changing a count.
+const excellencyPage = readFileSync(join(SKILLS_DIR, "excellencies.md"), "utf8");
+const domainHeads = [...excellencyPage.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+ok(
+  domainHeads.join("|") === "Excellencies|Air|Earth|Fire|Ice|Lightning|Water|Multi-Aligned Excellencies",
+  `the chapter keeps its seven group headings under the chapter heading (${domainHeads.join(", ")})`
+);
+
 console.log("# sources");
 const idsByPage = new Map();
 function pageIds(url) {

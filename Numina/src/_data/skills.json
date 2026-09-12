@@ -1872,6 +1872,4497 @@
       "attribute": {
         "amount": 1,
         "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Spend one Attribute to make two archery attacks of 3 damage.",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "id": "excellencies/ballista/trio-of-arrows",
+      "name": "Trio of Arrows",
+      "source": "/mechanics/skills/excellencies/#ballista",
+      "thread": false,
+      "verbal": "3 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Spend one Attribute to instantly refresh your quiver. Effects that trigger from your quiver being refreshed are activated.",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "id": "excellencies/ballista/refresh-quiver",
+      "name": "Refresh Quiver",
+      "source": "/mechanics/skills/excellencies/#ballista",
+      "thread": false,
+      "verbal": "Refresh Quiver to self"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, you can refresh your quiver with a 10 second focus.",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "id": "excellencies/ballista/extended-quiver",
+      "name": "Extended Quiver",
+      "source": "/mechanics/skills/excellencies/#ballista",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, you can add +3 damage to a called damage archery attack.",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "id": "excellencies/ballista/prepare-arrow",
+      "name": "Prepare Arrow",
+      "source": "/mechanics/skills/excellencies/#ballista",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You can add +1 damage to a called damage archery effect if this effect is targeting a different target than your last missile attack.",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "id": "excellencies/ballista/rain-of-arrows",
+      "name": "Rain of Arrows",
+      "source": "/mechanics/skills/excellencies/#ballista",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can now restring your bow in 3 seconds versus 10 seconds.",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "id": "excellencies/ballista/restring-bow",
+      "name": "Restring Bow",
+      "source": "/mechanics/skills/excellencies/#ballista",
+      "thread": false,
+      "verbal": "Restring Bow"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you can call upon the Air and grant yourself 10 additional missile attacks of 3 damage by bow or crossbow.",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "id": "excellencies/ballista/half-score-of-arrows",
+      "name": "Half Score of Arrows",
+      "source": "/mechanics/skills/excellencies/#ballista",
+      "thread": false,
+      "verbal": "3 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You have trained to quickly put arrows in another's quiver. Use a touch packet to refresh another person's quiver.",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "id": "excellencies/ballista/refresh-ally",
+      "name": "Refresh Ally",
+      "source": "/mechanics/skills/excellencies/#ballista",
+      "thread": false,
+      "verbal": "Refresh Quiver"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You make a basic archery attack at your foe of 4 damage.",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "id": "excellencies/stalker/sharpened-arrow",
+      "name": "Sharpened Arrow",
+      "source": "/mechanics/skills/excellencies/#stalker",
+      "thread": false,
+      "verbal": "4 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "The first archery attack you make with a bow after refreshing your quiver is +3 damage. If your first arrow is uncalled, you can use a called '4 Damage' attack.",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "id": "excellencies/stalker/first-blood",
+      "name": "First Blood",
+      "source": "/mechanics/skills/excellencies/#stalker",
+      "thread": true,
+      "verbal": "See description"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per short rest, you can take 10 seconds to identify a target. During that time, you cannot move, attack, use any other game skills, or take non-beneficial effects. From that point on, all called damage arrows attacks towards your chosen target are +2 damage. If you hit anyone other than your chosen target with an archery attack, your aim is lost.",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "id": "excellencies/stalker/target-of-ire",
+      "name": "Target of Ire",
+      "source": "/mechanics/skills/excellencies/#stalker",
+      "thread": true,
+      "verbal": "Imbue to self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You use an arrow with barbed ends to distract your foe.",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "id": "excellencies/stalker/hooked-arrow",
+      "name": "Hooked Arrow",
+      "source": "/mechanics/skills/excellencies/#stalker",
+      "thread": false,
+      "verbal": "Agony"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, you use a specially prepared arrow to strike down your foes.",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "id": "excellencies/stalker/penetrating-arrow",
+      "name": "Penetrating Arrow",
+      "source": "/mechanics/skills/excellencies/#stalker",
+      "thread": false,
+      "verbal": "8 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "If the individual you have set as your target attacks you, you can spend one Attribute to negate the attack.",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "id": "excellencies/stalker/watching-your-target",
+      "name": "Watching your target",
+      "source": "/mechanics/skills/excellencies/#stalker",
+      "thread": false,
+      "verbal": "Avoid"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Twice per event, you can instantly choose a new target without taking time to study them.",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "id": "excellencies/stalker/set-your-sights",
+      "name": "Set your sights",
+      "source": "/mechanics/skills/excellencies/#stalker",
+      "thread": false,
+      "verbal": "Imbue to self"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Your success in felling a target buoys you, returning health. If you kill your target, you can heal 2 to self.",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "id": "excellencies/stalker/celebration-of-a-kill",
+      "name": "Celebration of a kill",
+      "source": "/mechanics/skills/excellencies/#stalker",
+      "thread": false,
+      "verbal": "Heal 2 to Self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Grant Melee Attack 'Agony.'",
+      "group": "Forge fire",
+      "groupKind": "Excellency",
+      "id": "excellencies/forge-fire/serrated-blade",
+      "name": "Serrated Blade",
+      "source": "/mechanics/skills/excellencies/#forge-fire",
+      "thread": false,
+      "verbal": "Grant Melee attack agony"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "While Centered, use this Skill to gain 4 uses of 'Repair Armor'. If you are not Centered, gain 2 uses of 'Repair Armor.' If you use this Skill again before all previous uses of 'Repair Armor' have been expended you lose the unused uses.",
+      "group": "Forge fire",
+      "groupKind": "Excellency",
+      "id": "excellencies/forge-fire/armor-repair",
+      "name": "Armor Repair",
+      "source": "/mechanics/skills/excellencies/#forge-fire",
+      "thread": false,
+      "verbal": "Repair 1 Armor"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "While Centered, spend 30 seconds to repair a destroyed weapon or shield. If not Centered spend 1 minute.",
+      "group": "Forge fire",
+      "groupKind": "Excellency",
+      "id": "excellencies/forge-fire/weapon-repair",
+      "name": "Weapon Repair",
+      "source": "/mechanics/skills/excellencies/#forge-fire",
+      "thread": false,
+      "verbal": "Repair Weapon"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can Grant a melee attack to your companions or yourself.",
+      "group": "Forge fire",
+      "groupKind": "Excellency",
+      "id": "excellencies/forge-fire/sharpen-weapon",
+      "name": "Sharpen Weapon",
+      "source": "/mechanics/skills/excellencies/#forge-fire",
+      "thread": false,
+      "verbal": "Grant Melee Attack 3 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can Grant a missile attack to your companions or yourself.",
+      "group": "Forge fire",
+      "groupKind": "Excellency",
+      "id": "excellencies/forge-fire/sharpen-arrow",
+      "name": "Sharpen Arrow",
+      "source": "/mechanics/skills/excellencies/#forge-fire",
+      "thread": false,
+      "verbal": "Grant Missile Attack 4 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "While Centered, your use of Sharpen Weapon and Sharpen Arrow gain an additional Grant effect. You can purchase this skill twice.",
+      "group": "Forge fire",
+      "groupKind": "Excellency",
+      "id": "excellencies/forge-fire/heat-the-forge",
+      "name": "Heat the Forge",
+      "source": "/mechanics/skills/excellencies/#forge-fire",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, while Centered, gain three uses of \"Grant melee attack 5 damage\" to give to allies.",
+      "group": "Forge fire",
+      "groupKind": "Excellency",
+      "id": "excellencies/forge-fire/special-blade",
+      "name": "Special Blade",
+      "source": "/mechanics/skills/excellencies/#forge-fire",
+      "thread": false,
+      "verbal": "Grant melee attack 5 damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Gain 3 effects for 'Heal by <Trait>' if you are Centered. If you are not Centered, gain one effect.",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "id": "excellencies/locus/channel-healing",
+      "name": "Channel Healing",
+      "source": "/mechanics/skills/excellencies/#locus",
+      "thread": false,
+      "verbal": "Heal by your <beneficial Trait>"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "The first time after a Long Rest, when you become centered you gain 4 points of Protection.",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "id": "excellencies/locus/watch-the-battle",
+      "name": "Watch the Battle",
+      "source": "/mechanics/skills/excellencies/#locus",
+      "thread": false,
+      "verbal": "Grant 4 protection to self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Spend one attribute to 'Cure Maim.' If you are Centered, you instead 'Cure All Maims' on the recipient.",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "id": "excellencies/locus/restore-limb",
+      "name": "Restore Limb",
+      "source": "/mechanics/skills/excellencies/#locus",
+      "thread": false,
+      "verbal": "Cure Maim or Cure All Maims by <beneficial trait>"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, if you are Centered, you can Imbue an ally a Long Rest.",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "id": "excellencies/locus/rejuvenate",
+      "name": "Rejuvenate",
+      "source": "/mechanics/skills/excellencies/#locus",
+      "thread": false,
+      "verbal": "Imbue Long Rest"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "While Centered your use of the Skill 'First Aid' is reduced to 30 seconds.",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "id": "excellencies/locus/medic-station",
+      "name": "Medic Station",
+      "source": "/mechanics/skills/excellencies/#locus",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can protect companions from a melee attack. If you are Centered, when you use this skill, you can instead 'Grant Guard Melee' to two companions.",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "id": "excellencies/locus/protection",
+      "name": "Protection",
+      "source": "/mechanics/skills/excellencies/#locus",
+      "thread": false,
+      "verbal": "Grant Guard Melee"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "While Centered, you may use this Skill to point at a foe and Repel them.",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "id": "excellencies/locus/keep-ground",
+      "name": "Keep Ground",
+      "source": "/mechanics/skills/excellencies/#locus",
+      "thread": false,
+      "verbal": "By my Gesture Repel by <Trait>"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "While Centered, when you use a skill which provides multiple healing effects, you gain one extra effect.",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "id": "excellencies/locus/strong-center",
+      "name": "Strong Center",
+      "source": "/mechanics/skills/excellencies/#locus",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Spend an attribute to gain two packet attacks of 3 Damage by Fire to send at your foes.",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "id": "excellencies/inferno/blast-of-flame",
+      "name": "Blast of Flame",
+      "source": "/mechanics/skills/excellencies/#inferno",
+      "thread": false,
+      "verbal": "3 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you use a skill which provides multiple damage packet effects, you gain one extra effect..",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "id": "excellencies/inferno/fuel-the-fire",
+      "name": "Fuel the Fire",
+      "source": "/mechanics/skills/excellencies/#inferno",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, spend one Fortitude to gain two packet attacks to burn your foes. Once per Long Rest you can use the Surge skill.",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "id": "excellencies/inferno/overdraft-the-flame",
+      "name": "Overdraft the Flame",
+      "source": "/mechanics/skills/excellencies/#inferno",
+      "thread": false,
+      "verbal": "5 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You can convert your Packet attacks to another element. Choose one additional element. You can choose the element from the Elemental Trait Group. You can now switch between the original trait and your new element for all Beneficial and non-Beneficial packet attacks.",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "id": "excellencies/inferno/control-the-elements",
+      "name": "Control the Elements",
+      "source": "/mechanics/skills/excellencies/#inferno",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "blank",
+        "raw": ""
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you can call upon the flames and gain 10 packet attacks of 3 damage by Fire to rain upon your foes. Purchasing this skill also grants you, twice per event, you can call Surge and reset your packet flurry.",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "id": "excellencies/inferno/channel-of-fire",
+      "name": "Channel of Fire",
+      "source": "/mechanics/skills/excellencies/#inferno",
+      "thread": false,
+      "verbal": "3 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You draw the heat from your foes leaving them lethargic. Spend one attribute and strike them with a packet attack and call out \"Slow by Fire.\"",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "id": "excellencies/inferno/draw-heat",
+      "name": "Draw Heat",
+      "source": "/mechanics/skills/excellencies/#inferno",
+      "thread": false,
+      "verbal": "Slow by Fire"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Spend an attribute to make a packet attack of Fire to silence your foes.",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "id": "excellencies/inferno/choking-smoke",
+      "name": "Choking Smoke",
+      "source": "/mechanics/skills/excellencies/#inferno",
+      "thread": false,
+      "verbal": "Silence by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you may make a packet attack with a great conflagration of flame.",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "id": "excellencies/inferno/overwhelm",
+      "name": "Overwhelm",
+      "source": "/mechanics/skills/excellencies/#inferno",
+      "thread": false,
+      "verbal": "8 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you may make a packet attack to burn your foes to death.",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "id": "excellencies/slayer/immolate",
+      "name": "Immolate",
+      "source": "/mechanics/skills/excellencies/#slayer",
+      "thread": false,
+      "verbal": "Death by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, after a Long Rest, you can restore your use of Immolate.",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "id": "excellencies/slayer/bank-the-flames",
+      "name": "Bank the Flames",
+      "source": "/mechanics/skills/excellencies/#slayer",
+      "thread": true,
+      "verbal": "Refresh Immolate to self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Spend one Prowess to make a packet attack of 5 damage by Fire to strike down your foes.",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "id": "excellencies/slayer/fiery-bolt",
+      "name": "Fiery Bolt",
+      "source": "/mechanics/skills/excellencies/#slayer",
+      "thread": false,
+      "verbal": "5 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Spend a point of Fortitude to make a packet attack of 'Agony by Fire'.",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "id": "excellencies/slayer/char-the-flesh",
+      "name": "Char the Flesh",
+      "source": "/mechanics/skills/excellencies/#slayer",
+      "thread": false,
+      "verbal": "Agony by Fire"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, if you are hit by a death effect or a death strike, call out 'Resist death.'. You remain immune to death strikes (but not other death effects) until the end of your next Short Rest.",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "id": "excellencies/slayer/nay-to-the-reaper",
+      "name": "Nay to the Reaper",
+      "source": "/mechanics/skills/excellencies/#slayer",
+      "thread": false,
+      "verbal": "Resist' and 'No Effect"
+    },
+    {
+      "attribute": {
+        "amount": 2,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "2 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, you can Paralyze your foes with the images of their pending demise. Spend two Fortitude and make a packet attack to freeze your foes in place.",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "id": "excellencies/slayer/little-death",
+      "name": "Little Death",
+      "source": "/mechanics/skills/excellencies/#slayer",
+      "thread": false,
+      "verbal": "Paralyze by Fear"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "If your use of Immolate misses or it is totally negated by any called defense including No Effect, you can refresh the skill after Long Rest. Additionally, if you enter the gate of death as a spirit of the dead and emerge from the gate, you can refresh one use of Immolate or Bank the Flames.",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "id": "excellencies/slayer/death-curse",
+      "name": "Death Curse",
+      "source": "/mechanics/skills/excellencies/#slayer",
+      "thread": false,
+      "verbal": "Refresh Immolate to Self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Spend one Prowess to make a Packet attack to keep your foes at bay.",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "id": "excellencies/slayer/death-washes-over",
+      "name": "Death Washes Over",
+      "source": "/mechanics/skills/excellencies/#slayer",
+      "thread": false,
+      "verbal": "Repel by Fear"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "When you spend a minute to reset your armor, you can invoke a 'Guard versus melee damage.'",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "id": "excellencies/bastion/well-fitted-armor",
+      "name": "Well Fitted Armor",
+      "source": "/mechanics/skills/excellencies/#bastion",
+      "thread": false,
+      "verbal": "Grant Guard Called Damage to self"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Your heavy armor is now worth 5 points.",
+      "footnote": "*",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "id": "excellencies/bastion/fully-armored",
+      "name": "Fully Armored",
+      "source": "/mechanics/skills/excellencies/#bastion",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "The skill 'Well Fitted Armor' now provides a Parry instead of a Guard.",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "id": "excellencies/bastion/extra-armor",
+      "name": "Extra Armor",
+      "source": "/mechanics/skills/excellencies/#bastion",
+      "thread": true,
+      "verbal": "Grant Parry Called Damage to Self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Place your hand on your torso and roleplay for 3 seconds to repair 3 points of armor to the armor you are wearing.",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "id": "excellencies/bastion/quick-fix",
+      "name": "Quick Fix",
+      "source": "/mechanics/skills/excellencies/#bastion",
+      "thread": false,
+      "verbal": "Repair 3 Armor to Self"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, you may use the Skill 'Well Fitted Armor' at no Attribute cost.",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "id": "excellencies/bastion/taking-time",
+      "name": "Taking Time",
+      "source": "/mechanics/skills/excellencies/#bastion",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you can repair all your or a companion's armor. If you use this skill on yourself, you can treat this as if you spent a minute fixing your armor for skills that impacts.",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "id": "excellencies/bastion/retake-the-field",
+      "name": "Retake the field",
+      "source": "/mechanics/skills/excellencies/#bastion",
+      "thread": false,
+      "verbal": "Repair all armor"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per short rest, you may 'grant 5 Protection to self and Slow to self'. When the Protection is spent the Slow ends. (The Slow counts as a physical effect and can be cured without the loss of protection.)",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "id": "excellencies/bastion/lockdown",
+      "name": "Lockdown",
+      "source": "/mechanics/skills/excellencies/#bastion",
+      "thread": false,
+      "verbal": "Grant 5 Protection and Slow to Self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "When you are hit by a damage attack of 5 or less, and you take the damage or resist the damage with a called defense, you can use that exact same attack against your attacker with the same Trait as the triggering attack.",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "id": "excellencies/bastion/return-the-blow",
+      "name": "Return the blow",
+      "source": "/mechanics/skills/excellencies/#bastion",
+      "thread": false,
+      "verbal": "See description"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You can protect yourself from swords and spears by granting yourself a Guard.",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "id": "excellencies/defender/guard",
+      "name": "Guard",
+      "source": "/mechanics/skills/excellencies/#defender",
+      "thread": false,
+      "verbal": "Grant Guard Melee to self"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you receive a Guard grant you can instead treat it as a 'Grant Extra Melee Defense, Guard.'",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "id": "excellencies/defender/well-guarded",
+      "name": "Well Guarded",
+      "source": "/mechanics/skills/excellencies/#defender",
+      "thread": true,
+      "verbal": "Grant Extra Guard Melee to self"
+    },
+    {
+      "attribute": {
+        "amount": 2,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "2 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Use this skill to 'Parry' a melee blow.",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "id": "excellencies/defender/parry",
+      "name": "Parry",
+      "source": "/mechanics/skills/excellencies/#defender",
+      "thread": false,
+      "verbal": "Parry"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, reduce the next 3 called damage effects you are reduced to '1 Damage' each. Say 'Reduce to 1 Damage' each time.",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "id": "excellencies/defender/shrug-it-off",
+      "name": "Shrug it off",
+      "source": "/mechanics/skills/excellencies/#defender",
+      "thread": false,
+      "verbal": "Reduce to 1 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, reduce the first called damage effect you take to 1 damage.",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "id": "excellencies/defender/just-tough",
+      "name": "Just Tough",
+      "source": "/mechanics/skills/excellencies/#defender",
+      "thread": false,
+      "verbal": "Reduce to 2 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, when you completely negate a called melee damage effect, you can spend one attribute to attack with that exact attack.",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "id": "excellencies/defender/riposte",
+      "name": "Riposte",
+      "source": "/mechanics/skills/excellencies/#defender",
+      "thread": false,
+      "verbal": "See description"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, after you have been struck with a melee attack, you can invoke this skill to reduce the cost of your Parry skill down to 1 Fortitude for future attacks of that specific number or effect. The reduced cost continues until you Short Rest.",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "id": "excellencies/defender/used-to-it",
+      "name": "Used to it",
+      "source": "/mechanics/skills/excellencies/#defender",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Twice per event, after a Long Rest, you can refresh the use of the skill 'Used to it.'",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "id": "excellencies/defender/once-more-into-the-fray",
+      "name": "Once more into the Fray",
+      "source": "/mechanics/skills/excellencies/#defender",
+      "thread": false,
+      "verbal": "Refresh Used to It to self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Spend one Attribute to make two melee attacks of 2 damage.",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "id": "excellencies/dervish/flurry-of-blows",
+      "name": "Flurry of Blows",
+      "source": "/mechanics/skills/excellencies/#dervish",
+      "thread": false,
+      "verbal": "2 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you use a skill which provides multiple melee attacks, you gain one extra attack.",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "id": "excellencies/dervish/storm-of-blows",
+      "name": "Storm of Blows",
+      "source": "/mechanics/skills/excellencies/#dervish",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You strike a painful blow to your opponent, call 'Agony'.",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "id": "excellencies/dervish/painful-strike",
+      "name": "Painful Strike",
+      "source": "/mechanics/skills/excellencies/#dervish",
+      "thread": false,
+      "verbal": "Agony"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you hit an opponent with Painful Strike, and they take the effect without a defense, you gain a '2 Damage' to use against them while they are under the effect of the agony.",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "id": "excellencies/dervish/follow-up-blow",
+      "name": "Follow up Blow",
+      "source": "/mechanics/skills/excellencies/#dervish",
+      "thread": true,
+      "verbal": "2 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Extra Thread Skill"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, melee attacks that cause 2 damage now cause 3 damage. This ends when you take your next Long Rest. This Thread Skill breaks the rule of 3 Thread Skills per effect.",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "id": "excellencies/dervish/strong-winds",
+      "name": "Strong winds",
+      "source": "/mechanics/skills/excellencies/#dervish",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You have trained yourself to fix your own arm or leg in a matter of moments. Roleplay for 3 seconds and then purge your maimed limb.",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "id": "excellencies/dervish/restart-the-storm",
+      "name": "Restart the Storm",
+      "source": "/mechanics/skills/excellencies/#dervish",
+      "thread": false,
+      "verbal": "Purge Maim"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, you can strike a powerful blow against your foe of 6 Damage.",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "id": "excellencies/dervish/steady-blow",
+      "name": "Steady Blow",
+      "source": "/mechanics/skills/excellencies/#dervish",
+      "thread": false,
+      "verbal": "6 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, you can give yourself and your allies a moment of calm in the battlefield by calling Disengage.",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "id": "excellencies/dervish/drive-back-the-attackers",
+      "name": "Drive Back the Attackers",
+      "source": "/mechanics/skills/excellencies/#dervish",
+      "thread": false,
+      "verbal": "Disengage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Melee attack for '5 Damage'.",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "id": "excellencies/hurricane/strong-strike",
+      "name": "Strong strike",
+      "source": "/mechanics/skills/excellencies/#hurricane",
+      "thread": false,
+      "verbal": "5 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, when wielding a two-handed weapon with a single striking surface, you can strike an opponent with a melee 'Stun' attack.",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "id": "excellencies/hurricane/stunning-blow",
+      "name": "Stunning Blow",
+      "source": "/mechanics/skills/excellencies/#hurricane",
+      "thread": false,
+      "verbal": "Stun"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, after a Long Rest in a Place of Peace, you can refresh your use of 'Stunning Blow.'",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "id": "excellencies/hurricane/rest-up-for-another-blow",
+      "name": "Rest up for Another Blow",
+      "source": "/mechanics/skills/excellencies/#hurricane",
+      "thread": false,
+      "verbal": "Refresh Stunning Blow to Self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Make a melee attack of 'Maim.'",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "id": "excellencies/hurricane/disabling-strike",
+      "name": "Disabling Strike",
+      "source": "/mechanics/skills/excellencies/#hurricane",
+      "thread": false,
+      "verbal": "Maim"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, when wielding a two-handed weapon with a single striking surface you can make a melee attack for 10 damage.",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "id": "excellencies/hurricane/crushing-blow",
+      "name": "Crushing Blow",
+      "source": "/mechanics/skills/excellencies/#hurricane",
+      "thread": false,
+      "verbal": "10 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You may Resist an effect of either Weakness or Frenzy.",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "id": "excellencies/hurricane/no-stopping-the-storm",
+      "name": "No stopping the storm",
+      "source": "/mechanics/skills/excellencies/#hurricane",
+      "thread": false,
+      "verbal": "Resist"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When wielding a two-handed weapon with a single striking surface, your melee attacks for 'Maim' are 'Double Maim.'",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "id": "excellencies/hurricane/complex-fracture",
+      "name": "Complex Fracture",
+      "source": "/mechanics/skills/excellencies/#hurricane",
+      "thread": true,
+      "verbal": "See Description"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, when your foe falls after a melee damage attack you made, gain a melee 5 Damage attack. If you make any other called attack before using this ability, it is lost.",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "id": "excellencies/hurricane/storms-fury",
+      "name": "Storms Fury",
+      "source": "/mechanics/skills/excellencies/#hurricane",
+      "thread": false,
+      "verbal": "5 Damage"
+    },
+    {
+      "attribute": {
+        "count": 1,
+        "kind": "uses",
+        "per": "event",
+        "raw": "1x / event"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Melee Death",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tempest-lightning/deadly-strike",
+      "name": "Deadly Strike",
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)",
+      "thread": false,
+      "verbal": "Death"
+    },
+    {
+      "attribute": {
+        "count": 1,
+        "kind": "uses",
+        "per": "event",
+        "raw": "1x / event"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "After taking a long rest you can refresh your use of Deadly strike",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tempest-lightning/refocus",
+      "name": "Refocus",
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Agony",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tempest-lightning/painful-strike",
+      "name": "Painful Strike",
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)",
+      "thread": false,
+      "verbal": "Agony"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "4 Damage",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tempest-lightning/quick-strike",
+      "name": "Quick Strike",
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)",
+      "thread": false,
+      "verbal": "4 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "When your death effect is negated by a called defense, you gain a melee attack of 5 damage",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tempest-lightning/a-little-bit-more",
+      "name": "A Little Bit More",
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)",
+      "thread": true,
+      "verbal": "5 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Melee attack for 'Short Weakness'",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tempest-lightning/the-little-death",
+      "name": "The Little Death",
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)",
+      "thread": false,
+      "verbal": "Short Weakness"
+    },
+    {
+      "attribute": {
+        "kind": "at-will",
+        "raw": "At will"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "If you die and have the \"Dead\" condition, and you receive a Cure Death effect, you refresh a use of the skill Deadly Strike",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tempest-lightning/touch-death",
+      "name": "Touch Death",
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "During a short rest, study a single opponent, your damage melee attacks against that opponent cause from any source are +2 damage",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tempest-lightning/seeing-anothers-time",
+      "name": "Seeing Another's Time",
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "1x / event make a touch packet to Cure Death",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "id": "excellencies/awakener/restore-the-dying",
+      "name": "Restore the Dying",
+      "source": "/mechanics/skills/excellencies/#awakener",
+      "thread": false,
+      "verbal": "Cure Death by Water"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "1x / event, after taking a long rest in a Place of Peace, you can refresh the skill \"Restore the Dying.\" Additionally, when you use the skill \"Restore the Dying,\" the effect is now \"Cure Death and Heal 5 by Water.\"",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "id": "excellencies/awakener/a-second-chance",
+      "name": "A Second Chance",
+      "source": "/mechanics/skills/excellencies/#awakener",
+      "thread": true,
+      "verbal": "See description"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You can restore those affected by maladies of the body.",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "id": "excellencies/awakener/awaken-the-afflicted",
+      "name": "Awaken the Afflicted",
+      "source": "/mechanics/skills/excellencies/#awakener",
+      "thread": false,
+      "verbal": "Cure Metabolic by Water"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Your healing effects from Awakener are increased by 2.",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "id": "excellencies/awakener/lifegiving-healing",
+      "name": "Lifegiving Healing",
+      "source": "/mechanics/skills/excellencies/#awakener",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can provide a protection against harm to your allies.",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "id": "excellencies/awakener/shield-of-preservation",
+      "name": "Shield of Preservation",
+      "source": "/mechanics/skills/excellencies/#awakener",
+      "thread": false,
+      "verbal": "Grant Guard Physical by Water"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per long rest, if you are hit by a death effect or a death strike, call out 'Resist death.' You remain immune to death strikes (but not other death effects) until the end of your next short rest.",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "id": "excellencies/awakener/nay-to-the-reaper",
+      "name": "Nay to the Reaper",
+      "source": "/mechanics/skills/excellencies/#awakener",
+      "thread": false,
+      "verbal": "Resist Death"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can heal those with injuries.",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "id": "excellencies/awakener/restore-the-living",
+      "name": "Restore the living",
+      "source": "/mechanics/skills/excellencies/#awakener",
+      "thread": false,
+      "verbal": "Heal 4 by Water"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "At will you can stabilize those who are unstable. Use a beneficial touch packet and say 'Stabilize by Water'",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "id": "excellencies/awakener/prevent-death",
+      "name": "Prevent Death",
+      "source": "/mechanics/skills/excellencies/#awakener",
+      "thread": false,
+      "verbal": "Stabilize by Water"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You gain 3 heal effects when you invoke this spell. Each of those effects must be given to a different person. If you invoke this spell a second time and you have not used all the effects, the remaining effects are lost.",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "id": "excellencies/wellspring/heal-the-world",
+      "name": "Heal the world",
+      "source": "/mechanics/skills/excellencies/#wellspring",
+      "thread": false,
+      "verbal": "Heal 2 by Water"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You gain 2 additional heal effects when you use Heal the World and two additional protection effects when you use Protect the line.",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "id": "excellencies/wellspring/spread-the-healing",
+      "name": "Spread the healing",
+      "source": "/mechanics/skills/excellencies/#wellspring",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You can undo the afflictions caused by weapons of war and similar physical effects.",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "id": "excellencies/wellspring/balm-to-war",
+      "name": "Balm to war",
+      "source": "/mechanics/skills/excellencies/#wellspring",
+      "thread": false,
+      "verbal": "Cure Physical by Magic"
+    },
+    {
+      "attribute": {
+        "count": 1,
+        "kind": "uses",
+        "per": "event",
+        "raw": "1x / event"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you can heal someone by their name. Call out 'By your Name <name>, Heal 4 by Water'",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "id": "excellencies/wellspring/heroic-healing",
+      "name": "Heroic Healing",
+      "source": "/mechanics/skills/excellencies/#wellspring",
+      "thread": false,
+      "verbal": "By your name <name> Heal 4 by Water"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "When you complete First Aid on a fallen individual, you also provide them with a point of healing. If you are using Earth's Determination you heal them for an additional point.",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "id": "excellencies/wellspring/skillful-medic",
+      "name": "Skillful Medic",
+      "source": "/mechanics/skills/excellencies/#wellspring",
+      "thread": true,
+      "verbal": "See Description"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You gain two grant 2 protections that must be used on different people.",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "id": "excellencies/wellspring/protect-the-line",
+      "name": "Protect the Line",
+      "source": "/mechanics/skills/excellencies/#wellspring",
+      "thread": false,
+      "verbal": "Grant 2 Protection by Water"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, you can turn to Spirit for up to one minute. Represent the spirit form by standing with your arms crossed over your torso. You may end the spirit effect at any time by saying 'Cure Spirit to Self.'",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "id": "excellencies/wellspring/if-you-fall-the-line-falls",
+      "name": "If you Fall the Line Falls",
+      "source": "/mechanics/skills/excellencies/#wellspring",
+      "thread": false,
+      "verbal": "Spirit"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "If someone attacks a downed person you just healed, you can get that effect back after spending 10 seconds of Focus. You can use other effects before you restore the one lost, but you cannot regain more than one effect lost this way. You also cannot regain this ability after a Short or Long Rest.",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "id": "excellencies/wellspring/all-is-not-lost",
+      "name": "All is not lost",
+      "source": "/mechanics/skills/excellencies/#wellspring",
+      "thread": false,
+      "verbal": "Refresh to self"
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See formula"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You can craft alchemical substances of the elixir variety (healing and curative). Each elixir has a unique cost in coin and/or components. You spend the coin and Attribute as defined by the formula to create the substance.",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "id": "excellencies/alchemist-water-fire/craft-elixirs",
+      "name": "Craft elixirs",
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can craft alchemical substances of the volatile variety (damage and detrimental effects)",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "id": "excellencies/alchemist-water-fire/craft-volatiles",
+      "name": "Craft volatiles",
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You can convert your non-beneficial packet attacks to 'By Poison' from whatever Trait they had.",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "id": "excellencies/alchemist-water-fire/tinged-with-poison",
+      "name": "Tinged with Poison",
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)",
+      "thread": true,
+      "verbal": "By Poison"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You quickly whip up two vials of acid which you can throw at your enemies as a packet attack. Gain two packet attacks of 2 Damage by Poison.",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "id": "excellencies/alchemist-water-fire/volley-of-poison",
+      "name": "Volley of Poison",
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)",
+      "thread": false,
+      "verbal": "2 Damage by Poison"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You quickly put together two small healing elixirs. Gain two uses of Heal 2 by Alchemy.",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "id": "excellencies/alchemist-water-fire/bottled-healing",
+      "name": "Bottled Healing",
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)",
+      "thread": false,
+      "verbal": "Heal 2 by Alchemy"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Twice per event, you can take 10 seconds and create any elixir or volatile (if you have the craft volatile effect) on the field, away from an alchemy lab.",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "id": "excellencies/alchemist-water-fire/on-the-fly-alchemy",
+      "name": "On the Fly Alchemy",
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)",
+      "thread": false,
+      "verbal": "By Alchemy, Grant <effect>"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, if you missed a volatile substance attack or had a volatile substance attack negated by a defense, you can spend 1 minute to recreate the substance. You cannot do this more than once on a given substance",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "id": "excellencies/alchemist-water-fire/regain-substance",
+      "name": "Regain substance",
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)",
+      "thread": false,
+      "verbal": "Refresh Alchemy"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can cure the body of poison, disease, and other ills",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "id": "excellencies/alchemist-water-fire/curative-mixture",
+      "name": "Curative Mixture",
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)",
+      "thread": false,
+      "verbal": "Cure Metabolic"
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You can create Fire Arcaneering engines for use in-game. Arcaneering must be done at an elemental node and require ingredients as defined by the formula. You gain the ability to use Arcaneering as a method of spell casting.",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/harness-fire",
+      "name": "Harness Fire",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can create Air Arcaneering engines for use in-game. Arcaneering must be done at an elemental node and require ingredients as defined by the formula.",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/harness-air",
+      "name": "Harness Air",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can create Water Arcaneering engines for use in-game. Arcaneering must be done at an elemental node and require ingredients as defined by the formula.",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/harness-water",
+      "name": "Harness Water",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can create Earth Arcaneering engines for use in-game. Arcaneering must be done at an elemental node and require ingredients as defined by the formula.",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/harness-earth",
+      "name": "Harness Earth",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can create Ice Arcaneering engines for use in-game. Arcaneering must be done at an elemental node and require ingredients as defined by the formula.",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/harness-ice",
+      "name": "Harness Ice",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can create Lightning Arcaneering engines for use in-game. Arcaneering must be performed at an elemental node and require ingredients as defined by the formula.",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/harness-lightning",
+      "name": "Harness Lightning",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can channel a 4-damage packet or melee attack of any element you can harness",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/elemental-surge",
+      "name": "Elemental Surge",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": false,
+      "verbal": "4 Damage by <Element>"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can instantly Repair 3 points of Armor on yourself or another.",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/elemental-repair",
+      "name": "Elemental Repair",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": false,
+      "verbal": "Repair 3 armor by <Element>"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "3x per event you can convert a Damage or Agony effect to the 'Elemental Power' Trait.",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/arcaneer-universal/elemental-control",
+      "name": "Elemental Control",
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)",
+      "thread": true,
+      "verbal": "By Elemental Power"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You know how to repair your and other people's armor on the field of battle. For each use of this Skill you gain two uses of 'Repair 2 Armor.'",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/armorsmith-ice-earth/battlefield-repair",
+      "name": "Battlefield Repair",
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)",
+      "thread": false,
+      "verbal": "Repair 1 Armor"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Gain two uses of 'Grant 2 Protection.'",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/armorsmith-ice-earth/adjust-armor",
+      "name": "Adjust Armor",
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant 1 Protection"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "While Centered, when you use a Repair Armor or Grant Protection Skill which has multiple uses, you can increase the number of uses by 2.",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/armorsmith-ice-earth/ringing-hammer",
+      "name": "Ringing Hammer",
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "The first use of a Repair Armor or Grant Protection you use after Centering, has its effect increased by 2 (so grant 2 protection becomes 4).",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/armorsmith-ice-earth/heat-the-forge",
+      "name": "Heat the Forge",
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, the next skill you use after you have lost your Centering, can still be counted as being Centered.",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/armorsmith-ice-earth/stir-the-embers",
+      "name": "Stir the embers",
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you can Repair all armor for yourself or another. You can use this skill a second time during the event, but only while you are Centered.",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/armorsmith-ice-earth/full-repair",
+      "name": "Full repair",
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "While centered, take 10 seconds of roleplay to fix a destroyed weapon.",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/armorsmith-ice-earth/repair-weapon",
+      "name": "Repair Weapon",
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)",
+      "thread": false,
+      "verbal": "Repair Weapon"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "While Centered, your Armor gains an additional point.",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/armorsmith-ice-earth/well-fit-armor",
+      "name": "Well fit armor",
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You can provide yourself with a Guard versus physical effects.",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/beguiler-fire-ice/guard-versus-weapons",
+      "name": "Guard versus weapons",
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)",
+      "thread": false,
+      "verbal": "Grant Physical Defense to Self, Guard"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can provide yourself with a Guard versus the elements.",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/beguiler-fire-ice/guard-versus-elements",
+      "name": "Guard versus elements",
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)",
+      "thread": false,
+      "verbal": "Grant Elemental Defense to Self, Guard"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can provide yourself with a Guard versus metabolic effects.",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/beguiler-fire-ice/guard-versus-ailments",
+      "name": "Guard versus ailments",
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)",
+      "thread": false,
+      "verbal": "Grant Metabolic Defense to Self, Guard"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "If you have a \"Guard\" effect versus a Trait or Trait group active, you can expend the Guard to make a 4-damage packet attack. If the Guard is to a specific Trait, make the attack by that Trait. If the Guard is Elemental, choose Fire or Ice. For Metabolic, choose Poison or Disease. For Physical, choose Force or Force. For Mental, choose Will or Gloom.",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/beguiler-fire-ice/reverse-protection",
+      "name": "Reverse Protection",
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)",
+      "thread": false,
+      "verbal": "4 Damage by <see description>"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "If you have an active Guard effect and you use a damage packet attack of the same Trait Group as that Guard, increase the damage by one.",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/beguiler-fire-ice/empowered-defense",
+      "name": "Empowered Defense",
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Twice per event, if you have a Guard active against a damage attack, you can instead absorb the damage effect for a heal effect equal to the damage.",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/beguiler-fire-ice/absorb-attack",
+      "name": "Absorb attack",
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)",
+      "thread": false,
+      "verbal": "Absorb to Heal X"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, when you use a \"Grant Guard\" on yourself from this Excellency, you can provide one to an ally as well.",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/beguiler-fire-ice/share-protection",
+      "name": "Share protection",
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)",
+      "thread": false,
+      "verbal": "Grant Guard <type>"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can Repel a foe by melee or packet.",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/beguiler-fire-ice/banish-foe",
+      "name": "Banish Foe",
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)",
+      "thread": false,
+      "verbal": "Repel by Fire or Ice"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Gain one use of \"Grant Melee Attack 3 Damage.\"",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/bladesmith-lightning-earth/hand-out-weapons",
+      "name": "Hand out Weapons",
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant Melee Attack 2 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "While Centered, when you use a skill to Grant a melee attack with a damage effect, increase the damage by 1.",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/bladesmith-lightning-earth/sharpen-the-blade-on-the-forge",
+      "name": "Sharpen the Blade on the forge",
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "While Centered, when you use the Skills \"Hand out Weapons,\" \"Dire Blades,\" or \"Blade of last resort,\" you Grant an additional effect.",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/bladesmith-lightning-earth/arm-the-line",
+      "name": "Arm the line",
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can sharpen someone's blade, so they cause extra pain when they strike.",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/bladesmith-lightning-earth/dire-blades",
+      "name": "Dire Blades",
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant Melee Attack Agony"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, the next Skill you use after you have lost your Centering, can still be counted as being Centered.",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/bladesmith-lightning-earth/stir-the-embers",
+      "name": "Stir the embers",
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Twice per Long Rest, you can \"Grant Extra\" when using the Skill 'Hand out Weapons,' 'Dire Blades,' or 'Blade of Last Resort.'",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/bladesmith-lightning-earth/load-them-down",
+      "name": "Load them down",
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you can give someone a powerful set of blows to use in a flurry or to clear their path. This gives the person three attacks of 5 damage.",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/bladesmith-lightning-earth/blade-of-last-resort",
+      "name": "Blade of Last Resort",
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)",
+      "thread": false,
+      "verbal": "Triple Grant melee attack 5 damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Gain two uses of 'Grant Resist Destroy.' You also gain the ability to spend 1 minute of roleplay to repair a weapon.",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/bladesmith-lightning-earth/hardened-steel",
+      "name": "Hardened Steel",
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant Resist Destroy"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Make a 4 damage melee attack.",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/combatant-lightning-ice/simple-strike",
+      "name": "Simple Strike",
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 2,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "2 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can negate a melee attack made against you.",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/combatant-lightning-ice/parry",
+      "name": "Parry",
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)",
+      "thread": false,
+      "verbal": "Parry"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You can fight with a basic one-handed melee weapon in one hand and any of the following in the other: Buckler, Shield, a basic one-handed weapon, staff, or spear.",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/combatant-lightning-ice/weapon-style-prowess",
+      "name": "Weapon Style Prowess",
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can wear heavy armor. This skill has a prerequisite of medium armor.",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/combatant-lightning-ice/armored-for-war",
+      "name": "Armored for War",
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, you can clear the field around you.",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/combatant-lightning-ice/reset-the-field",
+      "name": "Reset the field",
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)",
+      "thread": false,
+      "verbal": "Disengage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, make a melee attack for \"5 Damage.\" If you hit and the recipient acknowledges the strike, you gain a Guard versus melee attacks,",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/combatant-lightning-ice/take-ground",
+      "name": "Take Ground",
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)",
+      "thread": false,
+      "verbal": "5 Damage' and 'Grant Guard to self"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Twice per event, you can either make a melee attack for \"8 Damage\" or use a Parry effect.",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/combatant-lightning-ice/turn-the-tide-of-battle",
+      "name": "Turn the Tide of Battle",
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)",
+      "thread": false,
+      "verbal": "8 Damage' or 'Parry"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you Parry an attack against you, gain a 3-damage attack.",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/combatant-lightning-ice/turn-the-blade",
+      "name": "Turn the blade",
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)",
+      "thread": true,
+      "verbal": "3 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You may wield a single basic one-handed weapon while making packet attacks from your other hand.",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/devastator-fire-lightning/casters-companion",
+      "name": "Caster's Companion",
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You gain two attacks of '2 Damage by Fire,' they can be packet or melee.",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/devastator-fire-lightning/channel-sparks",
+      "name": "Channel Sparks",
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)",
+      "thread": false,
+      "verbal": "2 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "If you have only had a single, one handed weapon or packets in your hands since your last short rest, Packet attacks of 2 or greater are +1 damage.",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/devastator-fire-lightning/hand-of-magics",
+      "name": "Hand of Magics",
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "If you have only had a single, one handed weapon or packets in your hands since your last short rest, Melee attacks of 2 or greater are +1 damage.",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/devastator-fire-lightning/hand-of-steel",
+      "name": "Hand of Steel",
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, if you throw a packet and miss your target, you can instead convert that spell to a melee attack and use it without additional cost. If you use another called spell or melee attack before you use the converted spell, the converted spell is lost. Converted spells are also lost after a Long Rest.",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/devastator-fire-lightning/summon-to-your-blade",
+      "name": "Summon to your Blade",
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can make an 'Agony by Will' attack by packet or melee.",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/devastator-fire-lightning/channel-will",
+      "name": "Channel Will",
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)",
+      "thread": false,
+      "verbal": "Agony by Will"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Spend one Attribute to make a Short Destroy attack by packet or melee.",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/devastator-fire-lightning/channel-flames",
+      "name": "Channel Flames",
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)",
+      "thread": false,
+      "verbal": "Short Destroy by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Three times per event, you may make a melee attack or packet attack of 6 damage by Wind.",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/devastator-fire-lightning/channel-storm",
+      "name": "Channel Storm",
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)",
+      "thread": false,
+      "verbal": "6 Damage by Wind"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Shocker - spend 1 Attribute to gain 1 packet attack of 5 damage. or Stunner - spend 1 Attribute to gain one packet attack of Weakness.",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/grenadier-fire-air/lightning-ammunition",
+      "name": "Lightning Ammunition",
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)",
+      "thread": false,
+      "verbal": "5 Damage by Lightning' or 'Weakness by Lightning"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Flamethrower - spend 1 Attribute to gain 2 packet attacks of 3 damage. or Burn - spend 1 Attribute to gain one packet attack of Agony.",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/grenadier-fire-air/fire-ammunition",
+      "name": "Fire Ammunition",
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)",
+      "thread": false,
+      "verbal": "3 damage by Fire' or 'Agony by Fire"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Shardthrower - spend 1 Attribute to gain 4 packet attacks of 2 damage. or Shatter - spend 1 Attribute to gain one packet attack of Maim.",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/grenadier-fire-air/earth-ammunition",
+      "name": "Earth Ammunition",
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)",
+      "thread": false,
+      "verbal": "2 damage by Earth' or 'Maim by Earth"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Icy Surface - spend 1 Attribute to gain a packet attack of Slow. or Shatter - spend 1 Attribute to gain one packet attack of Short Paralyze.",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/grenadier-fire-air/ice-ammunition",
+      "name": "Ice Ammunition",
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)",
+      "thread": false,
+      "verbal": "Slow by Ice' 'Short Paralyze by Ice"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You may now have two ammunitions active at once. Choose which two from the ammunition types you know at the start of the event. During the event, you can switch one or both ammunitions after a minute of roleplay.",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/grenadier-fire-air/double-barrel",
+      "name": "Double Barrel",
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Attribute to instantly change one active Elemental Ammunition without the need for one minute of roleplay.",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/grenadier-fire-air/shift-loads",
+      "name": "Shift Loads",
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)",
+      "thread": false,
+      "verbal": "Imbue <Element> to self"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you can use the effects of one Elemental Ammunition you know with the Trait of another you also know. For example, you can have Ice Ammunition loaded, but do the effects by Lightning. This effect ends at the end of your next long rest.",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/grenadier-fire-air/twisted-projector",
+      "name": "Twisted Projector",
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Your Projector is built in a way that makes it immune to disarm or reduces destroy effects to short destroy. Additionally, twice per Long Rest, you may refresh your quiver with 10 seconds of Rest.",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/grenadier-fire-air/well-made-device",
+      "name": "Well-made Device",
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)",
+      "thread": false,
+      "verbal": "No Effect' or 'Reduce to short destroy"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You gain the ability to do a '4 Damage by Thorns' missile attack with a bow or crossbow.",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/naturalist-water-air/thorn-arrow",
+      "name": "Thorn Arrow",
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Your called damage missile attacks (archery only) do damage by thorns. Attacks by thorns do +1 damage.",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/naturalist-water-air/wild-fletching",
+      "name": "Wild Fletching",
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You can use arrows to cast healing or cure effect. If you miss with a healing packet, you can spend 10 seconds to regain the effect. If you use another skill before you Rest, the missed one is lost.",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/naturalist-water-air/curative-bolt",
+      "name": "Curative Bolt",
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Your healing effects by \"Salve\" are +1.",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/naturalist-water-air/shade-of-the-forest",
+      "name": "Shade of the Forest",
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can create a natural salve to Heal yourself or your companions.",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/naturalist-water-air/healing-ointment",
+      "name": "Healing Ointment",
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)",
+      "thread": false,
+      "verbal": "Heal 4 by Salve"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, you can call upon the strength of the forest and gain 10 effects of \"Heal 3 by Salve,\" Cure 'Slow by Salve,' or arrows of \"3 Damage by Thorns.\"",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/naturalist-water-air/call-forth-the-forest",
+      "name": "Call Forth the Forest",
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)",
+      "thread": false,
+      "verbal": "See description"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "After a Long Rest, your bow is enchanted, and you can resist the first two strikes against it that would require you to restring your bow. When your bow is struck call out \"Resist.\" Additionally, once per Long Rest if you can touch a tree, you can refresh your quiver with 10 seconds of Rest.",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/naturalist-water-air/living-bow",
+      "name": "Living Bow",
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)",
+      "thread": false,
+      "verbal": "Resist"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, touch a tree and gain a special missile attack that does '6 Damage by Thorns.'",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "id": "excellencies/naturalist-water-air/natures-touch",
+      "name": "Nature's Touch",
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)",
+      "thread": false,
+      "verbal": "6 Damage by Thorns"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "When Centered, spend 1 Attribute for one heal 2. You can refresh the heal 2 twice with 10 sec of roleplay.",
+      "group": "Ordinator (Water / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/ordinator-water-earth/continuous-healing",
+      "name": "Continuous Healing",
+      "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)",
+      "thread": false,
+      "verbal": "Heal 2 by Water"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You gain two additional refreshes when you use the Skills Continuous Protection and Continuous Healing. You can purchase this skill twice (for a total increase of 4 refreshes.)",
+      "group": "Ordinator (Water / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/ordinator-water-earth/extended-healing",
+      "name": "Extended Healing",
+      "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "When Centered, spend 1 Attribute to 'Grant 2 Protection.' You can refresh this skill once with 10 sec of roleplay.",
+      "group": "Ordinator (Water / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/ordinator-water-earth/continuous-protection",
+      "name": "Continuous Protection",
+      "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant 2 Protection by Water"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Twice per event, you can forego the roleplay requirement to refresh a skill.",
+      "group": "Ordinator (Water / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/ordinator-water-earth/instantaneous-casting",
+      "name": "Instantaneous Casting",
+      "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)",
+      "thread": false,
+      "verbal": "Imbue by Earth"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, spend 1 Attribute to be instantly Centered.",
+      "group": "Ordinator (Water / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/ordinator-water-earth/instantaneous-centering",
+      "name": "Instantaneous Centering",
+      "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant [Centered]"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you restore your Centering, you can spend an Attribute to 'Heal all to self.'",
+      "group": "Ordinator (Water / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/ordinator-water-earth/stand-firm-against-the-flow",
+      "name": "Stand Firm against the Flow",
+      "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)",
+      "thread": false,
+      "verbal": "Heal all to self"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, increase the effect of Continuous Healing by 3.",
+      "group": "Ordinator (Water / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/ordinator-water-earth/greater-healing",
+      "name": "Greater Healing",
+      "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "When casting beneficial effects, you may either have a shield on your arm, or a shield on your arm and a one-handed weapon tucked beneath the shield arm.",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/paladin-water-ice/shield-of-protection",
+      "name": "Shield of Protection",
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "When you use this Skill, you gain one packet effect you can only use on yourself and a second you can only use on another. If you invoke this Skill a second time, and have not used both packet effects, you lose the unused effects of the first casting.",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/paladin-water-ice/share-the-bounty",
+      "name": "Share the Bounty",
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)",
+      "thread": false,
+      "verbal": "Heal 2 by Water"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you use 'Share the Bounty' you gain a 2nd packet healing effect to use on someone else.",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/paladin-water-ice/overflowing-bounty",
+      "name": "Overflowing Bounty",
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "3 times per event, you can Heal an ally by their name.",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/paladin-water-ice/companion-blessing",
+      "name": "Companion Blessing",
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)",
+      "thread": false,
+      "verbal": "By your name, <name> Heal"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can use a touch packet to cure a Maim.",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/paladin-water-ice/restore-limb",
+      "name": "Restore Limb",
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)",
+      "thread": false,
+      "verbal": "Cure Maim by Water"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can use a touch packet to cure a Root.",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/paladin-water-ice/free-the-entrapped",
+      "name": "Free the entrapped",
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)",
+      "thread": false,
+      "verbal": "Cure Root by Water"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, you can Grant a 'Guard Physical' to yourself and a second 'Guard Physical' to another.",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/paladin-water-ice/protection-from-blades",
+      "name": "Protection from blades",
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)",
+      "thread": false,
+      "verbal": "Grant Guard Physical"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, increase the effect of Share the Bounty to a 'Heal 5 by Water.'",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/paladin-water-ice/greater-healing",
+      "name": "Greater Healing",
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)",
+      "thread": true,
+      "verbal": "Heal 5 by Water"
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You can craft alchemical substances of the venom variety (blade and missile venoms). Each venom has a unique cost in coin, components and/or attributes. You spend the requirements when you craft the item not when you invoke them.",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/poison-blade-water-lightning/craft-blade-venoms",
+      "name": "Craft Blade Venoms",
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can craft alchemical substances of the elixir variety (healing and curative). Each elixir has a unique cost in coin, components and/or attributes. You spend the requirements when you craft the item not when you invoke them",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/poison-blade-water-lightning/craft-elixirs",
+      "name": "Craft elixirs",
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You are able to mix a quick poison attack to affix to your blade.",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/poison-blade-water-lightning/quick-toxin",
+      "name": "Quick Toxin",
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)",
+      "thread": false,
+      "verbal": "Grant Melee Attack to self, 5 Damage by Poison"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Your weapon has a lingering toxin on it, and you can convert all melee attacks you make to Poison. With your knowledge of venom for use with blades, your crafted elixirs, and healing skills from this header that are elixirs, are +1 in effect.",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/poison-blade-water-lightning/lingering-venom",
+      "name": "Lingering Venom",
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)",
+      "thread": true,
+      "verbal": "…by Poison"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "venom as your base. With your knowledge of venom for use with blades, your crafted elixirs, and healing skills from this header that are elixirs, are +1 in effect.",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/poison-blade-water-lightning/healing-venom",
+      "name": "Healing Venom",
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can mix a quick elixirs effect to heal yourself or your companions.",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/poison-blade-water-lightning/quick-elixir",
+      "name": "Quick Elixir",
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)",
+      "thread": false,
+      "verbal": "Grant Touch Packet to self, Heal 4 by Alchemy"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Twice per event, you can cast off a metabolic effect by your exposure to toxic substances.",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/poison-blade-water-lightning/metabolize",
+      "name": "Metabolize",
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)",
+      "thread": false,
+      "verbal": "Purge Metabolic"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, if you are affected by a Poison effect, you can absorb the effect and instead 'Heal 2 Damage.'",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/poison-blade-water-lightning/poison-blood",
+      "name": "Poison Blood",
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)",
+      "thread": false,
+      "verbal": "Absorb and Heal 2 to self"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Make a missile attack for 4 damage.",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/retributor-air-ice/strike-first",
+      "name": "Strike First",
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)",
+      "thread": false,
+      "verbal": "4 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you take Vitality damage, your next called damage missile attack is +2 damage.",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/retributor-air-ice/bloody-arrow",
+      "name": "Bloody Arrow",
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Twice per Long Rest, when struck by a damage attack, you can store that attack and return it as a missile attack as your next attack just calling the damage, not the trait. If you make another attack before you use this one, the stored attack is lost.",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/retributor-air-ice/capture-momentum",
+      "name": "Capture Momentum",
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)",
+      "thread": false,
+      "verbal": "See Description"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "You have +1 Vitality when wielding a bow.",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/retributor-air-ice/fit-combatant",
+      "name": "Fit Combatant",
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Gain +2 to the first healing spell or Skill you use after a short rest.",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/retributor-air-ice/healthy",
+      "name": "Healthy",
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You take a moment to heal your own wounds.",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/retributor-air-ice/return-to-the-fray",
+      "name": "Return to the Fray",
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)",
+      "thread": false,
+      "verbal": "Heal 3 to self by Ice"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, you can make an archery attack of Short Weakness, and, once it lands and is acknowledged, Short Weakness to self.",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/retributor-air-ice/cost-of-blood",
+      "name": "Cost of Blood",
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)",
+      "thread": false,
+      "verbal": "Short Weakness"
+    },
+    {
+      "attribute": {
+        "kind": "blank",
+        "raw": ""
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per event, reflect a missile attack.",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "id": "excellencies/retributor-air-ice/duel-ender",
+      "name": "Duel Ender",
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)",
+      "thread": false,
+      "verbal": "Reflect"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Make a missile attack for 3 damage.",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/sirocco-air-earth/dual-arrows",
+      "name": "Dual Arrows",
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)",
+      "thread": false,
+      "verbal": "3 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When Centered, you get an extra attack for any of the skills \"Dual Arrows,\" \"Serrated Arrow,\" \"Piercing Arrow,\" or \"Bullseye.\"",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/sirocco-air-earth/ready-to-fire",
+      "name": "Ready to Fire",
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "While Centered, called damage archery attacks do +1 damage.",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/sirocco-air-earth/set-your-feet",
+      "name": "Set your feet",
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Shoot an arrow to cause your enemy pain. This skill counts as having multiple attacks for the purpose of Thread Skills that grant additional attacks.",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/sirocco-air-earth/serrated-arrow",
+      "name": "Serrated Arrow",
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)",
+      "thread": true,
+      "verbal": "Agony"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, make a damaging archery attack. This skill counts as having multiple attacks for the purpose of Thread Skills that grant additional attacks.",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/sirocco-air-earth/piercing-arrow",
+      "name": "Piercing Arrow",
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)",
+      "thread": true,
+      "verbal": "5 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, make a large attack at your opponent. This effect counts as having multiple attacks for the purpose of Thread Skills that grant additional attacks.",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/sirocco-air-earth/bullseye",
+      "name": "Bullseye",
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)",
+      "thread": true,
+      "verbal": "8 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "If you are centered, spend an attribute to immediately refresh your quiver.",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/sirocco-air-earth/instant-fletching",
+      "name": "Instant Fletching",
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)",
+      "thread": false,
+      "verbal": "Refresh Quiver"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, if Centered, say \"Restring bow\" to instantly restring your bow. You may do so in combat.",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/sirocco-air-earth/instant-restring",
+      "name": "Instant Restring",
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)",
+      "thread": false,
+      "verbal": "Restring bow"
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Armaments are devices which can cause damage via projectiles. Each Armament has a unique cost in coin, components, and/or Attributes. You spend the cost when you create the item not when you invoke it.",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tinkerer-universal/craft-armament",
+      "name": "Craft Armament",
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Defensive Implements protect from damage and effects. Each Implement has a unique cost in coin, components, and/or Attributes. You spend the cost when you create the item not when you invoke it.",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tinkerer-universal/craft-defensive-implement",
+      "name": "Craft Defensive Implement",
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Utility Devices can be used for effects such as opening locks, holding doors closed, getting over pits, and other such effects. Each device has a unique cost in coin, components, and/or Attributes. You spend the cost when you create the item not when you invoke it.",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tinkerer-universal/craft-utility-device",
+      "name": "Craft Utility Device",
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "see-formula",
+        "raw": "See Formula"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Weapon Enhancements improve bows and crossbows.",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tinkerer-universal/craft-weapon-enhancement",
+      "name": "Craft Weapon Enhancement",
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Damage effects you create with Tinkering are increased by 1.",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tinkerer-universal/skilled-craftsmanship",
+      "name": "Skilled Craftsmanship",
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Twice per event, you can create a tinkered device on the field without the need for coin or attributes. This device cannot be given to another and fails at your next Long Rest.",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tinkerer-universal/makeshift-creation",
+      "name": "Makeshift Creation",
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)",
+      "thread": false,
+      "verbal": "Imbue by Tinkering"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, when you use a tinkered device which has multiple uses, you gain an additional effect from it.",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tinkerer-universal/get-the-most-out-of-it",
+      "name": "Get the most out of it",
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "expend",
+        "raw": "Expend one tinkered item"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, when you are hit by a melee, missile, or packet attack, you can expend a charge from a tinkered item to Resist the effect as if you grabbed the item and used it to block the attack.",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tinkerer-universal/just-use-anything",
+      "name": "Just use anything",
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)",
+      "thread": false,
+      "verbal": "Resist"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "Fight with an offensive one handed weapon in one hand and use a bow to block attacks in your other hand. All skills in the Excellency can be melee or missile. (This skill has a pre-requisite of the Archery skill.)",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tornado-air-lightning/bow-and-sword",
+      "name": "Bow and Sword",
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You can attack your foes with a basic attack",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tornado-air-lightning/simple-strike",
+      "name": "Simple Strike",
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)",
+      "thread": false,
+      "verbal": "4 Damage"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When wielding both a one handed weapon and a Bow, you gain +1 damage to all melee attacks.",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tornado-air-lightning/specialized-in-bow-and-sword",
+      "name": "Specialized in Bow and Sword",
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Spend a point of Attribute to gain three '2 Damage' attacks.",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tornado-air-lightning/flowing-strikes",
+      "name": "Flowing Strikes",
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)",
+      "thread": false,
+      "verbal": "2 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Spend a point of Attribute to gain an attack of Agony.",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tornado-air-lightning/subduing-blow",
+      "name": "Subduing Blow",
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)",
+      "thread": false,
+      "verbal": "Agony"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Short Rest, you can spend 10 seconds of Rest to refresh your quiver.",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tornado-air-lightning/ready-to-fire",
+      "name": "Ready to Fire",
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)",
+      "thread": true,
+      "verbal": "Refresh Quiver"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, make an attack for 8 damage.",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tornado-air-lightning/strike-true",
+      "name": "Strike True",
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)",
+      "thread": false,
+      "verbal": "8 Damage"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Fortitude",
+        "raw": "1 Fortitude"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "Once per Long Rest, make an attack for Short Destroy.",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "id": "excellencies/tornado-air-lightning/crushing-strike",
+      "name": "Crushing Strike",
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)",
+      "thread": false,
+      "verbal": "Short Destroy Weapon"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "kind": "included"
+      },
+      "description": "You gain the ability to grant a fiery packet attack to yourself or companions. When you are Centered, the strength of this attack doubles.",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/volcano-fire-earth/lava-burst",
+      "name": "Lava Burst",
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant Packet Attack 2/4 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "1 Prowess"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You gain the ability to Grant a fiery melee attack to yourself or companions. When you are Centered, the strength of this attack doubles.",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/volcano-fire-earth/lava-blade",
+      "name": "Lava Blade",
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant Melee Attack 2/4 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Insight",
+        "raw": "1 Insight"
+      },
+      "cost": {
+        "cp": 4,
+        "kind": "cp"
+      },
+      "description": "You gain the ability to grant a fiery missile attack to yourself or companions. When you are Centered, the strength of this attack doubles.",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/volcano-fire-earth/lava-shard",
+      "name": "Lava Shard",
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant Missile Attack 2/4 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "When you use a packet attack which came from a Grant effect, you can apply Thread Skills to the use of the grant effect as if it was a skill. If you miss with a Grant packet attack, and you are Centered, you can expend your Center to regain the packet attack. You must use the packet attack as your next called attack or it is lost.",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/volcano-fire-earth/lava-flows",
+      "name": "Lava Flows",
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)",
+      "thread": true,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "If you miss with a packet attack, and you are Centered, you can expend your Center to regain the packet attack. You must use the packet attack as your next called attack or it is lost.",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/volcano-fire-earth/refocus",
+      "name": "Refocus",
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)",
+      "thread": false,
+      "verbal": null
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
+        "name": "Prowess",
+        "raw": "Prowess"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Spend a point of Prowess to cast a Root effect.",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/volcano-fire-earth/hardened-lava",
+      "name": "Hardened Lava",
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)",
+      "thread": false,
+      "verbal": "Root by Earth"
+    },
+    {
+      "attribute": {
+        "kind": "none",
+        "raw": "N/A"
+      },
+      "cost": {
+        "cp": 2,
+        "kind": "cp"
+      },
+      "description": "Once per event, gain 4 uses of \"Grant Packet Attacks, 5 Damage by Fire\"",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/volcano-fire-earth/barrage-of-lava",
+      "name": "Barrage of Lava",
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)",
+      "thread": false,
+      "verbal": "Grant Packet Attack, 5 Damage by Fire"
+    },
+    {
+      "attribute": {
+        "kind": "thread",
+        "raw": "Thread Skill"
+      },
+      "cost": {
+        "cp": 3,
+        "kind": "cp"
+      },
+      "description": "Once per long rest, when you Grant an attack to yourself, you can give the same Grant to an ally",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "id": "excellencies/volcano-fire-earth/split-lava-flow",
+      "name": "Split Lava Flow",
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)",
+      "thread": true,
+      "verbal": "See description"
+    },
+    {
+      "attribute": {
+        "amount": 1,
+        "kind": "spend",
         "name": "Fortitude",
         "raw": "1 Fortitude"
       },
@@ -4052,6 +8543,246 @@
       "line": 112,
       "rows": 9,
       "source": "/mechanics/skills/domains/#water"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Ballista",
+      "groupKind": "Excellency",
+      "line": 18,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#ballista"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Stalker",
+      "groupKind": "Excellency",
+      "line": 31,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#stalker"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Forge fire",
+      "groupKind": "Excellency",
+      "line": 46,
+      "rows": 7,
+      "source": "/mechanics/skills/excellencies/#forge-fire"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Locus",
+      "groupKind": "Excellency",
+      "line": 58,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#locus"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Inferno",
+      "groupKind": "Excellency",
+      "line": 73,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#inferno"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Slayer",
+      "groupKind": "Excellency",
+      "line": 86,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#slayer"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Bastion",
+      "groupKind": "Excellency",
+      "line": 101,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#bastion"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Defender",
+      "groupKind": "Excellency",
+      "line": 116,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#defender"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Dervish",
+      "groupKind": "Excellency",
+      "line": 131,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#dervish"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Hurricane",
+      "groupKind": "Excellency",
+      "line": 144,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#hurricane"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Tempest (Lightning)",
+      "groupKind": "Excellency",
+      "line": 157,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#tempest-(lightning)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Awakener",
+      "groupKind": "Excellency",
+      "line": 172,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#awakener"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Wellspring",
+      "groupKind": "Excellency",
+      "line": 185,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#wellspring"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Alchemist (Water / Fire)",
+      "groupKind": "Excellency",
+      "line": 204,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Arcaneer (Universal)",
+      "groupKind": "Excellency",
+      "line": 219,
+      "rows": 9,
+      "source": "/mechanics/skills/excellencies/#arcaneer-(universal)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Armorsmith (Ice / Earth)",
+      "groupKind": "Excellency",
+      "line": 233,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Beguiler (Fire / Ice)",
+      "groupKind": "Excellency",
+      "line": 246,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Bladesmith (Lightning / Earth)",
+      "groupKind": "Excellency",
+      "line": 259,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Combatant (Lightning / Ice)",
+      "groupKind": "Excellency",
+      "line": 272,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Devastator (Fire / Lightning)",
+      "groupKind": "Excellency",
+      "line": 285,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Grenadier (Fire / Air)",
+      "groupKind": "Excellency",
+      "line": 302,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Naturalist (Water / Air)",
+      "groupKind": "Excellency",
+      "line": 315,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Ordinator (Water / Earth)",
+      "groupKind": "Excellency",
+      "line": 328,
+      "rows": 7,
+      "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Paladin (Water / Ice)",
+      "groupKind": "Excellency",
+      "line": 340,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Poison Blade (Water / Lightning)",
+      "groupKind": "Excellency",
+      "line": 355,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Retributor (Air / Ice)",
+      "groupKind": "Excellency",
+      "line": 368,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Sirocco (Air / Earth)",
+      "groupKind": "Excellency",
+      "line": 381,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Tinkerer (Universal)",
+      "groupKind": "Excellency",
+      "line": 396,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#tinkerer-(universal)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Tornado (Air / Lightning)",
+      "groupKind": "Excellency",
+      "line": 409,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)"
+    },
+    {
+      "file": "excellencies.md",
+      "group": "Volcano (Fire / Earth)",
+      "groupKind": "Excellency",
+      "line": 422,
+      "rows": 8,
+      "source": "/mechanics/skills/excellencies/#volcano-(fire-%2F-earth)"
     },
     {
       "file": "expressions.md",

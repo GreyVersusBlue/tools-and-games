@@ -332,9 +332,13 @@ export function priceBuild(input, catalog) {
   charge(v, domainSkills.filter(isPurchase), 7);
 
   // --- Steps 5 and 6: Excellencies and Expressions -------------------------
-  // The Excellencies chapter is a 34-word stub with no conversion behind it
-  // (BACKLOG.md Q33), so there is no list to pick from: an Excellency is a name
-  // the player types, priced by its tier and checked against the hidden table.
+  // An Excellency is still a name the player types, priced by its tier and
+  // checked against the hidden table. The chapter it would be picked from is no
+  // longer a stub — Phase 6 ported all 30 Excellencies and their 239 skills out
+  // of the PDF — but wiring the list into this module means pricing the skills
+  // inside a chosen Excellency, and the rulebook's rules for that are not the
+  // ones this function already implements. Left as a free-text name until that
+  // is designed; see BACKLOG.md.
   const excellencies = list(build.excellencies).map((name) => String(name).trim()).filter(Boolean);
   const expressionIds = list(build.expressions);
   const expressions = [];

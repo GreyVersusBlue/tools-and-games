@@ -34,6 +34,13 @@ start with 50 CP and can earn more through play, character history
 submissions, and volunteering. See
 [Building a Character](/mechanics/building-a-character/).
 
+## Centering
+
+The state a character enters by completing a Short Rest, and loses the moment
+they step away from the spot where they took it. Earth Domain skills and the
+Excellencies aligned to them are built on it. See
+[Adventurer Skills](/mechanics/skills/).
+
 ## Convocation
 
 An organized body of faith that grew out of the Desuetude Pronouncement,
@@ -81,6 +88,12 @@ University — that grounds a character's skills. See
 [Peoples of Aeledd](/lore/peoples/) and
 [Foundations](/mechanics/skills/foundations/).
 
+## Flurry
+
+The limit on consecutive attacks: three melee swings that make contact before
+stepping out of range to reset, and three packets before three seconds of
+visible roleplay. See [Core Rules](/mechanics/core-rules/).
+
 ## The Genesori
 
 The one divine pantheon of Aeledd. Each Genesori took a piece of creation as
@@ -101,11 +114,40 @@ The network that allows Threshold travel between the nations of Aeledd.
 Broken when Garioch struck Rues from the world; travel was rediscovered in
 133 AF. See [Travel & Commerce](/lore/travel-commerce/).
 
+## Long Rest
+
+Five minutes of rest taken in a Place of Peace. An 'Imbue Long Rest' effect
+grants it without the time. See [Adventurer Skills](/mechanics/skills/).
+
+## Packet
+
+A small bean bag filled with bird seed, thrown or touched to a target to
+deliver a ranged effect. Packets cannot be Disarmed or Destroyed, and they
+are visible in-game. See [Core Rules](/mechanics/core-rules/).
+
+## Place of Peace
+
+An area with no general combat in it — usually the main town — where a Long
+Rest can be taken. A tag or a spirit can mark one elsewhere. See
+[Adventurer Skills](/mechanics/skills/).
+
 ## The Realms
 
 The four planes of existence: Aeledd (the mortal world), the Shade, the
 Void, and the Divine — each home to its own noteworthy beings. See
 [The Realms](/lore/realms/).
+
+## Short Rest
+
+One minute without using game skills, and what grants Centering. Damage does
+not interrupt it unless an active skill is used to resist. See
+[Adventurer Skills](/mechanics/skills/).
+
+## Surge
+
+The call that resets a packet flurry through a skill rather than through
+roleplay, letting a caster throw more than three packets in a row. See
+[Adventurer Skills](/mechanics/skills/).
 
 ## Thread Skill
 
@@ -118,10 +160,29 @@ single skill use. See [Adventurer Skills](/mechanics/skills/).
 A fixed site that allows travel across the Lattice between nations. See
 [Travel & Commerce](/lore/travel-commerce/).
 
+## Trait
+
+A label on a character, an attack, a defense, or an item that says what
+flavor it carries and which defenses answer it. A character's race is always
+a trait. See [Core Rules](/mechanics/core-rules/).
+
 ## Vargoth Empire
 
 A rising threat that proclaimed itself a nation in 124 AW after destroying
 Valarmore and attacking the Farthest Star conference.
+
+## Verbal
+
+The short out-of-game phrase called when an ability is used, in the form
+"[Effect] by Trait" — "5 Damage by Fire", "Paralyze by Poison". It must be
+finished before a packet or missile leaves the hand, and called even under
+Silence. See [Core Rules](/mechanics/core-rules/).
+
+## Vitality
+
+How much damage a character can take before collapsing. At zero they fall
+unconscious, stable or unstable depending on what put them down. See
+[Core Rules](/mechanics/core-rules/).
 
 ## The Zenith, the Chosen, and the Exemplars
 

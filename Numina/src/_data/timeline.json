@@ -4,7 +4,8 @@
     "date": "1450 AF",
     "era": "Before the Age of Works",
     "title": "Fate is destroyed",
-    "summary": "Thinking mortals become purposed and the world is thrown into imbalance."
+    "summary": "Thinking mortals become purposed and the world is thrown into imbalance.",
+    "href": "/lore/realms/"
   },
   {
     "sort": -1400,
@@ -12,7 +13,9 @@
     "era": "Before the Age of Works",
     "title": "Garioch strikes Rues from the world",
     "summary": "Rues is isolated behind its barrier and the Lattice is broken.",
-    "nations": ["rues"],
+    "nations": [
+      "rues"
+    ],
     "href": "/lore/nations/rues/"
   },
   {
@@ -20,7 +23,11 @@
     "date": "182 AF",
     "era": "Before the Age of Works",
     "title": "The Night of Guardian's Glory",
-    "summary": "The renegade Zenith Ravvin makes a bid for divinity and is prevented."
+    "summary": "The renegade Zenith Ravvin makes a bid for divinity and is prevented.",
+    "nations": [
+      "rues"
+    ],
+    "href": "/lore/nations/rues/"
   },
   {
     "sort": -175,
@@ -28,7 +35,9 @@
     "era": "Before the Age of Works",
     "title": "The Great Rebalancing",
     "summary": "Death, Magic, and Purpose are brought into balance and protected from Corruption.",
-    "nations": ["rues"],
+    "nations": [
+      "rues"
+    ],
     "href": "/lore/nations/rues/"
   },
   {
@@ -53,7 +62,9 @@
     "era": "Age of Works",
     "title": "Nira's mark revealed in Spyndelmere",
     "summary": "Regent Berkeley Evers reveals Nira's mark and takes his seat on the Compass Rose.",
-    "nations": ["spyndelmere"],
+    "nations": [
+      "spyndelmere"
+    ],
     "href": "/lore/nations/spyndelmere/"
   },
   {
@@ -62,7 +73,9 @@
     "era": "Age of Works",
     "title": "An Empress crowned on Rues",
     "summary": "Evenia Mercurio Pentratheron is crowned Empress of the Mecurian Empire.",
-    "nations": ["rues"],
+    "nations": [
+      "rues"
+    ],
     "href": "/lore/nations/rues/"
   },
   {
@@ -71,7 +84,9 @@
     "era": "Age of Works",
     "title": "Valaq is abandoned in Merrigor",
     "summary": "Valaq is abandoned to the forest and Lasaldi is named the seventh city in its place.",
-    "nations": ["merrigor"],
+    "nations": [
+      "merrigor"
+    ],
     "href": "/lore/nations/merrigor/"
   },
   {
@@ -88,7 +103,9 @@
     "era": "Age of Works",
     "title": "A Diamondback skin is found in T'barris",
     "summary": "The discovery leads to the elevation of King Y'vain Pelle.",
-    "nations": ["tbarris"],
+    "nations": [
+      "tbarris"
+    ],
     "href": "/lore/nations/tbarris/"
   },
   {
@@ -96,7 +113,11 @@
     "date": "112 AW",
     "era": "Age of Works",
     "title": "Valarmore is destroyed",
-    "summary": "The Vargoth invasion claims the city of Valarmore."
+    "summary": "The Vargoth invasion claims the city of Valarmore.",
+    "nations": [
+      "five-duchies"
+    ],
+    "href": "/lore/nations/five-duchies/"
   },
   {
     "sort": 113,
@@ -104,7 +125,9 @@
     "era": "Age of Works",
     "title": "Eviar Leonate elected Crown Prince of Ophrailes",
     "summary": "Eviar Leonate is elected Crown Prince of Ophrailes.",
-    "nations": ["ophrailes"],
+    "nations": [
+      "ophrailes"
+    ],
     "href": "/lore/nations/ophrailes/"
   },
   {
@@ -113,7 +136,9 @@
     "era": "Age of Works",
     "title": "Pestilence wracks Konnigstrava",
     "summary": "Disease sweeps the already-struggling kingdom.",
-    "nations": ["konnigstrava"],
+    "nations": [
+      "konnigstrava"
+    ],
     "href": "/lore/nations/konnigstrava/"
   },
   {
@@ -122,7 +147,9 @@
     "era": "Age of Works",
     "title": "Twin floods sweep Aluvair",
     "summary": "Two major floods in rapid succession reshape the alluvial plain.",
-    "nations": ["aluvair"],
+    "nations": [
+      "aluvair"
+    ],
     "href": "/lore/nations/aluvair/"
   },
   {
@@ -131,15 +158,25 @@
     "era": "Age of Works",
     "title": "The Farthest Star conference is attacked",
     "summary": "Called at Fortune's Bend to discuss the Vargoth threat, the conference is attacked by the Vargoth. The current campaign begins.",
-    "href": "/lore/world/"
+    "href": "/lore/notable-figures/"
   },
   {
     "sort": 124,
     "date": "124 AW",
     "era": "Age of Works",
-    "title": "The Vargoth Empire proclaims itself — and Eltiel falls",
-    "summary": "The Vargoth seek diplomatic relations as a nation; Eltiel falls suddenly without explanation and mists blanket what was once the Skyways.",
-    "nations": ["mists-of-eltiel"],
+    "title": "The Vargoth Empire proclaims itself a nation",
+    "summary": "The Vargoth seek diplomatic relations with the other nations of Aeledd.",
+    "href": "/lore/glossary/#vargoth-empire"
+  },
+  {
+    "sort": 124,
+    "date": "124 AW",
+    "era": "Age of Works",
+    "title": "Eltiel falls and the Skyways are lost",
+    "summary": "Eltiel falls suddenly without explanation and mists blanket what was once the Skyways.",
+    "nations": [
+      "mists-of-eltiel"
+    ],
     "href": "/lore/nations/mists-of-eltiel/"
   }
 ]

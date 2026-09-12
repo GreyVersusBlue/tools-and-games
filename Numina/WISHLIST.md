@@ -1,22 +1,20 @@
 # Numina — Feature Wishlist
 
-**Status: Phase 4 shipped on 2026-09-12 (PR #251); the first open phase is
-Phase 5 — Come play, on Claude Opus 5, a half-session row.** The site is
-built, deployed and green — 56 pages, 136,410 words of source markdown, 385
-assertions in `npm test` and 32 more in the browser suite, CI on every PR
-touching `Numina/**` in two jobs — and the August 2026 audit's engineering,
-sharing/SEO, A5 cross-linking and **all of section B** are done; the rest of
-its content section is not. `src/_data/skills.json`
-holds the 189 skills, `test/skills.test.mjs` pins it, and two build transforms
-now read it: every skill row has an anchor, and the first mention of every
-glossary term, nation and skill name in a chapter links to its page. Two prompt
-batches ran before this file existed, and their prompt files are retired; the
-audit label each item answered is in `HISTORY.md`. Between them: the
-new-player rewrite, the
-source-book deploy fix, mobile sidebar and map legibility, favicon and Open
-Graph and sitemap, the CI job, and the build-time contents with heading
-permalinks. What they did not touch is the audit's sections A and B, and that
-is where this file starts.
+**Status: Phases 5 and 6 shipped on 2026-09-12; the first open phase is
+Phase 7 — The print packet and the offline kit, on Claude Opus 5, a
+one-session row.** The site is built, deployed and green — 57 pages, 394
+assertions in `npm test` and 32 more in `test/a11y/`'s browser suite, CI on
+every PR touching `Numina/**` in two jobs — and the
+August 2026 audit's engineering, sharing/SEO, A5 cross-linking, all of section
+B, and A2, A3, A6 and A7 are done. `src/_data/skills.json` holds **428 skills
+in 59 tables** — the Excellencies chapter went in whole in Phase 6, 30 of them
+and 239 skills, straight out of the PDF because nothing had ever converted it
+— and `test/skills.test.mjs` pins it. Two build transforms read it: every
+skill row has an anchor, and the first mention of every glossary term, nation
+and skill name in a chapter links to its page. Two prompt batches ran before
+this file existed, and their prompt files are retired; the audit label each
+item answered is in `HISTORY.md`. What is left of the audit's content section
+is A1, A4 and A8, which Phases 7 and 8 carry.
 
 ## What it is
 
@@ -40,8 +38,8 @@ host in an `href`.
 
 What it is not: it holds no state, runs no application code beyond a
 seventeen-line theme toggle and two inline disclosure one-liners, and knows
-nothing about the *structure* of what it publishes. The rulebook's 189 skills
-live in 29 markdown tables across nine files, and to the build they are prose
+nothing about the *structure* of what it publishes. The rulebook's 428 skills
+live in 59 markdown tables across ten files, and to the build they are prose
 with pipes in it. Nothing can look up a skill, price a build, validate a
 prerequisite, or say what changed when the rulebook moved from v3.51 to
 v3.52. That is the largest thing missing, and arc one is about it.
@@ -54,7 +52,8 @@ Bottom-up, all paths relative to `Numina/`:
   deployed origin is written down, so a domain move is a one-line change),
   `nav.json` (sidebars and landing-page cards by hand — a second
   source of truth for titles and order that the smoke test guards rather than
-  fixes), `timeline.json` (17 dated events in 2 eras), `skills.json`
+  fixes), `timeline.json` (18 dated events in 2 eras, every row of the book's
+  Historical Timeline), `skills.json`
   (generated; see CONTENT-GUIDE) and `autolink.json` (the terms the
   cross-linker must not link, each with the collision it avoids).
 - **`eleventy.config.mjs`** (221 lines) — `PATH_PREFIX = "/Numina/"`, the
@@ -87,7 +86,7 @@ Bottom-up, all paths relative to `Numina/`:
   stay on a five-entry allowlist; Pagefind has at least as many fragments as
   `data-pagefind-body` pages; 16 nations reachable from the nations index;
   timeline `href`s resolve; every font the CSS names exists; canonical + OG +
-  twitter card on all 55 pages; the sitemap matches the built pages both
+  twitter card on all 57 pages; the sitemap matches the built pages both
   ways; every content page is in `nav.json`; no unexpected top-level entries.
 - **`.github/workflows/numina-ci.yml`** — on PRs touching `Numina/**`:
   `npm ci`, `npm run build`, `git diff --exit-code` against everything except
@@ -98,7 +97,7 @@ collection sorted rather than left in Eleventy's date order (file dates do
 not survive a git clone), and a CI story resting entirely on a second build
 producing no diff. The habit that breaks down is **data-not-code**:
 `timeline.json` is the only content the build can reason about. Everything
-else — 189 skills, 16 nations' frontmatter, every glossary term — is prose or
+else — 428 skills, 16 nations' frontmatter, every glossary term — is prose or
 hand-maintained duplication.
 
 ## Conventions a new builder must know
@@ -169,12 +168,13 @@ hand-maintained duplication.
   nowhere in `src/` or `source-material/markdown/`. A CP calculator cannot be
   written without them. Are they in the PDF's chart and the conversion
   dropped it, or genuinely unpublished?
-- **Should the Excellencies chapter be ported at all?**
-  `skills/excellencies.md` is 34 words of developer-facing stub and there is
-  no `source-material/markdown/skills/excellencies.md` — the one skills
-  chapter with no conversion behind it. Meanwhile
-  `hidden-excellencies-expressions.md` names 21 hidden ones openly. Withheld
-  deliberately, or just unconverted?
+- ~~**Should the Excellencies chapter be ported at all?**~~ **Answered by
+  Phase 6, 2026-09-12: just unconverted, and it is ported now** (locked #318).
+  The chapter is 16 pages of `rules-2026-v3.51.pdf`, printed in full with 30
+  Excellencies and 239 skills in the same five-column tables the rest of the
+  chapter uses. Nothing about it reads as withheld; there was simply no
+  `source-material/markdown/` file, which is a gap in the conversion and not a
+  decision by staff. The hidden table stays a separate, still-hidden thing.
 - **Do the eight nations with a blank `capital` have one?** Kindaria,
   Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach,
   Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are
@@ -184,9 +184,11 @@ hand-maintained duplication.
 - **Is the custom-domain move happening, and when?** README calls it a
   one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every
   absolute URL — but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`.
-  And does `numinalarp.com` serve HTTPS? `site.json` and
-  `quick-reference.md` both link `http://`; batch 1 asked and could not
-  verify from its sandbox either.
+  **And does `numinalarp.com` serve HTTPS?** Batch 1 could not verify from its
+  sandbox and neither could Phase 5, which was refused at the network egress
+  before a request left the box. The links stay `http://` until somebody with
+  a browser can say (locked #319); this half of the question needs one person
+  and one page load.
 - **Is a character builder welcome?** The footer says "Unofficial player
   reference", `expressions.md` sends players to NuminaRules@gmail.com to
   confirm a third-Expression build, and Excellency and Expression purchases
@@ -207,8 +209,8 @@ its files, not repeated here; add to this list rather than starting a second.
   smooth scroll had landed in batch 2.)
 - Zero cross-links in ported content → Phase 2. (~~189 skills unreadable by
   the build~~ and ~~no rulebook version diff~~ landed in Phase 1.)
-- `excellencies.md`'s live stub, 183-word `history.md`, 17-event timeline,
-  635-word glossary → Phase 6. No "come play" path → Phase 5.
+- ~~`excellencies.md`'s live stub, 183-word `history.md`, 17-event timeline,
+  635-word glossary~~ and ~~no "come play" path~~ all landed in Phases 5 and 6.
 
 **Unclaimed**
 - Four things the skill data shows that the prose hid (Phase 1, not fixed
@@ -220,6 +222,27 @@ its files, not repeated here; add to this list rather than starting a second.
   descriptions that begin mid-sentence, a conversion artefact from the PDF.
   Check each against `rules-2026-v3.51.pdf` and fix the markdown, then re-run
   the extractor.
+- **Three defects in the Excellencies chapter as the PDF prints them**, left
+  faithful and flagged rather than patched, the same call the four below got.
+  `Healing Venom` (Poison Blade) has a description that begins "venom as your
+  base." — the first line of the sentence is missing from the book, exactly like
+  `First Aid` and `Diagnose` below. `Shift Loads` (Grenadier) begins "Attribute
+  to instantly change" and is missing a "Spend 1". `Take Ground` (Combatant)
+  ends mid-clause on a comma. Check each against a printed copy and fix the
+  markdown, then re-run the extractor.
+- **Two more, smaller, in the same chapter.** `Hand out Weapons` (Bladesmith)
+  has a Verbal of "Grant Melee Attack 2 Damage" over a description that says
+  "Gain one use of 'Grant Melee Attack 3 Damage.'" — 2 or 3, the book says both.
+  `Reverse Protection` (Beguiler) says "For Physical, choose Force or Force."
+- **The timeline and `rues.md` spell the empire differently.** The book's
+  Historical Timeline row says "Mecurian Empire" and `lore/nations/rues.md` says
+  "Mercurian Empire". `timeline.json` carries the book's spelling. One of them
+  is a typo and the PDF is the place to settle which.
+- **The character builder still takes an Excellency as a typed name.** The
+  chapter it would pick from exists now (Phase 6), but offering the list means
+  pricing the skills inside a chosen Excellency, and `build-rules.js` does not
+  implement that. The comments in `build-rules.js` and `build-view.js` say so.
+  Wiring it up is a builder phase, not a content one.
 - `building-a-character.md` prints "Assign Your Attributes (Steps 8–10)"
   above "Choosing Skills (Steps 1–7)". The book's order, presumably, but it
   reads as a mistake.
@@ -228,8 +251,6 @@ its files, not repeated here; add to this list rather than starting a second.
   still named on the pages it points at.
 - `world.md` is 397 words for "The World of Aeledd", the first stop off the
   home page's second hero button.
-- The four landing pages have no `data-pagefind-body`, so 50 of 55 built
-  pages are indexed. Harmless, inconsistent. (Phase 5 fixes it in passing.)
 - `firebase.json` sets `no-cache` on `**/sw.js`. No service worker has ever
   existed. (Phase 7 would write one.)
 - `tools/social-card.mjs` needs a Playwright the project does not depend on
@@ -503,74 +524,67 @@ automated guard — it is a texture matching a texture, and the check would have
 to be a screenshot. Verified by eye, by inserting an `<hr>` into a page in the
 browser, because no Numina page renders one today.
 
-## Phase 5 — Come play
+## Phase 5 — Come play — DONE (PR #TBD)
 
-**A stranger can read 136,000 words about Aeledd and never learn that Numina
-is a real thing you can attend.**
+**A stranger could read 136,000 words about Aeledd and never learn that Numina
+is a real thing you can attend.** Audit A2 and A7, plus D4's `http://`.
 
-The two official links live in footer fine print, the registration host only
-inside FAQ and Quick Reference prose, and the home page opens with "Numina
-III · The Age of Works" — wonderful for a returning player, opaque to someone
-arriving from a search result. Audit A2 and A7, plus D4's `http://`.
+- [x] **One sentence under the tagline** in `src/index.njk`'s hero, in
+  `.hero__plain`: what a LARP is, and that this one meets in person.
+- [x] **A "Come play" partial**, `src/_includes/partials/come-play.njk`, on the
+  home page, the New to Numina landing page and the foot of
+  `mechanics/new-players.md` (a `comePlay: true` frontmatter flag and a hook in
+  `page.njk`, the same shape `showTimeline` already had). Three links, all of
+  them off `site.official.*` — the partial hardcodes no URL, and `smoke.mjs`
+  fails if it grows one. `site.official.registration` is the new key.
+  `new-players.md`'s "How to Join" lost its two duplicated bullets and now
+  points at the block.
+- [x] **Index the landing pages.** All four carry `data-pagefind-body` and a
+  `data-pagefind-meta` section now. 56 of 57 built pages are in the index; the
+  search page is the one that is out, and `smoke.mjs` asserts that it is the
+  only one.
+- [ ] **Fix the scheme.** Still `http://`, deliberately, and the reason is a
+  comment in `site.json` now rather than a checkbox here: locked decision #319.
+  The host is blocked at this sandbox's network egress, so the second session
+  in a row could not tell whether it answers on https. A `http://` link to a
+  host that redirects works; a `https://` link to a host that does not serve it
+  fails outright, so the safe reading wins until somebody can load it. That is
+  the whole of this phase that is not done.
 
-- [ ] **One sentence under the tagline** in `src/index.njk`'s hero: what a
-  LARP is, and that this one meets in person.
-- [ ] **A "Come play" partial** pointing at `site.official.website` for dates
-  and pricing, `discord.gg` for questions and `numina.lorelogic.info` for
-  registration, on the home page, the New to Numina landing page and the foot
-  of `mechanics/new-players.md`. Put the registration host in `site.json` so
-  it stops living in three prose paragraphs. No dates, no prices, no
-  registration mechanics in the markup — CONTENT-GUIDE's rule, and the reason
-  it exists is on record.
-- [ ] **Fix the scheme.** `site.json` and `quick-reference.md` both link
-  `http://www.numinalarp.com`. Check HTTPS, upgrade if it answers, leave a
-  comment saying why if it does not.
-- [ ] **Index the landing pages.** The four have no `data-pagefind-body`, so
-  a search for "join" or "NPC" cannot surface the page that answers it.
-  Adding it takes the index from 50 pages to 54 — the search page itself
-  stays out — and the smoke test's freshness check follows automatically.
+## Phase 6 — Excellencies, history, and the timeline — DONE (PR #TBD)
 
-*Leans on:* `src/index.njk`, `src/_data/site.json`, `new-to-numina/index.njk`,
-`mechanics/new-players.md`. *Build/output:* committed HTML wherever the block
-lands, plus a `site.json` key. *Model:* **Claude Opus 5** — copy and template
-wiring against links that already exist.
+**A sidebar link on every skills page led to 34 words telling the reader to
+consult CONTENT-GUIDE.md.** Audit A3 and A6.
 
-## Phase 6 — Excellencies, history, and the timeline
-
-**A sidebar link on every skills page leads to 34 words telling the reader to
-consult CONTENT-GUIDE.md.**
-
-Four thin spots, all named in audit A3 and A6, all content work under rules
-the guide already states. Excellencies is the urgent one: linked from the
-sidebar and every skills page, present in the search index, and addressed to
-a developer.
-
-- [ ] **Port Excellencies** — the one skills chapter with no
-  `source-material/markdown/` conversion behind it, so it comes out of
-  `rules-2026-v3.51.pdf` directly. Match `domains.md` and `expressions.md`
-  exactly (`###` per Excellency, then the five-column table) so Phase 1's
-  extractor takes it with no special case. If it is withheld instead (see
-  Questions), replace the stub with a player-facing note naming the rulebook
-  section and drop it from the search index.
-- [ ] **`history.md`** is 183 words for "A Brief History" of a world with
-  sixteen nations and a broken Lattice. Extend from the campaign book's own
-  history chapter, cross-link the nations and eras it names, leave the dated
-  events to the timeline.
-- [ ] **The timeline.** 17 events in 2 eras, which the guide invites
-  extending. Add events from the book's Historical Timeline with `nations`
-  slugs and `href`s so the dots color and "Read more" resolves — the smoke
-  test checks every `href` against a built page.
-- [ ] **The glossary earns its job.** 635 words for the site's designated
-  cross-link hub, and Phase 2's autolinker is only as good as its term list.
-  Add the terms the rules chapters use and it lacks.
-
-*Leans on:* `source-material/rules-2026-v3.51.pdf`, `campaign-book-2025.pdf`,
-`_data/timeline.json`, and CONTENT-GUIDE's provenance and spoiler rules —
-read them before the first paragraph, not after.
-*Build/output:* new committed pages and an extended `timeline.json`; if
-Phase 1 has landed, re-run the extractor and expect `skills.json` to grow.
-*Model:* **Claude Opus 5** — porting to a format the guide specifies and six
-sibling chapters demonstrate.
+- [x] **Excellencies ported, all of it.** The chapter runs pages 60 to 75 of
+  `rules-2026-v3.51.pdf` and was never converted, so it came out of the PDF
+  directly with `pdfplumber`'s table finder: **30 Excellencies and 239 skills**,
+  thirteen aligned to a single Domain under `## Air` through `## Water` and
+  seventeen under `## Multi-Aligned Excellencies`, `###` per Excellency and the
+  five-column table under it, exactly the shape `domains.md` and
+  `expressions.md` use. `skills.json` went 189 → 428 in 29 → 59 tables with no
+  special case in the extractor's walk, but four new Attribute shapes and one
+  new table header (Inferno's column is headed "Effect / Verbal") had to be
+  named — see CONTENT-GUIDE. **This answers Q33: not withheld, just
+  unconverted** (locked #318).
+- [x] **`history.md`** is 919 words, not 183: an Age of Faith section (Fate
+  sundered, the churches, the War of the Heavens, the isolation, the centuries
+  known through Rues) and an Age of Works section (the Pronouncement, the
+  century the nations remember, Valarmore and the Vargoth, Fortune's Bend
+  again). Dates are left to the timeline. Every claim traces to
+  `campaign-book-2025.pdf` or a page already in `src/`; the nations and terms
+  it names are linked, by hand where the autolinker will not (Rues is excluded)
+  and by the autolinker everywhere else.
+- [x] **The timeline**, enriched rather than extended, because the book's
+  Historical Timeline was already ported whole and the campaign book contains
+  no other AW or AF date anywhere (locked #320). Every event now has an `href`
+  that resolves and a `nations` where one applies, the book's 124 row is split
+  into the two events it actually prints, and `smoke.mjs` resolves a `#fragment`
+  in an `href` against the ids of the page it points at.
+- [x] **The glossary earns its job**: 635 → 952 words, ten new terms, all of
+  them rules vocabulary the chapters use constantly and it lacked — Centering,
+  Flurry, Long Rest, Packet, Place of Peace, Short Rest, Surge, Trait, Verbal,
+  Vitality. Cross-links went 122 to 194 on 45 pages as a result.
 
 ## Phase 7 — The print packet and the offline kit
 

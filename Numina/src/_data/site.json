@@ -5,6 +5,8 @@
   "origin": "https://greyversusblue.com",
   "official": {
     "website": "http://www.numinalarp.com",
-    "discord": "https://discord.gg/YUbmyK4Ehb"
+    "websiteSchemeNote": "http, deliberately. Two sessions have now tried to reach the host to see whether it answers on https and both were refused at the network layer before a request went out, so neither could confirm or deny it. A http link to a host that redirects to https still works; a https link to a host that does not serve it fails outright. Upgrade this the day somebody can load it over https, and not before (locked decision #319).",
+    "discord": "https://discord.gg/YUbmyK4Ehb",
+    "registration": "https://numina.lorelogic.info/"
   }
 }

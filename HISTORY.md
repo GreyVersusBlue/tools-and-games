@@ -7876,6 +7876,159 @@ shows the paper running unbroken through the gap.
 
 **Shared things touched**, in the same PR: none of the four.
 
+## Phases 5 and 6 — Come play, and the chapter nobody had converted (2026-09-12)
+
+**Two ranked rows in one batch, at Devon's explicit instruction, overriding the
+size rule for this round only** (rank 1 was a half-session row and rank 2 a
+one-session row; the table forbids pairing them). Both name Claude Opus 5 and
+this session ran on it. Decisions #318, #319 and #320.
+
+**The Excellencies chapter was never withheld. It was never converted.** The
+one skills chapter with no `source-material/markdown/` file behind it, and the
+standing question (Q33) was whether staff were holding it back. They are not:
+it runs pages 60 to 75 of `rules-2026-v3.51.pdf`, printed in full, 30
+Excellencies in exactly the five-column tables the rest of the rulebook uses.
+Thirteen are aligned to a single Domain and seventeen are Multi-Aligned. It was
+read out with `pdfplumber`'s table finder rather than by hand, because the plain
+text extraction interleaves the columns and every one of the 239 rows would have
+been a transcription risk; the tables come back as cells. The generator is not
+committed — the markdown is the artefact, and it was read against the PDF
+afterwards, which is how the five defects below were found.
+
+**`skills.json` went 189 skills in 29 tables to 428 in 59**, and the extractor's
+walk needed no special case. What it did need was five shapes named, because the
+rule there is that an unknown cell stops the run rather than becoming a zero:
+`See Formula` for the four crafting Excellencies, whose cost is in a formula in
+the crafting chapter and not in the row; `At will` on Tempest's Touch Death,
+which triggers on your own death and has no limit; `Extra Thread Skill` on
+Dervish's Strong winds, whose description says it breaks the three-per-effect
+rule; `Expend one tinkered item` on Tinkerer's Just use anything; and a `uses`
+whose `per` is `event` rather than a Rest. One new table header too: Inferno's
+Verbal column alone is headed "Effect / Verbal".
+
+**A verbal is what somebody says, and "N/A" in quotes is not one.** Strong winds
+prints its N/A inside quote marks, and `parseVerbal` tested for N/A before it
+stripped the quotes, so the record came back with a call of `'N/A'`. Fixed by
+stripping first — and the reason it is written down is that **nothing failed
+when the fix was reverted.** Every count stayed right, every id stayed unique,
+the record stayed well-formed. Two assertions were added for exactly that: no
+verbal is a way of writing N/A, and no verbal keeps its quote marks. The second
+caught five pre-existing Aspect records the moment it was broken, which is the
+evidence the pair is doing work.
+
+**The book's Historical Timeline was already ported whole** (#320). Phase 6's
+plan was to add events from it; all 17 rows were already in `timeline.json`, and
+a search of the whole campaign book turned up no other AW or AF date anywhere —
+the only dated material in 169 pages is that one table. So the work became
+enrichment rather than extension: every event has an `href` that resolves and a
+`nations` where the event happened somewhere with a page, and the book's 124 row,
+which prints two unrelated events in one cell, is split into the two events it
+actually is. 17 objects to 18. The one new `href` points at a glossary term
+rather than a page, so `smoke.mjs` resolves a fragment in a timeline `href`
+against the ids of its target now — the cross-link section already catches it
+today, but only because the page that renders the timeline is a page it scans,
+and an event whose href never renders would slip past.
+
+**`history.md` is 919 words, from 183.** The campaign book's own "A Brief
+History" chapter is the Dates section and the timeline table and nothing else,
+so extending it meant writing the eras out of material already on the site: the
+sundering of Fate and the Purposed, the churches that rivalled nations, the War
+of the Heavens and Garioch pushing Rues through the world, the isolation, the
+centuries known through Rues, and then the Pronouncement, the century the
+nations remember, Valarmore, the Vargoth, and Fortune's Bend appearing again.
+Every claim traces to `campaign-book-2025.pdf` or a page in `src/`. Nations are
+hand-linked where the autolinker will not go — Rues is on the exclusion list
+because it is also a verb — and linked by the transform everywhere else.
+
+**The glossary went 635 words to 952**, ten terms, all of them rules vocabulary
+the chapters use constantly and it lacked: Centering, Flurry, Long Rest, Packet,
+Place of Peace, Short Rest, Surge, Trait, Verbal, Vitality. Each is the book's
+own definition, not a paraphrase — the Packet entry says "a small bean bag
+filled with bird seed" because that is what Core Rules says. Cross-links went
+122 on 43 pages to 194 on 45.
+
+**Phase 5 is three links and one sentence, and the point is what is not in
+them.** `src/_includes/partials/come-play.njk` renders on the home page, the New
+to Numina landing page and the foot of `mechanics/new-players.md` (a
+`comePlay: true` flag and a hook in `page.njk`, the same shape `showTimeline`
+already had). It carries the official site, registration and the Discord, all
+three off `site.official.*` — `site.official.registration` is a new key, so the
+registration host is written down in one place instead of three prose
+paragraphs. It carries no date, no price and no registration mechanic, which is
+CONTENT-GUIDE's rule and has a two-year precedent behind it: "$100 per event"
+sat on Quick Reference because somebody lifted it out of a 2024 Discord message.
+The home page's hero gained one plain sentence saying what a LARP is and that
+this one meets in person, and `new-players.md`'s "How to Join" lost the two
+bullets the block now carries. All four landing pages carry `data-pagefind-body`
+now; 56 of 57 built pages are indexed and the search page is deliberately the
+one that is not.
+
+- **The Excellencies chapter was unconverted, not withheld, and is ported**
+  (#318). 30 Excellencies, 239 skills, out of the PDF directly. Reversible: the
+  chapter is one markdown file and re-running the extractor without it puts
+  `skills.json` back at 189. The hidden Excellencies table is a separate and
+  still-hidden thing and was not touched.
+
+- **`site.official.website` stays `http://` until somebody can load the host
+  over `https://`** (#319). Phase 5's checklist said check and upgrade. Two
+  sessions have now tried and neither could: the host is refused at this
+  environment's network egress before a request leaves the box, which is not
+  evidence either way about the host. A `http://` link to a host that redirects
+  to `https://` still works; a `https://` link to a host that does not serve it
+  fails outright. So the safe reading holds, and the reason is a
+  `websiteSchemeNote` key beside it in `site.json` rather than a line in a
+  checklist nobody rereads. One person with a browser closes this.
+
+- **The book's Historical Timeline is fully ported, and extending the timeline
+  means inventing a date** (#320). Recorded because the wishlist invited
+  extending it and the next session would otherwise go looking again. The
+  campaign book has no AW or AF date outside that one table. Adding an event
+  means dating something the prose leaves undated, and the rule is not to invent
+  facts. CONTENT-GUIDE says so at the schema now.
+
+**Break it on purpose, and it fails by name** (#34). Eleven breaks from a green
+baseline, each restored before the next. The come-play block dropped from
+new-players (the block is on exactly three pages: named two). A price written
+into the block ("A weekend is $100" — the volatile check names the `$1`). The
+registration link deleted from the partial (named on all three pages). A URL
+typed into the partial instead of read off `site.json` (the partial hardcodes no
+URL). `data-pagefind-body` off the Lore landing page (not indexed: search and
+lore). The timeline fragment pointed at `#vargoth-emperor` (both the new
+resolver and the cross-link check). An Excellency's Included row repriced to 4
+(every Excellency has exactly one Included skill: Ballista has 0). `## Lightning`
+renamed (the chapter keeps its seven group headings). The `see-formula` branch
+deleted from the extractor (`excellencies.md:206: unrecognised Attribute cell
+"See formula"`). The `Effect / Verbal` header deleted (`excellencies.md:73:
+unrecognised table header`). And the quoted-N/A fix reverted, which is the one
+that failed nothing until the two assertions above were written for it.
+
+**The checks.** `npm test` is 394 assertions, from 385. `test/a11y/` is 32, all
+green, run here with the pre-installed Chromium: the come-play block is a
+tokened panel and axe reads its contrast without help. Two builds in a row
+produce no diff. `check-integrity.mjs` is 1,539 units with the same one broken,
+`Tools/prompt-builder.html`; `social:check` reports the same six pages out of
+sync; `check-collisions.mjs` passes at 0.
+
+**What was found and left alone.** Five defects in the chapter as the PDF prints
+it, all faithful in the markdown and all written into the wishlist's standing
+backlog rather than patched, because patching means deciding what the book meant:
+`Healing Venom`'s description begins "venom as your base." with its first line
+missing, `Shift Loads` begins "Attribute to instantly change" with a "Spend 1"
+missing, `Take Ground` ends mid-clause on a comma, `Hand out Weapons` has a
+Verbal of 2 Damage over a description of 3, and `Reverse Protection` says
+"choose Force or Force". That is the same call the chapter's existing four
+oddities already have. Two quote pairs the book leaves mismatched were
+normalised, which is typography and the same class of change as the
+curly-to-straight conversion every sibling chapter carries. And the character
+builder still takes an Excellency as a typed name: the list exists now, but
+offering it means pricing the skills inside a chosen Excellency and
+`build-rules.js` does not implement that. The comments that said the chapter was
+a stub now say that instead, because a comment that has gone false is worse than
+no comment.
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 317 → 320.
+
 ---
 
 # The two August 2026 audits
@@ -7892,12 +8045,12 @@ existed; sections A and B are where that wishlist starts.
 | Label | Finding | Where it went |
 | --- | --- | --- |
 | A1 | "New Players Start Here" doesn't deliver what it promises | Shipped, batch 1 |
-| A2 | There is no path to actually joining | Wishlist Phase 5 |
-| A3 | The Excellencies page is a live stub | Wishlist Phase 6, and question Q33 |
+| A2 | There is no path to actually joining | Shipped, Phase 5 |
+| A3 | The Excellencies page is a live stub | Shipped, Phase 6; Q33 answered by #318 |
 | A4 | Nation infoboxes are mostly empty | Question Q34 |
 | A5 | Zero cross-links in the ported content | Wishlist Phases 1–2 |
-| A6 | Thin pages — `history.md` is 183 words of prose plus a 17-event timeline | Wishlist Phase 6 |
-| A7 | The home page assumes context | Wishlist Phase 5 |
+| A6 | Thin pages — `history.md` is 183 words of prose plus a 17-event timeline | Shipped, Phase 6 |
+| A7 | The home page assumes context | Shipped, Phase 5 |
 | B1 | The nation map is invisible to screen readers | Wishlist Phase 4 |
 | B2 | No skip link — keyboard users tab through the header plus up to ~27 links | Wishlist Phase 4 |
 | B3 | Anchor targets hide under the sticky header | **Shipped, batch 2** (`scroll-margin-top`) |
