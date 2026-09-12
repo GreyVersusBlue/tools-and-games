@@ -58,21 +58,58 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Numina Phase 2 — A page for every skill, and
-links between them (PR #239)**, which **closed the rank 1 of its day** — a
-1-session row, so it was the whole batch — and everything below it moved up
-one. **64 ranked items remain**, and **rank 1 is now `Numina` Phase 3 — The
-character builder**, a **2+ row on Claude Fable 5.1**. A 2+ row is a batch on
-its own and will not finish in one session: do one increment, ship it, and
-leave the row in place with its text rewritten to say what is done. It stands
-on Phase 1's `skills.json` and Phase 2's anchors; read
-`Numina/CONTENT-GUIDE.md`'s "Skill data" and "Skill anchors and cross-links"
-sections before touching either, and note that **Q36 ("is a character builder
-welcome?") is the question standing in front of that row** — the wishlist
-assumes yes with loud caveats, and a session may answer it rather than wait.
-Q32, the attribute cost curve a CP calculator needs, is still open and was not
-pre-answered. **`npm run check` is still down to one broken unit**,
-`Tools/prompt-builder.html`, which is rank 33's now.
+The last thing that shipped is **Numina Phase 3, increment 1 — the arithmetic,
+with no page yet (PR #242)**. It is a **2+ row, so it was the whole batch and
+it did not close**: the row stays at **rank 1** with its Item text rewritten,
+and nothing below it moved. **64 ranked items remain**, and **rank 1 is still
+`Numina` Phase 3 — The character builder**, on **Claude Fable 5.1**. The next
+increment is **the picker**: a page in the book's ten-step order, built over
+`Numina/src/js/build-rules.js`'s `offered(build, catalog)` and `priceBuild()`
+so it renders rules rather than restating them. Read that module's header
+comment first — it says what the verdict carries and what it refuses to price
+— then `Numina/CONTENT-GUIDE.md`'s "Skill data" and its new "two
+heading-derived lists". **Q36 ("is a character builder welcome?") is answered:
+yes, on the condition that nothing is guessed** (#304). **Q32, the attribute
+cost curve, is still open and was not pre-answered** — increment 1 works
+without it by leaving those purchases in `cp.unpriced` with `cp.exact` false,
+and the picker has to show that rather than hide it. **`npm run check` is
+still down to one broken unit**, `Tools/prompt-builder.html`, which is rank
+33's now.
+
+**What increment 1 built.** `Numina/src/js/build-rules.js`: a build in, a
+verdict out, pure, no DOM, the same module under Node and in the page. Ten
+steps, six caps, two escalating ladders (5, 6, 7 for Excellencies and for
+Expressions), and the two refusals that are the reason the phase is worth
+doing at all. A raised Prowess, Insight, Fortitude or Vitality does not add to
+`cp.spent`; it adds to `cp.unpriced` carrying the chart's own circular words
+and flips `cp.exact` false, so the total is a floor and a build over 50 only
+on an unpriced purchase is not called over budget (#305). The two "See
+Description" skills get the same treatment. The Excellencies chapter is a stub
+with no list to pick from, so an Excellency is a name the player types, priced
+by tier and matched against the 18 hidden ones for the Staff-approval flag
+(#306). The Aspect and Foundation lists are new `skills.json` data — nine and
+twenty, read from `###` headings between the headings that fence each list,
+with a Foundation's Type naming the skill table its two purchasable skills
+come from and a Type with no table stopping the run (#307). Included is
+granted, not purchased, and does not spend a "purchase up to N" allowance
+(#308). A third Expression is modelled as the Excellency cap dropping to two,
+one state rather than two that can disagree (#309). 130 assertions to 253
+across three suites; `test/build-rules.test.mjs` is 113 of them and is third
+in `npm test`. Eighteen guard-rails broken on purpose, and **two went green
+the first time** — an assertion that guessed the curve killed the suite
+instead of failing it, and three "absence of this problem code" assertions
+passed for free because a renamed id never reaches the check it guards. Both
+are rewritten and both fail now (#147). Decisions #304 to #309.
+
+**Still open in the row**, in the wishlist's order: the picker, persistence
+under a `numina.` `localStorage` key plus the build in the URL fragment, and
+the printable character card on `print.css`'s `cardsheet` treatment.
+
+**Shared things touched by increment 1**: none of the four. `CLAUDE.md`'s
+locked-decision count, 303 → 309. `check-integrity.mjs` is 1,514 units with
+the same one broken, `social:check` reports the same six pages out of sync,
+`check-collisions.mjs` passes at 0 collisions — all three unchanged by that
+work. This file's `Claimed` column is cleared.
 
 **What Phase 2 built.** Two Eleventy transforms over Phase 1's data, both
 scoped to each page's `<main>`. `Numina/tools/skill-anchors.mjs` gives all 189
@@ -897,7 +934,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 3 — The character builder | `Numina` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-5zya7o` | [WISHLIST.md Phase 3](Numina/WISHLIST.md#phase-3--the-character-builder) |
+| 1 | Phase 3 — The character builder. **Increment 1 shipped (PR #242): `src/js/build-rules.js` prices a build and refuses to price the unpublished attribute curve, and the Aspect and Foundation lists are in `skills.json`.** Left: the picker over `offered()`, `localStorage` + URL-fragment persistence, the printable card | `Numina` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 3](Numina/WISHLIST.md#phase-3--the-character-builder) |
 | 2 | Phase 4 — The accessibility and mobile pass | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Numina/WISHLIST.md#phase-4--the-accessibility-and-mobile-pass) |
 | 3 | Phase 5 — Come play | `Numina` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Numina/WISHLIST.md#phase-5--come-play) |
 | 4 | Phase 6 — Excellencies, history, and the timeline | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Numina/WISHLIST.md#phase-6--excellencies-history-and-the-timeline) |
@@ -1648,6 +1685,15 @@ run, and only an eviction from the Corner Tap — where there is no rung below �
 ends one. The Fourth Quarter has three open questions left, none of them
 blocking anything ranked.
 
+**Struck: Q36**, "is a character builder welcome?", answered yes by locked
+#304 while shipping Numina Phase 3's first increment, on the one condition
+that the builder refuses to invent a number (#305). The full answer is in the
+answered list at the foot of this section. **Q32, the attribute cost curve, is
+not answered by it and was deliberately not pre-answered** — the module leaves
+those purchases unpriced instead, so the question is still Devon's and still
+open. Numina has four open questions left (Q32 to Q35), none of them blocking
+anything ranked.
+
 **The `Where` column names files that no longer exist.** The prompts, the
 notes files and the ten handoffs were deleted in this consolidation; they are
 cited by name so a raise count can be checked, and `git log` is where they
@@ -1712,11 +1758,10 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q32 | **What is the attribute cost curve?** `skills/attributes-vitality.md` gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight, Fortitude and Vitality — circular, and the escalating numbers appear nowhere in `src/` or `source-material/markdown/`. A CP calculator cannot be written without them. Are they in the PDF's chart and the conversion dropped it, or genuinely unpublished? | 1 | `Numina/WISHLIST.md` |
+| Q32 | **What is the attribute cost curve?** `skills/attributes-vitality.md` gives "Cost to Increase: *Cost of next attribute*" for Prowess, Insight, Fortitude and Vitality — circular, and the escalating numbers appear nowhere in `src/` or `source-material/markdown/`. Are they in the PDF's chart and the conversion dropped it, or genuinely unpublished? **This no longer blocks the builder:** `build-rules.js` leaves those purchases in `cp.unpriced` and flips `cp.exact` false (#305), so a build that raises an attribute comes back with a floor rather than a total. An answer here turns that floor into a number. | 1 | `Numina/WISHLIST.md` |
 | Q33 | **Should the Excellencies chapter be ported at all?** `skills/excellencies.md` is 34 words of developer-facing stub and there is no `source-material/markdown/skills/excellencies.md` — the one skills chapter with no conversion behind it. Meanwhile `hidden-excellencies-expressions.md` names 21 hidden ones openly. Withheld deliberately, or just unconverted? | 2 | wishlist, `numina-audit-2026-08.md` A3 |
 | Q34 | **Do the eight nations with a blank `capital` have one?** Kindaria, Merrigor, Mists of Eltiel, Myos Islands, the Principalities of the Reach, Rues, T'barris and the Vale of Scyllina are `capital: ""`; five are `demonym: ""` (the Five Duchies' entry says outright that it has none). If the book does not name them, the infobox should collapse rather than render a flag chip over one "See also" row. | 2 | wishlist, audit A4 |
 | Q35 | **Is the custom-domain move happening, and when — and does `numinalarp.com` serve HTTPS?** The README calls it a one-line `PATH_PREFIX` change and `site.json`'s `origin` feeds every absolute URL, but `test/smoke.mjs` hardcodes both `PREFIX` and `ORIGIN`. `site.json` and `quick-reference.md` both link `http://`; batch 1 asked and could not verify from its sandbox either. | 2 | wishlist, audit D4 |
-| Q36 | **Is a character builder welcome?** The footer says "Unofficial player reference", `expressions.md` sends players to NuminaRules@gmail.com to confirm a third-Expression build, and Excellency and Expression purchases "must be unlocked in-game". A builder that prices a legal-looking character staff would reject is worse than none. Phase 3 assumes yes with loud caveats; say so before it is built if that is wrong. | 1 | wishlist |
 
 ### The projects with no wishlist
 
@@ -1738,6 +1783,17 @@ live. Nothing in that column is a link to follow.
 
 ### Answered, kept here so they are not re-asked
 
+- **Is a character builder welcome?** (was Q36) Answered by the session that
+  shipped Numina Phase 3's first increment, 2026-09-12: **yes, on the
+  condition that it refuses to invent a number** — locked decision #304.
+  Every verdict `build-rules.js` returns carries `unofficial: true`, and the
+  in-game unlocks, the hidden-Excellency approvals and the third Expression's
+  email come back in `verdict.provisional` beside the bill rather than as fine
+  print under it. A cost the book does not publish goes in `cp.unpriced` with
+  the book's own words, never a guess (#305). Reversible cheaply: the caveats
+  are data, and removing the page leaves `skills.json` where it was. **Q32 is
+  a different question and is still open** — it was not pre-answered, because
+  the module does not need it to be.
 - **What should "Not interested" to Earl actually do?** Answered by the
   session that shipped Daredevil Phase 1's first increment, 2026-09-10:
   **(B), the self-financed middle game** — locked decision #265. `_chapter_m2`
