@@ -39,6 +39,7 @@
         { "title": "Combat Quick Reference", "url": "/mechanics/combat-reference/" },
         { "title": "Building a Character", "url": "/mechanics/building-a-character/" },
         { "title": "Skills", "url": "/mechanics/skills/", "children": [
+          { "title": "All Skills", "url": "/mechanics/skills/all-skills/" },
           { "title": "Aspects", "url": "/mechanics/skills/aspects/" },
           { "title": "Foundations", "url": "/mechanics/skills/foundations/" },
           { "title": "Cultures", "url": "/mechanics/skills/cultures/" },

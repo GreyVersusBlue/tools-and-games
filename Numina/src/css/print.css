@@ -3,7 +3,7 @@
 
 .site-header, .sidebar, .site-footer, .print-action,
 .theme-toggle, .header-search, .mobile-nav, .world-map, .crumb,
-.toc, .heading-anchor {
+.toc, .heading-anchor, .skill-anchor, .skill-filter {
   display: none !important;
 }
 body {
