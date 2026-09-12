@@ -58,6 +58,20 @@ function ok(cond, label) {
   else { failures++; console.error(`FAIL  ${label}`); }
 }
 
+// A wait that times out is the shape most of the failures here take, and a raw
+// TimeoutError names a line number and a CSS selector. This turns it into a
+// sentence: "no results came back", which is what a bundle-path missing the
+// /Numina/ prefix looks like from outside — every element renders, the input
+// takes typing, and the index 404'd behind it.
+async function appears(locator, state = "visible", timeout = 15000) {
+  try {
+    await locator.waitFor({ state, timeout });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const server = await serve();
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch();
@@ -72,8 +86,7 @@ try {
   console.log("# the header");
   await page.goto(`${origin}/Numina/mechanics/core-rules/`, { waitUntil: "load" });
   const trigger = page.locator("[data-search-open]");
-  await trigger.waitFor({ state: "visible" });
-  ok(await trigger.isVisible(), "with JS, the header shows the modal trigger");
+  ok(await appears(trigger, "visible", 5000), "with JS, the header shows the modal trigger");
   ok(!(await page.locator(".header-search").isVisible()), "and hides the form it replaces");
   // The no-JS path, from the same page with scripts off. The form is what has to
   // be there, and it has to be able to submit.
@@ -92,14 +105,21 @@ try {
   console.log("# the modal");
   // Nothing of the bundle is on the page until it is asked for. This is the
   // whole reason for the lazy load, so it is the first thing checked.
+  // Both halves, because they fail separately: an eagerly loaded bundle builds no
+  // modal element, so counting elements alone would pass while 217 KB went out on
+  // every page view. window.PagefindComponents is what the bundle defines when it
+  // runs.
   ok(
     (await page.locator("pagefind-modal").count()) === 0,
-    "before the first open, no modal and no bundle are on the page"
+    "before the first open, no modal is on the page"
+  );
+  ok(
+    await page.evaluate(() => typeof window.PagefindComponents === "undefined"),
+    "and the Component UI bundle has not been fetched"
   );
   await page.keyboard.press("Control+k");
   const dialog = page.locator("pagefind-modal dialog");
-  await dialog.waitFor({ state: "visible", timeout: 15000 });
-  ok(await dialog.isVisible(), "Ctrl+K loads the bundle and opens the modal");
+  ok(await appears(dialog), "Ctrl+K loads the bundle and opens the modal");
   ok(
     await page.evaluate(() => document.querySelector("pagefind-modal dialog")?.matches(":modal") === true),
     "as a modal dialog, which is what trapping focus and handling Escape comes from"
@@ -120,10 +140,11 @@ try {
   // bundle found its index at the bundle-path the trigger carries.
   await page.keyboard.type("longbow");
   const results = page.locator("pagefind-modal .pf-result, pagefind-modal [data-pf-result-index]");
-  await results.first().waitFor({ state: "visible", timeout: 15000 });
-  const count = await results.count();
+  const gotModalResults = await appears(results.first());
+  const count = gotModalResults ? await results.count() : 0;
   ok(count > 0, `typing in the modal returns results (${count})`);
-  const firstHref = await page.locator("pagefind-modal a[href*='/Numina/']").first().getAttribute("href");
+  const firstLink = page.locator("pagefind-modal a[href*='/Numina/']").first();
+  const firstHref = (await appears(firstLink, "attached", 5000)) ? await firstLink.getAttribute("href") : null;
   ok(
     !!firstHref && firstHref.startsWith("/Numina/"),
     `and a result links into the site (${firstHref ?? "none"})`
@@ -142,8 +163,7 @@ try {
   );
 
   await page.keyboard.press("Escape");
-  await dialog.waitFor({ state: "hidden", timeout: 5000 });
-  ok(!(await dialog.isVisible()), "Escape closes it");
+  ok(await appears(dialog, "hidden", 5000), "Escape closes it");
   ok(
     await page.evaluate(() => document.activeElement?.matches("[data-search-open]") === true),
     "and focus goes back to the trigger that opened it"
@@ -151,16 +171,15 @@ try {
   // Second open: the bundle is already in, so this is the path where the
   // component's own state has to be reusable.
   await page.keyboard.press("Control+k");
-  await dialog.waitFor({ state: "visible", timeout: 5000 });
-  ok(await dialog.isVisible(), "and Ctrl+K opens it again");
+  ok(await appears(dialog, "visible", 5000), "and Ctrl+K opens it again");
   await page.keyboard.press("Escape");
 
   // --- the search page ----------------------------------------------------
   console.log("# /search/ and the ?q= handoff");
   await page.goto(`${origin}/Numina/search/?q=longbow`, { waitUntil: "load" });
   const pageResults = page.locator("pagefind-results .pf-result, pagefind-results [data-pf-result-index]");
-  await pageResults.first().waitFor({ state: "visible", timeout: 15000 });
-  ok((await pageResults.count()) > 0, `?q= arrives as results (${await pageResults.count()})`);
+  const gotPageResults = await appears(pageResults.first());
+  ok(gotPageResults, `?q= arrives as results (${gotPageResults ? await pageResults.count() : 0})`);
   ok(
     (await page.locator("pagefind-input input").inputValue()) === "longbow",
     "and the term is in the input, not just in the result list"
