@@ -1,20 +1,23 @@
 # Numina — Feature Wishlist
 
-**Status: Phases 5 and 6 shipped on 2026-09-12; the first open phase is
-Phase 7 — The print packet and the offline kit, on Claude Opus 5, a
-one-session row.** The site is built, deployed and green — 57 pages, 394
-assertions in `npm test` and 32 more in `test/a11y/`'s browser suite, CI on
-every PR touching `Numina/**` in two jobs — and the
+**Status: Phase 8 shipped on 2026-09-12, and with it every phase in both arcs.
+There is no open phase left in this file — what is still wanted is the five
+items under "What this leaves for a later arc" at the foot, none of which is
+specified yet.** The site is built, deployed and green — 57 pages, 435
+assertions in `npm test` and 78 more in `test/a11y/`'s browser suite (which is
+five files now, and one of them needs no browser), CI on every PR touching
+`Numina/**` and on every push to `main`, in two jobs — and the
 August 2026 audit's engineering, sharing/SEO, A5 cross-linking, all of section
 B, and A2, A3, A6 and A7 are done. `src/_data/skills.json` holds **428 skills
 in 59 tables** — the Excellencies chapter went in whole in Phase 6, 30 of them
 and 239 skills, straight out of the PDF because nothing had ever converted it
-— and `test/skills.test.mjs` pins it. Two build transforms read it: every
-skill row has an anchor, and the first mention of every glossary term, nation
-and skill name in a chapter links to its page. Two prompt batches ran before
+— and `test/skills.test.mjs` pins it. Three build transforms read it: every
+skill row has an anchor, the first mention of every glossary term, nation and
+skill name in a chapter links to its page, and Phase 8's "See also" blocks are
+generated from it. Two prompt batches ran before
 this file existed, and their prompt files are retired; the audit label each
 item answered is in `HISTORY.md`. What is left of the audit's content section
-is A1, A4 and A8, which Phases 7 and 8 carry.
+is A1, A4 and A8, and Phases 7 and 8 carried all three.
 
 ## What it is
 
@@ -32,7 +35,8 @@ commerce) and the rulebook's mechanics (Accelerant core rules, etiquette and
 safety, character building, ten skills pages, crafting, weapon
 construction), plus seven hand-written "New to Numina" pages sourced from the
 community's Discord rather than the books. Search is self-hosted Pagefind over
-the built HTML, and there are zero offsite runtime requests: vendored woff2,
+the built HTML — its Component UI, on a page and in a Ctrl+K modal — and there
+are zero offsite runtime requests: vendored woff2,
 inline-SVG map and ornaments, and a smoke test that fails on an unexpected
 host in an `href`.
 
@@ -631,39 +635,47 @@ the origin shut down. Shutting it down is the point — two guard-rails passed
 while broken because Chromium's own HTTP cache answered and because
 Playwright's `setOffline` does not reach a service worker's fetch (#324).
 
-## Phase 8 — Search and navigation, upgraded
+## Phase 8 — Search and navigation, upgraded — DONE (2026-09-12)
 
-**Search is a page you navigate to, and the site knows nothing about what is
-related to what.**
+Shipped. `HISTORY.md` "Phase 8 — Search and navigation, upgraded" has the whole
+account and decisions #325 to #330.
 
-Pagefind 1.5 ships a Component UI its own docs recommend over the classic
-`pagefind-ui.js` the search page loads — better accessibility, a keyboard
-modal. And once `skills.json` exists the site can answer "what else should I
-read" without anyone hand-maintaining a list.
+- [x] **Component UI.** `/search/` is `pagefind-config`, `pagefind-input`,
+  `pagefind-summary` and `pagefind-results`. `?q=` handoff, sub-results and the
+  `<noscript>` all kept; the input carries a real `<label>` now instead of the
+  `aria-label` the old code patched on. Vendored under `pagefind/`, offsite
+  allowlist unchanged.
+- [x] **A search modal**, on every page rather than only `/`. Ctrl+K, or Cmd+K on
+  an Apple platform, or the header button. `js/search-modal.js` fetches the
+  217 KB bundle the first time one of those is used and not before; what it opens
+  is `pagefind-modal`, a real `<dialog>` opened with `showModal()`, so the focus
+  trap and Escape are the browser's. The header ships the plain form visible and
+  the button hidden, and the script swaps them, so JS off leaves the form.
+- [x] **Related links from the data.** 195 generated links on 17 pages, in the
+  three relations asked for. `tools/see-also.mjs` builds them;
+  `tools/extract-skills.mjs` reads each Excellency's Domain alignment out of
+  `excellencies.md`'s own heading structure and fails if the `##` it sits under
+  and the Domains in its own heading disagree. The one hand-written part is each
+  nation's `culture` frontmatter, and `smoke.mjs` checks the 16 nations and 16
+  cultures pair up in both directions.
+- [x] **Kept guarding it**, which was the second of the two options (#329).
+  `nav.json` stays: four things in it are in no page's frontmatter and it has
+  three readers now, `/mechanics/packet/` included. The guard runs backwards too
+  now — an entry pointing at a page that was not built was a dead sidebar link
+  nothing checked for.
+- [x] **CI on `main` too, and HTML validation.** `numina-ci.yml` has
+  `push: branches: [main]`, and the a11y job gained `html.mjs` (html-validate
+  over all 58 built pages) and `search.mjs` (the modal, the focus trap and the
+  handoff in Chromium). The validity check immediately found three places where a
+  literal angle bracket in the rulebook was parsed as a tag and swallowed the
+  text after it.
 
-- [ ] **Component UI.** Replace the `new PagefindUI({…})` call in
-  `search.njk`, keeping the `?q=` handoff, sub-results and the `<noscript>`
-  fallback. Vendored under `pagefind/`; the offsite allowlist must not grow.
-- [ ] **A search modal** on `/` and `Ctrl+K` from any page, focus-trapped,
-  escape to close, with the header form still working with JS off.
-- [ ] **Related links from the data.** A "See also" block generated from
-  `skills.json` and the nations collection — a Domain links its Excellencies,
-  a nation its culture skills and timeline events, an event its nations. Not
-  hand-written, or it drifts.
-- [ ] **Derive the sidebar, or keep guarding it.** `nav.json` duplicates
-  titles and order that frontmatter already carries. Either generate the
-  sidebar from collections and delete the file, or leave the smoke-test guard
-  and write down that the duplication is deliberate. Not both.
-- [ ] **CI on `main` too, and HTML validation.** `numina-ci.yml` runs on pull
-  requests only, so a direct push to `main` is unchecked. Add `push: main`
-  and an HTML validity check beside Phase 4's axe run.
-
-*Leans on:* `src/search.njk`, `pagefind/`, `_data/nav.json`, Phase 1's
-`skills.json`, `numina-ci.yml`. *Build/output:* a new vendored Pagefind
-bundle plus committed HTML wherever a "See also" lands; if the sidebar is
-derived, `nav.json` leaves `src/_data/` and the smoke test with it. *Model:*
-**Claude Opus 5** — one search component for another, and links generated
-from a schema that already exists.
+**One thing it turned up that nothing else could see.** `Search for <Item Type>`
+is a verbal a player calls out, and the Etiquette & Safety chapter showed
+"Search for " and then nothing: the rest of the paragraph had been absorbed into
+a phantom `<Item>` element since the chapter was converted. Same for the Skills
+landing page's two `<To Be Inserted Later>` placeholders and the Diagnose skill's
+`'Diagnose <Trait>'`. All three escaped, all three visible again.
 
 ## What this leaves for a later arc
 

@@ -8165,6 +8165,191 @@ the same six pages out of sync; `check-collisions.mjs` passes at 0.
 **Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
 locked-decision count, 320 → 324.
 
+## Phase 8 — Search and navigation, upgraded (2026-09-12)
+
+**A one-session row, taken alone, on Claude Opus 5.** Decisions #325 to #330.
+Search was a page you navigated to and the site knew nothing about what was
+related to what. Both are now different, and the phase also turned up three
+places where the rulebook's own text had been invisible on the page since it was
+converted.
+
+**The Component UI, which Pagefind has recommended over the Default UI since
+1.5.** `/search/` is four custom elements now — `pagefind-config`,
+`pagefind-input`, `pagefind-summary`, `pagefind-results` — where it was a
+`new PagefindUI({…})` call. The input comes with a real `<label>` rather than the
+`aria-label` the old page patched on after construction, and the results are a
+keyboard-navigable listbox. The `?q=` handoff from the header form stays, and
+the way it works changed: there is no constructor to call `triggerSearch` on, so
+the term goes in the way a visitor would put it there, value set and `input`
+fired, and the component takes it from its own listener. Sub-results stay, the
+`<noscript>` stays, nothing reaches offsite.
+
+**`bundle-path` goes through the `url` filter and the `href` and `src` beside it
+do not.** EleventyHtmlBasePlugin rewrites those two itself: pass them through
+`url` as well and the page asks for `/Numina/Numina/pagefind/…`. It has never
+heard of `bundle-path`, so that one has to carry the prefix itself. The old code
+sidestepped the question by writing the path relative (`../pagefind/`), which a
+modal on pages at four different depths cannot do.
+
+**The modal is lazy, and the <dialog> is the browser's.** `js/search-modal.js`
+is on every page and is 3 KB. The Component UI bundle is 175 KB of JS and 42 KB
+of CSS, and it is fetched the first time somebody presses Ctrl+K (Cmd+K on an
+Apple platform, which is the same split Pagefind's own `mod+k` makes) or the
+header button — and never otherwise. What it opens is `pagefind-modal`, which
+renders a real `<dialog>` and opens it with `showModal()`, so the focus trap and
+Escape are not this repo's code. The offline kit precaches both files by name,
+so on a second visit that fetch is local.
+
+**The header ships two search controls and shows one.** The form is the no-JS
+path: it GETs `/search/` with `?q=`, it is what is visible in the markup, and
+the script hides it and unhides the button — the mirror of what `theme.js`
+already does for the theme toggle, which ships `hidden` and is unhidden on load.
+Below 52rem both go away and the mobile menu's Search link is the way in, with
+Ctrl+K still live.
+
+**"See also" is generated from data that already exists, in three relations.** A
+Domain links the Excellencies aligned to it. A nation links its culture row, its
+Research Topic, the six culture skills by their own row anchors, and every
+timeline event that names it. A timeline event links the nations it names, which
+before this was something the page said only in a colour. 195 links on 17 pages,
+and nothing in any of them is typed by hand.
+
+**The Excellency alignment came out of the chapter's own headings.** The book
+states it twice and never in a table: `### Ballista` sits under `## Air`, and a
+multi-aligned Excellency carries its Domains in its own heading as
+`### Alchemist (Water / Fire)`. `extract-skills.mjs` now tracks the `##` above
+each table and reads both, and fails when they disagree — `### Tempest
+(Lightning)` under `## Lightning` is the case that makes the agreement worth
+checking. The Domain names it validates against are `domains.md`'s own table
+headings, not a list written into the extractor. `skills.json`'s 30 Excellency
+tables gain `domains`.
+
+**Three places where an angle bracket in the rulebook ate the text around it.**
+`markdown-it` runs with `html: true`, so `Search for <Item Type>` is a tag. The
+Etiquette & Safety chapter showed "Search for " and then nothing for the rest of
+the paragraph, which had been swallowed into a phantom `<Item>` element; the
+Skills landing page's two `<To Be Inserted Later>` placeholders rendered as
+empty `<To>` elements; and the Diagnose skill lost both of the calls it names.
+The text is all present in `src/`, a browser parses every one of them without
+complaint, and axe audits what the parse produced rather than what the author
+wrote. The new HTML validity check is the only thing on this site that could
+have seen any of it. `cultures.md` already wrote `\<Culture\>` the right way,
+so the convention existed and these three had missed it.
+
+- **"Universal" on an Excellency means every Domain** (#325). Arcaneer and
+  Tinkerer are the two, and the chapter says in as many words that the alignment
+  is informational and that any Excellency may be taken regardless of Domain. A
+  "Universal" that linked nothing would be the one kind of alignment the Domains
+  chapter does not mention, and a "Universal" treated as its own seventh Domain
+  would be a Domain with no page. So it expands to the six.
+
+- **A "See also" block is a `<div>` with a heading, not an `<aside>`** (#326).
+  `<aside>` is a complementary landmark, and a landmark needs a unique
+  accessible name. The Domains chapter carries six of these blocks, and six
+  landmarks called "See also" fail `unique-landmark` exactly as hard as six
+  unnamed ones; a nation page would also have put a second unnamed complementary
+  beside its infobox. Naming them individually ("See also: Air") is a label
+  invented for a checker rather than a reader. The heading is what names the
+  block, and a heading is what a reader navigating by heading uses anyway.
+
+- **The HTML validity check is for validity, not for code style, and id slugs
+  are a published interface** (#327). 3,096 of the first run's 3,709 messages
+  were trailing whitespace inside Nunjucks output, and another 312 were the
+  doctype's case and whether a boolean attribute is written `defer` or
+  `defer=""` — all of them the template engine's hand, none of them anything an
+  author could act on. Those rules are off. `valid-id` is set to `relaxed`,
+  which is the HTML5 rule (any id without whitespace in it) rather than the
+  stricter default: `markdown-it-anchor` slugs with `encodeURIComponent`, so
+  "Q: Can I play a villain?" is `id="q%3A-can-i-play-a-villain%3F"`, and those
+  fragments are what players cite. 223 of them is not a reason to change the
+  slugify.
+
+- **`wcag/h32` is off, and the one real finding it made is fixed and guarded
+  elsewhere** (#328). H32 is a technique for forms that submit. Three of this
+  site's four forms never do — the builder, the packet picker and the all-skills
+  filter are groups of controls a script reads, and two of them already call
+  `preventDefault` on submit — so a submit button on any of them is a button
+  that does nothing, and `builder.js` reads `form.elements`, which a `<div>`
+  does not have. The fourth is the header search form, the only one with an
+  `action`, and it had no submit button on all 58 pages: "press Enter" is not a
+  control a pointer can find. It has one now, and `smoke.mjs` is what holds it
+  there rather than the rule.
+
+- **`nav.json` stays, and the guard with it** (#329). This was Phase 8's "derive
+  the sidebar or keep guarding it, not both". Four things in that file are in no
+  page's frontmatter: the position of the three nav entries whose templates carry
+  no `order` (Character Builder, Print Packet, All Skills), the two-level nesting
+  under Skills, the one nav title that is deliberately not the page title
+  ("Skills" for a page whose h1 reads "Adventurer Skills"), and the
+  `nations: true` flag that splices the nations collection into that section.
+  Deriving the sidebar means adding all four back as frontmatter to produce the
+  same file under another name — and the file has three readers now rather than
+  one, because `/mechanics/packet/` generates its 49-chapter list from it. What
+  did change is that the guard runs both ways: an entry pointing at a page that
+  was not built is a dead sidebar link on every page of its section and a
+  chapter the packet offers and cannot fetch, and nothing was checking for it.
+
+- **The `--pf-*` theming block is on `:root:root`** (#330). Pagefind's Component
+  UI exposes its whole surface as custom properties, which is why theming it is
+  one block of variables rather than the sheet of selector surgery the Default UI
+  needed. But the vendor sheet declares its own defaults on a bare `:root` and
+  loads *after* `main.css` in both places it appears — a `<link>` in the body on
+  `/search/`, and appended to `<head>` by `search-modal.js` everywhere else — so
+  at equal specificity every line of the override did nothing. `--pf-text-muted`
+  is what proved it: the result count kept Pagefind's `#767676` and axe called it
+  at 3.65:1 on our paper, a real contrast failure shipped by a block that looked
+  like it had set the colour. Doubling the selector is 0,2,0 and wins wherever
+  the sheet lands.
+
+**CI runs on `main` now, not only on pull requests.** Both jobs were
+`pull_request`-only, so a commit that landed without one was unchecked — on the
+branch Firebase Hosting deploys from. Two new steps in the a11y job. `search.mjs`
+drives the real thing in Chromium: the header swap with JS and without it, the
+bundle absent before the first keypress and present after, `:modal` true, focus
+inside the dialog and on the input, a search from the modal that returns results
+and links into the site, 25 tabs that stay inside, Escape closing it and focus
+returning to the trigger, a second open, and `?q=` arriving as results with the
+term in the input. `html.mjs` is `html-validate` over all 58 built pages, which
+needs no browser and so is a 28 MB install in the package that already has one.
+
+**Break it on purpose, and it fails by name** (#34). Seventeen breaks from a
+green baseline, each restored before the next. A nation's `culture` frontmatter
+pointed at a culture that does not exist (the build threw, naming the nation and
+the value). A culture renamed in `cultures.md` so no nation claimed it (both
+halves of the bijection fired). An Excellency aligned to "Thunder". `### Tempest
+(Water)` left under `## Lightning`. `### Volcano` with its Domains taken out of
+the heading. A nation page's event fragment given a suffix the history page does
+not have. The timeline's event ids removed. One Domain dropped from the block
+map. A `nav.json` entry pointed at `/mechanics/skills/open-skilz/`. The kit's
+`PAGEFIND_FILES` missing a file the pages load. The header form's submit button
+deleted. `\<Item Type\>` unescaped again. `bundle-path` written without the path
+prefix. The shortcut changed from k to j. The focus return on close removed. The
+bundle loaded eagerly on every page. The `--pf-*` block put back on a single
+`:root`.
+
+**Two of those breaks changed the checks rather than confirming them.** The
+`bundle-path` break — the silent one, and the reason `search.mjs` exists — died
+of a raw Playwright `TimeoutError` naming a line number and a CSS selector
+rather than reporting a failure, so the waits now come back as booleans and the
+run says "`?q=` arrives as results (0)" and "the count names the term ("Error:
+Could not load search bundle")". And the eager-bundle break exposed a label that
+claimed more than its assertion tested: "before the first open, no modal and no
+bundle are on the page" only counted modal elements, and loading the bundle on
+every page builds no modal, so 217 KB could have gone out on every page view
+with that line still green (#147 again). It is two assertions now, and the
+second one reads `window.PagefindComponents`.
+
+**The checks.** `npm test` is 435 assertions, from 412. `test/a11y/` is 78 from
+55: `search.mjs` is 22 of them and `html.mjs` is the 58-page validity pass. Two
+builds in a row produce no diff, `sw.js` included. `check-integrity.mjs` is
+1,567 units with the same one broken, `Tools/prompt-builder.html`;
+`social:check` reports the same six pages out of sync as it did before this work
+and the same four failures; `check-collisions.mjs` passes at 0.
+
+**Shared things touched**, in the same PR: none of the four, unless
+`.github/workflows/numina-ci.yml` counts, and it is not on the list.
+`CLAUDE.md`'s locked-decision count, 324 → 330.
+
 ---
 
 # The two August 2026 audits
