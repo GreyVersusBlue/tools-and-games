@@ -11,8 +11,11 @@
 //   - every `source` anchor is an id the built HTML actually emits;
 //   - ids are unique, and a handful are pinned literally so a change to the
 //     slug rule is a visible break, not a silent re-key of every record;
-//   - the totals (189 skills, 29 tables, 16 cultures, 6 attribute rows, 22
-//     hidden) so a table dropped by a bad merge fails instead of shrinking.
+//   - the totals (189 skills, 29 tables, 9 aspects, 20 foundations, 16
+//     cultures, 6 attribute rows, 22 hidden) so a table dropped by a bad merge
+//     fails instead of shrinking;
+//   - the two heading-derived lists: nine Aspects and twenty Foundations, each
+//     Foundation's Type naming a skill table that exists.
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -58,7 +61,41 @@ ok(data.tables.length === 29, `29 skill tables (${data.tables.length})`);
 ok(data.cultures.length === 16, `16 cultures (${data.cultures.length})`);
 ok(data.attributes.length === 6, `6 attribute chart rows (${data.attributes.length})`);
 ok(data.hidden.length === 22, `22 hidden Excellencies and Expressions (${data.hidden.length})`);
+ok(data.aspects.length === 9, `9 Aspects (${data.aspects.length})`);
+ok(data.foundations.length === 20, `20 Foundations (${data.foundations.length})`);
 ok(data.tables.reduce((n, t) => n + t.rows, 0) === data.skills.length, "table row counts sum to the skill count");
+
+// The Aspect and Foundation lists come from `###` headings, not table rows, so
+// nothing above counts them. What is worth pinning is the shape a build reads:
+// every Aspect has the presentation paragraph a player has to wear, and every
+// Foundation's Type names a skill table that exists with skills in it.
+console.log("# aspects and foundations");
+const TYPES = new Set(["Place", "Specialty", "Resource", "Interaction"]);
+const thinAspect = data.aspects.filter((a) => !a.name || !a.presentation);
+ok(thinAspect.length === 0, `every Aspect has a name and a presentation paragraph${thinAspect.length ? `: ${thinAspect.map((a) => a.id).join(", ")}` : ""}`);
+// Seven of the nine prefix that paragraph with "Makeup / Costume
+// Requirements:" and Plant and Shade do not. Pinned because the difference is
+// in the book, not in the parser.
+const prefixed = data.aspects.filter((a) => a.costumeRequirement).length;
+ok(prefixed === 7, `7 of the 9 Aspects label their paragraph a costume requirement (${prefixed})`);
+const badType = data.foundations.filter((f) => !TYPES.has(f.type) || f.skillGroup !== `${f.type} Skills` || !f.detail);
+ok(badType.length === 0, `every Foundation has one of the four Types, its skill table and its detail${badType.length ? `: ${badType.map((f) => f.id).join(", ")}` : ""}`);
+const foundationGroups = new Set(data.tables.filter((t) => t.groupKind === "Foundation type").map((t) => t.group));
+const orphanType = data.foundations.filter((f) => !foundationGroups.has(f.skillGroup));
+ok(orphanType.length === 0, `every Foundation's Type names a table that exists${orphanType.length ? `: ${orphanType.map((f) => `${f.name} → ${f.skillGroup}`).join(", ")}` : ` (${foundationGroups.size} tables)`}`);
+const typeCounts = [...TYPES].map((t) => data.foundations.filter((f) => f.type === t).length);
+ok(typeCounts.every((n) => n > 0), `all four Types are used: ${[...TYPES].map((t, i) => `${t} ${typeCounts[i]}`).join(", ")}`);
+// Ids are unique within each list, and only within it: "Arcane" is both an
+// Aspect and a Foundation, which is why these two are not in the flat id
+// check below.
+for (const [label, records] of [["aspects", data.aspects], ["foundations", data.foundations]]) {
+  const seen = records.map((r) => r.id);
+  ok(new Set(seen).size === seen.length, `${label} ids unique within the list (${seen.length})`);
+}
+ok(
+  data.aspects.some((a) => a.id === "arcane") && data.foundations.some((f) => f.id === "arcane"),
+  "arcane is both an Aspect and a Foundation, so the two lists are keyed separately"
+);
 
 console.log("# ids");
 const ids = [...data.skills, ...data.cultures, ...data.attributes, ...data.hidden, ...data.currency].map((r) => r.id);
@@ -105,7 +142,7 @@ function pageIds(url) {
   }
   return idsByPage.get(url);
 }
-const everything = [...data.skills, ...data.cultures, ...data.attributes, ...data.hidden, ...data.currency, ...data.tables];
+const everything = [...data.skills, ...data.cultures, ...data.attributes, ...data.hidden, ...data.currency, ...data.tables, ...data.aspects, ...data.foundations];
 const badSource = [];
 for (const r of everything) {
   const m = r.source?.match(/^(\/mechanics\/skills\/(?:[a-z-]+\/)?)#(.+)$/);

@@ -157,6 +157,8 @@ in `src/mechanics/skills/*.md` and writes one record per row: 189 skills in 29
 tables under `skills`, plus `tables` (one entry per table, with its row count),
 `cultures` (16 research topics), `attributes` (the two charts, 6 rows),
 `hidden` (22 hidden Excellencies and Expressions) and `currency` (3 coins).
+Two lists come from `###` headings rather than table rows: `aspects` (9) and
+`foundations` (20).
 Every record carries a `source` — the page URL plus the anchor of the heading
 above its table — and `test/skills.test.mjs` checks each one against the built
 HTML.
@@ -193,6 +195,37 @@ A skill record:
 - The attribute charts' "Cost of next attribute" is `costToIncrease.kind:
   "unpublished"` — the escalating numbers are not in the converted markdown
   (see the wishlist's Q32).
+
+**The two heading-derived lists.** An Aspect and a Foundation are things a
+character *chooses*, both free, and neither is a table row anywhere: they are
+the `###` headings of `aspects.md` and `foundations.md`. Nothing can check a
+build without them, so the extractor reads them too.
+
+```json
+{ "id": "arcane", "name": "Arcane", "costumeRequirement": true,
+  "presentation": "You exhibit characteristics like unnatural horns, ...",
+  "source": "/mechanics/skills/aspects/#arcane" }
+{ "id": "mariner", "name": "Mariner", "type": "Place",
+  "detail": "Physical Challenges and Water", "skillGroup": "Place Skills",
+  "source": "/mechanics/skills/foundations/#mariner-(place%3A-physical-challenges-and-water)" }
+```
+
+- Each list is **fenced by the headings around it**, not found by a pattern:
+  Aspects run from `## Aspects` to `### Aspect Armament Skills`, Foundations
+  from `### Available Foundations` to `### Foundation Skills`. A renamed fence
+  stops the build by name rather than quietly emptying the list.
+- A Foundation heading is `Name (Type: what it applies to)`, and `type` is the
+  whole point: it names the skill table this Foundation's two purchasable
+  skills come from. A Type that is not one of Place, Specialty, Resource or
+  Interaction throws, and so does a Type whose `${type} Skills` table does not
+  exist. `detail` keeps its own colons (Heroic's is "Modules: An adventure led
+  by an NPC ...").
+- `presentation` is the paragraph under an Aspect heading.
+  `costumeRequirement` says whether the book prefixed it with
+  "Makeup / Costume Requirements:" — seven of the nine do, Plant and Shade do
+  not, and the flag records the difference instead of flattening it.
+- `arcane` is both an Aspect id and a Foundation id. The two lists are keyed
+  separately and the id-uniqueness check is per-list for exactly that reason.
 
 **A cell shape the extractor does not know stops the run** with the file, line
 and cell. That is deliberate: a `Cost` of `Five` or an `Attribute` of `2 Luck`

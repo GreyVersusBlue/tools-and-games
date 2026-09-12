@@ -17,6 +17,8 @@ as-is with no CI build step.
 | `test/smoke.mjs` | Build/link/search smoke checks (`npm test`) |
 | `tools/extract-skills.mjs` | Writes `src/_data/skills.json` from the skill tables in `src/mechanics/skills/` (re-run after editing a table; see CONTENT-GUIDE) |
 | `test/skills.test.mjs` | Pins `skills.json` to the source tables and the built anchors (also `npm test`) |
+| `src/js/build-rules.js` | The character builder's arithmetic — a build in, a verdict out. Pure: no DOM, runs under Node and in the page |
+| `test/build-rules.test.mjs` | Every cap, every escalating cost, one 50 CP build costed to the CP, and the two refusals (also `npm test`) |
 | `index.html`, `lore/`, `mechanics/`, `search/`, `css/`, `js/`, `fonts/`, `assets/`, `pagefind/` | Generated — never edit by hand |
 | `CONTENT-GUIDE.md` | How to port book chapters into `src/` |
 
@@ -28,7 +30,7 @@ Requires Node 22+.
 npm install
 npm run serve   # local dev server with live reload
 npm run build   # clean + eleventy + pagefind search index
-npm test        # smoke checks against the built output, then the skills.json checks
+npm test        # smoke checks against the built output, then skills.json, then build-rules
 ```
 
 **Every content or template change**: edit `src/`, run `npm run build`, run
