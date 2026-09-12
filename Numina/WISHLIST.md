@@ -586,7 +586,7 @@ consult CONTENT-GUIDE.md.** Audit A3 and A6.
   Flurry, Long Rest, Packet, Place of Peace, Short Rest, Surge, Trait, Verbal,
   Vitality. Cross-links went 122 to 194 on 45 pages as a result.
 
-## Phase 7 — The print packet and the offline kit — DONE (PR #TBD)
+## Phase 7 — The print packet and the offline kit — DONE (PR #257)
 
 **The rules existed as six printable pages, and an event is a weekend in a
 field with no signal.** Decisions #321 to #324.
