@@ -17,6 +17,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { extract, serialize, OUTPUT } from "../tools/extract-skills.mjs";
+import { skillAnchors } from "../tools/skill-anchors.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS_DIR = join(root, "src", "mechanics", "skills");
@@ -114,6 +115,38 @@ for (const r of everything) {
   if (!has) badSource.push(`${r.id ?? r.group}: ${r.source}`);
 }
 ok(badSource.length === 0, `every source anchor exists in the built HTML (${everything.length} checked)${badSource.length ? `:\n      ${badSource.slice(0, 10).join("\n      ")}` : ""}`);
+
+// Every skill's own anchor, the one the All Skills index and any pasted link
+// point at. The build throws if a record has no row to put an anchor on; this
+// is the other direction — the committed HTML actually carries the id, on the
+// page the record says it is on, and the four repeated names resolve to four
+// different rows rather than collapsing onto one.
+console.log("# skill anchors");
+const anchors = skillAnchors(data.skills);
+const badAnchor = [];
+for (const skill of data.skills) {
+  const page = skill.source.split("#")[0];
+  let has = false;
+  try { has = pageIds(page).has(anchors.get(skill.id)); } catch { has = false; }
+  if (!has) badAnchor.push(`${skill.id} → ${page}#${anchors.get(skill.id)}`);
+}
+ok(badAnchor.length === 0, `every skill anchor is an id in the built HTML (${data.skills.length})${badAnchor.length ? `:\n      ${badAnchor.slice(0, 10).join("\n      ")}` : ""}`);
+const pairs = new Set(data.skills.map((s) => `${s.source.split("#")[0]}#${anchors.get(s.id)}`));
+ok(
+  pairs.size === data.skills.length,
+  `no two skills on a page share an anchor (${pairs.size} distinct page+anchor pairs for ${data.skills.length} skills)`
+);
+const holdings = data.skills.filter((s) => s.name === "Holding").map((s) => anchors.get(s.id));
+ok(new Set(holdings).size === 4, `the four Foundations' Holdings get four anchors: ${holdings.join(", ")}`);
+
+// The All Skills index lists all of them, each linked to its own anchor.
+const indexHtml = readFileSync(join(root, "mechanics", "skills", "all-skills", "index.html"), "utf8");
+const rows = [...indexHtml.matchAll(/<tr data-group="[^"]*"[\s\S]*?<a href="([^"]+)">/g)].map((m) => m[1]);
+ok(rows.length === data.skills.length, `All Skills lists every skill (${rows.length} rows, ${data.skills.length} records)`);
+const missingRow = data.skills.filter(
+  (s) => !rows.includes(`/Numina${s.source.split("#")[0]}#${anchors.get(s.id)}`)
+);
+ok(missingRow.length === 0, `every All Skills row links its own anchor${missingRow.length ? `: ${missingRow.slice(0, 5).map((s) => s.id).join(", ")}` : ""}`);
 
 console.log(failures ? `\n${failures} FAILURE(S)` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

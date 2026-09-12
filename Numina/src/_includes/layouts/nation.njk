@@ -1,6 +1,16 @@
 ---
 layout: layouts/page.njk
 ---
+{#- An infobox that carries only its own "See also" row is furniture: it says
+    nothing about the nation, floats a framed panel into the first paragraph, and
+    on a phone pushes the prose a screen down to do it. Three nations are in that
+    position — the Principalities of the Reach, Rues and T'barris — and it is not
+    an oversight to fill in later: source-material/markdown records that the book
+    names no capital and no demonym for any of them, and for the Principalities
+    says outright that there is no single capital and no shared name for the
+    people. Those three pages get no infobox. The "All nations" link is in the
+    sidebar on every one of them. -#}
+{% if capital or demonym %}
 <aside class="infobox" style="--nation-color: {{ color }}">
   <p class="infobox__flag" aria-hidden="true"></p>
   {% include "partials/ornaments/divider.njk" %}
@@ -10,5 +20,6 @@ layout: layouts/page.njk
     <dt>See also</dt><dd><a href="/lore/nations/">All nations</a></dd>
   </dl>
 </aside>
+{% endif %}
 <p class="lede">{{ summary }}</p>
 {{ content | safe }}

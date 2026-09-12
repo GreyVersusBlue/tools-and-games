@@ -7283,6 +7283,131 @@ descriptions that begin mid-sentence, a conversion artefact from the PDF.
 **Shared things touched**, in the same PR: none. `CLAUDE.md`'s locked-decision
 count, 296 → 299.
 
+## Phase 2 — A page for every skill, and links between them (2026-09-12)
+
+**The finding, restated as a number.** CONTENT-GUIDE rule 5 tells authors to
+cross-link, and the 39 ported chapters contained zero links between them. A
+skill had no address either: to point a player at Air's Last Stand you linked
+the Domains page and told them to scroll to Air. Phase 1 put the 189 skills in
+`src/_data/skills.json` and no template read it.
+
+**What shipped.** Decisions #300 to #303. The row named Claude Opus 5 and the
+session ran on it. Two build transforms, a generated index page, and twelve new
+assertions: 118 to 130 across the two suites. The build now prints what it did,
+because the diff is every ported chapter's HTML and nobody is going to read it:
+
+```
+[numina] 189 skill anchors; 122 cross-links on 43 pages (90 glossary, 20 nation,
+         12 skill); 170 terms, 133 never matched, 54 not eligible
+[numina] most linked: Aeledd ×14, Fortune's Bend ×13, Aspect ×9, Thread Skill ×8
+```
+
+- **A skill's anchor is its name, and the row is found by its text, never by
+  its position** (#300). `tools/skill-anchors.mjs` puts an id on every skill row
+  — `/mechanics/skills/domains/#airs-last-stand` — and a `§` permalink in the
+  first cell, the table-row twin of the heading permalink and CSS-drawn for the
+  same reason: Pagefind reads result text off the DOM, so a real character there
+  would come back as part of the skill's name. The anchor is the name segment of
+  the record id, because that is the half a player would paste. A name that is
+  not unique *on its page* falls back to group-name, which is what keeps the
+  Foundations chapter's four `Holding`s at four addresses. Rows are matched by
+  heading id plus first-cell text, so an inserted row cannot silently re-point
+  every anchor below it, and a record with no matching row **stops the build**
+  with the page and the skill named. It did, twice, during this work: the
+  extractor splits a trailing `*` off a name into `footnote`, so `Tongue of
+  Aspect*` in the cell had to be normalised the same way, and the typographer's
+  `Air’s` had to compare equal to the JSON's `Air's`. Two anchors colliding on
+  one page stops the build too.
+
+- **The autolinker links a term once per page, and an existing link to that
+  target is what counts as the once** (#301). `tools/autolink.mjs` links the
+  first mention of each glossary term, nation and skill name in a page's
+  `<main>` — never inside a heading, a table header, an existing link, a code
+  span or a script, and never to the page it is already on. Marking a term used
+  by the *href* rather than by a counter is what makes it idempotent: a second
+  run finds the mention already wrapped in a link to that target and adds
+  nothing, and a hand-written link an author wrote is never doubled. The two
+  transforms run after `EleventyHtmlBasePlugin`, so both emit prefixed URLs;
+  the glossary's own anchors are slugged from the *rendered* heading, because
+  markdown-it-anchor slugs the typographer's output and "Fortune's Bend" is
+  `fortune%E2%80%99s-bend` on the page. Slugging the raw markdown pointed
+  thirteen links at a fragment that does not exist, and the smoke test's new
+  cross-page fragment check is what found it.
+
+- **A one-word skill name is not a link, and a term two records claim is not a
+  link either** (#302). `Attack`, `Shield`, `Research` and `Living` are skills
+  *and* the words the chapters use for them; 41 of the 189 names are one word
+  and none of them are linked. A term claimed by two different records is
+  dropped automatically — `Channel Aspect` is the only one left after the
+  one-word rule, and `Garb` (a Culture skill and an Expression skill) is dropped
+  by the same rule without anyone writing it down. What is written down is
+  `src/_data/autolink.json`: 12 terms too ambiguous to link, each with the
+  collision it avoids in a `why` the suite requires. **An exclusion has to
+  change the outcome to stay in the file** — the suite rebuilds the vocabulary
+  with the list empty and fails on any entry that was already being dropped by
+  another rule, because an exclusion that does nothing reads as the reason a
+  term is not linked when it is not. `Garb`, `Practice` and `Living` were
+  written into the list first and deleted when that check found them, and the
+  wishlist's own example survives as the file's comment rather than an entry.
+
+- **An infobox that carries only its own "See also" row is furniture** (#303).
+  `nation.njk` now renders no infobox when a nation has neither a capital nor a
+  demonym. Three are in that position, not the eight the wishlist expected: the
+  Principalities of the Reach, Rues and T'barris. The eight was a count of empty
+  `capital` fields, five of which sit beside a demonym that does render. There
+  was nothing to fill in — `source-material/markdown/` carries a per-nation
+  conversion comment recording exactly this, and for the Principalities it says
+  the book states outright that there is no single capital and no shared name
+  for the people. On those three pages the contents list now gets the full width
+  the floated panel was taking.
+
+**A page for every skill, in the sense the wishlist meant.** `/mechanics/skills/
+all-skills/` lists all 189 by name, group, kind and cost, each row linked to its
+own anchor, filterable by text and by group, `data-pagefind-body` so search
+indexes it, and in `nav.json` or the smoke test fails. The filter form ships
+`hidden` and is revealed by `src/js/skill-filter.js`, so a browser without JS,
+a printed copy and Pagefind all get the whole list rather than a control that
+does nothing. The page carries `data-autolink="off"`: every row is a mention of
+a skill name and every row already links it.
+
+**Break it on purpose, and it fails by name** (#34). Seven breaks from a green
+baseline, and each was caught by the assertion whose comment claims it — one
+assertion each, except where the break genuinely changes two things.
+
+- The self-link guard deleted: `no page body links to itself` fails, naming
+  `lore/glossary/index.html → /Numina/lore/glossary/#aspect`. Nothing else does.
+  The first version of that check said `target === self && !fragment` and went
+  green under the break; it passes the break now because it flags any absolute
+  self-link, and the skill permalinks that made it green were changed to bare
+  `#fragment` hrefs, which is what the heading permalink already emitted.
+- The glossary slugged from the raw markdown instead of the rendered heading:
+  only `every cross-page #fragment resolves to an id on its target` fails.
+- The `used` pre-scan deleted, so an existing link no longer spends a term:
+  only `autolinker is idempotent over the built HTML` fails.
+- The exclusion list ignored: only `no excluded term is in the link list`
+  fails, naming all 12.
+- An exclusion renamed to a term nothing would link: `every autolink exclusion
+  removes a term that would otherwise be linked` fails, naming it.
+- Anchors always the short name: `no two skills on a page share an anchor` fails
+  at 184 pairs for 189 skills, `the four Foundations' Holdings get four anchors`
+  prints `holding, holding, holding, holding`, and the build itself throws
+  `"Holding" and "Holding" both want /mechanics/skills/foundations/#holding`.
+- The index page's loop cut to 188: `All Skills lists every skill` fails at
+  188 rows against 189 records.
+
+One assertion was rewritten rather than trusted. `anchors are distinct within a
+page` was first written with a condition (`>= 185` distinct anchor strings) that
+could not fail for the reason its message gave — the message counted page+anchor
+pairs and the condition counted something else. It is now the count its message
+prints, against 189 (#147).
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 299 → 303. `check-integrity.mjs` is 1,508 units with the
+same one broken, `Tools/prompt-builder.html`; `social:check` reports the same
+six pages out of sync; `check-collisions.mjs` passes — all three unchanged by
+this work.
+
+
 ---
 
 # The two August 2026 audits

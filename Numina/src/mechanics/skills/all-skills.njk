@@ -1,0 +1,64 @@
+---
+layout: layouts/base.njk
+title: All Skills
+section: Mechanics
+summary: >-
+  Every skill in Numina in one filterable list — 189 of them, with group, cost
+  and a link to the table each one comes from.
+---
+{#- Built from src/_data/skills.json, the same record set the chapters' tables
+    were extracted from, so this page cannot drift from them: a skill renamed in
+    the markdown is renamed here by the next `npm run build`.
+
+    data-autolink="off": the cross-linker links the first mention of a skill name
+    in a page's body, and every row here is a mention. Each row already carries
+    the link it would add. -#}
+<div class="shell">
+  {% include "partials/sidebar.njk" %}
+  <main data-pagefind-body data-pagefind-meta="section:Mechanics" data-autolink="off">
+    <p class="crumb"><a href="/mechanics/">Mechanics</a></p>
+    <h1>All Skills</h1>
+    <p class="lede">{{ summary }}</p>
+    <p>Every row links to the skill's own table, where its verbal and the rules
+    around it sit in context. Skill names repeat across groups on purpose —
+    four Foundations each have a <em>Holding</em>, and they are four different
+    skills.</p>
+
+    {#- The filter is progressive: without JS the form is hidden and all 189 rows
+        are on the page, which is also what a printed copy and Pagefind see. -#}
+    <form class="skill-filter" hidden data-skill-filter>
+      <p class="skill-filter__row">
+        <label for="skill-search">Search</label>
+        <input type="search" id="skill-search" name="q" placeholder="Name or description" autocomplete="off">
+      </p>
+      <p class="skill-filter__row">
+        <label for="skill-group">Group</label>
+        <select id="skill-group" name="group">
+          <option value="">All groups</option>
+          {%- for group in skills.tables %}
+          <option value="{{ group.group }}">{{ group.group }} ({{ group.rows }})</option>
+          {%- endfor %}
+        </select>
+      </p>
+      <p class="skill-filter__count" data-skill-count aria-live="polite"></p>
+    </form>
+
+    <table class="skill-index">
+      <thead>
+        <tr><th>Skill</th><th>Group</th><th>Kind</th><th>Cost</th></tr>
+      </thead>
+      <tbody>
+        {%- for skill in skills.skills %}
+        <tr data-group="{{ skill.group }}" data-text="{{ (skill.name + " " + skill.group + " " + skill.description) | lower }}">
+          <td><a href="{{ skill | skillHref }}">{{ skill.name }}</a></td>
+          <td>{{ skill.group }}</td>
+          <td>{{ skill.groupKind }}</td>
+          <td>{% if skill.cost.kind == "cp" %}{{ skill.cost.cp }} CP{% elif skill.cost.kind == "included" %}Included{% else %}See description{% endif %}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+    <p class="skill-index__empty" hidden data-skill-empty>No skill matches that filter.</p>
+  </main>
+</div>
+<script src="/js/skill-filter.js" defer></script>

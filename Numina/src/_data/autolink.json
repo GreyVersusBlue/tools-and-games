@@ -1,0 +1,53 @@
+{
+  "_comment": "Terms the autolinker must not link. The term list itself is derived (skills.json, the nations collection, the glossary's ## headings), so this file only holds what derivation cannot know: words the chapters use in their ordinary sense as often as they use them as game terms. Every entry says which collision it avoids, and every entry has to do something — a term already dropped by another rule is not listed here, and test/smoke.mjs fails if one is. \"Garb\" is the example: a Culture skill and an Expression skill, so the ambiguity rule drops it without help. One-word skill names are out by the same kind of rule, in tools/autolink.mjs.",
+  "exclude": [
+    {
+      "term": "Rues",
+      "why": "A nation and a verb. Case-sensitive matching does not separate them at the start of a sentence."
+    },
+    {
+      "term": "Culture",
+      "why": "A glossary term and the plain English word; the Cultures chapter alone uses it both ways in a paragraph."
+    },
+    {
+      "term": "First Aid",
+      "why": "An Adventurer skill and the real-world procedure the safety chapter means."
+    },
+    {
+      "term": "Breaking the rules",
+      "why": "A Performer Expression skill and a sentence-start phrase about actual rule-breaking."
+    },
+    {
+      "term": "Enjoying the game",
+      "why": "A Performer Expression skill and a sentence-start phrase about having fun."
+    },
+    {
+      "term": "Healing a friend",
+      "why": "A Songsmith Expression skill and a plain description of what a healer does."
+    },
+    {
+      "term": "Home Ground",
+      "why": "A Place skill and a phrase used for a character's actual home region."
+    },
+    {
+      "term": "Fun to Be Around",
+      "why": "A Heartbinder Expression skill and a sentence a chapter could write about a player."
+    },
+    {
+      "term": "Hard at Work",
+      "why": "A Prodigy Expression skill and an ordinary phrase."
+    },
+    {
+      "term": "Long Study",
+      "why": "A Remembrancer Expression skill and an ordinary phrase about studying."
+    },
+    {
+      "term": "Share Knowledge",
+      "why": "A Specialty skill and an ordinary phrase in the research rules."
+    },
+    {
+      "term": "Base Weapon Skills",
+      "why": "An Open skill whose name reads as a category heading for the weapon skills around it."
+    }
+  ]
+}

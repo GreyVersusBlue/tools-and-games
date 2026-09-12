@@ -253,6 +253,56 @@ th {
 tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--paper-sunken) 42%, transparent); }
 tbody tr:last-child td { border-bottom: 0; }
 
+/* per-skill permalink, the table-row twin of .heading-anchor: same gold mark,
+   same hover-to-reveal, same CSS-drawn glyph so Pagefind never reads it as part
+   of the skill's name */
+.skill-anchor__mark::before { content: "\A7"; }
+.skill-anchor {
+  color: var(--gold);
+  text-decoration: none;
+  font-family: var(--caps);
+  font-size: 0.8em;
+  vertical-align: 0.18em;
+  margin-left: 0.35em;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+tr:hover > td > .skill-anchor,
+.skill-anchor:focus,
+.skill-anchor:hover { opacity: 1; }
+.skill-anchor:hover { color: var(--gold-bright); }
+tr:target > td > .skill-anchor { opacity: 1; }
+tr:target > td { background: color-mix(in srgb, var(--gold-dim) 38%, transparent); }
+@media (hover: none) {
+  .skill-anchor { opacity: 0.8; }
+}
+
+/* ---------- All Skills index ---------- */
+.skill-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem 1.2rem;
+  margin: 1.4rem 0 0.6rem;
+}
+.skill-filter[hidden] { display: none; }
+.skill-filter__row { display: flex; flex-direction: column; gap: 0.2rem; margin: 0; }
+.skill-filter label { font-family: var(--caps); letter-spacing: 0.03em; color: var(--green); }
+.skill-filter input, .skill-filter select {
+  font: inherit;
+  padding: 0.32rem 0.5rem;
+  min-width: 13rem;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--gold-dim);
+  border-radius: 2px;
+}
+.skill-filter__count { margin: 0 0 0.35rem; color: var(--ink-soft); font-style: italic; }
+.skill-index[hidden] { display: none; }
+.skill-index td:first-child { white-space: nowrap; }
+.skill-index__empty { font-style: italic; color: var(--ink-soft); }
+.skill-index__empty[hidden] { display: none; }
+
 /* markdown --- becomes a gilded rule with a leaf sprig at its heart */
 hr {
   border: none;

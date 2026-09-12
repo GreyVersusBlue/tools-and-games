@@ -4,6 +4,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
+import { autolink, buildVocabulary, mainRegion } from "../tools/autolink.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PREFIX = "/Numina/";
@@ -86,6 +87,76 @@ for (const file of builtHtml) {
 ok(badLinks.length === 0, `all internal links resolve${badLinks.length ? `:\n      ${badLinks.slice(0, 10).join("\n      ")}` : ""}`);
 ok(badHosts.size === 0, `no unexpected offsite hosts in HTML${badHosts.size ? `: ${[...badHosts].join(", ")}` : ""}`);
 ok(badFragments.length === 0, `all same-page #fragments resolve to an id${badFragments.length ? `:\n      ${badFragments.slice(0, 10).join("\n      ")}` : ""}`);
+
+// 2b. Cross-links: the autolinker rewrites 39 chapters nobody reads the diff of,
+// so what holds it honest is here. A page linking itself is the failure its
+// self-link guard exists to prevent; a fragment that resolves nowhere is the
+// failure a term slugged from the wrong text produces (the glossary's headings
+// are slugged from the typographer's output — "fortune%E2%80%99s-bend", not
+// "fortune's-bend"); and running the linker over its own output has to be a
+// no-op or every rebuild adds another link to the same page.
+console.log("# cross-links");
+const urlFor = (file) => PREFIX + relative(root, file).replace(/\\/g, "/").replace(/index\.html$/, "");
+const idsByUrl = new Map();
+const mains = new Map();
+for (const file of builtHtml) {
+  const html = readFileSync(file, "utf8");
+  const region = mainRegion(html);
+  idsByUrl.set(urlFor(file), new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1])));
+  if (region) mains.set(file, html.slice(region.start, region.end));
+}
+
+const selfLinks = [];
+const danglingFragments = [];
+for (const [file, main] of mains) {
+  const self = urlFor(file);
+  for (const m of main.matchAll(/href="([^"]+)"/g)) {
+    const [target, fragment] = m[1].split("#");
+    // Any absolute link back to this page, fragment or not: same-page anchors
+    // are written as bare "#id" (the TOC and the heading permalinks), so an
+    // absolute one is the autolinker having pointed a term at its own page.
+    if (target === self) selfLinks.push(`${relative(root, file)} → ${m[1]}`);
+    if (!fragment || !target || !target.startsWith(PREFIX)) continue;
+    const ids = idsByUrl.get(target.endsWith("/") ? target : `${target}/`);
+    if (ids && !ids.has(fragment)) danglingFragments.push(`${relative(root, file)} → ${m[1]}`);
+  }
+}
+ok(selfLinks.length === 0, `no page body links to itself${selfLinks.length ? `:\n      ${selfLinks.slice(0, 10).join("\n      ")}` : ""}`);
+ok(
+  danglingFragments.length === 0,
+  `every cross-page #fragment resolves to an id on its target${danglingFragments.length ? `:\n      ${danglingFragments.slice(0, 10).join("\n      ")}` : ""}`
+);
+
+const vocabulary = buildVocabulary(root);
+const notIdempotent = [];
+for (const [file, main] of mains) {
+  if (/data-autolink="off"/.test(readFileSync(file, "utf8"))) continue;
+  const again = autolink(main, { pageUrl: urlFor(file).slice(PREFIX.length - 1), ...vocabulary, prefix: PREFIX });
+  if (again.linked.length > 0) notIdempotent.push(`${relative(root, file)}: ${again.linked.map((l) => l.term).join(", ")}`);
+}
+ok(
+  notIdempotent.length === 0,
+  `autolinker is idempotent over the built HTML${notIdempotent.length ? `:\n      ${notIdempotent.slice(0, 10).join("\n      ")}` : ` (${mains.size} pages)`}`
+);
+
+const autolinkData = JSON.parse(readFileSync(join(root, "src", "_data", "autolink.json"), "utf8"));
+const unexplained = autolinkData.exclude.filter((e) => !e.term || !(e.why ?? "").trim());
+ok(
+  unexplained.length === 0,
+  `every autolink exclusion names the collision it avoids (${autolinkData.exclude.length})${unexplained.length ? `: ${unexplained.map((e) => e.term).join(", ")}` : ""}`
+);
+const stillLinked = autolinkData.exclude.filter((e) => vocabulary.terms.some((t) => t.term === e.term));
+ok(stillLinked.length === 0, `no excluded term is in the link list${stillLinked.length ? `: ${stillLinked.map((e) => e.term).join(", ")}` : ""}`);
+// An exclusion that changes nothing is a claim nobody can check. Every entry has
+// to be a term the linker would otherwise have used: "Garb" would not (two
+// records claim it, so the ambiguity rule drops it), and listing it here would
+// read as the reason it is not linked when it is not.
+const openVocabulary = buildVocabulary(root, { exclude: [] });
+const deadWeight = autolinkData.exclude.filter((e) => !openVocabulary.terms.some((t) => t.term === e.term));
+ok(
+  deadWeight.length === 0,
+  `every autolink exclusion removes a term that would otherwise be linked${deadWeight.length ? ` (these are dropped by another rule already, delete them): ${deadWeight.map((e) => e.term).join(", ")}` : ""}`
+);
 
 const cssJs = walk(join(root, "css"), () => true).concat(walk(join(root, "js"), () => true));
 const offsiteCssJs = cssJs.filter((f) => /https?:\/\//.test(readFileSync(f, "utf8")));

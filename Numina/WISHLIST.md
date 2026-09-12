@@ -1,12 +1,14 @@
 # Numina — Feature Wishlist
 
-**Status: Phase 1 shipped on 2026-09-12 (PR #236); the first open phase is
-Phase 2, on Claude Opus 5.** The site is built, deployed and green — 55
+**Status: Phase 2 shipped on 2026-09-12 (PR #239); the first open phase is
+Phase 3, on Claude Fable 5.1 — a 2+ row, so it is a whole batch on its own.** The site is built, deployed and green — 56
 pages, 136,410 words of source markdown, `npm test` passing every check, CI on
-every PR touching `Numina/**` — and the August 2026 audit's engineering and
-sharing/SEO sections are done while its content and accessibility sections
-are not. `src/_data/skills.json` now holds the 189 skills, and
-`test/skills.test.mjs` pins it. Two prompt
+every PR touching `Numina/**` — and the August 2026 audit's engineering,
+sharing/SEO and A5 cross-linking items are done while the rest of its content
+section and all of its accessibility section are not. `src/_data/skills.json`
+holds the 189 skills, `test/skills.test.mjs` pins it, and two build transforms
+now read it: every skill row has an anchor, and the first mention of every
+glossary term, nation and skill name in a chapter links to its page. Two prompt
 batches ran before this file existed, and their prompt files are retired; the
 audit label each item answered is in `HISTORY.md`. Between them: the
 new-player rewrite, the
@@ -49,12 +51,15 @@ Bottom-up, all paths relative to `Numina/`:
 
 - **`src/_data/`** — `site.json` (354 B; its `origin` is the only place the
   deployed origin is written down, so a domain move is a one-line change),
-  `nav.json` (2.9 KB of sidebars and landing-page cards by hand — a second
+  `nav.json` (sidebars and landing-page cards by hand — a second
   source of truth for titles and order that the smoke test guards rather than
-  fixes), and `timeline.json` (17 dated events in 2 eras — the only
-  structured content on the site).
-- **`eleventy.config.mjs`** (137 lines) — `PATH_PREFIX = "/Numina/"`, the
-  markdown-it-anchor wiring, four filters. `tocData` builds the contents list
+  fixes), `timeline.json` (17 dated events in 2 eras), `skills.json`
+  (generated; see CONTENT-GUIDE) and `autolink.json` (the terms the
+  cross-linker must not link, each with the collision it avoids).
+- **`eleventy.config.mjs`** (221 lines) — `PATH_PREFIX = "/Numina/"`, the
+  markdown-it-anchor wiring, five filters, and the two transforms of Phase 2
+  (`skillAnchors` and `autolink`, both scoped to `<main>` and both running
+  after `EleventyHtmlBasePlugin`, so both emit prefixed URLs). `tocData` builds the contents list
   from the *rendered* HTML by matching `<h2|h3 … id="…">`, so it can never
   disagree with the ids anchor emitted. `pageByUrl` exists because Nunjucks
   has no `equalto` test and the `selectattr` chain it replaced rendered
@@ -290,42 +295,45 @@ instead of a reread. Nothing user-visible shipped; two phases stand on it.
 
 ## Phase 2 — A page for every skill, and links between them
 
-**CONTENT-GUIDE rule 5 says to cross-link, and 39 ported chapters contain
-zero links.**
+**Shipped 2026-09-12, PR #239.** `HISTORY.md`, "Numina, arc one", carries the
+full account and decisions #300 to #303.
 
-With `skills.json` in hand the site can generate what nobody wrote by hand: a
-deep link per skill, and an automatic first-mention link for every skill,
-nation and glossary term in every ported chapter. This is audit A5 — the item
-it called "materially improve both navigation and search relevance" — done by
-machine rather than by 39 careful passes.
+CONTENT-GUIDE rule 5 said to cross-link and 39 ported chapters contained zero
+links; a skill had no address to link to either. This phase generated both off
+Phase 1's `skills.json`: 189 skill anchors, 122 cross-links on 43 pages, and an
+index page for all 189. This is audit A5, done by machine rather than by 39
+careful passes.
 
-- [ ] **A stable anchor per skill,** derived from the record's id, so
-  `/mechanics/skills/domains/#airs-last-stand` pastes into Discord. Keep the
-  ids out of Pagefind sub-result titles the way the permalink already does.
-- [ ] **A skill index page** listing all 189 by name, group and cost,
-  filterable client-side, indexed, and entered in `nav.json` or the smoke
-  test fails.
-- [ ] **Generated cross-links.** A build-time filter linking the first
-  mention of each glossary term, nation and skill name in a page's rendered
-  body to its canonical page. First mention only, never inside a heading, a
-  table header, an existing link or a code span, never self-linking. The term
-  list comes from `skills.json`, `collections.nations` and the glossary's own
-  `##` headings, so it maintains itself — with an explicit `_data` exclusion
-  list for terms too ambiguous to autolink ("Garb" is a Culture skill, an
-  Expression skill and an ordinary noun; "Rues" is a nation and a verb), one
-  comment per entry naming the collision it avoids.
-- [ ] **Fill the infoboxes, or collapse them.** `capital`/`demonym` from the
-  book where named (see Questions), and `nation.njk` rendering no infobox at
-  all when it would carry only the "See also" row — 8 nations today get a
-  flag chip and nothing else.
-- [ ] **Extend the smoke test:** no page links to itself, and the autolinker
-  is idempotent over already-linked HTML.
+- [x] **A stable anchor per skill,** from the record's id —
+  `/mechanics/skills/domains/#airs-last-stand` — with a CSS-drawn `§`
+  permalink and `data-pagefind-ignore`, the way the heading permalink already
+  does it. A page that repeats a name gets `group-name` (four `Holding`s).
+  Rows match by heading + text, never position; a record with no row stops the
+  build.
+- [x] **A skill index page,** `/mechanics/skills/all-skills/`: all 189 by name,
+  group, kind and cost, filterable by text and group, `data-pagefind-body`,
+  and in `nav.json`. The filter is progressive — the list is complete without
+  JS, in print, and to Pagefind.
+- [x] **Generated cross-links.** First mention per page, never in a heading,
+  table header, existing link or code span, never self-linking, and idempotent
+  because an existing link to the target is what spends the term. The list
+  derives from `skills.json`, the nation pages and the glossary's `##`
+  headings; `src/_data/autolink.json` holds 12 exclusions, each with its
+  collision — and each has to *do* something or the suite fails. One-word skill
+  names and terms two records claim are dropped by rule, not by list.
+- [x] **Infoboxes: collapsed, not filled.** Three nations carry only the "See
+  also" row — the Principalities of the Reach, Rues and T'barris — and get no
+  infobox now. There was nothing to fill: `source-material/markdown/` records
+  that the book names no capital or demonym for any of them. The "8 nations"
+  in this file's earlier text was counting empty `capital` fields, five of
+  which sit beside a demonym that renders.
+- [x] **Smoke test extended:** no page body links to itself, every cross-page
+  `#fragment` resolves to an id on its target, the autolinker is idempotent
+  over all 56 built pages, and the exclusion file is honest. Plus five checks
+  in `skills.test.mjs` on the anchors and the index page. 118 assertions to
+  130.
 
-*Leans on:* Phase 1's `skills.json`, `eleventy.config.mjs`'s filters,
-`test/smoke.mjs`'s link resolver. *Build/output:* every ported chapter's
-committed HTML changes — expect a large, mostly mechanical diff, and review
-the linker's summary rather than the diff. *Model:* **Claude Opus 5** —
-template and filter work over a schema that already exists.
+*Model:* **Claude Opus 5**, as named, and the session ran on it.
 
 ## Phase 3 — The character builder
 

@@ -248,7 +248,48 @@ One object per dated event, oldest first. Schema:
 
 One `##` heading per term, definition paragraph below it. Headings get anchor
 ids automatically (`/lore/glossary/#the-lattice`), so glossary terms can be
-linked from anywhere.
+linked from anywhere — and the autolinker below links them for you.
+
+## Skill anchors and cross-links
+
+Two build transforms, wired in `eleventy.config.mjs` and scoped to each page's
+`<main>`. Both print a one-line summary at the end of `npm run build`; **read
+the summary, not the diff** — a change to either rewrites every ported chapter.
+
+**`tools/skill-anchors.mjs`** puts an id on every skill row and a `§` permalink
+in its first cell, so `/mechanics/skills/domains/#airs-last-stand` pastes into
+Discord. The anchor is the name segment of the record's `id`, or `group-name`
+when a page repeats a name (Foundations has four `Holding`s). Rows are matched
+by heading id plus first-cell text, not position: **a record in `skills.json`
+with no matching row stops the build**, naming the page and the skill. If that
+happens, the markdown and the JSON have drifted — re-run
+`node tools/extract-skills.mjs`.
+
+**`tools/autolink.mjs`** links the first mention of each glossary term, nation
+and skill name in a page's body to its canonical page. It never links inside a
+heading, a table header, an existing link, a code span or a script, never links
+a page to itself, and treats a link the page already has as that term's first
+mention — so a hand-written cross-link (rule 5) is never doubled, and a rebuild
+never adds a second one. Two rules keep it quiet, and neither is a list anyone
+maintains: a one-word skill name is never linked (`Attack` and `Shield` are
+words), and a term two records claim is dropped. What *is* maintained is
+**`src/_data/autolink.json`** — terms too ambiguous to link, each with the
+collision it avoids. Two things the suite enforces about that file: every entry
+needs a `why`, and every entry has to actually remove a term that would
+otherwise be linked. An entry already covered by the one-word or ambiguity rule
+fails the build's tests; delete it.
+
+To keep one page out of the linker entirely, put `data-autolink="off"` on its
+`<main>` (the All Skills index does, since every row is a mention).
+
+## The All Skills index (`src/mechanics/skills/all-skills.njk`)
+
+Generated from `skills.json`, so it cannot drift from the chapters: 189 rows,
+each linked to its own anchor by the `skillHref` filter, filtered client-side
+by `src/js/skill-filter.js`. The filter form ships `hidden` and JS reveals it,
+so a browser without JS, a print, and Pagefind all see the whole list. A new
+skill appears here on the next `npm run build` with no edit to this page — but
+a new *page* still needs its `nav.json` entry or the smoke test fails.
 
 ## After adding content
 
