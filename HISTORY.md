@@ -7551,6 +7551,110 @@ so a step is a template over a list rather than a second copy of these rules.
 
 
 
+## Phase 3 — The picker, increment 2 (2026-09-12)
+
+**Phase 3 is a 2+ row, and this is its second increment.** The row stays in
+`BACKLOG.md` with its text rewritten. What shipped is the page: the picker
+over increment 1's `offered()`, and the build kept in `localStorage` and the
+URL fragment. The printable card is what is left, and it is increment 3.
+
+**What shipped.** Decisions #310 to #313. The row names Claude Fable 5.1 and
+this session ran on it. 253 assertions to 341 across four suites: 99 in
+`smoke.mjs`, 41 in `skills.test.mjs`, 113 in `build-rules.test.mjs`, 88 in
+the new `builder.test.mjs`, fourth in `npm test`. One page,
+`/mechanics/character-builder/`, in `nav.json` after Building a Character.
+Three modules beside `build-rules.js`: `build-view.js` renders each step and
+the verdict as HTML strings, `build-state.js` packs the build for storage and
+the fragment, and `builder.js` is the only file that touches the browser. The
+first two are pure and run under Node, which is how the suite reads what the
+page shows without a browser; the third is 156 lines of events and
+`innerHTML`. Increment 1's finding stands on the page in the chapter's own
+words: raise Prowess and the headline goes from "50 CP of 50 spent" to "at
+least 50 CP of 50 spent, 1 purchase unpriced", with a box naming the purchase
+and quoting "Cost of next attribute" (#305).
+
+- **The form is the state, and a step re-renders only when what it offers
+  changes** (#310). No model object in the page: every control is named for
+  the build field it writes, a build is read back out of the form on each
+  input event, priced, and written to the page. Re-rendering every step on
+  every keystroke would rebuild the Excellency field under the player's
+  cursor and drop focus, so `stepSignature()` hashes what a step *offers* —
+  its choices and skills, plus the driver that changes them — and a step's
+  body is rewritten only when that moves. Ticking a box changes no signature;
+  choosing a Foundation changes step 2's; choosing an Expression changes
+  step 7's; choosing a second Aspect changes step 1's, which is what adds a
+  Tongue box. Checked in a real Chromium: typing a name keeps focus.
+
+- **A pasted fragment wins over the saved build, the fragment is rewritten
+  in place, and an empty build clears both** (#311). Key `numina.build`,
+  beside `numina.theme`, and it does not change (#36). The record is
+  `{ v: 1, build }`; an unversioned or foreign record reads as version 0 and
+  comes through `repair()` on every load (#37), which coerces shape and
+  drops nothing it does not recognise as a field — an unknown skill id stays
+  in the build so `priceBuild()` can name it. The fragment is short keys in
+  the book's step order (`a=arcane&f=military&x=Deadeye&at=purpose:6`),
+  written with `history.replaceState` so the back button is never spent on a
+  checkbox, and only what differs from the empty build is in it. On load a
+  non-empty fragment beats storage because a pasted link is a deliberate act
+  and the save is a habit. "Start over" removes the key and the fragment.
+
+- **Tongue of Aspect is one checkbox per chosen Aspect** (#312). It is the
+  one skill a build may hold twice (per the chapter's footnote, increment 1),
+  and a single box cannot say which Aspect it is for. With no Aspect chosen
+  it is one disabled box that says so; with two, two boxes labelled by
+  Aspect, and the build holds the id once per ticked box.
+
+- **`skills.json` and the anchor map are inlined in the page, not fetched**
+  (#313). Two `<script type="application/json">` islands, written by two new
+  filters: `jsonIsland` for the records, `skillLinks` for one URL per skill
+  id. The URLs come from the same `skillAnchors()` map the Phase 2 transform
+  stamps on the chapter rows, already carrying the path prefix because a JSON
+  island is not an `href` and `EleventyHtmlBasePlugin` will not rewrite it.
+  The page is 139 KB, which is the price of no fetch, no race and no second
+  copy of the data to drift. `tools/json-island.mjs` escapes `</` — the one
+  sequence that could close the element from inside a description — and the
+  suite plants a `</script>` to check it, because the real data happens not
+  to contain one and an assertion over the real data alone could not fail.
+
+**The rest of the page.** Radios for the three single choices with a "Not
+chosen yet" row so a choice can be undone; checkboxes for Aspects, Expressions
+and every skill, each with cost, verbal, description and a "Rules for …" link
+to its row's anchor; three text fields for Excellencies because the chapter
+has no list (#306); number fields for the attributes with the chart's start
+and cap, and the four unpublished ones saying so beside the field. Problems
+render under the step they belong to and again in the verdict; provisional
+flags are a "Needs Staff" box; the bill is a table with `unpriced` where a
+number would be. A sticky bar carries the total and the problem count. The
+form ships `hidden` with a no-JS notice beside it, and the page is
+`data-autolink="off"`.
+
+**Break it on purpose, and it fails by name** (#34). Ten breaks from a green
+baseline, nine caught by the assertion whose message names them: `at=prowess:`
+decoding to Prowess 0 (found by the suite before the fix, not after), one
+Tongue box instead of two, step 5's signature moving as a name is typed, the
+headline saying the number when the total is a floor, a problem rendering
+under every step, a typed Excellency escaping its attribute, the island
+escape, an anchor URL off by a character (rebuilt, then caught by name with
+the first three ids), and an unversioned save reading as empty. **The tenth
+went green** (#147): removing the `disabled` from Void's field changed
+nothing, because `offered()` never lists Void — step 9 is Purpose alone — so
+the branch was dead. It is deleted, with a comment saying why, rather than
+given an assertion that would have to render a field the rules refuse.
+
+**Checked in a browser, not in CI.** Numina's workflow installs no browser,
+so the DOM glue is the one file the suite cannot see. This session drove the
+built page in a headless Chromium: picks, the typed name keeping focus, the
+fragment and the save after a reload, a pasted fragment winning, reset
+clearing both, two Tongue boxes for two Aspects, no horizontal scroll at
+400px, no page errors. That script is not committed; CONTENT-GUIDE says to
+drive the page by hand after touching `builder.js`.
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 309 → 313. `check-integrity.mjs` is 1,531 units with
+the same one broken, `Tools/prompt-builder.html`; `social:check` reports the
+same six pages out of sync; `check-collisions.mjs` passes at 0 — all three
+unchanged by this work.
+
 ---
 
 # The two August 2026 audits

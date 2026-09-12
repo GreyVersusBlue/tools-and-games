@@ -216,17 +216,18 @@ function attributeStep(build, catalog, offer) {
   for (const id of offer.attributes) {
     const chart = catalog.attributes.get(id);
     const value = build.attributes[id] ?? chart.startingValue;
+    // Void never reaches here: offered() lists only what the chart lets a
+    // player buy, so a cost of kind "none" has no field to disable. A branch
+    // for it was removed after a deliberate break of it left the suite green
+    // (#147).
     const cost = chart.costToIncrease;
     const costText =
       cost.kind === "cp"
         ? `${cost.cp} CP per point`
-        : cost.kind === "none"
-          ? `cannot currently be purchased (${cost.raw})`
-          : `cost per point is “${cost.raw}” in the chart and is not published — this build's total becomes a floor`;
-    const disabled = cost.kind === "none" ? " disabled" : "";
+        : `cost per point is “${cost.raw}” in the chart and is not published — this build's total becomes a floor`;
     html +=
       `<li class="builder__attribute"><label class="builder__pick"><span class="builder__name">${esc(chart.name)}</span> ` +
-      `<input type="number" name="attr:${esc(id)}" value="${value}" min="${chart.startingValue}" max="${chart.max}" step="1" inputmode="numeric"${disabled}></label>` +
+      `<input type="number" name="attr:${esc(id)}" value="${value}" min="${chart.startingValue}" max="${chart.max}" step="1" inputmode="numeric"></label>` +
       `<span class="builder__desc">Starts at ${chart.startingValue}, up to ${chart.max}; ${esc(costText)}.</span></li>`;
   }
   html += `</ul>`;

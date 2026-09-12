@@ -324,6 +324,48 @@ so a browser without JS, a print, and Pagefind all see the whole list. A new
 skill appears here on the next `npm run build` with no edit to this page — but
 a new *page* still needs its `nav.json` entry or the smoke test fails.
 
+## The character builder (`src/mechanics/character-builder.njk`)
+
+The one page on the site that is an application rather than a chapter. Four
+modules under `src/js/`, and the split is the point:
+
+| Module | Does | Touches the browser |
+| --- | --- | --- |
+| `build-rules.js` | Prices a build; `offered()` says what each step may show | no |
+| `build-view.js` | Renders each step and the verdict as HTML strings | no |
+| `build-state.js` | The `localStorage` record and the URL fragment | no |
+| `builder.js` | Reads the form, writes `innerHTML`, keeps storage and the fragment in step | yes |
+
+The three pure modules run under Node, which is how `test/builder.test.mjs`
+checks the page's markup without a browser. Numina's CI installs none, so a
+change to `builder.js` is the one thing the suite cannot see; drive the page
+by hand after touching it.
+
+- **The form is the state.** Every control is named for the build field it
+  writes (`name="aspectSkills" value="<skill id>"`, `name="attr:prowess"`),
+  and a build is read back out of the form on every input. A step's body is
+  re-rendered only when `stepSignature()` changes — what it offers, not what
+  is ticked — so a box is never rebuilt under the pointer and a typed
+  Excellency keeps its focus.
+- **The data is inlined.** The page carries `skills.json` and one anchor URL
+  per skill id as two `<script type="application/json">` islands, written by
+  the `jsonIsland` and `skillLinks` filters in `eleventy.config.mjs`. The
+  URLs come from the same anchor map the chapter rows get theirs from, so the
+  builder cannot link to a fragment a chapter does not have, and the test
+  checks every one against the built HTML. `tools/json-island.mjs` escapes
+  the one sequence that could close the element early.
+- **Storage.** The key is `numina.build` and it does not change (#36). The
+  record is `{ v: 1, build }`; anything else reads as version 0 and comes
+  through `repair()`, which coerces shape and never drops an unknown id —
+  `priceBuild()` reports those by name.
+- **The fragment** is short keys in step order, values percent-encoded with
+  `/` put back: `a=arcane&f=military&x=Deadeye&at=purpose:6`. Only what
+  differs from the empty build is written. A pasted link's fragment wins over
+  the save; "Start over" clears both.
+- **Without JS** the form ships `hidden` and a notice links to the chapter
+  and to All Skills. The page is `data-autolink="off"`: its lists are
+  rendered client-side and the static prose already links what it names.
+
 ## After adding content
 
 ```sh
