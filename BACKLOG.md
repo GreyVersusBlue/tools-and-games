@@ -934,7 +934,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 3 — The character builder. **Increment 1 shipped (PR #242): `src/js/build-rules.js` prices a build and refuses to price the unpublished attribute curve, and the Aspect and Foundation lists are in `skills.json`.** Left: the picker over `offered()`, `localStorage` + URL-fragment persistence, the printable card | `Numina` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 3](Numina/WISHLIST.md#phase-3--the-character-builder) |
+| 1 | Phase 3 — The character builder. **Increment 1 shipped (PR #242): `src/js/build-rules.js` prices a build and refuses to price the unpublished attribute curve, and the Aspect and Foundation lists are in `skills.json`.** Left: the picker over `offered()`, `localStorage` + URL-fragment persistence, the printable card | `Numina` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-z07e9w` | [WISHLIST.md Phase 3](Numina/WISHLIST.md#phase-3--the-character-builder) |
 | 2 | Phase 4 — The accessibility and mobile pass | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Numina/WISHLIST.md#phase-4--the-accessibility-and-mobile-pass) |
 | 3 | Phase 5 — Come play | `Numina` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Numina/WISHLIST.md#phase-5--come-play) |
 | 4 | Phase 6 — Excellencies, history, and the timeline | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Numina/WISHLIST.md#phase-6--excellencies-history-and-the-timeline) |
