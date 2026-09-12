@@ -405,7 +405,7 @@ export function renderCard(build, verdict, catalog, { url = "" } = {}) {
 
   html += `<dl class="sheet__choices">` +
     dt("Aspects", aspects.join(", ")) +
-    dt("Foundation", foundation ? `${foundation.name} (${foundation.type}: ${foundation.detail})` : "") +
+    dt("Foundation", foundation ? `${foundation.name} (${foundation.type})` : "") +
     dt("Culture", nameOf(catalog.cultures, build.culture)) +
     dt("Domain", nameOf(catalog.domains, build.domain)) +
     dt("Excellencies", excellencies.join(", ")) +

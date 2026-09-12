@@ -238,7 +238,7 @@ ok(attributeCostLabel({ kind: "none", raw: "N/A" }) === "—" && attributeCostLa
 const cells = [...cardExact.matchAll(/data-sheet-attribute="([a-z]+)">(\d+)</g)].map((m) => `${m[1]}:${m[2]}`);
 ok(cells.join(",") === "prowess:2,insight:2,fortitude:2,void:2,purpose:5,vitality:2", `the six attributes print at their values in the chart's order (${cells.join(",")})`);
 ok(/data-exact="true"/.test(cardExact) && /<strong>50 CP<\/strong> of 50 spent, 0 remaining\./.test(cardExact), "the 50 CP build's CP line is the number");
-ok(/<dt>Aspects<\/dt><dd>Arcane<\/dd>/.test(cardExact) && /<dt>Foundation<\/dt><dd>Military \(Place: /.test(cardExact) && /<dt>Excellencies<\/dt><dd>Deadeye<\/dd>/.test(cardExact), "the choices print by name, the Foundation with its type");
+ok(/<dt>Aspects<\/dt><dd>Arcane<\/dd>/.test(cardExact) && /<dt>Foundation<\/dt><dd>Military \(Place\)<\/dd>/.test(cardExact) && /<dt>Excellencies<\/dt><dd>Deadeye<\/dd>/.test(cardExact), "the choices print by name, the Foundation with its type");
 ok(/Needs Staff:<\/strong> Deadeye: Excellency purchases must be unlocked in-game;/.test(cardExact) && !/sheet__problems/.test(cardExact), "the Staff flags print and a legal build prints no problems");
 ok(/This build: https:\/\/example\.test\/Numina\/mechanics\/character-builder\/#a=arcane/.test(cardExact) && !/sheet__url/.test(cardOf(fifty)), "the share URL prints when the page gives one, and not otherwise");
 ok(/sheet__blank-label">Character<\/span>/.test(cardExact) && /sheet__blank-label">Player<\/span>/.test(cardExact), "the card leaves a Character and a Player line to write in");

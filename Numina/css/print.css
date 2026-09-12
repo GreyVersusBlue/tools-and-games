@@ -65,12 +65,13 @@ blockquote { border-top: none; border-bottom: none; }
    verdict, the notes and the lede are the screen's, and the card (rendered by
    build-view.js's renderCard) is the sheet. The page is cardsheet: true, so
    the dense rules above apply to it. */
-.builder-page .lede, .builder-page .builder__unofficial, .builder-page [data-builder-needs-js],
+.builder-page h1, .builder-page .lede, .builder-page .builder__unofficial, .builder-page [data-builder-needs-js],
 .builder-page .builder__bar, .builder-page .builder__form, .builder-page .builder__verdict-section,
 .builder-page .builder__card-section > h2, .builder-page .builder__card-section > .builder__hint {
   display: none !important;
 }
-.builder-page .sheet { border: none; padding: 0; background: none; }
+.builder-page .sheet { border: none; padding: 0; background: none; font-size: inherit; line-height: inherit; }
+.builder-page .sheet__skills, .builder-page .sheet__attributes { font-size: inherit; margin: 0.15rem 0; }
 .builder-page .sheet__title { font-size: 12pt; font-weight: bold; margin: 0; }
 .builder-page .sheet__blank-line { display: inline-block; width: 5cm; border-bottom: 1px solid #000; }
 .builder-page .sheet__choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 0.4cm; margin: 0.15rem 0; }
