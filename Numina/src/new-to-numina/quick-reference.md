@@ -15,7 +15,7 @@ memorized before your first event — bookmark the page and come back to it.
 - **[The Numina Discord](https://discord.gg/YUbmyK4Ehb)** — the fastest place
   to ask a question, borrow gear, arrange a ride, or tell staff you'd like to
   come NPC.
-- **numina.lorelogic.info** — the newer game system, handling registration
+- **[numina.lorelogic.info](https://numina.lorelogic.info/)** — the newer game system, handling registration
   and Post-Event Letters. Numina is mid-migration to this system from an
   older one, so if a link seems broken or a feature is missing, that is
   probably why — ask in the `database-things` Discord channel rather than

@@ -3,6 +3,7 @@ title: New Players Start Here
 order: 1
 summary: >-
   Welcome to Numina — what a LARP event is like, what you need, and how to join your first game.
+comePlay: true
 ---
 
 Numina is a live-action roleplaying game built on the Accelerant system, set in
@@ -163,18 +164,10 @@ and leave loose ends for staff to pull on.
 
 ## How to Join
 
-Event dates, prices, the site, registration, and what to pack all live with the
-game itself rather than in the books, and they change from season to season. Go
-to the source:
-
-- **[The official Numina site](http://www.numinalarp.com)** — the event
-  schedule, registration, the character database, and the current list of LARPs
-  that share CP with Numina.
-- **[The Numina Discord](https://discord.gg/YUbmyK4Ehb)** — the fastest place to
-  ask a question, arrange to borrow gear or a costume, find a ride, or tell
-  staff you would like to come NPC.
-
-Say it is your first event when you get in touch. That is the whole trick.
+Event dates, prices, the site, registration, the character database, and the
+current list of LARPs that share CP with Numina all live with the game itself
+rather than in the books, and they change from season to season. The three
+links at the foot of this page are the source for all of it.
 
 ## Where to Learn More
 

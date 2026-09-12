@@ -200,7 +200,7 @@ ok(
 
 console.log("# Included skills");
 const everyIncluded = data.skills.filter((s) => s.cost.kind === "included");
-ok(everyIncluded.length === 30, `30 Included skills in the book (${everyIncluded.length})`);
+ok(everyIncluded.length === 60, `60 Included skills in the book (${everyIncluded.length})`);
 const withDomain = price({ domain: "water" });
 ok(
   withDomain.granted.some((g) => g.id === "domains/water/waters-determination" && g.cp === 0),

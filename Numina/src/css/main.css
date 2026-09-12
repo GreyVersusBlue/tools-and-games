@@ -723,6 +723,31 @@ main { min-width: 0; max-width: 70ch; }
 .home-card p { margin: 0; color: var(--ink-soft); }
 .home-map { max-width: 56rem; margin: 0 auto; }
 
+/* ---------- come play ---------- */
+/* The block that tells a reader Numina is a thing they can attend. It sits on
+   the home page, the New to Numina landing page and the foot of New Players
+   Start Here, and carries no date, price or registration mechanic: every one of
+   those lives behind the three links. */
+.come-play {
+  max-width: 44rem;
+  margin: 0 auto 3rem;
+  padding: 1.6rem 1.8rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+.come-play h2 { margin: 0 0 0.6rem; background: none; padding: 0; }
+.come-play p { margin: 0 0 0.9rem; }
+.come-play__links { list-style: none; margin: 0 0 0.9rem; padding: 0; }
+.come-play__links li { margin: 0 0 0.55rem; padding-left: 1.1rem; text-indent: -1.1rem; }
+.come-play__links a { font-family: var(--caps); letter-spacing: 0.02em; }
+.come-play__tip { margin: 0; font-style: italic; color: var(--ink-soft); }
+.hero__plain { max-width: 40rem; margin: 0 auto 1.2rem; color: var(--ink-soft); }
+@media (max-width: 34rem) {
+  .come-play { padding: 1.2rem 1.1rem; }
+}
+
 /* ---------- world map ---------- */
 .world-map { margin: 2rem 0; }
 .world-map svg {

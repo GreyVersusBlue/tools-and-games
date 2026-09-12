@@ -170,9 +170,12 @@ function step4(build, catalog, offer, links) {
   return html;
 }
 
-// No list to pick from: the Excellencies chapter is a stub, so a name is typed
-// (#306). Three fields, blank ones ignored, and the hidden table is where a
-// typed name gets its Staff-approval flag.
+// A name is typed rather than picked (#306). The Excellencies chapter stopped
+// being a stub in Phase 6, so a list exists now; what does not exist yet is the
+// pricing for the skills inside a chosen Excellency, and a picker that offers
+// the 30 without them would read as a promise the verdict cannot keep. Three
+// fields, blank ones ignored, and the hidden table is where a typed name gets
+// its Staff-approval flag.
 function step5(build) {
   let html = `<ol class="builder__typed">`;
   for (let i = 0; i < EXCELLENCY_MAX; i++) {

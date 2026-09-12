@@ -173,6 +173,50 @@ const indexedPages = builtHtml.filter((f) => readFileSync(f, "utf8").includes("d
 ok(fragments >= indexedPages, `index fresh (${fragments} fragments ≥ ${indexedPages} indexed pages)`);
 ok(readFileSync(join(root, "search", "index.html"), "utf8").includes("pagefind-ui.js"), "search page references bundle");
 
+// 4b. The "come play" block (Phase 5). Three things matter about it and none
+// of them is visible in a diff of the partial: that it is on the three pages a
+// stranger actually lands on, that it carries all three official links off
+// site.json rather than a hand-typed copy, and that it carries no fact that
+// moves. The last is the one with a two-year precedent behind it — "$100 per
+// event" sat on Quick Reference because somebody lifted it out of a 2024
+// Discord message — so a price, a date or a month in this block fails here.
+console.log("# come play");
+const site = JSON.parse(readFileSync(join(root, "src", "_data", "site.json"), "utf8"));
+const COME_PLAY_PAGES = ["index.html", join("new-to-numina", "index.html"), join("mechanics", "new-players", "index.html")];
+const comePlayFound = builtHtml.filter((f) => readFileSync(f, "utf8").includes('class="come-play"'));
+ok(
+  comePlayFound.length === COME_PLAY_PAGES.length &&
+    COME_PLAY_PAGES.every((p) => comePlayFound.some((f) => relative(root, f) === p)),
+  `the come-play block is on exactly the three entry pages (${comePlayFound.map((f) => relative(root, f)).join(", ") || "none"})`
+);
+const comePlayGaps = [];
+for (const file of comePlayFound) {
+  const html = readFileSync(file, "utf8");
+  const block = html.slice(html.indexOf('<section class="come-play">'), html.indexOf("</section>", html.indexOf('<section class="come-play">')));
+  for (const [key, url] of Object.entries(site.official)) {
+    if (key.endsWith("Note")) continue;
+    if (!block.includes(`href="${url}"`)) comePlayGaps.push(`${relative(root, file)}: no link to site.official.${key}`);
+  }
+  // A number with a currency mark, or a month name: the two shapes the rule is about.
+  const volatile = block.match(/[$£€]\s?\d|\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/);
+  if (volatile) comePlayGaps.push(`${relative(root, file)}: the block names something that moves (${volatile[0]})`);
+}
+ok(comePlayGaps.length === 0, `every come-play block carries all three official links and no date or price${comePlayGaps.length ? `:\n      ${comePlayGaps.join("\n      ")}` : ""}`);
+// The registration host is in site.json now, and site.json is what the block
+// renders. A second copy typed into the partial would pass the check above and
+// silently stop tracking a move of the host, so the partial holds no URL.
+const partial = readFileSync(join(root, "src", "_includes", "partials", "come-play.njk"), "utf8");
+ok(!/https?:\/\//.test(partial), "the come-play partial hardcodes no URL of its own");
+
+// 4c. The four landing pages are indexed (Phase 5). The search page is not, and
+// that is deliberate: indexing the page that shows results puts every result
+// snippet in the index.
+const unindexed = builtHtml.filter((f) => !readFileSync(f, "utf8").includes("data-pagefind-body")).map((f) => relative(root, f));
+ok(
+  unindexed.length === 1 && unindexed[0] === join("search", "index.html"),
+  `every built page but the search page is in the index (${builtHtml.length - unindexed.length} indexed)${unindexed.length === 1 && unindexed[0] === join("search", "index.html") ? "" : `; not indexed: ${unindexed.join(", ")}`}`
+);
+
 // 5. Map regions, timeline hrefs, fonts.
 console.log("# features");
 const nationsIndex = readFileSync(join(root, "lore", "nations", "index.html"), "utf8");
@@ -183,8 +227,23 @@ for (const slug of nationSlugs) {
   ok(nationsIndex.includes(`${PREFIX}lore/nations/${slug}/`), `map/cards link nation: ${slug}`);
 }
 const timeline = JSON.parse(readFileSync(join(root, "src", "_data", "timeline.json"), "utf8"));
-const badTimeline = timeline.filter((ev) => ev.href && !existsSync(join(root, ev.href.slice(1), "index.html")));
-ok(badTimeline.length === 0, `timeline hrefs resolve (${timeline.length} events)`);
+// A "Read more" is a page and, since Phase 6, sometimes a fragment on one: the
+// Vargoth Empire's entry points at the glossary term rather than a nation page
+// it has none of. Both halves are checked here. The cross-link section above
+// also catches a bad fragment today, but only because the one page that renders
+// the timeline is a page it scans; an event whose href is never rendered into
+// any <main> would reach production on that check alone.
+const badTimeline = [];
+for (const ev of timeline) {
+  if (!ev.href) continue;
+  const [path, fragment] = ev.href.split("#");
+  const page = join(root, path.slice(1), "index.html");
+  if (!existsSync(page)) { badTimeline.push(`${ev.title} → ${ev.href}`); continue; }
+  if (!fragment) continue;
+  const ids = new Set([...readFileSync(page, "utf8").matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]));
+  if (!ids.has(decodeURIComponent(fragment)) && !ids.has(fragment)) badTimeline.push(`${ev.title} → ${ev.href}`);
+}
+ok(badTimeline.length === 0, `timeline hrefs resolve (${timeline.length} events)${badTimeline.length ? `:\n      ${badTimeline.join("\n      ")}` : ""}`);
 const mainCss = readFileSync(join(root, "css", "main.css"), "utf8");
 const fontRefs = [...mainCss.matchAll(/url\("\.\.\/fonts\/([^"]+)"\)/g)].map((m) => m[1]);
 ok(fontRefs.length >= 5 && fontRefs.every((f) => existsSync(join(root, "fonts", f))), `all ${fontRefs.length} font files present`);
