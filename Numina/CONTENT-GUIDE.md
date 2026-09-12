@@ -332,7 +332,7 @@ modules under `src/js/`, and the split is the point:
 | Module | Does | Touches the browser |
 | --- | --- | --- |
 | `build-rules.js` | Prices a build; `offered()` says what each step may show | no |
-| `build-view.js` | Renders each step and the verdict as HTML strings | no |
+| `build-view.js` | Renders each step, the verdict and the printable card as HTML strings | no |
 | `build-state.js` | The `localStorage` record and the URL fragment | no |
 | `builder.js` | Reads the form, writes `innerHTML`, keeps storage and the fragment in step | yes |
 
@@ -362,6 +362,14 @@ by hand after touching it.
   `/` put back: `a=arcane&f=military&x=Deadeye&at=purpose:6`. Only what
   differs from the empty build is written. A pasted link's fragment wins over
   the save; "Start over" clears both.
+- **The card prints, nothing else does.** The page is `cardsheet: true`, its
+  `<main>` carries `class="builder-page"`, and `print.css` hides everything
+  under that class but `[data-card]`, which `renderCard()` fills on every
+  update. The card's classes are `sheet` and `sheet__*` — `.card` is the
+  site's link tile. Its type must inherit the cardsheet size in print (the
+  screen rules use rem); the suite reads the built `css/print.css` and checks
+  which selectors are hidden, so rebuild before running it after a CSS
+  change. A build that fills every slot is still one Letter page (#314).
 - **Without JS** the form ships `hidden` and a notice links to the chapter
   and to All Skills. The page is `data-autolink="off"`: its lists are
   rendered client-side and the static prose already links what it names.
