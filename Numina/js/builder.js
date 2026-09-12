@@ -14,7 +14,7 @@
 // always the share link and the back button is never spent on a checkbox.
 import { buildCatalog, priceBuild } from "./build-rules.js";
 import { STORAGE_KEY, decodeBuild, deserialize, encodeBuild, isEmpty, repair, serialize } from "./build-state.js";
-import { renderStep, renderStepProblems, renderSummary, renderVerdict, stepSignature } from "./build-view.js";
+import { renderCard, renderStep, renderStepProblems, renderSummary, renderVerdict, stepSignature } from "./build-view.js";
 
 const STEPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
@@ -54,6 +54,7 @@ function main() {
   const summary = root.querySelector("[data-summary]");
   const verdictPanel = root.querySelector("[data-verdict]");
   const share = root.querySelector("[data-share]");
+  const card = root.querySelector("[data-card]");
   const signatures = {};
 
   function load() {
@@ -107,6 +108,7 @@ function main() {
     summary.innerHTML = renderSummary(verdict);
     verdictPanel.innerHTML = renderVerdict(verdict);
     persist(build);
+    if (card) card.innerHTML = renderCard(build, verdict, catalog, { url: share ? share.value : "" });
     return verdict;
   }
 

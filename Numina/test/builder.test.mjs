@@ -17,6 +17,11 @@
 //     guard that keeps a typed Excellency name focused;
 //   - the verdict says "at least" and quotes the chart when a purchase is
 //     unpriced, and says the number when every purchase has one;
+//   - the card prints every granted and purchased skill with its verbal and
+//     its attribute cost, the six attributes, and a CP line that is the floor
+//     and never a total when a purchase is unpriced (#314);
+//   - print.css hides the builder's form and verdict on that page and does
+//     not hide the card;
 //   - the built page carries both JSON islands, the island's skill count is
 //     skills.json's, and every anchor URL in it resolves to an id on the
 //     chapter it points at.
@@ -25,7 +30,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PER_ASPECT_SKILL, buildCatalog, priceBuild } from "../src/js/build-rules.js";
 import { STORAGE_KEY, decodeBuild, deserialize, encodeBuild, isEmpty, repair, serialize } from "../src/js/build-state.js";
-import { esc, renderStep, renderStepProblems, renderSummary, renderVerdict, stepSignature } from "../src/js/build-view.js";
+import { attributeCostLabel, esc, renderCard, renderStep, renderStepProblems, renderSummary, renderVerdict, stepSignature } from "../src/js/build-view.js";
 import { jsonIsland } from "../tools/json-island.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -210,6 +215,47 @@ ok(/3 problems|1 problem/.test(renderVerdict(broken)) && /data-legal="false"/.te
 ok(/50 of 50 CP/.test(renderSummary(exact)) && /no problems/.test(renderSummary(exact)), "the summary line is the total and the state");
 ok(/at least 50 of 50 CP, 1 unpriced/.test(renderSummary(floor)), "and says so when it is a floor");
 
+// --- the card ------------------------------------------------------------------
+
+console.log("# the card");
+const cardOf = (build, extra) => {
+  const b = repair(build, catalog);
+  return renderCard(b, priceBuild(b, catalog), catalog, extra);
+};
+const cardExact = cardOf(fifty, { url: "https://example.test/Numina/mechanics/character-builder/#a=arcane" });
+const rowsOf = (html) => count(html, /<tr data-sheet-skill=/g);
+const skillRows = exact.granted.length + exact.purchases.filter((p) => p.step <= 7).length;
+ok(rowsOf(cardExact) === skillRows, `the card has one row per granted skill and per purchase through step 7 (${rowsOf(cardExact)} of ${skillRows})`);
+ok(count(cardExact, /data-sheet-step="0"/g) === catalog.adventurerSkills.length, "the Adventurer skills lead the table");
+const order = [...cardExact.matchAll(/data-sheet-step="(\d+)"/g)].map((m) => Number(m[1]));
+ok(order.every((n, i) => i === 0 || n >= order[i - 1]), "and the rows run in step order");
+ok(/<td class="sheet__skill">Unravel Magic<\/td><td>Aspect<\/td><td class="sheet__cp">2<\/td><td><\/td><td class="sheet__verbal">“Purge Will”<\/td>/.test(cardExact), "a skill row is name, source, CP, uses and the verbal in quotes");
+ok(/<td class="sheet__skill">Protective Performance<\/td><td>Performer Expression<\/td><td class="sheet__cp">Included<\/td><td>1 Insight<\/td>/.test(cardExact), "an included Expression skill prints Included and its attribute cost");
+ok(/<td class="sheet__skill">Air's Determination<\/td><td>Air Domain<\/td><td class="sheet__cp">Included<\/td>/.test(cardExact), "a 0 CP Domain grant prints Included too");
+ok(/<td class="sheet__skill">Deadeye<\/td><td>Excellency<\/td><td class="sheet__cp">5<\/td><td><\/td><td class="sheet__verbal">Hidden — Staff approval<\/td>/.test(cardExact), "a hidden Excellency's row carries the Staff-approval note (#306)");
+ok(/<td class="sheet__skill">Performer<\/td><td>Expression<\/td><td class="sheet__cp">5<\/td><td><\/td><td class="sheet__verbal">Unlocked in-game<\/td>/.test(cardExact), "an Expression purchase is a row of its own, not an Excellency");
+ok(attributeCostLabel({ kind: "none", raw: "N/A" }) === "—" && attributeCostLabel({ kind: "thread", raw: "This is a Thread Skill" }) === "Thread skill" && attributeCostLabel({ kind: "unlisted" }) === "" && attributeCostLabel({ kind: "uses", raw: "1x / Short Rest" }) === "1x / Short Rest", "the uses column is a dash for none, Thread skill for a thread, blank for unlisted, and the chart's words otherwise");
+const cells = [...cardExact.matchAll(/data-sheet-attribute="([a-z]+)">(\d+)</g)].map((m) => `${m[1]}:${m[2]}`);
+ok(cells.join(",") === "prowess:2,insight:2,fortitude:2,void:2,purpose:5,vitality:2", `the six attributes print at their values in the chart's order (${cells.join(",")})`);
+ok(/data-exact="true"/.test(cardExact) && /<strong>50 CP<\/strong> of 50 spent, 0 remaining\./.test(cardExact), "the 50 CP build's CP line is the number");
+ok(/<dt>Aspects<\/dt><dd>Arcane<\/dd>/.test(cardExact) && /<dt>Foundation<\/dt><dd>Military \(Place: /.test(cardExact) && /<dt>Excellencies<\/dt><dd>Deadeye<\/dd>/.test(cardExact), "the choices print by name, the Foundation with its type");
+ok(/Needs Staff:<\/strong> Deadeye: Excellency purchases must be unlocked in-game;/.test(cardExact) && !/sheet__problems/.test(cardExact), "the Staff flags print and a legal build prints no problems");
+ok(/This build: https:\/\/example\.test\/Numina\/mechanics\/character-builder\/#a=arcane/.test(cardExact) && !/sheet__url/.test(cardOf(fifty)), "the share URL prints when the page gives one, and not otherwise");
+ok(/sheet__blank-label">Character<\/span>/.test(cardExact) && /sheet__blank-label">Player<\/span>/.test(cardExact), "the card leaves a Character and a Player line to write in");
+
+const cardFloor = cardOf({ ...fifty, attributes: { prowess: 3, purpose: 6 } });
+ok(/data-exact="false"/.test(cardFloor) && /<strong>At least 54 CP<\/strong> of 50 spent, at most -4 remaining\./.test(cardFloor), "a raised Prowess makes the CP line a floor");
+ok(!/<strong>\d+ CP<\/strong> of/.test(cardFloor), "and the card prints no total anywhere (#305)");
+ok(/Attributes bought: Prowess \+1 \(unpriced\), Purpose \+1 \(4 CP\)\./.test(cardFloor), "attribute purchases print with their price, or unpriced");
+ok(/Not in the total:<\/strong> Prowess \+1 — the chart says “Cost of next attribute”\./.test(cardFloor), "and the unpriced one is named in the chart's own words");
+ok(/data-sheet-attribute="prowess">3</.test(cardFloor) && /data-sheet-attribute="purpose">6</.test(cardFloor), "the raised attributes print at their raised values");
+ok(/1 problem — not a legal build as it stands:<\/strong> 54 CP spent of 50/.test(cardOf({ ...fifty, attributes: { purpose: 6 } })), "an over-budget build's card says so, not just the verdict");
+ok(/data-legal="false"/.test(cardOf({ ...fifty, aspects: ["arcane", "shade", "plant"] })), "an illegal build is marked illegal on the card");
+const cardEmpty = cardOf({});
+ok(count(cardEmpty, /sheet__none/g) === 6 && rowsOf(cardEmpty) === catalog.adventurerSkills.length, "the empty build's card is six dashes and the Adventurer skills");
+const cardHostile = cardOf({ excellencies: ["<b>Bold</b> & co"] });
+ok(!/<b>Bold/.test(cardHostile) && /&lt;b&gt;Bold&lt;\/b&gt; &amp; co/.test(cardHostile), "a typed Excellency cannot put markup on the card");
+
 // --- the built page ------------------------------------------------------------
 
 console.log("# the built page");
@@ -229,6 +275,17 @@ for (const file of ["builder.js", "build-rules.js", "build-state.js", "build-vie
   ok(existsSync(join(root, "js", file)), `js/${file} is in the build`);
 }
 ok(/data-builder(="")? hidden(="")?/.test(page) && /data-builder-needs-js/.test(page), "the form ships hidden with a no-JS notice beside it");
+ok(/<body class="cardsheet">/.test(page) && /<main class="builder-page"/.test(page), "the page is on the cardsheet print treatment and its main is marked for print.css");
+ok(/<div class="builder__card" data-card(="")?><\/div>/.test(page) && /<p class="print-action"><button type="button" onclick="window\.print\(\)">Print this card<\/button><\/p>/.test(page), "the page has the card slot and a print button");
+// print.css must hide the form and the verdict on this page and leave the
+// card alone, or the sheet is either the whole page or blank. Read as text:
+// every selector of every rule that sets display: none, on the built copy.
+const printCss = readFileSync(join(root, "css", "print.css"), "utf8");
+const hiddenSelectors = [...printCss.matchAll(/([^{}]+)\{[^{}]*display:\s*none[^{}]*\}/g)].flatMap((m) => m[1].split(",").map((x) => x.trim()));
+for (const sel of [".builder-page .builder__form", ".builder-page .builder__verdict-section", ".builder-page .builder__bar", ".print-action"]) {
+  ok(hiddenSelectors.includes(sel), `print.css hides ${sel}`);
+}
+ok(!hiddenSelectors.some((sel) => /\.sheet\b|\.builder__card$/.test(sel)), "and print.css does not hide the card");
 // The island's one hazard, checked with a value that has it: the built data
 // happens not to contain "</", so only a planted one can show the escape works.
 const planted = jsonIsland({ d: "a </script> b" });

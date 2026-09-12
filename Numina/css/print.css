@@ -60,3 +60,23 @@ table { border: 1px solid #999 !important; box-shadow: none !important; padding:
 th, td { border: 1px solid #999 !important; background: none !important; }
 .infobox__flag { clip-path: none; box-shadow: none; }
 blockquote { border-top: none; border-bottom: none; }
+
+/* The character builder prints its card and nothing else: the form, the
+   verdict, the notes and the lede are the screen's, and the card (rendered by
+   build-view.js's renderCard) is the sheet. The page is cardsheet: true, so
+   the dense rules above apply to it. */
+.builder-page .lede, .builder-page .builder__unofficial, .builder-page [data-builder-needs-js],
+.builder-page .builder__bar, .builder-page .builder__form, .builder-page .builder__verdict-section,
+.builder-page .builder__card-section > h2, .builder-page .builder__card-section > .builder__hint {
+  display: none !important;
+}
+.builder-page .sheet { border: none; padding: 0; background: none; }
+.builder-page .sheet__title { font-size: 12pt; font-weight: bold; margin: 0; }
+.builder-page .sheet__blank-line { display: inline-block; width: 5cm; border-bottom: 1px solid #000; }
+.builder-page .sheet__choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 0.4cm; margin: 0.15rem 0; }
+.builder-page .sheet__choice dt { font-weight: bold; }
+.builder-page .sheet__choice dd { margin: 0; }
+.builder-page .sheet__skills, .builder-page .sheet__attributes { break-inside: auto; }
+.builder-page .sheet__skills tr { break-inside: avoid; }
+.builder-page .sheet__attributes td { text-align: center; font-size: 10pt; }
+.builder-page .sheet__url { font-size: 6.5pt; word-break: break-all; color: #444; }

@@ -1020,6 +1020,34 @@ main { min-width: 0; max-width: 70ch; }
 .builder__legal[data-legal="false"] { color: var(--accent); }
 .builder__bill { display: table; }
 .builder__share { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.sheet {
+  background: var(--paper-raised);
+  border: 1px solid var(--gold-dim);
+  border-radius: 4px;
+  padding: 0.8rem 1rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+.sheet__title { font-family: var(--caps); font-size: 1.1rem; letter-spacing: 0.04em; margin: 0; }
+.sheet__unofficial { margin: 0.1rem 0 0.4rem; font-style: italic; color: var(--ink-soft); font-size: 0.85rem; }
+.sheet__blanks { margin: 0.3rem 0; display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; }
+.sheet__blank-label { font-weight: bold; }
+.sheet__blank-line { display: inline-block; width: 9rem; border-bottom: 1px solid var(--ink-soft); vertical-align: baseline; }
+.sheet__choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.2rem 1rem; margin: 0.4rem 0; }
+.sheet__choice dt { font-weight: bold; }
+.sheet__choice dd { margin: 0; }
+.sheet__none { color: var(--ink-soft); }
+.sheet__skills, .sheet__attributes { display: table; width: 100%; font-size: 0.85rem; margin: 0.5rem 0; }
+.sheet__skills th, .sheet__skills td, .sheet__attributes th, .sheet__attributes td { padding: 0.15rem 0.4rem; }
+.sheet__skill { font-weight: bold; }
+.sheet__cp { white-space: nowrap; }
+.sheet__verbal { font-style: italic; color: var(--accent); }
+.sheet__attributes td { text-align: center; font-size: 1.05rem; }
+.sheet__cp-line { margin: 0.3rem 0; }
+.sheet__cp-line[data-exact="false"]::before { content: "\2248 "; }
+.sheet__unpriced, .sheet__provisional { margin: 0.2rem 0; color: var(--ink-soft); }
+.sheet__problems { margin: 0.2rem 0; color: var(--accent); }
+.sheet__url { font-size: 0.75rem; color: var(--ink-soft); word-break: break-all; margin: 0.4rem 0 0; }
 .builder__share input {
   flex: 1 1 16rem;
   min-width: 0;
