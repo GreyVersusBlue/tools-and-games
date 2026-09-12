@@ -27,7 +27,7 @@
       } catch (e) {}
     })();
   </script>
-</head><body>
+</head><body><a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
   <a class="wordmark" href="/Numina/">Numina</a>
   <nav class="site-nav" aria-label="Site">
@@ -37,8 +37,7 @@
   </nav>
   <form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form>
-  <button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Toggle color theme" hidden="">◐</button>
+  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -51,7 +50,7 @@
 </header>
 
   <div class="shell shell--single">
-  <main>
+  <main id="main" tabindex="-1">
     <h1>Search</h1>
     <link rel="stylesheet" href="/Numina/pagefind/pagefind-ui.css">
     <div id="search"></div>
@@ -65,6 +64,11 @@
           showSubResults: true,
           showImages: false
         });
+        // Pagefind's own input carries a title and no label, which is the one
+        // thing on this site whose markup we do not write. The widget is
+        // constructed synchronously into #search, so the input exists by now.
+        var input = document.querySelector("#search .pagefind-ui__search-input");
+        if (input) input.setAttribute("aria-label", "Search the site");
         var q = new URLSearchParams(location.search).get("q");
         if (q) ui.triggerSearch(q);
       });

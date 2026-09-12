@@ -1,12 +1,12 @@
 # Numina — Feature Wishlist
 
-**Status: Phase 3 shipped in three increments on 2026-09-12 (PRs #242,
-#245 and the card); the first open phase is Phase 4, on Claude Opus 5, a
-1-session row.** The site is built, deployed and green — 56
-pages, 136,410 words of source markdown, `npm test` passing every check, CI on
-every PR touching `Numina/**` — and the August 2026 audit's engineering,
-sharing/SEO and A5 cross-linking items are done while the rest of its content
-section and all of its accessibility section are not. `src/_data/skills.json`
+**Status: Phase 4 shipped on 2026-09-12 (PR #251); the first open phase is
+Phase 5 — Come play, on Claude Opus 5, a half-session row.** The site is
+built, deployed and green — 56 pages, 136,410 words of source markdown, 385
+assertions in `npm test` and 32 more in the browser suite, CI on every PR
+touching `Numina/**` in two jobs — and the August 2026 audit's engineering,
+sharing/SEO, A5 cross-linking and **all of section B** are done; the rest of
+its content section is not. `src/_data/skills.json`
 holds the 189 skills, `test/skills.test.mjs` pins it, and two build transforms
 now read it: every skill row has an anchor, and the first mention of every
 glossary term, nation and skill name in a chapter links to its page. Two prompt
@@ -200,10 +200,11 @@ Open and unclaimed. What a phase below already claims is described there with
 its files, not repeated here; add to this list rather than starting a second.
 
 **Claimed, and listed here only so nothing is lost if a phase is dropped**
-- Audit §B, all still true: the map's `role="img"`, no skip link,
-  `aria-hidden` era headers, `table { display: block }`, light-mode `--gold`
-  at ≈3.1:1, no `aria-pressed` on the theme toggle → Phase 4. (~~`scroll-
-  margin-top`~~ and ~~motion-gated smooth scroll~~ landed in batch 2.)
+- ~~Audit §B~~ — all seven landed in Phase 4: the map is `role="group"`,
+  there is a skip link, the era headers are `<h2>`, `table { display: block }`
+  is gone, gold text is `--gold-text` at 4.80:1, the toggle carries
+  `aria-pressed`, and axe runs in CI. (`scroll-margin-top` and motion-gated
+  smooth scroll had landed in batch 2.)
 - Zero cross-links in ported content → Phase 2. (~~189 skills unreadable by
   the build~~ and ~~no rulebook version diff~~ landed in Phase 1.)
 - `excellencies.md`'s live stub, 183-word `history.md`, 17-event timeline,
@@ -231,14 +232,11 @@ its files, not repeated here; add to this list rather than starting a second.
   pages are indexed. Harmless, inconsistent. (Phase 5 fixes it in passing.)
 - `firebase.json` sets `no-cache` on `**/sw.js`. No service worker has ever
   existed. (Phase 7 would write one.)
-- `hr::before`'s flat patch seams against the textured body around the leaf
-  ornament; `--header-h` (5rem) overstates the real header, so sticky
-  timeline-era chips float with a gap.
 - `tools/social-card.mjs` needs a Playwright the project does not depend on
   and a local server on port 8099, and is documented only in its own header
   comment. Nothing re-runs it when the palette changes.
-- CI runs on pull requests only, never on `main`, with no accessibility or
-  HTML validation check.
+- CI runs on pull requests only, never on `main`. It has an accessibility
+  check now (Phase 4's `a11y` job); it still has no HTML validation.
 
 ## Arc one — the rules as data
 
@@ -449,40 +447,61 @@ how the content ports must read. Same ranking rule, same model convention,
 same definition of finished. Arc two can run before, after or alongside arc
 one — only Phase 8's related-links task waits on arc one.
 
-## Phase 4 — The accessibility and mobile pass
+## Phase 4 — The accessibility and mobile pass — DONE (PR #251)
 
-**The map is the site's best feature and a screen reader cannot see any of
-it.**
+**The map was the site's best feature and a screen reader could not see any of
+it.** All seven of audit section B's findings shipped, plus the two visual nits
+listed in the standing backlog beside them.
 
-Audit section B is seven findings, six written as one-line fixes; two shipped
-in batch 2 and the rest are untouched. The map is the headline: `role="img"`
-flattens its subtree, so all 16 nation links inside it are unreachable — and
-the home page has no card grid beside it to fall back to.
+- [x] **Expose the map.** `world-map.njk`'s svg is `role="group"` with its
+  `aria-label` kept, so all 16 `<a class="map-region">` children stay in the
+  accessibility tree and each region's `<title>` names its link. axe's
+  `nested-interactive` rule fires on the old `role="img"` — "element has
+  focusable descendants" — which is the diagnosis in one line.
+- [x] **Skip link.** First focusable thing in `base.njk`, off-screen until
+  focused, targeting a `<main>` that now carries `id="main"` and
+  `tabindex="-1"` in all nine templates (`page.njk`, `index.njk`, the three
+  section indexes, the nations index, all-skills, the builder, search) so that
+  pressing it moves focus and not only the scroll.
+- [x] **Tables keep their semantics.** `table { display: block }` is gone;
+  `div.table-scroll { overflow-x: auto }` carries the scroll. Markdown tables
+  are wrapped by a markdown-it renderer rule, `all-skills.njk` and
+  `build-view.js`'s three runtime tables by hand, and `print.css` sets the
+  wrapper back to `overflow: visible` so a wide table breaks across sheets
+  instead of being clipped at the page edge.
+- [x] **Timeline eras and the theme toggle.** The era is an `<h2>`, not a
+  `<p aria-hidden="true">`. The toggle carries `aria-pressed`, `theme.js`
+  syncs it on load, on click, and on an OS theme change under a visitor who
+  has never pressed it.
+- [x] **Gold that passes AA.** `--gold-text` split out: `#7d5f18`, 4.80:1 on
+  `--paper`, for every run of gold text. `--gold` (3.11:1) is left to the
+  ornaments and the map. Both nits fixed: `hr`'s sprig sits in a gap in the
+  rule now (two half-width gradients) instead of under a flat `--paper` patch
+  on a textured body, and `--header-h` is `5.0625rem`, the header's measured
+  height.
+- [x] **axe in CI,** over home, a nation, Core Rules and the search page, in
+  both themes, failing the build. `Numina/test/a11y/`, its own package.
 
-- [ ] **Expose the map.** `world-map.njk:62` to `role="group"`, keeping the
-  existing `aria-label`, so the `<a class="map-region">` children stay in the
-  accessibility tree and each region's `<title>` names its link.
-- [ ] **Skip link.** "Skip to content" as the first focusable thing in
-  `base.njk`, targeting `<main>`, visually hidden until focused. Check the
-  home page and both index templates, not just `page.njk`.
-- [ ] **Tables keep their semantics.** Replace `main.css:237`'s
-  `table { display: block }` with a `div.table-scroll { overflow-x: auto }`
-  wrapper (a markdown-it rule, or a post-render filter beside `tocData`), and
-  confirm `print.css`'s table overrides still apply.
-- [ ] **Timeline eras and the theme toggle.** Drop `aria-hidden` from
-  `.timeline__era` and promote it to a heading; add `aria-pressed` to
-  `.theme-toggle` and keep it in sync in `theme.js`.
-- [ ] **Gold that passes AA.** Darken light-mode `--gold` for text uses (or
-  split a `--gold-text` token) until `.hero__kicker` and `.crumb` clear 4.5:1
-  on `--paper`, without touching the ornament and map golds. Fix the two
-  visual nits while in there: `hr::before`'s seam and `--header-h`'s gap.
-- [ ] **axe in CI,** over home, a nation, Core Rules and the search page,
-  failing the build. This is the task that stops section B coming back.
+**What the phase found that the audit did not.** Two things, both on record as
+locked decisions:
 
-*Leans on:* `world-map.njk`, `base.njk`, `main.css`, `timeline.njk`,
-`theme.js`, `numina-ci.yml`. *Build/output:* every page's committed HTML
-changes (skip link, table wrappers); no data changes. *Model:* **Claude
-Opus 5** — CSS and template work the audit specified line by line.
+- **`--header-h` understated the header; it did not overstate it** (#316). The
+  standing backlog said 5rem overstated the real header and the sticky era
+  chips floated with a gap. Measured in Chromium at three widths the header is
+  80.97px and 5rem is 80px, so a stuck chip sat just under the header's bottom
+  edge. It is 5.0625rem now and `layout.mjs` measures both.
+- **axe's contrast rule is blind on this site** (#317). Every surface is a
+  colour under an alpha-0.07 noise texture and the chrome is masked
+  pseudo-elements over it, so axe returns "incomplete" rather than a ratio —
+  642 of 710 text nodes on Core Rules. `axe.mjs` runs a second contrast-only
+  pass with the decoration flattened, which sees the real colours and does
+  catch `--gold` at 3.11:1 by name; `smoke.mjs` computes the ratio from the
+  token values and needs no browser at all.
+
+*Left where it is:* the `hr` seam is the one fix in this phase with no
+automated guard — it is a texture matching a texture, and the check would have
+to be a screenshot. Verified by eye, by inserting an `<hr>` into a page in the
+browser, because no Numina page renders one today.
 
 ## Phase 5 — Come play
 

@@ -1,0 +1,14 @@
+{
+  "name": "numina-a11y",
+  "private": true,
+  "version": "1.0.0",
+  "description": "axe-core over four built Numina pages (see axe.mjs). Its own package so `npm ci` for the build job stays a two-package install.",
+  "type": "module",
+  "scripts": {
+    "axe": "node axe.mjs"
+  },
+  "dependencies": {
+    "axe-core": "4.10.3",
+    "playwright": "1.56.1"
+  }
+}

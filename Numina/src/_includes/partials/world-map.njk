@@ -59,7 +59,11 @@
     "rues": "Rues"
   } %}
 <figure class="world-map{{ ' ' + mapClass if mapClass }}">
-  <svg viewBox="0 0 1000 700" role="img" aria-label="Map of the nations of Aeledd">
+  {# role="group" rather than role="img": img flattens the subtree, and the
+     subtree is the point — all 16 nation links live inside it, and the home
+     page has no card grid beside the map to fall back to. Each region's
+     <title> names its own link. #}
+  <svg viewBox="0 0 1000 700" role="group" aria-label="Map of the nations of Aeledd">
     <defs>
       <filter id="map-rough" x="-5%" y="-5%" width="110%" height="110%">
         <feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="7" result="n"/>

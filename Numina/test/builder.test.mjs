@@ -276,7 +276,7 @@ for (const file of ["builder.js", "build-rules.js", "build-state.js", "build-vie
   ok(existsSync(join(root, "js", file)), `js/${file} is in the build`);
 }
 ok(/data-builder(="")? hidden(="")?/.test(page) && /data-builder-needs-js/.test(page), "the form ships hidden with a no-JS notice beside it");
-ok(/<body class="cardsheet">/.test(page) && /<main class="builder-page"/.test(page), "the page is on the cardsheet print treatment and its main is marked for print.css");
+ok(/<body class="cardsheet">/.test(page) && /<main\b[^>]*\sclass="builder-page"/.test(page), "the page is on the cardsheet print treatment and its main is marked for print.css");
 ok(/<div class="builder__card" data-card(="")?><\/div>/.test(page) && /<p class="print-action"><button type="button" onclick="window\.print\(\)">Print this card<\/button><\/p>/.test(page), "the page has the card slot and a print button");
 // print.css must hide the form and the verdict on this page and leave the
 // card alone, or the sheet is either the whole page or blank. Read as text:

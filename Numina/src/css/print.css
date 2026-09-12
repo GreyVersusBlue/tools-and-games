@@ -56,6 +56,10 @@ body { background-image: none !important; }
 h1, h2, h3, h4, p::first-letter { text-shadow: none !important; }
 .shell main > h2 { background: none !important; border-bottom: 1px solid #000; }
 hr { background: none !important; border-top: 1px solid #999; }
+/* Tables are wrapped in div.table-scroll on screen. On paper there is no
+   scrolling to do and an overflow box would clip a wide table at the page
+   edge instead of letting it break, so the wrapper is nothing here. */
+.table-scroll { overflow: visible !important; }
 table { border: 1px solid #999 !important; box-shadow: none !important; padding: 0 !important; }
 th, td { border: 1px solid #999 !important; background: none !important; }
 .infobox__flag { clip-path: none; box-shadow: none; }

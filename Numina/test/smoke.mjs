@@ -244,6 +244,135 @@ ok(
   `every built content page is in nav.json (${contentUrls.length})${orphaned.length ? `, missing: ${orphaned.join(", ")}` : ""}`
 );
 
+// 8. The accessibility pass (Phase 4). axe-core covers what a machine can see
+// in a rendered page and is the check that would catch a contrast token drifting
+// back or a heading level going missing, but it runs in test/a11y with a browser
+// and a lockfile of its own. These are the facts of the markup that axe has no
+// rule for — the ones section B was made of — and they cost no browser.
+console.log("# accessibility");
+const count = (html, re) => (html.match(re) ?? []).length;
+const mainOf = (html) => {
+  const region = mainRegion(html);
+  return region ? html.slice(region.start, region.end) : null;
+};
+
+// The skip link is the first focusable thing on the page, and it has somewhere
+// to land. Both halves matter: an href pointing at an id nothing carries is a
+// link that does nothing, and it is the half a template edit loses.
+const badSkip = [];
+for (const file of builtHtml) {
+  const html = readFileSync(file, "utf8");
+  const body = html.slice(html.indexOf("<body"));
+  const firstAnchor = body.match(/<a\b[^>]*>/);
+  const where = relative(root, file);
+  if (!firstAnchor || !/class="skip-link"/.test(firstAnchor[0])) badSkip.push(`${where}: first <a> is not the skip link`);
+  else if (!/href="#main"/.test(firstAnchor[0])) badSkip.push(`${where}: skip link does not target #main`);
+  else if (!/<main\b[^>]*\sid="main"/.test(html)) badSkip.push(`${where}: no id="main" for it to land on`);
+  else if (!/<main\b[^>]*\stabindex="-1"/.test(html)) badSkip.push(`${where}: <main> has no tabindex="-1", so the jump moves the scroll and not the focus`);
+}
+ok(badSkip.length === 0, `every page opens with a skip link that lands on its <main> (${builtHtml.length})${badSkip.length ? `:\n      ${badSkip.slice(0, 5).join("\n      ")}` : ""}`);
+
+// The map is role="group", not role="img". role="img" flattens the subtree and
+// the subtree is 16 nation links, which on the home page are the only ones.
+const mapPages = builtHtml.filter((f) => readFileSync(f, "utf8").includes('class="world-map'));
+const badMaps = [];
+for (const file of mapPages) {
+  const html = readFileSync(file, "utf8");
+  const open = html.indexOf('<svg viewBox="0 0 1000 700"');
+  const svg = html.slice(open, html.indexOf("</svg>", open));
+  const regions = count(svg, /class="map-region"/g);
+  if (!/role="group"/.test(svg)) badMaps.push(`${relative(root, file)}: the map svg is not role="group"`);
+  if (!/aria-label="[^"]+"/.test(svg.slice(0, 200))) badMaps.push(`${relative(root, file)}: the map svg has no aria-label`);
+  if (regions !== nationSlugs.length) badMaps.push(`${relative(root, file)}: ${regions} region links inside the svg, expected ${nationSlugs.length}`);
+}
+ok(mapPages.length > 0 && badMaps.length === 0, `the map exposes all ${nationSlugs.length} nation links on ${mapPages.length} page(s)${badMaps.length ? `:\n      ${badMaps.slice(0, 5).join("\n      ")}` : ""}`);
+
+// Every table in a page body is wrapped, because the horizontal scroll lives on
+// the wrapper: `display: block` on the <table> itself is what a screen reader
+// reads as "not a table". Three code paths emit tables (the markdown renderer,
+// all-skills.njk, build-view.js) and this is the one check over all three.
+const unwrapped = [];
+for (const file of builtHtml) {
+  const main = mainOf(readFileSync(file, "utf8"));
+  if (!main) continue;
+  for (const m of main.matchAll(/<table\b/g)) {
+    const before = main.slice(Math.max(0, m.index - 120), m.index);
+    if (!/<div class="table-scroll">\s*$/.test(before)) unwrapped.push(`${relative(root, file)} @${m.index}`);
+  }
+}
+ok(unwrapped.length === 0, `every <table> in a page body is inside div.table-scroll${unwrapped.length ? `:\n      ${unwrapped.slice(0, 5).join("\n      ")}` : ""}`);
+
+// No page body skips a heading level, and no heading is hidden from the
+// accessibility tree. Neither half has ever failed on this site — the era
+// banners, which is what prompted the check, did not skip a level, because the
+// event h3s already sat under the chapter's own h2. Both were verified by
+// introducing the fault: an h2 → h4 in a chapter, and an aria-hidden on the era
+// heading. What catches the era regression itself is the assertion below.
+const skipped = [];
+for (const file of builtHtml) {
+  const main = mainOf(readFileSync(file, "utf8"));
+  if (!main) continue;
+  let prev = 0;
+  for (const m of main.matchAll(/<h([1-6])\b([^>]*)>/g)) {
+    const level = Number(m[1]);
+    if (/aria-hidden="true"/.test(m[2])) skipped.push(`${relative(root, file)}: an h${level} is aria-hidden`);
+    else if (prev && level > prev + 1) skipped.push(`${relative(root, file)}: h${prev} → h${level}`);
+    if (!/aria-hidden="true"/.test(m[2])) prev = level;
+  }
+}
+ok(skipped.length === 0, `no page body skips or hides a heading level${skipped.length ? `:\n      ${skipped.slice(0, 5).join("\n      ")}` : ""}`);
+
+// The timeline's era is a heading now, and names its group.
+const historyMain = mainOf(readFileSync(join(root, "lore", "history", "index.html"), "utf8")) ?? "";
+const eraHeadings = count(historyMain, /<h2 class="timeline__era">/g);
+ok(eraHeadings > 0, `the timeline's era banners are headings (${eraHeadings} of them)`);
+
+// The theme button is a toggle, so it says which way it is set, and theme.js
+// keeps that in step with the theme actually in force.
+const themeJs = readFileSync(join(root, "js", "theme.js"), "utf8");
+const missingPressed = builtHtml.filter((f) => !/class="theme-toggle"[^>]*aria-pressed="(true|false)"/.test(readFileSync(f, "utf8")));
+ok(missingPressed.length === 0, `the theme toggle ships aria-pressed on all ${builtHtml.length} pages${missingPressed.length ? `: ${missingPressed.slice(0, 3).map((f) => relative(root, f)).join(", ")}` : ""}`);
+ok(/setAttribute\("aria-pressed"/.test(themeJs), "theme.js keeps aria-pressed in sync with the theme in force");
+
+// The stylesheet's side of the same two facts.
+const tableRule = mainCss.match(/\ntable \{[\s\S]*?\n\}/);
+ok(tableRule !== null && !/display:\s*block/.test(tableRule[0]), "main.css's table rule does not set display: block");
+ok(/\.table-scroll \{[^}]*overflow-x:\s*auto/.test(mainCss), "main.css puts the horizontal scroll on .table-scroll");
+
+// Gold text against paper, at the two tokens' own values. axe measures the
+// rendered page; this measures the tokens, so a nudge back toward the ornament
+// gold fails here without a browser.
+const tokenValue = (block, name) => block.match(new RegExp(`--${name}:\\s*(#[0-9a-f]{6});`, "i"))?.[1];
+const lightBlock = mainCss.slice(mainCss.indexOf(":root {"), mainCss.indexOf("@media (prefers-color-scheme: dark)"));
+const contrast = (a, b) => {
+  const lum = (hex) => {
+    const chan = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * chan[0] + 0.7152 * chan[1] + 0.0722 * chan[2];
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+const goldText = tokenValue(lightBlock, "gold-text");
+const paper = tokenValue(lightBlock, "paper");
+const goldRatio = goldText && paper ? contrast(goldText, paper) : 0;
+ok(goldRatio >= 4.5, `--gold-text clears AA on --paper (${goldRatio.toFixed(2)}:1, needs 4.5)`);
+// (?<![-\w]) so background-color and border-color do not read as text colour.
+const goldUses = [...mainCss.matchAll(/^([^{\n]+)\{[^}]*(?<![-\w])color:\s*var\(--gold\)/gm)].map((m) => m[1].trim());
+ok(
+  goldUses.length === 1 && goldUses[0] === ".orn",
+  `--gold is left to the ornaments; text uses --gold-text${goldUses.length === 1 && goldUses[0] === ".orn" ? "" : `: ${goldUses.join(" | ")}`}`
+);
+
+// The file says the two dark token blocks must stay identical and nothing was
+// checking it. Editing one and not the other gives a visitor on a dark OS a
+// different palette from a visitor who pressed the button.
+const darkBlocks = [...mainCss.matchAll(/:root(?::not\(\[data-theme="light"\]\))?\[?[^{]*\{([\s\S]*?)\n\s*\}/g)]
+  .map((m) => m[1])
+  .filter((b) => /--paper:\s*#0f1713/.test(b))
+  .map((b) => b.split("\n").map((l) => l.trim()).filter(Boolean).join("\n"));
+ok(darkBlocks.length === 2 && darkBlocks[0] === darkBlocks[1], `the two dark token blocks declare the same tokens (${darkBlocks.length} found)`);
+
 // 7. Output hygiene: clean manifest covers every generated top-level entry.
 console.log("# hygiene");
 const expectedTopLevel = new Set([

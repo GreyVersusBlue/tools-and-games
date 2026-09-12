@@ -71,7 +71,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 315 locked decisions in full, by number.
+`HISTORY.md` carries all 317 locked decisions in full, by number.
 
 ## Writing style
 
@@ -82,13 +82,14 @@ write "comprehensive" or "robust" anywhere.
 
 ## The npm scripts, and where each one runs
 
-There is no root `package.json`. Five `package.json` files exist, and only
+There is no root `package.json`. Six `package.json` files exist, and only
 `Tools/board-check/` carries the site-wide scripts:
 
 | Where | Scripts |
 | --- | --- |
 | `Tools/board-check/` | `check` (integrity + collisions), `integrity`, `collisions`, `play` (Castle Conundrum), `games`, `tools`, `shoot`, `previews`, `promote`, `social`, `social:check` |
 | `Numina/` | `build`, `clean`, `serve`, `test` |
+| `Numina/test/a11y/` | none — run `node axe.mjs` and `node layout.mjs` directly, after `npm install && npx playwright install chromium` in that folder |
 | `Projects/Ren-Faire-Claude/` | `test`, `shoot` (the layout camera), `touch` (the readout on a real touchscreen) |
 | `Projects/hearth/test/` | `soak`, `determinism`, `save`, `nan` |
 | `Projects/bell-to-bell/` | none — run `node tests/smoke.mjs` and `node tests/balance.mjs` directly |

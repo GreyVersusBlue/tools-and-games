@@ -15,7 +15,7 @@ summary: >-
     the link it would add. -#}
 <div class="shell">
   {% include "partials/sidebar.njk" %}
-  <main data-pagefind-body data-pagefind-meta="section:Mechanics" data-autolink="off">
+  <main id="main" tabindex="-1" data-pagefind-body data-pagefind-meta="section:Mechanics" data-autolink="off">
     <p class="crumb"><a href="/mechanics/">Mechanics</a></p>
     <h1>All Skills</h1>
     <p class="lede">{{ summary }}</p>
@@ -43,6 +43,7 @@ summary: >-
       <p class="skill-filter__count" data-skill-count aria-live="polite"></p>
     </form>
 
+    <div class="table-scroll">
     <table class="skill-index">
       <thead>
         <tr><th>Skill</th><th>Group</th><th>Kind</th><th>Cost</th></tr>
@@ -58,6 +59,7 @@ summary: >-
         {%- endfor %}
       </tbody>
     </table>
+    </div>
     <p class="skill-index__empty" hidden data-skill-empty>No skill matches that filter.</p>
   </main>
 </div>

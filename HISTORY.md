@@ -7752,6 +7752,130 @@ the same one broken, `Tools/prompt-builder.html`; `social:check` reports the
 same six pages out of sync; `check-collisions.mjs` passes at 0 — all three
 unchanged by this work.
 
+## Phase 4 — The accessibility and mobile pass (2026-09-12)
+
+**All seven of the August 2026 audit's section B, and the two visual nits
+listed beside them in the standing backlog.** The row names Claude Opus 5 and
+this session ran on it. Decisions #316 and #317.
+
+**What shipped.** The map's svg is `role="group"` with its `aria-label` kept,
+so its 16 nation links stay in the accessibility tree — `role="img"` flattened
+the subtree, and on the home page there is no card grid beside the map to fall
+back to. A skip link is the first focusable thing in `base.njk`, off-screen
+until focused, landing on a `<main>` that carries `id="main"` and
+`tabindex="-1"` in all nine templates so pressing it moves focus and not only
+the scroll. `table { display: block }` is gone: `div.table-scroll` carries the
+horizontal scroll, markdown tables are wrapped by a markdown-it renderer rule,
+`all-skills.njk` and `build-view.js`'s three runtime tables write the wrapper
+themselves, and `print.css` sets it back to `overflow: visible` so a wide table
+breaks across sheets rather than being clipped at the page edge. The timeline's
+era is an `<h2>` instead of a `<p aria-hidden="true">`. The theme button
+carries `aria-pressed` and `theme.js` keeps it in step on load, on click, and
+on an OS theme change under a visitor who has never pressed it. `--gold-text`
+(#7d5f18, 4.80:1 on `--paper`) is now every run of gold text; `--gold`
+(3.11:1) is left to the ornaments and the map, which are not text. Pagefind's
+own search input gets an `aria-label` — it shipped with a `title` and nothing
+else, which is `label-title-only`.
+
+**The two nits.** `hr`'s leaf sprig sits in a gap in the rule now, drawn as two
+half-width gradients that stop 4.75rem short of centre, instead of under a flat
+`--paper` patch on a textured body — which is what the seam was. A mask over
+`hr` would have been shorter and is wrong: a mask on an element masks its
+`::after` too, and the `::after` is the sprig. And `--header-h` is `5.0625rem`;
+see #316.
+
+- **`--header-h` understated the header; it did not overstate it** (#316). The
+  standing backlog said 5rem overstates the real header and the sticky
+  timeline-era chips float with a gap. Measured in Chromium at 1280px, 700px
+  and 420px the header is 80.97px and 5rem is 80px, so a stuck chip sat 0.97px
+  *under* the header's bottom edge, not above it. The height is
+  0.65rem + (the 1.75rem wordmark on line-height 1.65) + 0.65rem + 13px of
+  ornament band + 1px of border = 81px, and it is font-independent because the
+  wordmark's line-height is a number rather than a length. So `--header-h` is
+  5.0625rem, and `test/a11y/layout.mjs` measures the real header at two widths
+  and fails if the declared value is not within 2px above it — which is what
+  makes this a fact rather than a nudge. The note was written from the look of
+  the page and is corrected here rather than deleted, because the next person
+  to read the backlog would otherwise re-fix it in the wrong direction.
+
+- **axe's contrast rule is blind on this site, so the contrast pass runs
+  against the page with its decoration flattened, and the gate that does not
+  need a browser is the token arithmetic** (#317). Every surface here is a
+  colour under an alpha-0.07 noise texture and the chrome is masked
+  pseudo-elements over it. axe samples a computed background and gives up when
+  it finds an image or an overlapping element, so on the page as served it
+  returns *incomplete* rather than a ratio — 642 of 710 text nodes on Core
+  Rules, including `.hero__kicker`, which is the element the audit named. A
+  green `color-contrast` run on this site therefore meant nothing at all, and
+  that was discovered by breaking `--gold-text` back to `#a17c2a` and watching
+  axe stay green. `axe.mjs` now runs a second, contrast-only pass over the page
+  with `background-image` off and the ornament pseudo-elements neutralised —
+  the same set `print.css` already lists — which sees the real colours: with it
+  the broken token comes back as "insufficient color contrast of 3.11
+  (foreground #a17c2a, background #f0e6cd)". It still cannot read 21 nodes on
+  the home page (an icon button with no text, an h1 with a text-shadow, map
+  labels over filled regions) and that count is printed rather than swallowed.
+  What holds the line without a browser is in `test/smoke.mjs`: it computes the
+  WCAG ratio from the two token values and fails under 4.5, and separately
+  fails if any selector other than `.orn` uses `--gold` as a text colour.
+
+**The checks.** `npm test` is 385 assertions, from 373, all of the new ones in
+a `# accessibility` section of `smoke.mjs`: the skip link and its landing site
+on all 57 pages, the map's role and its 16 links, every `<table>` in a page
+body inside a wrapper, no page body skipping or hiding a heading level, the era
+banners being headings, `aria-pressed` on all 57 pages and in `theme.js`, the
+stylesheet's side of the table rule, the gold ratio and the gold text uses, and
+— because the file says the two dark token blocks must stay identical and
+nothing was checking it — that they do. Beside it, `Numina/test/a11y/` is a
+package of its own with a pinned Playwright and axe-core: `axe.mjs` is 16
+assertions (four pages x two themes x the two passes) and `layout.mjs` is 16
+more (the skip link moving focus, a markdown table computing to
+`display: table` inside a wrapper with `overflow-x: auto`, `aria-pressed`
+following a click, `--header-h` against the measured header at two widths).
+`numina-ci.yml` gains an `a11y` job that installs that package and its
+Chromium. Its own package rather than a devDependency of the site, because the
+build job's `npm ci` runs on every Numina PR and a browser in that lockfile is
+a browser downloaded on every one of them; `Projects/hearth/test/` is the same
+arrangement for the same reason.
+
+**Break it on purpose, and it fails by name** (#34). Eleven breaks from a green
+baseline. Ten failed by the assertion whose message names them: the map back to
+`role="img"` (smoke names the role, and axe's `nested-interactive` fires with
+"element has focusable descendants"), the skip link deleted (smoke, and layout
+reports the first Tab landing on the wordmark), `tabindex="-1"` removed (layout
+reports focus landing on BODY), `display: block` back on `table` (smoke reads
+the stylesheet, layout reads the computed style), the markdown wrapper rule
+deleted, a real h2 → h4 skip in a chapter, an `aria-hidden` on the era heading,
+`aria-pressed` off the button, `theme.js` no longer syncing it, `--gold-text`
+back to `#a17c2a` (smoke names 3.11:1, axe names it after the flattening pass
+was added), `.crumb` back to `--gold`, `--header-h` back to 5rem, and one dark
+token block edited and not the other.
+
+**The eleventh is the one worth reading.** Reverting the era to
+`<p aria-hidden="true">` was caught by "the timeline's era banners are
+headings" and *not* by "no page body skips a heading level" — and that second
+assertion's comment claimed the era was exactly why it existed, that the
+history page ran h1 straight to h3 seventeen times. It did not: the event h3s
+already sat under the chapter's own h2 "Historical timeline", so removing the
+era changes no level anywhere. The claim was one the arithmetic could not
+distinguish (#147). Both comments are rewritten to say what is true — the era's
+fault was that the only thing separating one run of events from the next was
+hidden from a screen reader, not that a level was skipped — and the heading
+check was then verified on its own terms by introducing a real h2 → h4 skip and
+an `aria-hidden` heading, which is where two of the eleven breaks above come
+from.
+
+**One thing this phase did not guard.** The `hr` seam is a texture matching a
+texture; the only check would be a screenshot comparison, and it is not worth
+one. Verified by eye instead, and two things about that are worth writing down:
+**no page in Numina renders an `<hr>` today** — the ornament is CSS waiting for
+the first chapter with a `---` in it — so the comparison was made by inserting
+one into the glossary page in the browser and shooting it at 2x both ways. The
+old rule shows a lighter, untextured rectangle behind the sprig; the new one
+shows the paper running unbroken through the gap.
+
+**Shared things touched**, in the same PR: none of the four.
+
 ---
 
 # The two August 2026 audits

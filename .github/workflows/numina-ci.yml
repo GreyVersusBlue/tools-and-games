@@ -1,6 +1,25 @@
-# Build checks for the Numina site. The built output is committed and served
-# as-is, so the thing most worth catching is a PR that edits src/ and forgets
-# to rebuild — the deployed site would then not match its source.
+# Checks for the Numina site, in two jobs.
+#
+# build      The built output is committed and served as-is, so the thing most
+#            worth catching is a PR that edits src/ and forgets to rebuild —
+#            the deployed site would then not match its source. Eleventy and
+#            Pagefind, no browser, about a minute.
+#
+# a11y       axe-core over four built pages in both themes, plus the handful of
+#            facts only a rendered page settles: the skip link moving focus,
+#            a table still computing to display: table, the toggle's
+#            aria-pressed following the click, --header-h matching the header.
+#            This is the job that stops the August 2026 audit's section B
+#            coming back — six of its seven findings were one-line fixes that
+#            nothing in the build or in `npm test` could see. Its Playwright
+#            and axe-core live in Numina/test/a11y with a lockfile of their
+#            own, so the build job's `npm ci` stays a two-package install and
+#            does not pull a browser onto every Numina PR (Hearth's test/
+#            folder is the same arrangement for the same reason).
+#
+# It reads the committed output, not a fresh build: that output is what
+# Firebase serves, and the build job above is already the check that the two
+# agree.
 name: Numina CI
 
 on:
@@ -52,3 +71,41 @@ jobs:
           fi
 
       - run: npm test
+
+  a11y:
+    name: axe + the rendered-page checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Numina/test/a11y/package-lock.json
+
+      - name: Install the pinned Playwright and axe-core
+        working-directory: Numina/test/a11y
+        run: npm ci
+
+      - name: Install its Chromium
+        working-directory: Numina/test/a11y
+        run: npx playwright install --with-deps chromium
+
+      # Printed so a rule that starts firing after a browser bump is one line
+      # in the log rather than a morning. 1.56.1 is Chromium 1194.
+      - name: Say which browser is auditing
+        working-directory: Numina/test/a11y
+        run: npx playwright --version
+
+      # working-directory on every step in this job: the workflow's top-level
+      # default is Numina, so a path written from the repo root resolves to
+      # Numina/Numina/… and the step dies with MODULE_NOT_FOUND.
+      - name: axe-core over home, a nation, Core Rules and search, light and dark
+        working-directory: Numina/test/a11y
+        run: node axe.mjs
+
+      - name: The skip link, the tables, the toggle and --header-h
+        working-directory: Numina/test/a11y
+        run: node layout.mjs
