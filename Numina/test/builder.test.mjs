@@ -26,6 +26,7 @@ import { dirname, join } from "node:path";
 import { PER_ASPECT_SKILL, buildCatalog, priceBuild } from "../src/js/build-rules.js";
 import { STORAGE_KEY, decodeBuild, deserialize, encodeBuild, isEmpty, repair, serialize } from "../src/js/build-state.js";
 import { esc, renderStep, renderStepProblems, renderSummary, renderVerdict, stepSignature } from "../src/js/build-view.js";
+import { jsonIsland } from "../tools/json-island.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PREFIX = "/Numina/";
@@ -228,7 +229,10 @@ for (const file of ["builder.js", "build-rules.js", "build-state.js", "build-vie
   ok(existsSync(join(root, "js", file)), `js/${file} is in the build`);
 }
 ok(/data-builder(="")? hidden(="")?/.test(page) && /data-builder-needs-js/.test(page), "the form ships hidden with a no-JS notice beside it");
-ok(!/<\/script>/.test(JSON.stringify(islandSkills ?? {}).slice(0, 0) + (page.match(/id="numina-skills">([\s\S]*?)<\/script>/)?.[1] ?? "x</script>")), "no description closes the island early");
+// The island's one hazard, checked with a value that has it: the built data
+// happens not to contain "</", so only a planted one can show the escape works.
+const planted = jsonIsland({ d: "a </script> b" });
+ok(!planted.includes("</script>") && JSON.parse(planted).d === "a </script> b", "a description containing </script> cannot close the island early");
 
 console.log(failures ? `\n${failures} FAILURE(S)` : "\nall checks passed");
 process.exit(failures ? 1 : 0);

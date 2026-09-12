@@ -6,6 +6,7 @@ import markdownIt from "markdown-it";
 import markdownItAnchor from "markdown-it-anchor";
 import { pageIndex, skillAnchors, addSkillAnchors } from "./tools/skill-anchors.mjs";
 import { autolink, buildVocabulary, mainRegion } from "./tools/autolink.mjs";
+import { jsonIsland } from "./tools/json-island.mjs";
 
 export const PATH_PREFIX = "/Numina/";
 
@@ -160,10 +161,7 @@ export default function (eleventyConfig) {
     }
     return { hrefs, prefix: PATH_PREFIX };
   });
-  // JSON inside a <script type="application/json"> is inert except for one
-  // sequence: "</" would close the element early. Escaped as "<\/", which is
-  // the same string to JSON.parse.
-  eleventyConfig.addFilter("jsonIsland", (value) => JSON.stringify(value).replace(/<\//g, "<\\/"));
+  eleventyConfig.addFilter("jsonIsland", jsonIsland);
 
   let vocabulary = null;
   let summary = null;
