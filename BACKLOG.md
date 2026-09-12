@@ -58,23 +58,44 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Numina Phase 3, increment 1 — the arithmetic,
-with no page yet (PR #242)**. It is a **2+ row, so it was the whole batch and
-it did not close**: the row stays at **rank 1** with its Item text rewritten,
-and nothing below it moved. **64 ranked items remain**, and **rank 1 is still
-`Numina` Phase 3 — The character builder**, on **Claude Fable 5.1**. The next
-increment is **the picker**: a page in the book's ten-step order, built over
-`Numina/src/js/build-rules.js`'s `offered(build, catalog)` and `priceBuild()`
-so it renders rules rather than restating them. Read that module's header
-comment first — it says what the verdict carries and what it refuses to price
-— then `Numina/CONTENT-GUIDE.md`'s "Skill data" and its new "two
-heading-derived lists". **Q36 ("is a character builder welcome?") is answered:
-yes, on the condition that nothing is guessed** (#304). **Q32, the attribute
-cost curve, is still open and was not pre-answered** — increment 1 works
-without it by leaving those purchases in `cp.unpriced` with `cp.exact` false,
-and the picker has to show that rather than hide it. **`npm run check` is
-still down to one broken unit**, `Tools/prompt-builder.html`, which is rank
-33's now.
+The last thing that shipped is **Numina Phase 3, increment 2 — the picker,
+and the build kept and shared (PR #245)**. It is a **2+ row, so it was the
+whole batch and it did not close**: the row stays at **rank 1** with its Item
+text rewritten, and nothing below it moved. **64 ranked items remain**, and
+**rank 1 is still `Numina` Phase 3 — The character builder**, on **Claude
+Fable 5.1**. The next increment is **the printable character card**, the last
+bullet of the wishlist's Phase 3 and the feature that justifies the phase: one
+sheet on `print.css`'s `cardsheet` treatment carrying `verdict.granted` and
+`verdict.purchases` with verbals, attributes, Vitality and the CP total. Read
+`Numina/CONTENT-GUIDE.md`'s "The character builder" first — it says which of
+the four modules touch the browser (one) and why the suite can read the page's
+markup without one — then `print.css`, whose `cardsheet` rules hide `.skill-
+filter` and the like and will need the builder's form controls hidden the same
+way. **Q32, the attribute cost curve, is still open and was not pre-answered**
+— the page shows a raised attribute as a floor ("at least 50 CP") with the
+chart's own words beside it, and the card has to print the same floor rather
+than a total. **`npm run check` is still down to one broken unit**,
+`Tools/prompt-builder.html`, which is rank 33's now.
+
+**What increment 2 built.** `/mechanics/character-builder/`, in `nav.json`
+after Building a Character. Three modules beside `build-rules.js`:
+`build-view.js` renders each step and the verdict as HTML strings,
+`build-state.js` packs the build for `localStorage` (`numina.build`,
+versioned, every load through `repair`, #36 and #37) and the URL fragment
+(`a=arcane&f=military&x=Deadeye&at=purpose:6`), and `builder.js` is the only
+file that touches the browser. The form is the state, and a step re-renders
+only when what it offers changes, so a typed Excellency keeps its focus
+(#310). A pasted fragment wins over the save; "Start over" clears both (#311).
+Tongue of Aspect is one box per chosen Aspect (#312). `skills.json` and the
+anchor map are inlined as two JSON islands from the same `skillAnchors()` map
+the chapter rows use, so the page cannot link to a fragment a chapter lacks
+(#313). 253 assertions to 341; `test/builder.test.mjs` is 88 of them and is
+fourth in `npm test`. Ten guard-rails broken on purpose, nine caught by name;
+the tenth stayed green because the branch it broke was dead (Void is never
+offered) and the branch is deleted rather than asserted over (#147). The page
+was also driven in a headless Chromium, but that check is not in the suite:
+Numina's CI installs no browser, so `builder.js` is the one file it cannot
+see. Decisions #310 to #313.
 
 **What increment 1 built.** `Numina/src/js/build-rules.js`: a build in, a
 verdict out, pure, no DOM, the same module under Node and in the page. Ten
@@ -101,15 +122,14 @@ instead of failing it, and three "absence of this problem code" assertions
 passed for free because a renamed id never reaches the check it guards. Both
 are rewritten and both fail now (#147). Decisions #304 to #309.
 
-**Still open in the row**, in the wishlist's order: the picker, persistence
-under a `numina.` `localStorage` key plus the build in the URL fragment, and
-the printable character card on `print.css`'s `cardsheet` treatment.
+**Still open in the row**: the printable character card on `print.css`'s
+`cardsheet` treatment, and nothing else.
 
-**Shared things touched by increment 1**: none of the four. `CLAUDE.md`'s
-locked-decision count, 303 → 309. `check-integrity.mjs` is 1,514 units with
-the same one broken, `social:check` reports the same six pages out of sync,
-`check-collisions.mjs` passes at 0 collisions — all three unchanged by that
-work. This file's `Claimed` column is cleared.
+**Shared things touched by increments 1 and 2**: none of the four.
+`CLAUDE.md`'s locked-decision count, 303 → 313. `check-integrity.mjs` is
+1,531 units with the same one broken, `social:check` reports the same six
+pages out of sync, `check-collisions.mjs` passes at 0 collisions — all three
+unchanged by that work. This file's `Claimed` column is cleared.
 
 **What Phase 2 built.** Two Eleventy transforms over Phase 1's data, both
 scoped to each page's `<main>`. `Numina/tools/skill-anchors.mjs` gives all 189
@@ -934,7 +954,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 3 — The character builder. **Increment 1 shipped (PR #242): `src/js/build-rules.js` prices a build and refuses to price the unpublished attribute curve, and the Aspect and Foundation lists are in `skills.json`.** Left: the picker over `offered()`, `localStorage` + URL-fragment persistence, the printable card | `Numina` | 2+ | Fable 5.1 | `claude/backlog-ranked-batch-z07e9w` | [WISHLIST.md Phase 3](Numina/WISHLIST.md#phase-3--the-character-builder) |
+| 1 | Phase 3 — The character builder. **Increments 1 and 2 shipped (PRs #242, #245): `src/js/build-rules.js` prices a build and refuses to price the unpublished attribute curve; `/mechanics/character-builder/` is the picker over `offered()`, kept in `localStorage` and the URL fragment.** Left: the printable character card on `print.css`'s `cardsheet` treatment | `Numina` | 2+ | Fable 5.1 |  | [WISHLIST.md Phase 3](Numina/WISHLIST.md#phase-3--the-character-builder) |
 | 2 | Phase 4 — The accessibility and mobile pass | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 4](Numina/WISHLIST.md#phase-4--the-accessibility-and-mobile-pass) |
 | 3 | Phase 5 — Come play | `Numina` | ½ | Opus 5 |  | [WISHLIST.md Phase 5](Numina/WISHLIST.md#phase-5--come-play) |
 | 4 | Phase 6 — Excellencies, history, and the timeline | `Numina` | 1 | Opus 5 |  | [WISHLIST.md Phase 6](Numina/WISHLIST.md#phase-6--excellencies-history-and-the-timeline) |
