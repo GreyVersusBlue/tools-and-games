@@ -99,8 +99,13 @@ jobs:
         working-directory: Numina/test/a11y
         run: npx playwright --version
 
+      # working-directory on every step in this job: the workflow's top-level
+      # default is Numina, so a path written from the repo root resolves to
+      # Numina/Numina/… and the step dies with MODULE_NOT_FOUND.
       - name: axe-core over home, a nation, Core Rules and search, light and dark
-        run: node Numina/test/a11y/axe.mjs
+        working-directory: Numina/test/a11y
+        run: node axe.mjs
 
       - name: The skip link, the tables, the toggle and --header-h
-        run: node Numina/test/a11y/layout.mjs
+        working-directory: Numina/test/a11y
+        run: node layout.mjs
