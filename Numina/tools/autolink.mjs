@@ -213,8 +213,11 @@ export function buildVocabulary(root, { exclude } = {}) {
   const skills = readJson("src/_data/skills.json").skills;
 
   const nationsDir = join(root, "src/lore/nations");
+  // Sorted: readdirSync's order is filesystem-dependent, and the committed
+  // build has to be the same on a fresh CI runner as it is here.
   const nations = readdirSync(nationsDir)
     .filter((f) => f.endsWith(".md"))
+    .sort()
     .map((file) => {
       const front = readFileSync(join(nationsDir, file), "utf8").match(/^name:\s*(.+?)\s*$/m);
       if (!front) throw new Error(`autolink: ${file} has no name in its frontmatter`);
