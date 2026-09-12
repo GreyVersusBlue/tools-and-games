@@ -147,6 +147,24 @@ export default function (eleventyConfig) {
     if (!anchor) throw new Error(`skillHref: no anchor for ${skill.id}`);
     return `${skill.source.split("#")[0]}#${anchor}`;
   });
+  // The builder page inlines skills.json and one URL per skill id. The URLs
+  // come from the same anchor map the transform below stamps on the chapter
+  // rows, already carrying the path prefix because a JSON island is not an
+  // href attribute and EleventyHtmlBasePlugin will not rewrite it.
+  eleventyConfig.addFilter("skillLinks", (skillList) => {
+    const hrefs = {};
+    for (const skill of skillList) {
+      const anchor = anchorsById.get(skill.id);
+      if (!anchor) throw new Error(`skillLinks: no anchor for ${skill.id}`);
+      hrefs[skill.id] = `${PATH_PREFIX.replace(/\/$/, "")}${skill.source.split("#")[0]}#${anchor}`;
+    }
+    return { hrefs, prefix: PATH_PREFIX };
+  });
+  // JSON inside a <script type="application/json"> is inert except for one
+  // sequence: "</" would close the element early. Escaped as "<\/", which is
+  // the same string to JSON.parse.
+  eleventyConfig.addFilter("jsonIsland", (value) => JSON.stringify(value).replace(/<\//g, "<\\/"));
+
   let vocabulary = null;
   let summary = null;
   // Reset per build, not per config load: `eleventy --serve` reruns the

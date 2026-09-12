@@ -1,0 +1,120 @@
+---
+layout: layouts/base.njk
+title: Character Builder
+section: Mechanics
+summary: >-
+  Build a starting Numina character step by step, priced from the skill tables
+  as this site has them — and told plainly what the rulebook leaves unpriced.
+---
+{#- The picker over src/js/build-rules.js. The ten sections below are the
+    chapter's ten steps; their bodies are rendered by src/js/build-view.js from
+    skills.json, which is inlined at the foot of the page as two JSON islands
+    (the records, and each skill id's anchor URL from the same map the chapter
+    rows get theirs from). Nothing here restates a rule: what each step lists
+    is what offered() returns for the build so far.
+
+    Without JS the form stays hidden and the notice below is what a reader
+    gets, with links to the chapter and the lists. -#}
+{% set steps = [
+  [1, "Choose 1 or 2 Aspects"],
+  [2, "Choose 1 Foundation"],
+  [3, "Choose 1 Culture"],
+  [4, "Choose your one Domain"],
+  [5, "Choose up to three Excellencies"],
+  [6, "Choose up to two Expressions"],
+  [7, "Purchase Skills"],
+  [8, "Purchase Prowess, Fortitude and Insight"],
+  [9, "Purchase Purpose"],
+  [10, "Purchase Vitality"]
+] %}
+<div class="shell">
+  {% include "partials/sidebar.njk" %}
+  <main data-pagefind-body data-pagefind-meta="section:Mechanics" data-autolink="off">
+    <p class="crumb"><a href="/mechanics/">Mechanics</a></p>
+    <h1>Character Builder</h1>
+    <p class="lede">{{ summary }}</p>
+    <p class="builder__unofficial"><strong>Unofficial.</strong> This page is a player's reading of
+    <a href="/mechanics/building-a-character/">Building a Character</a> and the skill chapters, not a
+    Staff tool. It prices only what the rulebook prints a number for: the cost to raise Prowess,
+    Insight, Fortitude or Vitality is "Cost of next attribute" in the book's own chart, so a build
+    that raises them is shown as a floor, never a total. Character approval is a conversation with
+    Staff, and this page cannot have it for you.</p>
+
+    <p data-builder-needs-js>The builder needs JavaScript. Without it, the ten steps are in
+    <a href="/mechanics/building-a-character/">Building a Character</a> and every skill is in
+    <a href="/mechanics/skills/all-skills/">All Skills</a>.</p>
+
+    <div class="builder" data-builder hidden>
+      <div class="builder__bar">
+        <p class="builder__summary" data-summary aria-live="polite"></p>
+        <p class="builder__actions">
+          <button type="button" class="builder__button" data-reset>Start over</button>
+        </p>
+      </div>
+
+      <form class="builder__form" autocomplete="off">
+        {%- for step in steps %}
+        <section class="builder__step" id="step-{{ step[0] }}" data-step="{{ step[0] }}">
+          <h2>Step {{ step[0] }} — {{ step[1] }}</h2>
+          {%- if step[0] == 5 %}
+          <p class="builder__note">Your first Excellency costs five CP, each subsequent Excellency costs
+          one additional CP. Three is a hard limit, and Excellency purchases must be unlocked in-game.
+          The <a href="/mechanics/skills/excellencies/">Excellencies chapter</a> has no list to choose
+          from, so type the name Staff will know; a name from
+          <a href="/mechanics/skills/hidden-excellencies-expressions/">Hidden Excellencies and Expressions</a>
+          is flagged here for Staff approval.</p>
+          {%- elif step[0] == 1 %}
+          <p class="builder__note">These Aspects do not cost CP. You can purchase a total of 3 Aspect
+          skills from your Aspects, and from them only one extra Attribute or Armor increasing
+          ability. <a href="/mechanics/skills/aspects/">Aspects</a>.</p>
+          {%- elif step[0] == 2 %}
+          <p class="builder__note">This Foundation does not cost CP. You can purchase up to 2 Foundation
+          skills from your Foundation's own table. <a href="/mechanics/skills/foundations/">Foundations</a>.</p>
+          {%- elif step[0] == 3 %}
+          <p class="builder__note">This Culture does not cost CP. You can purchase up to 2 Culture skills
+          from your Culture. <a href="/mechanics/skills/cultures/">Cultures</a>.</p>
+          {%- elif step[0] == 4 %}
+          <p class="builder__note">This Domain does not cost CP. Its Determination is included; its
+          other skills are bought in step 7. <a href="/mechanics/skills/domains/">Domains</a>.</p>
+          {%- elif step[0] == 6 %}
+          <p class="builder__note">Your first Expression costs five CP, each subsequent Expression costs
+          one additional CP. Two at character creation; a third trades away the third Excellency slot
+          and needs an email to Staff. Each Expression's first skill is included.
+          <a href="/mechanics/skills/expressions/">Expressions</a>.</p>
+          {%- elif step[0] == 7 %}
+          <p class="builder__note">Skills come from all the different things you have selected
+          previously and also include <a href="/mechanics/skills/open-skills/">Open Skills</a>.</p>
+          {%- elif step[0] == 8 %}
+          <p class="builder__note">Spend these attributes to use skills. Their cost per point is not
+          printed in the rulebook, so this page cannot add them to the total.
+          <a href="/mechanics/skills/attributes-vitality/">Attributes &amp; Vitality</a>.</p>
+          {%- elif step[0] == 9 %}
+          <p class="builder__note">Void and Purpose allow you to refresh your other attributes after
+          taking a Short or Long Rest. Void cannot currently be purchased.</p>
+          {%- else %}
+          <p class="builder__note">Vitality defines how many hits your character can take before they
+          fall Unstable. Its cost per point is not printed either.</p>
+          {%- endif %}
+          <div class="builder__step-problems" data-step-problems="{{ step[0] }}"></div>
+          <div class="builder__step-body" data-step-body="{{ step[0] }}"></div>
+        </section>
+        {%- endfor %}
+      </form>
+
+      <section class="builder__verdict-section" id="your-build">
+        <h2>Your build</h2>
+        <div class="builder__verdict" data-verdict aria-live="polite"></div>
+        <h3>Share it</h3>
+        <p class="builder__hint">The address of this page is the build. It is also kept in this
+        browser, and nowhere else.</p>
+        <p class="builder__share">
+          <input type="text" readonly data-share aria-label="Link to this build">
+          <button type="button" class="builder__button" data-copy>Copy link</button>
+        </p>
+      </section>
+    </div>
+  </main>
+</div>
+<script type="application/json" id="numina-skills">{{ skills | jsonIsland | safe }}</script>
+<script type="application/json" id="numina-skill-links">{{ skills.skills | skillLinks | jsonIsland | safe }}</script>
+<script type="module" src="/js/builder.js"></script>
