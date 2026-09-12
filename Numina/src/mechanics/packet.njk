@@ -1,0 +1,107 @@
+---
+layout: layouts/base.njk
+title: Print Packet
+section: Mechanics
+summary: >-
+  Tick the chapters you want and print them as one document with a cover, a
+  combined contents and continuous page numbering — plus the three prebuilt
+  packets and the offline kit.
+---
+{#- The packet builder. Every chapter offered here comes out of nav.json, the
+    same file the sidebar and the section card grids read, so a chapter added
+    to the site is in the packet list without anybody remembering to add it —
+    and test/smoke.mjs fails if a URL in this list is not a page that was built.
+
+    The assembly is src/js/packet.js and happens in the browser, over the HTML
+    that is already published: nothing here is a second copy of a chapter.
+    print.css hides everything on this page but the assembled document, so
+    "Print packet" prints the packet and not the form that made it. -#}
+{%- set excluded = ["/mechanics/character-builder/", "/mechanics/packet/"] -%}
+<div class="shell">
+  {% include "partials/sidebar.njk" %}
+  <main id="main" tabindex="-1" class="packet-page" data-pagefind-body data-pagefind-meta="section:Mechanics" data-autolink="off">
+    <p class="crumb"><a href="/mechanics/">Mechanics</a></p>
+    <h1>Print Packet</h1>
+    <p class="lede">{{ summary }}</p>
+
+    <p>An event is a weekend in a field, and the rules are six printable pages. A player who
+    wants Core Rules and the Combat Quick Reference and their own Domain has had to print three
+    times and staple. Tick them here instead and print once.</p>
+
+    <section class="packet-prebuilt" id="prebuilt">
+      <h2>Three packets already made</h2>
+      <p>Each is a link. Send it to somebody and they get the packet, not the instructions
+      for building one.</p>
+      <ul class="packet-prebuilt__list">
+        {%- for packet in packets.packets %}
+        <li class="packet-prebuilt__item">
+          <h3><a href="{% if packet.page %}{{ packet.page }}{% else %}/mechanics/packet/?p={{ packet.id }}{% endif %}">{{ packet.name }}</a></h3>
+          <p>{{ packet.summary }}</p>
+          <p class="packet-prebuilt__what">{% if packet.page %}One page, printed as it is.{% else %}{{ packet.chapters | length }} chapters.{% endif %}</p>
+        </li>
+        {%- endfor %}
+      </ul>
+    </section>
+
+    <p data-packet-needs-js>Building a packet needs JavaScript. Without it, every chapter below
+    is a link, and the six chapters marked <em>printable</em> carry their own print button.</p>
+
+    <form class="packet-form" data-packet-form hidden>
+      <h2 id="choose">Choose your chapters</h2>
+      <div class="packet-bar">
+        <p class="packet-bar__count" data-packet-count aria-live="polite">Nothing chosen yet.</p>
+        <p class="packet-bar__actions">
+          <button type="button" class="packet-button" data-packet-assemble>Assemble packet</button>
+          <button type="button" class="packet-button" data-packet-print>Print packet</button>
+          <button type="button" class="packet-button" data-packet-clear>Clear</button>
+        </p>
+      </div>
+      {%- for section in nav.sections %}
+      <fieldset class="packet-group">
+        <legend>{{ section.title }}</legend>
+        <ul class="packet-choices">
+          {%- for pg in section.pages %}
+            {%- if pg.nations %}
+              {%- for nation in collections.nations %}
+          <li class="packet-choice">
+            <label><input type="checkbox" value="{{ nation.url | url }}" data-packet-chapter> {{ nation.data.title }}</label>
+            <a class="packet-choice__link" href="{{ nation.url }}">read</a>
+          </li>
+              {%- endfor %}
+            {%- elif pg.children %}
+              {%- for child in pg.children %}
+          <li class="packet-choice">
+            <label><input type="checkbox" value="{{ child.url | url }}" data-packet-chapter> {{ child.title }}</label>
+            <a class="packet-choice__link" href="{{ child.url }}">read</a>
+          </li>
+              {%- endfor %}
+            {%- elif pg.url not in excluded %}
+          <li class="packet-choice">
+            <label><input type="checkbox" value="{{ pg.url | url }}" data-packet-chapter> {{ pg.title }}</label>
+            <a class="packet-choice__link" href="{{ pg.url }}">read</a>
+          </li>
+            {%- endif %}
+          {%- endfor %}
+        </ul>
+      </fieldset>
+      {%- endfor %}
+    </form>
+
+    <section class="packet-offline" id="offline-kit">
+      <h2>The offline kit</h2>
+      <p>The site keeps a copy of itself on the device that opens it: every page, both
+      stylesheets, the fonts and the search loader. Once that copy is on the phone in your
+      pocket, Numina opens in a field with no signal. Nothing is sent anywhere and nothing is
+      stored but the pages themselves.</p>
+      <p class="packet-offline__status" data-offline-status aria-live="polite">Checking what this device has saved.</p>
+      <p class="packet-offline__actions">
+        <button type="button" class="packet-button" data-offline-check>Check for a newer build</button>
+        <button type="button" class="packet-button" data-offline-update hidden>Update now</button>
+      </p>
+    </section>
+
+    <div class="packet-doc" data-packet-doc hidden></div>
+  </main>
+</div>
+<script type="application/json" id="numina-packets">{{ packets.packets | packetData | jsonIsland | safe }}</script>
+<script type="module" src="/js/packet.js"></script>

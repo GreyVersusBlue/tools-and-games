@@ -8029,6 +8029,142 @@ no comment.
 **Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
 locked-decision count, 317 → 320.
 
+## Phase 7 — The print packet and the offline kit (2026-09-12)
+
+**A one-session row, taken alone, on Claude Opus 5.** Decisions #321 to #324.
+The rules were six printable pages that could not be combined, and
+`firebase.json` had been setting `no-cache` on `**/sw.js` since batch 1 for a
+service worker that did not exist. Both are now true things.
+
+**The packet page is `/mechanics/packet/`, and it assembles published HTML.**
+Tick chapters, get one document: a cover, a combined contents, then every
+chapter starting on its own sheet, with a page number in the footer. The
+chapter list is generated from `nav.json` — the same file the sidebar and the
+section card grids read, plus the nations collection — so a chapter added to
+the site is offered without anybody remembering to add it, and `smoke.mjs`
+fails if a URL in that list is not a page that was built. The assembly is
+`src/js/packet.js` in the browser over `fetch`, which is the whole reason it
+cannot drift: there is no second copy of a chapter anywhere.
+
+Three things the assembly has to do beyond concatenating, and all three are
+guarded in the browser rather than asserted over a string. Every chapter is a
+page with its own `<h1>`, and six of those in one document is six documents, so
+each becomes an `<h2>` and everything under it shifts a level; h5 is the
+deepest heading the site has, so the shift bottoms out at h6. Two chapters that
+both have a "Vitality" heading both carry `id="vitality"`, and in one document
+the second is unreachable, so every id gains the chapter's slug and every link
+that pointed at it is rewritten. And a link from Core Rules to a chapter that
+is in the same packet is rewritten to a fragment, because a web address is not
+something you can follow in a field.
+
+**Three prebuilt packets, in `src/_data/packets.json`.** The New Player Kit
+(new players, day in the life, what to pack, etiquette and safety) and the NPC
+packet (NPCing, Core Rules, the combat reference, etiquette and safety) are
+`?p=` links that tick the boxes and assemble on load. The Combat Card is not an
+assembly at all: it is a link to `/mechanics/combat-reference/`, which already
+prints as a card sheet, and `smoke.mjs` fails if that page ever stops being
+`cardsheet: true`.
+
+**The offline kit is a generated `sw.js` at the root of the site**, 81 files
+precached: all 58 pages, both stylesheets, eight scripts, the five woff2, the
+two assets and Pagefind's six fixed-name files. It answers from the cache first and
+refreshes behind the response, because half a bar of signal is slower than
+none. `src/js/offline.js` registers it from every page and puts up one of two
+banners: "you are offline, this is the copy saved on this device, build
+`<hash>`", or "a newer build is ready" with a button that says Update now. The
+worker never calls `skipWaiting` on install — a new build takes over when
+somebody presses that button, not underneath a page they are reading — and the
+packet page carries the same controls as a section rather than a banner.
+
+- **The packet is assembled in the browser from the published HTML, and the
+  Combat Card is a link rather than an assembly** (#321). The alternative was a
+  build-time render of every combination, which is both combinatorial and a
+  second copy of every chapter to drift from the first. The cost is that the
+  packet needs JavaScript, which is why the page without it is still a link
+  to each of the 49 chapters it offers, six of which print themselves.
+
+- **The service worker's version is a content hash that excludes `pagefind/`,
+  and the manifest carries only Pagefind's fixed-name files** (#322). This is
+  the phase's sharp edge and the wishlist said so. Pagefind's index chunks are
+  named after content hashes over a sharding that is not stable across
+  machines — `numina-ci.yml` already excludes the folder from the rebuild check
+  for exactly that reason — so a version hashed over any of it would differ
+  between two builds of the same source and every PR would be told to rebuild.
+  What the worker precaches by name is the loader, the default UI, its
+  stylesheet, the two wasm builds and `pagefind-entry.json`; the language
+  metadata chunk is read out of that entry file at install time, and the index
+  chunks and result fragments underneath it land in the same cache when a
+  search fetches them. So the site is complete offline and search is complete
+  offline for what has been searched for online at least once. `smoke.mjs`
+  fails if any file under `pagefind/` ever contributes to the version, and
+  fails if the committed `sw.js` is not byte-for-byte what the generator writes
+  for the current output.
+
+- **Continuous page numbering is a `@page packet` margin box, and the contents
+  carries no page numbers** (#323). Both halves were settled by rendering PDFs
+  in the pinned Chromium rather than by reading a support table: a `@page`
+  block with `@bottom-center { content: counter(page) " / " counter(pages) }`
+  produces a PDF 1,936 bytes larger than the same document without it, and the
+  same differential for `target-counter(attr(href), page)` — the one thing that
+  could put a page number beside a contents entry — is zero bytes, because
+  Blink does not implement it. Firefox implements neither and falls back to its
+  own print footer, so nothing in the packet depends on the number being there.
+  It is a *named* page so the six chapters that already print one at a time are
+  untouched by it, the Combat Quick Reference card above all.
+
+- **An offline check has to shut the origin down, not emulate it away** (#324).
+  Two of this phase's guard-rails passed while broken, and both for reasons
+  worth writing down. Chromium's own HTTP cache answered the offline navigation
+  — the local test server sent no cache headers, so heuristic freshness applied
+  and a page fetched during install came back with the worker's cache disabled;
+  the harness serves `no-store` on everything now, which leaves Cache Storage
+  as the only thing that can answer. And Playwright's `context.setOffline` is
+  emulated per page, and a service worker's own `fetch` goes out on a session
+  it does not cover, so with the server still listening the worker fetched the
+  page over the network and the assertion passed anyway. `packet.mjs` closes
+  the server and destroys its sockets before it navigates. `setOffline` stays,
+  for one reason only: `navigator.onLine` is what decides the banner.
+
+**`sw.js` is a generated top-level entry now**, so it is in `tools/clean.mjs`'s
+`GENERATED` list and in `test/smoke.mjs`'s deliberate copy of it, which is what
+puts it in the hygiene check too. The wishlist said both copies had to move in
+the same commit and they did.
+
+**Break it on purpose, and it fails by name** (#34). Twenty-two breaks from a
+green baseline, each restored before the next. A page deleted from the manifest
+(named the page, and the byte-comparison caught it too). Two manifest lines
+swapped (named the sort). One character of the version changed (the byte
+comparison alone, which is what it is for). `pagefind` added to the generator's
+asset directories (named all eleven files that would then decide the version).
+`no-cache` swapped for `max-age=3600` in `firebase.json`. `offline.js` deleted
+from one built page. A checkbox pointed at `/lore/atlantis/`. The builder
+offered as a chapter. A prebuilt packet pointed at a chapter the form does not
+offer. The Combat Card pointed at Core Rules. `print.css` stopped hiding the
+form, lost its counter, and lost the named page. `sw.js` deleted outright. A
+font and then all of Pagefind dropped from the manifest. In the browser: the
+heading demotion disabled (four h1s in the packet, and the h6 assertion went
+with it), the id namespacing disabled (three duplicates), the link rewriting
+disabled, the chrome left in (140 elements), the cover's name ignored, the
+contents cut to one entry, the worker's cache reads disabled, its version reply
+emptied, and its precache list emptied.
+
+**One assertion was rewritten before it was believed.** "The shift bottoms out
+at h6" passed against the NPC packet, whose four chapters stop at h4 — a claim
+the arithmetic could not distinguish (#147). Faith & Religion and the Skills
+landing page are the only two pages on the site with an h5, so the check now
+assembles Faith & Religion as a second packet and counts the eleven h6s it
+produces.
+
+**The checks.** `npm test` is 412 assertions, from 394. `test/a11y/` is 55 from
+32: `packet.mjs` is new and 19 of them, and the packet page, assembled, is the
+fifth page axe reads in both themes — 20 runs from 16. Two builds in a
+row produce no diff, `sw.js` included. `check-integrity.mjs` is 1,557 units
+with the same one broken, `Tools/prompt-builder.html`; `social:check` reports
+the same six pages out of sync; `check-collisions.mjs` passes at 0.
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 320 → 324.
+
 ---
 
 # The two August 2026 audits

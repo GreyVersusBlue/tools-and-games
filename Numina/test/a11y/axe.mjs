@@ -13,7 +13,7 @@
 // browser in that lockfile would be a browser downloaded on every one of them.
 // Hearth's test/ folder is the same arrangement for the same reason.
 //
-// What it covers: four pages that between them carry every piece of chrome the
+// What it covers: five pages that between them carry every piece of chrome the
 // site has — the map and the card grids (home), the infobox and the drop cap
 // (a nation), the TOC and 96 headings of tables (Core Rules), and a widget
 // whose markup is a third party's (search). Each runs twice, in the light
@@ -35,13 +35,18 @@ const numina = resolve(here, "..", "..");
 const site = resolve(numina, "..");
 const axeSource = readFileSync(join(here, "node_modules", "axe-core", "axe.min.js"), "utf8");
 
-// The four pages, by the URL a visitor would type. Paths are the built output,
-// which is what is deployed — nothing here runs Eleventy.
+// The five pages, by the URL a visitor would type. Paths are the built output,
+// which is what is deployed — nothing here runs Eleventy. The last one carries
+// ?p=npc so the packet is already assembled when axe looks: the fieldsets and
+// the sticky bar are markup a template wrote, but the document below them is
+// four chapters rebuilt by hand in the browser, and that is the half worth
+// auditing.
 const PAGES = [
   ["home", "/Numina/"],
   ["a nation (Aluvair)", "/Numina/lore/nations/aluvair/"],
   ["Core Rules", "/Numina/mechanics/core-rules/"],
   ["search", "/Numina/search/"],
+  ["the print packet, assembled", "/Numina/mechanics/packet/?p=npc"],
 ];
 const THEMES = ["light", "dark"];
 // WCAG 2.1 A and AA, plus axe's best-practice set. best-practice is in because

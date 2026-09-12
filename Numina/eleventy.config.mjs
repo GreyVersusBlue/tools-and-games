@@ -170,6 +170,19 @@ export default function (eleventyConfig) {
     }
     return { hrefs, prefix: PATH_PREFIX };
   });
+  // The packet page inlines packets.json so a prebuilt packet's ?p= link can
+  // tick the right boxes. Its chapter URLs are written in the data file the way
+  // every other URL on this site is written, without the path prefix, and a
+  // JSON island is not an href attribute so EleventyHtmlBasePlugin will not add
+  // one — the same reason skillLinks above does this by hand.
+  eleventyConfig.addFilter("packetData", (list) => {
+    const root = PATH_PREFIX.replace(/\/$/, "");
+    return list.map((packet) => ({
+      ...packet,
+      ...(packet.page ? { page: root + packet.page } : {}),
+      ...(packet.chapters ? { chapters: packet.chapters.map((url) => root + url) } : {}),
+    }));
+  });
   eleventyConfig.addFilter("jsonIsland", jsonIsland);
 
   let vocabulary = null;

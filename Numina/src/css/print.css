@@ -85,3 +85,50 @@ blockquote { border-top: none; border-bottom: none; }
 .builder-page .sheet__skills tr { break-inside: avoid; }
 .builder-page .sheet__attributes td { text-align: center; font-size: 10pt; }
 .builder-page .sheet__url { font-size: 6.5pt; word-break: break-all; color: #444; }
+
+/* --- The print packet ------------------------------------------------------
+   mechanics/packet.njk assembles chapters into one document inside
+   div.packet-doc. Printing that page prints the document and nothing that
+   built it: the cover, the combined contents, then every chapter, each
+   starting on its own sheet.
+
+   The page number is a @page margin box on a named page, so it is on the
+   packet and not on the six chapters that already print one at a time — the
+   Combat Quick Reference card in particular has to stay exactly as it was.
+   Chromium honours margin boxes (verified against Chromium 1194, the version
+   test/a11y pins); Firefox ignores them and falls back to its own print
+   footer, which is why nothing in the packet depends on the number being
+   there. The contents lists chapters rather than page numbers because
+   target-counter(), the only thing that could put a page number beside a
+   contents entry, is in no shipping browser. */
+@page packet {
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font-size: 9pt;
+    color: #444;
+  }
+}
+.packet-page > *:not(.packet-doc) { display: none !important; }
+.packet-doc[hidden] { display: none !important; }
+.packet-doc { page: packet; }
+.packet-doc__message { display: none !important; }
+.packet-cover {
+  min-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  border: none;
+  padding: 0;
+}
+.packet-cover__site { font-size: 14pt; letter-spacing: 0.2em; text-transform: uppercase; margin: 0 0 0.6rem; }
+.packet-cover__title { font-size: 30pt; margin: 0; border: none; background: none !important; }
+.packet-cover__note { font-size: 10pt; color: #444; margin: 0.8rem 0 0; }
+.packet-contents { break-before: page; }
+.packet-contents ol { padding-left: 1.4rem; }
+.packet-contents li { margin: 0.25rem 0; }
+.packet-chapter { break-before: page; }
+.packet-chapter__title { font-size: 20pt; border-bottom: 1px solid #000; }
+/* Inside the packet a link to another chapter in the same packet has been
+   rewritten to a fragment, so printing its href would print "(#packet-…)". */
+.packet-doc a[href^="#"]::after { content: none; }

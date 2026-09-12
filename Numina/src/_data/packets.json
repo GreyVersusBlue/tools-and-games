@@ -1,0 +1,32 @@
+{
+  "packets": [
+    {
+      "id": "new-player",
+      "name": "New Player Kit",
+      "summary": "Everything somebody coming to their first event needs on paper: how a weekend runs, what to bring, and the two chapters about playing with other people.",
+      "chapters": [
+        "/mechanics/new-players/",
+        "/new-to-numina/day-in-the-life/",
+        "/new-to-numina/what-to-pack/",
+        "/mechanics/etiquette-safety/"
+      ]
+    },
+    {
+      "id": "combat",
+      "name": "Combat Card",
+      "summary": "The calls, the damage types and the states, printed dense enough to fold into a pouch. This one is the Combat Quick Reference page exactly as it already prints, so it is a link to that page rather than an assembly.",
+      "page": "/mechanics/combat-reference/"
+    },
+    {
+      "id": "npc",
+      "name": "NPC Packet",
+      "summary": "For somebody spending a shift in the NPC camp: what NPCing is, the rules that decide a fight, the calls, and the etiquette that holds across both sides of the line.",
+      "chapters": [
+        "/new-to-numina/npcing/",
+        "/mechanics/core-rules/",
+        "/mechanics/combat-reference/",
+        "/mechanics/etiquette-safety/"
+      ]
+    }
+  ]
+}

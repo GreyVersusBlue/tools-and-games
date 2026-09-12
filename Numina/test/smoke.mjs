@@ -5,11 +5,12 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
 import { autolink, buildVocabulary, mainRegion } from "../tools/autolink.mjs";
+import { hashedFiles, precacheUrls, renderServiceWorker, versionFor } from "../tools/service-worker.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PREFIX = "/Numina/";
 // Must match tools/clean.mjs's GENERATED list.
-const GENERATED = ["index.html", "sitemap.xml", "search", "new-to-numina", "lore", "mechanics", "css", "js", "fonts", "assets", "pagefind"];
+const GENERATED = ["index.html", "sitemap.xml", "sw.js", "search", "new-to-numina", "lore", "mechanics", "css", "js", "fonts", "assets", "pagefind"];
 // greyversusblue.com is our own deployed origin: canonical/OG URLs are absolute
 // by spec, so they show up as offsite hrefs here.
 const OFFSITE_ALLOWED = ["www.numinalarp.com", "numina.lorelogic.info", "discord.gg", "pagefind.app", "greyversusblue.com"];
@@ -302,6 +303,114 @@ ok(
   orphaned.length === 0,
   `every built content page is in nav.json (${contentUrls.length})${orphaned.length ? `, missing: ${orphaned.join(", ")}` : ""}`
 );
+
+// 8. The offline kit (Phase 7). sw.js is generated, so the failure worth
+// catching is not that it is wrong but that it is stale or machine-dependent:
+// a manifest missing a page added last week is a page missing in a field, and
+// a version that moves between two builds of the same source turns CI's
+// rebuild check red on a file nobody edited.
+console.log("# offline kit");
+const swPath = join(root, "sw.js");
+ok(existsSync(swPath), "sw.js generated");
+const sw = existsSync(swPath) ? readFileSync(swPath, "utf8") : "";
+const manifest = [...sw.matchAll(/^  "([^"]+)",$/gm)].map((m) => m[1]);
+const swVersion = sw.match(/^const VERSION = "([0-9a-f]+)";$/m)?.[1] ?? "";
+
+// The generator, run again over the same output, has to produce the file that
+// is committed byte for byte. This is the determinism check and it is also the
+// "did you rebuild?" check for sw.js specifically, which CI would otherwise
+// only catch as an unexplained diff.
+ok(
+  sw === renderServiceWorker(versionFor(root), precacheUrls(root)),
+  `the committed sw.js is what tools/service-worker.mjs writes for this build (${swVersion || "no version"})`
+);
+// Sorted, checked here rather than trusted from the generator: two builds that
+// walk the tree in a different order have to produce the same list.
+ok(
+  manifest.length > 0 && manifest.every((u, i) => i === 0 || manifest[i - 1].localeCompare(u) < 0),
+  `the precache manifest is sorted and has no duplicates (${manifest.length} files)`
+);
+// Completeness, derived from the pages this file already found rather than
+// from the generator's own walk: the two agree or one of them is wrong.
+const manifestSet = new Set(manifest);
+const uncached = builtHtml.map(urlFor).filter((u) => !manifestSet.has(u));
+ok(
+  uncached.length === 0,
+  `every built page is in the precache manifest (${builtHtml.length})${uncached.length ? `, missing: ${uncached.slice(0, 5).join(", ")}` : ""}`
+);
+const wantedAssets = [`${PREFIX}css/main.css`, `${PREFIX}css/print.css`, ...fontRefs.map((f) => `${PREFIX}fonts/${f}`)];
+const missingAssets = wantedAssets.filter((u) => !manifestSet.has(u));
+ok(
+  missingAssets.length === 0,
+  `both stylesheets and all ${fontRefs.length} fonts are in the manifest${missingAssets.length ? `, missing: ${missingAssets.join(", ")}` : ""}`
+);
+ok(
+  manifest.some((u) => u.startsWith(`${PREFIX}pagefind/`)),
+  "Pagefind's fixed-name files are in the manifest"
+);
+// And nothing under pagefind/ decides the version. Its index chunks are named
+// after content hashes over a sharding that is not stable across machines —
+// numina-ci.yml excludes the folder from the rebuild check for that reason — so
+// a version hashed over any of it would differ between two builds of the same
+// source and every PR would be told to rebuild.
+const hashedPagefind = hashedFiles(root).filter((e) => e.url.startsWith(`${PREFIX}pagefind/`));
+ok(
+  hashedPagefind.length === 0,
+  `no file under pagefind/ contributes to the version${hashedPagefind.length ? `: ${hashedPagefind.map((e) => e.url).join(", ")}` : ` (${hashedFiles(root).length} files hashed)`}`
+);
+// The worker updates only when the browser fetches a new sw.js, and it only
+// fetches a new one if the old one was not cached. This header has been in
+// firebase.json since batch 1 for a worker that did not exist; now it matters.
+const firebase = readFileSync(join(root, "..", "firebase.json"), "utf8");
+ok(
+  /"source":\s*"\*\*\/sw\.js"[\s\S]{0,200}?"Cache-Control"[^}]*"no-cache"/.test(firebase),
+  "firebase.json still serves sw.js with no-cache, which is the whole update path"
+);
+// The banner and the registration ship on every page, not just the one that
+// talks about them.
+const noOffline = builtHtml.filter((f) => !readFileSync(f, "utf8").includes(`src="${PREFIX}js/offline.js"`));
+ok(noOffline.length === 0, `offline.js is on all ${builtHtml.length} pages${noOffline.length ? `: ${noOffline.slice(0, 3).map((f) => relative(root, f)).join(", ")}` : ""}`);
+
+// 8b. The packet page (Phase 7). Its chapter list is generated from nav.json,
+// so the drift worth catching is a prebuilt packet naming a chapter the form
+// does not offer, or a URL that is not a page.
+console.log("# print packet");
+const packetHtml = readFileSync(join(root, "mechanics", "packet", "index.html"), "utf8");
+const offered = [...packetHtml.matchAll(/<input type="checkbox" value="([^"]+)" data-packet-chapter/g)].map((m) => m[1]);
+ok(offered.length >= 40, `the packet page offers the site's chapters (${offered.length})`);
+const badOffered = offered.filter((u) => !existsSync(join(root, u.slice(PREFIX.length), "index.html")));
+ok(badOffered.length === 0, `every chapter the packet offers is a built page${badOffered.length ? `: ${badOffered.slice(0, 5).join(", ")}` : ""}`);
+// Neither the builder nor this page itself: one is an application and the
+// other is the form doing the asking.
+const shouldNotOffer = [`${PREFIX}mechanics/character-builder/`, `${PREFIX}mechanics/packet/`].filter((u) => offered.includes(u));
+ok(shouldNotOffer.length === 0, `the packet does not offer itself or the builder${shouldNotOffer.length ? `: ${shouldNotOffer.join(", ")}` : ""}`);
+const packetData = JSON.parse(readFileSync(join(root, "src", "_data", "packets.json"), "utf8")).packets;
+const offeredSet = new Set(offered);
+const badPrebuilt = [];
+for (const packet of packetData) {
+  for (const url of packet.chapters ?? []) {
+    if (!offeredSet.has(PREFIX.replace(/\/$/, "") + url)) badPrebuilt.push(`${packet.id} → ${url}`);
+  }
+  if (packet.page && !existsSync(join(root, packet.page.replace(/^\//, ""), "index.html"))) {
+    badPrebuilt.push(`${packet.id} → ${packet.page}`);
+  }
+}
+ok(
+  packetData.length === 3 && badPrebuilt.length === 0,
+  `all ${packetData.length} prebuilt packets name chapters the page offers${badPrebuilt.length ? `:\n      ${badPrebuilt.join("\n      ")}` : ""}`
+);
+// The Combat Card is the Combat Quick Reference page as it already prints, so
+// the packet that names it has to point at a page that is still cardsheet.
+const cardPacket = packetData.find((p) => p.page);
+const cardSource = cardPacket ? readFileSync(join(root, cardPacket.page.replace(/^\//, ""), "index.html"), "utf8") : "";
+ok(/<body class="[^"]*cardsheet/.test(cardSource), `the Combat Card packet points at a page that still prints as a card sheet`);
+// print.css's side: the packet prints the document and not the form that built
+// it, and the page counter is on a named page so the six chapters that already
+// print one at a time — the card sheet above especially — are untouched by it.
+const printCss = readFileSync(join(root, "css", "print.css"), "utf8");
+ok(/\.packet-page > \*:not\(\.packet-doc\) \{[^}]*display:\s*none/.test(printCss), "print.css prints the packet document and hides the rest of the page");
+ok(/@page packet \{[\s\S]*?@bottom-center \{[\s\S]*?counter\(page\)/.test(printCss), "print.css numbers the packet's pages");
+ok(/\.packet-doc \{ page: packet; \}/.test(printCss), "the page counter is scoped to the packet by a named page, not applied to every printable chapter");
 
 // 8. The accessibility pass (Phase 4). axe-core covers what a machine can see
 // in a rendered page and is the check that would catch a contrast token drifting

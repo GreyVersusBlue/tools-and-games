@@ -5,10 +5,13 @@
 #            the deployed site would then not match its source. Eleventy and
 #            Pagefind, no browser, about a minute.
 #
-# a11y       axe-core over four built pages in both themes, plus the handful of
+# a11y       axe-core over five built pages in both themes, plus the handful of
 #            facts only a rendered page settles: the skip link moving focus,
 #            a table still computing to display: table, the toggle's
 #            aria-pressed following the click, --header-h matching the header.
+#            Phase 7 added packet.mjs to it: the packet page assembles chapters
+#            over fetch and the offline kit is a service worker, and neither
+#            runs without an origin to serve them from.
 #            This is the job that stops the August 2026 audit's section B
 #            coming back — six of its seven findings were one-line fixes that
 #            nothing in the build or in `npm test` could see. Its Playwright
@@ -102,10 +105,17 @@ jobs:
       # working-directory on every step in this job: the workflow's top-level
       # default is Numina, so a path written from the repo root resolves to
       # Numina/Numina/… and the step dies with MODULE_NOT_FOUND.
-      - name: axe-core over home, a nation, Core Rules and search, light and dark
+      - name: axe-core over home, a nation, Core Rules, search and the packet, light and dark
         working-directory: Numina/test/a11y
         run: node axe.mjs
 
       - name: The skip link, the tables, the toggle and --header-h
         working-directory: Numina/test/a11y
         run: node layout.mjs
+
+      # Phase 7's two facts that need an origin rather than a file path: a
+      # service worker will not register from file://, and the packet page
+      # fetches the chapters it assembles.
+      - name: The packet assembly, the page counter and the offline kit
+        working-directory: Numina/test/a11y
+        run: node packet.mjs
