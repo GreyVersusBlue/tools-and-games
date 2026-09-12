@@ -150,6 +150,76 @@ digests under `summaries/`, and question-and-answer versions under
    spoiler warning; anything you cannot confidently identify as an NPC stays
    off the page.
 
+## Skill data (`src/_data/skills.json`)
+
+Generated, never hand-edited. `tools/extract-skills.mjs` reads the pipe tables
+in `src/mechanics/skills/*.md` and writes one record per row: 189 skills in 29
+tables under `skills`, plus `tables` (one entry per table, with its row count),
+`cultures` (16 research topics), `attributes` (the two charts, 6 rows),
+`hidden` (22 hidden Excellencies and Expressions) and `currency` (3 coins).
+Every record carries a `source` — the page URL plus the anchor of the heading
+above its table — and `test/skills.test.mjs` checks each one against the built
+HTML.
+
+A skill record:
+
+```json
+{
+  "id": "domains/air/airs-touch",
+  "name": "Air's Touch",
+  "group": "Air",
+  "groupKind": "Domain",
+  "cost": { "kind": "cp", "cp": 4 },
+  "verbal": null,
+  "description": "When you take a Short Rest, your next Missile attack that costs an attribute to use is free.",
+  "attribute": { "kind": "unlisted" },
+  "thread": false,
+  "source": "/mechanics/skills/domains/#air"
+}
+```
+
+- `id` is `file/group/name`, slugged. Same name in two groups (four tables
+  carry `Holding`) is two ids. Renaming a `###` heading renames every id under
+  it, and the test pins seven ids so that shows up as a failure, not a re-key.
+- `cost.kind` is `cp` (with `cp`), `included` or `see-description`.
+- `attribute.kind` is `spend` (with `amount` and `name`), `none` (`N/A`),
+  `thread`, `uses` (with `count` and `per`), `see-description`, `blank`, or
+  `unlisted` when the table has no Attribute column. Every non-numeric shape
+  keeps the cell's `raw` text.
+- `verbal` is the call with its quotes stripped, or `null` for `N/A` and blank.
+  `Thread Skill` in the Verbal column is not a call: it sets `thread` and
+  leaves `verbal` null. `thread` is also set by an Attribute cell that says so
+  and by a description containing "Thread Skill".
+- The attribute charts' "Cost of next attribute" is `costToIncrease.kind:
+  "unpublished"` — the escalating numbers are not in the converted markdown
+  (see the wishlist's Q32).
+
+**A cell shape the extractor does not know stops the run** with the file, line
+and cell. That is deliberate: a `Cost` of `Five` or an `Attribute` of `2 Luck`
+needs a decision about what it means, not a zero. Add the shape to the parser,
+say what it means in the comment, and add it to the allowed set in the test.
+The same goes for a new table header: the crafting chapter's formula tables are
+a different shape and are deliberately not parsed.
+
+### Bumping the rulebook version
+
+When a new rulebook PDF arrives (v3.52 and on):
+
+1. Replace the chapter markdown in `src/mechanics/skills/` per the chapter map
+   above, as for any other content change.
+2. `node tools/extract-skills.mjs` — it rewrites `src/_data/skills.json` and
+   prints the counts. If it throws, a table or cell has a shape nobody has
+   decided about; decide it in the extractor before going on.
+3. `git diff src/_data/skills.json` **is the review.** Sorted keys and
+   document order mean a changed cost is a two-line hunk and a renamed skill is
+   a removed record beside an added one. Read it against the book's changelog.
+4. `npm run build`, then `npm test`. If the counts moved, update the pins at
+   the top of `test/skills.test.mjs` (189 / 29 / 16 / 6 / 22) in the same
+   commit, and say in the commit message what the diff showed.
+5. Commit the markdown, the JSON and the rebuilt output together. CI's rebuild
+   check and the test's freshness check each fail if one of the three is
+   missing.
+
 ## Timeline data (`src/_data/timeline.json`)
 
 One object per dated event, oldest first. Schema:
@@ -186,7 +256,11 @@ linked from anywhere.
 cd Numina
 npm install        # first time only
 npm run build      # regenerates the committed site + search index
-npm test           # smoke checks: pages built, links resolve, search fresh
+npm test           # smoke checks: pages built, links resolve, search fresh; skills.json fresh
 ```
+
+If the change touched a table in `src/mechanics/skills/`, run
+`node tools/extract-skills.mjs` before the build and commit the regenerated
+`src/_data/skills.json` too — `npm test` fails until you do.
 
 Commit the markdown **and** the regenerated output in the same commit.

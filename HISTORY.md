@@ -7207,6 +7207,84 @@ scaled.
 
 ---
 
+# Numina, arc one
+
+## Phase 1 — The skill table becomes a record (2026-09-12)
+
+**The finding, restated as a number.** 189 skills in 29 pipe tables across
+seven of the nine files in `src/mechanics/skills/`, and the build could read
+none of them: to Eleventy a skill row is a paragraph with pipes in it. Nothing
+could look up a skill, price one, or say what a v3.52 bump changed. The
+wishlist's own numbers, 189 and 29, turned out to be right; its 21 hidden
+Excellencies and Expressions turned out to be 22.
+
+**What shipped.** Decisions #297 to #299. The row named Claude Fable 5.1 and
+the session ran on it. `tools/extract-skills.mjs` walks the chapter markdown
+and writes `src/_data/skills.json`: 236 records under six keys, one for each
+table header shape it knows (`skills`, `tables`, `cultures`, `attributes`,
+`hidden`, `currency`), sorted keys, no timestamps, 3,998 lines. A header it
+does not know throws with the file and line, which is how the crafting
+chapter's 96 formula rows stay out. `test/skills.test.mjs` is wired into
+`npm test` after `smoke.mjs`; the Numina CI job runs `npm test`, so it is on
+every PR touching `Numina/**`. No template reads the data yet, so the rebuilt
+HTML diff is empty — the phase's stated output.
+
+- **A cell the extractor has not been told about is an error, never a zero**
+  (#297). The Cost column holds `Included` 30 times and `See Description`
+  twice beside 157 numbers; the Attribute column holds `1 Fortitude`, `N/A`,
+  `This is a Thread Skill`, `1x / Short Rest`, `N/A See description`, a bare
+  `Prowess` and one blank. Each is a named shape (`cp`, `included`,
+  `see-description`; `spend`, `none`, `thread`, `uses`, `blank`, `unlisted`
+  for a four-column table), every non-numeric one keeps `raw`, and anything
+  else stops the run: a `Five` in a cost cell fails at `open-skills.md:14`
+  by name. Two readings were decided rather than deferred, and both are
+  visible in the data: the bare `Prowess` on Greater Aspect Attack is a spend
+  of one, because its own description says "Spend one attribute"; and
+  `Thread Skill` in the *Verbal* column of ten Empower and Enhance rows is a
+  flag, not a call, so those records carry `verbal: null, thread: true`.
+  `thread` is also set by the Attribute column and by a description that says
+  "extra Thread Skill" — 20 skills in all. Ids are `file/group/name` slugs,
+  which is what keeps four different `Holding`s and two `Enhance`s apart.
+
+- **The extractor's count wins over the wishlist's, and the pin says so**
+  (#298). The hidden table has 22 rows, not 21; the test pins 22. The
+  currency table in `index.md` (3 coins) got its own key rather than an
+  ignore list, because a list of headers to skip is the shape that lets a new
+  table slip past. The attribute chart's `Cost of next attribute` is modelled
+  as `{ kind: "unpublished" }` rather than guessed at (#299): Q32 asks whether
+  the escalating numbers exist, and the data now says out loud that this site
+  does not have them. Q32 stays open and was not pre-answered.
+
+**Break it on purpose, and it fails by name** (#34). Five breaks from a green
+baseline, and each was caught by the assertion whose comment claims it.
+
+- A row deleted from `domains.md` without a re-run: the freshness check fails,
+  and the row count fails at 236 records against 235 rows. Re-run the
+  extractor and the freshness check goes green while the `189 skills` pin
+  fails at 188 — a silent drop is not silent.
+- `### Air` renamed to `### Airs`, re-run, no rebuild: every Air skill's
+  `source` anchor is missing from the built HTML, and the pinned id
+  `domains/air/airs-determination` is gone.
+- A cost of `Five`, and an attribute of `2 Luck`: the extractor exits 1 with
+  the file, line and cell.
+- The extractor changed to emit `kind: "free"` for `Included` and re-run: only
+  the shape check fails, naming the 30 records. That is the one check the
+  freshness comparison cannot cover, since a re-run makes a wrong vocabulary
+  fresh.
+
+**What the data shows that the prose hid,** left in the wishlist's standing
+backlog rather than fixed, because the rule is not to invent facts: `Empower
+Fire` and `Enhance Fire` are the only Empower/Enhance pair in six Domains
+whose Verbal cell is `N/A` rather than `Thread Skill`, so they are the only two
+with `thread: false`; the hidden table spells `Lighting` twice; three Savant
+rows have a blank Verbal; and `First Aid` and `Diagnose` in `index.md` have
+descriptions that begin mid-sentence, a conversion artefact from the PDF.
+
+**Shared things touched**, in the same PR: none. `CLAUDE.md`'s locked-decision
+count, 296 → 299.
+
+---
+
 # The two August 2026 audits
 
 ## Numina, August 2026

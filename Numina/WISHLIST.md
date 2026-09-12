@@ -1,11 +1,12 @@
 # Numina — Feature Wishlist
 
-**Status: nothing here has shipped yet. The site is built, deployed and
-green — 55 pages, 136,410 words of source markdown, `npm test` passing every
-check, CI on every PR touching `Numina/**` — and the August 2026 audit's
-engineering and sharing/SEO sections are done while its content and
-accessibility sections are not. The first open phase is Phase 1, on Claude
-Fable 5.1.** Two prompt
+**Status: Phase 1 shipped on 2026-09-12 (PR #236); the first open phase is
+Phase 2, on Claude Opus 5.** The site is built, deployed and green — 55
+pages, 136,410 words of source markdown, `npm test` passing every check, CI on
+every PR touching `Numina/**` — and the August 2026 audit's engineering and
+sharing/SEO sections are done while its content and accessibility sections
+are not. `src/_data/skills.json` now holds the 189 skills, and
+`test/skills.test.mjs` pins it. Two prompt
 batches ran before this file existed, and their prompt files are retired; the
 audit label each item answered is in `HISTORY.md`. Between them: the
 new-player rewrite, the
@@ -197,12 +198,21 @@ its files, not repeated here; add to this list rather than starting a second.
   `aria-hidden` era headers, `table { display: block }`, light-mode `--gold`
   at ≈3.1:1, no `aria-pressed` on the theme toggle → Phase 4. (~~`scroll-
   margin-top`~~ and ~~motion-gated smooth scroll~~ landed in batch 2.)
-- Zero cross-links in ported content; 189 skills unreadable by the build; no
-  rulebook version diff → Phases 1–2.
+- Zero cross-links in ported content → Phase 2. (~~189 skills unreadable by
+  the build~~ and ~~no rulebook version diff~~ landed in Phase 1.)
 - `excellencies.md`'s live stub, 183-word `history.md`, 17-event timeline,
   635-word glossary → Phase 6. No "come play" path → Phase 5.
 
 **Unclaimed**
+- Four things the skill data shows that the prose hid (Phase 1, not fixed
+  because the rule is not to invent facts): `Empower Fire` and `Enhance Fire`
+  are the only Empower/Enhance pair in six Domains whose Verbal cell is `N/A`
+  rather than `Thread Skill`, so they alone carry `thread: false`; the hidden
+  table spells `Lighting` twice (Mindblade, Steelforge); three Savant rows
+  have a blank Verbal; and `First Aid` and `Diagnose` in `index.md` have
+  descriptions that begin mid-sentence, a conversion artefact from the PDF.
+  Check each against `rules-2026-v3.51.pdf` and fix the markdown, then re-run
+  the extractor.
 - `building-a-character.md` prints "Assign Your Attributes (Steps 8–10)"
   above "Choosing Skills (Steps 1–7)". The book's order, presumably, but it
   reads as a mistake.
@@ -246,44 +256,37 @@ arc next knows which session to open without opening this file.
 
 ## Phase 1 — The skill table becomes a record
 
-**Every skill in the game is a row in a markdown table, and nothing in the
-build can read a row.**
+**Shipped 2026-09-12, PR #236.** `HISTORY.md`, "Numina, arc one", carries the
+full account and decisions #297 to #299.
 
 189 skills in 29 tables in 9 files, in three header shapes, is the whole
-mechanical content of Numina — and to Eleventy it is a paragraph with pipes.
-This phase turns it into `src/_data/skills.json` via a re-runnable extractor,
-with a suite that pins it so a v3.52 bump becomes a reviewable diff instead
-of a reread. Nothing user-visible ships; two phases stand on it.
+mechanical content of Numina — and to Eleventy it was a paragraph with pipes.
+This phase turned it into `src/_data/skills.json` via a re-runnable
+extractor, with a suite that pins it so a v3.52 bump is a reviewable diff
+instead of a reread. Nothing user-visible shipped; two phases stand on it.
 
-- [ ] **`tools/extract-skills.mjs`.** Parse the skill tables out of
-  `src/mechanics/skills/*.md`, keyed by file and by the `###` heading above
-  each table (the Domain, Expression, Foundation type or Culture the skills
-  belong to). Normalize the three header shapes into one record:
-  `{ id, name, group, groupKind, cost, verbal, description, attribute, source }`,
-  where `source` is the page URL plus the heading anchor so every record
-  links back to the prose it came from.
-- [ ] **The costs that aren't numbers.** `Included`, `See Description` and
-  blank all appear in the Cost column; `Attribute` carries `1 Fortitude`,
-  `N/A`, `This is a Thread Skill`, and prose. Model them explicitly and fail
-  the extraction on a shape nobody has decided about, rather than coercing it
-  to zero.
-- [ ] **The other tables** belong in the same file under their own keys:
-  Cultures' 16 research topics, the two attribute charts, and the 21 hidden
-  Excellencies and Expressions. Crafting's 96 formula rows are a different
-  shape — note them and leave them.
-- [ ] **`test/skills.test.mjs`, wired into `npm test`.** Every table row
-  appears exactly once in the JSON, every record's `source` anchor exists in
-  the built HTML, ids are unique and stable, totals pinned (189 skills, 29
-  tables) so a silent drop fails.
-- [ ] **A diffable version bump,** documented in CONTENT-GUIDE.md: replace
-  the chapter markdown, re-run the extractor, read the JSON diff, then
-  rebuild. Sorted keys, no timestamps — CI's rebuild check is unforgiving.
+- [x] **`tools/extract-skills.mjs`.** Parses the tables out of
+  `src/mechanics/skills/*.md`, keyed by file and by the heading above each
+  table. The three header shapes become one record:
+  `{ id, name, group, groupKind, cost, verbal, description, attribute, thread, source }`,
+  `source` being the page URL plus the heading anchor.
+- [x] **The costs that aren't numbers.** `cost.kind` is `cp`, `included` or
+  `see-description`; `attribute.kind` is `spend`, `none`, `thread`, `uses`,
+  `see-description`, `blank` or `unlisted`, each keeping `raw`. A shape nobody
+  has decided about throws with the file, line and cell.
+- [x] **The other tables** under their own keys: `cultures` (16), `attributes`
+  (6 rows, the "Cost of next attribute" modelled as `unpublished`), `hidden`
+  (22, not the 21 this file said) and `currency` (3). Crafting's 96 formula
+  rows are a different shape and are left; an unknown header throws.
+- [x] **`test/skills.test.mjs`, in `npm test`.** Committed JSON equals a fresh
+  extraction; every markdown row is a record exactly once by an independent
+  count; every `source` anchor is in the built HTML; ids unique, seven pinned
+  literally; totals pinned (189 / 29 / 16 / 6 / 22).
+- [x] **A diffable version bump,** in CONTENT-GUIDE.md under "Skill data":
+  replace the chapter markdown, re-run the extractor, read the JSON diff,
+  rebuild. Sorted keys, document order, no timestamps.
 
-*Leans on:* `src/mechanics/skills/*.md`, `test/smoke.mjs`'s reporting style.
-*Build/output:* a committed `src/_data/skills.json` plus its extractor; no
-HTML changes, so the built-output diff should be empty. *Model:* **Claude
-Fable 5.1** — a schema every later phase inherits, extracted from prose where
-a mis-parsed cost is silent and permanent.
+*Model:* **Claude Fable 5.1**, as named, and the session ran on it.
 
 ## Phase 2 — A page for every skill, and links between them
 
