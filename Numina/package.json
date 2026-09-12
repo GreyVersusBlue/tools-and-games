@@ -7,7 +7,7 @@
     "clean": "node tools/clean.mjs",
     "build": "npm run clean && eleventy && pagefind --site . --glob \"{index.html,{lore,mechanics,new-to-numina,search}/**/*.html}\"",
     "serve": "eleventy --serve",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs && node test/skills.test.mjs"
   },
   "devDependencies": {
     "@11ty/eleventy": "^3.1.6",
