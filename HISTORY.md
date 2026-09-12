@@ -7655,6 +7655,103 @@ the same one broken, `Tools/prompt-builder.html`; `social:check` reports the
 same six pages out of sync; `check-collisions.mjs` passes at 0 — all three
 unchanged by this work.
 
+## Phase 3 — The card, increment 3 (2026-09-12)
+
+**Phase 3 is a 2+ row, and this is its third and last increment.** The row
+leaves `BACKLOG.md`. What shipped is the printable character card, the last
+bullet of the wishlist's Phase 3 and the feature that justified the phase: one
+sheet on `print.css`'s `cardsheet` treatment carrying `verdict.granted` and
+`verdict.purchases` with verbals, attribute costs, the six attributes and the
+CP line.
+
+**What shipped.** Decisions #314 and #315. The row names Claude Fable 5.1 and
+this session ran on it. 341 assertions to 373 across the same four suites:
+100 in `smoke.mjs`, 41 in `skills.test.mjs`, 113 in `build-rules.test.mjs`,
+119 in `builder.test.mjs`. No new module and no new page: `renderCard()` is
+the fifth render function in `build-view.js`, `builder.js` calls it on every
+update beside the verdict, and `/mechanics/character-builder/` gains a "Your
+card" section under the verdict with a print button. Q32, the attribute cost
+curve, is still open and was not pre-answered: the card prints "At least 50
+CP of 50 spent" when Prowess is raised, names the purchase as "Prowess +1
+(unpriced)" on the CP line, and quotes "Cost of next attribute" under it. It
+prints no total anywhere on that build, and the suite breaks that on purpose.
+
+- **The card is `renderCard()` in `build-view.js`, the page is
+  `cardsheet: true`, and `print.css` hides everything on it but the card**
+  (#314). A fifth module was the other option and it would have carried
+  nothing the view module does not already have: the card is the verdict's
+  two lists with each skill's `verbal` and `attribute` read off the catalog
+  record, so it is one more function over the same inputs, pure and read by
+  the suite under Node. The print scoping is keyed on `main.builder-page`, a
+  class this page alone carries, so `print.css` stays one stylesheet for the
+  site and no other page loses its lede. What it hides on that page: the h1,
+  the lede, the unofficial paragraph, the no-JS notice, the sticky bar, the
+  whole form, the verdict section, and the card section's own heading and
+  hint. What prints is the card: a title, an "Unofficial" line, Character and
+  Player lines to write on, six choices in a three-column grid, one skill
+  table with Adventurer's nine rows first and the rest in step order, the six
+  attributes at their values, the CP line, then the unpriced note, the
+  problems, the Staff flags and the share URL. Attribute purchases are on the
+  CP line ("Purpose +1 (4 CP)"), not rows in the skill table, and that is
+  asserted on the raised build because the 50 CP build buys none — the first
+  break of it went green for exactly that reason (#147). The card's classes
+  are `sheet` and `sheet__*`, because `.card` is the site's ornamented link
+  tile and `print.css` already hides `.card::before`. Measured in a headless
+  Chromium at Letter with the 2cm margins: the 50 CP build with a raised
+  Prowess is one page with a third of it spare, once the card inherits the
+  cardsheet's 7.5pt instead of its own rem-based screen size — before that
+  fix the same build was two pages.
+
+- **Excellency and Expression purchases are rows in the skill table, noted
+  from the verdict's flags; the card is on the screen too and carries the
+  share URL as text** (#315). A typed Excellency has no skill record (#306)
+  and an Expression's purchase carries the Expression's id, not a skill's, so
+  neither has a verbal or a From label to read; both were rendering as
+  "Excellency" until the Expression row got its own label. The Verbal cell of
+  each says "Unlocked in-game", or "Hidden — Staff approval" when the
+  verdict's `hidden-approval` flag names it, so the sheet carries the
+  provisional state Staff care about on the row itself and again in the
+  "Needs Staff" line. The card renders on screen under the verdict rather
+  than only at print time, because a player should see the sheet they are
+  about to print and a Staff member reading a shared link gets the summary
+  without scrolling ten steps. The share URL prints as text rather than a
+  link: `print.css` already appends `(href)` to every external link, which
+  would print the address twice, and a printed link is typed, not clicked.
+  The Foundation prints as "Military (Place)", its type, not its detail
+  sentence, which was the widest thing on the sheet.
+
+**Break it on purpose, and it fails by name** (#34). Thirteen breaks from a
+green baseline, all caught by the assertion whose message names them: the
+rows unsorted, a 0 CP grant printing "0", the hidden flag inverted, the floor
+printing a total, a choice unescaped, attributes printing their start, an
+attribute purchase in the skill table, the Expression row labelled
+Excellency, the URL printing unasked, the unpriced note dropped, the problems
+dropped, `print.css` no longer hiding the form, and `print.css` hiding the
+card. Three needed a second pass. The floor break was first written so the
+"no total anywhere" regex could not see it and a neighbouring assertion
+caught it instead; rewritten so the total's own pattern appeared, both
+failed. The attribute-purchase break went green until the row count was
+asserted on the raised build. And the two `print.css` breaks went green
+because the suite reads the *built* stylesheet, which the break had not
+rebuilt: that is the suite reading what ships, and CI's stale-build check is
+what catches the gap, so the breaks were re-run with a build between and both
+failed by name. One thing to know about that loop: a `git checkout` of the
+broken file reverts uncommitted work in it too, and this session lost the
+whole card once that way and restored it from the built passthrough copy.
+Commit before breaking.
+
+**Checked in a browser, not in CI.** The built page driven in a headless
+Chromium at Letter's printable width, print media emulated: the form, bar,
+verdict, lede and print button all `display: none`, the card `block`, the
+body on `cardsheet` at 10px, no page errors, and a PDF of one page. The
+script is not committed; Numina's CI still installs no browser.
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 313 → 315. `check-integrity.mjs` is 1,533 units with
+the same one broken, `Tools/prompt-builder.html`; `social:check` reports the
+same six pages out of sync; `check-collisions.mjs` passes at 0 — all three
+unchanged by this work.
+
 ---
 
 # The two August 2026 audits

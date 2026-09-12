@@ -332,3 +332,115 @@ export function renderSummary(verdict) {
   const state = n === 0 ? "no problems" : `${n} problem${n === 1 ? "" : "s"}`;
   return `<span class="builder__summary-cp" data-exact="${cp.exact}">${total}</span> <span class="builder__summary-state" data-legal="${verdict.legal}">${state}</span>`;
 }
+
+// --- the card ---------------------------------------------------------------
+// One sheet, carried to the event. It prints the two lists the wishlist named,
+// `verdict.granted` and `verdict.purchases`, each skill with its verbal and its
+// attribute cost from the catalog record, then the six attributes at their
+// values and the CP line. When a purchase is unpriced the CP line is the floor
+// the verdict computed, in the chart's own words, never a total (#305): the
+// card cannot print a number the rulebook does not. Problems and Staff flags
+// print too, because a sheet that hides them is a sheet Staff will reject.
+
+const FROM_LABEL = {
+  Adventurer: () => "Adventurer",
+  Aspect: () => "Aspect",
+  Culture: () => "Culture",
+  Domain: (skill) => `${skill.group} Domain`,
+  Expression: (skill) => `${skill.group} Expression`,
+  "Foundation type": (skill) => `Foundation (${skill.group})`,
+  Open: () => "Open",
+};
+
+export function attributeCostLabel(attribute) {
+  if (!attribute) return "";
+  switch (attribute.kind) {
+    case "none":
+      return "—";
+    case "thread":
+      return "Thread skill";
+    case "unlisted":
+    case "blank":
+      return "";
+    default:
+      return attribute.raw ?? "";
+  }
+}
+
+function cardRow(entry, catalog, verdict) {
+  // An Excellency (step 5) or an Expression (step 6) is a purchase with no
+  // skill record behind it: the name is typed or is the Expression's own.
+  const skill = entry.id ? catalog.byId.get(entry.id) ?? null : null;
+  const from = skill ? (FROM_LABEL[skill.groupKind] ?? (() => skill.group))(skill) : entry.step === 6 ? "Expression" : "Excellency";
+  const cost = entry.cp === null ? "unpriced" : entry.cp === 0 ? "Included" : String(entry.cp);
+  let note = skill?.verbal ? `“${esc(skill.verbal)}”` : "";
+  if (!skill) {
+    // Its notes are the verdict's flags for that name, which is where
+    // "hidden, needs Staff approval" comes from (#306).
+    const hidden = verdict.provisional.some((f) => f.name === entry.name && f.code === "hidden-approval");
+    note = hidden ? "Hidden — Staff approval" : "Unlocked in-game";
+  }
+  return (
+    `<tr data-sheet-skill="${esc(entry.id ?? "")}" data-sheet-step="${entry.step}">` +
+    `<td class="sheet__skill">${esc(entry.name)}</td><td>${esc(from)}</td>` +
+    `<td class="sheet__cp">${esc(cost)}</td><td>${esc(attributeCostLabel(skill?.attribute))}</td><td class="sheet__verbal">${note}</td></tr>`
+  );
+}
+
+const nameOf = (map, id) => (id && map.has(id) ? map.get(id).name : null);
+const blank = (label) => `<span class="sheet__blank"><span class="sheet__blank-label">${label}</span> <span class="sheet__blank-line"></span></span>`;
+
+export function renderCard(build, verdict, catalog, { url = "" } = {}) {
+  const { cp } = verdict;
+  const aspects = build.aspects.map((id) => nameOf(catalog.aspects, id)).filter(Boolean);
+  const foundation = build.foundation ? catalog.foundations.get(build.foundation) : null;
+  const expressions = build.expressions.map((id) => nameOf(catalog.expressions, id)).filter(Boolean);
+  const excellencies = build.excellencies.filter((n) => String(n).trim());
+  const dt = (label, value) => `<div class="sheet__choice"><dt>${label}</dt><dd>${value ? esc(value) : "<span class=\"sheet__none\">—</span>"}</dd></div>`;
+
+  let html = `<div class="sheet" data-exact="${cp.exact}" data-legal="${verdict.legal}">`;
+  html += `<header class="sheet__head"><p class="sheet__title">Numina character card</p>` +
+    `<p class="sheet__unofficial">Unofficial — priced from greyversusblue.com/Numina's reading of the skill tables, not by Staff.</p>` +
+    `<p class="sheet__blanks">${blank("Character")} ${blank("Player")}</p></header>`;
+
+  html += `<dl class="sheet__choices">` +
+    dt("Aspects", aspects.join(", ")) +
+    dt("Foundation", foundation ? `${foundation.name} (${foundation.type})` : "") +
+    dt("Culture", nameOf(catalog.cultures, build.culture)) +
+    dt("Domain", nameOf(catalog.domains, build.domain)) +
+    dt("Excellencies", excellencies.join(", ")) +
+    dt("Expressions", expressions.join(", ")) +
+    `</dl>`;
+
+  // Step order, grants before purchases within a step, and Adventurer's step
+  // 0 first: the sheet reads top to bottom the way the chapter builds.
+  const rows = [...verdict.granted, ...verdict.purchases.filter((p) => p.step <= 7)].sort((a, b) => a.step - b.step || Number(a.cp !== 0) - Number(b.cp !== 0));
+  html += `<table class="sheet__skills"><thead><tr><th>Skill</th><th>From</th><th>CP</th><th>Uses</th><th>Verbal</th></tr></thead><tbody>`;
+  html += rows.map((r) => cardRow(r, catalog, verdict)).join("");
+  html += `</tbody></table>`;
+
+  html += `<table class="sheet__attributes"><thead><tr>${verdict.attributes.map((a) => `<th>${esc(a.name)}</th>`).join("")}</tr></thead>` +
+    `<tbody><tr>${verdict.attributes.map((a) => `<td data-sheet-attribute="${esc(a.id)}">${a.value}</td>`).join("")}</tr></tbody></table>`;
+
+  const attributeBuys = verdict.purchases.filter((p) => p.step >= 8);
+  const spent = cp.exact
+    ? `<strong>${cp.spent} CP</strong> of ${cp.budget} spent, ${cp.remaining} remaining.`
+    : `<strong>At least ${cp.spent} CP</strong> of ${cp.budget} spent, at most ${cp.remaining} remaining.`;
+  html += `<p class="sheet__cp-line" data-exact="${cp.exact}">${spent}`;
+  if (attributeBuys.length) html += ` Attributes bought: ${attributeBuys.map((p) => `${esc(p.name)} (${p.cp === null ? "unpriced" : `${p.cp} CP`})`).join(", ")}.`;
+  html += `</p>`;
+  if (cp.unpriced.length) {
+    html += `<p class="sheet__unpriced"><strong>Not in the total:</strong> ` +
+      cp.unpriced.map((u) => `${esc(u.what)} — the chart says “${esc(u.raw)}”`).join("; ") + `.</p>`;
+  }
+  if (verdict.problems.length) {
+    html += `<p class="sheet__problems"><strong>${verdict.problems.length} problem${verdict.problems.length === 1 ? "" : "s"} — not a legal build as it stands:</strong> ` +
+      verdict.problems.map((p) => esc(p.message)).join("; ") + `.</p>`;
+  }
+  if (verdict.provisional.length) {
+    html += `<p class="sheet__provisional"><strong>Needs Staff:</strong> ${verdict.provisional.map((f) => esc(f.message)).join("; ")}.</p>`;
+  }
+  if (url) html += `<p class="sheet__url">This build: ${esc(url)}</p>`;
+  html += `</div>`;
+  return html;
+}

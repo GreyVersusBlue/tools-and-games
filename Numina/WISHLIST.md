@@ -1,7 +1,8 @@
 # Numina — Feature Wishlist
 
-**Status: Phase 2 shipped on 2026-09-12 (PR #239); the first open phase is
-Phase 3, on Claude Fable 5.1 — a 2+ row, so it is a whole batch on its own.** The site is built, deployed and green — 56
+**Status: Phase 3 shipped in three increments on 2026-09-12 (PRs #242,
+#245 and the card); the first open phase is Phase 4, on Claude Opus 5, a
+1-session row.** The site is built, deployed and green — 56
 pages, 136,410 words of source markdown, `npm test` passing every check, CI on
 every PR touching `Numina/**` — and the August 2026 audit's engineering,
 sharing/SEO and A5 cross-linking items are done while the rest of its content
@@ -361,8 +362,14 @@ the build kept and shared.** `/mechanics/character-builder/` is the page:
 `src/js/build-state.js` packs the build into `localStorage` (`numina.build`)
 and the URL fragment, and `src/js/builder.js` is the only file that touches
 the browser. `test/builder.test.mjs` is 88 assertions over the two pure
-modules and the built page. What is left is the printable card. Read
-CONTENT-GUIDE's "The character builder" before increment 3.
+modules and the built page.
+
+**Increment 3 shipped (2026-09-12, decisions #314 and #315): the printable
+card.** `renderCard()` in `src/js/build-view.js`, a "Your card" section on
+the page with a print button, `cardsheet: true` on the page and `print.css`
+rules keyed on `main.builder-page` that hide everything but the card.
+`test/builder.test.mjs` is 119 assertions. The phase is finished; nothing is
+left in it.
 
 - [x] **`src/js/build-rules.js`, pure, with its suite.** A build in, a
   verdict out: CP spent and remaining, which selections are legal, which
@@ -401,11 +408,18 @@ CONTENT-GUIDE's "The character builder" before increment 3.
   (`a=arcane&f=military&x=Deadeye&at=purpose:6`), rewritten with
   `replaceState` on every change; a fragment in a pasted link wins over the
   save, and an empty build clears both (#311).*
-- [ ] **A printable character card** on the existing `cardsheet` print
+- [x] **A printable character card** on the existing `cardsheet` print
   treatment: chosen skills with verbals and attribute costs, attributes,
   Vitality, CP total. One sheet carried to the event — the feature that
   justifies the phase. `verdict.granted` and `verdict.purchases` are the two
-  lists it prints.
+  lists it prints. *Done: one skill table, Adventurer's rows first then step
+  order, each row name, source, CP, uses (the record's `attribute`) and
+  verbal; the six attributes at their values; a CP line that is "At least"
+  with the unpriced purchase named and the chart quoted when Prowess,
+  Insight, Fortitude or Vitality is raised, and never a total (#305);
+  problems, Staff flags and the share URL under it. Measured at Letter in a
+  headless Chromium: one page. The card is on screen too, under the verdict
+  (#315).*
 - [x] **Suite and smoke.** Every cap, every escalating cost, every "Included"
   skill priced at zero, one known-good 50 CP build costed to the CP; plus a
   smoke check that the builder's data matches `skills.json`. *Done:

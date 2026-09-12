@@ -20,7 +20,7 @@ as-is with no CI build step.
 | `src/js/build-rules.js` | The character builder's arithmetic — a build in, a verdict out. Pure: no DOM, runs under Node and in the page |
 | `test/build-rules.test.mjs` | Every cap, every escalating cost, one 50 CP build costed to the CP, and the two refusals (also `npm test`) |
 | `src/js/build-view.js`, `src/js/build-state.js`, `src/js/builder.js` | The character builder page: the steps and verdict as HTML strings, the `localStorage` record and URL fragment, and the one file that touches the DOM |
-| `test/builder.test.mjs` | The fragment and save round-trip, each step lists what `offered()` offers, the verdict says "at least" when a purchase is unpriced, and the built page's JSON islands resolve (also `npm test`) |
+| `test/builder.test.mjs` | The fragment and save round-trip, each step lists what `offered()` offers, the verdict says "at least" when a purchase is unpriced, the card prints every skill with its verbal and a CP line that is never a total when a purchase is unpriced, `print.css` hides the form and not the card, and the built page's JSON islands resolve (also `npm test`) |
 | `index.html`, `lore/`, `mechanics/`, `search/`, `css/`, `js/`, `fonts/`, `assets/`, `pagefind/` | Generated — never edit by hand |
 | `CONTENT-GUIDE.md` | How to port book chapters into `src/` |
 
