@@ -5,9 +5,25 @@
     <a href="/lore/"{% if page.url.startsWith("/lore/") %} aria-current="true"{% endif %}>Lore</a>
     <a href="/mechanics/"{% if page.url.startsWith("/mechanics/") %} aria-current="true"{% endif %}>Mechanics</a>
   </nav>
+  {#- Two search controls, and only ever one of them visible. The form is the
+      no-JS path and the one that ships visible: it GETs /search/ with ?q=, and
+      that page reads the parameter. It now carries a real submit button —
+      html-validate's wcag/h32 had it on all 58 pages, and "press Enter" is not a
+      control a pointer can find.
+
+      The button is the JS path and ships hidden, the way the theme toggle does
+      for the same reason: js/search-modal.js unhides it and hides the form, so a
+      visitor without JS never sees a button that cannot do anything. It opens
+      Pagefind's modal, which is a <dialog> — focus trapped and Escape handled by
+      the browser. -#}
   <form class="header-search" action="/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
+    <button type="submit">Search</button>
   </form>
+  <button type="button" class="search-trigger" data-search-open data-pagefind="{{ '/pagefind/' | url }}" hidden>
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button>
   {#- aria-pressed says which way the toggle is currently set. It ships false
       and theme.js corrects it on load, because the theme in force is whatever
       the OS says until a visitor has chosen one, and that is not knowable at

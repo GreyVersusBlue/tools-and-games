@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -303,7 +307,7 @@
 <p>Players involved with Mellurian plot will find themselves exploring mines to collect materials as a part of their obligation to give back to the mines. They may encounter creatures that prefer not to be disturbed and would need to be removed in order to continue. Occasionally they may be called on by their guild to to research new skills or methods for crafting, investigate code violations, represent the guild in a friendly skills competition, or to negotiate/mediate any contracts or disputes within or between the guilds. Opportunities to lend expertise in crafting, refinement of materials, and to move up in rank in their chosen guild will also be available.</p>
 <h2 id="costume-and-rp-themes">Costume and RP Themes <a class="heading-anchor" href="#costume-and-rp-themes" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
 <p>Utilitarian clothes that aren’t too loose to protect from machinery or mining hazards. Sturdy boots and gloves are standard. Many opt to have goggles, a heavy leather apron or a tool belt. Mellurians also love to show their best work, whether it’s a tool (hammer, pliers) or item (necklace, armor, sword, etc.) that their ancestors have made or they have made themselves. A patch signifying the guild that the player is a member of is also worn on the upper chest. Players take pride in their work and actions meaning something and benefiting the people around them, rather than working just to work. Collaboration with fellow players will be highly encouraged.</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Melluria</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Earth Works/ Geology</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd></dl></div>
 
     
     
@@ -338,5 +342,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

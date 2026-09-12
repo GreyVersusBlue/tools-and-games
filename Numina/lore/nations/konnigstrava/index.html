@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -272,7 +276,7 @@
 <p>Konnigstrava allows for players to portray the characters who enjoy the simple comforts of rural and rustic living. Players can come from a lifestyle of rural or woodland homes with simple comfortable features, a warm pot of soup on the stove, and a simple garden. Players may achieve success by acquiring and sharing simple homey comforts and not seek riches or influence.</p>
 <p>If someone wishes to portray a character from the nobility there are a number of opportunities to explore stories in crumbling castles, failing family lines, and doomed quests. Characters might seek to find ways to return their families to the glories of the past, or they might seek to find new ways to form a society and relationship between the landowning and peasant classes. A questing knight could be seeking most anything.</p>
 <p>Do you wish to be a witch who brews potions in a cabin at the edge of town? A hedge wizard who experiments on Pestilence cures? A hunter or woodcutter who must travel in dark dangerous forests? A blue blooded noble who runs through castle halls at night with a candelabra? A refugee from a cult trying to escape a traumatic past? A questing knight trying to regain faded glory for your house, or who is on a noble but doomed quest? A Pestilence survivor who still bears the visible scars of the illness? All these archetypes fit in well in Konnigstrava.</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Konnigstrava</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Rituals</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd><dt>In the timeline</dt><dd><a href="/Numina/lore/history/#event-pestilence-wracks-konnigstrava">Pestilence wracks Konnigstrava (114 AW)</a></dd></dl></div>
 
     
     
@@ -307,5 +311,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

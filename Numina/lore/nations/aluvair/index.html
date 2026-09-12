@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -270,7 +274,7 @@
 <p>While the acceptance of impermanence is central to the Aluvain way of life, not all residents are calmly at peace with the universe. Many folk of Aluvair will fight hard for their friends and family and hard for their way of life but be accepting when things are taken in the end. In fact, many folk of Aluvair live life with an almost aggressive passion, knowing that anything can be snatched away at any time so living to the fullest now is wise. On the flip side, one of the dangers that many face is drifting into Nihilism, believing that if nothing is permanent then nothing matters.</p>
 <p>Clothes in Aluvair are often made for warm weather, favoring breezy fabrics and short sleeves. In colder weather they will often layer up rather than wear heavier single garments. While traditionally wools and animal fiber fabrics have been most common, those who live life largely will choose to sport more garish and rare garments, since they are fine to have while they last. Either way, styles that will not restrict movement in the event of a sudden flood are always preferred. Garments are almost always dyed brightly, and recently a trend toward Ombre styles has become popular to show the fading of color as a reflection of the Aluvain outlook.</p>
 <p>Tattoos have become popular among young Aluvain, though they usually pick fewer more meaningful designs. This is in contrast to the more traditional outlook where skin inks were used as a decoration that would fade over time and could be treated as a temporary work of art.</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Aluvair</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Natural Phenomena</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd><dt>In the timeline</dt><dd><a href="/Numina/lore/history/#event-twin-floods-sweep-aluvair">Twin floods sweep Aluvair (116–117 AW)</a></dd></dl></div>
 
     
     
@@ -305,5 +309,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

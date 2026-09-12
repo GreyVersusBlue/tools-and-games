@@ -6,6 +6,7 @@ import markdownIt from "markdown-it";
 import markdownItAnchor from "markdown-it-anchor";
 import { pageIndex, skillAnchors, addSkillAnchors } from "./tools/skill-anchors.mjs";
 import { autolink, buildVocabulary, mainRegion } from "./tools/autolink.mjs";
+import { eventAnchor, insertSectionSeeAlso, nationSeeAlso, renderSeeAlso, sectionBlocks } from "./tools/see-also.mjs";
 import { jsonIsland } from "./tools/json-island.mjs";
 
 export const PATH_PREFIX = "/Numina/";
@@ -145,9 +146,25 @@ export default function (eleventyConfig) {
   // the page's own hrefs, so both emit URLs that carry the path prefix. Both are
   // scoped to <main>: the sidebar links every page in the section including this
   // one, and linking terms in navigation chrome would be noise.
-  const skills = readJson("src/_data/skills.json").skills;
+  const skillData = readJson("src/_data/skills.json");
+  const skills = skillData.skills;
   const anchorPages = pageIndex(skills);
   const anchorsById = skillAnchors(skills);
+
+  // --- "See also", generated (tools/see-also.mjs) -------------------------
+  const timelineData = readJson("src/_data/timeline.json");
+  const seeAlsoSections = sectionBlocks(skillData);
+  let seeAlsoBlocks = 0;
+
+  // A nation page is a template, so this is a filter rather than a transform.
+  // Its hrefs are written without the path prefix because EleventyHtmlBasePlugin
+  // has not run yet on a filter's output and will rewrite them like any other.
+  eleventyConfig.addFilter("nationSeeAlso", (nation) =>
+    renderSeeAlso(nationSeeAlso(skillData, timelineData, nation), { level: 2 })
+  );
+  // The id the timeline gives an event, so a nation page and /lore/history/
+  // agree on the fragment without either of them spelling it out.
+  eleventyConfig.addFilter("eventAnchor", eventAnchor);
 
   // The canonical link to one skill, for the index page. Same anchor the
   // transform below puts on the row, from the same map — the index cannot point
@@ -191,6 +208,7 @@ export default function (eleventyConfig) {
   // transforms on every save and the counters would otherwise keep climbing.
   const resetSummary = () => {
     summary = { links: 0, pages: 0, byKind: {}, byTerm: new Map(), anchors: 0 };
+    seeAlsoBlocks = 0;
   };
   resetSummary();
   eleventyConfig.on("eleventy.before", resetSummary);
@@ -229,6 +247,23 @@ export default function (eleventyConfig) {
     return content.slice(0, region.start) + html + content.slice(region.end);
   });
 
+  // Last of the three, and the order matters: autolink spends a term the moment
+  // the page links its target, so a See also block written first would stop the
+  // prose above it linking the same chapters. Phase 2's 194 cross-links are the
+  // ones that would quietly go missing.
+  eleventyConfig.addTransform("seeAlso", function (content) {
+    if (!this.page.outputPath?.endsWith(".html")) return content;
+    const blocks = seeAlsoSections.get(this.page.url);
+    if (!blocks) return content;
+    const region = mainRegion(content);
+    if (!region) return content;
+    const { html, added } = insertSectionSeeAlso(content.slice(region.start, region.end), blocks, {
+      prefix: PATH_PREFIX,
+    });
+    seeAlsoBlocks += added;
+    return content.slice(0, region.start) + html + content.slice(region.end);
+  });
+
   // The diff this pair produces is every ported chapter's HTML. The summary is
   // what to read instead (the wishlist's Phase 2 says so in as many words).
   eleventyConfig.on("eleventy.after", () => {
@@ -250,7 +285,8 @@ export default function (eleventyConfig) {
       `[numina] ${summary.anchors} skill anchors; ` +
         `${summary.links} cross-links on ${summary.pages} pages (${kinds}); ` +
         `${vocabulary.terms.length} terms, ${unlinked} never matched, ` +
-        `${vocabulary.skipped.length} not eligible`
+        `${vocabulary.skipped.length} not eligible; ` +
+        `${seeAlsoBlocks} generated "See also" sections`
     );
     console.log(`[numina] most linked: ${top}`);
   });

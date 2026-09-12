@@ -1,5 +1,6 @@
 ---
 name: Aluvair
+culture: Aluvair
 title: Aluvair
 order: 1
 color: "#8b942b"

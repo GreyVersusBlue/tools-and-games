@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -277,7 +281,7 @@
 <p>Dovenosti clothing is well-made; both practical and comfortable to move and work in. Garments tend towards clean lines and simple styles more in keeping with medieval-fantasy than renaissance-fantasy. Leather and fabric are equally prominent depending on how practical it is for one’s vocation [character class]. Trim, embroidery, and adornments are rare, but not unheard of.</p>
 <p>How one chooses to play their character may be informed by how happy their character was in Dovenost and how long they have been outside the country. A character who found their village too small and too hidebound, who left as soon as they could, and who has been adventuring in other places for a decade will behave very differently from the happy apprentice who has just been sent out on their year abroad.</p>
 <p>Consider the following questions when choosing to play a Dovenosti: How long have they been abroad? How excited are they about Dovenost being part of the international community? Do they share the Dovenosti propensity to value plain quality over detail and decoration? Do they struggle with the emphasis on honesty and honor? Are they of an age where they participated in the last War of Ascension, and if so, how did that experience shape them?</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Dovenost</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Item provenance and craftsmanship</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd></dl></div>
 
     
     
@@ -312,5 +316,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -390,7 +394,7 @@ Knight - The child or grandchild of a Prince, who has served in the military. In
 Knight Errant - the child or grandchild of a Marquess, who has served in the military. Does not inherit to future generations.</p>
 <h3 id="education">Education <a class="heading-anchor" href="#education" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
 <p>All princes have a legal obligation to provide for basic education for any child whose parents request it. This mandatory education includes the ability to read, write, and perform basic arithmetic. Beyond that most education for peasants is provided through apprenticeship in a trade.</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Ophrailes</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Magical Theory</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd><dt>In the timeline</dt><dd><a href="/Numina/lore/history/#event-eviar-leonate-elected-crown-prince-of-ophrailes">Eviar Leonate elected Crown Prince of Ophrailes (113 AW)</a></dd></dl></div>
 
     
     
@@ -425,5 +429,6 @@ Knight Errant - the child or grandchild of a Marquess, who has served in the mil
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

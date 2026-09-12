@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -266,7 +270,7 @@
 <p>Adventures in T’barris will often require discovering what is going on behind what you see through research, adventure, or experimentation and this doesn’t just apply to interactions with the Arcanis.</p>
 <h2 id="costume-and-rp-themes">Costume and RP Themes <a class="heading-anchor" href="#costume-and-rp-themes" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
 <p>In general the folks from T’barris dress in traditional fantasy Larp clothing. Each person will have a highlight or an entire costume that highlights the region of T’barris they hail from. Those from The Scale may wear scale armor or adornments, reptile leather, or fabric with snake, alligator or other lizard skin patterns. Those from Azure have blue gems that adorn their clothing. The Nettle often have toggles of wood or bone that pass through their clothing. The Gold have golden clothing or have turtles adorning their clothing. Where-as those from The Sloth have a piece of clothing or a whole outfit that appears a complete mismatch, as if they weren’t totally awake when they put their outfit together.</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">T'barris</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Hunting</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd><dt>In the timeline</dt><dd><a href="/Numina/lore/history/#event-a-diamondback-skin-is-found-in-tbarris">A Diamondback skin is found in T'barris (111 AW)</a></dd></dl></div>
 
     
     
@@ -301,5 +305,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

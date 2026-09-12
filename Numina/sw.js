@@ -9,7 +9,7 @@
 // Pagefind's, which is not stable across machines. It changes when the site
 // changes and only then, so an unchanged rebuild produces this file unchanged
 // and CI's rebuild check stays quiet.
-const VERSION = "1eb923d6c179";
+const VERSION = "b1aede1b0d4e";
 const CACHE = `numina-${VERSION}`;
 const SCOPE = "/Numina/";
 
@@ -30,6 +30,7 @@ const PRECACHE = [
   "/Numina/js/builder.js",
   "/Numina/js/offline.js",
   "/Numina/js/packet.js",
+  "/Numina/js/search-modal.js",
   "/Numina/js/skill-filter.js",
   "/Numina/js/theme.js",
   "/Numina/lore/",
@@ -88,9 +89,9 @@ const PRECACHE = [
   "/Numina/new-to-numina/quick-reference/",
   "/Numina/new-to-numina/story-so-far/",
   "/Numina/new-to-numina/what-to-pack/",
+  "/Numina/pagefind/pagefind-component-ui.css",
+  "/Numina/pagefind/pagefind-component-ui.js",
   "/Numina/pagefind/pagefind-entry.json",
-  "/Numina/pagefind/pagefind-ui.css",
-  "/Numina/pagefind/pagefind-ui.js",
   "/Numina/pagefind/pagefind.js",
   "/Numina/pagefind/wasm.en.pagefind",
   "/Numina/pagefind/wasm.unknown.pagefind",

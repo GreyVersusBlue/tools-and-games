@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -252,7 +256,7 @@
 <p>Myos is a relatively young country with all of the benefits and drawbacks of being young. Players from Myos can expect themes of exploration, discovery, and danger in unexpected places. Those who enjoy finding what’s beyond the sugar and above the salt, forging new alliances, and fighting for their ideals will likely find Myos plot entertaining.</p>
 <h3 id="costume-themes">Costume Themes <a class="heading-anchor" href="#costume-themes" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
 <p>Since Myos is a true international port, cultural dress from all nations can be seen. Locals wear any style they like and can afford, with practical alterations where necessary. Those that stay a while will often copy their previous culture’s style in lighter weight fabrics that help to keep cool in the warm Myos air. Vests have recently become the fashion. Different hues of gold and blue are popular, representing the sun and the sea.</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Myos Islands</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Trade and Travel</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd></dl></div>
 
     
     
@@ -287,5 +291,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

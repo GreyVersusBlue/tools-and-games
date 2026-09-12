@@ -1,5 +1,6 @@
 ---
 name: Rues
+culture: Rues
 title: Rues
 order: 13
 color: "#a5301c"

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
 import { autolink, buildVocabulary, mainRegion } from "../tools/autolink.mjs";
 import { hashedFiles, precacheUrls, renderServiceWorker, versionFor } from "../tools/service-worker.mjs";
+import { eventAnchor } from "../tools/see-also.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PREFIX = "/Numina/";
@@ -167,12 +168,56 @@ ok(offsiteCssJs.length === 0, "no offsite URLs in built css/js");
 console.log("# search");
 const pf = join(root, "pagefind");
 ok(existsSync(join(pf, "pagefind.js")), "pagefind.js exists");
-ok(existsSync(join(pf, "pagefind-ui.js")), "pagefind-ui.js exists");
+ok(existsSync(join(pf, "pagefind-component-ui.js")), "pagefind-component-ui.js exists");
+ok(existsSync(join(pf, "pagefind-component-ui.css")), "pagefind-component-ui.css exists");
 ok(walk(pf, (p) => /wasm.*\.pagefind$/.test(p)).length > 0, "pagefind wasm exists");
 const fragments = existsSync(join(pf, "fragment")) ? readdirSync(join(pf, "fragment")).length : 0;
 const indexedPages = builtHtml.filter((f) => readFileSync(f, "utf8").includes("data-pagefind-body")).length;
 ok(fragments >= indexedPages, `index fresh (${fragments} fragments ≥ ${indexedPages} indexed pages)`);
-ok(readFileSync(join(root, "search", "index.html"), "utf8").includes("pagefind-ui.js"), "search page references bundle");
+
+// 4a. Phase 8's Component UI, and the four facts about it a diff does not show.
+//
+// The search page is the Component UI's four custom elements now, not a
+// `new PagefindUI({…})` call. bundle-path is checked for the path prefix
+// because getting it wrong is silent: the elements render, the input takes
+// typing, and every search comes back empty because the index 404'd.
+const searchHtml = readFileSync(join(root, "search", "index.html"), "utf8");
+for (const el of ["pagefind-config", "pagefind-input", "pagefind-summary", "pagefind-results"]) {
+  ok(searchHtml.includes(`<${el}`), `the search page carries <${el}>`);
+}
+ok(searchHtml.includes("pagefind-component-ui.js"), "the search page loads the Component UI bundle");
+ok(!searchHtml.includes("pagefind-ui.js"), "and not the Default UI it replaced");
+ok(
+  searchHtml.includes(`bundle-path="${PREFIX}pagefind/"`),
+  `the search page's bundle-path carries the path prefix (${PREFIX}pagefind/)`
+);
+ok(searchHtml.includes("<noscript>"), "the search page keeps its no-JS fallback");
+
+// The header's two search controls. The form is the no-JS path and has to keep
+// its action, its q and — new in Phase 8, and the one real finding
+// html-validate's wcag/h32 made before that rule was turned off — a submit
+// button, because "press Enter" is not a control a pointer can find. The button
+// beside it is the modal's, ships hidden, and carries the bundle path because
+// js/search-modal.js is on pages four levels deep and cannot write a relative
+// one.
+const headerPages = builtHtml.filter((f) => readFileSync(f, "utf8").includes('class="header-search"'));
+ok(headerPages.length === builtHtml.length, `the header search form is on all ${builtHtml.length} pages (${headerPages.length})`);
+const headerGaps = [];
+for (const file of builtHtml) {
+  const html = readFileSync(file, "utf8");
+  const form = html.slice(html.indexOf('<form class="header-search"'), html.indexOf("</form>"));
+  if (!/action="[^"]*\/search\/"/.test(form)) headerGaps.push(`${relative(root, file)}: form does not GET /search/`);
+  if (!form.includes('name="q"')) headerGaps.push(`${relative(root, file)}: form has no q`);
+  if (!/<button type="submit"/.test(form)) headerGaps.push(`${relative(root, file)}: form has no submit button`);
+  if (!html.includes(`data-pagefind="${PREFIX}pagefind/"`)) headerGaps.push(`${relative(root, file)}: trigger has no bundle path`);
+  if (!/class="search-trigger"[^>]*hidden/.test(html)) headerGaps.push(`${relative(root, file)}: trigger does not ship hidden`);
+}
+ok(headerGaps.length === 0, `every page's header carries a submitting form and a hidden modal trigger${headerGaps.length ? `: ${headerGaps.slice(0, 3).join("; ")}` : ""}`);
+ok(existsSync(join(root, "js", "search-modal.js")), "js/search-modal.js is in the build");
+ok(
+  builtHtml.every((f) => readFileSync(f, "utf8").includes("/js/search-modal.js")),
+  "and every page loads it"
+);
 
 // 4b. The "come play" block (Phase 5). Three things matter about it and none
 // of them is visible in a diff of the partial: that it is on the three pages a
@@ -279,9 +324,24 @@ if (existsSync(sitemapPath)) {
   ok(existsSync(robots) && readFileSync(robots, "utf8").includes(`${ORIGIN}${PREFIX}sitemap.xml`), "repo-root robots.txt points at the sitemap");
 }
 
-// 7. Navigation drift: _data/nav.json duplicates page order and titles by hand,
-// so a page added under src/lore or src/mechanics without a nav.json entry
-// builds and is linkable but never appears in any sidebar.
+// 7. Navigation drift. _data/nav.json duplicates page order and titles that
+// frontmatter mostly already carries, and Phase 8 asked whether to derive the
+// sidebar from collections and delete the file, or keep it and write down that
+// the duplication is deliberate. Kept, and #329 records why. Four things in it
+// are in no page's frontmatter: the position of the three nav entries whose
+// templates carry no `order` (Character Builder, Print Packet, All Skills), the
+// two-level nesting under Skills, the one nav title that is deliberately not the
+// page title ("Skills" for a page whose h1 reads "Adventurer Skills"), and the
+// `nations: true` flag that splices the nations collection into that section.
+// Deriving the sidebar means adding all four back as frontmatter to produce the
+// same file under another name — and the file now has three readers rather than
+// one, because /mechanics/packet/ generates its 49-chapter list from it.
+//
+// So the guard stays, and it runs both ways now. Forwards: a page added under
+// src/lore or src/mechanics without a nav.json entry builds and is linkable but
+// appears in no sidebar. Backwards: an entry pointing at a page that is not
+// built is a dead sidebar link on every page of its section, and a chapter the
+// packet offers and cannot fetch.
 console.log("# navigation");
 const nav = JSON.parse(readFileSync(join(root, "src", "_data", "nav.json"), "utf8"));
 const navUrls = new Set();
@@ -302,6 +362,12 @@ const orphaned = contentUrls.filter((u) => !navUrls.has(u));
 ok(
   orphaned.length === 0,
   `every built content page is in nav.json (${contentUrls.length})${orphaned.length ? `, missing: ${orphaned.join(", ")}` : ""}`
+);
+const builtUrls = new Set(contentUrls);
+const dead = [...navUrls].filter((u) => !builtUrls.has(u));
+ok(
+  dead.length === 0,
+  `every nav.json entry is a built page (${navUrls.size})${dead.length ? `, dead: ${dead.join(", ")}` : ""}`
 );
 
 // 8. The offline kit (Phase 7). sw.js is generated, so the failure worth
@@ -347,6 +413,34 @@ ok(
 ok(
   manifest.some((u) => u.startsWith(`${PREFIX}pagefind/`)),
   "Pagefind's fixed-name files are in the manifest"
+);
+// And they are the ones the pages actually load. Phase 8 changed which UI the
+// site loads, and the kit's PAGEFIND_FILES names those files by hand because
+// everything else in that folder is named after a content hash. The two lists
+// moving apart is silent online and fatal in a field: the browser has the page,
+// the page asks for a bundle that was never put on the device, and search is
+// the one thing that does not work. So every pagefind/ file referenced by a
+// built page, or injected by js/search-modal.js, has to be in the manifest.
+const pagefindRefs = new Set();
+for (const file of [...builtHtml, join(root, "js", "search-modal.js")]) {
+  const text = readFileSync(file, "utf8");
+  for (const m of text.matchAll(/pagefind\/(pagefind[\w.-]+\.(?:js|css|json))/g)) {
+    pagefindRefs.add(`${PREFIX}pagefind/${m[1]}`);
+  }
+  // search-modal.js builds its URLs as base + "pagefind-component-ui.css".
+  for (const m of text.matchAll(/"(pagefind-component-ui\.(?:js|css))"/g)) {
+    pagefindRefs.add(`${PREFIX}pagefind/${m[1]}`);
+  }
+}
+const unkitted = [...pagefindRefs].filter((u) => !manifestSet.has(u)).sort();
+// Two is the floor because markup and search-modal.js between them name exactly
+// the Component UI's script and stylesheet. pagefind.js, pagefind-entry.json and
+// the two wasm builds are fetched by that bundle at runtime rather than written
+// into any page, which is why PAGEFIND_FILES names them and the assertion above
+// is what holds them.
+ok(
+  pagefindRefs.size >= 2 && unkitted.length === 0,
+  `every Pagefind file a page loads is in the kit (${pagefindRefs.size} referenced)${unkitted.length ? `, missing: ${unkitted.join(", ")}` : ""}`
 );
 // And nothing under pagefind/ decides the version. Its index chunks are named
 // after content hashes over a sharding that is not stable across machines —
@@ -540,6 +634,114 @@ const darkBlocks = [...mainCss.matchAll(/:root(?::not\(\[data-theme="light"\]\))
   .filter((b) => /--paper:\s*#0f1713/.test(b))
   .map((b) => b.split("\n").map((l) => l.trim()).filter(Boolean).join("\n"));
 ok(darkBlocks.length === 2 && darkBlocks[0] === darkBlocks[1], `the two dark token blocks declare the same tokens (${darkBlocks.length} found)`);
+
+// 8c. The generated "See also" blocks (Phase 8). Nothing in them is written by
+// hand, so the failures worth catching are the ones generation makes rather than
+// the ones typing makes: a join key that stopped resolving, a fragment that
+// points at an id no page has, and a relation that silently produced nothing at
+// all. The last is the one a diff hides — an empty block renders as no block.
+console.log("# see also");
+const skillData = JSON.parse(readFileSync(join(root, "src", "_data", "skills.json"), "utf8"));
+
+// The one hand-written part: each nation's `culture` frontmatter. 16 nations and
+// 16 cultures, and the pairing has to be one for one in both directions — a
+// nation naming a culture that does not exist already throws in the build, but a
+// culture no nation claims is silent and means a nation page is reading somebody
+// else's row.
+const nationCultures = nationSlugs.map((slug) => {
+  const front = readFileSync(join(root, "src", "lore", "nations", `${slug}.md`), "utf8");
+  return { slug, culture: front.match(/^culture:\s*"?([^"\n]+?)"?\s*$/m)?.[1] };
+});
+const cultureNames = new Set(skillData.cultures.map((c) => c.name));
+const unjoined = nationCultures.filter((n) => !n.culture || !cultureNames.has(n.culture));
+const unclaimed = [...cultureNames].filter((name) => !nationCultures.some((n) => n.culture === name));
+ok(
+  unjoined.length === 0,
+  `every nation names a culture in skills.json (${nationCultures.length})${unjoined.length ? `, broken: ${unjoined.map((n) => `${n.slug} → ${n.culture ?? "none"}`).join(", ")}` : ""}`
+);
+ok(
+  unclaimed.length === 0,
+  `every culture in skills.json is claimed by a nation (${cultureNames.size})${unclaimed.length ? `, orphaned: ${unclaimed.join(", ")}` : ""}`
+);
+
+// Excellency alignment, which is what the Domains chapter's blocks are built
+// from. Read out of excellencies.md's heading structure, so the check is that
+// every Excellency got one and every Domain that has a page is named by at
+// least one — an alignment list that came back empty would render six missing
+// blocks and no error.
+const excellencyTables = skillData.tables.filter((t) => t.groupKind === "Excellency");
+const domainNames = skillData.tables.filter((t) => t.groupKind === "Domain").map((t) => t.group);
+const unaligned = excellencyTables.filter((t) => !(t.domains ?? []).length);
+const domainless = domainNames.filter((d) => !excellencyTables.some((t) => (t.domains ?? []).includes(d)));
+ok(
+  excellencyTables.length === 30 && unaligned.length === 0,
+  `all 30 Excellencies carry a Domain alignment (${excellencyTables.length} tables)${unaligned.length ? `, unaligned: ${unaligned.map((t) => t.group).join(", ")}` : ""}`
+);
+ok(
+  domainNames.length === 6 && domainless.length === 0,
+  `each of the ${domainNames.length} Domains has Excellencies aligned to it${domainless.length ? `, empty: ${domainless.join(", ")}` : ""}`
+);
+
+// The blocks on the page. Six on the Domains chapter, one per Domain section,
+// and one on every nation page.
+const domainsHtml = readFileSync(join(root, "mechanics", "skills", "domains", "index.html"), "utf8");
+const domainBlocks = [...domainsHtml.matchAll(/<div class="see-also"/g)].length;
+ok(domainBlocks === domainNames.length, `the Domains chapter carries one See also per Domain (${domainBlocks} of ${domainNames.length})`);
+const nationsWithout = nationSlugs.filter(
+  (slug) => !readFileSync(join(root, "lore", "nations", slug, "index.html"), "utf8").includes('<div class="see-also"')
+);
+ok(nationsWithout.length === 0, `every nation page carries a See also (${nationSlugs.length})${nationsWithout.length ? `: ${nationsWithout.join(", ")}` : ""}`);
+
+// Every link inside a block resolves to a built page and, where it has one, to
+// an id that page actually has. Section 3's cross-link check walks <main> and
+// would catch most of this, but it is not the check whose message names the
+// generator — and a block's links are the whole point of the block.
+const seeAlsoBad = [];
+let seeAlsoLinks = 0;
+for (const file of builtHtml) {
+  const html = readFileSync(file, "utf8");
+  for (const m of html.matchAll(/<div class="see-also"[\s\S]*?<\/div>/g)) {
+    for (const link of m[0].matchAll(/href="([^"]+)"/g)) {
+      seeAlsoLinks++;
+      const [path, fragment] = link[1].split("#");
+      if (!path.startsWith(PREFIX)) { seeAlsoBad.push(`${relative(root, file)}: ${link[1]} is not on this site`); continue; }
+      const page = join(root, path.slice(PREFIX.length), "index.html");
+      if (!existsSync(page)) { seeAlsoBad.push(`${relative(root, file)}: ${link[1]} is not a page`); continue; }
+      if (!fragment) continue;
+      const ids = new Set([...readFileSync(page, "utf8").matchAll(/\sid="([^"]+)"/g)].map((x) => x[1]));
+      if (!ids.has(fragment) && !ids.has(decodeURIComponent(fragment))) {
+        seeAlsoBad.push(`${relative(root, file)}: ${link[1]} has no such id`);
+      }
+    }
+  }
+}
+ok(
+  seeAlsoLinks > 0 && seeAlsoBad.length === 0,
+  `every See also link resolves (${seeAlsoLinks} links)${seeAlsoBad.length ? `:\n      ${seeAlsoBad.slice(0, 6).join("\n      ")}` : ""}`
+);
+
+// Events both ways. /lore/history/ gives every event an id, from the same
+// eventAnchor the nation pages link it by; and an event that names nations now
+// links them, which is what the colour used to be the only sign of.
+const historyHtml = readFileSync(join(root, "lore", "history", "index.html"), "utf8");
+const missingEventIds = timeline.filter((ev) => !historyHtml.includes(`id="${eventAnchor(ev.title)}"`));
+ok(
+  missingEventIds.length === 0,
+  `every timeline event has its id on /lore/history/ (${timeline.length})${missingEventIds.length ? `, missing: ${missingEventIds.map((e) => e.title).join(", ")}` : ""}`
+);
+const eventsWithNations = timeline.filter((ev) => (ev.nations ?? []).length);
+const missingEventLinks = [];
+for (const ev of eventsWithNations) {
+  const at = historyHtml.indexOf(`id="${eventAnchor(ev.title)}"`);
+  const block = historyHtml.slice(at, historyHtml.indexOf("</li>", at));
+  for (const slug of ev.nations) {
+    if (!block.includes(`href="${PREFIX}lore/nations/${slug}/"`)) missingEventLinks.push(`${ev.title} → ${slug}`);
+  }
+}
+ok(
+  eventsWithNations.length > 0 && missingEventLinks.length === 0,
+  `every event links the nations it names (${eventsWithNations.length} events)${missingEventLinks.length ? `: ${missingEventLinks.join(", ")}` : ""}`
+);
 
 // 7. Output hygiene: clean manifest covers every generated top-level entry.
 console.log("# hygiene");

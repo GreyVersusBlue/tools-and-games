@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -292,7 +296,7 @@
 <p>Themes for stories dealing with the L’Dahn can include but are not limited to conflict negotiation, cracks in a tight knit society, mysteries and fighting for balance in an unbalanced world. Some scenarios that players could see as a L’Dahn could vary from protecting trade caravans, to helping settle disputes, to research in the Salma Archives or even exploring the catacombs.</p>
 <h2 id="costume-and-rp-themes">Costume and RP Themes <a class="heading-anchor" href="#costume-and-rp-themes" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
 <p>For many L’Dahn the more utilitarian the better for their clothing, however, even they have their preferences on some styles. Because of their Journey of the Lines, lines and geometric shapes hold a strong presence in their culture so they show up a lot on their clothing. Many fabrics, while durable, will have geometric patterns in the weaves or embroidery. Stripes of varying widths are also a common sight. Their weapons, shields, bags, and tools are also often marked with the symbol of their group. (Fixers with the triangle and cogwheel, Guardians with the square and sword, Advocates with the pentagon and gavel) Coloring varies by personal taste but many who are still on their Journey or who Journey throughout their lives tend to choose more neutral colors for simple ease of acquisition.</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">L'Dahn Linenation</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Historical References</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd></dl></div>
 
     
     
@@ -327,5 +331,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

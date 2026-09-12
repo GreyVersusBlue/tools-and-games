@@ -1,5 +1,6 @@
 ---
 name: Kindaria
+culture: Kindaria
 title: Kindaria
 order: 5
 color: "#2c8a62"

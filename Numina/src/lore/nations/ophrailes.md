@@ -1,5 +1,6 @@
 ---
 name: Republic of Ophrailes
+culture: Ophrailes
 title: Republic of Ophrailes
 order: 11
 color: "#c47f2e"

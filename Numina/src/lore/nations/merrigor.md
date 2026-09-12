@@ -1,5 +1,6 @@
 ---
 name: Merrigor
+culture: Merrigor
 title: Merrigor
 order: 9
 color: "#96336a"

@@ -22,9 +22,18 @@
           {%- if ev.nations %} style="--nation-color: {% for n in collections.nations %}{% if n.fileSlug == ev.nations[0] %}{{ n.data.color }}{% endif %}{% endfor %}"{% endif %}>
         <span class="timeline__date">{{ ev.date }}</span>
         <div class="timeline__body">
-          <h3>{{ ev.title }}</h3>
+          {#- The id is what a nation page's generated "See also" links this
+              event by, and both sides get it from the same eventAnchor filter
+              rather than each slugifying the title their own way. -#}
+          <h3 id="{{ ev.title | eventAnchor }}">{{ ev.title }}</h3>
           <p>{{ ev.summary }}
             {%- if ev.href %} <a class="timeline__more" href="{{ ev.href }}">Read more</a>{% endif %}</p>
+          {#- An event names its nations in timeline.json and said so only in a
+              colour before this. Generated, so an event that gains a nation
+              gains the link. -#}
+          {% if ev.nations %}
+          <p class="timeline__nations">{% for slug in ev.nations %}{% for n in collections.nations %}{% if n.fileSlug == slug %}<a href="{{ n.url }}">{{ n.data.name }}</a>{% endif %}{% endfor %}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+          {% endif %}
         </div>
       </li>
       {% endif %}

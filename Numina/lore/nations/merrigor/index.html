@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -287,7 +291,7 @@
 <h2 id="costume-and-rp-themes">Costume and RP Themes <a class="heading-anchor" href="#costume-and-rp-themes" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
 <p>Most Merrigoreans enjoy fine clothes and other fine things and dress accordingly. Styles tend to the Victorian and Gothic. Coats, cloaks, vests and corsets are commonplace. Of course black is always in style, but recently jewel tones have also been popular. And people of all genders also wear actual jewels, especially the famed local rubies. Consider what you wear; any Merrigorean would make assumptions about your persuasion and likely faction memberships in the Great Game based on superficial appearance.</p>
 <p>Neither members of the Keepers of the Curtain nor revenants are suitable for player characters. Much like kings and high nobles in other lands, the Keepers have too much power and responsibility to be seen adventuring. Occasionally an acolyte chooses to leave the order before completing their training for whatever reason, so one could play a former acolyte, but such a person has neither the responsibilities nor the secret knowledge of a full Keeper. Revenants simply lack the spirit, will, or personality to make an interesting character.</p>
-
+<div class="see-also" data-pagefind-ignore=""><h2 class="see-also__title">See also</h2><dl><dt>Culture</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Merrigor</a></dd><dt>Research Topic</dt><dd><a href="/Numina/mechanics/skills/cultures/#available-cultures">Undead</a></dd><dt>Culture skills</dt><dd><a href="/Numina/mechanics/skills/cultures/#appreciation">Appreciation</a>, <a href="/Numina/mechanics/skills/cultures/#camaraderie">Camaraderie</a>, <a href="/Numina/mechanics/skills/cultures/#garb">Garb</a>, <a href="/Numina/mechanics/skills/cultures/#homeland">Homeland</a>, <a href="/Numina/mechanics/skills/cultures/#practice">Practice</a>, <a href="/Numina/mechanics/skills/cultures/#resource-contacts">Resource/Contacts</a></dd><dt>In the timeline</dt><dd><a href="/Numina/lore/history/#event-valaq-is-abandoned-in-merrigor">Valaq is abandoned in Merrigor (108 AW)</a></dd></dl></div>
 
     
     
@@ -322,5 +326,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

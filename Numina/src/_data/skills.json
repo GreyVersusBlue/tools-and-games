@@ -8545,6 +8545,9 @@
       "source": "/mechanics/skills/domains/#water"
     },
     {
+      "domains": [
+        "Air"
+      ],
       "file": "excellencies.md",
       "group": "Ballista",
       "groupKind": "Excellency",
@@ -8553,6 +8556,9 @@
       "source": "/mechanics/skills/excellencies/#ballista"
     },
     {
+      "domains": [
+        "Air"
+      ],
       "file": "excellencies.md",
       "group": "Stalker",
       "groupKind": "Excellency",
@@ -8561,6 +8567,9 @@
       "source": "/mechanics/skills/excellencies/#stalker"
     },
     {
+      "domains": [
+        "Earth"
+      ],
       "file": "excellencies.md",
       "group": "Forge fire",
       "groupKind": "Excellency",
@@ -8569,6 +8578,9 @@
       "source": "/mechanics/skills/excellencies/#forge-fire"
     },
     {
+      "domains": [
+        "Earth"
+      ],
       "file": "excellencies.md",
       "group": "Locus",
       "groupKind": "Excellency",
@@ -8577,6 +8589,9 @@
       "source": "/mechanics/skills/excellencies/#locus"
     },
     {
+      "domains": [
+        "Fire"
+      ],
       "file": "excellencies.md",
       "group": "Inferno",
       "groupKind": "Excellency",
@@ -8585,6 +8600,9 @@
       "source": "/mechanics/skills/excellencies/#inferno"
     },
     {
+      "domains": [
+        "Fire"
+      ],
       "file": "excellencies.md",
       "group": "Slayer",
       "groupKind": "Excellency",
@@ -8593,6 +8611,9 @@
       "source": "/mechanics/skills/excellencies/#slayer"
     },
     {
+      "domains": [
+        "Ice"
+      ],
       "file": "excellencies.md",
       "group": "Bastion",
       "groupKind": "Excellency",
@@ -8601,6 +8622,9 @@
       "source": "/mechanics/skills/excellencies/#bastion"
     },
     {
+      "domains": [
+        "Ice"
+      ],
       "file": "excellencies.md",
       "group": "Defender",
       "groupKind": "Excellency",
@@ -8609,6 +8633,9 @@
       "source": "/mechanics/skills/excellencies/#defender"
     },
     {
+      "domains": [
+        "Lightning"
+      ],
       "file": "excellencies.md",
       "group": "Dervish",
       "groupKind": "Excellency",
@@ -8617,6 +8644,9 @@
       "source": "/mechanics/skills/excellencies/#dervish"
     },
     {
+      "domains": [
+        "Lightning"
+      ],
       "file": "excellencies.md",
       "group": "Hurricane",
       "groupKind": "Excellency",
@@ -8625,6 +8655,9 @@
       "source": "/mechanics/skills/excellencies/#hurricane"
     },
     {
+      "domains": [
+        "Lightning"
+      ],
       "file": "excellencies.md",
       "group": "Tempest (Lightning)",
       "groupKind": "Excellency",
@@ -8633,6 +8666,9 @@
       "source": "/mechanics/skills/excellencies/#tempest-(lightning)"
     },
     {
+      "domains": [
+        "Water"
+      ],
       "file": "excellencies.md",
       "group": "Awakener",
       "groupKind": "Excellency",
@@ -8641,6 +8677,9 @@
       "source": "/mechanics/skills/excellencies/#awakener"
     },
     {
+      "domains": [
+        "Water"
+      ],
       "file": "excellencies.md",
       "group": "Wellspring",
       "groupKind": "Excellency",
@@ -8649,6 +8688,10 @@
       "source": "/mechanics/skills/excellencies/#wellspring"
     },
     {
+      "domains": [
+        "Water",
+        "Fire"
+      ],
       "file": "excellencies.md",
       "group": "Alchemist (Water / Fire)",
       "groupKind": "Excellency",
@@ -8657,6 +8700,14 @@
       "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)"
     },
     {
+      "domains": [
+        "Air",
+        "Earth",
+        "Fire",
+        "Ice",
+        "Lightning",
+        "Water"
+      ],
       "file": "excellencies.md",
       "group": "Arcaneer (Universal)",
       "groupKind": "Excellency",
@@ -8665,6 +8716,10 @@
       "source": "/mechanics/skills/excellencies/#arcaneer-(universal)"
     },
     {
+      "domains": [
+        "Ice",
+        "Earth"
+      ],
       "file": "excellencies.md",
       "group": "Armorsmith (Ice / Earth)",
       "groupKind": "Excellency",
@@ -8673,6 +8728,10 @@
       "source": "/mechanics/skills/excellencies/#armorsmith-(ice-%2F-earth)"
     },
     {
+      "domains": [
+        "Fire",
+        "Ice"
+      ],
       "file": "excellencies.md",
       "group": "Beguiler (Fire / Ice)",
       "groupKind": "Excellency",
@@ -8681,6 +8740,10 @@
       "source": "/mechanics/skills/excellencies/#beguiler-(fire-%2F-ice)"
     },
     {
+      "domains": [
+        "Lightning",
+        "Earth"
+      ],
       "file": "excellencies.md",
       "group": "Bladesmith (Lightning / Earth)",
       "groupKind": "Excellency",
@@ -8689,6 +8752,10 @@
       "source": "/mechanics/skills/excellencies/#bladesmith-(lightning-%2F-earth)"
     },
     {
+      "domains": [
+        "Lightning",
+        "Ice"
+      ],
       "file": "excellencies.md",
       "group": "Combatant (Lightning / Ice)",
       "groupKind": "Excellency",
@@ -8697,6 +8764,10 @@
       "source": "/mechanics/skills/excellencies/#combatant-(lightning-%2F-ice)"
     },
     {
+      "domains": [
+        "Fire",
+        "Lightning"
+      ],
       "file": "excellencies.md",
       "group": "Devastator (Fire / Lightning)",
       "groupKind": "Excellency",
@@ -8705,6 +8776,10 @@
       "source": "/mechanics/skills/excellencies/#devastator-(fire-%2F-lightning)"
     },
     {
+      "domains": [
+        "Fire",
+        "Air"
+      ],
       "file": "excellencies.md",
       "group": "Grenadier (Fire / Air)",
       "groupKind": "Excellency",
@@ -8713,6 +8788,10 @@
       "source": "/mechanics/skills/excellencies/#grenadier-(fire-%2F-air)"
     },
     {
+      "domains": [
+        "Water",
+        "Air"
+      ],
       "file": "excellencies.md",
       "group": "Naturalist (Water / Air)",
       "groupKind": "Excellency",
@@ -8721,6 +8800,10 @@
       "source": "/mechanics/skills/excellencies/#naturalist-(water-%2F-air)"
     },
     {
+      "domains": [
+        "Water",
+        "Earth"
+      ],
       "file": "excellencies.md",
       "group": "Ordinator (Water / Earth)",
       "groupKind": "Excellency",
@@ -8729,6 +8812,10 @@
       "source": "/mechanics/skills/excellencies/#ordinator-(water-%2F-earth)"
     },
     {
+      "domains": [
+        "Water",
+        "Ice"
+      ],
       "file": "excellencies.md",
       "group": "Paladin (Water / Ice)",
       "groupKind": "Excellency",
@@ -8737,6 +8824,10 @@
       "source": "/mechanics/skills/excellencies/#paladin-(water-%2F-ice)"
     },
     {
+      "domains": [
+        "Water",
+        "Lightning"
+      ],
       "file": "excellencies.md",
       "group": "Poison Blade (Water / Lightning)",
       "groupKind": "Excellency",
@@ -8745,6 +8836,10 @@
       "source": "/mechanics/skills/excellencies/#poison-blade-(water-%2F-lightning)"
     },
     {
+      "domains": [
+        "Air",
+        "Ice"
+      ],
       "file": "excellencies.md",
       "group": "Retributor (Air / Ice)",
       "groupKind": "Excellency",
@@ -8753,6 +8848,10 @@
       "source": "/mechanics/skills/excellencies/#retributor-(air-%2F-ice)"
     },
     {
+      "domains": [
+        "Air",
+        "Earth"
+      ],
       "file": "excellencies.md",
       "group": "Sirocco (Air / Earth)",
       "groupKind": "Excellency",
@@ -8761,6 +8860,14 @@
       "source": "/mechanics/skills/excellencies/#sirocco-(air-%2F-earth)"
     },
     {
+      "domains": [
+        "Air",
+        "Earth",
+        "Fire",
+        "Ice",
+        "Lightning",
+        "Water"
+      ],
       "file": "excellencies.md",
       "group": "Tinkerer (Universal)",
       "groupKind": "Excellency",
@@ -8769,6 +8876,10 @@
       "source": "/mechanics/skills/excellencies/#tinkerer-(universal)"
     },
     {
+      "domains": [
+        "Air",
+        "Lightning"
+      ],
       "file": "excellencies.md",
       "group": "Tornado (Air / Lightning)",
       "groupKind": "Excellency",
@@ -8777,6 +8888,10 @@
       "source": "/mechanics/skills/excellencies/#tornado-(air-%2F-lightning)"
     },
     {
+      "domains": [
+        "Fire",
+        "Earth"
+      ],
       "file": "excellencies.md",
       "group": "Volcano (Fire / Earth)",
       "groupKind": "Excellency",

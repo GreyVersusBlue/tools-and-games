@@ -19,6 +19,11 @@
 #            own, so the build job's `npm ci` stays a two-package install and
 #            does not pull a browser onto every Numina PR (Hearth's test/
 #            folder is the same arrangement for the same reason).
+#            Phase 8 added two more: search.mjs, because the search modal is
+#            fetched and built at the first keypress and a <dialog>'s focus trap
+#            is the browser's to answer; and html.mjs, html-validate over all 58
+#            built pages — no browser, same package, and it reads the committed
+#            files the way the rest of this job does.
 #
 # It reads the committed output, not a fresh build: that output is what
 # Firebase serves, and the build job above is already the check that the two
@@ -27,6 +32,15 @@ name: Numina CI
 
 on:
   pull_request:
+    paths:
+      - "Numina/**"
+  # A direct push to main was unchecked: both jobs only ran on pull requests, so
+  # a commit that landed without one — a hotfix, a rebase that went in by hand —
+  # could break the deployed site and nothing would say so. Firebase Hosting
+  # deploys from main (firebase-hosting-merge.yml), which makes main the branch
+  # where a red build actually matters.
+  push:
+    branches: [main]
     paths:
       - "Numina/**"
 
@@ -119,3 +133,21 @@ jobs:
       - name: The packet assembly, the page counter and the offline kit
         working-directory: Numina/test/a11y
         run: node packet.mjs
+
+      # Phase 8's search, which is all browser: the modal does not exist in any
+      # page's markup until js/search-modal.js fetches the Component UI bundle on
+      # the first Ctrl+K, a <dialog>'s focus trap is the browser's answer rather
+      # than the markup's, and a Pagefind search needs the index over HTTP.
+      - name: The search modal, the focus trap and the ?q= handoff
+        working-directory: Numina/test/a11y
+        run: node search.mjs
+
+      # Phase 8. Not a browser check — html-validate reads the committed files —
+      # but it belongs to this job rather than the build one for the same reason
+      # axe does: it audits the finished document, and the build job's `npm ci`
+      # stays a two-package install. It is what caught three places where a
+      # literal angle bracket in the rulebook ("Search for <Item Type>") was
+      # parsed as a tag and swallowed the text around it.
+      - name: HTML validity over every built page
+        working-directory: Numina/test/a11y
+        run: node html.mjs

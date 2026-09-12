@@ -192,13 +192,21 @@ function splitRow(line) {
   return cells.slice(1, -1).map(unescapeCell);
 }
 
-// Yields every pipe table in a file with the heading it sits under.
+// Yields every pipe table in a file with the heading it sits under, and with
+// the `##` heading that heading sits under. The parent is what carries an
+// Excellency's Domain alignment: excellencies.md puts `### Ballista` under
+// `## Air`, and the alignment is nowhere in the table itself.
 function* tables(file, text) {
   const lines = text.split("\n");
   let heading = null;
+  let parent = null;
   for (let i = 0; i < lines.length; i++) {
     const h = lines[i].match(/^(#{2,3}) (.+?)\s*$/);
-    if (h) { heading = h[2]; continue; }
+    if (h) {
+      heading = h[2];
+      if (h[1] === "##") parent = h[2];
+      continue;
+    }
     if (!lines[i].startsWith("|")) continue;
     if (!/^\|\s*:?-{3,}/.test(lines[i + 1] ?? "")) continue;
     const where = `${file}:${i + 1}`;
@@ -215,7 +223,7 @@ function* tables(file, text) {
       }
       rows.push({ cells, line: j + 1 });
     }
-    yield { header, heading, line: i + 1, rows, shape };
+    yield { header, heading, line: i + 1, parent, rows, shape };
     i = j - 1;
   }
 }
@@ -250,6 +258,10 @@ export function extract() {
   const files = readdirSync(SKILLS_DIR).filter((f) => f.endsWith(".md")).sort();
   const out = { aspects: [], attributes: [], cultures: [], currency: [], foundations: [], hidden: [], skills: [], sourceBook: SOURCE_BOOK, tables: [] };
   const ids = new Set();
+  // Excellency tables, with the `##` they sat under, resolved to Domains after
+  // the loop: the Domain names come from domains.md's own table headings and a
+  // file order that happens to put domains.md first is not something to lean on.
+  const alignments = [];
 
   for (const file of files) {
     const stem = file.replace(/\.md$/, "");
@@ -272,7 +284,9 @@ export function extract() {
         const groupKind = GROUP_KIND[stem];
         if (!groupKind) fail(where, `skill table in a file with no group kind: ${file}`);
         const group = t.heading;
-        out.tables.push({ file, group, groupKind, line: t.line, rows: t.rows.length, source });
+        const table = { file, group, groupKind, line: t.line, rows: t.rows.length, source };
+        out.tables.push(table);
+        if (groupKind === "Excellency") alignments.push({ parent: t.parent, table, where });
         for (const { cells, line } of t.rows) {
           const rowWhere = `${file}:${line}`;
           const [nameRaw, costRaw, verbalRaw, description, attributeRaw] = cells;
@@ -341,6 +355,22 @@ export function extract() {
     }
   }
 
+  // Which Domains each Excellency is aligned to. The book states the alignment
+  // in two places and never in the table: `### Ballista` sits under `## Air`,
+  // and a multi-aligned Excellency carries its Domains in its own heading as
+  // `### Alchemist (Water / Fire)`. Both are read here, and where both are
+  // present they have to agree — `### Tempest (Lightning)` under `## Lightning`
+  // is the case that proves the agreement is worth checking rather than a
+  // heading that could drift from the section it sits in.
+  //
+  // The Domain names are domains.md's own table headings, not a list written
+  // here: a v3.52 that renames a Domain has to break, not silently align an
+  // Excellency to a Domain the site no longer has a page for.
+  const domainNames = out.tables.filter((t) => t.groupKind === "Domain").map((t) => t.group);
+  for (const { parent, table, where } of alignments) {
+    table.domains = excellencyDomains(table.group, parent, domainNames, where);
+  }
+
   // A Foundation's Type names the table its skills come from. If a Type ever
   // appears with no matching table — a v3.52 that adds a fifth Type, or a
   // renamed heading — the mapping is a dead link and the build says so here
@@ -353,6 +383,29 @@ export function extract() {
   }
 
   return out;
+}
+
+// "Ballista" under "## Air" is one Domain; "Alchemist (Water / Fire)" is two;
+// "Arcaneer (Universal)" is every Domain, because the chapter says the alignment
+// is informational and Universal names no Domain to exclude (#325).
+function excellencyDomains(group, parent, domainNames, where) {
+  const paren = group.match(/\(([^)]+)\)\s*$/);
+  const named = paren ? paren[1].split("/").map((s) => s.trim()) : [];
+  if (named.length === 1 && named[0] === "Universal") return [...domainNames];
+  const fromParent = domainNames.includes(parent) ? [parent] : [];
+  if (!named.length && !fromParent.length) {
+    fail(where, `Excellency ${JSON.stringify(group)} sits under ${JSON.stringify(parent)}, which is not a Domain, and names no Domains of its own`);
+  }
+  for (const name of named) {
+    if (!domainNames.includes(name)) {
+      fail(where, `Excellency ${JSON.stringify(group)} names ${JSON.stringify(name)}, which is not one of the Domains (${domainNames.join(", ")})`);
+    }
+  }
+  if (named.length && fromParent.length && !named.includes(parent)) {
+    fail(where, `Excellency ${JSON.stringify(group)} sits under ${JSON.stringify(parent)} but names ${named.join(" / ")}`);
+  }
+  const domains = named.length ? named : fromParent;
+  return [...new Set(domains)];
 }
 
 function integer(raw, where) {

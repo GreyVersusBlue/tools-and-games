@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/">Lore</a>
     <a href="/Numina/mechanics/" aria-current="true">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -326,7 +330,7 @@
 <h2 id="searching-a-character">Searching a Character <a class="heading-anchor" href="#searching-a-character" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h2>
 <p>Because the game does not allow physical contact, you may not physically search someone else. Instead you approach within searching distance, role play the searching motion with both hands held out above their body, and tell them in a low voice “I am searching you.” You may have items in your off hand during this process, but you may not block with weapons. The player reveals items you have found. The player may make a pouch available for you to reach into and take items.</p>
 <h3 id="search-for%E2%80%A6">Search For… <a class="heading-anchor" href="#search-for%E2%80%A6" aria-label="Link to this section" title="Link to this section" data-pagefind-ignore=""><span class="heading-anchor__mark" aria-hidden="true"></span></a></h3>
-<p>Some skills can give you the ability to use a special searching effect on a dead or helpless creature after you have finished your normal search. This searching attempt is represented by the verbal “Search for <Item Type="">” where the item type is specified in the skill. You cannot use this effect unless you have a skill or ability that allows you to do so. Using a skill with this Search effect might reveal additional items, or it might trigger a response effect targeted on you. The Search effect is the name for the special search attempt, and the Search response is a resulting effect the targeted character calls out when you search them.</Item></p>
+<p>Some skills can give you the ability to use a special searching effect on a dead or helpless creature after you have finished your normal search. This searching attempt is represented by the verbal “Search for &lt;Item Type&gt;” where the item type is specified in the skill. You cannot use this effect unless you have a skill or ability that allows you to do so. Using a skill with this Search effect might reveal additional items, or it might trigger a response effect targeted on you. The Search effect is the name for the special search attempt, and the Search response is a resulting effect the targeted character calls out when you search them.</p>
 <blockquote>
 <p><strong>Example:</strong></p>
 <p>As an example, after you search an elemental you might have a skill that allows you to call out “With elemental harvesting, Search for True Elements.” That NPC might give up additional items, they might reply “You find nothing,” or they might even use a counter effect such as “Refresh 1 Fire.” If searching some creatures is dangerous, the creature might even reply with a detrimental search response.</p>
@@ -375,5 +379,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

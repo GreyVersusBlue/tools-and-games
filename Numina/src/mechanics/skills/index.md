@@ -26,8 +26,8 @@ For skills without a verbal, the description will explain how they are used.
 - **Hafted Weapons:** include those weapons up to 72' in length, to include polearms, giant hammers and other larger weapons.
 - **Two-Handed Weapon Requirements:** Spears, staves, glaives, and other two-handed weapons require two hands to wield unless a specific skill allows for the use of that weapon in one hand.
 - **Shield Size Limits:** A full-sized shield cannot be more than 60" in the combination of width and length, and no more than 36' in any one dimension. For example, a rectangular shield can be 36' long and 24' wide. Whereas a circular shield can be 30' in diameter.
-- **Buckler rules:** <To Be Inserted Later>
-- **Bow rules:** <To Be Inserted Later>
+- **Buckler rules:** \<To Be Inserted Later\>
+- **Bow rules:** \<To Be Inserted Later\>
 - **Two Weapons:** To wield a weapon in each hand in combat requires a skill which grants the ability to have a second weapon. If you do not have such a skill then the second weapon is treated as a non-combat object and, as with all non-combat objects, if struck you either must drop the weapon or take the damage done to the weapon.
 - **Adventurer Skills:** Every player gains the ability to use certain weapons through Adventuring Skills.
 
@@ -249,7 +249,7 @@ These skills are known by all adventurers who are in Numina. You begin game with
 | --- | --- | --- | --- | --- |
 | Base Weapon Skills | Included | N/A | You are skilled with Basic One Handed Weapon and Basic Two handed weapons as defined in the Weapons section. This skill only grants you the ability to wield a single weapon. | N/A |
 | First Aid | Included | See Description | who is unstable or repair a maimed limb on yourself or another. You must have at least one free hand to use this skill. You touch another character with a packet. Say the phrase 'Begin First Aid'. First Aid takes one minute. At the end of the minute, you say either 'Stabilize' or 'Cure Maim Limb'. You can touch an individual with a packet | N/A |
-| Diagnose | Included | See Description | and say 'Diagnose <Trait>' or 'Diagnose <Effect>'. You may only Diagnose a specific Trait and only Traits which are Elemental, Mental, Metabolic, or Physical. You may also diagnose any standard effect, but you may not diagnose inflicts. You may also 'Diagnose Damage' to determine how much damage someone has taken. | N/A |
+| Diagnose | Included | See Description | and say 'Diagnose \<Trait\>' or 'Diagnose \<Effect\>'. You may only Diagnose a specific Trait and only Traits which are Elemental, Mental, Metabolic, or Physical. You may also diagnose any standard effect, but you may not diagnose inflicts. You may also 'Diagnose Damage' to determine how much damage someone has taken. | N/A |
 | Improvisation | Included | N/A | If, during a game, your prop for a specific in-game item breaks you can find an alternative prop and keep playing as though you were using the original prop. | N/A |
 | Improved Guard | Included | N/A | You may choose not to have Guard effects trigger on uncalled damage. This choice is at your discretion | N/A |
 | Wear Light Armor | Included | N/A | You can wear 'Light Armor' as described in the armor section. | N/A |

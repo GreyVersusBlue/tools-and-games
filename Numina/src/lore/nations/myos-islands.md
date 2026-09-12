@@ -1,5 +1,6 @@
 ---
 name: Myos Islands
+culture: Myos Islands
 title: Myos Islands
 order: 10
 color: "#2b9490"
