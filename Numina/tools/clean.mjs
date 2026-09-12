@@ -10,6 +10,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const GENERATED = [
   "index.html",
   "sitemap.xml",
+  "sw.js",
   "search",
   "new-to-numina",
   "lore",

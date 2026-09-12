@@ -5,7 +5,7 @@
   "description": "Numina LARP reference site — Eleventy source in src/, built output committed at the project root.",
   "scripts": {
     "clean": "node tools/clean.mjs",
-    "build": "npm run clean && eleventy && pagefind --site . --glob \"{index.html,{lore,mechanics,new-to-numina,search}/**/*.html}\"",
+    "build": "npm run clean && eleventy && pagefind --site . --glob \"{index.html,{lore,mechanics,new-to-numina,search}/**/*.html}\" && node tools/service-worker.mjs",
     "serve": "eleventy --serve",
     "test": "node test/smoke.mjs && node test/skills.test.mjs && node test/build-rules.test.mjs && node test/builder.test.mjs"
   },

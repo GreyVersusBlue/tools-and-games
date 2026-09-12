@@ -33,6 +33,10 @@
       } catch (e) {}
     })();
   </script>
+  {#- Deferred and in the head, so it has run before any page's own deferred
+      script: mechanics/packet.njk's controls read window.numinaOffline, and a
+      module in the body executes after everything the head deferred. -#}
+  <script src="/js/offline.js" defer></script>
 </head>
 {#- printable adds the print button and per-chapter page breaks; cardsheet is the
     dense variant that must stay on one or two sheets, so it cancels those breaks. -#}

@@ -1132,3 +1132,101 @@ main { min-width: 0; max-width: 70ch; }
   .builder__choice, .builder__skill, .builder__attribute { grid-template-columns: minmax(0, 1fr); }
   .builder__link { grid-column: 1; grid-row: auto; }
 }
+
+/* --- The print packet and the offline kit ---------------------------------- */
+
+/* The banner offline.js builds. It is inserted after the skip link so the skip
+   link stays the first focusable thing on the page. */
+.offline-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1rem;
+  background: var(--paper-raised);
+  border-bottom: 1px solid var(--gold-dim);
+  font-size: 0.95rem;
+}
+.offline-banner[hidden] { display: none; }
+.offline-banner__text { margin: 0; flex: 1 1 20rem; }
+.offline-banner__action, .offline-banner__dismiss {
+  font-family: var(--caps);
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--gold-dim);
+  border-radius: 4px;
+  padding: 0.2rem 0.7rem;
+  cursor: pointer;
+}
+.offline-banner__action:hover, .offline-banner__dismiss:hover { border-color: var(--gold); }
+.offline-banner__dismiss { color: var(--ink-soft); }
+
+.packet-button {
+  font-family: var(--caps);
+  background: var(--paper-raised);
+  color: var(--ink);
+  border: 1px solid var(--gold-dim);
+  border-radius: 4px;
+  padding: 0.3rem 0.9rem;
+  cursor: pointer;
+}
+.packet-button:hover { border-color: var(--gold); }
+.packet-button[disabled] { opacity: 0.55; cursor: default; }
+.packet-prebuilt__list { list-style: none; margin: 0; padding: 0; }
+.packet-prebuilt__item {
+  border: 1px solid var(--gold-dim);
+  border-radius: 4px;
+  padding: 0.6rem 0.9rem;
+  margin: 0.6rem 0;
+  background: var(--paper-raised);
+}
+.packet-prebuilt__item h3 { margin: 0 0 0.2rem; }
+.packet-prebuilt__item p { margin: 0.2rem 0; }
+.packet-prebuilt__what { font-family: var(--caps); font-size: 0.85rem; letter-spacing: 0.03em; color: var(--gold-text); }
+.packet-form[hidden] { display: none; }
+.packet-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.5rem 0;
+  background: var(--paper);
+  border-bottom: 1px solid var(--gold-dim);
+}
+.packet-bar__count { margin: 0; font-family: var(--caps); letter-spacing: 0.03em; }
+.packet-bar__actions { margin: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.packet-group { border: 1px solid var(--gold-dim); border-radius: 4px; margin: 1rem 0; padding: 0.4rem 0.9rem 0.7rem; }
+.packet-group legend { font-family: var(--caps); letter-spacing: 0.05em; color: var(--heading); padding: 0 0.4rem; }
+.packet-choices { list-style: none; margin: 0; padding: 0; }
+.packet-choice {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.22rem 0.2rem;
+  border-bottom: 1px solid var(--gold-dim);
+}
+.packet-choice:last-child { border-bottom: 0; }
+.packet-choice:nth-child(even) { background: color-mix(in srgb, var(--paper-sunken) 42%, transparent); }
+.packet-choice label { display: flex; align-items: baseline; gap: 0.5rem; cursor: pointer; flex: 1 1 auto; }
+.packet-choice input[type="checkbox"] { flex: none; position: relative; top: 0.1em; accent-color: var(--accent); }
+.packet-choice__link { font-size: 0.85rem; color: var(--ink-soft); }
+.packet-offline { border: 1px solid var(--gold-dim); border-radius: 4px; padding: 0.6rem 0.9rem; margin: 1.4rem 0; }
+.packet-offline__status { font-style: italic; color: var(--ink-soft); }
+.packet-offline__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.packet-doc[hidden] { display: none; }
+.packet-doc {
+  margin-top: 1.6rem;
+  border-top: 2px solid var(--gold-dim);
+  padding-top: 1rem;
+}
+.packet-doc__message { font-style: italic; color: var(--ink-soft); }
+.packet-cover { text-align: center; padding: 1.2rem 0; border-bottom: 1px solid var(--gold-dim); }
+.packet-cover__site { font-family: var(--caps); letter-spacing: 0.2em; text-transform: uppercase; margin: 0; color: var(--gold-text); }
+.packet-cover__title { margin: 0.3rem 0; }
+.packet-cover__note { margin: 0; font-size: 0.9rem; color: var(--ink-soft); }
+.packet-contents ol { padding-left: 1.4rem; }
+.packet-chapter { margin-top: 2rem; }
