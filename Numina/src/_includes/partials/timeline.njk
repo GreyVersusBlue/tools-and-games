@@ -8,9 +8,12 @@
 <ol class="timeline">
   {% for era in eras %}
   <li class="timeline__group">
-    {#- The era names the group. It was a <p aria-hidden="true">, which took the
-        only label off 17 events and left the page's headings running h1 → h3.
-        The event titles below are h3, so this is the h2 they were missing. -#}
+    {#- The era names the group, and it was a <p aria-hidden="true">: the only
+        thing separating one run of events from the next, and a screen reader
+        was told to skip it. 17 events under one "Historical timeline" heading.
+        h2 because the event titles below are h3 — though note the page did NOT
+        skip a level before this change, because those h3s already sat under
+        the chapter's own h2. The fix is the label, not the level. -#}
     <h2 class="timeline__era"><span>{{ era }}</span></h2>
     <ol class="timeline__events">
       {% for ev in events %}

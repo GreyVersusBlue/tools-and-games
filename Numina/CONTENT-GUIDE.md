@@ -22,6 +22,32 @@ built output together.
 6. Smart quotes from the PDF are fine; the build typographer normalizes
    straight quotes anyway. Fix hyphenation artifacts from PDF line wraps
    (`cul- ture` → `culture`) when you spot them.
+7. **A markdown table comes out wrapped in `div.table-scroll`** — the renderer
+   does it, nothing to write. That wrapper is what carries the horizontal
+   scroll on a phone. If you ever hand-write a `<table>` in a template or in
+   JS, wrap it yourself: `test/smoke.mjs` fails on a table in a page body
+   without one, because the alternative is `display: block` on the table
+   itself, which is a table a screen reader cannot read as one.
+
+## The accessibility floor
+
+Four things are checked on every PR and are easy to undo by accident:
+
+- The map is `role="group"`. `role="img"` flattens its subtree, and the subtree
+  is 16 nation links.
+- Every page opens with a skip link, and every `<main>` carries `id="main"` and
+  `tabindex="-1"` so pressing it moves focus and not only the scroll. A new
+  template with a `<main>` needs both.
+- Gold text uses `--gold-text`, not `--gold`. `--gold` is 3.11:1 on `--paper`
+  and belongs to the ornaments and the map.
+- Headings run in order and none is `aria-hidden`.
+
+`test/a11y/axe.mjs` and `test/a11y/layout.mjs` are what enforce these; see the
+README for running them. Note what axe cannot do here: every surface is a
+colour under a noise texture, so its contrast rule returns "incomplete" on the
+page as served. `axe.mjs` runs a second pass with the decoration flattened, and
+`test/smoke.mjs` computes the ratio from the token values, which is the check
+that needs no browser at all.
 
 ## Frontmatter schemas
 

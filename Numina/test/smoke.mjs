@@ -302,9 +302,12 @@ for (const file of builtHtml) {
 }
 ok(unwrapped.length === 0, `every <table> in a page body is inside div.table-scroll${unwrapped.length ? `:\n      ${unwrapped.slice(0, 5).join("\n      ")}` : ""}`);
 
-// No page body skips a heading level. The timeline's era banners were the
-// reason this could fail: they were <p aria-hidden="true">, which left the
-// history page running h1 straight to h3 seventeen times.
+// No page body skips a heading level, and no heading is hidden from the
+// accessibility tree. Neither half has ever failed on this site — the era
+// banners, which is what prompted the check, did not skip a level, because the
+// event h3s already sat under the chapter's own h2. Both were verified by
+// introducing the fault: an h2 → h4 in a chapter, and an aria-hidden on the era
+// heading. What catches the era regression itself is the assertion below.
 const skipped = [];
 for (const file of builtHtml) {
   const main = mainOf(readFileSync(file, "utf8"));

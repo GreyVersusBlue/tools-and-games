@@ -44,9 +44,35 @@ const PAGES = [
   ["search", "/Numina/search/"],
 ];
 const THEMES = ["light", "dark"];
-// WCAG 2.1 A and AA. axe's "best-practice" rules are deliberately out: they
-// are opinions, and a check that fails the build has to be a rule.
+// WCAG 2.1 A and AA, plus axe's best-practice set. best-practice is in because
+// two of the things section B was made of live there and nowhere else:
+// heading-order, and nested-interactive — which is the rule that fires when the
+// map goes back to role="img" with 16 links inside it.
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
+
+// The contrast pass runs against the page with its decoration flattened, and
+// this is why. Every surface on this site is a colour under a low-alpha noise
+// texture, and the chrome is drawn with masked pseudo-elements over it. axe
+// samples a computed background and gives up when it finds an image or an
+// overlapping element, so on the page as served it returns "incomplete" rather
+// than a ratio: 642 of 710 text nodes on Core Rules, and that is the rule that
+// was supposed to catch a 3.11:1 gold. The texture is alpha 0.07 over --paper
+// and the pseudo-elements are ornament, so the flattened page is the same
+// colours a reader sees. With it, --gold at 3.11:1 on .hero__kicker comes back
+// as a violation naming the ratio.
+//
+// It does not reach everything even then: an icon button with no text, an h1
+// with a text-shadow, a map label over a filled region, a TOC link the sticky
+// header overlaps. Those stay incomplete and the count is printed rather than
+// swallowed. The gate that does not depend on any of this is in
+// test/smoke.mjs, which computes the ratio from the two token values.
+const FLATTEN = [
+  "*{background-image:none!important}",
+  ".card::before,.card::after,.home-card::before,.home-card::after,",
+  ".infobox::before,.infobox::after,.toc::before,.toc::after,",
+  ".site-header::after,.site-footer::before,.wordmark::before,hr::after,",
+  ".shell main>h2::after{content:none!important;display:none!important}",
+].join("");
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -119,6 +145,15 @@ try {
         TAGS
       );
       report(`${name} — ${theme}`, result.violations);
+
+      // Second pass, contrast only, over the flattened page (see FLATTEN).
+      await page.addStyleTag({ content: FLATTEN });
+      const contrast = await page.evaluate(() =>
+        window.axe.run(document, { runOnly: { type: "rule", values: ["color-contrast"] } })
+      );
+      const counted = contrast.passes.reduce((n, r) => n + r.nodes.length, 0);
+      const unread = contrast.incomplete.reduce((n, r) => n + r.nodes.length, 0);
+      report(`${name} — ${theme} — contrast (${counted} read, ${unread} axe could not read)`, contrast.violations);
     }
     await context.close();
   }
@@ -127,5 +162,5 @@ try {
   server.close();
 }
 
-console.log(failures ? `\n${failures} FAILURE(S)` : `\nall ${PAGES.length * THEMES.length} page runs clean`);
+console.log(failures ? `\n${failures} FAILURE(S)` : `\nall ${PAGES.length * THEMES.length * 2} runs clean`);
 process.exit(failures ? 1 : 0);

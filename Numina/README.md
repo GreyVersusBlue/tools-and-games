@@ -21,6 +21,7 @@ as-is with no CI build step.
 | `test/build-rules.test.mjs` | Every cap, every escalating cost, one 50 CP build costed to the CP, and the two refusals (also `npm test`) |
 | `src/js/build-view.js`, `src/js/build-state.js`, `src/js/builder.js` | The character builder page: the steps and verdict as HTML strings, the `localStorage` record and URL fragment, and the one file that touches the DOM |
 | `test/builder.test.mjs` | The fragment and save round-trip, each step lists what `offered()` offers, the verdict says "at least" when a purchase is unpriced, the card prints every skill with its verbal and a CP line that is never a total when a purchase is unpriced, `print.css` hides the form and not the card, and the built page's JSON islands resolve (also `npm test`) |
+| `test/a11y/` | axe-core over four pages in both themes (`axe.mjs`), and the rendered-page checks — the skip link moving focus, a table still computing to `display: table`, `aria-pressed` following the click, `--header-h` matching the header (`layout.mjs`). Its own `package.json`, because it needs a browser and the site does not |
 | `index.html`, `lore/`, `mechanics/`, `search/`, `css/`, `js/`, `fonts/`, `assets/`, `pagefind/` | Generated — never edit by hand |
 | `CONTENT-GUIDE.md` | How to port book chapters into `src/` |
 
@@ -34,6 +35,18 @@ npm run serve   # local dev server with live reload
 npm run build   # clean + eleventy + pagefind search index
 npm test        # smoke checks against the built output, then skills.json, build-rules, the builder page
 ```
+
+The accessibility pass needs a browser, so it is a second install and is not in
+`npm test`:
+
+```sh
+cd test/a11y && npm install && npx playwright install chromium
+node axe.mjs      # axe-core, four pages, light and dark
+node layout.mjs   # the skip link, the tables, the toggle, --header-h
+```
+
+Both run against the committed build, so `npm run build` first. Both run in CI
+on every PR that touches `Numina/**`.
 
 **Every content or template change**: edit `src/`, run `npm run build`, run
 `npm test`, commit source + regenerated output together. Builds are
