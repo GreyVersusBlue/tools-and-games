@@ -26,7 +26,7 @@ daredevil/
     graph.mjs             the story as a graph: every edge the game has, walked plain and over relationship state, no browser
     flags.mjs             7 assertions, plain Node: who writes each flag against who reads it
     smoke-page.mjs        the regression suite: real browser, plays to an ending three times
-    transcript.mjs        plays a run and writes down every line of it
+    transcript.mjs        plays a run and writes down every line of it; --check compares instead of writing
     transcripts/          output of the above; the record of what the game is
 ```
 
@@ -43,12 +43,34 @@ node Projects/daredevil/test/transcript.mjs no_earl   # answers "Not interested"
 node Projects/daredevil/test/transcript.mjs no_pete   # declines the Young Wannabe
 node Projects/daredevil/test/transcript.mjs no_earl_solo   # "Not interested", then the other answer at every solo fork
 node Projects/daredevil/test/transcript.mjs no_earl_crash  # "Not interested" and a crash at every stunt: the solo failure arms
+node Projects/daredevil/test/transcript.mjs no_tommy   # never asks Tommy what he does
+node Projects/daredevil/test/transcript.mjs no_danny   # turns Danny down at the fair
+node Projects/daredevil/test/transcript.mjs danny_gone # meets Danny, then lets somebody else sign him
+node Projects/daredevil/test/transcript.mjs clean --check  # replay and compare, do not overwrite
+node Projects/daredevil/test/transcript.mjs all --check    # all nine, one process, ~25 minutes
 node Projects/daredevil/test/verify-touch-375.mjs     # 375px, touch-emulated pointer input
 ```
 
 Both browser scripts take `--headed` if you want to watch. Only run one at a
 time: Chrome throttles a window that loses focus (v7 §6), and other threads in
 this repo run their own headed suites.
+
+## What runs without being asked
+
+`.github/workflows/daredevil-ci.yml`, on every pull request and every push to
+`main` that touches `Projects/daredevil/**`, `assets/js/gvb-save.js`, or the
+two files of `Tools/board-check`'s harness this project's driver imports.
+Three jobs: `suite` (smoke-save, flags, graph — plain Node, ~15 seconds),
+`browser` (smoke-page and verify-touch-375, ~30 minutes), and `transcripts`, a
+nine-way matrix that replays every committed run with `--check`. The two slow
+jobs wait on the cheap one.
+
+A red `transcripts` job means the game goes somewhere it did not go before.
+That is usually the point — a phase that changes a line of prose or a choice
+label is *supposed* to turn it red, and the fix is to re-take the transcripts
+(`node test/transcript.mjs <run>`) and commit them in the same PR as the
+change. The job uploads the run it just played as an artifact so the diff can
+be read without a browser.
 
 ## Why the suite plays the whole game
 

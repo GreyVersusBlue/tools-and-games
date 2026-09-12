@@ -769,31 +769,59 @@ stunt it was asked to land" fails, because the Bus Stack it lands short of is
 
 *Shipped by:* **Claude Opus 5**, the row's named model.
 
-## Phase 8 — A workflow that runs the suite, and a real thumb
+## Phase 8 — A workflow that runs the suite, and a real thumb — DONE
 
-**Every check this project has runs only when somebody remembers to run it.**
+**Shipped 2026-09-11** (decisions #294 to #296; the account is under
+"Daredevil, arc two" in the root `HISTORY.md`).
 
-The School Generator has `.github/workflows/school-generator-ci.yml`, which
-installs a pinned Playwright without introducing a `package.json` the project
-does not want. Daredevil has 97 assertions, a 15-minute browser suite and no
-workflow. Last in the arc because it protects everything above it.
+**Every check this project had ran only when somebody remembered to run it.**
+Eight phases, 433 assertions across four suites, nine committed transcripts,
+and nothing in `.github/workflows/` path-matched `Projects/daredevil/**`.
+Firebase copies files, so nothing in the deploy path executes a line of the
+game: a commit that made it uncompletable again would have reached production
+unremarked, which is exactly how it shipped the first time.
 
-- [ ] **`daredevil-ci.yml`**, on the School Generator's pattern: paths-filtered
-  to `Projects/daredevil/**`, `smoke-save.mjs` first because it is seconds,
-  then `smoke-page.mjs` behind the pinned Chromium install. The workflow file
-  is outside this project's boundary — write it as a shared-file request,
-  applicable blind, unless the boundary is widened first.
-- [ ] **Transcript baselines as a check.** Regenerate every committed run in CI
-  and fail on a diff, which turns a convention into an assertion.
-- [ ] **Phase 5's graph tool in the same job**, since it needs no browser.
-- [ ] **A physical touch-device pass.** `verify-touch-375.mjs` proves the
-  pointer-event path under emulation; it cannot prove OS-level scroll-gesture
-  suppression, which is what `touch-action:none` exists for. Hold the pedal
-  through a page-scroll gesture on real hardware and write down what happened,
-  then retire or promote the one-off against that result.
+- [x] **`daredevil-ci.yml`**, three jobs, cheapest first, with the two slow
+  ones on `needs: suite` so a broken cast table does not spend forty minutes of
+  browser time to say so. `suite` runs `smoke-save.mjs`, `flags.mjs` and
+  `graph.mjs` under plain Node in about fifteen seconds. `browser` installs
+  `Tools/board-check`'s dependencies and runs `smoke-page.mjs` and
+  `verify-touch-375.mjs`. `transcripts` is a nine-way matrix. The path filter
+  carries `assets/js/gvb-save.js` and the two files of the harness this
+  project's driver actually imports, because a change to either can break this
+  game without touching its folder.
+- [x] **Transcript baselines as a check** — `transcript.mjs <run> --check`
+  replays the run and compares it to the committed file instead of overwriting
+  it, printing where the two part and exiting non-zero (#13). One line cannot
+  be compared byte for byte and is normalised to its verdict (#295): the stunt
+  score and its detail sentence both fall out of a real-time physics run, and
+  `clean` re-taken on one machine landed the Bus Stack at 95 one afternoon and
+  94 the next off the same commit.
+- [x] **Phase 5's graph tool in the same job**, in `suite`, where it costs a
+  second and needs no browser.
+- [x] **`verify-touch-375.mjs` is promoted, and the physical pass is parked**
+  (#294). The one-off proves what it can prove — pointer events, hit targets,
+  `touch-action` as computed, no horizontal overflow at 375px — in twenty
+  seconds with no hardware, so it runs on every commit now. What it cannot
+  prove is below it, in the parked list, because a session cannot hold a phone.
 
-*Leans on:* `.github/workflows/`, `test/`. *Save:* none. *Model:* **Claude
-Opus 5** — test wiring around an existing pattern in this repo.
+*Shipped by:* **Claude Opus 5**, the row's named model.
+
+### Parked — needs a person holding real hardware
+
+Not open work and not verified either (`BACKLOG.md`'s rule 2). Whoever picks
+this up needs a phone, not a session:
+
+- **Hold the gas pedal through a page-scroll gesture on a real touchscreen.**
+  `verify-touch-375.mjs` drives synthetic pointer events at a 375px viewport
+  and asserts the computed `touch-action: none` on both the pedal and the
+  canvas. It cannot prove OS-level scroll-gesture suppression, which is the
+  thing `touch-action: none` exists for and the thing that actually breaks: a
+  thumb that holds the throttle and drags a few pixels either scrolls the page
+  out from under the stunt run or it does not, and no emulated pointer knows
+  which. Ride Milestone 1 to a landing on a phone, then say what happened here.
+  The same open question sits in `BACKLOG.md` for four other projects, which is
+  the argument for one real-hardware pass across the site rather than five.
 
 ## What this leaves for a later arc
 
