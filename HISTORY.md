@@ -7407,6 +7407,149 @@ same one broken, `Tools/prompt-builder.html`; `social:check` reports the same
 six pages out of sync; `check-collisions.mjs` passes — all three unchanged by
 this work.
 
+## Phase 3 — The arithmetic, increment 1 (2026-09-12)
+
+**Phase 3 is a 2+ row, and this is one increment of it.** The row stays in
+`BACKLOG.md` with its text rewritten. What shipped is the first bullet, the one
+the other five stand on: `src/js/build-rules.js`, a build in and a verdict out,
+plus the data it needed and a suite. There is no page yet.
+
+**The finding, restated as a number.** `building-a-character.md` lays out ten
+steps, six caps and two escalating cost ladders, and then asks the player to do
+the arithmetic on paper. Of the numbers a 50 CP build needs, the rulebook
+publishes all but two: the cost to raise Prowess, Insight, Fortitude or
+Vitality is the string "Cost of next attribute" in its own chart, which is
+circular, and the escalating numbers are in no converted chapter. Phase 1 had
+already modelled that as `costToIncrease.kind: "unpublished"` rather than
+guessing it (#299). This increment is what happens when a calculator meets that
+honestly.
+
+**What shipped.** Decisions #304 to #309. The row names Claude Fable 5.1; this
+session ran on Claude Opus 5, and says so here because the Model column is
+carried, not re-decided. 130 assertions to 253 across three suites: 99 in
+`smoke.mjs`, 41 in `skills.test.mjs` (31 before this), 113 in the new
+`build-rules.test.mjs`.
+
+- **Q36 is answered: yes, and it prices nothing the book does not publish**
+  (#304). The question standing in front of this row was whether a character
+  builder is welcome at all, given that the footer says "Unofficial player
+  reference" and a builder that prices a legal-looking character staff would
+  reject is worse than none. Answered yes, on one condition that is now the
+  shape of the module: it refuses to invent a number. Every verdict carries
+  `unofficial: true`, and the three things the book says a player cannot simply
+  buy — Excellency and Expression purchases "must be unlocked in-game", hidden
+  ones need Staff approval, a third Expression needs an email to
+  NuminaRules@gmail.com — come back in `verdict.provisional`, a list beside the
+  bill rather than fine print under it. Reversible cheaply: the caveats are
+  data, and deleting the page leaves `skills.json` where it was.
+
+- **A cost the rulebook does not publish is a field on the verdict, never a
+  guess** (#305). A raised Prowess does not add to `cp.spent`; it adds an entry
+  to `cp.unpriced` carrying the chart's own words, and sets `cp.exact` false.
+  `cp.spent` is then a floor, and a build that is over 50 only on an unpriced
+  purchase is not called over budget. The same treatment covers the two skills
+  whose Cost cell says "See Description": the purchase line carries `cp: null`,
+  not a zero. Q32 is **still open and was not pre-answered** — this is the
+  module working without it, not a workaround for it. Purpose is the one
+  attribute the chart prices (4 CP a point), and it is priced.
+
+- **An Excellency is a name the player types** (#306). The Excellencies chapter
+  is a 34-word stub with no conversion behind it (Q33), so there is no list to
+  pick from and `offered()` returns `choices: null` for step 5 rather than an
+  empty array pretending to be one. An Excellency is priced by its tier (5, 6,
+  7) and its name is matched, lowercased, against the 18 hidden Excellencies in
+  `skills.json`: type "Deadeye" and the verdict says it needs Staff approval.
+
+- **The Aspect and Foundation lists are data, and the section headings around
+  them are the fence** (#307). Both are things a character chooses, both free,
+  and neither is a table row anywhere: they are `###` headings, nine Aspects
+  and twenty Foundations, and nothing could check a build without them.
+  `tools/extract-skills.mjs` reads each list between the two headings that
+  bracket it rather than by a pattern over heading text, because a pattern
+  swallows the next section the day one is added — and a renamed fence throws
+  by name instead of quietly emptying the list. A Foundation heading is
+  `Name (Type: what it applies to)`, and the Type is the whole point: it names
+  the table the Foundation's two purchasable skills come from, so Mariner draws
+  from Place Skills and Stargazer from Specialty Skills. A Type that is not one
+  of the four throws, and so does a Type whose table does not exist. `arcane`
+  is both an Aspect id and a Foundation id, so the two lists are keyed
+  separately and the id-uniqueness check is per-list.
+
+- **Included is granted, not purchased, and does not spend an allowance**
+  (#308). Thirty skills cost "Included": each Domain's Determination, the
+  Culture table's Resource/Contacts, and the first row of each of the fifteen
+  Expressions. They arrive with the choice, so they land in `verdict.granted`
+  at zero, never in `purchases`, and they do not count against "up to 2 Culture
+  skills" — which is what lets a character hold Resource/Contacts and two
+  bought Culture skills and still be legal. The nine Adventurer skills are
+  granted to every build for the same reason. Air's Determination is the one
+  asymmetry: its cell says `0` where the other five Domains say `Included`.
+  Both price at zero and the book's difference is left alone.
+
+- **The third Expression is modelled as lowering the Excellency cap to two**
+  (#309). `expressions.md` says a player may take a third Expression "by giving
+  up their 3rd Excellency slot". Rather than a flag the player sets, three
+  Expressions in a build *is* the trade: the Excellency cap drops to two, and
+  three Excellencies beside three Expressions is illegal with a message that
+  says which slot paid for what. One state, not two that can disagree.
+
+**The ten steps, and the six caps.** One Aspect required and two allowed —
+three only with the Aspected Expression's Third Aspect, which lifts that cap
+and not the three-Aspect-skill one. Up to three Aspect skills "regardless of
+how many Aspects you have", of which at most one may be the extra-Attribute or
+the armour skill. Up to two Foundation skills, from the Foundation's own Type's
+table. Up to two Culture skills. One Domain, whose skills must be that
+Domain's. Up to three Excellencies at 5, 6, 7; up to two Expressions at 5, 6,
+or three at 5, 6, 7 against the traded slot; an Expression skill only with its
+Expression. Prowess, Insight and Fortitude to 10, Vitality to 7, Purpose to 10
+at 4 CP each, Void not purchasable at all. Tongue of Aspect is the one
+selection a build may hold twice, once per Aspect, because the chapter's
+footnote says so.
+
+**Break it on purpose, and it fails by name** (#34). Eighteen breaks from a
+green baseline — ten in the rules module, six in the chapter markdown the
+extractor reads, two in the pinned counts. Each was caught by the assertion
+whose comment claims it, except the two below that were not. The four worth
+writing down:
+
+- Guessing the unpublished attribute curve at 4 CP a point **killed the suite**
+  the first time rather than failing it: `raised.cp.unpriced[0].what` threw on
+  an empty array and the 50 CP build never ran. The three optional accesses are
+  `?.` now and the same break fails seven assertions cleanly, the refusal's own
+  among them. A break that ends the run is not a break that was caught.
+- Renaming `PER_ASPECT_SKILL` out from under the rule it enforces **left the
+  legal case green**: "Tongue of Aspect twice with two Aspects is legal" was
+  written as the absence of a `duplicate-selection` code, and a selection whose
+  id resolves to nothing never reaches the duplicate check. Three such
+  assertions were rewritten to demand `legal === true`, and now all three fail
+  under a renamed id. An absence test passes for free when the thing never gets
+  that far (#147).
+- Renaming a Foundation's Type to one with no table throws
+  `foundations.md:52: Foundation "Mariner" has Type "Seafaring", not one of
+  Place, Specialty, Resource, Interaction`. Renaming the Place Skills heading
+  instead throws `Foundation "Heroic" is a Place, and there is no "Place
+  Skills" table`. Those are the two directions of the same mapping and they
+  fail differently on purpose.
+- A tenth Aspect added to the chapter fails the staleness check first, which is
+  the front line and says to re-run the extractor. Regenerated so staleness is
+  satisfied, it fails `9 Aspects (10)` and the anchor sweep at 295 records
+  checked, because the new heading is not in the committed HTML.
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 303 → 309. `check-integrity.mjs` is 1,514 units with the
+same one broken, `Tools/prompt-builder.html` (rank 33's row);
+`social:check` reports the same six pages out of sync;
+`check-collisions.mjs` passes at 0 collisions — all three unchanged by this
+work. `js/build-rules.js` is the passthrough copy of the module and is
+committed with it; no page loads it yet.
+
+**Left for the next increment**, in the wishlist's own order: the picker in the
+book's ten-step order, `localStorage` under a `numina.` key plus the build in
+the URL fragment, and the printable character card on `print.css`'s `cardsheet`
+treatment. `offered(build, catalog)` is already there for the picker to read,
+so a step is a template over a list rather than a second copy of these rules.
+
+
 
 ---
 

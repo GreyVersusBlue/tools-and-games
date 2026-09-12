@@ -51,6 +51,25 @@ const SHAPES = {
 
 const ATTRIBUTE_NAMES = ["Prowess", "Insight", "Fortitude"];
 
+// The Aspects and Foundations a character chooses from are `###` headings, not
+// table rows: each is free, each grants a set of skills that lives in a table
+// somewhere else, and nothing in any table says which ones exist. A build
+// cannot be checked without the lists — "up to 2 Foundation skills from your
+// Foundation" needs to know that Mariner is a Place and Stargazer a Specialty.
+//
+// Both sections are fenced by the headings that bracket them rather than by a
+// pattern, because a pattern would quietly swallow the next section's headings
+// the day one is added. A heading inside the fence that does not parse throws
+// with its file and line, like every other shape here.
+const HEADING_LISTS = {
+  aspects: { after: "Aspects", key: "aspects", until: "Aspect Armament Skills" },
+  foundations: { after: "Available Foundations", key: "foundations", until: "Foundation Skills" },
+};
+
+// The four Foundation Types, each the name of the skill table its Foundations
+// draw from: Type "Place" → the "Place Skills" table.
+const FOUNDATION_TYPES = ["Place", "Specialty", "Resource", "Interaction"];
+
 // markdown-it-anchor's default slugify, so `source` anchors match the ids the
 // build emits. test/skills.test.mjs checks every anchor against the built HTML,
 // so if the build's slugify ever changes this fails there rather than drifting.
@@ -114,6 +133,39 @@ function parseName(raw) {
   return m ? { footnote: m[2], name: m[1].trim() } : { name: raw };
 }
 
+// An Aspect heading is a bare name. The paragraph under it is the presentation
+// requirement the player has to wear; seven of the nine prefix it with
+// "Makeup / Costume Requirements:" and Plant and Shade do not, so the prefix is
+// stripped where it appears and `costumeRequirement` records which form the
+// book used rather than pretending they are the same shape.
+function parseAspectHeading(heading, body, where) {
+  if (/[(:]/.test(heading)) fail(where, `unrecognised Aspect heading ${JSON.stringify(heading)}`);
+  if (!body) fail(where, `Aspect ${JSON.stringify(heading)} has no presentation paragraph under it`);
+  const m = body.match(/^Makeup \/ Costume Requirements:\s*(.+)$/s);
+  return {
+    costumeRequirement: Boolean(m),
+    id: slug(heading),
+    name: heading,
+    presentation: m ? m[1].trim() : body,
+  };
+}
+
+// A Foundation heading is "Name (Type: what the Type applies to)". The Type is
+// the whole point: it names the skill table this Foundation's two purchasable
+// skills must come from. `detail` keeps its colons — Heroic's is
+// "Modules: An adventure led by an NPC ...".
+function parseFoundationHeading(heading, body, where) {
+  const m = heading.match(/^(.+?) \((.+?): (.+)\)$/);
+  if (!m) fail(where, `unrecognised Foundation heading ${JSON.stringify(heading)}`);
+  const [, name, type, detail] = m;
+  if (!FOUNDATION_TYPES.includes(type)) {
+    fail(where, `Foundation ${JSON.stringify(name)} has Type ${JSON.stringify(type)}, not one of ${FOUNDATION_TYPES.join(", ")}`);
+  }
+  return { detail, id: slug(name), name, skillGroup: `${type} Skills`, type };
+}
+
+const HEADING_PARSERS = { aspects: parseAspectHeading, foundations: parseFoundationHeading };
+
 // --- markdown walking -------------------------------------------------------
 
 function splitRow(line) {
@@ -149,15 +201,49 @@ function* tables(file, text) {
   }
 }
 
+// Yields the `###` headings of one file with the text of the paragraph under
+// each, between the `after` heading and the `until` heading. A fence whose two
+// ends are not both found throws: a renamed section must be noticed, not
+// silently emptied.
+function* fencedHeadings(file, text, fence) {
+  const lines = text.split("\n");
+  const headings = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{2,3}) (.+?)\s*$/);
+    if (m) headings.push({ line: i + 1, text: m[2] });
+  }
+  const start = headings.findIndex((h) => h.text === fence.after);
+  const end = headings.findIndex((h) => h.text === fence.until);
+  if (start < 0) fail(file, `no ${JSON.stringify(fence.after)} heading to start the ${fence.key} list at`);
+  if (end < 0) fail(file, `no ${JSON.stringify(fence.until)} heading to end the ${fence.key} list at`);
+  if (end <= start) fail(file, `${JSON.stringify(fence.until)} is above ${JSON.stringify(fence.after)} in ${file}`);
+  for (const h of headings.slice(start + 1, end)) {
+    const body = [];
+    for (let i = h.line; i < lines.length && !/^#{2,3} /.test(lines[i]); i++) {
+      if (lines[i].trim() === "") { if (body.length) break; continue; }
+      body.push(lines[i].trim());
+    }
+    yield { body: body.join(" "), heading: h.text, line: h.line };
+  }
+}
+
 export function extract() {
   const files = readdirSync(SKILLS_DIR).filter((f) => f.endsWith(".md")).sort();
-  const out = { attributes: [], cultures: [], currency: [], hidden: [], skills: [], sourceBook: SOURCE_BOOK, tables: [] };
+  const out = { aspects: [], attributes: [], cultures: [], currency: [], foundations: [], hidden: [], skills: [], sourceBook: SOURCE_BOOK, tables: [] };
   const ids = new Set();
 
   for (const file of files) {
     const stem = file.replace(/\.md$/, "");
     const page = stem === "index" ? "/mechanics/skills/" : `/mechanics/skills/${stem}/`;
     const text = readFileSync(join(SKILLS_DIR, file), "utf8");
+
+    const fence = HEADING_LISTS[stem];
+    if (fence) {
+      for (const h of fencedHeadings(file, text, fence)) {
+        const record = HEADING_PARSERS[fence.key](h.heading, h.body, `${file}:${h.line}`);
+        out[fence.key].push({ ...record, source: `${page}#${anchor(h.heading)}` });
+      }
+    }
 
     for (const t of tables(file, text)) {
       const source = `${page}#${anchor(t.heading)}`;
@@ -235,6 +321,18 @@ export function extract() {
       }
     }
   }
+
+  // A Foundation's Type names the table its skills come from. If a Type ever
+  // appears with no matching table — a v3.52 that adds a fifth Type, or a
+  // renamed heading — the mapping is a dead link and the build says so here
+  // rather than the builder silently offering a Foundation no skill fits.
+  const groups = new Set(out.tables.filter((t) => t.groupKind === "Foundation type").map((t) => t.group));
+  for (const f of out.foundations) {
+    if (!groups.has(f.skillGroup)) {
+      fail("foundations.md", `Foundation ${JSON.stringify(f.name)} is a ${f.type}, and there is no ${JSON.stringify(f.skillGroup)} table`);
+    }
+  }
+
   return out;
 }
 
@@ -270,7 +368,7 @@ const invokedDirectly = process.argv[1] && fileURLToPath(import.meta.url) === pr
 if (invokedDirectly) {
   const data = extract();
   const json = serialize(data);
-  const summary = `${data.skills.length} skills in ${data.tables.length} tables, ${data.cultures.length} cultures, ${data.attributes.length} attribute rows, ${data.hidden.length} hidden, ${data.currency.length} coins`;
+  const summary = `${data.skills.length} skills in ${data.tables.length} tables, ${data.aspects.length} aspects, ${data.foundations.length} foundations, ${data.cultures.length} cultures, ${data.attributes.length} attribute rows, ${data.hidden.length} hidden, ${data.currency.length} coins`;
   if (process.argv.includes("--check")) {
     let committed = "";
     try { committed = readFileSync(OUTPUT, "utf8"); } catch { /* missing counts as stale */ }

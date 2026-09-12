@@ -1,4 +1,69 @@
 {
+  "aspects": [
+    {
+      "costumeRequirement": true,
+      "id": "arcane",
+      "name": "Arcane",
+      "presentation": "You exhibit characteristics like unnatural horns, bone protrusions, or swirls of bright colors upon your skin.",
+      "source": "/mechanics/skills/aspects/#arcane"
+    },
+    {
+      "costumeRequirement": true,
+      "id": "beast",
+      "name": "Beast",
+      "presentation": "You display features of the animal to which you are closest. These animals must be mammals, birds or reptiles.",
+      "source": "/mechanics/skills/aspects/#beast"
+    },
+    {
+      "costumeRequirement": true,
+      "id": "construct",
+      "name": "Construct",
+      "presentation": "Your costume and makeup should show the substance you are infused with.",
+      "source": "/mechanics/skills/aspects/#construct"
+    },
+    {
+      "costumeRequirement": true,
+      "id": "divine",
+      "name": "Divine",
+      "presentation": "You have metallic (gold, silver, copper) coloration upon your face.",
+      "source": "/mechanics/skills/aspects/#divine"
+    },
+    {
+      "costumeRequirement": true,
+      "id": "elemental",
+      "name": "Elemental",
+      "presentation": "Your makeup should display elemental focused makeup in the color to which you are attuned, Earth (brown), Air / Wind (White), Lightning (Yellow), Fire (red) or Water / Ice (blue).",
+      "source": "/mechanics/skills/aspects/#elemental"
+    },
+    {
+      "costumeRequirement": true,
+      "id": "ghost",
+      "name": "Ghost",
+      "presentation": "Your makeup should include whites and grays to show your ties to the grave.",
+      "source": "/mechanics/skills/aspects/#ghost"
+    },
+    {
+      "costumeRequirement": true,
+      "id": "life",
+      "name": "Life",
+      "presentation": "None required. You may, at your discretion, have exaggerated ears, or teeth.",
+      "source": "/mechanics/skills/aspects/#life"
+    },
+    {
+      "costumeRequirement": false,
+      "id": "plant",
+      "name": "Plant",
+      "presentation": "The flora is a part of you, and you display their nature upon you.",
+      "source": "/mechanics/skills/aspects/#plant"
+    },
+    {
+      "costumeRequirement": false,
+      "id": "shade",
+      "name": "Shade",
+      "presentation": "You have a bit of the shade within you and show those bits upon your face including Constellations, Heraldrics, Shade locations and other Shade beings. This aspect more than any other is very diverse as there are many parts of the shade.",
+      "source": "/mechanics/skills/aspects/#shade"
+    }
+  ],
   "attributes": [
     {
       "costToIncrease": {
@@ -187,6 +252,168 @@
       "shape": "Octagonal",
       "source": "/mechanics/skills/#numina-currency",
       "value": "100 Drakar (10 Ketch)"
+    }
+  ],
+  "foundations": [
+    {
+      "detail": "Food",
+      "id": "agriculture",
+      "name": "Agriculture",
+      "skillGroup": "Resource Skills",
+      "source": "/mechanics/skills/foundations/#agriculture-(resource%3A-food)",
+      "type": "Resource"
+    },
+    {
+      "detail": "Components",
+      "id": "alchemical",
+      "name": "Alchemical",
+      "skillGroup": "Resource Skills",
+      "source": "/mechanics/skills/foundations/#alchemical-(resource%3A-components)",
+      "type": "Resource"
+    },
+    {
+      "detail": "Magic",
+      "id": "arcane",
+      "name": "Arcane",
+      "skillGroup": "Specialty Skills",
+      "source": "/mechanics/skills/foundations/#arcane-(specialty%3A-magic)",
+      "type": "Specialty"
+    },
+    {
+      "detail": "Components",
+      "id": "artifice",
+      "name": "Artifice",
+      "skillGroup": "Resource Skills",
+      "source": "/mechanics/skills/foundations/#artifice-(resource%3A-components)",
+      "type": "Resource"
+    },
+    {
+      "detail": "Divine",
+      "id": "ecclesiastic",
+      "name": "Ecclesiastic",
+      "skillGroup": "Specialty Skills",
+      "source": "/mechanics/skills/foundations/#ecclesiastic-(specialty%3A-divine)",
+      "type": "Specialty"
+    },
+    {
+      "detail": "Performance",
+      "id": "entertainer",
+      "name": "Entertainer",
+      "skillGroup": "Interaction Skills",
+      "source": "/mechanics/skills/foundations/#entertainer-(interaction%3A-performance)",
+      "type": "Interaction"
+    },
+    {
+      "detail": "Sale of goods",
+      "id": "artistic",
+      "name": "Artistic",
+      "skillGroup": "Resource Skills",
+      "source": "/mechanics/skills/foundations/#artistic-(resource%3A-sale-of-goods)",
+      "type": "Resource"
+    },
+    {
+      "detail": "Modules: An adventure led by an NPC or through a gate that includes less than 12 PCs",
+      "id": "heroic",
+      "name": "Heroic",
+      "skillGroup": "Place Skills",
+      "source": "/mechanics/skills/foundations/#heroic-(place%3A-modules%3A-an-adventure-led-by-an-npc-or-through-a-gate-that-includes-less-than-12-pcs)",
+      "type": "Place"
+    },
+    {
+      "detail": "Coin",
+      "id": "leisure",
+      "name": "Leisure",
+      "skillGroup": "Resource Skills",
+      "source": "/mechanics/skills/foundations/#leisure-(resource%3A-coin)",
+      "type": "Resource"
+    },
+    {
+      "detail": "Physical Challenges and Water",
+      "id": "mariner",
+      "name": "Mariner",
+      "skillGroup": "Place Skills",
+      "source": "/mechanics/skills/foundations/#mariner-(place%3A-physical-challenges-and-water)",
+      "type": "Place"
+    },
+    {
+      "detail": "Helping others in need",
+      "id": "mendicant",
+      "name": "Mendicant",
+      "skillGroup": "Interaction Skills",
+      "source": "/mechanics/skills/foundations/#mendicant-(interaction%3A-helping-others-in-need)",
+      "type": "Interaction"
+    },
+    {
+      "detail": "Goods and Trade",
+      "id": "mercantile",
+      "name": "Mercantile",
+      "skillGroup": "Resource Skills",
+      "source": "/mechanics/skills/foundations/#mercantile-(resource%3A-goods-and-trade)",
+      "type": "Resource"
+    },
+    {
+      "detail": "Field Battles: Any large-scale combat encounter including more than 12 PCs",
+      "id": "military",
+      "name": "Military",
+      "skillGroup": "Place Skills",
+      "source": "/mechanics/skills/foundations/#military-(place%3A-field-battles%3A-any-large-scale-combat-encounter-including-more-than-12-pcs)",
+      "type": "Place"
+    },
+    {
+      "detail": "Noble and political interactions",
+      "id": "courts",
+      "name": "Courts",
+      "skillGroup": "Interaction Skills",
+      "source": "/mechanics/skills/foundations/#courts-(interaction%3A-noble-and-political-interactions)",
+      "type": "Interaction"
+    },
+    {
+      "detail": "coins",
+      "id": "poverty",
+      "name": "Poverty",
+      "skillGroup": "Resource Skills",
+      "source": "/mechanics/skills/foundations/#poverty-(resource%3A-coins)",
+      "type": "Resource"
+    },
+    {
+      "detail": "Interacting with or discussion of villains",
+      "id": "reformed",
+      "name": "Reformed",
+      "skillGroup": "Interaction Skills",
+      "source": "/mechanics/skills/foundations/#reformed-(interaction%3A-interacting-with-or-discussion-of-villains)",
+      "type": "Interaction"
+    },
+    {
+      "detail": "Shade",
+      "id": "stargazer",
+      "name": "Stargazer",
+      "skillGroup": "Specialty Skills",
+      "source": "/mechanics/skills/foundations/#stargazer-(specialty%3A-shade)",
+      "type": "Specialty"
+    },
+    {
+      "detail": "Any time you pass through a gate, but not outside of the World",
+      "id": "traveler",
+      "name": "Traveler",
+      "skillGroup": "Place Skills",
+      "source": "/mechanics/skills/foundations/#traveler-(place%3A-any-time-you-pass-through-a-gate%2C-but-not-outside-of-the-world)",
+      "type": "Place"
+    },
+    {
+      "detail": "Pick a specific subject",
+      "id": "university",
+      "name": "University",
+      "skillGroup": "Specialty Skills",
+      "source": "/mechanics/skills/foundations/#university-(specialty%3A-pick-a-specific-subject)",
+      "type": "Specialty"
+    },
+    {
+      "detail": "forests",
+      "id": "wilderness",
+      "name": "Wilderness",
+      "skillGroup": "Place Skills",
+      "source": "/mechanics/skills/foundations/#wilderness-(place%3A-forests)",
+      "type": "Place"
     }
   ],
   "hidden": [

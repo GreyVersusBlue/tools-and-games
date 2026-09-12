@@ -347,28 +347,54 @@ capped at 10 and Vitality at 7 — then asks the player to do the arithmetic on
 paper. With `skills.json` it becomes a page: client-side, same-origin,
 dependency-free like everything else here, and loudly unofficial.
 
-- [ ] **`src/js/build-rules.js`, pure, with its suite.** A build in, a
+**Increment 1 shipped (2026-09-12, decisions #304 to #309): the arithmetic,
+with no page.** `src/js/build-rules.js` prices a build and refuses to price
+what the book does not publish; the Aspect and Foundation lists are in
+`skills.json`; `test/build-rules.test.mjs` is 113 assertions. Q36 was answered
+yes, on the condition that nothing is guessed (#304). Q32 is still open and
+was not pre-answered — the module works without it by leaving those purchases
+unpriced. Read `build-rules.js`'s header comment and CONTENT-GUIDE's "two
+heading-derived lists" before the next increment.
+
+- [x] **`src/js/build-rules.js`, pure, with its suite.** A build in, a
   verdict out: CP spent and remaining, which selections are legal, which
   prerequisites are unmet, which caps are hit. No DOM. The cost curve lives
   here — and the phase is blocked on the attribute numbers (see Questions)
-  and must refuse to guess them.
+  and must refuse to guess them. *Done: `priceBuild()` returns
+  `cp{budget,spent,remaining,exact,unpriced}`, `problems`, `provisional`,
+  `purchases`, `granted` and `attributes`. A raised Prowess, Insight,
+  Fortitude or Vitality lands in `cp.unpriced` with the chart's own words and
+  flips `cp.exact` false, so `cp.spent` is a floor (#305); the two "See
+  Description" skills get the same treatment. `offered(build, catalog)` says
+  what each of the ten steps may show, which is what the picker reads.*
 - [ ] **The picker,** in the book's own step order: Aspects, Foundation,
   Culture, Domain, Excellencies, Expressions, Open Skills, then attributes
   and Vitality. Each step lists exactly what `skills.json` says that choice
   unlocks, with cost, verbal and description inline and a link to the anchor.
-- [ ] **Say what is provisional.** Excellency and Expression purchases "must
+  Step 5 has no list to show: the Excellencies chapter is a stub, so an
+  Excellency is a name the player types (#306) and `offered()` returns
+  `choices: null` for it.
+- [x] **Say what is provisional.** Excellency and Expression purchases "must
   be unlocked in-game", hidden ones need staff approval, a third Expression
-  requires emailing staff. Part of the verdict, not fine print.
+  requires emailing staff. Part of the verdict, not fine print. *Done:
+  `verdict.provisional`, and every verdict carries `unofficial: true`. The
+  page still has to render it.*
 - [ ] **Persist and share.** `localStorage` under a `numina.` key (matching
   `numina.theme`), plus the build encoded in the URL fragment so a player can
   paste it to a friend or staff. No server, no account.
 - [ ] **A printable character card** on the existing `cardsheet` print
   treatment: chosen skills with verbals and attribute costs, attributes,
   Vitality, CP total. One sheet carried to the event — the feature that
-  justifies the phase.
-- [ ] **Suite and smoke.** Every cap, every escalating cost, every "Included"
+  justifies the phase. `verdict.granted` and `verdict.purchases` are the two
+  lists it prints.
+- [x] **Suite and smoke.** Every cap, every escalating cost, every "Included"
   skill priced at zero, one known-good 50 CP build costed to the CP; plus a
-  smoke check that the builder's data matches `skills.json`.
+  smoke check that the builder's data matches `skills.json`. *Done:
+  `test/build-rules.test.mjs`, wired into `npm test` third. The 50 CP build
+  is Arcane/Military/Aluvair/Air with one Excellency and the Performer
+  Expression, and it costs 50 exactly. Eighteen guard-rails broken on purpose;
+  two of them went green the first time and the assertions were rewritten
+  (#147). The page's own DOM still needs a smoke check when it exists.*
 
 *Leans on:* Phase 1's `skills.json`, `building-a-character.md`,
 `attributes-vitality.md`, `print.css`'s `cardsheet` mode. *Build/output:* one
