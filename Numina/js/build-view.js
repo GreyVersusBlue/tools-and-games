@@ -311,9 +311,11 @@ export function renderVerdict(verdict) {
   html += `<h3>Purchases</h3>`;
   if (!verdict.purchases.length) html += `<p class="builder__hint">Nothing bought yet.</p>`;
   else {
-    html += `<table class="builder__bill"><thead><tr><th>Step</th><th>Purchase</th><th>CP</th></tr></thead><tbody>`;
+    // Wrapped like every other table on the site: div.table-scroll carries
+    // the horizontal scroll so the <table> keeps its rows and columns.
+    html += `<div class="table-scroll"><table class="builder__bill"><thead><tr><th>Step</th><th>Purchase</th><th>CP</th></tr></thead><tbody>`;
     for (const p of verdict.purchases) html += `<tr><td>${p.step}</td><td>${esc(p.name)}</td><td>${p.cp === null ? "unpriced" : p.cp}</td></tr>`;
-    html += `</tbody></table>`;
+    html += `</tbody></table></div>`;
   }
   const granted = verdict.granted.filter((g) => g.step !== 0);
   html += `<h3>Included with your choices</h3>`;
@@ -415,12 +417,12 @@ export function renderCard(build, verdict, catalog, { url = "" } = {}) {
   // Step order, grants before purchases within a step, and Adventurer's step
   // 0 first: the sheet reads top to bottom the way the chapter builds.
   const rows = [...verdict.granted, ...verdict.purchases.filter((p) => p.step <= 7)].sort((a, b) => a.step - b.step || Number(a.cp !== 0) - Number(b.cp !== 0));
-  html += `<table class="sheet__skills"><thead><tr><th>Skill</th><th>From</th><th>CP</th><th>Uses</th><th>Verbal</th></tr></thead><tbody>`;
+  html += `<div class="table-scroll"><table class="sheet__skills"><thead><tr><th>Skill</th><th>From</th><th>CP</th><th>Uses</th><th>Verbal</th></tr></thead><tbody>`;
   html += rows.map((r) => cardRow(r, catalog, verdict)).join("");
-  html += `</tbody></table>`;
+  html += `</tbody></table></div>`;
 
-  html += `<table class="sheet__attributes"><thead><tr>${verdict.attributes.map((a) => `<th>${esc(a.name)}</th>`).join("")}</tr></thead>` +
-    `<tbody><tr>${verdict.attributes.map((a) => `<td data-sheet-attribute="${esc(a.id)}">${a.value}</td>`).join("")}</tr></tbody></table>`;
+  html += `<div class="table-scroll"><table class="sheet__attributes"><thead><tr>${verdict.attributes.map((a) => `<th>${esc(a.name)}</th>`).join("")}</tr></thead>` +
+    `<tbody><tr>${verdict.attributes.map((a) => `<td data-sheet-attribute="${esc(a.id)}">${a.value}</td>`).join("")}</tr></tbody></table></div>`;
 
   const attributeBuys = verdict.purchases.filter((p) => p.step >= 8);
   const spent = cp.exact

@@ -8,7 +8,11 @@
   <form class="header-search" action="/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
   </form>
-  <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle color theme" hidden>◐</button>
+  {#- aria-pressed says which way the toggle is currently set. It ships false
+      and theme.js corrects it on load, because the theme in force is whatever
+      the OS says until a visitor has chosen one, and that is not knowable at
+      build time on a statically served page. -#}
+  <button type="button" class="theme-toggle" data-theme-toggle aria-label="Dark theme" aria-pressed="false" hidden>◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">

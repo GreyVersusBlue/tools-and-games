@@ -8,7 +8,10 @@
 <ol class="timeline">
   {% for era in eras %}
   <li class="timeline__group">
-    <p class="timeline__era" aria-hidden="true"><span>{{ era }}</span></p>
+    {#- The era names the group. It was a <p aria-hidden="true">, which took the
+        only label off 17 events and left the page's headings running h1 → h3.
+        The event titles below are h3, so this is the h2 they were missing. -#}
+    <h2 class="timeline__era"><span>{{ era }}</span></h2>
     <ol class="timeline__events">
       {% for ev in events %}
       {% if ev.era == era %}

@@ -82,6 +82,15 @@ export default function (eleventyConfig) {
       if (tag === "h2" || tag === "h3") renderPermalink(slug, opts, state, idx);
     },
   });
+  // Every markdown table goes out inside div.table-scroll, which is what
+  // carries `overflow-x: auto` now. The scroll used to be `display: block` on
+  // the <table> itself, which flattens the table for a screen reader: no rows,
+  // no columns, no header association, on chapters that are mostly table. The
+  // two tables that are not markdown — all-skills.njk's index and the
+  // builder's runtime tables in build-view.js — write the wrapper themselves,
+  // and test/smoke.mjs fails on any <table> in a page body without one.
+  md.renderer.rules.table_open = () => '<div class="table-scroll">\n<table>\n';
+  md.renderer.rules.table_close = () => "</table>\n</div>\n";
   eleventyConfig.setLibrary("md", md);
 
   eleventyConfig.addFilter("tocData", tocData);

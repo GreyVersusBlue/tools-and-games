@@ -4,7 +4,7 @@ layout: layouts/base.njk
 <div class="shell">
   {% include "partials/sidebar.njk" %}
   {% set navSection = nav.sections | sectionForTitle(section) %}
-  <main data-pagefind-body data-pagefind-meta="section:{{ section }}">
+  <main id="main" tabindex="-1" data-pagefind-body data-pagefind-meta="section:{{ section }}">
     <p class="crumb"><a href="{{ navSection.url }}">{{ section }}</a></p>
     <h1>{{ title }}</h1>
     {%- set tocData = content | tocData %}

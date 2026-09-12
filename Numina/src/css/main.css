@@ -53,6 +53,11 @@
   --green-deep: #1f4230;
   --heading: #27452f;
   --gold: #a17c2a;
+  /* --gold is 3.11:1 on --paper: fine for an ornament, short of AA for a
+     word. --gold-text is the same hue at 4.80:1, and is what every run of
+     gold TEXT uses (kicker, crumb, permalink marks, the theme button).
+     Ornament and map golds are untouched — they are not text. */
+  --gold-text: #7d5f18;
   --gold-bright: #c39a3b;
   --gold-dim: #c5b183;
   --frame-ink: #7a6a45;
@@ -60,7 +65,13 @@
   --btn-bg: #7e2417;
   --btn-ink: #f6eeda;
   --shadow: 0 1px 4px rgba(43, 33, 20, 0.22);
-  --header-h: 5rem;
+  /* What the sticky header actually measures, so the sticky timeline-era
+     chips clear it exactly: 0.65rem + (1.75rem wordmark x 1.65) + 0.65rem
+     + 13px of ornament band + 1px border = 81px, and it is font-independent
+     because the wordmark's line-height is a number. It was 5rem, which is
+     80px, and a stuck chip sat 0.97px under the header's bottom edge.
+     test/a11y/layout.mjs measures the header and fails if this drifts. */
+  --header-h: 5.0625rem;
   --map-paper: #ecdcae;
   --map-paper-deep: #dfcc90;
   --map-ink: #4a3b1d;
@@ -93,6 +104,7 @@
     --green-deep: #4a7a5c;
     --heading: #d9c98d;
     --gold: #c9a852;
+    --gold-text: #c9a852;
     --gold-bright: #ecd489;
     --gold-dim: #5c5233;
     --frame-ink: #8a7a4a;
@@ -121,6 +133,7 @@
   --green-deep: #4a7a5c;
   --heading: #d9c98d;
   --gold: #c9a852;
+  --gold-text: #c9a852;
   --gold-bright: #ecd489;
   --gold-dim: #5c5233;
   --frame-ink: #8a7a4a;
@@ -153,6 +166,28 @@ body {
 img, svg { max-width: 100%; height: auto; }
 ::selection { background: var(--gold-dim); color: var(--ink); }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* Off-screen until focused rather than display:none, which would take it
+   out of the tab order and leave the header's seven stops in front of
+   every page. On focus it lands over the sticky header, so z-index beats
+   .site-header's 10. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 11;
+  font-family: var(--caps);
+  background: var(--paper-raised);
+  color: var(--ink);
+  border: 1px solid var(--gold-dim);
+  border-radius: 0 0 3px 0;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+}
+.skip-link:focus { left: 0; }
+/* The skip link and in-page anchors both land here, and the header is
+   sticky, so #main needs the same clearance every heading has. */
+main:focus { outline: none; }
+main { scroll-margin-top: calc(var(--header-h) + 1rem); }
 
 h1, h2, h3, h4, h5, h6 {
   /* anchor jumps (permalinks, TOC, Pagefind sub-results, glossary links) must
@@ -198,7 +233,7 @@ a:hover { color: var(--accent-soft); }
    revealing the mark never reflows the heading. */
 .heading-anchor__mark::before { content: "\A7"; }
 .heading-anchor {
-  color: var(--gold);
+  color: var(--gold-text);
   text-decoration: none;
   font-family: var(--caps);
   font-weight: 400;
@@ -229,13 +264,18 @@ blockquote {
 }
 code { background: var(--paper-sunken); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
 
-/* ledger-style tables (mechanics chapters are table-heavy) */
+/* ledger-style tables (mechanics chapters are table-heavy).
+   The scroll lives on the wrapper, not the table: `display: block` on a <table>
+   makes it a generic block to a screen reader — no rows, no columns, no header
+   association — and the mechanics chapters are almost entirely tables. Every
+   table in a page body is wrapped in div.table-scroll (markdown by the
+   renderer rule in eleventy.config.mjs, the two template/JS tables by hand);
+   test/smoke.mjs fails on one that is not. */
+.table-scroll { overflow-x: auto; }
 table {
   border-collapse: collapse;
   width: 100%;
   margin: 1.4rem 0;
-  display: block;
-  overflow-x: auto;
   border: 1px solid var(--gold-dim);
   box-shadow: inset 0 0 0 2px var(--paper-raised), inset 0 0 0 3px var(--gold-dim);
   background: var(--paper-raised);
@@ -258,7 +298,7 @@ tbody tr:last-child td { border-bottom: 0; }
    of the skill's name */
 .skill-anchor__mark::before { content: "\A7"; }
 .skill-anchor {
-  color: var(--gold);
+  color: var(--gold-text);
   text-decoration: none;
   font-family: var(--caps);
   font-size: 0.8em;
@@ -303,24 +343,23 @@ tr:target > td { background: color-mix(in srgb, var(--gold-dim) 38%, transparent
 .skill-index__empty { font-style: italic; color: var(--ink-soft); }
 .skill-index__empty[hidden] { display: none; }
 
-/* markdown --- becomes a gilded rule with a leaf sprig at its heart */
+/* markdown --- becomes a gilded rule with a leaf sprig at its heart.
+   The gap the sprig sits in is a gap in the rule now, drawn as two half-width
+   gradients that stop 4.75rem short of centre. It used to be one full-width
+   gradient with an ::before patch of flat --paper laid over the middle, and
+   because the body is textured that patch read as a rectangular seam around
+   every ornament on the page. A mask would have been shorter and is wrong:
+   a mask on hr also masks hr::after, which is the sprig.
+   (No ::before here any more; print.css still names it, harmlessly.) */
 hr {
   border: none;
   height: 1px;
   margin: 2.4rem 0;
-  background: linear-gradient(90deg, transparent, var(--gold-dim) 14%, var(--gold-dim) 86%, transparent);
+  background:
+    linear-gradient(90deg, transparent, var(--gold-dim) 30%, var(--gold-dim)) left center / calc(50% - 4.75rem) 100% no-repeat,
+    linear-gradient(90deg, var(--gold-dim), var(--gold-dim) 70%, transparent) right center / calc(50% - 4.75rem) 100% no-repeat;
   position: relative;
   overflow: visible;
-}
-hr::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 9.5rem;
-  height: 1.6rem;
-  background: var(--paper);
 }
 hr::after {
   content: "";
@@ -418,7 +457,7 @@ dl dd { margin: 0 0 0.4rem; }
   background: none;
   border: 1px solid var(--gold-dim);
   border-radius: 999px;
-  color: var(--gold);
+  color: var(--gold-text);
   width: 2.2rem;
   height: 2.2rem;
   cursor: pointer;
@@ -476,7 +515,7 @@ dl dd { margin: 0 0 0.4rem; }
 .sidebar details summary { font-size: 0.85rem; color: var(--ink-soft); margin: 0.2rem 0; }
 
 main { min-width: 0; max-width: 70ch; }
-.crumb { font-family: var(--caps); font-size: 0.9rem; letter-spacing: 0.06em; margin: 0; color: var(--gold); }
+.crumb { font-family: var(--caps); font-size: 0.9rem; letter-spacing: 0.06em; margin: 0; color: var(--gold-text); }
 .crumb a { text-decoration: none; color: var(--ink-soft); }
 .crumb a:hover { color: var(--accent); }
 .lede { font-size: 1.2rem; font-style: italic; color: var(--ink-soft); }
@@ -563,7 +602,7 @@ main { min-width: 0; max-width: 70ch; }
   color: var(--heading);
   cursor: pointer;
 }
-.toc > summary::marker { color: var(--gold); }
+.toc > summary::marker { color: var(--gold-text); }
 /* Core Rules alone has 96 headings — cap the open panel so the contents stay a
    lookup aid instead of burying the chapter it belongs to. */
 .toc > nav {
@@ -634,7 +673,7 @@ main { min-width: 0; max-width: 70ch; }
   font-family: var(--caps);
   letter-spacing: 0.22em;
   font-size: 1.02rem;
-  color: var(--gold);
+  color: var(--gold-text);
   margin: 0;
 }
 .hero h1 {
@@ -772,11 +811,16 @@ main { min-width: 0; max-width: 70ch; }
 }
 .timeline__group { list-style: none; }
 .timeline__events { list-style: none; margin: 0; padding: 0; }
+/* An h2 whose own box is only a sticky positioner — the chip inside it carries
+   every visual property, so the heading rules above must not reach through. */
 .timeline__era {
   position: sticky;
   top: var(--header-h);
   z-index: 2;
   margin: 1.8rem 0 0.9rem;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.65;
 }
 .timeline__era span {
   display: inline-block;
@@ -967,7 +1011,7 @@ main { min-width: 0; max-width: 70ch; }
 .builder__note { color: var(--ink-soft); font-style: italic; margin: 0.2rem 0 0.6rem; }
 .builder__hint { color: var(--ink-soft); font-style: italic; }
 .builder__group { margin: 1rem 0 0.3rem; }
-.builder__cap { font-family: var(--caps); font-weight: 400; font-size: 0.8rem; letter-spacing: 0.04em; color: var(--gold); margin-left: 0.5rem; }
+.builder__cap { font-family: var(--caps); font-weight: 400; font-size: 0.8rem; letter-spacing: 0.04em; color: var(--gold-text); margin-left: 0.5rem; }
 .builder__choices, .builder__skills, .builder__attributes, .builder__typed { list-style: none; margin: 0; padding: 0; }
 .builder__choice, .builder__skill, .builder__attribute {
   display: grid;
@@ -1002,7 +1046,7 @@ main { min-width: 0; max-width: 70ch; }
   font-size: 0.8rem;
   letter-spacing: 0.03em;
   text-decoration: none;
-  color: var(--gold);
+  color: var(--gold-text);
   white-space: nowrap;
 }
 .builder__link:hover { color: var(--gold-bright); text-decoration: underline; }

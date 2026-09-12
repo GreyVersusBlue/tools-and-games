@@ -37,6 +37,12 @@
 {#- printable adds the print button and per-chapter page breaks; cardsheet is the
     dense variant that must stay on one or two sheets, so it cancels those breaks. -#}
 <body{% if printable or cardsheet %} class="{% if printable %}printable{% endif %}{% if printable and cardsheet %} {% endif %}{% if cardsheet %}cardsheet{% endif %}"{% endif %}>
+  {#- First focusable thing on every page: the header carries four links, a
+      search field and a theme button before <main> begins, and a chapter's
+      sidebar carries every page in its section. Visually hidden until
+      focused (main.css, .skip-link). Every template's <main> carries
+      id="main" and tabindex="-1" so the jump actually moves focus. -#}
+  <a class="skip-link" href="#main">Skip to content</a>
   {% include "partials/header.njk" %}
   {{ content | safe }}
   {% include "partials/footer.njk" %}

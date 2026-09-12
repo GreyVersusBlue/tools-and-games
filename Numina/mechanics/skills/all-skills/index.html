@@ -27,7 +27,7 @@
       } catch (e) {}
     })();
   </script>
-</head><body>
+</head><body><a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
   <a class="wordmark" href="/Numina/">Numina</a>
   <nav class="site-nav" aria-label="Site">
@@ -37,8 +37,7 @@
   </nav>
   <form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form>
-  <button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Toggle color theme" hidden="">◐</button>
+  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -146,7 +145,7 @@
   </script>
 </nav>
 
-  <main data-pagefind-body="" data-pagefind-meta="section:Mechanics" data-autolink="off">
+  <main id="main" tabindex="-1" data-pagefind-body="" data-pagefind-meta="section:Mechanics" data-autolink="off">
     <p class="crumb"><a href="/Numina/mechanics/">Mechanics</a></p>
     <h1>All Skills</h1>
     <p class="lede">Every skill in Numina in one filterable list — 189 of them, with group, cost and a link to the table each one comes from.</p>
@@ -196,6 +195,7 @@
       <p class="skill-filter__count" data-skill-count="" aria-live="polite"></p>
     </form>
 
+    <div class="table-scroll">
     <table class="skill-index">
       <thead>
         <tr><th>Skill</th><th>Group</th><th>Kind</th><th>Cost</th></tr>
@@ -1337,6 +1337,7 @@
         </tr>
       </tbody>
     </table>
+    </div>
     <p class="skill-index__empty" hidden="" data-skill-empty="">No skill matches that filter.</p>
   </main>
 </div>
