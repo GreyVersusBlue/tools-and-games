@@ -8564,6 +8564,88 @@ out of sync.
 **Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
 locked-decision count, 335 → 340.
 
+## Phase 3 — The Serve gate, decided (2026-09-12)
+
+**A ½-session row, batched with Phase 4 at Devon's request, on Claude Opus 5.**
+Decisions #341 to #343. Q2 was still open and nobody was going to answer it, so
+the session did (#341): the cue, which is what the wishlist recommended. The
+Serve button stays loose. A complete cup says **Serve**; a short one says
+**Serve 3/5**, turns a dark amber with a gold inset (6.4:1 on white) and carries
+an `aria-label`/`title` naming every missing line, straight off
+`getOrderRequirements()`; a cup with nothing real in it is disabled and says
+what it needs first, so the disabled state is never mute either.
+
+**What the numbers say, same seeds, before and after.** A scripted player does
+not read a label, so the cue itself cannot move a harness number, and it
+should not: the whole point is that the price of a short serve becomes visible
+to a person. What did move is the food half of the gate (#342).
+
+| player | served | net/day | accuracy | best streak |
+| --- | --- | --- | --- | --- |
+| patient (= the hard gate) | 99.0% → 99.0% | $1,927 → $1,927 | 1.000 → 1.000 | 53.5 → 53.5 |
+| eager (ignores the cue) | 99.5% → 99.4% | $1,281 → $1,457 | 0.590 → 0.719 | 4.4 → 8.7 |
+| shopper | 99.2% → 99.2% | $2,079 → $2,079 | 1.000 → 1.000 | 53.4 → 53.4 |
+
+Patient and shopper are identical to the last printed digit, which is also the
+proof that the barista's rewrite below changed nothing it did. The patient row
+is exactly what the hard gate would produce, so the gap between the two rows,
+$470 a day and 0.281 of accuracy, is what the cue now prints on the button
+before the click. Eager's reputation still slides, but at −6 to −8 a day where it
+was −13 to −16, so it reaches the floor of 0 around day 9 instead of day 5.
+
+**One predicate, now for real.** Each ticket line from `getOrderRequirements()`
+carries a `station` and an `apply(slot)` beside its `label` and `check`. The
+station tabs' "still needed" dot is `stationsNeedingWork(slot)`, the button is
+`serveReadiness(slot)`, and `autoAssistStep()` is six lines: the first unmet
+line's own `apply()`. The page's seven hand-written `needsWork` predicates and
+the barista's hand-copied checks are gone, which closes the standing-backlog
+item about adding a recipe field in three places. The eager autopilot reads
+`serveReadiness().canServe`, the page's own call, instead of mirroring it.
+
+**Three bugs found on the way, all fixed.** The S key called `serveSlot()`
+straight past the disabled button, so an empty cup could be served from the
+keyboard; `serveSlot()` checks the gate now. An empty plate was servable for
+40% the moment a food order reached a station, which no drink ever was. And
+**a hand-built Frappe could never be complete** (#343): the Blend button kept
+an existing base (`cup.base || 'frappeBase'`), so a shot pulled first left the
+base `'espresso'` and the ticket's "Blended base" line could not tick, while a
+shot pulled after blending reset it to `'espresso'` too. Only a barista, who
+writes the base directly, could finish one. The cue found it: the new browser
+beat, run against the old blend, reads **Serve 2/3**.
+
+- **The Serve gate is the cue, not the hard gate** (#341). Q2, answered by the
+  session. `scoreServe()` prices partial credit on purpose, `price * (0.35 +
+  0.65 * ratio)`, and a hard gate deletes the one lever a player has when the
+  queue is full. What was wrong was that the tradeoff was invisible at the
+  click. Reversible in one line: `serveReadiness()`'s `canServe` becomes
+  `missing.length === 0`, and the disabled label already names what is missing.
+- **One requirement list, with a station and a step per line; an empty plate
+  is not an attempt** (#342). The dot, the button, the barista and the scorer
+  read the same lines. A food order's `canServe` is "something is plated",
+  the food equivalent of `cupMatchesEnough()`. The ice line is made at the Milk
+  station, where the ice button is, so an iced drink short only its ice now
+  shows a dot where it had none.
+- **Blending makes the base the blended base; a shot into a blended cup keeps
+  it** (#343). Both orders build a Frappe. No other recipe blends, so nothing
+  else a player can make changes.
+
+**The checks.** `smoke-sim.mjs` 114 → 132, a new section 11 plus one source
+assertion in section 10. `drive-save.mjs` 90 → 99: the empty cup's label, S on
+an empty cup serving nothing, "Serve 1/2" with its class and its missing list,
+the only dot on Milk, plain "Serve" once steamed, a short serve scored at
+exactly 0.5, and a Frappe by hand. `smoke-save.mjs` 166/0, `gvb-save.test.mjs`
+50/0, `balance.mjs` BALANCE OK at every rail. Eight breaks on purpose, each
+failing the assertion that claims it: the food gate reverted, the ice line on
+an `'iced'` station, `missing` counting every line, a syrup `apply()` that does
+nothing (section 3's barista walk and the new apply rail both), the page
+growing a `needsWork` back, `serveSlot()` without its gate, the short cup
+reading plain "Serve", and the old blend. `check-integrity.mjs` the same one
+broken unit, `Tools/prompt-builder.html`; `social:check` the same four
+failures and six pages out of sync.
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 340 → 343.
+
 ---
 
 # The two August 2026 audits

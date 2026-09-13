@@ -4,10 +4,10 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     114 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-sim.mjs     132 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    166 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, a band, ~22 s
-node Projects/corner-and-kettle/test/drive-save.mjs     90 checks, real browser
+node Projects/corner-and-kettle/test/drive-save.mjs     99 checks, real browser
 ```
 
 ## `balance.mjs [runs] [--verbose] [--days N]`
@@ -39,8 +39,9 @@ the ceiling $4,000`).
 Three scripted players, one pair of hands each, a ticket line every
 `HAND_MS` (800 ms, a stated assumption) on the station whose customer has the
 least patience: **patient** serves on `orderIsComplete()`, **eager** the moment
-the page's Serve button would enable (which for food is instantly, an empty
-plate at 40%), and **shopper** is patient hands plus a chalkboard spent by
+the page's Serve button would enable, by calling the same
+`sim.serveReadiness(slot).canServe` the page does (before Phase 3 that was
+instantly for food, an empty plate at 40%), and **shopper** is patient hands plus a chalkboard spent by
 `DEFAULT_PRIORITY` at every close. `purchase()` mirrors the page's
 `doUnlock()` arithmetic until Phase 4 moves that into the sim. `makeShop(seed,
 mutate)` builds a shop and counts fumbles off the toasts; `playDay` and
@@ -54,12 +55,15 @@ the door, so "offered" is what the shop could take, not what came by.
 ## `smoke-sim.mjs`
 
 Drives `../js/sim.js` with `makeRng(seed)` and `advance(dtMs)`, so a
-136-second shift runs in milliseconds and runs the same way twice. Ten sections:
+136-second shift runs in milliseconds and runs the same way twice. Eleven sections:
 the rng; a fixed seed's fixed order sequence; every recipe built by the barista
 against the ticket and the scorer; the scoring curve; `advance(136000)` once
 against 8,160 frames; the timers that used to be separate; baristas on the
-clock; a whole day played by a one-line autopilot; prestige; and a source check
-that the page has no dice or clock of its own. Phase 2's `balance.mjs` builds on
+clock; a whole day played by a one-line autopilot; prestige; a source check
+that the page has no dice or clock of its own and decides neither the tab dots
+nor the Serve gate; and the Serve gate itself (Phase 3): every ticket line's
+station and `apply()`, `serveReadiness()` line by line, the button's count
+against the scorer's ratio, and the empty plate. Phase 2's `balance.mjs` builds on
 the autopilot here.
 
 ## `smoke-save.mjs`
@@ -82,7 +86,9 @@ fire their callbacks and the shift clock never advances, which reads exactly lik
 a broken game.
 
 Thirteen sections: the module script actually running, the seven vendored faces,
-building and serving a drink, the day loop through to the day-end modal, the
+building and serving a drink (with the Serve cue: an
+empty cup's label, S refused on it, "Serve 1/2" on a short cup, a short serve
+scored at exactly 0.5, and a Frappe built by hand), the day loop through to the day-end modal, the
 save round trip, export, a cleared browser restored from the file, four corrupt
 files refused, a save written by the old hand-rolled writer, a hand-edited save
 that used to freeze the game, New Game, and 375×812.

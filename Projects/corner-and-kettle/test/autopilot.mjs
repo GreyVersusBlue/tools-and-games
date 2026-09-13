@@ -4,11 +4,13 @@
 // anything else that wants a whole day played in Node. Three policies:
 //
 //   patient   serves a cup only when orderIsComplete() says the ticket is done
-//   eager     serves the moment the page's Serve button would enable: for a
-//             drink that is cupMatchesEnough() (a base and, sometimes, some
-//             milk), and for food it is *instantly* — the page's canServe is
-//             `slot.food ? true : cupMatchesEnough(...)`, so an eager player
-//             serves an empty plate and is scored 40% for it
+//   eager     serves the moment the page's Serve button would enable, which
+//             is sim.serveReadiness(slot).canServe — the page reads the same
+//             call, so this is the button by construction rather than a copy
+//             of it: a base and, sometimes, some milk; for food, a plate with
+//             anything on it. Until Phase 3 the page's gate was
+//             `slot.food ? true : cupMatchesEnough(...)` and an eager player
+//             served an empty plate for 40% (#342)
 //   shopper   patient hands plus a chalkboard: at every close it spends the
 //             till down a stated priority list, so two upgrade paths can be
 //             compared on the same seeds
@@ -55,7 +57,7 @@ export function makeShop(seed, mutate) {
 /* ---------- serving policies ---------- */
 
 function readyPatient(sim, slot) { return sim.orderIsComplete(slot); }
-function readyEager(sim, slot) { return slot.food ? true : sim.cupMatchesEnough(slot.cup, slot.customer); }
+function readyEager(sim, slot) { return sim.serveReadiness(slot).canServe; }
 
 export const patient = { name: "patient", ready: readyPatient, shop: null };
 export const eager = { name: "eager", ready: readyEager, shop: null };

@@ -1,7 +1,8 @@
 # Corner & Kettle — Feature Wishlist
 
-**Status: Phase 1 shipped 2026-09-13 (PR #263); eight phases are open across
-two arcs, and the next is Phase 2 — `test/balance.mjs`, on Claude Fable 5.1.**
+**Status: Phases 1 to 3 have shipped; the next is Phase 4, on Claude Opus 5;
+Phases 5 to 9 are open after it.** The paragraph below is Phase 1's and is kept for
+the record.
 The shop runs in Node now: `js/content.js` is the tables, `js/sim.js` is
 everything that happens to them behind `createSim({content, rng, state,
 notify})`, and `test/smoke-sim.mjs` (114/0) drives a seeded shift in
@@ -182,10 +183,10 @@ this project does not use it.
 - **Windows is the dev machine** (v7 §7): absolute `import()` paths go through
   `pathToFileURL`, as both suites already do. **The invocations that work,
   from the repo root:**
-  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 114 passed, 0 failed;
+  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 132 passed, 0 failed;
   `node Projects/corner-and-kettle/test/smoke-save.mjs` → 166 passed, 0 failed;
   `node Projects/corner-and-kettle/test/balance.mjs` → BALANCE OK, about 22 s;
-  `node Projects/corner-and-kettle/test/drive-save.mjs` → 90 checks, 0 failed;
+  `node Projects/corner-and-kettle/test/drive-save.mjs` → 99 checks, 0 failed;
   `node assets/js/gvb-save.test.mjs` → 50 passed, when you touch the save
   layer. `npm run games` does not cover this game.
 
@@ -243,10 +244,10 @@ Open and unclaimed. Add here rather than starting a new list.
   importable, so only the save schema has a Node test.~~ Phase 1: 1,223, and
   the sim has `smoke-sim.mjs`. Rendering, the stations and the chalkboard are
   still in the page (Phase 4).
-- `STATION_TAB_DEFS`' `needsWork` (page) and `autoAssistStep()` (sim) re-derive
+- ~~`STATION_TAB_DEFS`' `needsWork` (page) and `autoAssistStep()` (sim) re-derive
   what `getOrderRequirements()` knows — a new recipe field must be added in
-  three places. `smoke-sim.mjs` section 3 now fails if the barista and the
-  ticket disagree, which catches two of the three.
+  three places.~~ Phase 3: every ticket line carries its `station` and its
+  `apply()`, and the dot, the button and the barista all read them (#342).
 - `doUnlock()` is 145 lines of `if (type === ...)`, and every branch that fails
   its affordability test falls through to `toast('Unlocked!')`: buying what you
   cannot afford says you bought it. The only real guard is the `disabled`
@@ -379,33 +380,27 @@ queue (#338); the queue cap throttles "offered" (#336).
 
 ## Phase 3 — The Serve gate, decided
 
-**Round two put a four-line check in front of every order in the game and
-nobody has looked at it since round one.**
+**Shipped 2026-09-12, on Claude Opus 5, batched with Phase 4.** The full
+record is `HISTORY.md`, "Corner & Kettle, arc one", Phase 3, decisions #341 to
+#343. Q2 was answered by the session: **the cue** (#341).
 
-`cupMatchesEnough()` asks for a base and, sometimes, milk; `serveSlot()` scores
-against the full requirement list. The gap between those two is worth $232 and
-54 points of accuracy on a measured day. Devon's answer sets the shape; build it, and
-measure it with Phase 2 rather than by feel.
+- [x] **The cue.** A short cup reads `Serve 3/5`, dark amber with a gold inset,
+  and its `aria-label`/`title` names every missing line off
+  `getOrderRequirements()`. A cup with nothing in it is disabled and says what
+  it needs first. `serveReadiness(slot)` in the sim is the one call.
+- [x] **One predicate.** Every ticket line carries `station` and `apply()`; the
+  tab dots are `stationsNeedingWork(slot)`, `autoAssistStep()` is the first
+  unmet line's `apply()`, and the page's seven `needsWork` predicates are gone
+  (#342).
+- [x] **Numbers in the notes.** Patient $1,927 / 1.000 before and after (it is
+  the hard gate's number); eager $1,281 / 0.590 → $1,457 / 0.719, the whole
+  move being the food gate, since a script does not read a label.
+- [x] **A `drive-save.mjs` beat,** plus two more: S on an empty cup, and a Frappe
+  built by hand. 90 → 99.
 
-- [ ] **If the answer is the cue (recommended):** the Serve button reads
-  `Serve 3/5` when the cup is short and carries a `title`/`aria-label` naming
-  what is missing, straight off `getOrderRequirements()`. Style it as a
-  warning, not a disabled control.
-- [ ] **If the answer is the hard gate:** `canServe` becomes
-  `orderIsComplete(slot)`, and the tooltip says what is missing so a disabled
-  control is never mute.
-- [ ] **Either way, one predicate.** `STATION_TAB_DEFS`' `needsWork` and the
-  ticket checklist read the same `getOrderRequirements()` call instead of
-  re-deriving it.
-- [ ] **Numbers in the notes:** patient and eager autopilots, before and after,
-  on the same seeds.
-- [ ] **A `drive-save.mjs` beat.** Build a deliberately short cup, assert the
-  button's state and text against the DOM (locked decision #39), serve, assert
-  the scored ratio.
-
-*Leans on:* `getOrderRequirements()`, `test/balance.mjs`. *Save:* none.
-*Model:* **Claude Opus 5** — a predicate, a label and a test, on a question
-whose hard part is Devon's answer.
+*Found on the way:* the S key served past the disabled button; an empty plate
+was servable for 40%; and a Frappe could never be completed by hand (#343), all
+three fixed.
 
 ## Phase 4 — The page becomes a view
 
