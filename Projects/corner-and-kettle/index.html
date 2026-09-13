@@ -514,6 +514,34 @@ body{
   background:var(--copper);margin-left:4px;vertical-align:middle;
 }
 
+/* ---------- KEYBOARD LEGEND ---------- */
+#keyLegend{
+  background:var(--cream);
+  border:2px dashed var(--latte);
+  border-radius:10px;
+  padding:6px 9px;
+  font-size:0.72rem;
+  color:#6b5a44;
+  line-height:1.9;
+}
+#keyLegend .legendRow + .legendRow{margin-top:2px;}
+#keyLegend .legendRow b{color:var(--espresso);font-weight:700;}
+#keyLegend .kk{
+  display:inline-block;
+  font-family:'Space Mono',monospace;
+  font-size:0.68rem;
+  background:var(--espresso);
+  color:var(--cream);
+  border-radius:5px;
+  padding:0 5px;
+  margin-right:3px;
+}
+/* A control that is bound but cannot fire yet (Steam Milk with no milk
+   picked). The key still belongs to it, so the map does not shift the moment
+   it becomes usable. */
+#keyLegend .off{opacity:0.45;}
+#keyLegend .off .kk{background:var(--espresso-soft);}
+
 @media (max-width:640px){
   #chalkboard{width:88vw;right:-90vw;}
   #slots{grid-template-columns:repeat(2, 1fr);}
@@ -521,6 +549,7 @@ body{
   .cupwrap{width:80px;height:100px;}
   #counterArea{padding:10px;gap:10px;}
   #stationsPanel{min-width:0;}
+  #keyLegend{font-size:0.68rem;line-height:1.7;}
   .actionbtn{font-size:0.8rem;padding:8px;}
   #topbar h1{font-size:1.2rem;}
   .stat{font-size:0.8rem;padding:4px 9px;}
@@ -557,6 +586,10 @@ body{
 
     <div id="stationsPanel">
       <div id="stationTabs"></div>
+      <!-- The keyboard legend (Phase 8). Every row in it is written by
+           stations.js from the buttons it just rendered, so a legend line and
+           the key that fires it cannot disagree. -->
+      <div id="keyLegend" role="note" aria-label="Keyboard shortcuts"></div>
       <div id="stationsAll"></div>
     </div>
   </div>

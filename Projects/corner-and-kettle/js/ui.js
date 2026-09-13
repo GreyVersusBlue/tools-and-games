@@ -263,8 +263,23 @@ function buy(type, id, extra){
 const stations = createStations({ state, sim, toast, sound, renderAll, saveNow });
 const chalkboard = createChalkboard({ state, sim, buy });
 
-// Digits switch station tabs, "s" serves the focused station — the tabs and
-// Serve were already keyboard-reachable via Tab, this just makes them fast.
+// Both hands on the keys (Phase 8). Digits switch station tabs, `[` and `]`
+// move the focused station, "s" serves it, and everything inside the current
+// tab answers to a letter from stations.js's own map — which is read off the
+// buttons it just rendered and printed in the legend under the tabs, so no
+// binding here is a secret. Every one of these was already reachable by Tab;
+// this makes a rush playable at the speed a rush wants.
+//
+// The two modal overlays return early: the day-end summary and, since Phase 7,
+// the reopen ledger. A digit pressed over either used to switch a tab behind
+// the modal, which drive-save.mjs section 14 now watches for.
+function moveFocusedSlot(delta){
+  const n = state.slots.length;
+  if(n<2) return;
+  state.focusedSlot = (state.focusedSlot + delta + n) % n;
+  renderAll();
+}
+
 document.addEventListener('keydown', (e)=>{
   if(e.metaKey || e.ctrlKey || e.altKey) return;
   const tag = document.activeElement && document.activeElement.tagName;
@@ -276,9 +291,16 @@ document.addEventListener('keydown', (e)=>{
     stations.selectTab(STATION_TAB_DEFS[tabIdx].id);
     return;
   }
+  if(e.key==='[' || e.key===']'){
+    moveFocusedSlot(e.key===']' ? 1 : -1);
+    return;
+  }
   if(e.key==='s' || e.key==='S'){
     if(stations.currentSlot()) serveSlot(state.focusedSlot);
+    return;
   }
+  // Last, so a letter the panel claims can never shadow one of the above.
+  if(stations.pressKey(e.key)) e.preventDefault();
 });
 
 /* ---------- DAY / SHIFT ---------- */

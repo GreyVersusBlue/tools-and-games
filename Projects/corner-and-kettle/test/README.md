@@ -7,7 +7,7 @@ decision #13).
 node Projects/corner-and-kettle/test/smoke-sim.mjs     318 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    230 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, three bands, ~88 s
-node Projects/corner-and-kettle/test/drive-save.mjs    135 checks, real browser
+node Projects/corner-and-kettle/test/drive-save.mjs    156 checks, real browser
 ```
 
 ## `balance.mjs [runs] [--verbose] [--days N]`
@@ -140,13 +140,19 @@ a broken game. It opens `/Projects/corner-and-kettle/` since Phase 4, and
 section 2's offsite check reads `../index.html`, the page actually served; the
 old URL is a stub.
 
-Fourteen sections: the module script actually running, the seven vendored faces,
+Fifteen sections: the module script actually running, the seven vendored faces,
 building and serving a drink (with the Serve cue: an
 empty cup's label, S refused on it, "Serve 1/2" on a short cup, a short serve
 scored at exactly 0.5, and a Frappe built by hand), the day loop through to the day-end modal, the
 save round trip, export, a cleared browser restored from the file, four corrupt
 files refused, a save written by the old hand-rolled writer, a hand-edited save
 that used to freeze the game, New Game, the keyboard and screen-reader pass,
+the station keyboard (Phase 8, section 12b: a full latte built and served with
+the keyboard alone, the legend checked against the buttons' own
+`aria-keyshortcuts` on three tabs, `[` and `]` moving the focus ring in the
+DOM, an unlocked syrup arriving already bound, and the widest tab the game can
+build — six presets plus Save Current fitting the ten-letter map while the six
+deleters take none of it),
 the reopen ledger and the Legacy board (Phase 7: the row's bean figure before
 it is clicked, the ledger naming the till, day, upgrades, staff and reputation
 it would take, cancelling changing nothing, picking a layout doing exactly what
@@ -178,6 +184,16 @@ place: with the real dialog a page that still reached for it hangs the click
 until the CDP timeout, which is a five-minute protocol error instead of a named
 assertion. Refusing also means such a page never opens the ledger, so both
 checks say so plainly.
+
+**A progress-bar button needs the bar's own duration, not a guessed wait.**
+Section 12b asserts that pressing Steam Milk's key with no milk in the cup
+steams nothing, and it passed against a `pressKey` rewritten to reach straight
+past the `disabled` gate — because Steam Milk runs a 900 ms bar and the beat
+waited 200 ms before declaring nothing had happened. Read the number out of
+`sim.cupActionMs(action)` and wait that plus a margin. The sibling mistake is
+`await waitFor(...)` with no assertion after it: a key that does nothing then
+kills the process on an uncaught `TimeoutError` instead of failing a named
+beat. Use `.then(() => true, () => false)` and assert the result.
 
 **Assertions on regulars cannot be exact key matches.** `init()` rebuilds the
 queue with three random orders and each has a 1-in-8 chance of minting a new

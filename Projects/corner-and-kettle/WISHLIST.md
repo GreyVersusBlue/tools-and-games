@@ -1,8 +1,11 @@
 # Corner & Kettle — Feature Wishlist
 
-**Status: arc one has shipped, Phases 1 to 4; arc two is open, Phases 5, 6 and
-7 have shipped, and the next is Phase 8 — Both hands on the keys, on Claude
-Opus 5.** The game lives at `Projects/corner-and-kettle/index.html`
+**Status: arc one has shipped, Phases 1 to 4; arc two has shipped too, Phases
+5 to 9. There is no open phase. What is left is the "What this leaves for a
+later arc" list at the bottom of this file, which is a list of candidates and
+not a ranked arc — the largest of them, reshaping the five recipes that are
+another recipe's requirement list (#365), is a balance change with a sweep
+behind it.** The game lives at `Projects/corner-and-kettle/index.html`
 now. The paragraph below is Phase 1's and is kept for the record.
 The shop runs in Node now: `js/content.js` is the tables, `js/sim.js` is
 everything that happens to them behind `createSim({content, rng, state,
@@ -631,58 +634,69 @@ this horizon averages that away. Not banded, per #147.
 per-prestige reporting. *Save:* additive — `meta: {beans, unlocks}` and
 `layoutId`, outside every field a reopening resets, repaired and clamped.
 
-## Phase 8 — Both hands on the keys
+## Phase 8 — Both hands on the keys — SHIPPED (2026-09-13, #367 to #370)
 
-**Digits switch tabs and `S` serves; everything inside a tab still needs the
-mouse.** One thing Phase 7 added that this has to take into account: the reopen
-ledger is a second modal overlay, and the keydown handler now returns early for
-it as well as the day-end one.
+**Digits switched tabs and `S` served; everything inside a tab needed the
+mouse.** It does not now, and nothing about the map is written down twice.
 
-Deferred twice for the right reason each time — the contents change per tab, so
-a fixed key map needs a legend or it is a secret — and round 3 added an
-argument against doing it at all, since the eager-serve finding says the game
-wants a player who slows down. It belongs after Phase 3 settles what serving
-means, and it belongs at all because a rush is a keyboard game.
+- [x] **Per-tab key map,** read off `#stationsAll .actionbtn` in DOM order
+  after the block renders, rather than written out a second time. Ten letters,
+  `q` through `p`; `data-nokey` opts a control out and the six preset deleters
+  carry it, so six presets plus Save Current all keep a key (#368). A disabled
+  control keeps its key and is dimmed rather than skipped, because skipping is
+  what makes the map shift under a hand that is already moving (#369).
+- [x] **A legend that is always visible,** directly under the station tabs and
+  above the buttons it names. It prints the array `bindKeys()` just returned,
+  so legend and binding are one pass over one list. An unlock can still move a
+  binding — buy Peppermint before Mocha and Mocha takes `e` when it lands —
+  but never silently.
+- [x] **`aria-keyshortcuts` on every bound control,** plus the key in each
+  button's `title`.
+- [x] **`[` and `]` move `state.focusedSlot`,** wrapping, so the last station
+  is one press from the first (#370).
+- [x] **`drive-save.mjs` section 12b:** a full latte built and served with the
+  keyboard alone, the legend checked against the buttons on three tabs, the
+  focus ring in the DOM following `[` and `]`, an unlocked syrup arriving
+  already bound, and the widest tab the game can build. 135 → 156 checks.
 
-- [ ] **Per-tab key map,** built from the tab's rendered contents rather than
-  hardcoded, so an unlock does not silently shift every binding.
-- [ ] **A legend that is always visible** in the station panel, showing the
-  current tab's keys and updating on unlock — because legend and binding come
-  from the same array.
-- [ ] **`aria-keyshortcuts` on every bound control,** matching the pattern
-  already on the tabs and Serve.
-- [ ] **Slot focus on the keys too:** `[` and `]` move `state.focusedSlot`
-  across two to four stations, since `S` already depends on it.
-- [ ] **A `drive-save.mjs` beat that builds and serves a full drink with the
-  keyboard alone,** asserting against the DOM, extending section 12.
+**What `pressKey` does and does not do.** It clicks the button. The progress
+bar, the sound, the toast and the refusal to fire while `disabled` are all the
+click's, and none of them is restated — a `btn.disabled` check there is
+unreachable, since `.click()` on a disabled button dispatches nothing (#369).
 
-*Leans on:* `STATION_TAB_DEFS`, `stationBlockHtml()`. *Save:* none.
-*Model:* **Claude Opus 5** — UI wiring and a test beat around an existing
-pattern.
+*Leaned on:* `STATION_TAB_DEFS`, `stationBlockHtml()`. *Save:* none.
 
-## Phase 9 — Join `npm run games`
+## Phase 9 — Join `npm run games` — SHIPPED (2026-09-13, #371 to #373)
 
-**The registry entry already exists; nothing reads it.**
+**The registry entry existed since Phase 4 and nothing read it.** It does now.
 
-`Tools/board-check/games.mjs` line 211 already holds a `'corner-and-kettle'`
-entry with viewport, save key and a working `open()` that clicks a customer,
-opens the Base station, pulls a shot and waits on `__CK_DEBUG__`. What is
-missing is a section in `play-games.mjs` — prompt 22's file, so this phase is
-mostly a request written well enough to apply blind.
+- [x] **The section is in `play-games.mjs`, not in a request** (#371). The
+  wishlist said to write it into the notes' Shared-file requests well enough to
+  apply blind, because a shared file belonged to one session then; the root
+  `CLAUDE.md` retired that queue, and a shared-file edit goes in the same PR as
+  the project change. So it shipped tested rather than described.
+- [x] **Sixteen beats, none of them `drive-save.mjs`'s.** The cup `open()`
+  pulled, read off the Base station's own hint; Phase 8's `2` switching tabs
+  with the legend matching the buttons; an arbitrary ticket finished with
+  `autoAssistStep()` and served with a real mouse click; `dayStats` moving by
+  one; the shift clock advancing the phase; and a reload resuming the same day
+  and till rather than rolling over.
+- [x] **Prove it locally first** — the same beats ran green from
+  `drive-save.mjs` before the shared section was written.
+- [x] **Repoint the registry `url`:** done in Phase 4 (#347). The scheduling
+  constraint still holds: `npm run games` opens a real visible window and
+  Chrome throttles one that loses focus, so only one suite at a time.
 
-- [ ] **Write the section as a diff in the notes' Shared-file requests:** the
-  beats to assert (a cup gets a shot, a served order moves `dayStats`, a reload
-  resumes the shift), the exact `GAMES['corner-and-kettle'].open(p)` call, and
-  the port to reserve.
-- [ ] **Prove it locally first** by running the same beats from
-  `drive-save.mjs`, so the request ships tested rather than plausible.
-- [x] **Repoint the registry `url`:** done in Phase 4 (#347). Still note the scheduling constraint the prompt already carries:
-  `npm run games` opens a real visible window and Chrome throttles one that
-  loses focus, so only one suite at a time.
+**No port to reserve.** `play-games.mjs` runs every game on 8126, one page at a
+time; `drive-save.mjs` keeps 8131.
 
-*Leans on:* `Tools/board-check/games.mjs`, `drive-save.mjs`. *Save:* none.
-*Model:* **Claude Opus 5** — test wiring around an existing pattern, most of it
-written as a request rather than a commit.
+**Nine failures in the full run are not this game's** (#373). Seven in Golden
+Hour, one aborted Integer Foundry run, one in The Fourth Quarter — all of them
+reproduce on `main` with this batch stashed, Golden Hour's are the class #53
+calls inconclusive under a software-rendered Chromium, and `npm run games` is
+outside CI on purpose (#353).
+
+*Leaned on:* `Tools/board-check/games.mjs`, `drive-save.mjs`. *Save:* none.
 
 ## What this leaves for a later arc
 

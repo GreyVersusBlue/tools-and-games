@@ -960,6 +960,116 @@ const SUITES = {
     }
   },
 
+  // ---- Corner & Kettle ------------------------------------------------------
+  // The registry entry for this one has existed since Phase 4 and nothing read
+  // it (Phase 9). The project's own drive-save.mjs is the deep browser suite —
+  // 156 beats on the save schema, the ledger and the keyboard — so nothing
+  // here repeats it. This is the shared suite's question instead: does a shift
+  // actually run, does serving a cup move the day's numbers, and does the shop
+  // come back after a reload.
+  'corner-and-kettle': async (p, t) => {
+    // games.mjs's open() already took a customer and pulled a shot. Assert
+    // what a player would see of it, on the page rather than in the state: the
+    // ticket is up and the Base station counts the shot in the cup.
+    const opened = await p.evaluate(() => ({
+      tickets: document.querySelectorAll('.slot .ticket').length,
+      hint: document.querySelector('#stationsAll .draghint')?.textContent.trim() || '',
+      tab: document.querySelector('.stationTab.active')?.dataset.tab || '',
+      serve: document.querySelector('.slot .servebtn')?.textContent.trim() || '',
+    }));
+    t.ok(opened.tickets === 1 && /Shots in cup: 1/.test(opened.hint),
+      'a customer is at a station and the cup has the shot open() pulled',
+      `${opened.tickets} ticket(s), "${opened.hint}"`);
+    t.ok(opened.tab === 'base', 'the Base station is the one on screen', opened.tab);
+    await t.shot('shot-pulled');
+
+    // Phase 8's keyboard, from the shared suite's side: the digit switches the
+    // tab, and the legend under the tabs redraws to the new tab's controls. The
+    // legend is built from the buttons it just rendered, so a legend that
+    // disagrees with them is the wiring break this is looking for.
+    await p.keyboard.press('2');
+    await wait(150);
+    const keys = await p.evaluate(() => ({
+      tab: document.querySelector('.stationTab.active')?.dataset.tab || '',
+      legend: [...document.querySelectorAll('#keyLegend .legendRow')].slice(1)
+        .flatMap(r => [...r.querySelectorAll('.kk')].map(k => k.textContent.trim().toLowerCase())),
+      bound: [...document.querySelectorAll('#stationsAll .actionbtn:not([data-nokey])')]
+        .map(b => b.getAttribute('aria-keyshortcuts')),
+    }));
+    t.ok(keys.tab === 'milk', 'pressing 2 switched to the Milk station', keys.tab);
+    t.ok(keys.bound.length === 7 && keys.bound.every(Boolean)
+      && keys.legend.join('') === keys.bound.join(''),
+      'every control there is bound, and the legend prints the same keys',
+      `${keys.bound.join('')} vs legend ${keys.legend.join('')}`);
+
+    // Finish whatever the ticket asks for with the game's own barista step, then
+    // serve it with a real click. The order is randomised per boot and can be
+    // food, so building it by hand here would be a second copy of the ticket
+    // rules; the click on Serve is the part that has to be real.
+    const built = await p.evaluate(() => {
+      const d = window.__CK_DEBUG__;
+      const slot = d.state.slots.find(s => s !== null);
+      for (let i = 0; i < 12 && d.autoAssistStep(slot); i++);
+      d.renderAll();
+      return { complete: d.orderIsComplete(slot), food: !!slot.food };
+    });
+    t.ok(built.complete, 'the ticket can be finished', built.food ? 'a food order' : 'a drink');
+    const before = await p.evaluate(() => {
+      const s = window.__CK_DEBUG__.state;
+      return { money: s.money, drinks: s.dayStats.drinksServed, food: s.dayStats.foodServed,
+        served: s.dayStats.drinksServed + s.dayStats.foodServed, day: s.day };
+    });
+    const serveText = await p.$eval('.slot .servebtn', el => el.textContent.trim());
+    t.ok(serveText === 'Serve', 'and the button says so rather than "Serve 2/3"', serveText);
+    await p.click('.slot .servebtn');
+    await wait(900);
+    const after = await p.evaluate(() => {
+      const s = window.__CK_DEBUG__.state;
+      return { money: s.money, served: s.dayStats.drinksServed + s.dayStats.foodServed,
+        combo: s.combo, cleared: s.slots.every(x => x === null) };
+    });
+    t.ok(after.served === before.served + 1, 'serving it moved the day\'s count',
+      `${before.served} -> ${after.served} served`);
+    t.ok(after.money > before.money, 'and paid for it', `$${before.money} -> $${after.money}`);
+    t.ok(after.combo >= 1 && after.cleared, 'the streak started and the station cleared',
+      `combo ${after.combo}`);
+    await t.shot('order-served');
+
+    // The clock. SHIFT_MS is the whole day, and the phase label is the only
+    // place a player sees it move; a stalled requestAnimationFrame reads as a
+    // shop where nothing ever arrives.
+    const phase0 = await p.$eval('#phaseLabel', el => el.textContent);
+    await p.evaluate(() => { window.__CK_DEBUG__.state.shiftElapsed = 34000 * 1.2; });
+    await wait(500);
+    const phase1 = await p.$eval('#phaseLabel', el => el.textContent);
+    t.ok(phase0 !== phase1, 'the shift clock advances the phase', `${phase0} -> ${phase1}`);
+    const queued = await p.$$eval('#queueRow .customer', els => els.length);
+    t.ok(queued > 0, 'and there are customers in the line', `${queued} waiting`);
+
+    // The reload. Today's stats are deliberately not persisted, so the beat is
+    // the shop itself: same day, same till, a shift still running, and the page
+    // back to a state you can play from rather than a blank counter.
+    const saved = await savedState(p, 'corner-and-kettle');
+    t.ok(saved && saved.day === before.day && saved.money === after.money,
+      'the shop reached the save', saved ? `day ${saved.day}, $${saved.money}` : 'no save');
+    await p.reload({ waitUntil: 'load' });
+    await waitFor(p, () => !!window.__CK_DEBUG__, { timeout: 10000 });
+    const back = await p.evaluate(() => {
+      const s = window.__CK_DEBUG__.state;
+      return { day: s.day, money: s.money, running: s.shiftRunning,
+        queue: document.querySelectorAll('#queueRow .customer').length,
+        tabs: document.querySelectorAll('.stationTab').length,
+        dayLabel: document.getElementById('dayNum').textContent };
+    });
+    t.ok(back.day === before.day && back.money === after.money && back.running,
+      'a reload resumes the same shift rather than starting a new day',
+      `day ${back.day}, $${back.money}, running ${back.running}`);
+    t.ok(back.dayLabel === String(back.day) && back.queue > 0 && back.tabs === 7,
+      'and the page redrew from it — the topbar, the queue and all seven stations',
+      `day ${back.dayLabel}, ${back.queue} in line, ${back.tabs} tabs`);
+    await t.shot('after-reload');
+  },
+
   // ---- Torchbearer ----------------------------------------------------------
   // games.mjs's open() already Shelf-loaded Thornwake and imported the committed
   // save; it lands on bridge-fog and stops there, per that project's own
