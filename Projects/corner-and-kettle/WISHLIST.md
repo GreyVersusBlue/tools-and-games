@@ -1,8 +1,8 @@
 # Corner & Kettle — Feature Wishlist
 
-**Status: arc one has shipped, Phases 1 to 4; arc two is open, Phases 5 and 6
-have shipped together, and the next is Phase 7 — A reopening worth doing, on
-Claude Opus 5.** The game lives at `Projects/corner-and-kettle/index.html`
+**Status: arc one has shipped, Phases 1 to 4; arc two is open, Phases 5, 6 and
+7 have shipped, and the next is Phase 8 — Both hands on the keys, on Claude
+Opus 5.** The game lives at `Projects/corner-and-kettle/index.html`
 now. The paragraph below is Phase 1's and is kept for the record.
 The shop runs in Node now: `js/content.js` is the tables, `js/sim.js` is
 everything that happens to them behind `createSim({content, rng, state,
@@ -578,40 +578,65 @@ exported off `createSim()` for testing. Save schema: `regulars[name]` gained
 constants, `js/chalkboard.js`'s Staff section, `js/draw.js`'s
 `regularMoodEmoji()`, `js/ui.js`'s queue card and day-end modal.
 
-## Phase 7 — A reopening worth doing
+## Phase 7 — A reopening worth doing — SHIPPED (2026-09-13, #360 to #366)
 
-**Prestige takes your whole shop and returns five percent.**
+**Prestige takes your whole shop and returns five percent.** It returns rather
+more than that now, and the ledger says what the trade is before you take it.
 
-`doPrestige()` clears unlocks, staff, upgrades, loyalty, shields and regulars,
-sets `money = 60 + prestigeLevel*20`, and grants +5% income plus a harder
-floor. From day 6 it is available, and from day 6 it is unattractive.
+- [x] **A permanent unlock currency.** Beans, `state.meta.beans`, earned at
+  every reopening from the two facts a run ends with: one per two days
+  survived and one per twenty reputation at close. A day-12 close at
+  reputation 70 pays 8. `META_UPGRADES` is the tree they buy — Mocha and Cold
+  Brew on the menu for good, a third counter, a barista already hired, and two
+  10%-off-the-board tiers. Bought once, owned in every run after, including
+  the one it was bought in.
+- [x] **A menu that grows across runs.** Four recipes past the fifteen, gated
+  on prestige level and never on money: Cortado at 1, Espresso Tonic at 2,
+  Iced Matcha Latte at 3, Vanilla Bean Frappe at 4. Every one buildable out of
+  the day-one milks and syrups, and every one a requirement list the menu did
+  not already have. `run netPerDay` moved $2,430 → $2,486 on the strength of
+  it, and `stress patienceAtServe` 0.905 → 0.846, because a level-5 shop sells
+  harder drinks.
+- [x] **Shop layouts.** `SHOP_LAYOUTS`: The Corner Shop (day one, unchanged),
+  The Kiosk at 1 (+2 in the queue), The Roastery at 2 (three stations and the
+  Dual-Boiler installed), The Grand Café at 4 (both). Chosen at the reopening;
+  content only, no new mechanic. **The queue bonus turned out to be a trade,
+  not an upgrade** (#366): at level 5 a cap of 7 leaves 8.2 in line against
+  6.1 and serves 64.6 against 65.3, because patience drains in the line and
+  one pair of hands cannot work a longer one.
+- [x] **Tell the player what they are trading.** `sim.reopenPreview()` returns
+  kept, earned and lost as three lists with the actual numbers in them — the
+  till, the day, the upgrade count, the staff, the recipes money bought, the
+  loyalty tier, the shields, the reputation — and `#reopenOverlay` renders
+  them with the layout choices. The `window.confirm` it replaced said "most
+  upgrades" and named nothing.
+- [x] **`balance.mjs` across the loop.** `loopSweep()` plays the same twelve
+  seeds three ways — never reopening, reopening and wasting the beans,
+  reopening and spending them well — and `BAND.loop` holds both edges at 1.0.
+  Measured 1.069 and 1.066 over 60 days with one reopening, paying back on
+  day 35 to 37.
 
-- [ ] **A permanent unlock currency,** earned per reopening from days survived
-  and reputation reached, spent on a small tree: a recipe that starts unlocked,
-  a starting station slot, a starting barista, a cheaper chalkboard.
-- [ ] **A menu that grows across runs.** Recipes past the current fifteen,
-  gated on prestige level rather than money, so reopening adds to the game
-  instead of subtracting from it.
-- [ ] **Shop layouts:** a named starting configuration per prestige tier
-  (station count, queue capacity, one free upgrade), chosen at reopening —
-  content in `content.js`, no new mechanics.
-- [ ] **Tell the player what they are trading.** The reopen confirmation lists
-  what is kept, lost and earned, instead of a `window.confirm` with one
-  sentence.
-- [ ] **`balance.mjs` across the loop:** days-to-reopen and net at prestige 0
-  through 5, spent well and spent badly, and a band saying a reopening is never
-  strictly worse than not reopening.
+**What the sweep found, and the band says out loud.** A reopening costs the
+whole till and the whole shop at once and repays it through the level's
+`spawnFactor()` floor, which is a rate: the payback is about 25 days. Two
+reopenings inside 30 days never repay — 0.85 of never reopening, which is the
+game this phase was written against. And **the Legacy tree is measurably
+indistinguishable from wasting the beans** at one pair of hands (1.069 against
+1.066): the shopper's income is set by how many customers the door lets in,
+which is the level's, and an unlock worth a few hundred dollars cannot be heard
+against a $176,000 run. The tree changes the first shift after a reopening;
+this horizon averages that away. Not banded, per #147.
 
-*Leans on:* `doPrestige()`, `content.js`, Phase 2's per-prestige reporting.
-*Save:* additive — a `meta` record for permanent unlocks and currency, outside
-the per-run fields, repaired and clamped. *Model:* **Claude Opus 5** — content
-tables and a purchase tree over a save append whose shape `repairSave` already
-establishes.
+*Leaned on:* `doPrestige()` → `prestige(layoutId)`, `content.js`, Phase 2's
+per-prestige reporting. *Save:* additive — `meta: {beans, unlocks}` and
+`layoutId`, outside every field a reopening resets, repaired and clamped.
 
 ## Phase 8 — Both hands on the keys
 
 **Digits switch tabs and `S` serves; everything inside a tab still needs the
-mouse.**
+mouse.** One thing Phase 7 added that this has to take into account: the reopen
+ledger is a second modal overlay, and the keydown handler now returns early for
+it as well as the day-end one.
 
 Deferred twice for the right reason each time — the contents change per tab, so
 a fixed key map needs a legend or it is a secret — and round 3 added an
@@ -668,6 +693,21 @@ written as a request rather than a commit.
   upgrade left.
 - **A second shop.** `franchise` costs $5,000, says "Second Location," and
   grants +10% income. There is no second location.
+- **Five recipes are another recipe's requirement list under a second name**
+  (#365). Cappuccino asks for exactly what Latte asks for; Cold Brew and Nitro
+  Cold Brew for what Iced Coffee asks for; Affogato and Doppio for what
+  Americano asks for. The player builds the identical cup and the higher price
+  is free money. Phase 7 found it while checking its own four were distinct, and
+  named the five in `smoke-sim.mjs` section 15 rather than reshaping shipped
+  recipes as a side effect. Fixing it means giving each a requirement the
+  others do not have — a steamed-milk step, a shot count, a syrup — which is a
+  balance change with a sweep behind it, not a content edit.
+- **A Legacy tree that the loop sweep can hear.** Phase 7's is honest content
+  and measurably worth about nothing to a shopper (see its entry). The lever
+  with real leverage is the one the level already pulls: the door. An unlock
+  that moved `spawnFactor()` or `patienceFactor()` would show up, and would
+  also be a permanent multiplier stacking on a permanent multiplier, which is
+  why this phase did not reach for one.
 - **A tutorial.** The first shift explains nothing; the chalkboard is a wall of
   prices.
 - **Difficulty presets** for players who want the Morning Rush without the

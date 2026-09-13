@@ -9135,6 +9135,126 @@ only), `assets/js/README.md`, `assets/js/gvb-save.test.mjs`,
 
 # The two August 2026 audits
 
+## Phase 7 — A reopening worth doing (2026-09-13)
+
+**Rank 1, on Claude Opus 5, taken alone as the size table says a 1-session row
+should be.** Decisions #360 to #366, PR #280. `smoke-sim.mjs` 220 → 318,
+`smoke-save.mjs` 183 → 230, `drive-save.mjs` 100 → 135, `balance.mjs` BALANCE
+OK with a third banded batch and 63 s → 88 s.
+
+Prestige was available from day 6 and unattractive from day 6: `doPrestige()`
+cleared the unlocks, staff, upgrades, loyalty, shields and standing orders, set
+the till to `60 + level*20`, and handed back +5% income and a harder floor. The
+wishlist's own words. Five bullets later it is a trade with a price tag on it.
+
+- **A reopening is a trade now: beans, a Legacy tree, shop layouts, and a
+  ledger instead of a sentence** (#360). Beans (`state.meta.beans`) are the
+  only thing a reopening pays out: one per two days survived and one per twenty
+  reputation at close, so a day-12 close at reputation 70 is worth 8.
+  `META_UPGRADES` is what they buy — Mocha and Cold Brew on the menu for good
+  (2 and 3 beans), a third counter (4), a Junior already hired at the reopening
+  (5), and two 10%-off-the-board tiers (6 and 10). `SHOP_LAYOUTS` is the
+  starting configuration, picked at the reopening: The Corner Shop is day one
+  unchanged, The Kiosk at level 1 adds two to the queue, The Roastery at 2 opens
+  with three stations and the Dual-Boiler installed, The Grand Café at 4 does
+  both. `sim.reopenPreview()` is the ledger — kept, earned and lost as three
+  lists with the real numbers in them — and `#reopenOverlay` renders it with
+  the layout buttons. The `window.confirm` it replaced said "resets day, money,
+  and most upgrades" and named nothing. `prestige(layoutId)` with no argument
+  is still exactly the old reopening, which is what let `playRun` keep working
+  and `balance.mjs`'s existing numbers stay comparable.
+- **A run's menu is derived, never stored** (#361). Three things can put a
+  recipe on the menu — money bought it, the shop has reopened enough times, or
+  a bean unlock put it there for good — and only the first is written into
+  `state.unlockedRecipes`. `recipeAvailable(id)` reads the other two off the
+  prestige level and the owned unlock set every time it is asked. The
+  alternative was writing the grants in, which means `purchase`, `prestige`
+  and `repairSave` each had to remember to, and three copies of a rule is the
+  affordability bug of #344 one layer down. It also pays for itself in the
+  tests: `balance.mjs`'s stress batch mutates a prestige level onto a fresh
+  state and gets the level-5 menu with it, no third call needed.
+- **Beans are a second currency inside the one purchase table** (#362). The
+  Legacy row carries `currency: 'beans'`; `canBuy()` reports it and
+  `purchase()` reads it to know which pot the cost comes out of. One table
+  still holds every chalkboard button, which is the whole point of #344, and
+  the discount never touches a bean price — a tree that discounted itself would
+  pay for itself.
+- **Every price the chalkboard prints is `canBuy().cost`** (#363). The rows
+  printed `$${u.cost}` straight off the tables, which was correct until a
+  Legacy unlock could take 20% off the board. A button that says $350 and
+  charges $280 is #344 again, so `dis()` gained a sibling `price()` and eleven
+  rows now read both from the same call. Verified by making `need()` ask the
+  undiscounted price: a till holding exactly $280 was refused with "Not enough
+  money: $350 needed."
+- **The loop band is 60 days and one reopening, and the engine is the spawn
+  floor** (#364). `loopSweep()` plays twelve seeds three ways — never
+  reopening, reopening and wasting the beans, reopening and spending them well
+  — and `BAND.loop` holds both edges at 1.0: a reopening is never strictly
+  worse than not reopening. Measured 1.069 and 1.066, paying back on day 35 to
+  37, stable to 0.01 from 8 seeds to 24. The horizon is the finding, not a
+  convenience: **two reopenings inside 30 days come to 0.85 of never
+  reopening**, because a reopening costs the whole till at once and repays it
+  through a rate. What holds the rail above 1.0 is `spawnFactor()`'s prestige
+  floor and not the +5%-per-level income — removing the income bonus leaves it
+  at 1.051, inside the band, while pinning the spawn floor at 0.6 regardless of
+  level puts it at 0.984 with no payback day at all. That is the break the rail
+  was verified against (#34), and it names the engine: a reopening is worth it
+  because the door opens faster.
+- **Five recipes were already another recipe's requirement list, and they stay
+  that way** (#365). Written while checking Phase 7's own four were distinct —
+  two recipes with the same requirement list are one drink at two prices — the
+  assertion came back naming Cappuccino, Cold Brew, Nitro Cold Brew, Affogato
+  and Doppio. Cappuccino asks for exactly what Latte asks for. Reshaping five
+  shipped recipes is a balance change with a sweep behind it, not a side
+  effect of this phase, so the five are named in the assertion instead: the
+  list *is* the check, so reshaping one fails the line and gets read, and a
+  second line holds the prestige-gated four to the rule. Carried to the
+  wishlist's later-arc list with what fixing it would take.
+- **A layout's queue bonus is a trade, not an upgrade** (#366). The Kiosk's +2
+  was meant as a straight gain, and the prestige-floors table had said for two
+  rounds that "offered is throttled by the queue cap of 5". Measured at level 5
+  on day 30, a cap of 7 leaves 8.2 in line against 6.1 and serves 64.6 against
+  65.3: patience drains in the line and nowhere else, and one pair of hands
+  cannot work a longer one. It stays as it is, described as what it is, on the
+  pattern `sign` already set — a risk upgrade. For a shopper with baristas the
+  cap never binds at all and the bonus is worth $0 to the dollar, which is the
+  same finding from the other end.
+
+**What the loop sweep cannot hear, said out loud rather than banded** (#147).
+Spending the beans well comes to 1.069 and wasting them to 1.066, and this
+sweep cannot tell those apart. The reason is in the table above it: a shopper's
+income is set by how many customers the door lets in, the door is the prestige
+level's spawn floor, and every Legacy unlock is worth a few hundred dollars of
+shopping against a $176,000 run. Measured one at a time after a reopening, all
+of them sit inside ±1.5% of nothing — A Third Counter slightly negative, since
+a third station spreads one pair of hands thinner. The tree changes the first
+shift after a reopening, and a 60-day mean averages that away. A rail claiming
+otherwise would be measuring seed noise.
+
+**Two guard-rails that did not guard, caught by breaking them** (#34). The
+`META_DISCOUNT_MAX` assertion read `metaDiscount() <= META_DISCOUNT_MAX` against
+a tree that sums to 20% under a 50% cap — an assertion that cannot fail, proved
+by deleting the clamp and watching the suite stay green. It now builds a second
+sim on a patched content object whose two tiers are 45% each, which `createSim`
+taking its tables as an argument makes possible without touching the shipped
+ones. And the claim that beans are counted "before the level goes up" was true
+but not load-bearing: `beansFromRun()` does not read the level. What it reads is
+`day` and `reputation`, so the order that matters is *before the resets* —
+moved below them, a day-10 close pays 2 beans instead of 8. The comment says
+that now.
+
+**Two smaller things this needed.** `smoke-save.mjs`'s `CATALOG` is a hand copy
+of the ids in `content.js`, and Phase 7 added four recipes and two new id lists
+to drift from; eleven lines now check each list against the real table, and
+without them a new recipe id would be silently dropped from every save the
+suite reads while it still said 187 passed. And the Legacy buttons sit ~3,100 px
+down the chalkboard's scroll panel, where a bare `page.click()` landed on
+nothing and reported nothing — which is how section 14 first "passed" a
+purchase that never happened. `clickInChalkboard()` scrolls the row to the
+middle of the panel first and then clicks it with the real mouse, so hit-testing
+still applies; a panel translated off-screen entirely is a different failure
+("not clickable or not an Element") and needs the toggle, not a scroll.
+
 ## Numina, August 2026
 
 An audit of the Eleventy rules site: 55 pages, ~136,000 words of source
