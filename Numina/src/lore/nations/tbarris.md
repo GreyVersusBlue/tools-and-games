@@ -1,5 +1,6 @@
 ---
 name: T'barris, the Serpent Kingdom
+culture: "T'barris"
 title: T'barris, the Serpent Kingdom
 order: 15
 color: "#14584a"

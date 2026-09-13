@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/">Lore</a>
     <a href="/Numina/mechanics/" aria-current="true">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -215,8 +219,8 @@
 <li><strong><a class="autolink" href="/Numina/mechanics/skills/open-skills/#hafted-weapons">Hafted Weapons</a>:</strong> include those weapons up to 72’ in length, to include polearms, giant hammers and other larger weapons.</li>
 <li><strong>Two-Handed Weapon Requirements:</strong> Spears, staves, glaives, and other two-handed weapons require two hands to wield unless a specific skill allows for the use of that weapon in one hand.</li>
 <li><strong>Shield Size Limits:</strong> A full-sized shield cannot be more than 60&quot; in the combination of width and length, and no more than 36’ in any one dimension. For example, a rectangular shield can be 36’ long and 24’ wide. Whereas a circular shield can be 30’ in diameter.</li>
-<li><strong>Buckler rules:</strong> <To Be="" Inserted="" Later=""></To></li>
-<li><strong>Bow rules:</strong> <To Be="" Inserted="" Later=""></To></li>
+<li><strong>Buckler rules:</strong> &lt;To Be Inserted Later&gt;</li>
+<li><strong>Bow rules:</strong> &lt;To Be Inserted Later&gt;</li>
 <li><strong>Two Weapons:</strong> To wield a weapon in each hand in combat requires a skill which grants the ability to have a second weapon. If you do not have such a skill then the second weapon is treated as a non-combat object and, as with all non-combat objects, if struck you either must drop the weapon or take the damage done to the weapon.</li>
 <li><strong>Adventurer Skills:</strong> Every player gains the ability to use certain weapons through Adventuring Skills.</li>
 </ul>
@@ -418,7 +422,7 @@
 <tr id="diagnose"><td>Diagnose<a class="skill-anchor" href="#diagnose" aria-label="Link to Diagnose" title="Link to this skill" data-pagefind-ignore=""><span class="skill-anchor__mark" aria-hidden="true"></span></a></td>
 <td>Included</td>
 <td>See Description</td>
-<td>and say ‘Diagnose <Trait>’ or ‘Diagnose <Effect>’. You may only Diagnose a specific <a class="autolink" href="/Numina/lore/glossary/#trait">Trait</a> and only Traits which are Elemental, Mental, Metabolic, or Physical. You may also diagnose any standard effect, but you may not diagnose inflicts. You may also ‘Diagnose Damage’ to determine how much damage someone has taken.</Effect></Trait></td>
+<td>and say ‘Diagnose &lt;<a class="autolink" href="/Numina/lore/glossary/#trait">Trait</a>&gt;’ or ‘Diagnose &lt;Effect&gt;’. You may only Diagnose a specific Trait and only Traits which are Elemental, Mental, Metabolic, or Physical. You may also diagnose any standard effect, but you may not diagnose inflicts. You may also ‘Diagnose Damage’ to determine how much damage someone has taken.</td>
 <td>N/A</td>
 </tr>
 <tr id="improvisation"><td>Improvisation<a class="skill-anchor" href="#improvisation" aria-label="Link to Improvisation" title="Link to this skill" data-pagefind-ignore=""><span class="skill-anchor__mark" aria-hidden="true"></span></a></td>
@@ -494,5 +498,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

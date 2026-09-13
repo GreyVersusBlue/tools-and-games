@@ -1,5 +1,6 @@
 ---
 name: Konnigstrava
+culture: Konnigstrava
 title: Konnigstrava
 order: 6
 color: "#a8851f"

@@ -1,5 +1,6 @@
 ---
 name: Dovenost
+culture: Dovenost
 title: Dovenost
 order: 2
 color: "#33689f"

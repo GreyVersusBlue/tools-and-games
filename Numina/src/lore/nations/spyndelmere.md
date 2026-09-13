@@ -1,5 +1,6 @@
 ---
 name: Spyndelmere
+culture: Spyndelmere
 title: Spyndelmere
 order: 14
 color: "#55913d"

@@ -33,13 +33,21 @@ const PAGE_DIRS = ["lore", "mechanics", "new-to-numina", "search"];
 // Eleventy passes the whole folder through — stays out without being named.
 const ASSET_DIRS = ["css", "js", "fonts", "assets"];
 const ASSET_EXTENSIONS = [".css", ".js", ".woff2", ".svg", ".png"];
-// Pagefind's fixed-name files: the loader, the default UI, its stylesheet, the
+// Pagefind's fixed-name files: the loader, the Component UI, its stylesheet, the
 // two wasm builds and the entry manifest. Everything else in that folder is
 // named after a content hash (see the note above).
+//
+// Phase 8 swapped the Default UI (pagefind-ui.js and pagefind-ui.css) for the
+// Component UI here, in the same commit that changed which of them the pages
+// load. Pagefind still writes the Default UI's two files on every build and
+// nothing loads them, so precaching them would put 100 KB on every device to
+// serve no page; precaching the wrong pair would leave the field kit with a
+// search bundle that is not there. test/smoke.mjs checks this list against the
+// scripts and stylesheets the built pages actually reference.
 const PAGEFIND_FILES = [
+  "pagefind-component-ui.css",
+  "pagefind-component-ui.js",
   "pagefind-entry.json",
-  "pagefind-ui.css",
-  "pagefind-ui.js",
   "pagefind.js",
   "wasm.en.pagefind",
   "wasm.unknown.pagefind",

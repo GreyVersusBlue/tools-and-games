@@ -1,5 +1,6 @@
 ---
 name: Vale of Scyllina
+culture: Scyllina
 title: Vale of Scyllina
 order: 16
 color: "#4292ad"

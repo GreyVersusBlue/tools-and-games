@@ -588,6 +588,37 @@ main { min-width: 0; max-width: 70ch; }
 .infobox dl { margin: 0; }
 .infobox dl dt { margin-top: 0.5rem; }
 
+/* ---------- generated "See also" (tools/see-also.mjs) ---------- */
+/* Deliberately not a framed panel. These blocks are a footnote to the section
+   above them — one on every nation page and one under each of the six Domains —
+   and six engraved boxes down one chapter would read as six more cards. */
+.see-also {
+  margin: 1.5rem 0 2rem;
+  padding-left: 1rem;
+  border-left: 3px solid var(--gold-dim);
+  font-size: 0.95rem;
+}
+.see-also__title {
+  margin: 0 0 0.5rem;
+  font-family: var(--caps);
+  font-size: 1.05rem;
+  letter-spacing: 0.05em;
+  color: var(--heading);
+}
+.see-also dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+.see-also dt {
+  font-family: var(--caps);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+.see-also dd { margin: 0; }
+
 /* ---------- "on this page" contents ---------- */
 .toc {
   margin: 1.5rem 0 2rem;
@@ -888,6 +919,12 @@ main { min-width: 0; max-width: 70ch; }
 .timeline__body h3 { margin: 0 0 0.2rem; }
 .timeline__body p { margin: 0; color: var(--ink-soft); }
 .timeline__more { font-family: var(--caps); font-size: 0.85rem; white-space: nowrap; }
+.timeline__nations {
+  margin: 0.35rem 0 0;
+  font-family: var(--caps);
+  font-size: 0.85rem;
+  letter-spacing: 0.03em;
+}
 
 /* ---------- footer ---------- */
 .site-footer {
@@ -919,47 +956,91 @@ main { min-width: 0; max-width: 70ch; }
 .site-footer p { margin: 0.2rem 0; }
 .site-footer__fine { font-size: 0.8rem; font-family: var(--caps); letter-spacing: 0.04em; }
 
-/* ---------- search page ---------- */
-#search { margin-top: 1rem; }
-#search .pagefind-ui {
-  --pagefind-ui-font: var(--body);
-  --pagefind-ui-primary: var(--accent);
-  --pagefind-ui-text: var(--ink);
-  --pagefind-ui-background: var(--paper-raised);
-  --pagefind-ui-border: var(--gold-dim);
-  --pagefind-ui-border-width: 1px;
-  --pagefind-ui-border-radius: 3px;
-  --pagefind-ui-tag: var(--paper-sunken);
+/* ---------- search: the page, and the modal ---------- */
+/* Pagefind's Component UI exposes its whole surface as --pf-* variables, so
+   theming it is this block and not a sheet of selector surgery — which is what
+   the Default UI needed, and what used to be here.
+
+   :root:root, not :root. pagefind-component-ui.css declares its own defaults on
+   a bare :root and that sheet loads *after* main.css in both places it appears —
+   a <link> in the body on /search/, and appended to <head> by
+   js/search-modal.js everywhere else — so at equal specificity the vendor's
+   values win and every line below does nothing. The one that proved it was
+   --pf-text-muted: the result count kept Pagefind's #767676 and axe called it at
+   3.65:1 on our paper, which is a real contrast failure shipped by a block that
+   looked like it had set the colour. Doubling the selector is 0,2,0 and wins
+   wherever the sheet lands. */
+:root:root {
+  --pf-font: var(--body);
+  --pf-text: var(--ink);
+  --pf-text-secondary: var(--ink-soft);
+  --pf-text-muted: var(--ink-soft);
+  --pf-background: var(--paper-raised);
+  --pf-border: var(--gold-dim);
+  --pf-border-focus: var(--gold);
+  --pf-border-radius: 3px;
+  --pf-hover: var(--paper-sunken);
+  --pf-skeleton: var(--paper-sunken);
+  --pf-skeleton-shine: var(--paper-raised);
+  --pf-mark: var(--ink);
+  --pf-outline-focus: var(--gold);
+  --pf-input-font-size: 1rem;
+  --pf-input-height: 2.4rem;
+  --pf-result-title-font-size: 1.05rem;
+  --pf-result-excerpt-font-size: 0.95rem;
+  --pf-summary-font-size: 0.85rem;
+  --pf-modal-max-width: 40rem;
+  --pf-modal-backdrop: rgba(18, 13, 6, 0.62);
 }
-#search .pagefind-ui input {
-  font-family: var(--body);
-  background-color: var(--paper-raised);
-  border: 1px solid var(--gold-dim);
-  box-shadow: inset 0 1px 3px rgba(30, 24, 12, 0.12);
-}
-#search .pagefind-ui input:focus { border-color: var(--gold); }
-#search .pagefind-ui .pagefind-ui__result {
-  border-bottom: 1px solid var(--gold-dim);
-  padding: 1rem 0;
-}
-#search .pagefind-ui .pagefind-ui__result-title { font-family: var(--display); }
-#search .pagefind-ui .pagefind-ui__result-title a { color: var(--accent); }
-#search .pagefind-ui .pagefind-ui__button {
-  background: var(--paper-raised);
-  border: 1px solid var(--gold-dim);
-  color: var(--ink);
+.search-page { margin-top: 1rem; }
+.search-page pagefind-summary {
+  display: block;
   font-family: var(--caps);
+  letter-spacing: 0.04em;
+  margin: 0.9rem 0 0.2rem;
 }
-#search .pagefind-ui mark,
-#search .pagefind-ui .pagefind-ui__result mark {
+/* The component draws its own mark; this is the one place the site's gold is
+   worth forcing, because --pf-mark only sets the text colour. */
+pagefind-results mark, pagefind-modal mark, pagefind-searchbox mark {
   background: var(--gold-dim);
-  color: var(--ink);
   padding: 0 0.15em;
+}
+
+/* The header button that opens the modal. Ships hidden; js/search-modal.js
+   unhides it and hides the form beside it. */
+.search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  padding: 0.3rem 0.55rem 0.3rem 0.9rem;
+  font-family: var(--caps);
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--gold-dim);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 2px rgba(43, 33, 20, 0.12);
+  cursor: pointer;
+}
+.search-trigger:hover { border-color: var(--gold); }
+.search-trigger[hidden] { display: none; }
+.search-trigger__key {
+  font-family: var(--caps);
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+  border: 1px solid var(--gold-dim);
+  border-radius: 3px;
+  padding: 0 0.3rem;
 }
 
 /* ---------- responsive ---------- */
 @media (max-width: 52rem) {
-  .site-nav, .header-search { display: none; }
+  /* The trigger goes with the form and the nav: below this width the mobile
+     menu's Search link is the way in, and Ctrl+K still works. */
+  .site-nav, .header-search, .search-trigger { display: none; }
   .theme-toggle { margin-left: auto; }
   .mobile-nav { display: block; margin-left: 0; }
   .shell { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
@@ -976,6 +1057,10 @@ main { min-width: 0; max-width: 70ch; }
   .timeline__event::before { left: 0.14rem; }
   .timeline__date { text-align: left; }
   .timeline__era { position: static; }
+  /* max-content + 1fr puts a long Excellency list in a column narrower than its
+     shortest link once the shell is one column. Stack the labels instead. */
+  .see-also dl { grid-template-columns: minmax(0, 1fr); gap: 0 0; }
+  .see-also dd { margin-bottom: 0.5rem; }
 
   /* The map scales with the viewport, so 18px inside a 1000-unit viewBox lands
      around 6px on a phone. Enlarge the nation labels and drop the decorative

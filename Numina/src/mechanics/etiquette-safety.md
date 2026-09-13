@@ -162,7 +162,7 @@ Because the game does not allow physical contact, you may not physically search 
 
 ### Search For…
 
-Some skills can give you the ability to use a special searching effect on a dead or helpless creature after you have finished your normal search. This searching attempt is represented by the verbal "Search for <Item Type>" where the item type is specified in the skill. You cannot use this effect unless you have a skill or ability that allows you to do so. Using a skill with this Search effect might reveal additional items, or it might trigger a response effect targeted on you. The Search effect is the name for the special search attempt, and the Search response is a resulting effect the targeted character calls out when you search them.
+Some skills can give you the ability to use a special searching effect on a dead or helpless creature after you have finished your normal search. This searching attempt is represented by the verbal "Search for \<Item Type\>" where the item type is specified in the skill. You cannot use this effect unless you have a skill or ability that allows you to do so. Using a skill with this Search effect might reveal additional items, or it might trigger a response effect targeted on you. The Search effect is the name for the special search attempt, and the Search response is a resulting effect the targeted character calls out when you search them.
 
 > **Example:**
 >

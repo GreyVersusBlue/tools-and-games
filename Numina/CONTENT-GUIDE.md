@@ -13,7 +13,12 @@ built output together.
    Book sections are `##`, subsections `###`.
 3. **Plain markdown only.** No HTML needed; tables as markdown tables.
    Avoid literal `{{` or `{%` sequences (Nunjucks delimiters) — if the text
-   ever needs them, escape by wrapping in backticks.
+   ever needs them, escape by wrapping in backticks. **And escape a literal `<`
+   as `\<`.** `markdown-it` runs with `html: true`, so the rulebook's
+   `Search for <Item Type>` is an HTML tag and the rest of the paragraph
+   disappears into it. Three places on this site had been losing text to that
+   since they were converted, and `test/a11y/html.mjs` is what found them; it
+   fails on any new one. `cultures.md`'s `\<Culture\>` is the pattern.
 4. **Keep the frontmatter block** at the top of each stub and fill in any
    empty fields (e.g. a nation's `capital`) as you discover them in the text.
 5. **Cross-links**: link between pages with root-relative paths, e.g.
@@ -89,6 +94,7 @@ the page's own headings at build time.
 ```yaml
 ---
 name: Aluvair
+culture: Aluvair    # the Culture row in skills.json this nation is; see below
 title: Aluvair
 order: 1            # book order (alphabetical)
 color: "#7a9b6d"    # accent color; also fills this nation's map region
@@ -97,6 +103,17 @@ demonym: ""         # e.g. "Aluvairi" — fill in if the book uses one
 summary: One-sentence teaser shown on the nations index cards.
 ---
 ```
+
+`culture` is the join to `skills.json`'s Culture rows, and it is what the
+generated "See also" block on a nation page reads: the culture's name, its
+Research Topic and the six culture skills. It is the name as the **rulebook**
+writes it in the Available Cultures table, which is not always the nation's
+name — five of the sixteen differ (`Eltiel` for The Mists of Eltiel, `Ophrailes`
+for the Republic of Ophrailes, `The Reach` for the Principalities of the Reach,
+`Scyllina` for the Vale of Scyllina, `T'barris` for T'barris, the Serpent
+Kingdom). A value that names no row stops the build, and `test/smoke.mjs` fails
+if the sixteen nations and sixteen cultures do not pair up one for one in both
+directions, which is what catches a culture renamed in `cultures.md`.
 
 ## Chapter → file map
 
@@ -225,6 +242,25 @@ A skill record:
 - The attribute charts' "Cost of next attribute" is `costToIncrease.kind:
   "unpublished"` — the escalating numbers are not in the converted markdown
   (see the wishlist's Q32).
+
+**An Excellency's Domain alignment comes out of the heading structure.** The
+chapter states it twice and never in a table: `### Ballista` sits under `## Air`,
+and a multi-aligned Excellency carries its Domains in its own heading as
+`### Alchemist (Water / Fire)`. The extractor reads both and puts the result on
+the table record as `domains`, which is what Phase 8's generated "See also"
+blocks on the Domains chapter are built from:
+
+```json
+{ "file": "excellencies.md", "group": "Alchemist (Water / Fire)",
+  "groupKind": "Excellency", "domains": ["Water", "Fire"], "line": 204,
+  "rows": 8, "source": "/mechanics/skills/excellencies/#alchemist-(water-%2F-fire)" }
+```
+
+- `(Universal)` — Arcaneer and Tinkerer — expands to all six Domains (#325).
+- A Domain named in a heading that is not one of `domains.md`'s own table
+  headings throws. So does a heading under a `##` Domain that names a different
+  one (`### Tempest (Water)` under `## Lightning`), and a heading under
+  `## Multi-Aligned Excellencies` that names no Domains at all.
 
 **The two heading-derived lists.** An Aspect and a Foundation are things a
 character *chooses*, both free, and neither is a table row anywhere: they are

@@ -34,10 +34,14 @@
     <a href="/Numina/new-to-numina/">New to Numina</a>
     <a href="/Numina/lore/" aria-current="true">Lore</a>
     <a href="/Numina/mechanics/">Mechanics</a>
-  </nav>
-  <form class="header-search" action="/Numina/search/" method="get" role="search">
+  </nav><form class="header-search" action="/Numina/search/" method="get" role="search">
     <input type="search" name="q" placeholder="Search…" aria-label="Search the site">
-  </form><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
+    <button type="submit">Search</button>
+  </form>
+  <button type="button" class="search-trigger" data-search-open="" data-pagefind="/Numina/pagefind/" hidden="">
+    <span class="search-trigger__label">Search</span>
+    <kbd class="search-trigger__key">Ctrl K</kbd>
+  </button><button type="button" class="theme-toggle" data-theme-toggle="" aria-label="Dark theme" aria-pressed="false" hidden="">◐</button>
   <details class="mobile-nav">
     <summary aria-label="Menu">Menu</summary>
     <nav aria-label="Site (mobile)">
@@ -240,8 +244,7 @@
       
       <li class="timeline__event">
         <span class="timeline__date">1450 AF</span>
-        <div class="timeline__body">
-          <h3>Fate is destroyed</h3>
+        <div class="timeline__body"><h3 id="event-fate-is-destroyed">Fate is destroyed</h3>
           <p>Thinking mortals become purposed and the world is thrown into imbalance. <a class="timeline__more" href="/Numina/lore/realms/">Read more</a></p>
         </div>
       </li>
@@ -250,9 +253,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #a5301c">
         <span class="timeline__date">1400 AF</span>
-        <div class="timeline__body">
-          <h3>Garioch strikes Rues from the world</h3>
+        <div class="timeline__body"><h3 id="event-garioch-strikes-rues-from-the-world">Garioch strikes Rues from the world</h3>
           <p>Rues is isolated behind its barrier and the Lattice is broken. <a class="timeline__more" href="/Numina/lore/nations/rues/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/rues/">Rues</a></p>
+          
         </div>
       </li>
       
@@ -260,9 +264,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #a5301c">
         <span class="timeline__date">182 AF</span>
-        <div class="timeline__body">
-          <h3>The Night of Guardian&#39;s Glory</h3>
+        <div class="timeline__body"><h3 id="event-the-night-of-guardians-glory">The Night of Guardian&#39;s Glory</h3>
           <p>The renegade Zenith Ravvin makes a bid for divinity and is prevented. <a class="timeline__more" href="/Numina/lore/nations/rues/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/rues/">Rues</a></p>
+          
         </div>
       </li>
       
@@ -270,9 +275,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #a5301c">
         <span class="timeline__date">175 AF</span>
-        <div class="timeline__body">
-          <h3>The Great Rebalancing</h3>
+        <div class="timeline__body"><h3 id="event-the-great-rebalancing">The Great Rebalancing</h3>
           <p>Death, Magic, and Purpose are brought into balance and protected from Corruption. <a class="timeline__more" href="/Numina/lore/nations/rues/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/rues/">Rues</a></p>
+          
         </div>
       </li>
       
@@ -280,8 +286,7 @@
       
       <li class="timeline__event">
         <span class="timeline__date">133 AF</span>
-        <div class="timeline__body">
-          <h3>Lattice travel is rediscovered</h3>
+        <div class="timeline__body"><h3 id="event-lattice-travel-is-rediscovered">Lattice travel is rediscovered</h3>
           <p>Threshold travel begins reconnecting the isolated nations of Aeledd. <a class="timeline__more" href="/Numina/lore/travel-commerce/">Read more</a></p>
         </div>
       </li>
@@ -332,8 +337,7 @@
       
       <li class="timeline__event">
         <span class="timeline__date">0 AW</span>
-        <div class="timeline__body">
-          <h3>The Desuetude Pronouncement</h3>
+        <div class="timeline__body"><h3 id="event-the-desuetude-pronouncement">The Desuetude Pronouncement</h3>
           <p>Large churches are disbanded in favor of good-works based convocations. <a class="timeline__more" href="/Numina/lore/religion/">Read more</a></p>
         </div>
       </li>
@@ -342,9 +346,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #55913d">
         <span class="timeline__date">62 AW</span>
-        <div class="timeline__body">
-          <h3>Nira&#39;s mark revealed in Spyndelmere</h3>
+        <div class="timeline__body"><h3 id="event-niras-mark-revealed-in-spyndelmere">Nira&#39;s mark revealed in Spyndelmere</h3>
           <p>Regent Berkeley Evers reveals Nira&#39;s mark and takes his seat on the Compass Rose. <a class="timeline__more" href="/Numina/lore/nations/spyndelmere/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/spyndelmere/">Spyndelmere</a></p>
+          
         </div>
       </li>
       
@@ -352,9 +357,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #a5301c">
         <span class="timeline__date">81 AW</span>
-        <div class="timeline__body">
-          <h3>An Empress crowned on Rues</h3>
+        <div class="timeline__body"><h3 id="event-an-empress-crowned-on-rues">An Empress crowned on Rues</h3>
           <p>Evenia Mercurio Pentratheron is crowned Empress of the Mecurian Empire. <a class="timeline__more" href="/Numina/lore/nations/rues/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/rues/">Rues</a></p>
+          
         </div>
       </li>
       
@@ -362,9 +368,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #96336a">
         <span class="timeline__date">108 AW</span>
-        <div class="timeline__body">
-          <h3>Valaq is abandoned in Merrigor</h3>
+        <div class="timeline__body"><h3 id="event-valaq-is-abandoned-in-merrigor">Valaq is abandoned in Merrigor</h3>
           <p>Valaq is abandoned to the forest and Lasaldi is named the seventh city in its place. <a class="timeline__more" href="/Numina/lore/nations/merrigor/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/merrigor/">Merrigor</a></p>
+          
         </div>
       </li>
       
@@ -372,8 +379,7 @@
       
       <li class="timeline__event">
         <span class="timeline__date">110–120 AW</span>
-        <div class="timeline__body">
-          <h3>Heroes of Old Fortune&#39;s Bend appear</h3>
+        <div class="timeline__body"><h3 id="event-heroes-of-old-fortunes-bend-appear">Heroes of Old Fortune&#39;s Bend appear</h3>
           <p>New heroes begin appearing throughout the world, gathering at Fortune&#39;s Bend. <a class="timeline__more" href="/Numina/lore/world/">Read more</a></p>
         </div>
       </li>
@@ -382,9 +388,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #14584a">
         <span class="timeline__date">111 AW</span>
-        <div class="timeline__body">
-          <h3>A Diamondback skin is found in T&#39;barris</h3>
+        <div class="timeline__body"><h3 id="event-a-diamondback-skin-is-found-in-tbarris">A Diamondback skin is found in T&#39;barris</h3>
           <p>The discovery leads to the elevation of King Y&#39;vain Pelle. <a class="timeline__more" href="/Numina/lore/nations/tbarris/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/tbarris/">T&#39;barris, the Serpent Kingdom</a></p>
+          
         </div>
       </li>
       
@@ -392,9 +399,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #a04b1e">
         <span class="timeline__date">112 AW</span>
-        <div class="timeline__body">
-          <h3>Valarmore is destroyed</h3>
+        <div class="timeline__body"><h3 id="event-valarmore-is-destroyed">Valarmore is destroyed</h3>
           <p>The Vargoth invasion claims the city of Valarmore. <a class="timeline__more" href="/Numina/lore/nations/five-duchies/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/five-duchies/">The Five Duchies</a></p>
+          
         </div>
       </li>
       
@@ -402,9 +410,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #c47f2e">
         <span class="timeline__date">113 AW</span>
-        <div class="timeline__body">
-          <h3>Eviar Leonate elected Crown Prince of Ophrailes</h3>
+        <div class="timeline__body"><h3 id="event-eviar-leonate-elected-crown-prince-of-ophrailes">Eviar Leonate elected Crown Prince of Ophrailes</h3>
           <p>Eviar Leonate is elected Crown Prince of Ophrailes. <a class="timeline__more" href="/Numina/lore/nations/ophrailes/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/ophrailes/">Republic of Ophrailes</a></p>
+          
         </div>
       </li>
       
@@ -412,9 +421,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #a8851f">
         <span class="timeline__date">114 AW</span>
-        <div class="timeline__body">
-          <h3>Pestilence wracks Konnigstrava</h3>
+        <div class="timeline__body"><h3 id="event-pestilence-wracks-konnigstrava">Pestilence wracks Konnigstrava</h3>
           <p>Disease sweeps the already-struggling kingdom. <a class="timeline__more" href="/Numina/lore/nations/konnigstrava/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/konnigstrava/">Konnigstrava</a></p>
+          
         </div>
       </li>
       
@@ -422,9 +432,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #8b942b">
         <span class="timeline__date">116–117 AW</span>
-        <div class="timeline__body">
-          <h3>Twin floods sweep Aluvair</h3>
+        <div class="timeline__body"><h3 id="event-twin-floods-sweep-aluvair">Twin floods sweep Aluvair</h3>
           <p>Two major floods in rapid succession reshape the alluvial plain. <a class="timeline__more" href="/Numina/lore/nations/aluvair/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/aluvair/">Aluvair</a></p>
+          
         </div>
       </li>
       
@@ -432,8 +443,7 @@
       
       <li class="timeline__event">
         <span class="timeline__date">123 AW</span>
-        <div class="timeline__body">
-          <h3>The Farthest Star conference is attacked</h3>
+        <div class="timeline__body"><h3 id="event-the-farthest-star-conference-is-attacked">The Farthest Star conference is attacked</h3>
           <p>Called at Fortune&#39;s Bend to discuss the Vargoth threat, the conference is attacked by the Vargoth. The current campaign begins. <a class="timeline__more" href="/Numina/lore/notable-figures/">Read more</a></p>
         </div>
       </li>
@@ -442,8 +452,7 @@
       
       <li class="timeline__event">
         <span class="timeline__date">124 AW</span>
-        <div class="timeline__body">
-          <h3>The Vargoth Empire proclaims itself a nation</h3>
+        <div class="timeline__body"><h3 id="event-the-vargoth-empire-proclaims-itself-a-nation">The Vargoth Empire proclaims itself a nation</h3>
           <p>The Vargoth seek diplomatic relations with the other nations of Aeledd. <a class="timeline__more" href="/Numina/lore/glossary/#vargoth-empire">Read more</a></p>
         </div>
       </li>
@@ -452,9 +461,10 @@
       
       <li class="timeline__event has-nations" style="--nation-color: #7a5fa3">
         <span class="timeline__date">124 AW</span>
-        <div class="timeline__body">
-          <h3>Eltiel falls and the Skyways are lost</h3>
+        <div class="timeline__body"><h3 id="event-eltiel-falls-and-the-skyways-are-lost">Eltiel falls and the Skyways are lost</h3>
           <p>Eltiel falls suddenly without explanation and mists blanket what was once the Skyways. <a class="timeline__more" href="/Numina/lore/nations/mists-of-eltiel/">Read more</a></p>
+          <p class="timeline__nations"><a href="/Numina/lore/nations/mists-of-eltiel/">The Mists of Eltiel</a></p>
+          
         </div>
       </li>
       
@@ -497,5 +507,6 @@
 </footer>
 
   <script src="/Numina/js/theme.js" defer=""></script>
+  <script src="/Numina/js/search-modal.js" defer=""></script>
 </body>
 </html>

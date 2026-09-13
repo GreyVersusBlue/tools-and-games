@@ -23,3 +23,9 @@ layout: layouts/page.njk
 {% endif %}
 <p class="lede">{{ summary }}</p>
 {{ content | safe }}
+{#- Generated from skills.json and timeline.json (tools/see-also.mjs): the
+    nation's culture row and Research Topic, the six culture skills, and every
+    timeline event that names this nation. `culture` in frontmatter is the only
+    hand-written part, and test/smoke.mjs checks the 16 nations and the 16
+    cultures pair up one for one in both directions. -#}
+{{ { name: name, culture: culture, slug: page.fileSlug } | nationSeeAlso | safe }}
