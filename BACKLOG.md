@@ -790,12 +790,12 @@ owns its own test folder even where it imports `harness.mjs`/`drive.mjs`
 read-only.
 
 Everything open against this folder is filed under the project that needs it:
-Castle Conundrum's preview promotion (rank 4), Aphelion's airlock beat (5),
-Golden Hour's preview recapture and debug-hook beats (31, 33), Blue Hour's
-`games.mjs` entry and preview recipe (35, 36), and Corner & Kettle joining
-`npm run games` (rank 3, its own Phase 9 — `play-games.mjs` still has no
-reference to `coffee_shop_sim` or `corner-and-kettle`, unchanged since round
-1). The ownership manifest shipped on 2026-09-13 and is
+Castle Conundrum's preview promotion (rank 1), Golden Hour's preview recapture
+and debug-hook beats (28, 30), and Blue Hour's `games.mjs` entry and preview
+recipe (32, 33). **Corner & Kettle's Phase 9 shipped on 2026-09-13 and is no
+longer open** — `play-games.mjs` has a `corner-and-kettle` section now (#371,
+#372), and the note that used to stand here, that the file held no reference to
+it, is out of date. The ownership manifest shipped the same day and is
 `Tools/board-check/ownership.json` (#355).
 
 Two things about this folder that are decided, not open:
