@@ -23,6 +23,16 @@
 #     software-rendered Chromium is inconclusive either way (#53).
 #   - Castle Conundrum, and anything under `npm run games`/`play`/`previews`.
 #     Those open real visible windows and have no headless form.
+#   - Three browser suites written against Playwright's page API:
+#     Projects/integer-foundry/test/browser.mjs, Tools/name-picker/test/
+#     browser.mjs and Tools/seating-chart/test/drive-seating.mjs. On Windows
+#     the harness hands them a Playwright browser and they pass. On Linux it
+#     hands them Puppeteer, and the first run of this file failed all three:
+#     `page.fill is not a function`, `page.emulateMedia is not a function`,
+#     and Integer Foundry's "Node is detached from document" at its autosave
+#     latency beat, 16 checks in. Their Node halves are here. Porting the
+#     Integer Foundry suite is a ranked row; the other two belong to archived
+#     tools (#206) and stay hand-run.
 #   - Tools/schedule/test/publish.mjs and splice-social-block.mjs, and
 #     integer-foundry's capture-legacy-save.mjs. Those are generators that
 #     write files, not suites that pass or fail.
@@ -123,10 +133,8 @@ jobs:
 
           - name: Integer Foundry
             dir: .
-            install: Tools/board-check
             commands: |
               node Projects/integer-foundry/test/smoke-targets.mjs
-              node Projects/integer-foundry/test/browser.mjs
 
           - name: Orbital
             dir: Projects/orbital
@@ -148,9 +156,7 @@ jobs:
             install: Tools/board-check
             commands: |
               node Tools/name-picker/test/smoke.mjs
-              node Tools/name-picker/test/browser.mjs
               node Tools/seating-chart/test/smoke-seating.mjs
-              node Tools/seating-chart/test/drive-seating.mjs
               node Tools/schedule/test/smoke.mjs
               node Tools/schedule/test/structure.mjs
     uses: ./.github/workflows/suite.yml

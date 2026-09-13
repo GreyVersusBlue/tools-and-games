@@ -71,7 +71,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 349 locked decisions in full, by number.
+`HISTORY.md` carries all 353 locked decisions in full, by number.
 
 ## Writing style
 
@@ -150,7 +150,11 @@ your own branch, in the same commit, and say so in the PR body.
    batch**, whatever its size, not one per row.
 2. Every suite the change could touch passes, run from the directory that owns
    it (see the table above). At minimum:
-   `cd Tools/board-check && npm run check && npm run social:check`.
+   `cd Tools/board-check && npm run check && npm run social:check`. Both are red
+   on `main` today by a known list: `.github/workflows/site-ci.yml` runs
+   `node ci-check.mjs`, which passes only when every failure is in
+   `Tools/board-check/known-failures.json`. Run that instead of reading the red
+   yourself, and delete a line from the list in the same PR that fixes it (#352).
 3. Any guard-rail you added has been broken on purpose once, and you watched it
    fail (#34).
 4. The PR merged to `main` with CI green.

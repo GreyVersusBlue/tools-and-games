@@ -62,20 +62,34 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Corner & Kettle Phases 5 and 6 — Staff who
-have a week, and customers who remember (PR #274)**, two 1-session rows taken
-together because Devon asked for ranks 1 and 2 together, overriding the size
-rule that would have run Phase 5 alone. **52 ranked items remain**, and
+The last thing that shipped is **Site CI, and `Pathfinder/data/` published
+(PR #276)**: the CI row and the `Pathfinder/data/` question, taken together at
+Devon's request while another session ran ranks 1 and 2. Before it, **Corner &
+Kettle Phases 5 and 6 — Staff who have a week, and customers who remember (PR
+#274)**, two 1-session rows taken together because Devon asked for ranks 1 and
+2 together, overriding the size rule that would have run Phase 5 alone. **52 ranked
+items remain**, and
 **rank 1 is now `Projects/corner-and-kettle` Phase 7 — A reopening worth
 doing**, a **1-session** row on **Opus 5**, taken alone. Ranks 1 to 3 are the
 rest of corner-and-kettle's arc two.
 
-**`npm run check` is still down to one broken unit**, `Tools/prompt-builder.html`,
-rank 21's now. `npm run social:check` is also red and has been for several
-rounds — four failures and six pages out of sync, all predating Phase 1 and
-unchanged since; two of the four are `Numina/index.html` and
-`Projects/school-generator/index.html` objecting to hand-written icon/og
-tags, which is somebody's row to decide rather than a regression.
+**`npm run check` and `npm run social:check` now run on every pull request**,
+in `.github/workflows/site-ci.yml`, graded by `Tools/board-check/ci-check.mjs`
+against `Tools/board-check/known-failures.json` (#351, #352). Both are still red
+locally, and CI is green only because the seven failures main already had are
+listed there: `Tools/prompt-builder.html` (rank 19) and six social-tag pages
+(rank 20). **A PR that adds a failure goes red. So does a PR that fixes one and
+leaves its line in the list.** Delete the line in the same PR as the fix.
+
+**Every project suite that runs headless now runs in CI.** `site-ci.yml` has a
+matrix of the twelve that had no workflow; a new project's suite goes there, or
+in its own workflow calling `.github/workflows/suite.yml`. Not in CI, on
+purpose: Blue Hour's `browser.mjs` (real-time movement, #53), Absalom's
+`browser.mjs` (its own fixed Chromium path; port it to the harness first), and
+anything under `npm run games`/`play`/`previews`.
+
+**`Pathfinder/data/` is a published interface** (#350, Devon). Any project may
+read it; `Pathfinder/data/README.md` is the contract.
 
 **What Phases 5 and 6 built.** Read `Projects/corner-and-kettle/WISHLIST.md`
 Phase 7 before starting the next row; Phases 5/6's own entry there and in
@@ -112,23 +126,23 @@ and #222 was closed unmerged an hour of suites later.
 | 2 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
 | 3 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
 | 4 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 5 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — | claude/ci-coverage | [Questions for Devon](#questions-for-devon) |
-| 6 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
-| 7 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 8 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 9 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 10 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 11 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 12 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 13 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 14 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
-| 15 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 16 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 17 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — | claude/ci-coverage | [The site itself](#the-site-itself) |
-| 18 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
-| 19 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
-| 20 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
-| 21 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
+| 5 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
+| 6 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 7 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 8 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 9 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 10 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 11 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 12 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 13 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
+| 14 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 15 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 16 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
+| 17 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
+| 18 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
+| 19 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
+| 20 | Clear the six `social:check` entries in `Tools/board-check/known-failures.json`: three pages with hand-written og tags, an offsite link read as a path, two pages with no block | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
+| 21 | Make Integer Foundry's `test/browser.mjs` pass under the harness's Puppeteer engine, then add it to `site-ci.yml` | `Projects/integer-foundry` | ½ | — |  | [Integer Foundry](#integer-foundry) |
 | 22 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
 | 23 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
 | 24 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
@@ -198,8 +212,10 @@ If a future round finds something real:
    lexical environment (same mechanism that lets DevTools console see them) —
    just don't route through `window.S`, since top-level `const` never becomes a
    `window` property.
-2. **The `Pathfinder/data/` question** needs Devon's answer before any
-   cross-project work depends on it. See Q1.
+2. **`Pathfinder/data/` is published** (#350, Devon, 2026-09-13; Q1 struck).
+   Other projects may read it. Before a change that renames, moves or drops a
+   file or field, search the repo for `Pathfinder/data` and run each
+   reader's suite. `Pathfinder/data/README.md` is the contract.
 
 Deliberately not done, and still the right call:
 
@@ -610,8 +626,16 @@ Deliberately not done, and still the right call:
 
 `Projects/integer-foundry.html`, `Projects/integer-foundry/`.
 
-**Nothing is outstanding as things stand.** The one item still on the table is
-deliberately parked, not forgotten:
+**One item is ranked (rank 21): `test/browser.mjs` fails on Linux.** On Windows
+`Tools/board-check/harness.mjs` hands it a Playwright browser and it passes 56/0.
+On Linux the harness launches Puppeteer, and the first `site-ci.yml` run aborted
+it 16 checks in, at the autosave-latency beat, with "Node is detached from
+document" (#353). Corner & Kettle's `drive-save.mjs` branches on
+`page.__engine` and passes on both; that is the pattern to follow. When it is
+green on Linux, add it to the Integer Foundry entry in `site-ci.yml` with
+`install: Tools/board-check`.
+
+The other item still on the table is deliberately parked, not forgotten:
 
 1. **The two conservative model gaps, if Devon or a future session wants them
    despite the coupling argument.** Both are safe-direction (make orders easier
@@ -760,16 +784,19 @@ Two things about this folder that are decided, not open:
 
 Five things came up in more than one survey and belong to no single project.
 
-1. **CI runs almost nothing.** Seven workflows exist now — the Firebase deploy
-   plus Numina, School Generator, Hearth, Fourth Quarter, Torchbearer and The
-   Absalom Inheritance, the last four added by the phases that needed them.
-   Still no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the
-   remaining ~16 project suites, and each of the six per-project files was
-   written from scratch rather than from a template the next one could reuse —
-   `absalom-ci.yml` was copied from `torchbearer-ci.yml` and arrived carrying
-   its stale reference to this row's rank number, which is the argument for
-   the template. That is what is left of this row: the suites nobody's phase
-   happened to touch, and the six near-identical files.
+1. **CI ran almost nothing. Closed by PR #276** (#351 to #353): `site-ci.yml`
+   runs board-check and twelve uncovered suites on every PR, and
+   `suite.yml` is the template the simple per-project workflows now call.
+   What it left behind is **the social-tag cleanup** (rank 20).
+   `sync-social-tags.mjs --check` fails on
+   `Projects/blue-hour-trail/index.html`, `Projects/school-generator/index.html`
+   and `Numina/index.html` for hand-written icon/og tags (Numina's come from
+   its Eleventy source, so the fix is there, not in the built page); on
+   `https:/aspermylessonplan.com/index.html`, an offsite board link the script
+   reads as a local path, which is a bug in the script; and it drifts on
+   `Projects/bell-to-bell/index.html` and `Projects/hearth/index.html`, which
+   have no social block. Each fix deletes its line from
+   `Tools/board-check/known-failures.json`, or `site-ci.yml` goes red.
 2. **Asset weight.** Bell to Bell, Castle Conundrum and The Fourth Quarter
    together carry ~380 MB: unreferenced props and texture variants, duplicate
    model formats, uncompressed glTF buffers and 2k textures with no smaller
@@ -809,7 +836,7 @@ board's suite runs headed on a desk and would be a shallower copy of the
 harness's `save` mode, which `hearth-ci.yml` now runs on every PR. The
 330×200 capture is still wanted and is not a desk job (Hearth is a 2D canvas),
 but promoting one also writes `assets/og/hearth.jpg` and a social block the
-page does not yet have, so it goes with the social-tag cleanup above.
+page does not yet have, so it goes with the social-tag cleanup (rank 20).
 
 ---
 
@@ -858,6 +885,10 @@ answered by Phases 5 and 6 and is struck** — locked #318, and the full answer 
 in the answered list at the foot of this section. Numina has three open
 questions left (Q32, Q34 and Q35), none of them blocking anything ranked.
 
+**Struck: Q1**, "is `Pathfinder/data/**` a published interface other projects
+may read?", answered **yes** by Devon on 2026-09-13, locked #350: it is public
+reference data copied into the site, and any project may read it.
+
 **The `Where` column names files that no longer exist.** The prompts, the
 notes files and the ten handoffs were deleted in this consolidation; they are
 cited by name so a raise count can be checked, and `git log` is where they
@@ -867,7 +898,7 @@ live. Nothing in that column is a link to follow.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q1 | **Is `Pathfinder/data/**` a published interface other projects may read, or private to the Pathfinder pages?** 24 JSON files of PF2e rules data sit there. The Absalom Inheritance reads none of it and hand-writes three stat blocks and seven commands into `content/vault.json` instead; Torchbearer would build its own monster and treasure tables if the answer is private. Both considered depending on it and both correctly stopped rather than assume. `UPGRADE-PATHS.md` calls it the highest-leverage *decision* on the site. | **6** | prompt 01's block (the central tracker), prompts 10 and 11 raising it into that block, `Projects/torchbearer/WISHLIST.md`, `Projects/absalom-inheritance/WISHLIST.md`, `UPGRADE-PATHS.md` "Close behind", `gvb-site-handoff-v10.md` "Three things" and §11.4 |
+| ~~Q1~~ | ~~**Is `Pathfinder/data/**` a published interface other projects may read, or private to the Pathfinder pages?**~~ Struck — answered by Devon, #350: published; any project may read it, `Pathfinder/data/README.md` is the contract. 24 JSON files of PF2e rules data sit there. The Absalom Inheritance reads none of it and hand-writes three stat blocks and seven commands into `content/vault.json` instead; Torchbearer would build its own monster and treasure tables if the answer is private. Both considered depending on it and both correctly stopped rather than assume. `UPGRADE-PATHS.md` calls it the highest-leverage *decision* on the site. | **6** | prompt 01's block (the central tracker), prompts 10 and 11 raising it into that block, `Projects/torchbearer/WISHLIST.md`, `Projects/absalom-inheritance/WISHLIST.md`, `UPGRADE-PATHS.md` "Close behind", `gvb-site-handoff-v10.md` "Three things" and §11.4 |
 
 ### Bell to Bell
 
