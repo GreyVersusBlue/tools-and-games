@@ -1,8 +1,6 @@
 {
   "_read_me": "Failures main already had on 2026-09-13, when ci-check.mjs started running in CI. Each key is the FAIL or DRIFT line a check prints, path only. ci-check.mjs fails a PR that adds a failure not listed here, and fails a PR that fixes one without deleting its line. This list only ever gets shorter.",
-  "integrity": {
-    "FAIL Tools/prompt-builder.html": "Hotlinks Google Fonts, and no area owns the page. BACKLOG.md 'An ownership manifest check-integrity.mjs enforces'."
-  },
+  "integrity": {},
   "collisions": {},
   "social": {
     "FAIL Projects/blue-hour-trail/index.html": "Hand-written icon/og tags the generator refuses to overwrite. BACKLOG.md social-tag cleanup row.",
