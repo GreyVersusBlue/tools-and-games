@@ -2,9 +2,9 @@
 //
 // Everything about spawning, patience, barista work, scoring and the day
 // economy, reading and writing one plain `state` object and touching no DOM.
-// coffee_shop_sim.html builds a sim, drives it from requestAnimationFrame
-// with real frame deltas and draws whatever it did; test/smoke-sim.mjs builds
-// the same sim with a seed and drives it with fixed steps that never wait.
+// js/ui.js builds a sim, drives it from requestAnimationFrame with real frame
+// deltas and draws whatever it did; test/smoke-sim.mjs builds the same sim
+// with a seed and drives it with fixed steps that never wait.
 //
 // Three rules the split keeps:
 //
@@ -18,8 +18,10 @@
 //    summary — leaves through `notify(event)`, and the sim does not care
 //    whether anybody is listening.
 //
-// What stays in the page: rendering, the station buttons and their progress
-// bars, the chalkboard and doUnlock (Phase 4's job), sound, the save bar.
+// What stays in the page (ui.js, stations.js, chalkboard.js): drawing, the
+// progress bars, sound, the save bar, and asking before a reopen. What a
+// station button or a chalkboard button *does* is in here, as CUP_ACTIONS and
+// PURCHASES, since Phase 4 (#344, #345). js/README.md is the map.
 
 /**
  * Mulberry32, same shape as Projects/absalom-inheritance/js/rules.js. Returns
@@ -114,6 +116,10 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     BARISTA_TIERS, LOYALTY_UPGRADES, REGULAR_NAMES, REGULAR_CHANCE,
     DAILY_MODIFIERS, RANDOM_EVENTS, STARTING_UNLOCKS, QUEUE_MAX,
     HAIR_COLORS, SKIN_COLORS, SHIRT_COLORS, PANTS_COLORS,
+    STATION_UPGRADES, BARISTA_MAX, BARISTA_HIRE_COSTS, BARISTA_PROMOTE_COST,
+    BARISTA_TRAIN_COST, BARISTA_NAMES, SHIELD_BASE_COST, SHIELD_COST_STEP,
+    SHIELD_MAX_HELD, EQUIPMENT_UPGRADES, AMBIANCE_UPGRADES, BUSINESS_UPGRADES,
+    MARKETING_COST, MARKETING_DURATION_MS, PRESTIGE_MIN_DAY,
   } = content;
 
   /* ---------- util ---------- */
@@ -829,6 +835,241 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     render('all');
   }
 
+  /* ---------- the station buttons: what each one does to a cup ---------- */
+  // What a click at a station does, as a table: `ms` is how long its progress
+  // bar runs (0 for an instant pick), `run(slot, cup, value)` makes the change
+  // and returns the toast or null. The page draws the bar and plays the sound;
+  // the rule is here, so a Frappe built by hand is a Node test (#343, #345).
+  // `cup` is the cup the click started on — a bar that finishes after the cup
+  // was dumped lands in the dumped cup, as it always has.
+  const CUP_ACTIONS = {
+    pullShot: { ms: () => espressoDurationMs()*stationDurationMult(), run(slot, cup){
+      // A shot into a cup that is already blended stays a blended base, so a
+      // Frappe can be built in either order (#343).
+      cup.base = cup.blended ? 'frappeBase' : 'espresso'; cup.shots++; return 'Pulled a shot ☕'; } },
+    brewDrip: { ms: () => 350*stationDurationMult(), run(slot, cup){ cup.base = 'drip'; return 'Brewed drip coffee'; } },
+    steepTea: { ms: () => 400*stationDurationMult(), run(slot, cup){ cup.base = 'tea'; return 'Steeped tea 🍵'; } },
+    pickMilk: { ms: () => 0, run(slot, cup, milk){ cup.milk = milk; cup.milkSteamed = false; return null; } },
+    steamMilk: { ms: () => 900*stationDurationMult(), run(slot, cup){ cup.milkSteamed = true; return 'Steamed the milk 🔥'; } },
+    pourCold: { ms: () => 0, run(slot, cup){ cup.milkSteamed = false; return 'Poured cold milk'; } },
+    toggleIce: { ms: () => 0, run(slot, cup){ cup.ice = !cup.ice; return null; } },
+    // Blending makes the base the blended base and keeps the shots. It was
+    // `cup.base || 'frappeBase'`, so a shot pulled first stayed 'espresso' and
+    // a hand-built Frappe could never tick its base line (#343).
+    blend: { ms: () => 1100*stationDurationMult(), run(slot, cup){ cup.blended = true; cup.base = 'frappeBase'; return 'Blended! 🥤'; } },
+    pickSyrup: { ms: () => 0, run(slot, cup, syrup){ cup.syrup = syrup; return null; } },
+    clearSyrup: { ms: () => 0, run(slot, cup){ cup.syrup = null; return null; } },
+    toggleTopping: { ms: () => 0, run(slot, cup, t){
+      const i = cup.toppings.indexOf(t);
+      if(i===-1){ cup.toppings.push(t); return 'Added topping ✨'; }
+      cup.toppings.splice(i,1); return 'Removed topping'; } },
+    plateFood: { ms: () => 0, run(slot, cup, foodId){ slot.food = true; slot.foodPlated = foodId; return 'Plated it!'; } },
+  };
+  /** How long a station button's bar runs before its action lands. */
+  function cupActionMs(action){ return CUP_ACTIONS[action].ms(); }
+  /** A station button's change, on `cup` (the slot's own by default). Returns the toast or null. */
+  function cupAction(slot, action, value, cup = slot.cup){
+    const a = CUP_ACTIONS[action];
+    if(!a) throw new Error(`cupAction: unknown action "${action}"`);
+    return a.run(slot, cup, value);
+  }
+
+  /* ---------- the chalkboard: one table of purchase kinds ---------- */
+  // Every chalkboard button is one of these. Each row says what the purchase
+  // takes from the till (`cost`), why it cannot happen right now (`refuse`,
+  // null when it can) and what it does (`apply`, returning the toast). canBuy()
+  // and purchase() are the only readers, so the chalkboard's disabled buttons
+  // and the purchase itself read one rule (#344). It was the page's 145-line
+  // doUnlock(), where every refusal fell through to toast('Unlocked!'), and a
+  // hand-kept mirror of it in test/autopilot.mjs (#339).
+  const byId = (table, id) => table.find(x => x.id === id);
+  const need = cost => state.money < cost ? `Not enough money: $${cost} needed.` : null;
+  const baristaById = id => state.baristas.find(b => b.id === id);
+  const shieldCost = () => SHIELD_BASE_COST + state.shieldsPurchased*SHIELD_COST_STEP;
+  function unlockRow(table, set, costKey, noun){
+    return {
+      cost: id => byId(table, id)?.[costKey] ?? 0,
+      refuse(id){
+        const x = byId(table, id);
+        if(!x) return `No such ${noun}.`;
+        if(state[set].has(id)) return `${x.name} is already unlocked.`;
+        return need(x[costKey]);
+      },
+      apply(id){ state[set].add(id); return `${byId(table, id).name} unlocked!`; },
+    };
+  }
+  const PURCHASES = {
+    recipe: {
+      cost: id => byId(RECIPES, id)?.unlockCost ?? 0,
+      refuse(id){
+        const r = byId(RECIPES, id);
+        if(!r) return 'No such recipe.';
+        if(r.equipmentGated) return 'This recipe unlocks automatically with the matching equipment.';
+        if(state.unlockedRecipes.has(id)) return `${r.name} is already on the menu.`;
+        if(r.requires && !state.unlockedRecipes.has(r.requires)) return `Unlock ${byId(RECIPES, r.requires).name} first.`;
+        return need(r.unlockCost);
+      },
+      apply(id){ state.unlockedRecipes.add(id); return `${byId(RECIPES, id).name} is on the menu!`; },
+    },
+    food: unlockRow(FOODS, 'unlockedFoods', 'unlockCost', 'food'),
+    syrup: unlockRow(SYRUPS, 'unlockedSyrups', 'cost', 'syrup'),
+    topping: unlockRow(TOPPINGS, 'unlockedToppings', 'cost', 'topping'),
+    station: {
+      cost: id => STATION_UPGRADES.find(u => u.toSlots === Number(id))?.cost ?? 0,
+      refuse(id){
+        const u = STATION_UPGRADES.find(x => x.toSlots === Number(id));
+        if(!u) return 'No such station.';
+        if(state.slots.length >= u.toSlots) return `You already have ${state.slots.length} stations.`;
+        return need(u.cost);
+      },
+      apply(id){ const n = Number(id); while(state.slots.length < n) state.slots.push(null); return `Station ${n} is open! 🛠️`; },
+    },
+    hireBarista: {
+      cost: () => BARISTA_HIRE_COSTS[state.baristas.length] ?? 0,
+      refuse(){
+        if(state.baristas.length >= BARISTA_MAX) return `The staff is full (${BARISTA_MAX}).`;
+        return need(BARISTA_HIRE_COSTS[state.baristas.length]);
+      },
+      apply(){
+        const usedNames = new Set(state.baristas.map(b=>b.name));
+        const name = BARISTA_NAMES.find(n=>!usedNames.has(n)) || 'Barista';
+        // b<n>, the first one free: the page used b<Date.now()>, which a seeded
+        // run cannot reproduce. Ids are only ever compared, never parsed.
+        let n = state.baristas.length + 1;
+        while(state.baristas.some(b=>b.id==='b'+n)) n++;
+        state.baristas.push({ id:'b'+n, name, level:1, targetSlot:null, acc:0, spec:null, trained:false, working:true });
+        return `${name} joined the team! 🧑‍🍳`;
+      },
+    },
+    promoteBarista: {
+      cost: () => BARISTA_PROMOTE_COST,
+      refuse(id){
+        const b = baristaById(id);
+        if(!b) return 'No such barista.';
+        if(b.level >= 2) return `${b.name} is already a Senior Barista.`;
+        return need(BARISTA_PROMOTE_COST);
+      },
+      apply(id){ const b = baristaById(id); b.level = 2; return `${b.name} promoted to Senior Barista! 🎉`; },
+    },
+    trainBarista: {
+      cost: () => BARISTA_TRAIN_COST,
+      refuse(id){
+        const b = baristaById(id);
+        if(!b) return 'No such barista.';
+        if(b.trained) return `${b.name} is already trained.`;
+        return need(BARISTA_TRAIN_COST);
+      },
+      apply(id){ const b = baristaById(id); b.trained = true; return `${b.name} completed training! 🎓`; },
+    },
+    specBarista: {
+      cost: () => 0,
+      refuse(id, extra){
+        const b = baristaById(id);
+        if(!b) return 'No such barista.';
+        if((b.spec || null) === (extra || null)) return `${b.name} already works that way.`;
+        return null;
+      },
+      apply(id, extra){ const b = baristaById(id); b.spec = extra || null; return `${b.name} is now ${extra ? `a ${extra} specialist` : 'a generalist'}`; },
+    },
+    scheduleBarista: {
+      cost: () => 0,
+      refuse(id){ return baristaById(id) ? null : 'No such barista.'; },
+      apply(id){ const b = baristaById(id); b.working = b.working === false; return `${b.name} is ${b.working ? 'working' : 'off'} today`; },
+    },
+    loyalty: {
+      cost: id => LOYALTY_UPGRADES.find(u => u.level === Number(id))?.cost ?? 0,
+      refuse(id){
+        const u = LOYALTY_UPGRADES.find(x => x.level === Number(id));
+        if(!u) return 'No such loyalty tier.';
+        if(state.loyaltyLevel >= u.level) return `${u.name} is already running.`;
+        return need(u.cost);
+      },
+      apply(id){ const u = LOYALTY_UPGRADES.find(x => x.level === Number(id)); state.loyaltyLevel = u.level; return `${u.name} unlocked!`; },
+    },
+    shield: {
+      cost: shieldCost,
+      refuse(){
+        if(state.comboShields >= SHIELD_MAX_HELD) return `You can hold ${SHIELD_MAX_HELD} shields at most.`;
+        return need(shieldCost());
+      },
+      apply(){ state.comboShields++; state.shieldsPurchased++; return 'Streak shield purchased 🛡️'; },
+    },
+    equipment: {
+      cost: id => byId(EQUIPMENT_UPGRADES, id)?.cost ?? 0,
+      refuse(id){
+        const u = byId(EQUIPMENT_UPGRADES, id);
+        if(!u) return 'No such equipment.';
+        if(hasUpgrade(id)) return `${u.name} is already installed.`;
+        if(u.requires && !hasUpgrade(u.requires)) return `Install ${byId(EQUIPMENT_UPGRADES, u.requires).name} first.`;
+        return need(u.cost);
+      },
+      apply(id){
+        state.upgrades.add(id);
+        if(id==='espresso2') state.unlockedRecipes.add('ristretto');
+        if(id==='espresso3') state.unlockedRecipes.add('doppio');
+        return `${byId(EQUIPMENT_UPGRADES, id).name} installed! ⚙️`;
+      },
+    },
+    ambiance: {
+      cost: id => byId(AMBIANCE_UPGRADES, id)?.cost ?? 0,
+      refuse(id){
+        const u = byId(AMBIANCE_UPGRADES, id);
+        if(!u) return 'No such upgrade.';
+        if(hasUpgrade(id)) return `${u.name} is already here.`;
+        return need(u.cost);
+      },
+      apply(id){ state.upgrades.add(id); return `${byId(AMBIANCE_UPGRADES, id).name} added! 🎵`; },
+    },
+    business: {
+      cost: id => byId(BUSINESS_UPGRADES, id)?.cost ?? 0,
+      refuse(id){
+        const u = byId(BUSINESS_UPGRADES, id);
+        if(!u) return 'No such upgrade.';
+        if(hasUpgrade(id)) return `${u.name} is already open.`;
+        if(u.reqReputation && state.reputation < u.reqReputation) return `${u.name} needs ${u.reqReputation} reputation.`;
+        return need(u.cost);
+      },
+      apply(id){ state.upgrades.add(id); return `${byId(BUSINESS_UPGRADES, id).name} opened! 🏪`; },
+    },
+    marketing: {
+      cost: () => MARKETING_COST,
+      refuse(){
+        if(state.marketingRemaining > 0) return 'A campaign is already running.';
+        if(!state.shiftRunning) return 'The shop is closed.';
+        return need(MARKETING_COST);
+      },
+      apply(){ state.marketingRemaining = MARKETING_DURATION_MS; return 'Marketing campaign launched! 📣'; },
+    },
+    // Asking first is the page's job; prestige() toasts for itself.
+    prestige: {
+      cost: () => 0,
+      refuse(){ return state.day >= PRESTIGE_MIN_DAY ? null : `Reopening is available from day ${PRESTIGE_MIN_DAY}.`; },
+      apply(){ prestige(); return null; },
+    },
+  };
+
+  /** Whether a chalkboard purchase can happen now: {ok, cost, reason}. */
+  function canBuy(type, id, extra){
+    const kind = PURCHASES[type];
+    if(!kind) throw new Error(`canBuy: unknown purchase type "${type}"`);
+    const reason = kind.refuse(id, extra);
+    return { ok: !reason, cost: kind.cost(id, extra), reason };
+  }
+
+  /**
+   * Make a chalkboard purchase. Refused: {ok:false, cost, reason} and nothing
+   * changes. Made: the cost comes out of the till, the change is applied, and
+   * {ok:true, cost, text} carries the toast (null when the purchase toasts for
+   * itself).
+   */
+  function purchase(type, id, extra){
+    const c = canBuy(type, id, extra);
+    if(!c.ok) return c;
+    state.money -= c.cost;
+    const text = PURCHASES[type].apply(id, extra);
+    return { ok:true, cost:c.cost, text };
+  }
+
   // A state that has never had a day's event scheduled — freshState() leaves
   // it at 0, and so did the page's old literal, which only worked because
   // repairSave rolled one on the way in — would fire it on the first frame.
@@ -850,5 +1091,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     autoAssistStep, baristaFumble, runBaristaTick,
     currentPhaseIndex, advance, resetClock,
     endShift, startNextDay, scheduleEvent, prestige,
+    canBuy, purchase, PURCHASE_TYPES: Object.keys(PURCHASES),
+    cupAction, cupActionMs,
   };
 }

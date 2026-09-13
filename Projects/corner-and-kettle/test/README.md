@@ -4,7 +4,7 @@ Four suites and an autopilot. All exit non-zero on any failure (locked
 decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-sim.mjs     132 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-sim.mjs     175 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    166 assertions, no browser
 node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, a band, ~22 s
 node Projects/corner-and-kettle/test/drive-save.mjs     99 checks, real browser
@@ -42,8 +42,9 @@ least patience: **patient** serves on `orderIsComplete()`, **eager** the moment
 the page's Serve button would enable, by calling the same
 `sim.serveReadiness(slot).canServe` the page does (before Phase 3 that was
 instantly for food, an empty plate at 40%), and **shopper** is patient hands plus a chalkboard spent by
-`DEFAULT_PRIORITY` at every close. `purchase()` mirrors the page's
-`doUnlock()` arithmetic until Phase 4 moves that into the sim. `makeShop(seed,
+`DEFAULT_PRIORITY` at every close. `purchase()` calls `sim.purchase()`, the
+same purchase table the page's chalkboard uses (Phase 4; until then it was a
+hand-kept mirror of the page's `doUnlock()`). `makeShop(seed,
 mutate)` builds a shop and counts fumbles off the toasts; `playDay` and
 `playRun` return rows, never print.
 
@@ -55,15 +56,22 @@ the door, so "offered" is what the shop could take, not what came by.
 ## `smoke-sim.mjs`
 
 Drives `../js/sim.js` with `makeRng(seed)` and `advance(dtMs)`, so a
-136-second shift runs in milliseconds and runs the same way twice. Eleven sections:
+136-second shift runs in milliseconds and runs the same way twice. Twelve sections:
 the rng; a fixed seed's fixed order sequence; every recipe built by the barista
 against the ticket and the scorer; the scoring curve; `advance(136000)` once
 against 8,160 frames; the timers that used to be separate; baristas on the
 clock; a whole day played by a one-line autopilot; prestige; a source check
-that the page has no dice or clock of its own and decides neither the tab dots
-nor the Serve gate; and the Serve gate itself (Phase 3): every ticket line's
+over `index.html` and the five view modules that the page has no dice or clock
+of its own, decides neither the tab dots nor the Serve gate, owns no rule (no
+money, cup, plate, unlock, upgrade, promotion or training written outside the
+sim), never saves from `renderAll()`, and that `coffee_shop_sim.html` is a
+redirect stub; and the Serve gate itself (Phase 3): every ticket line's
 station and `apply()`, `serveReadiness()` line by line, the button's count
-against the scorer's ratio, and the empty plate. Phase 2's `balance.mjs` builds on
+against the scorer's ratio, and the empty plate; and the two tables a click
+goes through (Phase 4): every purchase type refused at $0 with a reason and no
+change, bought once at exactly its quoted price, the rules the old `doUnlock()`
+carried in its branches, and the station buttons, including a Frappe built by
+hand in either order. Phase 2's `balance.mjs` builds on
 the autopilot here.
 
 ## `smoke-save.mjs`
@@ -83,7 +91,9 @@ Real Chromium, real clicks, via `Tools/board-check/harness.mjs` (read-only —
 same launch flags, so `requestAnimationFrame` keeps running in a window nobody
 is looking at, v7 §6). Without those flags the Base and Milk progress bars never
 fire their callbacks and the shift clock never advances, which reads exactly like
-a broken game.
+a broken game. It opens `/Projects/corner-and-kettle/` since Phase 4, and
+section 2's offsite check reads `../index.html`, the page actually served; the
+old URL is a stub.
 
 Thirteen sections: the module script actually running, the seven vendored faces,
 building and serving a drink (with the Serve cue: an

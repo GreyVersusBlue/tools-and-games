@@ -67,7 +67,7 @@ export const eager = { name: "eager", ready: readyEager, shop: null };
  * close and bought when it is affordable and not yet owned; the list is
  * walked again from the top after each purchase, so a cheap early item is
  * never starved by an expensive one ahead of it. Entries are `{type, id}` in
- * the page's doUnlock() vocabulary.
+ * the sim's purchase() vocabulary.
  */
 export const DEFAULT_PRIORITY = [
   { type: "hireBarista" },
@@ -97,99 +97,18 @@ export function shopper(priority = DEFAULT_PRIORITY, name = "shopper") {
 }
 
 /**
- * One chalkboard purchase, the arithmetic of the page's doUnlock() for the
- * types the priority list can name. doUnlock() is still in the page (Phase 4
- * moves it), so this mirrors it rather than calling it; a purchase the page
- * would refuse is refused here too, and returns false. Barista ids are
- * `b<n>` rather than the page's `b<Date.now()>`, which is the one thing a
- * seeded run cannot use.
+ * One chalkboard purchase, through the sim's own purchase table (#344) — the
+ * same call the page's chalkboard makes, so a purchase the page would refuse
+ * is refused here too. Until Phase 4 this was a hand-kept mirror of the page's
+ * doUnlock() (#339). The one thing a priority list cannot name is *which*
+ * barista to promote or train, so those take the first one eligible.
  */
 export function purchase(sim, state, item) {
-  const C = sim.content;
-  const { type, id } = item;
-  const pay = cost => { if (state.money < cost) return false; state.money -= cost; return true; };
-  switch (type) {
-    case "recipe": {
-      const r = C.RECIPES.find(x => x.id === id);
-      if (!r || r.equipmentGated || state.unlockedRecipes.has(id)) return false;
-      if (r.requires && !state.unlockedRecipes.has(r.requires)) return false;
-      if (!pay(r.unlockCost)) return false;
-      state.unlockedRecipes.add(id); return true;
-    }
-    case "food": {
-      const f = C.FOODS.find(x => x.id === id);
-      if (!f || state.unlockedFoods.has(id) || !pay(f.unlockCost)) return false;
-      state.unlockedFoods.add(id); return true;
-    }
-    case "syrup": {
-      const s = C.SYRUPS.find(x => x.id === id);
-      if (!s || state.unlockedSyrups.has(id) || !pay(s.cost)) return false;
-      state.unlockedSyrups.add(id); return true;
-    }
-    case "topping": {
-      const t = C.TOPPINGS.find(x => x.id === id);
-      if (!t || state.unlockedToppings.has(id) || !pay(t.cost)) return false;
-      state.unlockedToppings.add(id); return true;
-    }
-    case "station": {
-      const u = C.STATION_UPGRADES.find(x => x.toSlots === id);
-      if (!u || state.slots.length >= id || !pay(u.cost)) return false;
-      while (state.slots.length < id) state.slots.push(null);
-      return true;
-    }
-    case "hireBarista": {
-      if (state.baristas.length >= C.BARISTA_MAX) return false;
-      if (!pay(C.BARISTA_HIRE_COSTS[state.baristas.length])) return false;
-      const used = new Set(state.baristas.map(b => b.name));
-      const name = C.BARISTA_NAMES.find(n => !used.has(n)) || "Barista";
-      state.baristas.push({ id: "b" + (state.baristas.length + 1), name, level: 1, targetSlot: null, acc: 0, spec: null, trained: false, working: true });
-      return true;
-    }
-    case "promoteBarista": {
-      const b = state.baristas.find(x => x.level < 2);
-      if (!b || !pay(C.BARISTA_PROMOTE_COST)) return false;
-      b.level = 2; return true;
-    }
-    case "trainBarista": {
-      const b = state.baristas.find(x => !x.trained);
-      if (!b || !pay(C.BARISTA_TRAIN_COST)) return false;
-      b.trained = true; return true;
-    }
-    case "loyalty": {
-      const u = C.LOYALTY_UPGRADES.find(x => x.level === id);
-      if (!u || state.loyaltyLevel >= id || !pay(u.cost)) return false;
-      state.loyaltyLevel = id; return true;
-    }
-    case "shield": {
-      const cost = C.SHIELD_BASE_COST + state.shieldsPurchased * C.SHIELD_COST_STEP;
-      if (state.comboShields >= C.SHIELD_MAX_HELD || !pay(cost)) return false;
-      state.comboShields++; state.shieldsPurchased++; return true;
-    }
-    case "equipment": {
-      const u = C.EQUIPMENT_UPGRADES.find(x => x.id === id);
-      if (!u || state.upgrades.has(id)) return false;
-      if (u.requires && !state.upgrades.has(u.requires)) return false;
-      if (!pay(u.cost)) return false;
-      state.upgrades.add(id);
-      if (id === "espresso2") state.unlockedRecipes.add("ristretto");
-      if (id === "espresso3") state.unlockedRecipes.add("doppio");
-      return true;
-    }
-    case "ambiance": {
-      const u = C.AMBIANCE_UPGRADES.find(x => x.id === id);
-      if (!u || state.upgrades.has(id) || !pay(u.cost)) return false;
-      state.upgrades.add(id); return true;
-    }
-    case "business": {
-      const u = C.BUSINESS_UPGRADES.find(x => x.id === id);
-      if (!u || state.upgrades.has(id)) return false;
-      if (u.reqReputation && state.reputation < u.reqReputation) return false;
-      if (!pay(u.cost)) return false;
-      state.upgrades.add(id); return true;
-    }
-    default:
-      throw new Error(`purchase: unknown chalkboard type "${type}"`);
-  }
+  let { type, id } = item;
+  if (!sim.PURCHASE_TYPES.includes(type)) throw new Error(`purchase: unknown chalkboard type "${type}"`);
+  if (type === "promoteBarista" && id == null) id = state.baristas.find(b => b.level < 2)?.id;
+  if (type === "trainBarista" && id == null) id = state.baristas.find(b => !b.trained)?.id;
+  return sim.purchase(type, id).ok;
 }
 
 /** Walk the list from the top after every buy. Returns what was bought, in order. */

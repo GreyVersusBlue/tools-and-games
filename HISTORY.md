@@ -8646,6 +8646,100 @@ failures and six pages out of sync.
 **Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
 locked-decision count, 340 → 343.
 
+## Phase 4 — The page becomes a view (2026-09-12)
+
+**A 2+ row, taken in the same session as Phase 3 at Devon's request, on Claude
+Opus 5, and it finished in the one increment.** Decisions #344 to #347.
+`Projects/coffee_shop_sim.html` was 1,804 lines after Phase 3; it is a 49-line
+redirect stub now, and the game is `Projects/corner-and-kettle/index.html`
+(572 lines, the markup and stylesheet moved byte for byte with the font URLs
+made relative) loading one module, `js/ui.js` (459). `ui.js` sits on
+`stations.js` (274), `chalkboard.js` (200), `draw.js` (225) and `sound.js`
+(41), the last two leaves the wishlist did not name but the split wanted.
+`sim.js` grew from 843 lines to 1,097 because two rules moved into it.
+
+**What moved into the sim, and why.** The row said the view modules own no
+rule, and two things in the page were rules. `doUnlock()` became `PURCHASES`,
+a row per purchase kind with `cost`, `refuse` and `apply`, read only by
+`canBuy()` and `purchase()` (#344). The chalkboard's `disabled` attributes now
+call `canBuy()`, so the rule that greys a button and the rule that takes the
+money cannot drift, and a refusal toasts its reason: the old function said
+"Unlocked!" for every purchase it refused, affordability included.
+`test/autopilot.mjs`'s hand-kept mirror is deleted and calls `sim.purchase()`
+(#339 closed). The station buttons went the same way, `CUP_ACTIONS` with `ms`
+and `run`, through `cupAction()` and `cupActionMs()` (#345), which is also how
+Phase 3's Frappe fix got a Node test in both build orders. A timed button still
+captures the cup it was clicked on, so a bar that finishes after a Dump lands in
+the dumped cup, as it always did. Hired baristas are `b1`, `b2`, `b3` rather
+than `b<Date.now()>`, the first free number, so a seeded run and the page mint
+the same ids; ids are only ever compared.
+
+**The save throttle, and the red it caused first** (#346). `renderAll()` wrote
+the save on every call. The row said to use `gvb-save.js`'s `autosave()`, and
+the first run of `drive-save.mjs` against the new page was 93/6: sections 7 and
+10 wipe or hand-edit storage and reload, and `autosave()`'s flush on `pagehide`
+wrote the departing page's shop back over the wipe. The old page never wrote on
+unload. So the throttle is a four-line dirty timer in `ui.js`, 4 s, and the
+moments a reload must not lose are written at once: a serve, a purchase, the end
+and start of a shift, a preset, mute, an import, New Game. What a close can lose
+is the last few seconds of the shift clock. Measured in Chromium, three senior
+baristas and four busy stations for 15 seconds: **13 writes on the old page, 3
+on the new one.** The wishlist estimated two a second; in that setup, with no
+human serves (each of which still writes at once), the old page did under one.
+
+**The numbers that say nothing changed.** `balance.mjs` identical to the last
+printed digit against Phase 3's run, all three players, with the autopilot's
+mirror gone and the sim's purchase table in its place. `drive-save.mjs` 99/0,
+its existing count, with `PAGE` repointed and section 2's offsite check reading
+`../index.html` instead of the stub, the one other line that named the old file
+and would otherwise have gone on passing against 49 lines of redirect.
+`smoke-save.mjs` 166/0, `gvb-save.test.mjs` 50/0. `smoke-sim.mjs` 132 → 175:
+section 10 now reads `index.html` and all five view modules, and a new section
+12 covers both tables.
+
+- **The chalkboard is one purchase table in the sim** (#344). Every button is
+  a row; a refusal says why; the `disabled` attribute and the purchase read one
+  rule. Section 12 refuses every priced purchase at $0 with no change to the
+  shop, buys each once at exactly its quoted price, and replays the branches
+  the old function carried: recipe chains, equipment-gated recipes, equipment
+  prerequisites, the franchise's reputation, three hires and no fourth, shields
+  at 150/200/250, a closed shop's marketing, reopening from day 6.
+- **The station buttons are one action table in the sim** (#345). Section 10
+  fails if a view module writes `state.money`, a cup field, a plate, an unlock
+  set, an upgrade, `level` or `trained`, or calls a `doUnlock()`.
+- **The save is a 4 s dirty timer with immediate saves, not `autosave()`**
+  (#346). `autosave()`'s `pagehide` flush writes over storage changed from
+  outside the page, which the old page never did and six browser checks depend
+  on. Reversible when `gvb-save.js` grows a no-flush option; that is a shared
+  file and was not this row's to change.
+- **The board was edited, not asked** (#347). Phase 4's line "ask, do not edit,
+  for the board" predates the retirement of the shared-file request queue.
+  `index.html`'s card, `landing.html`'s row and `Tools/board-check/games.mjs`'s
+  `url` point at `Projects/corner-and-kettle/` in the same PR, per the current
+  `CLAUDE.md`. The new page carries the social block the generator would write
+  for that href, and `social:check` counts it current.
+
+**Breaks on purpose**, each failing the assertion that claims it: `need()`
+never refusing (the $0 rail), hire ids off a multiplier (the `b1,b2,b3` rail),
+the old blend and a shot that always resets to espresso (one Frappe order each),
+the chalkboard nudging `state.money`, a station button writing `cup.ice`
+itself, a station writing `slot.foodPlated` itself, and `renderAll()` calling
+`saveNow()`. One break had to be run twice: the first `sed` for the station
+break matched nothing, the suite stayed green, and the green meant nothing
+until the edit was confirmed to have landed (#34).
+
+**The checks.** `smoke-sim.mjs` 175/0, `smoke-save.mjs` 166/0,
+`drive-save.mjs` 99/0, `gvb-save.test.mjs` 50/0, `balance.mjs` BALANCE OK.
+`check-integrity.mjs` 1,595 units and the same one broken,
+`Tools/prompt-builder.html`; `check-collisions.mjs` 0 collisions (it does not
+run under `npm run check` while integrity is red, so it was run on its own);
+`social:check` the same four failures and six pages out of sync.
+
+**Shared things touched**, in the same PR: `index.html` (the card's href) and
+`Tools/board-check/games.mjs` (the registry `url`). Also `landing.html`'s row
+and `assets/js/README.md`'s adopters table. `CLAUDE.md`'s locked-decision
+count, 343 → 347.
+
 ---
 
 # The two August 2026 audits

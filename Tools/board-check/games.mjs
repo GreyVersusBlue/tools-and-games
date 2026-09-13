@@ -210,7 +210,7 @@ export const GAMES = {
   // a shot. Three clicks to a filled cup, per locked decision #28.
   'corner-and-kettle': {
     title: 'Corner & Kettle',
-    url: '/Projects/coffee_shop_sim.html',
+    url: '/Projects/corner-and-kettle/',
     vw: 1280, vh: 800, dsf: 1,
     saveKey: 'cornerKettleSave_v1',
     intro: [],

@@ -367,22 +367,49 @@ section("9. prestige and the day-one reset");
   ok(Math.abs(sim.patienceFactor() - 0.69) < 1e-9, `and the patience floor 0.69, not 0.75 (${sim.patienceFactor()})`);
 }
 
-section("10. the page has no clock and no dice of its own");
+section("10. the page has no clock and no dice of its own, and owns no rule");
 {
-  const page = readFileSync(join(here, "..", "..", "coffee_shop_sim.html"), "utf8");
-  const script = page.slice(page.indexOf('<script type="module">'), page.lastIndexOf("</script>"));
-  eq((script.match(/Math\.random\s*\(/g) || []).length, 0, "no Math.random() in the page — every roll goes through the sim's rng");
+  // Phase 4: the page is index.html, which loads js/ui.js and nothing else,
+  // plus the view modules ui.js imports. Every check below reads all of them.
+  const read = (...p) => readFileSync(join(here, "..", ...p), "utf8");
+  const uncommented = src => src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const VIEW = ["ui.js", "stations.js", "chalkboard.js", "draw.js", "sound.js"];
+  const html = read("index.html");
+  eq((html.match(/<script\b/g) || []).length, 1, "index.html has exactly one script tag");
+  ok(/<script type="module" src="\.\/js\/ui\.js"><\/script>/.test(html), "and it is the module js/ui.js");
+  const script = VIEW.map(f => uncommented(read("js", f))).join("\n");
+  eq((script.match(/Math\.random\s*\(/g) || []).length, 0, "no Math.random() in the view — every roll goes through the sim's rng");
   eq((script.match(/setInterval\s*\(/g) || []).length, 0, "no setInterval — patience ticks on sim.advance()");
   ok(/sim\.advance\(dt\)/.test(script), "the page's frame loop calls sim.advance with the frame delta");
   ok(/rng:\s*Math\.random/.test(script), "and hands the sim Math.random as its rng");
-  const uncommented = src => src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  const simSrc = uncommented(readFileSync(join(here, "..", "js", "sim.js"), "utf8"));
+  const simSrc = uncommented(read("js", "sim.js"));
   eq((simSrc.match(/Math\.random/g) || []).length, 1, "sim.js names Math.random once, as the default rng");
   ok(!/document\.|window\.|requestAnimationFrame|setTimeout|setInterval|performance\.now|Date\.now/.test(simSrc), "and touches no DOM, no timer, no wall clock");
-  const content = uncommented(readFileSync(join(here, "..", "js", "content.js"), "utf8"));
+  const content = uncommented(read("js", "content.js"));
   ok(!/\bstate\b/.test(content), "content.js reads no state");
   ok(!/spawnReplacementIfNeeded|spawnTimer|_blendIce/.test(script), "spawnTimer, spawnReplacementIfNeeded and the dead blend-ice button are gone");
   ok(!/needsWork|cupMatchesEnough/.test(script), "the page decides neither the tab dots nor the Serve gate — both come from the sim (#342)");
+  // None owns a rule (#344, #345): the view never moves money, and never
+  // writes the cup, a slot's plate, an unlock set, an upgrade or a barista's
+  // level. applyPreset replacing slot.cup wholesale is the one cup write, and
+  // it is the player's own saved build, not a rule.
+  ok(!/state\.money\s*(?:[-+*]?=(?!=)|\+\+|--)/.test(script), "no view module writes state.money");
+  ok(!/\bcup\.\w+\s*(?:=(?!=)|\+\+|--)|cup\.toppings\.(?:push|splice)/.test(script), "no view module writes a cup's fields — station buttons go through sim.cupAction");
+  ok(!/unlocked\w+\.add\(|upgrades\.add\(|\.level\s*=(?!=)|\.trained\s*=(?!=)|foodPlated\s*=(?!=)/.test(script), "no view module grants an unlock, an upgrade, a promotion, training or a plate");
+  ok(!/doUnlock\s*\(/.test(script), "and doUnlock() is gone; the chalkboard calls sim.purchase through buy()");
+  // The save is throttled (#346): renderAll() marks it dirty and never writes.
+  const ui = uncommented(read("js", "ui.js"));
+  const renderAllBody = ui.slice(ui.indexOf("function renderAll(){"), ui.indexOf("\n}\n", ui.indexOf("function renderAll(){")));
+  ok(renderAllBody.length > 100 && /markDirty\(\)/.test(renderAllBody), "renderAll() marks the save dirty");
+  ok(!/saveNow\(|saveSlot\.save\(|setItem/.test(renderAllBody), "and does not write it — a redraw is not a save");
+
+  // The old URL is a stub on #46's pattern, like Projects/daredevil_r4.html.
+  const stub = readFileSync(join(here, "..", "..", "coffee_shop_sim.html"), "utf8");
+  ok(stub.split("\n").length < 60, `coffee_shop_sim.html is a stub, not a game (${stub.split("\n").length} lines)`);
+  ok(/<meta name="robots" content="noindex">/.test(stub), "the stub is noindex");
+  ok(/<meta http-equiv="refresh" content="0; url=corner-and-kettle\/">/.test(stub), "and refreshes to corner-and-kettle/");
+  ok(/<link rel="canonical" href="https:\/\/greyversusblue\.com\/Projects\/corner-and-kettle\/">/.test(stub), "with the new page as canonical");
+  ok(!/<script/.test(stub), "and runs no script");
 }
 
 section("11. the Serve gate and its cue (#341, #342)");
@@ -455,6 +482,103 @@ section("11. the Serve gate and its cue (#341, #342)");
   ok(r.canServe && !r.complete && r.done === 0, "the wrong pastry is servable and short, 0 of 1");
   plate.foodPlated = "muffin";
   ok(sim.serveReadiness(plate).complete, "the right one is complete");
+}
+
+section("12. the chalkboard is one purchase table, and the stations are one action table (#344, #345)");
+{
+  const snapshot = st => JSON.stringify({ ...st, unlockedRecipes: [...st.unlockedRecipes], unlockedSyrups: [...st.unlockedSyrups],
+    unlockedToppings: [...st.unlockedToppings], unlockedFoods: [...st.unlockedFoods], upgrades: [...st.upgrades] });
+  // One of everything a chalkboard button can name, on a shop with a barista
+  // to promote and a day late enough to reopen.
+  const ITEMS = [
+    ["recipe", "mocha"], ["food", "muffin"], ["syrup", "hazelnut"], ["topping", "sprinkles"], ["station", 3],
+    ["hireBarista"], ["promoteBarista", "b1"], ["trainBarista", "b1"], ["loyalty", 1], ["shield"],
+    ["equipment", "grinder"], ["ambiance", "music"], ["business", "franchise"], ["marketing"],
+  ];
+  const withStaff = st => { st.day = 7; st.reputation = 90; st.baristas.push({ id: "b1", name: "Pip", level: 1, targetSlot: null, acc: 0, spec: null, trained: false, working: true }); };
+  {
+    const { sim } = shop(12);
+    const covered = new Set([...ITEMS.map(i => i[0]), "specBarista", "scheduleBarista", "prestige"]);
+    eq([...sim.PURCHASE_TYPES].sort().join(","), [...covered].sort().join(","), "every purchase type in the table is exercised here");
+  }
+  // Broke: every priced purchase is refused, says why, and changes nothing at all.
+  {
+    const { sim, state } = shop(12, st => { withStaff(st); st.money = 0; });
+    const bad = [];
+    for (const [type, id] of ITEMS) {
+      const before = snapshot(state);
+      const c = sim.canBuy(type, id);
+      const r = sim.purchase(type, id);
+      if (c.ok || r.ok) bad.push(`${type} allowed at $0`);
+      if (!r.reason || /^Unlocked!$/.test(r.reason) || !/\$\d+ needed/.test(r.reason)) bad.push(`${type}: reason "${r.reason}"`);
+      if (snapshot(state) !== before) bad.push(`${type} changed the shop while refusing`);
+    }
+    ok(bad.length === 0, `at $0 all ${ITEMS.length} priced purchases are refused with "$N needed" and change nothing${bad.length ? " — " + bad.join("; ") : ""}`);
+  }
+  // Rich: each one goes through, and takes exactly what canBuy said it would.
+  {
+    const { sim, state } = shop(12, st => { withStaff(st); st.money = 100000; });
+    const bad = [];
+    for (const [type, id] of ITEMS) {
+      const quoted = sim.canBuy(type, id);
+      const before = state.money;
+      const r = sim.purchase(type, id);
+      if (!r.ok) bad.push(`${type} refused: ${r.reason}`);
+      else if (before - state.money !== quoted.cost || quoted.cost <= 0) bad.push(`${type} took $${before - state.money}, quoted $${quoted.cost}`);
+      if (sim.purchase(type, id).ok && !["hireBarista", "shield"].includes(type)) bad.push(`${type} bought twice`);
+    }
+    ok(bad.length === 0, `with $100,000 each goes through once, for exactly the quoted price${bad.length ? " — " + bad.join("; ") : ""}`);
+  }
+  // The rules the old doUnlock() carried in its branches.
+  {
+    const { sim, state } = shop(12, st => { st.money = 100000; });
+    eq(sim.purchase("recipe", "nitrocoldbrew").reason, "Unlock Cold Brew first.", "a recipe chain refuses out of order");
+    eq(sim.purchase("recipe", "ristretto").reason, "This recipe unlocks automatically with the matching equipment.", "an equipment-gated recipe cannot be bought");
+    eq(sim.purchase("equipment", "espresso3").reason, "Install Dual-Boiler Espresso Machine first.", "equipment refuses without its predecessor");
+    ok(sim.purchase("equipment", "espresso2").ok && state.unlockedRecipes.has("ristretto"), "espresso2 puts the ristretto on the menu");
+    eq(sim.purchase("business", "franchise").reason, "Second Location needs 80 reputation.", "the franchise waits on reputation");
+    eq([1, 2, 3].map(() => (sim.purchase("hireBarista"), state.baristas.at(-1).id)).join(","), "b1,b2,b3", "hires are b1, b2, b3, the same on every run");
+    ok(!sim.purchase("hireBarista").ok && state.baristas.length === 3, "and a fourth is refused");
+    eq([0, 1, 2].map(() => { const c = sim.canBuy("shield").cost; sim.purchase("shield"); return c; }).join(","), "150,200,250", "shields cost 150, 200, 250");
+    ok(!sim.purchase("shield").ok && state.comboShields === 3, "and a fourth held is refused");
+    ok(sim.purchase("station", "3").ok && state.slots.length === 3, "a station id read off a data attribute as a string still buys");
+    eq(sim.purchase("specBarista", "b1", "bar").ok && sim.purchase("specBarista", "b1", "bar").ok, false, "a bar specialist cannot be made a bar specialist again");
+    ok(sim.purchase("scheduleBarista", "b1").ok && state.baristas[0].working === false, "scheduling gives the day off");
+    eq(sim.purchase("prestige").reason, "Reopening is available from day 6.", "no reopening on day 1");
+    state.shiftRunning = false;
+    eq(sim.purchase("marketing").reason, "The shop is closed.", "no marketing between shifts");
+    state.day = 6; state.shiftRunning = true;
+    ok(sim.purchase("prestige").ok && state.prestigeLevel === 1 && state.baristas.length === 0, "day 6 reopens the shop");
+  }
+  // The station buttons: a Frappe by hand in either order (#343), and the rest.
+  {
+    const { sim } = shop(12);
+    const build = (steps) => { const sl = slotFor(order("frappe", { milk: "oat" })); for (const [a, v] of steps) sim.cupAction(sl, a, v); return sl; };
+    ok(sim.orderIsComplete(build([["pullShot"], ["pickMilk", "oat"], ["blend"]])), "shot, milk, blend: a complete Frappe");
+    ok(sim.orderIsComplete(build([["blend"], ["pullShot"], ["pickMilk", "oat"]])), "blend, shot, milk: a complete Frappe too");
+    const latte = slotFor(order("latte", { milk: "whole", toppings: ["cinnamon"] }));
+    for (const [a, v] of [["pullShot"], ["pickMilk", "whole"], ["steamMilk"], ["toggleTopping", "cinnamon"]]) sim.cupAction(latte, a, v);
+    ok(sim.orderIsComplete(latte), "a latte with cinnamon, by its four buttons");
+    eq(sim.cupAction(latte, "toggleTopping", "cinnamon"), "Removed topping", "the topping button toggles off");
+    ok(!sim.orderIsComplete(latte), "and the ticket notices");
+    sim.cupAction(latte, "pickMilk", "whole");
+    eq(latte.cup.milkSteamed, false, "picking the milk again un-steams it, as the button always has");
+    const dumped = latte.cup; latte.cup = newCup();
+    sim.cupAction(latte, "pullShot", undefined, dumped);
+    ok(latte.cup.shots === 0 && dumped.shots === 2, "a bar that finishes after a dump lands in the dumped cup");
+    const plate = slotFor(foodOrder("bagel"));
+    sim.cupAction(plate, "plateFood", "bagel");
+    ok(sim.orderIsComplete(plate), "plating the bagel completes the bagel");
+  }
+  {
+    const { sim, state } = shop(12);
+    eq(sim.cupActionMs("pullShot"), 500, "a shot takes 500 ms on the day-one machine");
+    state.upgrades.add("espresso2");
+    eq(sim.cupActionMs("pullShot"), 320, "320 on tier 2");
+    state.activeEvent = { id: "outage", until: 1e9 };
+    eq(sim.cupActionMs("steamMilk"), 900 * 1.8, "an outage stretches steaming by 1.8x");
+    eq(sim.cupActionMs("pickMilk"), 0, "picking a milk is instant");
+  }
 }
 
 /* ---------- report ---------- */

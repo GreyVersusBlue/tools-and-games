@@ -163,7 +163,7 @@ below exists because a real adopter needed it; none were added speculatively.
 | **Closing Time** | `closingTime.save.v1` | `repair` catches **content drift**, not just schema drift — see `migrate` vs `repair` above. Prompted the `fresh(...args)`/`reset(...args)` and `clear()` additions |
 | **Torchbearer** | `torchbearer-save` | Names its export after the hero, not the game — prompted the `filename` option on `mountSaveBar` |
 | **The Absalom Inheritance** | `absalom-inheritance-save-v1` | `repair` clamps a wild coordinate back to a place a body can actually stand, not just to a number |
-| **Corner & Kettle** | (`coffee_shop_sim.html`'s save) | Found the `load()`/`getItem` and private-mode construction gaps this session's fixes close |
+| **Corner & Kettle** | (`corner-and-kettle/js/save.js`, then still inside `coffee_shop_sim.html`) | Found the `load()`/`getItem` and private-mode construction gaps this session's fixes close |
 | **Daredevil** | `daredevil-save-v1` | Deliberately does not save the line index inside a scene, so rewriting prose can't strand a save mid-sentence |
 | **Integer Foundry** | `integer-foundry-save-v1` | `slot.autosave()` replaced a hand-rolled 8-second `setInterval`; saves are under a second behind the screen now |
 | **The Fracture Cycle** | `fracture-cycle-v1` | The smallest adoption on the list on purpose — one array, which endings have been seen, not a mid-story save |

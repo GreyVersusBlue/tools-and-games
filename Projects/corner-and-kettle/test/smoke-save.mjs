@@ -37,7 +37,7 @@ function section(name) { process.stdout.write(`\n${name}\n`); }
 
 /* ---------- fixtures ---------- */
 
-// Mirrors the tables in coffee_shop_sim.html. The page builds its catalog from
+// Mirrors the tables in js/content.js. The page (js/ui.js) builds its catalog from
 // those tables directly, so this is a copy of the ids only.
 const CATALOG = buildCatalog({
   recipes: ["drip","americano","latte","cappuccino","icedcoffee","mocha","caramelmac",

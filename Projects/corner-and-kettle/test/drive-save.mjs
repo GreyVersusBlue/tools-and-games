@@ -28,7 +28,7 @@ const OUT = path.join(os.tmpdir(), 'corner-and-kettle-test');
 // 8123 checks/shoot, 8124 play-castle, 8125 previews, 8126 games.
 const PORT = 8131;
 const BASE = `http://127.0.0.1:${PORT}`;
-const PAGE = `${BASE}/Projects/coffee_shop_sim.html`;
+const PAGE = `${BASE}/Projects/corner-and-kettle/`;
 const KEY = 'cornerKettleSave_v1';
 
 const harness = path.resolve(HERE, '..', '..', '..', 'Tools', 'board-check', 'harness.mjs');
@@ -118,7 +118,7 @@ try {
   /* ---------- 2. fonts and offsite ---------- */
 
   t.section('2. vendored fonts, nothing offsite');
-  const html = fs.readFileSync(path.resolve(HERE, '..', '..', 'coffee_shop_sim.html'), 'utf8');
+  const html = fs.readFileSync(path.resolve(HERE, '..', 'index.html'), 'utf8');
   t.ok(!html.includes('fonts.googleapis.com'), 'the page has zero fonts.googleapis.com hits');
   const faces = await p.evaluate(() => Promise.all([
     ['400', 'Kalam'], ['700', 'Kalam'], ['400', 'Quicksand'], ['600', 'Quicksand'],

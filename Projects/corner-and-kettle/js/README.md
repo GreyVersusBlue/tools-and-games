@@ -1,0 +1,91 @@
+# Corner & Kettle's `js/` — module map
+
+Eight ES modules, no bundler, no build step. `../index.html` loads exactly one
+of them (`<script type="module" src="./js/ui.js">`); the rest are imported.
+`Projects/coffee_shop_sim.html`, where the whole game used to live, is a
+redirect stub.
+
+```
+content.js <- nothing          sim.js <- nothing           sound.js <- nothing
+    ^                            ^                             ^
+    |                            |    stations.js <- nothing   |
+draw.js <- content.js            |    chalkboard.js <- nothing |
+    ^                            |          ^                  |
+    |                            |          |                  |
+ui.js <- content.js, sim.js, draw.js, sound.js, stations.js, chalkboard.js,
+         save.js, ../../../assets/js/gvb-save.js
+                  ^
+save.js <- ../../../assets/js/gvb-save.js
+```
+
+**The split is model and view.** `content.js` and `sim.js` are the game: what
+the shop sells and everything that happens to it, runnable in Node with a seed.
+`ui.js`, `stations.js` and `chalkboard.js` are the page, and none of them owns
+a rule. `test/smoke-sim.mjs` section 10 reads all five view modules and fails
+if one writes `state.money`, a cup's fields, a plate, an unlock set, an
+upgrade, a promotion or training, or calls a `doUnlock()` again.
+
+- **`content.js`** — the tables: recipes, foods, milks, syrups, toppings,
+  phases, staff tiers, every upgrade and its price, daily modifiers, random
+  events, the starting unlocks, sprite palettes. **It reads no `state`**, and
+  section 10 checks that it never does; a tuning function that needs the shop
+  belongs in `sim.js`. A new recipe is one row here, and joins the save catalog
+  through `buildCatalog` in `ui.js`, not by hand.
+- **`sim.js`** — `createSim({content, rng, state, notify})`: spawning,
+  patience, order generation, the requirement list, the barista, scoring, the
+  day, prestige, and three tables a click goes through.
+  `getOrderRequirements(order)` returns the ticket's lines, each with `label`,
+  `station`, `check(slot)` and `apply(slot)`, and the ticket, the tab dots
+  (`stationsNeedingWork`), the Serve button (`serveReadiness`), the barista
+  (`autoAssistStep`) and the scorer all read it. `cupAction(slot, action,
+  value, cup)` and `cupActionMs(action)` are every station button;
+  `canBuy(type, id, extra)` and `purchase(type, id, extra)` are every
+  chalkboard button. **It imports nothing and touches no DOM, timer or wall
+  clock**: the tables come in as an argument, time comes from `advance(dtMs)`
+  and chance from the injected `rng`, which is what lets a 136-second shift run
+  in milliseconds and run the same way twice. Anything the page must show
+  leaves through `notify()`.
+- **`save.js`** — the save schema over the shared `gvb-save.js`: `validate`,
+  `migrate`, `repair`, `toSaveData`, `applyToState`, `buildCatalog`. Key
+  `cornerKettleSave_v1`, which never changes (#36). Imported by `ui.js` and
+  `test/smoke-save.mjs`, never by `sim.js`: the sim does not know it is saved.
+- **`draw.js`** — string builders: the customer sprite, the cup SVG, the order
+  bubble, the ticket, and the customer's accessible name. **A leaf over
+  `content.js`**: no `state`, no sim, no DOM. It takes the order or cup it
+  draws, and the ticket takes its requirement lines as an argument rather than
+  asking the sim.
+- **`sound.js`** — `createSound(isMuted)`, every sound as a WebAudio beep.
+  **Imports nothing.** `isMuted` is a function, asked on each beep, so the mute
+  button works mid-shift.
+- **`stations.js`** — `createStations(ctx)`: the seven tabs, the buttons in
+  each, the progress bars and the presets tab. **Imports nothing**: `ui.js`
+  hands it `state`, `sim`, `toast`, `sound`, `renderAll` and `saveNow`. It
+  needs `renderAll` and `ui.js` needs it, so an import either way would be a
+  cycle; passing the functions in keeps it a leaf that `ui.js` sits on. A
+  timed button captures the cup it was clicked on, so a bar that finishes after
+  a Dump lands in the dumped cup, as it always has.
+- **`chalkboard.js`** — `createChalkboard({state, sim, buy})`: the Menu Board.
+  **Imports nothing**, for the same reason. Every button's `disabled` is
+  `sim.canBuy()`, and every click is `buy`, so the rule that enables a button
+  and the rule that takes the money are one rule (#344).
+- **`ui.js`** — the entry. Builds the state, the sim and the save slot; draws
+  the topbar, queue and counter; owns `serveSlot()`, `buy()`, the frame loop,
+  the day-end modal, the keyboard shortcuts, the save bar and boot; and assigns
+  `window.__CK_DEBUG__` last, which is what `test/drive-save.mjs` waits on as
+  proof the module ran. `renderAll()` marks the save dirty and a timer writes
+  it at most every 4 s; a serve, a purchase, the end and start of a shift, a
+  preset, mute, an import and New Game write at once (#346).
+
+## Adding things
+
+- **A recipe, food, syrup or topping:** a row in `content.js`. If it needs a
+  new kind of ticket line, add the line to `getOrderRequirements()` with its
+  `station` and `apply`; the dot, the button, the barista and the scorer pick it
+  up, and `smoke-sim.mjs` section 11 fails on a line whose station is not a tab
+  or whose `apply` does not satisfy its own `check`.
+- **A chalkboard purchase:** a row in `sim.js`'s `PURCHASES` (`cost`, `refuse`,
+  `apply`), then a button in `chalkboard.js` that calls `buy(type, id)`.
+  Section 12 fails if a type in the table is never exercised.
+- **A station button:** a row in `CUP_ACTIONS` (`ms`, `run`), then the button in
+  `stations.js`; a timed one also goes in its `TIMED` map with its bar and
+  sound.

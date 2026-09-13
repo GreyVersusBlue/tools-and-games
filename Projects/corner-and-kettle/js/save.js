@@ -1,8 +1,8 @@
 // save.js — Corner & Kettle's save layer, on top of the shared gvb-save module.
 //
-// Split out of coffee_shop_sim.html so a Node test can import it. The page
-// itself is still one file; only the save schema lives here, because the save
-// schema is the part with rules worth asserting.
+// Split out of coffee_shop_sim.html so a Node test can import it, the first
+// module this project had. The rest of that file followed in Phases 1 and 4;
+// js/README.md is the map, and js/ui.js is what imports this.
 //
 // Imported by RELATIVE path so `node test/smoke-save.mjs` can resolve it.
 // A leading slash is a browser-only convenience Node refuses.

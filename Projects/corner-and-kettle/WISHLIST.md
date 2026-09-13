@@ -1,7 +1,8 @@
 # Corner & Kettle — Feature Wishlist
 
-**Status: Phases 1 to 3 have shipped; the next is Phase 4, on Claude Opus 5;
-Phases 5 to 9 are open after it.** The paragraph below is Phase 1's and is kept for
+**Status: arc one has shipped, Phases 1 to 4; arc two is open, and the next is
+Phase 5 — Staff who have a week, on Claude Opus 5.** The game lives at
+`Projects/corner-and-kettle/index.html` now. The paragraph below is Phase 1's and is kept for
 the record.
 The shop runs in Node now: `js/content.js` is the tables, `js/sim.js` is
 everything that happens to them behind `createSim({content, rng, state,
@@ -58,7 +59,8 @@ test could import it. That reason has not yet been applied to anything else.
 
 ## The architecture that is there
 
-**Phase 1 changed this.** The tables are `js/content.js` (174 lines, verbatim),
+**Phases 1 and 4 changed this; `js/README.md` is the map now.** After Phase 1
+the tables were `js/content.js` (174 lines, verbatim),
 the simulation is `js/sim.js` (843 lines: `makeRng`, `freshState`, `newCup`,
 `createSim`), and the page's module script is 1,223 lines of rendering,
 station buttons, chalkboard, `doUnlock()`, sound and save wiring. The page
@@ -174,16 +176,15 @@ this project does not use it.
 - **The `<head>`'s `gvb:social:start`/`end` block is generated** (locked
   decision #31). Never hand-edit inside the markers; a wrong description is a
   request against `index.html`, which belongs to prompt 22.
-- **The board card and the URL belong to prompt 22.** `index.html` line 379
-  points at `Projects/coffee_shop_sim.html`. A phase that moves the game to a
-  directory follows the Daredevil precedent: `Projects/daredevil_r4.html` is a
-  45-line stub with `noindex`, a `meta refresh`, a `rel=canonical` and a
-  comment explaining itself, per locked decision #46's Schedule Browser
-  pattern. The old URL keeps working and the board is asked, not edited.
+- **The URL moved in Phase 4.** The game is `Projects/corner-and-kettle/`, and
+  `Projects/coffee_shop_sim.html` is a 49-line stub on the Daredevil precedent
+  (`noindex`, `meta refresh`, `rel=canonical`, locked decision #46). The board
+  card is `index.html`'s, edited in the same PR as the move now that the
+  shared-file request queue is retired (#347).
 - **Windows is the dev machine** (v7 §7): absolute `import()` paths go through
   `pathToFileURL`, as both suites already do. **The invocations that work,
   from the repo root:**
-  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 132 passed, 0 failed;
+  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 175 passed, 0 failed;
   `node Projects/corner-and-kettle/test/smoke-save.mjs` → 166 passed, 0 failed;
   `node Projects/corner-and-kettle/test/balance.mjs` → BALANCE OK, about 22 s;
   `node Projects/corner-and-kettle/test/drive-save.mjs` → 99 checks, 0 failed;
@@ -245,22 +246,22 @@ Open and unclaimed. Add here rather than starting a new list.
 **The file**
 - ~~1,978 lines in one `<script type="module">`; only the save schema is
   importable, so only the save schema has a Node test.~~ Phase 1: 1,223, and
-  the sim has `smoke-sim.mjs`. Rendering, the stations and the chalkboard are
-  still in the page (Phase 4).
+  the sim has `smoke-sim.mjs`. Phase 4: no script left in the page; eight
+  modules.
 - ~~`STATION_TAB_DEFS`' `needsWork` (page) and `autoAssistStep()` (sim) re-derive
   what `getOrderRequirements()` knows — a new recipe field must be added in
   three places.~~ Phase 3: every ticket line carries its `station` and its
   `apply()`, and the dot, the button and the barista all read them (#342).
-- `doUnlock()` is 145 lines of `if (type === ...)`, and every branch that fails
+- ~~`doUnlock()` is 145 lines of `if (type === ...)`, and every branch that fails
   its affordability test falls through to `toast('Unlocked!')`: buying what you
-  cannot afford says you bought it. The only real guard is the `disabled`
-  attribute the chalkboard writes, i.e. the view. ~~Training costs `300` as a
-  bare literal in two places~~ (`BARISTA_TRAIN_COST` since Phase 1).
-- `renderAll()` writes the save synchronously on every call, barista steps
-  included.
-- No `README.md` and no `js/README.md`;
-  `Projects/daredevil/js/README.md` is the model. `test/README.md` is stale —
-  162 assertions, 83 checks and "twelve sections" against 166, 90 and thirteen.
+  cannot afford says you bought it.~~ Phase 4: `PURCHASES` in `sim.js`, and a
+  refusal says why (#344). ~~Training costs `300` as a bare literal in two
+  places~~ (`BARISTA_TRAIN_COST` since Phase 1).
+- ~~`renderAll()` writes the save synchronously on every call, barista steps
+  included.~~ Phase 4: a 4 s dirty timer and immediate saves where it matters
+  (#346).
+- No `README.md`. ~~No `js/README.md`~~ (Phase 4). ~~`test/README.md` is
+  stale~~ (current as of Phase 4).
 - ~~Dead or half-wired: `state.spawnTimer` is never read;
   `spawnReplacementIfNeeded()` has an empty body; `cup._blendIce` is set by the
   blend station's "Add ice" button and read by nothing.~~ All three removed in
@@ -407,43 +408,40 @@ three fixed.
 
 ## Phase 4 — The page becomes a view
 
-**Phase 1 takes the model out; what is left is roughly 1,200 lines of
-string-building and `onclick` re-binding in a file the browser has to parse
-before it can show a cup.**
+**Shipped 2026-09-12, on Claude Opus 5, in the same session as Phase 3.** A 2+
+row that finished in one increment. The full record is `HISTORY.md`, "Corner &
+Kettle, arc one", Phase 4, decisions #344 to #347.
 
-Daredevil made this exact move in round 2: 6,888 lines became
-`Projects/daredevil/index.html` plus four modules, with a 45-line redirect stub
-at the old URL per locked decision #46. Do the same here, and only now, because
-the safety net is Phase 1's `smoke-sim.mjs` plus Phase 2's band plus the 90
-browser checks — which is what Daredevil had before its split and what this
-project does not have yet.
-
-- [ ] **`Projects/corner-and-kettle/index.html`,** carrying the markup, the
-  stylesheet and one `<script type="module" src="./js/ui.js">`.
-- [ ] **`js/ui.js`, `js/stations.js`, `js/chalkboard.js`.** Render and wiring
-  only; each calls into `sim.js` and none owns a rule. `doUnlock()`'s 145 lines
-  become a table of purchase kinds with `cost`, `canBuy` and `apply` — which
-  kills the `toast('Unlocked!')` fall-through and puts affordability in one
-  place instead of in the view and the handler both.
-- [ ] **`Projects/coffee_shop_sim.html` becomes the stub:** `noindex`, `meta
-  refresh`, `rel=canonical`, generated social block preserved verbatim, and a
-  comment saying what used to be here — copy `Projects/daredevil_r4.html`.
-- [ ] **Ask, do not edit, for the board.** `index.html`'s card and
-  `games.mjs`'s `url` both point at the old path; write the exact one-line
-  edits into the notes' Shared-file requests, applicable blind.
-- [ ] **`js/README.md`,** the module map with its import graph, on the model of
-  `Projects/daredevil/js/README.md` — including why any module that must stay a
-  leaf is a leaf.
-- [ ] **Throttle the save.** `renderAll()` stops calling `saveState()`; use
-  `gvb-save.js`'s `autosave(getState, ms)`, and save unconditionally on serve,
-  on purchase and on `endShift()`.
-- [ ] **Both suites green at their existing counts,** with `drive-save.mjs`'s
-  `PAGE` repointed and nothing else in it touched.
-
-*Leans on:* Phases 1–2, the Daredevil precedent, `assets/js/gvb-save.js`.
-*Save:* none — the key and schema untouched, which is the point.
-*Model:* **Claude Opus 5** — the model is extracted and tested by now, so what
-remains is moving surface code behind a suite that will say if it broke.
+- [x] **`Projects/corner-and-kettle/index.html`,** the markup and the
+  stylesheet moved byte for byte (font URLs made relative), and one
+  `<script type="module" src="./js/ui.js">`.
+- [x] **`js/ui.js`, `js/stations.js`, `js/chalkboard.js`,** plus two leaves the
+  split wanted, `js/draw.js` (sprite, cup, ticket, labels) and `js/sound.js`.
+  None owns a rule, and `smoke-sim.mjs` section 10 fails if one writes money,
+  a cup, a plate, an unlock, an upgrade, a promotion or training. `doUnlock()`
+  is `PURCHASES` in `sim.js`, a row per kind with `cost`, `refuse` and `apply`;
+  a refusal says why, and the chalkboard's `disabled` reads the same `canBuy()`
+  (#344). The station buttons went the same way, `CUP_ACTIONS` (#345), which
+  is how the Frappe fix got a Node test.
+- [x] **`Projects/coffee_shop_sim.html` is the stub:** `noindex`, `meta
+  refresh`, `rel=canonical`, the generated social block verbatim, and a comment
+  saying what used to be here.
+- [x] **The board, edited rather than asked** (#347). The request queue this
+  line was written for is retired; `index.html`'s card, `landing.html`'s row
+  and `games.mjs`'s `url` point at `Projects/corner-and-kettle/` in the same
+  PR, and `social:check` reads the new page's block as current.
+- [x] **`js/README.md`,** the module map, the import graph, and why
+  `stations.js` and `chalkboard.js` import nothing.
+- [x] **Throttle the save.** `renderAll()` marks it dirty; a 4 s timer writes it;
+  serve, purchase, shift end and start, presets, mute, import and New Game write
+  at once. Not `gvb-save.js`'s `autosave()`, whose flush on `pagehide` wrote a
+  thrown-away shop back over a wipe and turned six browser checks red (#346).
+  Measured in Chromium, three senior baristas and four busy stations for 15 s:
+  13 writes before, 3 after.
+- [x] **Both suites green at their existing counts.** `drive-save.mjs` 99/0
+  with `PAGE` repointed and section 2 reading the new `index.html`, the one
+  other line that named the old file. `balance.mjs` identical to the digit,
+  with the autopilot's purchase mirror deleted (#339).
 
 ## Arc two — the shop as a business
 
@@ -612,8 +610,7 @@ mostly a request written well enough to apply blind.
   the port to reserve.
 - [ ] **Prove it locally first** by running the same beats from
   `drive-save.mjs`, so the request ships tested rather than plausible.
-- [ ] **Repoint the registry `url`** in the same request if Phase 4 has moved
-  the page, and note the scheduling constraint the prompt already carries:
+- [x] **Repoint the registry `url`:** done in Phase 4 (#347). Still note the scheduling constraint the prompt already carries:
   `npm run games` opens a real visible window and Chrome throttles one that
   loses focus, so only one suite at a time.
 
