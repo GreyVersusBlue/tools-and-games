@@ -87,12 +87,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: PROBE anathema old vs new
-            dir: .
-            install: Tools/board-check
-            commands: |
-              n=0; for i in $(seq 15); do if node Pathfinder/tests/anathema.test.mjs > /tmp/n.txt 2>&1; then n=$((n+1)); else grep -E 'ABORTED' /tmp/n.txt | head -1; fi; done; echo "NEW passed $n/15"; [ "$n" -eq 15 ]
-
           - name: gvb-save.js
             dir: .
             commands: |
