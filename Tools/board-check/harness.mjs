@@ -296,7 +296,30 @@ export async function prepPage(browser, base, { width = 1280, height = 1000, dsf
 
   const errs = [];
   page.on('pageerror', e => errs.push('pageerror: ' + e.message));
-  page.on('requestfailed', r => errs.push('reqfail: ' + r.url().slice(0, 120)));
+  // A cancelled request is not a failure, and `net::ERR_ABORTED` is every
+  // cancellation there is: a suite that reloads the page — Closing Time's beats
+  // reload three times — cancels whatever the browser had in flight, and a
+  // lazily-fetched font is usually what that is. `npm run games closing-time`
+  // failed on one about one run in three, a different weight each time, all
+  // seven of them present on disk.
+  //
+  // An offsite URL this file refuses below still reports. `r.abort()` surfaces
+  // as `net::ERR_FAILED`, not `net::ERR_ABORTED` — checked by putting a
+  // `<script src="https://example.com/...">` in a game and watching both this
+  // and the `__blocked` assertion fail.
+  //
+  // Nothing is lost by dropping them: `requestfailed` fires on network-level
+  // failures, never on an HTTP status, so this listener could not see a 404 to
+  // begin with. A url() pointing at a file that does not exist is
+  // check-integrity.mjs's sweep, which runs on every PR.
+  //
+  // The reason is in the string now. Without it this took four runs and a patched
+  // copy of this file to tell a cancellation from a missing font.
+  page.on('requestfailed', (r) => {
+    const why = r.failure?.()?.errorText || '';
+    if (why === 'net::ERR_ABORTED') return;
+    errs.push(`reqfail: ${why || '?'} ${r.url().slice(0, 120)}`);
+  });
   page.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text().slice(0, 160)); });
   page.__errs = errs;
   page.__blocked = blocked;

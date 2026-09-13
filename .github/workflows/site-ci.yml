@@ -21,8 +21,10 @@
 #   - Projects/blue-hour-trail/test/browser.mjs. It holds W and asserts the
 #     climb in real time, and a real-time movement assertion under
 #     software-rendered Chromium is inconclusive either way (#53).
-#   - Castle Conundrum, and anything under `npm run games`/`play`/`previews`.
-#     Those open real visible windows and have no headless form.
+#   - Castle Conundrum's playable half, and anything under `npm run
+#     games`/`play`/`previews`. Those open real visible windows and have no
+#     headless form. Its test/assets.mjs is in the matrix: that one reads glTF
+#     off disk and does arithmetic, and never opens a browser.
 #   - Two browser suites written against Playwright's page API:
 #     Tools/name-picker/test/browser.mjs and
 #     Tools/seating-chart/test/drive-seating.mjs. On Windows the harness hands
@@ -105,6 +107,13 @@ jobs:
             commands: |
               node Pathfinder/tests/anathema.test.mjs
 
+          # characters.html and campaigns.html against each other. No browser —
+          # it reads both files and compares the rules they mark [shared].
+          - name: Pathfinder shared chrome
+            dir: .
+            commands: |
+              node Pathfinder/tests/shared-chrome.test.mjs
+
           - name: Faire Weekend
             dir: Projects/Ren-Faire-Claude
             install: Projects/Ren-Faire-Claude
@@ -159,6 +168,13 @@ jobs:
             dir: Projects/Closing Time
             commands: |
               node tools/smoke.mjs
+
+          # Castle Conundrum's playable half is still hand-run (see above), but
+          # test/assets.mjs is glTF parsing and arithmetic — no browser at all.
+          - name: Castle Conundrum
+            dir: Projects/Castle Conundrum
+            commands: |
+              node test/assets.mjs
 
           - name: Archived teaching tools
             dir: .
