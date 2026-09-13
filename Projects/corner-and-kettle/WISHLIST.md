@@ -192,6 +192,9 @@ this project does not use it.
 
 ## Questions for Devon
 
+**Answered by the Phase 3 session, locked decision #341: the cue.** The
+question and its reasoning are kept below as they were asked.
+
 **Should the Serve button require full completion, now that baristas — not the
 player — are the main path to a finished cup?** The gate is
 `cupMatchesEnough()` at line 1392: four lines, which check that a base exists
