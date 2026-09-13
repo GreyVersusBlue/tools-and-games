@@ -30,6 +30,9 @@ export const REGULAR_SATISFACTION_MAX = 100;
 export const REGULAR_TOLERANCE_START = 1;
 export const REGULAR_TOLERANCE_MIN = 0.7;
 export const REGULAR_TOLERANCE_MAX = 1.5;
+/** The reopening layer (Phase 7, #360). Beans are clamped so a hand-edited
+ * blob cannot put an Infinity into the chalkboard's affordability test. */
+export const BEANS_MAX = 9999;
 
 /* ---------- small coercers ---------- */
 
@@ -72,6 +75,10 @@ export function freshSaveData(catalog) {
     reputation: 50,
     upgrades: [],
     prestigeLevel: 0,
+    // The permanent layer, outside the per-run fields on purpose: a reopening
+    // resets everything above this and nothing below it (Phase 7, #360).
+    meta: { beans: 0, unlocks: [] },
+    layoutId: catalog.layouts[0],
     dailyModifierId: null,
     eventFiredThisShift: false,
     // Rolled by repairSave, which every fresh state goes through too — so
@@ -269,6 +276,18 @@ export function repairSave(s, catalog, rng = Math.random) {
   s.reputation = clamp(num(s.reputation, 50), 0, 100);
   s.prestigeLevel = Math.max(0, Math.round(num(s.prestigeLevel, 0)));
 
+  // The permanent layer. `beans` lands in the chalkboard's affordability test
+  // and `unlocks` indexes META_UPGRADES, so both are clamped here; an unlock
+  // id this build does not know is dropped, the way `upgrades` already is.
+  const meta = s.meta && typeof s.meta === "object" && !Array.isArray(s.meta) ? s.meta : {};
+  s.meta = {
+    beans: intIn(meta.beans, 0, BEANS_MAX, 0),
+    unlocks: strList(meta.unlocks, catalog.metaUpgrades),
+  };
+  // The layout a run opened in. An unknown id reads as day one's rather than
+  // leaving currentLayout() to fall back on every call.
+  s.layoutId = catalog.layouts.includes(s.layoutId) ? s.layoutId : catalog.layouts[0];
+
   s.dailyModifierId = catalog.modifiers.has(s.dailyModifierId) ? s.dailyModifierId : null;
   s.eventFiredThisShift = !!s.eventFiredThisShift;
   s.eventTriggerAt = Number.isFinite(s.eventTriggerAt) && s.eventTriggerAt >= 0
@@ -331,6 +350,8 @@ export function toSaveData(state) {
     reputation: state.reputation,
     upgrades: [...state.upgrades],
     prestigeLevel: state.prestigeLevel,
+    meta: { beans: state.meta.beans, unlocks: [...state.meta.unlocks] },
+    layoutId: state.layoutId,
     dailyModifierId: state.dailyModifierId,
     eventFiredThisShift: state.eventFiredThisShift,
     eventTriggerAt: state.eventTriggerAt,
@@ -363,6 +384,8 @@ export function applyToState(state, data) {
   state.reputation = data.reputation;
   state.upgrades = new Set(data.upgrades);
   state.prestigeLevel = data.prestigeLevel;
+  state.meta = { beans: data.meta.beans, unlocks: new Set(data.meta.unlocks) };
+  state.layoutId = data.layoutId;
   state.dailyModifierId = data.dailyModifierId;
   state.eventFiredThisShift = data.eventFiredThisShift;
   state.eventTriggerAt = data.eventTriggerAt;
@@ -400,7 +423,7 @@ export function createCornerKettleSlot(catalog, { storage = null, rng = Math.ran
 }
 
 /** Turn the game's own data tables into the id sets `repair` needs. */
-export function buildCatalog({ recipes, foods, syrups, toppings, milks, bases, upgrades, modifiers, baristaNames, starting, shiftMs, presetMax }) {
+export function buildCatalog({ recipes, foods, syrups, toppings, milks, bases, upgrades, modifiers, baristaNames, starting, shiftMs, presetMax, metaUpgrades = [], layouts = ["corner"] }) {
   return {
     recipes: new Set(recipes),
     foods: new Set(foods),
@@ -410,6 +433,9 @@ export function buildCatalog({ recipes, foods, syrups, toppings, milks, bases, u
     bases: new Set(bases),
     upgrades: new Set(upgrades),
     modifiers: new Set(modifiers),
+    metaUpgrades: new Set(metaUpgrades),
+    // A list, not a Set: repairSave needs its first entry as the fallback.
+    layouts: [...layouts],
     baristaNames,
     starting,
     shiftMs,

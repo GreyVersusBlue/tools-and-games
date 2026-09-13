@@ -56,6 +56,20 @@ const t = {
 };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+/**
+ * Click a control inside the chalkboard. The panel is a ~3,000 px scroll
+ * container, so a row near the bottom sits far outside the viewport: a bare
+ * page.click() on the Legacy section's buttons landed on nothing and reported
+ * nothing, which is how section 14 first "passed" a purchase that never
+ * happened. Scroll it into the middle of the panel first, then click it with
+ * the real mouse, so hit-testing still applies.
+ */
+async function clickInChalkboard(page, selector) {
+  await page.$eval(selector, el => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
+  await wait(150);
+  await page.click(selector);
+}
+
 /** The blob on disk, parsed. Only for things a reload has to survive (#39). */
 const savedState = p => p.evaluate(k => {
   const raw = localStorage.getItem(k);
@@ -605,6 +619,164 @@ try {
   });
   t.ok(taken.focused, 'a customer can take focus');
   t.ok(taken.inStation, 'and Enter on them puts the order into a station');
+
+  /* ---------- 14. the reopen ledger, and the Legacy board ---------- */
+
+  t.section('14. the reopen ledger and the Legacy board (#360)');
+  // Seed a shop worth losing: day 12, money in the till, upgrades, a barista,
+  // reputation. The ledger's whole job is to name those before they go.
+  await p.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [KEY, {
+    day: 12, money: 4000, unlockedRecipes: ['drip', 'americano', 'latte', 'cappuccino', 'icedcoffee', 'mocha'],
+    unlockedFoods: ['croissant', 'bagel'], unlockedSyrups: ['vanilla', 'caramel'], unlockedToppings: ['whip', 'cinnamon'],
+    stationCount: 2, reputation: 70, loyaltyLevel: 1, comboShields: 2,
+    upgrades: ['music', 'grinder'],
+    baristas: [{ id: 'b1', name: 'Pip', level: 2, skill: { bar: 1, kitchen: 0, register: 0 }, morale: 60, working: true }],
+    meta: { beans: 0, unlocks: [] }, layoutId: 'corner',
+  }]);
+  await p.goto(PAGE, { waitUntil: 'load' });
+  await waitFor(p, () => !!window.__CK_DEBUG__, { timeout: 10000 });
+  await p.click('#chalkToggle');
+  await wait(400);
+
+  // The reopen row is a button now, not a window.confirm behind one. A stub
+  // that records and refuses is installed rather than left alone: with the
+  // real dialog the click hangs until the CDP timeout, which is a five-minute
+  // protocol error instead of a named failure. Refusing also means a page that
+  // did still reach for confirm() never opens the ledger, so both assertions
+  // below say so plainly. (A reload throws the stub away, hence here and not
+  // in section 11.)
+  await p.evaluate(() => {
+    window.__confirms = [];
+    window.confirm = msg => { window.__confirms.push(String(msg)); return false; };
+  });
+  const reopenBtn = await p.$('[data-prestige]');
+  t.ok(!!reopenBtn, 'the chalkboard offers a Reopen button on day 12');
+  const rowText = await p.$eval('[data-prestige]', el => el.closest('.chalk-item').textContent.replace(/\s+/g, ' ').trim());
+  t.ok(/\d+ beans?/.test(rowText), 'and the row says what closing now pays, before it is clicked', rowText.slice(0, 110));
+
+  await p.click('[data-prestige]');
+  await wait(300);
+  const shown = await p.evaluate(() => {
+    const o = document.getElementById('reopenOverlay');
+    return {
+      open: o.classList.contains('show'),
+      body: document.getElementById('reopenBody').textContent.replace(/\s+/g, ' ').trim(),
+      layouts: [...document.querySelectorAll('#reopenLayouts [data-layout]')].map(b => ({ id: b.dataset.layout, disabled: b.disabled })),
+      day: window.__CK_DEBUG__.state.day,
+      money: window.__CK_DEBUG__.state.money,
+      confirms: window.__confirms || [],
+    };
+  });
+  t.ok(shown.open, 'clicking it opens the ledger rather than reopening the shop');
+  t.ok(shown.confirms.length === 0, 'and asks through the page, not a window.confirm',
+    shown.confirms.join(' | ') || 'confirm() never called');
+  t.ok(shown.day === 12 && shown.money === 4000, 'and nothing has happened to the shop yet',
+    `day ${shown.day}, $${shown.money}`);
+  t.ok(/4,?000 in the till/.test(shown.body), 'the ledger names the till it would empty', shown.body.slice(0, 90));
+  t.ok(/Day 12 back to day 1/.test(shown.body), 'and the day it would reset');
+  t.ok(/2 equipment, ambiance and business upgrades/.test(shown.body), 'and the upgrades');
+  t.ok(/1 barista/.test(shown.body), 'and the barista');
+  t.ok(/Reputation 70 back to 50/.test(shown.body), 'and the reputation');
+  t.ok(/beans/.test(shown.body), 'and what it pays out');
+  t.ok(shown.layouts.length >= 2, 'every layout is offered', shown.layouts.map(l => l.id).join(','));
+  t.ok(shown.layouts[0].id === 'corner' && !shown.layouts[0].disabled, "day one's is always pickable");
+  t.ok(shown.layouts.filter(l => l.disabled).length >= 1,
+    'and the ones above this level are disabled, not hidden',
+    shown.layouts.filter(l => l.disabled).map(l => l.id).join(','));
+
+  // Cancelling leaves the shop exactly where it was.
+  await p.click('#reopenCancel');
+  await wait(250);
+  const cancelled = await p.evaluate(() => ({
+    open: document.getElementById('reopenOverlay').classList.contains('show'),
+    day: window.__CK_DEBUG__.state.day, money: window.__CK_DEBUG__.state.money,
+  }));
+  t.ok(!cancelled.open && cancelled.day === 12 && cancelled.money === 4000,
+    'cancelling closes the ledger and changes nothing', `day ${cancelled.day}, $${cancelled.money}`);
+
+  // Reopen for real, into the base layout, and check both the DOM and the save.
+  await p.click('[data-prestige]');
+  await wait(250);
+  await p.click('#reopenLayouts [data-layout="corner"]');
+  await wait(600);
+  const after = await p.evaluate(() => {
+    const s = window.__CK_DEBUG__.state;
+    return { open: document.getElementById('reopenOverlay').classList.contains('show'),
+      day: s.day, money: s.money, level: s.prestigeLevel, beans: s.meta.beans,
+      layout: s.layoutId, upgrades: s.upgrades.size, staff: s.baristas.length,
+      dayLabel: document.getElementById('dayNum').textContent };
+  });
+  t.ok(!after.open, 'picking a layout closes the ledger');
+  t.ok(after.day === 1 && after.money === 80 && after.level === 1,
+    'and the shop reopened at level 1 on day 1 with $80', `day ${after.day}, $${after.money}, level ${after.level}`);
+  t.ok(after.dayLabel === '1', 'the topbar redrew to day 1', after.dayLabel);
+  t.ok(after.upgrades === 0 && after.staff === 0, 'the upgrades and the barista went, as the ledger said');
+  // 5 for the eleven days past the first, 3 for reputation 70.
+  t.ok(after.beans === 8, 'and the beans the ledger promised arrived', `${after.beans} beans`);
+
+  // Only what a reload has to survive is asserted against the save (#39).
+  const savedAfter = await savedState(p);
+  t.ok(savedAfter && savedAfter.meta && savedAfter.meta.beans === 8,
+    'the beans are in the save, not only on screen', JSON.stringify(savedAfter && savedAfter.meta));
+  t.ok(savedAfter && savedAfter.layoutId === 'corner', 'so is the layout the run opened in');
+  t.ok(savedAfter && savedAfter.prestigeLevel === 1, 'so is the level');
+
+  // The Legacy board spends them, and a reload keeps what they bought.
+  const legacyTree = await p.$$eval('[data-buy-meta]', els => els.map(e => ({ id: e.dataset.buyMeta, disabled: e.disabled, label: e.textContent.trim() })));
+  t.ok(legacyTree.length >= 4, 'the Legacy section lists the tree', legacyTree.map(l => l.id).join(','));
+  t.ok(legacyTree.some(l => !l.disabled), 'with at least one affordable on 8 beans',
+    legacyTree.filter(l => !l.disabled).map(l => l.id).join(','));
+  t.ok(legacyTree.every(l => /\d+/.test(l.label)), 'and every button prints its bean price', legacyTree[0] && legacyTree[0].label);
+  const gatedBtn = legacyTree.find(l => l.id === 'menuColdbrew');
+  t.ok(gatedBtn && gatedBtn.disabled, 'a gated entry is disabled until its parent is bought');
+
+  await clickInChalkboard(p, '[data-buy-meta="thirdCounter"]');
+  await wait(500);
+  const spent = await p.evaluate(() => {
+    const s = window.__CK_DEBUG__.state;
+    return { beans: s.meta.beans, owns: [...s.meta.unlocks], money: s.money };
+  });
+  t.ok(spent.beans === 4 && spent.owns.includes('thirdCounter'),
+    'buying one takes beans, not dollars', `${spent.beans} beans left, $${spent.money}`);
+  t.ok(spent.money === 80, 'the till is untouched by a bean purchase', `$${spent.money}`);
+  const savedSpent = await savedState(p);
+  t.ok(savedSpent.meta.beans === 4 && savedSpent.meta.unlocks.includes('thirdCounter'),
+    'and the purchase reached the save at once, not on the next autosave tick');
+
+  await p.goto(PAGE, { waitUntil: 'load' });
+  await waitFor(p, () => !!window.__CK_DEBUG__, { timeout: 10000 });
+  const reloaded = await p.evaluate(() => {
+    const s = window.__CK_DEBUG__.state;
+    return { beans: s.meta.beans, owns: [...s.meta.unlocks], level: s.prestigeLevel, layout: s.layoutId };
+  });
+  t.ok(reloaded.beans === 4 && reloaded.owns.includes('thirdCounter'),
+    'a reload comes back holding the beans and the unlock', `${reloaded.beans} beans, ${reloaded.owns.join(',')}`);
+  t.ok(reloaded.level === 1 && reloaded.layout === 'corner', 'and the level and layout it reopened in');
+
+  // The keyboard must not reach the shop through the ledger: the digits switch
+  // station tabs, and an overlay the player has to answer should swallow them.
+  // Day 12 again so the reopen row is back, and asked to repaint: setting the
+  // day by hand changes nothing the game did, so nothing redraws on its own.
+  await p.evaluate(() => { window.__CK_DEBUG__.state.day = 12; window.__CK_DEBUG__.renderAll(); });
+  // The reload closed the chalkboard, and a panel translated off-screen has no
+  // clickable point at all — not the same failure as a row scrolled out of
+  // view, and not one scrollIntoView can fix. Open it first (section 11).
+  await p.click('#chalkToggle');
+  await wait(400);
+  t.ok(await p.$eval('#chalkboard', el => el.classList.contains('open')), 'the chalkboard reopens after a reload');
+  await clickInChalkboard(p, '[data-prestige]');
+  await wait(250);
+  const tabBefore = await p.evaluate(() => window.__CK_DEBUG__.state.stationTab);
+  await p.keyboard.press('4');
+  await wait(200);
+  const tabAfter = await p.evaluate(() => window.__CK_DEBUG__.state.stationTab);
+  t.ok(tabBefore === tabAfter, 'a digit pressed over the ledger does not switch station tabs behind it',
+    `${tabBefore} -> ${tabAfter}`);
+  await p.click('#reopenCancel');
+  await wait(200);
+
+  t.ok(p.__errs.filter(e => e.startsWith('pageerror')).length === 0,
+    'and no uncaught page error through any of it', p.__errs.join(' | ') || 'clean');
 
   /* ---------- 13. mobile ---------- */
 

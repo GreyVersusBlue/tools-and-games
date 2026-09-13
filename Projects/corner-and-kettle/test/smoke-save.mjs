@@ -16,10 +16,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const mod = p => import(pathToFileURL(join(here, p)).href);
 
 const {
-  SAVE_KEY, SAVE_VERSION, GAME_SLUG,
+  SAVE_KEY, SAVE_VERSION, GAME_SLUG, BEANS_MAX,
   buildCatalog, createCornerKettleSlot, freshSaveData,
   validateSave, migrateSave, repairSave, toSaveData, applyToState,
 } = await mod("../js/save.js");
+// Only to check the hand-written fixture below has not drifted from the real
+// tables. save.js itself imports nothing from content.js, on purpose.
+const CONTENT = await mod("../js/content.js");
 
 /* ---------- harness ---------- */
 
@@ -41,7 +44,8 @@ function section(name) { process.stdout.write(`\n${name}\n`); }
 // those tables directly, so this is a copy of the ids only.
 const CATALOG = buildCatalog({
   recipes: ["drip","americano","latte","cappuccino","icedcoffee","mocha","caramelmac",
-            "icedvanilla","frappe","chai","coldbrew","nitrocoldbrew","affogato","ristretto","doppio"],
+            "icedvanilla","frappe","chai","coldbrew","nitrocoldbrew","affogato","ristretto","doppio",
+            "cortado","espressotonic","icedmatcha","vanillafrappe"],
   foods: ["croissant","bagel","muffin","cookie"],
   syrups: ["vanilla","caramel","mocha","hazelnut","peppermint"],
   toppings: ["whip","cinnamon","caramelDrizzle","chocoDrizzle","sprinkles"],
@@ -59,7 +63,38 @@ const CATALOG = buildCatalog({
   },
   shiftMs: 4 * 34000,
   presetMax: 6,
+  metaUpgrades: ["menuMocha","menuColdbrew","thirdCounter","dayOneHire","wholesale","distributor"],
+  layouts: ["corner","kiosk","roastery","grandcafe"],
 });
+
+// The fixture above is a hand copy of the ids in content.js, and a hand copy
+// drifts. This is the line that catches it: every list repairSave filters
+// against, checked against the table the page builds its own catalog from.
+// Added with Phase 7 (#360), which added four recipes and two new id lists —
+// without it a new recipe id would be silently dropped from every save this
+// suite reads, and the suite would still say 187 passed.
+{
+  const drift = [
+    ["recipes", CONTENT.RECIPES.map(r => r.id), [...CATALOG.recipes]],
+    ["foods", CONTENT.FOODS.map(f => f.id), [...CATALOG.foods]],
+    ["syrups", CONTENT.SYRUPS.map(x => x.id), [...CATALOG.syrups]],
+    ["toppings", CONTENT.TOPPINGS.map(x => x.id), [...CATALOG.toppings]],
+    ["milks", CONTENT.MILKS.map(x => x.id), [...CATALOG.milks]],
+    ["bases", Object.keys(CONTENT.BASE_COLORS), [...CATALOG.bases]],
+    ["upgrades", [...CONTENT.EQUIPMENT_UPGRADES, ...CONTENT.AMBIANCE_UPGRADES, ...CONTENT.BUSINESS_UPGRADES].map(u => u.id), [...CATALOG.upgrades]],
+    ["modifiers", CONTENT.DAILY_MODIFIERS.filter(Boolean).map(m => m.id), [...CATALOG.modifiers]],
+    ["metaUpgrades", CONTENT.META_UPGRADES.map(m => m.id), [...CATALOG.metaUpgrades]],
+    ["layouts", CONTENT.SHOP_LAYOUTS.map(l => l.id), CATALOG.layouts],
+    ["baristaNames", CONTENT.BARISTA_NAMES, CATALOG.baristaNames],
+  ];
+  for (const [name, real, fixture] of drift) {
+    eq([...fixture].sort().join(","), [...real].sort().join(","), `the ${name} fixture matches content.js`);
+  }
+  eq(CATALOG.layouts[0], CONTENT.SHOP_LAYOUTS[0].id, "and the layout fallback is the first layout, not just any of them");
+  eq(CATALOG.shiftMs, CONTENT.SHIFT_MS, "the fixture's shift length matches too");
+  eq(CATALOG.presetMax, CONTENT.PRESET_MAX, "and its preset cap");
+  eq(BEANS_MAX, CONTENT.BEANS_MAX, "save.js's bean ceiling mirrors content.js's (the two files do not import each other)");
+}
 
 /** A localStorage stub. gvb-save takes one so nothing here touches a browser. */
 function memStore() {
@@ -108,6 +143,9 @@ section("2. fresh state");
   ok(Number.isFinite(f.eventTriggerAt) && f.eventTriggerAt > 0,
     "fresh() rolls an event time — a 0 there fires the day's event at Dawn");
   ok(f.unlockedRecipes.includes("drip"), "fresh menu has House Drip");
+  eq(f.meta.beans, 0, "a fresh shop holds no beans");
+  eq(f.meta.unlocks.length, 0, "and has bought no Legacy unlock");
+  eq(f.layoutId, "corner", "and opens in the first layout");
   eq(f.unlockedRecipes.length, 5, "fresh menu is the five starters");
   eq(validateSave(f), true, "fresh state passes its own validator");
 }
@@ -358,6 +396,25 @@ section("7. clamps");
     6, "presets clamp to the slot cap");
   ok(slot.normalize({ ...base, sneakyExtraField: 1 }).sneakyExtraField === undefined,
     "a field this build doesn't know is dropped");
+
+  // The permanent layer (Phase 7, #360). `beans` lands in the chalkboard's
+  // affordability test and `unlocks` indexes META_UPGRADES, so both are
+  // clamped the way loyaltyLevel and upgrades already are.
+  eq(slot.normalize({ ...base, meta: { beans: 5, unlocks: ["wholesale"] } }).meta.beans, 5, "beans survive a load");
+  eq(slot.normalize({ ...base, meta: { beans: 5, unlocks: ["wholesale"] } }).meta.unlocks.join(","), "wholesale", "so do the unlocks");
+  eq(slot.normalize({ ...base }).meta.beans, 0, "a save written before beans existed reads as none");
+  eq(slot.normalize({ ...base }).meta.unlocks.length, 0, "with no unlocks");
+  eq(slot.normalize({ ...base, meta: { beans: -40, unlocks: [] } }).meta.beans, 0, "a negative bean count clamps to 0");
+  eq(slot.normalize({ ...base, meta: { beans: 1e9, unlocks: [] } }).meta.beans, BEANS_MAX, "and a huge one to BEANS_MAX");
+  eq(slot.normalize({ ...base, meta: { beans: NaN, unlocks: [] } }).meta.beans, 0, "a NaN bean count reads as none");
+  eq(slot.normalize({ ...base, meta: { beans: 3.7, unlocks: [] } }).meta.beans, 4, "a fractional one rounds — beans are counted, not weighed");
+  eq(slot.normalize({ ...base, meta: { beans: 2, unlocks: ["wholesale", "teleporter"] } }).meta.unlocks.length, 1,
+    "an unknown Legacy unlock is dropped");
+  eq(slot.normalize({ ...base, meta: "nope" }).meta.beans, 0, "a non-object meta reads as a fresh one");
+  eq(slot.normalize({ ...base, meta: { beans: 2, unlocks: "wholesale" } }).meta.unlocks.length, 0, "a non-array unlock list reads as empty");
+  eq(slot.normalize({ ...base, layoutId: "roastery" }).layoutId, "roastery", "a layout id survives a load");
+  eq(slot.normalize({ ...base, layoutId: "atrium" }).layoutId, "corner", "an unknown one reads as day one's");
+  eq(slot.normalize({ ...base, layoutId: 7 }).layoutId, "corner", "and so does a number");
 }
 
 /* ---------- 8. repair runs on every door, and is idempotent ---------- */
@@ -465,6 +522,38 @@ section("10. guard-rails verified by breaking them");
   try { new Array(2.5); } catch (e) { arrayThrew = true; }
   eq(arrayThrew, true, "unrepaired: new Array(2.5) throws");
   eq(new Array(slot.normalize({ ...base, stationCount: 2.5 }).stationCount).length, 3, "repaired: it builds three stations");
+}
+
+/* ---------- 11. the permanent layer through the live state ---------- */
+
+section("11. beans and the layout round-trip through the live state (#360)");
+{
+  const slot = newSlot();
+  const state = applyToState(blankState(), slot.normalize({
+    day: 4, money: 900, unlockedRecipes: ["drip"], prestigeLevel: 2,
+    meta: { beans: 7, unlocks: ["wholesale", "thirdCounter"] }, layoutId: "roastery",
+  }));
+  ok(state.meta.unlocks instanceof Set, "applyToState hands the sim a Set, the way it does for upgrades");
+  ok(state.meta.unlocks.has("wholesale") && state.meta.unlocks.has("thirdCounter"), "holding both unlocks");
+  eq(state.meta.beans, 7, "and the bean count");
+  eq(state.layoutId, "roastery", "and the layout the run opened in");
+
+  // Back out again, through the same pair the game saves with. `back.meta` is
+  // checked before it is read through: without the guard, dropping the field
+  // from toSaveData kills the suite with a TypeError instead of naming the
+  // missing field, which is the failure #34 warns about reading past.
+  const back = toSaveData(state);
+  ok(back.meta && typeof back.meta === "object", "toSaveData writes a meta block at all");
+  eq(back.meta && back.meta.beans, 7, "toSaveData writes the beans back");
+  eq([...(back.meta ? back.meta.unlocks : [])].sort().join(","), "thirdCounter,wholesale", "and the unlocks as a plain array");
+  eq(back.layoutId, "roastery", "and the layout");
+  ok(back.meta && Array.isArray(back.meta.unlocks), "a Set in the save blob would not survive JSON.stringify");
+  eq(JSON.parse(JSON.stringify(back)).meta?.unlocks?.length, 2, "so it is checked through a real round trip");
+
+  // A reopening is per-run: the save carries the permanent layer outside every
+  // field prestige() resets, so a reload mid-run cannot hand the beans back.
+  const fields = Object.keys(freshSaveData(CATALOG));
+  ok(fields.includes("meta") && fields.includes("layoutId"), "both are fields the save knows, so repair's unknown-field sweep keeps them");
 }
 
 /* ---------- report ---------- */

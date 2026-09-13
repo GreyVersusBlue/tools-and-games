@@ -29,6 +29,7 @@ const {
   MILKS, SYRUPS, TOPPINGS, BASE_COLORS, RECIPES, FOODS, PHASES, SHIFT_MS,
   EQUIPMENT_UPGRADES, AMBIANCE_UPGRADES, BUSINESS_UPGRADES, MARKETING_COST,
   DAILY_MODIFIERS, RANDOM_EVENTS, STARTING_UNLOCKS, BARISTA_NAMES, PRESET_MAX,
+  META_UPGRADES, SHOP_LAYOUTS,
 } = CONTENT;
 
 /* ---------- STATE + SIM ---------- */
@@ -68,6 +69,8 @@ const CATALOG = buildCatalog({
   starting: STARTING_UNLOCKS,
   shiftMs: SHIFT_MS,
   presetMax: PRESET_MAX,
+  metaUpgrades: META_UPGRADES.map(m=>m.id),
+  layouts: SHOP_LAYOUTS.map(l=>l.id),
 });
 const saveSlot = createCornerKettleSlot(CATALOG);
 const SAVE_KEY = saveSlot.key;
@@ -240,7 +243,12 @@ function serveSlot(idx){
 // refusal says why: the old doUnlock() said "Unlocked!" for anything it
 // refused, including a purchase it could not afford (#344).
 function buy(type, id, extra){
-  if(type==='prestige' && !window.confirm('Reopen the shop? This resets day, money, and most upgrades, but keeps a permanent income bonus.')) return;
+  // The reopen row opens the ledger instead of buying anything; the modal's
+  // own layout buttons come back through here with a layout id, which is what
+  // sim.purchase('prestige', layoutId) reopens into (Phase 7, #360). The
+  // window.confirm this replaced said "most upgrades" and named nothing.
+  if(type==='prestige' && id==null){ showReopenLedger(); return; }
+  if(type==='prestige') closeReopenLedger();
   const r = sim.purchase(type, id, extra);
   if(r.ok){
     if(r.text) toast(r.text);
@@ -262,6 +270,7 @@ document.addEventListener('keydown', (e)=>{
   const tag = document.activeElement && document.activeElement.tagName;
   if(tag==='INPUT' || tag==='TEXTAREA') return;
   if(document.getElementById('modalOverlay').classList.contains('show')) return;
+  if(document.getElementById('reopenOverlay').classList.contains('show')) return;
   const tabIdx = STATION_TAB_DEFS.findIndex((t,i)=> String(i+1)===e.key);
   if(tabIdx!==-1){
     stations.selectTab(STATION_TAB_DEFS[tabIdx].id);
@@ -325,6 +334,44 @@ function showDaySummary(ds){
   document.getElementById('modalOverlay').classList.add('show');
   saveNow();
 }
+
+/**
+ * The reopen ledger: what a reopening keeps, loses and earns, and which
+ * layout to open in. Every line is sim.reopenPreview()'s, so the page is not
+ * deciding what a reopening costs — the same reason the chalkboard's prices
+ * come from sim.canBuy() (#344).
+ */
+function showReopenLedger(){
+  const p = sim.reopenPreview();
+  if(!p.ok){ toast(p.reason); return; }
+  document.getElementById('reopenTitle').textContent = `Reopen after day ${p.day}?`;
+  const list = (title, items) => items.length
+    ? `<div><h3>${title}</h3><ul>${items.map(x=>`<li>${x}</li>`).join('')}</ul></div>` : '';
+  document.getElementById('reopenBody').innerHTML = `
+    <div class="reopen-ledger">
+      ${list('✅ Kept', p.kept)}
+      ${list('🫘 Earned', p.earnedList)}
+      ${list('❌ Lost', p.lost)}
+    </div>
+    <div class="daysummary"><div>Beans after reopening: <b>🫘 ${p.beansAfter}</b>
+      (${p.beansHeld} held ${p.beansEarned>=0?'+':''} ${p.beansEarned} earned)</div></div>
+    <div style="margin-top:14px;font-weight:700;">Open as…</div>
+  `;
+  const box = document.getElementById('reopenLayouts');
+  box.innerHTML = p.layouts.map(l=>`
+    <button data-layout="${l.id}" ${l.available?'':'disabled'}>
+      ${l.name}<small>${l.available ? l.desc : `Opens at reopening ${l.minPrestige}`}</small>
+    </button>`).join('');
+  box.querySelectorAll('[data-layout]').forEach(b=>{
+    if(b.disabled) return;
+    b.onclick = ()=> buy('prestige', b.dataset.layout);
+  });
+  document.getElementById('reopenOverlay').classList.add('show');
+}
+function closeReopenLedger(){
+  document.getElementById('reopenOverlay').classList.remove('show');
+}
+document.getElementById('reopenCancel').onclick = closeReopenLedger;
 
 document.getElementById('modalBtn').onclick = ()=>{
   document.getElementById('modalOverlay').classList.remove('show');
@@ -456,6 +503,10 @@ if(typeof window !== 'undefined'){
     doUnlock: buy, fireRandomEvent: sim.fireRandomEvent, generateOrder: sim.generateOrder,
     tryAcceptCustomer, orderIsComplete: sim.orderIsComplete, serveReadiness: sim.serveReadiness,
     autoAssistStep: sim.autoAssistStep, serveSlot, saveState: saveNow, loadState, adoptSave,
+    // A redraw on demand. The chalkboard only re-renders when something the
+    // game did changed; a test that sets state.day by hand to reach a row
+    // gated on the day needs to ask for the repaint itself.
+    renderAll,
     queueMax: sim.queueMax,
     slot: saveSlot, catalog: CATALOG, sim,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,

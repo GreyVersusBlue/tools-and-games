@@ -19,10 +19,16 @@ export function createChalkboard({ state, sim, buy }){
     AMBIANCE_UPGRADES, BUSINESS_UPGRADES, MARKETING_COST, MARKETING_DURATION_MS,
     PRESTIGE_MIN_DAY, BARISTA_TIERS, BARISTA_MAX, BARISTA_PROMOTE_COST,
     TRAINING, TRAINING_GROUPS, MORALE_RAISE_COST, LOYALTY_UPGRADES, SHIELD_MAX_HELD, RANDOM_EVENTS,
+    META_UPGRADES,
   } = sim.content;
 
   // `disabled`, or nothing, straight from the purchase table.
   const dis = (type, id, extra) => sim.canBuy(type, id, extra).ok ? '' : 'disabled';
+  // And the price, from the same call. The tables' own `cost` fields used to
+  // be printed here directly, which was fine until a Legacy unlock could take
+  // 20% off the board (Phase 7, #360): a button that says $350 and charges
+  // $280 is the #344 bug again, one layer down.
+  const price = (type, id, extra) => sim.canBuy(type, id, extra).cost;
 
   function render(){
     const el = document.getElementById('chalkContent');
@@ -36,7 +42,13 @@ export function createChalkboard({ state, sim, buy }){
     }
     html += '<div class="chalk-section">Drinks (Menu R&amp;D)</div>';
     RECIPES.forEach(r=>{
-      const unlocked = state.unlockedRecipes.has(r.id);
+      const unlocked = sim.recipeAvailable(r.id);
+      if(r.prestigeGated){
+        html += unlocked
+          ? `<div class="chalk-item"><span>${r.icon} ${r.name} <small>($${r.price}) — yours from reopening ${r.prestigeGated}</small></span><span>✓</span></div>`
+          : `<div class="chalk-item locked"><span>${r.icon} ${r.name} <small>($${r.price}) — comes with reopening ${r.prestigeGated}, not with money</small></span><span>🔁</span></div>`;
+        return;
+      }
       if(r.equipmentGated){
         if(unlocked){
           html += `<div class="chalk-item"><span>${r.icon} ${r.name} <small>($${r.price})</small></span><span>✓</span></div>`;
@@ -48,7 +60,7 @@ export function createChalkboard({ state, sim, buy }){
       }
       html += `<div class="chalk-item ${unlocked?'':'locked'}">
         <span>${r.icon} ${r.name} <small>($${r.price})${r.requires && !unlocked ? ` — requires ${RECIPES.find(x=>x.id===r.requires).name}` : ''}</small></span>
-        ${unlocked ? '<span>✓</span>' : `<button data-unlock-recipe="${r.id}" ${dis('recipe', r.id)}>Unlock $${r.unlockCost}</button>`}
+        ${unlocked ? '<span>✓</span>' : `<button data-unlock-recipe="${r.id}" ${dis('recipe', r.id)}>Unlock $${price('recipe', r.id)}</button>`}
       </div>`;
     });
     html += '<div class="chalk-section">Food</div>';
@@ -56,7 +68,7 @@ export function createChalkboard({ state, sim, buy }){
       const unlocked = state.unlockedFoods.has(f.id);
       html += `<div class="chalk-item ${unlocked?'':'locked'}">
         <span>${f.icon} ${f.name} <small>($${f.price})</small></span>
-        ${unlocked ? '<span>✓</span>' : `<button data-unlock-food="${f.id}" ${dis('food', f.id)}>Unlock $${f.unlockCost}</button>`}
+        ${unlocked ? '<span>✓</span>' : `<button data-unlock-food="${f.id}" ${dis('food', f.id)}>Unlock $${price('food', f.id)}</button>`}
       </div>`;
     });
     html += '<div class="chalk-section">Stations</div>';
@@ -64,7 +76,7 @@ export function createChalkboard({ state, sim, buy }){
     if(nextStation){
       html += `<div class="chalk-item">
         <span>🛠️ Station Slot #${nextStation.toSlots}</span>
-        <button data-unlock-station="${nextStation.toSlots}" ${dis('station', nextStation.toSlots)}>Unlock $${nextStation.cost}</button>
+        <button data-unlock-station="${nextStation.toSlots}" ${dis('station', nextStation.toSlots)}>Unlock $${price('station', nextStation.toSlots)}</button>
       </div>`;
     } else {
       html += `<div class="chalk-item"><span>🛠️ Stations (${state.slots.length}/${state.slots.length})</span><span>✓</span></div>`;
@@ -74,7 +86,7 @@ export function createChalkboard({ state, sim, buy }){
       const owned = sim.hasUpgrade(u.id);
       html += `<div class="chalk-item ${owned?'':'locked'}">
         <span>⚙️ ${u.name} <small>${u.desc}${u.requires && !owned ? ` — requires ${EQUIPMENT_UPGRADES.find(x=>x.id===u.requires).name}` : ''}</small></span>
-        ${owned ? '<span>✓</span>' : `<button data-unlock-equipment="${u.id}" ${dis('equipment', u.id)}>Unlock $${u.cost}</button>`}
+        ${owned ? '<span>✓</span>' : `<button data-unlock-equipment="${u.id}" ${dis('equipment', u.id)}>Unlock $${price('equipment', u.id)}</button>`}
       </div>`;
     });
 
@@ -83,28 +95,43 @@ export function createChalkboard({ state, sim, buy }){
       const owned = sim.hasUpgrade(u.id);
       html += `<div class="chalk-item ${owned?'':'locked'}">
         <span>🎵 ${u.name} <small>${u.desc}</small></span>
-        ${owned ? '<span>✓</span>' : `<button data-unlock-ambiance="${u.id}" ${dis('ambiance', u.id)}>Unlock $${u.cost}</button>`}
+        ${owned ? '<span>✓</span>' : `<button data-unlock-ambiance="${u.id}" ${dis('ambiance', u.id)}>Unlock $${price('ambiance', u.id)}</button>`}
       </div>`;
     });
 
     html += '<div class="chalk-section">Business</div>';
-    html += `<div class="chalk-item"><span>📣 Marketing Campaign <small>+customers for ${MARKETING_DURATION_MS/1000}s, costs $${MARKETING_COST}</small></span>
+    html += `<div class="chalk-item"><span>📣 Marketing Campaign <small>+customers for ${MARKETING_DURATION_MS/1000}s, costs $${price('marketing')}</small></span>
       ${state.marketingRemaining>0
         ? `<span>active (${Math.ceil(state.marketingRemaining/1000)}s)</span>`
-        : `<button data-launch-marketing="1" ${dis('marketing')}>Launch $${MARKETING_COST}</button>`}
+        : `<button data-launch-marketing="1" ${dis('marketing')}>Launch $${price('marketing')}</button>`}
     </div>`;
     BUSINESS_UPGRADES.forEach(u=>{
       const owned = sim.hasUpgrade(u.id);
       html += `<div class="chalk-item ${owned?'':'locked'}">
         <span>🏪 ${u.name} <small>${u.desc}${u.reqReputation && !owned ? ` — needs ${u.reqReputation} reputation` : ''}</small></span>
-        ${owned ? '<span>✓</span>' : `<button data-unlock-business="${u.id}" ${dis('business', u.id)}>Unlock $${u.cost}</button>`}
+        ${owned ? '<span>✓</span>' : `<button data-unlock-business="${u.id}" ${dis('business', u.id)}>Unlock $${price('business', u.id)}</button>`}
       </div>`;
     });
-    if(state.day >= PRESTIGE_MIN_DAY){
-      html += `<div class="chalk-item"><span>🔁 Prestige &amp; Reopen <small>(level ${state.prestigeLevel}, resets progress for a permanent +5% income each level)</small></span>
-        <button data-prestige="1">Reopen</button>
+    // The reopen row says what reopening pays before it is clicked; the full
+    // kept/lost/earned list is the page's modal, built from sim.reopenPreview().
+    const reopen = sim.reopenPreview();
+    html += `<div class="chalk-item ${reopen.ok?'':'locked'}">
+      <span>🔁 Prestige &amp; Reopen <small>(level ${state.prestigeLevel} → ${reopen.level}, +5% income per level;
+        ${reopen.ok ? `closing now pays <b>${reopen.beansEarned} bean${reopen.beansEarned===1?'':'s'}</b>` : `available from day ${PRESTIGE_MIN_DAY}`})</small></span>
+      ${reopen.ok ? '<button data-prestige="1">Reopen…</button>' : '<span>🔒</span>'}
+    </div>`;
+
+    html += `<div class="chalk-section">Legacy <small>(🫘 ${sim.beansHeld()} beans)</small></div>`;
+    html += `<div class="chalk-item"><span><small>Beans are earned by reopening — one per ${sim.content.BEANS_PER_DAYS} days
+      survived and one per ${sim.content.BEANS_PER_REPUTATION} reputation at close. What they buy is yours for good.</small></span></div>`;
+    META_UPGRADES.forEach(m=>{
+      const owned = sim.metaOwned(m.id);
+      const gate = m.requires && !sim.metaOwned(m.requires) ? ` — requires ${META_UPGRADES.find(x=>x.id===m.requires).name}` : '';
+      html += `<div class="chalk-item ${owned?'':'locked'}">
+        <span>🫘 ${m.name} <small>${m.desc}${owned?'':gate}</small></span>
+        ${owned ? '<span>✓</span>' : `<button data-buy-meta="${m.id}" ${dis('meta', m.id)}>Buy ${price('meta', m.id)} 🫘</button>`}
       </div>`;
-    }
+    });
 
     html += '<div class="chalk-section">Staff</div>';
     if(state.baristas.length){
@@ -135,7 +162,7 @@ export function createChalkboard({ state, sim, buy }){
       html += `<div class="chalk-item">
         <span>🧑‍🍳 ${b.name} <small>(${tier.name}${gateNote}${registerNote}, ${Math.round(tier.mistakeChance*100*sim.mistakeReduceFactor(b, spec==='kitchen'))}% mistake chance, $${tier.wage}/day wage)</small></span>
         ${b.level<2
-          ? `<button data-promote-barista="${b.id}" ${dis('promoteBarista', b.id)}>Promote $${BARISTA_PROMOTE_COST}</button>`
+          ? `<button data-promote-barista="${b.id}" ${dis('promoteBarista', b.id)}>Promote $${price('promoteBarista', b.id)}</button>`
           : '<span>✓</span>'}
       </div>`;
       const trainBtn = g => (b.skill && b.skill[g]>0)
@@ -169,7 +196,7 @@ export function createChalkboard({ state, sim, buy }){
     if(nextLoyalty){
       html += `<div class="chalk-item">
         <span>💳 ${nextLoyalty.name} <small>(regulars: +${Math.round(nextLoyalty.tipBonus*100)}% tip, +${Math.round(nextLoyalty.patienceBonus*100)}% patience)</small></span>
-        <button data-unlock-loyalty="${nextLoyalty.level}" ${dis('loyalty', nextLoyalty.level)}>Unlock $${nextLoyalty.cost}</button>
+        <button data-unlock-loyalty="${nextLoyalty.level}" ${dis('loyalty', nextLoyalty.level)}>Unlock $${price('loyalty', nextLoyalty.level)}</button>
       </div>`;
     }
 
@@ -184,7 +211,7 @@ export function createChalkboard({ state, sim, buy }){
       const unlocked = state.unlockedSyrups.has(s.id);
       html += `<div class="chalk-item ${unlocked?'':'locked'}">
         <span>💧 ${s.name}</span>
-        ${unlocked ? '<span>✓</span>' : `<button data-unlock-syrup="${s.id}" ${dis('syrup', s.id)}>Unlock $${s.cost}</button>`}
+        ${unlocked ? '<span>✓</span>' : `<button data-unlock-syrup="${s.id}" ${dis('syrup', s.id)}>Unlock $${price('syrup', s.id)}</button>`}
       </div>`;
     });
     html += '<div class="chalk-section">Toppings</div>';
@@ -192,7 +219,7 @@ export function createChalkboard({ state, sim, buy }){
       const unlocked = state.unlockedToppings.has(t.id);
       html += `<div class="chalk-item ${unlocked?'':'locked'}">
         <span>✨ ${t.name}</span>
-        ${unlocked ? '<span>✓</span>' : `<button data-unlock-topping="${t.id}" ${dis('topping', t.id)}>Unlock $${t.cost}</button>`}
+        ${unlocked ? '<span>✓</span>' : `<button data-unlock-topping="${t.id}" ${dis('topping', t.id)}>Unlock $${price('topping', t.id)}</button>`}
       </div>`;
     });
     el.innerHTML = html;
@@ -212,6 +239,7 @@ export function createChalkboard({ state, sim, buy }){
     el.querySelectorAll('[data-buy-shield]').forEach(b=> b.onclick = ()=> buy('shield'));
     el.querySelectorAll('[data-launch-marketing]').forEach(b=> b.onclick = ()=> buy('marketing'));
     el.querySelectorAll('[data-prestige]').forEach(b=> b.onclick = ()=> buy('prestige'));
+    el.querySelectorAll('[data-buy-meta]').forEach(b=> b.onclick = ()=> buy('meta', b.dataset.buyMeta));
     el.querySelectorAll('[data-train-barista]').forEach(b=> b.onclick = ()=> buy('train', b.dataset.trainBarista, b.dataset.trainGroup));
     el.querySelectorAll('[data-raise-barista]').forEach(b=> b.onclick = ()=> buy('raiseBarista', b.dataset.raiseBarista));
   }
