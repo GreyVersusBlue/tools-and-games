@@ -13,8 +13,9 @@
 # them, and because the action bar it renders is the only caller of half the
 # engine. A commit that edits the page and not the folder still has to run.
 #
-# This is one project's job, not the site-wide row (BACKLOG rank 78) about CI
-# running almost nothing. That row is still open and is still larger than this.
+# The job runs through suite.yml, the shared template. `for f in test/*.mjs`
+# is one line of it, so a suite a later phase adds runs here from its first
+# commit, and a red one names itself.
 
 name: Torchbearer CI
 
@@ -43,28 +44,10 @@ concurrency:
 
 jobs:
   suite:
-    name: smoke.mjs, and any other test/*.mjs
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      # Named on its own so a red job says "smoke" rather than "the loop".
-      - name: smoke
-        run: node Projects/torchbearer/test/smoke.mjs
-
-      # Everything else under test/, one process each, so a suite a later phase
-      # adds runs here from its first commit and names itself when it fails.
-      - name: every other suite in test/
-        working-directory: Projects/torchbearer
-        run: |
-          failed=0
-          for f in test/*.mjs; do
-            case "$f" in test/smoke.mjs) continue;; esac
-            echo "== $f"
-            node "$f" || { echo "FAIL $f"; failed=1; }
-          done
-          exit $failed
+    name: every test/*.mjs
+    uses: ./.github/workflows/suite.yml
+    with:
+      working-directory: Projects/torchbearer
+      commands: |
+        node test/smoke.mjs
+        failed=0; for f in test/*.mjs; do [ "$f" = test/smoke.mjs ] && continue; echo "== $f"; node "$f" || { echo "FAIL $f"; failed=1; }; done; exit $failed

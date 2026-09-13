@@ -175,8 +175,9 @@ or visible in the code.
   runtime-only, because a reload re-rolls initiative anyway. They are the two
   halves of the same question and they answer it differently on purpose.
 - **Zero offsite requests, no build step, nothing shared across projects**
-  (#17). `Pathfinder/data/` is read-only here and nothing may take a runtime
-  dependency on it.
+  (#17). `Pathfinder/data/` is a published interface as of #350: read it at
+  runtime or vendor a slice, never write to it, and assert every field you rely
+  on in `smoke.mjs` (see `Pathfinder/data/README.md`).
 - **Assert against the DOM for anything that just happened, and against the
   save only for what a reload must survive** (locked decision #39). This
   environment's `computer{action:...}` paths have not reached the page in two
@@ -193,13 +194,10 @@ node Projects/absalom-inheritance/test/balance.mjs 400 --verbose   (a fast spot 
 
 ## Questions for Devon
 
-- **Is `Pathfinder/data/**` a published interface or private to prompts 01–03?**
-  Asked a sixth time site-wide as of site session 10, jointly by this
-  project and Torchbearer, and tracked centrally in prompt 01's own "Questions
-  for Devon" block. Measured facts: 24 JSON files of PF2e rules data sit there;
-  this game reads none and hand-writes three stat blocks and seven commands into
-  `content/vault.json` instead. Phases 6 and 7 get cheaper if the answer is
-  shared, and are unaffected if it is private.
+- ~~**Is `Pathfinder/data/**` a published interface or private?**~~ Answered by
+  Devon, locked #350 (2026-09-13): **published.** Any project may read it.
+  `content/vault.json`'s three hand-written stat blocks and seven commands can
+  come from there instead; the contract is `Pathfinder/data/README.md`.
 - **Is the 53.6% / 79.8% split between builds the design, or a tuning debt?**
   Round three called the asymmetry deliberate. If the two builds are meant to be
   comparable challenges, `balance.mjs` needs a band per build rather than one
@@ -375,8 +373,8 @@ Torchbearer needs the same seam and names it too — its `WISHLIST.md`, Phase 3,
 builds a trigger bus for the same three reactions in a different engine.
 Whichever ships first is the reference for the other: same event names, same
 "one reaction per round" rule, same refusal to let a trigger fire twice.
-Whether the two ever share *code* is the `Pathfinder/data/` question above,
-and this phase does not wait on it.
+Whether the two ever share *code* is still #133's answer (share the vocabulary,
+not the code); the *data* is shared as of #350.
 
 **Shipped.** `game.js` 834 → 1,126 lines; `smoke.mjs` 308 → 425 checks.
 Seventeen guard-rails were broken on purpose (#34) and every one exited 1 from
@@ -1129,6 +1127,5 @@ canvas never needed focusing.
 - **Sound, settings, difficulty selection**, and a visual regression harness for
   `render.js` — the last would need a golden-image pipeline this project has no
   build step for.
-- **Reading `Pathfinder/data/` at runtime**, forbidden until the question above
-  is answered, and **anything that requires a server**: every phase here runs
+- **Anything that requires a server**: every phase here runs
   entirely in the page, which is a property worth keeping.
