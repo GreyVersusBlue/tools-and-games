@@ -8982,6 +8982,155 @@ seven keys match on Linux as well as Windows. Locally: `check-integrity.mjs`
 files, no existing file changed) and `.github/`. `CLAUDE.md`'s locked-decision
 count, 349 → 353, and its definition of done.
 
+## Five quick backlog rows, taken as one batch (2026-09-13)
+
+**Ranks 19, 20, 21, 32 and 38, on Claude Opus 5, in one PR.** Four half-session
+rows and one quarter is over the size table's "2, occasionally 3" for halves;
+Devon asked for both batches at once after being shown the shortlist, the same
+kind of override he made for ranks 1 and 2 the day before. Decisions #354 to
+#359, PR #278.
+
+The two rows that mattered most together: `known-failures.json` is now empty in
+all three sections, and `npm run check` and `npm run social:check` both exit 0
+on `main` for the first time since `ci-check.mjs` was written.
+
+- **Prompt Builder's fonts are vendored, and Fraunces is the variable cut**
+  (#354). The page hotlinked `fonts.googleapis.com` for three families for its
+  whole history and was the last standing integrity failure. Six woff2 into
+  `Tools/prompt-builder/fonts/`, 165.1 KB, weights read from the page's own CSS
+  rather than the hotlink, which asked for Fraunces 500 and 700 that no rule
+  sets. Fraunces is the variable "standard" cut, opsz + wght, 67.3 KB against
+  18.1 KB for a static 600: `header h1` sets `font-optical-sizing: auto` and
+  runs the family from 1.12rem to 3.2rem, so a static would have changed what
+  the page renders and left that declaration dead. Inter and IBM Plex Mono have
+  no optical axis and are statics. Two files duplicate `assets/fonts/` byte for
+  byte, which is #17 working as intended. Reversible: swap the variable file
+  for `fraunces-latin-600-normal.woff2` and drop the optical-sizing line.
+- **Every `.html` in the repo has a named owner, and a check enforces it**
+  (#355). `Tools/board-check/ownership.json` is the machine-readable half of
+  `BACKLOG.md`'s Ownership table; `check-integrity.mjs` fails any page no area
+  claims. Two areas the prose table never had: **Prompt Builder** (not a
+  teaching tool, not archived, and owned by nobody, which is how it hotlinked
+  unnoticed) and **Archived teaching tools** (the five #206 closed, listed so
+  the sweep can tell "archived, owned" from "owned by nobody"). On its first
+  run it caught a page nobody knew was unowned: `Projects/The-Fourth-Quarter.html`,
+  the original flat build, linked from the board at `index.html:508`. It went to
+  The Fourth Quarter.
+- **A local `url()` has to point at a file that exists** (#356). The offsite
+  sweep answered "does this page reach offsite", not "does it reach anything at
+  all", so a typo'd vendored font path passed it clean — proved by typing
+  `inter-latin-999-normal.woff2` into the page and watching the check stay
+  green. Now every local `url()` in every `.html`/`.css` is resolved. Three
+  false positives on the first run, each skipped for a stated reason: two
+  `url(%23n)` fragments inside `data:` URIs (a percent-encoded `#`, matched
+  inside the outer URI's own markup) and one template literal `landing.html`
+  builds at runtime. 1,590 units checked before this session, 1,813 after.
+- **An offsite board notice is skipped, and a page that brings its own social
+  tags is exempt but verified** (#357). Two of the six social failures were not
+  page problems. `index.html:564` links to `https://aspermylessonplan.com/`, and
+  `path.join(SITE, href)` turned that into
+  `SITE/https:/aspermylessonplan.com/index.html`, reported as "linked from the
+  board but not on disk"; offsite notices are counted and skipped now, narrowly,
+  so a *local* page that really is missing still fails. Numina is exempt: it is
+  an Eleventy site whose build output is committed, `base.njk` writes og and icon
+  tags into every page it builds with a purpose-built 1200x630 card, and
+  `Numina/index.html` IS that output — a block injected there dies on the next
+  `npm run build`, so the script would write it, Eleventy would drop it, and
+  `--check` would be red forever. Stripping the tags from `base.njk` instead
+  would strip them from every inner Numina page, and those are not on the board.
+  An exemption that is not checked is a blind spot, so an exempt page still has
+  to prove it carries `og:title`, `og:description`, `og:image` and an icon.
+- **The generated block wins over a hand-written favicon** (#358). Blue Hour and
+  School Generator each had bespoke icon/og tags, so the generator refused to add
+  a second set; both now take the generated block and lose their per-project
+  favicon to the site seal. That is the generator's stated design — one mark
+  everywhere, so the tab icon does not change when a visitor walks from the board
+  into a quest — rather than an accident. School Generator's installed-PWA icon
+  is unaffected: that comes from `manifest.webmanifest`'s own `icon.svg`. Bell to
+  Bell and Hearth had no block and now have one, both falling back to
+  `guild-board.png` since neither has a capture yet. Reversible per page by
+  putting the tags back and adding it to `OWN_TAGS`.
+- **A deal mid-contract on deleted content is survivable, not supported**
+  (#359). The earlier round made state keyed BY a content id safe and named the
+  other direction as open: state that POINTS AT one. `deals.js` reads
+  `DB.listings[deal.listingId]` unguarded in five places, `calendar.js:95` reads
+  that and `DB.agents[d.agentId].name` on an expiring offer, and `clients.js:9`
+  reads `DB.clients[id].tier` across the queue — each throws on a day advance,
+  not on a render, so the career is unplayable and the player cannot see why.
+  `repairCareer()` now drops a deal whose listing, agent or client record is
+  gone, a client record whose file is gone (and its ids out of `clientQueue` and
+  `usedClients`), a player listing whose seller is gone, and offers naming a
+  missing agent, taking the dead deal's schedule items, pending choices and
+  `rec.dealId` with it. A listing left flagged `underContract` with nothing
+  behind it goes back on the market, but only when no deal in any stage points
+  at it. Every drop leaves a Ledger line: player progress vanishing quietly is
+  worse than the crash it replaces. **This does not make deleting a listing a
+  save is mid-contract on a good idea**, and the README says so in those words.
+
+**Two stale lists found while doing something else.** Golden Hour was rank 38's
+whole content; checking its "only adopter that takes the default key" claim
+turned up **Faire Weekend**, which adopted `gvb-save` at Stage 22 and was
+missing from the comment and the README too. Thirteen adopters, not eleven. Both
+misses were found by reading, so `gvb-save.test.mjs` now checks it: every file
+importing `gvb-save.js` maps to a named adopter, every named adopter still
+imports it, the comment names all of them, and the README has a row each. The
+path-to-name map is a deliberate maintenance cost, since a folder name does not
+give a display name (`Projects/Ren-Faire-Claude/` is "Faire Weekend"). Matching
+on an import rather than a mention matters: Blue Hour's `ghost.js` carries a
+comment saying it deliberately does NOT use gvb-save, and `play-games.mjs`
+asserts on gvb-save envelopes from outside — a substring match called both
+adopters on the first run.
+
+**Integer Foundry's browser suite was a race, not a missing method** (rank 21,
+under #353's umbrella). Puppeteer's `page.click` resolves the element, then
+scrolls and measures before pressing, and the factory line re-renders `#grid` in
+that gap. Playwright re-queries on its own, which is why the same file passed
+56/0 on Windows and aborted 16 checks in on Linux. Every click goes through the
+same re-query-and-retry helper `Pathfinder/tests/anathema.test.mjs` got the day
+before, kept identical rather than reinvented; both errors are thrown before the
+mouse goes down, so a retry cannot double-click, which matters more here because
+a double-click would place two tiles and every count in the file would be wrong.
+It is in `site-ci.yml` with `install: Tools/board-check`, and the header note
+listing three unportable browser suites is down to two, both archived tools.
+
+**Breaks on purpose** (#34), each from a green baseline and each caught by the
+assertion whose message names it:
+- A typo'd font path fails with "url() target does not exist"; it only reddens
+  `ci-check.mjs` once prompt-builder's known-failures line is gone, which is the
+  same commit.
+- A scratch `Tools/unowned-probe.html` fails with "no area in ownership.json
+  claims this page", exit 1, and passes again on removal.
+- Numina with its `og:title` renamed fails with "claims to bring its own social
+  tags but has no og:title"; a board notice pointing at
+  `Projects/does-not-exist/` still fails with "linked from the board but not on
+  disk", which is the assertion a lazier offsite fix would have destroyed.
+- Each of the four new adopter-list assertions broken on its own: comment
+  missing Golden Hour, README missing Golden Hour, an unmapped importer, a
+  mapped adopter that no longer imports.
+- Each of the four Closing Time purges disabled on its own from a green 127:
+  the deal purge takes 5 assertions including the `DB.listings` read that
+  throws, the client purge 1, the queue purge 2 including `clients.js:9`'s tier
+  scan, the `underContract` reset 1.
+- Integer Foundry reverted to the bare click: three runs aborting at 38, 50 and
+  17 checks, three different places, against five consecutive 56/0 runs fixed.
+  A timing bug that passes once has proved nothing.
+
+**The checks.** `ci-check.mjs` exit 0 with an empty list; `npm run check` exit 0;
+`npm run social:check` exit 0. `check-integrity.mjs` 1,813 units, 0 broken.
+Suites: gvb-save 54 (was 50), Closing Time 127 (was 105), Integer Foundry
+browser 56/0 on Linux (was aborting at 16) and its Node half 94/0,
+school-generator 2100/0, Blue Hour 104/0, Bell to Bell smoke/balance/assets
+green, Hearth's PR gate (determinism, save, pinned) green, Anathema 33/0.
+Bell to Bell's suites only run from `tests/`, not the project root `CLAUDE.md`'s
+table implies; `site-ci.yml:118` already had this right.
+
+**Shared things touched**, in the same PR: `assets/js/gvb-save.js` (comment
+only), `assets/js/README.md`, `assets/js/gvb-save.test.mjs`,
+`Tools/board-check/**` (`check-integrity.mjs`, `sync-social-tags.mjs`,
+`known-failures.json`, and a new `ownership.json`), and `.github/workflows/site-ci.yml`.
+`index.html` was not touched.
+
+
 ---
 
 # The two August 2026 audits
