@@ -167,7 +167,8 @@ The end-to-end regression suite for the games that aren't Castle Conundrum:
 build a real production line in Integer Foundry and watch the sink judge what
 arrives, run a fortnight of Closing Time, build and open a Faire Weekend, walk
 Golden Hour and Aphelion, put The Fourth Quarter's save through export, import,
-a reload, a pre-versioning legacy blob and a real Real Estate lease, and Shelf-load
+a reload, a pre-versioning legacy blob and a real Real Estate lease, serve a
+customer in Corner & Kettle and reload into the same shift, and Shelf-load
 and import a committed save into Torchbearer to reach a real combat grid. Exits
 non-zero on any missed beat, screenshots in `./shots/games/`. `npm run games` for
 the current count — it grows with the board, so it isn't repeated here.

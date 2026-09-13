@@ -620,6 +620,207 @@ try {
   t.ok(taken.focused, 'a customer can take focus');
   t.ok(taken.inStation, 'and Enter on them puts the order into a station');
 
+  /* ---------- 12b. both hands on the keys (Phase 8) ---------- */
+
+  t.section('12b. both hands on the keys');
+  // Start from a known cup so the beats below are about the keyboard and not
+  // about which order the queue happened to spawn.
+  await p.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.slots = d.state.slots.map(() => null);
+    d.state.queue = [];
+    const o = d.generateOrder();
+    Object.assign(o, { isFood: false, recipeId: 'latte', price: 45,
+      custom: { milk: 'oat', syrup: undefined, toppings: [], ice: false } });
+    d.state.queue.push(o);
+    d.tryAcceptCustomer(o.id);
+  });
+  await p.waitForSelector('.slot .ticket');
+  await p.click('.stationTab[data-tab="base"]');
+
+  /**
+   * The legend and the bindings, read separately off the page. The phase's
+   * claim is that they come from one array; two readings that disagree is the
+   * failure it is written against, so neither side re-derives the other here.
+   */
+  const keyMap = () => p.evaluate(() => ({
+    legend: [...document.querySelectorAll('#keyLegend .legendRow')].map(r => r.textContent.trim()),
+    // key and the words printed next to it, as one string per entry. Keys
+    // alone are too weak to catch a legend that has stopped reading the
+    // buttons: a hardcoded "Q W E" matches the Base tab's real keys exactly
+    // (#147 — a claim the comparison cannot distinguish is worth nothing).
+    legendPairs: [...document.querySelectorAll('#keyLegend .legendRow')].slice(1)
+      .flatMap(r => [...r.querySelectorAll('.kk')].map(k =>
+        `${k.textContent.trim().toLowerCase()}=${k.parentElement.textContent.slice(k.textContent.length).trim()}`)),
+    legendOff: [...document.querySelectorAll('#keyLegend .legendRow .off .kk')].map(k => k.textContent.trim().toLowerCase()),
+    btns: [...document.querySelectorAll('#stationsAll .actionbtn')].map(b => ({
+      name: b.textContent.trim(),
+      key: b.getAttribute('aria-keyshortcuts'),
+      nokey: b.hasAttribute('data-nokey'),
+      disabled: b.disabled,
+      title: b.title,
+    })),
+  }));
+
+  const base = await keyMap();
+  t.ok(/^Keys/.test(base.legend[0]) && /serve the focused station/.test(base.legend[0])
+    && /previous \/ next station/.test(base.legend[0]),
+    'the legend is on screen and names the keys that are not the panel\'s', base.legend[0]);
+  t.ok(base.btns.length === 3 && base.btns.every(b => b.key),
+    'every control in the Base tab carries aria-keyshortcuts',
+    base.btns.map(b => `${b.key}=${b.name}`).join(' '));
+  t.ok(base.btns.map(b => b.key).join('') === 'qwe',
+    'and they are the first letters of the map, in the order they are rendered',
+    base.btns.map(b => b.key).join(''));
+  const pairsOf = m => m.btns.filter(b => !b.nokey).map(b => `${b.key}=${b.name}`).join(' · ');
+  t.ok(base.legendPairs.join(' · ') === pairsOf(base),
+    'the legend prints exactly the keys the buttons answer to, and names the same controls',
+    `legend [${base.legendPairs.join(' · ')}] vs buttons [${pairsOf(base)}]`);
+  t.ok(base.btns.every(b => b.title.includes(`Shortcut: ${b.key.toUpperCase()}`)),
+    'and each button says its own key on hover', base.btns[0].title);
+
+  // Build the drink with nothing but keystrokes: 1 for the Base tab, the key
+  // the page says pulls a shot, 2 for Milk, the key for oat, the key to steam.
+  const shotKey = base.btns.find(b => /Pull Espresso Shot/.test(b.name)).key;
+  await p.keyboard.press('1');
+  await p.keyboard.press(shotKey);
+  // Caught rather than awaited bare: a key that does nothing is the failure
+  // this beat exists for, and an uncaught TimeoutError kills the process
+  // before the twelve beats below it get to say anything.
+  const landed = await waitFor(p, () => window.__CK_DEBUG__.state.slots[0].cup.shots >= 1,
+    { timeout: 5000 }).then(() => true, () => false);
+  t.ok(landed, `pressing ${shotKey.toUpperCase()} ran the progress bar and landed a shot`);
+
+  await p.keyboard.press('2');
+  const milk0 = await keyMap();
+  const steam0 = milk0.btns.find(b => /Steam Milk/.test(b.name));
+  t.ok(steam0.disabled && !!steam0.key && milk0.legendOff.includes(steam0.key),
+    'Steam Milk is bound before it is usable, and the legend shows it dimmed rather than skipping it',
+    `key ${steam0.key}, ${milk0.legendOff.length} dimmed`);
+  // A key on a disabled control does nothing. What this actually guards is
+  // that pressKey clicks the button rather than reaching past it to the
+  // handler: the disabled refusal is the DOM's, and a version of pressKey
+  // that dispatched its own click event would steam an empty cup. That is the
+  // shape of the bug the S key had before #341.
+  //
+  // Waited out of the page's own clock, not a guessed number: Steam Milk is a
+  // progress-bar button, so a 200 ms wait reports "nothing happened" about a
+  // bar that had 700 ms left to run and passes against a pressKey that has
+  // stopped honouring the gate entirely.
+  const steamMs = await p.evaluate(() => window.__CK_DEBUG__.sim.cupActionMs('steamMilk'));
+  await p.keyboard.press(steam0.key);
+  await wait(steamMs + 500);
+  t.ok(await p.evaluate(() => !window.__CK_DEBUG__.state.slots[0].cup.milkSteamed),
+    'and pressing its key with no milk in the cup steams nothing', `waited ${steamMs + 500}ms`);
+
+  const oatKey = milk0.btns.find(b => /Oat Milk/.test(b.name)).key;
+  await p.keyboard.press(oatKey);
+  await wait(150);
+  t.ok(await p.evaluate(() => window.__CK_DEBUG__.state.slots[0].cup.milk === 'oat'),
+    `${oatKey.toUpperCase()} poured the oat milk`);
+  const milk1 = await keyMap();
+  const steamKey = milk1.btns.find(b => /Steam Milk/.test(b.name)).key;
+  t.ok(steamKey === steam0.key && !milk1.legendOff.includes(steamKey),
+    'Steam Milk keeps its key and loses the dim once milk is in the cup — the map does not shift under the hand',
+    `${steam0.key} -> ${steamKey}`);
+  await p.keyboard.press(steamKey);
+  const steamed = await waitFor(p, () => window.__CK_DEBUG__.state.slots[0].cup.milkSteamed,
+    { timeout: 5000 }).then(() => true, () => false);
+  t.ok(steamed, `${steamKey.toUpperCase()} steamed it`);
+
+  const ready = await p.$eval('.slot .servebtn', el => el.textContent.trim());
+  t.ok(ready === 'Serve', 'the cup the keyboard built reads as complete on the button', ready);
+  const keyMoney = await p.evaluate(() => window.__CK_DEBUG__.state.money);
+  await p.keyboard.press('s');
+  await wait(900);
+  const servedByKey = await p.evaluate(() => ({
+    money: window.__CK_DEBUG__.state.money,
+    slot: window.__CK_DEBUG__.state.slots[0],
+  }));
+  t.ok(servedByKey.money > keyMoney && servedByKey.slot === null,
+    'a full drink built and served with the keyboard alone paid and cleared the station',
+    `$${keyMoney} -> $${servedByKey.money}`);
+
+  // [ and ] across the stations. The DOM is the assertion (#39): the focus
+  // ring is a class on the slot, and the station panel follows it.
+  const slotFocus = () => p.evaluate(() => ({
+    idx: window.__CK_DEBUG__.state.focusedSlot,
+    dom: [...document.querySelectorAll('#slots .slot')].findIndex(el => el.classList.contains('focused')),
+    count: document.querySelectorAll('#slots .slot').length,
+  }));
+  const f0 = await slotFocus();
+  await p.keyboard.press(']');
+  await wait(120);
+  const f1 = await slotFocus();
+  await p.keyboard.press('[');
+  await wait(120);
+  const f2 = await slotFocus();
+  t.ok(f0.count >= 2 && f1.idx === (f0.idx + 1) % f0.count && f2.idx === f0.idx,
+    '] moves the focused station on and [ moves it back', `${f0.idx} -> ${f1.idx} -> ${f2.idx}`);
+  t.ok(f1.dom === f1.idx && f2.dom === f2.idx,
+    'and the focus ring in the DOM followed both times', `ring on slot ${f1.dom} then ${f2.dom}`);
+  // Wrapping, so the last station is one press from the first.
+  await p.evaluate(n => { window.__CK_DEBUG__.state.focusedSlot = n - 1; window.__CK_DEBUG__.renderAll(); }, f0.count);
+  await p.keyboard.press(']');
+  await wait(120);
+  t.ok((await slotFocus()).idx === 0, '] wraps from the last station to the first');
+
+  // An unlock is a button, a key and a legend row in one render. A syrup
+  // bought mid-shift used to leave the legend saying what it said before.
+  await p.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.slots[0] = null;
+    d.state.queue = [];
+    const o = d.generateOrder();
+    Object.assign(o, { isFood: false, recipeId: 'latte', price: 45,
+      custom: { milk: 'oat', syrup: undefined, toppings: [], ice: false } });
+    d.state.queue.push(o);
+    d.tryAcceptCustomer(o.id);
+    d.state.focusedSlot = 0;
+    d.renderAll();
+  });
+  await p.keyboard.press('4');
+  const syrup0 = await keyMap();
+  await p.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.money = 9999;
+    d.doUnlock('syrup', 'mocha');
+  });
+  await wait(150);
+  const syrup1 = await keyMap();
+  t.ok(syrup1.btns.length === syrup0.btns.length + 1
+    && syrup1.btns.some(b => /Mocha/.test(b.name) && b.key),
+    'an unlocked syrup arrives already bound',
+    `${syrup0.btns.length} -> ${syrup1.btns.length} controls`);
+  t.ok(syrup1.legendPairs.join(' · ') === pairsOf(syrup1) && /Mocha/.test(syrup1.legend[1]),
+    'and the legend redrew with it, still naming exactly the keys the buttons hold',
+    syrup1.legend[1]);
+
+  // The widest tab the game can build: six presets, each with a delete button
+  // beside it. Thirteen controls, ten keys — the deleters opt out so that the
+  // six that apply a preset and Save Current all keep one.
+  await p.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.presets = ['a', 'b', 'c', 'd', 'e', 'f'].map((n, i) => ({
+      id: 'p' + i, name: 'Build ' + n,
+      cup: { base: null, shots: 0, milk: null, milkSteamed: false, syrup: null,
+        toppings: [], ice: false, blended: false },
+    }));
+    d.renderAll();
+  });
+  await p.keyboard.press('7');
+  const presets = await keyMap();
+  const bound = presets.btns.filter(b => !b.nokey);
+  const deleters = presets.btns.filter(b => b.nokey);
+  t.ok(bound.length === 7 && bound.every(b => b.key) && bound.length <= 10,
+    'six presets plus Save Current all fit the map', `${bound.length} bound of ${presets.btns.length}`);
+  t.ok(deleters.length === 6 && deleters.every(b => !b.key),
+    'and the six deleters take no key from them', `${deleters.length} opted out`);
+  t.ok(presets.legendPairs.join(' · ') === pairsOf(presets),
+    'the legend on the widest tab still matches the buttons exactly',
+    presets.legendPairs.join(' · '));
+  await p.evaluate(() => { const d = window.__CK_DEBUG__; d.state.presets = []; d.state.slots[0] = null; d.renderAll(); });
+
   /* ---------- 14. the reopen ledger, and the Legacy board ---------- */
 
   t.section('14. the reopen ledger and the Legacy board (#360)');

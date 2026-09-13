@@ -22,6 +22,23 @@ export const STATION_TAB_DEFS = [
   {id:'presets', label:'⭐ Presets'},
 ];
 
+// The letters the station panel's own controls answer to (Phase 8). Digits
+// 1-7 are the tabs, S is Serve and [ ] move the focused station, so the panel
+// gets a row that collides with none of them. Ten is two more than the widest
+// tab needs: Milk is four milks plus steam, cold and ice, and Presets is six
+// saved builds plus Save Current. A tab that ever grows past ten leaves the
+// extras unbound rather than stealing a key that means something else, and
+// drive-save.mjs section 12 fails the moment one does.
+export const KEY_ALPHABET = ['q','w','e','r','t','y','u','i','o','p'];
+
+// What the legend says about the keys that are not the panel's. Written here
+// rather than in index.html so there is one copy of "S serves".
+const GLOBAL_KEYS = [
+  ['1-7', 'stations tabs'],
+  ['[ ]', 'previous / next station'],
+  ['S', 'serve the focused station'],
+];
+
 // Button id -> [cup action, progress bar id, sound]. The bar and the sound are
 // the page's; the action is the sim's.
 const TIMED = {
@@ -80,7 +97,7 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
           <button class="actionbtn" id="btnSavePreset">💾 Save Current</button>
         </div>
         ${state.presets.length ? `<div class="btnrow" style="margin-top:6px;">
-          ${state.presets.map(p=>`<button class="actionbtn" data-delete-preset="${p.id}" style="opacity:0.7;">✕ ${p.name}</button>`).join('')}
+          ${state.presets.map(p=>`<button class="actionbtn" data-nokey data-delete-preset="${p.id}" style="opacity:0.7;">✕ ${p.name}</button>`).join('')}
         </div>` : ''}
       </div>`;
       case 'base':
@@ -157,10 +174,76 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
 
     if(!slot){
       content.innerHTML = `<div class="draghint">No order in this station yet. Tap a waiting customer above to start one here.</div>`;
+      renderKeyLegend(bindKeys());
       return;
     }
     content.innerHTML = stationBlockHtml(state.stationTab, slot);
     attachStationHandlers();
+    renderKeyLegend(bindKeys());
+  }
+
+  /* ---------- the key map ---------- */
+  // The map is read off the panel that was just rendered, in DOM order, rather
+  // than written out a second time: whatever `stationBlockHtml` put on screen
+  // is what gets a letter, and the legend below is built from the same array
+  // on the same pass. That is the whole point of doing it this way — a syrup
+  // the player unlocks mid-shift is a button, a key and a legend row in one
+  // render, so an unlock can shift a binding but it cannot shift one silently.
+  //
+  // `data-nokey` opts a control out. The preset deleters carry it: six saved
+  // builds would otherwise be thirteen controls on a tab with ten keys, and
+  // the ones it would cost are the six that apply a preset.
+  const keyable = () =>
+    [...document.querySelectorAll('#stationsAll .actionbtn:not([data-nokey])')];
+
+  function bindKeys(){
+    const bound = [];
+    keyable().forEach((btn, i)=>{
+      const key = KEY_ALPHABET[i];
+      if(!key) return;
+      btn.setAttribute('aria-keyshortcuts', key);
+      const name = btn.textContent.trim();
+      btn.title = `${name} — Shortcut: ${key.toUpperCase()}`;
+      bound.push({ key, name, disabled: btn.disabled });
+    });
+    return bound;
+  }
+
+  // Pressing a key does exactly what clicking the button does, because it
+  // clicks the button: the progress bar, the sound, the toast and the refusal
+  // to fire while `disabled` all belong to the click and none of them are
+  // restated here. That last one is the DOM's own rule — .click() on a
+  // disabled button runs no activation behaviour and dispatches no event — so
+  // re-checking `btn.disabled` here would be a line that can never be reached
+  // and would read as the guard when it is not one (#147). The guard is
+  // calling .click() rather than reaching past it to the handler, which is the
+  // mistake the S key made before #341.
+  //
+  // Re-queried at press time rather than closed over, so a redraw between the
+  // legend and the keystroke cannot leave this holding a detached node.
+  function pressKey(key){
+    const i = KEY_ALPHABET.indexOf(String(key).toLowerCase());
+    if(i===-1) return false;
+    const btn = keyable()[i];
+    if(!btn) return false;
+    btn.click();
+    return true;
+  }
+
+  function renderKeyLegend(bound){
+    const el = document.getElementById('keyLegend');
+    if(!el) return;
+    const esc = x => x.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    const cap = (k, label, off) =>
+      `<span class="${off?'off':''}"><span class="kk">${esc(k)}</span>${esc(label)}</span>`;
+    const globals = GLOBAL_KEYS.map(([k,label])=> cap(k, label, false)).join(' · ');
+    const tab = STATION_TAB_DEFS.find(t=>t.id===state.stationTab);
+    const here = bound.length
+      ? bound.map(b=> cap(b.key.toUpperCase(), b.name, b.disabled)).join(' · ')
+      : 'nothing to press here yet';
+    el.innerHTML =
+      `<div class="legendRow"><b>Keys</b> ${globals}</div>` +
+      `<div class="legendRow"><b>${esc(tab ? tab.label : 'Station')}</b> ${here}</div>`;
   }
 
   function attachStationHandlers(){
@@ -270,5 +353,5 @@ export function createStations({ state, sim, toast, sound, renderAll, saveNow })
     saveNow();
   }
 
-  return { renderStationsAll, selectTab, currentSlot };
+  return { renderStationsAll, selectTab, currentSlot, pressKey };
 }

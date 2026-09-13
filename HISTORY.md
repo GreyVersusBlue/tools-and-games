@@ -9255,6 +9255,121 @@ middle of the panel first and then clicks it with the real mouse, so hit-testing
 still applies; a panel translated off-screen entirely is a different failure
 ("not clickable or not an Element") and needs the toggle, not a scroll.
 
+## Phases 8 and 9 — Both hands on the keys, and joining `npm run games` (2026-09-13)
+
+**Ranks 1 and 2, on Claude Opus 5, taken together as the size table allows for
+two half-session rows.** Decisions #367 to #373, PR #282. `drive-save.mjs`
+135 → 156, `play-games.mjs` gained its eighth suite at 16 checks, and the Node
+suites, `balance.mjs`, `npm run check` and `npm run social:check` are unchanged
+and green.
+
+Digits switched station tabs and `S` served; everything inside a tab still
+needed the mouse. The phase had been deferred twice for the same reason each
+time — the contents of a tab change per unlock, so a fixed key map is a secret
+unless something says what it is — and the answer was to stop writing the map
+down at all.
+
+- **The key map is read off the panel that was just rendered** (#367).
+  `bindKeys()` walks `#stationsAll .actionbtn` in DOM order and hands out
+  letters; `renderKeyLegend()` prints the array it returns, on the same pass.
+  There is no second list of what the keys are, so the legend cannot go stale
+  and a hardcoded map cannot drift from an unlocked button. A syrup bought
+  mid-shift is a button, a key and a legend row in one render — which is not
+  the same as promising that a binding never moves. Buy Peppermint before
+  Mocha and Mocha takes `e` when it arrives, pushing Peppermint to `r`; the
+  claim this design makes is that it never happens *silently*. The legend sits
+  directly under the station tabs, above the buttons it describes, and renders
+  even with no order in the focused station.
+- **Ten letters, `q` through `p`, and an overflowing tab leaves controls
+  unbound** (#368). Digits are the tabs, `S` is Serve and `[` `]` are the
+  stations, so the panel gets a row that collides with none of them. The widest
+  tab the game can build needs seven — Milk is four milks plus steam, cold and
+  ice; Presets is six saved builds plus Save Current — so ten is two spare. A
+  tab that ever grows past ten leaves the extras with no key rather than
+  reusing one that already means something, and section 12b fails the moment
+  one does. `data-nokey` opts a control out, and the six preset deleters carry
+  it: thirteen controls against ten keys would otherwise cost the six that
+  *apply* a preset, which is the wrong six to lose.
+- **A disabled control keeps its key** (#369). Skipping disabled buttons when
+  handing out letters is the obvious implementation and it is the bug: pick a
+  milk and Steam Milk goes from unbound to `t` while Add Ice slides from `t` to
+  `u`, under a hand that is already moving. They are bound before they are
+  usable and the legend dims them instead. Verified by writing it the other way
+  and watching the Steam Milk line report `key null`.
+- **`pressKey` clicks the button, and does not re-check `disabled`** (#369,
+  second half). The key does what the click does because it *is* the click —
+  the progress bar, the sound, the toast and the refusal all stay in the click
+  handler. The first draft also tested `btn.disabled` before clicking, which
+  looked like the guard and could never run: `.click()` on a disabled button
+  dispatches no event at all, so the branch was unreachable. Deleted rather
+  than kept, per #147 — a line that reads as the guard and is not one is worse
+  than no line. The real guard is calling `.click()` instead of reaching past
+  it to the handler, which is the mistake `S` made before #341, and the
+  assertion now says so.
+- **`[` and `]` wrap** (#370). Two to four stations, and the last one is one
+  press from the first rather than a dead key. Clamping instead was the break
+  that proved the assertion.
+- **Phase 9 shipped as a commit, not a written request** (#371). The wishlist
+  told this phase to write the `play-games.mjs` section into the notes'
+  Shared-file requests "well enough to apply blind", because a shared file
+  belonged to one session then. The root `CLAUDE.md` retired that queue: a
+  shared-file edit goes in the same PR as the project change now. So the
+  section is in `play-games.mjs`, tested, rather than described in a file
+  nobody applies. The registry entry it needed has been in `games.mjs` since
+  Phase 4 and had never been read by anything.
+- **The shared suite finishes an arbitrary ticket with the game's own barista
+  step, and keeps only the Serve click real** (#372). `GAMES['corner-and-kettle']
+  .open()` takes whichever customer the queue spawned, which can be a food
+  order, so building the cup by hand in `play-games.mjs` would be a second copy
+  of the ticket rules living next to the first — the thing `drive.mjs` exists to
+  prevent. `autoAssistStep()` is the sim's own "do the next unmet line", so the
+  suite drives it to completion and then clicks Serve with the mouse. The beats
+  are the shared suite's question and not the project suite's: a shift runs, a
+  served order moves `dayStats`, the clock advances the phase, and a reload
+  resumes the same day and till rather than rolling over. `drive-save.mjs`
+  already owns the save schema in depth and none of it is repeated here.
+- **Nine `npm run games` failures pre-date this batch and belong to three
+  other games** (#373). A full run reports 210 checks and 9 failures: seven in
+  Golden Hour (walk distance, instancing, the sun's descent, fog colour, the
+  wading re-aim, footprints), one aborted run in Integer Foundry ("Node is
+  detached from document"), and one room-fill plus three missing `.ogg` files
+  in The Fourth Quarter. Every one of them reproduces on `main`'s own
+  `play-games.mjs` with this batch's change stashed. Golden Hour's set is
+  exactly the class locked decision #53 calls inconclusive rather than
+  confirmed — real-time movement and physics under a software-rendered
+  Chromium — and `npm run games` is deliberately outside CI (#353). Recorded
+  here rather than fixed, because three games' worth of diagnosis is not a
+  half-session row.
+
+**The guard-rail that passed a break, and why** (#34). "Pressing Steam Milk's
+key with no milk in the cup steams nothing" went green against a `pressKey`
+rewritten to dispatch its own click event straight past the `disabled` gate.
+The assertion was sound and the wait was not: Steam Milk is a progress-bar
+button with a 900 ms run, and the beat waited 200 ms before declaring that
+nothing had happened. It reads the duration out of `sim.cupActionMs('steamMilk')`
+now and waits that plus 500 ms, and the same break fails it. Two other beats in
+the section had the sibling problem — `await waitFor(...)` with no assertion
+after it, so a key that did nothing killed the process on an uncaught
+`TimeoutError` at beat three instead of failing twelve named beats. Both are
+`.then(() => true, () => false)` now, which is the pattern `play-games.mjs`
+already used.
+
+**And a weak assertion, found the same way.** The Base tab's legend check first
+compared keys only, and a legend hardcoded to `Q W E` matched the Base tab's
+real keys exactly and passed. It compares key *and* the words printed beside it
+now, against the buttons' own names (#147).
+
+**Six breaks, six named failures.** The legend hardcoded (four beats red, the
+Base one naming both sides of the mismatch), disabled buttons skipped when
+binding (the Steam Milk line, `key null`), the preset deleters taking keys back
+(13 bound of 13, and the widest-tab legend printing `i=✕ Build a`), `[` `]`
+clamping instead of wrapping (the wrap beat alone), `pressKey` dispatching past
+the gate (the steam beat alone), and the keydown handler never asking the panel
+for a key (five beats red, starting with the shot that never landed). On the
+shared suite: `init()` always calling `startNextDay()` (the reload beat, `day 2`),
+the two `dayStats` counters commented out (`0 -> 0 served`), and the legend
+truncated to three entries (`qwertyu vs legend qwe`).
+
 ## Numina, August 2026
 
 An audit of the Eleventy rules site: 55 pages, ~136,000 words of source

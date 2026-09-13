@@ -67,12 +67,20 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   **Imports nothing.** `isMuted` is a function, asked on each beep, so the mute
   button works mid-shift.
 - **`stations.js`** — `createStations(ctx)`: the seven tabs, the buttons in
-  each, the progress bars and the presets tab. **Imports nothing**: `ui.js`
-  hands it `state`, `sim`, `toast`, `sound`, `renderAll` and `saveNow`. It
-  needs `renderAll` and `ui.js` needs it, so an import either way would be a
-  cycle; passing the functions in keeps it a leaf that `ui.js` sits on. A
-  timed button captures the cup it was clicked on, so a bar that finishes after
-  a Dump lands in the dumped cup, as it always has.
+  each, the progress bars, the presets tab, and the panel's key map. **Imports
+  nothing**: `ui.js` hands it `state`, `sim`, `toast`, `sound`, `renderAll` and
+  `saveNow`. It needs `renderAll` and `ui.js` needs it, so an import either way
+  would be a cycle; passing the functions in keeps it a leaf that `ui.js` sits
+  on. A timed button captures the cup it was clicked on, so a bar that finishes
+  after a Dump lands in the dumped cup, as it always has. **The key map is read
+  off the panel after it renders** (#367): `bindKeys()` walks
+  `#stationsAll .actionbtn:not([data-nokey])` in DOM order, hands out
+  `KEY_ALPHABET` (`q` to `p`, ten letters), sets `aria-keyshortcuts` and the
+  title, and returns the array `renderKeyLegend()` prints into `#keyLegend`.
+  One pass over one list, so the legend cannot go stale. `pressKey(key)` finds
+  the same button and **clicks it** — the bar, the sound and the `disabled`
+  refusal are the click's, and re-checking `disabled` here would be a branch
+  that can never run (#369).
 - **`chalkboard.js`** — `createChalkboard({state, sim, buy})`: the Menu Board,
   including the Legacy section and the reopen row. **Imports nothing**, for the
   same reason. Every button's `disabled` is `sim.canBuy()`, **and so is every
@@ -82,7 +90,10 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
 - **`ui.js`** — the entry. Builds the state, the sim and the save slot; draws
   the topbar, queue and counter; owns `serveSlot()`, `buy()`, the frame loop,
   the day-end modal, the reopen ledger (`showReopenLedger()`, built from
-  `sim.reopenPreview()`), the keyboard shortcuts, the save bar and boot; and assigns
+  `sim.reopenPreview()`), the keyboard shortcuts (digits for the tabs, `[` and
+  `]` across the stations with a wrap, `S` to serve, and everything else handed
+  to `stations.pressKey()` last so a letter the panel claims can never shadow
+  one of those), the save bar and boot; and assigns
   `window.__CK_DEBUG__` last, which is what `test/drive-save.mjs` waits on as
   proof the module ran. `renderAll()` marks the save dirty and a timer writes
   it at most every 4 s; a serve, a purchase, the end and start of a shift, a
@@ -113,4 +124,6 @@ upgrade, a promotion or training, or calls a `doUnlock()` again.
   and give it a requirement list the menu does not already have (#365).
 - **A station button:** a row in `CUP_ACTIONS` (`ms`, `run`), then the button in
   `stations.js`; a timed one also goes in its `TIMED` map with its bar and
-  sound.
+  sound. It picks up a key and a legend row on its own, because both are read
+  off the rendered panel — unless it is a control that should not have one, in
+  which case give it `data-nokey`.
