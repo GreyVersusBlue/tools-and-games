@@ -722,6 +722,19 @@ re-query-and-retry helper `Pathfinder/tests/anathema.test.mjs` uses. Five
 consecutive runs 56/0 fixed, against three runs aborting at 38, 50 and 17
 checks reverted. In `site-ci.yml` with `install: Tools/board-check`.
 
+**`test/browser.mjs` still has one racy assertion** (2026-09-13, seen on PR
+#284, whose diff does not touch this project). "and the far column takes a tap"
+failed in CI with `cell empty`: `place()` clicked the sink tool and then the
+cell, neither click threw, and no sink landed. The `click()` helper at the top
+of the file retries a click that THROWS — detached node, not-an-Element — and
+that is the race #278 fixed. This is the other one: the click lands, on a node
+the grid re-rendered under it, and places nothing. Six local runs, three with
+the harness change that PR made and three without, were 56/0 either way, so it
+is not that change; the same job passed on the two commits before it. The fix
+is the same shape as the last one — assert the placement and retry `place()`,
+rather than trusting one that did not throw — and it belongs to whoever next
+opens this project rather than to a PR that only shares a CI file with it.
+
 The other item still on the table is deliberately parked, not forgotten:
 
 1. **The two conservative model gaps, if Devon or a future session wants them
