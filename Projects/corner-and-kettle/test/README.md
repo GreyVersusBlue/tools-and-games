@@ -1,12 +1,55 @@
 # Corner & Kettle tests
 
-Three suites. All exit non-zero on any failure (locked decision #13).
+Four suites and an autopilot. All exit non-zero on any failure (locked
+decision #13).
 
 ```
 node Projects/corner-and-kettle/test/smoke-sim.mjs     114 assertions, no browser, seeded
 node Projects/corner-and-kettle/test/smoke-save.mjs    166 assertions, no browser
+node Projects/corner-and-kettle/test/balance.mjs       100 seeds × 30 days × 3 players, a band, ~22 s
 node Projects/corner-and-kettle/test/drive-save.mjs     90 checks, real browser
 ```
+
+## `balance.mjs [runs] [--verbose] [--days N]`
+
+Plays every seed from `0x5EED` up under the three players in `autopilot.mjs`
+and prints, per prestige level and per day: offered, served, left in line,
+drinks against food, gross, wages, net, accuracy, best streak, reputation
+delta, and the share served before patience ran out. Then the table round 3
+could not reproduce (day 10 / prestige 0, day 20 / prestige 1), the barista
+fumble sweep across `trained` and `grinder`, and the prestige floors at levels
+0 to 6 on day 30. Same seeds, same numbers, every machine.
+
+`BAND` is read against the **patient** player only, on two batches: the 30-day
+run (served share, net per day, accuracy) and a stress day, day 30 at prestige
+5, where patience finally does something (served share, patience left at
+serve). It is a guard-rail against "unplayable" and "free", not a target; the
+comment on it states every measured value. `--days` shorter than 30 is a quick
+look and the band still runs, but the band's stated numbers are the defaults'.
+
+Three breaks on purpose, each caught by the rail meant for it: the patience
+floor halved (`stress patienceAtServe 0.796 is below the floor 0.820`),
+`orderIsComplete()` returning true (`run accuracy 0.087`, and the stress day's
+patience rail at its "free" ceiling, because a player who serves empty cups
+never makes anyone wait), and prices tripled (`run netPerDay $5,119 is above
+the ceiling $4,000`).
+
+## `autopilot.mjs`
+
+Three scripted players, one pair of hands each, a ticket line every
+`HAND_MS` (800 ms, a stated assumption) on the station whose customer has the
+least patience: **patient** serves on `orderIsComplete()`, **eager** the moment
+the page's Serve button would enable (which for food is instantly, an empty
+plate at 40%), and **shopper** is patient hands plus a chalkboard spent by
+`DEFAULT_PRIORITY` at every close. `purchase()` mirrors the page's
+`doUnlock()` arithmetic until Phase 4 moves that into the sim. `makeShop(seed,
+mutate)` builds a shop and counts fumbles off the toasts; `playDay` and
+`playRun` return rows, never print.
+
+Two things about the game it had to name: nobody walks (patience only stops
+the tip, and only ticks while a customer is queued, never on a station), so
+"walked" is reported as *in line at close*; and the queue cap of five throttles
+the door, so "offered" is what the shop could take, not what came by.
 
 ## `smoke-sim.mjs`
 
