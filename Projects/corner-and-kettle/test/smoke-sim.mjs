@@ -530,7 +530,9 @@ section("12. the chalkboard is one purchase table, and the stations are one acti
     // train and scheduleBarista and prestige cost no money — their day is
     // spent below, not in the $0/$100,000 loop, which is only for purchases
     // priced in dollars.
-    const covered = new Set([...ITEMS.map(i => i[0]), "train", "scheduleBarista", "prestige"]);
+    // meta is priced in beans, not dollars, so it is exercised in section 15
+    // rather than in the $0/$100,000 loop below.
+    const covered = new Set([...ITEMS.map(i => i[0]), "train", "scheduleBarista", "prestige", "meta"]);
     eq([...sim.PURCHASE_TYPES].sort().join(","), [...covered].sort().join(","), "every purchase type in the table is exercised here");
   }
   // Broke: every priced purchase is refused, says why, and changes nothing at all.
@@ -727,6 +729,272 @@ section("14. regulars are a record now, and word of mouth is bounded (#349)");
   ok(bad.sim.wordOfMouthRegularMult() < 1 && bad.sim.wordOfMouthRegularMult() >= WORD_OF_MOUTH_MIN, "a maximally bad one sits below 1, inside the floor");
   ok(good.sim.wordOfMouthSpawnMult() < 1, "a good shop's door opens faster (a smaller spawn-interval multiplier)");
   ok(bad.sim.wordOfMouthSpawnMult() > 1, "a bad one opens slower");
+}
+
+section("15. the reopening is a trade now: beans, the Legacy tree, layouts (#360)");
+{
+  const { SHOP_LAYOUTS, META_UPGRADES, BEANS_PER_DAYS, BEANS_PER_REPUTATION,
+    META_DISCOUNT_MAX, BEANS_MAX } = CONTENT;
+
+  // ---- what a run is worth ----
+  {
+    const { sim, state } = shop(50);
+    state.day = 11; state.reputation = 60;
+    eq(sim.beansFromRun(), 5 + 3, "day 11 at reputation 60 pays 8 beans");
+    state.day = 1; state.reputation = 0;
+    eq(sim.beansFromRun(), 0, "a shop that closed on day 1 at reputation 0 pays nothing");
+    // The arithmetic, stated so a changed constant has to change this line too.
+    state.day = 21; state.reputation = 100;
+    eq(sim.beansFromRun(), Math.floor(20 / BEANS_PER_DAYS) + Math.floor(100 / BEANS_PER_REPUTATION), "and it is days-since-one over BEANS_PER_DAYS plus reputation over BEANS_PER_REPUTATION");
+  }
+
+  // ---- the beans are paid by the run that is ending, before the level moves ----
+  {
+    const { sim, state, events } = shop(51);
+    state.day = 10; state.reputation = 80;   // 4 + 4 = 8
+    sim.prestige();
+    eq(sim.beansHeld(), 8, "reopening banks the beans the closing run earned");
+    eq(state.prestigeLevel, 1, "and the level went up after they were counted");
+    ok(events.some(e => e.type === "toast" && /\+8 beans/.test(e.text)), "and the page was told how many");
+    // A second reopening on a shorter run pays less, and adds.
+    state.day = 6; state.reputation = 50;    // 2 + 2 = 4
+    sim.prestige();
+    eq(sim.beansHeld(), 12, "a second reopening adds to the pile");
+    // Beans are the one thing a reopening does not clear.
+    ok(state.money === 60 + 2*20 && state.upgrades.size === 0, "while the run itself is reset as it always was");
+  }
+
+  // ---- the Legacy tree: beans in, permanence out ----
+  {
+    const { sim, state } = shop(52);
+    const tree = META_UPGRADES.map(m => m.id);
+    eq(sim.canBuy("meta", tree[0]).currency, "beans", "a Legacy unlock is priced in beans");
+    const broke = sim.purchase("meta", "thirdCounter");
+    ok(!broke.ok && /Not enough beans/.test(broke.reason), `with no beans it is refused and says why ("${broke.reason}")`);
+    ok(!sim.metaOwned("thirdCounter"), "and nothing was granted");
+    // A gated entry needs its parent even with beans to spare.
+    state.meta.beans = 100;
+    const gated = sim.purchase("meta", "menuColdbrew");
+    ok(!gated.ok && /Mocha on the Board/.test(gated.reason), "a gated entry names the one it needs first");
+    ok(sim.purchase("meta", "menuMocha").ok, "the parent buys");
+    eq(sim.beansHeld(), 98, "and the beans came out of the pile, not the till");
+    eq(state.money, 60, "the till is untouched by a bean purchase");
+    ok(sim.purchase("meta", "menuColdbrew").ok, "which opens the child");
+    ok(!sim.purchase("meta", "menuMocha").ok, "buying one twice is refused");
+    ok(!sim.purchase("meta", "nosuchthing").ok, "and an unknown id is refused rather than thrown");
+  }
+
+  // ---- a bean menu unlock is derived, so purchase, reopen and reload agree ----
+  {
+    const { sim, state } = shop(53);
+    ok(!sim.recipeAvailable("mocha"), "mocha is not on the day-one menu");
+    state.meta.beans = 50;
+    sim.purchase("meta", "menuMocha");
+    ok(sim.recipeAvailable("mocha"), "the unlock puts it there at once");
+    ok(!state.unlockedRecipes.has("mocha"), "without writing it into the run's own unlock set");
+    ok(sim.getUnlockedRecipeList().some(r => r.id === "mocha"), "so the order generator can ask for it");
+    state.day = 8; sim.prestige();
+    ok(sim.recipeAvailable("mocha"), "and it is still there after a reopening cleared the run's unlocks");
+    // The money purchase refuses it, since it is already on the menu.
+    state.money = 5000;
+    const paid = sim.purchase("recipe", "mocha");
+    ok(!paid.ok && /already on the menu/.test(paid.reason), "money will not buy it twice");
+    eq(state.money, 5000, "and the till did not move");
+  }
+
+  // ---- the menu that grows across runs ----
+  {
+    const gated = RECIPES.filter(r => r.prestigeGated);
+    ok(gated.length >= 4, `there are prestige-gated recipes to grow into (${gated.length})`);
+    const { sim, state } = shop(54);
+    for (const r of gated) ok(!sim.recipeAvailable(r.id), `${r.name} is off a prestige-0 menu`);
+    state.prestigeLevel = 5;
+    for (const r of gated) ok(sim.recipeAvailable(r.id), `${r.name} is on a prestige-5 menu`);
+    // Derived, not stored: setting the level alone was enough, which is what
+    // lets balance.mjs's stress batch mutate a level onto a fresh state.
+    eq(state.unlockedRecipes.size, 5, "and the run's own unlock set is still the five starters");
+    // Money never buys one.
+    state.prestigeLevel = 0; state.money = 100000;
+    const r0 = sim.purchase("recipe", gated[0].id);
+    ok(!r0.ok && /not with money/.test(r0.reason), `${gated[0].name} refuses a chequebook ("${r0.reason}")`);
+    // Every one of them is buildable out of what a day-one shop stocks: an
+    // order asking for a syrup or a milk the reopened shop has no button for
+    // is an order the player cannot make (the reason Phase 6 re-rolls a
+    // regular's favourite at a reopening).
+    const day1 = shop(55);
+    day1.state.prestigeLevel = 5;
+    for (const r of gated) {
+      if (r.requiredSyrup) ok(day1.state.unlockedSyrups.has(r.requiredSyrup), `${r.name}'s ${r.requiredSyrup} syrup is a day-one syrup`);
+      ok(!r.unlockCost, `${r.name} costs no money`);
+    }
+    // And none of them is another recipe under a second name. Two recipes with
+    // the same requirement list are one drink at two prices: the player builds
+    // the identical cup and the higher price is free money.
+    //
+    // The menu already had five of those before Phase 7, and this is how that
+    // was found. Cappuccino is Latte's list exactly (espresso, one shot, milk);
+    // Cold Brew and Nitro Cold Brew are Iced Coffee's; Affogato and Doppio are
+    // Americano's. Reshaping five shipped recipes is a balance change, not this
+    // phase's, so they are named here instead of fixed — the list is the
+    // assertion, so reshaping one of them fails this line and gets read
+    // (locked decision #147: a claim worth keeping says out loud what it can
+    // and cannot distinguish). Phase 7's own four are held to the rule.
+    const shape = r => JSON.stringify([r.base, r.shots || 0, !!r.needsMilk, !!r.ice, !!r.blended, r.requiredSyrup || null]);
+    const shapes = RECIPES.map(shape);
+    const dupes = RECIPES.filter((r, i) => shapes.indexOf(shape(r)) !== i);
+    eq(dupes.map(r => r.name).join(","), "Cappuccino,Cold Brew,Nitro Cold Brew,Affogato,Doppio",
+      "the five recipes that were already another recipe's requirement list, and no more");
+    eq(dupes.filter(r => r.prestigeGated).map(r => r.name).join(","), "",
+      "no prestige-gated recipe repeats a list the menu already had");
+  }
+
+  // ---- the board discount ----
+  {
+    const { sim, state } = shop(56);
+    const full = sim.canBuy("station", 3).cost;
+    eq(sim.metaDiscount(), 0, "no discount to start");
+    state.meta.unlocks.add("wholesale");
+    eq(sim.metaDiscount(), 0.1, "one tier is 10%");
+    eq(sim.canBuy("station", 3).cost, Math.round(full * 0.9), "and the printed price moves with it");
+    state.meta.unlocks.add("distributor");
+    eq(sim.metaDiscount(), 0.2, "both tiers are 20%");
+    // The price a button prints is the price purchase() takes (#344, one layer
+    // down): with exactly the discounted price in the till, the purchase goes
+    // through and empties it.
+    const cheap = sim.canBuy("station", 3).cost;
+    state.money = cheap;
+    const bought = sim.purchase("station", 3);
+    ok(bought.ok, `a till holding exactly the discounted price can afford it ($${cheap} of $${full})`);
+    eq(state.money, 0, "and it took exactly that");
+    // A dollar short is refused, and the refusal quotes the discounted price.
+    const { sim: s2, state: st2 } = shop(57);
+    st2.meta.unlocks.add("wholesale");
+    const want = s2.canBuy("station", 3).cost;
+    st2.money = want - 1;
+    const no = s2.purchase("station", 3);
+    ok(!no.ok && no.reason.includes(`$${want}`), `a dollar short is refused at the board price ("${no.reason}")`);
+    const { sim: s3, state: st3 } = shop(58);
+    for (const m of META_UPGRADES) st3.meta.unlocks.add(m.id);
+    eq(s3.metaDiscount(), 0.2, "the whole tree owned is 20% off, the sum of the two tiers");
+    // Beans are never discounted — the tree would pay for itself.
+    eq(s3.canBuy("meta", "wholesale").cost, META_UPGRADES.find(m => m.id === "wholesale").cost, "a bean price ignores the discount");
+
+    // META_DISCOUNT_MAX is a real ceiling, not a decorative one. Today's two
+    // tiers sum to 20%, so asserting the live tree is under a 50% cap is an
+    // assertion that cannot fail — which is what removing the clamp proved
+    // when the suite stayed green (locked decision #34). So the clamp is
+    // tested against a discount table that *would* walk past it: createSim
+    // takes its content as an argument, which is what makes that possible
+    // without touching the shipped tables.
+    {
+      const greedy = { ...CONTENT, META_DISCOUNT: { wholesale: 0.45, distributor: 0.45 } };
+      const st = freshState(greedy);
+      st.meta.unlocks.add("wholesale"); st.meta.unlocks.add("distributor");
+      const sg = createSim({ content: greedy, rng: makeRng(59), state: st, notify: () => {} });
+      eq(sg.metaDiscount(), META_DISCOUNT_MAX, "a tree worth 90% is clamped to META_DISCOUNT_MAX");
+      ok(sg.canBuy("station", 3).cost > 0, "so the board never goes free");
+      eq(sg.canBuy("station", 3).cost, Math.round(350 * (1 - META_DISCOUNT_MAX)), "and a station costs the clamped price exactly");
+    }
+  }
+
+  // ---- layouts ----
+  {
+    const { sim, state } = shop(59);
+    eq(sim.currentLayout().id, SHOP_LAYOUTS[0].id, "day one opens in the first layout");
+    eq(sim.layoutsFor(0).length, 1, "and level 0 can pick only that one");
+    ok(sim.layoutsFor(4).length === SHOP_LAYOUTS.length, "level 4 can pick any of them");
+    // A reopening with no layout named is the reopening this game always had.
+    state.day = 7;
+    sim.prestige();
+    eq(state.slots.length, 2, "a reopening that names no layout opens with two stations");
+    eq(sim.queueMax(), CONTENT.QUEUE_MAX, "and the queue cap it always had");
+    // A layout above the level it would reach is refused, and nothing happens.
+    const { sim: s2, state: st2 } = shop(60);
+    st2.day = 7;
+    const tooBig = s2.purchase("prestige", "grandcafe");
+    ok(!tooBig.ok && /opens at reopening 4/.test(tooBig.reason), `a layout past the level is refused ("${tooBig.reason}")`);
+    eq(st2.day, 7, "and the shop did not reopen");
+    ok(!s2.purchase("prestige", "nosuchlayout").ok, "an unknown layout is refused too");
+    // The Roastery: three stations and the machine already in.
+    const { sim: s3, state: st3 } = shop(61);
+    st3.day = 7; st3.prestigeLevel = 1;
+    ok(s3.purchase("prestige", "roastery").ok, "at level 1 the next reopening can pick The Roastery");
+    eq(st3.layoutId, "roastery", "the run records which layout it opened in");
+    eq(st3.slots.length, 3, "three stations from the first shift");
+    ok(st3.upgrades.has("espresso2"), "with the Dual-Boiler installed");
+    ok(st3.unlockedRecipes.has("ristretto"), "and Ristretto on the menu, the same side effect buying it has");
+    // The Kiosk: the queue cap, which is the number that throttles the door.
+    const { sim: s4, state: st4 } = shop(62);
+    st4.day = 7;
+    s4.purchase("prestige", "kiosk");
+    eq(s4.queueMax(), CONTENT.QUEUE_MAX + 2, "The Kiosk opens with two more in line");
+    st4.upgrades.add("seating");
+    eq(s4.queueMax(), CONTENT.QUEUE_MAX + 3, "and Seating Expansion still adds its one on top");
+  }
+
+  // ---- the Legacy unlocks that only a reopening can pay out ----
+  {
+    const { sim, state } = shop(63);
+    state.day = 7; state.meta.unlocks.add("thirdCounter"); state.meta.unlocks.add("dayOneHire");
+    sim.prestige();
+    eq(state.slots.length, 3, "A Third Counter opens the reopened shop with three stations");
+    eq(state.baristas.length, 1, "A Hand on Day One hires one");
+    eq(state.money, 80, "and the hire was free — the reopened till is untouched");
+    ok(state.baristas[0].level === 1 && state.baristas[0].skill && state.baristas[0].morale === CONTENT.MORALE_START,
+      "shaped exactly like a barista the chalkboard hired");
+    // Two routes to a third station do not cancel: the larger wins.
+    const { sim: s2, state: st2 } = shop(64);
+    st2.day = 7; st2.prestigeLevel = 2; st2.meta.unlocks.add("thirdCounter");
+    s2.purchase("prestige", "kiosk");   // a two-station layout
+    eq(st2.slots.length, 3, "a two-station layout plus A Third Counter is three stations, not two");
+  }
+
+  // ---- the ledger the confirmation reads ----
+  {
+    const { sim, state } = shop(65);
+    const early = sim.reopenPreview();
+    ok(!early.ok && /from day 6/.test(early.reason), "before day 6 the ledger says why not");
+    state.day = 12; state.money = 4000; state.reputation = 70;
+    state.upgrades.add("music"); state.upgrades.add("grinder");
+    state.baristas.push({ id: "b1", name: "Pip", level: 2, targetSlot: null, acc: 0, skill: { bar:1, kitchen:0, register:0 }, morale: 60, training: null, working: true });
+    state.unlockedRecipes.add("mocha");
+    state.loyaltyLevel = 1; state.comboShields = 2;
+    const p = sim.reopenPreview();
+    ok(p.ok, "from day 12 it is available");
+    eq(p.level, 1, "and names the level it would reach");
+    eq(p.beansEarned, sim.beansFromRun(), "the beans it would pay are the same call the chalkboard prints");
+    eq(p.beansAfter, p.beansHeld + p.beansEarned, "and it adds up");
+    const lost = p.lost.join(" | ");
+    ok(/\$4,?000 in the till/.test(lost), `the till is named as lost (${lost})`);
+    ok(/2 equipment, ambiance and business upgrades/.test(lost), "so are the two upgrades");
+    ok(/1 barista/.test(lost), "so is the barista");
+    ok(/1 recipe unlock/.test(lost), "so is the recipe money bought");
+    ok(/loyalty program/.test(lost) && /2 streak shields/.test(lost), "so are the loyalty tier and the shields");
+    ok(/Reputation 70 back to 50/.test(lost), "and the reputation it resets");
+    const kept = p.kept.join(" | ");
+    ok(/\+5% on every sale/.test(kept), `the income bonus is named as kept (${kept})`);
+    ok(/beans, and every Legacy unlock/.test(kept), "so are the beans");
+    ok(p.layouts.length === SHOP_LAYOUTS.length && p.layouts.filter(l => l.available).length >= 1,
+      "every layout is listed, with at least the first available");
+    ok(p.layouts.every(l => l.available === (p.level >= l.minPrestige)), "and availability is the level, not a copy of it");
+    // What it says is lost is actually lost, and what it says is kept is kept.
+    sim.prestige(p.defaultLayout);
+    eq(state.money, 60 + 20, "the till went to the reopened figure the ledger quoted");
+    eq(state.upgrades.size, 0, "the upgrades went");
+    eq(state.baristas.length, 0, "the barista went");
+    eq(state.loyaltyLevel, 0, "the loyalty tier went");
+    eq(state.comboShields, 0, "the shields went");
+    eq(state.reputation, 50, "the reputation reset");
+    eq(sim.beansHeld(), p.beansEarned, "and the beans it promised arrived");
+  }
+
+  // ---- the save's clamp is a real ceiling ----
+  {
+    const { sim, state } = shop(66);
+    state.meta.beans = BEANS_MAX; state.day = 30; state.reputation = 100;
+    sim.prestige();
+    eq(sim.beansHeld(), BEANS_MAX, "beans stop at BEANS_MAX rather than running past the save's clamp");
+  }
 }
 
 /* ---------- report ---------- */

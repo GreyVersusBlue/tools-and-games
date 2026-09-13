@@ -84,6 +84,12 @@ export function freshState(content) {
     upgrades: new Set(), // purchased equipment/ambiance/business upgrade ids
     marketingRemaining: 0,
     prestigeLevel: 0,
+    // The permanent layer (Phase 7, #360). `meta` is the only part of the
+    // state a reopening does not touch: beans earned and the tree they bought.
+    // `layoutId` is the configuration this run opened in, picked at the last
+    // reopening; day one is always the first layout.
+    meta: { beans: 0, unlocks: new Set() },
+    layoutId: content.SHOP_LAYOUTS[0].id,
     dailyModifierId: null,
     activeEvent: null, // {id, until}
     eventFiredThisShift: false,
@@ -131,6 +137,8 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     REGULAR_TOLERANCE_MIN, REGULAR_TOLERANCE_MAX, REGULAR_TOLERANCE_STEP,
     WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX, WORD_OF_MOUTH_REP_SPAN, WORD_OF_MOUTH_REGULAR_SPAN,
     HISTORY_WINDOW, HISTORY_WEIGHT,
+    BEANS_PER_DAYS, BEANS_PER_REPUTATION, BEANS_MAX, META_UPGRADES, META_MENU,
+    META_DISCOUNT, META_DISCOUNT_MAX, SHOP_LAYOUTS,
   } = content;
   const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -194,9 +202,110 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   function reputationStars(){ return Math.max(1, Math.min(5, Math.round(state.reputation/20))); }
   function adjustReputation(delta){ state.reputation = Math.max(0, Math.min(100, Math.round((state.reputation+delta)*10)/10)); }
 
+  /* ---------- the permanent layer (Phase 7, #360) ---------- */
+  // Everything a reopening carries across, derived rather than stored. That is
+  // the whole trick: a prestige level or an owned bean unlock is a fact about
+  // the save, and what it grants is read off it here every time it is asked
+  // for. Writing the grants into state.unlockedRecipes instead would mean a
+  // purchase, a reopening and repairSave() each had to remember to do it, and
+  // the three would drift the way the affordability test did before #344.
+  const metaById = id => META_UPGRADES.find(m => m.id === id);
+  function metaUnlocks(){
+    if(!state.meta || !(state.meta.unlocks instanceof Set)) state.meta = { beans: state.meta?.beans ?? 0, unlocks: new Set() };
+    return state.meta.unlocks;
+  }
+  function metaOwned(id){ return metaUnlocks().has(id); }
+  function beansHeld(){ return Math.max(0, Math.round(state.meta?.beans ?? 0)); }
+
+  /** What a run that closed on this day at this reputation is worth in beans. */
+  function beansFromRun(day = state.day, reputation = state.reputation){
+    return Math.floor(Math.max(0, day - 1) / BEANS_PER_DAYS)
+         + Math.floor(Math.max(0, reputation) / BEANS_PER_REPUTATION);
+  }
+
+  /** Every chalkboard price, times this. Bounded at META_DISCOUNT_MAX. */
+  function metaDiscount(){
+    let d = 0;
+    for(const [id, cut] of Object.entries(META_DISCOUNT)) if(metaOwned(id)) d += cut;
+    return Math.min(META_DISCOUNT_MAX, d);
+  }
+  function boardCost(cost){ return Math.max(0, Math.round(cost * (1 - metaDiscount()))); }
+
+  /**
+   * Is this recipe on the menu right now? Three ways in, and only the first
+   * is stored: money bought it, the shop has reopened enough times, or a bean
+   * unlock put it there for good.
+   */
+  function recipeAvailable(id){
+    if(state.unlockedRecipes.has(id)) return true;
+    const r = RECIPES.find(x => x.id === id);
+    if(!r) return false;
+    if(r.prestigeGated && state.prestigeLevel >= r.prestigeGated) return true;
+    for(const [meta, recipeId] of Object.entries(META_MENU)) if(recipeId === id && metaOwned(meta)) return true;
+    return false;
+  }
+
+  /** The layout this run opened in, falling back to day one's. */
+  function currentLayout(){
+    return SHOP_LAYOUTS.find(l => l.id === state.layoutId) || SHOP_LAYOUTS[0];
+  }
+  /** The layouts a reopening could pick, at the level it would reach. */
+  function layoutsFor(level){
+    return SHOP_LAYOUTS.filter(l => level >= l.minPrestige);
+  }
+
+  /**
+   * What a reopening right now would cost and pay, as the three lists the
+   * confirmation reads (Phase 7, #360). The page used to ask with one
+   * window.confirm sentence that named "most upgrades" and nothing else.
+   */
+  function reopenPreview(){
+    const gate = PURCHASES.prestige.refuse();
+    const level = state.prestigeLevel + 1;
+    const earned = beansFromRun();
+    const layout = layoutsFor(level);
+    return {
+      ok: !gate, reason: gate,
+      day: state.day, level, beansEarned: earned, beansHeld: beansHeld(),
+      beansAfter: beansHeld() + earned,
+      kept: [
+        `Prestige level ${level} — a permanent +${5*level}% on every sale`,
+        `${beansHeld() + earned} beans, and every Legacy unlock you have bought`,
+        ...(Object.keys(state.regulars).filter(n=>!state.regulars[n].stopped).length
+          ? [`${Object.keys(state.regulars).filter(n=>!state.regulars[n].stopped).length} regulars — the people, not their standing orders`]
+          : []),
+        ...(RECIPES.filter(r=>r.prestigeGated && r.prestigeGated <= level).length
+          ? [`${RECIPES.filter(r=>r.prestigeGated && r.prestigeGated <= level).map(r=>r.name).join(', ')} on the menu, free, from now on`]
+          : []),
+      ],
+      lost: [
+        `$${Math.max(0, Math.round(state.money))} in the till, down to $${60 + level*20}`,
+        `Day ${state.day} back to day 1`,
+        ...(state.upgrades.size ? [`${state.upgrades.size} equipment, ambiance and business upgrade${state.upgrades.size>1?'s':''}`] : []),
+        ...(state.baristas.length ? [`${state.baristas.length} barista${state.baristas.length>1?'s':''}, their training and their morale`] : []),
+        ...(state.unlockedRecipes.size > STARTING_UNLOCKS.recipes.length
+          ? [`${state.unlockedRecipes.size - STARTING_UNLOCKS.recipes.length} recipe unlock${state.unlockedRecipes.size - STARTING_UNLOCKS.recipes.length>1?'s':''} you paid money for`] : []),
+        ...(state.loyaltyLevel ? ['the loyalty program'] : []),
+        ...(state.comboShields ? [`${state.comboShields} streak shield${state.comboShields>1?'s':''}`] : []),
+        `Reputation ${Math.round(state.reputation)} back to 50`,
+      ],
+      earnedList: [
+        `+${earned} beans (${Math.floor(Math.max(0, state.day-1)/BEANS_PER_DAYS)} for ${state.day} days, ${Math.floor(Math.max(0, state.reputation)/BEANS_PER_REPUTATION)} for reputation ${Math.round(state.reputation)})`,
+        ...(metaOwned('thirdCounter') ? ['A Third Counter: three stations from the first shift'] : []),
+        ...(metaOwned('dayOneHire') ? ['A Hand on Day One: a Junior Barista already hired'] : []),
+        ...(metaDiscount() ? [`${Math.round(metaDiscount()*100)}% off every chalkboard price`] : []),
+      ],
+      layouts: SHOP_LAYOUTS.map(l => ({
+        id: l.id, name: l.name, desc: l.desc, minPrestige: l.minPrestige,
+        available: level >= l.minPrestige,
+      })),
+      defaultLayout: layout[layout.length-1].id,
+    };
+  }
+
   // ---- Upgrade effect helpers ----
   function hasUpgrade(id){ return state.upgrades.has(id); }
-  function queueMax(){ return QUEUE_MAX + (hasUpgrade('seating') ? 1 : 0); }
+  function queueMax(){ return QUEUE_MAX + (hasUpgrade('seating') ? 1 : 0) + currentLayout().queueBonus; }
   function espressoDurationMs(){
     if(hasUpgrade('espresso3')) return 220;
     if(hasUpgrade('espresso2')) return 320;
@@ -315,7 +424,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   }
 
   function getUnlockedRecipeList(){
-    return RECIPES.filter(r=>state.unlockedRecipes.has(r.id));
+    return RECIPES.filter(r=>recipeAvailable(r.id));
   }
   function getUnlockedFoodList(){
     return FOODS.filter(f=>state.unlockedFoods.has(f.id));
@@ -971,14 +1080,46 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     resetClock();
   }
 
-  function prestige(){
+  /**
+   * An upgrade the shop now owns, with the two side effects buying one has.
+   * Shared by the equipment purchase and by a layout that opens with one
+   * already installed (Phase 7, #360) — a layout granting 'espresso2' without
+   * Ristretto would be an upgrade that does four fifths of its job.
+   */
+  function grantUpgrade(id){
+    state.upgrades.add(id);
+    if(id==='espresso2') state.unlockedRecipes.add('ristretto');
+    if(id==='espresso3') state.unlockedRecipes.add('doppio');
+  }
+
+  /**
+   * Reopen the shop. `layoutId` is the starting configuration (Phase 7, #360);
+   * omitted means SHOP_LAYOUTS[0], day one exactly as it always was, so a
+   * caller written before layouts existed gets the old reopening unchanged.
+   *
+   * The beans are counted first, before `day` goes to 1 and `reputation` to
+   * 50, because they are earned by the run that is ending: beansFromRun()
+   * reads exactly those two fields, so counting them after the resets pays a
+   * day-30 shop what a day-1 one is worth. Verified by moving the two lines
+   * below the resets and watching a day-10 close pay 2 beans instead of 8
+   * (locked decision #34). The level's position in the order is not
+   * load-bearing — beansFromRun() does not read it.
+   */
+  function prestige(layoutId){
+    const layout = SHOP_LAYOUTS.find(l => l.id === layoutId) || SHOP_LAYOUTS[0];
+    const beansEarned = beansFromRun();
+    state.meta.beans = Math.min(BEANS_MAX, beansHeld() + beansEarned);
     state.prestigeLevel++;
+    state.layoutId = layout.id;
     state.day = 1;
     state.money = 60 + state.prestigeLevel*20;
     state.combo = 0; state.bestCombo = 0;
     state.shiftElapsed = 0; state.shiftRunning = true;
     state.queue = [];
-    state.slots = [null, null];
+    // The layout's counter count, or the Legacy unlock's three, whichever is
+    // more: two ways to the same slot should not cancel each other out.
+    const stations = Math.max(layout.stations, metaOwned('thirdCounter') ? 3 : 2);
+    state.slots = new Array(stations).fill(null);
     state.unlockedRecipes = new Set(STARTING_UNLOCKS.recipes);
     state.unlockedSyrups = new Set(STARTING_UNLOCKS.syrups);
     state.unlockedToppings = new Set(STARTING_UNLOCKS.toppings);
@@ -1006,6 +1147,14 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     state.comboShields = 0;
     state.shieldsPurchased = 0;
     state.upgrades = new Set();
+    if(layout.freeUpgrade) grantUpgrade(layout.freeUpgrade);
+    // A Hand on Day One: the same hire the chalkboard makes, for free. Written
+    // out rather than routed through purchase('hireBarista'), which would
+    // charge $400 the reopened till does not have.
+    if(metaOwned('dayOneHire')){
+      state.baristas.push({ id:'b1', name: BARISTA_NAMES[0], level:1, targetSlot:null, acc:0,
+        skill: { bar:0, kitchen:0, register:0 }, morale: MORALE_START, training:null, working:true });
+    }
     state.reputation = 50;
     state.marketingRemaining = 0;
     state.activeEvent = null;
@@ -1014,7 +1163,8 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     rollDailyModifier();
     state.dayStats = freshDayStats();
     resetClock();
-    toast(`Reopened with prestige level ${state.prestigeLevel}! Permanent income boost active. 🔁`);
+    toast(`Reopened as ${layout.name} at prestige level ${state.prestigeLevel}`
+      + `${beansEarned ? `, +${beansEarned} bean${beansEarned>1?'s':''}` : ''}. 🔁`);
     render('all');
   }
 
@@ -1066,7 +1216,11 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   // doUnlock(), where every refusal fell through to toast('Unlocked!'), and a
   // hand-kept mirror of it in test/autopilot.mjs (#339).
   const byId = (table, id) => table.find(x => x.id === id);
-  const need = cost => state.money < cost ? `Not enough money: $${cost} needed.` : null;
+  // The discount is applied here, once, so `refuse` and `cost` cannot disagree
+  // about the price: every row's `need(x.cost)` asks whether the till covers
+  // the *board* price, and canBuy() reports the same number purchase() takes.
+  const need = cost => state.money < boardCost(cost) ? `Not enough money: $${boardCost(cost)} needed.` : null;
+  const needBeans = cost => beansHeld() < cost ? `Not enough beans: ${cost} needed.` : null;
   const baristaById = id => state.baristas.find(b => b.id === id);
   const shieldCost = () => SHIELD_BASE_COST + state.shieldsPurchased*SHIELD_COST_STEP;
   function unlockRow(table, set, costKey, noun){
@@ -1088,8 +1242,9 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
         const r = byId(RECIPES, id);
         if(!r) return 'No such recipe.';
         if(r.equipmentGated) return 'This recipe unlocks automatically with the matching equipment.';
-        if(state.unlockedRecipes.has(id)) return `${r.name} is already on the menu.`;
-        if(r.requires && !state.unlockedRecipes.has(r.requires)) return `Unlock ${byId(RECIPES, r.requires).name} first.`;
+        if(r.prestigeGated) return `${r.name} comes with reopening ${r.prestigeGated}, not with money.`;
+        if(recipeAvailable(id)) return `${r.name} is already on the menu.`;
+        if(r.requires && !recipeAvailable(r.requires)) return `Unlock ${byId(RECIPES, r.requires).name} first.`;
         return need(r.unlockCost);
       },
       apply(id){ state.unlockedRecipes.add(id); return `${byId(RECIPES, id).name} is on the menu!`; },
@@ -1206,9 +1361,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
         return need(u.cost);
       },
       apply(id){
-        state.upgrades.add(id);
-        if(id==='espresso2') state.unlockedRecipes.add('ristretto');
-        if(id==='espresso3') state.unlockedRecipes.add('doppio');
+        grantUpgrade(id);
         return `${byId(EQUIPMENT_UPGRADES, id).name} installed! ⚙️`;
       },
     },
@@ -1242,20 +1395,50 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       },
       apply(){ state.marketingRemaining = MARKETING_DURATION_MS; return 'Marketing campaign launched! 📣'; },
     },
-    // Asking first is the page's job; prestige() toasts for itself.
+    // The Legacy tree (Phase 7, #360). The one row that spends beans instead
+    // of money, which is why `currency` exists: purchase() reads it to know
+    // which pot the cost comes out of, and the discount never touches beans.
+    meta: {
+      currency: 'beans',
+      cost: id => metaById(id)?.cost ?? 0,
+      refuse(id){
+        const m = metaById(id);
+        if(!m) return 'No such Legacy unlock.';
+        if(metaOwned(id)) return `${m.name} is already yours.`;
+        if(m.requires && !metaOwned(m.requires)) return `Buy ${metaById(m.requires).name} first.`;
+        return needBeans(m.cost);
+      },
+      apply(id){ metaUnlocks().add(id); return `${metaById(id).name} — yours for good. 🫘`; },
+    },
+    // Asking first is the page's job; prestige() toasts for itself. `id` is the
+    // layout to reopen in; omitted means day one's, so a caller that has never
+    // heard of layouts reopens exactly the way it always did.
     prestige: {
       cost: () => 0,
-      refuse(){ return state.day >= PRESTIGE_MIN_DAY ? null : `Reopening is available from day ${PRESTIGE_MIN_DAY}.`; },
-      apply(){ prestige(); return null; },
+      refuse(id){
+        if(state.day < PRESTIGE_MIN_DAY) return `Reopening is available from day ${PRESTIGE_MIN_DAY}.`;
+        if(id == null) return null;
+        const l = SHOP_LAYOUTS.find(x => x.id === id);
+        if(!l) return 'No such layout.';
+        if(state.prestigeLevel + 1 < l.minPrestige) return `${l.name} opens at reopening ${l.minPrestige}.`;
+        return null;
+      },
+      apply(id){ prestige(id); return null; },
     },
   };
 
-  /** Whether a chalkboard purchase can happen now: {ok, cost, reason}. */
+  /**
+   * Whether a chalkboard purchase can happen now: {ok, cost, currency, reason}.
+   * `cost` is what purchase() will actually take, discount included, so the
+   * price a button prints is the price it charges (#344).
+   */
   function canBuy(type, id, extra){
     const kind = PURCHASES[type];
     if(!kind) throw new Error(`canBuy: unknown purchase type "${type}"`);
     const reason = kind.refuse(id, extra);
-    return { ok: !reason, cost: kind.cost(id, extra), reason };
+    const currency = kind.currency || 'money';
+    const raw = kind.cost(id, extra);
+    return { ok: !reason, cost: currency === 'beans' ? raw : boardCost(raw), currency, reason };
   }
 
   /**
@@ -1267,9 +1450,10 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   function purchase(type, id, extra){
     const c = canBuy(type, id, extra);
     if(!c.ok) return c;
-    state.money -= c.cost;
+    if(c.currency === 'beans') state.meta.beans = beansHeld() - c.cost;
+    else state.money -= c.cost;
     const text = PURCHASES[type].apply(id, extra);
-    return { ok:true, cost:c.cost, text };
+    return { ok:true, cost:c.cost, currency:c.currency, text };
   }
 
   // A state that has never had a day's event scheduled — freshState() leaves
@@ -1284,6 +1468,8 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     effectiveSpec, moraleSpeedMult, moraleMistakeMult, baristaIntervalMs, wagesDue,
     reputationStars, adjustReputation,
     hasUpgrade, queueMax, espressoDurationMs, outageActive, stationDurationMult,
+    metaOwned, beansHeld, beansFromRun, metaDiscount, boardCost, recipeAvailable,
+    currentLayout, layoutsFor, reopenPreview, grantUpgrade,
     mistakeReduceFactor, shopPatienceMult, shopTipMult, shopSpawnFactorMult,
     wordOfMouthSignal, wordOfMouthSpawnMult, wordOfMouthRegularMult,
     getActiveDailyModifier, rollDailyModifier, fireRandomEvent,

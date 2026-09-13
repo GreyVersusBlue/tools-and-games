@@ -56,6 +56,18 @@ export const RECIPES = [
   // ---- Equipment-gated recipes: unlocked automatically by buying the matching machine tier ----
   {id:'ristretto', name:'Ristretto', icon:'🥃', category:'hot', base:'espresso', shots:1, needsMilk:false, price:42, unlockCost:0, equipmentGated:'espresso2'},
   {id:'doppio', name:'Doppio', icon:'🥃', category:'hot', base:'espresso', shots:2, needsMilk:false, price:58, unlockCost:0, equipmentGated:'espresso3'},
+  // ---- Prestige-gated recipes: on the menu from that reopening onward, free ----
+  // The menu that grows across runs (Phase 7, #360). Money never buys these;
+  // reaching the prestige level does, and sim.js's recipeAvailable() derives
+  // that rather than writing them into state.unlockedRecipes, so a level can
+  // never be held and the recipe missing. Every one is buildable out of the
+  // day-one milks and syrups, and every one differs from an existing recipe in
+  // what getOrderRequirements() asks for — two recipes with the same
+  // requirement list are the same drink at two prices.
+  {id:'cortado', name:'Cortado', icon:'🥛', category:'hot', base:'espresso', shots:2, needsMilk:true, price:50, unlockCost:0, prestigeGated:1},
+  {id:'espressotonic', name:'Espresso Tonic', icon:'🫧', category:'iced', base:'espresso', shots:2, needsMilk:false, ice:true, price:58, unlockCost:0, prestigeGated:2},
+  {id:'icedmatcha', name:'Iced Matcha Latte', icon:'🍵', category:'iced', base:'tea', shots:0, needsMilk:true, ice:true, price:54, unlockCost:0, prestigeGated:3},
+  {id:'vanillafrappe', name:'Vanilla Bean Frappe', icon:'🍦', category:'blended', base:'frappeBase', shots:1, needsMilk:true, blended:true, requiredSyrup:'vanilla', price:78, unlockCost:0, prestigeGated:4},
 ];
 
 export const FOODS = [
@@ -211,6 +223,56 @@ export const BUSINESS_UPGRADES = [
 export const MARKETING_COST = 120;
 export const MARKETING_DURATION_MS = 20000;
 export const PRESTIGE_MIN_DAY = 6;
+
+/* ---------- REOPENING: what survives one (Phase 7, #360) ---------- */
+// Before this, a reopening took the whole shop and handed back +5% income and
+// a harder floor, which is why it was available from day 6 and unattractive
+// from day 6. Three tables make it a trade instead of a subtraction: beans,
+// the tree they buy, and the layout the reopened shop starts in. None of them
+// is a new mechanic — every one is read by sim.js the way every other table
+// here is.
+
+// Beans, the only thing a reopening pays out. Earned off the two facts a run
+// ends with: how long it lasted and how well it was thought of. A run that
+// closed on day 10 at reputation 60 is worth 4 + 3 = 7.
+export const BEANS_PER_DAYS = 2;        // one bean per this many days survived
+export const BEANS_PER_REPUTATION = 20; // one bean per this much reputation at close
+export const BEANS_MAX = 9999;          // the save's clamp, not a game limit
+
+// The tree beans buy. Bought once and owned in every run after, including the
+// one it was bought in — `recipeAvailable()` and `boardCost()` read this set
+// live, so a purchase, a reopening and a reload cannot disagree about what an
+// owned unlock means. The four things Phase 7 named, plus a second discount
+// tier so the last stretch of the tree is not one item.
+export const META_UPGRADES = [
+  {id:'menuMocha',    name:'Mocha on the Board',     cost:2,  desc:'Mocha is on your menu in this run and every run after'},
+  {id:'menuColdbrew', name:'Cold Brew on the Board', cost:3,  requires:'menuMocha', desc:'Cold Brew too, in every run'},
+  {id:'thirdCounter', name:'A Third Counter',        cost:4,  desc:'Reopen with three station slots instead of two'},
+  {id:'dayOneHire',   name:'A Hand on Day One',      cost:5,  desc:'Reopen with a Junior Barista already hired'},
+  {id:'wholesale',    name:'Wholesale Roaster',      cost:6,  desc:'Every chalkboard price is 10% lower'},
+  {id:'distributor',  name:'Distributor Contract',   cost:10, requires:'wholesale', desc:'Another 10% off every chalkboard price'},
+];
+// Which unlock puts which recipe on the menu, and which shaves the board.
+export const META_MENU = { menuMocha:'mocha', menuColdbrew:'coldbrew' };
+export const META_DISCOUNT = { wholesale:0.10, distributor:0.10 };
+// The board never goes free however the tree grows: the guard-rail is here,
+// not at the two entries above, so adding a third tier cannot walk past it.
+export const META_DISCOUNT_MAX = 0.5;
+
+// Shop layouts: a named starting configuration, picked at the reopening. No
+// new mechanics — a station count, a queue bonus and one upgrade the shop
+// opens with already installed. The first is day one exactly as it has always
+// been, so a reopening that picks nothing changes nothing.
+export const SHOP_LAYOUTS = [
+  {id:'corner', name:'The Corner Shop', minPrestige:0, stations:2, queueBonus:0, freeUpgrade:null,
+   desc:'Two stations, five in line, nothing free. The shop as it has always opened.'},
+  {id:'kiosk', name:'The Kiosk', minPrestige:1, stations:2, queueBonus:2, freeUpgrade:null,
+   desc:'Two stations and a longer line: two more can wait.'},
+  {id:'roastery', name:'The Roastery', minPrestige:2, stations:3, queueBonus:0, freeUpgrade:'espresso2',
+   desc:'Three stations, and the Dual-Boiler machine already installed.'},
+  {id:'grandcafe', name:'The Grand Café', minPrestige:4, stations:3, queueBonus:2, freeUpgrade:'music',
+   desc:'Three stations, two more in line, and the Music System already playing.'},
+];
 
 /* ---------- DAILY MODIFIERS ---------- */
 export const DAILY_MODIFIERS = [

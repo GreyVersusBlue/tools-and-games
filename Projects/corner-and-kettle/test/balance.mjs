@@ -16,7 +16,9 @@
 //
 // It also runs the two sweeps nobody had run: barista fumble chance across the
 // `trained` and `grinder` multipliers, and the prestige floors at levels 0
-// through 6 on day 30.
+// through 6 on day 30. Phase 7 (#360) added a third: the loop itself, which
+// asks the one question a prestige system has to answer — is reopening ever
+// worth it — by playing the same seeds with and without a reopening.
 //
 // Exits non-zero on one thing (locked decision #13): the patient player's
 // numbers outside BAND. Every batch is seeded 0x5EED + i, so the same code over
@@ -25,8 +27,8 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeShop, playRun, playDay, patient, eager, shopper, HAND_MS } from "./autopilot.mjs";
-import { BARISTA_TIERS } from "../js/content.js";
+import { makeShop, playRun, playDay, patient, eager, shopper, spendBeans, bestLayout, DEFAULT_PRIORITY, HAND_MS } from "./autopilot.mjs";
+import { BARISTA_TIERS, SHOP_LAYOUTS, META_UPGRADES } from "../js/content.js";
 import { STEP_MS } from "../js/sim.js";
 
 const DEFAULT_RUNS = 100;
@@ -51,29 +53,37 @@ const PRESTIGE_AFTER = 10; // the shop reopens at the close of this day, once
  *   run.servedShare      served / offered. Below the floor one pair of hands
  *                        cannot keep up with the door. Measured 0.990.
  *   run.netPerDay        mean net over the run. The floor is unplayable, the
- *                        ceiling is free. Measured $1,927 — not the $309
- *                        round 3 wrote down; see the re-measurement block.
+ *                        ceiling is free. Measured $2,486 — not the $309
+ *                        round 3 wrote down; see the re-measurement block. It
+ *                        was $2,430 before Phase 7 put four prestige-gated
+ *                        recipes on a reopened shop's menu, which is the
+ *                        whole point of that bullet showing up here.
  *   run.accuracy         a player who serves only complete cups scores 1.0
  *                        by construction, so this floor is a check that a
  *                        barista's fumble is still caught before the serve,
  *                        not a balance number. Measured 1.000.
- *   stress.servedShare   the hardest day still mostly served. Measured 0.962.
+ *   stress.servedShare   the hardest day still mostly served. Measured 0.915,
+ *                        down from 0.962 for the same reason: at prestige 5
+ *                        the menu carries a two-shot Cortado and a syruped
+ *                        blended Frappe, so a ticket takes longer.
  *   stress.patienceAtServe  patience left, as a share of patienceMax, on the
  *                        cups served that day — the number the tip is paid
  *                        from, and the only thing patience changes in this
  *                        game: nobody walks, and patience ticks only while a
  *                        customer is in the queue, never on a station.
- *                        Measured 0.905. Halving patienceFactor()'s floor
- *                        puts it at 0.796, so the floor is 0.82: the one
- *                        break this file was verified against has to land
- *                        outside it by more than rounding. The ceiling is
- *                        free — a hardest day on which nobody ever waits has
- *                        no clock.
+ *                        Measured 0.846 (0.905 before the prestige menu).
+ *                        Halving patienceFactor()'s floor puts it at 0.666,
+ *                        so the floor is 0.82: the one break this file was
+ *                        verified against has to land outside it by more than
+ *                        rounding, and the richer menu widened that gap
+ *                        rather than closing it. The ceiling is free — a
+ *                        hardest day on which nobody ever waits has no clock.
  *
  * On an ordinary day the patience rails cannot hear anything. servedShare
  * is 0.99, the queue is empty most of the shift, and a customer's patience
  * stops moving the moment they are accepted, so the halved floor leaves a
- * 30-day run inside every rail above. That is a finding about the game, not
+ * 30-day run inside every rail above — 0.991 patience at serve against
+ * 0.993, re-measured with the prestige menu in place. That is a finding about the game, not
  * a gap in the band (locked decision #147): the queue cap of five throttles
  * the door, so "offered" is what the shop could take, not what came by.
  */
@@ -87,8 +97,62 @@ export const BAND = {
     servedShare: { min: 0.75, max: 1.0 },
     patienceAtServe: { min: 0.82, max: 0.98 },
   },
+  /**
+   * The loop (Phase 7, #360). A reopening is never strictly worse than not
+   * reopening, over LOOP.days with one reopening, however the beans are spent.
+   * Measured 1.07 for both variants. The floor is exactly 1.0 because that is
+   * the claim — not a margin with room in it — and the ceiling is loose: a
+   * reopening that doubled the take would be a different game, and this would
+   * be the line that said so.
+   */
+  loop: {
+    reopenEdge: { min: 1.0, max: 2.0 },
+    reopenEdgeBadly: { min: 1.0, max: 2.0 },
+  },
+  /* Both loop rails measured 1.069 and 1.066. What holds them above 1.0 is
+   * spawnFactor()'s prestige floor, not the +5%-per-level income: removing
+   * the income bonus leaves the rail at 1.051, inside the band, while
+   * pinning the spawn floor at 0.6 regardless of level puts it at 0.984 and
+   * `paybackDay` at null. That is the break this rail was verified against
+   * (#34), and it names the engine — a reopening is worth it because the
+   * door opens faster, and the tip bonus is a rounding error beside it. */
 };
 export const STRESS = { runs: 50, day: 30, prestigeLevel: 5 };
+
+/**
+ * The loop (Phase 7, #360). Three variants of the same seeds under the
+ * shopper, who is the only player who actually has a shop to lose:
+ *
+ *   never   LOOP.days days, no reopening at all
+ *   badly   reopening at the close of day LOOP.prestigeAfter, beans spent on
+ *           the two menu entries, the cheapest thing the tree sells, and the
+ *           base layout every time
+ *   well    the same reopening, beans spent down LEGACY_WELL and the richest
+ *           layout the level allows
+ *
+ * `reopenEdge` is well's net over the whole horizon divided by never's, and
+ * `reopenEdgeBadly` the same for badly. Both are banded at 1.0: a reopening
+ * must not be strictly worse than not reopening, however the beans are spent.
+ *
+ * The horizon is 60 days and the reopening is one, not two, and that is the
+ * finding rather than a convenience. A reopening costs the whole till and the
+ * whole shop and pays back through the spawn floor, which is the level's, so
+ * the payback is a *rate* against a one-off loss: it takes about 25 days.
+ * Two reopenings inside 30 days never repay either — measured 0.85 of never
+ * reopening, which is the game the wishlist described as unattractive. At 60
+ * days and one reopening it is 1.07, and `paybackDay` says when the
+ * cumulative lines cross: day 35 to 37 across seed counts from 8 to 24.
+ *
+ * Twelve seeds, not the hundred the main batches use: sixty days times three
+ * variants is 2,160 shift-days, and the rail moved by 0.01 between 8 seeds
+ * and 24, so the extra seeds buy nothing a band with 7% of headroom can hear.
+ */
+export const LOOP = { runs: 12, days: 60, prestigeAfter: [10] };
+// Beans down a priority list. WELL leads with the two that change the opening
+// shift, since that is where a reopened shop is weakest; the discount tiers
+// follow, and the menu entries are last because they are flavour.
+export const LEGACY_WELL = ["thirdCounter", "dayOneHire", "wholesale", "distributor", "menuMocha", "menuColdbrew"];
+export const LEGACY_BADLY = ["menuMocha", "menuColdbrew"];
 
 /* ========================================================================= *
  * Playing a batch                                                           *
@@ -382,6 +446,67 @@ export function wordOfMouthSweep(runs) {
   return { bad: extreme(0, 0), good: extreme(100, 100) };
 }
 
+/**
+ * The loop sweep (Phase 7, #360). One variant: the same seeds, the shopper's
+ * priority list, a stated reopening schedule and a stated way of spending the
+ * beans. Returns the mean net per day index across the seeds, so the caller
+ * can add them up into a cumulative line and find where two lines cross.
+ */
+export function loopVariant({ prestigeAfter = [], legacy = null, layout = false, runs = LOOP.runs, days = LOOP.days } = {}) {
+  const byDay = Array.from({ length: days }, () => []);
+  const bought = new Set();
+  let level = 0, layoutId = null, beansLeft = 0, crashes = 0;
+  for (let i = 0; i < runs; i++) {
+    const { sim, state, counters } = makeShop(0x5EED + i);
+    // The base layout by name, not by omission: a variant that passes no
+    // layout and one that passes the first are the same reopening, and saying
+    // so here means the "badly" column is a choice rather than a gap.
+    const reopen = legacy
+      ? { layout: layout ? bestLayout : () => SHOP_LAYOUTS[0].id, spend: sm => spendBeans(sm, legacy) }
+      : null;
+    try {
+      playRun(sim, state, { days, policy: shopper(DEFAULT_PRIORITY), prestigeAfter, counters, reopen })
+        .forEach((r, d) => byDay[d].push(r.net));
+    } catch (e) { crashes++; continue; }
+    level = state.prestigeLevel; layoutId = state.layoutId; beansLeft = sim.beansHeld();
+    for (const u of state.meta.unlocks) bought.add(u);
+  }
+  return {
+    runs, days, crashes, level, layoutId, beansLeft, bought: [...bought],
+    netByDay: byDay.map(xs => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)),
+    net: byDay.reduce((a, xs) => a + (xs.length ? xs.reduce((p, q) => p + q, 0) / xs.length : 0), 0),
+  };
+}
+
+/**
+ * The three variants folded into the rails the band reads. `paybackDay` is
+ * the first day on or after the reopening at which the reopened run's
+ * cumulative net is back level with the run that never reopened — null if it
+ * never gets there inside the horizon, which is the answer the 30-day,
+ * two-reopening shape gives.
+ */
+export function loopSweep({ runs = LOOP.runs, days = LOOP.days, prestigeAfter = LOOP.prestigeAfter } = {}) {
+  const never = loopVariant({ prestigeAfter: [], runs, days });
+  const badly = loopVariant({ prestigeAfter, legacy: LEGACY_BADLY, layout: false, runs, days });
+  const well = loopVariant({ prestigeAfter, legacy: LEGACY_WELL, layout: true, runs, days });
+  const cross = v => {
+    let a = 0, b = 0;
+    for (let d = 0; d < days; d++) {
+      a += never.netByDay[d]; b += v.netByDay[d];
+      if (d + 1 > prestigeAfter[0] && b >= a) return d + 1;
+    }
+    return null;
+  };
+  return {
+    runs, days, prestigeAfter, never, badly, well,
+    crashed: [never, badly, well].filter(v => v.crashes).map(v => `${v.crashes} of ${v.runs} runs threw`),
+    n: runs * 3,
+    reopenEdge: never.net ? well.net / never.net : 0,
+    reopenEdgeBadly: never.net ? badly.net / never.net : 0,
+    paybackDay: cross(well), paybackDayBadly: cross(badly),
+  };
+}
+
 /* ========================================================================= *
  * Printing                                                                  *
  * ========================================================================= */
@@ -390,7 +515,9 @@ const pct = x => `${(100 * x).toFixed(1)}%`;
 const money = x => `$${Math.round(x).toLocaleString("en-US")}`;
 const pad = (s, w) => String(s).padEnd(w);
 const num = (s, w) => String(s).padStart(w);
-const show = (rail, v) => (rail === "netPerDay" ? money(v) : /accuracy|patienceAtServe/.test(rail) ? v.toFixed(3) : pct(v));
+const show = (rail, v) => (rail === "netPerDay" ? money(v)
+  : /accuracy|patienceAtServe|reopenEdge/.test(rail) ? v.toFixed(3)
+  : pct(v));
 
 function printPolicy(name, s) {
   console.log(`\n${name} — ${s.n} runs`);
@@ -448,6 +575,31 @@ function printPrestige(rows) {
   console.log(first
     ? `  a day becomes unservable (under half the customers served) at level ${first.level}`
     : `  no level makes a day unservable (under half the customers served); the worst is ${pct(Math.min(...rows.map(r => r.servedShare)))} at level ${rows.reduce((a, r) => (r.servedShare < a.servedShare ? r : a)).level}`);
+}
+
+function printLoop(s) {
+  const cost = id => META_UPGRADES.find(m => m.id === id).cost;
+  console.log(`\nthe loop — is reopening worth it? ${s.runs} seeds × ${s.days} days, shopper's hands, reopening at the close of day ${s.prestigeAfter.join(",")} (Phase 7, #360)`);
+  console.log(`  ${pad("variant", 24)}${num("net over " + s.days + "d", 16)}${num("vs never", 10)}${num("payback", 9)}  what the beans bought`);
+  const row = (name, v, edge, payback, note) =>
+    console.log(`  ${pad(name, 24)}${num(money(v.net), 16)}${num(edge == null ? "—" : edge.toFixed(3), 10)}${num(payback == null ? "never" : "day " + payback, 9)}  ${note}`);
+  row("never reopens", s.never, null, null, "—");
+  row("reopens, spends badly", s.badly, s.reopenEdgeBadly, s.paybackDayBadly,
+    `${s.badly.bought.join(", ") || "nothing"} (${s.badly.bought.reduce((a, id) => a + cost(id), 0)} beans), ${s.badly.layoutId}`);
+  row("reopens, spends well", s.well, s.reopenEdge, s.paybackDay,
+    `${s.well.bought.join(", ") || "nothing"} (${s.well.bought.reduce((a, id) => a + cost(id), 0)} beans), ${s.well.layoutId}`);
+  console.log(`  a reopening costs the whole till and the whole shop at once and repays it through the level's spawn floor, which is a rate: about ${s.paybackDay ? s.paybackDay - s.prestigeAfter[0] : "?"} days of it`);
+  // Said out loud rather than banded (locked decision #147): the two columns
+  // are within a percent of each other, so this sweep cannot tell a well-spent
+  // bean pile from a wasted one, and a rail claiming it could would be a rail
+  // measuring seed noise. The reason is in the numbers above it: at one pair
+  // of hands the shopper's income is set by how many customers the door lets
+  // in, which is the prestige level's spawnFactor() floor, and every Legacy
+  // unlock is worth a few hundred dollars of shopping against an $80,000 run.
+  // The tree shortens nothing measurable here; what it changes is the first
+  // shift after a reopening, which this horizon averages away.
+  console.log(`  spent well ${s.reopenEdge.toFixed(3)} against spent badly ${s.reopenEdgeBadly.toFixed(3)}: this sweep cannot tell them apart, and does not claim to —`);
+  console.log(`  the shopper's income is the door, the door is the level's spawn floor, and a Legacy unlock is a few hundred dollars against ${money(s.never.net)}`);
 }
 
 function printStaff(rows, hire) {
@@ -517,16 +669,24 @@ if (invokedDirectly) {
   printStaff(staffRows, hire);
   const wom = wordOfMouthSweep(sweepRuns);
   printWordOfMouth(wom);
+  // The loop's own run count is fixed: it plays LOOP.days days three times
+  // over, so scaling it with `runs` would make `node balance.mjs 200` a
+  // ten-minute job for a rail that does not move past a dozen seeds.
+  const loopS = loopSweep();
+  printLoop(loopS);
 
   const bad = [
     ...checkBand(patientS, BAND.run).map(l => `run: ${l}`),
     ...checkBand(stressS, BAND.stress).map(l => `stress: ${l}`),
+    ...checkBand(loopS, BAND.loop).map(l => `loop: ${l}`),
+    ...(loopS.paybackDay ? [] : [`loop: a reopening never pays back inside ${loopS.days} days`]),
     ...(hire.worthIt ? [] : [`staff: a junior barista's extra gross (${money(hire.extraGross)}) does not beat its wage (${money(hire.wages)}) by day 3`]),
     ...(wom.good.offeredPerDay > wom.bad.offeredPerDay ? [] : [`word of mouth: a good shop (${wom.good.offeredPerDay.toFixed(1)}/day) does not outdraw a bad one (${wom.bad.offeredPerDay.toFixed(1)}/day)`]),
   ];
   const rails = [
     ...Object.entries(BAND.run).map(([k, b]) => `run ${k} ${show(k, patientS[k])} (band ${show(k, b.min)}–${show(k, b.max)})`),
     ...Object.entries(BAND.stress).map(([k, b]) => `stress ${k} ${show(k, stressS[k])} (band ${show(k, b.min)}–${show(k, b.max)})`),
+    ...Object.entries(BAND.loop).map(([k, b]) => `loop ${k} ${show(k, loopS[k])} (band ${show(k, b.min)}–${show(k, b.max)})`),
   ].join(", ");
   console.log(`\n${bad.length ? `BALANCE OUT OF BAND — ${bad.join("\n                      ")}` : `BALANCE OK — ${rails}`}`);
   console.log(`${((Date.now() - t0) / 1000).toFixed(1)} s\n`);

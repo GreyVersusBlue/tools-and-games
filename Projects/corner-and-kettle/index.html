@@ -423,26 +423,44 @@ body{
 .chalk-staff-week th{color:#a9b79c;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;font-size:0.65rem;}
 
 /* ---------- MODAL ---------- */
-#modalOverlay{
+/* Two of them share this: the day-end tally and the reopen confirmation
+   (Phase 7, #360). The reopen box is taller and scrolls, since it lists what
+   a reopening keeps, loses and earns, and `safe` is on its centring for the
+   reason locked decision #132 gives — a scroll container that centres its
+   content puts the overflow above the scroll origin without it. */
+#modalOverlay, #reopenOverlay{
   position:fixed;inset:0;background:rgba(30,20,12,0.7);
-  display:none;align-items:center;justify-content:center;z-index:100;
+  display:none;align-items:safe center;justify-content:center;z-index:100;overflow-y:auto;padding:16px 0;
 }
-#modalOverlay.show{display:flex;}
-#modalBox{
+#modalOverlay.show, #reopenOverlay.show{display:flex;}
+#modalBox, #reopenBox{
   background:var(--cream);border-radius:16px;padding:26px;max-width:380px;text-align:center;
   box-shadow:0 10px 40px rgba(0,0,0,0.5);
 }
-#modalBox h2{font-family:'Kalam',cursive;font-size:2rem;margin-top:0;}
+#reopenBox{max-width:460px;}
+#modalBox h2, #reopenBox h2{font-family:'Kalam',cursive;font-size:2rem;margin-top:0;}
 #modalBox .bigmoney{font-family:'Space Mono';font-size:1.8rem;color:var(--copper);margin:10px 0;}
-#modalBox .daysummary{
+#modalBox .daysummary, #reopenBox .daysummary{
   text-align:left;background:var(--cream-dark);border-radius:10px;padding:10px 14px;
   margin-top:6px;font-size:0.92rem;display:flex;flex-direction:column;gap:4px;
 }
-#modalBox .daysummary b{color:var(--copper);}
-#modalBox button{
+#modalBox .daysummary b, #reopenBox .daysummary b{color:var(--copper);}
+#modalBox button, #reopenBox button{
   margin-top:14px;padding:10px 20px;border:none;border-radius:10px;
   background:var(--sage);color:white;font-weight:700;font-family:'Quicksand';cursor:pointer;font-size:1rem;
 }
+#reopenBox .reopen-ledger{display:flex;flex-direction:column;gap:10px;margin-top:10px;}
+#reopenBox .reopen-ledger h3{
+  font-family:'Kalam',cursive;font-size:1.1rem;margin:0 0 4px;text-align:left;
+}
+#reopenBox .reopen-ledger ul{margin:0;padding-left:20px;text-align:left;font-size:0.88rem;line-height:1.45;}
+#reopenBox .reopen-layouts{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+#reopenBox .reopen-layouts button{
+  margin-top:0;text-align:left;background:var(--espresso);font-size:0.92rem;line-height:1.35;
+}
+#reopenBox .reopen-layouts button[disabled]{opacity:0.45;cursor:not-allowed;}
+#reopenBox .reopen-layouts small{display:block;font-weight:400;opacity:0.85;}
+#reopenBox #reopenCancel{background:var(--cream-dark);color:var(--espresso);}
 
 /* ---------- Toast ---------- */
 #toastWrap{
@@ -559,6 +577,18 @@ body{
     <h2 id="modalTitle">Shift Complete!</h2>
     <div id="modalBody"></div>
     <button id="modalBtn">Start Next Shift</button>
+  </div>
+</div>
+
+<!-- The reopen confirmation (Phase 7, #360). It replaced a window.confirm
+     whose one sentence said "most upgrades" and named nothing; the lists and
+     the layout choices are built from sim.reopenPreview() in js/ui.js. -->
+<div id="reopenOverlay">
+  <div id="reopenBox">
+    <h2 id="reopenTitle">Reopen the shop?</h2>
+    <div id="reopenBody"></div>
+    <div id="reopenLayouts" class="reopen-layouts"></div>
+    <button id="reopenCancel">Never mind — keep this shop open</button>
   </div>
 </div>
 

@@ -117,6 +117,32 @@ export function purchase(sim, state, item) {
   return sim.purchase(type, id, extra).ok;
 }
 
+/**
+ * Beans, spent down a priority list the same way (Phase 7, #360). Separate
+ * from spend() because the two currencies do not compete: a shopper can empty
+ * the till and the bean pile in the same close, and which order they happen in
+ * changes nothing.
+ */
+export function spendBeans(sim, priority) {
+  const bought = [];
+  for (let guard = 0; guard < 50; guard++) {
+    const id = priority.find(x => sim.purchase("meta", x).ok);
+    if (!id) break;
+    bought.push(id);
+  }
+  return bought;
+}
+
+/**
+ * The richest layout the *next* reopening could open in — call it before
+ * prestige(), which is when the level it is compared against is still the old
+ * one. Reading it after would offer the layout one tier too low.
+ */
+export function bestLayout(sim, state) {
+  const opts = sim.layoutsFor(state.prestigeLevel + 1);
+  return opts[opts.length - 1].id;
+}
+
 /** Walk the list from the top after every buy. Returns what was bought, in order. */
 export function spend(sim, state, priority) {
   const bought = [];
@@ -209,14 +235,25 @@ export function playDay(sim, state, policy = patient, { handMs = HAND_MS, counte
  * A run: `days` days from the state the sim was created on, reopening the
  * shop (prestige) at the close of every day named in `prestigeAfter`. Day
  * numbers restart at 1 on a reopen, so each row carries its prestige level.
+ *
+ * `reopen` is how a run plays the permanent layer (Phase 7, #360):
+ *   layout(sim, state) -> id   which configuration to reopen into, read
+ *                              before prestige() so the level is the old one
+ *   spend(sim, state)          called straight after, with the closing run's
+ *                              beans on hand — which is when a player would
+ *                              be looking at them
+ * Omitted, playRun reopens exactly the way it did before layouts existed.
  */
-export function playRun(sim, state, { days = 10, policy = patient, prestigeAfter = [], handMs = HAND_MS, counters } = {}) {
+export function playRun(sim, state, { days = 10, policy = patient, prestigeAfter = [], handMs = HAND_MS, counters, reopen = null } = {}) {
   const rows = [];
   for (let i = 0; i < days; i++) {
     rows.push(playDay(sim, state, policy, { handMs, counters }));
     if (i === days - 1) break;
-    if (prestigeAfter.includes(i + 1)) sim.prestige();
-    else sim.startNextDay();
+    if (prestigeAfter.includes(i + 1)) {
+      const layoutId = reopen && reopen.layout ? reopen.layout(sim, state) : undefined;
+      sim.prestige(layoutId);
+      if (reopen && reopen.spend) reopen.spend(sim, state);
+    } else sim.startNextDay();
   }
   return rows;
 }
