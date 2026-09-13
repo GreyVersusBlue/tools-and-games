@@ -30,7 +30,8 @@
 //
 // Adopted by: The Fourth Quarter, Aphelion, Closing Time, Torchbearer,
 // The Absalom Inheritance, Corner & Kettle, Daredevil, Integer Foundry,
-// The Fracture Cycle, Name Picker, and Seating Chart Generator.
+// The Fracture Cycle, Name Picker, Seating Chart Generator, Faire Weekend,
+// and Golden Hour.
 // See assets/js/README.md's "Who uses it" for what each one added.
 
 const ENVELOPE = "gvb-save";

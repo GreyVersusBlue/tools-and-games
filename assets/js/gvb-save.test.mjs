@@ -5,6 +5,9 @@
 // envelope serialize/deserialize, autosave throttling).
 
 import { createSaveSlot, defaultStorage } from "./gvb-save.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 let pass = 0, fail = 0;
 function assert(cond, msg) {
@@ -298,6 +301,91 @@ const baseOpts = storage => ({
     if (desc) Object.defineProperty(globalThis, "localStorage", desc);
     else delete globalThis.localStorage;
   }
+}
+
+// --- the "Adopted by" comment names every project that actually imports this -
+// This exists because the comment went stale twice for the same reason, and
+// both were found by hand rather than by anything that runs. Golden Hour
+// adopted gvb-save and was missing from the list long enough to become its own
+// backlog row (rank 38); fixing that row turned up Faire Weekend, which
+// adopted at Stage 22 and was missing too. Nothing was ever going to catch a
+// third one.
+//
+// The map is the maintenance cost, and it is deliberate: a folder name does not
+// give you a display name (Projects/Ren-Faire-Claude/ is "Faire Weekend"), so a
+// new adopter has to say who it is. Adding an importer without touching this map
+// fails with the path that needs a line.
+{
+  const HERE = path.dirname(fileURLToPath(import.meta.url));
+  const SITE = path.resolve(HERE, "..", "..");
+
+  const ADOPTERS = [
+    ["Projects/fourth-quarter/", "The Fourth Quarter"],
+    ["Projects/aphelion/", "Aphelion"],
+    ["Projects/Closing Time/", "Closing Time"],
+    ["Projects/torchbearer", "Torchbearer"],
+    ["Projects/absalom-inheritance/", "The Absalom Inheritance"],
+    ["Projects/corner-and-kettle/", "Corner & Kettle"],
+    ["Projects/daredevil/", "Daredevil"],
+    ["Projects/integer-foundry", "Integer Foundry"],
+    ["Projects/the-fracture-cycle", "The Fracture Cycle"],
+    ["Tools/name-picker/", "Name Picker"],
+    ["Tools/seating-chart/", "Seating Chart Generator"],
+    ["Tools/Seating Chart Generator.html", "Seating Chart Generator"],
+    ["Projects/Ren-Faire-Claude/", "Faire Weekend"],
+    ["Projects/golden-hour-beach/", "Golden Hour"],
+  ];
+
+  const SKIP = ["node_modules", "/.git/", "/libs/", "assets/js/gvb-save"];
+  const walk = (dir, out = []) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, e.name);
+      const norm = full.replace(/\\/g, "/");
+      if (SKIP.some(k => norm.includes(k))) continue;
+      if (e.isDirectory()) walk(full, out);
+      else if (/\.(js|mjs|html)$/.test(e.name)) out.push(full);
+    }
+    return out;
+  };
+
+  // An `import ... from ".../gvb-save.js"`, not a mention. Blue Hour's ghost.js
+  // carries a comment saying it deliberately does NOT use gvb-save, and
+  // play-games.mjs asserts on gvb-save envelopes from the outside; neither is
+  // an adopter, and a substring match calls both one.
+  const IMPORTS = /\bfrom\s*["'][^"']*assets\/js\/gvb-save\.js["']/;
+  const importers = walk(SITE).filter(f => IMPORTS.test(fs.readFileSync(f, "utf8")));
+
+  // Every importer maps to a named adopter.
+  const unmapped = importers
+    .map(f => path.relative(SITE, f).replace(/\\/g, "/"))
+    .filter(r => !ADOPTERS.some(([prefix]) => r.startsWith(prefix)));
+  assert(unmapped.length === 0,
+    "every file importing gvb-save.js belongs to a named adopter; unmapped: " +
+    unmapped.join(", "));
+
+  // Every named adopter really does import it — so the list cannot rot the
+  // other way either, with a project that dropped gvb-save still listed.
+  const orphans = ADOPTERS
+    .filter(([prefix]) => !importers.some(f =>
+      path.relative(SITE, f).replace(/\\/g, "/").startsWith(prefix)))
+    .map(([, name]) => name);
+  assert(orphans.length === 0,
+    "every adopter in the map still imports gvb-save.js; stale: " + orphans.join(", "));
+
+  // And the comment at the top of the module names all of them.
+  const header = fs.readFileSync(path.join(HERE, "gvb-save.js"), "utf8").slice(0, 4000);
+  const missing = ADOPTERS.map(([, name]) => name).filter(n => !header.includes(n));
+  assert(missing.length === 0,
+    "gvb-save.js's \"Adopted by\" comment names every adopter; missing: " +
+    missing.join(", "));
+
+  // The README's table is the longer form of the same list.
+  const readme = fs.readFileSync(path.join(HERE, "README.md"), "utf8");
+  const undocumented = ADOPTERS.map(([, name]) => name)
+    .filter(n => !readme.includes("**" + n + "**"));
+  assert(undocumented.length === 0,
+    "README.md's \"Who uses it\" table has a row per adopter; missing: " +
+    undocumented.join(", "));
 }
 
 console.log(`\ngvb-save: ${pass} passed, ${fail} failed`);
