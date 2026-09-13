@@ -49,29 +49,13 @@ async function freshPage(browser, hash = '') {
   return page;
 }
 
-/* A chip click re-renders #shardbar. Puppeteer's page.click queries the element
-   and then moves the mouse to it, and a re-render landing between those two
-   steps throws "Node is detached from document". Playwright re-queries on its
-   own, so this never failed on Windows; on Linux, where the harness launches
-   Puppeteer, it failed one of its first two CI runs (#353). Re-query and click
-   again on that one error only; anything else still throws. */
-async function click(page, selector) {
-  for (let attempt = 1; ; attempt++) {
-    try { return await page.click(selector); }
-    catch (e) {
-      if (attempt >= 5 || !/detached/i.test(String(e?.message))) throw e;
-      await new Promise(r => setTimeout(r, 50));
-    }
-  }
-}
-
 async function clickCat(page, type) {
-  await click(page, `.cat[data-type="${type}"]`);
+  await page.click(`.cat[data-type="${type}"]`);
   await waitFor(page, t => S.cat === t, { label: `S.cat === ${type}`, arg: type });
 }
 
 async function clickLevelChip(page, lvl) {
-  await click(page, `#shardbar .chip[data-lvl="${lvl}"]`);
+  await page.click(`#shardbar .chip[data-lvl="${lvl}"]`);
 }
 
 /* Known-good fixtures pulled straight from the real data files (checked once
@@ -220,7 +204,7 @@ async function testBookmarkResolution(browser) {
   const isStub = await page.evaluate(() => S.filtered[0]._bm === true);
   ok(isStub, 'the row is a stub ({_bm:true}), not yet the resolved entry');
 
-  await click(page, '#vspacer .row[data-i="0"]');
+  await page.click('#vspacer .row[data-i="0"]');
   await waitFor(page, name => S.curEntry?.name === name, { label: 'stub resolved to a real entry', arg: OOZELET.name });
   const resolvedName = await page.evaluate(() => S.curEntry?.name);
   ok(resolvedName === OOZELET.name, 'clicking the stub lazy-loads its shard and opens the real entry', String(resolvedName));
