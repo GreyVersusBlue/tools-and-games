@@ -9483,6 +9483,67 @@ shared suite: `init()` always calling `startNextDay()` (the reload beat, `day 2`
 the two `dayStats` counters commented out (`0 -> 0 served`), and the legend
 truncated to three entries (`qwertyu vs legend qwe`).
 
+## Every ranked row names a model, and three of them were already shipped (2026-09-13)
+
+**Devon asked for a model on every remaining rank.** Decisions #380 and #381.
+No code changed: `BACKLOG.md` and this file only. The ranked table went 43 rows
+to 40, every surviving row carries a model where all forty-three carried `—`,
+and the split is 15 Claude Opus 5, 15 Claude Fable 5.1, 10 Claude Sonnet 5.
+
+- **The Model column is assigned in `BACKLOG.md` when the item's own source
+  names nothing** (#380). Until now the column was documented as carried from
+  the item's source and never re-decided here, which was true and also meant it
+  read `—` on all forty-three rows: none of them came from a wishlist. The rule
+  splits in two rather than flipping. A row whose source names a model still
+  carries that name unchanged, because a wishlist phase's model belongs to the
+  wishlist. A row whose source names none gets one in the table, and the table
+  says which reading it took.
+
+  The three readings extend the convention the project wishlists already use
+  (`Projects/daredevil/WISHLIST.md`, `Projects/fourth-quarter/WISHLIST.md`,
+  `Projects/Ren-Faire-Claude/WISHLIST.md` all word it the same way) rather than
+  inventing a new one. **Sonnet 5** is the addition: the work is bounded and an
+  oracle already exists, so a mistake is loud. Rank 28 is `games.mjs` code
+  written out in full in Tier 2; rank 29 is a `capture-previews.mjs` recipe
+  written out the same way; rank 15 comes with its helpers and both of its
+  `page.evaluate` gotchas documented; rank 39 is one `matchMedia` expectation to
+  confirm on hardware. **Opus 5** stays the default: design or engineering
+  judgement with a suite or a visible result underneath. **Fable 5.1** is where
+  a wrong answer is silent, which is the same clause `daredevil` and
+  `fourth-quarter` already use.
+
+  **Fable takes 15 of 40, a heavier share than any one wishlist carries, and
+  that is the honest reading rather than a drift in the rubric.** What is left
+  over from ten projects is disproportionately the work nothing here can watch
+  fail: `gvb-save.js` v2 and two more save adoptions (ranks 13, 18, 21, 40,
+  where #36 binds and a wrong migration is silent for anyone mid-use), Integer
+  Foundry's coupled model gap (rank 35, the one system here that must never
+  over-promise), two tuning passes that want ears and cannot be asserted
+  (22, 32), and the atmosphere rows on Blue Hour whose output no CI job renders
+  (33, 34). Castle Conundrum's asset diet went the other way, to Opus 5: the
+  project has `test/assets.mjs` now, so the net can be built before the bytes
+  go.
+
+- **Three rows in the table had already shipped, and are deleted** (#381).
+  PR #284 closed the old ranks 20, 23 and 24 and moved the old rank 1 to
+  Parked, but only the parked row came out of the table: the header recorded
+  44 → 43 for the park alone, and the three shipped rows kept their places. Each
+  is closed in Tier 2's own prose, which is how they were caught. Old 20, the
+  `[shared]` chrome re-check against `campaigns.html`, is
+  `Pathfinder/tests/shared-chrome.test.mjs` in CI (#378), and there was no drift
+  to find. Old 23, "confirm the gate door's own mesh is symmetric within its
+  bounding box", was answered by #374 finding the mesh was a Poly Haven
+  material-preview ball, symmetric to six parts in a million because it is a
+  sphere, and replaced with built geometry. Old 24, a real
+  `npm run games closing-time` pass, runs 27 checks and 0 failures over four
+  consecutive runs (#377).
+
+  Deleting them is not re-ranking, which is not a session's call: relative order
+  is untouched and every row below a deletion shifts up. Ranks 19 through 40 are
+  each one to three lower than they were. The header's ¼ list, its
+  hardware-wanting list, the Parked section's eight-row list and the
+  `Tools/board-check` section's cross-references were all renumbered with them.
+
 ## Numina, August 2026
 
 An audit of the Eleventy rules site: 55 pages, ~136,000 words of source
