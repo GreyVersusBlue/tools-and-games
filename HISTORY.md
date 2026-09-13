@@ -8472,6 +8472,98 @@ the browser suite stays by hand, as Absalom's and Blue Hour's do.
 **Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
 locked-decision count, 330 → 335.
 
+## Phase 2 — `test/balance.mjs` (2026-09-13)
+
+**A 1-session row, taken alone, on Claude Fable 5.1.** Decisions #336 to #340.
+Two files, `test/autopilot.mjs` (295 lines) and `test/balance.mjs` (418 lines),
+the shape of `absalom-inheritance/test/balance.mjs`: a batch seeded `0x5EED + i`
+so the same code gives the same numbers to the last decimal on every machine,
+pure readers a test can hand a hand-built batch to, a `BAND` with every
+measured value in its comment, and one exit code. 100 seeds × 30 days × three
+players plus a stress day is about 22 seconds, and it is in
+`corner-kettle-ci.yml`.
+
+**The players.** One pair of hands each, a ticket line every `HAND_MS` (800 ms)
+on the station whose customer has the least patience, accepting in patience
+order. *patient* serves on `orderIsComplete()`; *eager* serves the moment the
+page's Serve button would enable, which for food is instantly, because the
+page's `canServe` is `slot.food ? true : cupMatchesEnough(...)` and an empty
+plate scores 40%; *shopper* is patient hands plus `DEFAULT_PRIORITY` spent at
+every close. `smoke-sim.mjs`'s one-line autopilot works every station every
+frame; it is a ceiling and stays where it is.
+
+**What the numbers say.** Patient: 99.0% of 38.5 offered a day served, $1,927
+net a day, accuracy 1.000, best streak 53.5. Eager: 99.5% served, $1,281, 0.590,
+streak 4.4, reputation to the floor by day 3. Shopper: $2,079 net after $170 a
+day in wages, at 1.000. Day 10 / prestige 0: 42.8 offered, 42.4 served, $2,126;
+day 20 / prestige 1 (the tenth day after a reopen at the close of day 10): 46.0,
+45.9, $2,330. Round 3's counts, 41/41 and 46/46, are close; its dollars, $309
+and $452, are not a day's takings, since 41 cups at the cheapest $30 drink is
+$1,230 before tips. Whatever "net" meant in that table, it was not this.
+
+**The sweeps.** Fumbles measure under the promised rate at all eight settings:
+junior 13.4% against 16.0%, trained or grinder 9.0% against 11.2%, both 6.8%
+against 7.8%; senior 3.3%, 2.0%, 2.0%, 1.4% against 4.0%, 2.8%, 2.8%, 2.0%. The
+reason is in `baristaFumble()`: a plain drip or americano has no milk, syrup or
+topping to get wrong, so it returns false and the roll is wasted. The promised
+chance is per cup with something to break. The prestige floors, levels 0 to 6
+on day 30 on a day-one shop with no staff: offered climbs 43.8 → 79.9, served
+share falls 99.5% → 96.2%, patience left at serve 0.997 → 0.905, and levels 5
+and 6 are the same day because both floors stop moving at 5. No level makes a
+day unservable, by the report's own definition (under half served).
+
+**The break that stayed green, and what it meant.** The row asked for the
+patience floor halved and the band failing. On the 30-day run it did not fail:
+served share 0.990, net down $2 a day. Patience in this game ticks only while a
+customer is in the queue, never on a station, and stops the tip and nothing
+else; nobody walks, the queue cap of five refuses spawns when it is full, and
+the patient player keeps the queue empty most of the shift. So a halved
+patience floor is invisible on any day the shop can keep up with, which is
+every day below prestige 4. Per #147 the question was whether the rail was
+wrong, and it was: the band now reads a second batch, day 30 at prestige 5,
+where the queue is three deep at close and patience at serve is 0.905. The
+halved floor takes that to 0.796 against a floor of 0.82, and the exit code is
+1. Two more breaks for the other rails: `orderIsComplete()` returning true
+(run accuracy 0.087, and the stress day at its "free" ceiling of 0.98, since a
+player serving empty cups never makes anyone wait) and prices tripled (net
+$5,119 against a ceiling of $4,000). Green exits 0; each break exits 1; checked
+on the exit code, not the grep.
+
+- **The band reads two batches, and patience is banded on the hardest day
+  only** (#336). `BAND.run` is the patient player over 100 seeds × 30 days,
+  reopening once at the close of day 10: served share, net per day, accuracy.
+  `BAND.stress` is day 30 at prestige 5, 50 seeds: served share and patience
+  left at serve. An ordinary day cannot hear a patience change, and a rail
+  that cannot fail is not a rail. "Offered" everywhere is what the queue cap
+  let in, not what came by.
+- **`HAND_MS` is 800 ms, one pair of hands, and it is an assumption** (#337).
+  The page's station bars run 350 to 1100 ms and a click starts each; 800 per
+  ticket line is a person who is neither asleep nor a script. The numbers are
+  for comparing against each other on the same hands. A later session that
+  measures a real player's cadence should change the constant, not the band.
+- **"Walked" is reported as "in line at close", because nobody walks** (#338).
+  Patience only ticks in the queue and only stops the tip. The harness names
+  the thing that exists rather than inventing a walkout for the column; a
+  phase that adds walkouts changes the sim, and this column is where it shows.
+- **`autopilot.mjs`'s `purchase()` mirrors `doUnlock()` until Phase 4** (#339).
+  The chalkboard is still page code, so the shopper carries the same arithmetic
+  for the types its priority list names, barista ids `b<n>` instead of
+  `b<Date.now()>`. Phase 4 moves `doUnlock()` into the sim and deletes the
+  mirror; a purchase rule that changes before then changes in both places.
+- **Round 3's table is retired as the comparison** (#340). `balance.mjs`'s
+  re-measurement block prints it beside the harness's numbers and says why the
+  dollars do not fit; from here the harness is the baseline, and a balance
+  claim without a seed and a run count is not one.
+
+**The checks.** `balance.mjs` BALANCE OK at every rail, `smoke-sim.mjs` 114/0,
+`smoke-save.mjs` 166/0, `gvb-save.test.mjs` 50/0; `sim.js` and the page are
+untouched. `check-integrity.mjs` the same one broken unit,
+`Tools/prompt-builder.html`; `social:check` the same four failures and six pages
+out of sync.
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 335 → 340.
+
 ---
 
 # The two August 2026 audits

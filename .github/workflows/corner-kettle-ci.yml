@@ -7,6 +7,11 @@
 # the same shift as 8,160 frames. A change to the clock or to a Math.random()
 # slipped back into the page is exactly what it is for.
 #
+# balance.mjs plays 100 seeds for 30 days under the patient autopilot plus a
+# stress day, about 22 seconds, and fails outside its BAND. The band is the
+# guard-rail against "unplayable" and "free"; a tuning change that trips it is
+# meant to be read, not widened past.
+#
 # test/drive-save.mjs is deliberately not here: it boots the real page in real
 # Chromium and is run by hand, the same arrangement Absalom's and Blue Hour's
 # browser suites have. Wiring a browser into CI is the site-wide "CI runs
@@ -43,7 +48,7 @@ concurrency:
 
 jobs:
   node:
-    name: smoke-sim, smoke-save, gvb-save
+    name: smoke-sim, smoke-save, gvb-save, balance
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,3 +65,6 @@ jobs:
 
       - name: The shared save module (assets/js/gvb-save.test.mjs)
         run: node assets/js/gvb-save.test.mjs
+
+      - name: The balance band (test/balance.mjs)
+        run: node Projects/corner-and-kettle/test/balance.mjs

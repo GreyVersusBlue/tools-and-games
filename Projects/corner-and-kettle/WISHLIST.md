@@ -182,7 +182,9 @@ this project does not use it.
 - **Windows is the dev machine** (v7 §7): absolute `import()` paths go through
   `pathToFileURL`, as both suites already do. **The invocations that work,
   from the repo root:**
+  `node Projects/corner-and-kettle/test/smoke-sim.mjs` → 114 passed, 0 failed;
   `node Projects/corner-and-kettle/test/smoke-save.mjs` → 166 passed, 0 failed;
+  `node Projects/corner-and-kettle/test/balance.mjs` → BALANCE OK, about 22 s;
   `node Projects/corner-and-kettle/test/drive-save.mjs` → 90 checks, 0 failed;
   `node assets/js/gvb-save.test.mjs` → 50 passed, when you touch the save
   layer. `npm run games` does not cover this game.
@@ -227,12 +229,14 @@ Open and unclaimed. Add here rather than starting a new list.
   one clock, `Math.random()` in the page zero times. `runProgress()` still runs
   a station's progress bar on `performance.now()`, which is a bar and not the
   game.
-- Round 1's `offered 41 · served 45 · net $2,353 · 99% accuracy` is
+- ~~Round 1's `offered 41 · served 45 · net $2,353 · 99% accuracy` is
   unreproducible and internally inconsistent, and is still what every later
   round compares against. Round 3's day-10 and day-20 numbers exist only in its
-  notes, from scripts that were not committed.
-- Barista fumble chance (16% junior, 4% senior, ×0.7 trained, ×0.7 grinder) was
-  judged fine analytically and never swept.
+  notes, from scripts that were not committed.~~ Phase 2: `test/balance.mjs`
+  is the comparison now (#340).
+- ~~Barista fumble chance (16% junior, 4% senior, ×0.7 trained, ×0.7 grinder) was
+  judged fine analytically and never swept.~~ Phase 2 swept it: measured under
+  promised everywhere, because a plain drip cannot be fumbled.
 
 **The file**
 - ~~1,978 lines in one `<script type="module">`; only the save schema is
@@ -341,46 +345,37 @@ page (Phase 4). `runProgress()` still times a station's progress bar on
 
 ## Phase 2 — `test/balance.mjs`
 
-**"Should feel better" is not verification, and it is all this project can
-currently produce.**
+**Shipped 2026-09-13, on Claude Fable 5.1.** The full record is `HISTORY.md`,
+"Corner & Kettle, arc one", Phase 2, decisions #336 to #340.
 
-Absalom's `test/balance.mjs` is 117 lines and it found that the shipped build
-could not be won — not "was hard," could not be won, 0% over 2,000 runs. This
-project has three rounds of balance claims and no equivalent. With Phase 1's
-seeded sim a full day costs milliseconds instead of 136 seconds, so the
-question stops being "what happened on Tuesday" and becomes "what happens on
-ten thousand Tuesdays."
+- [x] **`test/autopilot.mjs`.** *patient*, *eager* and *shopper* (a stated
+  priority list, `DEFAULT_PRIORITY`), one pair of hands every `HAND_MS`,
+  accepting in patience order. `purchase()` mirrors `doUnlock()` until Phase 4
+  moves it into the sim (#339).
+- [x] **`test/balance.mjs [runs]`.** 100 seeds × 30 days × three players by
+  default, per day and per prestige level, `--verbose` for twelve-run detail,
+  about 22 seconds. In `corner-kettle-ci.yml`.
+- [x] **A declared band that fails the build.** `BAND` on two batches, the run
+  and a stress day (#336), every measured value in its comment.
+- [x] **Re-measured the table nobody can reproduce.** Day 10 / prestige 0:
+  42.8 offered, 42.4 served, $2,126 net, 100%; day 20 / prestige 1: 46.0,
+  45.9, $2,330, 100%. Round 3's counts (41/41, 46/46) are close and its dollars
+  ($309, $452) are not a day's takings: 41 cups at the cheapest $30 drink is
+  $1,230 before tips. Round 1's $2,353 assumed a fully-upgraded shop and is not
+  this measurement either (#340).
+- [x] **The two sweeps.** Fumbles measure under the promised rate at every
+  setting (junior 13.4% against 16.0%, senior 3.3% against 4.0%) because a
+  plain drip or americano has nothing to fumble and `baristaFumble()` returns
+  false. The prestige floors never make a day unservable: level 5, the bottom
+  of both, serves 96.2% of 79.9 offered on day 30, and levels 5 and 6 are the
+  same day.
+- [x] **Guard-rail verified by breaking it.** The patience floor halved trips
+  the stress rail (0.796 against a floor of 0.82) and nothing else, which is
+  the finding: on an ordinary day patience does nothing (#336). Two more
+  breaks for the other rails.
 
-- [ ] **`test/autopilot.mjs`.** Two scripted players over the sim: *patient*
-  (serves only on `orderIsComplete()`) and *eager* (serves the moment
-  `cupMatchesEnough()` allows), both accepting in patience order and buying
-  nothing; plus *shopper*, which spends on the chalkboard by a stated priority
-  list so upgrade paths can be compared.
-- [ ] **`test/balance.mjs [runs]`.** Batch over seeds, reporting per day and
-  per prestige level: offered, served, walked, drinks vs food, gross, wages,
-  net, average accuracy, best streak, reputation delta, with twelve-run detail
-  under `--verbose` the way Absalom's does.
-- [ ] **A declared band that fails the build.** Export `BAND` with a comment
-  saying it is a guard-rail against "unplayable" and "free", not a target, and
-  stating the measured value at the time of writing; exit non-zero outside it
-  (locked decision #13).
-- [ ] **Re-measure the table nobody can reproduce.** Day 10 / prestige 0 and
-  day 20 / prestige 1 against round 3's `41/41 · $309 · 100%` and `46/46 · $452
-  · 100%`, saying plainly that round 1's `$2,353` assumed a fully-upgraded shop
-  and is not the same measurement.
-- [ ] **Sweep the two things nobody has swept:** fumble chance across the
-  `trained` and `grinder` multipliers now that a human confirms every serve,
-  and the prestige floors — `max(0.30, 0.6 - 0.06*prestigeLevel)` and
-  `max(0.45, 0.75 - 0.06*prestigeLevel)` — at levels 0 through 6 on day 30,
-  reporting where a day becomes unservable.
-- [ ] **Guard-rail verified by breaking it** (locked decision #34): halve
-  `patienceFactor()`'s floor on purpose, confirm the band fails and names the
-  drop, put it back.
-
-*Leans on:* `js/sim.js`, `Projects/absalom-inheritance/test/balance.mjs`.
-*Save:* none. *Model:* **Claude Fable 5.1** — a measurement harness is worth
-exactly its correctness, and a subtly wrong autopilot produces numbers that
-look plausible and are lies.
+*Found on the way:* nobody walks in this game, and patience ticks only in the
+queue (#338); the queue cap throttles "offered" (#336).
 
 ## Phase 3 — The Serve gate, decided
 
