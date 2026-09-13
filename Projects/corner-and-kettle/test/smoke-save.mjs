@@ -155,7 +155,7 @@ section("4. round trip through storage and through a file");
   state.loyaltyLevel = 2;
   state.presets = [{ id: "p1", name: "Oat Vanilla Latte",
     cup: { base: "espresso", shots: 2, milk: "oat", milkSteamed: true, syrup: "vanilla", toppings: ["whip"], ice: false, blended: false } }];
-  state.baristas = [{ id: "b1", name: "Juno", level: 2, spec: "bar", trained: true, working: true, targetSlot: 1, acc: 900 }];
+  state.baristas = [{ id: "b1", name: "Juno", level: 2, skill: { bar: 1, kitchen: 0, register: 1 }, morale: 55, training: null, working: true, targetSlot: 1, acc: 900 }];
 
   ok(slot.save(toSaveData(state)), "save() reports it stuck");
   const reloaded = slot.load();
@@ -168,7 +168,10 @@ section("4. round trip through storage and through a file");
   ok(reloaded.upgrades.includes("grinder"), "bought equipment survives");
   eq(reloaded.presets[0].cup.shots, 2, "preset shots survive");
   eq(reloaded.baristas[0].level, 2, "barista tier survives");
-  eq(reloaded.baristas[0].spec, "bar", "barista specialisation survives");
+  eq(reloaded.baristas[0].skill.bar, 1, "bar skill survives");
+  eq(reloaded.baristas[0].skill.register, 1, "so does register skill");
+  eq(reloaded.baristas[0].skill.kitchen, 0, "and the untrained group stays untrained");
+  eq(reloaded.baristas[0].morale, 55, "morale survives");
 
   const after = blankState();
   applyToState(after, reloaded);
@@ -213,6 +216,9 @@ section("5. a save written before the current build");
   eq(s.baristas[0].level, 2, "at the tier it was saved at");
   eq(s.baristas[0].name, "Pip", "with a name");
   eq(s.baristas[0].working, true, "and on today's schedule");
+  eq(s.baristas[0].skill.bar, 0, "and no skill from a save this old (#348)");
+  eq(s.baristas[0].morale, 70, "morale fills in at the neutral start");
+  eq(s.baristas[0].training, null, "training fills in as none in progress");
   eq(s.reputation, 50, "reputation fills in");
   eq(s.prestigeLevel, 0, "prestige level fills in");
   eq(s.loyaltyLevel, 0, "loyalty level fills in");
@@ -259,15 +265,20 @@ section("6. nested fields that land in arithmetic");
   // 6c. A regular whose standing order has no custom block. cloneOrderContent
   // spreads content.custom.toppings, and that runs inside generateOrder()
   // inside the rAF loop — one bad regular kills the game loop on next spawn.
+  // A save from before Phase 6 stored the order content directly where
+  // `.order` is now; repairRegularRecord() reads `rec.order || rec`, so this
+  // old shape still loads, wrapped with a fresh visit count (#349).
   const badRegular = slot.normalize({ ...base, regulars: { Nora: { isFood: false, recipeId: "latte", price: 45 } } });
   ok(badRegular.regulars.Nora, "a regular with no custom block is kept");
-  ok(Array.isArray(badRegular.regulars.Nora.custom.toppings), "with toppings repaired to []");
-  eq(badRegular.regulars.Nora.custom.ice, false, "and ice repaired to false");
+  ok(Array.isArray(badRegular.regulars.Nora.order.custom.toppings), "with toppings repaired to []");
+  eq(badRegular.regulars.Nora.order.custom.ice, false, "and ice repaired to false");
+  eq(badRegular.regulars.Nora.visits, 0, "an old, unwrapped regular reads as a fresh record");
+  eq(badRegular.regulars.Nora.satisfaction, 60, "at the neutral satisfaction start");
 
   // 6d. The older `food:true` flag rather than `isFood:true`.
   const oldFoodFlag = slot.normalize({ ...base, regulars: { Otis: { food: true, foodId: "bagel", price: 26 } } });
-  eq(oldFoodFlag.regulars.Otis.isFood, true, "a regular saved with the old `food` flag reads as food");
-  eq(oldFoodFlag.regulars.Otis.foodId, "bagel", "and keeps their order");
+  eq(oldFoodFlag.regulars.Otis.order.isFood, true, "a regular saved with the old `food` flag reads as food");
+  eq(oldFoodFlag.regulars.Otis.order.foodId, "bagel", "and keeps their order");
 
   // 6e. A regular pointing at an id that no longer exists is dropped, not kept
   // — RECIPES.find() would return undefined and .base would throw.
@@ -281,10 +292,19 @@ section("6. nested fields that land in arithmetic");
   const junkIds = slot.normalize({ ...base,
     regulars: { Talia: { isFood: false, recipeId: "latte", price: 45,
       custom: { milk: "unicorn", syrup: "battery", toppings: ["whip", "gravel"] } } } });
-  eq(junkIds.regulars.Talia.custom.milk, undefined, "an unknown milk is dropped");
-  eq(junkIds.regulars.Talia.custom.syrup, undefined, "an unknown syrup is dropped");
-  eq(junkIds.regulars.Talia.custom.toppings.length, 1, "an unknown topping is dropped");
-  eq(junkIds.regulars.Talia.custom.toppings[0], "whip", "the real one is kept");
+  eq(junkIds.regulars.Talia.order.custom.milk, undefined, "an unknown milk is dropped");
+  eq(junkIds.regulars.Talia.order.custom.syrup, undefined, "an unknown syrup is dropped");
+  eq(junkIds.regulars.Talia.order.custom.toppings.length, 1, "an unknown topping is dropped");
+  eq(junkIds.regulars.Talia.order.custom.toppings[0], "whip", "the real one is kept");
+
+  // 6g. A full Phase 6 record, and an out-of-range satisfaction/tolerance.
+  const fullRecord = slot.normalize({ ...base,
+    regulars: { Beckett: { order: { isFood: false, recipeId: "latte", price: 45, custom: { milk: "oat", toppings: [] } },
+      visits: 12, lastDay: 9, satisfaction: 400, tolerance: -3, stopped: true } } });
+  eq(fullRecord.regulars.Beckett.visits, 12, "visits survive");
+  eq(fullRecord.regulars.Beckett.satisfaction, 100, "satisfaction clamps to 100");
+  eq(fullRecord.regulars.Beckett.tolerance, 0.7, "tolerance clamps to its floor");
+  eq(fullRecord.regulars.Beckett.stopped, true, "and stopped survives");
 }
 
 /* ---------- 7. clamps on everything that indexes a table ---------- */
@@ -315,6 +335,15 @@ section("7. clamps");
   eq(slot.normalize({ ...base, baristas: [{ level: 2 }] }).baristas[0].name, "Pip", "a nameless staffer gets a name");
   ok(slot.normalize({ ...base, baristas: [{ level: 2 }] }).baristas[0].id, "and an id");
   eq(slot.normalize({ ...base, baristas: "nope" }).baristas.length, 0, "a non-array roster reads as empty");
+
+  // Skill, morale and training (#348): each barista's own clamps.
+  const skilledStaff = slot.normalize({ ...base,
+    baristas: [{ level: 1, skill: { bar: 9, kitchen: -3, register: 1 }, morale: 400, training: "espresso" }] });
+  eq(skilledStaff.baristas[0].skill.bar, 1, "an out-of-range skill level clamps to 1");
+  eq(skilledStaff.baristas[0].skill.kitchen, 0, "and a negative one clamps to 0");
+  eq(skilledStaff.baristas[0].morale, 100, "morale clamps to 100");
+  eq(skilledStaff.baristas[0].training, null, "an unknown training group reads as none in progress");
+  eq(slot.normalize({ ...base, baristas: [{ level: 1, morale: -400 }] }).baristas[0].morale, 0, "morale clamps to 0");
 
   // rand([]) is undefined, and generateOrderContent picks from the unlocked
   // pool on every spawn.

@@ -27,6 +27,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeShop, playRun, playDay, patient, eager, shopper, HAND_MS } from "./autopilot.mjs";
 import { BARISTA_TIERS } from "../js/content.js";
+import { STEP_MS } from "../js/sim.js";
 
 const DEFAULT_RUNS = 100;
 const DEFAULT_DAYS = 30;
@@ -249,7 +250,10 @@ export function fumbleSweep(runs) {
       const { sim, state, counters } = makeShop(0x5EED + i, s => {
         s.day = 10; s.money = 5000;
         if (grinder) s.upgrades.add("grinder");
-        for (let b = 0; b < 3; b++) s.baristas.push({ id: "b" + b, name: "B" + b, level, targetSlot: null, acc: 0, spec: null, trained, working: true });
+        // `trained` here means both groups, the closest match to the old
+        // shop-wide boolean this sweep has always measured (#348).
+        for (let b = 0; b < 3; b++) s.baristas.push({ id: "b" + b, name: "B" + b, level, targetSlot: null, acc: 0,
+          skill: { bar: trained ? 1 : 0, kitchen: trained ? 1 : 0, register: 0 }, morale: 70, training: null, working: true });
       });
       const row = playDay(sim, state, patient, { handMs: Infinity, counters });
       fumbles += row.fumbles; finished += row.finished; served += row.served; offered += row.offered; tipped += row.tipped;
@@ -293,6 +297,89 @@ export function prestigeSweep(runs) {
     });
   }
   return rows;
+}
+
+/**
+ * The staff economy (Phase 5, #348): three staffing choices, patient hands,
+ * no shopping so the roster is the only difference, days 1 through 20
+ * straight (no reopen — prestige() clears every barista, which would erase
+ * the very thing being compared). Reported at day 10 and day 20. Not banded —
+ * three reasonable rosters trading off against each other on purpose is the
+ * point, not a floor or a ceiling.
+ */
+function mkBarista(id, name, level, skill) {
+  return { id, name, level, targetSlot: null, acc: 0,
+    skill: { bar: 0, kitchen: 0, register: 0, ...skill }, morale: 70, training: null, working: true };
+}
+export const STAFF_ROSTERS = {
+  "1 senior": s => { s.baristas.push(mkBarista("b1", "Senior", 2)); },
+  "3 juniors": s => { for (let i = 0; i < 3; i++) s.baristas.push(mkBarista("b" + i, "Junior" + i, 1)); },
+  "2 trained specialists": s => {
+    s.baristas.push(mkBarista("bar", "Bar", 2, { bar: 1 }), mkBarista("kit", "Kitchen", 2, { kitchen: 1 }));
+  },
+};
+export function staffSweep(runs) {
+  const out = {};
+  for (const [name, addRoster] of Object.entries(STAFF_ROSTERS)) {
+    const rows = [];
+    for (let i = 0; i < runs; i++) {
+      const { sim, state, counters } = makeShop(0x5EED + i, addRoster);
+      rows.push(...playRun(sim, state, { days: 20, policy: patient, counters }));
+    }
+    const at = day => { const d = rows.filter(r => r.day === day);
+      return { net: mean(d, r => r.net), served: mean(d, r => r.served), wages: mean(d, r => r.wages) }; };
+    out[name] = { day10: at(10), day20: at(20) };
+  }
+  return out;
+}
+
+/**
+ * "A hire is worth more than its wage by day 3" (Phase 5, #348): one junior
+ * barista against nobody, same seeds, three days, hands parked (handMs =
+ * Infinity, fumbleSweep's own convention for isolating a barista's own
+ * contribution) so every cup completed is the barista's, not the player's.
+ * With nobody hired and no hands, nothing is ever finished, so `without`'s
+ * gross is 0 by construction and `extraGross` is exactly what the one
+ * barista earned. This is the one staff-economy number that is banded: it
+ * is the whole argument for hiring anyone at all.
+ */
+export function hireValueCheck(runs) {
+  let extraGross = 0, wages = 0;
+  for (let i = 0; i < runs; i++) {
+    const without = makeShop(0x5EED + i);
+    const withOne = makeShop(0x5EED + i, s => { s.baristas.push(mkBarista("b1", "Pip", 1)); });
+    const a = playRun(without.sim, without.state, { days: 3, policy: patient, handMs: Infinity });
+    const b = playRun(withOne.sim, withOne.state, { days: 3, policy: patient, handMs: Infinity });
+    extraGross += sum(b, r => r.gross) - sum(a, r => r.gross);
+    wages += sum(b, r => r.wages);
+  }
+  return { extraGross, wages, worthIt: extraGross > wages };
+}
+
+/**
+ * Word of mouth moves the door (Phase 6, #349): a maximally good shop
+ * (reputation 100, three delighted regulars) should see more customers a day
+ * than a maximally bad one (reputation 0, three unhappy ones) — the
+ * qualitative direction the wishlist asked for. The precise bound on the
+ * multiplier itself ([WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX]) is pinned in
+ * smoke-sim.mjs section 14, verified by removing the clamp there (#34); this
+ * sweep is the plain-language version of the same finding.
+ */
+export function wordOfMouthSweep(runs) {
+  function extreme(rep, satisfaction) {
+    let offered = 0;
+    for (let i = 0; i < runs; i++) {
+      const { sim, state } = makeShop(0x5EED + i, s => {
+        s.reputation = rep;
+        for (const name of ["Nora", "Gideon", "Talia"]) {
+          s.regulars[name] = { order: { isFood: true, foodId: "croissant", price: 28 }, visits: 5, lastDay: 1, satisfaction, tolerance: 1, stopped: false };
+        }
+      });
+      offered += playDay(sim, state, patient).offered;
+    }
+    return { offeredPerDay: offered / runs };
+  }
+  return { bad: extreme(0, 0), good: extreme(100, 100) };
 }
 
 /* ========================================================================= *
@@ -363,6 +450,23 @@ function printPrestige(rows) {
     : `  no level makes a day unservable (under half the customers served); the worst is ${pct(Math.min(...rows.map(r => r.servedShare)))} at level ${rows.reduce((a, r) => (r.servedShare < a.servedShare ? r : a)).level}`);
 }
 
+function printStaff(rows, hire) {
+  console.log("\nthe staff economy — patient hands, no shopping, days 1-20 straight, no reopen (Phase 5, #348)");
+  console.log(`  ${pad("roster", 24)}${num("net@10", 9)}${num("served@10", 11)}${num("net@20", 9)}${num("served@20", 11)}`);
+  for (const [name, r] of Object.entries(rows)) {
+    console.log(`  ${pad(name, 24)}${num(money(r.day10.net), 9)}${num(r.day10.served.toFixed(1), 11)}${num(money(r.day20.net), 9)}${num(r.day20.served.toFixed(1), 11)}`);
+  }
+  console.log(`  a hire earning back its wage by day 3: extra gross ${money(hire.extraGross)} against ${money(hire.wages)} in wages over 3 days — ${hire.worthIt ? "yes" : "NO"}`);
+}
+
+function printWordOfMouth(w) {
+  console.log("\nword of mouth — extreme reputation and regulars, patient hands (Phase 6, #349)");
+  console.log(`  ${pad("shop", 8)}${num("offered/day", 12)}`);
+  console.log(`  ${pad("bad", 8)}${num(w.bad.offeredPerDay.toFixed(1), 12)}`);
+  console.log(`  ${pad("good", 8)}${num(w.good.offeredPerDay.toFixed(1), 12)}`);
+  console.log("  a good shop's door should open faster than a bad one's; the multiplier's own bound is pinned in smoke-sim.mjs section 14");
+}
+
 /* ========================================================================= *
  * The command line                                                          *
  * ========================================================================= */
@@ -404,9 +508,21 @@ if (invokedDirectly) {
   // columns for Phase 3 and for anyone comparing an upgrade path.
   const stressS = summarise(runStress(patient));
   console.log(`\nstress — day ${STRESS.day} at prestige ${STRESS.prestigeLevel}, ${STRESS.runs} runs, patient: served ${pct(stressS.servedShare)} of ${stressS.offeredPerDay.toFixed(1)}, patience at serve ${stressS.patienceAtServe.toFixed(3)}, net ${money(stressS.netPerDay)}`);
+
+  // staffSweep plays 20 days per seed per roster (three rosters), noticeably
+  // heavier than the other sweeps' single days — a smaller, fixed run count
+  // keeps it a readable comparison table without slowing every CI run.
+  const staffRows = staffSweep(Math.min(sweepRuns, 15));
+  const hire = hireValueCheck(sweepRuns);
+  printStaff(staffRows, hire);
+  const wom = wordOfMouthSweep(sweepRuns);
+  printWordOfMouth(wom);
+
   const bad = [
     ...checkBand(patientS, BAND.run).map(l => `run: ${l}`),
     ...checkBand(stressS, BAND.stress).map(l => `stress: ${l}`),
+    ...(hire.worthIt ? [] : [`staff: a junior barista's extra gross (${money(hire.extraGross)}) does not beat its wage (${money(hire.wages)}) by day 3`]),
+    ...(wom.good.offeredPerDay > wom.bad.offeredPerDay ? [] : [`word of mouth: a good shop (${wom.good.offeredPerDay.toFixed(1)}/day) does not outdraw a bad one (${wom.bad.offeredPerDay.toFixed(1)}/day)`]),
   ];
   const rails = [
     ...Object.entries(BAND.run).map(([k, b]) => `run ${k} ${show(k, patientS[k])} (band ${show(k, b.min)}–${show(k, b.max)})`),

@@ -19,7 +19,8 @@ const mod = p => import(pathToFileURL(join(here, p)).href);
 
 const CONTENT = await mod("../js/content.js");
 const { makeRng, createSim, freshState, freshDayStats, newCup, STEP_MS, SERVE_CLEAR_MS } = await mod("../js/sim.js");
-const { SHIFT_MS, PHASES, RECIPES, FOODS, BARISTA_TIERS } = CONTENT;
+const { SHIFT_MS, PHASES, RECIPES, FOODS, BARISTA_TIERS,
+  REGULAR_FRIEND_CHANCE, WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX } = CONTENT;
 
 /* ---------- harness ---------- */
 
@@ -307,9 +308,9 @@ section("7. baristas take steps on the clock and hand the cup back");
   ok(events.some(e => e.type === "toast" && /Pip/.test(e.text)), "the toast names the barista");
   eq(state.baristas[0].targetSlot, null, "and let go of the station");
   eq(state.money, 60, "nothing was served: the money is the player's to earn");
-  // A day off is not a wage holiday yet (that is Phase 5's row), but it is a day off.
+  // A day off is also a wage holiday now (Phase 5, #348).
   const off = shop(21);
-  off.state.baristas.push({ id: "b1", name: "Pip", level: 1, targetSlot: null, acc: 0, spec: null, trained: false, working: false });
+  off.state.baristas.push({ id: "b1", name: "Pip", level: 1, targetSlot: null, acc: 0, working: false });
   off.state.queue.push(order("drip", {}, { id: 51 })); off.sim.acceptCustomer(51);
   off.sim.advance(20000);
   eq(off.state.slots[0].cup.base, null, "a barista with the day off does no work");
@@ -340,7 +341,7 @@ section("8. a whole day, played by the autopilot, twice");
   eq(A.state.day, 2, "and the day number is the sim's to advance, not endShift's");
   // Wages come out at close.
   const W = shop(3);
-  W.state.baristas.push({ id: "b1", name: "Juno", level: 1, targetSlot: null, acc: 0, spec: null, trained: false, working: true });
+  W.state.baristas.push({ id: "b1", name: "Juno", level: 1, targetSlot: null, acc: 0, working: true });
   W.state.money = 1000;
   const before = W.state.money;
   runShift(W.sim, W.state, STEP_MS, () => {});
@@ -348,6 +349,19 @@ section("8. a whole day, played by the autopilot, twice");
   eq(summary.wages, 35, "a junior's wage is $35");
   eq(W.state.money, before - 35, "and it came out of the till");
   eq(W.state.dayStats.wagesPaid, 35, "and into the day's stats");
+
+  // A barista given the day off draws no wage (#348). Before the fix,
+  // endShift() and the chalkboard's preview both summed every barista with
+  // no `working` filter at all, so Pip could be given the day off and still
+  // cost her full wage — sim.wagesDue() is the one rule both read now.
+  const P = shop(3);
+  P.state.baristas.push(
+    { id: "b1", name: "Pip", level: 1, targetSlot: null, acc: 0, working: true },
+    { id: "b2", name: "Juno", level: 2, targetSlot: null, acc: 0, working: false },
+  );
+  eq(P.sim.wagesDue(), 35, "wagesDue() charges only the working barista's wage, not both");
+  const pSummary = P.sim.endShift();
+  eq(pSummary.wages, 35, "and so does endShift() — the same $35, not $35+$70");
 }
 
 section("9. prestige and the day-one reset");
@@ -355,11 +369,19 @@ section("9. prestige and the day-one reset");
   const { sim, state, events } = shop(4);
   state.day = 7; state.money = 3000; state.upgrades.add("music"); state.unlockedSyrups.add("mocha");
   state.baristas.push({ id: "b1", name: "Pip", level: 2, targetSlot: null, acc: 0 });
-  state.regulars.Nora = { isFood: true, foodId: "bagel", price: 26 };
+  state.regulars.Nora = { order: { isFood: true, foodId: "bagel", price: 26 }, visits: 4, lastDay: 6, satisfaction: 40, tolerance: 1.2, stopped: false };
+  state.regulars.Gideon = { order: { isFood: false, recipeId: "mocha", custom: { milk: "oat", syrup: "mocha", toppings: [], ice: false }, price: 55 },
+    visits: 5, lastDay: 6, satisfaction: 10, tolerance: 0.8, stopped: true };
   sim.prestige();
   ok(state.prestigeLevel === 1 && state.day === 1 && state.money === 80, "level 1: day 1, $80");
   ok(state.upgrades.size === 0 && !state.unlockedSyrups.has("mocha") && state.baristas.length === 0, "upgrades, syrups and staff gone");
-  eq(Object.keys(state.regulars).length, 0, "regulars cleared (their favourites name syrups the shop no longer stocks)");
+  // Regulars survive a reopen; their standing orders and satisfaction don't,
+  // and someone who had already stopped coming was not coming back (#349).
+  eq(Object.keys(state.regulars).join(","), "Nora", "Nora survives the reopen; Gideon, who'd already stopped, does not");
+  eq(state.regulars.Nora.visits, 4, "her visit count survives");
+  eq(state.regulars.Nora.tolerance, 1.2, "so does her tolerance");
+  eq(state.regulars.Nora.satisfaction, 60, "satisfaction resets to the neutral start");
+  ok(state.unlockedRecipes.has(state.regulars.Nora.order.recipeId) || state.regulars.Nora.order.isFood, "her re-rolled favourite is off the day-one menu");
   ok(events.some(e => e.type === "toast" && /prestige level 1/.test(e.text)), "and the page was told");
   ok(Math.abs(sim.shopTipMult() - 1.05) < 1e-9, "tips carry +5% per level");
   state.day = 20;
@@ -371,7 +393,13 @@ section("10. the page has no clock and no dice of its own, and owns no rule");
 {
   // Phase 4: the page is index.html, which loads js/ui.js and nothing else,
   // plus the view modules ui.js imports. Every check below reads all of them.
-  const read = (...p) => readFileSync(join(here, "..", ...p), "utf8");
+  // Windows is the dev machine (v7 §7): a checkout with autocrlf on hands
+  // back CRLF, and the `\n}\n` search below never matches `\r\n}\r\n` —
+  // it fell through to the next bare `\n}\n` near the end of the file and
+  // swept mountBar/init/the debug hook into "renderAll's body" with them.
+  // Normalizing here is what makes this suite give the same verdict on any
+  // checkout, not just a Linux CI runner's LF one.
+  const read = (...p) => readFileSync(join(here, "..", ...p), "utf8").replace(/\r\n/g, "\n");
   const uncommented = src => src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
   const VIEW = ["ui.js", "stations.js", "chalkboard.js", "draw.js", "sound.js"];
   const html = read("index.html");
@@ -492,13 +520,17 @@ section("12. the chalkboard is one purchase table, and the stations are one acti
   // to promote and a day late enough to reopen.
   const ITEMS = [
     ["recipe", "mocha"], ["food", "muffin"], ["syrup", "hazelnut"], ["topping", "sprinkles"], ["station", 3],
-    ["hireBarista"], ["promoteBarista", "b1"], ["trainBarista", "b1"], ["loyalty", 1], ["shield"],
+    ["hireBarista"], ["promoteBarista", "b1"], ["raiseBarista", "b1"], ["loyalty", 1], ["shield"],
     ["equipment", "grinder"], ["ambiance", "music"], ["business", "franchise"], ["marketing"],
   ];
-  const withStaff = st => { st.day = 7; st.reputation = 90; st.baristas.push({ id: "b1", name: "Pip", level: 1, targetSlot: null, acc: 0, spec: null, trained: false, working: true }); };
+  const withStaff = st => { st.day = 7; st.reputation = 90; st.baristas.push({ id: "b1", name: "Pip", level: 1, targetSlot: null, acc: 0,
+    skill: { bar:0, kitchen:0, register:0 }, morale: 70, training: null, working: true }); };
   {
     const { sim } = shop(12);
-    const covered = new Set([...ITEMS.map(i => i[0]), "specBarista", "scheduleBarista", "prestige"]);
+    // train and scheduleBarista and prestige cost no money — their day is
+    // spent below, not in the $0/$100,000 loop, which is only for purchases
+    // priced in dollars.
+    const covered = new Set([...ITEMS.map(i => i[0]), "train", "scheduleBarista", "prestige"]);
     eq([...sim.PURCHASE_TYPES].sort().join(","), [...covered].sort().join(","), "every purchase type in the table is exercised here");
   }
   // Broke: every priced purchase is refused, says why, and changes nothing at all.
@@ -525,7 +557,7 @@ section("12. the chalkboard is one purchase table, and the stations are one acti
       const r = sim.purchase(type, id);
       if (!r.ok) bad.push(`${type} refused: ${r.reason}`);
       else if (before - state.money !== quoted.cost || quoted.cost <= 0) bad.push(`${type} took $${before - state.money}, quoted $${quoted.cost}`);
-      if (sim.purchase(type, id).ok && !["hireBarista", "shield"].includes(type)) bad.push(`${type} bought twice`);
+      if (sim.purchase(type, id).ok && !["hireBarista", "shield", "raiseBarista"].includes(type)) bad.push(`${type} bought twice`);
     }
     ok(bad.length === 0, `with $100,000 each goes through once, for exactly the quoted price${bad.length ? " — " + bad.join("; ") : ""}`);
   }
@@ -542,8 +574,14 @@ section("12. the chalkboard is one purchase table, and the stations are one acti
     eq([0, 1, 2].map(() => { const c = sim.canBuy("shield").cost; sim.purchase("shield"); return c; }).join(","), "150,200,250", "shields cost 150, 200, 250");
     ok(!sim.purchase("shield").ok && state.comboShields === 3, "and a fourth held is refused");
     ok(sim.purchase("station", "3").ok && state.slots.length === 3, "a station id read off a data attribute as a string still buys");
-    eq(sim.purchase("specBarista", "b1", "bar").ok && sim.purchase("specBarista", "b1", "bar").ok, false, "a bar specialist cannot be made a bar specialist again");
+    // Training (#348): free, takes the barista's day rather than the till,
+    // and cannot be started twice at once or on a name that doesn't exist.
+    eq(sim.purchase("train", "b1", "bar").text, "Pip starts bar training today — slower, but trained by close.", "training starts for free");
+    eq(state.baristas[0].training, "bar", "and marks the barista as training that group");
+    eq(sim.purchase("train", "b1", "kitchen").reason, "Pip is already training today.", "only one group in flight at a time");
+    eq(sim.purchase("train", "nope", "bar").reason, "No such barista.", "and a bad id is refused, not a crash");
     ok(sim.purchase("scheduleBarista", "b1").ok && state.baristas[0].working === false, "scheduling gives the day off");
+    eq(sim.purchase("train", "b1", "kitchen").reason, "Pip has the day off.", "and a barista off duty cannot start training");
     eq(sim.purchase("prestige").reason, "Reopening is available from day 6.", "no reopening on day 1");
     state.shiftRunning = false;
     eq(sim.purchase("marketing").reason, "The shop is closed.", "no marketing between shifts");
@@ -579,6 +617,116 @@ section("12. the chalkboard is one purchase table, and the stations are one acti
     eq(sim.cupActionMs("steamMilk"), 900 * 1.8, "an outage stretches steaming by 1.8x");
     eq(sim.cupActionMs("pickMilk"), 0, "picking a milk is instant");
   }
+}
+
+section("13. staff: skill, training and morale (#348)");
+{
+  const junior = () => ({ id: "b", name: "B", level: 1, skill: { bar:0, kitchen:0, register:0 }, morale: 70, training: null, working: true });
+  const { sim } = shop(30);
+
+  // effectiveSpec is a reading of skill now, not a switch the player sets.
+  eq(sim.effectiveSpec({ ...junior(), skill: { bar:1, kitchen:0, register:0 } }), "bar", "bar-only skill reads as a bar specialist");
+  eq(sim.effectiveSpec({ ...junior(), skill: { bar:0, kitchen:1, register:0 } }), "kitchen", "kitchen-only skill reads as a kitchen specialist");
+  eq(sim.effectiveSpec({ ...junior(), skill: { bar:1, kitchen:1, register:0 } }), null, "trained in both is a generalist");
+  eq(sim.effectiveSpec(junior()), null, "untrained is a generalist too, gated only by level");
+
+  const barOnly = { ...junior(), skill: { bar:1, kitchen:0, register:0 } };
+  ok(!sim.baristaCanHandle(barOnly, { isFood: true }), "a bar specialist will not touch food");
+  ok(sim.baristaCanHandle(barOnly, { isFood: false, recipeId: "drip" }), "but still makes drinks");
+  const kitchenOnly = { ...junior(), skill: { bar:0, kitchen:1, register:0 } };
+  ok(!sim.baristaCanHandle(kitchenOnly, { isFood: false, recipeId: "drip" }), "a kitchen specialist will not touch a drink");
+
+  // Speed and mistakes: neutral at rest, faster and cleaner trained.
+  const plain = junior();
+  const trainedBar = { ...junior(), skill: { bar:1, kitchen:0, register:0 } };
+  const trainedRegister = { ...junior(), skill: { bar:0, kitchen:0, register:1 } };
+  ok(sim.baristaIntervalMs(trainedBar, "bar") < sim.baristaIntervalMs(plain, "bar"), "bar training speeds up a bar step");
+  eq(sim.baristaIntervalMs(trainedBar, "kitchen"), sim.baristaIntervalMs(plain, "kitchen"), "but not a kitchen one");
+  ok(sim.baristaIntervalMs(trainedRegister, "bar") < sim.baristaIntervalMs(plain, "bar"), "register training speeds up either group");
+  ok(sim.baristaIntervalMs(trainedRegister, "kitchen") < sim.baristaIntervalMs(plain, "kitchen"), "...both of them");
+  const inTraining = { ...junior(), training: "bar" };
+  ok(sim.baristaIntervalMs(inTraining, "bar") > sim.baristaIntervalMs(plain, "bar"), "training itself is slower, not faster, until it lands");
+
+  ok(sim.mistakeReduceFactor(trainedBar, false) < sim.mistakeReduceFactor(plain, false), "bar training also cuts mistakes on a drink");
+  eq(sim.mistakeReduceFactor(trainedBar, true), sim.mistakeReduceFactor(plain, true), "but not on food");
+  ok(sim.mistakeReduceFactor(inTraining, false) > sim.mistakeReduceFactor(plain, false), "and training itself is clumsier");
+
+  // Morale: neutral at MORALE_START, so a fresh hire moves exactly like the
+  // old, morale-less barista did.
+  eq(sim.moraleSpeedMult(plain), 1, "neutral morale is speed-neutral");
+  eq(sim.moraleMistakeMult(plain), 1, "and mistake-neutral");
+  const tired = { ...junior(), morale: 10 };
+  const chuffed = { ...junior(), morale: 100 };
+  ok(sim.moraleSpeedMult(tired) > 1 && sim.moraleSpeedMult(chuffed) < 1, "low morale is slower, high morale faster");
+  ok(sim.moraleMistakeMult(tired) > 1 && sim.moraleMistakeMult(chuffed) < 1, "low morale is clumsier, high morale cleaner");
+
+  // Training resolves and morale moves at endShift(), for whoever worked
+  // today; a day off rests instead.
+  const { sim: sim2, state: s2 } = shop(31);
+  s2.baristas.push({ id: "b1", name: "Pip", level: 1, skill: { bar:0, kitchen:0, register:0 }, morale: 70, training: "bar", working: true });
+  s2.baristas.push({ id: "b2", name: "Juno", level: 1, skill: { bar:0, kitchen:0, register:0 }, morale: 70, training: null, working: false });
+  sim2.endShift();
+  eq(s2.baristas[0].skill.bar, 1, "Pip's bar training landed at close");
+  eq(s2.baristas[0].training, null, "and is no longer in progress");
+  eq(s2.baristas[0].morale, 64, "working today cost her 6 morale");
+  eq(s2.baristas[1].morale, 80, "Juno's day off gained her 10");
+}
+
+section("14. regulars are a record now, and word of mouth is bounded (#349)");
+{
+  const { sim, state } = shop(40);
+  // A regular is minted with a full record on the first visit, and a second
+  // visit reuses the record rather than re-rolling a new favourite.
+  let firstVisit = null;
+  for (let i = 0; i < 400 && !firstVisit; i++) { const o = sim.generateOrder(); if (o.isRegular) firstVisit = o; }
+  ok(firstVisit, "some regular walked in within 400 tries");
+  const name = firstVisit.regularName;
+  const rec = state.regulars[name];
+  ok(rec && rec.visits >= 1 && Number.isFinite(rec.satisfaction) && Number.isFinite(rec.tolerance) && rec.stopped === false,
+    "the record carries visits, satisfaction and tolerance from the first visit");
+  const visits0 = rec.visits;
+  let secondVisit = null;
+  for (let i = 0; i < 400 && !secondVisit; i++) { const o = sim.generateOrder(); if (o.regularName === name) secondVisit = o; }
+  ok(secondVisit, "the same regular walked in again");
+  eq(state.regulars[name].visits, visits0 + 1, "and the visit count went up, not a fresh record");
+
+  // Served badly enough, often enough, a regular stops coming — a
+  // deterministic threshold, not a dice roll.
+  state.regulars.Nora = { order: { isFood: true, foodId: "bagel", price: 26 }, visits: 3, lastDay: 1, satisfaction: 30, tolerance: 1, stopped: false };
+  const missSlot = slotFor(foodOrder("bagel", { patience: 0, isRegular: true, regularName: "Nora" }));
+  missSlot.foodPlated = "croissant"; // wrong plate: not happy
+  sim.scoreServe(missSlot);
+  ok(state.regulars.Nora.stopped, "three visits in, served badly at low satisfaction, and Nora stops coming");
+  ok(!sim.activeRegularNames().includes("Nora"), "so she is no longer in the rotation");
+  eq(state.dayStats.lostRegularNames.join(","), "Nora", "and the day-end modal can say who");
+
+  // Served well at high satisfaction, a regular sometimes brings a friend —
+  // probabilistic, so measured over many trials rather than one call.
+  let friends = 0;
+  const trials = 300;
+  for (let i = 0; i < trials; i++) {
+    const { sim: s2, state: st2 } = shop(1000 + i);
+    st2.regulars.Gideon = { order: { isFood: true, foodId: "bagel", price: 26 }, visits: 5, lastDay: 1, satisfaction: 90, tolerance: 1, stopped: false };
+    const slot = slotFor(foodOrder("bagel", { patience: 40, patienceMax: 40, isRegular: true, regularName: "Gideon" }));
+    slot.foodPlated = "bagel";
+    s2.scoreServe(slot);
+    if (st2.dayStats.newRegularNames.length) friends++;
+  }
+  const rate = friends / trials;
+  ok(Math.abs(rate - REGULAR_FRIEND_CHANCE) < 0.08, `bring-a-friend fires near REGULAR_FRIEND_CHANCE (${REGULAR_FRIEND_CHANCE}), measured ${rate.toFixed(3)}`);
+
+  // Word of mouth is bounded (#349, #34): a maximally good shop's raw signal
+  // would push the regular-chance multiplier to 1.5, past WORD_OF_MOUTH_MAX —
+  // this is exactly what removing the clamp in wordOfMouthGoodness() breaks.
+  const good = shop(41); good.state.reputation = 100;
+  for (let i = 0; i < 8; i++) {
+    good.state.regulars["r" + i] = { order: { isFood: true, foodId: "bagel", price: 26 }, visits: 1, lastDay: 1, satisfaction: 100, tolerance: 1, stopped: false };
+  }
+  const bad = shop(42); bad.state.reputation = 0;
+  eq(good.sim.wordOfMouthRegularMult(), WORD_OF_MOUTH_MAX, "a maximally good shop's regular-chance multiplier is clamped at the ceiling");
+  ok(bad.sim.wordOfMouthRegularMult() < 1 && bad.sim.wordOfMouthRegularMult() >= WORD_OF_MOUTH_MIN, "a maximally bad one sits below 1, inside the floor");
+  ok(good.sim.wordOfMouthSpawnMult() < 1, "a good shop's door opens faster (a smaller spawn-interval multiplier)");
+  ok(bad.sim.wordOfMouthSpawnMult() > 1, "a bad one opens slower");
 }
 
 /* ---------- report ---------- */

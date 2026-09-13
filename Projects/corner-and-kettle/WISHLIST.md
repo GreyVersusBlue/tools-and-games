@@ -1,9 +1,9 @@
 # Corner & Kettle — Feature Wishlist
 
-**Status: arc one has shipped, Phases 1 to 4; arc two is open, and the next is
-Phase 5 — Staff who have a week, on Claude Opus 5.** The game lives at
-`Projects/corner-and-kettle/index.html` now. The paragraph below is Phase 1's and is kept for
-the record.
+**Status: arc one has shipped, Phases 1 to 4; arc two is open, Phases 5 and 6
+have shipped together, and the next is Phase 7 — A reopening worth doing, on
+Claude Opus 5.** The game lives at `Projects/corner-and-kettle/index.html`
+now. The paragraph below is Phase 1's and is kept for the record.
 The shop runs in Node now: `js/content.js` is the tables, `js/sim.js` is
 everything that happens to them behind `createSim({content, rng, state,
 notify})`, and `test/smoke-sim.mjs` (114/0) drives a seeded shift in
@@ -267,24 +267,13 @@ Open and unclaimed. Add here rather than starting a new list.
   blend station's "Add ice" button and read by nothing.~~ All three removed in
   Phase 1 (#331 for the button).
 
-**Staff**
-- A barista given the day off still costs full wage: `endShift()` and the
-  chalkboard total both sum `BARISTA_TIERS[b.level].wage` over all baristas
-  with no `working` filter.
-- Two tiers, one axis: `trained` is a boolean, `spec` is bar/kitchen/null, no
-  per-station skill, and no reason to keep a junior. Fatigue is a pure function
-  of `shiftElapsed` — nothing rests, nothing carries between days.
+**Staff** — closed by Phase 5 (#348). The wage bug is fixed
+(`sim.wagesDue()`), `skill: {bar, kitchen, register}` replaced `trained`/
+`spec`, and morale gives fatigue a memory across days.
 
-**Customers and prestige**
-- `state.regulars` stores a name and a standing order: no visit count, no
-  history, no memory of being served badly. Reputation moves ±0.4/−0.8 per
-  serve and gates exactly one $5,000 purchase; nothing in the spawn path reads
-  it.
-- `doPrestige()` resets everything for +5% income and a harder floor — no
-  permanent unlock, no growing menu, nothing to look forward to. It clears
-  regulars on purpose (their favourites reference syrups the reopened shop no
-  longer stocks; the comment at 2282 explains it), which is right today and
-  wrong once regulars have histories.
+**Customers and prestige** — closed by Phase 6 (#349). Regulars are a record
+now (`visits`, `satisfaction`, `tolerance`, `stopped`); `prestige()` keeps the
+person and re-rolls the order, instead of clearing the whole list.
 
 **Elsewhere**
 - `npm run games` does not cover this game, though
@@ -464,78 +453,130 @@ assertions (locked decision #34).
 
 ## Phase 5 — Staff who have a week
 
-**You can give Pip the day off and still pay her.**
+**Shipped 2026-09-13, on Claude Opus 5, batched with Phase 6 (Devon asked for
+ranks 1 and 2 together). Decision #348.** You can no longer give Pip the day
+off and still pay her.
 
-`endShift()` sums `BARISTA_TIERS[b.level].wage` over every barista with no
-`working` filter, and so does the chalkboard's "wages due" line. That is the
+`endShift()` used to sum `BARISTA_TIERS[b.level].wage` over every barista with
+no `working` filter, and so did the chalkboard's "wages due" line. That was the
 smallest symptom of a bigger gap: three hires, two tiers, one boolean and a
-bar/kitchen switch is not a staff system, it is a speed upgrade with names.
+bar/kitchen switch was not a staff system, it was a speed upgrade with names.
 
-- [ ] **Fix the wage bug first,** with a `balance.mjs` case that fails without
-  the fix and a chalkboard preview that agrees with what `endShift()` charges.
-- [ ] **Per-station skill.** `trained: boolean` becomes `skill: {bar, kitchen,
-  register}` levels that raise speed and cut mistakes on the matching
-  `STATION_TAB_DEFS` group, so `spec` is a consequence of training rather than
-  a separate switch.
-- [ ] **Training that costs a shift, not $300.** A barista in training works at
-  reduced output that day and comes out a level up; the bare `300` literal in
-  `doUnlock` and the chalkboard becomes a `TRAINING` row in `content.js`.
-- [ ] **Morale.** Fatigue is per shift; morale carries across days, falls on
-  long shifts, rises with days off and raises, and multiplies
-  `baristaFatigueFactor()` and mistake chance — so wages become a lever with a
-  downside instead of a fixed subtraction.
-- [ ] **A week view in the chalkboard:** who is on tomorrow, what each costs,
-  what each is trained for.
-- [ ] **`balance.mjs` bands for the staff economy:** one senior versus three
-  juniors versus a trained specialist pair, at day 10 and day 20, and a stated
-  band that a hire is worth more than its wage by day 3.
+- [x] **Fixed the wage bug first.** `sim.wagesDue()` is the one rule both
+  `endShift()` and the chalkboard's preview read now, so they cannot drift
+  apart; `smoke-sim.mjs` section 8 asserts a barista given the day off draws
+  no wage, verified by reintroducing the unfiltered sum and watching it fail
+  (#34).
+- [x] **Per-station skill.** `skill: {bar, kitchen, register}` (0 or 1 today,
+  kept as small integers so a level 2 has somewhere to go) raises speed
+  (`SKILL_SPEED_MULT`) and cuts mistakes (`SKILL_MISTAKE_MULT`) on the matching
+  group; `register` cuts across both. `effectiveSpec()` reads bar-only or
+  kitchen-only training as a specialist, both or neither as a generalist, so
+  the old `spec` switch is a consequence now, not a separate choice.
+- [x] **Training costs a shift, not money.** `sim.purchase('train', id,
+  group)` is free and sets `barista.training`; the whole shift runs at
+  `TRAINING_SPEED_MULT`/`TRAINING_MISTAKE_MULT`, and `endShift()` resolves it
+  into `skill[group] = 1` for whoever worked that day. `content.js`'s
+  `TRAINING` table names each group; there is no bare literal.
+- [x] **Morale.** Neutral at `MORALE_START` (70) — a fresh hire moves exactly
+  like the old, morale-less barista did. It falls `MORALE_WORK_DROP` per day
+  worked, rises `MORALE_OFF_GAIN` on a day off or `MORALE_RAISE_GAIN` on a
+  raise (`raiseBarista`, priced by tier), and both `moraleSpeedMult()` and
+  `moraleMistakeMult()` read it — wages are a lever with a downside now.
+- [x] **A week view in the chalkboard:** a table per barista — tier, which
+  groups are trained (and which is mid-training), morale, tomorrow's schedule
+  (`working` holds until toggled, so it already answers "tomorrow"), and wage.
+- [x] **`balance.mjs` bands for the staff economy:** `staffSweep()` plays one
+  senior, three juniors and a trained specialist pair for 20 days straight (no
+  reopen — `prestige()` clears every barista, which would erase the very thing
+  being compared) and reports day 10 and day 20; `hireValueCheck()` bands "a
+  hire is worth more than its wage by day 3" with hands parked (fumbleSweep's
+  own convention), so the barista's own contribution is what's measured.
 
-*Leans on:* `js/sim.js`'s barista tick, `content.js`'s `BARISTA_TIERS`.
-*Save:* additive — `skill`, `morale` and a schedule per barista, repaired and
-clamped, with a pre-change save still loading. *Model:* **Claude Opus 5** — a
-content table, a wage arithmetic fix and chalkboard UI, all measured by an
-existing harness.
+*What actually shipped, past the checklist:* `effectiveSpec()`, `skill`,
+`morale` and `training` are exported off `createSim()` for testing.
+`baristaIntervalMs(barista, group)` replaced the inline interval math in
+`step()`'s barista loop — claiming a slot (`ensureBaristaClaim`) is now
+separate from ticking it, so the clock can know which group's step is next
+before deciding whether enough time has passed. `specBarista` is gone from
+`PURCHASE_TYPES`; `train` and `raiseBarista` replaced it and `trainBarista`.
+Save schema: `barista.spec`/`.trained` are replaced by `.skill`/`.morale`/
+`.training`; `repairBarista()` migrates a legacy `trained: true` to both group
+skills (the closest single mapping to what "trained" used to buy everywhere)
+and does not migrate a legacy `spec` alone, since it carried no competence
+bonus before — a specialisation preference is lost on an old save, not a
+capability. `smoke-sim.mjs` 175 → 220, two new sections (13, 14 — the second
+is Phase 6's); `smoke-save.mjs` 183/0; `drive-save.mjs` 90 → 100, two beats
+fixed after the real-Chromium run caught what the Node suites could not (a
+regular record's coin-flip visit count, and a legacy `food:true` regular
+reading through the new `.order` wrapper). Also fixed on the way: a
+Windows-CRLF-only bug in `smoke-sim.mjs` section 10's own source-scanning
+regex, found because `git diff --stat` after an accidental `git checkout --`
+mid-session showed it was pre-existing on `main`, not something this phase
+broke.
 
 ## Phase 6 — Customers who remember
 
-**Eight regulars have a favourite drink and no memory of ever having been
-here.**
+**Shipped 2026-09-13, on Claude Opus 5 (the wishlist named Claude Fable 5.1;
+Devon's "ranks 1 and 2 together" folded it into the same Opus 5 session as
+Phase 5). Decision #349.** Eight regulars used to have a favourite drink and
+no memory of ever having been here.
 
-`state.regulars` maps a name to a standing order. It survives days, prestige
-clears it, and it holds nothing else: no visit count, no record of the morning
-you served them the wrong milk, no reason for the shop's reputation to change
-who walks in. This phase makes the queue a consequence of how the shop has been
-run.
+`state.regulars` used to map a name straight to a standing order. It survived
+days, prestige cleared it, and it held nothing else: no visit count, no record
+of the morning you served them the wrong milk, no reason for the shop's
+reputation to change who walks in. This phase made the queue a consequence of
+how the shop has been run.
 
-- [ ] **A regular is a record, not a drink:** `{order, visits, lastDay,
-  satisfaction, tolerance}`, satisfaction moved by the served ratio, tolerance
-  setting their patience multiplier. Served badly three times, they stop
-  coming; served well, they bring a friend.
-- [ ] **Word of mouth.** Reputation and recent satisfaction feed
-  `shopSpawnFactorMult()` and the regular-chance roll, so a good week fills the
-  queue and a bad one empties it. This is the one number that must not run
-  away: bound it, and pin both ends in the suite.
-- [ ] **Order histories feed composition.** `generateOrderContent()`'s phase
-  weights take a term from what the shop has actually been selling, so a shop
-  that unlocked the iced menu starts seeing iced orders without a daily
-  modifier having to say so.
-- [ ] **Regulars survive prestige, their orders do not.** The comment at line
-  2282 is right today and wrong once a regular has a history: keep the person,
-  the visit count and the tolerance, re-roll the favourite off the day-one
-  menu.
-- [ ] **Say it in the UI:** visit count and mood on the queue card, who came
-  back and who did not in the day-end modal.
-- [ ] **`balance.mjs` bands,** and a guard-rail verified by breaking it (locked
-  decision #34): a bad player's queue shrinks without hitting zero, a good
-  player's grows without saturating `queueMax()`; remove the word-of-mouth
-  bound, watch the spawn rate diverge, put it back.
+- [x] **A regular is a record, not a drink:** `{order, visits, lastDay,
+  satisfaction, tolerance, stopped}`. Satisfaction moves
+  `REGULAR_SATISFACTION_SERVE_GOOD`/`_BAD` off `happy` in `scoreServe()`;
+  tolerance moves `REGULAR_TOLERANCE_STEP` the same way and multiplies their
+  own `patienceMax`. Served badly `REGULAR_STOP_MIN_VISITS` times at or below
+  `REGULAR_STOP_THRESHOLD`, they stop coming (`stopped: true`, excluded from
+  `activeRegularNames()` but kept for the record); served well at or above
+  `REGULAR_FRIEND_THRESHOLD`, a `REGULAR_FRIEND_CHANCE` roll mints a fresh
+  regular off the day-one menu.
+- [x] **Word of mouth.** `wordOfMouthSignal()` blends reputation and average
+  regular satisfaction into one number in [-1, 1]; `wordOfMouthSpawnMult()`
+  (the door) and `wordOfMouthRegularMult()` (the regular-chance roll) both
+  read it, clamped to `[WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX]` — the one
+  number that must not run away. `smoke-sim.mjs` section 14 pins a maximally
+  good shop's regular multiplier at the ceiling and verifies the clamp by
+  removing it and watching the number diverge to 1.5 (#34); `balance.mjs`'s
+  `wordOfMouthSweep()` is the plain-language version, a good shop outdrawing a
+  bad one.
+- [x] **Order histories feed composition.** `state.salesHistory` (capped at
+  `HISTORY_WINDOW`, written by `scoreServe()`) and `weightedPick()` nudge
+  `generateOrderContent()`'s food and recipe picks toward whatever has
+  recently sold, floor weight 1 so nothing unlocked is ever starved.
+- [x] **Regulars survive prestige, their orders do not.** `prestige()` keeps
+  every non-stopped regular's name, visit count and tolerance, re-rolls their
+  order off the just-reset day-one menu, and resets satisfaction to the
+  neutral start — the relationship itself is starting over.
+- [x] **Said it in the UI:** the queue card shows a mood emoji
+  (`regularMoodEmoji()` in `draw.js`) and visit count for a regular; the
+  day-end modal lists new and lost regulars by name.
+- [x] **`balance.mjs` bands,** and the guard-rail verified by breaking it
+  (#34): see word of mouth above. A literal queue-occupancy sweep (sampling
+  `state.queue.length`) turned out insensitive either way hands were parked —
+  saturated almost immediately with hands off, near-empty with hands on — so
+  the sweep measures `offered` per day instead, which is what
+  `shopSpawnFactorMult()` actually moves.
 
-*Leans on:* `js/sim.js`'s order generation, `js/save.js`'s `repairRegular`.
-*Save:* additive per-regular fields, clamped in `repairSave` with section-10
-assertions; an old save's bare regulars repair to a sane starting record.
-*Model:* **Claude Fable 5.1** — a feedback loop between reputation, spawn
-composition and customer memory is exactly where a wrong sign produces a game
-that looks fine for ten days and then dies.
+*What actually shipped, past the checklist:* a save from before this phase
+stored a regular's order content directly where `.order` is now, with no
+wrapper — `repairRegularRecord()` reads `rec.order || rec`, so that old shape
+still loads, wrapped with a fresh visit count. `activeRegularNames()` and
+`wordOfMouthSignal()`/`wordOfMouthSpawnMult()`/`wordOfMouthRegularMult()` are
+exported off `createSim()` for testing. Save schema: `regulars[name]` gained
+`visits`, `lastDay`, `satisfaction`, `tolerance`, `stopped`, all clamped in
+`repairRegularRecord()`.
+
+*Leans on (both phases):* `js/sim.js`'s barista tick and order generation,
+`js/save.js`'s barista and regular repair, `js/content.js`'s new tables and
+constants, `js/chalkboard.js`'s Staff section, `js/draw.js`'s
+`regularMoodEmoji()`, `js/ui.js`'s queue card and day-end modal.
 
 ## Phase 7 — A reopening worth doing
 

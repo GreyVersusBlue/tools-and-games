@@ -84,17 +84,59 @@ export const STATION_UPGRADES = [
 // ---- Barista Assistants (hireable staff) ----
 // Each barista claims ONE station at a time, completes its steps one by one,
 // and leaves the finished cup for a human to serve. Hire up to BARISTA_MAX;
-// each hire costs more. Juniors can be promoted to Seniors (faster steps),
-// and trained once for BARISTA_TRAIN_COST (was a bare 300 in two places).
+// each hire costs more. Juniors can be promoted to Seniors (faster steps).
 export const BARISTA_MAX = 3;
 export const BARISTA_HIRE_COSTS = [400, 700, 1100]; // cost of 1st, 2nd, 3rd hire
 export const BARISTA_PROMOTE_COST = 500;
-export const BARISTA_TRAIN_COST = 300;
 export const BARISTA_TIERS = {
   1:{name:'Junior Barista', intervalMs:3200, mistakeChance:0.16, wage:35},
   2:{name:'Senior Barista', intervalMs:1800, mistakeChance:0.04, wage:70},
 };
 export const BARISTA_NAMES = ['Pip','Juno','Casey','Rowan','Sage','Milo'];
+
+// ---- Per-station skill and training (Phase 5, #348) ----
+// A barista's `skill` is {bar, kitchen, register} — 0 (untrained) or 1
+// (trained) today, kept as small integers so a level 2 has somewhere to go.
+// `bar` covers every drink station; `kitchen` is the food station; `register`
+// has no station of its own and instead cuts across all of them, the way a
+// fast, calm counter person helps everywhere. `spec` used to be a switch the
+// player set by hand; sim.js's effectiveSpec() reads it off skill instead —
+// bar-only or kitchen-only training makes a specialist, both (or neither)
+// makes a generalist.
+export const STATION_GROUPS = {
+  bar: ['base','milk','blend','syrup','toppings'],
+  kitchen: ['food'],
+};
+// Training takes the whole shift, not a price tag: a barista sent to train
+// works it at SPEED/MISTAKE_MULT and comes out the other side with that
+// group's skill at 1. Untrained-vs-trained keeps the old 0.7 mistake factor;
+// speed is new (Phase 5 also asked training to raise speed, which it never did).
+export const TRAINING_GROUPS = ['bar', 'kitchen', 'register'];
+export const TRAINING = {
+  bar: { name:'Bar Training', desc:'Faster and fewer mistakes on base, milk, blend, syrup and toppings.' },
+  kitchen: { name:'Kitchen Training', desc:'Faster and fewer mistakes plating food.' },
+  register: { name:'Register Training', desc:'Faster and fewer mistakes shop-wide.' },
+};
+export const TRAINING_SPEED_MULT = 1.6;
+export const TRAINING_MISTAKE_MULT = 1.3;
+export const SKILL_SPEED_MULT = 0.85;
+export const SKILL_MISTAKE_MULT = 0.7;
+export const REGISTER_SPEED_MULT = 0.92;
+export const REGISTER_MISTAKE_MULT = 0.85;
+
+// ---- Morale (Phase 5, #348) ----
+// Neutral at MORALE_START — a fresh hire moves exactly like the old,
+// morale-less barista did, so nothing about the timing or mistake numbers a
+// prior round measured changes for a barista nobody has scheduled a day off
+// or a raise for yet. It falls while working, rises on a day off or a raise,
+// and moves speed and mistakes both, so wages become a lever with a downside
+// instead of a fixed subtraction.
+export const MORALE_START = 70;
+export const MORALE_MAX = 100;
+export const MORALE_WORK_DROP = 6;
+export const MORALE_OFF_GAIN = 10;
+export const MORALE_RAISE_GAIN = 25;
+export const MORALE_RAISE_COST = { 1: 150, 2: 300 }; // by barista.level
 
 // ---- Loyalty Program upgrades (bigger regular-customer bonuses) ----
 export const LOYALTY_UPGRADES = [
@@ -109,9 +151,44 @@ export const SHIELD_MAX_HELD = 3;
 
 export const PRESET_MAX = 6;
 
-// ---- Named regulars ----
+// ---- Named regulars (Phase 6, #349) ----
+// A regular used to be a name and a standing order with no memory of ever
+// having been served. Now they carry `visits`, `lastDay`, `satisfaction`
+// (0-100, moved by how well each visit went) and `tolerance` (their own
+// patience multiplier, moved the same way). Served badly enough, enough
+// times, they stop coming; served well, they sometimes bring a friend.
 export const REGULAR_NAMES = ['Nora','Gideon','Talia','Otis','Marisol','Beckett','Ivy','Desmond'];
 export const REGULAR_CHANCE = 1/8;
+export const REGULAR_SATISFACTION_START = 60;
+export const REGULAR_SATISFACTION_MAX = 100;
+export const REGULAR_SATISFACTION_SERVE_GOOD = 12;
+export const REGULAR_SATISFACTION_SERVE_BAD = -20;
+export const REGULAR_STOP_THRESHOLD = 20; // below this, and they've been in at least REGULAR_STOP_MIN_VISITS times, they stop coming
+export const REGULAR_STOP_MIN_VISITS = 3;
+export const REGULAR_FRIEND_THRESHOLD = 85; // at/above this satisfaction, a happy serve has a chance to mint a new regular
+export const REGULAR_FRIEND_CHANCE = 0.25;
+export const REGULAR_TOLERANCE_START = 1;
+export const REGULAR_TOLERANCE_MIN = 0.7;
+export const REGULAR_TOLERANCE_MAX = 1.5;
+export const REGULAR_TOLERANCE_STEP = 0.08;
+
+// ---- Word of mouth: reputation and recent satisfaction feed the door ----
+// (Phase 6, #349). Deliberately bounded — this is the one number in the
+// wishlist's own words "that must not run away". Both ends are pinned in
+// test/balance.mjs, and the guard is verified by removing the bound and
+// watching the spawn rate diverge (locked decision #34).
+export const WORD_OF_MOUTH_MIN = 0.7;
+export const WORD_OF_MOUTH_MAX = 1.4;
+export const WORD_OF_MOUTH_REP_SPAN = 0.3; // +/- at reputation 100/0 versus 50
+export const WORD_OF_MOUTH_REGULAR_SPAN = 0.5; // regular-chance multiplier span, same inputs
+
+// ---- Order histories feed composition (Phase 6, #349) ----
+// generateOrderContent() remembers the last HISTORY_WINDOW things the shop
+// actually sold and nudges its own weights toward them by HISTORY_WEIGHT, so
+// a shop that has been selling iced drinks starts seeing more of them without
+// a daily modifier having to say so.
+export const HISTORY_WINDOW = 40;
+export const HISTORY_WEIGHT = 0.35;
 
 /* ---------- SHOP UPGRADES (Equipment / Ambiance / Business) ---------- */
 export const EQUIPMENT_UPGRADES = [
