@@ -28,13 +28,13 @@ export const STATION_TAB_DEFS = [
 // tab needs: Milk is four milks plus steam, cold and ice, and Presets is six
 // saved builds plus Save Current. A tab that ever grows past ten leaves the
 // extras unbound rather than stealing a key that means something else, and
-// drive-save.mjs section 12 fails the moment one does.
+// drive-save.mjs section 12b fails the moment one does.
 export const KEY_ALPHABET = ['q','w','e','r','t','y','u','i','o','p'];
 
 // What the legend says about the keys that are not the panel's. Written here
 // rather than in index.html so there is one copy of "S serves".
 const GLOBAL_KEYS = [
-  ['1-7', 'stations tabs'],
+  ['1-7', 'station tabs'],
   ['[ ]', 'previous / next station'],
   ['S', 'serve the focused station'],
 ];
