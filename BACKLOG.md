@@ -138,8 +138,8 @@ calls inconclusive under a software-rendered Chromium, and `npm run games` is
 outside CI on purpose (#353) — so nothing there went red, and none of it is
 fixed.
 
-Two findings it left behind, both in the wishlist's later-arc list: **five
-recipes were already another recipe's requirement list** (Cappuccino is
+Two findings **Phase 7** left behind, both in the wishlist's later-arc list:
+**five recipes were already another recipe's requirement list** (Cappuccino is
 Latte's; Affogato and Doppio are Americano's — #365, named in an assertion
 rather than reshaped), and **the Legacy tree is measurably indistinguishable
 from wasting the beans** at one pair of hands, because a shopper's income is
