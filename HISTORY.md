@@ -8947,6 +8947,18 @@ renumberings did not collide. Decisions #350 to #353, PR #276.
   Blue Hour's `browser.mjs` (real-time movement under software rendering, #53)
   and Absalom's `browser.mjs` (launches its own Chromium from a fixed path
   instead of the harness).
+- **The Anathema Archive suite retries a click the page re-rendered out from
+  under it, and nothing else** (#353, same cause). It passed its first CI run
+  and failed its second, `ABORTED testLevelBar: Node is detached from
+  document`. A chip click rebuilds `#shardbar`, and Puppeteer's
+  `page.click` queries, scrolls and measures before the mouse goes down; a
+  rebuild in that gap throws "detached from document" or "not clickable or
+  not an Element". A temporary CI job ran the suite on Linux: **the old helper
+  passed 1 run in 10, the fixed one 15 in 15.** The first fix retried only the
+  "detached" message and still failed 2 of 10 on the other one, which is why
+  it names both. Both throw before a click lands, so a retry cannot
+  double-click. The probe job and its copy of the old file were removed before
+  merge.
 
 **Breaks on purpose** (#34), `ci-check.mjs` from a green local baseline, each
 caught by its own message: a syntax error appended to
