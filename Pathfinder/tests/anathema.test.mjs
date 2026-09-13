@@ -50,17 +50,19 @@ async function freshPage(browser, hash = '') {
 }
 
 /* A chip click re-renders #shardbar. Puppeteer's page.click queries the element
-   and then moves the mouse to it, and a re-render landing between those two
-   steps throws "Node is detached from document". Playwright re-queries on its
+   and then scrolls to it and measures it before pressing the mouse, and a
+   re-render landing in between throws "Node is detached from document" or
+   "Node is either not clickable or not an Element". Both are thrown before the
+   mouse goes down, so a retry cannot double-click. Playwright re-queries on its
    own, so this never failed on Windows; on Linux, where the harness launches
-   Puppeteer, it failed one of its first two CI runs (#353). Re-query and click
-   again on that one error only; anything else still throws. */
+   Puppeteer, the unwrapped helper passed 1 run in 10 (#353). Re-query and click
+   again on those two errors only; anything else still throws. */
 async function click(page, selector) {
   for (let attempt = 1; ; attempt++) {
     try { return await page.click(selector); }
     catch (e) {
-      if (attempt >= 5 || !/detached/i.test(String(e?.message))) throw e;
-      await new Promise(r => setTimeout(r, 50));
+      if (attempt >= 10 || !/detached from document|not clickable or not an Element/.test(String(e?.message))) throw e;
+      await new Promise(r => setTimeout(r, 100));
     }
   }
 }
