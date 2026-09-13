@@ -17,8 +17,10 @@
 # browser suites have. Wiring a browser into CI is the site-wide "CI runs
 # almost nothing" row's problem, not this workflow's.
 #
-# The page is in the path list because it is the view over these modules and a
-# commit that edits it alone still has to run the source check in smoke-sim.
+# The page is Projects/corner-and-kettle/index.html and js/ui.js since Phase 4,
+# both inside the first path below; smoke-sim's section 10 reads them and the
+# other view modules for rules they must not own. coffee_shop_sim.html stays in
+# the list because it is the redirect stub section 10 also checks.
 # gvb-save.js is there because save.js is a thin layer over it.
 
 name: Corner & Kettle CI
