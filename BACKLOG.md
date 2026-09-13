@@ -58,33 +58,43 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Corner & Kettle Phase 2 — `test/balance.mjs`
-(PR #266)**, a 1-session row taken alone. **56 ranked items remain**, and
-**rank 1 is now `Projects/corner-and-kettle` Phase 3 — The Serve gate,
-decided**, a **½-session** row on **Opus 5**; it may pair with rank 7 (Phase
-8, ½, Opus 5) or rank 8 (Phase 9, ½, Opus 5) but not with rank 2 (Phase 4,
-2+, alone). Ranks 1 to 7 are the rest of corner-and-kettle.
+The last thing that shipped is **Corner & Kettle Phase 3 — The Serve gate,
+decided (PR #269)**, a ½-session row that Devon asked to be batched with Phase 4
+in one session, overriding the 2+-alone rule for that one batch. **55 ranked
+items remain**, and **rank 1 is now `Projects/corner-and-kettle` Phase 4 — The
+page becomes a view**, a **2+** row on **Opus 5**, claimed by
+`claude/ck-phase3-4` and being worked in the same session right now. If that
+claim is still in the table when you read this, check `gh pr list` before
+touching the row. Ranks 1 to 6 are the rest of corner-and-kettle.
 
-**Read `Projects/corner-and-kettle/WISHLIST.md` Phase 3 first, then
-`test/balance.mjs` and `test/autopilot.mjs`.** Q2, the Serve gate, is still
-open and was not pre-answered; it is rank 1's question, the wishlist
-recommends the cue, and Phase 3 is written so either answer is one commit.
-The numbers Phase 3 asks for are already printed: `balance.mjs` runs the
-*patient* and *eager* players on the same seeds (99.0% served at $1,927 a day
-and 1.000 accuracy against 99.5% at $1,281 and 0.590), so "before and after"
-is one run of the harness each side of the change. Two things Phase 3 should
-know from Phase 2: nobody walks in this game and patience ticks only in the
-queue (#338), so a hard gate costs nothing a walkout would; and the eager
-player serves an empty plate for food because the page's `canServe` is
-`slot.food ? true : cupMatchesEnough(...)`, which is the same gap on the food
-side and the cue should cover it. Nothing else is in its way: Phase 2 touched
-none of the four shared things. **`npm run check` is still down to one broken
-unit**, `Tools/prompt-builder.html`, rank 25's now. `npm run social:check` is
+**Read `Projects/corner-and-kettle/WISHLIST.md` Phase 4 first.** Phase 3 left
+it two things: `doUnlock()` is still page code with its `toast('Unlocked!')`
+fall-through, and `test/autopilot.mjs`'s `purchase()` still mirrors it (#339),
+so Phase 4's purchase table deletes the mirror. The page grew a
+`serveButtonHtml()` and lost `STATION_TAB_DEFS`' predicates; both move with
+the rest. **`npm run check` is still down to one broken
+unit**, `Tools/prompt-builder.html`, rank 24's now. `npm run social:check` is
 also red and has been for several rounds — four failures and six pages out of
 sync, all predating Phase 1 and unchanged since; two of the four are
 `Numina/index.html` and `Projects/school-generator/index.html` objecting to
 hand-written icon/og tags, which is somebody's row to decide rather than a
 regression.
+
+**What Phase 3 built.** Q2 answered by the session (#341): **the cue.** A short
+cup's Serve button reads `Serve 3/5`, styled as a warning, with an
+`aria-label` naming every missing line; an empty cup is disabled and says what
+it needs. Every ticket line from `getOrderRequirements()` now carries `station`
+and `apply()`, so the tab dots (`stationsNeedingWork`), the button
+(`serveReadiness`), the barista (`autoAssistStep` is the first unmet line's
+`apply()`) and the scorer read one list, and the page's seven `needsWork`
+predicates are gone (#342). Three bugs fixed on the way: S served past the
+disabled button, an empty plate was servable for 40%, and a Frappe could never
+be completed by hand because blending kept the espresso base (#343; the new
+browser beat against the old blend reads "Serve 2/3"). Same seeds before and
+after: patient and shopper identical to the digit, eager $1,281 / 0.590 →
+$1,457 / 0.719, all of it the food gate. `smoke-sim.mjs` 114 → 132,
+`drive-save.mjs` 90 → 99, eight breaks on purpose. Shared things touched: none
+of the four. `CLAUDE.md`'s count, 340 → 343.
 
 **What Phase 2 built.** `test/autopilot.mjs` (295 lines): three scripted
 players with one pair of hands each, a ticket line every 800 ms (#337):
@@ -1138,62 +1148,61 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Phase 3 — The Serve gate, decided | `Projects/corner-and-kettle` | ½ | Opus 5 | claude/ck-phase3-4 | [WISHLIST.md Phase 3](Projects/corner-and-kettle/WISHLIST.md#phase-3--the-serve-gate-decided) |
-| 2 | Phase 4 — The page becomes a view | `Projects/corner-and-kettle` | 2+ | Opus 5 | claude/ck-phase3-4 | [WISHLIST.md Phase 4](Projects/corner-and-kettle/WISHLIST.md#phase-4--the-page-becomes-a-view) |
-| 3 | Phase 5 — Staff who have a week | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/corner-and-kettle/WISHLIST.md#phase-5--staff-who-have-a-week) |
-| 4 | Phase 6 — Customers who remember | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/corner-and-kettle/WISHLIST.md#phase-6--customers-who-remember) |
-| 5 | Phase 7 — A reopening worth doing | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/corner-and-kettle/WISHLIST.md#phase-7--a-reopening-worth-doing) |
-| 6 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
-| 7 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
-| 8 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 9 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — |  | [Questions for Devon](#questions-for-devon) |
-| 10 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
-| 11 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 12 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 13 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 14 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 15 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 16 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 17 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 18 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
-| 19 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 20 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 21 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — |  | [The site itself](#the-site-itself) |
-| 22 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
-| 23 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
-| 24 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
-| 25 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
-| 26 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
-| 27 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 28 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 29 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 30 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 31 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
-| 32 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 33 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 34 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
-| 35 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 36 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 37 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 38 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 39 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 40 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 41 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 42 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 43 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 44 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 45 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 46 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 47 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 48 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 49 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 50 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 51 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
-| 52 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
-| 53 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 54 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
-| 55 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
-| 56 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 1 | Phase 4 — The page becomes a view | `Projects/corner-and-kettle` | 2+ | Opus 5 | claude/ck-phase3-4 | [WISHLIST.md Phase 4](Projects/corner-and-kettle/WISHLIST.md#phase-4--the-page-becomes-a-view) |
+| 2 | Phase 5 — Staff who have a week | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 5](Projects/corner-and-kettle/WISHLIST.md#phase-5--staff-who-have-a-week) |
+| 3 | Phase 6 — Customers who remember | `Projects/corner-and-kettle` | 1 | Fable 5.1 |  | [WISHLIST.md Phase 6](Projects/corner-and-kettle/WISHLIST.md#phase-6--customers-who-remember) |
+| 4 | Phase 7 — A reopening worth doing | `Projects/corner-and-kettle` | 1 | Opus 5 |  | [WISHLIST.md Phase 7](Projects/corner-and-kettle/WISHLIST.md#phase-7--a-reopening-worth-doing) |
+| 5 | Phase 8 — Both hands on the keys | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 8](Projects/corner-and-kettle/WISHLIST.md#phase-8--both-hands-on-the-keys) |
+| 6 | Phase 9 — Join `npm run games` | `Projects/corner-and-kettle` | ½ | Opus 5 |  | [WISHLIST.md Phase 9](Projects/corner-and-kettle/WISHLIST.md#phase-9--join-npm-run-games) |
+| 7 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 8 | Decide whether `Pathfinder/data/` is a published interface or private | `Pathfinder` | ¼ | — |  | [Questions for Devon](#questions-for-devon) |
+| 9 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
+| 10 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 11 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 12 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 13 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 14 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 15 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 16 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 17 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
+| 18 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 19 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 20 | CI runs almost nothing: no workflow runs `Tools/board-check`, `gvb-save.test.mjs`, or the ~16 project suites no phase has added one for | `site` | 1 | — |  | [The site itself](#the-site-itself) |
+| 21 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
+| 22 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
+| 23 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
+| 24 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
+| 25 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
+| 26 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 27 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 28 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 29 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 30 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
+| 31 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 32 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 33 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
+| 34 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 35 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 36 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 37 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 38 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 39 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 40 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 41 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 42 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 43 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 44 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 45 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 46 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 47 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 48 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 49 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 50 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
+| 51 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
+| 52 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 53 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 54 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
+| 55 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
 
 ---
 
@@ -1902,7 +1911,6 @@ live. Nothing in that column is a link to follow.
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
 | Q1 | **Is `Pathfinder/data/**` a published interface other projects may read, or private to the Pathfinder pages?** 24 JSON files of PF2e rules data sit there. The Absalom Inheritance reads none of it and hand-writes three stat blocks and seven commands into `content/vault.json` instead; Torchbearer would build its own monster and treasure tables if the answer is private. Both considered depending on it and both correctly stopped rather than assume. `UPGRADE-PATHS.md` calls it the highest-leverage *decision* on the site. | **6** | prompt 01's block (the central tracker), prompts 10 and 11 raising it into that block, `Projects/torchbearer/WISHLIST.md`, `Projects/absalom-inheritance/WISHLIST.md`, `UPGRADE-PATHS.md` "Close behind", `gvb-site-handoff-v10.md` "Three things" and §11.4 |
-| Q2 | **Should the Serve button require full order completion, now that baristas — not the player — are the main path to a finished cup?** The gate is `cupMatchesEnough()` at line 1392: four lines, checking that a base exists and, if the recipe needs milk, that some milk is poured. Not the right milk, not the syrup, not the toppings, not the shot count. Measured on otherwise identical days: patient serving (waits for `orderIsComplete()`) 41 offered, 41 served, $309 net, 100% accuracy, reputation 50 → 66.4; eager serving (clicks the instant `disabled` comes off) 43/43, $77, 46%, reputation 50 → 19.2. Three answers are all real: tighten the gate to `orderIsComplete()`; keep it loose and put a cue on the button ("still missing: syrup, whip"); or leave it exactly as it is, because the accuracy and reputation hits already are the consequence. **The recommendation is the cue** — `serveSlot()` already prices partial credit deliberately (`earned = recipe.price * (0.35 + 0.65 * ratio)`), so serving a wrong cup for 35% of the price is a designed mechanic, not an oversight, and a hard gate would delete the one lever a player has when four customers are about to walk. What is broken is that the tradeoff is invisible at the moment of the click. | **4** | prompt 12's block, `Projects/corner-and-kettle/WISHLIST.md`, the round-3 refresh notes, `gvb-site-handoff-v10.md` §8 |
 
 ### Bell to Bell
 
@@ -1979,6 +1987,17 @@ live. Nothing in that column is a link to follow.
 | Q52 | **Does Orbital adopt `gvb-save.js` for save-bar UI consistency?** Not needed for correctness — round 1 proved the existing migration round-trips clean. Purely a question of whether UI consistency with the other eleven adopters is wanted. | 2 | prompt 21, the project's notes |
 
 ### Answered, kept here so they are not re-asked
+
+- **Should the Serve button require full order completion?** (was Q2)
+  Answered by the session that shipped Corner & Kettle Phase 3, 2026-09-12:
+  **no — it stays loose and says what the click costs**, locked decision #341.
+  A short cup reads `Serve 3/5` in a warning style and names what is missing;
+  an empty cup is disabled and names what it needs. Partial credit is priced on
+  purpose (`price * (0.35 + 0.65 * ratio)`), and on the same seeds the hard
+  gate's numbers are exactly the patient player's ($1,927 a day, 1.000) against
+  $1,457 and 0.719 for a player who ignores the cue, so the difference is now
+  printed on the button. Reversible in one line: `serveReadiness()`'s
+  `canServe` becomes "nothing missing".
 
 - **Should the Excellencies chapter be ported at all?** (was Q33) Answered by
   the session that shipped Numina Phases 5 and 6, 2026-09-12: **it was never
