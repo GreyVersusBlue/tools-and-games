@@ -7,10 +7,11 @@
 # the same shift as 8,160 frames. A change to the clock or to a Math.random()
 # slipped back into the page is exactly what it is for.
 #
-# balance.mjs plays 100 seeds for 30 days under the patient autopilot plus a
-# stress day, about 22 seconds, and fails outside its BAND. The band is the
-# guard-rail against "unplayable" and "free"; a tuning change that trips it is
-# meant to be read, not widened past.
+# balance.mjs plays 100 seeds for 30 days under three autopilots plus a stress
+# day, the staff-economy and word-of-mouth sweeps (Phase 5/6, #348/#349), about
+# a minute and a half, and fails outside its BAND. The band is the guard-rail
+# against "unplayable" and "free"; a tuning change that trips it is meant to be
+# read, not widened past.
 #
 # test/drive-save.mjs is deliberately not here: it boots the real page in real
 # Chromium and is run by hand, the same arrangement Absalom's and Blue Hour's

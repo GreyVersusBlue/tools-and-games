@@ -18,7 +18,7 @@ export function createChalkboard({ state, sim, buy }){
     RECIPES, FOODS, SYRUPS, TOPPINGS, STATION_UPGRADES, EQUIPMENT_UPGRADES,
     AMBIANCE_UPGRADES, BUSINESS_UPGRADES, MARKETING_COST, MARKETING_DURATION_MS,
     PRESTIGE_MIN_DAY, BARISTA_TIERS, BARISTA_MAX, BARISTA_PROMOTE_COST,
-    BARISTA_TRAIN_COST, LOYALTY_UPGRADES, SHIELD_MAX_HELD, RANDOM_EVENTS,
+    TRAINING, TRAINING_GROUPS, MORALE_RAISE_COST, LOYALTY_UPGRADES, SHIELD_MAX_HELD, RANDOM_EVENTS,
   } = sim.content;
 
   // `disabled`, or nothing, straight from the purchase table.
@@ -107,26 +107,45 @@ export function createChalkboard({ state, sim, buy }){
     }
 
     html += '<div class="chalk-section">Staff</div>';
-    const totalWages = state.baristas.reduce((sum,b)=> sum + BARISTA_TIERS[b.level].wage, 0);
     if(state.baristas.length){
-      html += `<div class="chalk-item"><span><small>💵 Wages due at end of shift: <b>$${totalWages}</b></small></span></div>`;
+      html += `<div class="chalk-item"><span><small>💵 Wages due at end of shift: <b>$${sim.wagesDue()}</b></small></span></div>`;
+      // The week view (#348): who is on tomorrow, what each costs, what each
+      // is trained for — `working` is tomorrow's schedule too, since it holds
+      // until toggled, not just today's.
+      html += `<table class="chalk-staff-week"><thead><tr>
+        <th>Barista</th><th>Tier</th><th>Trained</th><th>Morale</th><th>Tomorrow</th><th>Wage</th>
+      </tr></thead><tbody>`;
+      state.baristas.forEach(b=>{
+        const tier = BARISTA_TIERS[b.level];
+        const trainedBadges = TRAINING_GROUPS.filter(g=>b.skill && b.skill[g]>0).map(g=>TRAINING[g].name.split(' ')[0]).join(', ') || '—';
+        html += `<tr>
+          <td>${b.name}</td><td>${tier.name}</td><td>${trainedBadges}${b.training ? ` (training ${TRAINING[b.training].name.split(' ')[0]}…)` : ''}</td>
+          <td>${Math.round(b.morale ?? 70)}/100</td>
+          <td>${b.working===false ? 'Off' : 'Working'}</td><td>$${tier.wage}</td>
+        </tr>`;
+      });
+      html += '</tbody></table>';
     }
     state.baristas.forEach(b=>{
       const tier = BARISTA_TIERS[b.level];
-      const specNote = b.spec==='bar' ? ', bar specialist' : b.spec==='kitchen' ? ', kitchen specialist' : '';
-      const gateNote = b.spec ? specNote : (b.level<2 ? ', simple drinks only' : ', handles anything');
+      const spec = sim.effectiveSpec(b);
+      const specNote = spec==='bar' ? ', bar specialist' : spec==='kitchen' ? ', kitchen specialist' : '';
+      const gateNote = spec ? specNote : (b.level<2 ? ', simple drinks only' : ', handles anything');
+      const registerNote = b.skill && b.skill.register>0 ? ', register-trained' : '';
       html += `<div class="chalk-item">
-        <span>🧑‍🍳 ${b.name} <small>(${tier.name}${gateNote}, step every ${(tier.intervalMs/1000).toFixed(1)}s, ${Math.round(tier.mistakeChance*100*sim.mistakeReduceFactor(b))}% mistake chance, $${tier.wage}/day wage)</small></span>
+        <span>🧑‍🍳 ${b.name} <small>(${tier.name}${gateNote}${registerNote}, ${Math.round(tier.mistakeChance*100*sim.mistakeReduceFactor(b, spec==='kitchen'))}% mistake chance, $${tier.wage}/day wage)</small></span>
         ${b.level<2
           ? `<button data-promote-barista="${b.id}" ${dis('promoteBarista', b.id)}>Promote $${BARISTA_PROMOTE_COST}</button>`
           : '<span>✓</span>'}
       </div>`;
-      html += `<div class="chalk-item"><span><small>↳ Training, specialization &amp; scheduling for ${b.name}</small></span>
+      const trainBtn = g => (b.skill && b.skill[g]>0)
+        ? `<span title="${TRAINING[g].desc}">${TRAINING[g].name.split(' ')[0]} ✓</span>`
+        : `<button data-train-barista="${b.id}" data-train-group="${g}" ${dis('train', b.id, g)} title="${TRAINING[g].desc}">Train ${TRAINING[g].name.split(' ')[0]}</button>`;
+      const raise = sim.canBuy('raiseBarista', b.id);
+      html += `<div class="chalk-item"><span><small>↳ Training, morale &amp; scheduling for ${b.name}${b.training ? ` — training ${TRAINING[b.training].name} today` : ''}</small></span>
         <span>
-          ${b.trained ? '<small>trained ✓</small>' : `<button data-train-barista="${b.id}" ${dis('trainBarista', b.id)}>Train $${BARISTA_TRAIN_COST}</button>`}
-          <button data-spec-barista="${b.id}" data-spec-val="bar" ${dis('specBarista', b.id, 'bar')}>Bar</button>
-          <button data-spec-barista="${b.id}" data-spec-val="kitchen" ${dis('specBarista', b.id, 'kitchen')}>Kitchen</button>
-          <button data-spec-barista="${b.id}" data-spec-val="" ${dis('specBarista', b.id, '')}>Generalist</button>
+          ${TRAINING_GROUPS.map(trainBtn).join(' ')}
+          <button data-raise-barista="${b.id}" ${raise.ok?'':'disabled'} title="Morale ${Math.round(b.morale ?? 70)}/100">Raise $${raise.cost}</button>
           <button data-schedule-barista="${b.id}">${b.working===false ? 'Off today — Call in' : 'Working — Give day off'}</button>
         </span>
       </div>`;
@@ -183,7 +202,7 @@ export function createChalkboard({ state, sim, buy }){
       ['unlockRecipe', 'recipe'], ['unlockFood', 'food'], ['unlockSyrup', 'syrup'],
       ['unlockTopping', 'topping'], ['unlockStation', 'station'], ['promoteBarista', 'promoteBarista'],
       ['unlockLoyalty', 'loyalty'], ['unlockEquipment', 'equipment'], ['unlockAmbiance', 'ambiance'],
-      ['unlockBusiness', 'business'], ['trainBarista', 'trainBarista'], ['scheduleBarista', 'scheduleBarista'],
+      ['unlockBusiness', 'business'], ['scheduleBarista', 'scheduleBarista'],
     ];
     const attr = key => 'data-' + key.replace(/[A-Z]/g, c => '-' + c.toLowerCase());
     for(const [key, type] of BINDINGS){
@@ -193,7 +212,8 @@ export function createChalkboard({ state, sim, buy }){
     el.querySelectorAll('[data-buy-shield]').forEach(b=> b.onclick = ()=> buy('shield'));
     el.querySelectorAll('[data-launch-marketing]').forEach(b=> b.onclick = ()=> buy('marketing'));
     el.querySelectorAll('[data-prestige]').forEach(b=> b.onclick = ()=> buy('prestige'));
-    el.querySelectorAll('[data-spec-barista]').forEach(b=> b.onclick = ()=> buy('specBarista', b.dataset.specBarista, b.dataset.specVal));
+    el.querySelectorAll('[data-train-barista]').forEach(b=> b.onclick = ()=> buy('train', b.dataset.trainBarista, b.dataset.trainGroup));
+    el.querySelectorAll('[data-raise-barista]').forEach(b=> b.onclick = ()=> buy('raiseBarista', b.dataset.raiseBarista));
   }
 
   return { render };

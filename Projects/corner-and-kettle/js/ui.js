@@ -20,7 +20,7 @@ import { buildCatalog, createCornerKettleSlot, toSaveData, applyToState } from "
 // in Node with a seed.
 import * as CONTENT from "./content.js";
 import { createSim, freshState, freshDayStats } from "./sim.js";
-import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, cupSvg } from "./draw.js";
+import { makeSpriteSvg, orderIconsHtml, orderDescriptionHtml, customerLabel, cupSvg, regularMoodEmoji } from "./draw.js";
 import { createSound } from "./sound.js";
 import { STATION_TAB_DEFS, createStations } from "./stations.js";
 import { createChalkboard } from "./chalkboard.js";
@@ -120,8 +120,10 @@ function renderQueue(){
     if(c.isRegular) div.className += ' regular';
     div.setAttribute('aria-label', customerLabel(c));
     const pct = Math.max(0, (c.patience/c.patienceMax))*100;
+    const rec = c.isRegular ? state.regulars[c.regularName] : null;
     div.innerHTML = `
-      ${c.isRegular ? `<div class="regularName">${c.regularName}</div>` : ''}
+      ${c.isRegular ? `<div class="regularName">${c.regularName} ${rec ? regularMoodEmoji(rec.satisfaction) : ''}
+        ${rec ? `<small>(${rec.visits} visit${rec.visits===1?'':'s'})</small>` : ''}</div>` : ''}
       <div class="bubble">${orderIconsHtml(c)}</div>
       ${makeSpriteSvg(c.sprite)}
       <div class="patience"><div class="patience-fill" style="width:${pct}%"></div></div>
@@ -316,6 +318,8 @@ function showDaySummary(ds){
       ${ds.worstMiss ? `<div>😬 Worst miss: <b>${ds.worstMiss.name}</b> (${Math.round(ds.worstMiss.ratio*100)}% right)</div>` : ''}
       <div>⭐ Reputation: <b>${Math.round(ds.reputation)}/100</b> (${ds.repDelta>=0?'+':''}${ds.repDelta} today)</div>
       ${ds.events.length ? `<div>🔔 Events today: <b>${ds.events.join(', ')}</b></div>` : ''}
+      ${ds.newRegulars && ds.newRegulars.length ? `<div>🎉 New regulars: <b>${ds.newRegulars.join(', ')}</b></div>` : ''}
+      ${ds.lostRegulars && ds.lostRegulars.length ? `<div>💔 Stopped coming: <b>${ds.lostRegulars.join(', ')}</b></div>` : ''}
     </div>
   `;
   document.getElementById('modalOverlay').classList.add('show');

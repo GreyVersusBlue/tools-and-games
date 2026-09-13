@@ -48,7 +48,8 @@ export const SERVE_CLEAR_MS = 500;
 // the same day, so the day's tally starts over with it.
 export function freshDayStats() {
   return { drinksServed:0, foodServed:0, totalTips:0, accuracySum:0, accuracyCount:0,
-    wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0 };
+    wagesPaid:0, bestTip:0, bestTipName:'', worstMiss:null, events:[], repDelta:0,
+    newRegularNames:[], lostRegularNames:[] };
 }
 
 /** Day one, sixty dollars, two stations, nobody hired. The shape save.js writes into. */
@@ -69,7 +70,8 @@ export function freshState(content) {
     slots: [null, null], // active {customer, cup, food, foodPlated} — length grows via station upgrades
     focusedSlot: 0,
     nextCustomerId: 1,
-    regulars: {}, // name -> persistent favorite order content
+    regulars: {}, // name -> {order, visits, lastDay, satisfaction, tolerance, stopped}
+    salesHistory: [], // last HISTORY_WINDOW served {isFood, id} — what the shop has actually been selling
     muted: false,
     dayStats: freshDayStats(),
     baristas: [], // {id, name, level, targetSlot:null, acc:0, spec:null, trained:false, working:true}
@@ -117,10 +119,20 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     DAILY_MODIFIERS, RANDOM_EVENTS, STARTING_UNLOCKS, QUEUE_MAX,
     HAIR_COLORS, SKIN_COLORS, SHIRT_COLORS, PANTS_COLORS,
     STATION_UPGRADES, BARISTA_MAX, BARISTA_HIRE_COSTS, BARISTA_PROMOTE_COST,
-    BARISTA_TRAIN_COST, BARISTA_NAMES, SHIELD_BASE_COST, SHIELD_COST_STEP,
+    BARISTA_NAMES, SHIELD_BASE_COST, SHIELD_COST_STEP,
     SHIELD_MAX_HELD, EQUIPMENT_UPGRADES, AMBIANCE_UPGRADES, BUSINESS_UPGRADES,
     MARKETING_COST, MARKETING_DURATION_MS, PRESTIGE_MIN_DAY,
+    STATION_GROUPS, TRAINING_GROUPS, TRAINING, TRAINING_SPEED_MULT, TRAINING_MISTAKE_MULT,
+    SKILL_SPEED_MULT, SKILL_MISTAKE_MULT, REGISTER_SPEED_MULT, REGISTER_MISTAKE_MULT,
+    MORALE_START, MORALE_MAX, MORALE_WORK_DROP, MORALE_OFF_GAIN, MORALE_RAISE_GAIN, MORALE_RAISE_COST,
+    REGULAR_SATISFACTION_START, REGULAR_SATISFACTION_MAX, REGULAR_SATISFACTION_SERVE_GOOD,
+    REGULAR_SATISFACTION_SERVE_BAD, REGULAR_STOP_THRESHOLD, REGULAR_STOP_MIN_VISITS,
+    REGULAR_FRIEND_THRESHOLD, REGULAR_FRIEND_CHANCE, REGULAR_TOLERANCE_START,
+    REGULAR_TOLERANCE_MIN, REGULAR_TOLERANCE_MAX, REGULAR_TOLERANCE_STEP,
+    WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX, WORD_OF_MOUTH_REP_SPAN, WORD_OF_MOUTH_REGULAR_SPAN,
+    HISTORY_WINDOW, HISTORY_WEIGHT,
   } = content;
+  const clampNum = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
   /* ---------- util ---------- */
   function rand(arr){ return arr[Math.floor(rng()*arr.length)]; }
@@ -149,9 +161,20 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     const r = RECIPES.find(x=>x.id===order.recipeId);
     return (r.requiredSyrup || r.blended) ? 'specialty' : 'simple';
   }
+  // `spec` used to be a switch the player set by hand; it is a reading of
+  // skill now (Phase 5, #348). Trained on bar only, or kitchen only, makes a
+  // specialist in that group; trained in both, or neither, is a generalist —
+  // an untrained barista could always attempt either type, gated by level.
+  function effectiveSpec(barista){
+    const sk = barista.skill || { bar:0, kitchen:0, register:0 };
+    if(sk.bar>0 && !(sk.kitchen>0)) return 'bar';
+    if(sk.kitchen>0 && !(sk.bar>0)) return 'kitchen';
+    return null;
+  }
   function baristaCanHandle(barista, order){
-    if(barista.spec==='bar' && order.isFood) return false;
-    if(barista.spec==='kitchen' && !order.isFood) return false;
+    const spec = effectiveSpec(barista);
+    if(spec==='bar' && order.isFood) return false;
+    if(spec==='kitchen' && !order.isFood) return false;
     if(barista.level>=2) return true;
     return orderComplexity(order)==='simple';
   }
@@ -159,6 +182,13 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   function baristaFatigueFactor(){
     return 1 + 0.35 * Math.min(1, state.shiftElapsed/SHIFT_MS);
   }
+  // Morale (Phase 5, #348): neutral at MORALE_START, so a fresh hire moves
+  // exactly like the old, morale-less barista did. It falls while working,
+  // rises on a day off or a raise, and moves both speed and mistakes, so
+  // wages become a lever with a downside instead of a fixed subtraction.
+  function moraleOf(barista){ return Number.isFinite(barista.morale) ? barista.morale : MORALE_START; }
+  function moraleSpeedMult(barista){ return 1 - (moraleOf(barista) - MORALE_START) * 0.003; }
+  function moraleMistakeMult(barista){ return 1 - (moraleOf(barista) - MORALE_START) * 0.005; }
 
   // ---- Reputation (0-100, shown as 1-5 stars) ----
   function reputationStars(){ return Math.max(1, Math.min(5, Math.round(state.reputation/20))); }
@@ -177,10 +207,17 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     if(outageActive()) return hasUpgrade('generator') ? 1.2 : 1.8;
     return 1;
   }
-  function mistakeReduceFactor(barista){
+  // `isFood` picks which trained group applies — bar for a drink, kitchen for
+  // a plate. `register` training and morale apply either way (#348).
+  function mistakeReduceFactor(barista, isFood){
     let f = 1;
     if(hasUpgrade('grinder')) f *= 0.7;
-    if(barista && barista.trained) f *= 0.7;
+    if(!barista) return f;
+    const sk = barista.skill || { bar:0, kitchen:0, register:0 };
+    if(sk[isFood ? 'kitchen' : 'bar'] > 0) f *= SKILL_MISTAKE_MULT;
+    if(sk.register > 0) f *= REGISTER_MISTAKE_MULT;
+    if(barista.training) f *= TRAINING_MISTAKE_MULT;
+    f *= moraleMistakeMult(barista);
     return f;
   }
   function shopPatienceMult(){
@@ -206,8 +243,33 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     if(dm && dm.spawnMult) m *= dm.spawnMult;
     if(state.activeEvent && state.activeEvent.id==='rush') m *= 0.45;
     if(state.activeEvent && state.activeEvent.id==='outage') m *= 1.25;
+    m *= wordOfMouthSpawnMult();
     return m;
   }
+
+  // ---- Word of mouth (Phase 6, #349) ----
+  // Reputation and recent regular satisfaction blend into one signal in
+  // [-1, 1] (0 at reputation 50 and no regulars yet), which nudges the door
+  // and the regular-chance roll — the wishlist's own words: "the one number
+  // that must not run away". Both multipliers stay inside
+  // [WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX] on purpose; test/balance.mjs pins
+  // both ends and the guard is verified by removing the clamp and watching
+  // the spawn rate diverge (locked decision #34).
+  function wordOfMouthSignal(){
+    const repSignal = (state.reputation - 50) / 50;
+    const regs = Object.values(state.regulars);
+    const satAvg = regs.length ? regs.reduce((a,r)=>a+r.satisfaction,0)/regs.length : REGULAR_SATISFACTION_START;
+    const satSignal = (satAvg - REGULAR_SATISFACTION_START) / (REGULAR_SATISFACTION_MAX - REGULAR_SATISFACTION_START);
+    return Math.max(-1, Math.min(1, (repSignal + satSignal) / 2));
+  }
+  function wordOfMouthGoodness(span){
+    const mult = 1 + wordOfMouthSignal() * span;
+    return clampNum(mult, WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX);
+  }
+  // A spawn factor is an interval multiplier: smaller means more customers.
+  // Goodness > 1 means the shop is doing well, so it takes the reciprocal.
+  function wordOfMouthSpawnMult(){ return 1 / wordOfMouthGoodness(WORD_OF_MOUTH_REP_SPAN); }
+  function wordOfMouthRegularMult(){ return wordOfMouthGoodness(WORD_OF_MOUTH_REGULAR_SPAN); }
 
   /* ---------- daily modifiers ---------- */
   function getActiveDailyModifier(){
@@ -238,7 +300,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       state.queue.unshift(order);
       toast(`🎩 ${ev.name}! ${ev.desc}`);
     } else if(ev.id==='birthday'){
-      const names = Object.keys(state.regulars);
+      const names = Object.keys(state.regulars).filter(n=>!state.regulars[n].stopped);
       const name = names.length ? rand(names) : null;
       const order = generateOrder();
       if(name){ order.isRegular = true; order.regularName = name; }
@@ -259,6 +321,28 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     return FOODS.filter(f=>state.unlockedFoods.has(f.id));
   }
 
+  // ---- Order histories feed composition (Phase 6, #349) ----
+  // The last HISTORY_WINDOW things the shop actually served, recorded by
+  // scoreServe(). weightedPick nudges a pool toward whatever has recently sold
+  // by HISTORY_WEIGHT, so a shop that has been selling iced drinks starts
+  // seeing more of them without a daily modifier having to say so — every
+  // item still has a floor weight of 1, so nothing unlocked is ever starved.
+  function weightedPick(pool){
+    if(pool.length<=1 || !state.salesHistory.length) return rand(pool);
+    const counts = new Map();
+    for(const s of state.salesHistory) counts.set(s.id, (counts.get(s.id)||0)+1);
+    const total = state.salesHistory.length;
+    const weights = pool.map(item => 1 + HISTORY_WEIGHT*pool.length*((counts.get(item.id)||0)/total));
+    const sum = weights.reduce((a,b)=>a+b,0);
+    let r = rng()*sum;
+    for(let i=0;i<pool.length;i++){ r -= weights[i]; if(r<=0) return pool[i]; }
+    return pool[pool.length-1];
+  }
+  function recordSale(isFood, id){
+    state.salesHistory.push({ isFood, id });
+    if(state.salesHistory.length > HISTORY_WINDOW) state.salesHistory.shift();
+  }
+
   /* ---------- order generation ---------- */
   // Builds just the "what do they want" part of an order (no id/patience/sprite).
   // Extracted so it can be reused both for one-off orders and for generating
@@ -276,7 +360,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
 
     let isFood = kind==='food' && getUnlockedFoodList().length>0;
     if(isFood){
-      const food = rand(getUnlockedFoodList());
+      const food = weightedPick(getUnlockedFoodList());
       return { isFood:true, foodId: food.id, price: food.price };
     }
 
@@ -284,8 +368,8 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     let simplePool = pool.filter(r=>!r.requiredSyrup && !r.blended);
     let specialtyPool = pool.filter(r=>r.requiredSyrup || r.blended);
     let recipe;
-    if(kind==='specialty' && specialtyPool.length>0) recipe = rand(specialtyPool);
-    else recipe = rand(simplePool.length? simplePool : pool);
+    if(kind==='specialty' && specialtyPool.length>0) recipe = weightedPick(specialtyPool);
+    else recipe = weightedPick(simplePool.length? simplePool : pool);
 
     const custom = {};
     if(recipe.needsMilk){
@@ -330,19 +414,32 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     return { hair: rand(HAIR_COLORS), skin: rand(SKIN_COLORS), shirt: rand(SHIRT_COLORS), pants: rand(PANTS_COLORS) };
   }
 
+  // A regular who has been served badly enough, often enough, stopped coming
+  // (#349): excluded here, kept in state.regulars so the day-end modal can
+  // still say who it was.
+  function activeRegularNames(){
+    return REGULAR_NAMES.filter(n => !(state.regulars[n] && state.regulars[n].stopped));
+  }
+
   function generateOrder(){
     const phase = PHASES[currentPhaseIndex()];
 
     const dm0 = getActiveDailyModifier();
-    const regularChance = REGULAR_CHANCE * (dm0 && dm0.regularChanceMult ? dm0.regularChanceMult : 1);
+    const regularChance = REGULAR_CHANCE * (dm0 && dm0.regularChanceMult ? dm0.regularChanceMult : 1) * wordOfMouthRegularMult();
+    const pool = activeRegularNames();
     let isRegular = false, regularName = null, content;
-    if(rng() < regularChance){
-      regularName = rand(REGULAR_NAMES);
+    if(pool.length && rng() < regularChance){
+      regularName = rand(pool);
       isRegular = true;
-      if(!state.regulars[regularName]){
-        state.regulars[regularName] = generateOrderContent(phase);
+      let rec = state.regulars[regularName];
+      if(!rec){
+        rec = { order: generateOrderContent(phase), visits:0, lastDay:0,
+          satisfaction: REGULAR_SATISFACTION_START, tolerance: REGULAR_TOLERANCE_START, stopped:false };
+        state.regulars[regularName] = rec;
       }
-      content = cloneOrderContent(state.regulars[regularName]);
+      rec.visits++;
+      rec.lastDay = state.day;
+      content = cloneOrderContent(rec.order);
     } else {
       content = generateOrderContent(phase);
     }
@@ -351,8 +448,11 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     let pMax = content.isFood
       ? Math.round(randInt(28,40) * pf)
       : Math.round(randInt(35,55) * pf);
-    if(isRegular && state.loyaltyLevel>0){
-      pMax = Math.round(pMax * (1 + LOYALTY_UPGRADES[state.loyaltyLevel-1].patienceBonus));
+    if(isRegular){
+      pMax = Math.round(pMax * state.regulars[regularName].tolerance);
+      if(state.loyaltyLevel>0){
+        pMax = Math.round(pMax * (1 + LOYALTY_UPGRADES[state.loyaltyLevel-1].patienceBonus));
+      }
     }
 
     return {
@@ -519,6 +619,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       happy = correct;
       ratio = correct ? 1 : 0.4;
       state.dayStats.foodServed++;
+      recordSale(true, order.foodId);
     } else {
       const recipe = RECIPES.find(r=>r.id===order.recipeId);
       title = recipe.name;
@@ -528,6 +629,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       happy = ratio>=0.999;
       base = Math.round(recipe.price * (0.35 + 0.65*ratio));
       state.dayStats.drinksServed++;
+      recordSale(false, order.recipeId);
     }
     state.dayStats.accuracySum += ratio;
     state.dayStats.accuracyCount++;
@@ -569,6 +671,28 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     if(tip+eventBonus > state.dayStats.bestTip){ state.dayStats.bestTip = tip+eventBonus; state.dayStats.bestTipName = title; }
     if(!happy && (!state.dayStats.worstMiss || ratio < state.dayStats.worstMiss.ratio)){
       state.dayStats.worstMiss = { name: title, ratio };
+    }
+
+    // A regular is a record now, not just a drink (Phase 6, #349): satisfaction
+    // and tolerance move with how the visit went. Served badly enough, often
+    // enough, they stop coming; served well at a high satisfaction, they
+    // sometimes bring a friend — a fresh regular, minted at the day-one menu.
+    if(order.isRegular && state.regulars[order.regularName]){
+      const rec = state.regulars[order.regularName];
+      rec.satisfaction = clampNum(rec.satisfaction + (happy ? REGULAR_SATISFACTION_SERVE_GOOD : REGULAR_SATISFACTION_SERVE_BAD), 0, REGULAR_SATISFACTION_MAX);
+      rec.tolerance = clampNum(rec.tolerance + (happy ? REGULAR_TOLERANCE_STEP : -REGULAR_TOLERANCE_STEP), REGULAR_TOLERANCE_MIN, REGULAR_TOLERANCE_MAX);
+      if(!happy && !rec.stopped && rec.visits >= REGULAR_STOP_MIN_VISITS && rec.satisfaction <= REGULAR_STOP_THRESHOLD){
+        rec.stopped = true;
+        state.dayStats.lostRegularNames.push(order.regularName);
+      }
+      if(happy && rec.satisfaction >= REGULAR_FRIEND_THRESHOLD && rng() < REGULAR_FRIEND_CHANCE){
+        const candidate = REGULAR_NAMES.find(n => !state.regulars[n]);
+        if(candidate){
+          state.regulars[candidate] = { order: generateOrderContent(PHASES[currentPhaseIndex()]), visits:0, lastDay: state.day,
+            satisfaction: REGULAR_SATISFACTION_START, tolerance: REGULAR_TOLERANCE_START, stopped:false };
+          state.dayStats.newRegularNames.push(candidate);
+        }
+      }
     }
 
     slot.serving = true;
@@ -631,15 +755,30 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       .map(b=>b.targetSlot));
   }
 
-  // One tick of work for a single barista: keep working the claimed slot,
-  // or claim a new one. Leaves the finished cup for a human to serve.
-  function runBaristaTick(barista){
-    // Validate current claim
+  // A barista's step interval, per station group (Phase 5, #348): trained on
+  // that group, or on register, speeds it up; training itself (mid-shift)
+  // slows it down; morale and fatigue apply on top. `group` is 'bar' or
+  // 'kitchen', off which station the claimed slot's next unmet line is made.
+  function baristaIntervalMs(barista, group){
+    const tier = BARISTA_TIERS[barista.level];
+    const outageMult = outageActive() ? (hasUpgrade('generator') ? 1.15 : 1.6) : 1;
+    let mult = baristaFatigueFactor() * outageMult * moraleSpeedMult(barista);
+    const sk = barista.skill || { bar:0, kitchen:0, register:0 };
+    if(group && sk[group] > 0) mult *= SKILL_SPEED_MULT;
+    if(sk.register > 0) mult *= REGISTER_SPEED_MULT;
+    if(barista.training) mult *= TRAINING_SPEED_MULT;
+    return tier.intervalMs * mult;
+  }
+
+  // Claims an idle barista a slot to work, at no cost in time — the same
+  // claim logic as before, just no longer bundled with the work step, so the
+  // clock can know which group (and so which interval) applies before it
+  // decides whether enough time has passed (#348).
+  function ensureBaristaClaim(barista){
     if(barista.targetSlot!==null){
       const slot = state.slots[barista.targetSlot];
       if(!slot || slot.serving){ barista.targetSlot = null; }
     }
-    // Claim a slot if idle: pick the unclaimed active order with least patience left
     if(barista.targetSlot===null){
       const claimed = claimedSlotIndexes(barista.id);
       let best = -1, bestPatience = Infinity;
@@ -650,12 +789,22 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
         const p = slot.customer.patience;
         if(p < bestPatience){ bestPatience = p; best = idx; }
       });
-      if(best===-1) return false;
-      barista.targetSlot = best;
+      if(best!==-1) barista.targetSlot = best;
     }
-    const idx = barista.targetSlot;
-    const slot = state.slots[idx];
-    if(!slot){ barista.targetSlot=null; return false; }
+    return barista.targetSlot===null ? null : state.slots[barista.targetSlot];
+  }
+
+  // One dt's worth of a single barista: claim a slot if idle, accumulate
+  // toward that slot's own interval, and take exactly one ticket-line step
+  // once it trips. Leaves the finished cup for a human to serve.
+  function runBaristaTick(barista, dt){
+    const slot = ensureBaristaClaim(barista);
+    if(!slot){ barista.acc = 0; return false; }
+    const isFood = !!slot.food;
+    const iv = baristaIntervalMs(barista, isFood ? 'kitchen' : 'bar');
+    barista.acc = (barista.acc||0) + dt;
+    if(barista.acc <= iv) return false;
+    barista.acc = 0;
 
     // Work exactly one step on this cup only
     const worked = autoAssistStep(slot);
@@ -664,7 +813,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     if(orderIsComplete(slot)){
       barista.targetSlot = null;
       const tier = BARISTA_TIERS[barista.level];
-      const effMistakeChance = tier.mistakeChance * mistakeReduceFactor(barista) * (slot.food && hasUpgrade('foodprep') ? 0.8 : 1);
+      const effMistakeChance = tier.mistakeChance * mistakeReduceFactor(barista, isFood) * (isFood && hasUpgrade('foodprep') ? 0.8 : 1);
       const fumbled = rng() < effMistakeChance && baristaFumble(slot);
       toast(fumbled ? `${barista.name} rushed the order, check it before serving 😬` : `${barista.name} finished the order — ready to serve ☕`);
       render('all');
@@ -703,13 +852,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     }
     state.baristas.forEach(b=>{
       if(b.working===false) return;
-      b.acc = (b.acc||0) + dt;
-      const outageMult = outageActive() ? (hasUpgrade('generator') ? 1.15 : 1.6) : 1;
-      const iv = BARISTA_TIERS[b.level].intervalMs * baristaFatigueFactor() * outageMult;
-      if(b.acc > iv){
-        b.acc = 0;
-        runBaristaTick(b);
-      }
+      runBaristaTick(b, dt);
     });
     if(state.marketingRemaining>0){
       state.marketingRemaining = Math.max(0, state.marketingRemaining - dt);
@@ -756,15 +899,41 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     return steps;
   }
 
+  // What today's wages actually cost — the one rule endShift() charges and
+  // the chalkboard previews, so the two cannot drift apart (#348). A barista
+  // given the day off (`working === false`) earns nothing that day; before
+  // this both readers summed every barista with no `working` filter at all,
+  // so Pip could be given the day off and still cost her full wage.
+  function wagesDue(){
+    return state.baristas.reduce((sum,b)=> b.working!==false ? sum + BARISTA_TIERS[b.level].wage : sum, 0);
+  }
+
   /* ---------- the day ---------- */
   function endShift(){
     state.shiftRunning = false;
     const ds = state.dayStats;
     const avgAccuracy = ds.accuracyCount ? Math.round((ds.accuracySum/ds.accuracyCount)*100) : 100;
 
-    const wages = state.baristas.reduce((sum,b)=> sum + BARISTA_TIERS[b.level].wage, 0);
+    const wages = wagesDue();
     ds.wagesPaid = wages;
     state.money -= wages;
+
+    // Staff (#348): a barista who worked today resolves any training in
+    // progress into skill and pays the day's toll on morale; a barista given
+    // the day off rests instead. Both are additive to whatever `working` set.
+    state.baristas.forEach(b=>{
+      if(!Number.isFinite(b.morale)) b.morale = MORALE_START;
+      if(b.working !== false){
+        if(b.training){
+          if(!b.skill) b.skill = { bar:0, kitchen:0, register:0 };
+          b.skill[b.training] = 1;
+          b.training = null;
+        }
+        b.morale = Math.max(0, b.morale - MORALE_WORK_DROP);
+      } else {
+        b.morale = Math.min(MORALE_MAX, b.morale + MORALE_OFF_GAIN);
+      }
+    });
 
     const summary = {
       day: state.day, money: state.money, avgAccuracy, wages,
@@ -772,6 +941,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       bestCombo: state.bestCombo, bestTip: ds.bestTip, bestTipName: ds.bestTipName,
       worstMiss: ds.worstMiss, reputation: state.reputation, repDelta: ds.repDelta,
       events: [...ds.events],
+      newRegulars: [...ds.newRegularNames], lostRegulars: [...ds.lostRegularNames],
     };
     notify({ type:'shiftEnd', summary });
     return summary;
@@ -813,11 +983,24 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     state.unlockedSyrups = new Set(STARTING_UNLOCKS.syrups);
     state.unlockedToppings = new Set(STARTING_UNLOCKS.toppings);
     state.unlockedFoods = new Set(STARTING_UNLOCKS.foods);
-    // Regulars survive a reopen but their standing orders don't: a favourite
-    // built from syrups and toppings the reopened shop no longer stocks is an
-    // order the player has no button to make. They re-roll a new favourite on
-    // their next visit, off the day-one menu.
-    state.regulars = {};
+    // Regulars survive a reopen; their standing orders don't (Phase 6, #349).
+    // A favourite built from syrups and toppings the reopened shop no longer
+    // stocks is an order the player has no button to make, so it re-rolls off
+    // the day-one menu (already reset above). The person survives: their
+    // visit count and their tolerance. Satisfaction resets — the relationship
+    // itself is starting over — and a regular who had already stopped coming
+    // was not coming back anyway.
+    const reopenedRegulars = {};
+    for(const [name, rec] of Object.entries(state.regulars)){
+      if(rec.stopped) continue;
+      reopenedRegulars[name] = {
+        order: generateOrderContent(PHASES[0]),
+        visits: rec.visits, lastDay: 0,
+        satisfaction: REGULAR_SATISFACTION_START, tolerance: rec.tolerance, stopped:false,
+      };
+    }
+    state.regulars = reopenedRegulars;
+    state.salesHistory = [];
     state.baristas = [];
     state.loyaltyLevel = 0;
     state.comboShields = 0;
@@ -937,7 +1120,8 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
         // run cannot reproduce. Ids are only ever compared, never parsed.
         let n = state.baristas.length + 1;
         while(state.baristas.some(b=>b.id==='b'+n)) n++;
-        state.baristas.push({ id:'b'+n, name, level:1, targetSlot:null, acc:0, spec:null, trained:false, working:true });
+        state.baristas.push({ id:'b'+n, name, level:1, targetSlot:null, acc:0,
+          skill: { bar:0, kitchen:0, register:0 }, morale: MORALE_START, training:null, working:true });
         return `${name} joined the team! 🧑‍🍳`;
       },
     },
@@ -951,25 +1135,43 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
       },
       apply(id){ const b = baristaById(id); b.level = 2; return `${b.name} promoted to Senior Barista! 🎉`; },
     },
-    trainBarista: {
-      cost: () => BARISTA_TRAIN_COST,
+    // Training takes a shift, not a price tag (Phase 5, #348): a barista sent
+    // to train works today at reduced speed and more mistakes and comes out
+    // the other side (endShift()) with that group's skill trained. `spec` is
+    // no longer a switch the player sets — effectiveSpec() reads it off which
+    // groups are trained.
+    train: {
+      cost: () => 0,
+      refuse(id, group){
+        const b = baristaById(id);
+        if(!b) return 'No such barista.';
+        if(!TRAINING_GROUPS.includes(group)) return 'No such training.';
+        if(b.working === false) return `${b.name} has the day off.`;
+        if(b.training) return `${b.name} is already training today.`;
+        if(b.skill && b.skill[group] > 0) return `${b.name} is already trained for ${TRAINING[group].name}.`;
+        return null;
+      },
+      apply(id, group){
+        const b = baristaById(id);
+        b.training = group;
+        return `${b.name} starts ${TRAINING[group].name.toLowerCase()} today — slower, but trained by close.`;
+      },
+    },
+    // A raise costs money and buys back morale (Phase 5, #348) — the lever
+    // that makes wages a downside worth managing rather than a fixed number.
+    raiseBarista: {
+      cost: id => MORALE_RAISE_COST[baristaById(id)?.level] ?? 0,
       refuse(id){
         const b = baristaById(id);
         if(!b) return 'No such barista.';
-        if(b.trained) return `${b.name} is already trained.`;
-        return need(BARISTA_TRAIN_COST);
+        if((b.morale ?? MORALE_START) >= MORALE_MAX) return `${b.name} couldn't be happier.`;
+        return need(MORALE_RAISE_COST[b.level]);
       },
-      apply(id){ const b = baristaById(id); b.trained = true; return `${b.name} completed training! 🎓`; },
-    },
-    specBarista: {
-      cost: () => 0,
-      refuse(id, extra){
+      apply(id){
         const b = baristaById(id);
-        if(!b) return 'No such barista.';
-        if((b.spec || null) === (extra || null)) return `${b.name} already works that way.`;
-        return null;
+        b.morale = Math.min(MORALE_MAX, (b.morale ?? MORALE_START) + MORALE_RAISE_GAIN);
+        return `${b.name} got a raise — morale up! 💵`;
       },
-      apply(id, extra){ const b = baristaById(id); b.spec = extra || null; return `${b.name} is now ${extra ? `a ${extra} specialist` : 'a generalist'}`; },
     },
     scheduleBarista: {
       cost: () => 0,
@@ -1079,11 +1281,13 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     state, content,
     rand, randInt,
     spawnFactor, patienceFactor, orderComplexity, baristaCanHandle, baristaFatigueFactor,
+    effectiveSpec, moraleSpeedMult, moraleMistakeMult, baristaIntervalMs, wagesDue,
     reputationStars, adjustReputation,
     hasUpgrade, queueMax, espressoDurationMs, outageActive, stationDurationMult,
     mistakeReduceFactor, shopPatienceMult, shopTipMult, shopSpawnFactorMult,
+    wordOfMouthSignal, wordOfMouthSpawnMult, wordOfMouthRegularMult,
     getActiveDailyModifier, rollDailyModifier, fireRandomEvent,
-    getUnlockedRecipeList, getUnlockedFoodList,
+    getUnlockedRecipeList, getUnlockedFoodList, activeRegularNames,
     generateOrderContent, cloneOrderContent, generateOrder,
     getOrderRequirements, cupMatchesEnough, orderIsComplete, serveReadiness, stationsNeedingWork,
     acceptCustomer, releaseSlot, discardCup, scoreServe,

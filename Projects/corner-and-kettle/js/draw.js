@@ -95,6 +95,14 @@ export function customerLabel(c){
   return `${who} waiting for ${what}. ${patience}% patience left. Take this order.`;
 }
 
+/** A regular's mood, off their satisfaction (0-100) — a queue-card readout, not a rule (#349). */
+export function regularMoodEmoji(satisfaction){
+  if(satisfaction>=80) return '😄';
+  if(satisfaction>=50) return '🙂';
+  if(satisfaction>=25) return '😐';
+  return '😠';
+}
+
 /** The ticket: the order's name over its requirement lines, struck through when done. */
 export function orderDescriptionHtml(order, reqs, slot){
   const title = order.isFood ? FOODS.find(x=>x.id===order.foodId).name : RECIPES.find(x=>x.id===order.recipeId).name;

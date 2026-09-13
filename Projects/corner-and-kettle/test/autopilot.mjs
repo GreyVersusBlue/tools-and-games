@@ -75,7 +75,7 @@ export const DEFAULT_PRIORITY = [
   { type: "ambiance", id: "music" },
   { type: "equipment", id: "grinder" },
   { type: "equipment", id: "pos2" },
-  { type: "trainBarista" },
+  { type: "train", extra: "bar" },
   { type: "promoteBarista" },
   { type: "ambiance", id: "seating" },
   { type: "hireBarista" },
@@ -90,6 +90,8 @@ export const DEFAULT_PRIORITY = [
   { type: "hireBarista" },
   { type: "equipment", id: "espresso3" },
   { type: "loyalty", id: 2 },
+  { type: "train", extra: "kitchen" },
+  { type: "raiseBarista" },
 ];
 
 export function shopper(priority = DEFAULT_PRIORITY, name = "shopper") {
@@ -101,14 +103,18 @@ export function shopper(priority = DEFAULT_PRIORITY, name = "shopper") {
  * same call the page's chalkboard makes, so a purchase the page would refuse
  * is refused here too. Until Phase 4 this was a hand-kept mirror of the page's
  * doUnlock() (#339). The one thing a priority list cannot name is *which*
- * barista to promote or train, so those take the first one eligible.
+ * barista to promote, train or raise, so those take the first one eligible
+ * (#348): promote the first junior, train the first barista not already
+ * training and not already trained in that group, raise the first whose
+ * morale isn't already at the ceiling.
  */
 export function purchase(sim, state, item) {
-  let { type, id } = item;
+  let { type, id, extra } = item;
   if (!sim.PURCHASE_TYPES.includes(type)) throw new Error(`purchase: unknown chalkboard type "${type}"`);
   if (type === "promoteBarista" && id == null) id = state.baristas.find(b => b.level < 2)?.id;
-  if (type === "trainBarista" && id == null) id = state.baristas.find(b => !b.trained)?.id;
-  return sim.purchase(type, id).ok;
+  if (type === "train" && id == null) id = state.baristas.find(b => b.working !== false && !b.training && !(b.skill && b.skill[extra]))?.id;
+  if (type === "raiseBarista" && id == null) id = state.baristas.find(b => (b.morale ?? 100) < 100)?.id;
+  return sim.purchase(type, id, extra).ok;
 }
 
 /** Walk the list from the top after every buy. Returns what was bought, in order. */

@@ -20,6 +20,16 @@ export const SHIELD_MAX = 3;
 export const STATION_MIN = 2;
 export const STATION_MAX = 4;
 export const BARISTA_CAP = 3;
+/** Mirrors sim.js's content.js constants of the same name (Phase 5/6, #348/#349) —
+ * this module does not import content.js, so bounds live here too, the same
+ * way LOYALTY_MAX and SHIELD_MAX already do. */
+export const MORALE_START = 70;
+export const MORALE_MAX = 100;
+export const REGULAR_SATISFACTION_START = 60;
+export const REGULAR_SATISFACTION_MAX = 100;
+export const REGULAR_TOLERANCE_START = 1;
+export const REGULAR_TOLERANCE_MIN = 0.7;
+export const REGULAR_TOLERANCE_MAX = 1.5;
 
 /* ---------- small coercers ---------- */
 
@@ -95,13 +105,12 @@ export function validateSave(s) {
  */
 export function migrateSave(s, from, catalog) {
   if (from < 1 && !Array.isArray(s.baristas) && Number.isFinite(s.baristaLevel) && s.baristaLevel > 0) {
+    // repairSave's repairBarista fills in skill/morale/training defaults —
+    // this only needs to carry the one fact a pre-versioning save had.
     s.baristas = [{
       id: "b_migrated",
       name: catalog.baristaNames[0],
       level: s.baristaLevel >= 2 ? 2 : 1,
-      spec: null,
-      trained: false,
-      working: true,
     }];
     delete s.baristaLevel;
   }
@@ -141,7 +150,7 @@ function repairCup(cup, catalog) {
  * down on the next spawn. Returns null for anything unusable — dropping a
  * regular costs the player a favourite, not a shop.
  */
-function repairRegular(content, catalog) {
+function repairOrderContent(content, catalog) {
   if (!content || typeof content !== "object") return null;
   // `food` was the flag's name before `isFood`; accept both.
   const isFood = !!(content.isFood || content.food);
@@ -164,14 +173,49 @@ function repairRegular(content, catalog) {
   };
 }
 
+/**
+ * A regular's full record (Phase 6, #349): the standing order plus `visits`,
+ * `lastDay`, `satisfaction` and `tolerance`. A save written before this phase
+ * has the order content directly where `rec.order` is now, with no wrapper at
+ * all — `rec.order || rec` reads either shape, so an old save's regulars
+ * still load, just with a fresh visit count and satisfaction.
+ */
+function repairRegularRecord(rec, catalog) {
+  if (!rec || typeof rec !== "object") return null;
+  const order = repairOrderContent(rec.order || rec, catalog);
+  if (!order) return null;
+  return {
+    order,
+    visits: Math.max(0, Math.round(num(rec.visits, 0))),
+    lastDay: Math.max(0, Math.round(num(rec.lastDay, 0))),
+    satisfaction: clamp(num(rec.satisfaction, REGULAR_SATISFACTION_START), 0, REGULAR_SATISFACTION_MAX),
+    tolerance: clamp(num(rec.tolerance, REGULAR_TOLERANCE_START), REGULAR_TOLERANCE_MIN, REGULAR_TOLERANCE_MAX),
+    stopped: !!rec.stopped,
+  };
+}
+
+/**
+ * A staffer. `skill` replaced `spec`/`trained` in Phase 5 (#348): a legacy
+ * `trained: true` maps to both group skills, the closest single migration to
+ * what "trained" used to buy everywhere; a legacy `spec` alone (never
+ * trained) carried no competence bonus before and is not migrated — a
+ * specialisation preference is lost, not a capability.
+ */
 function repairBarista(b, catalog, index) {
   if (!b || typeof b !== "object") return null;
+  const skillSrc = b.skill && typeof b.skill === "object" ? b.skill : {};
+  const legacyTrained = b.trained === true ? 1 : 0;
   return {
     id: typeof b.id === "string" && b.id ? b.id : "b_repaired_" + index,
     name: typeof b.name === "string" && b.name ? b.name : catalog.baristaNames[index % catalog.baristaNames.length],
     level: b.level === 2 ? 2 : 1,
-    spec: b.spec === "bar" || b.spec === "kitchen" ? b.spec : null,
-    trained: !!b.trained,
+    skill: {
+      bar: intIn(skillSrc.bar, 0, 1, legacyTrained),
+      kitchen: intIn(skillSrc.kitchen, 0, 1, legacyTrained),
+      register: intIn(skillSrc.register, 0, 1, 0),
+    },
+    morale: clamp(num(b.morale, MORALE_START), 0, MORALE_MAX),
+    training: ["bar", "kitchen", "register"].includes(b.training) ? b.training : null,
     working: b.working !== false,
   };
 }
@@ -243,8 +287,8 @@ export function repairSave(s, catalog, rng = Math.random) {
 
   const regulars = {};
   if (s.regulars && typeof s.regulars === "object" && !Array.isArray(s.regulars)) {
-    for (const [name, content] of Object.entries(s.regulars)) {
-      const fixed = repairRegular(content, catalog);
+    for (const [name, rec] of Object.entries(s.regulars)) {
+      const fixed = repairRegularRecord(rec, catalog);
       if (fixed) regulars[name] = fixed;
     }
   }
@@ -275,7 +319,10 @@ export function toSaveData(state) {
     regulars: state.regulars,
     baristas: state.baristas.map(b => ({
       id: b.id, name: b.name, level: b.level,
-      spec: b.spec || null, trained: !!b.trained, working: b.working !== false,
+      skill: { bar: b.skill?.bar ? 1 : 0, kitchen: b.skill?.kitchen ? 1 : 0, register: b.skill?.register ? 1 : 0 },
+      morale: Number.isFinite(b.morale) ? b.morale : MORALE_START,
+      training: b.training || null,
+      working: b.working !== false,
     })),
     loyaltyLevel: state.loyaltyLevel,
     comboShields: state.comboShields,

@@ -8740,6 +8740,150 @@ run under `npm run check` while integrity is red, so it was run on its own);
 and `assets/js/README.md`'s adopters table. `CLAUDE.md`'s locked-decision
 count, 343 → 347.
 
+# Corner & Kettle, arc two
+
+## Phases 5 and 6 — Staff who have a week, and customers who remember (2026-09-13)
+
+**Ranks 1 and 2, taken together at Devon's explicit request (overriding the
+size rule that would have run Phase 5 alone), on Claude Opus 5. Decisions
+#348 (staff) and #349 (regulars/word of mouth).** Arc one's instruments came
+first so this pair could be measured rather than argued: `wagesDue()`,
+`baristaIntervalMs()` and `mistakeReduceFactor()` are read by both
+`balance.mjs`'s new sweeps and the chalkboard, and `smoke-sim.mjs` grew two
+sections (13 for staff, 14 for regulars) rather than a new file, since both
+phases touch the same barista tick and order-generation code paths.
+
+**Phase 5: the wage bug, and what it was a symptom of.** `endShift()` and the
+chalkboard's "wages due" line each summed `BARISTA_TIERS[b.level].wage` over
+every barista with no `working` filter — Pip's day off cost nothing to give
+and nothing to take. Fixed with one rule, `sim.wagesDue()`, read by both
+callers so they cannot drift apart again; `smoke-sim.mjs` verified it the way
+#34 asks, by reintroducing the unfiltered sum and watching the new assertion
+fail before restoring it. That bug was the smallest sign of a bigger gap: a
+junior/senior tier plus a boolean `trained` plus a bar/kitchen `spec` switch
+was a speed upgrade with names, not a staff system.
+
+`skill: {bar, kitchen, register}` replaced both `trained` and `spec`.
+Training a group raises step speed (`SKILL_SPEED_MULT`, 0.85×) and cuts
+mistakes (`SKILL_MISTAKE_MULT`, 0.7×, the old `trained` number) on that
+group's own stations; `register` does both across every station, since it has
+none of its own. `effectiveSpec()` reads bar-only or kitchen-only training as
+a specialist and reads both — or neither — as a generalist, so the player's
+old manual switch is a fact about what was trained now, not a separate
+setting. Training itself costs a shift, not the old bare `$300`: `sim.purchase
+('train', id, group)` is free and marks `barista.training`; the whole day runs
+at `TRAINING_SPEED_MULT` (1.6×, slower) and `TRAINING_MISTAKE_MULT` (1.3×,
+clumsier), and `endShift()` resolves it into `skill[group] = 1` for whoever
+was still on the clock at close. A day off resolves no training and instead
+rests: morale, neutral at `MORALE_START` (70) so a fresh hire moves exactly
+like the old morale-less barista did, falls `MORALE_WORK_DROP` (6) on a
+worked day and rises `MORALE_OFF_GAIN` (10) on a day off or `MORALE_RAISE_GAIN`
+(25) on a raise (`raiseBarista`, priced by tier via `MORALE_RAISE_COST`).
+`moraleSpeedMult()` and `moraleMistakeMult()` both read it, so wages became a
+lever with a downside instead of a fixed subtraction, exactly as the row
+asked. The chalkboard's Staff section grew a week-view table — tier, which
+groups are trained (and which is mid-training), morale, tomorrow's schedule
+(`working` already holds until toggled, so it was already an answer to
+"tomorrow") and wage — ahead of the existing per-barista training/raise/
+schedule buttons.
+
+The clock itself needed a small reshape to let skill affect speed at all: the
+old `runBaristaTick()` decided whether enough time had passed *and* claimed a
+slot *and* did the work in one call, gated from outside by an interval
+computed before any slot was known. `ensureBaristaClaim()` splits the claim
+out — free, no time cost — so `baristaIntervalMs(barista, group)` can know
+whether the next unmet ticket line is a drink or a plate before deciding
+whether to tick. `runBaristaTick(barista, dt)` now owns its own accumulator
+end to end.
+
+`balance.mjs` gained `staffSweep()` (one senior vs. three juniors vs. a
+trained specialist pair, days 1–20 straight — a reopen was tried first and
+rejected, since `prestige()` clears every barista and would erase the very
+thing being compared) and `hireValueCheck()` ("a hire is worth more than its
+wage by day 3", hands parked the way `fumbleSweep()` already parks them, so a
+lone junior's own contribution is what's measured rather than the player's).
+
+**Phase 6: a regular becomes a person.** `state.regulars` used to map a name
+straight to a standing order — no visit count, no memory of a bad serve, no
+reason reputation should change who walks in. It is `{order, visits, lastDay,
+satisfaction, tolerance, stopped}` now. `scoreServe()` moves satisfaction by
+`REGULAR_SATISFACTION_SERVE_GOOD`/`_BAD` off `happy` and tolerance by
+`REGULAR_TOLERANCE_STEP` the same way, and tolerance multiplies that
+regular's own `patienceMax` on every future visit. Served badly
+`REGULAR_STOP_MIN_VISITS` (3) times at or below `REGULAR_STOP_THRESHOLD` (20),
+they stop coming — `stopped: true`, dropped from `activeRegularNames()` but
+kept on the record so the day-end modal can still say who it was. Served well
+at or above `REGULAR_FRIEND_THRESHOLD` (85), a `REGULAR_FRIEND_CHANCE` (25%)
+roll mints a brand-new regular off the day-one menu.
+
+Word of mouth is the number the wishlist itself called out as the one that
+must not run away. `wordOfMouthSignal()` blends reputation and the average
+regular satisfaction into one figure in [-1, 1]; `wordOfMouthSpawnMult()` (the
+door — smaller means more customers, since it is a spawn-interval multiplier)
+and `wordOfMouthRegularMult()` (the regular-chance roll) both read it, each
+clamped to `[WORD_OF_MOUTH_MIN, WORD_OF_MOUTH_MAX]` (0.7–1.4). The guard was
+verified per #34: `smoke-sim.mjs` section 14 pins a maximally good shop's
+regular multiplier at the 1.4 ceiling, and removing the clamp made it compute
+1.5 instead — the assertion failed with exactly that number before the clamp
+went back. `balance.mjs`'s `wordOfMouthSweep()` is the same finding in plain
+numbers: a maximally good shop draws more customers a day than a maximally
+bad one. A literal queue-occupancy version of that sweep was tried first and
+dropped — with hands parked the queue saturated almost immediately regardless
+of word of mouth, and with hands working normally it stayed near-empty either
+way; `offered` per day is what `shopSpawnFactorMult()` actually moves, and it
+is what the sweep measures now.
+
+Order composition reads its own history: `state.salesHistory` (capped at
+`HISTORY_WINDOW`, 40, written by `scoreServe()`) and a small
+`weightedPick()` nudge `generateOrderContent()`'s food and recipe picks
+toward whatever the shop has actually been selling, with a floor weight of 1
+so nothing unlocked is ever starved. `prestige()` no longer clears
+`state.regulars` outright: every regular who had not already stopped keeps
+their name, visit count and tolerance, gets a freshly rolled order off the
+just-reset day-one menu, and has satisfaction reset to the neutral start —
+the person survives a reopening; the relationship starts over. The queue
+card shows a mood emoji (`regularMoodEmoji()`, a new small leaf in `draw.js`)
+and visit count for a regular in line; the day-end modal names who was new
+and who stopped coming.
+
+**What a save carries now.** `barista.spec`/`.trained` are gone;
+`.skill`/`.morale`/`.training` replace them, and `repairBarista()` migrates a
+legacy `trained: true` into *both* group skills — the closest single mapping
+to what "trained" used to buy everywhere — but does not migrate a legacy
+`spec` alone, since an untrained specialisation preference carried no
+competence bonus before either; an old save loses that preference, not a
+capability, on load. `regulars[name]` gained the whole Phase 6 record; a save
+from before this phase stored the order content directly where `.order` is
+now, with no wrapper at all, and `repairRegularRecord()` reads `rec.order ||
+rec` so that old shape still loads, wrapped with a fresh visit count.
+
+**The checks.** `smoke-sim.mjs` 175 → 220 (45 new assertions, two new
+sections). `smoke-save.mjs` 183/0. `drive-save.mjs` 90 → 100: run by hand in
+real Chromium, it caught two things the Node suites could not — a regular's
+visit count is a coin flip on reload (the queue rebuild can walk the same
+regular back in, same as the existing name-match assertion already knew) and
+a legacy `food: true` regular's fields now live under `.order`. Both fixed.
+Also found and fixed on the way, unrelated to either phase: `smoke-sim.mjs`
+section 10's own source-scanning regex assumed LF line endings and silently
+swept far more of `ui.js` into "renderAll's body" than intended on a
+Windows/CRLF checkout — caught because an accidental `git checkout --
+js/sim.js` mid-session (recovered by replaying every edit from the
+conversation transcript) reset the working tree to `main` long enough to
+confirm the failure was already there, not something this batch introduced.
+`balance.mjs` still exits on its `BAND` (patient servedShare 99.0%, net/day
+$2,430 — up from Phase 2's $1,927, since word of mouth's feedback loop now
+rewards a run of good serves with a busier door — accuracy 1.000; stress
+servedShare 93.9%) plus the two new checks (hire value, word-of-mouth
+direction), about a minute and a half now against Phase 2's 22 seconds, most
+of it `staffSweep()`'s 20-day-per-seed roster comparisons; the workflow
+comment was updated rather than left to go stale.
+
+**Shared things touched:** none. `CLAUDE.md`'s locked-decision count, 347 →
+349.
+
+**Next:** Phase 7 — A reopening worth doing, rank 1 of arc two, on Claude
+Opus 5.
+
 ---
 
 # The two August 2026 audits

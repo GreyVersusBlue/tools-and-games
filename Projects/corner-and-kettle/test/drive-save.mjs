@@ -290,11 +290,12 @@ try {
     s.upgrades.add('grinder'); s.upgrades.add('music');
     s.slots = [null, null, null];
     s.loyaltyLevel = 1; s.comboShields = 2; s.shieldsPurchased = 2;
-    s.baristas = [{ id: 'b1', name: 'Juno', level: 2, spec: 'bar', trained: true, working: true, targetSlot: null, acc: 0 }];
+    s.baristas = [{ id: 'b1', name: 'Juno', level: 2, skill: { bar: 1, kitchen: 0, register: 0 }, morale: 80, training: null, working: true, targetSlot: null, acc: 0 }];
     s.presets = [{ id: 'p1', name: 'Oat Vanilla Latte', cup: { base: 'espresso', shots: 2, milk: 'oat',
       milkSteamed: true, syrup: 'vanilla', toppings: ['whip'], ice: false, blended: false } }];
-    s.regulars = { Nora: { isFood: false, recipeId: 'latte', price: 45,
-      custom: { milk: 'oat', syrup: 'vanilla', toppings: ['whip'], ice: false } } };
+    s.regulars = { Nora: { order: { isFood: false, recipeId: 'latte', price: 45,
+      custom: { milk: 'oat', syrup: 'vanilla', toppings: ['whip'], ice: false } },
+      visits: 4, lastDay: 8, satisfaction: 72, tolerance: 1.16, stopped: false } };
     d.saveState();
     return { day: s.day, money: s.money };
   });
@@ -304,7 +305,7 @@ try {
   const back = await p.evaluate(() => {
     const s = window.__CK_DEBUG__.state;
     return { day: s.day, money: s.money, stations: s.slots.length, staff: s.baristas.length,
-      staffLevel: s.baristas[0]?.level, staffSpec: s.baristas[0]?.spec,
+      staffLevel: s.baristas[0]?.level, staffSkillBar: s.baristas[0]?.skill?.bar,
       presetShots: s.presets[0]?.cup.shots, presetName: s.presets[0]?.name,
       regulars: Object.keys(s.regulars), nora: s.regulars.Nora,
       frappe: s.unlockedRecipes.has('frappe'), grinder: s.upgrades.has('grinder'),
@@ -312,7 +313,7 @@ try {
   });
   t.ok(back.day === 9 && back.money === warped.money, 'day and takings survived the reload', `day ${back.day}, $${back.money}`);
   t.ok(back.stations === 3, 'the bought third station survived');
-  t.ok(back.staff === 1 && back.staffLevel === 2 && back.staffSpec === 'bar', 'Juno came back a bar-specialist Senior');
+  t.ok(back.staff === 1 && back.staffLevel === 2 && back.staffSkillBar === 1, 'Juno came back a bar-trained Senior');
   // targetSlot and acc are deliberately not saved, so assert that on the blob:
   // the live values are fair game for the game loop the moment the page boots,
   // and reading them a beat later is a race, not a check (#39).
@@ -324,9 +325,15 @@ try {
   // any of them can mint a new named regular, so `=== 'Nora'` is a coin flip
   // dressed as an assertion (locked decision #40).
   t.ok(back.regulars.includes('Nora'), 'Nora is still a regular', back.regulars.join(',') || 'none');
-  t.ok(back.nora?.recipeId === 'latte' && back.nora?.custom?.milk === 'oat'
-    && back.nora?.custom?.toppings?.join(',') === 'whip',
-    'with her standing order intact', JSON.stringify(back.nora?.custom));
+  t.ok(back.nora?.order?.recipeId === 'latte' && back.nora?.order?.custom?.milk === 'oat'
+    && back.nora?.order?.custom?.toppings?.join(',') === 'whip',
+    'with her standing order intact', JSON.stringify(back.nora?.order?.custom));
+  // >= 4, not === 4: init() rebuilds the queue with three random orders and,
+  // same coin flip as the name match above, one of them can be Nora walking
+  // in again, which bumps her visit count for real (#40, #349). Tolerance
+  // only moves on a serve, so it survives exactly.
+  t.ok((back.nora?.visits ?? 0) >= 4 && Math.abs((back.nora?.tolerance ?? 0) - 1.16) < 1e-9,
+    'and her visit count and tolerance too (#349)', `visits ${back.nora?.visits}, tolerance ${back.nora?.tolerance}`);
   t.ok(back.frappe && back.grinder, 'bought recipe and equipment survived');
   t.ok(back.loyalty === 1 && back.shields === 2 && back.rep === 71, 'loyalty, shields and reputation survived');
   t.ok(await p.$eval('#dayNum', el => el.textContent) === '9', 'and the topbar says day 9 too');
@@ -426,7 +433,7 @@ try {
       rep: s.reputation, prestige: s.prestigeLevel, loyalty: s.loyaltyLevel,
       trigger: s.eventTriggerAt, upgrades: [...s.upgrades].length,
       presetShots: s.presets[0]?.cup.shots, presetToppings: s.presets[0]?.cup.toppings,
-      regularIsFood: s.regulars.Otis?.isFood, regularFoodId: s.regulars.Otis?.foodId };
+      regularIsFood: s.regulars.Otis?.order?.isFood, regularFoodId: s.regulars.Otis?.order?.foodId };
   });
   t.ok(old.day === 14 && old.money === 6100, 'an unversioned save still boots', `day ${old.day}, $${old.money}`);
   t.ok(old.stations === 3 && old.muted === true, 'stations and the mute setting survived');
