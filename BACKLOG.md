@@ -81,12 +81,13 @@ listed there: `Tools/prompt-builder.html` (rank 19) and six social-tag pages
 (rank 20). **A PR that adds a failure goes red. So does a PR that fixes one and
 leaves its line in the list.** Delete the line in the same PR as the fix.
 
-**Every project suite that runs headless now runs in CI.** `site-ci.yml` has a
-matrix of the twelve that had no workflow; a new project's suite goes there, or
-in its own workflow calling `.github/workflows/suite.yml`. Not in CI, on
-purpose: Blue Hour's `browser.mjs` (real-time movement, #53), Absalom's
-`browser.mjs` (its own fixed Chromium path; port it to the harness first), and
-anything under `npm run games`/`play`/`previews`.
+**Twelve areas that had no workflow now run in CI**, as a matrix in
+`site-ci.yml`; a new project's suite goes there, or in its own workflow calling
+`.github/workflows/suite.yml`. Not in CI, on purpose (#353): Blue Hour's
+`browser.mjs` (real-time movement, #53); Absalom's `browser.mjs` (its own fixed
+Chromium path); three browser suites that only speak Playwright while the
+harness is Puppeteer on Linux (Integer Foundry's, rank 21, and two archived
+tools'); and anything under `npm run games`/`play`/`previews`.
 
 **`Pathfinder/data/` is a published interface** (#350, Devon). Any project may
 read it; `Pathfinder/data/README.md` is the contract.
