@@ -268,6 +268,108 @@ const dayBeforeReload = S.day;
 endDay();
 eq(S.day, dayBeforeReload + 1, "and a real day advances cleanly on the repaired career");
 
+// --- the same removal, one level up: state that POINTS AT content, not state
+// keyed by it. A deal mid-contract on a listing whose file was deleted.
+console.log("\ncontent removed out from under a live deal:");
+{
+  // Confirm the bug first, the same way the listingsState purge above does.
+  // This is the exact read deals.js does in five places and calendar.js:95
+  // does on every expiring offer.
+  adoptState(JSON.parse(JSON.stringify(midCareer)));
+  const ghostDeal = {
+    id: "deal_ghost", mode: "buyer", clientRecId: "cr_ghost",
+    listingId: "ls_ghost_removed", agentId: "ag_ghost_removed",
+    price: 400000, ask: 415000, stage: "underContract", round: 1,
+    createdDay: 3, closeDays: 28, milestones: [],
+  };
+  S.deals.push(ghostDeal);
+  let dealThrew = null;
+  try { for (const d of S.deals) { void DB.listings[d.listingId].address; } }
+  catch (e) { dealThrew = e.message; }
+  ok(dealThrew !== null,
+    "confirms the bug: a deal on a deleted listing throws where deals.js reads DB.listings[deal.listingId]",
+    dealThrew || "");
+
+  let agentThrew = null;
+  try { for (const d of S.deals) { void DB.agents[d.agentId].name; } }
+  catch (e) { agentThrew = e.message; }
+  ok(agentThrew !== null,
+    "and again on DB.agents[d.agentId].name, which calendar.js:95 reads on an offer that expires",
+    agentThrew || "");
+
+  // Now the load path, not a hand-edited S.
+  adoptState(JSON.parse(JSON.stringify(midCareer)));
+  const beforeCount = S.deals.length;
+  S.deals.push(JSON.parse(JSON.stringify(ghostDeal)));
+  S.listingsState["ls_ghost_removed"] = { status: "underContract", price: 400000, dom: 12 };
+  S.schedule.push({ day: S.day + 3, label: "Inspection — ghost", type: "inspection", ref: "deal_ghost" });
+  S.choiceQueue.push({ dealId: "deal_ghost", text: "a choice about a deal that is gone" });
+  const logBefore = S.log.length;
+  ok(save(store), "a save holding a deal on deleted content saves fine");
+  ok(loadSave(store), "and loads fine");
+  eq(S.deals.length, beforeCount, "with the orphaned deal dropped by repair");
+  ok(!S.schedule.some(it => it.ref === "deal_ghost"), "and its schedule item dropped with it");
+  ok(!S.choiceQueue.some(ch => ch.dealId === "deal_ghost"), "and its pending choice dropped too");
+  ok(S.log.length > logBefore, "and a Ledger line saying a deal fell through, rather than it vanishing quietly");
+  ok(!("ls_ghost_removed" in S.listingsState),
+    "the listing's own state goes with it, since that listing is gone from data/ as well");
+
+  let liveThrew = null;
+  try {
+    for (const d of S.deals) { void DB.listings[d.listingId].address; void DB.agents[d.agentId].name; }
+    for (const id of S.clientQueue) { void DB.clients[id].tier; }
+  } catch (e) { liveThrew = e.message; }
+  ok(liveThrew === null, "so the reads that threw above run clean on the repaired career", liveThrew || "");
+
+  const dayBefore = S.day;
+  endDay();
+  eq(S.day, dayBefore + 1, "and a real day advances on it");
+}
+
+// --- a listing left flagged under contract with nothing pointing at it.
+{
+  adoptState(JSON.parse(JSON.stringify(midCareer)));
+  // A listing no deal in this save references — midCareer carries a dead deal,
+  // and the reset is deliberately conservative: it only fires when nothing at
+  // all points at the listing, so a deal in any stage keeps its flag.
+  const realId = Object.keys(DB.listings).find(id => !S.deals.some(d => d.listingId === id));
+  ok(!!realId, "the fixture has a listing no deal references, to test the reset against");
+  S.listingsState[realId].status = "underContract";
+  ok(save(store) && loadSave(store), "a save flagging a real listing under contract with no deal behind it round-trips");
+  eq(S.listingsState[realId].status, "onMarket",
+    "and repair puts it back on the market, rather than leaving it unbuyable forever");
+}
+
+// --- a client whose content file was deleted mid-career.
+{
+  adoptState(JSON.parse(JSON.stringify(midCareer)));
+  const before = S.clients.length;
+  S.clients.push({
+    recId: "cr_ghost_client", clientId: "cl_ghost_removed", status: "active",
+    patience: 5, mood: 60, satisfaction: 60, schmoozeCount: 0,
+    revealed: [], viewed: {}, knownIssues: {}, toldIssues: {}, dealId: null,
+  });
+  S.clientQueue.push("cl_ghost_removed");
+  S.usedClients.push("cl_ghost_removed");
+  ok(save(store) && loadSave(store), "a save holding a client whose file was deleted round-trips");
+  eq(S.clients.length, before, "with the record dropped by repair");
+  ok(!S.clientQueue.includes("cl_ghost_removed"), "and the id out of the incoming queue");
+  ok(!S.usedClients.includes("cl_ghost_removed"), "and out of the used list");
+
+  let queueThrew = null;
+  try { for (const id of S.clientQueue) { void DB.clients[id].tier; } }
+  catch (e) { queueThrew = e.message; }
+  ok(queueThrew === null, "so clients.js:9's tier scan over the queue runs clean", queueThrew || "");
+}
+
+// --- repair still does nothing to a career whose content is all present.
+{
+  const untouched = repairCareer(JSON.parse(JSON.stringify(midCareer)));
+  eq(untouched.deals.length, midCareer.deals.length, "repair drops no deal from a career whose content is all present");
+  eq(untouched.clients.length, midCareer.clients.length, "and no client");
+  eq(untouched.clientQueue.length, midCareer.clientQueue.length, "and nothing from the queue");
+}
+
 // --- give the career an ending: day 336, a one-year career (task: headline)
 console.log("\ncareer ending at day 336:");
 {
