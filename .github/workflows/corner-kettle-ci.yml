@@ -1,0 +1,62 @@
+# Checks for Corner & Kettle. Two Node suites and the shared save test, about
+# five seconds of CI with no browser and no dependency, all three already
+# exiting non-zero on a failure (locked #13).
+#
+# smoke-sim.mjs is the one that matters most: it is the file that proves the
+# shop runs the same way twice on a seed and that a whole shift in one call is
+# the same shift as 8,160 frames. A change to the clock or to a Math.random()
+# slipped back into the page is exactly what it is for.
+#
+# test/drive-save.mjs is deliberately not here: it boots the real page in real
+# Chromium and is run by hand, the same arrangement Absalom's and Blue Hour's
+# browser suites have. Wiring a browser into CI is the site-wide "CI runs
+# almost nothing" row's problem, not this workflow's.
+#
+# The page is in the path list because it is the view over these modules and a
+# commit that edits it alone still has to run the source check in smoke-sim.
+# gvb-save.js is there because save.js is a thin layer over it.
+
+name: Corner & Kettle CI
+
+on:
+  pull_request:
+    paths:
+      - "Projects/corner-and-kettle/**"
+      - "Projects/coffee_shop_sim.html"
+      - "assets/js/gvb-save.js"
+      - ".github/workflows/corner-kettle-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Projects/corner-and-kettle/**"
+      - "Projects/coffee_shop_sim.html"
+      - "assets/js/gvb-save.js"
+      - ".github/workflows/corner-kettle-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corner-kettle-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: smoke-sim, smoke-save, gvb-save
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: The sim, seeded (test/smoke-sim.mjs)
+        run: node Projects/corner-and-kettle/test/smoke-sim.mjs
+
+      - name: The save layer (test/smoke-save.mjs)
+        run: node Projects/corner-and-kettle/test/smoke-save.mjs
+
+      - name: The shared save module (assets/js/gvb-save.test.mjs)
+        run: node assets/js/gvb-save.test.mjs

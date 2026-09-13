@@ -1,11 +1,23 @@
 # Corner & Kettle tests
 
-Two suites. Both exit non-zero on any failure (locked decision #13).
+Three suites. All exit non-zero on any failure (locked decision #13).
 
 ```
-node Projects/corner-and-kettle/test/smoke-save.mjs    162 assertions, no browser
-node Projects/corner-and-kettle/test/drive-save.mjs     83 checks, real browser
+node Projects/corner-and-kettle/test/smoke-sim.mjs     114 assertions, no browser, seeded
+node Projects/corner-and-kettle/test/smoke-save.mjs    166 assertions, no browser
+node Projects/corner-and-kettle/test/drive-save.mjs     90 checks, real browser
 ```
+
+## `smoke-sim.mjs`
+
+Drives `../js/sim.js` with `makeRng(seed)` and `advance(dtMs)`, so a
+136-second shift runs in milliseconds and runs the same way twice. Ten sections:
+the rng; a fixed seed's fixed order sequence; every recipe built by the barista
+against the ticket and the scorer; the scoring curve; `advance(136000)` once
+against 8,160 frames; the timers that used to be separate; baristas on the
+clock; a whole day played by a one-line autopilot; prestige; and a source check
+that the page has no dice or clock of its own. Phase 2's `balance.mjs` builds on
+the autopilot here.
 
 ## `smoke-save.mjs`
 
@@ -26,7 +38,7 @@ is looking at, v7 §6). Without those flags the Base and Milk progress bars neve
 fire their callbacks and the shift clock never advances, which reads exactly like
 a broken game.
 
-Twelve sections: the module script actually running, the seven vendored faces,
+Thirteen sections: the module script actually running, the seven vendored faces,
 building and serving a drink, the day loop through to the day-end modal, the
 save round trip, export, a cleared browser restored from the file, four corrupt
 files refused, a save written by the old hand-rolled writer, a hand-edited save

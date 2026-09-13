@@ -1,15 +1,17 @@
 # Corner & Kettle — Feature Wishlist
 
-**Status: nothing here is shipped yet. Three rounds of sessions have left the
-game stable and the balance questions unanswerable — both owned suites pass
-clean (`smoke-save.mjs` 166/0, verified by running it while writing this;
-`drive-save.mjs` 90/0, per handoff v10 §7's own independent run), round 3's
-notes close with "there is no known outstanding defect," and the one open item
-is a design question with numbers attached rather than a bug. Nine phases are
-open across two arcs; the first is Phase 1 — The sim without the page, on
-**Claude Fable 5.1**.** Everything below is planned work, not history. The
-project's history lives in the repo root's `HISTORY.md`, under the prompt rounds
-and the two archived rounds beside it.
+**Status: Phase 1 shipped 2026-09-13 (PR #263); eight phases are open across
+two arcs, and the next is Phase 2 — `test/balance.mjs`, on Claude Fable 5.1.**
+The shop runs in Node now: `js/content.js` is the tables, `js/sim.js` is
+everything that happens to them behind `createSim({content, rng, state,
+notify})`, and `test/smoke-sim.mjs` (114/0) drives a seeded shift in
+milliseconds. Three suites pass clean — `smoke-sim.mjs` 114/0, `smoke-save.mjs`
+166/0, `drive-save.mjs` 90/0 and unchanged by Phase 1, which was the proof the
+split changed nothing a player sees. The one open design item is still the
+Serve gate, a question with numbers attached rather than a bug, and Phase 2 is
+what makes those numbers reproducible. The project's history lives in the repo
+root's `HISTORY.md`, under "Corner & Kettle, arc one" and the prompt rounds
+before it.
 
 ## What it is
 
@@ -54,6 +56,16 @@ every load. It was split out of the HTML for exactly one reason — so a Node
 test could import it. That reason has not yet been applied to anything else.
 
 ## The architecture that is there
+
+**Phase 1 changed this.** The tables are `js/content.js` (174 lines, verbatim),
+the simulation is `js/sim.js` (843 lines: `makeRng`, `freshState`, `newCup`,
+`createSim`), and the page's module script is 1,223 lines of rendering,
+station buttons, chalkboard, `doUnlock()`, sound and save wiring. The page
+builds one sim with `Math.random`, calls `sim.advance(dt)` from
+`requestAnimationFrame`, and draws what `notify()` tells it to. The line numbers
+below describe the file as it was when this plan was written and are kept for
+the reasoning, not the addresses: what they say about *which* code was tangled
+with what is still the map Phase 4 works from.
 
 The single file, by its own `/* ---------- */` section comments: **24–503** the
 stylesheet (seven vendored woff2 faces, a hand-written palette, nine layout
@@ -210,10 +222,11 @@ that is the answer instead.
 Open and unclaimed. Add here rather than starting a new list.
 
 **Measurement**
-- No seeded RNG in the page; `Math.random()` is called directly in eight places,
-  so no two runs are comparable. Three uncoupled clocks (`gameLoop()` on rAF, `tickPatience`
-  on a 1s interval, `runProgress()` on `performance.now()`), none of which can
-  outrun wall-clock.
+- ~~No seeded RNG in the page; `Math.random()` is called directly in eight places,
+  so no two runs are comparable. Three uncoupled clocks.~~ Phase 1: one rng,
+  one clock, `Math.random()` in the page zero times. `runProgress()` still runs
+  a station's progress bar on `performance.now()`, which is a bar and not the
+  game.
 - Round 1's `offered 41 · served 45 · net $2,353 · 99% accuracy` is
   unreproducible and internally inconsistent, and is still what every later
   round compares against. Round 3's day-10 and day-20 numbers exist only in its
@@ -222,26 +235,28 @@ Open and unclaimed. Add here rather than starting a new list.
   judged fine analytically and never swept.
 
 **The file**
-- 1,978 lines in one `<script type="module">`; only the save schema is
-  importable, so only the save schema has a Node test.
-- `STATION_TAB_DEFS`' `needsWork` and `autoAssistStep()` re-derive what
-  `getOrderRequirements()` knows — a new recipe field must be added in three
-  places.
+- ~~1,978 lines in one `<script type="module">`; only the save schema is
+  importable, so only the save schema has a Node test.~~ Phase 1: 1,223, and
+  the sim has `smoke-sim.mjs`. Rendering, the stations and the chalkboard are
+  still in the page (Phase 4).
+- `STATION_TAB_DEFS`' `needsWork` (page) and `autoAssistStep()` (sim) re-derive
+  what `getOrderRequirements()` knows — a new recipe field must be added in
+  three places. `smoke-sim.mjs` section 3 now fails if the barista and the
+  ticket disagree, which catches two of the three.
 - `doUnlock()` is 145 lines of `if (type === ...)`, and every branch that fails
   its affordability test falls through to `toast('Unlocked!')`: buying what you
   cannot afford says you bought it. The only real guard is the `disabled`
-  attribute the chalkboard writes, i.e. the view. Training costs `300` as a
-  bare literal in two places; every other price is a named constant.
+  attribute the chalkboard writes, i.e. the view. ~~Training costs `300` as a
+  bare literal in two places~~ (`BARISTA_TRAIN_COST` since Phase 1).
 - `renderAll()` writes the save synchronously on every call, barista steps
   included.
 - No `README.md` and no `js/README.md`;
   `Projects/daredevil/js/README.md` is the model. `test/README.md` is stale —
   162 assertions, 83 checks and "twelve sections" against 166, 90 and thirteen.
-- Dead or half-wired: `state.spawnTimer` (876) is never read;
-  `spawnReplacementIfNeeded()` (1777) has an empty body and is still called
-  from `tryAcceptCustomer()` at 1668; `cup._blendIce` is set by the blend
-  station's "Add ice" button (1608) and read by nothing, so the button toasts
-  and does nothing.
+- ~~Dead or half-wired: `state.spawnTimer` is never read;
+  `spawnReplacementIfNeeded()` has an empty body; `cup._blendIce` is set by the
+  blend station's "Add ice" button and read by nothing.~~ All three removed in
+  Phase 1 (#331 for the button).
 
 **Staff**
 - A barista given the day off still costs full wage: `endShift()` and the
@@ -294,51 +309,35 @@ this file to know which session to start.
 
 ## Phase 1 — The sim without the page
 
-**Every number this game has ever reported came from a human sitting through a
-real 136-second shift.**
+**Shipped 2026-09-13, PR #263, on Claude Fable 5.1.** The full record is
+`HISTORY.md`, "Corner & Kettle, arc one", decisions #331 to #335.
 
-The shop is a simulation wearing a DOM. Nothing about spawning, patience,
-barista work, scoring or the economy needs a browser, but all of it reads
-`state` as a module-level `let`, writes back through `renderAll()`, and takes
-its time from three separate wall-clock sources. This phase gets the model out
-without changing one thing a player would notice, on the precedent already in
-the repo: `js/save.js` was split out for exactly this reason, and `CATALOG`
-proves content can be derived rather than duplicated.
+- [x] **`js/content.js`.** The tables, moved verbatim, plus the sprite palette
+  and `BARISTA_TRAIN_COST`. Nothing in it reads `state`, and `smoke-sim.mjs`
+  checks that it never does.
+- [x] **`js/sim.js`, pure, no DOM.** `createSim({content, rng, state, notify})`
+  owns everything the row listed, and `scoreServe(slot)` returns `{base, tip,
+  eventBonus, earned, ratio, happy, repDelta, comboBonus, regularBonus,
+  shieldUsed, title}`. Also `acceptCustomer`, `releaseSlot`, `discardCup` and
+  `prestige`, which were pure state and had no reason to stay.
+- [x] **One clock, injected.** `sim.advance(dtMs)` pays out in `STEP_MS` steps
+  with the patience tick and the served-cup clear folded in (#332, #334). The
+  page calls it from rAF; the harness calls it with whatever it likes.
+- [x] **One RNG, injected.** `makeRng(seed)`; the page passes `Math.random`.
+  The eight direct calls are zero. Sprite colours come off the same rng (#335).
+- [x] **The page becomes a caller.** `serveSlot()` keeps the toast and the
+  sound; `spawnTimer` and `spawnReplacementIfNeeded()` are gone; the blend
+  station's dead Add Ice button is removed (#331). The sim speaks through
+  `notify()` and the page coalesces redraws to one per frame (#333).
+- [x] **`test/smoke-sim.mjs`,** 114 assertions in ten sections, nine breaks on
+  purpose. A one-line autopilot plays a whole day twice on one seed and gets
+  the same shop; Phase 2 starts from it.
+- [x] **`drive-save.mjs` unchanged and still 90/0.** Before and after, same
+  environment.
 
-- [ ] **`js/content.js`.** The tables from lines 577–897, moved verbatim, and
-  nothing that reads `state`. `SHIFT_MS`/`PHASE_MS` derive here.
-- [ ] **`js/sim.js`, pure, no DOM.** `createSim({content, rng, state})` owning
-  `spawnFactor`, `patienceFactor`, the `shop*Mult` helpers, `generateOrder`,
-  `getOrderRequirements`, `orderIsComplete`, `autoAssistStep`, `baristaFumble`,
-  `runBaristaTick`, `tickPatience`, `fireRandomEvent`, `rollDailyModifier`,
-  `endShift`, `startNextDay`, and `scoreServe` — the arithmetic half of
-  `serveSlot()`, returning `{earned, tip, ratio, happy, repDelta}` and touching
-  no DOM.
-- [ ] **One clock, injected.** `sim.advance(dtMs)` folds `gameLoop()`'s body,
-  the 1-second patience tick and each barista's accumulator into one
-  accumulator-driven step. The page calls it from rAF with real deltas; the
-  harness calls it with 16.67 and never blocks.
-- [ ] **One RNG, injected.** `makeRng(seed)`, copying the shape from
-  `Projects/absalom-inheritance/js/rules.js`, replacing all eight direct
-  `Math.random()` calls — `rand()`/`randInt()` take the injected one. The page
-  passes `Math.random`.
-- [ ] **The page becomes a caller.** `serveSlot()` keeps the toast, the sound
-  and the DOM; the money comes from `scoreServe`. Delete `state.spawnTimer` and
-  `spawnReplacementIfNeeded()` on the way past, and either wire `cup._blendIce`
-  to something or remove its button.
-- [ ] **`test/smoke-sim.mjs`,** same harness shape as `smoke-save.mjs`: a fixed
-  seed gives a fixed order sequence; ticket, barista and scorer read one
-  requirement list; `scoreServe` reproduces `0.35 + 0.65*ratio` at 0%, 50% and
-  100%; `advance(136000)` once ends the shift exactly as 8,160 calls of 16.67
-  do.
-- [ ] **`drive-save.mjs` unchanged and still 90/0.** That is the whole proof
-  the phase changed nothing. A beat that needs editing to pass is the bug.
-
-*Leans on:* `js/save.js`'s precedent, `Tools/board-check/harness.mjs`.
-*Save:* none — `toSaveData`/`applyToState` keep their exact shape.
-*Model:* **Claude Fable 5.1** — lifting a live simulation out of a DOM without
-changing observed behaviour is the case where a wrong answer is silent and the
-only safety net is a browser suite that warps the clock.
+*Left for later, on purpose:* `doUnlock()` and the chalkboard are still in the
+page (Phase 4). `runProgress()` still times a station's progress bar on
+`performance.now()`; it is a bar, not the game, and the sim does not wait on it.
 
 ## Phase 2 — `test/balance.mjs`
 

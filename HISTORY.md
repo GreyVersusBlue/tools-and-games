@@ -8352,6 +8352,128 @@ and the same four failures; `check-collisions.mjs` passes at 0.
 
 ---
 
+# Corner & Kettle, arc one
+
+## Phase 1 — The sim without the page (2026-09-13)
+
+**A 2+ row, taken alone, on Claude Fable 5.1, and it finished in the one
+session.** Decisions #331 to #335. The row's own text said it would not, and the
+reason it did is that the split was already designed: `js/save.js` had shown
+the shape, `CATALOG` had shown content can be derived, and the 1,978-line module
+script was mostly functions that read `state` and called `renderAll()`. The
+work was moving them without changing what a player sees, and the proof of
+that is the one the wishlist named: `test/drive-save.mjs` untouched, 90 checks,
+0 failed, before and after, in the same environment.
+
+**What moved.** `js/content.js` (174 lines) is the tables from the page's lines
+577–897, verbatim, plus the sprite palette and a `BARISTA_TRAIN_COST` that used
+to be a bare `300` in two places. `js/sim.js` (843 lines) is `makeRng(seed)`
+(Mulberry32, the shape from `absalom-inheritance/js/rules.js`), `freshState()`,
+`newCup()`, and `createSim({content, rng, state, notify})`, which owns every
+function the row listed: the tuning helpers, order generation, the requirements
+list, the barista, the scorer, the clock, the day. The page's module script is
+1,223 lines from 1,978; the file is 1,789 from 2,542. `Math.random()` is called
+in the page zero times, from eight; `setInterval` zero, from one;
+`performance.now()` once, inside `runProgress()`, which is a progress bar and
+not the game.
+
+**The clock.** `sim.advance(dtMs)` banks the delta and pays it out in
+`STEP_MS` (1000/60) steps, each of which is what `gameLoop()` did per frame plus
+the patience tick that used to be its own `setInterval` and the half-second
+clear that used to be a `setTimeout` after every serve. `advance(136000)` once
+and 8,160 calls of one frame each take the same 8,160 steps and leave the same
+shop, down to the next number the rng will produce, and `smoke-sim.mjs` says so
+with a fingerprint of the state. The first run of that assertion got 8,159:
+8,160 frames of 1000/60 sum to 136000.0000000124, so a bank of exactly 136000
+was a hair short of the last step. The bank now pays a step when it is within a
+microsecond of one.
+
+**The rng.** `rand()` and `randInt()` close over the injected `rng`. The page
+passes `Math.random`; the suite passes `makeRng(seed)`, and forty orders on seed
+7, twice, are the same forty, regulars included. The customer's sprite colours
+are picked in the sim too, so they come off the same sequence and an order
+carries `{hair, skin, shirt, pants}` rather than 700 bytes of SVG.
+
+**Found on the way.** `freshState()` leaves `eventTriggerAt` at 0, as the page's
+old literal did, and the page only ever worked because `applyToState(fresh())`
+ran it through `repairSave`, which rolls one. In Node, without the save layer,
+the day's random event fired on the first frame of every shift, which put a
+critic at the head of a queue that was supposed to be empty and an outage on a
+spawn interval the test had computed without one. `createSim` schedules the
+event when the state has none. `smoke-sim.mjs` section 6 is the one that
+noticed, by failing on patience and on the first customer's arrival time.
+
+**The suite.** `test/smoke-sim.mjs`, 114 assertions in ten sections, same
+harness as `smoke-save.mjs`: the rng; a fixed seed's fixed order sequence;
+every recipe under six customisations, with the barista working the ticket and
+each step required to satisfy a new line and the scorer required to see all of
+them; the scoring curve at 0%, 50% and 100% with patience at zero so the base
+stands alone, then the tip at full patience, food right and wrong, a shield, a
+critic; the one-clock equivalence, including ragged frame deltas; the timers
+that used to be separate; a senior barista taking a step on the interval and a
+junior with the day off taking none; a whole day played by a one-line
+autopilot twice on one seed and once on another; prestige; and a source check
+that the page has no `Math.random`, no `setInterval`, and calls
+`sim.advance(dt)`, that `sim.js` names `Math.random` once as a default, and
+that `content.js` never says `state`. Nine breaks on purpose, each named by the
+assertion that owned it: the float slack, the missing event schedule, the curve
+changed to 0.30 + 0.70, the barista skipping the syrup line (164 failures), the
+whole-delta step of the old `gameLoop` (caught by the fingerprint and by the
+rng position), a `Math.random()` put back in the page, served cups that never
+clear, wages not paid, and patience that never drops. That last one passed the
+suite the first time, because the `sed` had not matched the one-line `forEach`
+and nothing was broken; the second attempt, verified with a grep count, failed
+exactly one assertion. Check that the break landed before reading a green run
+as a verdict.
+
+**The page as a caller.** `serveSlot()` keeps the toast, the sound and the
+redraw and gets `{base, tip, eventBonus, earned, ratio, happy, repDelta,
+comboBonus, regularBonus, shieldUsed, title}` from `scoreServe()`.
+`tryAcceptCustomer()` sets focus and the station tab, the sim moves the
+customer. `endShift()` is the sim's and returns the summary; the page's
+`showDaySummary()` draws the modal from it. `state.spawnTimer` and
+`spawnReplacementIfNeeded()` are gone. `doUnlock()` and the chalkboard stay in
+the page (Phase 4's row).
+
+- **The blend station's Add Ice button is removed, not wired** (#331). It set
+  `cup._blendIce`, which nothing read, and the ticket for a blended drink has no
+  ice line: the requirement is `cup.blended`, which the Blend button sets. The
+  milk station's ice toggle is the one that counts. The hint text no longer says
+  "then blend with ice".
+- **Time is fixed-step, and a closed shop drops its bank** (#332). `advance()`
+  pays out in `STEP_MS` steps with a 1e-6 ms slack for float residue; a shift
+  that is not running takes no steps and zeroes the bank, so a day-end modal
+  left open for ten minutes does not replay ten minutes the instant the next
+  day opens. The old `gameLoop()` applied each frame's delta whole, which made
+  the shop's behaviour a function of frame rate; that is the property the
+  harness needs gone.
+- **The sim speaks through `notify()`, and the page coalesces** (#333). Three
+  event types — `toast`, `render` with a `queue` or `all` scope, `shiftEnd` with
+  the summary. Inside the page's frame loop renders are batched to one per
+  frame; from a click or the debug hook they happen at once. In Node nobody
+  listens and the sim does not care. This is the seam Phase 4 widens.
+- **The served cup's half second is on the sim clock** (#334). `scoreServe()`
+  marks the slot `serving` with `servedAt`; `advance()` clears it after
+  `SERVE_CLEAR_MS`. The old `setTimeout(…, 500)` was a fourth clock and the one
+  the harness could not warp.
+- **An order carries its sprite's colours, not its markup** (#335).
+  `generateOrder()` picks `{hair, skin, shirt, pants}` off the rng;
+  `makeSpriteSvg(sprite)` in the page draws them. Drawing is the page's job and
+  an order is data.
+
+**The checks.** `smoke-sim.mjs` 114/0, `smoke-save.mjs` 166/0, `drive-save.mjs`
+90/0 unchanged, `gvb-save.test.mjs` 50/0. `check-integrity.mjs` 1,573 units
+with the same one broken, `Tools/prompt-builder.html`; `social:check` the same
+four failures and six pages out of sync as before. A new
+`.github/workflows/corner-kettle-ci.yml` runs the two Node suites and the shared
+save test on every pull request and push to `main` that touches the project —
+the browser suite stays by hand, as Absalom's and Blue Hour's do.
+
+**Shared things touched**, in the same PR: none of the four. `CLAUDE.md`'s
+locked-decision count, 330 → 335.
+
+---
+
 # The two August 2026 audits
 
 ## Numina, August 2026
