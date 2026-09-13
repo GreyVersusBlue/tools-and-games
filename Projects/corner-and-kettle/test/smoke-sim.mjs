@@ -382,6 +382,79 @@ section("10. the page has no clock and no dice of its own");
   const content = uncommented(readFileSync(join(here, "..", "js", "content.js"), "utf8"));
   ok(!/\bstate\b/.test(content), "content.js reads no state");
   ok(!/spawnReplacementIfNeeded|spawnTimer|_blendIce/.test(script), "spawnTimer, spawnReplacementIfNeeded and the dead blend-ice button are gone");
+  ok(!/needsWork|cupMatchesEnough/.test(script), "the page decides neither the tab dots nor the Serve gate — both come from the sim (#342)");
+}
+
+section("11. the Serve gate and its cue (#341, #342)");
+{
+  const { sim } = shop(11);
+  const TABS = ["base", "milk", "blend", "syrup", "toppings", "food"];
+  // Every line names a real station tab, and its own apply() satisfies its own
+  // check on an empty cup — so the dot, the barista and the ticket cannot
+  // disagree about where a line is made or what making it means.
+  let lines = 0, badStation = [], badApply = [];
+  for (const r of RECIPES) {
+    const o = order(r.id, { milk: r.needsMilk ? "almond" : undefined, syrup: r.requiredSyrup || "hazelnut", toppings: ["whip", "sprinkles"], ice: !!r.ice });
+    for (const req of sim.getOrderRequirements(o)) {
+      lines++;
+      if (!TABS.includes(req.station)) badStation.push(`${r.id}: "${req.label}" -> ${req.station}`);
+      const slot = slotFor(o); req.apply(slot);
+      if (!req.check(slot)) badApply.push(`${r.id}: "${req.label}"`);
+    }
+  }
+  for (const f of FOODS) {
+    const [req] = sim.getOrderRequirements(foodOrder(f.id));
+    lines++;
+    if (req.station !== "food") badStation.push(`${f.id} -> ${req.station}`);
+    const slot = slotFor(foodOrder(f.id)); req.apply(slot);
+    if (!req.check(slot)) badApply.push(f.id);
+  }
+  ok(badStation.length === 0, `all ${lines} ticket lines name one of the six working tabs${badStation.length ? " — " + badStation.join("; ") : ""}`);
+  ok(badApply.length === 0, `and each line's apply() satisfies its own check${badApply.length ? " — " + badApply.join("; ") : ""}`);
+
+  // A latte, line by line: the button's count is the ticket's count.
+  const latte = slotFor(order("latte", { milk: "oat" }));
+  let r = sim.serveReadiness(latte);
+  ok(!r.canServe && r.done === 0 && r.total === 2, "an empty latte cannot be served, 0 of 2");
+  eq(r.missing.join(" | "), "1 espresso shot | Oat Milk, steamed", "and says what it still needs");
+  latte.cup.base = "espresso"; latte.cup.shots = 1;
+  ok(!sim.serveReadiness(latte).canServe, "a shot and no milk is still not a latte attempt (cupMatchesEnough)");
+  latte.cup.milk = "oat";
+  r = sim.serveReadiness(latte);
+  ok(r.canServe && !r.complete && r.done === 1 && r.total === 2, "cold oat milk: servable, short, 1 of 2");
+  eq(r.missing.join(" | "), "Oat Milk, steamed", "missing exactly the steaming");
+  eq([...sim.stationsNeedingWork(latte)].join(","), "milk", "and only the milk tab carries a dot");
+  latte.cup.milkSteamed = true;
+  r = sim.serveReadiness(latte);
+  ok(r.canServe && r.complete && r.missing.length === 0 && r.done === 2, "steamed: complete, nothing missing");
+  eq(sim.stationsNeedingWork(latte).size, 0, "and no tab carries a dot");
+
+  // What the button promises is what the scorer pays: done/total is the ratio.
+  const short = slotFor(order("caramelmac", { milk: "whole", syrup: "caramel", toppings: ["whip", "cinnamon"] }, { patience: 0 }));
+  short.cup.base = "espresso"; short.cup.shots = 1; short.cup.milk = "whole"; short.cup.toppings = ["cinnamon"];
+  const promise = sim.serveReadiness(short);
+  ok(promise.canServe && promise.done === 2 && promise.total === 5, `a macchiato with a shot, cold milk and cinnamon is 2 of 5 (${promise.done}/${promise.total})`);
+  eq(sim.scoreServe(short).ratio, promise.done / promise.total, "and the scorer pays exactly that ratio");
+
+  // The ice line is made at the milk station, where the ice button is. Before
+  // #342 the tabs' own predicates had no line for it, so an unfinished iced
+  // latte showed no dot anywhere.
+  const iced = slotFor(order("latte", { milk: "oat", ice: true }));
+  iced.cup.base = "espresso"; iced.cup.shots = 1; iced.cup.milk = "oat";
+  eq([...sim.stationsNeedingWork(iced)].join(","), "milk", "an iced latte short only its ice shows a dot on Milk");
+  const frappe = slotFor(order("frappe", { milk: "skim" }));
+  eq([...sim.stationsNeedingWork(frappe)].sort().join(","), "base,blend,milk", "an empty frappe needs base, milk and blend");
+
+  // Food: an empty plate is not an attempt (#342). It used to be servable for
+  // 40% of the price the instant the order reached a station.
+  const plate = slotFor(foodOrder("muffin"));
+  r = sim.serveReadiness(plate);
+  ok(!r.canServe && r.total === 1 && r.missing[0] === "Muffin", "an empty plate cannot be served, and says it needs the muffin");
+  plate.foodPlated = "cookie";
+  r = sim.serveReadiness(plate);
+  ok(r.canServe && !r.complete && r.done === 0, "the wrong pastry is servable and short, 0 of 1");
+  plate.foodPlated = "muffin";
+  ok(sim.serveReadiness(plate).complete, "the right one is complete");
 }
 
 /* ---------- report ---------- */

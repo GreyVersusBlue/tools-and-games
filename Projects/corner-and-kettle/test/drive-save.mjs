@@ -151,8 +151,18 @@ try {
   const ticket = await p.$eval('.slot .ticket', el => el.innerText.replace(/\n/g, ' / '));
   t.ok(/Latte/.test(ticket) && /Oat Milk, steamed/.test(ticket), 'the ticket lists what the cup needs', ticket);
   t.ok(await p.$eval('.slot .servebtn', el => el.disabled), 'Serve is disabled on an empty cup');
+  // A disabled control is never mute (#341): it names what the cup needs first.
+  const emptyLabel = await p.$eval('.slot .servebtn', el => el.getAttribute('aria-label'));
+  t.ok(/Nothing to serve yet/.test(emptyLabel) && /1 espresso shot/.test(emptyLabel) && /Oat Milk, steamed/.test(emptyLabel),
+    'and its label says what the cup still needs', emptyLabel);
 
   const moneyBefore = await p.evaluate(() => window.__CK_DEBUG__.state.money);
+  // The S key used to call serveSlot() straight past the disabled button.
+  await p.keyboard.press('s');
+  await wait(150);
+  const afterS = await p.evaluate(() => ({ money: window.__CK_DEBUG__.state.money, serving: !!window.__CK_DEBUG__.state.slots[0]?.serving }));
+  t.ok(afterS.money === moneyBefore && !afterS.serving, 'pressing S on the empty cup serves nothing either',
+    `$${moneyBefore} -> $${afterS.money}`);
 
   // Base: pull a shot. This is a runProgress() button — the callback only fires
   // if requestAnimationFrame is running, which is the whole reason for the
@@ -164,6 +174,15 @@ try {
 
   await p.click('.stationTab[data-tab="milk"]');
   await p.click('[data-milk="oat"]');
+  // Shot in, oat milk poured cold: a real attempt, one line short. The button
+  // says so in its text, its style and its name (#341), against the DOM (#39).
+  const short = await p.$eval('.slot .servebtn', el => ({ text: el.textContent.trim(), disabled: el.disabled,
+    short: el.classList.contains('short'), label: el.getAttribute('aria-label') }));
+  t.ok(short.text === 'Serve 1/2' && !short.disabled && short.short, 'a short cup reads "Serve 1/2", enabled, styled as a warning',
+    `${short.text}${short.disabled ? ' (disabled)' : ''}${short.short ? ' .short' : ''}`);
+  t.ok(/Still missing: Oat Milk, steamed\./.test(short.label), 'and names exactly what is missing', short.label);
+  const dotTabs = await p.$$eval('.stationTab', els => els.filter(e => e.querySelector('.needdot')).map(e => e.dataset.tab).join(','));
+  t.ok(dotTabs === 'milk', 'the only tab with a still-needed dot is Milk', dotTabs || 'none');
   await p.click('#btnSteam');
   await waitFor(p, () => window.__CK_DEBUG__.state.slots[0].cup.milkSteamed, { timeout: 5000 });
   t.ok(true, 'Steam Milk ran its progress bar to the end');
@@ -172,6 +191,8 @@ try {
   t.ok(done, 'the ticket is complete');
   const dots = await p.$$eval('.stationTab .needdot', els => els.length);
   t.ok(dots === 0, 'and no station tab still shows a needed-work dot', `${dots} dots`);
+  const full = await p.$eval('.slot .servebtn', el => ({ text: el.textContent.trim(), short: el.classList.contains('short') }));
+  t.ok(full.text === 'Serve' && !full.short, 'and the button is plain "Serve" again', full.text);
 
   await p.click('.slot .servebtn');
   await wait(900);
@@ -179,6 +200,60 @@ try {
   t.ok(moneyAfter > moneyBefore, 'serving it paid', `$${moneyBefore} -> $${moneyAfter}`);
   t.ok(await p.evaluate(() => window.__CK_DEBUG__.state.combo >= 1), 'and started a streak');
   t.ok(await p.evaluate(() => window.__CK_DEBUG__.state.slots[0] === null), 'the station cleared');
+
+  // Now serve one short on purpose, and check the scorer paid what the button said.
+  await p.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.queue = [];
+    const o = d.generateOrder();
+    Object.assign(o, { isFood: false, recipeId: 'latte', price: 45,
+      custom: { milk: 'whole', syrup: undefined, toppings: [], ice: false } });
+    d.state.queue.push(o);
+    d.tryAcceptCustomer(o.id);
+  });
+  await p.click('.stationTab[data-tab="base"]');
+  await p.click('#btnEspresso');
+  await waitFor(p, () => window.__CK_DEBUG__.state.slots[0]?.cup.shots >= 1, { timeout: 5000 });
+  await p.click('.stationTab[data-tab="milk"]');
+  await p.click('[data-milk="whole"]');
+  const shortText = await p.$eval('.slot .servebtn', el => el.textContent.trim());
+  const acc0 = await p.evaluate(() => ({ sum: window.__CK_DEBUG__.state.dayStats.accuracySum, n: window.__CK_DEBUG__.state.dayStats.accuracyCount }));
+  await p.click('.slot .servebtn');
+  await wait(200);
+  const acc1 = await p.evaluate(() => ({ sum: window.__CK_DEBUG__.state.dayStats.accuracySum, n: window.__CK_DEBUG__.state.dayStats.accuracyCount,
+    combo: window.__CK_DEBUG__.state.combo }));
+  const scored = Math.round((acc1.sum - acc0.sum) * 1000) / 1000;
+  t.ok(shortText === 'Serve 1/2' && acc1.n === acc0.n + 1 && scored === 0.5,
+    'serving the "Serve 1/2" cup scored it at exactly 1/2', `${shortText}, ratio ${scored}`);
+  t.ok(acc1.combo === 0, 'and a short cup ends the streak, as it always has');
+  await wait(700);
+
+  // A Frappe by hand, the way the Blend station's hint says: a shot, milk, then
+  // blend. Blending kept an espresso base as 'espresso', so the ticket's
+  // "Blended base" line could never tick and a hand-built Frappe topped out at
+  // 2/3 (#343). Only a barista, who sets the base directly, could finish one.
+  await p.evaluate(() => {
+    const d = window.__CK_DEBUG__;
+    d.state.queue = [];
+    const o = d.generateOrder();
+    Object.assign(o, { isFood: false, recipeId: 'frappe', price: 65,
+      custom: { milk: 'skim', syrup: undefined, toppings: [], ice: false } });
+    d.state.queue.push(o);
+    d.tryAcceptCustomer(o.id);
+  });
+  await p.click('.stationTab[data-tab="base"]');
+  await p.click('#btnEspresso');
+  await waitFor(p, () => window.__CK_DEBUG__.state.slots[0]?.cup.shots >= 1, { timeout: 5000 });
+  await p.click('.stationTab[data-tab="milk"]');
+  await p.click('[data-milk="skim"]');
+  await p.click('.stationTab[data-tab="blend"]');
+  await p.click('#btnBlend');
+  await waitFor(p, () => window.__CK_DEBUG__.state.slots[0]?.cup.blended, { timeout: 5000 });
+  await wait(100);
+  const frappe = await p.$eval('.slot .servebtn', el => el.textContent.trim());
+  t.ok(frappe === 'Serve' && await p.evaluate(() => window.__CK_DEBUG__.orderIsComplete(window.__CK_DEBUG__.state.slots[0])),
+    'a Frappe built by hand (shot, milk, blend) is complete', frappe);
+  await p.evaluate(() => { const s = window.__CK_DEBUG__.state; s.slots[0] = null; });
 
   /* ---------- 4. the clock runs and a day ends ---------- */
 

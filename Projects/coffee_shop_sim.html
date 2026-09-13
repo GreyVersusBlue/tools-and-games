@@ -274,6 +274,10 @@ body{
 }
 .slot .servebtn:hover{background:var(--sage-dark);}
 .slot .servebtn:disabled{background:#c9c2b3;cursor:not-allowed;}
+/* The cue (#341): a short cup can still be served, and the button says what
+   that costs. A warning, not a disabled control. #8a4a12 on white is 6.4:1. */
+.slot .servebtn.short{background:#8a4a12;box-shadow:inset 0 0 0 2px #e0b969;}
+.slot .servebtn.short:hover{background:#6f3b0e;}
 .slot .discardbtn{
   flex:1 1 60px;
   min-width:0;
@@ -616,8 +620,8 @@ const sim = createSim({ content: CONTENT, rng: Math.random, state, notify });
 const {
   rand, randInt, reputationStars, hasUpgrade, queueMax, espressoDurationMs,
   stationDurationMult, getActiveDailyModifier, rollDailyModifier, fireRandomEvent,
-  getUnlockedFoodList, generateOrder, getOrderRequirements, cupMatchesEnough,
-  orderIsComplete, autoAssistStep, acceptCustomer, scoreServe, currentPhaseIndex,
+  getUnlockedFoodList, generateOrder, getOrderRequirements, serveReadiness,
+  stationsNeedingWork, orderIsComplete, autoAssistStep, acceptCustomer, scoreServe, currentPhaseIndex,
   startNextDay, prestige, mistakeReduceFactor,
 } = sim;
 
@@ -929,7 +933,6 @@ function renderSlots(){
       return;
     }
     const order = slot.customer;
-    const canServe = slot.food ? true : cupMatchesEnough(slot.cup, order);
     const worker = state.baristas.find(b=>b.targetSlot===idx);
     if(worker) div.className += ' baristaWorking';
     div.innerHTML = `
@@ -939,7 +942,7 @@ function renderSlots(){
       <div class="cupwrap">${ slot.food ? `<div style="font-size:64px">${FOODS.find(f=>f.id===order.foodId).icon}</div>` : cupSvg(slot.cup) }</div>
       <div class="slotbtnrow">
         <button class="discardbtn" title="dump the cup and start over">🗑️ Dump</button>
-        <button class="servebtn" aria-keyshortcuts="s" title="Shortcut: S" ${canServe? '':'disabled'}>Serve</button>
+        ${serveButtonHtml(slot)}
       </div>
     `;
     div.querySelector('.clearbtn').onclick = (e)=>{ e.stopPropagation(); releaseSlot(idx); };
@@ -950,49 +953,52 @@ function renderSlots(){
   });
 }
 
+// The Serve button reads the ticket (#341). A complete cup says "Serve". A
+// short one says "Serve 3/5", is styled as a warning and names what is missing,
+// because partial credit is a designed mechanic and the only thing wrong with
+// it was that the price of the click was invisible. A cup with nothing real in
+// it is disabled, and says what it needs first, so it is never mute.
+function serveButtonHtml(slot){
+  const r = serveReadiness(slot);
+  const esc = s => s.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  let text = 'Serve', cls = 'servebtn', label;
+  if(!r.canServe){
+    label = `Nothing to serve yet. Still needs: ${r.missing.join(', ')}.`;
+  } else if(r.complete){
+    label = 'Serve this order. Every ticket line is done.';
+  } else {
+    text = `Serve ${r.done}/${r.total}`;
+    cls += ' short';
+    label = `Serve now for partial credit, ${r.done} of ${r.total} done. Still missing: ${r.missing.join(', ')}.`;
+  }
+  return `<button class="${cls}" aria-keyshortcuts="s" aria-label="${esc(label)}" title="${esc(label)} Shortcut: S" ${r.canServe? '':'disabled'}>${text}</button>`;
+}
+
 /* ---------- STATIONS (all sections visible at once) ---------- */
 function currentSlot(){
   return state.slots[state.focusedSlot];
 }
 
-// Tab definitions. needsWork(slot) drives the little "still needed" dot.
+// The seven tabs. The "still needed" dot is not decided here: each ticket line
+// from getOrderRequirements() names the station it is made at, and a tab gets
+// a dot when one of its lines is unmet. It used to be seven hand-written
+// predicates saying the same thing in different words, and the ice line had
+// none (#342).
 const STATION_TAB_DEFS = [
-  {id:'base', label:'☕ Base', needsWork: slot=>{
-    if(slot.food) return false;
-    const r = RECIPES.find(x=>x.id===slot.customer.recipeId);
-    return !(slot.cup.base===r.base && (r.shots ? slot.cup.shots>=r.shots : true));
-  }},
-  {id:'milk', label:'🥛 Milk', needsWork: slot=>{
-    if(slot.food) return false;
-    const o = slot.customer, r = RECIPES.find(x=>x.id===o.recipeId);
-    if(!r.needsMilk) return false;
-    const needsSteamed = !o.custom.ice && !r.blended;
-    return !(slot.cup.milk===o.custom.milk && (needsSteamed ? slot.cup.milkSteamed : true));
-  }},
-  {id:'blend', label:'🥶 Blend', needsWork: slot=>{
-    if(slot.food) return false;
-    const r = RECIPES.find(x=>x.id===slot.customer.recipeId);
-    return !!r.blended && !slot.cup.blended;
-  }},
-  {id:'syrup', label:'💧 Syrup', needsWork: slot=>{
-    if(slot.food) return false;
-    const o = slot.customer;
-    return !!o.custom.syrup && slot.cup.syrup!==o.custom.syrup;
-  }},
-  {id:'toppings', label:'✨ Top', needsWork: slot=>{
-    if(slot.food) return false;
-    return slot.customer.custom.toppings.some(t=>!slot.cup.toppings.includes(t));
-  }},
-  {id:'food', label:'🍪 Food', needsWork: slot=>{
-    return !!slot.food && slot.foodPlated !== slot.customer.foodId;
-  }},
-  {id:'presets', label:'⭐ Presets', needsWork: ()=>false},
+  {id:'base', label:'☕ Base'},
+  {id:'milk', label:'🥛 Milk'},
+  {id:'blend', label:'🥶 Blend'},
+  {id:'syrup', label:'💧 Syrup'},
+  {id:'toppings', label:'✨ Top'},
+  {id:'food', label:'🍪 Food'},
+  {id:'presets', label:'⭐ Presets'},
 ];
 
 function renderStationTabs(slot){
   const bar = document.getElementById('stationTabs');
+  const needs = slot ? stationsNeedingWork(slot) : new Set();
   bar.innerHTML = STATION_TAB_DEFS.map((t,i)=>{
-    const dot = (slot && t.needsWork(slot)) ? '<span class="needdot"></span>' : '';
+    const dot = needs.has(t.id) ? '<span class="needdot"></span>' : '';
     return `<button class="stationTab ${state.stationTab===t.id?'active':''}" data-tab="${t.id}" aria-keyshortcuts="${i+1}" title="Shortcut: ${i+1}">${t.label}${dot}</button>`;
   }).join('');
   bar.querySelectorAll('.stationTab').forEach(btn=>{
@@ -1135,7 +1141,9 @@ function attachStationHandlers(){
   const db = document.getElementById('btnDrip');
   const tb = document.getElementById('btnTea');
   if(eb) eb.onclick = ()=> runProgress('baseProgress', espressoDurationMs()*stationDurationMult(), ()=>{
-    cup.base='espresso'; cup.shots++; toast('Pulled a shot ☕'); soundShot(); renderAll();
+    // A shot into a cup that is already blended stays a blended base, so a
+    // Frappe can be built in either order (#343).
+    cup.base = cup.blended ? 'frappeBase' : 'espresso'; cup.shots++; toast('Pulled a shot ☕'); soundShot(); renderAll();
   });
   if(db) db.onclick = ()=> runProgress('baseProgress', 350*stationDurationMult(), ()=>{
     cup.base='drip'; toast('Brewed drip coffee'); renderAll();
@@ -1158,7 +1166,10 @@ function attachStationHandlers(){
 
   const blend = document.getElementById('btnBlend');
   if(blend) blend.onclick = ()=> runProgress('blendProgress', 1100*stationDurationMult(), ()=>{
-    cup.blended = true; cup.base = cup.base || 'frappeBase'; toast('Blended! 🥤'); soundBlend(); renderAll();
+    // Blending makes the base the blended base and keeps the shots. It was
+    // `cup.base || 'frappeBase'`, so a shot pulled first stayed 'espresso' and
+    // a hand-built Frappe could never tick its base line (#343).
+    cup.blended = true; cup.base = 'frappeBase'; toast('Blended! 🥤'); soundBlend(); renderAll();
   });
 
   document.querySelectorAll('[data-syrup]').forEach(btn=>{
@@ -1223,8 +1234,12 @@ function discardCup(idx){
 // The money comes from scoreServe() in sim.js, which also marks the slot as
 // serving and lets the clock clear it half a second later. This keeps the
 // toast and the sound.
+// The gate is checked here, not only by the button's `disabled`: the S key
+// calls this directly and used to serve an empty cup the button refused.
 function serveSlot(idx){
-  const r = scoreServe(state.slots[idx]);
+  const slot = state.slots[idx];
+  if(!slot || !serveReadiness(slot).canServe) return;
+  const r = scoreServe(slot);
   if(!r) return;
   let msg = r.happy? `Served! +${r.earned}` : `Served (not quite right) +${r.earned}`;
   const extras = [];
@@ -1777,7 +1792,7 @@ init();
 if(typeof window !== 'undefined'){
   window.__CK_DEBUG__ = {
     get state(){ return state; },
-    doUnlock, fireRandomEvent, generateOrder, tryAcceptCustomer, orderIsComplete,
+    doUnlock, fireRandomEvent, generateOrder, tryAcceptCustomer, orderIsComplete, serveReadiness,
     autoAssistStep, serveSlot, saveState, loadState, adoptSave, queueMax,
     slot: saveSlot, catalog: CATALOG, sim,
     MARKETING_COST, SAVE_KEY, RANDOM_EVENTS, DAILY_MODIFIERS,

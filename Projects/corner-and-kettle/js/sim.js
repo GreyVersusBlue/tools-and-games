@@ -360,13 +360,17 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     };
   }
 
-  // Returns an ordered list of {label, check(slot)->bool} describing everything
-  // this order needs. The ticket checklist, the barista's work queue and the
-  // scorer all read this one list.
+  // Returns an ordered list of {label, station, check(slot)->bool, apply(slot)}
+  // describing everything this order needs. The ticket checklist, the station
+  // tabs' "still needed" dot, the Serve button's cue, the barista's work queue
+  // and the scorer all read this one list (#342). `station` is the tab the
+  // line is made at; `apply` is the one step a barista takes to satisfy it.
   function getOrderRequirements(order){
     if(order.isFood){
       const f = FOODS.find(x=>x.id===order.foodId);
-      return [{label: f.name, check: slot => slot.foodPlated === order.foodId}];
+      return [{label: f.name, station:'food',
+        check: slot => slot.foodPlated === order.foodId,
+        apply: slot => { slot.foodPlated = order.foodId; }}];
     }
     const r = RECIPES.find(x=>x.id===order.recipeId);
     const reqs = [];
@@ -376,26 +380,40 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     else if(r.base==='tea') baseLabel = 'Steeped tea';
     else if(r.base==='frappeBase') baseLabel = 'Blended base';
     else baseLabel = 'Base';
-    reqs.push({label: baseLabel, check: slot => slot.cup.base===r.base && (r.shots ? slot.cup.shots>=r.shots : true)});
+    reqs.push({label: baseLabel, station:'base',
+      check: slot => slot.cup.base===r.base && (r.shots ? slot.cup.shots>=r.shots : true),
+      apply: slot => {
+        slot.cup.base = r.base;
+        if(r.shots) slot.cup.shots = r.shots;
+        if(r.base==='frappeBase') slot.cup.blended = true;
+      }});
 
     if(r.needsMilk){
       const m = MILKS.find(x=>x.id===order.custom.milk);
       const needsSteamed = !order.custom.ice && !r.blended;
       reqs.push({
-        label: `${m.name}${needsSteamed ? ', steamed' : ''}`,
-        check: slot => slot.cup.milk===order.custom.milk && (needsSteamed ? slot.cup.milkSteamed : true)
+        label: `${m.name}${needsSteamed ? ', steamed' : ''}`, station:'milk',
+        check: slot => slot.cup.milk===order.custom.milk && (needsSteamed ? slot.cup.milkSteamed : true),
+        apply: slot => { slot.cup.milk = order.custom.milk; if(needsSteamed) slot.cup.milkSteamed = true; },
       });
     }
     if(order.custom.syrup){
       const s = SYRUPS.find(x=>x.id===order.custom.syrup);
-      reqs.push({label: s.name+' syrup', check: slot => slot.cup.syrup===order.custom.syrup});
+      reqs.push({label: s.name+' syrup', station:'syrup',
+        check: slot => slot.cup.syrup===order.custom.syrup,
+        apply: slot => { slot.cup.syrup = order.custom.syrup; }});
     }
     order.custom.toppings.forEach(t=>{
       const top = TOPPINGS.find(x=>x.id===t);
-      reqs.push({label: top.name, check: slot => slot.cup.toppings.includes(t)});
+      reqs.push({label: top.name, station:'toppings',
+        check: slot => slot.cup.toppings.includes(t),
+        apply: slot => { slot.cup.toppings.push(t); }});
     });
     if(order.custom.ice || r.blended){
-      reqs.push({label: r.blended? 'Blended':'Iced', check: slot => r.blended ? slot.cup.blended : slot.cup.ice});
+      // Ice is added at the milk station, where its button is; blending has its own.
+      reqs.push({label: r.blended? 'Blended':'Iced', station: r.blended ? 'blend' : 'milk',
+        check: slot => r.blended ? slot.cup.blended : slot.cup.ice,
+        apply: slot => { if(r.blended) slot.cup.blended = true; else slot.cup.ice = true; }});
     }
     return reqs;
   }
@@ -410,6 +428,27 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   function orderIsComplete(slot){
     const reqs = getOrderRequirements(slot.customer);
     return reqs.every(req=>req.check(slot));
+  }
+
+  // The Serve button, decided (#341): it stays loose and says what it costs.
+  //   canServe  something real was attempted — for a drink a base and, if the
+  //             recipe wants milk, some milk (cupMatchesEnough); for food, a
+  //             plate with anything on it. An empty plate used to be servable
+  //             for 40% of the price, which no drink ever was (#342).
+  //   done, total, missing   the ticket lines, straight off
+  //             getOrderRequirements(), so the button's "Serve 3/5" and its
+  //             "still missing" list are the scorer's own count.
+  function serveReadiness(slot){
+    const reqs = getOrderRequirements(slot.customer);
+    const missing = reqs.filter(req=>!req.check(slot)).map(req=>req.label);
+    const canServe = slot.food ? slot.foodPlated != null : cupMatchesEnough(slot.cup, slot.customer);
+    return { canServe, done: reqs.length - missing.length, total: reqs.length, missing, complete: missing.length===0 };
+  }
+
+  // The station tabs whose ticket lines are still unmet, for the "still
+  // needed" dot. The same list the ticket and the scorer read.
+  function stationsNeedingWork(slot){
+    return new Set(getOrderRequirements(slot.customer).filter(req=>!req.check(slot)).map(req=>req.station));
   }
 
   /* ---------- accept / release / serve ---------- */
@@ -546,43 +585,15 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
   }
 
   /* ---------- baristas ---------- */
-  // Performs exactly one still-missing step of an order (in the same order the
-  // ticket checklist shows them), mutating the cup directly.
+  // Performs exactly one still-missing step of an order: the first unmet line
+  // of the ticket, in the order the ticket shows them, by that line's own
+  // apply(). It used to re-derive every check by hand beside
+  // getOrderRequirements(), which is where a new recipe field went unchecked.
   function autoAssistStep(slot){
-    const order = slot.customer;
-    if(slot.food){
-      if(slot.foodPlated !== order.foodId){ slot.foodPlated = order.foodId; return true; }
-      return false;
-    }
-    const r = RECIPES.find(x=>x.id===order.recipeId);
-    const cup = slot.cup;
-
-    if(!(cup.base===r.base && (r.shots ? cup.shots>=r.shots : true))){
-      cup.base = r.base;
-      if(r.shots) cup.shots = r.shots;
-      if(r.base==='frappeBase') cup.blended = true;
-      return true;
-    }
-    if(r.needsMilk){
-      const needsSteamed = !order.custom.ice && !r.blended;
-      if(!(cup.milk===order.custom.milk && (needsSteamed ? cup.milkSteamed : true))){
-        cup.milk = order.custom.milk;
-        if(needsSteamed) cup.milkSteamed = true;
-        return true;
-      }
-    }
-    if(order.custom.syrup && cup.syrup !== order.custom.syrup){
-      cup.syrup = order.custom.syrup;
-      return true;
-    }
-    for(const t of order.custom.toppings){
-      if(!cup.toppings.includes(t)){ cup.toppings.push(t); return true; }
-    }
-    if((order.custom.ice || r.blended) && !(r.blended ? cup.blended : cup.ice)){
-      if(r.blended) cup.blended = true; else cup.ice = true;
-      return true;
-    }
-    return false;
+    const next = getOrderRequirements(slot.customer).find(req=>!req.check(slot));
+    if(!next) return false;
+    next.apply(slot);
+    return true;
   }
 
   // A barista who fumbles gets one detail wrong right before serving —
@@ -833,7 +844,7 @@ export function createSim({ content, rng = Math.random, state, notify = () => {}
     getActiveDailyModifier, rollDailyModifier, fireRandomEvent,
     getUnlockedRecipeList, getUnlockedFoodList,
     generateOrderContent, cloneOrderContent, generateOrder,
-    getOrderRequirements, cupMatchesEnough, orderIsComplete,
+    getOrderRequirements, cupMatchesEnough, orderIsComplete, serveReadiness, stationsNeedingWork,
     acceptCustomer, releaseSlot, discardCup, scoreServe,
     spawnCustomer, tickPatience,
     autoAssistStep, baristaFumble, runBaristaTick,
