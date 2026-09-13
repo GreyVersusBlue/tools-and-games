@@ -37,11 +37,10 @@
 # The version that matters is the lockfile's, and the lockfile is in the path
 # filter below.
 #
-# This is one project's job, not the site-wide "CI runs almost nothing" row in
-# BACKLOG.md. That row is still open and is still larger than this: nothing
-# runs Tools/board-check's own checks or gvb-save.test.mjs, and the
-# per-project workflows are seven copies of each other rather than one
-# template.
+# This is one project's job. Site-wide checks (Tools/board-check,
+# gvb-save.test.mjs, the projects with no workflow of their own) live in
+# site-ci.yml. The transcript matrix and the browser job have their own setup,
+# so this file does not use suite.yml.
 
 name: Daredevil CI
 

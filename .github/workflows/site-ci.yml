@@ -1,0 +1,166 @@
+# Site CI: the checks and suites no other workflow runs.
+#
+# Until 2026-09-13 nine workflows existed and each one path-matched a single
+# project. Nothing ran Tools/board-check, nothing ran gvb-save.test.mjs unless a
+# Corner & Kettle file changed, and about sixteen project suites ran only in
+# whichever session's terminal remembered them. Every definition of done said
+# "npm run check && npm run social:check pass", and both had been red on main
+# for several rounds without anyone's PR going red.
+#
+# This runs on every pull request with no path filter. That is deliberate:
+# the failures it exists to catch are the cross-project ones, a change to
+# gvb-save.js or the board or a shared asset that breaks a project whose folder
+# the PR never touched. Everything here is Node or headless Chromium and the
+# repo is public, so the minutes cost nothing; the slowest job is board-check at
+# about three minutes.
+#
+# What is deliberately not here:
+#   - Projects that already have their own workflow (absalom, corner-and-kettle,
+#     daredevil, fourth-quarter, hearth, numina, school-generator, torchbearer).
+#     Those keep their path filters, because some of them are long.
+#   - Projects/blue-hour-trail/test/browser.mjs. It holds W and asserts the
+#     climb in real time, and a real-time movement assertion under
+#     software-rendered Chromium is inconclusive either way (#53).
+#   - Castle Conundrum, and anything under `npm run games`/`play`/`previews`.
+#     Those open real visible windows and have no headless form.
+#   - Three browser suites written against Playwright's page API:
+#     Projects/integer-foundry/test/browser.mjs, Tools/name-picker/test/
+#     browser.mjs and Tools/seating-chart/test/drive-seating.mjs. On Windows
+#     the harness hands them a Playwright browser and they pass. On Linux it
+#     hands them Puppeteer, and the first run of this file failed all three:
+#     `page.fill is not a function`, `page.emulateMedia is not a function`,
+#     and Integer Foundry's "Node is detached from document" at its autosave
+#     latency beat, 16 checks in. Their Node halves are here. Porting the
+#     Integer Foundry suite is a ranked row; the other two belong to archived
+#     tools (#206) and stay hand-run.
+#   - Tools/schedule/test/publish.mjs and splice-social-block.mjs, and
+#     integer-foundry's capture-legacy-save.mjs. Those are generators that
+#     write files, not suites that pass or fail.
+#
+# The five archived teaching tools (#206) are in the matrix. Their suites still
+# pass and cost seconds; archiving them means nobody improves them, not that a
+# shared-file change is allowed to break them silently.
+#
+# A new project's suite goes in the matrix below. It needs a name, a folder to
+# run from, the commands, and `install: Tools/board-check` if it borrows the
+# harness.
+
+name: Site CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  board-check:
+    name: board-check (integrity, collisions, social) against known-failures.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: Tools/board-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Tools/board-check/package-lock.json
+      - name: Install the harness's dependencies
+        run: npm ci --ignore-scripts
+      - name: ci-check.mjs
+        run: node ci-check.mjs
+
+  suites:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gvb-save.js
+            dir: .
+            commands: |
+              node assets/js/gvb-save.test.mjs
+
+          - name: Anathema Archive
+            dir: .
+            install: Tools/board-check
+            commands: |
+              node Pathfinder/tests/anathema.test.mjs
+
+          - name: Faire Weekend
+            dir: Projects/Ren-Faire-Claude
+            install: Projects/Ren-Faire-Claude
+            commands: |
+              node tests/smoke.mjs
+              node tests/guests.mjs
+              node tests/mapview.mjs
+              node tests/wiring.mjs
+
+          - name: Aphelion
+            dir: Projects/aphelion
+            commands: |
+              node test/smoke-state.mjs
+
+          # Bell to Bell's suites read ../data relative to the working
+          # directory, so they run from tests/ and nowhere else.
+          - name: Bell to Bell
+            dir: Projects/bell-to-bell/tests
+            commands: |
+              node smoke.mjs
+              node balance.mjs
+              node assets.mjs
+
+          - name: Blue Hour
+            dir: Projects/blue-hour-trail
+            commands: |
+              node test/smoke.mjs
+
+          - name: Golden Hour
+            dir: Projects/golden-hour-beach
+            commands: |
+              node test/smoke.mjs
+
+          - name: Integer Foundry
+            dir: .
+            commands: |
+              node Projects/integer-foundry/test/smoke-targets.mjs
+
+          - name: Orbital
+            dir: Projects/orbital
+            commands: |
+              node test/physics.mjs
+
+          - name: The Fracture Cycle
+            dir: Projects/the-fracture-cycle
+            commands: |
+              node test/smoke.mjs
+
+          - name: Closing Time
+            dir: Projects/Closing Time
+            commands: |
+              node tools/smoke.mjs
+
+          - name: Archived teaching tools
+            dir: .
+            install: Tools/board-check
+            commands: |
+              node Tools/name-picker/test/smoke.mjs
+              node Tools/seating-chart/test/smoke-seating.mjs
+              node Tools/schedule/test/smoke.mjs
+              node Tools/schedule/test/structure.mjs
+    uses: ./.github/workflows/suite.yml
+    with:
+      working-directory: ${{ matrix.dir }}
+      install: ${{ matrix.install || '' }}
+      commands: ${{ matrix.commands }}

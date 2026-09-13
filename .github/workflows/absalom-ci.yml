@@ -17,8 +17,9 @@
 # save reopened on a creature's turn. It needs
 # playwright-core and a browser on disk, neither of which the game itself has
 # any use for, and it is run by hand — the same arrangement Blue Hour's
-# test/browser.mjs already has. Wiring a browser into CI is the site-wide "CI
-# runs almost nothing" row's problem, not this workflow's.
+# test/browser.mjs already has. Unlike the suites site-ci.yml runs, it launches its
+# own Chromium from a fixed path rather than borrowing Tools/board-check's
+# harness, so joining CI means porting it to the harness first.
 #
 # The shell page is in the path list because it carries the CSS and the element
 # ids ui.js reads, and a commit that edits it and not the folder still has to
@@ -46,11 +47,9 @@
 # check here names the fight that moved. If it is the change you meant, rerun
 # with --write-baseline and commit the file.
 #
-# This is one project's job, not the site-wide "CI runs almost nothing" row in
-# BACKLOG.md (named rather than numbered, because its rank moves every time
-# something above it ships). That row is still open and is still larger than
-# this: nothing runs Tools/board-check or gvb-save.test.mjs, and the
-# per-project workflows are six copies of each other rather than one template.
+# The job itself runs through suite.yml, the shared template. Site-wide checks
+# (Tools/board-check, gvb-save.test.mjs, the projects with no workflow of their
+# own) live in site-ci.yml and run on every pull request.
 
 name: Absalom Inheritance CI
 
@@ -78,22 +77,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # smoke is its own line so a red job names it. balance runs 2000 per build,
+  # 8,000 playthroughs across the four, which is what the project's own README
+  # tells a contributor to run. Fewer would widen the band's error bars for no
+  # saving worth having.
   suite:
     name: smoke.mjs and balance.mjs
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      # Named separately so a red job says which one, rather than "the tests".
-      - name: smoke
-        run: node Projects/absalom-inheritance/test/smoke.mjs
-
-      # 2000 runs per build — 8,000 playthroughs across the four — which is
-      # what the project's own README tells a contributor to run. Fewer would
-      # widen the band's error bars for no saving worth having.
-      - name: balance
-        run: node Projects/absalom-inheritance/test/balance.mjs 2000
+    uses: ./.github/workflows/suite.yml
+    with:
+      working-directory: Projects/absalom-inheritance
+      commands: |
+        node test/smoke.mjs
+        node test/balance.mjs 2000

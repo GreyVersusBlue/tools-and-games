@@ -189,8 +189,10 @@ because it could not.
   asserts the offsite count is zero every run.
 - **The page must boot with no network at all** — hence the inline packs. The
   Shelf may fetch, because it can fail into a hidden section.
-- **`Pathfinder/data/` is read-only and must not become a runtime dependency**
-  until Devon says otherwise. Six sessions have wanted it; none has taken it.
+- **`Pathfinder/data/` is a published interface** (#350, Devon, 2026-09-13).
+  Read it or vendor a slice, never write to it, and assert every field you rely
+  on. The page must still boot with no network, so an inline pack beats a
+  runtime fetch here. The contract is `Pathfinder/data/README.md`.
 - **The tests that actually work:** `node Projects/torchbearer/test/smoke.mjs`
   → 95 passed, 0 failed; `node assets/js/gvb-save.test.mjs` → 50 passed, 0
   failed; `cd Tools/board-check && npm run games` → the `torchbearer` entry is
@@ -201,12 +203,9 @@ because it could not.
 
 ## Questions for Devon
 
-- **Is `Pathfinder/data/` a published interface other projects may read, or
-  private to prompts 01–03?** Raised six times across three rounds, most
-  recently by this project and The Absalom Inheritance jointly, tracked in
-  prompt 01's own block. Unblocked work either way: if private, Torchbearer
-  builds its own monster and treasure tables and stops asking; if shared, arc
-  two gets cheaper and this project's boundary table changes.
+- ~~**Is `Pathfinder/data/` a published interface other projects may read?**~~
+  Answered by Devon, locked #350: **yes.** Arc two's monster and treasure tables
+  can be built from it rather than from scratch.
 - **Should Torchbearer be the site's PF2e rules engine, or only its own?** The
   Absalom Inheritance's round-3 notes name "a real interrupt point in the turn
   loop that doesn't exist yet" as its number-one next item — the same mechanism

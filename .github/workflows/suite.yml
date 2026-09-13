@@ -1,0 +1,98 @@
+# The template a Node suite runs through. Before this file, every per-project
+# workflow was written from scratch, and absalom-ci.yml arrived copied from
+# torchbearer-ci.yml still carrying that file's stale reference to a backlog
+# rank. Six files did the same four things: check out, set up Node 22, maybe
+# `npm ci` one folder, run some `node` commands. This is those four things once.
+#
+# A caller keeps its own triggers and path filters (a reusable workflow cannot
+# have them) and passes the rest:
+#
+#   jobs:
+#     suite:
+#       uses: ./.github/workflows/suite.yml
+#       with:
+#         working-directory: Projects/orbital
+#         commands: |
+#           node test/physics.mjs
+#
+# `commands` is one shell command per line, each run from `working-directory`.
+# Every line runs even after an earlier one fails, so one red suite cannot hide
+# a second one behind it, and the job fails if any line did (locked #13).
+# A call that runs zero commands fails too: a template handed an empty list is
+# a green tick that checked nothing.
+#
+# `install` names a folder to `npm ci --ignore-scripts` in first. The usual one
+# is Tools/board-check, whose harness.mjs every browser-driven suite in the repo
+# borrows. On Linux the harness drives @sparticuz/chromium through
+# puppeteer-core, so no `playwright install` step is needed; daredevil-ci.yml
+# proved that arrangement before this file existed.
+#
+# Workflows with their own browser setup (hearth, numina, school-generator,
+# daredevil's transcript matrix) do not use this and should not be bent to.
+
+name: suite (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      commands:
+        description: One command per line, run from working-directory. Blank lines and lines starting with # are skipped.
+        type: string
+        required: true
+      working-directory:
+        description: Where each command runs, relative to the repo root.
+        type: string
+        default: "."
+      install:
+        description: A folder to run `npm ci --ignore-scripts` in first. Empty for none.
+        type: string
+        default: ""
+      timeout-minutes:
+        type: number
+        default: 20
+
+jobs:
+  run:
+    name: run
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: ${{ inputs.install != '' && 'npm' || '' }}
+          cache-dependency-path: ${{ inputs.install != '' && format('{0}/package-lock.json', inputs.install) || '' }}
+      - name: npm ci in ${{ inputs.install }}
+        if: inputs.install != ''
+        working-directory: ${{ inputs.install }}
+        run: npm ci --ignore-scripts
+      - name: Run every command, and fail if any one did
+        working-directory: ${{ inputs.working-directory }}
+        env:
+          COMMANDS: ${{ inputs.commands }}
+        run: |
+          failed=0
+          ran=0
+          while IFS= read -r line; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            case "$line" in ''|'#'*) continue;; esac
+            ran=$((ran + 1))
+            echo "::group::$line"
+            # </dev/null: the loop is reading the command list from stdin, and a
+            # suite that reads stdin would otherwise swallow the lines after it.
+            if bash -c "$line" </dev/null; then
+              echo "::endgroup::"
+              echo "ok    $line"
+            else
+              code=$?
+              echo "::endgroup::"
+              echo "::error::exit $code from: $line"
+              failed=1
+            fi
+          done <<< "$COMMANDS"
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::no commands ran; a suite that checks nothing is not a pass"
+            exit 1
+          fi
+          exit $failed

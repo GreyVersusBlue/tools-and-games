@@ -8886,6 +8886,104 @@ Opus 5.
 
 ---
 
+# Site CI, and `Pathfinder/data/` published (2026-09-13)
+
+**Two rows taken together at Devon's request, on Claude Opus 5**, while another
+session ran Corner & Kettle Phases 5 and 6 in the main checkout: the
+`Pathfinder/data/` question (¼) and "CI runs almost nothing" (1). This work ran
+in a separate git worktree so the other session's uncommitted files were never
+touched, and its `BACKLOG.md` edits waited for PR #274 to merge so the two
+renumberings did not collide. Decisions #350 to #353, PR #276.
+
+- **`Pathfinder/data/` is a published interface** (#350). Devon's answer to Q1,
+  asked six times across three rounds: it is public PF2e reference data copied
+  into the site, and any project may read it. A reader may fetch it at runtime
+  from the same origin (not an offsite request) or vendor a slice under #17. A
+  reader may not write to it, and must assert every field it relies on in its
+  own suite and add `Pathfinder/data/**` to its own workflow's paths, so a
+  regeneration that drops a field goes red on the PR that did it. The Anathema
+  Archive still owns the folder and may reshape it; before it does, it searches
+  the repo for readers and runs their suites. The contract is
+  `Pathfinder/data/README.md`. Absalom's "reading `Pathfinder/data/` at
+  runtime" is off its not-doing list, and both wishlists say so.
+- **Site CI runs on every pull request, with no path filter** (#351).
+  `.github/workflows/site-ci.yml`: board-check, plus a matrix of the twelve
+  suites no workflow ran (gvb-save, Anathema Archive, Faire Weekend, Aphelion,
+  Bell to Bell, Blue Hour, Golden Hour, Integer Foundry, Orbital, The Fracture
+  Cycle, Closing Time, the archived tools). No path filter because the breaks
+  it exists for are cross-project: a shared-file change breaking a folder the
+  PR never touched. The repo is public, so the minutes are free; the slowest
+  job was board-check at 1m09s on its first run. `.github/workflows/suite.yml`
+  is the reusable template, and Absalom, Torchbearer, The Fourth Quarter and
+  Corner & Kettle now call it. Hearth, Numina, School Generator and Daredevil
+  keep their own shape, because each pins or installs a browser its own way.
+  Corner & Kettle's `drive-save.mjs` joined CI through the template, and
+  `gvb-save.test.mjs` moved out of Corner & Kettle's workflow into site CI.
+- **board-check is graded against the failures `main` already had, not fixed
+  here** (#352). `npm run check` and `npm run social:check`, the two checks
+  every definition of done names, were both red on `main`: one integrity
+  failure (`Tools/prompt-builder.html`) and six social-tag failures. A job
+  that ran them as-is would have been red on every PR from its first run.
+  `Tools/board-check/ci-check.mjs` runs all three checks, collects every FAIL
+  and DRIFT line, and compares them to `Tools/board-check/known-failures.json`.
+  It exits 1 on a failure not listed, on a listed failure that no longer
+  appears (so a fix has to delete its line and the list can only shrink), and
+  on a non-zero exit with no FAIL line (a crash). It also runs collisions when
+  integrity is red, which `npm run check`'s `&&` never did. The seven fixes
+  went to rank 19 (the ownership manifest, already ranked) and a new rank 20
+  (the social-tag cleanup) rather than into this PR: they touch Numina's
+  Eleventy source, two project pages and the sync script itself, and are each
+  their own call. Reversible by deleting the list and fixing the seven.
+- **Three browser suites stay out of CI because they only speak Playwright**
+  (#353). On Windows `harness.mjs` launches Playwright; on Linux it launches
+  Puppeteer. The first CI run failed `Tools/name-picker/test/browser.mjs`
+  (`page.fill is not a function`), `Tools/seating-chart/test/drive-seating.mjs`
+  (`page.emulateMedia is not a function`) and
+  `Projects/integer-foundry/test/browser.mjs` ("Node is detached from
+  document" at its autosave-latency beat, 16 checks in). All three pass on
+  Windows, so they had never been run on the engine CI uses. Their Node halves
+  are in CI. Porting Integer Foundry's is a ranked row; the other two belong to
+  archived tools (#206) and stay hand-run. Also out, each for its own reason:
+  Blue Hour's `browser.mjs` (real-time movement under software rendering, #53)
+  and Absalom's `browser.mjs` (launches its own Chromium from a fixed path
+  instead of the harness).
+- **The Anathema Archive suite retries a click the page re-rendered out from
+  under it, and nothing else** (#353, same cause). It passed its first CI run
+  and failed its second, `ABORTED testLevelBar: Node is detached from
+  document`. A chip click rebuilds `#shardbar`, and Puppeteer's
+  `page.click` queries, scrolls and measures before the mouse goes down; a
+  rebuild in that gap throws "detached from document" or "not clickable or
+  not an Element". A temporary CI job ran the suite on Linux: **the old helper
+  passed 1 run in 10, the fixed one 15 in 15.** The first fix retried only the
+  "detached" message and still failed 2 of 10 on the other one, which is why
+  it names both. Both throw before a click lands, so a retry cannot
+  double-click. The probe job and its copy of the old file were removed before
+  merge.
+
+**Breaks on purpose** (#34), `ci-check.mjs` from a green local baseline, each
+caught by its own message: a syntax error appended to
+`Projects/orbital/js/input.js` ("integrity: new failure  FAIL
+Projects/orbital/js/input.js"); a fake entry in `known-failures.json` ("fixed,
+so remove it from known-failures.json"); `playwright-core` moved out of
+`node_modules` ("collisions exited 1 without a FAIL or DRIFT line"). The
+template's loop was run locally with a failing command between two passing
+ones (the third still ran, the job exited 1) and with a comment-only list
+(exited 1, "no commands ran"). In CI the template went red on the three real
+Playwright-only failures above before they were taken out, which is the
+template failing on something it did not invent.
+
+**The checks.** First CI run: every new matrix job green except the three
+suites named in #353; board-check green against the list, which means the
+seven keys match on Linux as well as Windows. Locally: `check-integrity.mjs`
+1,589 units, 1 broken (the listed one); `check-collisions.mjs` 0 collisions;
+`social:check` the six listed.
+
+**Shared things touched**, in the same PR: `Tools/board-check/**` (two new
+files, no existing file changed) and `.github/`. `CLAUDE.md`'s locked-decision
+count, 349 → 353, and its definition of done.
+
+---
+
 # The two August 2026 audits
 
 ## Numina, August 2026
