@@ -9130,6 +9130,119 @@ only), `assets/js/README.md`, `assets/js/gvb-save.test.mjs`,
 `known-failures.json`, and a new `ownership.json`), and `.github/workflows/site-ci.yml`.
 `index.html` was not touched.
 
+## Four quarter-session rows: a gate, a board run, the shared chrome, a parked preview (2026-09-13)
+
+**Ranks 1, 20, 23 and 24, on Claude Opus 5, in one PR.** Four quarter-session
+rows is exactly what the size table allows; none of the four named a model.
+Decisions #374 to #379, PR #284.
+
+- **The gate door was a Poly Haven material-preview ball, and the leaf is
+  built now** (#374). Rank 23 asked whether the gate mesh is symmetric inside
+  its own bounding box. It is, to six parts in a million in x — because it is a
+  sphere. Poly Haven ship a preview ball with every TEXTURE pack (one node
+  `sphere_gltf`, one mesh `Sphere.001`), `wooden_gate_1k` is a texture pack, and
+  `scene-config.json` named it as the gate's `model`. The archway held a
+  1.93-unit ball, auto-scaled to 3.6 m across by the "tiny or huge relative to
+  the archway" branch, grounded, hinged and swung open on quest completion.
+  Twenty of the forty-eight Poly Haven folders in the project carry the same
+  ball; this was the only one loaded as a model, and nothing caught it because a
+  preview sphere loads perfectly — no 404, no console error, no placeholder box.
+  The only signal is the shape of what comes back.
+
+  `buildGateLeaf()` builds it instead: a rectangle capped by a semicircle,
+  extruded 0.16 m, UVs projected planar so one 1k gate map covers one leaf
+  rather than tiling two across and three up. The dimensions are the archway's
+  own opening, measured by projecting `wall-fortified-gate.glb`'s front and back
+  faces onto XY and finding the hole the tunnel walls contribute no area to:
+  0.5 x 0.75 in model units, so 2.0 m wide, semicircular head of radius 1.0
+  springing at 2.0 m, apex 3.0 m after `normalizeToTile`'s 4x. The leaf is inset
+  0.05 m all round because the head is a faceted circle whose stone sits just
+  inside the ideal one. The auto-scale branch went with the sphere: it existed
+  to rescue a model of unknown size, and scaling a measured fit to 90% of a tile
+  would only undo it. The hinge math is untouched and still correct — the leaf
+  came back at world x [-0.95, 0.95], z [11.92, 12.08], centred in the opening.
+
+- **The gate opens to 90 degrees, not 105** (#375). A ball does not care how far
+  past flush it swings. A 1.9 m leaf hinged 0.95 m off centre does: at 105 its
+  outer corner ends up 0.44 m inside the west jamb and the opened gate reads as
+  a dark sliver. At 90 it stands flat against the jamb with 0.03 m of its own
+  thickness in the stone, which is inside the jamb's relief. Both poses were
+  rendered and looked at before the number changed.
+
+- **`Projects/Castle Conundrum/test/assets.mjs`, and the project's first CI
+  job** (#376). glTF parsing and arithmetic, no browser, so it is not the class
+  `npm run play` is kept out of CI for (#353) — the matrix entry runs the one
+  file and the playable half stays hand-run. It fails on a model reference that
+  does not exist, on one that resolves to a preview ball (recognised by the
+  `sphere_gltf` node name AND bounds within a percent of cubic and centred on
+  their own origin, so a round-ish real model and an oddly-named real model are
+  each safe), on leaf dimensions that stop matching the opening they are
+  measured against, and on a swing angle the opening cannot take. Each was
+  broken on purpose from a green baseline. Two of the breaks trip two
+  assertions rather than one, which is honest: changing the leaf's width really
+  does break both its fit and the head-springs-off-the-jamb claim.
+
+- **A cancelled request is not a failure** (#377). Rank 24 wanted a real
+  `npm run games closing-time` pass. Two of the first six runs failed on
+  `reqfail` against a font that is present on disk, a different weight each
+  time — `net::ERR_ABORTED`, because the beats reload three times and cancel
+  whatever was in flight, and a lazily-fetched font is usually what that is.
+  `harness.mjs` records the reason now and drops cancellations. Nothing is lost:
+  `requestfailed` fires on network-level failures and never on an HTTP status,
+  so this listener could not have seen a 404 to begin with, and a `url()` at a
+  missing file is `check-integrity.mjs`'s sweep — which names
+  `inter-latin-999-normal.woff2` in its own comment as the case it exists for.
+  The first draft of the comment claimed the harness's own `r.abort()` for an
+  offsite URL was part of the same noise; putting a
+  `<script src="https://example.com/...">` in the page proved otherwise — that
+  surfaces as `net::ERR_FAILED` and still reports, alongside the `__blocked`
+  assertion. The comment was corrected to say what the code does. Four
+  consecutive 27/0 runs after.
+
+- **The `[shared]` chrome is asserted, not diffed by hand, and there is no
+  drift** (#378). Rank 20 asked for a re-check. All eight blocks in
+  `characters.html` and `campaigns.html` are identical, with the two exceptions
+  the markers document: `.tome`'s max-width (each page's own content width) and
+  campaigns.html's `--sage`/`--slate`/`--dustrose`. Both files carried
+  "confirmed by diff 2026-07-31" and a request that the next person mirror their
+  edits, which is a promise checked by a person re-running a diff — and it was a
+  ranked row twice for that reason. `Pathfinder/tests/shared-chrome.test.mjs` is
+  the diff, in CI, and both preambles point at it now. It slices each block by
+  its first and last selector rather than listing selectors, so a rule inserted
+  into one file's masthead range fails; it counts the markers, so a ninth block
+  nobody paired up fails; and `[shared pattern]`, which marks the hover-lift
+  rules that apply the same declarations to each page's own selectors, is
+  deliberately a different marker and not compared. Six breaks, six failures,
+  each on the assertion whose message says so. One near-miss worth recording:
+  the first version passed `.tome` with the message "identical" while max-width
+  differed underneath — the message now names what it allowed, because a pass
+  line that claims more than the arithmetic checked is the same bug as a
+  comment that does (#147).
+
+- **Rank 1 is parked, not verified** (#379). Castle Conundrum's preview
+  candidate cannot be reviewed or recaptured by an unattended session, so it
+  moved to a Parked section under the ranked table rather than staying at the
+  top of it (rule 2). `candidates/` holds `chosen.json` and nothing else — the
+  PNGs it names have never been in git, so the frame the row asks somebody to
+  look at exists only on the machine that captured it. A recapture here fails at
+  `never got 6.4m clear of the gatehouse` under software-rendered Chromium,
+  which is #53's class. And the shipped `assets/previews/castle-conundrum.jpg`
+  and `assets/og/castle-conundrum.jpg` show the archway standing wide open, sky
+  and ground visible through it, captured before round 3's hinge fix and before
+  #374 — the card prints "Find someone who knows how to open the gate" over a
+  picture of an open gate. Any candidate captured before today is out of date
+  whatever it looks like. Eight rows that ask for hardware or a pair of ears in
+  as many words were left in the ranked table on purpose: moving eight more is
+  closer to re-ranking the list wholesale, which is not a session's call.
+
+**Shared things touched**, in the same PR as the change that needed them:
+`Tools/board-check/harness.mjs` and `.github/workflows/site-ci.yml` (two new
+matrix entries, Castle Conundrum and the Pathfinder shared chrome).
+`index.html`, `assets/js/gvb-save.js` and the generated previews were not
+touched — the previews are the parked row's business, and promoting one from a
+software-rendered capture is exactly what #379 says not to do.
+
+
 
 ---
 

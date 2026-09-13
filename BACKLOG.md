@@ -62,16 +62,27 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **`Projects/corner-and-kettle` Phases 8 and 9 —
-Both hands on the keys, and joining `npm run games` (PR #282)**, the old ranks
-1 and 2, two half-session rows taken together as the size table allows. Before
-it, **Phase 7 — A reopening worth doing (PR #280)**. **44 ranked items
-remain**, and **rank 1 is now `Tools/board-check` — review the captured Castle
-Conundrum preview candidate and promote it, or recapture**, a
-**quarter-session** row with **no model named**. Rank 2 (Aphelion's
-airlock-entry beat) is a half. The size table takes up to four ¼ rows in one
-batch, and sixteen of the forty-four are ¼ — ranks 1, 16, 18, 20, 22, 23, 24,
-27, 28, 29, 32, 33, 34, 35, 40 and 43.
+The last thing that shipped is **four quarter-session rows in one PR — a gate
+that is a gate, a clean `npm run games closing-time`, and the `[shared]` chrome
+asserted (PR #284)**, the old ranks 20, 23 and 24, plus the old rank 1 parked
+rather than done. Before it, **`Projects/corner-and-kettle` Phases 8 and 9 —
+Both hands on the keys, and joining `npm run games` (PR #282)**. **43 ranked
+items remain** — one fewer, because the old rank 1 moved to the Parked list
+below the table and everything under it shifted up one.
+
+**Rank 1 is now `Projects/aphelion` — build the airlock-entry beat, then land
+the ready-made `#signal` assertion**, a **half-session** row with **no model
+named**. Rank 2 (Castle Conundrum's asset diet) is a 1. The size table takes
+2, occasionally 3, halves in a batch, and the next half after rank 1 is rank 7
+(per-client financing types at Closing Time). Fifteen of the forty-three are ¼
+— ranks 15, 17, 19, 21, 22, 23, 26, 27, 28, 31, 32, 33, 34, 39 and 42. **Five
+of those fifteen want hardware nothing here has** (26, 28, 33, 34, 42), as do
+three of the halves (14, 25, 35); the Parked section below the table says why
+they were left ranked anyway.
+
+**Castle Conundrum's board preview and og card are stale** (#374, #379). Both
+show the archway wide open, from before the gate became a gate. Recapturing
+them is the parked row, and it needs a machine with real GPU compositing.
 
 **`Projects/corner-and-kettle` has no open phase.** Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
@@ -162,50 +173,91 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Review the captured preview candidate and promote it, or recapture | `Tools/board-check` | ¼ | — | claude/backlog-batch-work-qf5agx | [Castle Conundrum](#castle-conundrum) |
-| 2 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
-| 3 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 4 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
-| 5 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 6 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
-| 7 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 8 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
-| 9 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 10 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
-| 11 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 12 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 13 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
-| 14 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
-| 15 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
-| 16 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
-| 17 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 18 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 19 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 20 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — | claude/backlog-batch-work-qf5agx | [Pathfinder Characters](#pathfinder-characters) |
-| 21 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
-| 22 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 23 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — | claude/backlog-batch-work-qf5agx | [Castle Conundrum](#castle-conundrum) |
-| 24 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — | claude/backlog-batch-work-qf5agx | [Closing Time](#closing-time) |
-| 25 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 26 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 27 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 28 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 29 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 30 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 31 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 32 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 33 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 34 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 35 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 36 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 37 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 38 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 39 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
-| 40 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
-| 41 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 42 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
-| 43 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
-| 44 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 1 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | — |  | [Aphelion](#aphelion) |
+| 2 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 3 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | — |  | [Castle Conundrum](#castle-conundrum) |
+| 4 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 5 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | — |  | [Orbital](#orbital) |
+| 6 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 7 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 8 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 9 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | — |  | [Golden Hour](#golden-hour) |
+| 10 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 11 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 12 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
+| 13 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
+| 14 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
+| 15 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
+| 16 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 17 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 18 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 19 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 20 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
+| 21 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 22 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 23 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
+| 24 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 25 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 26 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 27 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 28 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 29 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 30 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 31 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 32 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 33 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 34 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 35 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 36 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 37 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 38 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
+| 39 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
+| 40 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 41 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 42 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
+| 43 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+
+## Parked — needs a person at a real device
+
+Rule 2 above: a row only a human at a real device or a live deployment can do
+does not belong in the ranked table. **Parked is not verified**, and each note
+says which it is. Nothing here is done; it is waiting on hardware, not on a
+decision.
+
+**Castle Conundrum's board preview: recapture, look, promote** (`Tools/board-check`,
+¼, no model named). Parked 2026-09-13 by the session that took it as rank 1,
+after establishing three things.
+
+1. **There is no candidate to review on a fresh clone.** `candidates/` holds
+   `chosen.json` and nothing else — the PNGs it names have never been in git.
+   The frame the row asks somebody to look at exists only on the machine that
+   captured it, so "review the captured candidate" is not a thing an unattended
+   session can do at all.
+2. **A recapture here is not a recapture.** `node capture-previews.mjs
+   castle-conundrum` under a software-rendered Chromium fails at
+   `never got 6.4m clear of the gatehouse`: the walk never happens. That is the
+   class locked decision #53 calls inconclusive, and `npm run previews` is
+   outside CI on purpose (#353).
+3. **The shipped frame is now wrong in a new way** (#374). `assets/previews/
+   castle-conundrum.jpg` and `assets/og/castle-conundrum.jpg` show the archway
+   standing wide open, ground and sky visible through it, with the quest box in
+   the corner reading "Find someone who knows how to open the gate". No door of
+   any kind is in the frame, which dates it to before round 3's hinge fix — the
+   leaf then sat at world x -5.4 to -1.8, behind the wall and out of shot. Since
+   #374 there is a gate to photograph, so a candidate captured before
+   2026-09-13 is out of date whatever else is right about it.
+
+So: `npm run previews castle-conundrum` on a machine with real GPU
+compositing, look at what lands in `candidates/`, and `npm run promote`.
+Fifteen minutes at the right keyboard, and not doable at any other.
+
+Eight rows still in the ranked table ask for hardware or a pair of ears in as
+many words, and belong here by the same rule: 14, 25, 26, 28, 33, 34, 35 and
+42 as they are numbered now. They were left ranked on purpose — moving eight
+more rows is closer to re-ranking the list wholesale, which is not a session's
+call, than to parking the row in front of you, which is. A session that takes
+one of them should move it here rather than write a report about it.
+
 
 ---
 
@@ -307,9 +359,11 @@ match. The merge question — this project's own headline item across two rounds
 2. **In-browser editing via `gvb-save.js`**, only if Devon decides this page's
    role should shift from showcase to living character sheet. Still not
    requested, still not built.
-3. **If your own pass finds a `[shared]`-marked rule that's drifted** between
-   this file and `campaigns.html`, flag it — that's real, separate work from
-   the merge question above.
+3. **Drift between this file and `campaigns.html` is a test now**, not a pass
+   somebody has to remember to do: `tests/shared-chrome.test.mjs`, in CI
+   (2026-09-13, #378, PR #284). There was none to find. If you add a `[shared]`
+   block to the pair, add it to that file's `BLOCKS` list — it counts the
+   markers and fails on one it has not been told about.
 
 Still not touching the font-file-naming mismatch between this page's fontsource
 convention and `campaigns.html`'s short form. Same bytes, cosmetic only, not
@@ -364,28 +418,31 @@ of its own tasks (the four objects sealed in the back wall, the preview
 recapture and promotion, `play-castle.mjs`'s own engine-mismatch bug, the gate
 door's hinge/pivot math) — confirmed independently, not just trusted from
 notes: `npm run play` reports 34/34 beats passing, real movement, real GPU
-compositing. What's left, in order of value per effort:
+compositing.
 
-1. **The chosen preview candidate needs a look-and-decide.** The candidate is
-   sitting in `candidates/`, chosen, dated a fair-environment refresh — but
-   whether it's the *right* frame is a call this project's own session should
-   make, having asked for the recapture across two rounds. `npm run promote`
-   was deliberately scoped to exclude it rather than decide for them.
-2. **Cosmetic: the cabinet/commode clearance margins are generous (1.1–1.3 m
+**The gate door is a gate now** (2026-09-13, #374 to #376, PR #284). The mesh
+question below was answered by finding that the "mesh" was a Poly Haven
+material-preview ball, and the leaf is built geometry shaped to the archway's
+own opening. `test/assets.mjs` is the project's first suite and its first CI
+job. **The preview candidate row is parked**, above the Tier 2 list — and the
+frames on the board are stale in a new way, because they were shot before the
+gate existed.
+
+What's left, in order of value per effort:
+
+1. **Cosmetic: the cabinet/commode clearance margins are generous (1.1–1.3 m
    from their side walls), not flush against them** — a future session could
    tune these tighter if the hall reads as too open with them pulled this far
    in. The column positions (world `x -6..-5.2` and `5.2..6`, right where a
    tighter shift would have put them) forced a choice between flush-to-wall and
    clear-of-column; clear-of-column won because it's the one that couldn't be
    skipped. Low value, low effort, purely a judgment call on how the room reads.
-3. **Speculative: confirm the gate door's own mesh is symmetric within its own
-   bounding box.** Round 3 fixed the sign/rotation error that put the whole
-   leaf off-frame; it did not separately verify whether the Poly Haven model's
-   authored geometry is centered within that box. No evidence it's actually
-   off — worth a look only if someone notices it up close in play.
-4. **The asset diet.** 165 MB of assets for 1,525 lines of code, roughly two
-   thirds of the Poly Haven packs unreferenced.
-5. **A data-driven quest graph.** The quest manager is 74 lines and "two
+2. **The asset diet.** 165 MB of assets for 1,525 lines of code, roughly two
+   thirds of the Poly Haven packs unreferenced. Whoever takes it should know
+   that twenty of the forty-eight Poly Haven folders are texture packs whose
+   `.gltf` and `.bin` are a preview ball nothing loads (#374) — those bytes are
+   free to go, the `textures/` beside them are not.
+3. **A data-driven quest graph.** The quest manager is 74 lines and "two
    booleans." An asset diet plus a data-driven quest graph is a real path; it
    ranked below the top ten because the notes say the piece is finished as
    designed and there is no in-project suite to build behind.
@@ -403,13 +460,12 @@ compositing. What's left, in order of value per effort:
 `Projects/Closing Time/`.
 
 **Round 3 closed both items round 2 left open** (the name-substring Ledger
-filter, the career-ending dead end). What's left:
+filter, the career-ending dead end). **`npm run games closing-time` runs clean
+now** — 27 checks, 0 failed, four consecutive runs (2026-09-13, #377, PR #284).
+The two failures it used to throw were `net::ERR_ABORTED` on a font the beats'
+own reloads cancelled, not anything on this page. What's left:
 
-1. **Get a real `npm run games closing-time` run in** once `Tools/board-check`
-   isn't in use by another thread. Round 3's two changes were verified by hand
-   in a real browser and by the Node smoke suite, but not by the project's own
-   end-to-end suite.
-2. **Multi-career history.** The scorecard's button answers "how do I start the
+1. **Multi-career history.** The scorecard's button answers "how do I start the
    next career," not "does this career leave a record anywhere." A save that
    remembers more than the one career currently in progress — a hall of past
    scorecards, say — is a genuinely bigger feature and still out of scope for
@@ -790,11 +846,11 @@ owns its own test folder even where it imports `harness.mjs`/`drive.mjs`
 read-only.
 
 Everything open against this folder is filed under the project that needs it:
-Castle Conundrum's preview promotion (rank 1), Golden Hour's preview recapture
-and debug-hook beats (28, 30), and Blue Hour's `games.mjs` entry and preview
-recipe (32, 33). **Corner & Kettle's Phase 9 shipped on 2026-09-13 and is no
-longer open** — `play-games.mjs` has a `corner-and-kettle` section now (#371,
-#372), and the note that used to stand here, that the file held no reference to
+Golden Hour's preview recapture and debug-hook beats (ranks 27 and 29) and Blue
+Hour's `games.mjs` entry and preview recipe (31 and 32). Castle Conundrum's
+preview promotion was rank 1 and is parked, above the Tier 2 list.
+**Corner & Kettle's Phase 9 shipped on 2026-09-13 and is no longer open** —
+`play-games.mjs` has a `corner-and-kettle` section now (#371, #372), and the note that used to stand here, that the file held no reference to
 it, is out of date. The ownership manifest shipped the same day and is
 `Tools/board-check/ownership.json` (#355).
 
