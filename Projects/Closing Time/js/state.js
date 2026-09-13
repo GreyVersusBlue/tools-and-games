@@ -185,6 +185,89 @@ export function repairCareer(s) {
   for (const id of Object.keys(s.market.nb)) if (!(id in DB.neighborhoods)) delete s.market.nb[id];
   for (const id of Object.keys(s.knowledge)) if (!(id in DB.neighborhoods)) delete s.knowledge[id];
 
+  // Content removed while something was still live ON it. The three purges
+  // above cover save state keyed BY a content id; this covers save state that
+  // POINTS AT one, which is the case the earlier round left open ("don't
+  // delete a listing a save might be mid-contract on").
+  //
+  // Deleting a listing under contract is still a bad idea and this does not
+  // make it a good one. What it makes it is survivable: deals.js reads
+  // DB.listings[deal.listingId] unguarded in five places, calendar.js:95 reads
+  // DB.listings[d.listingId].address AND DB.agents[d.agentId].name on an
+  // expiring offer, and clients.js:9 reads DB.clients[id].tier over the whole
+  // queue. Each of those throws on a day advance rather than on a render, so
+  // the career is not merely wrong, it is unplayable and the player cannot see
+  // why.
+  //
+  // A dropped deal is player progress vanishing, so it does not vanish
+  // quietly: each one leaves a Ledger line. Pushed onto s.log directly rather
+  // than through log(), which writes to the live S this function may not be
+  // operating on yet.
+  const note = text => {
+    s.log.unshift({ day: s.day, text, cls: "bad", kind: undefined, recId: undefined });
+    if (s.log.length > 300) s.log.pop();
+  };
+
+  // A client record whose content file is gone. contentClient(rec) is
+  // DB.clients[rec.clientId] and ui.js reads .name off it on every card.
+  const goneRecIds = new Set();
+  s.clients = s.clients.filter(rec => {
+    if (!rec || typeof rec !== "object") return false;
+    if (rec.clientId in DB.clients) return true;
+    goneRecIds.add(rec.recId);
+    note(`A client whose file is no longer in the game has been removed from your book.`);
+    return false;
+  });
+  s.clientQueue = s.clientQueue.filter(id => id in DB.clients);
+  s.usedClients = s.usedClients.filter(id => id in DB.clients);
+
+  // Deals pointing at a listing, an agent, or a client record that is gone.
+  const deadDealIds = new Set();
+  s.deals = s.deals.filter(d => {
+    if (!d || typeof d !== "object") return false;
+    const why = !(d.listingId in DB.listings) ? "the listing"
+      : !(d.agentId in DB.agents) ? "the other agent"
+      : goneRecIds.has(d.clientRecId) ? "the client"
+      : null;
+    if (!why) return true;
+    deadDealIds.add(d.id);
+    note(`A deal fell through: ${why} is no longer in the game. The paperwork is void.`);
+    return false;
+  });
+
+  // A player listing belongs to a client record; its offers name an agent.
+  // pl.listing is a deep copy taken at signing, so it survives its own
+  // content file being deleted and only the client link can dangle.
+  s.playerListings = s.playerListings.filter(pl => {
+    if (!pl || typeof pl !== "object") return false;
+    if (!goneRecIds.has(pl.clientRecId)) return true;
+    deadDealIds.add(pl.id);
+    note(`A listing agreement ended: its seller is no longer in the game.`);
+    return false;
+  });
+  for (const pl of s.playerListings) {
+    if (Array.isArray(pl.offers)) pl.offers = pl.offers.filter(o => o && o.agentId in DB.agents);
+  }
+
+  // Whatever pointed at what just went away. A schedule item's `ref` is a deal
+  // or player-listing id (deals.js:140, seller.js:140), and a client record's
+  // dealId is the same. A choice left in the queue for a dead deal would open
+  // a modal over a deal that is not there.
+  s.schedule = s.schedule.filter(it => !(it && deadDealIds.has(it.ref)));
+  s.choiceQueue = s.choiceQueue.filter(ch => !(ch && deadDealIds.has(ch.dealId)));
+  for (const rec of s.clients) {
+    if (rec && deadDealIds.has(rec.dealId)) rec.dealId = null;
+  }
+
+  // A listing whose deal just died should not stay flagged under contract, or
+  // the MLS shows it as unavailable forever with nothing pointing at it.
+  for (const id in s.listingsState) {
+    const ls = s.listingsState[id];
+    if (ls && ls.status === "underContract" && !s.deals.some(d => d.listingId === id)) {
+      ls.status = "onMarket";
+    }
+  }
+
   for (const rec of s.clients) {
     if (!rec || typeof rec !== "object") continue;
     rec.patience = num(rec.patience, 5);

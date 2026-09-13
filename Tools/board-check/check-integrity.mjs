@@ -10,6 +10,8 @@
 //   - every .js / .mjs parses as an ES module
 //   - every inline <script> in every .html parses (module or classic)
 //   - every .json parses (package-lock excluded, it is huge and generated)
+//   - every local url() in every .html / .css points at a file that exists
+//   - every .html is claimed by an area in ownership.json
 //
 // Exit code 1 on any failure.
 
@@ -119,6 +121,75 @@ for (const p of files.filter(f => f.endsWith('.html'))) {
   for (const m of src.matchAll(CSS_URL)) hosts.add(m[1].split('/')[0].split(':')[0]);
   for (const h of [...hosts]) if (OWN_HOST.test(h)) hosts.delete(h);
   if (hosts.size) fail(p, `references offsite host(s): ${[...hosts].join(', ')}`);
+}
+
+// --- every page has an owner -------------------------------------------------
+// Tools/prompt-builder.html hotlinked Google Fonts for the site's whole
+// history, and the survey that found it said the real problem was upstream:
+// no area owned the page, so no area's round ever looked at it. Fixing the
+// fonts closes that one instance. This closes the class, by failing any .html
+// that no area in ownership.json claims.
+//
+// BACKLOG.md's Ownership table is the prose half of the same thing and the two
+// are meant to agree. A new page therefore needs one line in ownership.json
+// before it can ship, which is the point.
+const OWNERSHIP = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dirname, 'ownership.json'), 'utf8'));
+
+{
+  const claims = [];
+  for (const [area, spec] of Object.entries(OWNERSHIP.areas)) {
+    for (const own of spec.owns) claims.push({ area, own });
+  }
+  // Longest prefix first, so `Tools/board-check/play-castle.mjs` beats
+  // `Tools/board-check/` if this ever grows a file-level override of a folder.
+  claims.sort((a, b) => b.own.length - a.own.length);
+
+  for (const p of files.filter(f => f.endsWith('.html'))) {
+    checked++;
+    const r = rel(p).replace(/\\/g, '/');
+    const hit = claims.find(c => c.own.endsWith('/') ? r.startsWith(c.own) : r === c.own);
+    if (!hit) fail(p, 'no area in ownership.json claims this page');
+  }
+}
+
+// --- local url() targets exist ----------------------------------------------
+// The sweep above answers "does this page reach offsite", not "does this page
+// reach anything at all". A vendored font with a typo'd path is invisible to
+// it: the host check passes because there is no host, the browser 404s the
+// file, and the page falls back to a system serif with nothing printed
+// anywhere. Prompt Builder's vendoring was written against a sweep that could
+// not tell a correct path from `inter-latin-999-normal.woff2`, which is how
+// this got noticed.
+//
+// The import-map block below already does exactly this for its own targets;
+// this is the same idea for CSS. Only same-origin paths are resolvable from
+// here — a `url()` with a host went to the offsite check above, and data:
+// URIs carry their own payload.
+const CSS_URL_LOCAL = /\burl\(\s*['"]?([^"')\s]+)/gi;
+
+for (const p of files.filter(f => /\.(html|css)$/.test(f))) {
+  checked++;
+  const src = fs.readFileSync(p, 'utf8');
+  for (const m of src.matchAll(CSS_URL_LOCAL)) {
+    const raw = m[1];
+    if (/^(https?:|data:|blob:|#)/i.test(raw)) continue;
+    // `%23n` is a percent-encoded `#n`: a fragment naming an SVG filter, not a
+    // file. These turn up as `url(%23n)` in the markup *inside* a data: URI,
+    // which the skip above only catches at the outer url(). Both landing.html
+    // and Closing Time's style.css carry one.
+    if (/^%23/i.test(raw)) continue;
+    // A template literal is a path this check cannot know at rest
+    // (landing.html builds `url("${src}")` in a click handler).
+    if (raw.includes('${')) continue;
+    // A fragment or query on a font URL (`...woff?#iefix`) names the same file.
+    const clean = raw.split(/[?#]/)[0];
+    if (!clean) continue;
+    const target = clean.startsWith('/')
+      ? path.join(SITE, clean)
+      : path.resolve(path.dirname(p), clean);
+    if (!fs.existsSync(target)) fail(p, `url() target does not exist: ${raw}`);
+  }
 }
 
 // Same sweep, one level deeper: an import map's URLs.

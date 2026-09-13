@@ -62,32 +62,39 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **Site CI, and `Pathfinder/data/` published
-(PR #276)**: the CI row and the `Pathfinder/data/` question, taken together at
-Devon's request while another session ran ranks 1 and 2. Before it, **Corner &
-Kettle Phases 5 and 6 — Staff who have a week, and customers who remember (PR
-#274)**, two 1-session rows taken together because Devon asked for ranks 1 and
-2 together, overriding the size rule that would have run Phase 5 alone. **52 ranked
-items remain**, and
-**rank 1 is now `Projects/corner-and-kettle` Phase 7 — A reopening worth
-doing**, a **1-session** row on **Opus 5**, taken alone. Ranks 1 to 3 are the
-rest of corner-and-kettle's arc two.
+The last thing that shipped is **five quick backlog rows as one batch (PR
+#278)**: the old ranks 19, 20, 21, 32 and 38, taken together because Devon
+asked for two sessions' worth at once, over the size table's limit for halves.
+Before it, **Site CI, and `Pathfinder/data/` published (PR #276)**. **47 ranked
+items remain**, and **rank 1 is still `Projects/corner-and-kettle` Phase 7 — A
+reopening worth doing**, a **1-session** row on **Opus 5**, taken alone. Ranks
+1 to 3 are the rest of corner-and-kettle's arc two.
 
 **`npm run check` and `npm run social:check` now run on every pull request**,
 in `.github/workflows/site-ci.yml`, graded by `Tools/board-check/ci-check.mjs`
-against `Tools/board-check/known-failures.json` (#351, #352). Both are still red
-locally, and CI is green only because the seven failures main already had are
-listed there: `Tools/prompt-builder.html` (rank 19) and six social-tag pages
-(rank 20). **A PR that adds a failure goes red. So does a PR that fixes one and
-leaves its line in the list.** Delete the line in the same PR as the fix.
+against `Tools/board-check/known-failures.json` (#351, #352). **Both are green
+on their own as of 2026-09-13, and that list is now empty in all three
+sections** (#354 to #358): prompt-builder's fonts are vendored and all six
+social-tag entries are cleared. **A PR that adds a failure goes red. So does a
+PR that fixes one and leaves its line in the list.** Delete the line in the
+same PR as the fix. An empty list is the goal state — the next entry to land
+there should have to argue for itself.
+
+**Every `.html` in the repo now has a named owner** (#355).
+`Tools/board-check/ownership.json` is the machine-readable half of the
+Ownership table at the bottom of this file, and `check-integrity.mjs` fails any
+page no area claims. A new page needs a line there before it can ship. The two
+files are meant to agree; change both.
 
 **Twelve areas that had no workflow now run in CI**, as a matrix in
 `site-ci.yml`; a new project's suite goes there, or in its own workflow calling
 `.github/workflows/suite.yml`. Not in CI, on purpose (#353): Blue Hour's
 `browser.mjs` (real-time movement, #53); Absalom's `browser.mjs` (its own fixed
-Chromium path); three browser suites that only speak Playwright while the
-harness is Puppeteer on Linux (Integer Foundry's, rank 21, and two archived
-tools'); and anything under `npm run games`/`play`/`previews`.
+Chromium path); two browser suites that only speak Playwright while the
+harness is Puppeteer on Linux, both belonging to archived tools; and anything
+under `npm run games`/`play`/`previews`. Integer Foundry's was the third of
+those and is in the matrix now — its failure was a click race, not a missing
+method, and every click in it retries a re-query.
 
 **`Pathfinder/data/` is a published interface** (#350, Devon). Any project may
 read it; `Pathfinder/data/README.md` is the contract.
@@ -141,40 +148,35 @@ and #222 was closed unmerged an hour of suites later.
 | 16 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
 | 17 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
 | 18 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
-| 19 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — | claude/backlog-quick-fixes-3j3e4v | [The site itself](#the-site-itself) |
-| 20 | Clear the six `social:check` entries in `Tools/board-check/known-failures.json`: three pages with hand-written og tags, an offsite link read as a path, two pages with no block | `Tools/board-check` | ½ | — | claude/backlog-quick-fixes-3j3e4v | [The site itself](#the-site-itself) |
-| 21 | Make Integer Foundry's `test/browser.mjs` pass under the harness's Puppeteer engine, then add it to `site-ci.yml` | `Projects/integer-foundry` | ½ | — | claude/backlog-quick-fixes-3j3e4v | [Integer Foundry](#integer-foundry) |
-| 22 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
-| 23 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 24 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 25 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 26 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
-| 27 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
-| 28 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 29 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
-| 30 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
-| 31 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 32 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — | claude/backlog-quick-fixes-3j3e4v | [Closing Time](#closing-time) |
-| 33 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 34 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 35 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 36 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
-| 37 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 38 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — | claude/backlog-quick-fixes-3j3e4v | [Golden Hour](#golden-hour) |
-| 39 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 40 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 41 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 42 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 43 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
-| 44 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 45 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
-| 46 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
-| 47 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
-| 48 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
-| 49 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 50 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
-| 51 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
-| 52 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 19 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
+| 20 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 21 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 22 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 23 | Re-check the `[shared]` chrome against `campaigns.html` for drift | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
+| 24 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | — |  | [Aphelion](#aphelion) |
+| 25 | Tune the cabinet and commode clearance margins tighter against their walls | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 26 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
+| 27 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
+| 28 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
+| 29 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 30 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 31 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 32 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 33 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 34 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
+| 35 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 36 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 37 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 38 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | — |  | [Blue Hour](#blue-hour) |
+| 39 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 40 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | — |  | [Blue Hour](#blue-hour) |
+| 41 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | — |  | [Blue Hour](#blue-hour) |
+| 42 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | — |  | [Integer Foundry](#integer-foundry) |
+| 43 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | — |  | [Integer Foundry](#integer-foundry) |
+| 44 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | — |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 45 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
+| 46 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | — |  | [Orbital](#orbital) |
+| 47 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | — |  | [Orbital](#orbital) |
 
 ---
 
@@ -627,14 +629,13 @@ Deliberately not done, and still the right call:
 
 `Projects/integer-foundry.html`, `Projects/integer-foundry/`.
 
-**One item is ranked (rank 21): `test/browser.mjs` fails on Linux.** On Windows
-`Tools/board-check/harness.mjs` hands it a Playwright browser and it passes 56/0.
-On Linux the harness launches Puppeteer, and the first `site-ci.yml` run aborted
-it 16 checks in, at the autosave-latency beat, with "Node is detached from
-document" (#353). Corner & Kettle's `drive-save.mjs` branches on
-`page.__engine` and passes on both; that is the pattern to follow. When it is
-green on Linux, add it to the Integer Foundry entry in `site-ci.yml` with
-`install: Tools/board-check`.
+**`test/browser.mjs` passes on Linux now and is in CI** (2026-09-13, PR #278).
+It was a race, not a missing method: Puppeteer's `page.click` resolves the
+element, then scrolls and measures it before pressing, and the factory line
+re-renders `#grid` in that gap. Every click goes through the same
+re-query-and-retry helper `Pathfinder/tests/anathema.test.mjs` uses. Five
+consecutive runs 56/0 fixed, against three runs aborting at 38, 50 and 17
+checks reverted. In `site-ci.yml` with `install: Tools/board-check`.
 
 The other item still on the table is deliberately parked, not forgotten:
 
@@ -760,12 +761,13 @@ owns its own test folder even where it imports `harness.mjs`/`drive.mjs`
 read-only.
 
 Everything open against this folder is filed under the project that needs it:
-Castle Conundrum's preview promotion (rank 9), Aphelion's airlock beat (11),
-Golden Hour's preview recapture and debug-hook beats (40, 42), Blue Hour's
-`games.mjs` entry and preview recipe (45, 46), the ownership manifest (26),
-and Corner & Kettle joining `npm run games` (rank 8, its own Phase 9 —
-`play-games.mjs` still has no reference to `coffee_shop_sim` or
-`corner-and-kettle`, unchanged since round 1).
+Castle Conundrum's preview promotion (rank 4), Aphelion's airlock beat (5),
+Golden Hour's preview recapture and debug-hook beats (31, 33), Blue Hour's
+`games.mjs` entry and preview recipe (35, 36), and Corner & Kettle joining
+`npm run games` (rank 3, its own Phase 9 — `play-games.mjs` still has no
+reference to `coffee_shop_sim` or `corner-and-kettle`, unchanged since round
+1). The ownership manifest shipped on 2026-09-13 and is
+`Tools/board-check/ownership.json` (#355).
 
 Two things about this folder that are decided, not open:
 
@@ -784,20 +786,20 @@ Two things about this folder that are decided, not open:
 `.github/`.
 
 Five things came up in more than one survey and belong to no single project.
+Two of them are closed.
 
-1. **CI ran almost nothing. Closed by PR #276** (#351 to #353): `site-ci.yml`
-   runs board-check and twelve uncovered suites on every PR, and
-   `suite.yml` is the template the simple per-project workflows now call.
-   What it left behind is **the social-tag cleanup** (rank 20).
-   `sync-social-tags.mjs --check` fails on
-   `Projects/blue-hour-trail/index.html`, `Projects/school-generator/index.html`
-   and `Numina/index.html` for hand-written icon/og tags (Numina's come from
-   its Eleventy source, so the fix is there, not in the built page); on
-   `https:/aspermylessonplan.com/index.html`, an offsite board link the script
-   reads as a local path, which is a bug in the script; and it drifts on
-   `Projects/bell-to-bell/index.html` and `Projects/hearth/index.html`, which
-   have no social block. Each fix deletes its line from
-   `Tools/board-check/known-failures.json`, or `site-ci.yml` goes red.
+1. **CI ran almost nothing, and the failures it inherited are cleared. Closed
+   by PR #276 then PR #278** (#351 to #358): `site-ci.yml` runs board-check and
+   twelve uncovered suites on every PR, `suite.yml` is the template the simple
+   per-project workflows call, and `known-failures.json` is now empty in all
+   three sections. The social-tag cleanup went four ways: Blue Hour and School
+   Generator gave up their hand-written icon/og tags (and their bespoke
+   favicons, which is the generator's stated design, #358); Bell to Bell and
+   Hearth got the block they never had, both on the `guild-board.png` fallback;
+   the offsite `aspermylessonplan.com` notice was a bug in the script, not a
+   page (#357); and Numina keeps its own tags, exempt but verified, because it
+   is an Eleventy site whose committed build output would drop any block
+   injected into it (#357).
 2. **Asset weight.** Bell to Bell, Castle Conundrum and The Fourth Quarter
    together carry ~380 MB: unreferenced props and texture variants, duplicate
    model formats, uncompressed glTF buffers and 2k textures with no smaller
@@ -810,24 +812,19 @@ Five things came up in more than one survey and belong to no single project.
    software rasterization (The Fourth Quarter is the exception: its round-1
    frame times were real Chrome). Touch input has "never had a thumb on it" in
    three separate notes files.
-5. **Ownership.** `Tools/prompt-builder.html` is owned by no prompt and
-   hotlinks Google Fonts. The survey that raised this said it was "swept by no
-   check", and that half is now out of date: locked decision #58 extended
-   `check-integrity.mjs`'s sweep, and the page is one of the two standing
-   `npm run check` failures today —
-
-   ```
-   FAIL Tools/prompt-builder.html
-        references offsite host(s): fonts.googleapis.com, fonts.gstatic.com
-   ```
-
-   so the fonts are a real, currently-red, one-session fix, and the ownership
-   manifest is the separate thing that would catch the next unowned page before
-   it gets that far. (It used to have company:
+5. **Ownership. Closed by PR #278** (#354, #355). `Tools/prompt-builder.html`
+   was owned by no prompt and hotlinked Google Fonts, and the second was
+   downstream of the first: no area owned the page, so no area's round ever
+   looked at it. The fonts are vendored into `Tools/prompt-builder/fonts/`, and
+   `Tools/board-check/ownership.json` now names an owner for every `.html` in
+   the repo, with `check-integrity.mjs` failing any page that has none. On its
+   first run it caught one nobody knew about: `Projects/The-Fourth-Quarter.html`,
+   the original flat build, linked from the board at `index.html:508`.
+   (`Tools/prompt-builder.html` used to have company in the sweep:
    `Projects/school-generator/tools/walk-shell.html` carried an HTML comment
    inside its module script, `SyntaxError: HTML comments are not allowed in
    modules`, at line 290, from Phase 27 until September 2026. Decision #261
-   made the marker a JavaScript comment, and the sweep is down to this one.)
+   made the marker a JavaScript comment.)
 
 One more, from Hearth's own wishlist rather than a site survey, recorded here
 because it is a board question: **Hearth is on the homepage (`index.html:492`,
@@ -835,9 +832,11 @@ tagged Sim, `data-new`) with no `assets/previews/hearth.jpg`.** Phase 8
 decided against a `Tools/board-check/games.mjs` entry (#84, Q14 answered): the
 board's suite runs headed on a desk and would be a shallower copy of the
 harness's `save` mode, which `hearth-ci.yml` now runs on every PR. The
-330×200 capture is still wanted and is not a desk job (Hearth is a 2D canvas),
-but promoting one also writes `assets/og/hearth.jpg` and a social block the
-page does not yet have, so it goes with the social-tag cleanup (rank 20).
+330×200 capture is still wanted and is not a desk job (Hearth is a 2D canvas).
+The social block is no longer waiting on it: Hearth has one as of PR #278,
+pointing at the board's own `guild-board.png`. Promoting a real capture would
+write `assets/og/hearth.jpg` and the block would pick it up on the next
+`npm run social`.
 
 ---
 
@@ -1053,6 +1052,13 @@ this was ever written down. **The "shared, do not touch alone" column is now a
 "say so in your PR" column, not a queue**: make the edit in your own branch, in
 the same commit as the project change, and call it out in the PR body.
 
+**`Tools/board-check/ownership.json` is the machine-readable half of this
+table** (#355), and `check-integrity.mjs` fails any `.html` no area claims. The
+two are meant to agree: change both, or the next page to arrive is owned by
+whichever one you updated. The manifest carries two areas this table did not —
+**Prompt Builder** and **Archived teaching tools** — and both are in the table
+now.
+
 | Area | Owns | Shared paths it must not change silently |
 | --- | --- | --- |
 | Anathema Archive | `Pathfinder/Anathema_Archive.html`, `Pathfinder/data/`, `Pathfinder/fetch json data.py`, `Pathfinder/tests/` | `index.html`, `assets/js/gvb-save.js`, `Tools/board-check/**`, `assets/previews` + `assets/og` |
@@ -1061,7 +1067,7 @@ the same commit as the project change, and call it out in the PR body.
 | Aphelion | `Projects/aphelion/` | as above |
 | Castle Conundrum | `Projects/Castle Conundrum/`, **and `Tools/board-check/play-castle.mjs`**, which is its own | `index.html`, `assets/js/gvb-save.js`, the rest of `Tools/board-check/**`, `assets/previews` + `assets/og` |
 | Closing Time | `Projects/Closing Time/` | the four shared |
-| The Fourth Quarter | `Projects/fourth-quarter/`, `.github/workflows/fourth-quarter-ci.yml` | the four shared |
+| The Fourth Quarter | `Projects/fourth-quarter/`, **`Projects/The-Fourth-Quarter.html`** (the original flat build, board-linked at `index.html:508`, owned by nobody until #355 caught it), `.github/workflows/fourth-quarter-ci.yml` | the four shared |
 | Golden Hour | `Projects/golden-hour-beach/` | the four shared |
 | Faire Weekend | `Projects/Ren-Faire-Claude/` | the four shared |
 | Torchbearer | `Projects/torchbearer.html`, `Projects/torchbearer/`, `.github/workflows/torchbearer-ci.yml` | the four shared |
@@ -1076,6 +1082,8 @@ the same commit as the project change, and call it out in the PR body.
 | Bell to Bell | `Projects/bell-to-bell/` — and its own `CLAUDE.md` governs inside it | the four shared |
 | School Generator | `Projects/school-generator/`, `.github/workflows/school-generator-ci.yml` | the four shared |
 | Numina | `Numina/` — **but see the constraint below** | the four shared |
+| Prompt Builder | `Tools/prompt-builder.html`, `Tools/prompt-builder/` | the four shared |
+| Archived teaching tools | the five #206 closed and their folders: `Tools/Name Picker.html` + `name-picker/`, `Tools/Seating Chart Generator.html` + `seating-chart/`, `Tools/final_grade_checker.html` + `final-grade-checker/`, `Tools/image-to-pdf.html` + `image-to-pdf/`, `Tools/schedule-visualizer.html` / `schedule-browser.html` / `schedule/` and the two dated Schedule pages | **no work opens against these** (#206) |
 | The site | `index.html`, `404.html`, `newindex.html`, `landing.html`, `assets/` (including `assets/fonts/`), `Tools/board-check/` (except `play-castle.mjs` and any project's own test folder), `CNAME` | — |
 
 **A project owns its own test suite**, including a browser-driven one that

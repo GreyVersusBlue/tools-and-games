@@ -58,8 +58,32 @@ async function setFiles(page, file, trigger) {
 const shot = async (page, label) =>
   page.screenshot({ path: path.join(OUT, `${String(++shotN).padStart(2, '0')}-${label}.png`) });
 
+/* The factory line re-renders #grid while it runs, so a cell resolved a moment
+   ago is a different node by the time the mouse gets there. Puppeteer's
+   page.click queries the element, then scrolls to it and measures it before
+   pressing, and a re-render landing in that gap throws "Node is detached from
+   document" or "Node is either not clickable or not an Element". Both are
+   thrown before the mouse goes down, so a retry cannot double-click - which
+   matters here, since a double-click would place two tiles and every count in
+   this file would be wrong.
+
+   Playwright re-queries on its own, which is why this suite passed 56/0 on
+   Windows and aborted 16 checks in on Linux (#353). Same helper as
+   Pathfinder/tests/anathema.test.mjs, which hit this first and measured it: 1
+   CI run in 10 before, 15 in 15 after. Re-query and click again on those two
+   errors only; anything else still throws. */
+async function click(p, selector) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await p.click(selector); }
+    catch (e) {
+      if (attempt >= 10 || !/detached from document|not clickable or not an Element/.test(String(e?.message))) throw e;
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }
+}
+
 const place = (p, tool, x, y) =>
-  p.click(`[data-tool="${tool}"]`).then(() => p.click(`#grid .cell[data-x="${x}"][data-y="${y}"]`));
+  click(p, `[data-tool="${tool}"]`).then(() => click(p, `#grid .cell[data-x="${x}"][data-y="${y}"]`));
 
 /* ------------------------------------------------------------------ static -- */
 
@@ -196,7 +220,7 @@ try {
       const click = HTMLAnchorElement.prototype.click;
       HTMLAnchorElement.prototype.click = function () { if (!this.download) return click.call(this); };
     });
-    await p.click('#save-bar [data-gvb="export"]');
+    await click(p, '#save-bar [data-gvb="export"]');
     await waitFor(p, () => window.__exports.length > 0, { timeout: 5000 });
     const text = await p.evaluate(() => window.__exports[0]);
     let env = null; try { env = JSON.parse(text); } catch (e) { /* asserted next */ }
@@ -213,12 +237,12 @@ try {
 
     // Wipe through the bar's own button, which is the only eraser left.
     await p.evaluate(() => { window.confirm = () => true; });
-    await p.click('#save-bar [data-gvb="reset"]');
+    await click(p, '#save-bar [data-gvb="reset"]');
     await wait(1200);
     const wiped = await p.evaluate(() => [...document.querySelectorAll('#grid .cell:not(.empty)')].length);
     t.ok(wiped === 0, 'Start over cleared the floor', `${wiped} tiles`);
 
-    await setFiles(p, file, () => p.click('#save-bar [data-gvb="import"]'));
+    await setFiles(p, file, () => click(p, '#save-bar [data-gvb="import"]'));
     await wait(1200);
     const restored = await p.evaluate(() => ({
       cells: [...document.querySelectorAll('#grid .cell:not(.empty)')].length,
@@ -232,7 +256,7 @@ try {
     // A file that is not a save has to be refused, not booted on.
     const junk = path.join(OUT, 'junk.json');
     fs.writeFileSync(junk, '{"format":"gvb-save","game":"integer-foundry","version":1,"state":{"nope":1}}');
-    await setFiles(p, junk, () => p.click('#save-bar [data-gvb="import"]'));
+    await setFiles(p, junk, () => click(p, '#save-bar [data-gvb="import"]'));
     await wait(900);
     const note = await p.$eval('#save-note', el => el.textContent);
     const survived = await p.evaluate(() => [...document.querySelectorAll('#grid .cell:not(.empty)')].length);
@@ -296,7 +320,7 @@ try {
     //
     // Proven here before being handed over as a shared-file request.
     await p.evaluate(() => { window.confirm = () => true; });
-    await p.click('#save-bar [data-gvb="reset"]');
+    await click(p, '#save-bar [data-gvb="reset"]');
     // Wait for the empty floor rather than for a fixed delay: reset goes through
     // adoptState(), which rebuilds the palette, so a click fired mid-rebuild lands
     // on a detached button.
@@ -311,8 +335,8 @@ try {
     const want = Number((await p.$eval('.sink-target', el => el.textContent)).replace(/\D/g, ''));
     t.ok(Number.isInteger(want) && want >= 2 && want <= 12,
       'the opening order is between 2 and 12', `wants ${want}`);
-    await p.click('[data-tool="erase"]');
-    await p.click('#grid .cell[data-x="0"][data-y="0"]');
+    await click(p, '[data-tool="erase"]');
+    await click(p, '#grid .cell[data-x="0"][data-y="0"]');
     await waitFor(p,
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
       { timeout: 10000 });
@@ -333,12 +357,12 @@ try {
       : { x: last.x - 1, y: last.y };
 
     await place(p, 'source', 0, 2);
-    await p.click('[data-tool="add1"]');
-    for (const c of chain) await p.click(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+    await click(p, '[data-tool="add1"]');
+    for (const c of chain) await click(p, `#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
     // Rotate: clicking a placed tile with the same tool selected steps E>S>W>N.
     for (const c of chain) {
       const turns = c.dir === 'E' ? 0 : c.dir === 'S' ? 1 : 2;
-      for (let i = 0; i < turns; i++) await p.click(`#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+      for (let i = 0; i < turns; i++) await click(p, `#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
     }
     await place(p, 'sink', sinkAt.x, sinkAt.y);
 

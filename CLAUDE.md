@@ -18,7 +18,8 @@ Generator and Schedule Visualizer are no longer maintained or improved here.
 Their pages still serve and their suites still pass — nothing was deleted — but
 do not open work against them, and do not move a row back out of `ARCHIVE.md`.
 `Tools/board-check/` is not a teaching tool and is not archived; neither is
-`Tools/prompt-builder.html`, which is red on `npm run check` today.
+`Tools/prompt-builder.html`, whose fonts are vendored now (#354) and which owns
+its own area in `Tools/board-check/ownership.json` (#355).
 
 `Projects/bell-to-bell/CLAUDE.md` governs inside its own folder; where it and
 this file disagree about anything under `Projects/bell-to-bell/`, it wins.
@@ -71,7 +72,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 353 locked decisions in full, by number.
+`HISTORY.md` carries all 359 locked decisions in full, by number.
 
 ## Writing style
 
@@ -150,11 +151,14 @@ your own branch, in the same commit, and say so in the PR body.
    batch**, whatever its size, not one per row.
 2. Every suite the change could touch passes, run from the directory that owns
    it (see the table above). At minimum:
-   `cd Tools/board-check && npm run check && npm run social:check`. Both are red
-   on `main` today by a known list: `.github/workflows/site-ci.yml` runs
-   `node ci-check.mjs`, which passes only when every failure is in
-   `Tools/board-check/known-failures.json`. Run that instead of reading the red
-   yourself, and delete a line from the list in the same PR that fixes it (#352).
+   `cd Tools/board-check && npm run check && npm run social:check`. **Both are
+   green on `main` as of 2026-09-13** (#354 to #358), and
+   `Tools/board-check/known-failures.json` is empty in all three sections.
+   `.github/workflows/site-ci.yml` runs `node ci-check.mjs`, which fails a PR
+   that adds a failure not in that list and a PR that fixes one without deleting
+   its line (#352). Run it rather than reading the output yourself. An empty list
+   is the goal state: the next entry to land there should have to argue for
+   itself.
 3. Any guard-rail you added has been broken on purpose once, and you watched it
    fail (#34).
 4. The PR merged to `main` with CI green.

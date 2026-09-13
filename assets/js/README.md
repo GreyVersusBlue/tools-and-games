@@ -153,8 +153,9 @@ express. `clear()` exists for a "wipe" control that shouldn't have to build
 
 ## Who uses it
 
-One adopter for four sessions, then eleven in the space of one round. Every hook
-below exists because a real adopter needed it; none were added speculatively.
+One adopter for four sessions, then eleven in the space of one round, and two
+more since. Every hook below exists because a real adopter needed it;
+none were added speculatively.
 
 | Project | Storage key | Notable in its adoption |
 | --- | --- | --- |
@@ -169,8 +170,10 @@ below exists because a real adopter needed it; none were added speculatively.
 | **The Fracture Cycle** | `fracture-cycle-v1` | The smallest adoption on the list on purpose — one array, which endings have been seen, not a mid-story save |
 | **Name Picker** | (thirteen `np_` keys) | Wraps every non-object key (arrays, bare strings) in `{value: …}` so the module's `{...state, __v}` spread can't silently corrupt it. See "a slot can't hold an array or a scalar" below |
 | **Seating Chart Generator** | `seating-chart-v1` | Found the `typeof localStorage` construction-time throw this session's fixes close |
+| **Faire Weekend** | `renn-faire-sim-save-v1` | Adopted at Stage 22, replacing hand-rolled `localStorage` calls. Kept the key it already had (#36), so an existing save carries no `__v`, reads as version 0, and comes through `repair` rather than `migrate` |
+| **Golden Hour** | `gvb:golden-hour` | The only adopter that takes the default key rather than naming one, and the only one that saves a *subset* of its world on purpose: `journal.js` persists discoveries, and the sun's position and the player's are pointedly left out |
 
-Common thread across all eleven: nobody needed a hook that didn't already
+Common thread across all thirteen: nobody needed a hook that didn't already
 exist by the time they went looking, except the five gaps found this round
 (`load()`'s unguarded `getItem`, the `typeof localStorage` throw at
 construction, `fresh`/`reset` forwarding, `clear()`, and `mountSaveBar`'s

@@ -1,15 +1,6 @@
 {
-  "_read_me": "Failures main already had on 2026-09-13, when ci-check.mjs started running in CI. Each key is the FAIL or DRIFT line a check prints, path only. ci-check.mjs fails a PR that adds a failure not listed here, and fails a PR that fixes one without deleting its line. This list only ever gets shorter.",
-  "integrity": {
-    "FAIL Tools/prompt-builder.html": "Hotlinks Google Fonts, and no area owns the page. BACKLOG.md 'An ownership manifest check-integrity.mjs enforces'."
-  },
+  "_read_me": "Failures main already had on 2026-09-13, when ci-check.mjs started running in CI. Each key is the FAIL or DRIFT line a check prints, path only. ci-check.mjs fails a PR that adds a failure not listed here, and fails a PR that fixes one without deleting its line. This list only ever gets shorter, and as of ranks 19 and 20 it is empty: prompt-builder's fonts are vendored and all six social entries are cleared. An empty list is the goal state, not a bug - the next failure to land here should have to argue for itself.",
+  "integrity": {},
   "collisions": {},
-  "social": {
-    "FAIL Projects/blue-hour-trail/index.html": "Hand-written icon/og tags the generator refuses to overwrite. BACKLOG.md social-tag cleanup row.",
-    "FAIL Projects/school-generator/index.html": "Hand-written icon/og tags the generator refuses to overwrite. BACKLOG.md social-tag cleanup row.",
-    "FAIL Numina/index.html": "Hand-written icon/og tags from the Eleventy build. Fix belongs in Numina's source, not the built page. BACKLOG.md social-tag cleanup row.",
-    "FAIL https:/aspermylessonplan.com/index.html": "An offsite board link that sync-social-tags.mjs treats as a local path. BACKLOG.md social-tag cleanup row.",
-    "DRIFT Projects/bell-to-bell/index.html": "No social block yet. BACKLOG.md social-tag cleanup row.",
-    "DRIFT Projects/hearth/index.html": "No social block yet, and no preview to point one at. BACKLOG.md social-tag cleanup row."
-  }
+  "social": {}
 }

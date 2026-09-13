@@ -1,0 +1,88 @@
+{
+  "_read_me": "Which area owns which paths. check-integrity.mjs fails any .html in the repo that no area claims, so a new page cannot ship owned by nobody the way Tools/prompt-builder.html did for the site's whole history. This is the machine-readable half of BACKLOG.md's Ownership table; that table is still the prose one, and the two are meant to agree. `owns` entries are repo-root-relative path prefixes: a trailing slash means the whole folder, anything else is an exact file. `archived` marks an area that ARCHIVE.md closed - its pages still serve and still get swept, but no work opens against them (#206).",
+
+  "areas": {
+    "Anathema Archive": {
+      "owns": ["Pathfinder/Anathema_Archive.html", "Pathfinder/data/", "Pathfinder/fetch json data.py", "Pathfinder/tests/"]
+    },
+    "Pathfinder Campaigns": {
+      "owns": ["Pathfinder/campaigns.html", "Pathfinder/campaigns-assets/"]
+    },
+    "Pathfinder Characters": {
+      "owns": ["Pathfinder/characters.html", "Pathfinder/characters-assets/"]
+    },
+    "Aphelion": { "owns": ["Projects/aphelion/"] },
+    "Castle Conundrum": {
+      "owns": ["Projects/Castle Conundrum/", "Tools/board-check/play-castle.mjs"]
+    },
+    "Closing Time": { "owns": ["Projects/Closing Time/"] },
+    "The Fourth Quarter": {
+      "owns": ["Projects/fourth-quarter/", "Projects/The-Fourth-Quarter.html", ".github/workflows/fourth-quarter-ci.yml"],
+      "note": "Projects/The-Fourth-Quarter.html is the original flat build, linked from the board as archived (index.html:508). It was owned by nobody until this manifest went in - the sweep caught it on its first run."
+    },
+    "Golden Hour": { "owns": ["Projects/golden-hour-beach/"] },
+    "Faire Weekend": { "owns": ["Projects/Ren-Faire-Claude/"] },
+    "Torchbearer": {
+      "owns": ["Projects/torchbearer.html", "Projects/torchbearer/", ".github/workflows/torchbearer-ci.yml"]
+    },
+    "The Absalom Inheritance": {
+      "owns": ["Projects/absalom_inheritance.html", "Projects/absalom-inheritance/", ".github/workflows/absalom-ci.yml"]
+    },
+    "Corner & Kettle": {
+      "owns": ["Projects/coffee_shop_sim.html", "Projects/corner-and-kettle/"]
+    },
+    "Daredevil": {
+      "owns": ["Projects/daredevil/", "Projects/daredevil_r4.html"]
+    },
+    "Integer Foundry": {
+      "owns": ["Projects/integer-foundry.html", "Projects/integer-foundry/"]
+    },
+    "The Fracture Cycle": {
+      "owns": ["Projects/the-fracture-cycle.html", "Projects/the-fracture-cycle/"]
+    },
+    "Orbital": { "owns": ["Projects/orbital/"] },
+    "Blue Hour": { "owns": ["Projects/blue-hour-trail/"] },
+    "Hearth": {
+      "owns": ["Projects/hearth/", ".github/workflows/hearth-ci.yml"]
+    },
+    "Bell to Bell": { "owns": ["Projects/bell-to-bell/"] },
+    "School Generator": {
+      "owns": ["Projects/school-generator/", ".github/workflows/school-generator-ci.yml"]
+    },
+    "Numina": { "owns": ["Numina/"] },
+
+    "Prompt Builder": {
+      "owns": ["Tools/prompt-builder.html", "Tools/prompt-builder/"],
+      "note": "Not a teaching tool and not archived (CLAUDE.md says so explicitly), so it is not covered by #206 - but no area claimed it either, which is how it hotlinked Google Fonts unowned for its whole history. Given its own area rather than folded into The site, because it is a classroom tool with its own folder, not site chrome."
+    },
+
+    "Archived teaching tools": {
+      "archived": true,
+      "owns": [
+        "Tools/Name Picker.html",
+        "Tools/name-picker/",
+        "Tools/Seating Chart Generator.html",
+        "Tools/seating-chart/",
+        "Tools/final_grade_checker.html",
+        "Tools/final-grade-checker/",
+        "Tools/image-to-pdf.html",
+        "Tools/image-to-pdf/",
+        "Tools/schedule-visualizer.html",
+        "Tools/schedule-browser.html",
+        "Tools/schedule/",
+        "Tools/Schedule Browser as of 260715.html",
+        "Tools/Schedule Visualizer and Browser Generator v60.html"
+      ],
+      "note": "The five tools ARCHIVE.md closed on 2026-09-08 (#206), plus the two dated Schedule pages they shipped alongside. Their pages still serve and their suites still pass; do not open work against them. They are listed here so the sweep can tell 'archived, owned' from 'owned by nobody' - without these entries every one of them reads as unowned."
+    },
+
+    "The site": {
+      "owns": [
+        "index.html", "404.html", "newindex.html", "landing.html",
+        "assets/", "CNAME", "Tools/board-check/", ".github/workflows/site-ci.yml",
+        ".github/workflows/suite.yml"
+      ],
+      "note": "Tools/board-check/play-castle.mjs is Castle Conundrum's, and each project owns its own test folder even where it imports harness.mjs read-only. Both are exceptions this manifest records in prose rather than in `owns`, because the sweep only reads .html and neither is one."
+    }
+  }
+}

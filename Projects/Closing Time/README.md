@@ -177,9 +177,18 @@ New events are pure JSON composed from these handlers. New handler = one functio
   `listingsState` / `market.nb` / `knowledge` entry whose id no longer has a matching file in
   `data/`. Without that, `calendar.js`'s daily aging loop — `for (const id in S.listingsState)`,
   reading `DB.listings[id].address` on a price cut or an off-market roll — throws the first time
-  that loop reaches an id whose content file is gone. A deal or listing still actively under
-  contract on deleted content is a separate, unhandled edge case: don't delete a listing a save
-  might be mid-contract on.
+  that loop reaches an id whose content file is gone.
+- **A deal mid-contract on deleted content survives it now.** The purge above covers state keyed
+  BY a content id; this covers state that POINTS AT one, which was the piece left open. `repairCareer()`
+  drops a deal whose listing, other agent, or client record is gone, drops a client record whose
+  file is gone (and its ids out of `clientQueue` / `usedClients`), drops a player listing whose
+  seller is gone, drops offers naming a missing agent, and takes the dead deal's schedule items,
+  pending choices and `rec.dealId` with it. A listing left flagged `underContract` with no deal
+  behind it goes back on the market rather than staying unbuyable forever — conservatively, only
+  when no deal in any stage references it. Every dropped deal leaves a Ledger line, because
+  player progress disappearing silently is worse than the crash it replaces.
+  **None of this makes deleting a listing a save is mid-contract on a good idea.** It makes it
+  survivable rather than a throw on the next day advance, which is what it was.
 - **`log(text, cls, kind, recId)`'s fourth argument tags a line as belonging to one client.** Any
   new call site that's about a specific client should pass that client's `rec.recId` — it's what
   the Ledger's per-client filter matches on. Leave it `undefined` for anything not about one client
