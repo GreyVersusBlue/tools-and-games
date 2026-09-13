@@ -141,9 +141,9 @@ and #222 was closed unmerged an hour of suites later.
 | 16 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | — |  | [The site itself](#the-site-itself) |
 | 17 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | — |  | [The site itself](#the-site-itself) |
 | 18 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | — |  | [The site itself](#the-site-itself) |
-| 19 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
-| 20 | Clear the six `social:check` entries in `Tools/board-check/known-failures.json`: three pages with hand-written og tags, an offsite link read as a path, two pages with no block | `Tools/board-check` | ½ | — |  | [The site itself](#the-site-itself) |
-| 21 | Make Integer Foundry's `test/browser.mjs` pass under the harness's Puppeteer engine, then add it to `site-ci.yml` | `Projects/integer-foundry` | ½ | — |  | [Integer Foundry](#integer-foundry) |
+| 19 | An ownership manifest `check-integrity.mjs` enforces; `Tools/prompt-builder.html` is owned by nothing and fails the sweep today | `Tools/board-check` | ½ | — | claude/backlog-quick-fixes-3j3e4v | [The site itself](#the-site-itself) |
+| 20 | Clear the six `social:check` entries in `Tools/board-check/known-failures.json`: three pages with hand-written og tags, an offsite link read as a path, two pages with no block | `Tools/board-check` | ½ | — | claude/backlog-quick-fixes-3j3e4v | [The site itself](#the-site-itself) |
+| 21 | Make Integer Foundry's `test/browser.mjs` pass under the harness's Puppeteer engine, then add it to `site-ci.yml` | `Projects/integer-foundry` | ½ | — | claude/backlog-quick-fixes-3j3e4v | [Integer Foundry](#integer-foundry) |
 | 22 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | — |  | [Anathema Archive](#anathema-archive) |
 | 23 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | — |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
 | 24 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | — |  | [Pathfinder Characters](#pathfinder-characters) |
@@ -154,13 +154,13 @@ and #222 was closed unmerged an hour of suites later.
 | 29 | Confirm the gate door's own mesh is symmetric within its bounding box | `Projects/Castle Conundrum` | ¼ | — |  | [Castle Conundrum](#castle-conundrum) |
 | 30 | Get a real `npm run games closing-time` pass through the shared suite | `Projects/Closing Time` | ¼ | — |  | [Closing Time](#closing-time) |
 | 31 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | — |  | [Closing Time](#closing-time) |
-| 32 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — |  | [Closing Time](#closing-time) |
+| 32 | The unhandled edge case: a deal or listing still under contract on deleted content | `Projects/Closing Time` | ½ | — | claude/backlog-quick-fixes-3j3e4v | [Closing Time](#closing-time) |
 | 33 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
 | 34 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
 | 35 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | — |  | [Golden Hour](#golden-hour) |
 | 36 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | — |  | [Golden Hour](#golden-hour) |
 | 37 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | — |  | [Golden Hour](#golden-hour) |
-| 38 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — |  | [Golden Hour](#golden-hour) |
+| 38 | Add Golden Hour to `assets/js/gvb-save.js`'s "Adopted by" comment | `assets` | ¼ | — | claude/backlog-quick-fixes-3j3e4v | [Golden Hour](#golden-hour) |
 | 39 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | — |  | [Golden Hour](#golden-hour) |
 | 40 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
 | 41 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | — |  | [Blue Hour](#blue-hour) |
