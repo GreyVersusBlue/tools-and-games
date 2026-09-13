@@ -113,11 +113,12 @@ the call in `HISTORY.md` as a locked decision so it can be reversed cheaply. A r
 question actually standing in front of your row, not the list; Devon intends to work through
 the rest himself.
 
-**Size the batch by the Size column, never by a count:** up to 4 quarter-session rows (they
-may share one PR), 2–3 half-session rows, one 1-session row, or a single 2+ row on its own.
-A 2+ row will not finish in one session — do one increment, ship it, and leave the row in
-place with its text rewritten to say what is done. Never mix a 2+ row into a batch with
-others. `BACKLOG.md`'s "How this repo is worked" carries the table and the reasoning.
+**Size the batch by the Size column, never by a count:** up to 4 quarter-session rows, 2–3
+half-session rows, one 1-session row, or a single 2+ row on its own. **Whatever the batch,
+it merges to `main` as one PR** — every row in the batch, never one PR per row. A 2+ row
+will not finish in one session — do one increment, ship it, and leave the row in place with
+its text rewritten to say what is done. Never mix a 2+ row into a batch with others.
+`BACKLOG.md`'s "How this repo is worked" carries the table and the reasoning.
 
 Still not a session's call: **re-ranking the list wholesale**, and **overruling the
 Ownership table**.
@@ -145,7 +146,8 @@ your own branch, in the same commit, and say so in the PR body.
 
 ## Definition of done for a session
 
-1. The work is on a branch, and the branch is a pull request.
+1. The work is on a branch, and the branch is a pull request — **one PR for the whole
+   batch**, whatever its size, not one per row.
 2. Every suite the change could touch passes, run from the directory that owns
    it (see the table above). At minimum:
    `cd Tools/board-check && npm run check && npm run social:check`.
@@ -154,13 +156,12 @@ your own branch, in the same commit, and say so in the PR body.
 4. The PR merged to `main` with CI green.
 5. The closing report names the next open item's rank and its model, so
    whoever opens the next session knows which row to take.
-6. **Update `BACKLOG.md` after your merge is confirmed** — its header (the
+6. **Update `BACKLOG.md` as soon as your merge is confirmed** — its header (the
    last thing that shipped and its PR number, the ranked-item count, what to
    pick up next), the ranks if your work reordered anything, and the `Claimed`
-   column, which your row should no longer be in. **This happens after *each*
-   merge, never saved for the end of a batch.** It is the rule most likely to
-   be dropped as batches grow, and its casualty is on record in the sibling
-   repo (`GreyVersusBlue/AI_Tools`): a session batched two phases, saved both
-   backlog rewrites for the end, and its first PR merged with the row still in
-   the ranked table — the next session spent an hour rebuilding what already
-   existed.
+   column, which your row should no longer be in. **Never leave this for a later
+   session.** It is the rule most likely to be dropped as batches grow, and its
+   casualty is on record in the sibling repo (`GreyVersusBlue/AI_Tools`): a
+   session batched two phases, saved both backlog rewrites for the end, and its
+   first PR merged with the row still in the ranked table — the next session
+   spent an hour rebuilding what already existed.
