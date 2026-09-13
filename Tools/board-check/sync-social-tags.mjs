@@ -129,9 +129,35 @@ function blockFor(n, eol = '\n') {
 
 /* ------------------------------------------------------------------- apply -- */
 
-let wrote = 0, same = 0, stale = 0, missing = 0, failed = 0;
+// Pages that generate their own social tags and must not get the board's.
+// Numina is an Eleventy site whose build output is committed: base.njk writes
+// og/icon tags into every page it builds, with its own purpose-built 1200x630
+// social-card.png and its own favicon, and Numina/index.html is that build's
+// output. A block injected there does not survive the next `npm run build`, so
+// this script would rewrite it, Eleventy would drop it, and --check would go
+// red again forever. Stripping the tags from base.njk instead would strip them
+// from every inner Numina page too, and those are not on the board, so nothing
+// would give them any.
+//
+// An exemption that is not checked is just a blind spot, so the pages listed
+// here still have to prove they carry the three things this script exists to
+// guarantee. Add a page here only when it really does generate its own.
+const OWN_TAGS = new Set(['Numina/index.html']);
+
+let wrote = 0, same = 0, stale = 0, missing = 0, failed = 0, offsite = 0, own = 0;
 
 for (const n of notices) {
+  // The board carries one notice that is not a page on this site
+  // (https://aspermylessonplan.com/, index.html:564). path.join(SITE, href)
+  // turns that into SITE/https:/aspermylessonplan.com/index.html, which this
+  // script then reported as "linked from the board but not on disk" — a real
+  // FAIL line for a page that was never ours to write tags into. Nothing can
+  // be generated for an offsite link, so count it and move on.
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(n.href)) {
+    offsite++;
+    continue;
+  }
+
   const file = fileFor(n.href);
   const label = path.relative(SITE, file).replace(/\\/g, '/');
 
@@ -141,6 +167,23 @@ for (const n of notices) {
   }
 
   const src = fs.readFileSync(file, 'utf8');
+
+  if (OWN_TAGS.has(label)) {
+    const has = [
+      [/property="og:title"/, 'og:title'],
+      [/property="og:image"/, 'og:image'],
+      [/property="og:description"/, 'og:description'],
+      [/rel="icon"/, 'icon'],
+    ].filter(([re]) => !re.test(src)).map(([, what]) => what);
+    if (has.length) {
+      failed++;
+      console.log(`  FAIL  ${label}  claims to bring its own social tags but has no ${has.join(', ')}`);
+    } else {
+      own++;
+    }
+    continue;
+  }
+
   const block = blockFor(n, src.includes('\r\n') ? '\r\n' : '\n');
   let out;
 
@@ -173,7 +216,8 @@ for (const n of notices) {
 }
 
 console.log(`\n${notices.length} notices · ${same} already current · ` +
-  `${missing} had no block · ${stale} out of date · ${failed} failed`);
+  `${missing} had no block · ${stale} out of date · ${offsite} offsite · ` +
+  `${own} bring their own · ${failed} failed`);
 if (check) {
   const drift = missing + stale + failed;
   console.log(drift
