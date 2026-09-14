@@ -10754,3 +10754,140 @@ and `node ci-check.mjs` from `Tools/board-check`. `npm run play` was not run and
 **Next:** rank 1 is now Phase 3, the shell: two wards, eight drums, a cross-wall, a 1 on
 Claude Opus 5. It is the first phase that restores an asset (castle_wall_slates, defense_wall
 and grassy_cobblestone, 29.0 MB to 35.2).
+
+## Castle Conundrum v2, Phase 3: the shell, two wards, eight drums, the cross-wall (2026-09-14)
+
+**Rank 1, a 1 in one area, alone under the size table** (PR #312). The row named Claude
+Opus 5 and was worked under Opus 5. The 7x7 courtyard and its hall are gone; the castle is
+`WISHLIST.md`'s Conwy map, tile for tile — 80 m by 40 inside a curtain, two wards divided by
+a cross-wall with one gate through it, eight drum towers, a barbican at each end. 219 pieces
+against the old 59. 29.0 MB to 35, three texture sets restored. Decisions #432 to #438.
+
+**The row was Phase 3, not Phase 1, for the second time running.** The session was started on
+a prompt naming Phase 1 and rank 1, and carrying Phase 1's riders: ships no asset, stays at
+29 MB, "if you find yourself reaching for a Poly Haven set you have drifted into Phase 3".
+Phase 1 had shipped (#421 to #425) and Phase 2 had shipped an hour earlier (PR #309, #426 to
+#431), so rank 1 was Phase 3 — whose own spec restores three sets and goes to 35.2 MB. Phase
+2's session resolved the identical collision the identical way and wrote it down; this is the
+second instance, which makes it a pattern rather than an accident. **"Work rank 1" is the
+instruction; the phase named beside it is a snapshot that goes stale the moment a PR merges.**
+The riders belong to the phase, not to the session.
+
+- **A run IS its box, and that is why the curtain stopped being kit pieces** (#432). `walls`
+  is eighteen runs of `{from, to, thickness, height, material}` in tile coordinates, spanning
+  their end tiles whole so a run written `from [-8,-4] to [-6,-4]` covers the three `##` tiles
+  the map draws; `drums` is eight solid cylinders. Both are computed in `src/castle-plan.js`
+  and emitted as `BoxGeometry` and `CylinderGeometry` by the builder. The point is not the
+  look, it is that built geometry is the one thing the plan can describe *exactly*: the plan's
+  box and the geometry are the same eight numbers rather than two measurements that have to
+  agree. The drum is the case that proves it — the builder's `CylinderGeometry(r, r, h, 24)`
+  and the plan's collider sectors are boxes over the **same twenty-four vertices**, not two
+  roundings of one circle. `plan-vs-scene.mjs`: all 219 pieces within **0.0000 m**.
+- **The eight tower interiors are not rooms until Phase 4, and the drum is not what stops
+  them** (#433). Phase 3's plan says to put every ground room in the table into `rooms`,
+  "reachable because nothing encloses them yet". Six of the fourteen are. The other eight are
+  tower interiors, and a hollow drum with a doorway in its ring does not produce one you can
+  walk into: the curtain is a whole tile thick, so at a corner the two runs meeting there
+  overlap in **neither axis** — the west run at x -38..-34 and the north run at z -18..-14
+  touch at the single point (-34, -14). The ward is the quadrant south-east of it, the drum
+  the quadrant north-west, and the two meet at a pinch of exactly zero width. No radius up to
+  the map's 4 m opens it; six of the eight towers are built that way. What opens it is a
+  doorway cut *through* the adjacent run, which is Phase 4's own bullet ("doorways as gaps the
+  plan's walkability sees, and door frames from `wall-door.glb` where a doorway needs a
+  lintel") and Phase 4's own exit ("fourteen rooms reachable"). So the drums are solid here
+  and the eight rooms are Phase 4's. **A room listed in `rooms` that nothing can reach is not
+  a placeholder, it is a failing check**, and widening the check to accept it would have been
+  the wrong half to move.
+- **The texture repeat is world-space and lives in the geometry's UVs, not in
+  `texture.repeat`** (#434). One repeat per 3 m, so a 4 m tile shows 1.33 repeats of the 1k
+  map and a 20 m run shows 6.67. It cannot be done on the texture: the material is shared by
+  every piece naming the same stone, and a shared texture has one repeat for all of them — a
+  4 m barbican wall and a 20 m curtain run would show the same single smear. Each geometry's
+  UVs are multiplied by its own metres instead, per face for a box and per group for a
+  cylinder, so the side reads circumference and height and the cap reads diameter.
+- **Three gates, and `archColliders` takes the gate's rotation instead of reading it off the
+  box** (#435). The west gate stands open and never animates (the clerk was admitted through
+  it and the spawn is behind it in the barbican; the barbican's west face carries no archway
+  at all, which is `WISHLIST.md`'s answered question 5 honoured by having nothing to open);
+  the east gate is shut until the riddle quest's `openGate` swings it onto the walled garden,
+  which keeps that quest playable and inside the curtain until Phase 4 repoints the riddle at
+  the muniment lock; the porter's gate is open all day. The collider fix is the one that
+  mattered: `across` was `(box.max.x - box.min.x) >= (box.max.z - box.min.z)`, and the archway
+  is a 4 x 4 x 4 m cube at **every** rotation, so that comparison is `4 >= 4` and true for all
+  three — including the three this phase turns 90 degrees into north-south walls. It would
+  have laid their jambs across the passage and left the doorway's real sides open. That is
+  #426's bug with the opposite sign, and it was found by reasoning about the expression, not
+  by a check: nothing in the suite distinguishes a jamb from a lintel.
+- **Two grounds, and the base is derived from the curtain rather than written down** (#436).
+  "The 140 m ground plane shrinks to the curtain's footprint plus 2 m." The footprint is a
+  number only the plan knows, so the ground is one of the plan's pieces now and
+  `scene-setup.js` no longer builds it — which also puts it inside `plan-vs-scene.mjs`, where
+  the old plane never was. The outer ward's grassy cobbles are a patch on the base at the same
+  y; walkability's own cell dedupe (within 1e-6 m) reads two coplanar surfaces as one floor,
+  so the patch costs no second storey. The patch carries polygon offset as **insurance, not a
+  fix**: it wins the depth test unaided on the software rasterizer CI runs on, and "wins on
+  the machine I measured" is not a property of coplanar geometry (#53). Raising it a
+  centimetre would have fixed the draw everywhere and put a second floor over the whole outer
+  ward.
+- **`arm` and `rough` are different images and a material declares exactly one** (#437). The
+  two packs already here (stone_pavers, wooden_gate) ship `arm_1k.jpg`: AO in red, roughness
+  in green, metalness in blue, and `loadPBRMaterial` sets `metalness = 1` to let the map drive
+  it. The three restored here ship `rough_1k.jpg`: roughness alone. Feeding a `rough` map to
+  the `arm` slot renders 8 m of castle wall as sheet metal; feeding it to nothing leaves the
+  wall matte plastic and nothing says so. Both slots exist now and `test/assets.mjs` fails a
+  material declaring both or neither.
+- **The hemisphere fill goes 0.55 to 2.0, because the stone changed** (#438). The sun sits at
+  (30, 45, 18), so every wall face pointing -x or -z has `n.l <= 0` and gets **no direct light
+  at all** — the west face of the cross-wall, the north face of every run, the inside of the
+  west curtain the player spawns looking at. That was survivable while the walls were the
+  Kenney kit's 64 px pixel art, which is bright and flat. Under ACES tone mapping with
+  photographic dark slate it was black. Measured off the live canvas at one spot on the
+  shadowed cross-wall: **0.55 → mean luma 6 of 255, 1.1 → 14, 2.0 → 27, 3.5 → 44**. Worth
+  recording that the first read of this was wrong: two screenshots at 0.55 and 1.1 looked
+  identical and the fill was nearly written off as the wrong lever. It was not; the base was
+  just so low that a doubling was invisible in a thumbnail. **Measure the pixel, do not judge
+  the thumbnail.**
+
+**The guard-rails, each broken once from a green baseline** (#34). Five breaks, five
+non-zero exits, each caught by the assertion whose comment claims it:
+
+| break | assertion that fired | what it said |
+| --- | --- | --- |
+| `cross-wall-north` deleted | the new ward check | `inner ward reachable at level 0 with the porter's gate closed: kings-hall (624 cells), stewards-chamber (248 cells). The cross-wall has a second way through it` |
+| `north-curtain-mid` deleted — the MIDDLE run, per #430 | `the curtain` | `the castle leaks: 1984 reachable cells outside the curtain ... The fill stepped through at (-15.75, -20.25), (-17.75, -20.25), (-24.75, -20.25)` |
+| a prop moved into drum stone | `interior props against the stone` | `GothicCabinet_01 at x -20.46..-19.33, z -13.86..-12.14 is inside Kitchen Tower` |
+| `stone_pavers` given both `arm` and `rough` | the new material check | ``material "stone_pavers" declares both `arm` and `rough` — src/assets.js reads exactly one`` |
+| `porter-gate`'s leaf widened to 2.6 m | the per-gate loop | `porter-gate: leaf width 2.6 m is wider than the opening's 2.000 m — it would clip the stone` |
+
+**The third break was a finding before it was a pass.** The first attempt put the cabinet at
+a tile that landed it in a *wall run*, not a drum — the check fired, and told nothing, because
+the old bounding-box code would have caught a wall run just as well. What had actually changed
+was that `layout.mjs` reads each piece's own collider boxes instead of the box bounding them,
+and a drum's `box` is the 8 x 8 m square around twenty-four sectors, three quarters of a metre
+of which is ward floor at each corner. Redone at a point inside drum stone and inside no run,
+it names the drum. **A break that fires the right assertion for the wrong reason is not a
+verified guard-rail**, and the only way to tell the two apart is to check that the break is
+inside the thing the change was about.
+
+**The ward division is the assertion this phase exists for.** `layout.mjs` floods the castle a
+second time with the porter's gate forced shut (`makePlan(config, boundsOf, { closed:
+['porter-gate'] })`) and asserts the inner ward is then unreachable: **872 inner-ward cells
+with the gate open, 0 with it shut**, and the outer ward unchanged at 4 rooms either way. That
+is the opposite assertion to "every room is reachable", not a restatement of it — delete
+either and a real hole opens, which is the distinction #34's "two lines guarding the same
+absence" warns about.
+
+**What was measured.** 219 pieces, 236 colliders, 8 surfaces. The walkability grid: 0.5 m,
+5,831 reachable cells over an 84 by 44 m footprint, 167 ms. Six rooms, all reachable. All six
+Castle Conundrum suites green, plus `npm run check`, `npm run social:check` and `node
+ci-check.mjs` from `Tools/board-check`; `known-failures.json` still empty in all three
+sections. **`npm run play` was not run and could not be** (#53). Its `SCHOLAR`, `GUARD`,
+`HALL_BRAZIER` and `HALL_TABLE` constants moved with the geometry, and its gate beat looks the
+leaf up by plan id now rather than hunting the scene near z 12 for an object of about the right
+size — a positional search after a layout change finds either nothing or the wrong thing —
+but none of that is verified. The phase's GPU exit criterion, barbican to porter's gate to
+King's Hall, is outstanding.
+
+**Next:** rank 1 is now Phase 4, the fourteen ground-floor rooms and the word-lock, a 1 on
+Claude Opus 5. It restores rock_tile_floor, floor_tiles_02 and old_planks_02, and it owns the
+eight tower interiors this phase left as solid stone (#433).
