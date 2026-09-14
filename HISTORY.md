@@ -9763,6 +9763,62 @@ outside CI on purpose (#353). Nothing was fixed and nothing went red.
 It is the one suite this batch touched without the batch touching its project — see
 #387.
 
+## The line browser.mjs builds to order moves into Node (2026-09-14)
+
+**Follow-up to #387, asked for directly rather than taken off the ranked table.**
+Decision #388. Not a batch, so it does not take `BACKLOG.md`'s "last batch of ranked
+work" line, which still names PR #289.
+
+- **A helper a browser suite uses to work out where things go belongs in a module the
+  Node suite can check across its whole input range** (#388). `browser.mjs`'s
+  fill-the-order beat computed its own line geometry inline. One browser run tests one
+  order size, whichever the game happened to roll, so ten of the eleven sizes went
+  unchecked on any given run, and #387 lived in one of them for as long as it took the
+  dice to land there. The geometry is `test/order-line.mjs` now, `browser.mjs` imports
+  `planOrderLine()` and does only the clicking, and `smoke-targets.mjs` checks the
+  arithmetic: on the floor, no two tiles on a cell, every tile feeding the next one,
+  `want + 1` tiles, and a null rather than a plan for anything that does not fit.
+  104 checks, up from 94. `browser.mjs` 56 → 57.
+
+  Nothing in the check re-implements the planner; it calls the same function
+  `browser.mjs` calls (#34).
+
+  **The order sizes are read out of the game, not written down.** `rollTarget(state,
+  rand = Math.random)` takes its randomness as an argument, so sweeping that argument
+  across its range enumerates the opening draw exactly. It comes back 2 to 12, which is
+  the range `browser.mjs` had hard-coded as an assertion — right, as it turns out, but
+  right by hand. One of the eleven is 8, and the suite says so by name.
+
+  **Refusing is the safe failure.** `planOrderLine()` returns null rather than throwing
+  and null rather than a plan that runs off the floor. A throw aborts the whole browser
+  suite; #387 presented as an abort at 38 checks with no indication of which order size
+  caused it. Now an order that does not fit is one named miss with the number in it.
+
+**Broken on purpose, and the first attempt was not good enough (#34).**
+
+The first break put the pre-#387 sink derivation back and left the rest alone. **The
+suite stayed green at 104, 0 failed.** That is not the check being weak; it is the break
+being wrong. The old bug needed both halves of the old geometry, and with the new chain
+in place the old sink line lands on the same cell — for an order of 8 the last operator
+already faces south, so stepping off its facing reaches (7,3), which is the right
+answer. A break that leaves the suite green is exactly what `CLAUDE.md` warns about, and
+the answer is to check the break before doubting the check.
+
+Second attempt, the pre-#387 chain and sink restored verbatim:
+
+```
+FAIL  every order the opening board can roll builds a valid line  8: (8,2) is off the floor
+FAIL  every order from 2 to 14 builds a valid line                8: (8,2) is off the floor
+104 checks, 2 failed        suite exit 1
+```
+
+Both assertions that claim that meaning failed, neither of the nine others did, and the
+message names the order size and the cell. Restored, back to 104/0.
+
+**Suites.** `node Projects/integer-foundry/test/smoke-targets.mjs` 94 → **104, 0 failed**.
+`node Projects/integer-foundry/test/browser.mjs` **57, 0 failed**, four runs, four
+different order sizes (9, 9, 4, 5).
+
 ## Numina, August 2026
 
 An audit of the Eleventy rules site: 55 pages, ~136,000 words of source

@@ -23,6 +23,8 @@ import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage } from '../../../Tools/board-check/harness.mjs';
 import { GAMES, enter, savedState, wait } from '../../../Tools/board-check/games.mjs';
 import { waitFor } from '../../../Tools/board-check/drive.mjs';
+import { BASE_COLS, BASE_ROWS } from '../js/state.js';
+import { planOrderLine, turnsFor } from './order-line.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'shots');
@@ -341,57 +343,49 @@ try {
       () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
       { timeout: 10000 });
 
-    // A source emits 1 and every +1 adds one, so `want` needs want-1 of them.
-    // Row 2 west to east, turn down at column 7, row 3 east to west: 14 cells
-    // after the source, and the opening ramp never asks for more than 12.
+    // The geometry lives in order-line.mjs and is checked there across every order
+    // size the game can roll (#388). This beat does the clicking, which is the
+    // part only a browser can answer.
     //
-    // The sink is the next cell of that same path, not a step taken off the last
-    // operator's facing. Deriving it from the facing put it at data-x 8 — off a
-    // grid that ends at 7 — whenever the chain ended at column 7 still pointing
-    // east, which is exactly and only an order of 8. The opening order is rolled
-    // between 2 and 12, so that is about one run in eleven, and it aborted the
-    // whole suite with `No element found for selector:
-    // #grid .cell[data-x="8"][data-y="2"]`. Reading both the operators and the
-    // sink off one path has no such edge: every cell in it is on the board.
-    const path = [];
-    for (let x = 1; x <= 7; x++) path.push({ x, y: 2 });
-    for (let x = 7; x >= 1; x--) path.push({ x, y: 3 });
-    const cells = path.slice(0, Math.max(1, want));
-    const chain = cells.slice(0, want - 1).map((c, i) => ({
-      ...c,
-      dir: cells[i + 1].y !== c.y ? 'S' : cells[i + 1].x > c.x ? 'E' : 'W',
-    }));
-    const sinkAt = cells[Math.max(0, want - 1)];
+    // A null plan means the order does not fit the floor this beat assumes. That
+    // is a named failure with the number in it rather than an abort ten lines
+    // later on a cell that does not exist, which is how #387 presented.
+    const plan = planOrderLine(want, BASE_COLS, BASE_ROWS);
+    t.ok(!!plan, 'the order fits a line on the opening floor',
+      plan ? `${plan.chain.length} operators` : `no plan for an order of ${want}`);
 
-    await place(p, 'source', 0, 2);
-    await click(p, '[data-tool="add1"]');
-    for (const c of chain) await click(p, `#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
-    // Rotate: clicking a placed tile with the same tool selected steps E>S>W>N.
-    for (const c of chain) {
-      const turns = c.dir === 'E' ? 0 : c.dir === 'S' ? 1 : 2;
-      for (let i = 0; i < turns; i++) await click(p, `#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+    if (plan) {
+      await place(p, 'source', plan.source.x, plan.source.y);
+      await click(p, '[data-tool="add1"]');
+      for (const c of plan.chain) await click(p, `#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+      // Rotate: clicking a placed tile with the same tool selected steps E>S>W>N.
+      for (const c of plan.chain) {
+        for (let i = 0; i < turnsFor(c.dir); i++) {
+          await click(p, `#grid .cell[data-x="${c.x}"][data-y="${c.y}"]`);
+        }
+      }
+      await place(p, 'sink', plan.sink.x, plan.sink.y);
+
+      const built = await p.$$eval('#grid .cell:not(.empty)', els => els.length);
+      t.ok(built === want + 1, 'built a line of exactly the right length',
+        `${built} tiles for an order of ${want}`);
+
+      // TICK_MS 550, source every 3 ticks, then one tile per tick down the line.
+      const filled = await waitFor(p,
+        () => /[1-9]/.test(document.getElementById('stat-orders').textContent),
+        { timeout: 30000 }).then(() => true, () => false);
+      const live = await p.evaluate(() => ({
+        orders: document.getElementById('stat-orders').textContent.trim(),
+        ingots: document.getElementById('stat-ingots').textContent.trim(),
+        log: [...document.querySelectorAll('#log div')].map(e => e.textContent.trim()),
+      }));
+      t.ok(filled, 'and it filled the order the game asked for, with nothing seeded',
+        live.log.find(l => /order filled/i.test(l)) || live.log[0] || '');
+      t.ok(new RegExp(`Order filled: ${want} `).test(live.log.join(' | ')),
+        `the sink took a ${want}`, live.log.find(l => /order filled/i.test(l)) || '');
+      t.ok(/[1-9]/.test(live.ingots), 'and paid out', `${live.ingots} ingots`);
+      await shot(p, 'built-to-order');
     }
-    await place(p, 'sink', sinkAt.x, sinkAt.y);
-
-    const built = await p.$$eval('#grid .cell:not(.empty)', els => els.length);
-    t.ok(built === want + 1, 'built a line of exactly the right length',
-      `${built} tiles for an order of ${want}`);
-
-    // TICK_MS 550, source every 3 ticks, then one tile per tick down the line.
-    const filled = await waitFor(p,
-      () => /[1-9]/.test(document.getElementById('stat-orders').textContent),
-      { timeout: 30000 }).then(() => true, () => false);
-    const live = await p.evaluate(() => ({
-      orders: document.getElementById('stat-orders').textContent.trim(),
-      ingots: document.getElementById('stat-ingots').textContent.trim(),
-      log: [...document.querySelectorAll('#log div')].map(e => e.textContent.trim()),
-    }));
-    t.ok(filled, 'and it filled the order the game asked for, with nothing seeded',
-      live.log.find(l => /order filled/i.test(l)) || live.log[0] || '');
-    t.ok(new RegExp(`Order filled: ${want} `).test(live.log.join(' | ')),
-      `the sink took a ${want}`, live.log.find(l => /order filled/i.test(l)) || '');
-    t.ok(/[1-9]/.test(live.ingots), 'and paid out', `${live.ingots} ingots`);
-    await shot(p, 'built-to-order');
   }
 
   group('A save written by the pre-gvb-save build');
