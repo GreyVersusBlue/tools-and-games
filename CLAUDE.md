@@ -169,9 +169,11 @@ your own branch, in the same commit, and say so in the PR body.
 5. The closing report names the next open item's rank and its model, so
    whoever opens the next session knows which row to take.
 6. **Update `BACKLOG.md` as soon as your merge is confirmed** — its header (the
-   last thing that shipped and its PR number, the ranked-item count, what to
-   pick up next), the ranks if your work reordered anything, and the `Claimed`
-   column, which your row should no longer be in. **Never leave this for a later
+   last **batch of ranked work** that shipped and its PR number, the ranked-item
+   count, what to pick up next), the ranks if your work reordered anything, and
+   the `Claimed` column, which your row should no longer be in. A PR that only
+   changes `BACKLOG.md`, `HISTORY.md` or this file is not a batch and does not
+   take that line (#382). **Never leave this for a later
    session.** It is the rule most likely to be dropped as batches grow, and its
    casualty is on record in the sibling repo (`GreyVersusBlue/AI_Tools`): a
    session batched two phases, saved both backlog rewrites for the end, and its
