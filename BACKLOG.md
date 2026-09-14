@@ -330,7 +330,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Castle Conundrum v2, Phase 1: the mystery as data, the validator, and the save (`castleConundrumSave_v1`) | `Projects/Castle Conundrum` | 1 | Fable 5.1 |  | [Castle Conundrum](#castle-conundrum) |
+| 1 | Castle Conundrum v2, Phase 1: the mystery as data, the validator, and the save (`castleConundrumSave_v1`) | `Projects/Castle Conundrum` | 1 | Fable 5.1 | `claude/castle-conundrum-v2-phase-1-sofz0k` | [Castle Conundrum](#castle-conundrum) |
 | 2 | Castle Conundrum v2, Phase 2: `castle-plan.js`, the structure the builder and `layout.mjs` both read, with walkability. After Phase 1 | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
 | 3 | Castle Conundrum v2, Phase 3: the shell, two wards, eight drums, the cross-wall; restores castle_wall_slates, defense_wall, grassy_cobblestone. After Phase 2 | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
 | 4 | Castle Conundrum v2, Phase 4: the fourteen ground-floor rooms and the word-lock; restores rock_tile_floor, floor_tiles_02, old_planks_02. After Phase 3 | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
