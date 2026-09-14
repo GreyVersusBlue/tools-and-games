@@ -85,17 +85,17 @@ function paintHUD() {
 // A level that arrived in a link. It is not a sector: it has no place in the
 // pack order and no `key`, so it records no stars and never unlocks anything.
 // Somebody else's level cannot write into this browser's campaign.
-function loadShared(level) {
+function loadShared(level, packName) {
   document.getElementById("introScrim").classList.remove("show");
   curIndex = -1;
   L = Object.assign(OrbitalCode.clean(level),
-    { pack: "Shared", packId: "shared", packLen: 1, localIdx: 0, key: null, ephemeral: true });
+    { pack: packName || "Shared", packId: "shared", packLen: 1, localIdx: 0, key: null, ephemeral: true });
   bodies = L.bodies.map(b => Object.assign({}, b));
   attempts = 0; won = false;
   resetProbe(); mode = "aim"; hideNext();
   document.getElementById("btnRemix").classList.add("show");
   paintHUD();
-  showHint("A shared sector · drag anywhere to aim");
+  showHint((packName === "Generated" ? "A rolled sector" : "A shared sector") + " · drag anywhere to aim");
 }
 function resetProbe() {
   probe = { x: L.start.x, y: L.start.y }; vel = { x: 0, y: 0 }; flyState = null;
@@ -215,6 +215,49 @@ function buildGrid() {
     });
   });
 }
+// ---- random sectors ----
+// A rolled sector is a shared one (no key, no stars, Remix works), and the
+// address bar carries it under `#l=` the moment it exists, so reloading
+// replays it and copying the URL shares it. The seed is in its name, but the
+// link carries the level itself: a name is not enough to rebuild a level if
+// the generator ever changes, and a link always is.
+let genRun = null, genTimer = 0;
+function genStatus(msg, cls) {
+  const el = document.getElementById("genStatus");
+  el.textContent = msg; el.className = "gen-status " + (cls || "");
+}
+function generateSector(tier) {
+  if (genRun) return;
+  const seed = (Math.random() * 4294967296) >>> 0;
+  genRun = OrbitalGen.makeGenerator(tier, seed);
+  const btns = document.querySelectorAll("#genRow button");
+  btns.forEach(b => b.disabled = true);
+  // Sliced the way the editor's Check is (12 ms of launches, then a
+  // setTimeout), for the reason written there: under a software-rendered
+  // Chromium a per-frame budget is 5 slices a second.
+  const now = () => (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+  const tick = () => {
+    const t0 = now();
+    let r;
+    do { r = genRun.step(8); } while (!r.done && now() - t0 < 12);
+    if (!r.done) {
+      genStatus(`Rolling… candidate ${r.tried}, ${(r.progress * 100) | 0}% flown`);
+      genTimer = setTimeout(tick, 0);
+      return;
+    }
+    genRun = null; genTimer = 0;
+    btns.forEach(b => b.disabled = false);
+    if (!r.level) { genStatus(`Nothing playable in ${r.tried} candidates. Roll again.`, "bad"); return; }
+    genStatus("");
+    closeLevels();
+    edSetHash("l", OrbitalCode.encode(r.level));
+    loadShared(r.level, "Generated");
+  };
+  genTimer = setTimeout(tick, 0);
+}
+document.querySelectorAll("#genRow button").forEach(b =>
+  b.addEventListener("click", () => generateSector(b.dataset.tier)));
+
 const lvlScrim = document.getElementById("lvlScrim");
 function openLevels() { buildGrid(); lvlScrim.classList.add("show"); }
 function closeLevels() { lvlScrim.classList.remove("show"); }

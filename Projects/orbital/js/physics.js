@@ -134,8 +134,11 @@
   // animation frames with a progress bar instead of freezing the tab.
   // step(budget) spends at most `budget` trial launches and returns
   // { done, shot, progress, tried }. `shot` is null until one wins.
+  // The budget, named so a caller that wants a subset of the same grid (the
+  // generator's census) derives it rather than copying the numbers.
+  const SEARCH = { angleSteps: 240, powerSteps: 20, rounds: 60 };
   function makeSearch(level, opts) {
-    const o = Object.assign({ angleSteps: 240, powerSteps: 20, rounds: 60 }, opts || {});
+    const o = Object.assign({}, SEARCH, opts || {});
     const total = o.angleSteps * o.powerSteps;
     let phase = "grid", ai = 0, pi = 1, best = null, tried = 0;
     let center = null, bestDist = Infinity, dAngle = 0, dPower = 0, round = 0, di = 0, improved = false;
@@ -200,7 +203,7 @@
   }
 
   g.OrbitalPhysics = {
-    G, SOFT2, SUBSTEPS, DT, MAXSPEED, MAXDRAG, W, H, PAD,
+    G, SOFT2, SUBSTEPS, DT, MAXSPEED, MAXDRAG, W, H, PAD, SEARCH,
     isSolid, posBodies, substep, solve, closestApproach, makeSearch, findWinningShot
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);
