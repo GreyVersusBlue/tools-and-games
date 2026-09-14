@@ -10637,3 +10637,120 @@ table, the fourteenth adopter and a shared-file edit this PR carries.
 
 **Next:** rank 1 is now Phase 2, the plan the builder and the suite both read, a 1 on Claude
 Opus 5.
+
+## Castle Conundrum v2, Phase 2: the plan the builder and the suite both read (2026-09-14)
+
+**Rank 1, a 1 in one area, alone under the size table** (PR #309). The row named Claude
+Opus 5 and was worked under Opus 5. `src/castle-plan.js` is new and is the only place a
+transform or a collider box is computed; `castle-builder.js` drops from 312 lines to 234
+and applies what the plan hands it; `test/layout.mjs` is rewritten off the plan;
+`test/plan-vs-scene.mjs` is new and in the CI matrix. Nothing restored, the project stays
+at 29 MB, and the page plays exactly what it played the day before. Decisions #426 to #431.
+
+**The row was Phase 2, not Phase 1.** The session was started on a prompt naming Phase 1
+and rank 1; Phase 1 had merged an hour earlier (PR #306, then #307), so rank 1 in
+`BACKLOG.md` was Phase 2. The prompt's "do not work ahead into Phase 2" was written to keep
+one session from taking two phases, not to stop the next session taking the next phase, and
+"work rank 1" is the instruction the repo runs on. Phase 2 was taken, in order, alone.
+
+- **`boundsOf(modelPath)` returns `{parts}`, not a `Box3`** (#426). The plan for this phase
+  wrote the injected measurement as "three's `Box3` of the loaded model at runtime". It
+  cannot be. `Box3.setFromObject` never looks at a vertex: it takes the eight corners of
+  each MESH's own `geometry.boundingBox`, transforms them by that mesh's `matrixWorld`, and
+  unions the results — and GLTFLoader builds one mesh per glTF primitive. A placed model's
+  runtime box is therefore not a function of its whole-model box, and a plan built on one
+  box cannot reproduce the castle the browser builds. The measurement, taken by collapsing
+  `parts` to one box and re-running `plan-vs-scene.mjs` against the live page:
+  brass_candleholders **0.129 m** out, GothicCabinet_01 **0.113 m**, against that file's
+  0.01 m tolerance. The cabinet is the one to remember, because it is placed at 90 degrees
+  where rotating corners is exact and it is still wrong by eleven tolerances: its four doors
+  are separate nodes translated up to 1.75 m off the carcass and rotated open, and three
+  boxes each of those separately. With `parts`, all 59 pieces sit at **0.0000 m**.
+  `test/gltf.mjs` grew `partsOf` for the Node half and lost a dead `boundsOf` that returned
+  a different shape under the same name.
+
+- **The gatehouse was open, and the first run of `sealed()` found it** (#427). `gate-arch`
+  carried `noCollide: true` and the comment "a doorway is meant to have a hole in it". The
+  piece is 4 m wide and the doorway in it is 1.9 m, so the exemption was not the doorway —
+  it was the whole piece, leaving **two 1.05 m strips of walk-through stone** flanking a
+  shut gate, each wider than the 0.9 m player. This was shipped, live, and invisible to
+  every check the project had: `layout.mjs` measured props against walls and never asked
+  whether the castle was closed, and `play-castle.mjs` ends at the victory screen without
+  walking through the archway. `archColliders` gives the piece two jambs and a lintel,
+  sized from `gateDoor.leaf`, which `test/assets.mjs` already holds to the model's measured
+  opening to 0.11 m. `noCollide` now means one thing on every piece: the first version kept
+  the archway's special case ahead of the flag, which made re-adding `noCollide: true` to
+  `gate-arch` a silent no-op — a config flag that reads as "open the gatehouse back up" and
+  did nothing at all. What stops it being re-added is `sealed()`, not a special case.
+
+- **A collider blocks a whole cell, not the point at its centre** (#428). The first run of
+  the walkability grid reported 76,494 reachable cells and `sealed() === false`: it had
+  flooded the entire 140 m ground plane straight through the shut gate. The leaf is 0.16 m
+  thick and the grid is 0.5 m, so no cell centre lands inside it — a centre test steps over
+  any wall thinner than the grid, which in a castle about to grow doors, screens and
+  balustrades is most of what a wall can be. Testing the cell's whole square against the
+  collider is also the truer model of what it is asking, because the player is 0.9 m across,
+  wider than a cell: a cell with stone in any corner is not somewhere to stand. Reachable
+  cells went 76,494 to 1,189 and the run from 277 ms to 14 ms.
+
+- **The leak message names where the fill crossed, and it has to be recorded during the
+  fill** (#429). A breach floods 75,228 cells, so picking "the leak" out of the finished set
+  afterwards picks one of seventy-five thousand cells that has nothing to do with the hole:
+  sorted by distance from the origin it named (-14.25, 0.25) for a hole at (0, -14). It also
+  said "9999 reachable cells outside the curtain", which was not a count but the limit the
+  message had asked for. A cell first reached FROM a cell inside the curtain is the hole and
+  nothing else is, so `walkability` records those as it goes. The same break now reads *the
+  fill stepped through at (-1.75, -14.25), (0.25, -14.25)* — the missing piece's own span.
+
+- **Removing the END piece of the north run runs green, and that is the right answer**
+  (#430). The phase's plan says the break is "remove one `wall.glb` from the north run".
+  Taken literally — `count: 7` to `6` — the suite stayed green at exactly 1,189 cells, which
+  is a finding under #34 and not a formality. The dropped piece is the tile-3 one, and the
+  hole it leaves at x 10..14, z -14..-10 is walled off from the interior by the east wall's
+  own northern end; the flood fill is 4-connected, so it touches that hole only at a corner
+  point and never enters it. Nothing reachable is outside the curtain, so the castle really
+  is still sealed. The break that bites is the MIDDLE piece: 75,228 cells outside, crossing
+  at (-1.75, -14.25). **A break that runs green is a claim about the castle, not a broken
+  check** — but you only get to say that after working out why.
+
+- **`plan-vs-scene.mjs` is in the CI matrix** (#431), not hand-run. #53 is about real-time
+  movement and physics being inconclusive under a software rasteriser; this file takes no
+  pointer lock, moves nothing and times nothing. It waits for `CastleBuilder.build()` to
+  resolve, reads every object the builder tagged with a `planId`, and diffs static boxes.
+  Three runs, three passes, 6 s each. Its matrix entry carries `install: Tools/board-check`
+  because it borrows `harness.mjs`. It clears the save from a cheap page on the same origin
+  rather than loading the game and reloading it: the reload aborts the model requests the
+  first load has in flight, `page.__errs` outlives the navigation, and the run then ends by
+  reporting a missing `wall.glb` that had loaded fine.
+
+**Guard-rails broken on purpose** (#34), each applied to the file on disk from a green
+baseline and restored after:
+
+| Break | Fired | Said |
+| --- | --- | --- |
+| wall scaling from width, not depth | `interior props against the stone around them`, 7 lines, and the NPC line | `WoodenTable_01 at x -0.90..0.90, z -8.33..-7.67 is inside interior hall south wall`; `scholar stands at (1.5, -8) ... which the player cannot reach` |
+| the END `wall.glb` of the north run removed | **nothing — green at 1,189 cells** | see #430: the hole is unreachable and the castle is still sealed |
+| the MIDDLE `wall.glb` of the north run removed | `the curtain` | `the castle leaks: 75228 reachable cells outside the curtain ... The fill stepped through at (-1.75, -14.25), (0.25, -14.25)` |
+| the hall doorway walled up | `great-hall ... cannot be reached` | `0 standable cells in x -6..6, z -10..-6` |
+| the wizard moved into the west curtain | `where the NPCs stand` | `wizard stands at (-12, 0) on level 0, which the player cannot reach — in stone, outside the curtain, or shut in` |
+| `noCollide: true` back on `gate-arch` | first **nothing** (the flag was ignored, #427), then `the curtain` | `the fill stepped through at (-1.25, 14.25), (0.25, 14.25)` |
+| the builder ignores the plan's `rotationY` | `plan-vs-scene.mjs`, 9 pieces | `"wall-half-31" (wall) is 2.000 m off the plan` |
+| the builder skips a piece the plan names | same | `the plan places "gate-door" (gate-leaf) and the scene has no such object` |
+| `boundsOf` collapsed to one whole-model box | same | `"brass_candleholders" (prop) is 0.129 m off the plan`; `"GothicCabinet_01" (prop) is 0.113 m` |
+
+Two of the nine ran green first time, and both were worth the hour: one was a wrong break
+(#430) and one was a real hole in the code (#427).
+
+**What was measured.** `castle-plan.js` 527 lines, `castle-builder.js` 312 to 234,
+`layout.mjs` 156 to 169, `plan-vs-scene.mjs` 134. The walkability grid: 0.5 m, 1,189
+reachable cells, 139 in the great hall and 948 in the courtyard, 14 ms. 59 pieces, 56
+colliders, 7 surfaces, all 59 within 0.0000 m of the live scene. `layout.mjs`'s two
+pre-existing numbers are unchanged across the rewrite — the cabinet still stands 0.103 m off
+its wall and clears its column by 0.140 m — so the plan reproduces what the file it replaced
+computed. All six Castle Conundrum suites green, plus `npm run check`, `npm run social:check`
+and `node ci-check.mjs` from `Tools/board-check`. `npm run play` was not run and could not be
+(#53); no beat of it walks through the archway, so the new jambs reach nothing it asserts.
+
+**Next:** rank 1 is now Phase 3, the shell: two wards, eight drums, a cross-wall, a 1 on
+Claude Opus 5. It is the first phase that restores an asset (castle_wall_slates, defense_wall
+and grassy_cobblestone, 29.0 MB to 35.2).
