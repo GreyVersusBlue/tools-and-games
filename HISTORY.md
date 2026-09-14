@@ -9963,6 +9963,76 @@ ci-check.mjs` — every failure is a known one and every known one still fails;
 `known-failures.json` untouched and still empty in all three sections. `npm run play` is
 this project's other half and needs real GPU compositing (#53, #353), so it was not run.
 
+## Castle Conundrum's quest is a graph (2026-09-14)
+
+**Ranked row 1, claimed on `main` before the work started (#283, PR #293) and merged as
+PR #294.** The row named Claude Fable 5.1 and was worked under Fable 5.1. A 1 in one area
+with no ¼ rows left beside it, so a batch of one under the size table (#382). Decisions
+#393 to #395.
+
+- **The quest is data, validated before it runs, and the manager holds no state** (#393).
+  `data/quest.json` is three stages (`seek-keystone`, `present-keystone`, `gate-open`),
+  each carrying the objective the tracker shows, the dialogue state every NPC switches to
+  on entry, the transitions out (`talked:<npcId>`, `riddle:solved`) and the actions on
+  entry. `src/quest-graph.js` reads it: a `dispatch(event)` that returns effects and never
+  throws, and a `validateQuest` that refuses a `to` naming no stage, an action the manager
+  does not implement, a stage the start cannot reach, a stage that cannot reach a
+  terminal, two stages sharing an objective, and two transitions on one event. The old
+  manager was two booleans and an if/else that knew `scholar` and `guard` by name; the
+  new one lists the three actions the data may name (`QuestManager.actions`) and runs
+  them, and `main.js` exposes it as `window.__quest`. The reason validation runs at
+  construction rather than at the first bad dispatch: a graph that is wrong should fail
+  on the loading screen, not on the walk to the Guard, which is the one place nothing in
+  CI can see. `_wrongCount` is the manager's only own field, and it is riddle state, not
+  quest state.
+
+- **The graph is held to the cast, both ways** (#394). `validateAgainstNpcs` fails a
+  stage whose `dialogueState` is missing from any NPC in `npcs.json` — the failure it
+  replaces was `getDialogueLines()` returning `undefined` and the dialogue box opening on
+  it, which no assertion and no console error had ever reported — and it fails a
+  `{TOKEN}` in a line that `quest.tokens` does not define. The riddle is the coupling
+  that mattered: the old code opened it whenever the Scholar's lines contained
+  `{RIDDLE}` and the keystone was not yet held, so the token was the trigger. Now the
+  token is only text, the `openRiddle` action on `talked:scholar` is the trigger, and the
+  check is that the two agree exactly — every (npc, state) whose lines pose the token is
+  one some stage in that state opens the riddle after, and no other. Breaking either
+  side alone fails: the Scholar losing his last line, or the Guard gaining one.
+
+- **`test/quest.mjs` drives the real manager, not a re-implementation of it** (#395,
+  and #34). The suite constructs `QuestManager` against stand-in UI, NPCs and castle
+  with `schedule` and `restart` injected, and plays it: the Guard refused first, two wrong
+  answers and a hint, the right one, the Scholar again with no second riddle, the Guard,
+  the gate once, the victory screen scheduled 2600 ms out and shown only when the timer
+  fires, and the button calling the restart. 61 assertions in about 40 ms, in the CI
+  matrix beside `assets.mjs` and `layout.mjs`. Six breaks from green, each caught by the
+  assertion that claims it: the Wizard's `hasKeystone` renamed (`npc wizard has no
+  dialogue.hasKeystone lines`), a `to` naming no stage (the validator, then parts 3 to 5
+  skipped with a summary line), the manager no longer applying `dialogueState` (`every
+  npc switched to hasKeystone` and three more), the victory delay dropped (`scheduled
+  2600 ms out, not shown yet — []`), the riddle reopened on every Scholar conversation
+  (`talking to him again does not reopen the riddle`, with the ordered log showing
+  `riddle:open` three extra times), and `index.html`'s initial objective edited. The
+  fourth break first died on a TypeError after the right failure had printed; a missing
+  timer is a failure now and the suite finishes its summary. What the suite cannot see
+  is `ui.js` — the DOM half of `openDialogue`, `openRiddle`, `showVictory` — and the
+  walk. `play-castle.mjs` is still that, and it gained one beat: at the gate it reads
+  `window.__quest.victory` and asserts the graph is terminal. It was not run here; it
+  needs real GPU compositing (#53, #353).
+
+  Two things the suite holds for the browser beat, since that beat is not in CI: the
+  keystone objective still matches `/Keystone/` and the terminal one `/gate is open/i`,
+  which `play-castle.mjs` reads by regex. And `index.html`'s hard-coded initial objective
+  has to equal the start stage's, or the tracker would flash one line and then another.
+
+- **Still no save**, and the decided things stay decided: walls stylised, no save. If a
+  save ever comes, the stage id is the thing to write; there is no key to preserve, so
+  #36 does not bind.
+
+Suites, all from the directories that own them: `node test/quest.mjs`, `node
+test/assets.mjs`, `node test/layout.mjs` green. `cd Tools/board-check && node ci-check.mjs`
+green — 0 collisions, 23 social notices with 21 current and 0 out of date;
+`known-failures.json` untouched and still empty in all three sections.
+
 ## Numina, August 2026
 
 An audit of the Eleventy rules site: 55 pages, ~136,000 words of source

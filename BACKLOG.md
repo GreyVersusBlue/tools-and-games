@@ -102,37 +102,49 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-**The last batch of ranked work that shipped** is **Castle Conundrum's asset
-diet plus its cabinet/commode clearance, in one PR (PR #292)**, the old ranks 1
-and 18 — a 1 and a ¼ in one area, which is what the same-area column allows for
-a 1. Row 1 named Claude Opus 5, row 18 named Claude Sonnet 5, and both were
-worked under Opus 5. That is the line to update when your batch merges; a PR
-that only changes these files is not a batch and does not belong in it. **36
-ranked items remain**, and **every one of them names a model.**
+**The last batch of ranked work that shipped** is **Castle Conundrum's quest
+graph (PR #294)**, the old rank 1 alone — a 1 in one area with no ¼ rows left
+beside it, which is a batch on its own under the size table. The row named
+Claude Fable 5.1 and was worked under Fable 5.1. That is the line to update
+when your batch merges; a PR that only changes these files is not a batch and
+does not belong in it. **35 ranked items remain**, and **every one of them
+names a model.**
 
-Both rows are deleted and everything below renumbered, so the ranks in this
-header are the new ones. What shipped with them, and what it means for the next
-session: **`Projects/Castle Conundrum/` is 29 MB, from 165 MB** (#389 to #392).
-Thirty-six of its forty-eight Poly Haven folders were referenced by nothing,
-twenty were texture packs whose `.gltf` and `.bin` are a 2.3 MB preview ball,
-and the Kenney kit shipped every model three times in three formats. What stops
-it growing back is a reachability check in `test/assets.mjs` (#390), not a
-denylist: a file under `assets/Poly Haven` or `assets/NPCs` has to be named by
-`data/`, or declared as a buffer or an image by a `.gltf` that `data/` names.
-**If you add an asset to that project, add the reference in the same commit or
-CI goes red.** `test/layout.mjs` is new beside it and also in CI (#392) — nine
-interior props against thirty-nine wall, tower and column pieces, in Node.
+The row is deleted and everything below renumbered, so the ranks in this
+header are the new ones. What shipped, and what it means for the next session:
+**the quest in `Projects/Castle Conundrum/` is data now** (#393 to #395).
+`data/quest.json` is a graph of three stages; `src/quest-graph.js` validates it
+before it runs and knows nothing about the DOM, three or timers; the manager
+holds no state and no NPC ids. `test/quest.mjs` walks the whole quest in Node
+against stand-ins and is the third command in that project's CI matrix entry.
+**A dialogue state a stage names has to exist on every NPC, and the riddle has
+to open after exactly the conversations that pose it**, both checked against
+`npcs.json`. What it still cannot see is `ui.js`'s wiring and the walk; `npm
+run play` is that, and it reads the stage off `window.__quest` at the gate.
 
-**Rank 1 is now `Projects/Castle Conundrum` — the data-driven quest graph, to
-replace the 74-line "two booleans" quest manager.** A **1** on **Claude Fable
-5.1**, so under the size table it is either the whole batch or it plus up to two
-¼ rows from the same area — and there are no Castle Conundrum ¼ rows left, so it
-goes alone. The next half is rank 11. Eleven of the thirty-six are ¼ — ranks 12,
-14, 19, 20, 21, 24, 25, 26, 27, 32 and 35. **Five of those eleven want hardware
-nothing here has** (19, 21, 26, 27, 35), as do three of the halves (11, 18, 28);
-the Parked section below the table says why they were left ranked anyway.
+The batch before it was **Castle Conundrum's asset diet plus its
+cabinet/commode clearance (PR #292)**: **`Projects/Castle Conundrum/` is 29
+MB, from 165 MB** (#389 to #392). Thirty-six of its forty-eight Poly Haven
+folders were referenced by nothing, twenty were texture packs whose `.gltf`
+and `.bin` are a 2.3 MB preview ball, and the Kenney kit shipped every model
+three times in three formats. What stops it growing back is a reachability
+check in `test/assets.mjs` (#390), not a denylist: a file under `assets/Poly
+Haven` or `assets/NPCs` has to be named by `data/`, or declared as a buffer or
+an image by a `.gltf` that `data/` names. **If you add an asset to that
+project, add the reference in the same commit or CI goes red.** `test/layout.mjs`
+is beside it and also in CI (#392) — nine interior props against thirty-nine
+wall, tower and column pieces, in Node.
 
-**The model split is 12 Opus 5, 15 Fable 5.1, 9 Sonnet 5.** The rubric is in
+**Rank 1 is now `Projects/orbital` — a level editor with URL sharing, on the
+pattern Hearth already proves.** A **1** on **Claude Opus 5**, so under the
+size table it is either the whole batch or it plus up to two ¼ rows from the
+same area — and Orbital's only ¼ row (34) wants a real device, so it goes alone.
+The next half is rank 10. Eleven of the thirty-five are ¼ — ranks 11, 13, 18, 19,
+20, 23, 24, 25, 26, 31 and 34. **Five of those eleven want hardware nothing
+here has** (18, 20, 25, 26, 34), as do three of the halves (10, 17, 27); the
+Parked section below the table says why they were left ranked anyway.
+
+**The model split is 12 Opus 5, 14 Fable 5.1, 9 Sonnet 5.** The rubric is in
 Tier 1's preamble, and it is a reading of each row, not a quota — take the
 model the row names and say in the PR body which one you actually worked
 under.
@@ -261,42 +273,41 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | Fable 5.1 | `claude/backlog-batch-work-ewo8wt` | [Castle Conundrum](#castle-conundrum) |
-| 2 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | Opus 5 |  | [Orbital](#orbital) |
-| 3 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | Fable 5.1 |  | [Orbital](#orbital) |
-| 4 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
-| 5 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
-| 6 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 7 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 8 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 9 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 10 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 11 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 12 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
-| 13 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 14 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 15 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 16 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 17 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | Fable 5.1 |  | [Closing Time](#closing-time) |
-| 18 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 19 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 20 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 21 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 22 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 23 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 24 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 25 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 26 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 27 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 28 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 29 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 30 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 31 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 32 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
-| 33 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 34 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
-| 35 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 36 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 1 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | Opus 5 |  | [Orbital](#orbital) |
+| 2 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | Fable 5.1 |  | [Orbital](#orbital) |
+| 3 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
+| 4 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
+| 5 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 6 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 7 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 8 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 9 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 10 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
+| 11 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
+| 12 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 13 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 14 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 15 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 16 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | Fable 5.1 |  | [Closing Time](#closing-time) |
+| 17 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 18 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 19 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 20 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 21 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 22 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 23 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 24 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 25 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 26 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 27 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 28 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 29 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 30 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 31 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
+| 32 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 33 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
+| 34 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 35 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -334,10 +345,11 @@ compositing, look at what lands in `candidates/`, and `npm run promote`.
 Fifteen minutes at the right keyboard, and not doable at any other.
 
 Eight rows still in the ranked table ask for hardware or a pair of ears in as
-many words, and belong here by the same rule: 11, 18, 19, 21, 26, 27, 28 and
-35 as they are numbered now (they were 12, 20, 21, 23, 28, 29, 30 and 37 before
-the second 2026-09-14 batch removed two more rows above them, and 14, 22, 23,
-25, 30, 31, 32 and 39 before the first). They were left ranked on
+many words, and belong here by the same rule: 10, 17, 18, 20, 25, 26, 27 and
+34 as they are numbered now (they were 11, 18, 19, 21, 26, 27, 28 and 35 before
+the third 2026-09-14 batch removed one more row above them, 12, 20, 21, 23,
+28, 29, 30 and 37 before the second, and 14, 22, 23, 25, 30, 31, 32 and 39
+before the first). They were left ranked on
 purpose — moving eight more rows is closer to re-ranking the list wholesale,
 which is not a session's call, than to parking the row in front of you, which
 is. A session that takes one of them should move it here rather than write a
@@ -527,20 +539,29 @@ catch a change to `castle-builder.js`'s placement math, because `layout.mjs`
 re-implements it; `npm run play` is still the thing that holds those two
 together, and it needs real GPU compositing.
 
-What's left, in order of value per effort:
+**The quest is a graph now** (2026-09-14, #393 to #395, PR #294). The 74-line
+manager and its two booleans are `data/quest.json` — three stages, each with an
+objective, the dialogue state every NPC switches to, the transitions out and
+the actions on entry — read by `src/quest-graph.js`, which validates the graph
+before it runs and imports nothing that needs a browser. `src/quest-manager.js`
+is the adapter: it lists the three actions the data may name (`openRiddle`,
+`openGate`, `showVictory`) and runs them, and it knows no NPC by id. There are
+three suites now: **`test/quest.mjs`** drives the real manager through stand-in
+UI, NPCs and castle and walks the quest both ways, and it is in the CI matrix
+beside the other two. `play-castle.mjs` reads the stage off `window.__quest`
+at the gate. To add a stage, add it to the data; the suite says what is missing.
 
-1. **A data-driven quest graph.** The quest manager is 74 lines and "two
-   booleans." It ranked below the top ten because the notes say the piece is
-   finished as designed; what has changed since is that there are two in-project
-   suites to build behind now instead of none.
+**Nothing ranked is left for this project.** The parked preview recapture
+(above the Tier 2 list) is the only open thing, and it needs a GPU.
 
 **Two things are decided, not open work, and don't need re-deriving:**
 
 - **Leave the walls stylised.** Five 1k Poly Haven stone sets already sit on
   disk unused. Round 1's before/after pairs settled it.
-- **No save.** The quest is one boolean (`hasKeystone`) plus one more
-  (`victory`) and about fifteen minutes long. If a future session still wants
-  it: there is no existing key to preserve, so locked decision #36 doesn't bind.
+- **No save.** The quest is one stage id (`quest.stage`) and about fifteen
+  minutes long. If a future session still wants it: there is no existing key to
+  preserve, so locked decision #36 doesn't bind, and the stage id is the thing
+  to write.
 
 ## Closing Time
 
