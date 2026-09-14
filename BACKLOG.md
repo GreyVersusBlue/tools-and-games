@@ -121,8 +121,9 @@ behind bars that never open. **259 pieces against Phase 3's 219, all 259 within
 room ids; `walls` is twenty-eight runs and a run can carry `doorways` and a `base`;
 a drum can carry an `interior`. 35 MB to **39.8**.
 
-**Three things to carry forward, and all three came out of breaking a guard-rail
-on purpose.** The first: **a solid drum's bounds are a hollow drum's bounds** to
+**Three things to carry forward, and all three came out of a break that ran green.**
+Four of the phase's eleven breaks did, and the four were worth more than the seven
+that fired. The first: **a solid drum's bounds are a hollow drum's bounds** to
 the millimetre (#442). `piece.drum` did not carry `inner` or `door`, so the builder
 took its solid branch and every tower rendered as a closed cylinder while the
 colliders, the walkability grid, fourteen reachable rooms and all six Node suites

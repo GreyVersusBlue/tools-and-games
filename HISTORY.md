@@ -11005,8 +11005,8 @@ table before the prompt's description of it.
   `mystery.json` are the same fourteen. They were not: Phase 1 wrote `clerk-office` and
   `lodge` where the scene config had `clerks-office` and `masons-lodge`, and nothing said so.
 
-**The guard-rails, and what each break said.** Eleven breaks from a green baseline, three of
-which found something:
+**The guard-rails, and what each break said.** Eleven breaks from a green baseline. **Four of
+the eleven ran green**, and every one of those four was worth more than the seven that fired:
 
 1. Walled the King's Hall's doorway shut. `kings-hall (inner ward, level 0) cannot be reached
    on foot from the spawn — 0 standable cells in x 2..22, z -14..-6`, plus the porter's lodge
