@@ -9819,6 +9819,150 @@ message names the order size and the cell. Restored, back to 104/0.
 `node Projects/integer-foundry/test/browser.mjs` **57, 0 failed**, four runs, four
 different order sizes (9, 9, 4, 5).
 
+## Castle Conundrum's asset diet, and the two cabinets reach their walls (2026-09-14)
+
+**Ranked rows 1 and 18, claimed on `main` before the work started (#283, PR #291) and
+merged as one PR.** Row 1 named Claude Opus 5 and row 18 named Claude Sonnet 5; both
+were worked under Opus 5. One area, a 1 plus a ¼, which is what the same-area column of
+the size table allows for a 1 (#382). Decisions #389 to #392.
+
+- **165 MB of assets against 1,525 lines of code is 29 MB** (#389). Three separate
+  things were on disk that nothing could reach. **Thirty-six of the forty-eight Poly
+  Haven folders were named by nothing** in `data/scene-config.json` or
+  `data/npcs.json` at all. **Twenty of the forty-eight were texture packs whose
+  `.gltf` and `.bin` are a material-preview ball** (#374) at 2.3 MB of `.bin` each —
+  including the two that are used, since the ground and the gate load only the
+  `textures/` beside the ball, so `stone_pavers_1k.gltf` and `wooden_gate_1k.gltf` keep
+  their jpgs and lose 4.6 MB of sphere between them. **The Kenney kit shipped the same
+  106 models three times**, in FBX, OBJ and GLB, and `loadModel` reads GLB.
+
+  Nothing outside this project referenced any of it; Bell to Bell has its own copies of
+  `wood_planks` and its own Kenney kit, which is locked decision #17 working as
+  intended.
+
+- **The check that holds a diet is reachability, not a denylist** (#390). `test/
+  assets.mjs`'s new fourth check walks `assets/Poly Haven` and `assets/NPCs` and fails
+  any file that `data/` does not name, directly or as a `buffers[].uri` or
+  `images[].uri` of a `.gltf` that `data/` names. 75 files, every one asked for. Bell
+  to Bell's Phase 6 did the same diet and recorded it as a `_pruned` path list its
+  suite asserts stays absent — a real pattern, and the reason not to copy it is that a
+  denylist only catches the thirty-six folders somebody already thought of, while a
+  reachability rule catches the thirty-seventh. What the list buys and this does not is
+  a record of what was there and why; git history is that record, and this entry names
+  the categories.
+
+  Two things fell out of writing it. **`data/npcs.json` had never been checked at all**:
+  the King's `heldProp` is `ornate_medieval_mace_1k`, and a preview ball in a hand is
+  the same #374 bug as a preview ball in an archway. Checks 1 and 2 read both data files
+  now, 23 references to 27. And **the Kenney kit is vendored whole, in one format**: the
+  GLB folder keeps all 106 models against the 14 the config places, because placing a
+  fifteenth should be a config edit and not a re-download, while shipping the same
+  models in two formats no loader can open is just weight. The assertion is on the
+  format folders, not on the models.
+
+- **A column that constrains in `z` is not a constraint in `x`** (#391).
+  `GothicCabinet_01` stood 1.143 m off the hall's west wall and `GothicCommode_01`
+  1.311 m off the east — out in the room rather than against it. The round-3 note called
+  it a forced choice between flush-to-wall and clear-of-column, the hall columns sitting
+  at world x -6..-5.2 and 5.2..6, right in the path. They are 0.8 m deep in z
+  (-10..-9.2), so the choice was never forced: 0.6 m and 0.75 m south takes each piece
+  out of the column's z band and the wall becomes reachable. Tiles `[-1.1,-2.2]` →
+  `[-1.36,-2.05]` and `[1.1,-2.2]` → `[1.4,-2.05]`; the cabinet is 0.103 m off its wall
+  and 0.140 m clear of its column, the commode 0.111 m and 0.398 m. Both keep the same
+  tile z so the config reads as the mirror pair it is; their boxes do not line up,
+  because the cabinet is 1.72 m deep in z and the commode 1.20 m.
+
+  This breaks the "whole hall cluster moves as one rigid shift" rule those two rows'
+  comments carry. That rule was about clearing the north wall without changing the
+  table-chair-statue spacing; these two are wall furniture and were never part of that
+  composition.
+
+- **`Projects/Castle Conundrum/test/layout.mjs`, in CI** (#392). Four objects in this
+  project have been found sealed inside a wall — the hall table and the gothic statue in
+  round 2, then these same two cabinets — and not one of them by a check. The beat
+  `play-castle.mjs` grew afterwards needs a real browser and real GPU compositing so it
+  is outside CI on purpose (#353), it names four objects by hand, and it answers `clear`
+  or `EMBEDDED` with no number in it. `layout.mjs` reproduces `castle-builder.js`'s
+  placement math in Node and checks all nine interior props against all thirty-nine
+  wall, tower and column pieces, plus the two margins above as a band of 0.02 to 0.30 m.
+
+  **What it cannot prove, said in the file rather than left to be discovered** (#34, and
+  the warning in `CLAUDE.md` about a test that re-implements the thing it checks): it
+  re-implements `tileToWorld`, `normalizeToTile`, `normalizeHeight` and
+  `groundAndCenter`, so if `normalizeToTile` starts scaling off X again this file scales
+  off Z and agrees with itself. It catches the config drifting, which is the failure
+  that has actually happened here four times. `play-castle.mjs` is still the thing that
+  holds the two together, and that is why it stays hand-run.
+
+  The glTF reader came out of `assets.mjs` into `test/gltf.mjs` to be shared, and grew
+  node-hierarchy transforms on the way. The old inline copy ignored them, which was
+  harmless for the two things it measured — `wall-fortified-gate.glb` and the preview
+  balls are single untransformed nodes — and wrong for `GothicCabinet_01`, whose four
+  doors are translated up to 1.75 m off the carcass and rotated open. An untransformed
+  read understates that box by most of its height, which would have made every margin
+  in #391 a different number.
+
+**Broken on purpose, five times, from a green baseline (#34).** Both suites exit 0
+before each break and after it is reverted.
+
+1. `git checkout HEAD -- "assets/Poly Haven/wooden_barrels_01_1k.gltf"`, one of the
+   thirty-six:
+
+   ```
+   FAIL  nothing references assets/Poly Haven/wooden_barrels_01_1k.gltf/textures/wooden_barrels_01_barrel01_arm_1k.jpg
+   ...eight of them, then
+   FAIL  ...and 3 more unreferenced files
+   FAIL  11 unreferenced file(s) under assets/, 7.1 MB        suite exit 1
+   ```
+
+2. The King's `heldProp` pointed at `stone_pavers_1k.gltf/stone_pavers_1k.gltf`, with
+   that ball restored from git so the failure is about its shape and not its absence.
+   The first attempt, without restoring it, failed on `no such file` instead — the right
+   answer for the wrong reason, and not a test of the assertion under test:
+
+   ```
+   FAIL  guard's heldProp: assets/Poly Haven/stone_pavers_1k.gltf/stone_pavers_1k.gltf is a Poly Haven material-preview ball, not a model
+   ```
+
+   That is the assertion that did not exist before, firing on the file that was not
+   being read before.
+
+3. The cabinet tile put back to `[-1.1,-2.2]`:
+
+   ```
+   FAIL  GothicCabinet_01 stands 1.143 m off the hall wall at x -6, over the 0.3 m this room reads as "against the wall"
+   ```
+
+   The other three margin assertions stayed green, which is the right ones failing: the
+   old position was never *inside* anything, it was just far away.
+
+4. The cabinet moved to `[-1.45,-2.2]`, into the wall and the column at once. Three
+   different assertions, each naming a different thing, which is what says they are
+   three checks and not one restated:
+
+   ```
+   FAIL  GothicCabinet_01 at x -6.26..-5.14, z -9.66..-7.94 is inside interior hall west wall
+   FAIL  GothicCabinet_01 stands -0.257 m from the hall wall at x -6 — its back is in the stone
+   FAIL  GothicCabinet_01 is 0.460 m into column.glb, which shares its x band
+   3 failure(s)        suite exit 1
+   ```
+
+5. `Models/OBJ format/` recreated with one file in it:
+
+   ```
+   FAIL  assets/kenney_retro-fantasy-kit/Models holds GLB format, OBJ format — loadModel reads GLB and nothing else, so the rest is dead weight
+   ```
+
+**Suites.** `node test/assets.mjs` — 27 model references, 75 asset files, the gate fit,
+0 failed. `node test/layout.mjs` — 9 props against 39 stone pieces, 4 margin assertions,
+0 failed. `cd Tools/board-check && npm run check` — **1822 units checked, 0 broken**, 0
+collisions, tightest vertical gap 3.5 px; 1818 → 1822 is the two new `.mjs` files, which
+that sweep reads twice each, once to parse and once for offsite hosts.
+`npm run social:check` — 23 notices, 21 already current, 0 out of date. `node
+ci-check.mjs` — every failure is a known one and every known one still fails;
+`known-failures.json` untouched and still empty in all three sections. `npm run play` is
+this project's other half and needs real GPU compositing (#53, #353), so it was not run.
+
 ## Numina, August 2026
 
 An audit of the Eleventy rules site: 55 pages, ~136,000 words of source
