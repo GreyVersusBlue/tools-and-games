@@ -9,6 +9,7 @@ import * as Deals from "./engine/deals.js";
 import * as Seller from "./engine/seller.js";
 import { maybeFireEvent } from "./engine/events.js";
 import { financingType, closeDaysFor } from "./engine/financing.js";
+import * as Esc from "./engine/escalation.js";
 
 let screen = "dashboard";
 const $ = sel => document.querySelector(sel);
@@ -261,7 +262,11 @@ function playerListingCard(pl) {
     }));
     acts.appendChild(actionBtn("Adjust price", 1, false, () => { if (!spendSlots()) return; flowReprice(pl); }));
     const open = pl.offers.filter(o => o.status === "open");
-    if (open.length) acts.appendChild(actionBtn(`Review offers (${open.length})`, 1, false, () => { if (!spendSlots()) return; flowOfferReview(pl); }));
+    if (open.length) acts.appendChild(actionBtn(
+      Number.isFinite(pl.hbDeadline) ? `Review offers (${open.length}) — best due day ${pl.hbDeadline}`
+        : Esc.canCallHighestAndBest(pl) ? `Review offers (${open.length}) — a field`
+        : `Review offers (${open.length})`,
+      1, false, () => { if (!spendSlots()) return; flowOfferReview(pl); }));
   }
   d.appendChild(acts);
   return d;
@@ -417,13 +422,33 @@ function flowOffer(rec, l) {
   const closeSel = el("select"); closeDays.forEach(d => closeSel.appendChild(el("option", "", d + " days")));
   closeSel.selectedIndex = Math.min(1, closeDays.length - 1);
   body.append(waiveIns.wrap, waiveApp.wrap, labelWrap("Close in", closeSel));
+
+  // The escalation clause, the same instrument the NPC agents point at you.
+  // Collapsed behind its own checkbox because it is the one term on this form
+  // that can cost the client money they never agreed to in the room, and the
+  // hint says the price of it out loud: the listing agent reads the cap.
+  const useEsc = checkbox("Attach an escalation clause");
+  const capIn = el("input"); capIn.type = "number"; capIn.step = 500;
+  capIn.value = Math.min(Math.round(rec.budget / 500) * 500, Math.round(ls.price * 1.04 / 500) * 500);
+  const incIn = el("input"); incIn.type = "number"; incIn.step = 500; incIn.value = 1000;
+  const escWrap = el("div", "esc-clause");
+  escWrap.append(labelWrap("Beat any competing offer by", incIn), labelWrap("…up to a cap of", capIn));
+  escWrap.appendChild(el("p", "hint", `Reads stronger on paper, and tells ${esc(DB.agents[l.listingAgentId].name)} exactly how high you will go. They will counter at the cap.`));
+  escWrap.hidden = true;
+  useEsc.input.onchange = () => { escWrap.hidden = !useEsc.input.checked; };
+  body.append(useEsc.wrap, escWrap);
+
   const agent = DB.agents[l.listingAgentId];
   body.appendChild(el("p", "muted", `${esc(agent.name)} — ${esc(agent.bio)}`));
   modal(`Offer — ${esc(l.address)}`, body, [
     ["Submit offer", () => {
       const price = parseInt(priceIn.value, 10) || ls.price;
       if (price > rec.budget * 1.1) { toast("Your client laughs, not warmly. That's beyond even their stretch."); return; }
-      const deal = Deals.writeOffer(rec, l, price, { waiveInspection: waiveIns.input.checked, waiveAppraisal: waiveApp.input.checked, closeDays: closeDays[closeSel.selectedIndex] });
+      const escalation = useEsc.input.checked
+        ? { cap: parseInt(capIn.value, 10), increment: parseInt(incIn.value, 10) || 1000 }
+        : null;
+      if (escalation && escalation.cap > rec.budget * 1.1) { toast("A cap your client cannot reach is a promise you cannot keep."); return; }
+      const deal = Deals.writeOffer(rec, l, price, { waiveInspection: waiveIns.input.checked, waiveAppraisal: waiveApp.input.checked, closeDays: closeDays[closeSel.selectedIndex], escalation });
       if (price > rec.budget) Clients.satisfactionDelta(rec, -4, "you pushing past their stated budget");
       closeModal(); flowNegotiate(deal, price);
     }],
@@ -450,6 +475,7 @@ function flowNegotiate(deal, price) {
     return;
   }
   body.appendChild(el("p", "", `Counter: <b>${fmtMoney(resp.counter)}</b> (your last: ${fmtMoney(price)} · budget: ${fmtMoney(rec.budget)})`));
+  if (resp.readTheClause) body.appendChild(el("p", "hint", `They countered at your cap. They read the clause — that is what a clause costs when nobody is actually bidding against you.`));
   const counterIn = el("input"); counterIn.type = "number"; counterIn.value = Math.round((price + resp.counter) / 2 / 500) * 500; counterIn.step = 500; counterIn.className = "input-lg";
   body.appendChild(labelWrap("Counter back at", counterIn));
   modal(`Negotiation, round ${deal.round} — ${esc(l.address)}`, body, [
@@ -514,27 +540,66 @@ function flowReprice(pl) {
 }
 
 function flowOfferReview(pl) {
-  const rec = getClientRec(pl.clientRecId);
-  const open = pl.offers.filter(o => o.status === "open");
   const body = el("div");
-  if (open.length > 1) body.appendChild(el("p", "hint", "Multiple offers. You may leverage them against each other — carefully."));
-  open.forEach(o => {
+  // The list is the RESOLVED field now, not the raw offers. A clause that is
+  // worth $2,500 more than its paper has to say so on the card the player
+  // decides from — the arithmetic is in escalation.js and nothing here
+  // re-implements it (#34).
+  const field = Esc.resolveField(Esc.openOffers(pl));
+  if (field.length > 1) {
+    const clauses = field.filter(r => r.clause).length;
+    body.appendChild(el("p", "hint", `${field.length} offers on the table${clauses ? `, ${clauses} carrying an escalation clause` : ""}. Ranked by what each one is worth against the others, not by what is written on it.`));
+  }
+  field.forEach((r, i) => {
+    const o = r.offer;
     const a = DB.agents[o.agentId];
-    const reaction = Seller.sellerReaction(pl, o);
+    const reaction = Seller.sellerReaction(pl, o, r.final);
     const row = el("div", "card offer-row");
-    row.innerHTML = `<b>${fmtMoney(o.price)}</b> — ${esc(a.name)} (${a.negotiationStyle}) · ${o.financing}${o.inspection ? "" : " · inspection waived"} · close ${o.closeDays}d
-      ${o.escalation ? `<div class="hint">Fine print: escalation clause to ${fmtMoney(o.escalation)}. You noticed. Chuck taught you that much.</div>` : ""}
+    const escalated = r.final > r.base;
+    row.innerHTML = `<b>${fmtMoney(r.final)}</b>${escalated ? ` <span class="tag">escalated from ${fmtMoney(r.base)}</span>` : ""}${i === 0 && field.length > 1 ? ` <span class="stamp stamp-sm">LEADING</span>` : ""} — ${esc(a.name)} (${esc(a.negotiationStyle)}) · ${esc(financingType(o.financing).label)}${o.inspection ? "" : " · inspection waived"} · close ${o.closeDays}d
+      ${r.clause ? `<div class="hint">Fine print: escalates ${fmtMoney(r.clause.increment)} over any competing offer, cap ${fmtMoney(r.clause.cap)}.${r.capped ? " They are at the cap and still behind." : escalated ? ` Beating the ${fmtMoney(r.beat)} behind it.` : " Nothing to beat yet."}</div>` : ""}
       <div class="muted">Seller's read: ${reaction.notes.map(esc).join(" ") || (reaction.inclination > 0 ? "Warm-ish." : "Unimpressed.")}</div>`;
     const acts = el("div", "actions");
-    const counterIn = el("input"); counterIn.type = "number"; counterIn.value = Math.min(pl.price, Math.round(o.price * 1.03 / 500) * 500); counterIn.step = 500;
+    const counterIn = el("input"); counterIn.type = "number"; counterIn.value = Math.min(pl.price, Math.round(r.final * 1.03 / 500) * 500); counterIn.step = 500;
     acts.appendChild(btn("Advise accept", () => { Seller.respondToOffer(pl, o, "accept"); closeModal(); render(); }));
-    acts.append(counterIn, btn("Counter", () => { const r = Seller.respondToOffer(pl, o, "counter", parseInt(counterIn.value, 10)); closeModal(); if (r.recounter) flowOfferReview(pl); else render(); }));
+    acts.append(counterIn, btn("Counter", () => { const res = Seller.respondToOffer(pl, o, "counter", parseInt(counterIn.value, 10)); closeModal(); if (res.recounter) flowOfferReview(pl); else render(); }));
     acts.appendChild(btn("Reject", () => { Seller.respondToOffer(pl, o, "reject"); flowRefresh(() => pl.offers.some(x => x.status === "open") ? flowOfferReview(pl) : (closeModal(), render())); }));
     row.appendChild(acts);
     body.appendChild(row);
   });
-  if (!open.length) body.appendChild(el("p", "muted", "No open offers."));
-  modal(`Offers — ${esc(pl.listing.address)}`, body, [["Close folder", () => { closeModal(); render(); }]], true);
+  if (!field.length) body.appendChild(el("p", "muted", "No open offers."));
+
+  const actions = [];
+  if (Esc.canCallHighestAndBest(pl)) {
+    actions.push(["Call for highest and best", () => { closeModal(); flowCallHighestAndBest(pl); }]);
+  } else if (Number.isFinite(pl.hbDeadline)) {
+    body.appendChild(el("p", "hint", `Highest and best is out: answers due day ${pl.hbDeadline}. Nothing to do until then.`));
+  } else if (pl.hbCalledDay) {
+    body.appendChild(el("p", "muted", "You have already called highest and best on this listing. You get one."));
+  }
+  actions.push(["Close folder", () => { closeModal(); render(); }]);
+  modal(`Offers — ${esc(pl.listing.address)}`, body, actions, true);
+}
+
+/**
+ * The call itself, with its price on the label.
+ *
+ * A confirmation step rather than a straight button because this is the one
+ * seller-side move that can end with nothing on the table — `lowballer` walks
+ * 45% of the time before the cold-market multiplier, and a cold field can empty
+ * entirely. The preview says how warm the neighborhood is so the gamble is a
+ * read rather than a coin flip.
+ */
+function flowCallHighestAndBest(pl) {
+  const p = Esc.highestAndBestPreview(pl);
+  const body = el("div");
+  body.appendChild(el("p", "", `You tell every buyer's agent on ${esc(pl.listing.address)} that the field closes in ${Esc.HB_DEADLINE_DAYS} days and you want their best number. Right now the top of the table is <b>${fmtMoney(p.top)}</b> across ${p.count} offers${p.clauses ? `, ${p.clauses} of them escalating` : ""}.`));
+  body.appendChild(el("p", "muted", `The neighborhood is running ${p.heat >= 1.08 ? "hot — buyers here raise rather than leave" : p.heat <= 0.95 ? "cold, and a cold field walks" : "about even"} (heat ${p.heat.toFixed(2)}). Everyone answers or withdraws. Nobody splits the difference, and asking for a best number is how you find out you did not have a field.`));
+  body.appendChild(el("p", "hint", "One call per listing. Offers stay open until the deadline instead of expiring."));
+  modal(`Highest and best — ${esc(pl.listing.address)}`, body, [
+    ["Make the call", () => { Esc.callHighestAndBest(pl); closeModal(); render(); }],
+    ["Not yet", () => { S.slotsLeft++; closeModal(); render(); }],
+  ]);
 }
 
 function flowOpenHouse(pl) {
@@ -597,16 +662,47 @@ function renderChoiceQueue() {
       ["Buyer covers the gap in cash", () => { Deals.appraisalDecision(deal, "cover", ch.gap); done(); }],
       ["Push seller down to appraisal", () => { Deals.appraisalDecision(deal, "renegotiate", ch.gap); done(); }],
       ["Let it die", () => { Deals.appraisalDecision(deal, "die", ch.gap); done(); }]]),
-    competingOffer: () => { const buyerRec = getClientRec(deal.clientRecId); return modal("Competing offer", body, [
-      ["Raise your offer", () => { deal.price = Math.round(deal.price * (1 + ch.bumpPct) / 500) * 500; log(`You raise to ${fmtMoney(deal.price)} to hold position.`, "deal", undefined, buyerRec && buyerRec.recId); done(); }],
-      ["Stand pat", () => { if (rand() < 0.4) Deals.killDeal(deal, "the other offer won."); else log("You stand pat. The other offer blinks first.", "deal", undefined, buyerRec && buyerRec.recId); done(); }],
-      ["Withdraw", () => { Deals.killDeal(deal, "you withdrew rather than bid up."); done(); }]]); },
+    competingOffer: () => { const buyerRec = getClientRec(deal.clientRecId);
+      // A clause is the decision you already made, in writing. The rival number
+      // is the one the event implies: what your price would have to become to
+      // stay in front of it.
+      const clause = Esc.clauseOf(deal);
+      const rival = Math.round(deal.price * (1 + ch.bumpPct) / 500) * 500;
+      const acts = [];
+      if (clause) {
+        const preview = Esc.escalateAgainst(deal, rival);
+        body.appendChild(el("p", "hint", `Your clause is already on the paper: ${fmtMoney(clause.increment)} over any competing offer, cap ${fmtMoney(clause.cap)}. Against ${fmtMoney(rival)} it lands at <b>${fmtMoney(preview.final)}</b>${preview.capped ? " — the cap, which may not be enough" : ""}.`));
+        acts.push(["Let the clause do it", () => { Deals.fireBuyerClause(deal, rival); done(); }]);
+      }
+      acts.push(["Raise your offer", () => { deal.price = rival; log(`You raise to ${fmtMoney(deal.price)} to hold position.`, "deal", undefined, buyerRec && buyerRec.recId); done(); }]);
+      acts.push(["Stand pat", () => { if (rand() < 0.4) Deals.killDeal(deal, "the other offer won."); else log("You stand pat. The other offer blinks first.", "deal", undefined, buyerRec && buyerRec.recId); done(); }]);
+      acts.push(["Withdraw", () => { Deals.killDeal(deal, "you withdrew rather than bid up."); done(); }]);
+      return modal("Competing offer", body, acts); },
     coldFeet: () => { const buyerRec = getClientRec(deal.clientRecId); return modal("Cold feet", body, [
       ["Talk them through it (schmooze on the house)", () => { addCash(-120, "emergency reassurance dinner", buyerRec && buyerRec.recId); log("Two hours, one dessert, zero cancelled contracts.", "", undefined, buyerRec && buyerRec.recId); done(); }],
       ["Give them space", () => { if (rand() < ch.walkChance) Deals.killDeal(deal, "the buyer walked after a long night of doubt."); else log("They call back at 8am: 'Ignore me. We're good.'", "", undefined, buyerRec && buyerRec.recId); done(); }]]); },
     coldFeetSeller: () => { const sellerRec = getClientRec(pl.clientRecId); return modal("Seller cold feet", body, [
       ["Sit with them at the kitchen table", () => { addCash(-120, "a long talk over coffee", sellerRec && sellerRec.recId); log("The house stays sold. The kitchen table did its job.", "", undefined, sellerRec && sellerRec.recId); done(); }],
       ["Give them space", () => { if (rand() < ch.walkChance) Seller.failSellerDeal(pl, "the seller pulled out"); else log("They come around by morning.", "", undefined, sellerRec && sellerRec.recId); done(); }]]); },
+    highestAndBest: () => {
+      // The ladder, in the order the seller will read it, with the reasoning on
+      // each rung. describeRow() is escalation.js's own sentence — the modal
+      // does not re-derive who beat whom.
+      const field = Esc.resolveField(Esc.openOffers(pl));
+      const list = el("div");
+      // Counted here rather than carried on the choice: a fresh offer can land
+      // between the call resolving and this modal rendering, and a number
+      // written two days ago over a list drawn now is just wrong.
+      body.appendChild(el("p", "hint", field.length
+        ? `${field.length} offer${field.length === 1 ? "" : "s"} on the table as it stands.`
+        : "Nothing on the table."));
+      field.forEach((r, i) => list.appendChild(el("div", i === 0 ? "card offer-row" : "past-row",
+        `${i === 0 ? "<b>Leading</b> · " : ""}${esc(Esc.describeRow(r))}`)));
+      if (!field.length) list.appendChild(el("p", "muted", "Nothing left standing."));
+      body.appendChild(list);
+      return modal(`Highest and best — ${esc(pl.listing.address)}`, body, [
+        ["Open the folder", () => { S.choiceQueue.shift(); closeModal(); if (Esc.openOffers(pl).length) flowOfferReview(pl); else render(); }]], true);
+    },
     sellerInspectionHit: () => { const sellerRec = getClientRec(pl.clientRecId); return modal("Buyer's inspection findings", body, [
       ["Offer a credit (~70% of cost)", () => { Seller.sellerInspectionDecision(pl, "credit", ch.cost); if (ch.undisclosedRequired) addRep(-6, "an undisclosed required issue surfaced under contract", sellerRec && sellerRec.recId); done(); }],
       ["Refuse — dare them to walk", () => { Seller.sellerInspectionDecision(pl, "refuse", ch.cost); if (ch.undisclosedRequired) addRep(-6, "an undisclosed required issue surfaced under contract", sellerRec && sellerRec.recId); done(); }]]); },

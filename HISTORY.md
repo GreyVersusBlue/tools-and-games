@@ -10310,3 +10310,109 @@ o1$Sector%207$a%20star$112,354$... vs o1$Sector%207$a%20planet$862,314$...`, and
 candidate-cap check down with it, since the seed whose first candidate is a known miss no
 longer missed. The census recording a miss as its first win failed `easy seed 1's first
 census win re-flies to a WIN — OUT`.
+
+## Closing Time's multi-offer escalation wars (2026-09-14)
+
+**Ranked row 1, claimed on `main` before the work started (#283, PR #301) and merged as
+PR #302.** The row named Claude Opus 5 and was worked under Opus 5. A 1 in one area whose
+other Closing Time rows are both 1s, so a batch of one under the size table (#382).
+Decisions #406 to #410.
+
+- **An escalation clause resolves against the highest *submitted* price in the field,
+  never against another clause's escalated result** (#406). This is the decision the whole
+  feature hangs on and it is a choice, not a derivation. Escalating against results is a
+  mutual recursion, and its only termination is both clauses at both caps — a pair of
+  numbers neither buyer ever agreed to face, arrived at by a machine rather than by
+  anybody's judgement. Real clauses say "bona fide written offer" for the same reason: an
+  escalated number is derived, not written. So `base` is the paper and `final` is what the
+  paper is worth once the field is known, and only paper escalates. Three playable
+  consequences fall straight out of it: a clause never pays more than one increment over the
+  runner-up's paper, which is the whole reason a buyer writes one; a straight number above a
+  cap beats the clause outright, which is the whole reason a listing agent asks for highest
+  and best *without* clauses; and two clauses in one field land one increment over the best
+  non-escalated paper and then go to the tiebreak, which is terms, because terms are all
+  that is left to decide on. `resolveField()` in `js/engine/escalation.js` is the only place
+  a clause becomes a price, it is pure, and both sides of the game call it.
+
+- **A clause is `{cap, increment}`, and the increment is half the mechanic** (#407). What
+  was there before was `escalation: 155000`, a bare number `spawnNPCOffer()` stamped on an
+  offer when the agent had `dirtyTricks`, and it did exactly one thing: it raised the ceiling
+  `respondToOffer()` would accept a counter under. The player saw a line of fine print and
+  had no move to make about it — `flowOfferReview()` said "you may leverage them against each
+  other, carefully" and then offered no lever. A cap alone cannot say what it steps by, so it
+  cannot resolve against anything. `clauseOf()` reads the old bare number at the default
+  $1,000 increment and `repairCareer()` rewrites it to the structured shape on load, so no
+  career written before this reads differently than it did. A cap at or below the offer's own
+  price is a typo, not a clause, and reads as null in both places.
+
+- **Highest and best is one call per listing, and it can empty the room** (#408). The call
+  holds the field for two days and every buyer's agent then raises, stands pat, or walks by
+  `negotiationStyle` — `HB_STYLE` in `escalation.js`, with the walk odds scaled by
+  neighborhood heat, and the raise bounded by the same ceiling `respondToOffer()` has always
+  used, so a call on an overpriced listing in a cold market collects a row of "stands pat"
+  and costs two days. `by-the-book` writes the number and strips a clause rather than adding
+  one, which is what makes the call an *answer* to somebody else's clause instead of a way to
+  collect more of them. Measured over 400 seeded fields: the top number moves a median
+  **+2.38%** (mean 2.31%, max 5.30%, and 20 of 395 calls moved nothing or went backwards),
+  16.6% of offers withdraw, and the gradient that makes it a read rather than a coin flip is
+  field size — a two-offer field empties entirely **2.5%** of the time and can go **5% backwards**,
+  a three-offer field 0.5%, a five-offer field **never**. Two offers and one of them Sal DiMeo
+  (lowballer, 45% base walk) is the gamble; five offers is free money.
+
+- **The clause pays before the field it beats is cleared off the table** (#409). Accepting
+  an offer marks every other open offer rejected, and an escalation clause is worth exactly
+  what it beats — so resolving after the clear pays the paper price and makes the entire
+  mechanic decorative, with nothing on screen to say so. `acceptSellerOffer()` resolves
+  first, writes `escalatedFrom` onto the offer, and then clears. There is a second edge inside
+  that one, and the test found it rather than the reading: `respondToOffer()` already set
+  `offer.status = "accepted"` before calling through, so `openOffers(pl)` no longer contained
+  the winner and `resolveField()` returned no row for it at all. The accepted offer is put
+  back into the field it is winning by hand.
+
+- **A clause costs the buyer the same information it buys them** (#410). The player can
+  write one now, on the same form and the same arithmetic — `fireBuyerClause()` calls
+  `escalateAgainst()`, and the `competingOffer` event grew a "let the clause do it" branch
+  instead of asking the player to pick a raise out of the air. It is worth a waived
+  contingency's 0.015 of strength in `agentRespond()`, on the scale financing and the two
+  waivers already sit on. And then the listing agent counters at the cap, because a written
+  promise to go to the cap is a reason to ask for the cap and no reason to ask for a dollar
+  less. That is the decision: a clause is free only when somebody is actually bidding against
+  you. Measured on `ls_0001`, an offer at 86% of ask draws a $163,500 counter bare and a
+  $166,500 counter with a cap on it.
+
+**A guard-rail that guarded nothing, caught by breaking it** (#34). The first version of the
+deadline check built its field with `day: S.day` and called highest and best the same day. An
+offer expires at `day + 2` and the call holds it for exactly two days, so the two rules
+produce the same number and reverting `calendar.js` to the old flat `o.day + 2` changed
+nothing — the break ran green. Aged to `S.day - 2`, the same break fails with **`no offer
+expired while the call it was answering was still open (2 !== 0)`** and **`and no reputation
+was lost to a deadline the player set (5 -> 0)`**, which is a player losing 5 reputation for
+a deadline they set on purpose. Fixing the test then surfaced a real bug behind it:
+`resolveHighestAndBest()` clears `hbDeadline`, which dropped every survivor back to a
+two-day window that had already run out, so the field survived the call and expired the same
+night. An offer that answered the call is a fresh offer and is dated as one.
+
+**The other three breaks, from a green baseline.** Resolving `acceptSellerOffer()` over
+`openOffers(pl)` alone: **`at one increment over the offer it beat, not at the paper it was
+written on (387760 !== 398260)`**. Escalating against the rivals' caps rather than their
+paper: **`neither clause is pumped to its cap by the other (175000 of 175000, 177000 of
+180000)`**, which is the failure #406 exists to prevent, named by the assertion whose comment
+claims it. Dropping the counter-at-cap: **`a listing agent who can see your cap counters
+higher than one who cannot (163500 -> 163500)`**.
+
+**What no Node assertion could see.** The flow was driven in headless Chromium through the
+board-check harness, a two-offer field injected as a save: the folder ranks by resolved value
+with "escalated from $188,000" on the leading card, the call previews the heat, and the
+result modal lists the ladder with the reasoning per rung. It also printed **"2 offers on the
+table" over a list of three** — `resolveHighestAndBest()` runs at the top of
+`dailySellerTick()` and the interest roll below it can spawn a fresh offer into the same
+field before `render()` ever draws the modal. A count written at resolve time is wrong by the
+time it is read, so the modal counts the field itself and the choice text says what the call
+*did* rather than how many are left. That driver is not committed.
+
+**Suites.** `node tools/smoke.mjs` — **193 passed**, from 150. `cd Tools/board-check && npm
+run check` — 1,840 units checked, 0 broken, 0 collisions, tightest vertical gap 3.5 px.
+`npm run social:check` — 23 notices, 21 already current, 0 out of date. `node ci-check.mjs` —
+every failure is a known one and every known one still fails; `known-failures.json` untouched
+and still empty in all three sections. `npm run games closing-time` — **27 checks, 0 failed**,
+matching the documented baseline, no page or console errors and no offsite requests.
