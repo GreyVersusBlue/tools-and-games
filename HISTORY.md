@@ -10499,3 +10499,38 @@ from either castle.
 **Not verified here, on purpose.** No suite ran against a code change because there is no
 code change; `node test/assets.mjs`, `layout.mjs` and `quest.mjs` are green on `main` and
 this PR touches three markdown files. `npm run play` was not run and could not be (#53).
+
+## Devon answers Q53 and Q58 (2026-09-14)
+
+**Two questions closed before Phase 1 starts**, and a count in `CLAUDE.md` that had gone
+stale by eight. No code, no asset, no phase moves, no claim. Decisions #419 and #420.
+
+- **Twelve NPCs stay three bodies and a tint, and Phase 1 writes the tint** (#419, answering
+  Q53). Devon, asked before Phase 1 rather than before Phase 6: stick with tinting for now,
+  add real models later if they are needed. **The bet is accepted, not removed.** The plan's
+  own risk list calls three bodies with tints a bet that colour is enough and says nothing in
+  Node can tell; that stands. The first time anyone will know is the Vespers photograph in
+  Phase 6, which is a GPU beat and Devon's to run (#53). The escape hatch is unchanged and
+  costs a new ceiling rather than a decision: a fourth body is 1.4 to 2.0 MB over 44.4 MB,
+  and 44.4 is Devon's number to move, not a session's.
+
+  **The scheduling changes, and that is the part that touches Phase 1.** `tint` was Phase 6's
+  to add (#417), but Phase 1 already replaces the three NPCs with twelve in the same file,
+  because `assets.mjs` checks bodies rather than ids. Writing a hex per NPC while that file is
+  open costs nothing and saves a second pass over all twelve entries five phases later. Phase
+  6 keeps the bodies, `hideNodes` and `hideMaterials`; it no longer adds the field. Reversible
+  in one line: drop `tint` from Phase 1's `npcs.json` bullet and put it back in Phase 6's.
+
+- **The seven phases stay at ranks 1 to 7** (#420, answering Q58). Devon confirmed the
+  insertion the plan made (#418): the phases sit at the top with every other row's relative
+  order unchanged, which is what refocusing the repo on this project means. Nothing below them
+  is reordered. The consequence is stated so it is not rediscovered as a surprise: **no other
+  project is worked until the arc finishes**, because ranks 1 to 7 are all Castle Conundrum
+  and a batch takes the next ranked rows. Reversible in one edit, and no phase changes if it
+  is made.
+
+**What was measured rather than asserted.** `CLAUDE.md` read "all 410 locked decisions" while
+`HISTORY.md` ran to #418, so the line was eight behind before these two; it reads 420 now.
+The four suites under `Projects/Castle Conundrum/` are green on `main` and this PR touches
+four markdown files, so none of them could go red; `npm run play` was not run and could not
+be (#53).
