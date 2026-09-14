@@ -305,7 +305,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Turn `physics.js`'s solvability search into a level generator | `Projects/orbital` | 1 | Fable 5.1 |  | [Orbital](#orbital) |
+| 1 | Turn `physics.js`'s solvability search into a level generator | `Projects/orbital` | 1 | Fable 5.1 | `claude/sweet-babbage-00jhzv` | [Orbital](#orbital) |
 | 2 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
 | 3 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
 | 4 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
