@@ -64,13 +64,13 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **four quarter-session rows in one PR — a gate
-that is a gate, a clean `npm run games closing-time`, and the `[shared]` chrome
+The last thing that shipped is **a model on every ranked row, and three
+already-shipped rows deleted (PR #285)** — decisions #380 and #381, 2026-09-13,
+no code changed. Before it, **four quarter-session rows in one PR — a gate that
+is a gate, a clean `npm run games closing-time`, and the `[shared]` chrome
 asserted (PR #284)**, the old ranks 20, 23 and 24, plus the old rank 1 parked
-rather than done. Before it, **`Projects/corner-and-kettle` Phases 8 and 9 —
-Both hands on the keys, and joining `npm run games` (PR #282)**. **40 ranked
-items remain**, and **every one of them names a model now** (#380, #381,
-2026-09-13).
+rather than done. **40 ranked items remain**, and **every one of them names a
+model.**
 
 Three of the forty-three rows that stood here were already shipped: PR #284
 closed the old ranks 20, 23 and 24 and left all three in the table, so the
