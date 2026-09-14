@@ -93,7 +93,7 @@
         <span><i class="dot" style="color:var(--booster)"></i>booster</span>
       </div>
       <p class="kbd-hint" style="font-size:12.5px;margin-top:14px">Keyboard: <b>← →</b> aim · <b>↑ ↓</b> power · <b>Space</b> launch · <b>R</b> reset.</p>
-      <p style="font-size:12.5px;margin-top:6px">Build your own: the sector map has a <b>Design</b> button, and every sector you make is a link you can hand to somebody.</p>
+      <p style="font-size:12.5px;margin-top:6px">Build your own: the sector map has a <b>Design</b> button and a <b>Random sector</b> roll, and every sector you make or roll is a link you can hand to somebody.</p>
       <p class="link-err" id="linkErr" hidden></p>
       <div class="row" style="justify-content:flex-end">
         <button class="primary" id="btnStart">Begin flight</button>
@@ -107,6 +107,15 @@
       <div class="tag">Sector Map</div>
       <h1>Choose a sector</h1>
       <div class="grid" id="lvlGrid"></div>
+      <!-- a rolled sector is a shared one: no key, no stars, a link the moment
+           it exists. The three buttons are the generator's tiers. -->
+      <div class="gen" id="genRow">
+        <span class="gen-lab">Random sector</span>
+        <button data-tier="easy" title="One or two bodies, none of them moving">Easy</button>
+        <button data-tier="medium" title="Up to four bodies, black holes and boosters in the mix">Medium</button>
+        <button data-tier="hard" title="Up to five bodies, wormholes and orbits included">Hard</button>
+        <span class="gen-status" id="genStatus" role="status" aria-live="polite"></span>
+      </div>
       <div class="row">
         <button id="btnWipe" title="Erase saved progress">Reset progress</button>
         <button id="btnDesign" title="Build a sector of your own">Design a sector</button>
@@ -123,6 +132,7 @@
 <script src="js/levels/pack-01-basics.js"></script>
 <script src="js/levels/pack-02-deepspace.js"></script>
 <script src="js/levelcode.js"></script>
+<script src="js/generator.js"></script>
 <script src="js/render.js"></script>
 <script src="js/input.js"></script>
 <script src="js/editor.js"></script>

@@ -159,6 +159,7 @@ jobs:
             commands: |
               node test/physics.mjs
               node test/levelcode.mjs
+              node test/generator.mjs
 
           - name: The Fracture Cycle
             dir: Projects/the-fracture-cycle
