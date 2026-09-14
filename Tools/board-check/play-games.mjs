@@ -626,6 +626,92 @@ const SUITES = {
     t.ok(env.format === 'gvb-save' && env.game === 'aphelion' && env.version === 1,
       'Export save produced a gvb-save envelope', `${env.game} v${env.version}`);
     await p.keyboard.press('Tab');
+
+    // ---- Out the airlock, for the EVA salvage readout on the other side.
+    //
+    // `#signal` is written from one branch of tick()'s throttled HUD block and
+    // that branch only runs while state.mode === 'eva', so the only way to see
+    // it is to actually cycle out. Round 2 built the readout and left the beat
+    // unwritten because there was no airlock-entry beat to hang it off; this is
+    // that beat.
+    //
+    // Assert it is silent inside FIRST. A readout that is simply always on would
+    // satisfy every assertion below for entirely the wrong reason, and there is
+    // nothing in the EVA text itself that could tell you.
+    const prompt = () => p.$eval('#prompt',
+      el => (el.classList.contains('show') ? el.textContent.trim() : ''));
+    const signal = () => p.$eval('#signal', el => el.textContent.trim());
+    t.ok((await signal()) === '', 'the salvage readout is silent inside the hab');
+
+    // The inner hatch is at world z 9.9. Interior collision stops the walker at
+    // z 9.65 and pickInteractable() raycasts 2.6 m ahead, so anywhere past about
+    // z 7.3 facing aft will do — and the walk crosses the quarters partition at
+    // z 6, whose doorway is only 1.8 m wide, so it has to stay near x 0.
+    //
+    // `arrived` keys off the game's own prompt rather than a distance or a
+    // timeout. Under a software-rendered Chromium the render loop crawls and
+    // controls.update() clamps dt at 0.1 s, so the walker covers a fraction of
+    // the ground per second that a real GPU would: 17 bursts and 76 s here
+    // against a couple of bursts on a machine that composites. A beat that waits
+    // for the prompt is the same beat on both; one that waits a fixed 8 s is a
+    // #53 failure on one of them.
+    const reached = await walkTo(p, [0, 9.9],
+      async () => /Cycle airlock/.test(await prompt()),
+      { steer: 'lookAt', maxBursts: 40, nearAt: 3, longMs: 2000, shortMs: 500 });
+    t.ok(!!reached, 'walked aft through the hab to the airlock',
+      reached ? `${reached.bursts} bursts, ${reached.dist} m short of the hatch`
+              : 'never got the cycle prompt');
+    t.ok(/go outside/.test(await prompt()), 'and the inner hatch offers the way out',
+      await prompt());
+
+    // E cycles: two 1.1 s fades with a busy lock across them. updateHUD() stamps
+    // ' · EVA' onto the day counter off state.mode, so the day counter is the
+    // cheapest honest signal that the transition finished rather than stalled.
+    await p.keyboard.press('KeyE');
+    const cycled = await waitFor(p,
+      () => document.getElementById('daybox').textContent.includes('EVA'),
+      { timeout: 30000 }).then(() => true, () => false);
+    t.ok(cycled, 'E cycles the airlock and the day counter picks up the EVA tag',
+      await textContent(p, '#daybox'));
+    await t.shot('eva');
+
+    // The assertion round 2 wrote and could not place.
+    const sig = await signal();
+    t.ok(/^SALVAGE \d+m/.test(sig), 'the EVA distance readout shows unscanned sites', sig);
+
+    // Distance-only and nearest-first, which is the whole design of the thing:
+    // no bearing, so it says "warmer" instead of pointing at the answer. The
+    // order is a real check here rather than a restatement — poi.json lists the
+    // sites at 38 m, 13 m and 25 m from where EVA drops you, in that order, so
+    // an unsorted readout prints a different string than a sorted one.
+    const metres = [...sig.matchAll(/(\d+)m/g)].map(m => +m[1]);
+    t.ok(metres.length === 3, 'all three unscanned sites are listed', sig);
+    t.ok(metres.every((d, i) => i === 0 || d >= metres[i - 1]),
+      'nearest site first', metres.join(' then '));
+    // No assertion here that the readout carries no bearing, though that is the
+    // design note main.js writes down. Nothing a string test can say holds it:
+    // the first draft of this line was /[NSEW]/ and it failed on the word
+    // SALVAGE. A claim the check cannot actually distinguish is worse than no
+    // claim (#147).
+
+    // Back in. setEVA drops the walker at z 13 facing away from the ship, and the
+    // EVA raycast reaches 6 m, so the outer hatch at z 10.9 is behind them and in
+    // range once they turn round. waitFor rather than a fixed wait for the same
+    // reason as above: the prompt only refreshes on a frame.
+    await lookAt(p, { facing: 0, pitch: 0 });
+    const facingHatch = await waitFor(p,
+      () => {
+        const el = document.getElementById('prompt');
+        return el.classList.contains('show') && /head back in/.test(el.textContent);
+      }, { timeout: 30000 }).then(() => true, () => false);
+    t.ok(facingHatch, 'the outer hatch is in reach from where EVA drops you',
+      await prompt());
+    await p.keyboard.press('KeyE');
+    const backIn = await waitFor(p,
+      () => !document.getElementById('daybox').textContent.includes('EVA'),
+      { timeout: 30000 }).then(() => true, () => false);
+    t.ok(backIn, 'and cycles back inside', await textContent(p, '#daybox'));
+    t.ok((await signal()) === '', 'the readout goes quiet again in the hab');
   },
 
   // ---- The Fourth Quarter ---------------------------------------------------

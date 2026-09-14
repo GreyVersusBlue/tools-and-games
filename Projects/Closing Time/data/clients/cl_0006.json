@@ -5,6 +5,7 @@
   "archetype": "dreamers",
   "tier": "luxury",
   "budget": 800000,
+  "financing": "cash",
   "patience": 9,
   "statedReqs": {
     "minBeds": 4,

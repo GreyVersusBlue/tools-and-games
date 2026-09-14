@@ -5,6 +5,7 @@
   "archetype": "investor",
   "tier": "starter",
   "budget": 210000,
+  "financing": "cash",
   "patience": 5,
   "statedReqs": {
     "minBeds": 2,

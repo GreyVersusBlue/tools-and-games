@@ -9589,6 +9589,180 @@ to carry.** Decision #382. `BACKLOG.md` and `CLAUDE.md` only.
   next to the rules it enforces is the cheapest way to keep the two in sync. Edit both
   together.
 
+## Two half-session rows: out of Aphelion's airlock, and what a buyer is buying with (2026-09-14)
+
+**Ranked rows 1 and 7, claimed on `main` before the work started (#283) and merged as
+one PR.** Both named Claude Opus 5 and both were worked under it. Decisions #383 to
+#387, the last of which is an unrelated red CI check this PR fixed rather than
+re-ran. Two areas, two halves, which is the cap the spanning column of the size table
+allows (#382).
+
+- **A camera's heading comes off its world matrix, not off `camera.rotation`** (#383).
+  `drive.mjs`'s `camState` read `facing` from `rotation.y` and `pitch` from
+  `rotation.x`. Every hand-rolled controller in this repo writes `camera.quaternion`
+  from its own `Euler(pitch, yaw, 0, 'YXZ')`, and `camera.rotation` decomposes that
+  quaternion back in three's default XYZ order. The two disagree at yaw ±π, because
+  XYZ has no way to say "turned all the way round" in its y term and says it in x and
+  z instead. Checked against the vendored `three-0.160.0` directly: a camera built
+  from `Euler(0, Math.PI, 0, 'YXZ')` reports `rotation.y === 0.000` and
+  `rotation.x === -3.142`, and its world direction is `(0, 0, 1)`.
+
+  So `facing` was 180° wrong and `pitch` was 180° wrong at exactly the heading a walk
+  aft is made of, and it was silent. `walkTo(..., steer: 'lookAt')` read `facing` back
+  as 0 after a correct half-turn, turned another half-turn to "correct" it, and
+  oscillated until it ran out of bursts; `lookAt` then read `pitch` as ±π and cranked
+  the camera at the ceiling trying to level it. The fix negates the third column of
+  `matrixWorld`, which is order-free and exact at every heading including the
+  degenerate ones. `yaw` still reads raw `rotation.y`, and is still not what you steer
+  by.
+
+  Second half of the same decision: **`lookAt` takes the short way round.** `facing` is
+  wrapped to (−π, π] and callers hand in whatever `atan2(...) + Math.PI` produced,
+  which runs to 2π, so the raw difference was routinely a 350° turn where a 10° one
+  was meant. Free on a camera you can write to; not free here, where every degree is
+  real mouse-look the game integrates.
+
+- **Aphelion has an airlock-entry beat, and the `#signal` assertion round 2 wrote is
+  in it** (#384). The row had been carried across three rounds with the assertion body
+  already drafted and nowhere to put it. Eleven new checks in `play-games.mjs`: the
+  salvage readout is silent inside the hab (asserted **first**, because a readout that
+  was simply always on would satisfy everything below it for the wrong reason), the
+  walk aft reaches the inner hatch, `E` cycles and the day counter picks up its EVA
+  tag, the readout reads `SALVAGE 13m · 25m · 38m`, all three unscanned sites are
+  listed nearest-first, the outer hatch is in reach from where EVA drops you, and the
+  readout goes quiet again back inside.
+
+  `arrived` keys off the game's own interact prompt rather than a distance or a
+  timeout. Under this machine's software-rendered Chromium the walk took 5 to 17
+  bursts and 20 to 76 s across four runs, against a couple of bursts on anything that
+  composites, because `controls.update()` clamps `dt` at 0.1 s and the frame rate is
+  well under that. A beat that waits for the prompt is the same beat on both machines;
+  one that waits a fixed 8 s is a #53 failure on one of them.
+
+  **A twelfth assertion was written and then deleted rather than fixed** (#384, and
+  #147). `main.js` writes down that the readout carries distance and no bearing on
+  purpose — a compass would point at the answer, this only says warmer. The check for
+  it was `!/[NSEW]|°|bearing/i.test(sig)`, and it failed on the first run against a
+  correct readout, because the word SALVAGE contains an S and an E. The repair is not
+  a better regex. No string test holds that claim, so the claim does not get an
+  assertion; the three that remain say what the readout *is* and can all tell a wrong
+  answer from a right one.
+
+- **Per-client financing types on the buyer side** (#385), in a new
+  `Projects/Closing Time/js/engine/financing.js`. Before this every buyer was the same
+  buyer to a listing agent: offer strength came only from waived contingencies and a
+  fast close, and `resolveFinancing()` rolled one flat 4% fall-through for everybody.
+  The seller side had known the vocabulary the whole time — `spawnNPCOffer()` has been
+  stamping `conventional`/`FHA`/`cash` onto NPC offers since it was written, and
+  `resolveSellerMilestone()` has charged FHA 12% against everyone else's 5%. This is
+  the same axis pointed the other way, so the two sides now agree about what the words
+  mean.
+
+  A buyer is `cash`, `conventional`, `fha` or `va`, and it moves five things: the NPC
+  listing agent's accept floor (on the same 0.015-per-term scale `agentRespond()`
+  already used for a waived inspection), the soonest the deal can close, whether an
+  appraisal and a financing milestone are scheduled at all, the fall-through roll at
+  that milestone and how hard a rate above 6.5 hits it, and whether the appraiser
+  reviews condition as well as value.
+
+  **Measured, not asserted from the formula.** The suite walks the price down in $250
+  steps until the agent stops saying accept, which reads the floor off
+  `agentRespond()`'s own answers; writing the floor formula out again in the test would
+  be a check that re-implements the thing it checks (#34) and would have passed against
+  a `strengthBonus` that never read `financing` at all. On `ls_0001`, ask $168,000:
+  cash is taken to **$144,750**, conventional to **$150,000**, FHA stops at
+  **$155,000**. A $10,250 spread on a $168,000 house is a decision, not a rounding
+  error.
+
+  Three consequences fall out rather than being dialled in. Cash cannot "waive" an
+  appraisal contingency it never had, so `writeOffer` records it as not waived — the
+  milestone is the same either way, but recording it as waived would hand cash a free
+  0.015 on top of its own 0.03. FHA's 30-day floor puts `agentRespond()`'s
+  `closeDays <= 21` bonus permanently out of its reach. And an FHA or VA appraiser is
+  doing two jobs, so `resolveAppraisal()` writes dealbreaker-severity repair costs down
+  against the loan for those two — which is why a cash buyer and an FHA buyer can get
+  two different answers out of the same appraiser on the same house, through the
+  existing `appraisalGap` choice and with no new UI.
+
+  The type is the client's, not a field on the offer form: you write the offer your
+  buyer can actually write. Three client files name their own now, because their own
+  text already did — `cl_0004`'s `statedReqs.notes` reads "Cash." verbatim, and the
+  derivation had been handing him FHA. The rest derive from `tier`.
+
+- **A save field that `repair` recomputes must not touch `rand()`** (#386). `repairCareer`
+  backfills `rec.financing` on every career written before it existed, and the obvious
+  way to fill it is the way `makeCareer` fills everything else. That would have been a
+  slow, invisible poisoning: `repair` runs on **every** accepted load through every
+  door (#37), so a single `rand()` there advances `S.seed` once per reload, and a
+  career would take a different branch on every event roll for the rest of its life
+  depending on how many times it had been reopened. `financingFor()` is a djb2 hash of
+  the client id instead — the same buyer buys the same way on every career, and repair
+  gives a legacy save the answer a fresh career would have given it, and the same
+  answer again the next time. The suite asserts `fixed.seed === seedBefore` across a
+  repair, which is the assertion that would have caught it.
+
+- **An off-by-one in Integer Foundry's own suite, fixed inside this PR rather than
+  reported** (#387). `Projects/integer-foundry/test/browser.mjs` builds a line to fill
+  whatever the sink happens to ask for. It laid the operators along row 2 and then put
+  the sink one step past the last one's facing, which is column 8 on a grid whose
+  columns are 0 to 7 — but only when the chain filled row 2 and was still pointing
+  east, which is exactly and only an order of 8. Orders roll between 2 and 12 and the
+  roll is weighted low, so this survived: 18 local runs did not produce one. CI did,
+  on this PR's first run, and aborted the suite at 38 checks with
+  `No element found for selector: #grid .cell[data-x="8"][data-y="2"]`.
+
+  Nothing in this batch touches Integer Foundry, and the standing rule is to report an
+  unrelated failure rather than widen the PR. This was fixed instead, for one reason:
+  the alternative was a re-run, the re-run would have come up green on a different
+  order size, and the bug would have gone back to waiting. "Flake" was the wrong
+  answer and re-running would have written it down as the right one. The fix reads both
+  the operators and the sink off one hard-coded path through the base 8×6 floor, so
+  there is no cell in it that can be off the board.
+
+  Checked three ways rather than by re-running: all eleven order sizes 2 to 12
+  enumerated in Node against the new geometry (every cell on the board, no duplicates,
+  every operator stepping onto the next cell, `want + 1` tiles); 21 real runs of the
+  suite, 56 checks and 0 failed each, one of which rolled an order of 8; and the
+  genuine pre-fix file with `want` forced to 8, which reproduced the CI abort exactly,
+  same selector and same 38 checks.
+
+**Broken on purpose, from green, twice (#34).**
+
+1. Deleted `.sort((a, b) => a - b)` from Aphelion's `main.js`. Exactly one assertion
+   fell — `FAIL  nearest site first  38 then 13 then 25` — and the readout it printed,
+   `SALVAGE 38m · 13m · 25m`, is `poi.json`'s file order. The other ten stayed green,
+   so the failure landed on the assertion whose comment claims that meaning and not on
+   a neighbour.
+2. Put `camState` back on `camera.rotation`. Six fell, starting at
+   `FAIL  walked aft through the hab to the airlock  never got the cycle prompt` — the
+   walk burned all 40 bursts oscillating, exactly as #383 describes, and every
+   assertion past the hatch went with it. Worth naming what stayed green: `nearest site
+   first` passed on an empty readout, because `[].every()` is true. The assertion that
+   actually caught the empty string was `all three unscanned sites are listed`. Both
+   are needed and neither is decorative — one catches an absent readout, the other a
+   mis-ordered one.
+
+**Suites.** `Tools/board-check`: `npm run check` and `npm run social:check` green
+through `node ci-check.mjs`, `known-failures.json` still empty in all three sections.
+`Projects/Closing Time`: `node tools/smoke.mjs` 127 → **150**. `Projects/aphelion`:
+`node test/smoke-state.mjs` 23, unchanged — the airlock work is all in the browser
+suite, which is where the wiring it tests lives. `npm run games aphelion` 11 → **21,
+0 failed**; `npm run games closing-time` **27, 0 failed**, unchanged.
+
+**The other two suites that read `camState` were run against a `main` worktree to
+check whose failures they are, and they are not this work's.** `fourth-quarter`: 45
+checks, 1 failed (`the doors opened and the room filled  0`) — identical on both.
+`golden-hour`: 18 checks, 8 failed — the same eight, in the same order, on both. That
+is #373's set, one wider than the seven recorded there, and the widening is this
+machine rather than this branch: the first of them is `W walks down the beach  0.63 m`
+and the rest follow from a beach that never got walked. Every one of them is the class
+#53 calls inconclusive under a software-rendered Chromium, and `npm run games` is
+outside CI on purpose (#353). Nothing was fixed and nothing went red.
+
+`Projects/integer-foundry`: `node test/browser.mjs` **56 checks, 0 failed**, 21 runs.
+It is the one suite this batch touched without the batch touching its project — see
+#387.
+
 ## Numina, August 2026
 
 An audit of the Eleventy rules site: 55 pages, ~136,000 words of source

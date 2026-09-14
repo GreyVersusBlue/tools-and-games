@@ -1,5 +1,6 @@
 // state.js — canonical game state, persistence, career ladder, RNG helpers.
 import { DB } from "./data.js";
+import { FINANCING, DEFAULT_FINANCING, financingFor } from "./engine/financing.js";
 // Relative, not "/assets/js/gvb-save.js": tools/smoke.mjs imports this module
 // under plain Node, which cannot resolve a leading slash. The relative form
 // resolves identically in the browser.
@@ -283,6 +284,16 @@ export function repairCareer(s) {
     if (typeof rec.status !== "string") rec.status = "active";
     const c = DB.clients[rec.clientId];
     if (!Number.isFinite(rec.budget) && c) rec.budget = c.budget;
+    // Added with per-client financing. Every career written before that has no
+    // `financing` on any record, and a buyer without one would fall through
+    // dealFinancing() to conventional forever — which is not wrong, but it is
+    // not this buyer either. financingFor() is a pure function of the content
+    // file, so recomputing it here gives a legacy save the same answer a fresh
+    // career would, and gives it the same answer again on every later load.
+    // Deliberately NOT rand()-based for exactly that reason: repair runs on
+    // every accepted load (#37), and a seed advanced once per reload would
+    // quietly re-roll the rest of the career's events.
+    if (!(rec.financing in FINANCING)) rec.financing = financingFor(c);
   }
 
   for (const pl of s.playerListings) {
@@ -305,6 +316,13 @@ export function repairCareer(s) {
     if (!Array.isArray(d.milestones)) d.milestones = [];
     d.round = Math.max(0, Math.round(num(d.round, 0)));
     d.createdDay = Math.max(1, Math.round(num(d.createdDay, s.day)));
+    // A deal already on the table keeps the terms it was written under, so this
+    // reads the buyer's record rather than re-deriving. A deal whose client is
+    // gone was dropped above, so the lookup is only null on a seller-side row.
+    if (!(d.financing in FINANCING)) {
+      const buyer = s.clients.find(r => r && r.recId === d.clientRecId);
+      d.financing = (buyer && buyer.financing) || DEFAULT_FINANCING;
+    }
   }
 
   // uid() is `p + "_" + (S.nextId++)`. An undefined nextId makes every id

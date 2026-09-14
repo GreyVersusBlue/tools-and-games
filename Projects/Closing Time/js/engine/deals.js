@@ -3,6 +3,7 @@ import { DB, fmtMoney } from "../data.js";
 import { S, uid, log, addRep, addXP, addCash, rand, randInt, randRange, scheduleItem, unschedule, contentClient, isWeekend, getClientRec } from "../state.js";
 import { trueValue, appraisalFor, marketHeat, bumpKnowledge, knowledgeEdge } from "./market.js";
 import { checkReveals, fitScore, satisfactionDelta, patienceTick, rollReferral } from "./clients.js";
+import { financingType, DEFAULT_FINANCING } from "./financing.js";
 
 // ---------- VIEWINGS ----------
 export function startViewing(rec, listing) {
@@ -86,18 +87,35 @@ function revealedHonestyWeight(rec) {
 // ---------- OFFERS & NEGOTIATION ----------
 export function writeOffer(rec, listing, price, opts) {
   // opts: {waiveInspection, waiveAppraisal, closeDays}
+  //
+  // The financing type is copied onto the deal rather than read back off the
+  // client record every time. An offer's terms are fixed the day it is written;
+  // nothing should be able to change what is already on the table underneath it,
+  // and it puts the buyer side in the same shape as the seller side, where
+  // spawnNPCOffer() has always stamped `financing` onto the offer itself.
+  const financing = rec.financing || DEFAULT_FINANCING;
+  const f = financingType(financing);
   const deal = {
     id: uid("deal"), mode: "buyer", clientRecId: rec.recId, listingId: listing.id,
     price, ask: S.listingsState[listing.id].price,
-    waiveInspection: !!opts.waiveInspection, waiveAppraisal: !!opts.waiveAppraisal,
-    closeDays: opts.closeDays || 28, stage: "offerPending", round: 0, agentId: listing.listingAgentId,
+    waiveInspection: !!opts.waiveInspection,
+    // Cash has no lender and therefore no appraisal contingency to waive. Recording
+    // it as waived rather than absent would be the same milestone either way, but
+    // it would also hand agentRespond() a free 0.015 on top of cash's own 0.03.
+    waiveAppraisal: f.needsAppraisal ? !!opts.waiveAppraisal : false,
+    financing,
+    closeDays: Math.max(f.minCloseDays, opts.closeDays || 28),
+    stage: "offerPending", round: 0, agentId: listing.listingAgentId,
     milestones: [], createdDay: S.day,
   };
   S.deals.push(deal);
   rec.dealId = deal.id;
-  log(`Offer written: ${fmtMoney(price)} on ${listing.address} (ask ${fmtMoney(deal.ask)}). Sent to ${DB.agents[deal.agentId].name}.`, "deal", undefined, rec.recId);
+  log(`Offer written: ${fmtMoney(price)} on ${listing.address} (ask ${fmtMoney(deal.ask)}), ${f.label}, closing in ${deal.closeDays} days. Sent to ${DB.agents[deal.agentId].name}.`, "deal", undefined, rec.recId);
   return deal;
 }
+
+/** The financing record behind a deal. Never undefined, whatever a save holds. */
+export const dealFinancing = deal => financingType(deal && deal.financing);
 
 export function agentRespond(deal, priceOffered) {
   // NPC listing agent decides: accept / counter / reject.
@@ -107,7 +125,13 @@ export function agentRespond(deal, priceOffered) {
   deal.round++;
   const heat = marketHeat(listing.neighborhood);
   const domFlex = Math.min(0.08, ls.dom / 1000);            // stale listings bend
-  const strengthBonus = (deal.waiveInspection ? 0.015 : 0) + (deal.waiveAppraisal ? 0.015 : 0) + (deal.closeDays <= 21 ? 0.01 : 0);
+  // How much softer this agent gets for terms rather than price. Financing sits
+  // on the same scale as the two waivers: cash is worth both of them at once
+  // because it is both of them at once, FHA costs you more than a waiver buys.
+  // The <=21-day bonus is now partly a financing consequence too — FHA's floor
+  // of 30 days puts it out of reach, VA's 35 more so.
+  const strengthBonus = (deal.waiveInspection ? 0.015 : 0) + (deal.waiveAppraisal ? 0.015 : 0)
+    + (deal.closeDays <= 21 ? 0.01 : 0) + dealFinancing(deal).strength;
   const floor = deal.ask * (1 - agent.tolerance - domFlex + (heat - 1) * 0.05 - strengthBonus);
   const r = priceOffered / deal.ask;
   if (priceOffered >= floor) {
@@ -133,13 +157,17 @@ export function acceptDeal(deal) {
   S.listingsState[deal.listingId].status = "underContract";
   const base = S.day;
   const wk = d => { while (isWeekend(d)) d++; return d; }; // bank-side milestones land on weekdays
+  const f = dealFinancing(deal);
   if (!deal.waiveInspection) deal.milestones.push({ day: base + 3, type: "inspection", done: false });
-  if (!deal.waiveAppraisal) deal.milestones.push({ day: wk(base + 7), type: "appraisal", done: false });
-  deal.milestones.push({ day: wk(base + 12), type: "financing", done: false });
+  // No lender, no lender's contingencies. A cash deal under contract has an
+  // inspection (if the buyer wanted one) and a closing date, and that is all —
+  // which is the whole reason a listing agent takes less money for it.
+  if (f.needsAppraisal && !deal.waiveAppraisal) deal.milestones.push({ day: wk(base + 7), type: "appraisal", done: false });
+  if (f.needsFinancing) deal.milestones.push({ day: wk(base + 12), type: "financing", done: false });
   deal.milestones.push({ day: base + deal.closeDays, type: "closing", done: false });
   deal.milestones.forEach(m => scheduleItem(m.day, `${cap(m.type)} — ${listing.address}`, m.type, deal.id));
   satisfactionDelta(rec, 8, "going under contract");
-  log(`Under contract at ${fmtMoney(deal.price)} — ${listing.address}. Closing in ${deal.closeDays} days.`, "milestone", undefined, rec.recId);
+  log(`Under contract at ${fmtMoney(deal.price)} — ${listing.address}, ${f.label}. Closing in ${deal.closeDays} days.`, "milestone", undefined, rec.recId);
 }
 
 export function killDeal(deal, why, repHit = 0) {
@@ -219,12 +247,23 @@ export function inspectionDecision(deal, decision, totalCost) {
 }
 
 function resolveAppraisal(deal, rec, listing) {
-  const appr = appraisalFor(deal.price, trueValue(listing));
+  const f = dealFinancing(deal);
+  // An FHA or VA appraiser is doing two jobs: an opinion of value and a review
+  // against minimum property standards. Anything dealbreaker-severity in the
+  // house is written down against the loan whether or not the buyer knew about
+  // it, which is why a cash buyer and an FHA buyer can get two different answers
+  // out of the same appraiser on the same house. Conventional gets the value
+  // opinion only, exactly as before.
+  const conditionHit = f.lenderCondition
+    ? listing.hiddenIssues.filter(is => is.severity === "dealbreaker").reduce((s, is) => s + is.repairCost, 0)
+    : 0;
+  const appr = appraisalFor(deal.price, trueValue(listing)) - conditionHit;
   if (appr >= deal.price) { log(`Appraisal on ${listing.address}: at value. The lender exhales.`, "", undefined, rec.recId); return { ok: true }; }
   const gap = Math.round(deal.price - appr);
   S.choiceQueue.push({
     kind: "appraisalGap", dealId: deal.id, gap,
-    text: `Appraisal on ${listing.address} comes in ${fmtMoney(gap)} under contract price.`,
+    text: `Appraisal on ${listing.address} comes in ${fmtMoney(gap)} under contract price.`
+      + (conditionHit ? ` The ${f.label} appraiser wrote down ${fmtMoney(conditionHit)} of required repairs on the way past.` : ""),
   });
   return { ok: false, pending: true };
 }
@@ -255,8 +294,14 @@ export function appraisalDecision(deal, decision, gap) {
 }
 
 function resolveFinancing(deal, rec) {
+  const f = dealFinancing(deal);
   const rate = S.market.rate;
-  let failChance = 0.04 + Math.max(0, rate - 6.5) * 0.03;
+  // Was a flat 0.04 for every buyer alive. The seller side has charged FHA 0.12
+  // against everyone else's 0.05 since it was written; these are the same
+  // numbers seen from the buyer's chair, plus a per-type sensitivity to the
+  // headline rate — a VA rate moves less than the market does, an FHA borrower
+  // feels every basis point of it.
+  let failChance = f.failBase + Math.max(0, rate - 6.5) * 0.03 * f.rateSensitivity;
   if (deal.price > rec.budget) failChance += 0.15;
   if (rand() < failChance) {
     killDeal(deal, `${contentClient(rec).name}'s financing fell through at the eleventh hour.`);
