@@ -197,6 +197,7 @@ function frame(t) {
   drawGoal(t);
   for (const b of posed) drawBody(b, t);
   drawPlan();
+  edDraw();                 // grid, orbit paths, selection ring — edit mode only
   drawTrail();
   drawProbe();
   drawParticles();

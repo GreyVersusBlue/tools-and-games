@@ -40,10 +40,16 @@ const ctx = cv.getContext("2d");
 let DPR = 1, view = { s: 1, ox: 0, oy: 0 };
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
-  const w = window.innerWidth, h = window.innerHeight;
-  cv.width = Math.floor(w * DPR); cv.height = Math.floor(h * DPR);
+  const winW = window.innerWidth, h = window.innerHeight;
+  cv.width = Math.floor(winW * DPR); cv.height = Math.floor(h * DPR);
+  // The canvas still covers the window; only the playfield moves. The editor
+  // rail owns the left edge while it is up, and without this the launch point
+  // of every draft sits behind it — at 1320px the rail hid world x 0 to 212,
+  // and the probe starts at x 120.
+  const inset = edInset();
+  const w = winW - inset;
   const s = Math.min(w / W, h / H);
-  view = { s, ox: (w - W * s) / 2, oy: (h - H * s) / 2 };
+  view = { s, ox: inset + (w - W * s) / 2, oy: (h - H * s) / 2 };
 }
 const toWorld = (px, py) => ({ x: (px - view.ox) / view.s, y: (py - view.oy) / view.s });
 
@@ -62,14 +68,34 @@ function loadLevel(gi) {
   bodies = L.bodies.map(b => Object.assign({}, b));
   attempts = 0; won = false;
   resetProbe(); mode = "aim"; hideNext();
+  document.getElementById("btnRemix").classList.remove("show");
+  paintHUD();
+  showHint(gi === 0 ? "Drag anywhere to aim · release to launch"
+                    : "Read the flight plan — thread the wells");
+}
+function paintHUD() {
   document.getElementById("packName").textContent = L.pack;
   document.getElementById("lvlNum").textContent = String(L.localIdx + 1).padStart(2, "0");
   document.getElementById("lvlTotal").textContent = String(L.packLen);
   document.getElementById("lvlName").textContent = L.name;
   document.getElementById("lvlSub").textContent = L.sub || "";
   updateHUD();
-  showHint(gi === 0 ? "Drag anywhere to aim · release to launch"
-                    : "Read the flight plan — thread the wells");
+}
+
+// A level that arrived in a link. It is not a sector: it has no place in the
+// pack order and no `key`, so it records no stars and never unlocks anything.
+// Somebody else's level cannot write into this browser's campaign.
+function loadShared(level) {
+  document.getElementById("introScrim").classList.remove("show");
+  curIndex = -1;
+  L = Object.assign(OrbitalCode.clean(level),
+    { pack: "Shared", packId: "shared", packLen: 1, localIdx: 0, key: null, ephemeral: true });
+  bodies = L.bodies.map(b => Object.assign({}, b));
+  attempts = 0; won = false;
+  resetProbe(); mode = "aim"; hideNext();
+  document.getElementById("btnRemix").classList.add("show");
+  paintHUD();
+  showHint("A shared sector · drag anywhere to aim");
 }
 function resetProbe() {
   probe = { x: L.start.x, y: L.start.y }; vel = { x: 0, y: 0 }; flyState = null;
@@ -78,7 +104,7 @@ function resetProbe() {
 }
 function updateHUD() {
   document.getElementById("attempts").textContent = attempts;
-  const best = progress[L.key];
+  const best = L.key ? progress[L.key] : null;
   document.getElementById("hudStars").innerHTML = best ? starMarkup(starsFor(best)) : '<span class="off">☆☆☆</span>';
 }
 let hintTimer = null;
@@ -128,18 +154,21 @@ function stepFly() {
 }
 function win() {
   mode = "done"; won = true;
-  const st = starsFor(attempts);
-  if (!progress[L.key] || attempts < progress[L.key]) { progress[L.key] = attempts; writeSave(progress); }
+  if (L.key && (!progress[L.key] || attempts < progress[L.key])) { progress[L.key] = attempts; writeSave(progress); }
   updateHUD(); burst(L.goal.x, L.goal.y, "goal");
   flash("MARKER REACHED", "win");
   document.getElementById("hint").style.opacity = "0";
   const nb = document.getElementById("btnNext");
-  nb.textContent = curIndex >= LEVELS.length - 1 ? "Sector map ▶" : "Next sector ▶";
+  nb.textContent = edTesting ? "Back to editing ▶"
+                 : L.ephemeral ? "Sector map ▶"
+                 : curIndex >= LEVELS.length - 1 ? "Sector map ▶" : "Next sector ▶";
   nb.classList.add("show");
 }
 function hideNext() { document.getElementById("btnNext").classList.remove("show"); }
 function advance() {
   hideNext();
+  if (edTesting) { edBackToEdit(); return; }
+  if (L.ephemeral) { openLevels(); return; }
   if (curIndex < LEVELS.length - 1) loadLevel(curIndex + 1); else openLevels();
 }
 function fail(kind) {
@@ -207,7 +236,27 @@ lvlScrim.addEventListener("click", e => { if (e.target === lvlScrim) closeLevels
 
 window.addEventListener("resize", () => { resize(); checkOrient(); });
 
+// A link decides what opens: `#l=` is somebody's level to play, `#e=` is a
+// draft to keep editing. Anything malformed says so on the intro card rather
+// than half-loading — the string came out of another person's address bar.
+function bootFromHash() {
+  const read = edReadHash();
+  if (!read) return false;
+  const say = why => {
+    const el = document.getElementById("linkErr");
+    el.textContent = "That level link would not open: " + why;
+    el.hidden = false;
+  };
+  if (read.error) { say(read.error); return false; }
+  const bad = OrbitalCode.validate(read.level);
+  if (bad.length) { say(bad[0]); return false; }
+  if (read.how === "e") edEnter(read.level); else loadShared(read.level);
+  return true;
+}
+
 resize();
 initInput();
+initEditor();
 loadLevel(0);              // set up level 0 behind the intro
+bootFromHash();            // a link overrides it
 requestAnimationFrame(frame);

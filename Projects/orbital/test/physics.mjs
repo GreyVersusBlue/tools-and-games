@@ -4,6 +4,9 @@
 //
 // Run:  node Projects/orbital/test/physics.mjs [--verbose]
 //
+// The codec that turns one of these levels into a share link has its own
+// suite next door: test/levelcode.mjs.
+//
 // Why this exists: physics.js's own header comment names "solvability tests"
 // as the reason it's DOM-free, and none existed. A level nobody can actually
 // win is a real, silent bug that 21 levels of hand-testing can hide — this
@@ -30,7 +33,7 @@ require(path.join(JS, "physics.js"));
 require(path.join(JS, "levels", "pack-01-basics.js"));
 require(path.join(JS, "levels", "pack-02-deepspace.js"));
 
-const { solve, substep, isSolid, MAXSPEED } = globalThis.OrbitalPhysics;
+const { solve, substep, isSolid, MAXSPEED, findWinningShot } = globalThis.OrbitalPhysics;
 const PACKS = globalThis.OrbitalPacks;
 
 // Flatten levels exactly like game.js does, including the stable `key`.
@@ -51,55 +54,12 @@ console.log(`Orbital physics test — ${LEVELS.length} levels\n`);
 // ============================================================
 // 1. Every level has a winning launch vector
 // ============================================================
-// Coarse grid over angle x power first (fast — most levels resolve here).
-// Any grid cell that doesn't WIN outright still reports how close its whole
-// sampled path got to the goal, which seeds a shrinking local search around
-// the closest miss for levels a grid alone doesn't crack (timed orbits,
-// wormhole exits, boosted lines — the multi-body ones like The Gauntlet or
-// Deep Field are exactly why the refinement pass exists).
-
-function closestApproach(level, angle, power) {
-  const sp = power * MAXSPEED;
-  const r = solve(level.start, { x: Math.cos(angle) * sp, y: Math.sin(angle) * sp }, level);
-  if (r.outcome === "WIN") return { win: true, dist: 0 };
-  let best = Infinity;
-  for (const p of r.pts) {
-    const d = Math.hypot(p.x - level.goal.x, p.y - level.goal.y);
-    if (d < best) best = d;
-  }
-  return { win: false, dist: best };
-}
-
-function findWinningShot(level) {
-  const ANGLE_STEPS = 240, POWER_STEPS = 20;
-  let best = null;
-  for (let ai = 0; ai < ANGLE_STEPS; ai++) {
-    const angle = (ai / ANGLE_STEPS) * Math.PI * 2;
-    for (let pi = 1; pi <= POWER_STEPS; pi++) {
-      const power = pi / POWER_STEPS;
-      const r = closestApproach(level, angle, power);
-      if (r.win) return { angle, power };
-      if (!best || r.dist < best.dist) best = { angle, power, dist: r.dist };
-    }
-  }
-  // Shrinking neighborhood search around the best grid candidate.
-  let center = { angle: best.angle, power: best.power }, bestDist = best.dist;
-  let dAngle = (Math.PI * 2) / ANGLE_STEPS, dPower = 1 / POWER_STEPS;
-  for (let round = 0; round < 60; round++) {
-    let improved = false;
-    for (let da = -1; da <= 1; da++) for (let dp = -1; dp <= 1; dp++) {
-      if (!da && !dp) continue;
-      const angle = center.angle + da * dAngle;
-      const power = Math.min(1, Math.max(0.01, center.power + dp * dPower));
-      const r = closestApproach(level, angle, power);
-      if (r.win) return { angle, power };
-      if (r.dist < bestDist) { bestDist = r.dist; center = { angle, power }; improved = true; }
-    }
-    if (!improved) { dAngle *= 0.6; dPower *= 0.6; }
-    if (dAngle < 1e-6 && dPower < 1e-6) break;
-  }
-  return null;
-}
+// The search itself lives in physics.js now, because the editor's Check
+// button runs it too and a level the editor calls winnable had better be one
+// this suite calls winnable. What stays here is the claim: every shipped level
+// has a shot, and the shot the search hands back is re-flown before it counts.
+// A search that returned a plausible-looking angle it never actually flew
+// would pass "!!shot" and fail the line under it.
 
 console.log("1. Every level has a winning launch vector");
 const t0 = Date.now();
@@ -109,6 +69,14 @@ for (const lv of LEVELS) {
     `${lv.key.padEnd(16)} "${lv.name}"`,
     !!shot,
     shot ? "" : "no winning vector found in search budget (240x20 grid + local refinement)"
+  );
+  if (!shot) continue;
+  const sp = shot.power * MAXSPEED;
+  const r = solve(lv.start, { x: Math.cos(shot.angle) * sp, y: Math.sin(shot.angle) * sp }, lv);
+  check(
+    `${lv.key.padEnd(16)} the reported shot re-flies to a WIN`,
+    r.outcome === "WIN",
+    `outcome=${r.outcome} at ${(shot.angle * 180 / Math.PI).toFixed(1)}deg / ${(shot.power * 100) | 0}%`
   );
 }
 if (VERBOSE) console.log(`  (search took ${Date.now() - t0}ms)`);

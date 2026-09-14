@@ -34,6 +34,12 @@ function checkOrient() {
 }
 
 function keyHandler(e) {
+  // The editor has its own handler (editor.js, edKey) and its own meanings for
+  // Escape, Delete and the arrows. The gate is `edOn`, not the mode: a test
+  // flight from inside the editor is mode "aim", and gating on the mode let
+  // both handlers see the same Escape — edKey went back to the draft while
+  // this one opened the sector map on top of it.
+  if (edOn) return;
   if (e.key === "r" || e.key === "R") { if (mode !== "fly") { resetProbe(); mode = "aim"; } return; }
   if (e.key === "Escape") { toggleLevels(); return; }
   if (mode === "done" && won && (e.key === " " || e.key === "Enter" || e.key === "n" || e.key === "N")) {

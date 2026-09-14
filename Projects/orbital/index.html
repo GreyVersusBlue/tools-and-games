@@ -36,12 +36,38 @@
     </div>
     <div class="controls">
       <button id="btnReset" title="Reset shot (R)">Reset</button>
+      <button id="btnRemix" class="remix" title="Open this shared sector in the editor">Remix</button>
       <button id="btnLevels" title="Sector map (Esc)">Sectors</button>
     </div>
   </div>
 
   <div class="hint" id="hint">Drag anywhere to aim · release to launch</div>
   <button class="nextbtn" id="btnNext">Next sector ▶</button>
+  <button class="backbtn" id="edBack">◀ Back to editing</button>
+
+  <!-- editor rail. Hidden until the editor owns the screen; the draft it holds
+       lives in the address bar, not in localStorage. -->
+  <div class="ed" id="edPanel" aria-hidden="true">
+    <div class="ed-head">
+      <span class="ed-tag">Drafting</span>
+      <button id="edExit" title="Leave the editor (Esc)">Leave</button>
+    </div>
+    <label class="ed-f"><span>Name</span><input id="edName" maxlength="48" autocomplete="off" spellcheck="false"></label>
+    <label class="ed-f"><span>Subtitle</span><input id="edSub" maxlength="48" autocomplete="off" spellcheck="false"></label>
+    <div class="ed-tools" id="edTools"></div>
+    <div class="ed-insp" id="edInsp"></div>
+    <!-- status and actions ride together in one sticky foot: the status is the
+         answer to the button beside it, and a long inspector had scrolled it
+         out from under the reader -->
+    <div class="ed-foot">
+      <div class="ed-status" id="edStatus" role="status" aria-live="polite"></div>
+      <div class="ed-acts">
+        <button id="edCheck" title="Search for a winning launch vector">Check</button>
+        <button id="edTestBtn" title="Fly the draft (Enter)">Test flight</button>
+        <button class="primary" id="edShare" title="Copy a link that carries the whole level">Copy link</button>
+      </div>
+    </div>
+  </div>
 
   <div class="rotate" id="rotate" aria-hidden="true">
     <div class="ph"></div>
@@ -67,6 +93,8 @@
         <span><i class="dot" style="color:var(--booster)"></i>booster</span>
       </div>
       <p class="kbd-hint" style="font-size:12.5px;margin-top:14px">Keyboard: <b>← →</b> aim · <b>↑ ↓</b> power · <b>Space</b> launch · <b>R</b> reset.</p>
+      <p style="font-size:12.5px;margin-top:6px">Build your own: the sector map has a <b>Design</b> button, and every sector you make is a link you can hand to somebody.</p>
+      <p class="link-err" id="linkErr" hidden></p>
       <div class="row" style="justify-content:flex-end">
         <button class="primary" id="btnStart">Begin flight</button>
       </div>
@@ -81,18 +109,23 @@
       <div class="grid" id="lvlGrid"></div>
       <div class="row">
         <button id="btnWipe" title="Erase saved progress">Reset progress</button>
+        <button id="btnDesign" title="Build a sector of your own">Design a sector</button>
         <button class="primary" id="btnClose">Close</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- modules: physics + level packs, then render, input, and the orchestrator -->
+<!-- modules: physics + the codec + level packs, then render, input, the editor,
+     and the orchestrator, which is loaded last because it owns the state the
+     rest of them read. -->
 <script src="js/physics.js"></script>
 <script src="js/levels/pack-01-basics.js"></script>
 <script src="js/levels/pack-02-deepspace.js"></script>
+<script src="js/levelcode.js"></script>
 <script src="js/render.js"></script>
 <script src="js/input.js"></script>
+<script src="js/editor.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

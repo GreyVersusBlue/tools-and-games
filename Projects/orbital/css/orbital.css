@@ -130,3 +130,74 @@ button:focus-visible{outline:2px solid var(--goal);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){ .rotate .ph{animation:none;transform:rotate(-90deg)} }
 .rotate h2{margin:0;font-size:22px;letter-spacing:.01em}
 .rotate p{margin:0;color:var(--dim);font-family:"Space Mono",monospace;font-size:13px;letter-spacing:.06em}
+
+/* ---- the sector editor ---- */
+.remix{display:none}
+.remix.show{display:inline-block}
+.backbtn{position:absolute;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));
+  transform:translate(-50%,10px);opacity:0;pointer-events:none;z-index:4;
+  transition:opacity .3s,transform .3s}
+.backbtn.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+.ed{position:absolute;top:0;left:0;bottom:0;width:300px;z-index:6;display:none;
+  flex-direction:column;gap:10px;overflow-y:auto;overscroll-behavior:contain;
+  background:linear-gradient(180deg,rgba(14,19,44,.95),rgba(7,9,22,.95));
+  border-right:1px solid var(--line);backdrop-filter:blur(10px);
+  padding:calc(14px + env(safe-area-inset-top)) 14px
+          calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left))}
+.ed.show{display:flex}
+.ed-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.ed-tag{font-family:"Space Mono",monospace;color:var(--amber);font-size:11px;
+  letter-spacing:.28em;text-transform:uppercase}
+.ed-f{display:flex;flex-direction:column;gap:4px}
+.ed-f span{font-family:"Space Mono",monospace;font-size:10.5px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--faint)}
+.ed-f input{font-family:"Space Grotesk",system-ui,sans-serif;font-size:14px;color:var(--ink);
+  background:rgba(8,11,26,.8);border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+  width:100%;user-select:text;-webkit-user-select:text}
+.ed-f input:focus-visible{outline:2px solid var(--goal);outline-offset:1px}
+.ed-tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ed-tool{padding:9px 8px;font-size:11px;letter-spacing:.04em;position:relative;
+  border-radius:9px;text-align:left;padding-left:22px}
+.ed-tool::before{content:"";position:absolute;left:8px;top:50%;transform:translateY(-50%);
+  width:8px;height:8px;border-radius:50%;background:var(--tc,var(--faint));
+  box-shadow:0 0 8px var(--tc,transparent)}
+.ed-tool.on{border-color:var(--amber);background:rgba(60,44,18,.55);color:var(--amber)}
+.ed-insp{display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line);padding:11px 0}
+.ed-selname{font-weight:700;font-size:15px}
+.ed-none{margin:0;font-family:"Space Mono",monospace;font-size:11.5px;line-height:1.5;color:var(--faint)}
+.ed-ctl{display:flex;flex-direction:column;gap:3px}
+.ed-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ed-lab{font-family:"Space Mono",monospace;font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint)}
+.ed-val{font-family:"Space Mono",monospace;font-size:12px;color:var(--amber)}
+.ed-ctl input[type=range]{width:100%;accent-color:var(--amber);height:22px;margin:0}
+.ed-links{display:flex;gap:5px}
+.ed-links button{flex:1;padding:7px 0;font-size:12px;border-radius:8px}
+.ed-links button.on{border-color:var(--wormhole);color:var(--wormhole);background:rgba(10,44,40,.7)}
+.ed-toggle.on{border-color:var(--planet);color:var(--planet);background:rgba(10,36,56,.7)}
+.ed-del{border-color:rgba(255,120,100,.4);color:#ff8a6b}
+.ed-del:hover{border-color:#ff8a6b;background:rgba(60,20,16,.7)}
+.ed-status{font-family:"Space Mono",monospace;font-size:11.5px;line-height:1.5;
+  color:var(--dim);min-height:2.6em}
+.ed-status.good{color:var(--goal)}
+.ed-status.bad{color:#ff8a6b}
+/* sticky, not just pushed down: at 800px tall with a booster or a wormhole
+   selected the inspector is long enough to carry these below the fold, and a
+   Copy link button you have to scroll to find is one nobody finds */
+.ed-foot{margin-top:auto;position:sticky;bottom:0;display:flex;flex-direction:column;gap:6px;
+  background:linear-gradient(180deg,rgba(9,12,28,0),rgba(9,12,28,.97) 14%);
+  padding:14px 0 calc(4px + env(safe-area-inset-bottom))}
+.ed-acts{display:flex;flex-wrap:wrap;gap:6px}
+.ed-acts button{flex:1 1 auto}
+.link-err{color:#ff8a6b !important;font-family:"Space Mono",monospace;font-size:12px;
+  line-height:1.5;border:1px solid rgba(255,120,100,.35);border-radius:10px;padding:10px 12px}
+@media (max-width:1000px){ .ed{width:248px} }
+@media (max-width:680px){ .ed{width:200px} .ed-tools{grid-template-columns:1fr} }
+/* A short landscape window (a phone on its side is about 400px tall) has no
+   room to reserve a footer: sticking it there covered half the tool palette.
+   Let it flow with the rest and scroll to it. */
+@media (max-height:560px){
+  .ed-foot{position:static;margin-top:12px;background:none;padding-top:6px}
+}
+@media (pointer:coarse){ .ed-tool{min-height:44px} .ed-links button{min-height:40px} }
