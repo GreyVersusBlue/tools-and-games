@@ -14,6 +14,30 @@ without Devon saying so.
 PR, merge to `main`."** It runs unattended — Devon is not reviewing these rounds (2026-09-05)
 — so three rules follow, and they override any older wording in this file.
 
+**The prompt a session is started with** (#382, kept here so it and these rules cannot drift
+apart; edit both together):
+
+```
+Work the next batch of ranked items in BACKLOG.md. Claim your rows on main first
+(#283). Size the batch by the table in "How this repo is worked" — it has two axes
+now, Size and how many areas the batch spans.
+
+Prefer rows whose Model column matches the model this session is running. Take a
+mismatched row anyway rather than skipping down the list, and say in the PR body
+which rows you took and which model you actually worked under.
+
+If a row needs hardware this machine does not have — a real GPU, a phone, a pair of
+ears — move it to Parked with its context and take the next row, so the batch still
+lands real work. Do not write a report about it instead.
+
+One PR for the whole batch. Merge to main when CI is green, then update BACKLOG.md's
+header, ranks and Claimed column, and write your decisions into HISTORY.md, before
+you finish. A merged PR is not the end of the session.
+
+Break any guard-rail you added on purpose once, from a green baseline, and say which
+assertion failed and what it said (#34).
+```
+
 **1. Never stop to ask.** If a row needs a judgement call, make it: decide, ship, and record
 the call and its reasoning in `HISTORY.md` as a locked decision, so it can be reversed
 cheaply. That is what the "Questions for Devon" section below already says to do with an
@@ -26,14 +50,28 @@ front of the row you are on, and then write down what you decided and why.
 can do does not belong in the ranked table. Move it to a parked list with its context intact
 and renumber; parking is not the same as verifying, and the note should say which it is.
 
-**3. Size the batch by the Size column, not by a count.**
+**3. Size the batch by the Size column and by how many areas it spans** (#382,
+2026-09-13). The second axis is the new one. Four ¼ rows across four projects is four
+contexts, four suites and four closeouts; two ½ rows inside one project is one of each. The
+cost that scales with a batch is the closeout, not the code.
 
-| Size | Take | Why |
+| Size | Same area | Spanning areas |
 |---|---|---|
-| ¼ | up to **4** | CI is the bottleneck, not the model, so rows-per-PR is nearly free |
-| ½ | **2**, occasionally 3 | |
-| -1 | **one** | |
+| ¼ | up to **6** | **4** |
+| ½ | **3** | **2** |
+| 1 | **one**, plus up to two ¼ from the same area | **one** |
 | 2+ | **that row is the whole batch** | never pair it with anything |
+
+**Why the same-area column is bigger.** CI is the bottleneck, not the model: Site CI runs in
+about 60 s and only Daredevil's suite is slow at 11.5 min, so rows-per-PR is nearly free. The
+measured work in a nominal one-session batch is about 800 lines — PR #284 took four ¼ rows and
+inserted 839, PR #282 took two ½ rows and inserted 771 — against single PRs in this repo that
+merged green at 1,264 (#278), 1,570 (#280) and 4,608 (#236, nine hand-written files). Capacity
+is not what the old caps were protecting. What the record actually shows going wrong is
+closeout: two line-of-sight checks that passed while doing nothing, Absalom's stride sweep
+passing against a deliberately inverted planner, two sessions building Daredevil Phase 4 in
+full, and PR #284 itself merging with three of its own shipped rows still in the ranked table
+(#381). So the cap rises where the closeout is shared and holds where it is not.
 
 **Whatever the batch, it merges to `main` as one PR** — every row in the batch, in a single
 pull request, never one PR per row (changed 2026-09-12; before that a session sometimes opened
