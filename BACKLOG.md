@@ -261,7 +261,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | Fable 5.1 |  | [Castle Conundrum](#castle-conundrum) |
+| 1 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | Fable 5.1 | `claude/backlog-batch-work-ewo8wt` | [Castle Conundrum](#castle-conundrum) |
 | 2 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | Opus 5 |  | [Orbital](#orbital) |
 | 3 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | Fable 5.1 |  | [Orbital](#orbital) |
 | 4 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
