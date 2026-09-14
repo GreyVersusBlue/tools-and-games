@@ -10225,3 +10225,88 @@ failed `basics#0 the reported shot re-flies to a WIN — outcome=OUT at 338.7deg
 Putting `|` back as the section delimiter failed `basics#0 is legal in a URL fragment —
 illegal: ["|","|","|","|","|"]`. A fifth break, the launch-point-inside-a-solid-body rule
 deleted, failed `a launch point inside a planet — got []`.
+
+## Orbital rolls its own sectors (2026-09-14)
+
+**Ranked row 1, claimed on `main` before the work started (#283, PR #298) and merged as
+PR #299.** The row named Claude Fable 5.1 and was worked under Fable 5.1. A 1 in one area
+whose only ¼ row wants a real device, so a batch of one under the size table (#382), the
+third Orbital batch in a row. Decisions #401 to #405.
+
+- **The generator proposes; the judges that already existed decide** (#401).
+  `js/generator.js` builds a candidate from a tier and a seed, and then `OrbitalCode.validate`
+  says whether it is a level and a census of launches says whether it is worth playing. A
+  candidate that fails either is thrown away and the seed's stream rolls on, up to 40 of
+  them. The census is 1,200 launches, every one flown with `solve`: 120 angles by 10 powers,
+  which is every second angle and every second power of the CI search's 240 by 20. That
+  subsampling is the point, not a budget choice. Each census cell is a cell of
+  `makeSearch`'s grid pass, so a census win is a win `findWinningShot` reaches by
+  construction, and "the generator saw a win" and "CI finds a win" stay one claim rather
+  than two implementations of it, which is what #399 settled for the editor. `physics.js`
+  exports `SEARCH` so the census derives its grid from the same numbers rather than
+  copying them, and `test/generator.mjs` checks that the divisors divide.
+
+- **The win fraction is a tolerance measure, not a difficulty measure, and the tiers are
+  recipes** (#402). Measured across the 22 shipped levels the fraction of the census that
+  wins runs from 0.75% (The Long Way) to 12.7% (First Portal), and the tutorial level
+  scores 1.5%: in an empty field the number is exactly the marker's angular size from the
+  launch point, and gravity adds to it or takes from it with no relation to where the level
+  sits in its pack. So the tiers do not claim difficulty by that number. Easy, Medium and
+  Hard are recipes, body counts of 1 to 2, 2 to 4 and 3 to 5 and the types allowed
+  (specials from Medium, wormholes and orbits from Hard), and each holds the census to a
+  band that narrows at the top as the tier rises: 1 to 8%, 0.8 to 5%, 0.5 to 3%. The bands
+  are a first reading against 18 seeds, and the fixture in the suite is what a later band
+  change has to move.
+
+- **Decoration is a level whose wins would win anyway** (#403). The second census number
+  is how many of the winning launches also win with every body removed. Fifteen of the 22
+  shipped levels score 0. First Light scores 18 of 18, because it has no bodies, and The
+  Long Way scores 9 of 9: every launch that reaches its marker skips both portals, which
+  nobody had measured. The judge refuses a candidate where more than a third of the wins
+  would win anyway. "Passes within 3.5 radii of a body" was the first draft of this rule
+  and was wrong in both directions: The Curve, one planet that bends every shot, had 22 of
+  24 wins passing outside that distance, while a shot can graze a planet and be shaped by
+  nothing. Removing the bodies and re-flying is the honest question.
+
+- **A rolled sector is a shared sector** (#404). No `key`, no stars, no unlock, Remix
+  works, and the address bar carries it under `#l=` the moment it exists, so a reload
+  replays it and the URL is the share link. The seed is in the name (`Sector 3DF5ST`, the
+  seed in base 36) but the link carries the level itself, because a name is only enough to
+  rebuild a level while the generator never changes and a link is enough forever. There is
+  still no second save key (#36, #396). The roll is sliced the way the editor's Check is,
+  12 ms of launches then a `setTimeout`, for the reason recorded at #399; on the page under
+  software Chromium a roll took 0.8 to 1.7 s, and under Node 0.3 to 1.0 s at 1.3 to 1.5
+  candidates.
+
+- **The judge's words are pinned to the shipped levels** (#405). `test/generator.mjs`
+  reads all 22 shipped levels through the census and the medium band and asserts which are
+  accepted and which are refused and for what: 16 accepted, First Light `decoration`, The
+  Long Way `needle`, and Dark Slingshot, First Portal, Twin Holes and Singularity Run
+  `loose` at 6.3%, 12.7%, 5.8% and 5.1%. Move a band and the table names the shipped
+  level that changed sides. The same suite holds every generated level (3 tiers by 6 seeds)
+  to: identical code from the same seed, `validate` silent, under the link cap, round
+  tripped, accepted by its own tier's judge, the first census win re-flown to a WIN, and
+  the CI search's shot re-flown to a WIN. A spent candidate cap hands back null with a
+  histogram of why, not a loop. 33 s, in the CI matrix as Orbital's third command.
+
+**Suites.** `node test/generator.mjs` — 18 levels generated, 22 shipped levels censused, 0
+failed, 33 s. `node test/physics.mjs` and `node test/levelcode.mjs` — unchanged, green.
+`cd Tools/board-check && npm run check` — 1837 units checked, 0 broken, 0 collisions,
+tightest vertical gap 3.5 px. `npm run social:check` — 23 notices, 21 already current, 0 out
+of date. `node ci-check.mjs` — every failure is a known one and every known one still fails;
+`known-failures.json` untouched and still empty. The page was driven in headless Chromium
+through the board-check harness: three rolls, the CI shot flown live to a WIN with no save
+written, the link reloaded and replayed as a shared sector, Remix opening it, the campaign
+intact afterwards, no page errors. That driver is not committed; the committed browser
+layer is ranked row 31 and belongs to whoever takes it. One thing the fresh clone needed
+that no suite says: `Tools/board-check/npm run check` dies of `ERR_MODULE_NOT_FOUND:
+puppeteer-core` until `npm ci` has run there, and `ci-check.mjs` grades that as a crash
+rather than a known failure, which is the right answer.
+
+**Three guard-rails broken on purpose, from green (#34).** The judge without the decoration
+rule failed `basics#0 "First Light" is decoration — got accepted at 18/1200 wins, 18 would
+win anyway`. The RNG ignoring its seed failed `easy seed 7 twice, identical codes —
+o1$Sector%207$a%20star$112,354$... vs o1$Sector%207$a%20planet$862,314$...`, and took the
+candidate-cap check down with it, since the seed whose first candidate is a known miss no
+longer missed. The census recording a miss as its first win failed `easy seed 1's first
+census win re-flies to a WIN — OUT`.
