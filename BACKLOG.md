@@ -251,13 +251,13 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | Opus 5 |  | [Aphelion](#aphelion) |
+| 1 | Build Aphelion's airlock-entry beat, then land the ready-made `#signal` assertion | `Projects/aphelion` | ½ | Opus 5 | `claude/backlog-ranked-batch-55l6mg` | [Aphelion](#aphelion) |
 | 2 | Asset diet: 165 MB for 1,525 lines, two thirds of the Poly Haven packs unreferenced | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
 | 3 | A data-driven quest graph to replace the 74-line "two booleans" quest manager | `Projects/Castle Conundrum` | 1 | Fable 5.1 |  | [Castle Conundrum](#castle-conundrum) |
 | 4 | A level editor with URL sharing, on the pattern Hearth already proves | `Projects/orbital` | 1 | Opus 5 |  | [Orbital](#orbital) |
 | 5 | Turn the physics suite's solver into a level generator | `Projects/orbital` | 1 | Fable 5.1 |  | [Orbital](#orbital) |
 | 6 | Multi-offer escalation wars as a dedicated flow | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
-| 7 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | Opus 5 |  | [Closing Time](#closing-time) |
+| 7 | Per-client financing types on the buyer side | `Projects/Closing Time` | ½ | Opus 5 | `claude/backlog-ranked-batch-55l6mg` | [Closing Time](#closing-time) |
 | 8 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
 | 9 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
 | 10 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
