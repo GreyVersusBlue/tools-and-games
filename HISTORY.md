@@ -9720,7 +9720,18 @@ allows (#382).
 through `node ci-check.mjs`, `known-failures.json` still empty in all three sections.
 `Projects/Closing Time`: `node tools/smoke.mjs` 127 → **150**. `Projects/aphelion`:
 `node test/smoke-state.mjs` 23, unchanged — the airlock work is all in the browser
-suite, which is where the wiring it tests lives.
+suite, which is where the wiring it tests lives. `npm run games aphelion` 11 → **21,
+0 failed**; `npm run games closing-time` **27, 0 failed**, unchanged.
+
+**The other two suites that read `camState` were run against a `main` worktree to
+check whose failures they are, and they are not this work's.** `fourth-quarter`: 45
+checks, 1 failed (`the doors opened and the room filled  0`) — identical on both.
+`golden-hour`: 18 checks, 8 failed — the same eight, in the same order, on both. That
+is #373's set, one wider than the seven recorded there, and the widening is this
+machine rather than this branch: the first of them is `W walks down the beach  0.63 m`
+and the rest follow from a beach that never got walked. Every one of them is the class
+#53 calls inconclusive under a software-rendered Chromium, and `npm run games` is
+outside CI on purpose (#353). Nothing was fixed and nothing went red.
 
 ## Numina, August 2026
 
