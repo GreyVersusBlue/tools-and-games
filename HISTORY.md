@@ -10416,3 +10416,86 @@ run check` — 1,840 units checked, 0 broken, 0 collisions, tightest vertical ga
 every failure is a known one and every known one still fails; `known-failures.json` untouched
 and still empty in all three sections. `npm run games closing-time` — **27 checks, 0 failed**,
 matching the documented baseline, no page or console errors and no offsite requests.
+
+## Castle Conundrum v2 is planned (2026-09-14)
+
+**A plan, not a batch** (#382): `Projects/Castle Conundrum/WISHLIST.md` is new, seven
+phases go into `BACKLOG.md` at ranks 1 to 7, the Castle Conundrum section in Tier 2 is
+rewritten, and six questions join the table as Q53 to Q58. No code, no asset, no claim.
+Worked under Claude Fable 5.1 from Devon's planning prompt of the same day. Decisions #411
+to #418.
+
+- **The walls stop being stylised** (#411). Round 1 decided to leave the Kenney kit's pixel
+  art on the kit's own walls, with five 1k stone sets on disk unused, on before/after pairs.
+  Devon's 2026-09-14 choice of eight texture sets against a 44.4 MB ceiling reverses that,
+  and the plan says how the stone goes on: built geometry (`BoxGeometry` runs and
+  `CylinderGeometry` drums through `loadPBRMaterial`, the way the gate leaf already is)
+  carries the maps, and the kit supplies what has a shape the maps do not (stairs,
+  battlements, railings, door frames, props). The kit has no drum; every tower piece is
+  square, measured piece by piece, so Conwy's round towers are cylinders.
+
+- **The order is Devon's at the level of arcs, with two moves inside it** (#412). Mystery,
+  castle, NPCs stands. Inside it: the mystery ships first as data with a validator and the
+  save, the way Corner & Kettle's Phase 1 shipped the sim without the page, because a clue
+  sits in a room and is told by an NPC at a station, and neither exists until Phases 3 to 6;
+  and the builder is refactored to emit the structure the suite reads (Phase 2) before the
+  castle grows a `y`, because `test/layout.mjs` re-implements the builder's placement math
+  and cannot see it change, which is #34's failure mode by name. The castle is three
+  phases (shell, ground rooms, upper level) rather than one, sized so each is a 1: the
+  prompt said a 2+ phase has to be split or argued, and the split falls where the texture
+  sets do, three per phase.
+
+- **The save** (#413). Key `castleConundrumSave_v1`, `game: "castle-conundrum"`, version 1,
+  through `assets/js/gvb-save.js` by relative import. There was no key before, so #36 did
+  not bind on the choice and binds from the moment it ships. The schema is written in full
+  in Phase 1 so no later phase adds a field: `stage`, `watch`, `clues[]`, `pressed{}`,
+  `taken[]`, `locks[]`, `accusations[]`, `refusals`, `riddleWrong`, `player`. `repair`
+  builds its catalog from `mystery.json` and `quest.json` rather than a list beside them
+  (Corner & Kettle's habit, #37's rule), drops unknown ids, resets an unknown stage to
+  `start`, clamps the watch, nulls a non-finite player. Phase 1 puts the slot on the
+  current riddle quest, so the save is live before any content depends on it.
+
+- **The mystery is a death made to look like a fall, and the player can be wrong** (#414).
+  Paradise Killer's shape with Ace Attorney's present-a-clue verb and Golden Idol's true
+  account after the verdict. The Constable accepts any accusation backed by two clues from
+  that person's `implicates` list and hangs them; accepts the prisoner on nothing, because
+  that is the sheet he wants; refuses fewer than two, and three refusals end the day as a
+  fall. Eleven wrong accusations are reachable and two are easy. The crime, the twelve, who
+  lies about what, the thirty-eight clues, the accusation data and the intended path are
+  written in the wishlist so a later session executes rather than invents. Q54 asks Devon
+  whether a killing is what he wants on the site; the plan proceeds on yes.
+
+- **Four watches, and the fourth bell forces the accusation** (#415). The player rings the
+  chapel bell to advance the day; NPCs move to their next station and time-gated evidence
+  appears or vanishes; the fourth ring is the Constable's demand. The validator holds the
+  shortest convicting path to no fewer than two watches and no more than three, which is
+  the one number in the plan that makes "denser" a check rather than an adjective. Q55.
+
+- **The riddle survives as the word-lock on the muniment room** (#416). `judgeAnswer`, the
+  overlay, the hint and the escalating wrong answers are all kept; the riddle's text becomes
+  one a 1280s clerk could have set (a river), and `validateAgainstNpcs`'s poser-and-opener
+  check is generalised in Phase 7 to any token and action pair so the accusation and the
+  bell reuse it. Q56.
+
+- **Twelve NPCs from three bodies, by tint** (#417). A per-NPC `tint` in `npcs.json`
+  multiplies the body's material; nothing keys off an id, `assets.mjs` checks bodies not
+  ids, and the weight is zero. A fourth model is 1.4 to 2.0 MB over the ceiling and is Q53,
+  the question the plan names as the one it would bet the project fails on.
+
+- **The seven phases are ranks 1 to 7** (#418). Inserted at the top of the ranked table
+  with every other row's relative order unchanged and the header, parked list and rank
+  references renumbered by seven. Inserting a block is ranking what the session added, not
+  re-ranking what it did not; if Devon wants them lower it is one edit (Q58).
+
+**What was measured rather than taken from the prompt.** The eight sets sum to 15.4 MB by
+`git ls-tree` at `a5c241c^`; the project's tracked bytes on `main` are 27.3 MB where the
+prompt and the diet entry say 29, so the plan carries both bases and keeps Devon's 44.4 MB
+as the ceiling. Every Kenney GLB was measured (`stairs-stone.glb` is 2 x 4 x 4 m at 4x, a
+storey in one tile at 45 degrees; `floor.glb` is 0.2 m thick; `tower.glb` is square).
+Conwy's and Stirling's facts are from memory and say so in the wishlist: this session's
+proxy blocks the reference sites, and no geometry in the plan depends on a measurement
+from either castle.
+
+**Not verified here, on purpose.** No suite ran against a code change because there is no
+code change; `node test/assets.mjs`, `layout.mjs` and `quest.mjs` are green on `main` and
+this PR touches three markdown files. `npm run play` was not run and could not be (#53).
