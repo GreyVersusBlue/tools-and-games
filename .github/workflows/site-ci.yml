@@ -25,6 +25,9 @@
 #     games`/`play`/`previews`. Those open real visible windows and have no
 #     headless form. Its test/assets.mjs and test/layout.mjs are in the matrix:
 #     those read glTF off disk and do arithmetic, and never open a browser.
+#     test/quest.mjs, test/mystery.mjs and test/save.mjs are too: the quest
+#     graph, the mystery's validator and engine, and the save's repair rails,
+#     all against stand-ins.
 #   - Two browser suites written against Playwright's page API:
 #     Tools/name-picker/test/browser.mjs and
 #     Tools/seating-chart/test/drive-seating.mjs. On Windows the harness hands
@@ -180,6 +183,8 @@ jobs:
               node test/assets.mjs
               node test/layout.mjs
               node test/quest.mjs
+              node test/mystery.mjs
+              node test/save.mjs
 
           - name: Archived teaching tools
             dir: .
