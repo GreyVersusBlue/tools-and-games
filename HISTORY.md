@@ -10630,7 +10630,10 @@ from `Tools/board-check` after `npm ci --ignore-scripts` (the checkout had no
 `node_modules`; `check-collisions.mjs` crashed on `puppeteer-core` on the untouched tree
 too, and ran clean once installed). `npm run play` was not run and could not be (#53);
 its new reload beat and the key-clearing at start are written blind and are the first thing
-the next GPU run should look at.
+the next GPU run should look at. CI's first run went red on `assets/js/gvb-save.test.mjs`:
+every importer of the shared save library has to be a named adopter, so `src/save.js` is
+now in its map, in the module's "Adopted by" header and in the README's "Who uses it"
+table, the fourteenth adopter and a shared-file edit this PR carries.
 
 **Next:** rank 1 is now Phase 2, the plan the builder and the suite both read, a 1 on Claude
 Opus 5.
