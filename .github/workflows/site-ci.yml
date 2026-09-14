@@ -37,6 +37,11 @@
 #     Their Node halves are here; both belong to archived tools (#206) and the
 #     browser halves stay hand-run.
 #
+#     Castle Conundrum's test/plan-vs-scene.mjs is a browser suite that IS in
+#     the matrix. It is headless, it takes no pointer lock, it moves nothing and
+#     times nothing: it waits for the castle to finish building and compares
+#     static boxes. That is the line #53 draws, not "browser or not".
+#
 #     Integer Foundry's browser.mjs was the third of these and is now in the
 #     matrix. Its failure was different in kind: not a missing method but a
 #     race. Puppeteer's page.click resolves the element, then scrolls and
@@ -175,16 +180,26 @@ jobs:
               node tools/smoke.mjs
 
           # Castle Conundrum's playable half is still hand-run (see above), but
-          # none of these needs a browser: glTF parsing, arithmetic, and the
-          # quest graph run against stand-ins.
+          # none of these needs a browser except the last: glTF parsing,
+          # arithmetic, and the quest graph run against stand-ins.
+          #
+          # plan-vs-scene.mjs DOES open a browser, headless, and is here anyway
+          # because it is not #53's class. It loads the page, waits for the
+          # castle to finish building, and diffs every placed object's live Box3
+          # against src/castle-plan.js's box. Nothing moves, nothing is timed,
+          # and no pointer lock is taken, so a software rasteriser puts the
+          # geometry exactly where a GPU would. Three runs, three passes, 6 s
+          # each. It borrows harness.mjs, hence the install.
           - name: Castle Conundrum
             dir: Projects/Castle Conundrum
+            install: Tools/board-check
             commands: |
               node test/assets.mjs
               node test/layout.mjs
               node test/quest.mjs
               node test/mystery.mjs
               node test/save.mjs
+              node test/plan-vs-scene.mjs
 
           - name: Archived teaching tools
             dir: .
