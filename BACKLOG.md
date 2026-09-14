@@ -102,13 +102,17 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-The last thing that shipped is **a model on every ranked row, and three
-already-shipped rows deleted (PR #285)** — decisions #380 and #381, 2026-09-13,
-no code changed. Before it, **four quarter-session rows in one PR — a gate that
-is a gate, a clean `npm run games closing-time`, and the `[shared]` chrome
-asserted (PR #284)**, the old ranks 20, 23 and 24, plus the old rank 1 parked
-rather than done. **40 ranked items remain**, and **every one of them names a
-model.**
+**The last batch of ranked work that shipped** is **four quarter-session rows in
+one PR — a gate that is a gate, a clean `npm run games closing-time`, and the
+`[shared]` chrome asserted (PR #284)**, the old ranks 20, 23 and 24, plus the
+old rank 1 parked rather than done. That is the line to update when your batch
+merges; a PR that only changes these files is not a batch and does not belong
+in it. **40 ranked items remain**, and **every one of them names a model.**
+
+Three PRs since have changed how the list is read rather than what is on it:
+**#285** gave every row a model and deleted three rows that had already shipped
+(#380, #381), **#286** corrected this header, and **#287** raised the batch caps
+on a second axis and moved the session prompt into this file (#382).
 
 Three of the forty-three rows that stood here were already shipped: PR #284
 closed the old ranks 20, 23 and 24 and left all three in the table, so the
