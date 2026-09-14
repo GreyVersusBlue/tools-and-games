@@ -220,7 +220,13 @@ entirely (#388): it is `Projects/integer-foundry/test/order-line.mjs` now, and
 roll, read out of `rollTarget`'s injectable RNG rather than written down. A
 browser run still tests one order size; the arithmetic no longer depends on
 which. If that beat goes red again it is the clicking or the timing, not the
-plan.
+plan. **A different beat in that file flaked on 2026-09-14, and it is worth
+knowing before you spend an hour on it**: `and the far column takes a tap —
+cell empty`, in the `Mobile, 375x812` section, went red on a pull request whose
+whole diff was three markdown files, and passed on one re-run with nothing
+changed. Same class as #387 and the same answer, the clicking rather than the
+plan, but it is the mobile beat and not the fill-the-order one, and it has now
+been seen once.
 
 **`Pathfinder/data/` is a published interface** (#350, Devon). Any project may
 read it; `Pathfinder/data/README.md` is the contract.
