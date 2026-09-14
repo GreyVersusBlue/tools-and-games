@@ -9544,6 +9544,51 @@ and the split is 15 Claude Opus 5, 15 Claude Fable 5.1, 10 Claude Sonnet 5.
   hardware-wanting list, the Parked section's eight-row list and the
   `Tools/board-check` section's cross-references were all renumbered with them.
 
+## The batch caps rise, on a second axis (2026-09-13)
+
+**Devon asked whether he was being too hesitant about how much a session is expected
+to carry.** Decision #382. `BACKLOG.md` and `CLAUDE.md` only.
+
+- **A batch is sized by the Size column and by how many areas it spans** (#382). The
+  old table had one axis and one number per size: 4 quarters, 2 to 3 halves, one 1.
+  The new one splits each row in two. All in one area: 6 quarters, 3 halves, or one 1
+  plus two quarters. Spanning areas: 4, 2, one. A 2+ row is still the whole batch and
+  that does not move.
+
+  **The old caps were priced about a third below what a session finishes.** A nominal
+  one-session batch measures about 800 inserted lines — PR #284 took four ¼ rows and
+  inserted 839 across 8 code files, PR #282 took two ½ rows and inserted 771 across 5,
+  which is also a useful check that the ladder itself is calibrated, since those two
+  batches are nominally the same size and landed within 10% of each other. Against
+  that: this repo has merged 1,264 insertions in one PR (#278, 24 code files), 1,570
+  (#280, 11) and 4,608 (#236, 9 hand-written files), all green. Nothing about capacity
+  justified 4 and 2.
+
+  **What the caps were protecting is the closeout, and that scales with areas rather
+  than with rows.** Every failure in this file's record is a closeout failure, not a
+  session running out of room: two versions of the line-of-sight check passing while
+  doing nothing, Absalom's stride sweep passing against a deliberately inverted
+  planner, Absalom's Phase 2 shipping the same broken-pair mistake twice in one file,
+  two sessions building Daredevil Phase 4 in full because neither could see the
+  other's claim (#283), the sibling repo's session that saved its backlog rewrites for
+  the end, and PR #284 merging with three of its own shipped rows still in the ranked
+  table (#381). Four ¼ rows across four projects is four contexts, four suites, four
+  `HISTORY.md` entries and four backlog edits. Two ½ rows inside one project is one of
+  each, and that is the batch shape that has been going cleanly.
+
+  The ten Sonnet 5 rows assigned in #380 are the cheapest case of all, because the
+  property that earned them that model — an oracle already written down — is the same
+  one that makes their closeout short.
+
+- **The prompt a session is started with lives in `BACKLOG.md` now** (#382, second
+  half), in "How this repo is worked", directly under the standing instruction. It had
+  been retyped from memory each round, so it drifted: it never mentioned the Model
+  column after #380 created one, never mentioned claiming on `main` (#283), never said
+  what to do with a row that wants hardware this machine does not have, and ended at
+  the merge, which is the exact place rule 6 says a session must not stop. Keeping it
+  next to the rules it enforces is the cheapest way to keep the two in sync. Edit both
+  together.
+
 ## Numina, August 2026
 
 An audit of the Eleventy rules site: 55 pages, ~136,000 words of source

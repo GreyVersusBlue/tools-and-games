@@ -72,7 +72,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 381 locked decisions in full, by number.
+`HISTORY.md` carries all 382 locked decisions in full, by number.
 
 ## Writing style
 
@@ -114,12 +114,16 @@ the call in `HISTORY.md` as a locked decision so it can be reversed cheaply. A r
 question actually standing in front of your row, not the list; Devon intends to work through
 the rest himself.
 
-**Size the batch by the Size column, never by a count:** up to 4 quarter-session rows, 2–3
-half-session rows, one 1-session row, or a single 2+ row on its own. **Whatever the batch,
-it merges to `main` as one PR** — every row in the batch, never one PR per row. A 2+ row
-will not finish in one session — do one increment, ship it, and leave the row in place with
-its text rewritten to say what is done. Never mix a 2+ row into a batch with others.
-`BACKLOG.md`'s "How this repo is worked" carries the table and the reasoning.
+**Size the batch by the Size column and by how many areas it spans** (#382), never by a
+count. Rows all in one area: up to 6 quarters, 3 halves, or one 1 plus two quarters. Rows
+spanning areas: 4 quarters, 2 halves, or one 1. A 2+ row is the whole batch either way. The
+second axis is there because what scales with a batch is the closeout — a suite, a
+`HISTORY.md` entry and a backlog rewrite per area — not the code. **Whatever the batch, it
+merges to `main` as one PR** — every row in the batch, never one PR per row. A 2+ row will
+not finish in one session — do one increment, ship it, and leave the row in place with its
+text rewritten to say what is done. Never mix a 2+ row into a batch with others.
+`BACKLOG.md`'s "How this repo is worked" carries the table, the measurements behind it, and
+the prompt a session is started with.
 
 Still not a session's call: **re-ranking the list wholesale**, and **overruling the
 Ownership table**.
