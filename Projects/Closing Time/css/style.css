@@ -204,3 +204,8 @@ input[type="number"], select { font: 600 14px var(--mono); padding: 7px 9px; bor
 @media (prefers-reduced-motion: reduce) {
   .btn, .toast { transition: none; }
 }
+
+/* The escalation-clause block on the offer form: collapsed until it is asked
+   for, and set apart when it is, because it is the one term on that form that
+   can commit the client past the number they approved. */
+.esc-clause { border-left: 2px solid var(--brass); padding-left: 10px; margin: 10px 0; }

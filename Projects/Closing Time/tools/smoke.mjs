@@ -18,6 +18,7 @@ import * as Seller from "../js/engine/seller.js";
 import { endDay, CAREER_LENGTH_DAYS } from "../js/engine/calendar.js";
 import { maybeFireEvent } from "../js/engine/events.js";
 import { FINANCING, financingFor, financingType, closeDaysFor, DEFAULT_FINANCING } from "../js/engine/financing.js";
+import * as Esc from "../js/engine/escalation.js";
 
 /* ------------------------------------------------------------------ harness */
 let passed = 0; const failures = [];
@@ -585,6 +586,211 @@ console.log("\nfinancing:");
   eq(twice.clients[0].financing, "cash", "repair is idempotent on the field it just filled");
   ok(financingType(undefined).id === DEFAULT_FINANCING,
     "and a deal that still somehow has no type reads as conventional rather than undefined");
+}
+
+/* ------------------------------------- multi-offer escalation wars -------- */
+console.log("\nescalation:");
+
+// A plain offer, as the field sees it. Only the fields resolveField() reads.
+const paper = (id, price, extra = {}) => ({
+  id, agentId: "ag_priya_natesan", price, status: "open", day: 1,
+  financing: "conventional", inspection: true, closeDays: 28, escalation: null, ...extra,
+});
+
+// --- the rule: a clause beats PAPER, by one increment, and stops at its cap.
+{
+  const straight = paper("a", 150000);
+  const clause = paper("b", 140000, { escalation: { cap: 160000, increment: 1000 } });
+  const field = Esc.resolveField([straight, clause]);
+  eq(field[0].offer.id, "b", "a clause below a straight offer still wins the field");
+  eq(field[0].final, 151000, "and lands exactly one increment over the paper it beat");
+  eq(field[0].base, 140000, "without changing what the buyer actually wrote");
+  eq(field[1].final, 150000, "the straight offer is worth what it says");
+  ok(!field[0].capped, "and it was not at its cap");
+}
+
+// --- the cap is a wall, and a straight number above it wins outright. This is
+// the reason to call for highest and best rather than collect clauses.
+{
+  const straight = paper("a", 165000);
+  const clause = paper("b", 140000, { escalation: { cap: 160000, increment: 1000 } });
+  const field = Esc.resolveField([straight, clause]);
+  eq(field[0].offer.id, "a", "a straight number above the cap beats the clause");
+  eq(field[1].final, 160000, "which is stopped at its cap");
+  ok(field[1].capped, "and knows it");
+}
+
+// --- the decision this file locks: clauses resolve against PAPER, never
+// against each other's escalated result. Two clauses that escalated over each
+// other's results would both terminate at their caps — 175000 and 180000, a
+// pair of numbers neither buyer ever agreed to face.
+{
+  const x = paper("x", 140000, { escalation: { cap: 175000, increment: 1000 } });
+  const y = paper("y", 142000, { escalation: { cap: 180000, increment: 2000 } });
+  const field = Esc.resolveField([x, y]);
+  const byId = Object.fromEntries(field.map(r => [r.offer.id, r]));
+  eq(byId.x.final, 143000, "clause x escalates over y's PAPER, not over y's result");
+  eq(byId.y.final, 142000, "and y over x's paper, which is below y's own price, so y holds");
+  ok(byId.x.final < x.escalation.cap && byId.y.final < y.escalation.cap,
+    "neither clause is pumped to its cap by the other",
+    `${byId.x.final} of ${x.escalation.cap}, ${byId.y.final} of ${y.escalation.cap}`);
+  eq(field[0].offer.id, "x", "and the higher escalated number leads");
+}
+
+// --- a lone clause has nothing to beat.
+{
+  const only = paper("a", 140000, { escalation: { cap: 200000, increment: 5000 } });
+  const field = Esc.resolveField([only]);
+  eq(field[0].final, 140000, "a clause with no competition pays its paper price and nothing more");
+}
+
+// --- the tiebreak is terms, and it is the same 0.015 scale agentRespond() uses.
+{
+  const weak = paper("a", 150000, { financing: "fha" });
+  const strong = paper("b", 150000, { financing: "cash" });
+  const field = Esc.resolveField([weak, strong]);
+  eq(field[0].offer.id, "b", "two identical numbers are split on terms, not on order");
+  ok(Esc.termScore(strong) > Esc.termScore(weak), "and cash scores above FHA on that scale",
+    `${Esc.termScore(strong).toFixed(3)} vs ${Esc.termScore(weak).toFixed(3)}`);
+  // Stable: the same input must not reorder between two renders.
+  eq(Esc.resolveField([strong, weak])[0].offer.id, "b", "and the order of the input does not change the answer");
+}
+
+// --- a legacy offer, carrying `escalation` as the bare cap it used to be.
+{
+  const old = paper("a", 140000, { escalation: 152000 });
+  const c = Esc.clauseOf(old);
+  eq(c.cap, 152000, "an offer written before clauses were structured still reads as one");
+  eq(c.increment, Esc.DEFAULT_INCREMENT, "at the default increment");
+  eq(Esc.clauseOf(paper("b", 140000, { escalation: 139000 })), null,
+    "a cap under the offer's own price is a typo, not a clause");
+  eq(Esc.clauseOf(paper("c", 140000, { escalation: { cap: NaN, increment: 500 } })), null,
+    "and a NaN cap is not a clause either");
+}
+
+// --- the call: a highest-and-best call must not expire the field it gathered.
+//
+// calendar.js expired every open offer at `day + 2` flat. The call holds the
+// field for HB_DEADLINE_DAYS, which is exactly that long — so the bug this
+// guards is off by one day and only shows up on the deadline day itself, with a
+// reputation hit per offer for a deadline the player set on purpose.
+{
+  newGame("bk_hearthstone");
+  const rec2 = Clients.meetClient("cl_0101");
+  const pl2 = Seller.takeListing(rec2);
+  Seller.goLive(pl2, Seller.suggestedPrice(pl2), 1);
+  pl2.offers.push(
+    { id: "off_a", agentId: "ag_priya_natesan", price: Math.round(pl2.price * 0.97), status: "open", day: S.day,
+      financing: "conventional", inspection: true, closeDays: 28, escalation: null },
+    { id: "off_b", agentId: "ag_denny_kessler", price: Math.round(pl2.price * 0.96), status: "open", day: S.day,
+      financing: "cash", inspection: false, closeDays: 21, escalation: null });
+  // Age the field. An offer written today expires in two days and a call holds
+  // it for two days, so a same-day field cannot tell the two rules apart — the
+  // first version of this check passed against a calendar that ignored the call
+  // entirely. Two days old is a field whose own window closes first.
+  pl2.offers.forEach(o => { o.day = S.day - 2; });
+  ok(Esc.canCallHighestAndBest(pl2), "two open offers on a live listing is a field you can call");
+  const call = Esc.callHighestAndBest(pl2);
+  eq(call.offers, 2, "the call goes out to both");
+  ok(!Esc.canCallHighestAndBest(pl2), "and you only get one call per listing");
+
+  const repBefore = S.rep;
+  // Advance to the deadline. endDay() runs the expiry sweep and dailySellerTick.
+  while (S.day < call.deadline) endDay();
+  const expired = pl2.offers.filter(o => o.status === "expired");
+  eq(expired.length, 0, "no offer expired while the call it was answering was still open",
+    expired.map(o => o.id).join(","));
+  ok(S.rep >= repBefore, "and no reputation was lost to a deadline the player set", `${repBefore} -> ${S.rep}`);
+  eq(pl2.hbDeadline, null, "the call resolved on its deadline rather than hanging");
+  ok(pl2.offers.every(o => o.status !== "open" || o.hbAnswered),
+    "and every offer still standing actually answered");
+}
+
+// --- the payoff: accepting resolves the clause BEFORE the field it beats is
+// cleared off the table. Getting this backwards pays the paper price and makes
+// the whole mechanic decorative, and nothing on screen would say so.
+{
+  newGame("bk_hearthstone");
+  const rec3 = Clients.meetClient("cl_0101");
+  const pl3 = Seller.takeListing(rec3);
+  Seller.goLive(pl3, Seller.suggestedPrice(pl3), 1);
+  const rival = Math.round(pl3.price * 0.97);
+  pl3.offers.push(
+    { id: "off_r", agentId: "ag_priya_natesan", price: rival, status: "open", day: S.day,
+      financing: "conventional", inspection: true, closeDays: 28, escalation: null },
+    { id: "off_e", agentId: "ag_denny_kessler", price: rival - 8000, status: "open", day: S.day,
+      financing: "conventional", inspection: true, closeDays: 28,
+      escalation: { cap: rival + 20000, increment: 2500 } });
+  const winner = pl3.offers[1];
+  Seller.respondToOffer(pl3, winner, "accept");
+  eq(pl3.status, "underContract", "the escalating offer went under contract");
+  eq(pl3.acceptedOffer.price, rival + 2500,
+    "at one increment over the offer it beat, not at the paper it was written on");
+  eq(pl3.acceptedOffer.escalatedFrom, rival - 8000, "and the save records what was written");
+  eq(pl3.offers.find(o => o.id === "off_r").status, "rejected", "the offer it beat is off the table");
+}
+
+// --- the buyer side, same arithmetic pointed the other way.
+{
+  newGame("bk_hearthstone");
+  const brec = Clients.meetClient("cl_0008");
+  const listing = DB.listings["ls_0001"];
+  const ask = S.listingsState[listing.id].price;
+  const deal = Deals.writeOffer(brec, listing, Math.round(ask * 0.95), {
+    closeDays: 28, escalation: { cap: Math.round(ask * 1.02), increment: 1500 } });
+  ok(!!Esc.clauseOf(deal), "a player's offer can carry a clause too");
+  const competing = Math.round(ask * 0.97);
+  const fired = Deals.fireBuyerClause(deal, competing);
+  eq(deal.price, competing + 1500, "and it fires on the same rule the NPC clauses obey");
+  ok(!fired.capped, "with room left under the cap");
+  // Past the cap, the clause is a wall on this side too.
+  const over = Math.round(ask * 1.1);
+  Deals.fireBuyerClause(deal, over);
+  eq(deal.price, Math.round(ask * 1.02), "a competing number past the cap leaves it at the cap");
+
+  // What the clause costs: the listing agent counters at the cap once they can
+  // read it. Measured against the same deal with the clause taken off, so this
+  // reads agentRespond()'s own answer rather than re-deriving the counter.
+  const probeAt = (escalation) => {
+    const d = { id: "probe", mode: "buyer", clientRecId: null, listingId: listing.id,
+      price: Math.round(ask * 0.86), ask, waiveInspection: false, waiveAppraisal: false,
+      financing: "conventional", closeDays: 28, stage: "offerPending", round: 0,
+      agentId: listing.listingAgentId, milestones: [], createdDay: 1, escalation };
+    return Deals.agentRespond(d, Math.round(ask * 0.86));
+  };
+  const bare = probeAt(null);
+  const withClause = probeAt({ cap: Math.round(ask * 0.99), increment: 1000 });
+  eq(bare.verdict, "counter", "the probe offer draws a counter with no clause on it");
+  eq(withClause.verdict, "counter", "and a counter with one");
+  ok(withClause.counter > bare.counter,
+    "a listing agent who can see your cap counters higher than one who cannot",
+    `${bare.counter} -> ${withClause.counter}`);
+  ok(withClause.readTheClause, "and says so, so the modal can print it");
+}
+
+// --- a career written before any of this existed.
+{
+  const store = memStore();
+  const legacy = makeCareer("bk_indep");
+  const lrec = { recId: "cr_1", clientId: "cl_0101", status: "active", satisfaction: 60, mood: 60,
+    patience: 5, schmoozeCount: 0, revealed: [], viewed: {}, knownIssues: {}, toldIssues: {}, dealId: null };
+  legacy.clients = [lrec];
+  legacy.playerListings = [{
+    id: "pl_1", clientRecId: "cr_1", listing: JSON.parse(JSON.stringify(DB.clients["cl_0101"].sellerListing)),
+    status: "live", price: 200000, marketingTier: 1, staged: 0, repairsDone: [], disclosed: [],
+    interest: 2, offers: [{ id: "off_1", agentId: "ag_chuck_brandt", price: 190000, status: "open",
+      day: 1, financing: "conventional", inspection: true, closeDays: 28, escalation: 195000 }],
+    openHouseBoost: 0, liveDay: 1, dom: 3,
+  }];
+  store.setItem(SAVE_KEY, JSON.stringify(legacy));
+  const loaded = careerSlot(store).load();
+  const o = loaded.playerListings[0].offers[0];
+  ok(o.escalation && typeof o.escalation === "object",
+    "repair rewrites a legacy bare-number clause into the structured shape", JSON.stringify(o.escalation));
+  eq(o.escalation.cap, 195000, "keeping the cap it was written with");
+  eq(loaded.playerListings[0].hbDeadline, null, "and a listing with no call in flight has a null deadline");
+  ok(!Esc.canCallHighestAndBest(loaded.playerListings[0]),
+    "one open offer is not a field");
 }
 
 /* ------------------------------------------------------------------- report */

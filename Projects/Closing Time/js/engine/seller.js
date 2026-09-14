@@ -5,6 +5,7 @@ import { S, uid, log, addRep, addXP, addCash, rand, randInt, randRange, pick, sc
 import { playerListingValue, marketHeat, bumpKnowledge } from "./market.js";
 import { satisfactionDelta, checkReveals, rollReferral } from "./clients.js";
 import { pickHook, sevRank } from "./deals.js";
+import { clauseFor, clauseOf, resolveField, bestOf, openOffers, resolveHighestAndBest } from "./escalation.js";
 
 export function takeListing(rec) {
   const c = contentClient(rec);
@@ -14,6 +15,7 @@ export function takeListing(rec) {
     status: "prep",             // prep -> live -> underContract -> sold
     price: null, marketingTier: 0, staged: 0, repairsDone: [], disclosed: [],
     interest: 0, offers: [], openHouseBoost: 0, liveDay: null, dom: 0,
+    hbCalledDay: null, hbDeadline: null,
   };
   S.playerListings.push(pl);
   rec.dealId = pl.id;
@@ -48,6 +50,9 @@ export function priceRatio(pl) { return pl.price / Math.max(1, playerListingValu
 // Called each day for live listings: build interest, maybe spawn an NPC offer.
 export function dailySellerTick(pl) {
   if (pl.status !== "live") return;
+  // A listing running a highest-and-best call is still live, so the deadline
+  // cannot ride on pl.milestones — those only run under contract.
+  if (Number.isFinite(pl.hbDeadline) && S.day >= pl.hbDeadline) resolveHighestAndBest(pl);
   pl.dom++;
   const heat = marketHeat(pl.listing.neighborhood);
   const ratio = priceRatio(pl);
@@ -77,7 +82,9 @@ export function spawnNPCOffer(pl) {
     financing: pick(["conventional", "conventional", "FHA", "cash"]),
     inspection: rand() < 0.85, closeDays: pick([21, 28, 35, 45]),
     day: S.day, status: "open",
-    escalation: agent.dirtyTricks && rand() < 0.4 ? Math.round(price * 1.02 / 500) * 500 : null,
+    // A clause is {cap, increment} now — the increment is half the mechanic and
+    // a bare cap cannot say it. escalation.js:clauseOf still reads the old number.
+    escalation: rand() < 0.4 ? clauseFor(agent, price, value) : null,
   };
   pl.offers.push(offer);
   const sellerRec = getClientRec(pl.clientRecId);
@@ -85,18 +92,24 @@ export function spawnNPCOffer(pl) {
   scheduleItem(S.day + 2, `Offer deadline — ${pl.listing.address} (${agent.name})`, "offerDeadline", offer.id);
 }
 
-export function sellerReaction(pl, offer) {
+export function sellerReaction(pl, offer, atPrice) {
   // What the seller thinks, given hidden prefs.
+  //
+  // `atPrice` is the number this offer is actually worth against the rest of the
+  // field — an escalated clause is worth more than its paper, and a seller
+  // reading the paper would be reading the wrong number. Defaults to the paper
+  // for every caller that has no field to resolve against.
   const rec = getClientRec(pl.clientRecId);
   const c = contentClient(rec);
   const notes = [];
-  let inclination = (offer.price / pl.price - 0.94) * 10; // >0 leaning yes
+  const price = Number.isFinite(atPrice) ? atPrice : offer.price;
+  let inclination = (price / pl.price - 0.94) * 10; // >0 leaning yes
   c.hiddenPrefs.forEach((p, i) => {
     if (!rec.revealed.includes(i) || !p.data) return;
-    if (p.data.floorPct && offer.price >= pl.price * p.data.floorPct) { inclination += 1; notes.push("Above their true floor — they'd take this if pushed."); }
-    if (p.data.familyFloor) { if (offer.price >= p.data.familyFloor) { inclination += 1.5; notes.push("Clears the family-peace number."); } else { inclination -= 1.5; notes.push("Below the number that keeps the siblings quiet."); } }
+    if (p.data.floorPct && price >= pl.price * p.data.floorPct) { inclination += 1; notes.push("Above their true floor — they'd take this if pushed."); }
+    if (p.data.familyFloor) { if (price >= p.data.familyFloor) { inclination += 1.5; notes.push("Clears the family-peace number."); } else { inclination -= 1.5; notes.push("Below the number that keeps the siblings quiet."); } }
     if (p.data.sentimentDiscount && DB.agents[offer.agentId].negotiationStyle === "mentor") { inclination += 1; notes.push("They like the sound of this buyer."); }
-    if (p.data.teardownAversion && offer.financing === "cash" && offer.price > pl.price) { inclination -= 2; notes.push("Smells like a teardown buyer. Ray's jaw is tight."); }
+    if (p.data.teardownAversion && offer.financing === "cash" && price > pl.price) { inclination -= 2; notes.push("Smells like a teardown buyer. Ray's jaw is tight."); }
     if (p.data.carryingCostPerWeek) { inclination += pl.dom / 14; notes.push("Every week costs them real money — speed matters."); }
   });
   return { inclination, notes };
@@ -111,7 +124,8 @@ export function respondToOffer(pl, offer, action, counterPrice) {
   // Counter
   offer.status = "countered";
   const value = playerListingValue(pl);
-  const ceiling = offer.escalation || Math.min(pl.price * 1.02, value * (1 + agent.tolerance) * 1.02);
+  const clause = clauseOf(offer);
+  const ceiling = (clause && clause.cap) || Math.min(pl.price * 1.02, value * (1 + agent.tolerance) * 1.02);
   if (counterPrice <= ceiling * randRange(0.985, 1.02)) {
     offer.price = counterPrice; offer.status = "accepted";
     log(`${agent.name} takes your counter at ${fmtMoney(counterPrice)}. "${pickHook(agent, "accept")}"`, "deal", undefined, rec && rec.recId);
@@ -129,7 +143,26 @@ export function respondToOffer(pl, offer, action, counterPrice) {
 }
 
 function acceptSellerOffer(pl, offer) {
+  // The clause pays HERE, before the rest of the field is cleared off the table.
+  // An escalation clause is worth what it beats, and what it beats stops
+  // existing the moment these offers are marked rejected — resolve first, then
+  // clear. Getting this backwards would quietly hand every escalating buyer
+  // their paper price and make the whole mechanic decorative.
+  //
+  // The accepted offer is already marked `accepted` by respondToOffer() when it
+  // gets here, so openOffers() no longer contains it — resolving over that list
+  // alone finds no row for the winner and pays the paper price. Put it back in
+  // the field it is winning.
+  const row = resolveField([offer, ...openOffers(pl).filter(o => o !== offer)]).find(r => r.offer === offer);
+  if (row && row.final > offer.price) {
+    const rec0 = getClientRec(pl.clientRecId);
+    log(`${DB.agents[offer.agentId].name}'s escalation clause fires on ${pl.listing.address}: ${fmtMoney(offer.price)} becomes ${fmtMoney(row.final)}, ${fmtMoney(row.clause.increment)} over the ${fmtMoney(row.beat)} behind it${row.capped ? " — and that is the cap" : ""}.`,
+      "deal", undefined, rec0 && rec0.recId);
+    offer.price = row.final;
+    offer.escalatedFrom = row.base;
+  }
   pl.status = "underContract"; pl.acceptedOffer = offer;
+  pl.hbDeadline = null;
   pl.offers.filter(o => o !== offer && o.status === "open").forEach(o => { o.status = "rejected"; });
   const base = S.day;
   const wk = d => { while (isWeekend(d)) d++; return d; };

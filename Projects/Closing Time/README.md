@@ -51,6 +51,7 @@ js/
     clients.js       intake, fit scoring, hidden-pref reveals, patience, referrals
     deals.js         buyer-side: viewings, offers, NPC negotiation, contingencies, closing
     financing.js     the four buyer financing types and what each one costs
+    escalation.js    multi-offer fields: clauses, the resolution rule, highest and best
     seller.js        listing-side: prep, marketing, NPC offers, open houses, closing
     events.js        data-driven event system (weighted draws + effect handlers)
     marketFacade.js  re-exports for the UI
@@ -134,10 +135,10 @@ Every file has a unique `id` matching its filename.
 | field | meaning |
 |---|---|
 | `name`, `bio`, `brokerageId`, `rivalryFlag` | display/flavor |
-| `negotiationStyle` | flavor label; also keyed by seller-mode offer generation (`lowballer`, `by-the-book`, `charmer`, `stonewall`, `shark`, `mentor`) |
+| `negotiationStyle` | flavor label; also keyed by seller-mode offer generation and by `escalation.js:HB_STYLE`, which is how each agent answers a highest-and-best call (`lowballer`, `by-the-book`, `charmer`, `stonewall`, `shark`, `mentor`). A new style needs a row in that map or it falls back to `by-the-book`. |
 | `tolerance` | how far under ask they'll accept (0.02 = tough, 0.06 = soft) |
 | `counterAggression` | 0–1; how close to ask their counters land, and how hard they resist credits |
-| `dirtyTricks` | enables escalation-clause fine print and poaching flavor |
+| `dirtyTricks` | the gate on escalation clauses (`escalation.js:clauseFor` returns null without it) plus poaching flavor. Only Chuck and Denny carry it, so only they write clauses. |
 | `dialogueHooks` | `{greeting[], counter[], accept[], reject[]}` — quoted verbatim in negotiations |
 
 ### `data/brokerages/*.json`
@@ -169,7 +170,23 @@ New events are pure JSON composed from these handlers. New handler = one functio
 
 - **Feature strings are an implicit vocabulary.** Client `mustFeatures` and `revealOn: feature` triggers match listing `features` verbatim. Check existing listings before inventing new wording.
 - **The value model:** a listing's *ask* is the seller's opinion; `trueValue` = ask × condition adjustment × neighborhood drift. Appraisals anchor between contract price and modeled value. Player-side seller listings use `baseValue` instead of ask.
-- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Remaining next layers: commercial tier at Broker-Track, and multi-offer escalation wars as a dedicated flow.
+- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Per-client financing and multi-offer escalation wars have shipped. The remaining next layer is a commercial tier at Broker-Track.
+- **Multi-offer escalation wars shipped** (`engine/escalation.js`). Two halves over one
+  arithmetic. An escalation clause is `{cap, increment}` on the offer — "I beat any competing
+  offer by the increment, up to the cap" — and **it resolves against the highest *submitted*
+  price in the field, never against another clause's escalated result.** That rule is a
+  decision, not a derivation: escalating against results is a mutual recursion whose only
+  termination is both caps, which is a pair of numbers neither buyer agreed to face. Three
+  playable consequences fall out of it — a clause never pays more than one increment over the
+  runner-up's paper, a straight number above a cap beats the clause outright, and two clauses in
+  one field do not pump each other. The other half is **highest and best**: one call per
+  listing, two days, every buyer's agent raises, stands pat, or walks by `negotiationStyle`,
+  and `by-the-book` strips a clause rather than writing one, which is what makes the call an
+  answer to somebody else's clause. Measured over 400 seeded fields: the top number moves a
+  median **+2.38%**, 16.6% of offers withdraw, and the room empties entirely **2.5%** of the
+  time on a two-offer field against **0%** on a five-offer one. `resolveField()` is pure and
+  both sides call it — the player's own clause fires on the same arithmetic, and costs the
+  same information it buys, because `agentRespond()` counters at a cap it can read.
 - **Per-client financing shipped** (`engine/financing.js`). A buyer is `cash`, `conventional`,
   `fha` or `va`, and it changes five things: how strong the offer reads to the NPC listing
   agent (on the same 0.015-per-term scale as a waived contingency), the soonest it can close,

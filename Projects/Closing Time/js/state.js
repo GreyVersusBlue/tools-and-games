@@ -1,6 +1,7 @@
 // state.js — canonical game state, persistence, career ladder, RNG helpers.
 import { DB } from "./data.js";
 import { FINANCING, DEFAULT_FINANCING, financingFor } from "./engine/financing.js";
+import { clauseOf } from "./engine/escalation.js";
 // Relative, not "/assets/js/gvb-save.js": tools/smoke.mjs imports this module
 // under plain Node, which cannot resolve a leading slash. The relative form
 // resolves identically in the browser.
@@ -309,6 +310,22 @@ export function repairCareer(s) {
     if (!Array.isArray(pl.repairsDone)) pl.repairsDone = [];
     if (!Array.isArray(pl.disclosed)) pl.disclosed = [];
     if (!Array.isArray(pl.milestones)) pl.milestones = [];
+    // A highest-and-best call in flight. dailySellerTick() fires on
+    // `S.day >= pl.hbDeadline`, so a junk value here either never fires or
+    // fires on the next day advance; neither is wrong, but a save should not
+    // carry a deadline it cannot explain.
+    if (!Number.isFinite(pl.hbDeadline)) pl.hbDeadline = null;
+    if (!Number.isFinite(pl.hbCalledDay)) pl.hbCalledDay = null;
+    // Escalation clauses, normalized in place. Offers written before this
+    // existed carry `escalation` as a bare cap; clauseOf() reads those at the
+    // default increment, and writing the structured form back means the save
+    // holds one shape from here on. A cap under the offer's own price is not a
+    // clause and is dropped rather than left to look like one in the UI.
+    for (const o of pl.offers) {
+      if (!o || o.escalation == null) continue;
+      o.escalation = clauseOf(o);
+    }
+    for (const o of pl.offers) if (o && !Number.isFinite(o.hbDeadline)) delete o.hbDeadline;
   }
 
   for (const d of s.deals) {
@@ -323,6 +340,10 @@ export function repairCareer(s) {
       const buyer = s.clients.find(r => r && r.recId === d.clientRecId);
       d.financing = (buyer && buyer.financing) || DEFAULT_FINANCING;
     }
+    // Same normalization as the seller side. agentRespond() counters at the cap
+    // when there is one, so a cap that survived as NaN would counter at NaN and
+    // every later comparison against it would be false.
+    if (d.escalation != null) d.escalation = clauseOf(d);
   }
 
   // uid() is `p + "_" + (S.nextId++)`. An undefined nextId makes every id

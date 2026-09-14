@@ -4,6 +4,7 @@ import { S, uid, log, addRep, addXP, addCash, rand, randInt, randRange, schedule
 import { trueValue, appraisalFor, marketHeat, bumpKnowledge, knowledgeEdge } from "./market.js";
 import { checkReveals, fitScore, satisfactionDelta, patienceTick, rollReferral } from "./clients.js";
 import { financingType, DEFAULT_FINANCING } from "./financing.js";
+import { clauseOf, escalateAgainst, DEFAULT_INCREMENT } from "./escalation.js";
 
 // ---------- VIEWINGS ----------
 export function startViewing(rec, listing) {
@@ -105,6 +106,13 @@ export function writeOffer(rec, listing, price, opts) {
     waiveAppraisal: f.needsAppraisal ? !!opts.waiveAppraisal : false,
     financing,
     closeDays: Math.max(f.minCloseDays, opts.closeDays || 28),
+    // The buyer's own escalation clause, or null. Same shape and same
+    // arithmetic as the NPC clauses on the seller side — one implementation, so
+    // a player who learns what a clause does to them learns what it does for
+    // them. What it costs is in agentRespond(): a clause tells the listing
+    // agent your ceiling, and a listing agent who knows your ceiling counters at
+    // it. See escalation.js.
+    escalation: normalizeClause(opts.escalation, price),
     stage: "offerPending", round: 0, agentId: listing.listingAgentId,
     milestones: [], createdDay: S.day,
   };
@@ -116,6 +124,36 @@ export function writeOffer(rec, listing, price, opts) {
 
 /** The financing record behind a deal. Never undefined, whatever a save holds. */
 export const dealFinancing = deal => financingType(deal && deal.financing);
+
+/** A clause off a form, cleaned, or null. A cap under the offer is not a clause. */
+function normalizeClause(e, price) {
+  if (!e) return null;
+  const cap = Number(e.cap), increment = Number(e.increment) || DEFAULT_INCREMENT;
+  if (!Number.isFinite(cap) || cap <= price) return null;
+  return { cap: Math.round(cap), increment: Math.max(1, Math.round(increment)) };
+}
+
+/**
+ * What a competing offer does to a deal that carries a clause.
+ *
+ * The `competingOffer` event used to ask the player to pick a raise out of the
+ * air. A clause is the answer to that question, written in advance: the price
+ * moves by itself, one increment over the other number, and stops at the cap.
+ * Returns null for a deal with no clause, which is every deal written before
+ * this existed.
+ */
+export function fireBuyerClause(deal, competingPrice) {
+  const before = deal.price;
+  const r = escalateAgainst(deal, competingPrice);
+  if (!r.clause) return null;
+  deal.price = r.final;
+  const rec = getClientRec(deal.clientRecId);
+  log(r.final > before
+    ? `Your escalation clause fires on ${DB.listings[deal.listingId].address}: ${fmtMoney(before)} becomes ${fmtMoney(r.final)}${r.capped ? ` — the cap, and it may not be enough` : ""}. Nobody had to make a decision at 9pm.`
+    : `Your clause on ${DB.listings[deal.listingId].address} does not move: ${fmtMoney(competingPrice)} is already past your ${fmtMoney(r.clause.cap)} cap.`,
+    r.final > before ? "deal" : "bad", undefined, rec && rec.recId);
+  return { from: before, to: r.final, capped: r.capped, cap: r.clause.cap };
+}
 
 export function agentRespond(deal, priceOffered) {
   // NPC listing agent decides: accept / counter / reject.
@@ -130,8 +168,13 @@ export function agentRespond(deal, priceOffered) {
   // because it is both of them at once, FHA costs you more than a waiver buys.
   // The <=21-day bonus is now partly a financing consequence too — FHA's floor
   // of 30 days puts it out of reach, VA's 35 more so.
+  // A clause on the paper is worth a waiver's worth of strength — it says this
+  // buyer will not be outbid by small money — and it costs the buyer the same
+  // information it buys them. See the counter below.
+  const clause = clauseOf(deal);
   const strengthBonus = (deal.waiveInspection ? 0.015 : 0) + (deal.waiveAppraisal ? 0.015 : 0)
-    + (deal.closeDays <= 21 ? 0.01 : 0) + dealFinancing(deal).strength;
+    + (deal.closeDays <= 21 ? 0.01 : 0) + dealFinancing(deal).strength
+    + (clause ? 0.015 : 0);
   const floor = deal.ask * (1 - agent.tolerance - domFlex + (heat - 1) * 0.05 - strengthBonus);
   const r = priceOffered / deal.ask;
   if (priceOffered >= floor) {
@@ -141,8 +184,15 @@ export function agentRespond(deal, priceOffered) {
     return { verdict: "reject", say: pickHook(agent, "reject") };
   }
   // Counter between offer and ask, weighted by counterAggression.
-  const counter = Math.round((priceOffered + (deal.ask - priceOffered) * (0.45 + agent.counterAggression * 0.45)) / 500) * 500;
-  return { verdict: "counter", counter, say: pickHook(agent, "counter") };
+  //
+  // Unless you told them your ceiling. An escalation clause is a written
+  // promise to go to the cap, and a listing agent reading one has no reason to
+  // ask for a dollar less than the cap — which is the price of the 0.015 above,
+  // and the reason a clause is a decision rather than a free upgrade. It only
+  // bites when the cap is above what they would have asked for anyway.
+  const base = Math.round((priceOffered + (deal.ask - priceOffered) * (0.45 + agent.counterAggression * 0.45)) / 500) * 500;
+  const counter = clause ? Math.max(base, Math.min(clause.cap, deal.ask)) : base;
+  return { verdict: "counter", counter, say: pickHook(agent, "counter"), readTheClause: !!clause && counter > base };
 }
 
 export function pickHook(agent, key) {

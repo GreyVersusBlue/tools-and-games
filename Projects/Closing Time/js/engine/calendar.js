@@ -5,6 +5,7 @@ import { weeklyMarketTick } from "./market.js";
 import { maybeFireEvent } from "./events.js";
 import { resolveMilestone } from "./deals.js";
 import { dailySellerTick, resolveSellerMilestone } from "./seller.js";
+import { offerDeadlineDay } from "./escalation.js";
 import { patienceTick } from "./clients.js";
 
 export const SLOTS_PER_DAY = 4;
@@ -80,7 +81,10 @@ export function endDay() {
 
   // Expired NPC offers on player listings
   S.playerListings.forEach(pl => pl.offers.forEach(o => {
-    if (o.status === "open" && S.day > o.day + 2) {
+    // Not `o.day + 2` any more: a highest-and-best call moves the deadline out,
+    // and expiring the field the call just gathered would take a reputation hit
+    // per offer for a deadline the player deliberately set (escalation.js).
+    if (o.status === "open" && S.day > offerDeadlineDay(o)) {
       o.status = "expired";
       const sellerRec = getClientRec(pl.clientRecId);
       log(`Offer expired unanswered on ${pl.listing.address} — ${DB.agents[o.agentId].name} pulls it. Deadlines have consequences.`, "bad", undefined, sellerRec && sellerRec.recId);
