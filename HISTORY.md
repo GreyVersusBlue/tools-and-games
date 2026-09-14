@@ -9593,7 +9593,8 @@ to carry.** Decision #382. `BACKLOG.md` and `CLAUDE.md` only.
 
 **Ranked rows 1 and 7, claimed on `main` before the work started (#283) and merged as
 one PR.** Both named Claude Opus 5 and both were worked under it. Decisions #383 to
-#386. Two areas, two halves, which is the cap the spanning column of the size table
+#387, the last of which is an unrelated red CI check this PR fixed rather than
+re-ran. Two areas, two halves, which is the cap the spanning column of the size table
 allows (#382).
 
 - **A camera's heading comes off its world matrix, not off `camera.rotation`** (#383).
@@ -9700,6 +9701,31 @@ allows (#382).
   answer again the next time. The suite asserts `fixed.seed === seedBefore` across a
   repair, which is the assertion that would have caught it.
 
+- **An off-by-one in Integer Foundry's own suite, fixed inside this PR rather than
+  reported** (#387). `Projects/integer-foundry/test/browser.mjs` builds a line to fill
+  whatever the sink happens to ask for. It laid the operators along row 2 and then put
+  the sink one step past the last one's facing, which is column 8 on a grid whose
+  columns are 0 to 7 — but only when the chain filled row 2 and was still pointing
+  east, which is exactly and only an order of 8. Orders roll between 2 and 12 and the
+  roll is weighted low, so this survived: 18 local runs did not produce one. CI did,
+  on this PR's first run, and aborted the suite at 38 checks with
+  `No element found for selector: #grid .cell[data-x="8"][data-y="2"]`.
+
+  Nothing in this batch touches Integer Foundry, and the standing rule is to report an
+  unrelated failure rather than widen the PR. This was fixed instead, for one reason:
+  the alternative was a re-run, the re-run would have come up green on a different
+  order size, and the bug would have gone back to waiting. "Flake" was the wrong
+  answer and re-running would have written it down as the right one. The fix reads both
+  the operators and the sink off one hard-coded path through the base 8×6 floor, so
+  there is no cell in it that can be off the board.
+
+  Checked three ways rather than by re-running: all eleven order sizes 2 to 12
+  enumerated in Node against the new geometry (every cell on the board, no duplicates,
+  every operator stepping onto the next cell, `want + 1` tiles); 21 real runs of the
+  suite, 56 checks and 0 failed each, one of which rolled an order of 8; and the
+  genuine pre-fix file with `want` forced to 8, which reproduced the CI abort exactly,
+  same selector and same 38 checks.
+
 **Broken on purpose, from green, twice (#34).**
 
 1. Deleted `.sort((a, b) => a - b)` from Aphelion's `main.js`. Exactly one assertion
@@ -9732,6 +9758,10 @@ machine rather than this branch: the first of them is `W walks down the beach  0
 and the rest follow from a beach that never got walked. Every one of them is the class
 #53 calls inconclusive under a software-rendered Chromium, and `npm run games` is
 outside CI on purpose (#353). Nothing was fixed and nothing went red.
+
+`Projects/integer-foundry`: `node test/browser.mjs` **56 checks, 0 failed**, 21 runs.
+It is the one suite this batch touched without the batch touching its project — see
+#387.
 
 ## Numina, August 2026
 

@@ -342,19 +342,26 @@ try {
       { timeout: 10000 });
 
     // A source emits 1 and every +1 adds one, so `want` needs want-1 of them.
-    // Row 2 west to east, turn down at column 7, row 3 east to west: 14 operator
-    // cells, and the opening ramp never asks for more than 12.
-    const chain = [];
-    for (let x = 1; x <= 7 && chain.length < want - 1; x++) chain.push({ x, y: 2, dir: 'E' });
-    if (chain.length < want - 1) {
-      chain[chain.length - 1].dir = 'S';
-      for (let x = 7; x >= 1 && chain.length < want - 1; x--) chain.push({ x, y: 3, dir: 'W' });
-    }
-    const last = chain[chain.length - 1];
-    const sinkAt = !last ? { x: 1, y: 2 }
-      : last.dir === 'E' ? { x: last.x + 1, y: last.y }
-      : last.dir === 'S' ? { x: last.x, y: last.y + 1 }
-      : { x: last.x - 1, y: last.y };
+    // Row 2 west to east, turn down at column 7, row 3 east to west: 14 cells
+    // after the source, and the opening ramp never asks for more than 12.
+    //
+    // The sink is the next cell of that same path, not a step taken off the last
+    // operator's facing. Deriving it from the facing put it at data-x 8 — off a
+    // grid that ends at 7 — whenever the chain ended at column 7 still pointing
+    // east, which is exactly and only an order of 8. The opening order is rolled
+    // between 2 and 12, so that is about one run in eleven, and it aborted the
+    // whole suite with `No element found for selector:
+    // #grid .cell[data-x="8"][data-y="2"]`. Reading both the operators and the
+    // sink off one path has no such edge: every cell in it is on the board.
+    const path = [];
+    for (let x = 1; x <= 7; x++) path.push({ x, y: 2 });
+    for (let x = 7; x >= 1; x--) path.push({ x, y: 3 });
+    const cells = path.slice(0, Math.max(1, want));
+    const chain = cells.slice(0, want - 1).map((c, i) => ({
+      ...c,
+      dir: cells[i + 1].y !== c.y ? 'S' : cells[i + 1].x > c.x ? 'E' : 'W',
+    }));
+    const sinkAt = cells[Math.max(0, want - 1)];
 
     await place(p, 'source', 0, 2);
     await click(p, '[data-tool="add1"]');

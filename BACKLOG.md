@@ -170,7 +170,12 @@ Chromium path); two browser suites that only speak Playwright while the
 harness is Puppeteer on Linux, both belonging to archived tools; and anything
 under `npm run games`/`play`/`previews`. Integer Foundry's was the third of
 those and is in the matrix now — its failure was a click race, not a missing
-method, and every click in it retries a re-query.
+method, and every click in it retries a re-query. **It had a second failure mode
+nobody had seen, and it was not a race** (#387): the fill-the-order beat put its
+sink one column off the board on an order of exactly 8, which the game rolls
+about one run in eleven and weighted low, so it had never come up. Fixed
+2026-09-14. If that beat goes red again, read the order size before reaching for
+a re-run.
 
 **`Pathfinder/data/` is a published interface** (#350, Devon). Any project may
 read it; `Pathfinder/data/README.md` is the contract.
