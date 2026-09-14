@@ -42,6 +42,11 @@ const THREE_URL = '/Projects/Castle%20Conundrum/libs/three.module.js';
 // Phase 6 makes this file read stations out of data and ends the hard-coding.
 const SCHOLAR = [10.0, -10.0];
 const GUARD = [-5.5, 0.0];
+// Where to stand to read the muniment room's word-lock. Phase 4 took the riddle
+// off the Scholar and carved it over that door, which is in the King's Tower's
+// ring at world (21.06, -14.30), facing south-west into the King's Hall. This is
+// two metres out in front of it, inside the hall, with a clear line to the leaf.
+const MUNIMENT_LOCK = [21.0, -12.0];
 // The hall brazier, per data/scene-config.json's braziers[2].tile [-5, 2.5].
 // If that moves, move this.
 const HALL_BRAZIER = [-20.0, 10.0];
@@ -347,20 +352,28 @@ try {
   // the wrong thing, and either way it is not a check. `east-gate` is the leaf
   // the riddle quest opens, at world (24, 0) in a wall running north-south, so
   // the axis it has to cross is z.
+  //
+  // PHASE 4 MOVED WHAT THE QUEST OPENS. The riddle is the muniment room's
+  // word-lock now and `openGate` means that leaf; the east gate is a gate that
+  // never opens again. The leaf checked here is still the one the quest swings,
+  // which is the point of the beat, and it hangs in a tower ring at 300 degrees
+  // rather than in a wall, so it crosses both axes and the assertion is that it
+  // stands across its own doorway rather than that it crosses z.
   const gateDoorBox = await page.evaluate(async () => {
     const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
     let found = null;
     window.__scene.traverse((o) => {
-      if (found || o.userData?.planId !== 'east-gate') return;
+      if (found || o.userData?.planId !== 'muniment') return;
       const b = new THREE.Box3().setFromObject(o);
       if (!isFinite(b.min.x)) return;
       found = { min: [b.min.x, b.min.z], max: [b.max.x, b.max.z] };
     });
     return found;
   });
-  assert(!!gateDoorBox && gateDoorBox.min[1] <= -1 && gateDoorBox.max[1] >= 1,
-    'the closed gate door crosses the archway it is meant to fill',
-    gateDoorBox ? `z[${gateDoorBox.min[1].toFixed(2)}, ${gateDoorBox.max[1].toFixed(2)}]` : 'not found');
+  assert(!!gateDoorBox &&
+    (gateDoorBox.max[0] - gateDoorBox.min[0]) > 1.5 && (gateDoorBox.max[1] - gateDoorBox.min[1]) > 1.5,
+    'the shut word-lock door stands across its own doorway',
+    gateDoorBox ? `x[${gateDoorBox.min[0].toFixed(2)}, ${gateDoorBox.max[0].toFixed(2)}] z[${gateDoorBox.min[1].toFixed(2)}, ${gateDoorBox.max[1].toFixed(2)}]` : 'not found');
 
   // --- The hall table, the gothic statue, and the two side cabinets clear the
   // wall behind them. Round 2 found (but did not fix) the table and the statue
@@ -457,12 +470,32 @@ try {
   assert(s.dialogueOpen && s.dialogueName === 'Scholar', 'E opened the Scholar dialogue', s.dialogueName);
   await snap('scholar-dialogue');
 
-  for (let i = 0; i < 5 && !(await state()).riddleOpen; i++) {
+  for (let i = 0; i < 5 && (await state()).dialogueOpen; i++) {
     await page.keyboard.press('KeyE');
     await wait(350);
   }
   s = await state();
-  assert(s.riddleOpen, 'dialogue ran out into the riddle overlay');
+  assert(!s.dialogueOpen, 'his lines ran out');
+  assert(!s.riddleOpen, 'and no riddle: Phase 4 took it off him and put it on the door');
+
+  // --- The word-lock. The riddle is carved over the muniment room's door in the
+  // King's Tower and pressing E at it is what opens the overlay, which is
+  // `lock:muniment` in data/quest.json. Nothing in Node sees the prompt, the
+  // facing test or the line of sight to a leaf hanging off a hinge at its own
+  // edge; this is the beat that does.
+  // walkTo matches the prompt text, and this one reads "Press E to read the
+  // word-lock" rather than naming anybody.
+  const toLock = await walkTo(MUNIMENT_LOCK, 'word-lock');
+  assert(!!toLock, 'walked to the muniment room\'s door', toLock ? `${toLock.dist}m after ${toLock.bursts} bursts` : 'never got in range');
+  await snap('at-word-lock');
+  if (!toLock) throw new Error('cannot reach the word-lock, so there is no riddle to answer');
+  s = await state();
+  assert(/word-lock/i.test(s.prompt || ''), 'the door offers its own prompt, not "talk to"', JSON.stringify(s.prompt));
+
+  await page.keyboard.press('KeyE');
+  await wait(500);
+  s = await state();
+  assert(s.riddleOpen, 'E at the word-lock opened the riddle overlay');
   assert(!s.locked, 'pointer lock released so the answer can be typed');
   await snap('riddle');
   if (!s.riddleOpen) throw new Error('no riddle, no keystone, no point continuing');
@@ -479,7 +512,7 @@ try {
   assert(!!wrong1 && wrong1 !== wrong2, 'wrong answers give escalating responses');
   assert(/Hint:/.test(wrong2), 'the second wrong answer adds the hint');
 
-  await page.fill('#riddle-input', 'Keyboard');
+  await page.fill('#riddle-input', 'River');
   await page.press('#riddle-input', 'Enter');
   await wait(700);
   s = await state();
@@ -552,7 +585,7 @@ try {
     await wait(350);
   }
   s = await state();
-  assert(/gate is open/i.test(s.objective), 'the gate opened', JSON.stringify(s.objective));
+  assert(/muniment room stands open/i.test(s.objective), 'the muniment room opened', JSON.stringify(s.objective));
   // The objective is what the tracker shows; the stage is what the graph is in.
   // Both come from data/quest.json now, and test/quest.mjs holds them together
   // in Node — this is the one place that reads the stage out of a live game.
