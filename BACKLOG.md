@@ -375,7 +375,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Castle Conundrum v2, Phase 3: the shell, two wards, eight drums, the cross-wall; restores castle_wall_slates, defense_wall, grassy_cobblestone. After Phase 2 | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
+| 1 | Castle Conundrum v2, Phase 3: the shell, two wards, eight drums, the cross-wall; restores castle_wall_slates, defense_wall, grassy_cobblestone. After Phase 2 | `Projects/Castle Conundrum` | 1 | Opus 5 | `claude/ecstatic-goldberg-2b22yy` | [Castle Conundrum](#castle-conundrum) |
 | 2 | Castle Conundrum v2, Phase 4: the fourteen ground-floor rooms and the word-lock; restores rock_tile_floor, floor_tiles_02, old_planks_02. After Phase 3 | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
 | 3 | Castle Conundrum v2, Phase 5: the upper level, the wall walk, and a player with a `y`; restores wood_planks, dirty_carpet. After Phase 4 | `Projects/Castle Conundrum` | 1 | Fable 5.1 |  | [Castle Conundrum](#castle-conundrum) |
 | 4 | Castle Conundrum v2, Phase 6: twelve NPCs on four bells, pathing between stations. After Phase 5 | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
