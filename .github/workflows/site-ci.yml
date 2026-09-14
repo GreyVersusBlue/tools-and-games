@@ -170,12 +170,14 @@ jobs:
               node tools/smoke.mjs
 
           # Castle Conundrum's playable half is still hand-run (see above), but
-          # both of these are glTF parsing and arithmetic — no browser at all.
+          # none of these needs a browser: glTF parsing, arithmetic, and the
+          # quest graph run against stand-ins.
           - name: Castle Conundrum
             dir: Projects/Castle Conundrum
             commands: |
               node test/assets.mjs
               node test/layout.mjs
+              node test/quest.mjs
 
           - name: Archived teaching tools
             dir: .

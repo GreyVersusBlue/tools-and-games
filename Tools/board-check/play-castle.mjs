@@ -518,6 +518,11 @@ try {
   }
   s = await state();
   assert(/gate is open/i.test(s.objective), 'the gate opened', JSON.stringify(s.objective));
+  // The objective is what the tracker shows; the stage is what the graph is in.
+  // Both come from data/quest.json now, and test/quest.mjs holds them together
+  // in Node — this is the one place that reads the stage out of a live game.
+  const stage = await page.evaluate(() => ({ id: window.__quest?.stage, done: window.__quest?.victory }));
+  assert(stage.done === true, 'the quest graph is in its terminal stage', JSON.stringify(stage));
   await snap('gate-opening');
 
   let victory = true;
