@@ -10891,3 +10891,180 @@ King's Hall, is outstanding.
 **Next:** rank 1 is now Phase 4, the fourteen ground-floor rooms and the word-lock, a 1 on
 Claude Opus 5. It restores rock_tile_floor, floor_tiles_02 and old_planks_02, and it owns the
 eight tower interiors this phase left as solid stone (#433).
+
+## Castle Conundrum v2, Phase 4: the fourteen ground-floor rooms and the word-lock (2026-09-14)
+
+**Rank 1, a 1 in one area, alone under the size table** (PR #314). The row named Claude Opus
+5 and was worked under Opus 5. The eight towers are hollow and have doors; the six walled
+rooms have walls, doorways and floors; the muniment room is behind the riddle and the cell is
+behind bars. **259 pieces against Phase 3's 219, all 259 within 0.0000 m of the live scene.**
+35 MB to 39.8, three texture sets restored. Decisions #439 to #450.
+
+**The row was Phase 4, not Phase 1, for the third time running** (#450). The session was
+started on a prompt naming Phase 1 and rank 1 and carrying Phase 1's riders: ships no asset,
+stays at 29 MB, "if you find yourself reaching for a Poly Haven set you have drifted into
+Phase 3". Phases 1, 2 and 3 had shipped (PRs #306, #309, #312) and `BACKLOG.md:402` read
+Phase 4, whose own spec restores three sets and goes to 39.8 MB. Phase 2's and Phase 3's
+sessions hit the identical collision and resolved it the identical way. Three instances is
+not an accident: **the prompt's "rank 1" is the instruction and the phase named beside it is a
+snapshot that goes stale the moment a PR merges.** The riders belong to the phase, not to the
+session. Nothing in the repo needs changing for this; the next session should read the ranked
+table before the prompt's description of it.
+
+- **The doorway goes in the drum's own ring, and #433 was half right** (#439). Phase 3 wrote
+  that a drum standing on a tile-thick wall cannot be entered from the ward, because at a
+  corner the two runs meeting there overlap in neither axis and the ward and the drum meet at
+  a pinch of exactly zero width; what opens it, it said, is a doorway cut through the adjacent
+  run. The pinch is real and the conclusion was too broad. A drum is 8 m across on a 4 m wall,
+  so **two metres of every tower stands proud of the wall's inner face**, and the quarter of
+  the ring facing that way is clear of both runs. That is all the two mid-run towers need: the
+  Larder's door is a 30-degree gap in its own ring at due south and no run is touched. At the
+  six towers that stand at a corner or at a cross-wall junction it is not enough, and the
+  reason is the grid rather than the stone: the two runs' boxes tile the two quadrants exactly
+  and touch at a single point, so the fill would have to move diagonally. Those six carry a
+  **1.2 m doorway at the adjacent run's own end**, entirely inside that drum's footprint so
+  the ring still seals it from the outside, and a **60-degree** ring arc rather than 30,
+  because at 30 the first sector of stone reaches 0.08 m into the only cell the grid can use.
+- **A tower room is a disc, and its bounding square is not the room** (#440). `rooms()`
+  counted cells inside the room's `bounds`, which for a tower is the square around the
+  interior disc. The square's corners sit at 1.414 x 2.8 = 3.96 m, out in the ring — and the
+  doorway's own cells are in the ring. So a tower whose way in had been walled up still read
+  **"reachable, 4 cells"**, and the four were the cells standing in the blocked doorway. Found
+  by walling one up on purpose and watching the suite stay green (#34). Rooms carry a `shape`
+  now and the disc is what is counted; the square is only the index into the grid.
+- **Which rooms are shut is `mystery.json`'s answer, not `scene-config.json`'s** (#441). The
+  first version of the lock check took its expectation from `room.locked`, which the plan
+  derives from `door.leaf.closed` — the very field being tested. Shipping the muniment room's
+  leaf `closed: false` moved the expectation along with the break and the suite stayed green.
+  This is #147 in the small: a claim the arithmetic cannot distinguish. `mystery.json`'s
+  `locks` names the rooms a riddle opens, and the cell now carries `barred: true`, which is a
+  fact about the crime rather than about the geometry. The castle has to match them, and the
+  mismatch is its own failure line.
+- **The plan never handed the builder the interior, and every tower rendered solid** (#442).
+  `piece.drum` carried `cx, cz, radius, height, segments, turret` and not `inner` or `door`,
+  so `castle-builder.js` read `d.inner` as undefined and took the solid-cylinder branch. The
+  colliders were hollow, the walkability grid was hollow, fourteen rooms were reachable, all
+  six Node suites were green — and the castle on the screen had eight solid drums with no
+  doors in them. `plan-vs-scene.mjs` could not see it either: **a solid drum's bounds are a
+  hollow drum's bounds, to the millimetre.** It came out of deleting the lintel over a doorway
+  on purpose and watching nothing happen, which is the #34 discipline paying for itself
+  twice — the break was aimed at the lintel and hit this instead.
+- **`RingGeometry`'s theta is not `CylinderGeometry`'s** (#443). The flat annulus capping each
+  ring section was a `RingGeometry` laid flat by a rotation. Ring lays its vertices out as
+  `(r cos t, r sin t)` in its own xy plane; Cylinder lays its out as `(r sin t, r cos t)` in
+  xz. The two differ by a quarter turn **and a reflection**, so a cap given the shell's own
+  `thetaStart` covers a different quarter of the tower than the wall it caps — including, in
+  every case here, the doorway. That is what was holding the drum's bounds up from the wrong
+  side and keeping the lintel break green after #442 was fixed. The cap is built from the same
+  `sin, cos` the shells and the plan's collider sectors use; with it aligned, deleting a
+  lintel moves the drum **0.136 m** and the suite says so.
+- **A rule that changes no answer is not a check, so it was deleted** (#444). Hollowing the
+  towers puts walkable floor 0.8 m past the curtain's outer face, which looked like it needed
+  `walkability`'s seal test taught that a tower interior is inside the castle. A drum-aware
+  `outsideCurtain` was written for it. Deleting it on purpose changed nothing: `curtain: true`
+  is on all eight drums, so the curtain box has read z -20..20 rather than -18..18 since Phase
+  3 and a cell in a tower was never outside it. It is gone, and the comment in its place says
+  why, because the next person to hollow something will have the same thought.
+- **A room's boundary is not its wall's face** (#445). Interior partitions sit on tile EDGES —
+  their `from`/`to` carry a half — so half of a 1 m partition stands inside the room and the
+  room's tile rectangle is half a metre out in the air. `layout.mjs`'s "the cabinet and the
+  commode are against their side walls" measured against `hall.bounds`, which was the same
+  number as the wall while every wall of the Great Hall was a curtain run. It measures the
+  nearest stone box sharing the prop's z band now, and reports which piece: **GothicCommode_01
+  stands 0.120 m off great-hall-east at x -6.5**. The commode and the hall's east column moved
+  0.5 m west with the wall.
+- **`wall-door.glb` is not a door frame in a 1 m wall** (#446). Phase 4's plan says "door
+  frames from `wall-door.glb` where a doorway needs a lintel". The model is authored
+  1 x 1 x 1 and `scaleRuleFor` gives every `wall*` piece the depth rule, so it arrives 4 m
+  deep — four times the partition it would sit in. A doorway is a gap in the run's boxes with
+  the run's own stone over it, which is what a castle doorway is; the kit keeps the shapes the
+  maps do not have, and a lintel is not one of them.
+- **The riddle is the muniment room's word-lock, and `openGate` means that leaf** (#447). The
+  Scholar stops posing it and points at the door; `riddle.json` carries the river riddle;
+  `openRiddle` runs on `lock:muniment`, which is the player pressing E at the leaf. Three
+  things fell out of it. `validateAgainstNpcs` takes `lock:<id>` as the second legal shape for
+  `openRiddle` and `test/quest.mjs` owns the half that knows the castle — a lock the quest
+  listens for has to be a door `scene-config.json` builds, that ships shut, that carries a
+  prompt, and that `mystery.json` calls a riddle lock. `InteractionSystem` takes targets
+  rather than NPCs, a target being anything with a group, a name and optionally a prompt, a
+  focus point and an `active` getter. And `openGate` sits on the next stage's `enter` rather
+  than on the transition, so a save resumed there finds the door open. The east gate keeps its
+  archway and never opens again, exactly as Phase 3 predicted.
+- **Two colour-only surfaces live apart from the stone list** (#448). The cell's bars and the
+  cloak over the laundry crate have no map on disk and none on WISHLIST.md's stone table. A
+  colour-only entry in `materials` would have meant weakening "every material is a complete
+  diffuse, normal and arm/rough set" to "unless it is not", so `plainMaterials` is a second
+  section carrying the opposite assertion: a six-digit hex colour and no path to anything.
+- **The evidence the mystery names now has objects, and the two files are held together**
+  (#449). Every level-0 row in `mystery.json`'s `evidence` gets a piece carrying its id: the
+  lantern at the Chapel Tower stair foot, the pouch, the chapel candles, the cloak, the cart
+  by the west gate, the ledger in the muniment room, the barrel in the bakehouse, and the
+  muniment door itself. `layout.mjs` asserts each stands inside the room the mystery names it
+  in — a room's own door being the exception, since a door stands in the wall — and that the
+  fourteen room ids in `scene-config.json` and the fourteen enclosed level-0 rooms in
+  `mystery.json` are the same fourteen. They were not: Phase 1 wrote `clerk-office` and
+  `lodge` where the scene config had `clerks-office` and `masons-lodge`, and nothing said so.
+
+**The guard-rails, and what each break said.** Eleven breaks from a green baseline, three of
+which found something:
+
+1. Walled the King's Hall's doorway shut. `kings-hall (inner ward, level 0) cannot be reached
+   on foot from the spawn — 0 standable cells in x 2..22, z -14..-6`, plus the porter's lodge
+   and the muniment room, which open off it, and the Scholar, who stands in it. That is the
+   break Phase 4's plan names.
+2. Walled the North-west Tower's doorway through the curtain shut. `guardroom (outer ward,
+   level 0) cannot be reached on foot from the spawn`. **This one ran green the first time**
+   and found #440.
+3. Shipped the word-lock `closed: false`. `muniment is open in scene-config.json and shut with
+   riddle in mystery.json` and `muniment is reachable from the spawn with its word-lock
+   unanswered — 50 standable cells`. **Also green the first time**, and found #441.
+4. Deleted the cell's bars. Three lines: the mystery mismatch, `cell is reachable from the
+   spawn with its bars in place — 58 standable cells`, and `no bars in the plan — the cell has
+   no door at all`.
+5. Deleted the drum-aware seal rule. Green, and that is #444: the rule was not doing anything.
+6. Deleted the MIDDLE curtain run (#430's lesson). `the castle leaks: 1984 reachable cells
+   outside the curtain ... The fill stepped through at (-15.75, -20.25)`.
+7. Moved the chapel candles into the inner ward. `evidence "candle" stands at (16.09, 11.93),
+   outside chapel (x 21.2..26.8, z 13.2..18.8)`.
+8. Renamed `porter-lodge` to `porters-lodge` in the scene config. Both directions fired:
+   `mystery.json puts people or evidence in "porter-lodge" and the castle has no such room`
+   and `the castle builds a room "porters-lodge" that the mystery has never heard of`.
+9. Pointed the quest's lock at a door shipping open. `lock:muniment names a door that
+   scene-config.json ships open — the riddle would unlock nothing`.
+10. Dropped the lintel over a drum's doorway. **Green twice**, which found #442 and then
+    #443; with both fixed it reads `"kitchen-tower" (tower) is 0.136 m off the plan` with the
+    plan and scene boxes printed.
+11. Dropped the lintel over a wall run's doorway. `"north-curtain-west" (wall) is 1.200 m off
+    the plan`, and five more.
+
+Two more on the word-lock beat that `plan-vs-scene.mjs` gained: taking the prompt off the leaf
+gives `standing two metres in front of the muniment room's door, looking at it, offers no
+prompt`, and pointing the quest at `lock:vault` gives `E at the word-lock opened no riddle
+(stage seek-keystone)`.
+
+**The word-lock is in CI, and the walk is not.** `plan-vs-scene.mjs` places the camera two
+metres in front of the muniment room's door, waits two frames for the render loop's own
+`interaction.update()`, reads the prompt out of the DOM and dispatches a `KeyE` keydown.
+Nothing there moves or is timed, which is the line #53 draws, and it is the only automated
+cover the whole Phase 4 wiring has — the fixture targeting, the line of sight to a leaf that
+hangs off a hinge at its own edge, the prompt text, and E reaching the quest graph.
+
+**What was measured.** 259 pieces, 284 colliders, 20 surfaces, 14 rooms. The walkability grid:
+0.5 m, 5,743 reachable cells, twelve rooms open and two shut. The muniment room opens to 58
+cells when the word-lock does and no other room moves. Eight standable cells within 1.5 m of
+the cell's bars. `assets.mjs`: eight complete texture sets, two plain materials, 50 material
+names across the walls, drums, doors, grounds, floors and built props, 93 files under
+`assets/Poly Haven` and `assets/NPCs` with every one of them asked for. All Castle Conundrum
+suites green, plus `npm run check`, `npm run social:check` and `node ci-check.mjs` from
+`Tools/board-check`; `known-failures.json` still empty in all three sections. **`npm run play`
+was not run and could not be** (#53). Its Scholar beat no longer waits for a riddle, it has a
+new beat that walks to the word-lock and presses E, its answer is `River`, and its gate beat
+looks up the `muniment` leaf; none of that is verified, and the phase's GPU exit criterion —
+the Great Hall, the chapel and the cell's bars — is outstanding.
+
+**Next:** rank 1 is now Castle Conundrum v2, Phase 5, the upper level and the wall walk, a 1
+on **Claude Fable 5.1**. It restores wood_planks and dirty_carpet, 39.8 MB to 44.4, and the
+wishlist calls it the genuinely unsolved part of the plan: the player standing on floor two,
+and the suite knowing it. `base` on a wall run is already there and is how its floor slabs are
+written; the disc a tower room is measured by is already there and is what its stairs will
+have to land in.
