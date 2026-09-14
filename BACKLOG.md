@@ -612,8 +612,9 @@ rather than recompute it. `play-castle.mjs` hard-codes `SCHOLAR` and `GUARD`
 at lines 40 and 41 until Phase 6 makes it read stations from data; Phase 3
 moves both.
 
-**Six questions for Devon are Q53 to Q58 below.** None blocks a phase; each
-phase's entry says which call it makes if unanswered.
+**Four questions for Devon are Q54 to Q57 below.** None blocks a phase; each
+phase's entry says which call it makes if unanswered. Q53 and Q58 are answered
+(#419, #420).
 
 **The parked preview recapture stays parked** and now waits on Phase 7 as
 well as a GPU: every frame goes stale again the moment Phase 3 merges.
@@ -628,6 +629,13 @@ well as a GPU: every frame goes stale again the moment Phase 3 merges.
 - **The riddle survives** (#416) as the word-lock on the muniment room. The
   overlay, `judgeAnswer`, the hint and the escalation are unchanged; the
   riddle's text changes to one a 1280s clerk could have set.
+- **Tints, not a fourth body, and Phase 1 writes the tint** (#419, answering
+  Q53). Phase 1 already replaces the three NPCs with twelve in `npcs.json`, so
+  the hex goes in while that file is open; Phase 6 no longer adds the field.
+  The risk is accepted rather than removed, and the Vespers photograph in
+  Phase 6 is the first thing that can report on it.
+- **Ranks 1 to 7 are confirmed** (#420, answering Q58). No other project is
+  worked until the arc finishes. One edit reverses it and no phase changes.
 
 ## Closing Time
 
@@ -1285,17 +1293,33 @@ live. Nothing in that column is a link to follow.
 
 Raised by the v2 plan (2026-09-14, `Projects/Castle Conundrum/WISHLIST.md`).
 None blocks its phase; the wishlist says what each phase does if unanswered.
+**Q53 and Q58 were answered by Devon on 2026-09-14** (#419, #420) and are in the
+Answered list below. Four remain, Q54 to Q57, and the numbers do not shift.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
-| Q53 | **Twelve NPCs from three bodies, or a fourth model?** Tints are the plan and weigh nothing. A fourth body is 1.4 to 2.0 MB over the 44.4 MB ceiling and falls under the reachability rule. Changes Phase 6, and it is the risk the plan bets the project fails on. | 1 | the wishlist, Questions and Risks |
 | Q54 | **A death, or only a theft?** As written the mystery is a killing made to look like a fall, with a hanging at the end. A theft-only version is a different cast and clue graph. Changes Phase 1. | 1 | the wishlist, The mystery |
 | Q55 | **Does the fourth bell force the accusation?** The plan says yes: four watches and the day ends. An open day that ends only when the player accuses changes Phase 1's engine and Phase 7's overlay. | 1 | the wishlist, The accusation |
 | Q56 | **Does the riddle survive as the muniment room's word-lock** (#416), or retire with the overlay? Changes Phases 4 and 7. | 1 | the wishlist, Phase 4 |
 | Q57 | **Do the barbican gates stay shut forever?** Nothing outside the curtain is textured, so the west gate never reopens and the east opens on a walled garden. An ending that walks out of the castle is a texture set not on the list. Changes Phase 3. | 1 | the wishlist, The layout |
-| Q58 | **Ranks 1 to 7 for the seven phases?** They were inserted at the top with every other row's relative order unchanged (#418). If they belong lower, that is one edit and no phase changes. | 1 | this file, Tier 1 |
 
 ### Answered, kept here so they are not re-asked
+
+- **Twelve NPCs from three bodies, or a fourth model?** (was Q53) Answered by
+  Devon, 2026-09-14, before Phase 1 rather than before Phase 6: **tints, and
+  Phase 1 writes them** - locked decision #419. Three bodies, a per-NPC `tint`
+  hex, real models later if they turn out to be needed. The bet is accepted and
+  not removed: the plan calls colour-alone a bet nothing in Node can settle, and
+  the Vespers photograph in Phase 6 is the first thing that can report on it. A
+  fourth body is 1.4 to 2.0 MB over the 44.4 MB ceiling, and that ceiling is
+  Devon's number to move. Reversible in one line: drop `tint` from Phase 1's
+  `npcs.json` bullet and put it back in Phase 6's.
+
+- **Ranks 1 to 7 for the seven phases?** (was Q58) Answered by Devon,
+  2026-09-14: **yes** - locked decision #420. The phases stay at the top with
+  every other row's relative order unchanged. The consequence, stated so it is
+  not rediscovered: no other project is worked until the arc finishes.
+  Reversible in one edit, and no phase changes if it is made.
 
 - **Should the Serve button require full order completion?** (was Q2)
   Answered by the session that shipped Corner & Kettle Phase 3, 2026-09-12:
