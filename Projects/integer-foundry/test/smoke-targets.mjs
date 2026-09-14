@@ -17,6 +17,7 @@ import {
 import {
   BASE_COLS, BASE_ROWS, SAVE_KEY, freshState, makeEmptyGrid, validState, repairState, foundrySlot,
 } from '../js/state.js';
+import { planOrderLine, lineCapacity, turnsFor, ROW_OUT, ROW_BACK } from './order-line.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -219,6 +220,94 @@ group('The bug, put back on purpose');
   const mergeOnly = boardPlan({ ...OPENING, unlocked: { merge_mul: true } });
   ok(reachableMax(mergeOnly) < 529,
     'and the merger case stays conservative rather than optimistic', `modelled max ${reachableMax(mergeOnly)}`);
+}
+
+/* ------------------------------------ the line browser.mjs builds to order -- */
+
+group('Building a line to order');
+
+// browser.mjs reads whatever the sink asks for and builds a line that delivers
+// it. One run tests one order size, whichever the game rolled, so the geometry
+// went unchecked for every other size — and one of them, an order of exactly 8,
+// put the sink at column 8 on a floor whose columns stop at 7 and aborted the
+// suite (#387). The arithmetic belongs here, where every size the game can ask
+// for is eleven objects and no browser (#388).
+//
+// planOrderLine() is the function browser.mjs actually calls. Nothing below
+// re-implements it — a test that re-implements the thing it checks is not a
+// check (#34).
+{
+  const onFloor = c => c.x >= 0 && c.x < BASE_COLS && c.y >= 0 && c.y < BASE_ROWS;
+  // Where an operator pushes its packet, given the facing planOrderLine gave it.
+  const step = c => c.dir === 'E' ? { x: c.x + 1, y: c.y }
+    : c.dir === 'S' ? { x: c.x, y: c.y + 1 }
+    : c.dir === 'W' ? { x: c.x - 1, y: c.y }
+    : { x: c.x, y: c.y - 1 };
+
+  /** Everything that has to be true of a plan, for one order size. */
+  const faults = (want) => {
+    const plan = planOrderLine(want, BASE_COLS, BASE_ROWS);
+    if (!plan) return ['no plan'];
+    const bad = [];
+    const all = [plan.source, ...plan.chain, plan.sink];
+    if (all.length !== want + 1) bad.push(`${all.length} tiles, wanted ${want + 1}`);
+    for (const c of all) if (!onFloor(c)) bad.push(`(${c.x},${c.y}) is off the floor`);
+    const seen = new Set(all.map(c => `${c.x},${c.y}`));
+    if (seen.size !== all.length) bad.push('two tiles on one cell');
+    // The source and every operator must feed the next tile in the line, and the
+    // last operator must feed the sink. A line that is merely on the board but
+    // not connected delivers nothing.
+    const feed = [plan.source, ...plan.chain];
+    for (let i = 0; i < feed.length; i++) {
+      const next = i + 1 < feed.length ? feed[i + 1] : plan.sink;
+      const to = i === 0 ? { x: plan.source.x + 1, y: plan.source.y } : step(feed[i]);
+      if (to.x !== next.x || to.y !== next.y) {
+        bad.push(`tile ${i} at (${feed[i].x},${feed[i].y}) feeds (${to.x},${to.y}), not (${next.x},${next.y})`);
+      }
+    }
+    if (plan.chain.some(c => turnsFor(c.dir) > 2)) bad.push('a facing that costs three clicks');
+    return bad;
+  };
+
+  // Every order the opening board can actually roll, read out of the game rather
+  // than written down here: rollTarget takes its randomness as an argument, so
+  // sweeping that argument across its whole range enumerates the draw exactly.
+  const OPENING_ORDERS = [...new Set(
+    Array.from({ length: 200 }, (_, i) => rollTarget(OPENING, seq([i / 200, i / 200]))),
+  )].sort((a, b) => a - b);
+  ok(OPENING_ORDERS.length >= 5, 'the opening board can roll a spread of orders',
+    OPENING_ORDERS.join(', '));
+  ok(OPENING_ORDERS.includes(8),
+    'including the order of 8 that used to walk the sink off the board (#387)');
+
+  const rollFaults = OPENING_ORDERS.filter(w => faults(w).length);
+  ok(rollFaults.length === 0, 'every order the opening board can roll builds a valid line',
+    rollFaults.length ? `${rollFaults[0]}: ${faults(rollFaults[0]).join('; ')}`
+                      : `${OPENING_ORDERS.length} sizes, ${OPENING_ORDERS[0]} to ${OPENING_ORDERS[OPENING_ORDERS.length - 1]}`);
+
+  // And the whole range the planner claims, not just what today's ramp draws
+  // from it. The ramp is tuning and moves; the floor is not.
+  const CAP = lineCapacity(BASE_COLS);
+  eq(CAP, 14, 'an 8-wide floor holds fourteen tiles on the two line rows');
+  const allFaults = [];
+  for (let want = 2; want <= CAP; want++) {
+    const bad = faults(want);
+    if (bad.length) allFaults.push(`${want}: ${bad.join('; ')}`);
+  }
+  ok(allFaults.length === 0, `every order from 2 to ${CAP} builds a valid line`,
+    allFaults[0] || `${CAP - 1} sizes checked`);
+
+  // Refusing is the safe failure. A plan that does not fit has to come back null
+  // so browser.mjs reports one named miss, rather than a plan that runs off the
+  // floor and aborts the run ten clicks later on a cell that does not exist.
+  ok(planOrderLine(CAP + 1, BASE_COLS, BASE_ROWS) === null, 'an order past the floor gets no plan');
+  ok(planOrderLine(1, BASE_COLS, BASE_ROWS) === null, 'and neither does an order of one');
+  ok(planOrderLine(4.5, BASE_COLS, BASE_ROWS) === null, 'nor a fractional one');
+  ok(planOrderLine(6, BASE_COLS, ROW_BACK) === null,
+    'nor any order at all on a floor too short for the second line row');
+
+  ok(ROW_OUT < BASE_ROWS && ROW_BACK < BASE_ROWS,
+    'both line rows are on the opening floor', `rows ${ROW_OUT} and ${ROW_BACK} of ${BASE_ROWS}`);
 }
 
 /* ------------------------------------------------------------------ repair -- */

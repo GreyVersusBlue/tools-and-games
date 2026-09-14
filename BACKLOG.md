@@ -174,8 +174,13 @@ method, and every click in it retries a re-query. **It had a second failure mode
 nobody had seen, and it was not a race** (#387): the fill-the-order beat put its
 sink one column off the board on an order of exactly 8, which the game rolls
 about one run in eleven and weighted low, so it had never come up. Fixed
-2026-09-14. If that beat goes red again, read the order size before reaching for
-a re-run.
+2026-09-14, and then the geometry behind it was moved out of the browser suite
+entirely (#388): it is `Projects/integer-foundry/test/order-line.mjs` now, and
+`test/smoke-targets.mjs` checks it against every order the opening board can
+roll, read out of `rollTarget`'s injectable RNG rather than written down. A
+browser run still tests one order size; the arithmetic no longer depends on
+which. If that beat goes red again it is the clicking or the timing, not the
+plan.
 
 **`Pathfinder/data/` is a published interface** (#350, Devon). Any project may
 read it; `Pathfinder/data/README.md` is the contract.
