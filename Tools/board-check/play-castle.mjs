@@ -34,21 +34,25 @@ const GAME = `${BASE}/Projects/Castle%20Conundrum/`;
 const THREE_URL = '/Projects/Castle%20Conundrum/libs/three.module.js';
 
 // Where the NPCs stand, per data/npcs.json. If those move, move these.
-// Scholar's z was -10.0; moved to -8.0 along with the whole hall furniture
-// cluster (+2.0 m south, off the north wall his own body used to clip 0.29 m
-// into) — see data/scene-config.json's gothic_statue comment for the full story.
-const SCHOLAR = [1.5, -8.0];
-const GUARD = [1.8, 9.2];
-// The hall brazier, per data/scene-config.json's braziers[1].tile [0.85, -1.6].
+// ALL THREE MOVED IN PHASE 3, because the castle under them did. The 7x7
+// courtyard these were measured in is gone; the castle is Conwy's plan now, 80 m
+// by 40, two wards divided by a cross-wall. The Scholar stands in the King's
+// Hall in the inner ward, the Guard at the porter's gate on the outer ward side,
+// and the hall brazier is in the Great Hall along the south of the outer ward.
+// Phase 6 makes this file read stations out of data and ends the hard-coding.
+const SCHOLAR = [10.0, -10.0];
+const GUARD = [-5.5, 0.0];
+// The hall brazier, per data/scene-config.json's braziers[2].tile [-5, 2.5].
 // If that moves, move this.
-const HALL_BRAZIER = [3.4, -6.4];
+const HALL_BRAZIER = [-20.0, 10.0];
 
 // Geometry the placement beats below check against. Measured from the live scene,
 // not read off the config: every one of these models arrives at its own authored
 // scale, so the hall "table" is 0.55 m tall and the "stool" next to it is 0.18 m.
-// Was z -10.33..-9.67 (0.33 m inside the north wall); moved +2.0 m south with the
-// rest of the hall cluster.
-const HALL_TABLE = { min: [-0.9, 0, -8.33], max: [0.9, 0.55, -7.67] };
+// Phase 3 moved the whole hall cluster out of the old courtyard and into the
+// Great Hall, x -34..-6 and z 6..14; these are its numbers there, read back off
+// src/castle-plan.js.
+const HALL_TABLE = { min: [-20.9, 0, 10.171], max: [-19.1, 0.549, 10.829] };
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
@@ -331,30 +335,32 @@ try {
 
   // --- The closed gate door actually crosses the archway it's meant to fill.
   // castle-builder.js's hinge-pivot math derived the door's world position
-  // assuming rotationY = 0; this config's gate uses rotationY = 180 (matching
-  // every wallRun that flanks the archway, all rotated 180 too so their faces
-  // point into it), and the un-rotated formula put the whole leaf on the wrong
-  // side of world x 0 entirely — world x [-5.4, -1.8] against a centered
-  // [-2, 2] archway, never blocking anything in any quest state or appearing
-  // in any capture frame, regardless of what "closed" or "open" meant.
+  // assuming rotationY = 0; the one gate this castle used to have is at 180, and
+  // the un-rotated formula put the whole leaf on the wrong side of world x 0
+  // entirely — never blocking anything in any quest state or appearing in any
+  // capture frame, regardless of what "closed" or "open" meant.
+  //
+  // It looks the leaf up BY ITS PLAN ID now rather than hunting the scene for an
+  // object of about the right size near z 12. Phase 3 put three gates in the
+  // castle and moved all of them; a positional search finds whatever happens to
+  // be at the old coordinates, which after a layout change is either nothing or
+  // the wrong thing, and either way it is not a check. `east-gate` is the leaf
+  // the riddle quest opens, at world (24, 0) in a wall running north-south, so
+  // the axis it has to cross is z.
   const gateDoorBox = await page.evaluate(async () => {
     const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
     let found = null;
-    window.__scene.children.forEach((c) => {
-      if (found || /^(wall|tower|column)/.test(c.name || '')) return;
-      const b = new THREE.Box3().setFromObject(c);
+    window.__scene.traverse((o) => {
+      if (found || o.userData?.planId !== 'east-gate') return;
+      const b = new THREE.Box3().setFromObject(o);
       if (!isFinite(b.min.x)) return;
-      const cz = (b.min.z + b.max.z) / 2;
-      const width = b.max.x - b.min.x;
-      if (Math.abs(cz - 12) < 2.5 && width > 1 && width < 5 && b.max.y - b.min.y > 1) {
-        found = { min: [b.min.x, b.min.z], max: [b.max.x, b.max.z] };
-      }
+      found = { min: [b.min.x, b.min.z], max: [b.max.x, b.max.z] };
     });
     return found;
   });
-  assert(!!gateDoorBox && gateDoorBox.min[0] <= -1 && gateDoorBox.max[0] >= 1,
+  assert(!!gateDoorBox && gateDoorBox.min[1] <= -1 && gateDoorBox.max[1] >= 1,
     'the closed gate door crosses the archway it is meant to fill',
-    gateDoorBox ? `x[${gateDoorBox.min[0].toFixed(2)}, ${gateDoorBox.max[0].toFixed(2)}]` : 'not found');
+    gateDoorBox ? `z[${gateDoorBox.min[1].toFixed(2)}, ${gateDoorBox.max[1].toFixed(2)}]` : 'not found');
 
   // --- The hall table, the gothic statue, and the two side cabinets clear the
   // wall behind them. Round 2 found (but did not fix) the table and the statue
