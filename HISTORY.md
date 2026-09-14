@@ -10116,3 +10116,112 @@ service worker's cache is named for its own revision, so `REV` invalidates the
 lot, and not one import path moved), and **the boot-diet table is half closed**
 (Phase 42 — `js/lazy.js`, and a `boot-budget` check in `test/tools/run.mjs`
 that fails if any of it is undone).
+
+## Orbital's sectors are data, and a level is a link (2026-09-14)
+
+**Ranked row 1, claimed on `main` before the work started (#283, PR #295) and merged as
+PR #296.** The row named Claude Opus 5 and was worked under Opus 5. A 1 in one area whose
+only ¼ row wants a real device, so a batch of one under the size table (#382). Decisions
+#396 to #400.
+
+- **The draft lives in the address bar, and there is no new save key** (#396).
+  `#e=<code>` is a level being built, `#l=<code>` is one to play, and both carry the same
+  codec string; which letter it arrives under is the whole difference. A reload keeps the
+  draft because the hash is the draft, and `history.replaceState` writes it after every
+  edit. The alternative was a second `localStorage` key holding a list of authored
+  levels, and it was refused: the only storage Orbital has is still `orbital_progress_v2`,
+  which keeps locked decision #36 untouched and means an editor bug can never cost anybody
+  their campaign. The cost is that one draft is open at a time, and the link is how you
+  keep a second — which is what the row asked for anyway. `replaceState` never fires
+  `hashchange`, so a `hashchange` is always somebody pasting a link into a tab that is
+  already open, and that is wired: it was the ordinary way a shared level arrives and it
+  did nothing at all until the browser pass found it.
+
+- **A level is one line of text, and the four delimiters were each picked twice over**
+  (#397). `js/levelcode.js` encodes `o1$name$sub$start$goal$bodies`: one letter per body
+  type (`p s k u b w t`), five fields for a gravity body, six for a wormhole or a booster,
+  `@` before an orbit. The 22 shipped levels come out at 73 to 151 characters. The
+  delimiters are `$ ; , @` because RFC 3986 allows all four raw in a fragment, so a chat
+  client that linkifies the URL has no reason to touch them, AND `encodeURIComponent`
+  escapes all four, so none can survive inside a level's name and be read as a delimiter.
+  `|` was the first choice and fails the first half: Chrome keeps it verbatim, which is
+  why it looked fine, but the grammar does not allow it and a normaliser is entitled to
+  percent-encode it — a link that arrives in one piece here and two pieces somewhere else.
+  `test/levelcode.mjs` holds every shipped level to the fragment character set, so the
+  next delimiter cannot be chosen by eye. The letters and the field order are frozen:
+  add a type by taking a new letter, add a field by appending it, and take `o2` only if
+  an old string genuinely cannot be read.
+
+- **The decoder is strict and the validator is separate** (#398). Everything `decode`
+  reads came out of somebody else's address bar, so an unknown letter, a wrong field
+  count, a number it cannot read, a name over 48 characters, more than 24 bodies or a code
+  over 2,000 characters is an error naming its own reason rather than a level with a NaN
+  in it. The two caps are there because the solver walks every body on up to 5,200
+  substeps. `encode` refuses anything `decode` could not read back — `NaN` and `1e21` fail
+  at write time rather than on a stranger's screen — which is what makes the pair a pair.
+  `validate` is the separate semantic half: a launch point inside a star, a marker that
+  swallows the probe before the first shot, a wormhole link with one mouth or three. The
+  split is deliberate. The editor shows validation problems and keeps editing, because a
+  half-built level is not an error; a share link refuses to open one, because the recipient
+  cannot fix it. **A shared level is not a sector**: it carries no `key`, so it records no
+  stars and unlocks nothing, and somebody else's level cannot write into this browser's
+  campaign.
+
+- **The editor's verdict and CI's verdict are one implementation at one budget** (#399).
+  The solvability search moved out of `test/physics.mjs` into `physics.js` as
+  `makeSearch`/`findWinningShot`, and the Check button runs it at exactly the budget the
+  suite runs it at (240 x 20 grid, 60 refinement rounds). A draft the editor calls
+  winnable is one the suite would call winnable, by construction rather than by care. The
+  editor drives it in 12-millisecond slices off `setTimeout` rather than per frame, and
+  that is a measurement, not a preference: under the software-rendered headless Chromium
+  the suites use, `requestAnimationFrame` fires 5 times a second against `setTimeout`'s
+  244, so a 16-launches-per-frame budget put a 5-second search past a minute and looked
+  exactly like a hang. Timing the slice instead of counting it also means a slow machine
+  yields as often as a fast one. A "no winning shot" verdict is a spent budget, not a
+  proof, and the status line says so; a "winnable" verdict is a flight that actually
+  resolved WIN, and `test/physics.mjs` now re-flies the shot the search reports rather
+  than taking its word.
+
+- **A 12-vector sweep did not catch a dropped booster kick, and the comment saying it
+  would was the bug** (#400, and #34, #147). `test/levelcode.mjs` asserts a round trip by
+  flying it — same launch, same outcome, same end state to the last bit — rather than by
+  comparing JSON, because a lost field still opens, it just flies differently. Written
+  with twelve vectors spread over the circle, and re-encoding a booster's `boost` as its
+  `dir` left all twelve landing in identical places on all three booster levels: not one
+  of them flew near a booster. The break was caught only downstream, by the validator
+  refusing a boost of -0.9. The sweep now adds a shot aimed at each body at two powers,
+  which fails the flight assertion on two of the three — "Kick" flies to a WIN before and
+  a CRASH after. "Gravity Assist" is still only caught by the validator, because its
+  booster sits behind a star that bends every direct shot away from it, and the comment
+  now says two of three rather than claiming three.
+
+**Three bugs no Node suite could have found, all from driving the real page.** Escape
+during a test flight reached both key handlers — `edKey` went back to the draft while
+`input.js` opened the sector map on top of it — because the guard was written against the
+mode and a test flight is mode `"aim"`; it is `edOn` now. The editor rail hid world x 0
+to 212 at 1320px wide and every draft's launch point is at x 120, so `resize()` insets the
+playfield by the rail's width. And a link pasted into an open tab did nothing, because a
+fragment change is a same-document navigation that re-runs no script.
+
+**Suites.** `node test/physics.mjs` — 22 levels, each with a winning vector and each
+vector re-flown to a WIN, 0 failed, 2.9 s. `node test/levelcode.mjs` — 22 round trips
+flown, 21 malformed inputs each asserted to fail with its own message, 9 names made of
+delimiters, 13 validator cases, the fragment charset, 0 failed, 2.1 s; it is in the CI
+matrix beside `physics.mjs`. `cd Tools/board-check && npm run check` — 1833 units checked,
+0 broken, 0 collisions, tightest vertical gap 3.5 px. `npm run social:check` — 23 notices,
+21 already current, 0 out of date. `node ci-check.mjs` — every failure is a known one and
+every known one still fails; `known-failures.json` untouched and still empty in all three
+sections. The editor itself was driven in a real headless Chromium through the
+`board-check` harness — placing, dragging, the hash across a reload, Check, test flight,
+share, a link opened cold, a link pasted into an open tab, two malformed links, and the
+campaign still working afterwards — but that driver is not committed: a committed browser
+layer for Orbital is ranked row 33 and belongs to whoever takes it.
+
+**Four guard-rails broken on purpose, from green (#34).** Dropping the 24-body cap in
+`decode` failed `25 bodies — it did not throw at all`. Re-encoding a booster's kick as its
+heading failed `deepspace#4 flies identically after the round trip — -14° at 0.5: WIN
+(848.846,179.319) vs CRASH (705.750,345.780)`. A search reporting a shot it never flew
+failed `basics#0 the reported shot re-flies to a WIN — outcome=OUT at 338.7deg / 15%`.
+Putting `|` back as the section delimiter failed `basics#0 is legal in a URL fragment —
+illegal: ["|","|","|","|","|"]`. A fifth break, the launch-point-inside-a-solid-body rule
+deleted, failed `a launch point inside a planet — got []`.
