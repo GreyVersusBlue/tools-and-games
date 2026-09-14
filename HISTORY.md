@@ -10534,3 +10534,103 @@ stale by eight. No code, no asset, no phase moves, no claim. Decisions #419 and 
 The four suites under `Projects/Castle Conundrum/` are green on `main` and this PR touches
 four markdown files, so none of them could go red; `npm run play` was not run and could not
 be (#53).
+
+## Castle Conundrum v2, Phase 1: the mystery as data, and the save (2026-09-14)
+
+**Rank 1, a 1 in one area, alone under the size table** (PR #306). The row named Claude
+Fable 5.1 and was worked under Fable 5.1. `data/mystery.json` is new and carries the whole
+mystery; `src/mystery.js` validates it and runs it in Node; `src/save.js` is the slot;
+`test/mystery.mjs` and `test/save.mjs` are new and in the CI matrix. Nothing restored, the
+project stays at 29 MB, and the page plays the same riddle quest it played the day before,
+now with a save. Decisions #421 to #425.
+
+- **`npcs.json` keeps the three under `npcs` and adds the twelve under `cast`** (#421). The
+  plan said the twelve replace the three because `assets.mjs` checks bodies, not ids. What
+  that missed: the page plays the riddle quest on `talked:scholar` and `talked:guard` until
+  Phase 7 retires it, Phase 3's entry moves the three to stations that exist, Phase 6's says
+  "the Guard, Scholar and Wizard are gone", and `play-castle.mjs` walks to `SCHOLAR` and
+  `GUARD` by name across 34 beats nothing here can run (#53). Replacing them in Phase 1 would
+  have contradicted two later phases and broken the one hand-run suite blind. So `npcs` is
+  what the page spawns and the riddle quest validates against, `cast` is what the mystery
+  validates against, and Phase 6 deletes `npcs`. Each of the twelve names one of the three
+  bodies and a `tint` (#419); the twelve tints are distinct and `test/mystery.mjs` says so.
+
+- **`quest.json` keeps the riddle quest at the top level and carries the frame under
+  `frame`** (#422). Same reason: the save has to resume the quest the page plays, so its
+  stage catalog has to hold `seek-keystone`, `present-keystone` and `gate-open`, and
+  `validateQuest` wants one `start` with everything reachable from it. `frame` is a whole
+  graph definition of its own (`arrive`, `investigate`, `accusing`, four terminals), validated
+  by the same `validateQuest` with the manager's grown action list and by `validateAgainstNpcs`
+  against the cast, and driven in `test/mystery.mjs` by the engine's events. `buildCatalog`
+  takes the union of both graphs' stages. Phase 7 promotes `frame` to the top level and
+  deletes the riddle stages; the catalog shrinks with it and old saves at a riddle stage
+  reset to `start` through `repair`, which is the right thing for a game that has changed.
+
+- **The Constable hears no accusation at Prime** (#423, `accusation.from: "terce"`). The
+  plan's rail says the shortest convicting path takes at least two watches "so it is neither
+  solvable at Prime nor lost by Vespers", and its exit line says that path prints at 3 watches
+  and 22 interactions. The validator, run on the clue graph exactly as the plan wrote it,
+  said `the shortest convicting path is 1 watch (wax-matches, tally-on-walk, lead-sold)`: the
+  cloak is in the laundry at Prime, the candle and the tally stick are on their stair and
+  walk all day, the word-lock and the ledger are open all day, and the apprentice is in the
+  lodge at Prime. The Clerk hangs before the first bell. That is the plan being wrong about
+  its own data, caught by the rail written to catch it, and it is the reason this phase went
+  to Fable. The fix is one field: at Prime the Constable stands over the body and sends the
+  clerk away (`accusation.early`, not a refusal). The shortest full-ending path is now
+  **2 watches and 8 interactions** (talk sentry, examine tally, examine lock, answer the
+  riddle, examine ledger, talk apprentice, one ring, one accusation), and the right-hanging
+  path is 2 watches and 4. The plan's 22 was an estimate of the intended path, not the
+  shortest one; the number that matters is the rail, and it holds. Reversible in one field,
+  and the rail fires the moment it is.
+
+- **Thirty-nine clues, and how a clue is on a path** (#424). The plan's table lists 39 rows
+  and calls them 38; the suite asserts 39, 36 on a path and 3 herrings. Three fields the
+  plan's schema did not name were needed to make the "leads nowhere" rail decidable: a press
+  carries `from` (a list of states it leaves from, so the Clerk can be cornered from either
+  `default` or `cloak`), a clue may `contradicts` earlier statements (the lie it gives away),
+  and evidence may sit behind a `lock` (the ledger, behind `muniment`, opened by
+  `riddle:solved`). A clue counts as on a path if it convicts someone, contradicts something,
+  is a default-state statement, is a herring, or is an ancestor of one that is, through
+  premises, press keys and `requires`. Under that rule every one of the 36 leads somewhere
+  and dropping `herring` from `knife-found` fails with the message the plan wrote.
+
+- **The engine's API, and two behaviours the plan left open** (#425). `createMystery` returns
+  the plan's nine calls plus `talk(npc)` (a conversation ended: its statements land),
+  `unlock(lock)`, `holds(clue)`, `npcState(npc)` and a `state` getter, because the manager
+  and the suite both needed them and the save is that state object mutated in place. Two
+  calls: `accuse` emits `ask:accuse` before its verdict so the frame moves to `accusing`
+  before it moves to a terminal (the first draft went straight to the verdict and the frame
+  ignored it; the suite caught it on "the frame ends in `full`"); and the fourth ring keeps
+  `watch` at Vespers and emits `demand` plus `bell:4`, so the save's clamp to the four (#413)
+  loses nothing on a reload after the demand.
+
+**Guard-rails broken on purpose** (#34), each applied to the file on disk from a green
+baseline, not to a clone inside the suite, and restored after:
+
+| Break | Fired | Said |
+| --- | --- | --- |
+| `lady-hand`'s source deleted | `validateMystery finds nothing wrong` | `summons-is-stewards: premise lady-hand is discoverable from nothing` |
+| the `steward-admits` press deleted | same | `chaplain-feet: its press is on a clue that cannot be held (steward-admits)` |
+| `sentry-sighting` at Prime only | same | `sentry-sighting: available at prime, when the sentry cannot be spoken to about it` |
+| `knife-found`'s `herring` dropped | same, and the count line | `knife-found: on no path to any accusation` |
+| `accusation.from` set to `prime` | same, and the shortest-path line | `the shortest convicting path is 1 watch (wax-matches, tally-on-walk, lead-sold); it must take at least two` |
+| `repairState`: stage reset removed | `a stage the graph lacks resets to start` | `the-attic` |
+| player nulling removed | four `player ... is nulled` lines | and `NaN reaches disk as null` |
+| watch clamp removed | `watch clamps to 0..3` | |
+| unknown-clue filter removed | `unknown and duplicate clues are dropped` | and `an unversioned save loads through repair` |
+| refusals clamp removed | `refusals: a non-negative integer or 0` | and `the third refusal is the fall` |
+
+Every break exited 1 and was caught by the assertion whose comment claims it; the first
+four are the ones Phase 1's entry names, with its messages verbatim.
+
+**What was measured.** `mystery.json` 159 lines, `mystery.js` 599, `save.js` 104,
+`test/mystery.mjs` 343, `test/save.mjs` 200. First-held counts: 35 clues at Prime, 4 at
+Terce, none later. `npm run check`, `npm run social:check` and `node ci-check.mjs` green
+from `Tools/board-check` after `npm ci --ignore-scripts` (the checkout had no
+`node_modules`; `check-collisions.mjs` crashed on `puppeteer-core` on the untouched tree
+too, and ran clean once installed). `npm run play` was not run and could not be (#53);
+its new reload beat and the key-clearing at start are written blind and are the first thing
+the next GPU run should look at.
+
+**Next:** rank 1 is now Phase 2, the plan the builder and the suite both read, a 1 on Claude
+Opus 5.
