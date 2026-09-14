@@ -94,6 +94,11 @@ console.log('playing Castle Conundrum end to end\n');
 
 try {
   await page.goto(GAME, { waitUntil: 'load' });
+  // A stale save from a previous run would resume mid-quest and the Scholar
+  // beats below would find the riddle already answered. Clear the one key
+  // (src/save.js, castleConundrumSave_v1) and load again from nothing.
+  await page.evaluate(() => localStorage.removeItem('castleConundrumSave_v1'));
+  await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('#start-overlay:not(.hidden)', { timeout: 90000 });
   const loadStatus = await textContent(page, '#loading-status');
   ok('reached the start screen', loadStatus);
@@ -476,6 +481,30 @@ try {
   assert(/Keystone/.test(s.objective), 'objective advanced to the Keystone', JSON.stringify(s.objective));
   assert(s.locked, 'pointer lock re-acquired after the overlay');
   await snap('keystone');
+
+  // --- Reload: the save (src/save.js) resumes the quest where it was. The
+  // autosave flushes on pagehide, so nothing has to wait for its timer here.
+  // test/save.mjs holds the repair rails in Node; this is the one beat that
+  // sees a real reload carry the stage, the wrong-answer count and the camera.
+  const before = await page.evaluate(() => ({ x: window.__cam.position.x, z: window.__cam.position.z }));
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('#start-overlay:not(.hidden)', { timeout: 90000 });
+  await attachSceneProbe(page, THREE_URL);
+  await waitForProbe(page);
+  const resumed = await page.evaluate(() => ({
+    stage: window.__quest?.stage,
+    objective: document.getElementById('quest-objective').textContent,
+    wrong: window.__save?.state?.riddleWrong,
+    x: window.__cam.position.x, z: window.__cam.position.z,
+  }));
+  assert(resumed.stage === 'present-keystone' && /Keystone/.test(resumed.objective), 'after a reload the objective still says Keystone', JSON.stringify(resumed));
+  assert(resumed.wrong === 2, 'the two wrong answers survived the reload', String(resumed.wrong));
+  assert(Math.abs(resumed.x - before.x) < 0.05 && Math.abs(resumed.z - before.z) < 0.05, 'the camera came back where it was', `${before.x.toFixed(2)},${before.z.toFixed(2)} -> ${resumed.x.toFixed(2)},${resumed.z.toFixed(2)}`);
+  await page.click('#start-button');
+  await wait(400);
+  s = await state();
+  assert(s.locked, 'pointer lock after the reload');
+  await snap('reloaded');
 
   // --- Guard.
   if (!s.locked) { await page.click('#start-button'); await wait(400); }
