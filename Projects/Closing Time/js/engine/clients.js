@@ -1,6 +1,7 @@
 // clients.js — intake, fit scoring, hidden-preference reveals, patience/mood, schmoozing, firing, referrals.
 import { DB } from "../data.js";
 import { S, uid, log, addRep, addXP, pick, rand, randInt, contentClient, levelInfo } from "../state.js";
+import { financingFor, financingType } from "./financing.js";
 
 export const REL_WORDS = ["college roommate", "sister", "coworker", "old neighbor", "cousin", "book-club friend", "brother-in-law", "poker buddy"];
 
@@ -23,10 +24,14 @@ export function meetClient(clientId, referredBy = null) {
     knownIssues: {},              // listingId -> [issueIdx] the PLAYER knows about
     toldIssues: {},               // listingId -> [issueIdx] disclosed to client
     dealId: null, referredBy, schmoozeCount: 0,
+    // What this buyer is buying with. A fact about them, not a roll — see
+    // financingFor(). null on a seller, who is not the one borrowing.
+    financing: financingFor(c),
   };
   S.clients.push(rec);
   const refText = referredBy ? ` They mention ${referredBy.name} — "${referredBy.rel}, says you did right by them."` : "";
-  log(`New client: ${c.name} (${c.type}). ${c.intro}${refText}`, "client", undefined, rec.recId);
+  const finText = rec.financing ? ` Buying ${financingType(rec.financing).label}.` : "";
+  log(`New client: ${c.name} (${c.type}). ${c.intro}${refText}${finText}`, "client", undefined, rec.recId);
   return rec;
 }
 

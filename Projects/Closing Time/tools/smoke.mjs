@@ -17,6 +17,7 @@ import * as Deals from "../js/engine/deals.js";
 import * as Seller from "../js/engine/seller.js";
 import { endDay, CAREER_LENGTH_DAYS } from "../js/engine/calendar.js";
 import { maybeFireEvent } from "../js/engine/events.js";
+import { FINANCING, financingFor, financingType, closeDaysFor, DEFAULT_FINANCING } from "../js/engine/financing.js";
 
 /* ------------------------------------------------------------------ harness */
 let passed = 0; const failures = [];
@@ -463,6 +464,128 @@ adoptState(midCareer);
 const sideEffect = makeCareer("bk_indep");
 eq(S.day, midCareer.day, "makeCareer() does not touch the live career");
 eq(sideEffect.day, 1, "and hands back a separate day-one one");
+
+/* ---------------------------------------------- buyer-side financing types */
+console.log("\nfinancing:");
+
+// --- the derivation. It has to be a fact about a client, not a roll: the same
+// client buys the same way on every career, and repairCareer() can recompute it
+// on any load without asking the RNG for anything.
+{
+  const theo = DB.clients["cl_0004"];           // statedReqs.notes literally reads "Cash."
+  eq(financingFor(theo), "cash", "a client file that names its financing gets it");
+  const kofi = DB.clients["cl_0008"];           // names none — derived from tier
+  const first = financingFor(kofi);
+  ok(first in FINANCING, "a client file that names none still gets a real type", String(first));
+  eq(financingFor(kofi), first, "and the same one every time it is asked");
+  ok(financingFor(DB.clients["cl_0101"]) === null, "a seller gets none — they are not the one borrowing");
+
+  const spread = new Set(Object.values(DB.clients).filter(c => c.type === "buyer").map(financingFor));
+  ok(spread.size >= 3, "the buyer pool is not all one type", [...spread].sort().join(", "));
+}
+
+// --- the headline: the same house at the same price, offered two ways.
+//
+// Measured rather than recomputed. Walking the price down until the listing
+// agent says "accept" reads the floor off agentRespond()'s own answers; writing
+// the floor formula out again here would be a check that re-implements the thing
+// it checks (#34), and would have passed against a strengthBonus that never read
+// `financing` at all.
+{
+  newGame("bk_hearthstone");
+  const listing = DB.listings["ls_0001"];
+  const ask = S.listingsState[listing.id].price;
+  const lowestAcceptedAs = (financing, closeDays) => {
+    const deal = {
+      id: "probe", mode: "buyer", clientRecId: null, listingId: listing.id,
+      price: ask, ask, waiveInspection: false, waiveAppraisal: false,
+      financing, closeDays, stage: "offerPending", round: 0,
+      agentId: listing.listingAgentId, milestones: [], createdDay: 1,
+    };
+    // Down in $250 steps from the ask; the first price that stops being accepted
+    // is one step below the floor. Stay above the 0.82×ask hard reject.
+    let last = null;
+    for (let price = ask; price > ask * 0.84; price -= 250) {
+      deal.round = 0;
+      if (Deals.agentRespond(deal, price).verdict !== "accept") break;
+      last = price;
+    }
+    return last;
+  };
+  const cashFloor = lowestAcceptedAs("cash", 21);
+  const convFloor = lowestAcceptedAs("conventional", 21);
+  const fhaFloor = lowestAcceptedAs("fha", FINANCING.fha.minCloseDays);
+  console.log(`  floors on ${listing.address} (ask ${ask}): cash ${cashFloor}, conventional ${convFloor}, FHA ${fhaFloor}`);
+  ok(cashFloor !== null && convFloor !== null && fhaFloor !== null,
+    "all three types clear the ask, so the walk measured a floor and not a wall");
+  ok(cashFloor < convFloor, "a cash buyer is taken lower than a conventional one",
+    `${cashFloor} vs ${convFloor}`);
+  ok(convFloor < fhaFloor, "and a conventional buyer lower than an FHA one",
+    `${convFloor} vs ${fhaFloor}`);
+  // The gap has to be worth a decision, not a rounding error: 0.03 + 0.01 of
+  // strength for cash against -0.02 for FHA is 6% of the ask.
+  ok(fhaFloor - cashFloor > ask * 0.05,
+    "and the spread between them is real money, not a rounding error",
+    `${fhaFloor - cashFloor} on an ask of ${ask}`);
+}
+
+// --- what each type actually signs up for once it is under contract
+{
+  newGame("bk_hearthstone");
+  const listing = DB.listings["ls_0001"];
+  const types = {};
+  for (const [id, clientId] of [["cash", "cl_0004"], ["fha", "cl_0001"]]) {
+    const r = Clients.meetClient(clientId);
+    r.financing = id;                              // pin it; the point here is the milestones
+    const d = Deals.writeOffer(r, listing, S.listingsState[listing.id].price, { closeDays: 21 });
+    Deals.acceptDeal(d);
+    types[id] = d.milestones.map(m => m.type);
+  }
+  ok(!types.cash.includes("appraisal") && !types.cash.includes("financing"),
+    "a cash deal schedules neither an appraisal nor a financing milestone",
+    types.cash.join(", "));
+  ok(types.cash.includes("closing"), "it still has to close", types.cash.join(", "));
+  ok(types.fha.includes("appraisal") && types.fha.includes("financing"),
+    "an FHA deal schedules both", types.fha.join(", "));
+}
+
+// --- close dates a loan can actually hit
+{
+  eq(closeDaysFor("cash")[0], 14, "cash can close in two weeks");
+  ok(!closeDaysFor("fha").includes(21), "FHA cannot close in three", closeDaysFor("fha").join("/"));
+  ok(closeDaysFor("fha").every(d => d >= FINANCING.fha.minCloseDays), "nor in anything under its floor");
+  newGame("bk_hearthstone");
+  const r = Clients.meetClient("cl_0001"); r.financing = "fha";
+  const d = Deals.writeOffer(r, DB.listings["ls_0001"], 150000, { closeDays: 21 });
+  ok(d.closeDays >= FINANCING.fha.minCloseDays,
+    "and an offer written for 21 days anyway is clamped up to the floor", `${d.closeDays} days`);
+  eq(d.waiveAppraisal, false, "an FHA offer that waives nothing waives nothing");
+  const r2 = Clients.meetClient("cl_0004"); r2.financing = "cash";
+  const d2 = Deals.writeOffer(r2, DB.listings["ls_0002"], 150000, { closeDays: 21, waiveAppraisal: true });
+  eq(d2.waiveAppraisal, false,
+    "and a cash offer cannot 'waive' an appraisal contingency it never had");
+}
+
+// --- a career written before any of this existed
+{
+  newGame("bk_hearthstone");
+  const r = Clients.meetClient("cl_0004");
+  const d = Deals.writeOffer(r, DB.listings["ls_0001"], 150000, { closeDays: 21 });
+  const legacy = JSON.parse(JSON.stringify(S));
+  legacy.clients.forEach(rec => delete rec.financing);
+  legacy.deals.forEach(deal => delete deal.financing);
+  const seedBefore = legacy.seed;
+  const fixed = repairCareer(legacy);
+  eq(fixed.clients[0].financing, "cash",
+    "repair gives a legacy buyer the financing a fresh career would have given them");
+  eq(fixed.deals[0].financing, "cash", "and the deal on the table the same one");
+  eq(fixed.seed, seedBefore,
+    "and spends no RNG doing it — repair runs on every load, so a rand() here would re-roll the career");
+  const twice = repairCareer(JSON.parse(JSON.stringify(fixed)));
+  eq(twice.clients[0].financing, "cash", "repair is idempotent on the field it just filled");
+  ok(financingType(undefined).id === DEFAULT_FINANCING,
+    "and a deal that still somehow has no type reads as conventional rather than undefined");
+}
 
 /* ------------------------------------------------------------------- report */
 console.log("");

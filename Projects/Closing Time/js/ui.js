@@ -8,6 +8,7 @@ import * as Clients from "./engine/clients.js";
 import * as Deals from "./engine/deals.js";
 import * as Seller from "./engine/seller.js";
 import { maybeFireEvent } from "./engine/events.js";
+import { financingType, closeDaysFor } from "./engine/financing.js";
 
 let screen = "dashboard";
 const $ = sel => document.querySelector(sel);
@@ -127,7 +128,7 @@ function dealsPanel() {
     const l = DB.listings[deal.listingId];
     const rec = getClientRec(deal.clientRecId);
     d.appendChild(el("div", "deal-row",
-      `<b>${esc(contentClient(rec).name)}</b> buying ${esc(l.address)} — ${fmtMoney(deal.price)} <span class="stamp stamp-sm">${deal.stage === "offerPending" ? "OFFER OUT" : "UNDER CONTRACT"}</span>`));
+      `<b>${esc(contentClient(rec).name)}</b> buying ${esc(l.address)} — ${fmtMoney(deal.price)} <span class="tag">${esc(financingType(deal.financing).label)}</span> <span class="stamp stamp-sm">${deal.stage === "offerPending" ? "OFFER OUT" : "UNDER CONTRACT"}</span>`));
   });
   sellDeals.forEach(pl => {
     d.appendChild(el("div", "deal-row",
@@ -157,10 +158,11 @@ function clientCard(rec) {
   d.appendChild(el("div", "client-head", `<b>${esc(c.name)}</b> <span class="tag">${c.type}</span> <span class="tag">${esc(c.archetype)}</span>${rec.referredBy ? ` <span class="tag tag-ref">via ${esc(rec.referredBy.name)}</span>` : ""}`));
   d.appendChild(el("p", "intro", esc(c.intro)));
   const facts = [];
-  if (c.type === "buyer") facts.push(`Budget: <b>${fmtMoney(rec.budget)}</b>`, `Wants: ${c.statedReqs.minBeds || "?"}+ beds${(c.statedReqs.mustFeatures || []).length ? ", " + c.statedReqs.mustFeatures.map(esc).join(", ") : ""}`, `Areas: ${(c.statedReqs.neighborhoods || []).map(n => esc(DB.neighborhoods[n].name)).join(", ") || "flexible"}`);
+  if (c.type === "buyer") facts.push(`Budget: <b>${fmtMoney(rec.budget)}</b>`, `Buying: <b>${esc(financingType(rec.financing).label)}</b>`, `Wants: ${c.statedReqs.minBeds || "?"}+ beds${(c.statedReqs.mustFeatures || []).length ? ", " + c.statedReqs.mustFeatures.map(esc).join(", ") : ""}`, `Areas: ${(c.statedReqs.neighborhoods || []).map(n => esc(DB.neighborhoods[n].name)).join(", ") || "flexible"}`);
   facts.push(`<span class="${patCls}">Patience: ${rec.patience}</span>`, `Mood: ${rec.mood}`, `Satisfaction: ${rec.satisfaction}`);
   if (c.statedReqs.notes) facts.push(`<span class="muted">${esc(c.statedReqs.notes)}</span>`);
   d.appendChild(el("p", "facts", facts.join(" · ")));
+  if (c.type === "buyer") d.appendChild(el("p", "muted", esc(financingType(rec.financing).blurb)));
   rec.revealed.forEach(i => d.appendChild(el("p", "reveal-line", "◈ " + esc(c.hiddenPrefs[i].desc))));
   const acts = el("div", "actions");
   if (c.type === "buyer" && !rec.dealId) {
@@ -397,9 +399,23 @@ function flowOffer(rec, l) {
   body.appendChild(el("p", "", `Ask: <b>${fmtMoney(ls.price)}</b> · est. value: <b>${fmtMoney(Math.round(trueValue(l)))}</b>${knowledgeEdge(l.neighborhood) >= 0.4 ? " (your read, sharpened by local knowledge)" : " (rough guess — you don't know this area well yet)"} · known issue costs: ${fmtMoney(known)} · client budget: <b>${fmtMoney(rec.budget)}</b>`));
   const priceIn = el("input"); priceIn.type = "number"; priceIn.value = Math.round(ls.price * 0.97 / 500) * 500; priceIn.step = 500; priceIn.className = "input-lg";
   body.appendChild(labelWrap("Offer price", priceIn));
-  const waiveIns = checkbox("Waive inspection (stronger offer, riskier)"), waiveApp = checkbox("Waive appraisal contingency");
-  const closeSel = el("select"); [21, 28, 35].forEach(d => closeSel.appendChild(el("option", "", d + " days")));
-  closeSel.selectedIndex = 1;
+  // The financing type is the client's, not a field on this form — you write the
+  // offer your buyer can actually write. What it changes is spelled out here
+  // rather than left for the player to infer from a rejection: a cash buyer has
+  // no appraisal to waive and can close in two weeks, an FHA buyer cannot close
+  // inside a month and arrives looking weaker than their price.
+  const f = financingType(rec.financing);
+  const strengthWord = f.strength > 0 ? "reads stronger than the number on it"
+    : f.strength < 0 ? "reads weaker than the number on it" : "reads as written";
+  body.appendChild(el("p", "muted",
+    `Financing: <b>${esc(f.label)}</b> — ${esc(f.blurb)} To ${esc(DB.agents[l.listingAgentId].name)} this offer ${strengthWord}.`));
+
+  const waiveIns = checkbox("Waive inspection (stronger offer, riskier)");
+  const waiveApp = checkbox(f.needsAppraisal ? "Waive appraisal contingency" : "Waive appraisal contingency — no lender, nothing to waive");
+  waiveApp.input.disabled = !f.needsAppraisal;
+  const closeDays = closeDaysFor(rec.financing);
+  const closeSel = el("select"); closeDays.forEach(d => closeSel.appendChild(el("option", "", d + " days")));
+  closeSel.selectedIndex = Math.min(1, closeDays.length - 1);
   body.append(waiveIns.wrap, waiveApp.wrap, labelWrap("Close in", closeSel));
   const agent = DB.agents[l.listingAgentId];
   body.appendChild(el("p", "muted", `${esc(agent.name)} — ${esc(agent.bio)}`));
@@ -407,7 +423,7 @@ function flowOffer(rec, l) {
     ["Submit offer", () => {
       const price = parseInt(priceIn.value, 10) || ls.price;
       if (price > rec.budget * 1.1) { toast("Your client laughs, not warmly. That's beyond even their stretch."); return; }
-      const deal = Deals.writeOffer(rec, l, price, { waiveInspection: waiveIns.input.checked, waiveAppraisal: waiveApp.input.checked, closeDays: [21, 28, 35][closeSel.selectedIndex] });
+      const deal = Deals.writeOffer(rec, l, price, { waiveInspection: waiveIns.input.checked, waiveAppraisal: waiveApp.input.checked, closeDays: closeDays[closeSel.selectedIndex] });
       if (price > rec.budget) Clients.satisfactionDelta(rec, -4, "you pushing past their stated budget");
       closeModal(); flowNegotiate(deal, price);
     }],

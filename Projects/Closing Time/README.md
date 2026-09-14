@@ -50,6 +50,7 @@ js/
     market.js        rates, seasons, neighborhood drift, valuation
     clients.js       intake, fit scoring, hidden-pref reveals, patience, referrals
     deals.js         buyer-side: viewings, offers, NPC negotiation, contingencies, closing
+    financing.js     the four buyer financing types and what each one costs
     seller.js        listing-side: prep, marketing, NPC offers, open houses, closing
     events.js        data-driven event system (weighted draws + effect handlers)
     marketFacade.js  re-exports for the UI
@@ -112,6 +113,7 @@ Every file has a unique `id` matching its filename.
 | `type` | `buyer` or `seller` |
 | `tier` | gates when they can appear (career level) |
 | `budget` | buyers only; may be raised by a `stretchBudget` reveal |
+| `financing` | buyers only, **optional** — `cash` / `conventional` / `fha` / `va`. Omit it and `engine/financing.js` derives one from `tier`, deterministically from the client id (never `rand()`). Name it when the client's own text already says so, the way `cl_0004`'s notes read "Cash." |
 | `patience` | starting patience; decays every other idle day, −1 per mismatched showing; at 0 they walk |
 | `statedReqs` | buyers: `minBeds`, `mustFeatures[]` (verbatim listing-feature strings), `neighborhoods[]`, `notes`. Sellers: just `notes` |
 | `referredBy` | usually `null`; the engine fills it at runtime for referral chains |
@@ -167,7 +169,15 @@ New events are pure JSON composed from these handlers. New handler = one functio
 
 - **Feature strings are an implicit vocabulary.** Client `mustFeatures` and `revealOn: feature` triggers match listing `features` verbatim. Check existing listings before inventing new wording.
 - **The value model:** a listing's *ask* is the seller's opinion; `trueValue` = ask × condition adjustment × neighborhood drift. Appraisals anchor between contract price and modeled value. Player-side seller listings use `baseValue` instead of ask.
-- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Natural next layers: commercial tier at Broker-Track, per-client financing types on the buyer side, and multi-offer escalation wars as a dedicated flow.
+- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Remaining next layers: commercial tier at Broker-Track, and multi-offer escalation wars as a dedicated flow.
+- **Per-client financing shipped** (`engine/financing.js`). A buyer is `cash`, `conventional`,
+  `fha` or `va`, and it changes five things: how strong the offer reads to the NPC listing
+  agent (on the same 0.015-per-term scale as a waived contingency), the soonest it can close,
+  whether an appraisal and a financing milestone are scheduled at all, the fall-through roll at
+  that milestone, and whether the appraiser reviews condition as well as value. Measured on
+  `ls_0001`: cash is taken down to $144,750 where FHA stops at $155,000, on an ask of $168,000.
+  The type is the client's, not a field on the offer form — you write the offer your buyer can
+  write.
 - **Adding content to a live career is now safe, and wasn't.** `repairCareer()` backfills
   `listingsState`, `market.nb` and `knowledge` for anything in `data/` the save has never heard
   of. Before that, adding a listing threw on the MLS board for every existing player, and adding

@@ -75,21 +75,44 @@ export async function waitForProbe(page, timeout = 25000) {
 /**
  * Camera x/z, eye height, yaw and pitch.
  *
- * `yaw` is raw `rotation.y`. In the three hand-rolled control schemes that is the
- * controller's own unwrapped yaw field, which drifts by whole turns over a long
- * session — use `facing` when you want to know which way the camera actually
- * points. `pitch` is `rotation.x`, which those same controllers own.
+ * `yaw` is raw `rotation.y`, kept because a controller's own unwrapped yaw field
+ * drifts by whole turns over a long session and a beat sometimes wants to see
+ * that. Do not steer by it.
+ *
+ * `facing` and `pitch` come off the camera's world matrix instead, and that is
+ * not a stylistic choice. Every hand-rolled controller here writes
+ * `camera.quaternion` from its own `Euler(pitch, yaw, 0, 'YXZ')`, while
+ * `camera.rotation` decomposes that quaternion back in three's default XYZ
+ * order — and the two disagree. At yaw ±π, XYZ has no way to say "turned all
+ * the way round" with its y term, so it says it with x and z instead: a camera
+ * looking down +z reports `rotation.y === 0.000` and `rotation.x === ±3.142`.
+ * Verified against the vendored three-0.160.0 directly.
+ *
+ * That is a 180° lie about heading and a 180° lie about pitch, both at the one
+ * heading a walk aft is made of, and it is silent: `walkTo(..., steer:'lookAt')`
+ * reads `facing` back as 0, turns another half-turn to "correct" it, and
+ * oscillates until it runs out of bursts. `lookAt` then reads `pitch` as ±π and
+ * cranks the camera into the ceiling trying to level it. Aphelion's airlock is
+ * at the aft end of the hab, so its beat walks straight into this.
+ *
+ * The third column of `matrixWorld` is the camera's local +Z in world space;
+ * negate it for the way the camera looks. That is order-free and exact
+ * everywhere, gimbal-degenerate headings included. No `THREE` import needed, so
+ * this does not depend on `attachSceneProbe` having stashed `window.__THREE`.
  */
 export const camState = (page) =>
   page.evaluate(() => {
     const c = window.__cam;
-    const yaw = c.rotation.y;
+    c.updateWorldMatrix(true, false);
+    const e = c.matrixWorld.elements;
+    const len = Math.hypot(e[8], e[9], e[10]) || 1;
+    const dx = -e[8] / len, dy = -e[9] / len, dz = -e[10] / len;
     return {
       pos: [+c.position.x.toFixed(2), +c.position.z.toFixed(2)],
       y: +c.position.y.toFixed(2),
-      yaw: +yaw.toFixed(3),
-      facing: +Math.atan2(Math.sin(yaw), Math.cos(yaw)).toFixed(3),
-      pitch: +c.rotation.x.toFixed(3),
+      yaw: +c.rotation.y.toFixed(3),
+      facing: +Math.atan2(-dx, -dz).toFixed(3),
+      pitch: +Math.asin(Math.max(-1, Math.min(1, dy))).toFixed(3),
     };
   });
 
@@ -163,7 +186,13 @@ export async function turnBy(page, { dyaw = 0, dpitch = 0, sens = 0.0022 }) {
  */
 export async function lookAt(page, { facing = 0, pitch = 0, sens = 0.0022 }) {
   const c = await camState(page);
-  await turnBy(page, { dyaw: facing - c.facing, dpitch: pitch - c.pitch, sens });
+  // Take the short way round. `facing` is wrapped to (-π, π] and callers hand in
+  // whatever `atan2(...) + Math.PI` produced, which runs to 2π — so the raw
+  // difference is routinely a 350° turn where a 10° one was meant. Harmless on a
+  // free camera, not harmless here: every degree of it is real mouse-look the
+  // game integrates, and a walk aft sits right on the seam.
+  const dyaw = Math.atan2(Math.sin(facing - c.facing), Math.cos(facing - c.facing));
+  await turnBy(page, { dyaw, dpitch: pitch - c.pitch, sens });
   return camState(page);
 }
 

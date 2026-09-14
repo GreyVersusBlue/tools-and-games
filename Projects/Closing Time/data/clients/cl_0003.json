@@ -5,6 +5,7 @@
   "archetype": "growing-family",
   "tier": "mid",
   "budget": 420000,
+  "financing": "conventional",
   "patience": 6,
   "statedReqs": {
     "minBeds": 4,
