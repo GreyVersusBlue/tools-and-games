@@ -11382,7 +11382,7 @@ riddle quest it deletes are down to one transition and one dialogue state.
 
 ## Castle Conundrum v2, Phase 7: the mystery goes live (2026-09-15)
 
-**Rank 1, a 1 in one area, alone under the size table.** The row named Claude Opus 5 and was
+**Rank 1, a 1 in one area, alone under the size table** (PR #320). The row named Claude Opus 5 and was
 worked under Opus 5. Phase 1's engine meets Phase 6's cast in Phase 5's castle, through the
 UI: E on a thing examines it, J opens the journal, Present inside a conversation presses
 somebody with a clue, and the Constable's last line opens a panel with twelve names, a fall
@@ -11505,5 +11505,4 @@ Two transitions in `data/quest.json` reverse it.
 **`npm run play` is unrun** (#53). It walks the whole intended path now — twelve people, ten
 pieces of evidence, three bells, the cross-wall crossing, a reload at Sext, the accusation
 panel and the epilogue, 102 assertions against 34 — and none of it has been seen on a GPU,
-the same as Phase 6's. **The v2 arc is finished**: seven phases, seven sessions, PRs #306 to
-#318 and this one.
+the same as Phase 6's. **The v2 arc is finished**: seven phases, seven sessions, PRs #306 to #320.

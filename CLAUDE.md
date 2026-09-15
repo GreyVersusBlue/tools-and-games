@@ -25,7 +25,7 @@ its own area in `Tools/board-check/ownership.json` (#355).
 this file disagree about anything under `Projects/bell-to-bell/`, it wins.
 
 **Castle Conundrum v2 is finished** (#489, 2026-09-15). All seven phases of
-`Projects/Castle Conundrum/WISHLIST.md` shipped, PRs #306 to #318 and one more.
+`Projects/Castle Conundrum/WISHLIST.md` shipped, PRs #306 to #320.
 What is left is that file's "What this leaves for a later arc", and `npm run
 play` unrun on a GPU since Phase 5 (#53).
 
