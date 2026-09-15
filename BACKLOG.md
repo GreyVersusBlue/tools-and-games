@@ -413,7 +413,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Castle Conundrum v2, Phase 6: twelve NPCs on four bells, pathing between stations. After Phase 5 | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
+| 1 | Castle Conundrum v2, Phase 6: twelve NPCs on four bells, pathing between stations. After Phase 5 | `Projects/Castle Conundrum` | 1 | Opus 5 | `claude/castle-conundrum-v2-phase-1-w1fob6` | [Castle Conundrum](#castle-conundrum) |
 | 2 | Castle Conundrum v2, Phase 7: examine, journal, present, accuse; the riddle quest retires. After Phase 6 | `Projects/Castle Conundrum` | 1 | Opus 5 |  | [Castle Conundrum](#castle-conundrum) |
 | 3 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
 | 4 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
