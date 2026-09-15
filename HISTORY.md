@@ -11269,3 +11269,113 @@ level), and `walkability` connects the three levels through the flights, which i
 grid its breadth-first pathing walks. Its `stationOf` for the porter at Vespers is the
 cross-wall walk, which is a place a player can stand on as of this phase, and the sentry's
 post by the Kitchen Tower on the north walk is another.
+## Castle Conundrum v2, Phase 6: twelve NPCs on four bells (2026-09-15)
+
+**Rank 1, a 1 in one area, alone under the size table** (PR #318). The row named Claude
+Opus 5 and was worked under Opus 5. The cast is on the screen: twelve bodies, three models
+and a tint each, standing where `data/mystery.json`'s schedule says at the bell the game is
+on. The bell is a crank and a rope in the chapel; ringing it moves the watch, and the watch
+moves the sky, the evidence that is only there at some bells, and twelve people, each
+walking the breadth-first route from where they stand to where they are due, on the same
+grid the player walks. `test/mystery.mjs` 100 assertions to 113, `test/plan-vs-scene.mjs`
+7 to 16. 43.13 MB to **43.18** by `git ls-tree`, no asset restored and none added: the
+whole phase is 1,245 lines of text. Decisions #465 to #476.
+
+**The row was Phase 6, not Phase 1, for the fifth time running** (#465). The prompt named
+Phase 1 and rank 1 and carried Phase 1's riders (29 MB, no asset, "if you reach for a Poly
+Haven set you have drifted into Phase 3"). `BACKLOG.md:416` said Phase 6, on Opus 5, which
+is what this session ran. #450 and #451 already say the table is the instruction and the
+phase beside it a stale snapshot; recorded once more only because it is now five for five,
+and because the previous session's branch name carried the same stale "phase-1" into this
+one's.
+
+- **A station is a tile, not a room** (#466). Six people stand in the Great Hall at
+  Vespers and each has to be somewhere the player can walk up to and talk to alone, so
+  every station in the schedule carries a fractional `tile` in `scene-config.json`'s own
+  units and `src/stations.js` turns it into a world point. Deriving a point from the room
+  instead would have put the cook in the geometric middle of the kitchen and needed a
+  spread rule for the six in the hall; the data already said "at the cart", "the high
+  table", "by the Kitchen Tower", and a coordinate is the honest form of that.
+- **The validator takes a nav, and asks five things of every station** (#467): floor under
+  it, the room it names around it, 1.5 m between any two bodies at one bell, the player
+  able to walk to it, and a walk from the station before it. `validateMystery`'s fourth
+  parameter is `castleNav(plan, mystery)` rather than the plan itself, so the flood is
+  built once per run and the file's other rails stay geometry-free. Which stations the
+  player has to reach is the mystery's answer and not the castle's: `barred` in
+  `mystery.json` is the fact that excuses Madoc's, and it asks instead for somewhere to
+  stand within talking range of his bars, which is how `test/layout.mjs` already reads that
+  field (#441).
+- **The walk between two stations is the player's own grid** (#468). `walkability` records
+  its edges as it floods and answers `path(from, to)` breadth-first; it also takes `seeds`,
+  extra starting points so floor the player never reaches is still in the graph, which is
+  the only way the man behind the bars has a station at all. Its first version linked both
+  directions with a comment about path searches over half a graph. Deleting the back-link
+  changed no answer in any suite, because every reached cell is popped exactly once and
+  links to all four neighbours whether or not they were reached first, so the line went
+  (#13).
+- **Lady Alys leaves the east barbican garden** (#469). Her Sext station was the garden,
+  which is behind a gate that never opens (WISHLIST.md's answered question 5), so the
+  garden is scenery: nobody could ever have walked to her there, `speakable` said she could
+  be spoken to, and no rail before this one could tell. She takes the air in the inner
+  ward. The Constable's first Prime station was the same class of mistake with a different
+  shape: standing on top of the chapel's candlesticks, 0.84 m up, floor by every rail but
+  the one that asks whether a body can step onto it.
+- **A station carries the floor's height, not just its level** (#470). Without it the
+  browser check compared `h ?? 0` against a body placed at `h ?? 0`, so Lady Alys stood on
+  the ground floor inside the King's Hall and every assertion agreed she was where she
+  should be — #147 again, a claim the arithmetic cannot distinguish. `castleNav` reads each
+  station's height off the grid, and `plan-vs-scene.mjs` now asserts separately that the
+  one who is upstairs is upstairs.
+- **The tint clones the material first** (#471). Three.js shares materials across every
+  clone of a cached glTF, so tinting in place repaints everyone wearing the same body:
+  with the clone removed, twelve people read as five sets of colours. Skin, eyes, brows and
+  hair are left alone, because a green face is a different species and not a different
+  person.
+- **The three of v1 are gone, and the riddle quest ends on the Constable** (#472).
+  `npcs.json`'s `npcs` list is deleted and the page spawns the twelve of `cast`. The riddle
+  quest it still plays until Phase 7 has every stage in `default` and its last transition
+  on `talked:constable`: none of the twelve has a `hasKeystone` line, and writing twelve of
+  them for three stages Phase 7 deletes is content with a known expiry date. Dafydd ap Rhys
+  carries the mace the Guard left behind, which keeps the one held prop in the project
+  referenced and is also what reads as a soldier from across the ward, where a tint alone
+  does not.
+- **Anything the player presses E at is held clear of the stone** (#473). The bell's first
+  tile put 0.9 m of its box inside the Chapel Tower's ring while its own tile point stood
+  on clear floor: the model reaches 1.4 m past its origin at that rotation. Nothing caught
+  it except `interaction.js` refusing to offer a prompt through stone, which is the same
+  rail that caught the Guard sealed in the gatehouse in v1. `test/layout.mjs`'s check 1
+  covers `prop` pieces and the bell is `decor`, so there is a check 1c now.
+- **The sky is per watch** (#474). `lighting.watches` carries a sun position, colour and
+  intensity, a fog colour and a hemisphere strength for each of the four bells: Prime low
+  in the east, Vespers low in the west and warm. The hemisphere does not go far below the
+  2.0 Phase 3 measured the shadowed slate needs, so a darker Vespers is a lower, warmer sun
+  and a colder fog rather than an unlit castle.
+- **The break the plan named ran green** (#475). Walling the kitchen's south door does not
+  strand the cook: the Kitchen Tower's own ground door opens into the kitchen and its stair
+  runs up to the wall walk, so she leaves through the larder, along the north walk, down
+  another tower and into the hall, 195 cells against 47. Phase 5's lesson arriving a second
+  time. The suite asserts both halves now, and the break that produces
+  `cook: no path from KI at sext to GH at vespers` is both doors.
+- **`play-castle.mjs` reads stations from data** (#476). `SCHOLAR = [10, -10]` and
+  `GUARD = [-5.5, 0]` had to be moved by hand every time the castle under them changed;
+  the beats ask `stationOf` where somebody is due at the bell the game is on. Its new
+  beats ring the bell three times and walk to the Great Hall to find the cook there.
+
+**What was run.** `test/mystery.mjs` 113 assertions, `test/layout.mjs` 82, `test/quest.mjs`
+76, `test/save.mjs` 50, `test/assets.mjs` 29, `test/plan-vs-scene.mjs` 16, all green, plus
+`npm run check`, `npm run social:check` and `node ci-check.mjs` from `Tools/board-check`;
+`known-failures.json` still empty in all three sections. Eight breaks were run on purpose
+from a green baseline and six fired: the bell back in the tower ring, the tint without its
+clone, the sky never applied, the larder's door taken out, and the two validator rails
+deleted one at a time. Two ran green and both changed the code: the back-link in the fill
+(deleted, #468) and the named kitchen break (#475). **`npm run play` was not run and could
+not be** (#53).
+
+**Next:** rank 1 is now Castle Conundrum v2, Phase 7, the mystery going live — examine,
+the journal, present, accuse, and the riddle quest retiring — a 1 on **Claude Opus 5**, and
+the last phase of the plan. What this phase leaves ready for it: the engine is already on
+the page as `window.__mystery`, wired to the bell and to the save's `watch`;
+`castle.setEvidenceVisible` hides and shows a piece of evidence with its collider, which is
+what `taken` will need; `castle.bells()` reads a flag on a plan piece rather than knowing a
+prop by name, which is the shape `evidence` targets want; and the three stages of the
+riddle quest it deletes are down to one transition and one dialogue state.

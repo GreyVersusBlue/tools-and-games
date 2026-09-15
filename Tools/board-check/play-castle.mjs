@@ -33,15 +33,13 @@ const GAME = `${BASE}/Projects/Castle%20Conundrum/`;
 // a second copy of the module and captures nothing.
 const THREE_URL = '/Projects/Castle%20Conundrum/libs/three.module.js';
 
-// Where the NPCs stand, per data/npcs.json. If those move, move these.
-// ALL THREE MOVED IN PHASE 3, because the castle under them did. The 7x7
-// courtyard these were measured in is gone; the castle is Conwy's plan now, 80 m
-// by 40, two wards divided by a cross-wall. The Scholar stands in the King's
-// Hall in the inner ward, the Guard at the porter's gate on the outer ward side,
-// and the hall brazier is in the Great Hall along the south of the outer ward.
-// Phase 6 makes this file read stations out of data and ends the hard-coding.
-const SCHOLAR = [10.0, -10.0];
-const GUARD = [-5.5, 0.0];
+// WHERE PEOPLE ARE IS DATA NOW (Phase 6). `SCHOLAR = [10, -10]` and
+// `GUARD = [-5.5, 0]` lived here for three phases and had to be moved by hand
+// every time the castle under them changed. The Guard, the Scholar and the
+// Wizard are gone; the twelve of data/mystery.json's `schedule` stand where it
+// says, at whichever of the four bells the game is on, and `stationOf` below
+// asks the running game where somebody is due rather than carrying a number.
+const TILE = JSON.parse(fs.readFileSync(path.join(HERE, '..', '..', 'Projects', 'Castle Conundrum', 'data', 'scene-config.json'), 'utf8')).tileSize;
 // Where to stand to read the muniment room's word-lock. Phase 4 took the riddle
 // off the Scholar and carved it over that door, which is in the King's Tower's
 // ring at world (21.06, -14.30), facing south-west into the King's Hall. This is
@@ -99,6 +97,39 @@ const state = () => page.evaluate(() => {
 const walkTo = (target, who) =>
   driveTo(page, target, async () => (await state()).prompt?.includes(who));
 
+/**
+ * Where somebody is due, in world metres, at the watch the game is on: the
+ * engine's own `stationOf`, through the one unit conversion the castle has.
+ * Null when they are not in the castle at this bell.
+ */
+const stationOf = async (npcId) => {
+  const st = await page.evaluate((id) => {
+    const s = window.__mystery?.stationOf(id);
+    return s && Array.isArray(s.tile) ? { tile: s.tile, room: s.room, level: s.level ?? 0 } : null;
+  }, npcId);
+  return st ? { at: [st.tile[0] * TILE, st.tile[1] * TILE], room: st.room, level: st.level } : null;
+};
+
+/** Where a body actually is right now, which after a bell is somewhere on a walk. */
+const bodyAt = async (npcId) => page.evaluate((id) => {
+  const n = (window.__cast || []).find((x) => x.id === id);
+  return n && n.group.visible ? { x: n.group.position.x, y: n.group.position.y, z: n.group.position.z } : null;
+}, npcId);
+
+/** Wait for somebody to finish walking to where they are due, or give up. */
+const arrives = async (npcId, timeout = 45000) => {
+  const due = await stationOf(npcId);
+  if (!due) return null;
+  const started = Date.now();
+  for (;;) {
+    const at = await bodyAt(npcId);
+    const d = at ? Math.hypot(at.x - due.at[0], at.z - due.at[1]) : Infinity;
+    if (d <= 0.6) return { ...due, dist: +d.toFixed(2), took: Date.now() - started };
+    if (Date.now() - started > timeout) return { ...due, dist: +d.toFixed(2), took: Date.now() - started, late: true };
+    await wait(500);
+  }
+};
+
 console.log('playing Castle Conundrum end to end\n');
 
 try {
@@ -117,7 +148,7 @@ try {
   await attachSceneProbe(page, THREE_URL);
   await waitForProbe(page);
 
-  // --- The three NPCs built, and their rigs are actually bound to their own bones.
+  // --- The twelve NPCs built, and their rigs are actually bound to their own bones.
   // Object3D.clone() on a SkinnedMesh keeps the ORIGINAL skeleton, which leaves the
   // body frozen while the mixer happily runs. assets.js clones via SkeletonUtils to
   // avoid that; this is the assertion that keeps it that way.
@@ -145,7 +176,7 @@ try {
       animating: before !== after,
     };
   });
-  assert(rigs.count === 3, 'three rigged NPC bodies in the scene', `found ${rigs.count}`);
+  assert(rigs.count === 12, 'twelve rigged NPC bodies in the scene', `found ${rigs.count}`);
   assert(rigs.allRebound, 'every skeleton rebound into the scene tree (SkeletonUtils clone)');
   assert(rigs.animating, 'rigs are animating', `${rigs.handBones} hand bones tracked`);
 
@@ -268,22 +299,29 @@ try {
       });
     }
 
-    // The Scholar's own body box against the table.
-    let body = null;
+    // Every body in the castle against the table. This used to be the Scholar's
+    // alone, found by standing within 1.2 m of a hard-coded coordinate; the
+    // twelve move, so the question is now "is anybody in it", asked of all of
+    // them wherever the bell has put them.
+    const roots = new Set();
     s.traverse((o) => {
       if (!o.isSkinnedMesh) return;
       let r = o;
       while (r.parent && r.parent !== s) r = r.parent;
-      const b = new THREE.Box3().setFromObject(r);
-      const c = b.getCenter(new THREE.Vector3());
-      if (Math.hypot(c.x - scholar[0], c.z - scholar[1]) < 1.2) body = b;
+      roots.add(r);
     });
-    const clip = body
-      ? +Math.min(
-          Math.min(body.max.x, tableBox.max.x) - Math.max(body.min.x, tableBox.min.x),
-          Math.min(body.max.z, tableBox.max.z) - Math.max(body.min.z, tableBox.min.z)
-        ).toFixed(3)
-      : null;
+    let clip = -99, bodies = 0;
+    for (const r of roots) {
+      if (!r.visible) continue;
+      bodies++;
+      const b = new THREE.Box3().setFromObject(r);
+      const overlap = Math.min(
+        Math.min(b.max.x, tableBox.max.x) - Math.max(b.min.x, tableBox.min.x),
+        Math.min(b.max.z, tableBox.max.z) - Math.max(b.min.z, tableBox.min.z)
+      );
+      if (overlap > clip) clip = +overlap.toFixed(3);
+    }
+    if (!bodies) clip = null;
 
     // Braziers: every emissive coal has iron under it, the iron reaches the floor,
     // and the whole thing is standing somewhere a player can see rather than sealed
@@ -320,7 +358,7 @@ try {
       });
     }
     return { resting, clip, braziers };
-  }, { table: HALL_TABLE, scholar: SCHOLAR });
+  }, { table: HALL_TABLE });
 
   // 5 mm, not 0: Box3.setFromObject walks transformed vertices, so a surface and the
   // thing resting on it round to within about a millimetre of each other, not to zero.
@@ -329,8 +367,8 @@ try {
     `${hall.resting.length} items, gaps ${hall.resting.map((r) => r.gap).join('/')}`);
   assert(hall.resting.every((r) => r.overhang <= 0), 'no tabletop item overhangs the table',
     `worst overhang ${Math.max(0, ...hall.resting.map((r) => r.overhang))}m`);
-  assert(hall.clip !== null && hall.clip <= 0, 'the Scholar is standing clear of the hall table',
-    hall.clip === null ? 'never found his body' : `${hall.clip > 0 ? hall.clip + 'm INSIDE it' : Math.abs(hall.clip) + 'm clear'}`);
+  assert(hall.clip !== null && hall.clip <= 0, 'nobody is standing in the hall table',
+    hall.clip === null ? 'found no bodies at all' : `${hall.clip > 0 ? hall.clip + 'm INSIDE it' : Math.abs(hall.clip) + 'm clear'}`);
   assert(hall.braziers.length === 3 && hall.braziers.every((b) => b.floor < 0.02 && b.parts >= 5),
     'every brazier has a stand that reaches the floor',
     hall.braziers.map((b) => `coal@${b.coalY} base@${b.floor} ${b.parts}parts`).join(' '));
@@ -544,17 +582,21 @@ try {
     if (!ok) bad('the walk over the top did not complete', 'see the legs above; #53 applies on a software renderer');
   }
 
-  // --- Scholar.
-  const toScholar = await walkTo(SCHOLAR, 'Scholar');
-  assert(!!toScholar, 'walked to the Scholar', toScholar ? `${toScholar.dist}m after ${toScholar.bursts} bursts` : 'never got in range');
-  await snap('at-scholar');
-  if (!toScholar) throw new Error('cannot continue without reaching the Scholar');
+  // --- The Steward, at whatever station the data has him at this bell. At Prime
+  // that is the King's Hall, which is where the Scholar used to stand; the
+  // difference is that this beat asks rather than knows.
+  const stewardDue = await stationOf('steward');
+  assert(!!stewardDue, 'the data has the Steward somewhere at this bell', JSON.stringify(stewardDue));
+  const toSteward = await walkTo(stewardDue.at, 'Piers');
+  assert(!!toSteward, `walked to the Steward in ${stewardDue.room}`, toSteward ? `${toSteward.dist}m after ${toSteward.bursts} bursts` : 'never got in range');
+  await snap('at-steward');
+  if (!toSteward) throw new Error('cannot continue without reaching the Steward');
 
   await page.keyboard.press('KeyE');
   await wait(400);
   s = await state();
-  assert(s.dialogueOpen && s.dialogueName === 'Scholar', 'E opened the Scholar dialogue', s.dialogueName);
-  await snap('scholar-dialogue');
+  assert(s.dialogueOpen && /Piers/.test(s.dialogueName || ''), 'E opened the Steward dialogue', s.dialogueName);
+  await snap('steward-dialogue');
 
   for (let i = 0; i < 5 && (await state()).dialogueOpen; i++) {
     await page.keyboard.press('KeyE');
@@ -562,7 +604,7 @@ try {
   }
   s = await state();
   assert(!s.dialogueOpen, 'his lines ran out');
-  assert(!s.riddleOpen, 'and no riddle: Phase 4 took it off him and put it on the door');
+  assert(!s.riddleOpen, 'and no riddle: it is on the muniment room\'s door, not on anybody');
 
   // --- The word-lock. The riddle is carved over the muniment room's door in the
   // King's Tower and pressing E at it is what opens the overlay, which is
@@ -631,15 +673,59 @@ try {
   assert(s.locked, 'pointer lock after the reload');
   await snap('reloaded');
 
-  // --- Guard.
+  // --- The bell, three times (Phase 6). The chapel is where the mason died and
+  // where the bell hangs; ringing it moves the watch, the sky and the twelve.
+  // What no Node suite can see is the walk itself: the cook leaves the kitchen
+  // at Vespers and crosses the outer ward to the Great Hall on the same grid the
+  // player walks, and either she arrives or she is standing in a wall. #53
+  // applies to every timing below — a body still walking after 45 s under a
+  // software rasteriser is not a bug until a GPU says so.
   if (!s.locked) { await page.click('#start-button'); await wait(400); }
-  const toGuard = await walkTo(GUARD, 'Guard');
-  assert(!!toGuard, 'walked to the Guard', toGuard ? `${toGuard.dist}m after ${toGuard.bursts} bursts` : 'never got in range');
-  await snap('at-guard');
-  if (!toGuard) throw new Error('cannot continue without reaching the Guard');
+  const bellAt = await page.evaluate(async (url) => {
+    const THREE = await import(url);
+    let box = null;
+    window.__scene.traverse((o) => {
+      if (o.userData?.planId !== 'chapel-bell') return;
+      const b = new THREE.Box3().setFromObject(o);
+      box = [(b.min.x + b.max.x) / 2, (b.min.z + b.max.z) / 2];
+    });
+    return box;
+  }, THREE_URL);
+  assert(!!bellAt, 'the chapel bell is in the scene', JSON.stringify(bellAt));
+  const toBell = bellAt && await walkTo(bellAt, 'ring the bell');
+  assert(!!toBell, 'walked to the bell in the chapel', toBell ? `${toBell.dist}m after ${toBell.bursts} bursts` : 'never got in range');
+  await snap('at-bell');
+  if (!toBell) throw new Error('cannot ring a bell that cannot be reached');
 
-  // He is standing where the player can SEE him, not sealed inside the gatehouse.
-  // interaction.js has no line-of-sight test, so the prompt above proves nothing.
+  const watches = [];
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press('KeyE');
+    await wait(600);
+    watches.push(await page.evaluate(() => window.__mystery?.watch));
+  }
+  assert(JSON.stringify(watches) === JSON.stringify(['terce', 'sext', 'vespers']),
+    'three rings carry the day from Prime to Vespers', watches.join(' > '));
+  await snap('vespers');
+
+  // The cook is due in the Great Hall at Vespers, and she was in the kitchen a
+  // moment ago. This is the walk.
+  const cook = await arrives('cook');
+  assert(cook && !cook.late, `the cook walked from the kitchen to the ${cook?.room}`,
+    cook ? `${cook.dist}m from her station after ${(cook.took / 1000).toFixed(1)}s${cook.late ? ' — still walking' : ''}` : 'she is not in the castle at Vespers');
+
+  // --- The Constable, who is at the high table in the Great Hall at Vespers and
+  // is the one the riddle quest ends with now.
+  const constableDue = await stationOf('constable');
+  assert(!!constableDue, 'the data has the Constable somewhere at Vespers', JSON.stringify(constableDue));
+  await arrives('constable');
+  const toConstable = await walkTo(constableDue.at, 'Roger');
+  assert(!!toConstable, `walked to the Constable in ${constableDue.room}`, toConstable ? `${toConstable.dist}m after ${toConstable.bursts} bursts` : 'never got in range');
+  await snap('at-constable');
+  if (!toConstable) throw new Error('cannot finish without reaching the Constable');
+
+  // He is standing where the player can SEE him, not sealed inside the stonework.
+  // The prompt alone proves nothing: the Guard of v1 offered one from 0.16 m
+  // inside the gatehouse wall.
   const visible = await page.evaluate(async ({ gx, gz }) => {
     const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
     const s = window.__scene, cam = window.__cam;
@@ -657,14 +743,14 @@ try {
     const ray = new THREE.Raycaster(from, new THREE.Vector3().subVectors(to, from).normalize(), 0.01, dist);
     const blocker = ray.intersectObjects(world, true).find((h) => h.distance < dist - 0.05);
     return { dist: +dist.toFixed(2), blockedBy: blocker?.object.name || null };
-  }, { gx: GUARD[0], gz: GUARD[1] });
-  assert(!visible.blockedBy, 'the Guard is actually visible from interact range',
+  }, { gx: constableDue.at[0], gz: constableDue.at[1] });
+  assert(!visible.blockedBy, 'the Constable is actually visible from interact range',
     visible.blockedBy ? `blocked by ${visible.blockedBy}` : `${visible.dist}m, clear`);
 
   await page.keyboard.press('KeyE');
   await wait(400);
   s = await state();
-  assert(s.dialogueOpen && s.dialogueName === 'Guard', 'E opened the Guard dialogue', s.dialogueName);
+  assert(s.dialogueOpen && /Roger/.test(s.dialogueName || ''), 'E opened the Constable dialogue', s.dialogueName);
 
   for (let i = 0; i < 5 && (await state()).dialogueOpen; i++) {
     await page.keyboard.press('KeyE');
