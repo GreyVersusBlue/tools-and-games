@@ -24,6 +24,11 @@ its own area in `Tools/board-check/ownership.json` (#355).
 `Projects/bell-to-bell/CLAUDE.md` governs inside its own folder; where it and
 this file disagree about anything under `Projects/bell-to-bell/`, it wins.
 
+**Castle Conundrum v2 is finished** (#489, 2026-09-15). All seven phases of
+`Projects/Castle Conundrum/WISHLIST.md` shipped, PRs #306 to #318 and one more.
+What is left is that file's "What this leaves for a later arc", and `npm run
+play` unrun on a GPU since Phase 5 (#53).
+
 ## House rules for every file in this repo
 
 - **No build step.** Static files served from the repo root. Plain ES modules,
@@ -72,7 +77,7 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 476 locked decisions in full, by number.
+`HISTORY.md` carries all 490 locked decisions in full, by number.
 
 ## Writing style
 
