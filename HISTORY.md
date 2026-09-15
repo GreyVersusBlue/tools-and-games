@@ -11068,3 +11068,204 @@ wishlist calls it the genuinely unsolved part of the plan: the player standing o
 and the suite knowing it. `base` on a wall run is already there and is how its floor slabs are
 written; the disc a tower room is measured by is already there and is what its stairs will
 have to land in.
+## Castle Conundrum v2, Phase 5: the upper level, the wall walk, and a player with a y (2026-09-15)
+
+**Rank 1, a 1 in one area, alone under the size table** (PR #316). The row named Claude Fable
+5.1 and was worked under Fable 5.1. Three levels: slabs at 3.8..4.0 over the Clerk's office,
+the kitchen and the King's Hall and in every tower; the wall walk flush with the top of every
+curtain run, the cross-wall and three new runs over the gates; fourteen flights; doors in
+the rings at levels 1 and 2; a window. The player's feet stand on `castle-plan.js`'s
+`standAt`, which is the function the walkability grid stands on. **307 pieces against
+Phase 4's 259, all 307 within 0.0000 m of the live scene, and the camera on the plan's
+floor in all 36 rooms at 0.0000 m.** 39.8 MB to 44, wood_planks and dirty_carpet restored,
+the ceiling. Decisions #451 to #464.
+
+**The row was Phase 5, not Phase 1, for the fourth time running** (#451). The prompt named
+Phase 1 and rank 1 and carried Phase 1's riders; `BACKLOG.md:401` said Phase 5, on Fable
+5.1, which is what this session runs. #450 already says the table is the instruction and
+the phase beside it a stale snapshot. Nothing more to record except that it happened again.
+
+- **The flights are 1.5 m wide, placed per axis, in an L** (#452). `stairs-stone.glb` at
+  the tile's uniform 4 is 2 m wide and 4 m long; two of those side by side in a tower are a
+  4 m square whose corners stand 2.83 m from the centre, 0.03 m into a ring whose inner
+  face is at 2.8. So `placementMatrix` takes `[sx, sy, sz]` for the first time and the
+  flights are 3 x 3.9 x 3.9: 1.5 m wide, 3.9 m of rise over 3.9 m of run, the last 0.1 m
+  onto the slab a step. The lower flight runs along z with its foot on the outer wall; the
+  upper runs along x in the outer half; they overlap in one quadrant, the lower flight's
+  low half under the upper flight's high half, with 2.05 m of head room at the worst
+  point. The upper flight's well is on the outer half so the walk, crossing the tower's top
+  room along the inner half, never meets the hole.
+- **The level-1 rooms are walled, not railed** (#453). The plan says "floor edges from
+  `wood-floor-railing.glb` where a slab meets a drop". A bedchamber or a dormitory open to
+  the ward along one side is a gallery, not a room, so the five partitions under the three
+  chambers go from 4 m to 8 and no slab meets a drop. Lady Alys's window over the inner
+  ward is a `doorway` on the King's Hall's south wall with a `base` a metre above her floor:
+  `runBoxes` cuts the run into columns at every opening's edges and leaves the stone
+  between openings, so a window's sill is a box the grid and the body both meet.
+- **A level-2 door is sixty degrees wide** (#454). A 2 m deck crosses the ring over about
+  thirty degrees of cell centres, and the sector boxes bulge: a box over a fifteen-degree
+  arc at radius 2.8 reaches 0.38 m past the ring at its inner corner, and a cell whose
+  square overlaps that corner by two centimetres is blocked. Sixty is what lets three of
+  the deck's four cell columns through. The corner towers therefore have a quarter of
+  their ring open at the top, which is what a tower on a wall walk looks like.
+- **The Prison Tower and the King's Tower have no lower flight** (#455). The first time
+  every tower had both flights, `layout.mjs` read `cell is reachable from the spawn with
+  its bars in place — 80 standable cells` and `muniment is reachable ... with its word-lock
+  unanswered — 66 standable cells`: down the walk, into the tower's top room, down two
+  flights, into the shut room. A stair from a barred cell or a locked treasury to the walk
+  is a way round what shuts it. Those two keep the upper flight, standing on a first floor
+  that is reached from the walk, and the suite floods each from its own top room and asks
+  both that the first floor is reached and that the ground room is not. The royal
+  apartments over the King's Hall are therefore reached over the walk before the word-lock
+  is answered and only over the walk after it, which is how the intended path already had
+  it: the walk is climbed at Terce, the lady visited at Sext. The rail also refuses a tower
+  that keeps its stairs from the walk while its ground room is open.
+- **Merlons stop at towers and at T-junctions, and the drums are roofed** (#456). Every
+  curtain run ends 2 m short of a drum's centre, inside its ring, and a 4 m merlon centred
+  over the run's last 4 m reached through the ring into the tower's top room: a pixel-art
+  crenellation standing on the level-2 floor beside the Stockhouse walk door, in the first
+  render of the walk. Each span is trimmed to where the run's centreline leaves the drum's
+  outer circle. Then the barbicans' last merlons stood across the west walk, on the west
+  curtain's top where the barbican wall butts into it, and the trim learned to stop at
+  another run's box too, but only a box that reaches past both of the span's faces: two
+  walls turning a corner each keep their merlon and overlap at the corner as they have
+  since Phase 3. The first version trimmed at corners too and left every barbican and
+  garden corner bare; the diff of merlon positions is what showed it. 159 merlons to 157,
+  the two on the west walk. And a hollow drum seen from the walk of the tower next door
+  was a chimney, so each ring carries a lid at its top.
+- **The west walk lies on the towers' east half** (#457). The west curtain runs x -38..-34
+  and its inner face is at -34, so its decking is x -36..-34, which is the east half of the
+  towers centred at -36. The North-west Tower's south door and the South-west Tower's north
+  door were first cut on the west half, where the deck is not, and the walk from the
+  North-west Tower's stairs reached neither the South-west nor the Prison Tower. The rail
+  that found it (below) is the one that floods with one tower's flights and asks for every
+  deck end to end.
+- **A floor is a collider whatever its thickness** (#458). `collide` drops anything under
+  0.3 m as floor decor, since Phase 2. A slab is 0.2 m and a deck 0.1, so for the first
+  hour of this phase no upper floor was a collider: no body on a flight ever met the floor
+  over its head, and the wells cut in the slabs were needed by nothing. Found by taking
+  the wells out on purpose and watching every suite stay green (#34). `thin: true` is how
+  a floor gets in, and with it the wells are load-bearing: without them the flight's chain
+  of cells breaks between 1.9 and 3.7 m of rise and `nothing on level 1 can be reached`.
+- **A millionth at the step height** (#459). The top cell of an upper flight stands
+  exactly a step under the slab beside its well, 7.7 against 8.0, and `4 + 3.9 * (3.7 /
+  3.9)` rounds a hair under 7.7 at one x and not at another, so the North-west Tower's
+  flight was blocked by the slab strip beside its well while the Kitchen Tower's identical
+  flight was not. A box whose top is exactly HEAD_LOW over the feet is a step, not a
+  wall; the grid's `blocked` and the controller's band both carry 1e-6 now.
+- **The lower flight stands on the half away from the ground door** (#460). It splits the
+  tower's floor into two halves joined only through its own footprint and the crescents
+  beside it, and the crescents are cut by the sector boxes at the diagonals. While the
+  flight's body was walkable floor (the discard rule below said `> lo` and let a body
+  stand on the slab under a flight), the halves connected through the footprint and
+  nobody noticed; when the rule was fixed, five towers went dark at once, every one whose
+  ground door faces east. So the flight stands in the west half where the door faces east
+  and the east half otherwise, read off the ground door's bearing, and the upper flight
+  rises toward it. The chapel's candles, lantern and pouch and the laundry's cloak crate
+  were standing where the flights now stand; Phase 4 placed them with no stair to avoid.
+  They moved, and `layout.mjs` refuses a prop in a flight.
+- **The walk is the curtain and the cross-wall, and the Stockhouse door is its one
+  crossing** (#461). Decking is `walk.width` 2 m along the inner face of every run marked
+  `walk: true`, flush with the run's top, sunk into the stone and drawn polygon-offset like
+  a ground patch, cut back to every drum's outer circle so the tower's own disc floor takes
+  over inside. Three runs of stone go over the three gates, whose 4 m archway had left a
+  4 m notch in an 8 m wall since Phase 3, so the west and east walks are continuous and
+  the cross-wall walk runs over the porter's head. The Bakehouse Tower has no west door,
+  so the outer ward's south walk ends at its ring, and the barbican and garden walls carry
+  no walk; the Stockhouse Tower's west door at level 2 is the only way between the wards
+  two storeys up. That door is a `bar`: an opening with nothing to draw while it is open,
+  sealed by its own ring sectors when the suite bars it, with a plank plate drawn only
+  then. The bar leaning beside it is a built prop and the evidence object for
+  `door-unbarred`.
+- **A raised doorway has a sill surface** (#462). A level-1 doorway cut through a
+  curtain's end is a passage whose floor is the wall's own stone at 4 m, and stone under
+  an opening was not a surface: the Clerk's chamber read unreachable with its slab, its
+  door and its stairs all in place. `runSills` makes one per raised opening.
+- **The standing beat puts the camera a step too high** (#463). Placed exactly on the
+  plan's floor, a `settle()` that did nothing would have passed, and the first version did
+  exactly that. It is placed 0.3 m over the floor plus the eye, and the runtime has to
+  bring it down: a `settle()` that trusts the camera reads `0.300 m off` in every room.
+- **The crossings rail is two floods, and the old one was the wrong assertion now** (#464).
+  Phase 4's 4b asserted that with the porter's gate shut nothing in the inner ward is
+  reachable; with the walk in place that is false by design. It is now: with the porter's
+  gate shut and the walk door open, the inner ward is still reached, over the top; with
+  the walk door barred as well, nothing in it is, on any level. Each half is broken by a
+  different edit and deleting either leaves a hole.
+
+**The guard-rails, and what each break said.** Thirteen breaks from the final green
+baseline, after the fixes above; five of them ran green the first time they were tried
+during the phase, and each of those five was a finding (#457, #458, #459, #460, and the
+`> lo` bound), which is more than the eight that fired straight off.
+
+1. The Kitchen Tower loses its lower flight, in the config (`lowerFlight: false`):
+   `kitchen-tower has no lower flight and its ground room larder is open — only a shut
+   room may keep its stairs from the walk`. The same break written as a bug in the plan,
+   the flight silently not built: `kitchen-tower-1 and kitchen-tower-2 and dormitory
+   cannot be reached by kitchen-tower's own stairs — ... dormitory unreachable`. **Check
+   3, the plain reachability from the spawn, stays green under both**, because the walk
+   reaches the Kitchen Tower's first floor from the North-west Tower's stairs, along the
+   north walk and down; check 6, which floods with one tower's flights, is the one that
+   fires, and that is why it exists.
+2. The royal apartments' slab at 1.6 m: `floor-royal-apartments hangs 1.40 m over
+   kings-hall's floor at 0 — a standing body needs 1.9`, and six more lines, the King's
+   Hall and the apartments both unreachable among them.
+3. The Stockhouse walk door barred in the config: `stockhouse-walk is shut with barred in
+   scene-config.json and open in mystery.json`, `the Stockhouse walk door ships barred ...
+   door-unbarred is the porter's lie`, and `level 2 does not connect the wards: with the
+   porter's gate shut and the walk door open, cross-walk, stockhouse-walk, kings-hall,
+   royal-apartments cannot be reached — 0 inner-ward rooms can`.
+4. The walk door removed entirely: `no walk door in the plan: the Stockhouse Tower's top
+   room has nothing in its west doorway that could be barred` and `the barred door does
+   not separate the wards: ... kings-hall (level 0, 596 cells) ... can still be reached.
+   There is a second way across`.
+5. No sill under a raised doorway: `clerk-chamber (outer ward, level 1) cannot be reached
+   on foot from the spawn` and the apartments with it.
+6. The Kitchen Tower's west walk door removed: `north-walk is reached only over x
+   -33.75..-24.25 from the North-west Tower's stairs, not -31..-5 — the walk is broken part
+   way along it`.
+7. No well in any tower's floor: `nothing on level 1 can be reached from the spawn`,
+   `nothing on level 2 can be reached from the spawn`, and every upper room. **Green until
+   #458**, which is how #458 was found.
+8. Merlons without colliders: **green**, and it stays green. The grid never stands on the
+   parapet's strip because nothing there is a surface, so the merlons block no cell; what
+   they stop is the runtime body's 0.45 m radius, which no Node suite has. The GPU walk is
+   the only thing that can see a body inside a merlon.
+9. The flight's body walked through (the discard rule deleted): `242 reachable cells stand
+   inside a flight's body, e.g. (-36.25, -17.75) at 0.00 under nw-tower-stair-1, which is
+   at 0.20 there`. **Green before the bound was fixed**; the rail's own bound had the same
+   bug and was fixed with it.
+10. The chapel's candles back where Phase 4 put them: `candles-chapel stands in
+    chapel-tower flight 1` and `chaplain-chamber and chapel-tower-2 cannot be reached by
+    chapel-tower's own stairs`.
+11. `settle()` doing nothing: `in clerk-office (level 0) the plan's floor is at 0.000 and
+    the runtime stands on trusted at 0.300, 0.300 m off`, in every room.
+12. The builder laying every upper floor a storey low: `"north-curtain-west-walk" (floor)
+    is 4.000 m off the plan`, and every floor after it.
+13. The builder drawing every drum solid: `standing two metres in front of the muniment
+    room's door, looking at it, offers no prompt` and `E at the word-lock opened no
+    riddle`. The box comparison stays green, as #442 recorded, and so does the standing
+    beat, because the camera stands on colliders that come from the plan; the word-lock's
+    line of sight is what sees a solid ring.
+
+**What was measured.** 307 pieces, 601 colliders, 71 surfaces, 36 rooms on three levels,
+14 flights. The walkability grid: 0.5 m, 8,953 reachable cells, 5,876 on level 0, 1,592 on
+level 1, 1,485 on level 2; the flood runs in about 100 ms with colliders bucketed by
+column, against 150 before bucketing. With the porter's gate shut the whole castle is
+still reached; with the walk door barred as well, 3,598 cells and no inner-ward room.
+`assets.mjs`: ten complete texture sets, three plain materials, 99 files under `assets/Poly
+Haven` and `assets/NPCs` with every one asked for. All Castle Conundrum suites green, plus
+`npm run check`, `npm run social:check` and `node ci-check.mjs` from `Tools/board-check`;
+`known-failures.json` still empty in all three sections. **`npm run play` was not run and
+could not be** (#53). Its new beat climbs the Kitchen Tower's two flights, walks the north
+curtain east, passes the Stockhouse walk door, crosses the cross-wall to the Bakehouse
+Tower and comes down its two flights into the inner ward, reading the camera at 5.7, 9.7
+and 1.7 on the way; the plan's own criterion said the King's Tower, which has no lower
+flight now. None of it has been seen on a GPU.
+
+**Next:** rank 1 is now Castle Conundrum v2, Phase 6, twelve NPCs on four bells and pathing
+between stations, a 1 on **Claude Opus 5**. Two things this phase leaves ready for it: a
+station carries `level` already (Phase 1 wrote it, and `mystery.js` holds it to the room's
+level), and `walkability` connects the three levels through the flights, which is the
+grid its breadth-first pathing walks. Its `stationOf` for the porter at Vespers is the
+cross-wall walk, which is a place a player can stand on as of this phase, and the sentry's
+post by the Kitchen Tower on the north walk is another.
