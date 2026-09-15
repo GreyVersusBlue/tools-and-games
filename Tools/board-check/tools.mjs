@@ -1,4 +1,4 @@
-// tools.mjs — the sweep play-games.mjs and play-castle.mjs never do.
+// tools.mjs — the sweep play-games.mjs never does.
 //
 //   npm run tools
 //
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage } from './harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PORT = 8127; // 8123 checks/shoot, 8124 play-castle, 8125 previews, 8126 games
+const PORT = 8127; // 8123 checks/shoot, 8125 previews, 8126 games
 const BASE = `http://127.0.0.1:${PORT}`;
 
 const PAGES = [

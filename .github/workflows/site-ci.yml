@@ -21,13 +21,8 @@
 #   - Projects/blue-hour-trail/test/browser.mjs. It holds W and asserts the
 #     climb in real time, and a real-time movement assertion under
 #     software-rendered Chromium is inconclusive either way (#53).
-#   - Castle Conundrum's playable half, and anything under `npm run
-#     games`/`play`/`previews`. Those open real visible windows and have no
-#     headless form. Its test/assets.mjs and test/layout.mjs are in the matrix:
-#     those read glTF off disk and do arithmetic, and never open a browser.
-#     test/quest.mjs, test/mystery.mjs and test/save.mjs are too: the quest
-#     graph, the mystery's validator and engine, and the save's repair rails,
-#     all against stand-ins.
+#   - Anything under `npm run games`/`previews`. Those open real visible
+#     windows and have no headless form.
 #   - Two browser suites written against Playwright's page API:
 #     Tools/name-picker/test/browser.mjs and
 #     Tools/seating-chart/test/drive-seating.mjs. On Windows the harness hands
@@ -36,11 +31,6 @@
 #     `page.fill is not a function` and `page.emulateMedia is not a function`.
 #     Their Node halves are here; both belong to archived tools (#206) and the
 #     browser halves stay hand-run.
-#
-#     Castle Conundrum's test/plan-vs-scene.mjs is a browser suite that IS in
-#     the matrix. It is headless, it takes no pointer lock, it moves nothing and
-#     times nothing: it waits for the castle to finish building and compares
-#     static boxes. That is the line #53 draws, not "browser or not".
 #
 #     Integer Foundry's browser.mjs was the third of these and is now in the
 #     matrix. Its failure was different in kind: not a missing method but a
@@ -178,28 +168,6 @@ jobs:
             dir: Projects/Closing Time
             commands: |
               node tools/smoke.mjs
-
-          # Castle Conundrum's playable half is still hand-run (see above), but
-          # none of these needs a browser except the last: glTF parsing,
-          # arithmetic, and the quest graph run against stand-ins.
-          #
-          # plan-vs-scene.mjs DOES open a browser, headless, and is here anyway
-          # because it is not #53's class. It loads the page, waits for the
-          # castle to finish building, and diffs every placed object's live Box3
-          # against src/castle-plan.js's box. Nothing moves, nothing is timed,
-          # and no pointer lock is taken, so a software rasteriser puts the
-          # geometry exactly where a GPU would. Three runs, three passes, 6 s
-          # each. It borrows harness.mjs, hence the install.
-          - name: Castle Conundrum
-            dir: Projects/Castle Conundrum
-            install: Tools/board-check
-            commands: |
-              node test/assets.mjs
-              node test/layout.mjs
-              node test/quest.mjs
-              node test/mystery.mjs
-              node test/save.mjs
-              node test/plan-vs-scene.mjs
 
           - name: Archived teaching tools
             dir: .

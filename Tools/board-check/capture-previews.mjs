@@ -38,11 +38,10 @@
 // drive.mjs exists to prevent. `enter()` also clears the game's save before the
 // page boots, which is why the Fourth Quarter recipe no longer clicks #wipeBtn.
 //
-// WHY HEADED: the four three.js games need a browser that composites to a real
+// WHY HEADED: the three.js games need a browser that composites to a real
 // screen — pointer lock doesn't engage otherwise and requestAnimationFrame may
-// never fire at all, which hangs rather than fails. Same reason play-castle.mjs
-// runs headed; see drive.mjs and README.md. A window opens and visibly plays
-// seven games. That is expected.
+// never fire at all, which hangs rather than fails. See drive.mjs and
+// README.md. A window opens and visibly plays the games. That is expected.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -54,7 +53,7 @@ import { GAMES, enter } from './games.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'candidates');
-const PORT = 8125; // 8123 is check-collisions/shoot, 8124 is play-castle
+const PORT = 8125; // 8123 is check-collisions/shoot, 8126 is play-games
 const BASE = `http://127.0.0.1:${PORT}`;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
@@ -189,44 +188,6 @@ const RECIPES = {
       if (+fade > 0.15) throw new Error(`still faded to black (opacity ${fade})`);
       const c = await camState(p);
       return `aboard at ${c.pos.join(', ')}, fade ${fade}`;
-    },
-  },
-
-  // ---- Castle Conundrum: the gatehouse across the courtyard, Guard in frame.
-  // Coordinates match data/npcs.json, same as play-castle.mjs.
-  //
-  // The player does NOT walk to the Guard here — scene-config.json spawns them at
-  // z = 8 and the Guard stands at z = 9.2, so the game opens 2.16 m from him,
-  // already inside interaction.js's 3.2 m INTERACT_RANGE with "Press E to talk to
-  // the Guard" on screen. So this backs AWAY up the courtyard and then turns
-  // round: it gets the arch, the tower walls and a whole visible body in frame
-  // instead of a chest-up crop behind a tooltip.
-  'castle-conundrum': {
-    async play(p, { shot }) {
-      const GUARD = [1.8, 9.2];
-      const NORTH = [0, -2];              // up the courtyard, away from the gate
-      const STANDOFF = 6.4;               // comfortably outside INTERACT_RANGE
-      const distToGuard = async () => {
-        const c = await camState(p);
-        return Math.hypot(c.pos[0] - GUARD[0], c.pos[1] - GUARD[1]);
-      };
-
-      // nearAt above any real distance keeps every stride short: WALK_SPEED is
-      // 5.2 m/s, so a 400 ms stride is 2 m and overshoots a 6.4 m mark badly.
-      const backed = await walkTo(p, NORTH, async () => (await distToGuard()) > STANDOFF,
-                                  { nearAt: 999 });
-      if (!backed) throw new Error(`never got ${STANDOFF}m clear of the gatehouse`);
-
-      // A little pitch up: at pitch 0 the horizon lands dead centre and the
-      // bottom 40% of the frame is empty courtyard flagstone.
-      await aimAt(p, GUARD, 0.1);
-      await wait(900);                    // let the Guard's idle clip breathe
-      await shot('gatehouse');
-      if (await p.evaluate(() =>
-        !document.getElementById('interact-prompt').classList.contains('hidden')))
-        throw new Error('an interact prompt is in the frame — too close to someone');
-      const c = await camState(p);
-      return `${(await distToGuard()).toFixed(2)}m off the gatehouse at ${c.pos.join(', ')}`;
     },
   },
 

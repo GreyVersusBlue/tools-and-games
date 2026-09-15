@@ -3,9 +3,9 @@
 //   npm run games                  every game in SUITES
 //   npm run games fourth-quarter   just one
 //
-// Castle Conundrum has play-castle.mjs, which goes deeper than this on one game.
-// This is the same idea spread across the rest of the board: drive the real page
-// with real clicks and keystrokes, then assert what a player would notice.
+// Drive the real page with real clicks and keystrokes, then assert what a
+// player would notice. Castle Conundrum had a deeper single-game version of
+// this, play-castle.mjs, which left with the project on 2026-09-15 (#491).
 //
 // WHY, given four of these projects already have Node smoke suites: those suites
 // import the engine modules and drive them directly (Faire Weekend's even builds a
@@ -16,9 +16,9 @@
 // player makes. Nothing here re-tests engine arithmetic; every beat is something
 // that only breaks in a browser.
 //
-// WHY HEADED: three of the six render WebGL and need pointer lock. Same reason as
-// play-castle.mjs and capture-previews.mjs — see README.md. Windows will open and
-// visibly play. That is expected.
+// WHY HEADED: three of the six render WebGL and need pointer lock. Same reason
+// as capture-previews.mjs — see README.md. Windows will open and visibly play.
+// That is expected.
 //
 // Screenshots land in ./shots/games/. Exits non-zero on any missed beat.
 
@@ -31,7 +31,7 @@ import { GAMES, enter, savedState, wait } from './games.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, 'shots', 'games');
-const PORT = 8126; // 8123 checks/shoot, 8124 play-castle, 8125 previews
+const PORT = 8126; // 8123 checks/shoot, 8125 previews
 const BASE = `http://127.0.0.1:${PORT}`;
 
 /* ------------------------------------------------------------------- beats -- */

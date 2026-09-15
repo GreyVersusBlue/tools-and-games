@@ -172,7 +172,11 @@ none were added speculatively.
 | **Seating Chart Generator** | `seating-chart-v1` | Found the `typeof localStorage` construction-time throw this session's fixes close |
 | **Faire Weekend** | `renn-faire-sim-save-v1` | Adopted at Stage 22, replacing hand-rolled `localStorage` calls. Kept the key it already had (#36), so an existing save carries no `__v`, reads as version 0, and comes through `repair` rather than `migrate` |
 | **Golden Hour** | `gvb:golden-hour` | The only adopter that takes the default key rather than naming one, and the only one that saves a *subset* of its world on purpose: `journal.js` persists discoveries, and the sun's position and the player's are pointedly left out |
-| **Castle Conundrum** | `castleConundrumSave_v1` | `repair` builds its id catalog from the game's own data files (`mystery.json`, `quest.json`) rather than a list kept beside them, so the ids a save may carry cannot drift from the ids the game renders (#413). The schema was written in full one phase before most of it is used, so no later phase adds a field |
+| **Castle Conundrum** (moved out 2026-09-15, #491; vendored fork) | `castleConundrumSave_v1` | `repair` builds its id catalog from the game's own data files (`mystery.json`, `quest.json`) rather than a list kept beside them, so the ids a save may carry cannot drift from the ids the game renders (#413). The schema was written in full one phase before most of it is used, so no later phase adds a field |
+
+Thirteen of those fourteen are still in this repo; Castle Conundrum left on
+2026-09-15 with a vendored copy of the module (#491). Its row stays because
+what it taught this module did not leave with it.
 
 Common thread across all fourteen: nobody needed a hook that didn't already
 exist by the time they went looking, except the five gaps found this round

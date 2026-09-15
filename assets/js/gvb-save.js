@@ -31,7 +31,9 @@
 // Adopted by: The Fourth Quarter, Aphelion, Closing Time, Torchbearer,
 // The Absalom Inheritance, Corner & Kettle, Daredevil, Integer Foundry,
 // The Fracture Cycle, Name Picker, Seating Chart Generator, Faire Weekend,
-// Golden Hour, and Castle Conundrum.
+// and Golden Hour. Castle Conundrum was the fourteenth until 2026-09-15, when
+// it moved to its own repository with a vendored copy of this file; that copy
+// is a fork and a fix here will not reach it.
 // See assets/js/README.md's "Who uses it" for what each one added.
 
 const ENVELOPE = "gvb-save";

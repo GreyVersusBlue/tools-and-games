@@ -1,6 +1,7 @@
 // drive.mjs — the bits needed to actually *play* a first-person three.js game
-// from a script, extracted so play-castle.mjs and capture-previews.mjs share one
-// implementation instead of two drifting copies.
+// from a script, extracted so play-games.mjs and capture-previews.mjs share one
+// implementation instead of two drifting copies. Castle Conundrum took a copy
+// of this file with it on 2026-09-15 (#491); the two are forks now.
 //
 // Everything here assumes a headed browser (`launch({ headed: true })`). A hidden
 // or headless page doesn't composite, so requestAnimationFrame never fires, the
@@ -151,7 +152,8 @@ export const setYaw = (page, yaw, pitch = 0) =>
  *
  * Dispatches a `mousemove` carrying an explicit `movementX`/`movementY` rather
  * than using `page.mouse.move()`. Real synthesized moves do drive these handlers
- * — play-castle.mjs asserts exactly that — but the browser derives `movementX`
+ * — Castle Conundrum's play-castle.mjs asserted exactly that — but the browser
+ * derives `movementX`
  * from the delta between successive absolute cursor positions, so one sweep is
  * capped at the viewport width and repeated sweeps in the same direction cancel
  * out. There is no way to compose a 180° turn from them. These handlers are
