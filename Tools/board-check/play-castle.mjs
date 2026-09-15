@@ -458,6 +458,92 @@ try {
   const yaw1 = await page.evaluate(() => +window.__cam.rotation.y.toFixed(4));
   assert(yaw0 !== yaw1, 'mouse look turns the camera', `${yaw0} -> ${yaw1}`);
 
+  // --- The upper level and the wall walk (Phase 5). Up the Kitchen Tower's
+  // two flights, east along the north walk, through the Stockhouse Tower's walk
+  // door, south over the cross-wall to the Bakehouse Tower, down its two flights
+  // into the bakehouse and out into the inner ward. The camera's y is read at
+  // each landing: 5.7 on a first floor (4 + the eye), 9.7 on the walk, 1.7 in
+  // the ward. This is the one beat in the file that #53 makes inconclusive on a
+  // software renderer: a walk that clips through a deck or stalls on a flight
+  // here is a walk to re-run on a real GPU before it is called a bug.
+  //
+  // WAYPOINTS ARE WORLD METRES OFF src/castle-plan.js'S OWN PLACEMENT. The
+  // Kitchen Tower is centred at (-20, -16); its lower flight runs along z in
+  // the tower's east half rising toward the ward, foot at the north end, and its
+  // upper flight along x in the north half rising east. The Bakehouse Tower is
+  // the mirror at (0, 16). A flight is entered at its foot and left at its top
+  // through the crescent of floor beside it, which is 0.5 to 0.8 m wide, so the
+  // strides here are short.
+  const heightAt = async () => +(await page.evaluate(() => window.__cam.position.y)).toFixed(2);
+  const goTo = async (target, label, tol = 0.7, maxBursts = 30) => {
+    const r = await driveTo(page, target, async (dist) => dist < tol, { maxBursts, nearAt: 2.5, longMs: 250, shortMs: 90 });
+    assert(!!r, `reached ${label}`, r ? `${r.dist}m after ${r.bursts} bursts, y ${await heightAt()}` : `never got within ${tol} m, y ${await heightAt()}`);
+    return !!r;
+  };
+  const near = (a, b) => Math.abs(a - b) < 0.35;
+  let onWalk = false;
+  {
+    const y0 = await heightAt();
+    assert(near(y0, 1.7), 'the camera starts at ground eye height', `y ${y0}`);
+    // Into the Kitchen Tower by its door on the kitchen side, round the west of
+    // the lower flight to its foot at the north end, and up it.
+    const legs = [
+      [[-20, -11.6], 'the Kitchen Tower door'],
+      [[-20.6, -14.6], 'the larder, west of the lower flight'],
+      [[-20.6, -17.4], 'the north-west of the larder'],
+      [[-19.25, -17.5], 'the foot of the lower flight'],
+      [[-19.25, -14.3], 'the top of the lower flight'],
+      [[-19.75, -13.8], 'the first floor, south crescent'],
+    ];
+    let ok = true;
+    for (const [t, label] of legs) { if (!(ok = await goTo(t, label))) break; }
+    if (ok) assert(near(await heightAt(), 5.7), 'the camera is one storey up on the Kitchen Tower\'s first floor', `y ${await heightAt()}`);
+    await snap('kitchen-tower-first-floor');
+    const legs2 = [
+      [[-21.6, -14.6], 'the west of the first floor'],
+      [[-21.75, -16.75], 'the foot of the upper flight'],
+      [[-18.2, -16.75], 'the top of the upper flight'],
+      [[-17.7, -15.0], 'the top room, at the walk'],
+    ];
+    if (ok) for (const [t, label] of legs2) { if (!(ok = await goTo(t, label))) break; }
+    if (ok) {
+      const y = await heightAt();
+      onWalk = near(y, 9.7);
+      assert(onWalk, 'the camera is two storeys up, at the wall walk', `y ${y}`);
+    }
+    await snap('kitchen-tower-top');
+    const legs3 = [
+      [[-15, -15], 'the north walk east of the Kitchen Tower'],
+      [[-6, -15], 'the north walk at the Stockhouse Tower'],
+      [[-1.5, -15], 'the Stockhouse Tower\'s top room, through the walk door'],
+      [[-1, -12.6], 'the cross-wall walk\'s north end'],
+      [[-1, 0], 'the cross-wall walk over the porter\'s gate'],
+      [[-1, 12.6], 'the cross-wall walk\'s south end'],
+    ];
+    if (ok) for (const [t, label] of legs3) { if (!(ok = await goTo(t, label, 0.9))) break; }
+    if (ok) assert(near(await heightAt(), 9.7), 'still at 9.7 over the porter\'s head', `y ${await heightAt()}`);
+    await snap('cross-wall-walk');
+    // Down the Bakehouse Tower: its upper flight's top is at the east end of its
+    // well in the south half, its lower flight's top at the north end of the
+    // tower's east half, and the door out is on the inner-ward side.
+    const legs4 = [
+      [[-0.5, 14.6], 'the Bakehouse Tower\'s top room'],
+      [[1.75, 16.75], 'the top of the Bakehouse upper flight'],
+      [[-1.8, 16.75], 'the foot of the upper flight'],
+      [[-2.25, 16.75], 'the first floor, west crescent'],
+      [[-1, 15], 'the first floor, north-west'],
+      [[0.75, 14.3], 'the top of the lower flight'],
+      [[0.75, 17.6], 'the foot of the lower flight'],
+      [[0.25, 18.2], 'the bakehouse, south crescent'],
+      [[2.3, 16.2], 'the bakehouse, east of the flight'],
+      [[4.2, 12.6], 'the inner ward, out of the bakehouse door'],
+    ];
+    if (ok) for (const [t, label] of legs4) { if (!(ok = await goTo(t, label))) break; }
+    if (ok) assert(near(await heightAt(), 1.7), 'the camera is back at ground eye height in the inner ward', `y ${await heightAt()}`);
+    await snap('inner-ward-from-the-walk');
+    if (!ok) bad('the walk over the top did not complete', 'see the legs above; #53 applies on a software renderer');
+  }
+
   // --- Scholar.
   const toScholar = await walkTo(SCHOLAR, 'Scholar');
   assert(!!toScholar, 'walked to the Scholar', toScholar ? `${toScholar.dist}m after ${toScholar.bursts} bursts` : 'never got in range');
