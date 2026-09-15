@@ -334,7 +334,6 @@ const baseOpts = storage => ({
     ["Tools/Seating Chart Generator.html", "Seating Chart Generator"],
     ["Projects/Ren-Faire-Claude/", "Faire Weekend"],
     ["Projects/golden-hour-beach/", "Golden Hour"],
-    ["Projects/Castle Conundrum/", "Castle Conundrum"],
   ];
 
   const SKIP = ["node_modules", "/.git/", "/libs/", "assets/js/gvb-save"];
@@ -349,6 +348,13 @@ const baseOpts = storage => ({
     return out;
   };
 
+  // Castle Conundrum was the fourteenth and is not here any more: it moved to
+  // its own repository on 2026-09-15 and took a vendored copy of gvb-save.js
+  // with it (#491). Its row in README.md's table and its name in the module
+  // header stay, marked as a fork, because the record of what it taught this
+  // module is still worth having; neither assertion below objects to a name
+  // that is documented without being in this list.
+  //
   // An `import ... from ".../gvb-save.js"`, not a mention. Blue Hour's ghost.js
   // carries a comment saying it deliberately does NOT use gvb-save, and
   // play-games.mjs asserts on gvb-save envelopes from the outside; neither is

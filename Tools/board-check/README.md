@@ -7,8 +7,7 @@ instead of reasoning about CSS and hoping.
 ```
 npm install          # also vendors three.js 0.160.0 and 0.169.0
 npm run check        # integrity sweep + collision guard, both exit non-zero on failure
-npm run play         # plays Castle Conundrum to victory; opens a real window
-npm run games        # regression suite for the other games; opens real windows
+npm run games        # regression suite for the games; opens real windows
 npm run tools        # sweep of the Tools/ pages no game suite ever opens; headless
 npm run shoot        # writes reviewable PNGs to ./shots/
 npm run previews     # plays every quest, screenshots gameplay to ./candidates/
@@ -36,13 +35,14 @@ Microsoft Edge, or run `npx playwright install chromium` inside
 `capture-previews.mjs`) is written against `launch()`/`prepPage()` and doesn't
 care which engine is actually driving the page.
 
-`play-castle.mjs` is the one exception, and it's a deliberate one: it calls
-`launch({ headed: true })`, because the Pointer Lock API and real GPU rendering
-both need a browser that is genuinely compositing frames to a screen. A hidden
-or headless browser doesn't fire `requestAnimationFrame` at all in some hosts,
-which means a WebGL render loop never runs and every frame-dependent assertion
-hangs instead of failing usefully. So that script opens a visible window and
-visibly plays the game. Don't "fix" it back to headless.
+`play-games.mjs` and `capture-previews.mjs` are the exceptions, and deliberate
+ones: they call `launch({ headed: true })`, because the Pointer Lock API and
+real GPU rendering both need a browser that is genuinely compositing frames to a
+screen. A hidden or headless browser doesn't fire `requestAnimationFrame` at all
+in some hosts, which means a WebGL render loop never runs and every
+frame-dependent assertion hangs instead of failing usefully. So those scripts
+open a visible window and visibly play the games. Don't "fix" them back to
+headless.
 
 ## The two shims
 
@@ -63,9 +63,9 @@ not the whole picture on its own**: a Google Fonts request is fulfilled from the
 font shim above, not refused, so it never reaches `page.__blocked` — a hotlinking
 page reports empty `__blocked` regardless. `page.__shimmed` records what the font
 shim satisfied, for exactly this reason. Fifteen pages hotlinked fonts for a
-period of the site's history while `play-games.mjs` and `play-castle.mjs` (the
-only suites that ever asserted `page.__blocked`, and only across the seven games)
-reported the site clean. `check-integrity.mjs`'s static source sweep is the check
+period of the site's history while `play-games.mjs` (the only suite that ever
+asserted `page.__blocked`, and only across the games it drives) reported the
+site clean. `check-integrity.mjs`'s static source sweep is the check
 that actually closes this: no browser, and it covers every `.html` in the repo,
 not just the ones a suite happens to drive.
 
@@ -80,9 +80,10 @@ procedural fallback and captured a beach nobody saw — and nothing passes it no
 Parses every `.js`/`.mjs`, every inline `<script>`, and every `.json` on the
 site. Exits 1 on any failure.
 
-This is here because `Castle Conundrum/src/npc.js` contained JSON instead of
+This is here because a game's `src/npc.js` contained JSON instead of
 JavaScript, which meant `main.js` could not `import { NPC }` and the game hung
-on its loading screen. It went unnoticed because the previous check verified
+on its loading screen. (That was Castle Conundrum, which is its own repository
+now (#491); the reason it left behind is still the reason this check exists.) It went unnoticed because the previous check verified
 that files *resolved*, not that they *parsed*. Resolving is not enough.
 
 ### `check-collisions.mjs`
@@ -112,45 +113,12 @@ JPEGs exist yet, which is currently expected.
 
 Opens every page linked from the Town Services board — the six schoolhouse
 tools — and asserts a non-empty title, no offsite requests, and no console
-errors. Exists because `play-games.mjs` and `play-castle.mjs` only ever open
-the seven games: three `cdnjs.cloudflare.com` hotlinks sat in
+errors. Exists because `play-games.mjs` only ever opens the games: three
+`cdnjs.cloudflare.com` hotlinks sat in
 `Tools/final_grade_checker.html` for an unmeasured length of time for exactly
 that reason. Headless, unlike the game suites — none of these pages need
 pointer lock or WebGL, and running headless means it can run alongside a
 headed suite without the two stealing each other's focus.
-
-### `play-castle.mjs`
-
-Plays Castle Conundrum start to victory with real input — pointer lock, WASD, E
-presses, typing the riddle answer — and asserts 22 beats along the way: three
-rigged bodies present, every skeleton rebound to its own bones, rigs animating,
-pointer lock acquired and released and re-acquired at the right moments, both
-dialogues, escalating wrong-answer responses, the hint, the Keystone, the gate,
-the victory screen, no console errors, no offsite requests. Exits non-zero on
-any miss. Screenshots land in `./shots/play/`.
-
-Two of these assertions exist because of specific bugs that every other check in
-this folder was blind to:
-
-- **The Guard was standing sealed inside the gatehouse wall.** `interaction.js`
-  used to test proximity and facing but never line of sight, so "Press E to talk
-  to the Guard" appeared on blank stone and the quest completed normally. The
-  script raycasts from the player to the Guard's chest and fails if anything is in
-  the way. Verified to fail at the old position and pass at the current one.
-
-  As of session 6 the game enforces this itself, so putting the Guard back inside
-  the wall now fails *twice*: this assertion names the blocking mesh
-  (`blocked by wall-fortified-gate_3`), and the run then aborts at
-  `walked to the Guard — never got in range`, because no prompt is offered for a
-  body nobody can see. Both are worth keeping — the second proves the game is
-  right, the first says which piece of stone is in the way.
-- **`Object3D.clone()` on a `SkinnedMesh` keeps the original's skeleton**, so a
-  cloned rig stands frozen while its `AnimationMixer` runs happily. `assets.js`
-  clones via `SkeletonUtils` instead; the script walks each skeleton's first
-  bone up to its root and fails if that root isn't the live scene.
-
-If NPC positions change in `data/npcs.json`, update the `SCHOLAR` / `GUARD`
-constants at the top to match.
 
 ### `games.mjs`
 
@@ -163,7 +131,7 @@ game is written once. Add a game to the board, describe it here.
 
 ### `play-games.mjs`
 
-The end-to-end regression suite for the games that aren't Castle Conundrum:
+The end-to-end regression suite for the games on the board:
 build a real production line in Integer Foundry and watch the sink judge what
 arrives, run a fortnight of Closing Time, build and open a Faire Weekend, walk
 Golden Hour and Aphelion, put The Fourth Quarter's save through export, import,
@@ -184,11 +152,11 @@ render that throws on empty state, a save that loads into a room nobody rebuilt.
 
 Shared helpers for playing a first-person three.js game from a script: getting a
 handle on the live scene and camera, aiming, and walking to a world coordinate.
-All three driving scripts use it. Read its comments before
-writing a new driver — the two non-obvious facts are that `renderer.render` is an
-own property so patching `WebGLRenderer.prototype` captures nothing, and that only
-Castle Conundrum tolerates a direct write to `camera.rotation` (the other three
-games own it and rewrite it every frame, so those need `turnBy`/`lookAt`).
+Both driving scripts use it. Read its comments before writing a new driver — the
+two non-obvious facts are that `renderer.render` is an own property so patching
+`WebGLRenderer.prototype` captures nothing, and that every game here owns
+`camera.rotation` and rewrites it every frame, so a driver needs
+`turnBy`/`lookAt` rather than a direct write.
 
 **Engine differences that aren't handled by `launch()`/`prepPage()` alone.**
 Puppeteer and Playwright disagree on three call shapes this repo actually uses;
@@ -226,7 +194,7 @@ Getting into each game lives in `games.mjs` now; what's left in each recipe is t
 part that is about taking a *picture* — what to build, where to stand, which way
 to look.
 
-Runs headed, for the same reasons `play-castle.mjs` does. Output goes to
+Runs headed, for the same reasons `play-games.mjs` does. Output goes to
 `./candidates/`, and nothing there reaches `assets/` until it's named in
 `candidates/chosen.json`.
 

@@ -1,10 +1,11 @@
 // check-integrity.mjs — parse every bit of code and data on the site.
 //
-// This exists because Castle Conundrum shipped for an unknown length of time
-// with a src/npc.js that contained JSON instead of JavaScript. The module
-// failed to parse, main.js could not import { NPC }, and the game hung on its
-// loading screen forever. Nothing caught it, because the previous checker only
-// verified that files *resolved*, not that they *parsed*.
+// This exists because a project shipped for an unknown length of time with a
+// src/npc.js that contained JSON instead of JavaScript. The module failed to
+// parse, main.js could not import { NPC }, and the game hung on its loading
+// screen forever. Nothing caught it, because the previous checker only verified
+// that files *resolved*, not that they *parsed*. (That was Castle Conundrum,
+// which is its own repository now; the reason outlived the project here.)
 //
 // Checks:
 //   - every .js / .mjs parses as an ES module
@@ -141,8 +142,9 @@ const OWNERSHIP = JSON.parse(
   for (const [area, spec] of Object.entries(OWNERSHIP.areas)) {
     for (const own of spec.owns) claims.push({ area, own });
   }
-  // Longest prefix first, so `Tools/board-check/play-castle.mjs` beats
-  // `Tools/board-check/` if this ever grows a file-level override of a folder.
+  // Longest prefix first, so a file-level override beats the folder it is in
+  // if this ever grows one. It had exactly one until 2026-09-15, when
+  // play-castle.mjs left with Castle Conundrum (#491).
   claims.sort((a, b) => b.own.length - a.own.length);
 
   for (const p of files.filter(f => f.endsWith('.html'))) {

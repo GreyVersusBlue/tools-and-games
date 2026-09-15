@@ -24,10 +24,18 @@ its own area in `Tools/board-check/ownership.json` (#355).
 `Projects/bell-to-bell/CLAUDE.md` governs inside its own folder; where it and
 this file disagree about anything under `Projects/bell-to-bell/`, it wins.
 
-**Castle Conundrum v2 is finished** (#489, 2026-09-15). All seven phases of
-`Projects/Castle Conundrum/WISHLIST.md` shipped, PRs #306 to #320.
-What is left is that file's "What this leaves for a later arc", and `npm run
-play` unrun on a GPU since Phase 5 (#53).
+**Castle Conundrum left this repo on 2026-09-15** (#491). It lives in
+[`GreyVersusBlue/castle-conundrum`](https://github.com/GreyVersusBlue/castle-conundrum)
+now, with its history, its seven phase plans, its eight suites and its own CI.
+Nothing about it is open here and nothing about it should be opened here.
+`HISTORY.md` keeps a pointer rather than a copy of its 102 locked decisions, and
+`Tools/board-check/play-castle.mjs` went with it. **Three things of its stayed
+and are Devon's, not a session's**: the board card in `index.html` and
+`landing.html`, `assets/previews/castle-conundrum.jpg` and
+`assets/og/castle-conundrum.jpg`. They still point at
+`Projects/Castle%20Conundrum/` on purpose, because that is still where the page
+is served from until Devon relinks. `sync-social-tags.mjs`'s `ELSEWHERE` list is
+what keeps `npm run social:check` honest about that in the meantime.
 
 ## House rules for every file in this repo
 
@@ -77,7 +85,12 @@ play` unrun on a GPU since Phase 5 (#53).
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries all 490 locked decisions in full, by number.
+`HISTORY.md` carries the locked decisions by number. **388 of them are here in
+full; #389 to #490 are Castle Conundrum's and moved with the project**, and that
+file keeps a pointer where they were. A number in that band cited by code in
+*this* repo resolves in the other one. This repo's own numbering continues from
+#491, and so does theirs — from #491 the two files number independently (#492),
+so a number means the file it is written in.
 
 ## Writing style
 
@@ -93,7 +106,7 @@ There is no root `package.json`. Six `package.json` files exist, and only
 
 | Where | Scripts |
 | --- | --- |
-| `Tools/board-check/` | `check` (integrity + collisions), `integrity`, `collisions`, `play` (Castle Conundrum), `games`, `tools`, `shoot`, `previews`, `promote`, `social`, `social:check` |
+| `Tools/board-check/` | `check` (integrity + collisions), `integrity`, `collisions`, `games`, `tools`, `shoot`, `previews`, `promote`, `social`, `social:check` |
 | `Numina/` | `build`, `clean`, `serve`, `test` |
 | `Numina/test/a11y/` | none — run `node axe.mjs` and `node layout.mjs` directly, after `npm install && npx playwright install chromium` in that folder |
 | `Projects/Ren-Faire-Claude/` | `test`, `shoot` (the layout camera), `touch` (the readout on a real touchscreen) |
@@ -105,7 +118,7 @@ its own `test/` or `tools/` folder. `Projects/school-generator/` is the one
 with a non-obvious form: `node --test 'test/*.test.mjs'` (quoted glob — plain
 `node --test test/` fails with `MODULE_NOT_FOUND` on Node 22).
 
-**`npm run games`, `npm run play` and `npm run previews` open real, visible
+**`npm run games` and `npm run previews` open real, visible
 browser windows.** Only one at a time — two will steal focus from each other
 and produce frame-motion and walk failures that look exactly like bugs.
 

@@ -8,7 +8,6 @@
     "check": "node check-integrity.mjs && node check-collisions.mjs",
     "integrity": "node check-integrity.mjs",
     "collisions": "node check-collisions.mjs",
-    "play": "node play-castle.mjs",
     "games": "node play-games.mjs",
     "tools": "node tools.mjs",
     "shoot": "node shoot-board.mjs",

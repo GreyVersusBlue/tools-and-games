@@ -12,9 +12,6 @@
       "owns": ["Pathfinder/characters.html", "Pathfinder/characters-assets/"]
     },
     "Aphelion": { "owns": ["Projects/aphelion/"] },
-    "Castle Conundrum": {
-      "owns": ["Projects/Castle Conundrum/", "Tools/board-check/play-castle.mjs"]
-    },
     "Closing Time": { "owns": ["Projects/Closing Time/"] },
     "The Fourth Quarter": {
       "owns": ["Projects/fourth-quarter/", "Projects/The-Fourth-Quarter.html", ".github/workflows/fourth-quarter-ci.yml"],
@@ -82,7 +79,7 @@
         "assets/", "CNAME", "Tools/board-check/", ".github/workflows/site-ci.yml",
         ".github/workflows/suite.yml"
       ],
-      "note": "Tools/board-check/play-castle.mjs is Castle Conundrum's, and each project owns its own test folder even where it imports harness.mjs read-only. Both are exceptions this manifest records in prose rather than in `owns`, because the sweep only reads .html and neither is one."
+      "note": "Each project owns its own test folder even where it imports harness.mjs read-only. That is an exception this manifest records in prose rather than in `owns`, because the sweep only reads .html and a test folder is not one. There was a second such exception, play-castle.mjs, until Castle Conundrum moved to its own repository on 2026-09-15 (#491) and took it."
     }
   }
 }

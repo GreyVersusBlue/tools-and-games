@@ -117,138 +117,19 @@ the size table a 1 is the whole batch.
 The row is deleted and everything below renumbered, so the ranks in this
 header are the new ones. What shipped, and what it means for the next session:
 
-**Castle Conundrum v2, Phase 7 shipped, and the v2 arc is finished** (#477 to #490).
-E on a thing examines it, J opens the journal, Present inside a conversation presses
-somebody with a clue, and the Constable's last line opens a panel with twelve names,
-a fall and everything written down, which becomes the verdict and the epilogue in
-place. `data/quest.json` is one graph now: the frame is the top level and the riddle
-quest's three stages are gone with `openGate`, `showVictory` and the victory screen.
-The riddle survived as the word-lock (#416), and one press of E reads the word into
-the journal and asks it (#480). `test/quest.mjs` 76 assertions to **154**,
-`test/mystery.mjs` 113 to 118, `test/save.mjs` 50 to 56, `test/plan-vs-scene.mjs` 16
-to 34. **43.18 MB by `git ls-tree`, unchanged** — no asset added or restored.
-
-**Four things to carry forward.** First: **"which room am I in" is not a question
-this castle answers** (#482). One clue is a place, the cross-wall walk, and the
-general form of that question named ten of the forty-five stations as a room their
-own schedule does not call them — the towers' discs overlap the walks over their
-roofs and the cell's overlaps the Great Hall. `nav.inRoom(room, level, x, z, feet)`
-asks about one room, which has one answer. Second: **a riddle-quest save is
-repaired, not migrated** (#478): its stage is not in the catalog any more, so
-`repair` resets it to `start` (#37), the key is untouched (#36), and everything else
-in it still reads. Third: **the engine owns an NPC's dialogue state and the stage is
-only the floor** (#484) — the graph's own effect set everyone at once and put a
-pressed Steward back in `default` at the next stage. Fourth: **a toast that hides
-itself after 3.2 s cannot be asserted after two rAF** (#487): the beat passed four
-runs in five, and the fifth came back with the right text and the class already
-back on, which is #53's class found by a flake rather than by argument.
-
-**`npm run play` is unrun** (#53), the same as after Phase 6. It walks the whole
-intended path now — twelve people, ten pieces of evidence, three bells, the
-cross-wall crossing, a reload at Sext, the accusation panel and the epilogue, 102
-assertions against 34 — and none of it has been seen on a GPU.
-
-The batch before it, kept because it is one session old:
-**Castle Conundrum v2, Phase 6 shipped** (#465 to #476). Twelve bodies, three models
-and a tint each, standing where `data/mystery.json`'s schedule says at the bell the
-game is on. **A station is a tile now** (#466): every row in the schedule carries a
-fractional `tile` in `scene-config.json`'s units, because six people stand in the
-Great Hall at Vespers and each has to be somewhere the player can walk up to alone.
-`src/stations.js` is the bridge between the schedule and the grid;
-`walkability` records its edges and answers `path(from, to)`, so a bell sends
-twelve people walking the same cells the player walks. The bell itself is a crank
-and a rope in the chapel, and ringing it moves the watch, the sky (a sun, a fog and
-a hemisphere per bell), the evidence that is only there at some bells, and the cast.
-`test/mystery.mjs` 100 assertions to 113, `test/plan-vs-scene.mjs` 7 to 16.
-**43.13 MB to 43.18 by `git ls-tree`**, no asset added or restored.
-
-**Four things to carry forward.** First: **two of the twelve were standing somewhere
-nobody could reach, and the data said neither** (#469). Lady Alys spent Sext in the
-east barbican garden, behind a gate that never opens, and the Constable's first Prime
-station was on top of the chapel's candlesticks, 0.84 m up. Both were legal rooms with
-legal tiles; what catches them is asking whether the player's own flood reaches the
-tile. Second: **a station that carries a level but not a height is a body on the
-ground floor** (#470), and the browser check could not see it while both sides read
-`h ?? 0` — #147, a claim the arithmetic cannot distinguish. Third: **a tint applied
-to a shared material repaints everyone wearing that body** (#471): three.js shares
-materials across every clone of a cached glTF, and with the clone removed the twelve
-read as five. Fourth: **the break WISHLIST.md named for this phase ran green** (#475).
-Walling the kitchen's south door does not strand the cook — the Kitchen Tower's own
-door and stair are a second way out, 195 cells instead of 47 — which is Phase 5's
-"the walk joins the towers" arriving again. The suite asserts both halves now.
-
-**`npm run play` is unrun** (#53). Its `SCHOLAR` and `GUARD` constants are gone and
-it looks up `stationOf` instead; its new beats ring the bell three times and walk to
-the Great Hall to find the cook there. None of it has been seen on a GPU.
-
-The batch before it, kept because it is one session old:
-**Castle Conundrum v2, Phase 5 shipped** (#451 to #464). Three levels. Slabs at
-3.8..4.0 over the Clerk's office, the kitchen and the King's Hall (dirty_carpet
-there, wood_planks elsewhere) and in every tower; the wall walk as 2 m of decking
-flush with the top of every curtain run, the cross-wall and three new runs over the
-gates, so the wards connect above the porter's head; fourteen flights of
-`stairs-stone.glb` at 3 x 3.9 x 3.9 in an L per tower; doors in the rings at levels
-1 and 2; Lady Alys's window. **The player has a `y`**: the feet stand on
-`castle-plan.js`'s `standAt`, the same function the walkability grid stands on.
-**307 pieces against Phase 4's 259, all 307 within 0.0000 m of the live scene, and
-the camera on the plan's floor in all 36 rooms at 0.0000 m.** 39.8 MB to 44, the two
-sets restored, the ceiling.
-
-**Its four lessons, and all four came out of a break that ran green.**
-First: **a floor is a collider whatever its thickness** (#458). `collide` drops
-anything under 0.3 m as decor, since Phase 2; a slab is 0.2 and a deck 0.1, so no
-upper floor blocked anyone and the wells cut for the flights were needed by nothing.
-Taking the wells out left every suite green. Second: **the walk joins the towers, so
-a tower that has lost a flight is reached from the tower next door** — the plain
-reachability check cannot see a missing flight, and `layout.mjs` now floods with one
-tower's flights at a time. Third: **two shut towers have no lower flight** (#455): a
-stair from a barred cell or a locked muniment room to the walk is a way round the
-bar, and the first time every tower had both flights both rooms read reachable.
-Fourth: **the lower flight stands on the half away from the ground door** (#460), which
-only mattered once the flight's body stopped being walkable floor (a `> lo` that
-should have been `>=`), and then five towers went dark at once. The chapel's candles
-and the laundry's crate were standing in the flights; a rail says no prop may.
-
-**Castle Conundrum v2, Phase 4 shipped** (#439 to #450). Fourteen ground rooms,
-walled, doored and floored. The eight towers are hollow and have doors in their
-own rings; the six walled rooms have partitions on the tile edges with doorways
-cut through them; the muniment room is behind the river riddle and the cell is
-behind bars that never open. **259 pieces against Phase 3's 219, all 259 within
-0.0000 m of the live scene.** `rooms` is fourteen and carries `mystery.json`'s own
-room ids; `walls` is twenty-eight runs and a run can carry `doorways` and a `base`;
-a drum can carry an `interior`. 35 MB to **39.8**.
-
-**Three things to carry forward, and all three came out of a break that ran green.**
-Four of the phase's eleven breaks did, and the four were worth more than the seven
-that fired. The first: **a solid drum's bounds are a hollow drum's bounds** to
-the millimetre (#442). `piece.drum` did not carry `inner` or `door`, so the builder
-took its solid branch and every tower rendered as a closed cylinder while the
-colliders, the walkability grid, fourteen reachable rooms and all six Node suites
-said hollow — and `plan-vs-scene.mjs` compares boxes, so it agreed. Nothing in this
-project can see geometry that is the right size and the wrong shape. The second:
-**an expectation read off the field being tested is not a check** (#441). The lock
-check took "is this room shut?" from `door.leaf.closed`, so shipping the door open
-moved the expectation with the break and the suite stayed green; it reads
-`mystery.json`'s `locks` and the cell's `barred` now, which are facts about the
-crime. The third: **`RingGeometry`'s theta is not `CylinderGeometry`'s** (#443) —
-a quarter turn and a reflection apart — so a flat cap given a shell's own
-`thetaStart` caps a different quarter of the tower, including the doorway.
-
-**Castle Conundrum v2, Phase 2 shipped** (#426 to #431). `src/castle-plan.js` is
-the placement math, once; `castle-builder.js` computes no transform of its own;
-`test/plan-vs-scene.mjs` holds the plan and the running page together. Its lesson
-is that **a break that runs green is a claim, not a formality**: removing the END
-piece of a wall run takes out a hole the next wall already covers, and the MIDDLE
-piece is the break that bites (#430).
-
-**Castle Conundrum v2, Phase 1 shipped** (#421 to #425). `data/mystery.json` is
-the whole mystery: four watches, 26 rooms, 39 clues, 10 evidence rows, one lock,
-the twelve-by-four schedule, 8 presses and the accusation table. The save is live:
-`castleConundrumSave_v1` through `src/save.js`. **The plan's clue graph as written
-convicted the Clerk at Prime**; the two-to-three watch rail caught it on the plan's
-own data. The twelve are in `npcs.json` under `cast` beside the three the page
-still spawns (#421), and the frame is in `quest.json` under `frame` (#422); Phases
-6 and 7 delete the old halves.
+**Castle Conundrum moved to its own repository** (2026-09-15, #491 to #492).
+`Projects/Castle Conundrum/` and `Tools/board-check/play-castle.mjs` are
+deleted here; the project, its history, its seven phase plans and its 102
+locked decisions are in
+[`GreyVersusBlue/castle-conundrum`](https://github.com/GreyVersusBlue/castle-conundrum),
+with its own CI. **Nothing about it is open in this file any more.** What
+stayed is Devon's: the board card in `index.html` and `landing.html`, and
+`assets/previews/castle-conundrum.jpg` and `assets/og/castle-conundrum.jpg`.
+They still point at `Projects/Castle%20Conundrum/` on purpose — hosting and
+relinking are his, and `sync-social-tags.mjs`'s `ELSEWHERE` list keeps
+`npm run social:check` honest about it until he does. `HISTORY.md`'s last two
+sections are the record; the ranked table below never had a Castle row to
+delete, because all seven phases had already shipped.
 
 **Closing Time's multi-offer fields resolve** (#406 to #410).
 `js/engine/escalation.js` is new and is the only place a clause becomes a price.
@@ -291,38 +172,6 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**The quest in `Projects/Castle Conundrum/` is data now** (#393 to #395).
-`data/quest.json` is a graph of three stages; `src/quest-graph.js` validates it
-before it runs and knows nothing about the DOM, three or timers; the manager
-holds no state and no NPC ids. `test/quest.mjs` walks the whole quest in Node
-against stand-ins and is the third command in that project's CI matrix entry.
-**A dialogue state a stage names has to exist on every NPC, and the riddle has
-to open after exactly the conversations that pose it**, both checked against
-`npcs.json`. What it still cannot see is `ui.js`'s wiring and the walk; `npm
-run play` is that, and it reads the stage off `window.__quest` at the gate.
-
-Older, kept for the rule it carries: **Castle Conundrum's asset diet plus its
-cabinet/commode clearance (PR #292)**. **`Projects/Castle Conundrum/` is 29
-MB, from 165 MB** (#389 to #392). Thirty-six of its forty-eight Poly Haven
-folders were referenced by nothing, twenty were texture packs whose `.gltf`
-and `.bin` are a 2.3 MB preview ball, and the Kenney kit shipped every model
-three times in three formats. What stops it growing back is a reachability
-check in `test/assets.mjs` (#390), not a denylist: a file under `assets/Poly
-Haven` or `assets/NPCs` has to be named by `data/`, or declared as a buffer or
-an image by a `.gltf` that `data/` names. **If you add an asset to that
-project, add the reference in the same commit or CI goes red.** `test/layout.mjs`
-is beside it and also in CI (#392) — nine interior props against thirty-nine
-wall, tower and column pieces, in Node.
-
-**Castle Conundrum v2 is planned** (2026-09-14, PR #303, #411 to #418; not a
-batch, so not the line above). `Projects/Castle Conundrum/WISHLIST.md` is new:
-seven phases, each a 1, each one session, taken in order, at ranks 1 to 7 when
-it landed. All seven have shipped, so the seven rows are gone and every other
-row has moved back up. The plan carried the whole mystery (crime, twelve NPCs,
-thirty-nine clues, the accusation), the Conwy layout in tile coordinates, the
-save schema and its key, the guard-rail each phase breaks, and the weight after
-each phase (29 MB to 44.4; `git ls-tree` reads 43.18 on `main`).
-
 **Rank 1 is a commercial tier at Broker-Track** (`Projects/Closing Time`), a **1**
 on **Claude Opus 5**, and under the size table a 1 is the whole batch. The next
 half is rank 1 of the halves, rank 7. Eleven of the thirty-two are ¼: ranks 8, 10,
@@ -337,14 +186,6 @@ caught: 10 + 13 + 9 is 32, and the table has 32 rows. The rubric is in
 Tier 1's preamble, and it is a reading of each row, not a quota — take the
 model the row names and say in the PR body which one you actually worked
 under.
-
-**Castle Conundrum's board preview and og card are stale** (#374, #379), and
-Phases 3 to 7 made them more so: they show the archway wide open, from before the
-gate became a gate, in a 7x7 courtyard that no longer exists at all, with none of
-the HUD the game has now. **Phase 7 was what they were waiting on and it has
-shipped**, so the only thing left between the parked row and a current card is a
-machine with real GPU compositing. The card's own words are already current: the
-description and the og text changed with Phase 7.
 
 **`Projects/corner-and-kettle` has no open phase.** Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
@@ -476,7 +317,7 @@ and #222 was closed unmerged an hour of suites later.
 | 2 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
 | 3 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 4 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 5 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 5 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 6 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 7 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
 | 8 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
@@ -512,64 +353,17 @@ does not belong in the ranked table. **Parked is not verified**, and each note
 says which it is. Nothing here is done; it is waiting on hardware, not on a
 decision.
 
-**Castle Conundrum's board preview: recapture, look, promote** (`Tools/board-check`,
-¼, **Claude Sonnet 5** under #380 — a written recipe and a promote step, at a
-keyboard that can run them). Parked 2026-09-13 by the session that took it as rank 1,
-after establishing three things.
+**Castle Conundrum's board preview and og card are Devon's now.** The row that
+was parked here — recapture, look, promote — went with the project on 2026-09-15
+(#491) and is rank 5 in
+[`GreyVersusBlue/castle-conundrum`](https://github.com/GreyVersusBlue/castle-conundrum)'s
+`BACKLOG.md`, behind the GPU run that produces the frames. The two images stay
+in `assets/previews/` and `assets/og/`, `promote-previews.mjs` still knows the
+slug, and `candidates/chosen.json` still names a candidate, so a capture taken
+in the other repo can still be dropped into `candidates/` and promoted from
+here. What it is waiting on has not changed and is not this repo's: a machine
+with real GPU compositing.
 
-1. **There is no candidate to review on a fresh clone.** `candidates/` holds
-   `chosen.json` and nothing else — the PNGs it names have never been in git.
-   The frame the row asks somebody to look at exists only on the machine that
-   captured it, so "review the captured candidate" is not a thing an unattended
-   session can do at all.
-2. **A recapture here is not a recapture.** `node capture-previews.mjs
-   castle-conundrum` under a software-rendered Chromium fails at
-   `never got 6.4m clear of the gatehouse`: the walk never happens. That is the
-   class locked decision #53 calls inconclusive, and `npm run previews` is
-   outside CI on purpose (#353).
-3. **The shipped frame is now wrong in a new way** (#374). `assets/previews/
-   castle-conundrum.jpg` and `assets/og/castle-conundrum.jpg` show the archway
-   standing wide open, ground and sky visible through it, with the quest box in
-   the corner reading "Find someone who knows how to open the gate". No door of
-   any kind is in the frame, which dates it to before round 3's hinge fix — the
-   leaf then sat at world x -5.4 to -1.8, behind the wall and out of shot. Since
-   #374 there is a gate to photograph, so a candidate captured before
-   2026-09-13 is out of date whatever else is right about it.
-
-So: `npm run previews castle-conundrum` on a machine with real GPU
-compositing, look at what lands in `candidates/`, and `npm run promote`.
-Fifteen minutes at the right keyboard, and not doable at any other. **And not
-yet**: the v2 plan (Phase 7, rank 1) is still changing the castle, so any
-frame captured before Phase 7 merges goes stale the moment the next phase
-does. The recapture follows Phase 7, the last phase that changes what is on
-screen, and Phase 7's entry in the wishlist says so.
-
-Eight rows still in the ranked table ask for hardware or a pair of ears in as
-many words, and belong here by the same rule: 9, 16, 17, 19, 24, 25, 26 and 33
-as they are numbered now (they were 10, 17, 18, 20, 25, 26, 27 and 34 before Phase 5
-shipped on 2026-09-15, 15, 22, 23, 25, 30, 31, 32 and 39 before the four Castle
-Conundrum phases that shipped on 2026-09-14, 8, 15, 16, 18, 23, 24, 25 and 32
-before the Castle Conundrum v2 plan put seven rows above them on 2026-09-14,
-9, 16, 17, 19, 24, 25, 26 and 33 before
-the fifth 2026-09-14 batch removed one more row above them, 10, 17, 18, 20, 25,
-26, 27 and 34 before the fourth, 11, 18, 19, 21,
-26, 27, 28 and 35 before the third, 12, 20, 21, 23, 28, 29, 30 and 37 before
-the second, and 14, 22, 23, 25, 30, 31, 32 and 39 before the first). They were left ranked on
-purpose — moving eight more rows is closer to re-ranking the list wholesale,
-which is not a session's call, than to parking the row in front of you, which
-is. A session that takes one of them should move it here rather than write a
-report about it.
-
-
----
-
-# Tier 2 — the ideas with no wishlist home
-
-Twelve projects and areas have no `WISHLIST.md`. Everything they had lives
-here, carried across from their prompt file's "Your task", their notes file's
-"Next session", "Deliberately not done" and "Shared-file requests", and any
-README roadmap — in the wording those files used, not summarised. The
-per-project files themselves are deleted; git history has them.
 
 ## Anathema Archive
 
@@ -706,102 +500,6 @@ signal:
 Two full audit rounds (fun, data-driven extension points, audio, performance,
 accessibility) plus a re-check found nothing else worth touching. Inventing a
 change to have something to report would be worse than reporting none.
-
-## Castle Conundrum
-
-`Projects/Castle Conundrum/`, `Tools/board-check/play-castle.mjs`. **The plan
-is `Projects/Castle Conundrum/WISHLIST.md`** (2026-09-14, #411 to #418), and
-**all seven of its phases have shipped.** Nothing here is ranked any more; what
-is left is that file's "What this leaves for a later arc" — a fourth body and a
-woman's in particular, the tower tops, the town outside the curtain, a second
-day, sound, touch, and the Great Hall's roof — plus the two GPU passes below.
-Phase 7 (PR #320, #477 to #490) put the engine on the screen: E on a thing examines it,
-J opens the journal, Present presses somebody with a clue, and the Constable's
-last line opens an accusation panel that becomes the verdict and the epilogue.
-`data/quest.json` is one graph, the riddle quest's three stages are gone, and
-one press of E reads the word-lock and asks it (#480). Phase 6 (PR #318, #465 to #476) put the twelve on
-the screen and the day on a bell: a station is a tile, `src/stations.js` walks
-between two of them breadth-first over the player's own grid, and ringing the bell
-in the chapel moves the watch, the sky, the time-gated evidence and the cast. Phase
-5 (PR #316, #451 to #464) gave the castle
-three levels and the player a `y`: slabs, the wall walk over the cross-wall and the
-gates, fourteen flights, 307 pieces at 0.0000 m, 36 rooms the camera stands in at
-0.0000 m, 44 MB and the ceiling. Phase 4 (PR #314, #439 to #450) built the fourteen
-ground rooms and the word-lock. Phase 3 (PR #312, #432 to #438) replaced the 7x7
-courtyard with the Conwy plan: the curtain, eight drums, a cross-wall whose one gate
-is the only ground crossing, two barbicans. Phase 2 (PR #309, #426 to #431) made
-`src/castle-plan.js` the one copy of the placement math.
-**Phase 1 shipped on 2026-09-14** (PR #306, #421 to #425): the mystery is
-`data/mystery.json`, validated and run by `src/mystery.js`. Its entry in the
-wishlist says what differs from the plan as written.
-
-**What v2 is.** A first-person mystery across one day in a Welsh castle of
-the 1280s: the master mason dead at the foot of the Chapel Tower stair, a
-Constable who wants it called a fall by Vespers, two wards divided by a
-cross-wall with one logged gate and a wall walk that connects them over the
-porter's head, twelve NPCs on four bells, thirty-eight clues in a validated
-graph, an accusation the player can get wrong. Conwy's plan on the 4 m tile
-grid (sixteen tiles by nine inside the curtain, eight drum towers, two
-barbicans), Stirling for the Great Hall's scale and the carpeted royal floor.
-The eight texture sets Devon chose on 2026-09-14 landed three per build phase:
-29 MB, 35.2 after Phase 3, 39.8 after Phase 4, 44 after Phase 5, and that is
-the ceiling; Phase 6 added none of it and Phase 7 adds none.
-
-**The order is Devon's at the level of arcs** (mystery, castle, NPCs) with
-two moves inside it, both argued in the wishlist: the mystery ships first as
-data with a validator and the save, the way Corner & Kettle's Phase 1 shipped
-the sim without the page, because its clues sit in rooms that do not exist
-yet; and the builder is refactored to emit the structure `layout.mjs` reads
-(Phase 2) before the castle grows a `y` axis, because `layout.mjs` today
-re-implements the builder and cannot see it change.
-
-**The save shipped** (#413, Phase 1): key `castleConundrumSave_v1`, `game`
-`castle-conundrum`, version 1, `repair` filtering every id against a catalog
-built from `mystery.json` and `quest.json`. A reload resumes the day at its own
-bell with the journal, the presses and the unlocked muniment room intact; a save
-still carrying a riddle-quest stage is repaired to `start`, because that graph no
-longer exists (#478). `play-castle.mjs` has the beat for it, unrun.
-
-**What is already there, and stays.** The quest graph (#393 to #395) is the
-frame v2 extends: `quest.json` grows to four stages and the manager gains
-actions. `test/assets.mjs`'s reachability check is why every phase names the
-sets it restores: **add an asset and its reference in the same commit or CI
-goes red** (#390). `test/layout.mjs` is rewritten in Phase 2 to read the plan
-rather than recompute it. `play-castle.mjs` hard-coded `SCHOLAR` and `GUARD`
-for three phases; Phase 6 deleted both and it looks up `stationOf` now (#476).
-
-**Two questions for Devon are left, Q54 and Q57.** None blocked a phase and all
-seven shipped; each phase's entry says which call it made. Q53 and Q58 are Devon's
-own answers (#419, #420), Q56 is Phase 4's (#447) and Q55 is Phase 7's (#490).
-
-**The parked preview recapture is the one thing this project still wants, and it
-needs a GPU.** Phase 7 was what it was waiting on: the HUD is final, the board
-card and the og text say what the game is now, and only the image is stale — the
-board preview and the og card still show a 7x7 courtyard that Phase 3 replaced.
-The other outstanding thing is the same hardware: `npm run play` walks the whole
-intended path in 102 assertions and has never been run (#53).
-
-**Decided, not open work:**
-
-- **The walls stop being stylised** (#411). Devon's texture choice reverses
-  round 1's call; built geometry carries the eight sets, the kit supplies
-  shape (stairs, battlements, railings, props). Round 1's before/after pairs
-  were about the kit's own pixel art on the kit's own walls, which is not
-  what v2 builds.
-- **The riddle survives** (#416) as the word-lock on the muniment room. The
-  overlay, `judgeAnswer`, the hint and the escalation are unchanged; the
-  riddle's text changes to one a 1280s clerk could have set.
-- **Tints, not a fourth body, and Phase 1 writes the tint** (#419, answering
-  Q53). Phase 1 already replaces the three NPCs with twelve in `npcs.json`, so
-  the hex goes in while that file is open; Phase 6 no longer adds the field.
-  The risk is accepted rather than removed. Phase 6 put the twelve on the
-  screen and `plan-vs-scene.mjs` reads their live materials: twelve distinct
-  sets of cloth colours off three bodies, one skin colour across all of them.
-  Whether that reads as twelve people in a Vespers photograph is still a
-  question only a GPU and an eye can answer.
-- **Ranks 1 to 7 are confirmed** (#420, answering Q58). No other project was
-  worked until the arc finished, and it has: the seven rows are gone from the
-  table and the list moves on to Closing Time.
 
 ## Closing Time
 
@@ -1237,16 +935,18 @@ at ~42px and resolves `plan.outcome === "WIN"`.
 The site-wide check and regression suite. Owns `check-integrity.mjs`,
 `check-collisions.mjs`, `play-games.mjs`, `tools.mjs`, `capture-previews.mjs`,
 `promote-previews.mjs`, `sync-social-tags.mjs`, `games.mjs`, `drive.mjs`,
-`harness.mjs`; `play-castle.mjs` belongs to Castle Conundrum, and each project
-owns its own test folder even where it imports `harness.mjs`/`drive.mjs`
-read-only.
+`harness.mjs`; each project owns its own test folder even where it imports
+`harness.mjs`/`drive.mjs` read-only. Castle Conundrum's `play-castle.mjs` was
+the one file-level exception and left with that project on 2026-09-15 (#491),
+taking `npm run play` with it.
 
 Everything open against this folder is filed under the project that needs it:
 Golden Hour's preview recapture and debug-hook beats (ranks 17 and 19) and Blue
 Hour's `games.mjs` entry and preview recipe (21 and 22). Those four numbers were
 read off the table rather than decremented with the rest, which is how the drift
 the line before this one carried was caught twice running. Castle Conundrum's
-preview promotion was rank 1 and is parked, above the Tier 2 list.
+preview promotion was rank 1, was parked, and left with the project (#491);
+what is still here is the card and the two images, which are Devon's.
 **Corner & Kettle's Phase 9 shipped on 2026-09-13 and is no longer open** —
 `play-games.mjs` has a `corner-and-kettle` section now (#371, #372), and the note that used to stand here, that the file held no reference to
 it, is out of date. The ownership manifest shipped the same day and is
@@ -1254,10 +954,7 @@ it, is out of date. The ownership manifest shipped the same day and is
 
 Two things about this folder that are decided, not open:
 
-- **`play-castle.mjs` belongs to Castle Conundrum, not here.** Castle
-  Conundrum is its only consumer, so no other work can conflict with it, and
-  Castle work is unverifiable without being able to add beats to it.
-- **`npm run games`, `npm run play` and `npm run previews` open real, visible
+- **`npm run games` and `npm run previews` open real, visible
   browser windows, and only one may run at a time.** Two will steal focus from
   each other and produce frame-motion and walk failures that look exactly like
   bugs. Prefer a project's own Node suite for iteration and save the browser
@@ -1283,11 +980,13 @@ Two of them are closed.
    page (#357); and Numina keeps its own tags, exempt but verified, because it
    is an Eleventy site whose committed build output would drop any block
    injected into it (#357).
-2. **Asset weight.** Bell to Bell, Castle Conundrum and The Fourth Quarter
-   together carry ~380 MB: unreferenced props and texture variants, duplicate
-   model formats, uncompressed glTF buffers and 2k textures with no smaller
-   tier. One shared pipeline (prune, resize, draco/meshopt) pays off three
-   times.
+2. **Asset weight.** Bell to Bell and The Fourth Quarter together carry ~335
+   MB: unreferenced props and texture variants, duplicate model formats,
+   uncompressed glTF buffers and 2k textures with no smaller tier. One shared
+   pipeline (prune, resize, draco/meshopt) pays off twice here. Castle
+   Conundrum was the third and is doing its own version of this work as rank 1
+   in its own repo (#491) — whichever lands first is worth reading before the
+   other starts.
 3. **`gvb-save.js` v2.** Quota accounting, multi-key namespaces and an
    IndexedDB tier are what the Schedule Visualizer needs and what Hearth's and
    Bell to Bell's growing saves will want.
@@ -1446,7 +1145,6 @@ live. Nothing in that column is a link to follow.
 | Q38 | **Does `characters.html` get a commented-out `<template>` dossier block?** Documentation convenience, not a bug. Devon's call on style; not requested in three rounds. | 3 | prompt 03, and its notes in rounds 2 and 3 |
 | Q39 | **Should `characters.html` adopt `gvb-save.js` for in-browser editing?** Only if the page's role should shift from showcase to living character sheet. Not requested in three rounds. | 3 | prompt 03, and its notes in rounds 2 and 3 |
 | Q40 | **Does Aphelion ever need to run on a tablet or phone?** Three rounds have each re-derived "no evidence yet" from scratch rather than asking. The answer decides whether the touch/gamepad input scheme is worth building. | 3 | prompt 04, and its notes in rounds 2 and 3 |
-| Q41 | **Is Castle Conundrum's captured preview candidate the right frame?** It sits in `candidates/`, chosen, dated a fair-environment refresh, deliberately not promoted so this project's own session could look first. | 2 | `gvb-site-handoff-v10.md` §9 and §11.3, prompt 22's notes |
 | Q42 | **Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same. | 3 | prompt 06's notes across three rounds |
 | Q43 | **If Golden Hour's night proves popular, should the owl hunt?** One swoop over the dunes, no kill shown; and the fireflies drifting toward the fire when it burns. | 1 | the project's notes |
 | Q44 | **Blue Hour's causeway: which of the three ways out?** A `mountainH` term following the trail's arc-length height; re-anchoring `trailYof` to the hillside; or accepting a ridge trail and widening the bench. All three move the heightfield and rebaseline `smoke.mjs`; the third also has to answer why the blaze posts stand at the lip of a 10 m drop. | 1 | prompt 24, session 6 |
@@ -1457,61 +1155,17 @@ live. Nothing in that column is a link to follow.
 | Q49 | **Does The Fracture Cycle get a 4th prong or deeper side content?** Not a gap being filled — new content Devon chooses to commission. Two rounds have said the same. | 2 | prompt 15, the project's notes |
 | Q52 | **Does Orbital adopt `gvb-save.js` for save-bar UI consistency?** Not needed for correctness — round 1 proved the existing migration round-trips clean. Purely a question of whether UI consistency with the other eleven adopters is wanted. | 2 | prompt 21, the project's notes |
 
-### Castle Conundrum
-
-Raised by the v2 plan (2026-09-14, `Projects/Castle Conundrum/WISHLIST.md`).
-None blocks its phase; the wishlist says what each phase does if unanswered.
-**Q53 and Q58 were answered by Devon on 2026-09-14** (#419, #420), **Q56 by
-Phase 4's session on 2026-09-14** (#447) and **Q55 by Phase 7's on 2026-09-15**
-(#490); all four are in the Answered list below. Two remain, Q54 and Q57, and the
-numbers do not shift.
-
-| # | Question | Raised | Where |
-| --- | --- | --- | --- |
-| Q54 | **A death, or only a theft?** As written the mystery is a killing made to look like a fall, with a hanging at the end. A theft-only version is a different cast and clue graph. Changes Phase 1. | 1 | the wishlist, The mystery |
-| Q57 | **Do the barbican gates stay shut forever?** Nothing outside the curtain is textured, so the west gate never reopens and the east opens on a walled garden. An ending that walks out of the castle is a texture set not on the list. Changes Phase 3. | 1 | the wishlist, The layout |
-
 ### Answered, kept here so they are not re-asked
 
-- **Does the fourth bell force the accusation?** (was Q55) Answered by Phase 7's
-  session, 2026-09-15, because it stood in front of that row and nothing else:
-  **yes, the plan's answer** — locked decision #490. The engine had already
-  shipped it in Phase 1 (`ring()`'s fourth moves no watch and returns a `demand`),
-  so the open-day alternative would have meant unpicking a rail that was already
-  green rather than not writing one. `bell:4` moves the frame to `accusing` and
-  `accusing`'s `enter` opens the panel, which is also what brings a save resumed
-  there back to it. The player can still ask for the panel whenever they like by
-  talking to the Constable; what the fourth bell removes is the option of never
-  answering. Reversing it is two transitions in `data/quest.json`.
-
-- **Does the riddle survive as the muniment room's word-lock?** (was Q56)
-  Answered by Phase 4's session, 2026-09-14, because it stood in front of that
-  row and nothing else: **yes** - locked decision #447. The Scholar stops posing
-  it and points at the door, `riddle.json` carries the river riddle instead of
-  the keyboard one, `openRiddle` runs on `lock:muniment` when the player presses
-  E at the leaf, and `openGate` means that leaf rather than the east gate.
-  Reversible: retiring the overlay is Phase 7's to do, and this makes it one
-  door and one stage rather than a system. What it cost, and what a Phase 7 that
-  retires it must keep, is the half that knows the castle -
-  `test/quest.mjs` holds every `lock:<id>` the graph listens for to a door
-  `scene-config.json` really builds, that ships shut, that carries a prompt, and
-  that `mystery.json` calls a riddle lock.
-
-- **Twelve NPCs from three bodies, or a fourth model?** (was Q53) Answered by
-  Devon, 2026-09-14, before Phase 1 rather than before Phase 6: **tints, and
-  Phase 1 writes them** - locked decision #419. Three bodies, a per-NPC `tint`
-  hex, real models later if they turn out to be needed. The bet is accepted and
-  not removed: the plan calls colour-alone a bet nothing in Node can settle, and
-  the Vespers photograph in Phase 6 is the first thing that can report on it. A
-  fourth body is 1.4 to 2.0 MB over the 44.4 MB ceiling, and that ceiling is
-  Devon's number to move. Reversible in one line: drop `tint` from Phase 1's
-  `npcs.json` bullet and put it back in Phase 6's.
-
-- **Ranks 1 to 7 for the seven phases?** (was Q58) Answered by Devon,
-  2026-09-14: **yes** - locked decision #420. The phases stay at the top with
-  every other row's relative order unchanged. The consequence, stated so it is
-  not rediscovered: no other project is worked until the arc finishes.
-  Reversible in one edit, and no phase changes if it is made.
+- **Four Castle Conundrum questions were answered here and moved with the
+  project on 2026-09-15** (#491): whether the fourth bell forces the accusation
+  (was Q55, #490), whether the riddle survives as the muniment room's word-lock
+  (was Q56, #447), twelve NPCs from three bodies or a fourth model (was Q53,
+  #419), and ranks 1 to 7 for the seven phases (was Q58, #420). Their answers
+  and their reasoning are in
+  [`GreyVersusBlue/castle-conundrum`](https://github.com/GreyVersusBlue/castle-conundrum)'s
+  `HISTORY.md`. The two that stayed open, Q54 and Q57, went with them and are
+  that repo's to answer.
 
 - **Should the Serve button require full order completion?** (was Q2)
   Answered by the session that shipped Corner & Kettle Phase 3, 2026-09-12:
@@ -1602,7 +1256,6 @@ now.
 | Pathfinder Campaigns | `Pathfinder/campaigns.html`, `Pathfinder/campaigns-assets/` | as above |
 | Pathfinder Characters | `Pathfinder/characters.html`, `Pathfinder/characters-assets/` | as above |
 | Aphelion | `Projects/aphelion/` | as above |
-| Castle Conundrum | `Projects/Castle Conundrum/`, **and `Tools/board-check/play-castle.mjs`**, which is its own | `index.html`, `assets/js/gvb-save.js`, the rest of `Tools/board-check/**`, `assets/previews` + `assets/og` |
 | Closing Time | `Projects/Closing Time/` | the four shared |
 | The Fourth Quarter | `Projects/fourth-quarter/`, **`Projects/The-Fourth-Quarter.html`** (the original flat build, board-linked at `index.html:508`, owned by nobody until #355 caught it), `.github/workflows/fourth-quarter-ci.yml` | the four shared |
 | Golden Hour | `Projects/golden-hour-beach/` | the four shared |

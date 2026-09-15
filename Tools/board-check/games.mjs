@@ -115,25 +115,6 @@ export const GAMES = {
     },
   },
 
-  // ---- Castle Conundrum. play-castle.mjs deliberately keeps its own richer boot
-  // (it asserts the loading status, the rigs and the pointer lock on the way in);
-  // this is the plain version, for the two scripts that just want to be inside.
-  'castle-conundrum': {
-    title: 'Castle Conundrum',
-    url: '/Projects/Castle%20Conundrum/',
-    vw: 1320, vh: 800, dsf: 1,
-    three: '/Projects/Castle%20Conundrum/libs/three.module.js',
-    intro: ['#start-overlay', '#loading-screen'],
-    async open(p, { probe } = {}) {
-      await p.waitForSelector('#start-overlay:not(.hidden)', { timeout: 90000 });
-      if (probe) await probe();
-      await p.click('#start-button');
-      await wait(600);
-      if (!(await p.evaluate(() => !!document.pointerLockElement)))
-        throw new Error('no pointer lock — is this running headed?');
-    },
-  },
-
   // ---- The Fourth Quarter: the start overlay, then the day phase.
   'fourth-quarter': {
     title: 'The Fourth Quarter',

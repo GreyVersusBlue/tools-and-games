@@ -135,10 +135,10 @@ export function serve(port = 8123) {
 // installed via Playwright instead. No browser download needed for that:
 // `channel: 'chrome'` / `'msedge'` reuses the system install.
 //
-// `headed: true` opens a real visible window. Only play-castle.mjs wants that, and
-// it wants it for a specific reason: the Pointer Lock API and real GPU rendering
-// both need a browser that is actually compositing frames to a screen. Everything
-// else stays headless.
+// `headed: true` opens a real visible window. `npm run games` and
+// `npm run previews` want that, and they want it for a specific reason: the
+// Pointer Lock API and real GPU rendering both need a browser that is actually
+// compositing frames to a screen. Everything else stays headless.
 // Chrome slows or stops requestAnimationFrame, timers and compositing in a
 // window it thinks nobody is looking at. In a headed run that is not a hypothesis:
 // click another application while `npm run previews` is playing and the game
