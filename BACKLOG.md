@@ -102,7 +102,7 @@ table** in Tier 2.
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
 **The last batch of ranked work that shipped** is **Castle Conundrum v2, Phase 7:
-the mystery goes live**, the old rank 1 alone — a 1, and the last row of a
+the mystery goes live (PR #320)**, the old rank 1 alone — a 1, and the last row of a
 seven-phase arc, so a batch on its own under the size table. The row named Claude
 Opus 5 and was worked under Opus 5. That is the line to update when your batch
 merges; a PR that only changes these files is not a batch and does not belong in
@@ -715,7 +715,7 @@ is `Projects/Castle Conundrum/WISHLIST.md`** (2026-09-14, #411 to #418), and
 is left is that file's "What this leaves for a later arc" — a fourth body and a
 woman's in particular, the tower tops, the town outside the curtain, a second
 day, sound, touch, and the Great Hall's roof — plus the two GPU passes below.
-Phase 7 (#477 to #490) put the engine on the screen: E on a thing examines it,
+Phase 7 (PR #320, #477 to #490) put the engine on the screen: E on a thing examines it,
 J opens the journal, Present presses somebody with a clue, and the Constable's
 last line opens an accusation panel that becomes the verdict and the epilogue.
 `data/quest.json` is one graph, the riddle quest's three stages are gone, and
