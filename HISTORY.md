@@ -10282,3 +10282,62 @@ initial contents of `GreyVersusBlue/castle-conundrum`, whose PR this one links.
 
 `npm run check`, `npm run social:check` and `node ci-check.mjs` are green with
 `known-failures.json` still empty in all three sections.
+
+## The board card points at the new host, and a list dies the day it was needed (2026-09-15)
+
+**Devon relinked, one round after the move.** The board card's `href` is
+`https://greyversusblue.github.io/castle-conundrum/` now, in `index.html` once
+and `landing.html` three times (the frame, the "Accept the quest" button and the
+index row). This is the relink #491 said was his to make; it is recorded here
+because two things in this repo were built to wait for it and one of them is now
+deleted.
+
+- **The card is an offsite notice now, and `ELSEWHERE` is gone with the reason
+  for it** (#493). `sync-social-tags.mjs` grew that list one PR ago (#491),
+  because a board notice pointing at `Projects/Castle Conundrum/` — a path this
+  repo had just stopped serving — read as `FAIL ... linked from the board but
+  not on disk`. An absolute URL needs none of it: the offsite branch that has
+  always existed for `aspermylessonplan.com` catches it first, and the run went
+  from `1 offsite · 1 hosted elsewhere` to `2 offsite` with the list still in
+  place, which is the list doing nothing. It was deleted rather than left empty,
+  because a mechanism with no live entry has nothing exercising it and will be
+  wrong by the time anyone needs it again. Its own comment said to do this.
+  **Broken on purpose** (#34), from a green baseline and after the list was
+  gone, by putting the relative `href` back in `index.html`: `FAIL
+  Projects/Castle Conundrum/index.html linked from the board but not on disk`,
+  `1 offsite`, `1 failed`, exit 1. Restored: `2 offsite`, `0 failed`. So the
+  absolute URL is what carries the check, not a leftover.
+- **`<a href>` is why the absolute URL costs nothing elsewhere.**
+  `check-integrity.mjs`'s offsite sweep reads `link|script|img|iframe|source|
+  audio|video|embed` and deliberately not `<a href>`, which is a navigation
+  link rather than a request the page makes. The four rewritten hrefs are all
+  `<a>`, and `landing.html`'s frame still wraps a local `<img>`, so
+  `1796 units checked, 0 broken` is unchanged.
+- **The export branch is deleted.** `claude/castle-conundrum-export` carried 74
+  MB of zips and a HOW-TO, built when the Claude GitHub App had no write access
+  to `GreyVersusBlue/castle-conundrum` and the new repo's contents had to be
+  movable by hand through a browser. Access was granted, `castle-conundrum#1`
+  pushed and merged with its history, and the branch became dead weight. It was
+  never merged, so its objects are unreachable.
+
+**A note that is not a decision, because it is Devon's to settle.**
+`https://greyversusblue.github.io/castle-conundrum/` serves whatever GitHub
+Pages is pointed at, and **the new repo's root is not servable on its own any
+more.** That is a direct consequence of #494 over there: deleting the import map
+in favour of Vite means `src/main.js` starts with a bare `import * as THREE from
+'three'`, which a browser cannot resolve without a build. Serving the repo root
+as a plain static directory was checked here rather than guessed — a dumb
+`node:http` server over that checkout, no Vite, headless Chromium:
+
+```
+pageerror: Failed to resolve module specifier "three".
+          Relative references must start with either "/", "./", or "../".
+start overlay shown: false | loading says: "Summoning stonework…"
+```
+
+The page hangs on its loading screen. Pages has to serve that repo's `dist/` —
+an Actions workflow that runs `npm run build` and uploads it, or a branch
+carrying the built output. Under `Projects/Castle Conundrum/` this never came up,
+because the import map made the source directly servable. Nothing here can fix
+it and nothing here tried: hosting, Pages settings and deploy workflows are
+Devon's (#491).

@@ -29,13 +29,16 @@ this file disagree about anything under `Projects/bell-to-bell/`, it wins.
 now, with its history, its seven phase plans, its eight suites and its own CI.
 Nothing about it is open here and nothing about it should be opened here.
 `HISTORY.md` keeps a pointer rather than a copy of its 102 locked decisions, and
-`Tools/board-check/play-castle.mjs` went with it. **Three things of its stayed
-and are Devon's, not a session's**: the board card in `index.html` and
-`landing.html`, `assets/previews/castle-conundrum.jpg` and
-`assets/og/castle-conundrum.jpg`. They still point at
-`Projects/Castle%20Conundrum/` on purpose, because that is still where the page
-is served from until Devon relinks. `sync-social-tags.mjs`'s `ELSEWHERE` list is
-what keeps `npm run social:check` honest about that in the meantime.
+`Tools/board-check/play-castle.mjs` went with it. **Three things of its stayed**:
+the board card in `index.html` and `landing.html`,
+`assets/previews/castle-conundrum.jpg` and `assets/og/castle-conundrum.jpg`.
+The card links <https://greyversusblue.github.io/castle-conundrum/> now (#493),
+so the page is offsite as far as every check here is concerned and
+`sync-social-tags.mjs` skips it the same way it skips the aspermylessonplan.com
+notice. The two images are still served from here and
+`promote-previews.mjs`/`candidates/chosen.json` still know the slug, so a
+capture taken in the other repo can be dropped into `candidates/` and promoted
+from here.
 
 ## House rules for every file in this repo
 
