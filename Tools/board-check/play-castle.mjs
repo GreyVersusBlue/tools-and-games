@@ -1,8 +1,11 @@
 // play-castle.mjs — end-to-end smoke test for Castle Conundrum.
 //
-// Plays the whole game with real input: pointer lock, WASD, E presses, typing into
-// the riddle box. Asserts every beat of the quest chain and exits 1 on the first
-// one that doesn't happen. Screenshots land in ./shots/play/ for eyeballing.
+// Plays the whole day with real input: pointer lock, WASD, E presses, typing into
+// the riddle box, the J key, the Present button and the accusation panel. From
+// Phase 7 it walks the intended path in WISHLIST.md end to end — twelve people,
+// ten pieces of evidence, three bells, a reload at Sext and the full ending —
+// and exits 1 on the first beat that doesn't happen. Screenshots land in
+// ./shots/play/ for eyeballing.
 //
 // WHY THIS EXISTS: sessions 2, 3 and 4 each verified Castle Conundrum by reading
 // the code and checking the first frame, because the sandboxed browser they had
@@ -19,7 +22,7 @@
 // npm run play
 
 import { serve, launch, prepPage } from './harness.mjs';
-import { attachSceneProbe, waitForProbe, walkTo as driveTo, waitFor, wait, textContent } from './drive.mjs';
+import { attachSceneProbe, waitForProbe, walkTo as driveTo, wait, textContent } from './drive.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,7 +90,8 @@ const state = () => page.evaluate(() => {
     dialogueName: text('dialogue-name'),
     dialogueText: text('dialogue-text'),
     riddleOpen: !hidden('riddle-overlay'),
-    victoryOpen: !hidden('victory-screen'),
+    journalOpen: !hidden('journal-overlay'),
+    accusationOpen: !hidden('accusation-overlay'),
     objective: text('quest-objective'),
     locked: !!document.pointerLockElement,
   };
@@ -134,8 +138,8 @@ console.log('playing Castle Conundrum end to end\n');
 
 try {
   await page.goto(GAME, { waitUntil: 'load' });
-  // A stale save from a previous run would resume mid-quest and the Scholar
-  // beats below would find the riddle already answered. Clear the one key
+  // A stale save from a previous run would resume mid-day, with the journal
+  // already full and the muniment room already open. Clear the one key
   // (src/save.js, castleConundrumSave_v1) and load again from nothing.
   await page.evaluate(() => localStorage.removeItem('castleConundrumSave_v1'));
   await page.reload({ waitUntil: 'load' });
@@ -270,7 +274,7 @@ try {
   // Scholar stood 0.57 m inside that same table. castle-builder now measures the
   // surface under a prop instead of trusting a typed-in height, so this asserts
   // the measurement, not the number that came out of it.
-  const hall = await page.evaluate(async ({ table, scholar }) => {
+  const hall = await page.evaluate(async ({ table }) => {
     const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
     const s = window.__scene;
     const tableBox = new THREE.Box3(new THREE.Vector3(...table.min), new THREE.Vector3(...table.max));
@@ -582,41 +586,236 @@ try {
     if (!ok) bad('the walk over the top did not complete', 'see the legs above; #53 applies on a software renderer');
   }
 
-  // --- The Steward, at whatever station the data has him at this bell. At Prime
-  // that is the King's Hall, which is where the Scholar used to stand; the
-  // difference is that this beat asks rather than knows.
-  const stewardDue = await stationOf('steward');
-  assert(!!stewardDue, 'the data has the Steward somewhere at this bell', JSON.stringify(stewardDue));
-  const toSteward = await walkTo(stewardDue.at, 'Piers');
-  assert(!!toSteward, `walked to the Steward in ${stewardDue.room}`, toSteward ? `${toSteward.dist}m after ${toSteward.bursts} bursts` : 'never got in range');
-  await snap('at-steward');
-  if (!toSteward) throw new Error('cannot continue without reaching the Steward');
+  /* ======================================================================
+   * THE INTENDED PATH (Projects/Castle Conundrum/WISHLIST.md). Phase 7 put the
+   * mystery on the screen, and this is the only thing anywhere that plays it
+   * with a hand: walk to somebody, press E, read what they say, open the
+   * journal, present a clue, ring the bell, and at the end name a man to the
+   * Constable and read the epilogue.
+   *
+   * WHAT THIS SEES THAT NOTHING ELSE DOES. test/quest.mjs drives the same path
+   * through the real manager against a UI that records instead of rendering, so
+   * it sees every decision and none of the reaching: whether the player can
+   * actually get within 3.2 m of the Steward at Sext, whether the pouch on the
+   * chapel floor is low enough to look at, whether walking onto the cross-wall
+   * walk is noticed at all. test/plan-vs-scene.mjs sees the prompts and the
+   * overlays under a software rasteriser, camera placed rather than walked.
+   * This walks.
+   *
+   * #53 APPLIES TO EVERY TIMING BELOW. A walk that does not arrive, or a body
+   * still moving after 45 s, is inconclusive under a software renderer and only
+   * means something from a machine with real GPU compositing.
+   * ====================================================================== */
 
-  await page.keyboard.press('KeyE');
-  await wait(400);
-  s = await state();
-  assert(s.dialogueOpen && /Piers/.test(s.dialogueName || ''), 'E opened the Steward dialogue', s.dialogueName);
-  await snap('steward-dialogue');
+  /** Every held clue's id, straight off the engine. */
+  const held = () => page.evaluate(() => [...window.__mystery.state.clues]);
+  /** The world point a piece of evidence's prompt is aimed at. */
+  const evidenceAt = async (id) => page.evaluate((eid) => {
+    const t = (window.__evidence || []).find((x) => x.id === eid);
+    return t ? [t.focus.x, t.focus.z] : null;
+  }, id);
 
-  for (let i = 0; i < 5 && (await state()).dialogueOpen; i++) {
+  /** Walk to somebody's station at this bell and step through what they say. */
+  const converse = async (npcId, nameRe, label = npcId) => {
+    const due = await stationOf(npcId);
+    if (!due) { bad(`${label}: not in the castle at this bell`); return null; }
+    await arrives(npcId);
+    const walked = await walkTo(due.at, nameRe.source.replace(/\W/g, ''));
+    assert(!!walked, `walked to the ${label} in ${due.room}`, walked ? `${walked.dist}m after ${walked.bursts} bursts` : 'never got in range');
+    if (!walked) return null;
+    await page.keyboard.press('KeyE');
+    await wait(400);
+    let s2 = await state();
+    if (!s2.dialogueOpen) { bad(`${label}: E opened no dialogue`, JSON.stringify(s2.prompt)); return null; }
+    assert(nameRe.test(s2.dialogueName || ''), `E opened the ${label}'s dialogue`, s2.dialogueName);
+    const lines = [];
+    for (let i = 0; i < 10 && (await state()).dialogueOpen; i++) {
+      lines.push((await state()).dialogueText);
+      await page.keyboard.press('KeyE');
+      await wait(320);
+    }
+    return { due, lines };
+  };
+
+  /** E on a piece of evidence, and what it put in the journal. */
+  const examine = async (evidenceId, label = evidenceId) => {
+    const at = await evidenceAt(evidenceId);
+    if (!at) { bad(`${label}: not an interaction target — nothing in the plan carries that evidence, or it is hidden at this bell`); return null; }
+    const walked = await walkTo(at, 'examine');
+    assert(!!walked, `walked to the ${label}`, walked ? `${walked.dist}m after ${walked.bursts} bursts` : 'never got in range');
+    if (!walked) return null;
+    const before = await held();
+    await page.keyboard.press('KeyE');
+    await wait(400);
+    const after = await held();
+    const gained = after.filter((c) => !before.includes(c));
+    return { gained, toast: await textContent(page, '#toast') };
+  };
+
+  /**
+   * Present a clue to somebody: open their dialogue, click Present, click the
+   * row. The journal rows carry their clue id, so this names a clue rather than
+   * counting rows.
+   */
+  const present = async (npcId, clueId, nameRe, label = npcId) => {
+    const c = await converse(npcId, nameRe, label);
+    if (!c) return null;
+    // converse() ran the dialogue out. Re-open it and use the button instead.
     await page.keyboard.press('KeyE');
     await wait(350);
+    if (!(await state()).dialogueOpen) { bad(`${label}: could not re-open the dialogue to present ${clueId}`); return null; }
+    const hasButton = await page.evaluate(() => !document.getElementById('dialogue-present').classList.contains('hidden'));
+    assert(hasButton, `the ${label}'s dialogue offers Present`);
+    if (!hasButton) return null;
+    await page.click('#dialogue-present');
+    await wait(300);
+    const row = await page.evaluate((id) => !!document.querySelector(`#journal-list .journal-row[data-id="${id}"]`), clueId);
+    assert(row, `${clueId} is in the list the Present button opens`);
+    if (!row) return null;
+    const before = await held();
+    await page.evaluate((id) => document.querySelector(`#journal-list .journal-row[data-id="${id}"]`).click(), clueId);
+    await wait(400);
+    const stateAfter = await page.evaluate((id) => window.__mystery.npcState(id), npcId);
+    const after = await held();
+    return { state: stateAfter, gained: after.filter((x) => !before.includes(x)) };
+  };
+
+  // ---- Prime: the Constable over the body -------------------------------
+  const first = await converse('constable', /Roger/, 'Constable');
+  if (!first) throw new Error('cannot start the day without the Constable');
+  assert(!first.lines.includes('{ACCUSE}'), 'his last line is the {ACCUSE} token, substituted', JSON.stringify(first.lines.at(-1)));
+  let stage = await page.evaluate(() => window.__quest.stage);
+  assert(stage === 'investigate', 'the first conversation moves the day to `investigate`', stage);
+  assert(await page.evaluate(() => document.getElementById('accusation-overlay').classList.contains('hidden')), 'and opens no accusation panel yet');
+  assert((await held()).includes('constable-accident'), '"he fell" is in the journal');
+  await snap('constable-at-the-body');
+
+  const body = await examine('body', 'body at the stair foot');
+  assert(body && body.gained.includes('body-stair'), 'E on the body: he is at the foot of the stair', body?.gained.join(', '));
+  assert(!!body?.toast && /New clue/.test(body.toast), 'and the toast says so', JSON.stringify(body?.toast));
+  const pouch = await examine('pouch', "mason's pouch");
+  assert(pouch && pouch.gained.includes('summons-note') && pouch.gained.includes('pouch-empty'), 'the pouch: a summons and no tallies', pouch?.gained.join(', '));
+  const pouchGone = await page.evaluate(() => {
+    const t = (window.__evidence || []).find((x) => x.id === 'pouch');
+    return !!t && t.group.visible === false;
+  });
+  assert(pouchGone, 'and it leaves the world, because take:true means the player has it');
+  await snap('the-pouch-taken');
+
+  // The journal, on J.
+  await page.keyboard.press('KeyJ');
+  await wait(300);
+  const journal = await page.evaluate(() => ({
+    open: !document.getElementById('journal-overlay').classList.contains('hidden'),
+    rows: [...document.querySelectorAll('#journal-list .journal-row')].map((r) => r.dataset.id),
+    title: document.getElementById('journal-title').textContent.trim(),
+  }));
+  assert(journal.open, 'J opens the journal');
+  assert(JSON.stringify(journal.rows) === JSON.stringify(await held()), `it lists all ${journal.rows.length} held clues in the order they were found`, journal.rows.join(', '));
+  assert(/What you know/.test(journal.title), 'read-only, not the picker', journal.title);
+  await snap('journal');
+  await page.keyboard.press('KeyJ');
+  await wait(250);
+  assert(await page.evaluate(() => document.getElementById('journal-overlay').classList.contains('hidden')), 'J again shuts it');
+
+  // The rest of Prime.
+  await converse('cook', /Marged/, 'cook');
+  assert((await held()).includes('lantern-set-down'), 'the cook, and the deduction lands with her');
+  await converse('porter', /Gwilym/, 'porter');
+  assert((await held()).includes('porter-barred'), 'the porter: "barred as always"');
+  const cloak = await examine('cloak', 'cloak on the crate');
+  assert(cloak && cloak.gained.includes('cloak-wax'), 'the cloak in the laundry, with wax on it', cloak?.gained.join(', '));
+  await converse('apprentice', /Ieuan/, 'apprentice');
+  assert((await held()).includes('tallies-taken'), 'the apprentice, and tallies-taken deduced');
+
+  // The sentry is asleep at Prime, and the box says so rather than opening on
+  // lines he is in no state to give.
+  const sleeping = await stationOf('sentry');
+  if (sleeping) {
+    const walked = await walkTo(sleeping.at, 'Dafydd');
+    if (walked) {
+      await page.keyboard.press('KeyE');
+      await wait(400);
+      const said = await textContent(page, '#dialogue-text');
+      assert(/asleep/i.test(said || ''), 'the sentry is asleep at Prime and the box says so', JSON.stringify(said));
+      await page.keyboard.press('KeyE');
+      await wait(300);
+    }
   }
-  s = await state();
-  assert(!s.dialogueOpen, 'his lines ran out');
-  assert(!s.riddleOpen, 'and no riddle: it is on the muniment room\'s door, not on anybody');
+  await snap('end-of-prime');
+
+  // ---- The bell -----------------------------------------------------------
+  const bellAt = await page.evaluate(async (url) => {
+    const THREE = await import(url);
+    let box = null;
+    window.__scene.traverse((o) => {
+      if (o.userData?.planId !== 'chapel-bell') return;
+      const b = new THREE.Box3().setFromObject(o);
+      box = [(b.min.x + b.max.x) / 2, (b.min.z + b.max.z) / 2];
+    });
+    return box;
+  }, THREE_URL);
+  assert(!!bellAt, 'the chapel bell is in the scene', JSON.stringify(bellAt));
+  const ring = async (n) => {
+    const toBell = await walkTo(bellAt, 'ring the bell');
+    assert(!!toBell, `walked to the bell for ring ${n}`, toBell ? `${toBell.dist}m after ${toBell.bursts} bursts` : 'never got in range');
+    if (!toBell) throw new Error('cannot ring a bell that cannot be reached');
+    await page.keyboard.press('KeyE');
+    await wait(700);
+    return page.evaluate(() => window.__mystery.watch);
+  };
+  assert((await ring(1)) === 'terce', 'the first ring: Terce');
+  await snap('terce');
+
+  // ---- Terce --------------------------------------------------------------
+  const cart = await examine('cart', 'cart under the sacking');
+  assert(cart && cart.gained.includes('merchant-cart'), "under the merchant's sacking: the King's lead", cart?.gained.join(', '));
+  const merchant = await present('merchant', 'merchant-cart', /Wykes/, 'merchant');
+  assert(merchant && merchant.state === 'admits', 'presented with the cart, the merchant admits', JSON.stringify(merchant));
+  assert(merchant && merchant.gained.includes('merchant-admits'), 'and says who sold it to him');
+  await snap('merchant-admits');
+
+  await converse('sentry', /Dafydd/, 'sentry');
+  assert((await held()).includes('sentry-sighting'), 'the sentry, awake at Terce, saw fur on the walk');
+
+  // The cross-wall walk IS a clue: standing on it is how `walk-crosses` is
+  // found. Nothing but a walking player can trip this — main.js asks `inRoom`
+  // on the frames the player is moving, and no other check walks.
+  const crossing = await driveTo(page, [-1, 0], async () => (await held()).includes('walk-crosses'));
+  assert((await held()).includes('walk-crosses'), 'walking onto the cross-wall walk lands walk-crosses',
+    crossing ? `${crossing.dist}m after ${crossing.bursts} bursts` : 'never got there, or got there and nothing noticed');
+  await snap('cross-walk-crossing');
+
+  const walkDoor = await examine('walk-door', 'bar beside the Stockhouse door');
+  assert(walkDoor && walkDoor.gained.includes('door-unbarred'), 'the Stockhouse door, unbarred', walkDoor?.gained.join(', '));
+  const tally = await examine('tally', 'tally stick');
+  assert(tally && tally.gained.includes('tally-on-walk'), 'the tally stick in the gutter of the south walk', tally?.gained.join(', '));
+  const candle = await examine('candle', 'chapel candles');
+  assert(candle && candle.gained.includes('wax-matches'), 'the chapel candles, and wax-matches deduced against the cloak', candle?.gained.join(', '));
+
+  assert((await ring(2)) === 'sext', 'the second ring: Sext');
+  await snap('sext');
+
+  // ---- Sext ---------------------------------------------------------------
+  await converse('lady', /Alys/, 'Lady Alys');
+  assert((await held()).includes('summons-is-stewards'), "her sevens: the summons is in the Steward's hand");
+  const alys = await present('lady', 'walk-crosses', /Alys/, 'Lady Alys');
+  assert(alys && alys.gained.includes('lady-window'), 'presented with the walk, she says what she saw from her window', JSON.stringify(alys));
+  const steward = await present('steward', 'summons-is-stewards', /Piers/, 'Steward');
+  assert(steward && steward.state === 'admits' && steward.gained.includes('steward-admits'), 'the Steward admits the summons', JSON.stringify(steward));
+  const chaplain = await present('chaplain', 'steward-admits', /Anselm/, 'chaplain');
+  assert(chaplain && chaplain.gained.includes('chaplain-feet'), 'the chaplain heard two sets of feet on the stair', JSON.stringify(chaplain));
+  await snap('pressed-three');
 
   // --- The word-lock. The riddle is carved over the muniment room's door in the
-  // King's Tower and pressing E at it is what opens the overlay, which is
-  // `lock:muniment` in data/quest.json. Nothing in Node sees the prompt, the
-  // facing test or the line of sight to a leaf hanging off a hinge at its own
-  // edge; this is the beat that does.
-  // walkTo matches the prompt text, and this one reads "Press E to read the
-  // word-lock" rather than naming anybody.
+  // King's Tower; pressing E at it reads the word into the journal AND opens the
+  // overlay, which is one press doing both (Phase 7). Nothing in Node sees the
+  // prompt, the facing test or the line of sight to a leaf hanging off a hinge
+  // at its own edge.
   const toLock = await walkTo(MUNIMENT_LOCK, 'word-lock');
-  assert(!!toLock, 'walked to the muniment room\'s door', toLock ? `${toLock.dist}m after ${toLock.bursts} bursts` : 'never got in range');
+  assert(!!toLock, "walked to the muniment room's door", toLock ? `${toLock.dist}m after ${toLock.bursts} bursts` : 'never got in range');
   await snap('at-word-lock');
-  if (!toLock) throw new Error('cannot reach the word-lock, so there is no riddle to answer');
+  if (!toLock) throw new Error('cannot reach the word-lock, so the ledger can never be read');
   s = await state();
   assert(/word-lock/i.test(s.prompt || ''), 'the door offers its own prompt, not "talk to"', JSON.stringify(s.prompt));
 
@@ -625,8 +824,9 @@ try {
   s = await state();
   assert(s.riddleOpen, 'E at the word-lock opened the riddle overlay');
   assert(!s.locked, 'pointer lock released so the answer can be typed');
+  assert((await held()).includes('word-lock'), 'and the same press read the word-lock into the journal');
   await snap('riddle');
-  if (!s.riddleOpen) throw new Error('no riddle, no keystone, no point continuing');
+  if (!s.riddleOpen) throw new Error('no riddle, so the muniment room never opens');
 
   // Wrong answers: distinct responses, and the hint from the second one on.
   await page.fill('#riddle-input', 'a door');
@@ -642,101 +842,89 @@ try {
 
   await page.fill('#riddle-input', 'River');
   await page.press('#riddle-input', 'Enter');
-  await wait(700);
+  await wait(900);
   s = await state();
   assert(!s.riddleOpen, 'the right answer closed the riddle');
-  assert(/Keystone/.test(s.objective), 'objective advanced to the Keystone', JSON.stringify(s.objective));
   assert(s.locked, 'pointer lock re-acquired after the overlay');
-  await snap('keystone');
+  assert(await page.evaluate(() => window.__mystery.state.locks.includes('muniment')), 'and the muniment room is unlocked in the engine');
+  await snap('word-holds');
 
-  // --- Reload: the save (src/save.js) resumes the quest where it was. The
+  // --- Reload: the save (src/save.js) resumes the day where it was. The
   // autosave flushes on pagehide, so nothing has to wait for its timer here.
-  // test/save.mjs holds the repair rails in Node; this is the one beat that
-  // sees a real reload carry the stage, the wrong-answer count and the camera.
-  const before = await page.evaluate(() => ({ x: window.__cam.position.x, z: window.__cam.position.z }));
+  // test/save.mjs holds the repair rails in Node; this is the one beat that sees
+  // a real reload carry the watch, the journal, a pressed NPC and the camera.
+  const before = await page.evaluate(() => ({ x: window.__cam.position.x, z: window.__cam.position.z, clues: window.__mystery.state.clues.length }));
   await page.reload({ waitUntil: 'load' });
   await page.waitForSelector('#start-overlay:not(.hidden)', { timeout: 90000 });
   await attachSceneProbe(page, THREE_URL);
   await waitForProbe(page);
   const resumed = await page.evaluate(() => ({
     stage: window.__quest?.stage,
-    objective: document.getElementById('quest-objective').textContent,
+    watch: window.__mystery?.watch,
+    clues: window.__save?.state?.clues?.length,
+    steward: window.__mystery?.npcState('steward'),
     wrong: window.__save?.state?.riddleWrong,
+    unlocked: window.__save?.state?.locks?.includes('muniment'),
     x: window.__cam.position.x, z: window.__cam.position.z,
   }));
-  assert(resumed.stage === 'present-keystone' && /Keystone/.test(resumed.objective), 'after a reload the objective still says Keystone', JSON.stringify(resumed));
+  assert(resumed.stage === 'investigate' && resumed.watch === 'sext', 'after a reload the day is still at Sext, mid-investigation', JSON.stringify(resumed));
+  assert(resumed.clues === before.clues, `all ${before.clues} clues survived the reload`, String(resumed.clues));
+  assert(resumed.steward === 'admits', 'and the Steward is still pressed');
   assert(resumed.wrong === 2, 'the two wrong answers survived the reload', String(resumed.wrong));
+  assert(resumed.unlocked, 'and the muniment room is still unlocked');
   assert(Math.abs(resumed.x - before.x) < 0.05 && Math.abs(resumed.z - before.z) < 0.05, 'the camera came back where it was', `${before.x.toFixed(2)},${before.z.toFixed(2)} -> ${resumed.x.toFixed(2)},${resumed.z.toFixed(2)}`);
+  // THE LEAF IS OPEN AGAIN, not shut behind a riddle that will never be offered
+  // twice. `openLock` is on a transition in data/quest.json, so main.js re-opens
+  // every lock in the save at load; without that the ledger is unreachable after
+  // any reload and every Node suite still passes.
+  const leafOpen = await page.evaluate(() => {
+    const t = (window.__evidence || []).find((x) => x.id === 'ledger');
+    return !!t;
+  });
+  assert(leafOpen, 'the ledger is still an interaction target after the reload');
   await page.click('#start-button');
   await wait(400);
-  s = await state();
-  assert(s.locked, 'pointer lock after the reload');
-  await snap('reloaded');
+  assert((await state()).locked, 'pointer lock after the reload');
+  await snap('reloaded-at-sext');
 
-  // --- The bell, three times (Phase 6). The chapel is where the mason died and
-  // where the bell hangs; ringing it moves the watch, the sky and the twelve.
-  // What no Node suite can see is the walk itself: the cook leaves the kitchen
-  // at Vespers and crosses the outer ward to the Great Hall on the same grid the
-  // player walks, and either she arrives or she is standing in a wall. #53
-  // applies to every timing below — a body still walking after 45 s under a
-  // software rasteriser is not a bug until a GPU says so.
-  if (!s.locked) { await page.click('#start-button'); await wait(400); }
-  const bellAt = await page.evaluate(async (url) => {
-    const THREE = await import(url);
-    let box = null;
-    window.__scene.traverse((o) => {
-      if (o.userData?.planId !== 'chapel-bell') return;
-      const b = new THREE.Box3().setFromObject(o);
-      box = [(b.min.x + b.max.x) / 2, (b.min.z + b.max.z) / 2];
-    });
-    return box;
-  }, THREE_URL);
-  assert(!!bellAt, 'the chapel bell is in the scene', JSON.stringify(bellAt));
-  const toBell = bellAt && await walkTo(bellAt, 'ring the bell');
-  assert(!!toBell, 'walked to the bell in the chapel', toBell ? `${toBell.dist}m after ${toBell.bursts} bursts` : 'never got in range');
-  await snap('at-bell');
-  if (!toBell) throw new Error('cannot ring a bell that cannot be reached');
+  const ledger = await examine('ledger', 'works ledger');
+  assert(ledger && ledger.gained.includes('lead-sold'), 'the ledger, and lead-sold deduced against the apprentice\'s count', ledger?.gained.join(', '));
+  const clerk1 = await present('clerk', 'wax-matches', /Ferrour/, 'Clerk');
+  assert(clerk1 && clerk1.gained.includes('clerk-cloak'), '"since Sunday"', JSON.stringify(clerk1));
+  const clerk2 = await present('clerk', 'lead-sold', /Ferrour/, 'Clerk');
+  assert(clerk2 && clerk2.state === 'cornered', 'the Clerk, cornered', JSON.stringify(clerk2));
+  await snap('clerk-cornered');
 
-  const watches = [];
-  for (let i = 0; i < 3; i++) {
-    await page.keyboard.press('KeyE');
-    await wait(600);
-    watches.push(await page.evaluate(() => window.__mystery?.watch));
-  }
-  assert(JSON.stringify(watches) === JSON.stringify(['terce', 'sext', 'vespers']),
-    'three rings carry the day from Prime to Vespers', watches.join(' > '));
+  assert((await ring(3)) === 'vespers', 'the third ring: Vespers');
   await snap('vespers');
 
-  // The cook is due in the Great Hall at Vespers, and she was in the kitchen a
-  // moment ago. This is the walk.
+  // ---- Vespers ------------------------------------------------------------
+  // The cook is due in the Great Hall at Vespers and was in the kitchen a moment
+  // ago. This is the walk that only a real bell can produce.
   const cook = await arrives('cook');
   assert(cook && !cook.late, `the cook walked from the kitchen to the ${cook?.room}`,
     cook ? `${cook.dist}m from her station after ${(cook.took / 1000).toFixed(1)}s${cook.late ? ' — still walking' : ''}` : 'she is not in the castle at Vespers');
 
-  // --- The Constable, who is at the high table in the Great Hall at Vespers and
-  // is the one the riddle quest ends with now.
+  const porter = await present('porter', 'door-unbarred', /Gwilym/, 'porter');
+  assert(porter && porter.gained.includes('porter-admits'), 'the porter, on the cross-wall walk, admits the door', JSON.stringify(porter));
+
+  // The Constable, at the high table. He is standing where the player can SEE
+  // him, not sealed inside the stonework: the prompt alone proves nothing, and
+  // the Guard of v1 offered one from 0.16 m inside the gatehouse wall.
   const constableDue = await stationOf('constable');
   assert(!!constableDue, 'the data has the Constable somewhere at Vespers', JSON.stringify(constableDue));
   await arrives('constable');
-  const toConstable = await walkTo(constableDue.at, 'Roger');
-  assert(!!toConstable, `walked to the Constable in ${constableDue.room}`, toConstable ? `${toConstable.dist}m after ${toConstable.bursts} bursts` : 'never got in range');
-  await snap('at-constable');
-  if (!toConstable) throw new Error('cannot finish without reaching the Constable');
-
-  // He is standing where the player can SEE him, not sealed inside the stonework.
-  // The prompt alone proves nothing: the Guard of v1 offered one from 0.16 m
-  // inside the gatehouse wall.
   const visible = await page.evaluate(async ({ gx, gz }) => {
     const THREE = await import('/Projects/Castle%20Conundrum/libs/three.module.js');
-    const s = window.__scene, cam = window.__cam;
+    const sc = window.__scene, cam = window.__cam;
     const npcRoots = new Set();
-    s.traverse((o) => {
+    sc.traverse((o) => {
       if (!o.isSkinnedMesh) return;
       let r = o;
-      while (r.parent && r.parent !== s) r = r.parent;
+      while (r.parent && r.parent !== sc) r = r.parent;
       npcRoots.add(r);
     });
-    const world = s.children.filter((c) => !npcRoots.has(c));
+    const world = sc.children.filter((c) => !npcRoots.has(c));
     const from = cam.position.clone();
     const to = new THREE.Vector3(gx, 1.2, gz);
     const dist = from.distanceTo(to);
@@ -747,33 +935,61 @@ try {
   assert(!visible.blockedBy, 'the Constable is actually visible from interact range',
     visible.blockedBy ? `blocked by ${visible.blockedBy}` : `${visible.dist}m, clear`);
 
-  await page.keyboard.press('KeyE');
+  const last = await converse('constable', /Roger/, 'Constable');
+  if (!last) throw new Error('cannot finish without reaching the Constable');
   await wait(400);
-  s = await state();
-  assert(s.dialogueOpen && /Roger/.test(s.dialogueName || ''), 'E opened the Constable dialogue', s.dialogueName);
+  const panel = await page.evaluate(() => ({
+    open: !document.getElementById('accusation-overlay').classList.contains('hidden'),
+    names: [...document.querySelectorAll('#accusation-people .pick-person')].map((b) => b.dataset.id),
+    clues: [...document.querySelectorAll('#accusation-clues .pick-clue')].map((b) => b.dataset.id),
+    count: document.getElementById('accusation-count').textContent.trim(),
+    dead: document.getElementById('accusation-say').disabled,
+  }));
+  assert(panel.open, 'his {ACCUSE} line opens the accusation panel');
+  assert(panel.names.length === 13 && panel.names.includes('nobody'), 'twelve names and a fall', `${panel.names.length}: ${panel.names.join(', ')}`);
+  assert(panel.clues.length === (await held()).length, `and the ${panel.clues.length} clues held`, panel.clues.length ? '' : 'the journal did not reach the panel');
+  assert(/0 of 3/.test(panel.count), 'nothing presented yet, up to three allowed', panel.count);
+  assert(panel.dead, 'and the button is dead until somebody is named');
+  await snap('accusation-panel');
 
-  for (let i = 0; i < 5 && (await state()).dialogueOpen; i++) {
-    await page.keyboard.press('KeyE');
-    await wait(350);
-  }
-  s = await state();
-  assert(/muniment room stands open/i.test(s.objective), 'the muniment room opened', JSON.stringify(s.objective));
-  // The objective is what the tracker shows; the stage is what the graph is in.
-  // Both come from data/quest.json now, and test/quest.mjs holds them together
-  // in Node — this is the one place that reads the stage out of a live game.
-  const stage = await page.evaluate(() => ({ id: window.__quest?.stage, done: window.__quest?.victory }));
-  assert(stage.done === true, 'the quest graph is in its terminal stage', JSON.stringify(stage));
-  await snap('gate-opening');
+  // Name the Clerk on the sighting, the wax and the lead: the full ending.
+  const said = await page.evaluate(async (clues) => {
+    const click = (sel) => document.querySelector(sel)?.click();
+    click('#accusation-people .pick-person[data-id="clerk"]');
+    for (const id of clues) click(`#accusation-clues .pick-clue[data-id="${id}"]`);
+    const count = document.getElementById('accusation-count').textContent.trim();
+    const dead = document.getElementById('accusation-say').disabled;
+    document.getElementById('accusation-say').click();
+    await new Promise((r) => setTimeout(r, 400));
+    return {
+      count, dead,
+      verdictShown: !document.getElementById('verdict-pane').classList.contains('hidden'),
+      pickerShown: !document.getElementById('accusation-pick').classList.contains('hidden'),
+      convicted: document.getElementById('verdict-convicted').textContent.trim(),
+      epilogue: document.getElementById('verdict-epilogue').textContent.trim(),
+      stage: window.__quest.stage,
+      done: window.__quest.victory,
+    };
+  }, ['sentry-sighting', 'wax-matches', 'lead-sold']);
+  assert(/3 of 3/.test(said.count), 'three clues selected', said.count);
+  assert(!said.dead, 'and the button came alive once the Clerk was named');
+  assert(said.stage === 'full' && said.done === true, 'the Clerk on the sighting, the wax and the lead: the full ending', `stage ${said.stage}`);
+  assert(said.verdictShown && !said.pickerShown, 'the panel becomes the verdict');
+  assert(/Ferrour hangs/.test(said.convicted), 'Master Robert Ferrour hangs', said.convicted.slice(0, 60));
+  assert(/Wykes/.test(said.epilogue), "and the lead is found in Thomas Wykes's yard", said.epilogue.slice(0, 60));
+  await snap('epilogue');
 
-  let victory = true;
-  await waitFor(
-    page,
-    () => !document.getElementById('victory-screen').classList.contains('hidden'),
-    { timeout: 10000 }
-  ).catch(() => { victory = false; });
-  assert(victory, 'victory screen appeared');
-  await wait(400);
-  await snap('victory');
+  // The button erases the save and starts the day again from nothing.
+  await page.click('#restart-button');
+  await page.waitForSelector('#start-overlay:not(.hidden)', { timeout: 90000 });
+  const wiped = await page.evaluate(() => ({
+    stored: localStorage.getItem('castleConundrumSave_v1'),
+    stage: window.__quest?.stage,
+    watch: window.__mystery?.watch,
+    clues: window.__mystery?.state.clues.length,
+  }));
+  assert(wiped.stage === 'arrive' && wiped.watch === 'prime' && wiped.clues === 0, 'Play Again starts a fresh day at Prime with an empty journal', JSON.stringify(wiped));
+  await snap('a-fresh-day');
 
   // --- Nothing broke, and nothing reached for a CDN.
   assert(page.__errs.length === 0, 'no page/console errors', page.__errs.slice(0, 4).join(' | '));

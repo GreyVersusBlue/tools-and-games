@@ -11379,3 +11379,131 @@ the page as `window.__mystery`, wired to the bell and to the save's `watch`;
 what `taken` will need; `castle.bells()` reads a flag on a plan piece rather than knowing a
 prop by name, which is the shape `evidence` targets want; and the three stages of the
 riddle quest it deletes are down to one transition and one dialogue state.
+
+## Castle Conundrum v2, Phase 7: the mystery goes live (2026-09-15)
+
+**Rank 1, a 1 in one area, alone under the size table.** The row named Claude Opus 5 and was
+worked under Opus 5. Phase 1's engine meets Phase 6's cast in Phase 5's castle, through the
+UI: E on a thing examines it, J opens the journal, Present inside a conversation presses
+somebody with a clue, and the Constable's last line opens a panel with twelve names, a fall
+and everything written down, which becomes the verdict and the epilogue in place.
+`data/quest.json` is one graph now — the frame is the top level and the riddle quest's three
+stages are gone with `openGate`, `showVictory` and the victory screen. `test/quest.mjs` 76
+assertions to **154**, `test/mystery.mjs` 113 to 118, `test/save.mjs` 50 to 56,
+`test/plan-vs-scene.mjs` 16 to 34, `play-castle.mjs` 34 beats to 102. **43.18 MB by
+`git ls-tree`, unchanged**: no asset added and none restored. Decisions #477 to #490.
+
+**The row was Phase 7, not Phase 1, for the sixth time running** (#477). The prompt named
+Phase 1 and rank 1 and carried Phase 1's riders whole: "the project stays at 29 MB" against
+43.18 on `main`, "tint is written in Phase 1 alongside the twelve NPCs, not in Phase 6
+(#419)" when Phase 6 shipped the twelve and their tints the session before, "Phase 1's entry
+names four specific breaks" when Phase 7's names two, and "the phases stay at ranks 1 to 7
+(#420)" when only Phase 7 was left in the table. `BACKLOG.md`'s rank 1 said Phase 7 and the
+Castle Conundrum section said Phases 1 to 6 had shipped. #450, #451 and #465 already say the
+table is the instruction and the phase beside it a stale snapshot; recorded a third time only
+because six for six is no longer an accident, and because a session that took the prompt at
+its word would have rebuilt `data/mystery.json` on top of a castle that already runs it.
+
+- **The frame is the graph, and a riddle-quest save is repaired rather than migrated**
+  (#478). Phase 1 wrote the v2 graph under a `frame` key beside the three stages the page
+  played; promoting it is one move and deleting the three is another, and both happen here.
+  `openGate` and `showVictory` go with them, because only the riddle quest named them.
+  `buildCatalog` stops reading `quest.frame.stages`, so a save carrying `present-keystone`
+  fails the catalog and `repair` resets it to `start` (#37). That is the honest answer and
+  not a gap: the quest that save was halfway through does not exist any more, the key is
+  untouched (#36), and every other field in it — the watch, the clues, who has been pressed,
+  what has been accused — is still read.
+- **`validateAgainstNpcs` takes a list of token/action pairs** (#479). It was written for
+  one pair and hard-coded both names: lines ending in `{RIDDLE}` need a stage that runs
+  `openRiddle` after that conversation, and a stage that runs it needs lines that pose it.
+  The accusation is the same shape with different nouns — the Constable's `default` lines end
+  in `{ACCUSE}` and two stages answer it — so the argument is `pairs` and the riddle is its
+  default entry. A second pair costs a line of data; the alternative was a second copy of
+  forty lines of checking, which is the thing #34 keeps catching. `test/quest.mjs` breaks
+  both directions of the new pair and then asserts that neither break fires when only the
+  riddle pair is passed, so the rail is the list and not a second hard-coded token.
+- **One press of E reads the word-lock and asks it** (#480). The muniment room's leaf carries
+  `evidence: "lock"` in `scene-config.json` and was already a lock target, so `castle.evidence()`
+  skips gate leaves and `locks()` carries the evidence id instead. Giving the door a second
+  prompt would have let the player read the word into the journal without ever being offered
+  the riddle, and `test/quest.mjs` holds the leaf's `evidence` to a row in the same room as
+  the lock, because losing it makes `word-lock` ungrantable in the browser while every file
+  goes on validating alone.
+- **Five answers that are not a clue are content, so they are data** (#481). `mystery.ui`
+  carries seven lines — asleep, not here at this bell, already taken, still locked, already
+  read, nothing written down, and "No one. He fell." — and `validateMystery` requires all
+  seven, because a missing one shows as an empty toast, which reads as a prompt that does
+  not work. Every evidence row grew a `name` for the same reason: without it the prompt says
+  "Press E to examine the undefined" on a real wall, and `undefined` renders fine.
+- **"Which room am I in" is not a question this castle answers** (#482). One clue in
+  `mystery.json` is kind `L` and it is the cross-wall walk, so somebody has to notice the
+  player walking onto it or `lady-window` — one of the five that convict the Clerk — is
+  unreachable in the browser while `engine.enter` goes on working in Node. The first version
+  was `nav.roomAt(x, z, feet)`, and checked against all forty-five stations it named ten of
+  them as a room their own schedule does not call them: the towers' discs overlap the walks
+  that cross their roofs, the cell's disc overlaps the Great Hall's box, and whichever room
+  won was whichever `plan.rooms` listed first. `nav.inRoom(room, level, x, z, feet)` asks
+  about one room, which has one answer, and `main.js` asks it only of the rooms that are
+  themselves a clue — read off the clue list, so a second location clue needs no code.
+- **A shrug is not a conversation** (#483). Presenting a clue that moves nobody gets the
+  NPC's `default` lines back rather than silence, and dispatches no `talked:` event. Without
+  that, presenting the wrong thing to the Constable would open the accusation panel, because
+  `talked:constable` is what opens it.
+- **The engine owns an NPC's dialogue state; the stage is only the floor** (#484). The
+  graph's `dialogueState` effect set every NPC at once, which is right for a stage change and
+  wrong the moment a press moves one person: a pressed Steward went back to `default` at the
+  next stage and his admission was lost. `_syncStates` reads `engine.npcState(id)` and falls
+  back to the stage. The reload beat is what catches it — a save with `pressed: {steward:
+  ['admits']}` has to come back in `admits`.
+- **What is on the ground at a bell is the manager's, because the manager owns `taken`**
+  (#485). `main.js` set evidence visibility from `watches` alone, so the pouch came back onto
+  the body at Terce after the player had pocketed it at Prime, with `taken` in the save saying
+  otherwise the whole time. It moved to `QuestManager._showEvidence`, which is also the only
+  reason `test/quest.mjs` can see it: nothing loads `main.js` in Node.
+- **The word-lock and the journal are offered in `arrive` too** (#486). `arrive` is one
+  conversation long and gating the castle behind it seemed harmless. `test/plan-vs-scene.mjs`
+  pressed E at the muniment room's door before meeting anybody and got no riddle — a door
+  across the castle that is inert until the player has spoken to somebody reads as a broken
+  door, and so does a J key that does nothing. Both are repeated in all three non-terminal
+  stages now; what `arrive` gates is the objective, which is the only thing it should.
+- **A toast that hides itself after 3.2 s cannot be asserted after two rAF** (#487). The
+  browser beat read the toast's `hidden` class and passed four runs out of five; the fifth
+  came back with the right text and the class already back on. Two `requestAnimationFrame`s
+  under a software rasteriser with no compositor can take longer than three seconds, which
+  makes it a wall-clock assertion under exactly the renderer #53 calls inconclusive. It reads
+  the text, which persists, and says in the comment why it does not read the class.
+- **The four overlays scroll with `safe center`** (#132 again, #488). The journal holds up to
+  39 clues and the accusation panel holds thirteen names with the whole journal under them,
+  so both are taller than the window on a short screen. `align-items: center` on an
+  overflowing flex child puts its own top above the scroll origin where no scrollbar reaches,
+  which is how Torchbearer's title screen lost its top three buttons. Written in before it
+  could happen rather than after, because this is the second project to meet it.
+- **Nine breaks, and the one that needed its own rail** (#489). Both the ones `WISHLIST.md`
+  named fired: unhooking Present from the manager failed eight assertions including
+  `presenting summons-is-stewards to the Steward moves him to pressed — state default, holds
+  false`, and `accusation.needs: 1` failed six including `one clue is refused — refusals 0,
+  stage wrong`. Of the seven others, six were caught by an assertion whose comment claims
+  them. The seventh was not, the first time: moving `walk-crosses` to level 1 was caught by
+  `validateMystery`'s existing level rail rather than by the new places check, so the break
+  was redone as a move into `outer-ward` — a room `mystery.json` really has and the plan
+  builds no bounds for, because it is open ground — and the places check fired on its own
+  message, `walk-crosses: names room outer-ward on level 0, which the plan does not build`.
+  A break that is caught by a different assertion than the one whose comment claims it is not
+  a verified rail (#34).
+
+**Q55 is answered, and it is the plan's answer** (#490). "Does the fourth bell force the
+accusation?" stood in front of this row and nothing else, so this session answered it: **yes**.
+Phase 1 had already shipped the engine half — `ring()`'s fourth moves no watch, returns a
+`demand` and emits `bell:4` — so an open day that ends only when the player chooses would have
+meant unpicking a rail that was already green, not declining to write one. `bell:4` moves the
+frame to `accusing`, whose `enter` opens the panel, which is also what brings a save resumed
+there back to it. The player can still ask for the panel at any time by talking to the
+Constable; what the bell removes is the option of never answering, which is the whole shape of
+the fiction — the inspector rides in tomorrow and the Constable wants a clean sheet by Vespers.
+Two transitions in `data/quest.json` reverse it.
+
+**`npm run play` is unrun** (#53). It walks the whole intended path now — twelve people, ten
+pieces of evidence, three bells, the cross-wall crossing, a reload at Sext, the accusation
+panel and the epilogue, 102 assertions against 34 — and none of it has been seen on a GPU,
+the same as Phase 6's. **The v2 arc is finished**: seven phases, seven sessions, PRs #306 to
+#318 and this one.

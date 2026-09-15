@@ -101,17 +101,54 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-**The last batch of ranked work that shipped** is **Castle Conundrum v2, Phase 6:
-twelve NPCs on four bells (PR #318)**, the old rank 1 alone — a 1 in one area
-whose other row is Phase 7, a 1 that waits on it, so a batch on its own under the
-size table. The row named Claude Opus 5 and was worked under Opus 5. That is the
-line to update when your batch merges; a PR that only changes these files is not a
-batch and does not belong in it. **33 ranked items remain**, and **every one of
-them names a model.**
+**The last batch of ranked work that shipped** is **Castle Conundrum v2, Phase 7:
+the mystery goes live**, the old rank 1 alone — a 1, and the last row of a
+seven-phase arc, so a batch on its own under the size table. The row named Claude
+Opus 5 and was worked under Opus 5. That is the line to update when your batch
+merges; a PR that only changes these files is not a batch and does not belong in
+it. **32 ranked items remain**, and **every one of them names a model.**
+
+**Take rank 1: a commercial tier at Broker-Track** (`Projects/Closing Time`, a 1,
+Claude Opus 5). Ranks 1 to 7 were Castle Conundrum's phases and all seven have
+shipped, so the list moves on to what was behind them; the plan is in
+`Projects/Closing Time/WISHLIST.md` through the Closing Time section below. Under
+the size table a 1 is the whole batch.
 
 The row is deleted and everything below renumbered, so the ranks in this
 header are the new ones. What shipped, and what it means for the next session:
 
+**Castle Conundrum v2, Phase 7 shipped, and the v2 arc is finished** (#477 to #490).
+E on a thing examines it, J opens the journal, Present inside a conversation presses
+somebody with a clue, and the Constable's last line opens a panel with twelve names,
+a fall and everything written down, which becomes the verdict and the epilogue in
+place. `data/quest.json` is one graph now: the frame is the top level and the riddle
+quest's three stages are gone with `openGate`, `showVictory` and the victory screen.
+The riddle survived as the word-lock (#416), and one press of E reads the word into
+the journal and asks it (#480). `test/quest.mjs` 76 assertions to **154**,
+`test/mystery.mjs` 113 to 118, `test/save.mjs` 50 to 56, `test/plan-vs-scene.mjs` 16
+to 34. **43.18 MB by `git ls-tree`, unchanged** — no asset added or restored.
+
+**Four things to carry forward.** First: **"which room am I in" is not a question
+this castle answers** (#482). One clue is a place, the cross-wall walk, and the
+general form of that question named ten of the forty-five stations as a room their
+own schedule does not call them — the towers' discs overlap the walks over their
+roofs and the cell's overlaps the Great Hall. `nav.inRoom(room, level, x, z, feet)`
+asks about one room, which has one answer. Second: **a riddle-quest save is
+repaired, not migrated** (#478): its stage is not in the catalog any more, so
+`repair` resets it to `start` (#37), the key is untouched (#36), and everything else
+in it still reads. Third: **the engine owns an NPC's dialogue state and the stage is
+only the floor** (#484) — the graph's own effect set everyone at once and put a
+pressed Steward back in `default` at the next stage. Fourth: **a toast that hides
+itself after 3.2 s cannot be asserted after two rAF** (#487): the beat passed four
+runs in five, and the fifth came back with the right text and the class already
+back on, which is #53's class found by a flake rather than by argument.
+
+**`npm run play` is unrun** (#53), the same as after Phase 6. It walks the whole
+intended path now — twelve people, ten pieces of evidence, three bells, the
+cross-wall crossing, a reload at Sext, the accusation panel and the epilogue, 102
+assertions against 34 — and none of it has been seen on a GPU.
+
+The batch before it, kept because it is one session old:
 **Castle Conundrum v2, Phase 6 shipped** (#465 to #476). Twelve bodies, three models
 and a tint each, standing where `data/mystery.json`'s schedule says at the bell the
 game is on. **A station is a tile now** (#466): every row in the schedule carries a
@@ -280,41 +317,34 @@ wall, tower and column pieces, in Node.
 **Castle Conundrum v2 is planned** (2026-09-14, PR #303, #411 to #418; not a
 batch, so not the line above). `Projects/Castle Conundrum/WISHLIST.md` is new:
 seven phases, each a 1, each one session, taken in order, at ranks 1 to 7 when
-it landed (Phases 1 to 6 have shipped; Phase 7 is rank 1 now). The
-plan carries the whole mystery (crime, twelve NPCs, thirty-nine clues, the
-accusation), the Conwy layout in tile coordinates, the save schema and its
-key, the guard-rail each phase breaks, and the weight after each phase (29 MB
-to 44.4). Every other row kept its relative place and moved down seven.
+it landed. All seven have shipped, so the seven rows are gone and every other
+row has moved back up. The plan carried the whole mystery (crime, twelve NPCs,
+thirty-nine clues, the accusation), the Conwy layout in tile coordinates, the
+save schema and its key, the guard-rail each phase breaks, and the weight after
+each phase (29 MB to 44.4; `git ls-tree` reads 43.18 on `main`).
 
-**Rank 1 is Castle Conundrum v2, Phase 7: the mystery goes live.** A **1** on **Claude
-Opus 5**, alone under the size table, and the last phase of the plan: examine, the
-journal, present, accuse, and the riddle quest retiring. It restores no set. Four
-things Phase 6 leaves ready for it: the engine is on the page as `window.__mystery`,
-wired to the bell and to the save's `watch`; `castle.setEvidenceVisible` hides and
-shows a piece of evidence with its collider, which is what `taken` needs;
-`castle.bells()` reads a flag on a plan piece rather than knowing a prop by name,
-which is the shape an `evidence` target wants; and the three stages of the riddle
-quest it deletes are down to one transition and one dialogue state. Its own bullet
-says the board card's description and `assets/og` text change in the same PR, which
-is a shared-file edit to call out in the body. **Rank 2 is
-`Projects/Closing Time`, a commercial tier at Broker-Track**, a 1 on Opus 5. The next
-half is rank 8. Eleven of the thirty-three are ¼: ranks 9, 11, 16, 17, 18, 21, 22, 23,
-24, 29 and 32. **Five of those eleven want hardware nothing here has** (16, 18, 23, 24,
-32), as do three of the halves (8, 15, 25); the Parked section below the table says
-why they were left ranked anyway. Ranks 6 and 30 are the two 2+ rows.
+**Rank 1 is a commercial tier at Broker-Track** (`Projects/Closing Time`), a **1**
+on **Claude Opus 5**, and under the size table a 1 is the whole batch. The next
+half is rank 1 of the halves, rank 7. Eleven of the thirty-two are ¼: ranks 8, 10,
+15, 16, 17, 20, 21, 22, 23, 28 and 31. **Five of those eleven want hardware nothing
+here has** (15, 17, 22, 23, 31), as do three of the halves (7, 14, 24); the Parked
+section below the table says why they were left ranked anyway. Ranks 5 and 29 are
+the two 2+ rows.
 
-**The model split is 11 Opus 5, 13 Fable 5.1, 9 Sonnet 5.** Counted off the table
-rather than decremented, which is how the 15/14/9 drift four batches ago was
-caught: 11 + 13 + 9 is 33, and the table has 33 rows. The rubric is in
+**The model split is 10 Opus 5, 13 Fable 5.1, 9 Sonnet 5.** Counted off the table
+rather than decremented, which is how the 15/14/9 drift five batches ago was
+caught: 10 + 13 + 9 is 32, and the table has 32 rows. The rubric is in
 Tier 1's preamble, and it is a reading of each row, not a quota — take the
 model the row names and say in the PR body which one you actually worked
 under.
 
 **Castle Conundrum's board preview and og card are stale** (#374, #379), and
-Phases 3 to 5 made them more so: they show the archway wide open, from before the
-gate became a gate, in a 7x7 courtyard that no longer exists at all. Recapturing them
-is the parked row; it needs a machine with real GPU compositing, and it waits on
-Phase 7, because every phase from here changes what is on the screen.
+Phases 3 to 7 made them more so: they show the archway wide open, from before the
+gate became a gate, in a 7x7 courtyard that no longer exists at all, with none of
+the HUD the game has now. **Phase 7 was what they were waiting on and it has
+shipped**, so the only thing left between the parked row and a current card is a
+machine with real GPU compositing. The card's own words are already current: the
+description and the og text changed with Phase 7.
 
 **`Projects/corner-and-kettle` has no open phase.** Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
@@ -442,39 +472,38 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Castle Conundrum v2, Phase 7: examine, journal, present, accuse; the riddle quest retires. After Phase 6 | `Projects/Castle Conundrum` | 1 | Opus 5 | `claude/gifted-planck-qqon5o` | [Castle Conundrum](#castle-conundrum) |
-| 2 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
-| 3 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 4 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 5 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 6 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 7 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 8 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 9 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
-| 10 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 11 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 12 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 13 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 14 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | Fable 5.1 |  | [Closing Time](#closing-time) |
-| 15 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 16 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 17 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 18 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 19 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 20 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 21 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 22 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 23 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 24 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 25 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 26 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 27 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 28 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 29 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
-| 30 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 31 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
-| 32 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 33 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 1 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | Opus 5 |  | [Closing Time](#closing-time) |
+| 2 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 3 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 4 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 5 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~380 MB across three games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 6 | `gvb-save.js` v2: quota accounting, multi-key namespaces, an IndexedDB tier | `assets` | 1 | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 7 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
+| 8 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
+| 9 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 10 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 11 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 12 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 13 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | Fable 5.1 |  | [Closing Time](#closing-time) |
+| 14 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 15 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 16 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 17 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 18 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 19 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 20 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 21 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 22 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 23 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 24 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 25 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 26 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 27 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 28 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
+| 29 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 30 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
+| 31 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 32 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -682,8 +711,15 @@ change to have something to report would be worse than reporting none.
 
 `Projects/Castle Conundrum/`, `Tools/board-check/play-castle.mjs`. **The plan
 is `Projects/Castle Conundrum/WISHLIST.md`** (2026-09-14, #411 to #418), and
-rank 1 above is Phase 7, a 1 and one session, and the last of them.
-**Phases 1 to 6 have shipped.** Phase 6 (PR #318, #465 to #476) put the twelve on
+**all seven of its phases have shipped.** Nothing here is ranked any more; what
+is left is that file's "What this leaves for a later arc" — a fourth body and a
+woman's in particular, the tower tops, the town outside the curtain, a second
+day, sound, touch, and the Great Hall's roof — plus the two GPU passes below.
+Phase 7 (#477 to #490) put the engine on the screen: E on a thing examines it,
+J opens the journal, Present presses somebody with a clue, and the Constable's
+last line opens an accusation panel that becomes the verdict and the epilogue.
+`data/quest.json` is one graph, the riddle quest's three stages are gone, and
+one press of E reads the word-lock and asks it (#480). Phase 6 (PR #318, #465 to #476) put the twelve on
 the screen and the day on a bell: a station is a tile, `src/stations.js` walks
 between two of them breadth-first over the player's own grid, and ringing the bell
 in the chapel moves the watch, the sky, the time-gated evidence and the cast. Phase
@@ -696,9 +732,8 @@ courtyard with the Conwy plan: the curtain, eight drums, a cross-wall whose one 
 is the only ground crossing, two barbicans. Phase 2 (PR #309, #426 to #431) made
 `src/castle-plan.js` the one copy of the placement math.
 **Phase 1 shipped on 2026-09-14** (PR #306, #421 to #425): the mystery is
-`data/mystery.json`, validated and run by `src/mystery.js`, and the save is
-live on the riddle quest. Its entry in the wishlist says what differs from the
-plan as written.
+`data/mystery.json`, validated and run by `src/mystery.js`. Its entry in the
+wishlist says what differs from the plan as written.
 
 **What v2 is.** A first-person mystery across one day in a Welsh castle of
 the 1280s: the master mason dead at the foot of the Chapel Tower stair, a
@@ -722,8 +757,10 @@ re-implements the builder and cannot see it change.
 
 **The save shipped** (#413, Phase 1): key `castleConundrumSave_v1`, `game`
 `castle-conundrum`, version 1, `repair` filtering every id against a catalog
-built from `mystery.json` and `quest.json`. It is live on the riddle quest, so
-a reload resumes mid-quest, and `play-castle.mjs` has the beat for it, unrun.
+built from `mystery.json` and `quest.json`. A reload resumes the day at its own
+bell with the journal, the presses and the unlocked muniment room intact; a save
+still carrying a riddle-quest stage is repaired to `start`, because that graph no
+longer exists (#478). `play-castle.mjs` has the beat for it, unrun.
 
 **What is already there, and stays.** The quest graph (#393 to #395) is the
 frame v2 extends: `quest.json` grows to four stages and the manager gains
@@ -733,13 +770,16 @@ goes red** (#390). `test/layout.mjs` is rewritten in Phase 2 to read the plan
 rather than recompute it. `play-castle.mjs` hard-coded `SCHOLAR` and `GUARD`
 for three phases; Phase 6 deleted both and it looks up `stationOf` now (#476).
 
-**Four questions for Devon are Q54 to Q57 below.** None blocks a phase; each
-phase's entry says which call it makes if unanswered. Q53 and Q58 are answered
-(#419, #420).
+**Two questions for Devon are left, Q54 and Q57.** None blocked a phase and all
+seven shipped; each phase's entry says which call it made. Q53 and Q58 are Devon's
+own answers (#419, #420), Q56 is Phase 4's (#447) and Q55 is Phase 7's (#490).
 
-**The parked preview recapture stays parked** and now waits on Phase 7 as
-well as a GPU. Phase 3 merged and did exactly what that note predicted: the
-board preview and the og card show a 7x7 courtyard that no longer exists.
+**The parked preview recapture is the one thing this project still wants, and it
+needs a GPU.** Phase 7 was what it was waiting on: the HUD is final, the board
+card and the og text say what the game is now, and only the image is stale — the
+board preview and the og card still show a 7x7 courtyard that Phase 3 replaced.
+The other outstanding thing is the same hardware: `npm run play` walks the whole
+intended path in 102 assertions and has never been run (#53).
 
 **Decided, not open work:**
 
@@ -759,8 +799,9 @@ board preview and the og card show a 7x7 courtyard that no longer exists.
   sets of cloth colours off three bodies, one skin colour across all of them.
   Whether that reads as twelve people in a Vespers photograph is still a
   question only a GPU and an eye can answer.
-- **Ranks 1 to 7 are confirmed** (#420, answering Q58). No other project is
-  worked until the arc finishes. One edit reverses it and no phase changes.
+- **Ranks 1 to 7 are confirmed** (#420, answering Q58). No other project was
+  worked until the arc finished, and it has: the seven rows are gone from the
+  table and the list moves on to Closing Time.
 
 ## Closing Time
 
@@ -1420,17 +1461,28 @@ live. Nothing in that column is a link to follow.
 
 Raised by the v2 plan (2026-09-14, `Projects/Castle Conundrum/WISHLIST.md`).
 None blocks its phase; the wishlist says what each phase does if unanswered.
-**Q53 and Q58 were answered by Devon on 2026-09-14** (#419, #420) and **Q56 was
-answered by Phase 4's session on 2026-09-14** (#447); all three are in the
-Answered list below. Three remain, Q54, Q55 and Q57, and the numbers do not shift.
+**Q53 and Q58 were answered by Devon on 2026-09-14** (#419, #420), **Q56 by
+Phase 4's session on 2026-09-14** (#447) and **Q55 by Phase 7's on 2026-09-15**
+(#490); all four are in the Answered list below. Two remain, Q54 and Q57, and the
+numbers do not shift.
 
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
 | Q54 | **A death, or only a theft?** As written the mystery is a killing made to look like a fall, with a hanging at the end. A theft-only version is a different cast and clue graph. Changes Phase 1. | 1 | the wishlist, The mystery |
-| Q55 | **Does the fourth bell force the accusation?** The plan says yes: four watches and the day ends. An open day that ends only when the player accuses changes Phase 1's engine and Phase 7's overlay. | 1 | the wishlist, The accusation |
 | Q57 | **Do the barbican gates stay shut forever?** Nothing outside the curtain is textured, so the west gate never reopens and the east opens on a walled garden. An ending that walks out of the castle is a texture set not on the list. Changes Phase 3. | 1 | the wishlist, The layout |
 
 ### Answered, kept here so they are not re-asked
+
+- **Does the fourth bell force the accusation?** (was Q55) Answered by Phase 7's
+  session, 2026-09-15, because it stood in front of that row and nothing else:
+  **yes, the plan's answer** — locked decision #490. The engine had already
+  shipped it in Phase 1 (`ring()`'s fourth moves no watch and returns a `demand`),
+  so the open-day alternative would have meant unpicking a rail that was already
+  green rather than not writing one. `bell:4` moves the frame to `accusing` and
+  `accusing`'s `enter` opens the panel, which is also what brings a save resumed
+  there back to it. The player can still ask for the panel whenever they like by
+  talking to the Constable; what the fourth bell removes is the option of never
+  answering. Reversing it is two transitions in `data/quest.json`.
 
 - **Does the riddle survive as the muniment room's word-lock?** (was Q56)
   Answered by Phase 4's session, 2026-09-14, because it stood in front of that
