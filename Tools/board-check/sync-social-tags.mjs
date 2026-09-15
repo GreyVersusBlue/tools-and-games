@@ -144,44 +144,19 @@ function blockFor(n, eol = '\n') {
 // guarantee. Add a page here only when it really does generate its own.
 const OWN_TAGS = new Set(['Numina/index.html']);
 
-// Board notices whose page is hosted from another repository. The card, the
-// preview and the og image stay here and keep pointing at the current URL until
-// Devon relinks them; the page itself is not on this disk and never will be, so
-// there are no tags here to generate and "linked from the board but not on
-// disk" is the wrong thing to say about it.
-//
-// This is the same shape as the offsite branch below, which exists for the one
-// notice pointing at aspermylessonplan.com. The difference is only that these
-// hrefs are still written as relative paths, because that is still where the
-// page is served from today. When a relink turns one into an absolute URL the
-// offsite branch picks it up and its line here should be deleted (#491).
-//
-// Broken on purpose (#34): delete the entry below and this check goes red with
-// `FAIL  Projects/Castle Conundrum/index.html  linked from the board but not on
-// disk`, 1 failed, exit 1.
-const ELSEWHERE = new Map([
-  ['Projects/Castle Conundrum/',
-   'moved to GreyVersusBlue/castle-conundrum on 2026-09-15 (#491)'],
-]);
-
-let wrote = 0, same = 0, stale = 0, missing = 0, failed = 0, offsite = 0, own = 0, elsewhere = 0;
+let wrote = 0, same = 0, stale = 0, missing = 0, failed = 0, offsite = 0, own = 0;
 
 for (const n of notices) {
-  // The board carries one notice that is not a page on this site
-  // (https://aspermylessonplan.com/, index.html:564). path.join(SITE, href)
+  // The board carries two notices that are not pages on this site:
+  // https://aspermylessonplan.com/ (index.html:564), and Castle Conundrum,
+  // which moved to its own repository and is served from GitHub Pages now
+  // (#493). path.join(SITE, href)
   // turns that into SITE/https:/aspermylessonplan.com/index.html, which this
   // script then reported as "linked from the board but not on disk" — a real
   // FAIL line for a page that was never ours to write tags into. Nothing can
   // be generated for an offsite link, so count it and move on.
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(n.href)) {
     offsite++;
-    continue;
-  }
-
-  const why = ELSEWHERE.get(n.href);
-  if (why) {
-    elsewhere++;
-    console.log(`  note  ${n.href}  ${why}`);
     continue;
   }
 
@@ -244,7 +219,7 @@ for (const n of notices) {
 
 console.log(`\n${notices.length} notices · ${same} already current · ` +
   `${missing} had no block · ${stale} out of date · ${offsite} offsite · ` +
-  `${elsewhere} hosted elsewhere · ${own} bring their own · ${failed} failed`);
+  `${own} bring their own · ${failed} failed`);
 if (check) {
   const drift = missing + stale + failed;
   console.log(drift

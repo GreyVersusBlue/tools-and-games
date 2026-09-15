@@ -23,9 +23,10 @@ A personal collection of browser-based games, tools, and TTRPG projects — most
 - **The Absalom Inheritance** — isometric CRPG built on PF2e Remaster rules
 - **Aphelion** — cozy 3D life-sim about a lone astronaut maintaining a ship
 - **Castle Conundrum** — first-person medieval murder mystery. Linked from the
-  board and hosted from here for now, but developed in
+  board, but lives in
   [`GreyVersusBlue/castle-conundrum`](https://github.com/GreyVersusBlue/castle-conundrum)
-  since 2026-09-15
+  and is served from <https://greyversusblue.github.io/castle-conundrum/> since
+  2026-09-15
 - **Closing Time** — real estate agent sim (buying and selling modes)
 - **Corner & Kettle** — coffee shop management sim
 - **Daredevil** — narrative RPG following stuntman Duke Harlan

@@ -123,13 +123,12 @@ deleted here; the project, its history, its seven phase plans and its 102
 locked decisions are in
 [`GreyVersusBlue/castle-conundrum`](https://github.com/GreyVersusBlue/castle-conundrum),
 with its own CI. **Nothing about it is open in this file any more.** What
-stayed is Devon's: the board card in `index.html` and `landing.html`, and
+stayed is the board card in `index.html` and `landing.html`, and
 `assets/previews/castle-conundrum.jpg` and `assets/og/castle-conundrum.jpg`.
-They still point at `Projects/Castle%20Conundrum/` on purpose — hosting and
-relinking are his, and `sync-social-tags.mjs`'s `ELSEWHERE` list keeps
-`npm run social:check` honest about it until he does. `HISTORY.md`'s last two
-sections are the record; the ranked table below never had a Castle row to
-delete, because all seven phases had already shipped.
+The card points at <https://greyversusblue.github.io/castle-conundrum/> (#493),
+which makes it offsite to every check here. `HISTORY.md`'s last three sections
+are the record; the ranked table below never had a Castle row to delete,
+because all seven phases had already shipped.
 
 **Closing Time's multi-offer fields resolve** (#406 to #410).
 `js/engine/escalation.js` is new and is the only place a clause becomes a price.
