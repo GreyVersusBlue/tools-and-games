@@ -101,21 +101,44 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-**The last batch of ranked work that shipped** is **Closing Time's hall of past
-careers (PR #327)**, the old rank 12 alone — a 1, so a batch on its own under
-the size table. The row named Fable 5.1 and was worked under Fable 5.1. That is
+**The last batch of ranked work that shipped** is **Closing Time's commercial
+tier (PR #329)**, the old rank 1 alone — a 1, so a batch on its own under the
+size table. The row named Opus 5 and was worked under Claude Opus 5. That is
 the line to update when your batch merges; a PR that only changes these files
-is not a batch and does not belong in it. **30 ranked items remain**, and
+is not a batch and does not belong in it. **29 ranked items remain**, and
 **every one of them names a model.**
 
-**Take rank 1: a commercial tier at Broker-Track** (`Projects/Closing Time`, a 1,
-Claude Opus 5). Ranks 1 to 7 were Castle Conundrum's phases and all seven have
-shipped, so the list moves on to what was behind them; the plan is in
-`Projects/Closing Time/WISHLIST.md` through the Closing Time section below. Under
-the size table a 1 is the whole batch.
+**Take rank 1: tides as a real axis** (`Projects/golden-hour-beach`, a 1,
+Fable 5.1). Under the size table a 1 is the whole batch; that project has no
+`WISHLIST.md`, so its plan is the Golden Hour section below and its own
+`README.md`. **It needs no hardware this machine lacks** — the eight ranked
+rows that do are called out further down and in Parked.
 
-The row is deleted and everything below renumbered, so the ranks in this
+The old rank 1 is deleted and everything below renumbered, so the ranks in this
 header are the new ones. What shipped, and what it means for the next session:
+
+**Closing Time has a commercial tier** (#508 to #515). It opens at Broker-Track,
+which is the rung level 4 was always named for, and a building is not a bigger
+house: `js/engine/commercial.js` owns a model that shares nothing with the
+residential one but the screens it draws on. **Value is NOI over a cap rate and
+the ask is not an input** (#508) — the commercial branch of `trueValue()` reads
+neither `listing.price` nor `condition`, so 401 Clocktower Sq asks $640,000
+against a modeled $446,886 and the board says so. Problems come off in dollars
+rather than through `condition` (#509), and the headline rate moves a building
+through the cap rate where it does not move a house at all (#510): 150 bp takes
+9.5% off 212 Ferry St. **The marquee decision is that the commercial financing
+milestone is arithmetic, not a die** (#511): 1.20x coverage on a 70% loan over
+25 years, and that branch touches `rand()` zero times, which two assertions on
+`S.seed` hold. Four buildings and three investors are new content.
+`tools/smoke.mjs` 270 → **359**; the `closing-time` section of
+`play-games.mjs` 38 → **53**, green under Xvfb here. **Worth carrying
+forward**: the ladder gate had three doors and only intake was gated — the
+Monday free-lead perk and `rollReferral()` both picked out of `S.clientQueue`
+without reading `levelInfo().tiers` (#514), which cost nothing until a tier
+existed that a Rookie Agent must not be handed. And the first version of "moving
+the ask does not move the building" moved `S.listingsState[id].price`, which no
+branch of `trueValue` has ever read, so it would have passed with the whole
+dispatch deleted (#34).
 
 **Closing Time files a finished year in a hall** (#503 to #507). A career
 that closes at day 336 leaves its frozen scorecard under `closingTime.hall`,
@@ -211,20 +234,19 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Rank 1 is a commercial tier at Broker-Track** (`Projects/Closing Time`), a **1**
-on **Claude Opus 5**, and under the size table a 1 is the whole batch. The next
-half is rank 1 of the halves, rank 6. Eleven of the thirty are ¼: ranks 7, 9,
-13, 14, 15, 18, 19, 20, 21, 26 and 29. **Five of those eleven want hardware nothing
-here has** (13, 15, 20, 21, 29), as do three of the halves (6, 12, 22); the Parked
-section below the table says why they were left ranked anyway. Ranks 5 and 27 are
-the two 2+ rows.
+**Rank 1 is tides as a real axis** (`Projects/golden-hour-beach`), a **1** on
+**Fable 5.1**, and under the size table a 1 is the whole batch. The first half
+is rank 5. Eleven of the twenty-nine are ¼: ranks 6, 8, 12, 13, 14, 17, 18, 19,
+20, 25 and 28. **Five of those eleven want hardware nothing here has** (12, 14,
+19, 20, 28), as do three of the halves (5, 11, 21); the Parked section below the
+table says why they were left ranked anyway. Ranks 4 and 26 are the two 2+ rows.
 
-**The model split is 10 Opus 5, 11 Fable 5.1, 9 Sonnet 5.** Counted off the table
-rather than decremented, which is how the 15/14/9 drift five batches ago was
-caught: 10 + 11 + 9 is 30, and the table has 30 rows. The rubric is in
-Tier 1's preamble, and it is a reading of each row, not a quota — take the
-model the row names and say in the PR body which one you actually worked
-under.
+**The model split is 9 Opus 5, 11 Fable 5.1, 9 Sonnet 5.** Counted off the table
+rather than decremented, which is how the 15/14/9 drift six batches ago was
+caught: 9 + 11 + 9 is 29, and the table has 29 rows. By size it is 11 ¼, 10 ½,
+6 ones and 2 of the 2+, which is the same 29. The rubric is in Tier 1's
+preamble, and it is a reading of each row, not a quota — take the model the row
+names and say in the PR body which one you actually worked under.
 
 **`Projects/corner-and-kettle` has no open phase.** Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
@@ -338,10 +360,12 @@ readings, in the same terms the project wishlists already use:
   inherits, authored content whose coherence no assertion can hold, or a change
   with no safety net under it at all.
 
-Fifteen rows read Fable, which is a heavier share than any single project's
-wishlist carries, and the reason is what this list is: the leftovers of ten
-projects are disproportionately save layers, pure models, and atmosphere
-nothing in CI can look at.
+Eleven rows read Fable, which at 11 of 29 is a heavier share than any single
+project's wishlist carries, and the reason is what this list is: the leftovers
+of ten projects are disproportionately save layers, pure models, and atmosphere
+nothing in CI can look at. (It said "fifteen" from #380 until 2026-09-16, when a
+recount off the table found the number had been left behind by four batches of
+shipped rows. Count it; do not decrement it.)
 
 `Claimed` is blank until a session writes its branch name in, and is cleared
 after that branch merges. **A claim counts only once it is on `main`** (#283):
@@ -352,36 +376,35 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | A commercial tier at Broker-Track | `Projects/Closing Time` | 1 | Opus 5 | `claude/ecstatic-sagan-qtc36t` | [Closing Time](#closing-time) |
-| 2 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 3 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 4 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 5 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 6 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 7 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
-| 8 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 9 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 10 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 11 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 12 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 13 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 14 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 15 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 16 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 17 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 18 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 19 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 20 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 21 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 22 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 23 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 24 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 25 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 26 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
-| 27 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 28 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
-| 29 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 30 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 1 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 2 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 3 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 4 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 5 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
+| 6 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
+| 7 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 8 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 9 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 10 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 11 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 12 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 13 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 14 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 15 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 16 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 17 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 18 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 19 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 20 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 22 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 23 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 24 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 25 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
+| 26 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 27 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
+| 28 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 29 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -567,10 +590,7 @@ fall-through roll, and whether the appraiser reviews condition as well as value.
 Measured on `ls_0001`, ask $168,000: cash is taken to $144,750, conventional to
 $150,000, FHA stops at $155,000. `tools/smoke.mjs` 127 → 150. The type derives
 from a hash of the client id rather than `rand()`, because `repairCareer`
-backfills it and repair runs on every load (#386). What's left:
-
-1. **A commercial tier at Broker-Track.** The last of the README's "next layers"
-   list, and rank 1.
+backfills it and repair runs on every load (#386).
 
 **Round 6 (2026-09-16, #503 to #507) shipped the hall of past careers**, the
 multi-career history three rounds of notes had raised. A finished year is filed
@@ -580,15 +600,32 @@ always had. A seventh desk screen, Hall, with its own export and an import that
 merges by id. Finished years only: an abandoned career leaves no row.
 `tools/smoke.mjs` 193 → 270, the browser section 27 → 38.
 
+**Round 7 (2026-09-16, #508 to #515) shipped the commercial tier**, in a new
+`js/engine/commercial.js`, and with it **the README's "next layers" list is
+finished**. It opens at Broker-Track, which is what level 4 was always named
+for. Value is NOI over a cap rate and the ask is not an input to it (#508);
+deferred capital comes off in dollars rather than through `condition` (#509);
+the headline rate moves a building through the cap rate where it does not move
+a house at all (#510), 150 bp for 9.5% on 212 Ferry St. **The commercial
+financing milestone is arithmetic, not a die** (#511): 1.20x coverage on a 70%
+loan over 25 years, and that branch touches `rand()` zero times. Four buildings,
+three investors, 2% a side, 200 XP. `tools/smoke.mjs` 270 → 270 + 89 = **359**.
+**Nothing about the tier is open.** What it deliberately did not do is the
+seller side (#515) — representing the seller of a building wants a rent roll,
+an offering memorandum and a broker's opinion of value where `seller.js` has
+staging tiers, photo tiers and weekend open houses. It is a row for whoever
+wants it, sized on its own, and it is **not in the ranked table**: putting it
+there is a judgement call a session may make.
+
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
 
 - **The priority-tested slice** — the buyer loop, seller loop, open houses,
   events, brokerages, market drift, referrals, and career ladder — is all live.
   Per-client financing shipped in round 4, multi-offer escalation wars in
-  round 5 and the hall of past careers in round 6. **One next layer is still
-  open: a commercial tier at Broker-Track.** The suite holding the rest is at
-  270 assertions.
+  round 5, the hall of past careers in round 6 and the commercial tier in
+  round 7. **No next layer from that list is open.** The suite holding all of
+  it is at 359 assertions.
 - **The unhandled edge case.** `repairCareer()` makes adding and removing
   content from a live career safe — it backfills and drops `listingsState`,
   `market.nb` and `knowledge` entries against what's actually in `data/`. But
@@ -980,10 +1017,12 @@ the one file-level exception and left with that project on 2026-09-15 (#491),
 taking `npm run play` with it.
 
 Everything open against this folder is filed under the project that needs it:
-Golden Hour's preview recapture and debug-hook beats (ranks 17 and 19) and Blue
-Hour's `games.mjs` entry and preview recipe (21 and 22). Those four numbers were
+Golden Hour's preview recapture and debug-hook beats (ranks 13 and 15) and Blue
+Hour's `games.mjs` entry and preview recipe (17 and 18). Those four numbers were
 read off the table rather than decremented with the rest, which is how the drift
-the line before this one carried was caught twice running. Castle Conundrum's
+the line before this one carried was caught twice running — and on 2026-09-16 it
+caught it a third time: the four had been left reading 17, 19, 21 and 22 through
+a batch that renumbered them. Castle Conundrum's
 preview promotion was rank 1, was parked, and left with the project (#491);
 what is still here is the card and the two images, which are Devon's.
 **Corner & Kettle's Phase 9 shipped on 2026-09-13 and is no longer open** —
