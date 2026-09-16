@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const {
-  groundHeight, BOUNDS, TRAIL, trailPoint, trailInfo, trailBlend,
+  groundHeight, mountainH, hillProfile, BOUNDS, TRAIL, trailPoint, trailInfo, trailBlend,
   CREEK, creekX, creekInfo, creekWaterY, walkHeight, walkable, surfaceAt,
   LAYOUT, buildLayout, KEEPERS,
 } = await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
@@ -162,34 +162,66 @@ group('the way back down');
   ok(unslowedClimbing === 0, 'and a step up it always does, so the climb always is',
     `${unslowedClimbing} level uphill steps`);
 
-  // 2. The trail's top half is not benched into anything — it rides a
-  //    causeway. mountainH is a ramp in z alone while trailYof is analytic in
-  //    ARC LENGTH, and the switchbacks make arc length outrun z, so above
-  //    t 0.5 the bench stands proud of the hillside on BOTH sides: 2.5 m at
-  //    t 0.50, 10.9 m at t 0.90. The prompt file recorded this as "the last
-  //    stretch rides a ~5 m berm, invisible now" — it is neither only the last
-  //    stretch nor invisible: walking DOWN is the one view that looks along the
-  //    trail from above, and session 6's screenshots at t 0.8 and t 0.7 show a
-  //    raised earth causeway with the treetops below it on both sides.
+  // 2. The trail's top half used to ride a causeway. mountainH was a ramp in
+  //    z alone while trailYof is analytic in ARC LENGTH, and the switchbacks
+  //    make arc length outrun z, so above t 0.5 the bench stood proud of the
+  //    hillside on BOTH sides: 2.5 m at t 0.50, 10.9 m at t 0.90, with the
+  //    crowns of full-height conifers level with the walker's boots. Walking
+  //    DOWN is the one view that looks along the trail from above, which is
+  //    why six sessions never saw it. The hill's climb is the trail's own
+  //    height profile now, read by z (hillProfile), and what is left between
+  //    bench and hill is the ridge-and-gully noise alone.
   //
-  //    NOT FIXED HERE, deliberately: every fix moves mountainH or trailYof and
-  //    rebaselines a dozen expectations in this file, which is Devon's call and
-  //    not a cleanup (same reasoning as the missing peak, session 2). This
-  //    number is a CEILING so nobody makes it worse by accident, not a target.
-  let worstCauseway = 0, worstAt = 0, firstProud = 1;
-  for (let k = 0; k <= 200; k++) {
-    const t = k / 200, p = trailPoint(t);
+  //    Three claims, each one guarding a different way of losing that, and
+  //    each one broken on purpose once (#34) so it is known which catches what:
+  //    (a) hillProfile under the centerline is the trail, to within the
+  //        smoothing residual. This guards the PROFILE — widen HILL_SMOOTH to
+  //        40 and it reads 1.32 m. It does NOT guard mountainH reading the
+  //        profile: with the ramp put back it stays green, because the profile
+  //        is still right and merely unused. That is (b)'s job.
+  //    (b) the MEAN of bench-minus-hill over the top half is about zero. The
+  //        ramp put back reads +7.03 m here, and no noise averages to that.
+  //    (c) the worst spot on the whole trail stands no more than 3 m above
+  //        both shoulders — the ceiling is now the noise's, not a ramp's. The
+  //        ramp put back reads 10.9 m at t 0.90, the number session 6 measured.
+  //    The bottom half is allowed to be buried (the waterfall's rock step and
+  //    two ridges cut it to -8 m); a trench is a bench, a levee is not.
+  let worstResidual = 0, worstCauseway = 0, worstAt = 0, meanTop = 0, nTop = 0;
+  for (let k = 0; k <= 400; k++) {
+    const t = k / 400, p = trailPoint(t);
+    worstResidual = Math.max(worstResidual, Math.abs(p.y - hillProfile(p.z)));
     const px = -p.dz, pz = p.dx;
     const shoulderL = groundHeight(p.x + px * 5, p.z + pz * 5);
     const shoulderR = groundHeight(p.x - px * 5, p.z - pz * 5);
     const proud = groundHeight(p.x, p.z) - Math.max(shoulderL, shoulderR);
     if (proud > worstCauseway) { worstCauseway = proud; worstAt = t; }
-    if (proud > 2 && t < firstProud) firstProud = t;
+    if (t >= 0.5) { meanTop += p.y - mountainH(p.x, p.z); nTop++; }
   }
-  ok(worstCauseway < 12, 'the causeway in the top half is no worse than it was measured',
-    `${worstCauseway.toFixed(1)} m above both shoulders at t ${worstAt.toFixed(2)}, first over 2 m at t ${firstProud.toFixed(2)}`);
-  ok(firstProud > 0.4, 'and the bottom half is still a bench cut into the hillside',
-    `proud of both shoulders from t ${firstProud.toFixed(2)} up`);
+  meanTop /= nTop;
+  ok(worstResidual < 0.5, 'the hillside climbs at the trail\'s own height, not a ramp\'s',
+    `worst gap between the trail and the hill\'s profile ${worstResidual.toFixed(2)} m`);
+  ok(Math.abs(meanTop) < 1.5, 'so the top half sits on the hill on average, not above it',
+    `mean bench minus hill over t 0.5–1 is ${meanTop >= 0 ? '+' : ''}${meanTop.toFixed(2)} m (was +7.0 on the ramp)`);
+  ok(worstCauseway < 3, 'and nowhere on the trail is a causeway',
+    `worst ${worstCauseway.toFixed(1)} m above both shoulders at t ${worstAt.toFixed(2)} (was 10.9 at t 0.90)`);
+
+  // Past the trail's end the hill HOLDS the summit's height to the map edge
+  // (#524): a shoulder, not a peak and not a slope. With the climb continued
+  // behind the tower instead, the frame a walker arrives at the bench with
+  // read 14.6/255 in its lower half, under the browser suite's floor of 18 —
+  // a dark rising slope where the old berm's drop-off had been. Held flat it
+  // reads 20.0. The summit's own shape is still open (BACKLOG.md, Blue Hour:
+  // the mountain has no peak); this only says the ground behind the tower is
+  // level with the bench. Behind the trailhead the hill keeps falling, so the
+  // creek still leaves the map downhill.
+  {
+    const end = trailPoint(1), top = hillProfile(end.z), edge = hillProfile(BOUNDS.minZ);
+    ok(Math.abs(edge - top) < 0.01, 'past the summit the hill holds the summit\'s height to the map edge',
+      `${top.toFixed(1)} m at the trail\'s end, ${edge.toFixed(1)} m at z ${BOUNDS.minZ}`);
+    const head = hillProfile(145), behind = hillProfile(BOUNDS.maxZ);
+    ok(behind < head && head - behind < 3, 'and falls away gently behind the trailhead',
+      `${head.toFixed(1)} m at the trailhead, ${behind.toFixed(1)} m at z ${BOUNDS.maxZ}`);
+  }
 }
 
 /* ------------------------------------------------------------------- creek -- */

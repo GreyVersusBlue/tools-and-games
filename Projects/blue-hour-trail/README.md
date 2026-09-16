@@ -117,16 +117,21 @@ hillside and was reachable by 2 of 30 test rays — and it was the wrong promise
 anyway for a walk about being somewhere you'd rather not be. The altitude blend
 now runs the other way. See `HISTORY.md`, Blue Hour session 2.
 
-A second scar, found the first time anybody walked back DOWN: above t 0.5 the
-trail is not benched into anything. `mountainH` is a ramp in z alone and
-`trailYof` is analytic in arc length, so the switchbacks make arc length outrun
-z and the bench ends up standing proud of the hillside on both sides — 2.5 m at
-mid-height, 10.9 m near the top, a causeway with the crowns of full-height
-conifers level with your boots. Climbing, you never see it; the near trees fill
-the frame and the flanks are below your sightline. Coming down, it is the view.
-Unfixed for the same reason the missing peak is: the fix moves the heightfield
-and every expectation pinned on it. `test/smoke.mjs` holds the number as a
-ceiling so it cannot quietly get worse.
+A second scar, found the first time anybody walked back DOWN and closed on
+2026-09-16: above t 0.5 the trail was not benched into anything. `mountainH`
+was a ramp in z alone and `trailYof` is analytic in arc length, so the
+switchbacks made arc length outrun z and the bench stood proud of the hillside
+on both sides — 2.5 m at mid-height, 10.9 m near the top, a causeway with the
+crowns of full-height conifers level with your boots. Climbing, you never saw
+it; coming down, it was the view. The hill's climb is now `hillProfile(z)`,
+the trail's own height read by z (z is strictly monotone along the trail, so
+that is a function), and the trail sits on the hillside everywhere by
+construction: worst spot 2.1 m above both shoulders, from the ridge-and-gully
+noise. Past the trail's end the hill holds the summit's height rather than
+climbing on — the peak is still the open question, but a slope rising behind
+the tower put the arrival frame's lower half at 14.6/255, and held flat it
+reads 20.0. `test/smoke.mjs` holds three claims on the profile, and
+`HISTORY.md` (#523 to #527) says which of the three catches what.
 
 The rest: `terrain.js` (ground + undergrowth), `forest.js` (tree tiers),
 `props.js` (built things), `creek.js` (water + spray), `atmosphere.js`

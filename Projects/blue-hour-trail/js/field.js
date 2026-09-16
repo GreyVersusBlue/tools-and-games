@@ -218,9 +218,84 @@ function rockStep(x, z) {
 
 /* --------------------------------------------------------------- heightfield */
 
+/**
+ * The hillside's climb, read by z: the trail's own height profile, not a ramp.
+ *
+ * The trail's height is analytic in ARC LENGTH and a switchback makes arc
+ * length outrun z, so a hillside that climbs linearly in z alone is 3.6 m too
+ * high where the first legs cross it and 9.3 m too low at t 0.9 — which is
+ * the causeway session 6 walked down: the bench standing proud of the hill on
+ * both sides with the treetops level with the walker's boots. z is strictly
+ * monotone along the trail (smoke.mjs holds that), so every z between the
+ * trailhead and the summit is crossed exactly once and the trail's height
+ * there is a well-defined function of z. That function IS the hill's climb.
+ * The trail then sits on the hillside everywhere by construction, and what is
+ * left between bench and hill is the ridge-and-gully noise, ±5.5 m, which is
+ * what a bench cut through a real slope has on either side of it.
+ *
+ * Built once from TRAIL: y averaged into 1 m bins of z, gaps filled, then a
+ * triangular smooth over ±HILL_SMOOTH m so the risers at the hairpins (where
+ * the trail gains 0.5 m per metre of z) are slopes rather than kinks. The
+ * smoothing leaves a residual under the centerline that smoke.mjs bounds.
+ * Behind the trailhead the profile keeps falling at the slope it arrived with,
+ * so the creek still runs off the map downhill. Past the trail's end it HOLDS
+ * the summit's height to the map edge: a shoulder, not a peak. Measured
+ * before it was chosen — with the hill still climbing behind the tower, the
+ * frame the walker arrives at the bench with read 14.6/255 in its lower half,
+ * a dark rising slope where the old berm's drop-off used to be; held flat it
+ * reads 20.0, and the four facings sit between 18.3 and 27.4 where the ramp's
+ * summit ran from 9.1 to 29.4. The shape of the summit itself is a separate,
+ * still-open question (BACKLOG.md, Blue Hour: the mountain has no peak).
+ */
+const HILL_SMOOTH = 6;
+const HILL_PROFILE = (() => {
+  const pts = TRAIL.points;
+  const zHi = pts[0].z, zLo = pts[pts.length - 1].z;     // trailhead, summit
+  const n = Math.ceil(zHi - zLo) + 1;
+  const sum = new Float64Array(n), cnt = new Float64Array(n);
+  for (const p of pts) {
+    const i = clamp(Math.round(zHi - p.z), 0, n - 1);
+    sum[i] += p.y; cnt[i]++;
+  }
+  const raw = new Float64Array(n);
+  let last = -1;
+  for (let i = 0; i < n; i++) {
+    if (!cnt[i]) continue;
+    raw[i] = sum[i] / cnt[i];
+    for (let k = last + 1; k < i; k++) {              // fill a skipped bin
+      raw[k] = last < 0 ? raw[i] : lerp(raw[last], raw[i], (k - last) / (i - last));
+    }
+    last = i;
+  }
+  for (let k = last + 1; k < n; k++) raw[k] = raw[last];
+  const at = i => raw[clamp(i, 0, n - 1)]
+    + (i < 0 ? (i) * (raw[0] - raw[Math.min(n - 1, 10)]) / -10 : 0)
+    + (i > n - 1 ? (i - (n - 1)) * (raw[n - 1] - raw[Math.max(0, n - 11)]) / 10 : 0);
+  const smooth = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let acc = 0, wsum = 0;
+    for (let d = -HILL_SMOOTH; d <= HILL_SMOOTH; d++) {
+      const w = HILL_SMOOTH + 1 - Math.abs(d);
+      acc += at(i + d) * w; wsum += w;
+    }
+    smooth[i] = acc / wsum;
+  }
+  const slopeBot = (smooth[10] - smooth[0]) / 10;           // per metre of +z
+  return { zHi, zLo, n, table: smooth, slopeBot };
+})();
+
+/** The hillside's climb at z, before ridges, gullies or the rock step. */
+export function hillProfile(z) {
+  const { zHi, zLo, n, table, slopeBot } = HILL_PROFILE;
+  if (z >= zHi) return table[0] - (z - zHi) * slopeBot;
+  if (z <= zLo) return table[n - 1];
+  const f = zHi - z, i = Math.min(n - 2, Math.floor(f));
+  return lerp(table[i], table[i + 1], f - i);
+}
+
 /** The raw hillside, before the trail is benched in or the creek cut. */
 export function mountainH(x, z) {
-  let h = SUMMIT_Y * (145 - z) / 265;                       // the climb itself
+  let h = hillProfile(z);                                    // the climb itself
   h += fbm(x * 0.018 + 7.3, z * 0.021) * 11 - 5.5;          // ridges and gullies
   h += fbm(x * 0.09, z * 0.09) * 1.6 - 0.8;                 // small roughness
   h += rockStep(x, z);
@@ -480,7 +555,7 @@ export function buildLayout() {
     };
     onTrail(0, 0.06, 2.4, -1, 0.7);                      // Hollis, first leg
     onTrail(1, 0.21, 2.1, 1, 2.2);                       // Vann, low switchbacks
-    onTrail(2, 0.44, 1.8, -1, 4.1);                      // Merrit, below the cabin turn
+    onTrail(2, 0.44, 1.5, -1, 4.1);                      // Merrit, below the cabin turn
     at(3, cabin.x + 2.6, cabin.z + 1.8, 1.3);            // Ruiz, by the cabin door
     at(4, cabin.x - 3.1, cabin.z + 0.9, 5.0);            // Kessler, cabin west side
     at(5, cabin.x - 0.8, cabin.z - 3.4, 2.8);            // Kessler, behind the cabin
