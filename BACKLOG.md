@@ -102,7 +102,7 @@ table** in Tier 2.
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
 **The last batch of ranked work that shipped** is **`gvb-save.js` v2: quota
-accounting, namespaces and an IndexedDB tier (PR #PRNUM)**, the old rank 6 alone —
+accounting, namespaces and an IndexedDB tier (PR #325)**, the old rank 6 alone —
 a 1, so a batch on its own under the size table. The row named Fable 5.1 and was
 worked under Fable 5.1. That is the line to update when your batch
 merges; a PR that only changes these files is not a batch and does not belong in
@@ -1006,7 +1006,7 @@ Two of them are closed.
    Conundrum was the third and is doing its own version of this work as rank 1
    in its own repo (#491) — whichever lands first is worth reading before the
    other starts.
-3. **`gvb-save.js` v2. Closed by PR #PRNUM** (#494 to #502): `slot.usage()` and
+3. **`gvb-save.js` v2. Closed by PR #325** (#494 to #502): `slot.usage()` and
    `slot.lastError` for quota accounting, `createNamespace()` for many keys under
    one prefix with one bundle file, and `createAsyncSaveSlot()` for the IndexedDB
    tier, same key and same bytes, with a read-time promotion from localStorage.

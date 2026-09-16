@@ -10344,7 +10344,7 @@ Devon's (#491).
 
 ## gvb-save.js v2: the tier above localStorage (2026-09-16)
 
-Rank 6, a 1 on Fable 5.1, worked under Fable 5.1, PR #PRNUM. Three things the
+Rank 6, a 1 on Fable 5.1, worked under Fable 5.1, PR #325. Three things the
 row asked for and every one of them is additive: `assets/js/gvb-save.js` went
 from 392 lines to 870, the v1 suite's 54 assertions pass on the v2 module
 unchanged, and all thirteen adopters' suites are green against it (Closing Time
