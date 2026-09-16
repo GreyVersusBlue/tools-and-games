@@ -101,24 +101,45 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-**The last batch of ranked work that shipped** is **Golden Hour's tide
-(PR #331)**, the old rank 1 alone — a 1, so a batch on its own under the size
-table. The row named Fable 5.1 and was worked under Claude Opus 5. That is the
+**The last batch of ranked work that shipped** is **Blue Hour's causeway
+(PR #334)**, the old rank 1 alone — a 1, so a batch on its own under the size
+table. The row named Opus 5 and was worked under Claude Fable 5.1. That is the
 line to update when your batch merges; a PR that only changes these files is
-not a batch and does not belong in it. **28 ranked items remain**, and **every
+not a batch and does not belong in it. **27 ranked items remain**, and **every
 one of them names a model.**
 
-**Take rank 1: the causeway** (`Projects/blue-hour-trail`, a 1, Opus 5). Under
-the size table a 1 is the whole batch unless it is paired with two quarters in
-the same area, and Blue Hour's two ranked quarters (18 and 19) both want
-hardware this machine does not have — so take it alone. Its plan is Blue Hour's
-section below. **It needs no hardware this machine lacks.** Rank 2 is the other
-half of the same complaint about that heightfield and is also a 1, so the two
-cannot go in one batch; whoever takes rank 1 should read rank 2 first anyway,
-because a fix to `mountainH` that ignores the causeway will be undone by it.
+**Take rank 1: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
+Under the size table a 1 is the whole batch unless it is paired with two
+quarters in the same area, and Blue Hour's two ranked quarters (17 and 18) both
+want hardware this machine does not have — so take it alone. Its plan is Blue
+Hour's section below, item 7. **It needs no hardware this machine lacks.** The
+heightfield it reshapes is `hillProfile` now, not a ramp (#523), and past the
+trail's end it holds the summit's height flat to the map edge (#524) because a
+slope climbing behind the tower put the arrival frame under the browser
+suite's luminance floor; read that decision before choosing a peak shape, and
+measure the four facings at the bench after, not just the one the suite reads.
 
 The old rank 1 is deleted and everything below renumbered, so the ranks in this
 header are the new ones. What shipped, and what it means for the next session:
+
+**Blue Hour's trail sits on the hillside** (#523 to #527). The hill's climb
+was a ramp in z and the trail's height is analytic in arc length, so above
+t 0.5 the bench stood proud of the hill on both sides, 10.9 m at t 0.90; the
+hill's climb is the trail's own height profile read by z now, and the worst
+spot on the whole trail is **2.1 m** above both shoulders, from the noise. The
+trail itself did not move, so nothing keyed to `altT` or the grade changed.
+**The hill holds flat past the summit** (#524), chosen by measuring the bench
+frame at four facings under three heightfields rather than by taste: the
+ramp's own summit read 9.1/255 with the walker's back to the tower, which the
+suite had never looked at. Merrit's page moved 30 cm (#525). `test/smoke.mjs`
+104 → **107**. The browser suite's steam beat frames its box off a new
+`__bh.project` door and reads it before the burst as well as after (#527),
+because aimed at the cab it read the glass sheen at 80/255 with no steam
+drawn at all. **Worth carrying forward** (#526): the first draft of the
+profile assertion's comment claimed it proved the systematic term gone, and
+putting the ramp back left it green — the profile was still right and merely
+unused. The mean-over-the-top-half claim is what catches that, and the
+comment says so now.
 
 **Golden Hour's tide is a real axis** (#516 to #522). The sea had one vertical
 axis, a 9.5 s slap of 0.32 m, and a waterline that sat between z = -7.9 and
@@ -265,17 +286,17 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Rank 1 is the causeway** (`Projects/blue-hour-trail`), a **1** on **Opus 5**.
-The first half is rank 4. Eleven of the twenty-eight are ¼: ranks 5, 7, 11, 12,
-13, 16, 17, 18, 19, 24 and 27. **Five of those eleven want hardware nothing
-here has** (11, 13, 18, 19, 27), as do three of the halves (4, 10, 20); the
-Parked section below the table says why they were left ranked anyway. Ranks 3
-and 25 are the two 2+ rows.
+**Rank 1 is the missing peak** (`Projects/blue-hour-trail`), a **1** on **Opus 5**.
+The first half is rank 3. Eleven of the twenty-seven are ¼: ranks 4, 6, 10, 11,
+12, 15, 16, 17, 18, 23 and 26. **Five of those eleven want hardware nothing
+here has** (10, 12, 17, 18, 26), as do three of the halves (3, 9, 19); the
+Parked section below the table says why they were left ranked anyway. Ranks 2
+and 24 are the two 2+ rows.
 
-**The model split is 9 Opus 5, 10 Fable 5.1, 9 Sonnet 5.** Counted off the table
+**The model split is 8 Opus 5, 10 Fable 5.1, 9 Sonnet 5.** Counted off the table
 rather than decremented, which is how the 15/14/9 drift seven batches ago was
-caught: 9 + 10 + 9 is 28, and the table has 28 rows. By size it is 11 ¼, 10 ½,
-5 ones and 2 of the 2+, which is the same 28. The rubric is in Tier 1's
+caught: 8 + 10 + 9 is 27, and the table has 27 rows. By size it is 11 ¼, 10 ½,
+4 ones and 2 of the 2+, which is the same 27. The rubric is in Tier 1's
 preamble, and it is a reading of each row, not a quota — take the model the row
 names and say in the PR body which one you actually worked under.
 
@@ -391,7 +412,7 @@ readings, in the same terms the project wishlists already use:
   inherits, authored content whose coherence no assertion can hold, or a change
   with no safety net under it at all.
 
-Ten rows read Fable, which at 10 of 28 is a heavier share than any single
+Ten rows read Fable, which at 10 of 27 is a heavier share than any single
 project's wishlist carries, and the reason is what this list is: the leftovers
 of ten projects are disproportionately save layers, pure models, and atmosphere
 nothing in CI can look at. (It said "fifteen" from #380 until 2026-09-16, when a
@@ -407,34 +428,33 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 | `claude/busy-knuth-o7lhjt` | [Blue Hour](#blue-hour) |
-| 2 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 5 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
-| 6 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 7 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 8 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 9 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 10 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 11 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 12 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 13 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 14 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 15 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 16 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 17 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 18 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 19 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 20 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 21 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 22 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 23 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 24 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 | `claude/vigilant-faraday-rsdrm1` | [Integer Foundry](#integer-foundry) |
-| 25 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 26 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 | `claude/vigilant-faraday-rsdrm1` | [Orbital](#orbital) |
-| 27 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 28 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 1 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 2 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 3 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
+| 4 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
+| 5 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 6 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 7 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 8 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 9 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 10 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 11 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 12 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 13 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 14 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 15 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 16 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 17 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 18 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 19 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 20 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 21 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 22 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 23 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |`claude/vigilant-faraday-rsdrm1` | [Integer Foundry](#integer-foundry) |
+| 24 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 25 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |`claude/vigilant-faraday-rsdrm1` | [Orbital](#orbital) |
+| 26 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 27 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -792,20 +812,23 @@ Deliberately not done, and still the right call:
    the descending phantom curve are too. They want a real walk, not a scrub. If
    Devon plays a build and leaves listening notes, tune the constants from
    them; session 4 left every level as authored.
-6. **The causeway — Devon's call (session 6).** The top half of the trail rides
-   up to 10.9 m above the hillside on both sides and the descent is the view
-   that shows it. Three ways out, none of them a cleanup: give `mountainH` a
-   term that follows the trail's arc-length height instead of `z` alone; or
-   re-anchor `trailYof` to the hillside it actually crosses; or decide a ridge
-   trail is what this is and widen the bench so it reads as ground rather than
-   a levee. All three move the heightfield and rebaseline `smoke.mjs`, and the
-   third also has to answer why the blaze posts stand at the lip of a 10 m
-   drop. **Whoever takes it: walk down afterwards, not up.** `smoke.mjs` holds
-   10.9 m as a ceiling.
-7. **The mountain still has no peak.** `mountainH` is a ramp in `z`, and the
-   last stretch of trail still rides a ~5 m berm. Both are invisible under the
-   weather session 2 added, and both become real again the instant anyone lifts
-   the fog at the summit.
+6. **The causeway — closed 2026-09-16** (#523 to #527, Q44 struck). The first
+   of the three ways out: the hill's climb is `hillProfile(z)`, the trail's own
+   height read by z, and the trail sits on the hillside everywhere by
+   construction. Worst spot 2.1 m above both shoulders, from the noise, against
+   10.9 m; the trail itself did not move a millimetre, so nothing keyed to
+   `altT` or the grade changed. `smoke.mjs` 104 → 107 and the record says which
+   of the three new claims catches what.
+7. **The mountain still has no peak.** `hillProfile` holds the summit's
+   65.0 m flat from the trail's end to the map edge (#524): a shoulder, chosen
+   because a slope still climbing behind the tower put the arrival frame's
+   lower half at 14.6/255 and the flat one reads 20.0. The ~5 m berm the last
+   stretch used to ride went with the causeway; what is left is the shape of
+   the summit itself, invisible under the weather session 2 added and real
+   again the instant anyone lifts the fog up there. Whoever takes it: the
+   browser suite reads the lower-half luminance at the bench and holds it
+   above 18, and only at the facing the walker arrives with — the other three
+   facings read 18.3 to 27.4 now and nothing holds them.
 8. **The phantom's downhill pan does nothing — decide whether to mean it**
    (session 6). `downhillAt` returns the reverse of the trail tangent, so for a
    walker facing along the trail the pan is exactly 0.000 in both directions of
@@ -1189,6 +1212,14 @@ run, and only an eviction from the Corner Tap — where there is no rung below �
 ends one. The Fourth Quarter has three open questions left, none of them
 blocking anything ranked.
 
+**Struck: Q44**, "Blue Hour's causeway: which of the three ways out?",
+answered by locked #523 while shipping the causeway: the first. The hill's
+climb follows the trail's arc-length height, read by z, and the trail itself
+does not move. Re-anchoring `trailYof` would have moved every altitude term in
+the piece with it; widening the bench would have kept the drop and argued with
+the blaze posts. Blue Hour has two open questions left, Q45 and Q46 (the
+phantom's pan), neither blocking anything ranked.
+
 **Struck: Q36**, "is a character builder welcome?", answered yes by locked
 #304 while shipping Numina Phase 3's first increment, on the one condition
 that the builder refuses to invent a number (#305). The full answer is in the
@@ -1280,7 +1311,6 @@ live. Nothing in that column is a link to follow.
 | Q40 | **Does Aphelion ever need to run on a tablet or phone?** Three rounds have each re-derived "no evidence yet" from scratch rather than asking. The answer decides whether the touch/gamepad input scheme is worth building. | 3 | prompt 04, and its notes in rounds 2 and 3 |
 | Q42 | **Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same. | 3 | prompt 06's notes across three rounds |
 | Q43 | **If Golden Hour's night proves popular, should the owl hunt?** One swoop over the dunes, no kill shown; and the fireflies drifting toward the fire when it burns. | 1 | the project's notes |
-| Q44 | **Blue Hour's causeway: which of the three ways out?** A `mountainH` term following the trail's arc-length height; re-anchoring `trailYof` to the hillside; or accepting a ridge trail and widening the bench. All three move the heightfield and rebaseline `smoke.mjs`; the third also has to answer why the blaze posts stand at the lip of a 10 m drop. | 1 | prompt 24, session 6 |
 | Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
 | Q46 | **Blue Hour's phantom pan: accept 0.000, or point `downhillAt` at the fall line?** The second changes the eyes' drift and the shape's head-flip too, since all three read the same function — an argument for doing it deliberately or not at all. | 1 | prompt 24, session 6 |
 | Q47 | **Should Integer Foundry's tile-cost hint be more prominent once `×2` lets a sink ask for a three-digit number?** The tooltip already explains the cheap recipe. A design question, not a bug. | 2 | prompt 14, the project's notes |

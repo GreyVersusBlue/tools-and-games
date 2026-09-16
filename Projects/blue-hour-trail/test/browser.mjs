@@ -642,21 +642,30 @@ ok('at cab height, not on the ground', steamAt.y - steamAt.benchY > 6,
 // found the mist and the breath had never rendered a single frame — their
 // billboard winding faces away from the camera and FrontSide culled them,
 // with zero page errors and zero warnings. Geometry assertions can't see
-// that; only the drawing buffer can. Stage every steam quad, stand at the
-// bench facing the cab, and demand the wisp be measurably brighter than the
-// dark cab face behind it.
+// that; only the drawing buffer can. Stand at the bench facing the cab, read
+// a box where the wisp will rise, stage every steam quad, read it again, and
+// demand the burst itself be what brightened it.
+//
+// Two things this beat learned on 2026-09-16, when #524 moved the tower's
+// feet from 1.9 m below the bench to 0.8 m. The box used to sit at fixed
+// percentages of the frame (14-29% of its height) and the cab climbed 80 px
+// out of it: `max 29 vs median 23`. It is framed off where the steam's
+// origin projects now. And a box aimed at the origin reads the cab's glass
+// sheen at 80/255 with NO burst at all, against a median of 26 — so a
+// "brighter than the cab face" reading passes with the steam never drawn,
+// which is exactly the bug this beat exists for. Hence before-and-after.
 const steamPixels = await page.evaluate(() => new Promise(res => {
   const L = __bh.layout();
   __bh.teleport(L.bench.x, L.bench.z);
   __bh.face(Math.atan2(-(L.tower.x - L.bench.x), -(L.tower.z - L.bench.z)), 0.28);
-  __bh.steamBurst();
-  setTimeout(() => requestAnimationFrame(() => {
+  const readBox = () => {
     const src = document.getElementById('scene');
     const gl = src.getContext('webgl2') || src.getContext('webgl');
-    // A tight box on the cab face where the wisp rises. The bench view is
-    // deterministic, so the framing is too.
-    const x0 = Math.floor(src.width * 0.45), w = Math.floor(src.width * 0.10);
-    const yTop = Math.floor(src.height * 0.14), h = Math.floor(src.height * 0.15);
+    const st = __bh.steam();
+    const sp = __bh.project(st.x, st.y, st.z);
+    const w = Math.floor(src.width * 0.10), h = Math.floor(src.height * 0.15);
+    const x0 = Math.floor(src.width * sp.x - w / 2);
+    const yTop = Math.floor(src.height * sp.y - h * 0.8);    // the wisp rises
     const buf = new Uint8Array(w * h * 4);
     gl.readPixels(x0, src.height - (yTop + h), w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
     const lums = [];
@@ -664,15 +673,18 @@ const steamPixels = await page.evaluate(() => new Promise(res => {
       lums.push(0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2]);
     }
     lums.sort((a, b) => a - b);
-    res({
-      median: lums[lums.length >> 1],
-      max: lums[lums.length - 1],
-      alpha: __bh.steam().alpha0,
-    });
+    return { median: lums[lums.length >> 1], max: lums[lums.length - 1] };
+  };
+  setTimeout(() => requestAnimationFrame(() => {
+    const before = readBox();
+    __bh.steamBurst();
+    setTimeout(() => requestAnimationFrame(() => {
+      res({ before, after: readBox(), alpha: __bh.steam().alpha0 });
+    }), 1400);
   }), 1400);
 }));
-ok('and the steam is pixels, not just geometry', steamPixels.max > steamPixels.median + 18,
-  `max ${steamPixels.max.toFixed(0)} vs median ${steamPixels.median.toFixed(0)}, quad alpha ${steamPixels.alpha.toFixed(2)}`);
+ok('and the steam is pixels, not just geometry', steamPixels.after.max > steamPixels.before.max + 18,
+  `box max ${steamPixels.before.max.toFixed(0)} before the burst, ${steamPixels.after.max.toFixed(0)} after (median ${steamPixels.after.median.toFixed(0)}), quad alpha ${steamPixels.alpha.toFixed(2)}`);
 
 group('no billboard in this piece goes dark silently');
 // Session 4 found the mist and the breath had never rendered a single frame —

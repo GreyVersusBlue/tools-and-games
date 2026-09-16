@@ -384,6 +384,14 @@ if (new URLSearchParams(location.search).has('debug')) {
     face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
     pos: () => ({ x: controls.pos.x, y: controls.pos.y, z: controls.pos.z }),
     surface: () => controls.surface,
+    // Where a world point lands on screen, as fractions of the frame from the
+    // top-left. A pixel check that frames its box off THIS, rather than off
+    // percentages that were true for one heightfield, survives the ground
+    // moving under the thing it is looking at (#524 moved the tower's feet).
+    project(x, y, z) {
+      const v = new THREE.Vector3(x, y, z).project(camera);
+      return { x: (v.x + 1) / 2, y: (1 - v.y) / 2, behind: v.z > 1 };
+    },
 
     cairns: () => ({ found: [...cairnsFound].sort((a, b) => a - b), total: LAYOUT.cairns.length }),
     layout: () => ({
