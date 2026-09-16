@@ -10341,3 +10341,104 @@ carrying the built output. Under `Projects/Castle Conundrum/` this never came up
 because the import map made the source directly servable. Nothing here can fix
 it and nothing here tried: hosting, Pages settings and deploy workflows are
 Devon's (#491).
+
+## gvb-save.js v2: the tier above localStorage (2026-09-16)
+
+Rank 6, a 1 on Fable 5.1, worked under Fable 5.1, PR #325. Three things the
+row asked for and every one of them is additive: `assets/js/gvb-save.js` went
+from 392 lines to 870, the v1 suite's 54 assertions pass on the v2 module
+unchanged, and all thirteen adopters' suites are green against it (Closing Time
+193, Torchbearer 1,531, Daredevil 246, the Fourth Quarter 293, Faire Weekend
+2,118, and the rest). `gvb-save.test.mjs` is at 150 assertions and a new
+`gvb-save.browser.mjs` at 47, in headless Chromium, both in `site-ci.yml`.
+
+- **v2 changes no key and no byte a v1 slot writes** (#494). `createSaveSlot`
+  keeps its surface; `save()` still returns a boolean and `load()` still never
+  throws. What is new hangs off the side: `slot.usage()`, `slot.lastError`,
+  `slot.tier`, a third argument to `autosave()`, and three new constructors.
+  The one visible change to existing pages is in the save bar: its import button
+  said "Save loaded." whether or not the write after it stuck, and over a full
+  store that was a lie the player found out about on the next reload. It says
+  "Save loaded, but could not save: this browser's storage is full (this save is
+  10.0 MB)" now, through `failureMessage(slot)`.
+- **Quota is counted in UTF-16 code units, and the ceiling is measured, not
+  assumed** (#495). `LOCAL_QUOTA_CHARS` is 5 MiB, the number Chrome, Edge,
+  Firefox and Safari all stop at, and `usage().share` is the origin against it;
+  `probeHeadroom(store)` doubles and bisects a probe key to the real remainder
+  and removes the probe. Headless Chromium here answers **5,242,880** exactly,
+  a save one character over it throws `QuotaExceededError` with the previous
+  save intact, and `isQuotaError()` recognises that name, Firefox's
+  `NS_ERROR_DOM_QUOTA_REACHED`, and legacy codes 22 and 1014, and does not
+  recognise `SecurityError`, so a blocked store is never reported as a full one.
+  A store that cannot enumerate reports `counted: false` and nulls rather than
+  a zero. **The suite caught the one arithmetic bug in this**: the first
+  `probeHeadroom` subtracted the probe key's length from a value length that
+  had already paid for it, and reported 16 characters short. Headroom is
+  key-plus-value characters now, which is what the browser meters.
+- **A namespace's prefix is the whole key layout** (#496). `createNamespace({
+  game, prefix })` writes `prefix + name` and nothing else, the default prefix is
+  `<game>.`, and an existing hand-rolled scheme fits without a key changing:
+  `belltobell.` plus `p5.chart` is Bell to Bell's key byte for byte. A member
+  registers once; `slot(name, opts)` a second time with options throws, because
+  two call sites disagreeing about a member's shape is the bug and a later one
+  silently winning is how it hides. `names()`, `usage()` and `clearAll()` are
+  scoped to the prefix and touch nothing outside it.
+- **A bundle names what it skipped and what it refused** (#497). One file holds
+  every member with its own version, so an import runs each member's own
+  `migrate()`; a member this build has not registered lands in `skipped`, one
+  whose state fails its own `validate()` in `refused`, and nothing is dropped
+  silently. The namespace carries its own `version` and `migrate(slots, from)`
+  for bundle-level drift. A member's single-slot envelope carries `slot: name`
+  and another member refuses it on that alone; a v1 envelope with no `slot`
+  still imports.
+- **The IndexedDB tier is the same key and the same bytes, one level up**
+  (#498). `createAsyncSaveSlot()` takes the same options, writes exactly the
+  string the sync slot would under exactly the same key, and returns a promise
+  from every call. With no `storage` it takes IndexedDB (`gvb-save`/`kv`), then
+  localStorage, then memory, and `slot.tier` says which. Measured: a 12
+  M-character save, over twice localStorage's ceiling, writes in 61 ms and reads
+  in 37 ms, survives a page reload, and the same save through a sync slot is
+  refused as a quota error; `navigator.storage.estimate()` reports 162 GB.
+- **A save moves up a tier by a read-time migration that runs once** (#499),
+  which is #59's shape, not a new one. `load()` on an IndexedDB slot that finds
+  nothing under its key reads localStorage under the same key, moves the string
+  up **verbatim** rather than re-encoded, so a version-0 save is still version 0
+  up there and still comes through `migrate()`, and only after the put succeeds
+  removes the copy. A failed put leaves the copy for the next load; junk below
+  is neither loaded nor moved; `clear()` takes a copy below with it so a reset
+  cannot resurrect an old save; `fallback: null` never looks. The suite asserts
+  each of those separately, and the browser suite reads the string back out of
+  IndexedDB and compares it to what was planted.
+- **A dead IndexedDB is asked once** (#500). A browser with the API whose
+  database will not open surfaces on the first call; the slot drops to
+  localStorage and never asks again. A quota error is not death and is not
+  demoted on.
+- **No adopter moved, on purpose** (#501). The README's own rule is that no hook
+  is added speculatively, and v2 breaks it, so it is written down there under
+  "Not adopted yet". The row ranked the site layer; the candidates are somebody
+  else's call. Closing Time's hall of past scorecards (rank 12 after this) is
+  the namespace's first natural pull, Bell to Bell's `persist.js` is governed by
+  its own `CLAUDE.md`, and Hearth's save lives in the address bar. The next
+  feature that needs more than 5 MiB or more than one key takes the tier or the
+  namespace rather than a third prefix scheme.
+- **The browser suite borrows `404.html` as its host page** (#502) and imports
+  the module by hand, rather than shipping a fixture page: every `.html` here is
+  a live URL that needs an owner (#355), and a test page is not a page.
+
+**Broken on purpose** (#34), each from a green baseline, each restored and
+checked identical afterwards. Node, 150 → 149: promotion without the
+`removeItem` fails `and the copy below is gone`; the slot-name check removed
+fails `another member refuses it, on the slot name alone`; `lastError` never
+recorded fails `and lastError says it was the quota` (then crashes one line
+later on the null, still exit 1); the headroom sign flipped fails `probeHeadroom
+finds the exact remaining characters ... (got 946)`; a member's key without its
+prefix fails four, the first `prefix + name is the key (#36 ...)`. Browser, 47
+→ 46 and 47 → 39: the same promotion break fails `the localStorage copy is gone
+(got "{\"day\":4,\"staff\":[]}", want null)`, and the async slot quietly built
+over localStorage fails eight, starting at `with no storage given, the tier is
+IndexedDB (got "local", want "idb")` and carrying Chromium's own message,
+`Setting the value of 'gvb-browser-idb' exceeded the quota`. **One #34 trap
+was found and fixed before it shipped**: the first slot-name assertion used a
+member whose own `validate` refused the foreign file, so removing the slot-name
+check left it green. It uses a member with no `validate` now, and fails on the
+check alone.

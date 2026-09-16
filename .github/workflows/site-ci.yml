@@ -99,6 +99,14 @@ jobs:
             commands: |
               node assets/js/gvb-save.test.mjs
 
+          # The v2 tiers against a real localStorage ceiling and a real IndexedDB;
+          # the stub suite above cannot vouch for either.
+          - name: gvb-save.js in a browser
+            dir: .
+            install: Tools/board-check
+            commands: |
+              node assets/js/gvb-save.browser.mjs
+
           - name: Anathema Archive
             dir: .
             install: Tools/board-check
