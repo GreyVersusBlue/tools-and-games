@@ -341,7 +341,7 @@ try {
       'and none above what the opening floor can build', `max ${rolls.max}, ceiling ${rolls.ceiling}`);
   }
 
-  group('The order number stops being the cost, and the tile says so (#526)');
+  group('The order number stops being the cost, and the tile says so (#531)');
   {
     // The measurement is in test/smoke-targets.mjs: with +1 alone the floor tops
     // out at 47 and 47 costs 46 tiles, so the order IS the work; unlock x2 and
@@ -452,7 +452,7 @@ try {
     }
   }
 
-  group('A click the grid swallows is placed again (#527)');
+  group('A click the grid swallows is placed again (#532)');
   {
     // The guard-rail for place()'s read-back, and the only way to see it work:
     // the CI failure it exists for is a click that lands on a node the factory
