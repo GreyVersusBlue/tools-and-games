@@ -7,8 +7,12 @@ load) with export/import added on top.
 No dependencies. ES module. Run the tests with:
 
 ```
-node assets/js/gvb-save.test.mjs
+node assets/js/gvb-save.test.mjs            # stubs: every path, 150 assertions
+node assets/js/gvb-save.browser.mjs         # real Chromium: the quota and IndexedDB, 47
 ```
+
+The browser suite needs `npm ci --ignore-scripts` in `Tools/board-check` first and
+runs from the repo root. Both are in `site-ci.yml`.
 
 ## Adopting it in a project
 
@@ -130,6 +134,130 @@ Importing a file from a different `game` is refused. Importing an older
 `version` runs the same `migrate` the localStorage path uses, so an export
 taken months ago still loads.
 
+## v2: how big, how many, and the tier above
+
+Three things a save layer for a five-megabyte store did not need until Hearth
+and Bell to Bell started writing saves that grow. **All additive.** A v1 slot
+reads, writes and exports exactly what it did; the assertions from before v2
+still pass unchanged on the v2 module, and so do all thirteen adopters' suites.
+
+### Quota accounting
+
+localStorage gives an origin 5 MiB, counted in UTF-16 code units (a character
+is two bytes on disk), and says nothing until `setItem` throws. `slot.save()`
+still returns `false` then, and now leaves the reason:
+
+```js
+slot.save(state);            // false
+slot.lastError;              // { name: "QuotaExceededError", message, quota: true, chars: 5242901, at }
+slot.usage();                // { tier, key, chars, bytes, present, share, quotaChars, origin: { keys: [{key, chars}], chars, bytes, counted } }
+failureMessage(slot);        // "Could not save: this browser's storage is full (this save is 10.0 MB). Export it before you go on."
+```
+
+`usage().share` is the whole origin against `LOCAL_QUOTA_CHARS` (5 MiB, the
+figure Chrome, Edge, Firefox and Safari all stop at; measured here at exactly
+5,242,880 in headless Chromium). It is a rule of thumb: `probeHeadroom(store)`
+writes a probe key in doubling steps and bisects to the real remainder, in
+key-plus-value characters, and removes the probe. `measureStorage(store,
+prefix)` is the per-key breakdown, largest first, and `isQuotaError(e)` knows
+every browser's spelling of "full" and none of "blocked". A store that cannot
+enumerate (a stub with neither `keys()` nor `key(i)`) reports `counted: false`
+and nulls, never a made-up zero.
+
+`slot.autosave(getState, ms, { onFail })` calls `onFail` when a flush did not
+stick; a v1 caller that passes no handler hears nothing, as before. The save
+bar's import button used to say "Save loaded." whether or not the write after
+it stuck; it now says so when it did not.
+
+### Namespaces
+
+Every multi-key adopter spelled its own prefix scheme: Bell to Bell's
+`belltobell.p5.chart`, the Name Picker's thirteen `np_` keys, Hearth's
+`hearth.auto`. A namespace is that convention with the pieces each of them
+rebuilt:
+
+```js
+const hall = createNamespace({ game: "closing-time", prefix: "closingTime.hall." });
+const careers = hall.slot("careers", { version: 2, defaults: { list: [] }, validate: s => Array.isArray(s.list) });
+careers.key;                 // "closingTime.hall.careers" — prefix + name, nothing else
+hall.names();                // every member with something stored, registered or not
+hall.usage();                // measureStorage() scoped to the prefix
+hall.clearAll();             // removes every key under the prefix, returns the count
+hall.snapshot();             // { name: state } for every registered member that loads
+hall.serialize(states);      // one bundle file: { format: "gvb-save-bundle", game, version, savedAt, slots: { name: { version, state } } }
+hall.deserialize(text);      // { states, skipped, refused } — or null for another game's bundle or junk
+hall.importAll(text);        // deserialize, then write every accepted member; adds `stored`
+```
+
+The prefix is the whole key layout, so an existing scheme fits without a key
+changing (#36): `createNamespace({ game: "bell-to-bell", prefix: "belltobell."
+}).slot("p5.chart")` writes `belltobell.p5.chart`, byte for byte what the
+hand-rolled code writes. The default prefix is `<game>.`. A member registers
+once; a second `slot(name, opts)` with options throws, because two call sites
+disagreeing about a member's shape is a bug and the later one silently winning
+is how it would hide. Each member has its own `version`/`validate`/`migrate`/
+`repair`, and a bundle carries each member's version so an import runs the
+right migration per member. A bundle from a later build names the members this
+build has not registered in `skipped`; a member whose state fails its own
+`validate` lands in `refused`; neither is dropped silently. The namespace has
+its own `version` and `migrate(slots, from)` for bundle-level drift.
+
+A member's single-slot export carries `slot: name` in its envelope, and another
+member refuses it on that alone. A v1 envelope with no `slot` still imports into
+a member. `filename()` becomes `<game>-<name>-save-<date>.json`.
+
+### The IndexedDB tier
+
+```js
+const slot = createAsyncSaveSlot({ game: "hearth", key: "hearth.auto", version: 3, validate, migrate, repair, defaults });
+let state = (await slot.load()) ?? slot.fresh();
+await slot.save(state);      // true, or false with lastError
+slot.tier;                   // "idb" | "local" | "memory"
+await slot.usage();          // on idb: navigator.storage.estimate()'s usage/quota for the origin, in bytes
+```
+
+Same options, same key, same bytes: an async slot writes exactly the string a
+sync slot would, under exactly the same key, in an object store instead of
+localStorage. Every storage call returns a promise. With no `storage` given it
+takes IndexedDB (database `gvb-save`, object store `kv`); when the browser has
+none it takes localStorage; when that is blocked, memory. An IndexedDB that
+exists but refuses to open is found out on the first call and the slot drops to
+localStorage once and stays there; a quota error is not that, and is reported
+as one.
+
+**A save moves up a tier without its key changing.** `load()` on an IndexedDB
+slot that finds nothing under its key looks in localStorage under the same key
+(`fallback`, which defaults to localStorage and takes `null` to never look).
+When the save there is readable it moves the string up verbatim, not
+re-encoded, so a version-0 save is still version 0 up there and still comes
+through `migrate()`, and only then removes the copy. A put that fails leaves the
+copy where it was for the next load. Junk below is neither loaded nor moved.
+`slot.promoted` says whether this load did it. `clear()` removes a copy below
+as well, so a reset cannot resurrect an old save. This is decision #59's shape
+(Bell to Bell's read-time key migration): the price of a move is a migration
+that runs once, on read, and leaves nobody mid-use behind.
+
+Measured in headless Chromium: a 12 M-character save (over twice localStorage's
+ceiling) writes in 61 ms and reads in 37 ms; `navigator.storage.estimate()`
+reports a 162 GB quota on this machine. That is the case for the tier.
+
+`idbStorage()` and `asyncify(store)` are the adapters, and `createNamespace({
+async: true })` builds a namespace whose members are async slots on one shared
+store; its `names`/`usage`/`clearAll`/`snapshot`/`importAll` return promises.
+`mountSaveBar` awaits every call, so it takes either kind of slot.
+
+### Not adopted yet, on purpose
+
+v2 ships with no adopter moved onto it, which is against this file's own "none
+were added speculatively" and is written down because of that. The row that
+asked for it ranked the site layer, not an adopter, and each candidate is
+somebody else's call: Closing Time's hall of past scorecards (rank 13) is the
+namespace's first natural pull, Bell to Bell's `persist.js` is governed by its
+own `CLAUDE.md`, and Hearth's save lives in the address bar. The next feature
+that needs more than 5 MiB or more than one key takes the tier or the namespace
+rather than rolling a third prefix scheme; until then the table above stays a
+list of thirteen sync slots.
+
 ## The rest of the surface
 
 | Call | Does |
@@ -144,6 +272,13 @@ taken months ago still loads.
 | `slot.promptImport()` | opens a file picker, resolves with state |
 | `slot.serialize/deserialize` | the pure envelope pair (what the tests drive) |
 | `slot.memoryOnly` | true when the browser blocks storage — warn the player |
+| `slot.usage()` | this key's size and the origin's, in UTF-16 code units; `share` against the 5 MiB rule of thumb |
+| `slot.lastError` | why the last write failed: `{name, message, quota, chars, at}`, or `null` |
+| `slot.tier` | `"local"` or `"memory"`; an async slot adds `"idb"` |
+| `createAsyncSaveSlot(opts)` | the same slot over IndexedDB, every call a promise; `fallback`, `promoted` |
+| `createNamespace(opts)` | many members under one prefix, one bundle file |
+| `idbStorage()`, `asyncify()`, `memoryStorage()` | the storage adapters |
+| `measureStorage()`, `probeHeadroom()`, `isQuotaError()`, `failureMessage()` | the accounting helpers |
 
 `fresh`/`reset` forwarding arguments matters when day one depends on a choice
 the module doesn't know about yet — Closing Time's opening career depends on
