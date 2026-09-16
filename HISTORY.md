@@ -10445,7 +10445,7 @@ check alone.
 
 ## Closing Time: a hall of past careers (2026-09-16)
 
-Rank 12, a 1 on Fable 5.1, worked under Fable 5.1, PR #PRNUM. The scorecard
+Rank 12, a 1 on Fable 5.1, worked under Fable 5.1, PR #327. The scorecard
 modal's button answered "how do I start the next career" and not "does this
 year go anywhere"; three rounds of notes raised it and none took it. A career
 that closes at day 336 is filed now, and "New career" wipes the desk and not

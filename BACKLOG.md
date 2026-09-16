@@ -102,7 +102,7 @@ table** in Tier 2.
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
 **The last batch of ranked work that shipped** is **Closing Time's hall of past
-careers (PR #PRNUM)**, the old rank 12 alone — a 1, so a batch on its own under
+careers (PR #327)**, the old rank 12 alone — a 1, so a batch on its own under
 the size table. The row named Fable 5.1 and was worked under Fable 5.1. That is
 the line to update when your batch merges; a PR that only changes these files
 is not a batch and does not belong in it. **30 ranked items remain**, and
