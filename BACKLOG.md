@@ -101,21 +101,52 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-**The last batch of ranked work that shipped** is **Closing Time's commercial
-tier (PR #329)**, the old rank 1 alone — a 1, so a batch on its own under the
-size table. The row named Opus 5 and was worked under Claude Opus 5. That is
-the line to update when your batch merges; a PR that only changes these files
-is not a batch and does not belong in it. **29 ranked items remain**, and
-**every one of them names a model.**
+**The last batch of ranked work that shipped** is **Golden Hour's tide
+(PR #331)**, the old rank 1 alone — a 1, so a batch on its own under the size
+table. The row named Fable 5.1 and was worked under Claude Opus 5. That is the
+line to update when your batch merges; a PR that only changes these files is
+not a batch and does not belong in it. **28 ranked items remain**, and **every
+one of them names a model.**
 
-**Take rank 1: tides as a real axis** (`Projects/golden-hour-beach`, a 1,
-Fable 5.1). Under the size table a 1 is the whole batch; that project has no
-`WISHLIST.md`, so its plan is the Golden Hour section below and its own
-`README.md`. **It needs no hardware this machine lacks** — the eight ranked
-rows that do are called out further down and in Parked.
+**Take rank 1: the causeway** (`Projects/blue-hour-trail`, a 1, Opus 5). Under
+the size table a 1 is the whole batch unless it is paired with two quarters in
+the same area, and Blue Hour's two ranked quarters (18 and 19) both want
+hardware this machine does not have — so take it alone. Its plan is Blue Hour's
+section below. **It needs no hardware this machine lacks.** Rank 2 is the other
+half of the same complaint about that heightfield and is also a 1, so the two
+cannot go in one batch; whoever takes rank 1 should read rank 2 first anyway,
+because a fix to `mountainH` that ignores the causeway will be undone by it.
 
 The old rank 1 is deleted and everything below renumbered, so the ranks in this
 header are the new ones. What shipped, and what it means for the next session:
+
+**Golden Hour's tide is a real axis** (#516 to #522). The sea had one vertical
+axis, a 9.5 s slap of 0.32 m, and a waterline that sat between z = -7.9 and
+z = -3.6 for the whole visit; it swings from **-9.7 to -0.4** now, 9.3 m
+against 4.3. Everything downstream already read a water *level* rather than a
+position, so the change is one slow term in `field.js` and one line each in
+eight other files. **The tide does not stop when the sun does** (#516): the
+descent holds at `SUN_TOTAL` because a palette has a bottom, the sea has no
+bottom, and the tide is the moon's. **t = 0 is mid-tide falling**, so a fresh
+visit opens on the shipped frame to the millimetre and what the walker gets for
+staying is the ebb; low water is the sunset frame, high water five minutes into
+the held night, a cycle is 40 minutes of walking or under seven at the fire.
+Nothing is saved, because the tide is a function of the same clock as the sun.
+**The range, 0.36 m, was set by the beach's furniture and not by taste** (#517)
+— it wets the wrack line and leaves the nearest flat stone 0.80 m of dry sand —
+and three assertions hold those margins rather than the number. **Two things
+worth carrying forward.** `waterLineZ` is now the one solver for the water's
+edge and it changes slope at the shoreline (#518); three call sites had each
+hand-rolled it with the dry-beach slope, wrong by 3.0 m at low water, and
+checking the answer against `groundHeight` rather than against a second copy of
+the slope is what found it. And the first version of the pool rule (#520) was
+strictly right and measurably wrong: asking whether the sea's edge had passed a
+pool's *seaward* rim left **36% of the cycle, 14.3 minutes**, with not one pool
+on the shelf holding water, which reads as an empty shelf rather than as a high
+tide. `test/smoke.mjs` 93 → **117**. A pre-existing bug came out with it
+(#521): the wet-sand strip and the foam line both read `groundHeight`, which
+returns the pier's planking, so both had been painted across the deck for as
+long as the pier has existed.
 
 **Closing Time has a commercial tier** (#508 to #515). It opens at Broker-Track,
 which is the rung level 4 was always named for, and a building is not a bigger
@@ -234,17 +265,17 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Rank 1 is tides as a real axis** (`Projects/golden-hour-beach`), a **1** on
-**Fable 5.1**, and under the size table a 1 is the whole batch. The first half
-is rank 5. Eleven of the twenty-nine are ¼: ranks 6, 8, 12, 13, 14, 17, 18, 19,
-20, 25 and 28. **Five of those eleven want hardware nothing here has** (12, 14,
-19, 20, 28), as do three of the halves (5, 11, 21); the Parked section below the
-table says why they were left ranked anyway. Ranks 4 and 26 are the two 2+ rows.
+**Rank 1 is the causeway** (`Projects/blue-hour-trail`), a **1** on **Opus 5**.
+The first half is rank 4. Eleven of the twenty-eight are ¼: ranks 5, 7, 11, 12,
+13, 16, 17, 18, 19, 24 and 27. **Five of those eleven want hardware nothing
+here has** (11, 13, 18, 19, 27), as do three of the halves (4, 10, 20); the
+Parked section below the table says why they were left ranked anyway. Ranks 3
+and 25 are the two 2+ rows.
 
-**The model split is 9 Opus 5, 11 Fable 5.1, 9 Sonnet 5.** Counted off the table
-rather than decremented, which is how the 15/14/9 drift six batches ago was
-caught: 9 + 11 + 9 is 29, and the table has 29 rows. By size it is 11 ¼, 10 ½,
-6 ones and 2 of the 2+, which is the same 29. The rubric is in Tier 1's
+**The model split is 9 Opus 5, 10 Fable 5.1, 9 Sonnet 5.** Counted off the table
+rather than decremented, which is how the 15/14/9 drift seven batches ago was
+caught: 9 + 10 + 9 is 28, and the table has 28 rows. By size it is 11 ¼, 10 ½,
+5 ones and 2 of the 2+, which is the same 28. The rubric is in Tier 1's
 preamble, and it is a reading of each row, not a quota — take the model the row
 names and say in the PR body which one you actually worked under.
 
@@ -360,7 +391,7 @@ readings, in the same terms the project wishlists already use:
   inherits, authored content whose coherence no assertion can hold, or a change
   with no safety net under it at all.
 
-Eleven rows read Fable, which at 11 of 29 is a heavier share than any single
+Ten rows read Fable, which at 10 of 28 is a heavier share than any single
 project's wishlist carries, and the reason is what this list is: the leftovers
 of ten projects are disproportionately save layers, pure models, and atmosphere
 nothing in CI can look at. (It said "fifteen" from #380 until 2026-09-16, when a
@@ -376,35 +407,34 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Tides as a real axis | `Projects/golden-hour-beach` | 1 | Fable 5.1 | `claude/jolly-ramanujan-eg0gzc` | [Golden Hour](#golden-hour) |
-| 2 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 3 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 4 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 5 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 6 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
-| 7 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 8 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 9 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 10 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 11 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 12 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 13 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 14 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 15 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 16 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 17 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 18 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 19 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 20 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 21 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 22 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 23 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 24 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 25 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
-| 26 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 27 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
-| 28 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 29 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 1 | The causeway: the top half of the trail rides up to 10.9 m above the hillside | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 2 | The mountain has no peak — `mountainH` is a ramp in `z` | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
+| 5 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
+| 6 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 7 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 8 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 9 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 10 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 11 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 12 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 13 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 14 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 15 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 16 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 17 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 18 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 19 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 20 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 21 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 22 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 23 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 24 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
+| 25 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 26 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
+| 27 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 28 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -655,12 +685,25 @@ absent from the schema). Source grew from about 1,900 to about 5,600
 hand-written lines across 27 modules, with zero new asset bytes and zero
 offsite requests.
 
+**The tide shipped on 2026-09-16** (#516 to #522, PR #331), so the item that
+used to head this list is gone from it. The waterline swings 9.3 m against the
+4.3 m the swash alone ever moved it, on a 2,400 s cycle of walking seconds that
+does not stop when the sun does; `test/smoke.mjs` 93 → 117. Two things it left
+behind are below: the intertidal structure that would give the ebb something to
+uncover (item 7), and the surf's missing distance term, which belongs to the
+ears-on row rather than to a session guessing at a gain curve (item 1).
+
 What's left:
 
 1. **A real hour on the beach, ears on, tuning pass:** event pacing (bait ball
    every 10 to 18 min, whale about 20, both guesses until someone sits through
    them), sanderling flush distance, cricket density, night palette banding on
-   a real monitor.
+   a real monitor. **And the surf's distance term, which the tide made
+   overdue:** `audio.js`'s wash gain reads the swash and the walker's wade
+   depth and has never read distance at all, so the sea sounds the same from
+   the dune line as from the waterline, and now the waterline moves 9.3 m.
+   Deliberately not guessed at in the tide's own PR — a gain curve tuned
+   without ears is the thing this row exists to stop.
 2. **The still-open real low-end-GPU run from the last backlog, now genuinely
    urgent:** the world is 10x bigger and the proxy numbers are software
    rasterization, not a weak real GPU. Confirmed the qualitative direction
@@ -673,19 +716,27 @@ What's left:
    on glass, not a mouse pretending.
 5. **If night proves popular:** the owl could hunt (one swoop over the dunes,
    no kill shown), and the fireflies could drift toward the fire when it burns.
-6. **`Tools/board-check/play-games.mjs` can lean on the new debug hook**
+6. **`Tools/board-check/play-games.mjs` can lean on the debug hook**
    (`?debug` exposes `window.__gh`: `setSunT` which also syncs the moon,
-   `teleport`, `face`, `pos`, `journal`, `events`, `info`). Suggested beats:
-   scrub to 1560 and assert star opacity plus a journal DOM entry; teleport to
-   the headland and assert the place card; throw a stone and assert the hint
-   cycle; reload and assert the journal survived while `sunT` reset. All
-   assertions can go against the DOM or `__gh.journal()`, per locked decision
-   #39's split.
-7. **`assets/js/gvb-save.js` line 32, the "Adopted by" comment: add Golden
-   Hour.** Still not done — the comment currently lists eleven adopters and
-   Golden Hour is not among them.
-8. **Tides as a real axis.** Named as this project's real upgrade path, blocked
-   first on the same thing as the real-GPU run above.
+   `setTideT` and `tide()`, which are the tide's own clock and are not the
+   sun's, plus `teleport`, `face`, `pos`, `journal`, `events`, `info`).
+   Suggested beats: scrub to 1560 and assert star opacity plus a journal DOM
+   entry; teleport to the headland and assert the place card; throw a stone and
+   assert the hint cycle; reload and assert the journal survived while `sunT`
+   reset. **And now the tide**: `setTideT(600)` then `setTideT(1800)` and read
+   the foam line's z off the strip geometry — it measured -8.19 and -0.41
+   driven by hand on 2026-09-16 — or teleport onto the wet band and count
+   footprint instances. All assertions can go against the DOM or
+   `__gh.journal()`, per locked decision #39's split.
+7. **A bar and a runnel, or any structure at all in the intertidal zone.** This
+   is what the tide leaves for a later increment and it is the obvious next
+   one: the sea's edge crosses 9.3 m of seabed that is a plain 0.10 ramp, so a
+   falling tide currently uncovers more flat sand rather than uncovering
+   anything. A bar you can walk out to at low water and have to come back off
+   is the thing every real beach does with a tide. It is not free: `wadeLimitZ`
+   is a closed-form solve on a constant slope and a non-monotone seabed makes
+   it a march, and the runnel behind the bar has to stay under knee depth or
+   the bar is content nobody can reach.
 
 Deliberately not done, and still the right call:
 
@@ -1017,12 +1068,12 @@ the one file-level exception and left with that project on 2026-09-15 (#491),
 taking `npm run play` with it.
 
 Everything open against this folder is filed under the project that needs it:
-Golden Hour's preview recapture and debug-hook beats (ranks 13 and 15) and Blue
-Hour's `games.mjs` entry and preview recipe (17 and 18). Those four numbers were
+Golden Hour's preview recapture and debug-hook beats (ranks 12 and 14) and Blue
+Hour's `games.mjs` entry and preview recipe (16 and 17). Those four numbers were
 read off the table rather than decremented with the rest, which is how the drift
 the line before this one carried was caught twice running — and on 2026-09-16 it
-caught it a third time: the four had been left reading 17, 19, 21 and 22 through
-a batch that renumbered them. Castle Conundrum's
+caught it a third time, when the four had been left reading 17, 19, 21 and 22
+through a batch that renumbered them. Castle Conundrum's
 preview promotion was rank 1, was parked, and left with the project (#491);
 what is still here is the card and the two images, which are Devon's.
 **Corner & Kettle's Phase 9 shipped on 2026-09-13 and is no longer open** —
