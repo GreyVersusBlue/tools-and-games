@@ -214,6 +214,35 @@ taking each page's title and description from its own `<a class="notice">` in
 idempotent. `npm run social:check` reports drift and exits non-zero without
 writing.
 
+## The ports
+
+`serve()` binds a static server on a fixed port, and two suites on the same port
+in the same shell is a silent cross-wire rather than an error. Several files say
+"see `Tools/board-check/README.md` for the ports already in use" and this is the
+list they meant; it did not exist until 2026-09-16. Grep for `const PORT` before
+taking a new one.
+
+| Port | Who |
+| --- | --- |
+| 8123 | `check-collisions.mjs`, `shoot-board.mjs` |
+| 8125 | `capture-previews.mjs` |
+| 8126 | `play-games.mjs` |
+| 8127 | `tools.mjs`, `Projects/integer-foundry/test/browser.mjs` |
+| 8129 | `Projects/integer-foundry/test/capture-legacy-save.mjs` |
+| 8131 | `Projects/corner-and-kettle/test/drive-save.mjs` |
+| 8137 | `Tools/schedule/test/publish.mjs` |
+| 8138 | `Tools/schedule/test/smoke.mjs` |
+| 8140 | `Pathfinder/tests/anathema.test.mjs` |
+| 8146 | `Tools/seating-chart/test/drive-seating.mjs` |
+| 8148 | `Tools/name-picker/test/browser.mjs` |
+| 8151 | `Projects/daredevil/test/verify-touch-375.mjs` |
+| 8153 | `assets/js/gvb-save.browser.mjs` |
+| 8155 | `Projects/orbital/test/browser.mjs` |
+
+8127 is doubled and always has been: `tools.mjs` and Integer Foundry's suite are
+never run in the same process, and neither is in the other's CI job. It is on the
+list as a fact, not as a pattern to copy.
+
 ## Adding a check
 
 Keep the pattern: measure something a person would otherwise have to eyeball,

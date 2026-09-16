@@ -101,12 +101,12 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-**The last batch of ranked work that shipped** is **Blue Hour's causeway
-(PR #334)**, the old rank 1 alone — a 1, so a batch on its own under the size
-table. The row named Opus 5 and was worked under Claude Fable 5.1. That is the
-line to update when your batch merges; a PR that only changes these files is
-not a batch and does not belong in it. **27 ranked items remain**, and **every
-one of them names a model.**
+**The last batch of ranked work that shipped** is **Orbital's browser layer and
+Integer Foundry's order cost (PR #335)**, the old ranks 25 and 23 — a ½ and a ¼
+across two areas, inside the spanning-areas cap. Both rows named Opus 5 and both
+were worked under Claude Opus 5. That is the line to update when your batch
+merges; a PR that only changes these files is not a batch and does not belong in
+it. **25 ranked items remain**, and **every one of them names a model.**
 
 **Take rank 1: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
@@ -119,8 +119,41 @@ slope climbing behind the tower put the arrival frame under the browser
 suite's luminance floor; read that decision before choosing a peak shape, and
 measure the four facings at the bench after, not just the one the suite reads.
 
-The old rank 1 is deleted and everything below renumbered, so the ranks in this
-header are the new ones. What shipped, and what it means for the next session:
+The two shipped rows are deleted and everything below them renumbered; the ranks
+in this header are the new ones, and ranks 1 to 22 did not move. What shipped,
+and what it means for the next session:
+
+**Orbital has a committed browser layer, and it is in CI** (#528 to #530).
+`Projects/orbital/test/browser.mjs`, 48 checks in 41 s, borrowing
+`Tools/board-check/harness.mjs`: the sector grid's render, both of
+`buildGrid()`'s unlock clauses, the star display, one live flight from the aim
+to the save, reset, and the wipe confirm answered both ways. **The number worth
+carrying forward is 6** (#528): Orbital's rAF loop runs at 6 to 7 frames a
+second under a software-rendered Chromium, against 51 on a page that draws
+nothing, because the canvas draw is the bottleneck and not the compositor. A
+shot costs about ten wall-clock seconds per sim-second there, so the suite flies
+one, and the shortest winning one rather than what `findWinningShot` returns for
+First Light (634 frames, 105 s). Locked decision #53 does not reach the file
+because nothing in it is timed. **Two things a later session should read before
+adding a beat**: a section that throws now costs its own checks and no others
+(#529), after the first deliberate break lost twelve unrelated ones to an abort;
+and the plan-vs-flight assertion has to be the clock and not the endpoint
+(#530), because launching at 0.9x `MAXSPEED` still wins on an empty field and
+the break ran green from 46/46. Rank 24's rotate-to-play gate is still a real
+device's job and is untouched.
+
+**A sink says what an order costs** (#531, #532). The tile-cost row was a design
+question and the arithmetic answered it: on the opening board the order and its
+cost are the same number (the floor reaches 47 and 47 costs 46 fabricators), and
+buying `×2` takes them apart completely — all 201 three-digit orders cost 7 to
+14 tiles, 100 is a shorter line than 47, and 231 is twelve. Every sink cell
+carries the count under the order now, `12 tiles` at 48 px and `12t` below it,
+with the sink's mark shrunk so three rows fit a 36 px phone cell. The cost line
+is not just a tooltip because a tooltip is nothing on a touchscreen.
+`test/smoke-targets.mjs` 104 → **109**; `test/browser.mjs` 57 → **68**.
+**The racy `place()` the last session left open is fixed** (#532): it reads the
+cell back and places again, which is the half of #353's race that `click()`'s
+throw-retry never covered. Nothing is open against that file now.
 
 **Blue Hour's trail sits on the hillside** (#523 to #527). The hill's climb
 was a ramp in z and the trail's height is analytic in arc length, so above
@@ -287,13 +320,13 @@ hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
 **Rank 1 is the missing peak** (`Projects/blue-hour-trail`), a **1** on **Opus 5**.
-The first half is rank 3. Eleven of the twenty-seven are ¼: ranks 4, 6, 10, 11,
-12, 15, 16, 17, 18, 23 and 26. **Five of those eleven want hardware nothing
-here has** (10, 12, 17, 18, 26), as do three of the halves (3, 9, 19); the
-Parked section below the table says why they were left ranked anyway. Ranks 2
-and 24 are the two 2+ rows.
+The first half is rank 3. Ten of the twenty-five are ¼: ranks 4, 6, 10, 11, 12,
+15, 16, 17, 18 and 24. **Five of those ten want hardware nothing here has**
+(10, 12, 17, 18, 24), as do three of the halves (3, 9, 19); the Parked section
+below the table says why they were left ranked anyway. Ranks 2 and 23 are the
+two 2+ rows.
 
-**The model split is 8 Opus 5, 10 Fable 5.1, 9 Sonnet 5.** Counted off the table
+**The model split is 6 Opus 5, 10 Fable 5.1, 9 Sonnet 5.** Counted off the table
 rather than decremented, which is how the 15/14/9 drift seven batches ago was
 caught: 8 + 10 + 9 is 27, and the table has 27 rows. By size it is 11 ¼, 10 ½,
 4 ones and 2 of the 2+, which is the same 27. The rubric is in Tier 1's
@@ -450,11 +483,9 @@ and #222 was closed unmerged an hour of suites later.
 | 20 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
 | 21 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
 | 22 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 23 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |`claude/vigilant-faraday-rsdrm1` | [Integer Foundry](#integer-foundry) |
-| 24 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 25 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |`claude/vigilant-faraday-rsdrm1` | [Orbital](#orbital) |
-| 26 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 27 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 23 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 24 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 25 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -941,18 +972,15 @@ re-query-and-retry helper `Pathfinder/tests/anathema.test.mjs` uses. Five
 consecutive runs 56/0 fixed, against three runs aborting at 38, 50 and 17
 checks reverted. In `site-ci.yml` with `install: Tools/board-check`.
 
-**`test/browser.mjs` still has one racy assertion** (2026-09-13, seen on PR
-#284, whose diff does not touch this project). "and the far column takes a tap"
-failed in CI with `cell empty`: `place()` clicked the sink tool and then the
-cell, neither click threw, and no sink landed. The `click()` helper at the top
-of the file retries a click that THROWS — detached node, not-an-Element — and
-that is the race #278 fixed. This is the other one: the click lands, on a node
-the grid re-rendered under it, and places nothing. Six local runs, three with
-the harness change that PR made and three without, were 56/0 either way, so it
-is not that change; the same job passed on the two commits before it. The fix
-is the same shape as the last one — assert the placement and retry `place()`,
-rather than trusting one that did not throw — and it belongs to whoever next
-opens this project rather than to a PR that only shares a CI file with it.
+**`test/browser.mjs`'s racy assertion is fixed** (2026-09-16, PR #335, #532).
+It was the other half of #278's race: the click lands, on a node the grid
+re-rendered under it, and places nothing, so both clicks return cleanly and the
+cell reads `cell empty`. `place()` reads the class back now and places again if
+the tile is not there, up to five times; it cannot double-place, because the
+only route to a retry is a cell that verifiably does not carry the tool yet. A
+new beat arms a one-shot capture listener on `#grid` to swallow a click on
+purpose, which is the only way to see the retry work, since the CI failure it
+exists for cannot be scheduled. Nothing is open against this file.
 
 The other item still on the table is deliberately parked, not forgotten:
 
@@ -985,11 +1013,17 @@ The other item still on the table is deliberately parked, not forgotten:
    gets picked up, it should be picked up as one piece of work, not the smaller
    half of two** — model mergers/splitters as a tree in `buildCosts` first,
    then `opBudget` can credit actual proven sharing instead of guessing at it.
-2. **A cosmetic, non-urgent UX observation, Devon's call, not a task**: once
-   `×2` is in play, the sink can ask for a three-digit number (`NEEDS 231`) for
-   an order that only takes a short line to fill. The tooltip already explains
-   the cheap recipe; whether the tile-cost hint should be more prominent than
-   the raw number is a design question, not a bug.
+2. **The tile-cost hint. Shipped 2026-09-16, PR #335** (#531). The question was
+   whether a three-digit `NEEDS` needs a cost beside it; the arithmetic says yes
+   and says why. On the opening board the order and its cost are the same
+   quantity — the floor reaches 47 and 47 costs 46 fabricators — and buying `×2`
+   decouples them completely: all 201 three-digit orders cost 7 to 14 tiles, 100
+   is a shorter line than 47, and 231 is twelve. Every sink cell carries the
+   count under the order now, `12 tiles` at 48 px and `12t` below it, with the
+   sink's mark shrunk so three rows fit a 36 px phone cell; the `title` tooltip
+   still carries the recipe and is still nothing at all on a touchscreen, which
+   is why this went on the tile. `test/smoke-targets.mjs` 104 → 109 holds both
+   halves of the range, `test/browser.mjs` 57 → 68. Nothing is open against it.
 
 ## The Fracture Cycle
 
@@ -1027,17 +1061,18 @@ wants, not a placeholder for a "real" save); no `reset` button on the save bar
 `Projects/orbital/`. Merged directly to `main` outside the normal process
 (PR #6); one round of real work since.
 
-1. **A committed browser-driven test layer** — level-grid render/unlock,
-   save/reset/wipe buttons, star display — now that the physics layer
-   underneath is proven solid. Round 1 deliberately left this uncommitted and
-   instead hand-drove a live session to get real answers on the
-   reset-confirmation and mobile-aim math, which covers the two things a
-   browser test would most have been wanted for. What's missing is a
-   *committed, repeatable* version. Use `Tools/board-check/harness.mjs`,
-   run-only, and `drive.mjs`'s engine-aware `waitFor`/`textContent` helpers
-   rather than a bare `page.waitForFunction(fn, null, opts)`, or you'll add a
-   new instance of a bug class that has already bitten several other
-   project-owned test files this way.
+1. **A committed browser-driven test layer. Shipped 2026-09-16, PR #335**
+   (#528 to #530). `test/browser.mjs`, 48 checks in 41 s, in `site-ci.yml` with
+   `install: Tools/board-check`: the sector grid's render, both of
+   `buildGrid()`'s unlock clauses, the star display, one live flight from the
+   aim to the save, reset, and the wipe confirm answered both ways. Nothing is
+   open against it. Three things a session adding a beat should know, all in the
+   file's own header: the page draws at 6 to 7 frames a second under this
+   harness and a live flight costs ten wall-clock seconds per sim-second, so
+   flying more than one shot is the expensive choice; a section that throws
+   costs only its own checks (#529); and an assertion that the live flight
+   matches the drawn plan has to read the clock, because the endpoint moves
+   0.098 px under a 10% speed error and `won` alone does not move at all (#530).
 2. **Verify the rotate-to-play gate on a real device or real touch emulation.**
    Round 1 could only prove the surrounding logic is sound (the gate is
    correctly keyed to pointer type, not viewport width) — this environment's
@@ -1091,12 +1126,13 @@ the one file-level exception and left with that project on 2026-09-15 (#491),
 taking `npm run play` with it.
 
 Everything open against this folder is filed under the project that needs it:
-Golden Hour's preview recapture and debug-hook beats (ranks 12 and 14) and Blue
-Hour's `games.mjs` entry and preview recipe (16 and 17). Those four numbers were
+Golden Hour's preview recapture and debug-hook beats (ranks 11 and 13) and Blue
+Hour's `games.mjs` entry and preview recipe (15 and 16). Those four numbers were
 read off the table rather than decremented with the rest, which is how the drift
 the line before this one carried was caught twice running — and on 2026-09-16 it
-caught it a third time, when the four had been left reading 17, 19, 21 and 22
-through a batch that renumbered them. Castle Conundrum's
+caught it twice more, once when the four had been left reading 17, 19, 21 and 22
+through a batch that renumbered them, and again the same day when they read 12,
+14, 16 and 17 for the same reason. Castle Conundrum's
 preview promotion was rank 1, was parked, and left with the project (#491);
 what is still here is the card and the two images, which are Devon's.
 **Corner & Kettle's Phase 9 shipped on 2026-09-13 and is no longer open** —

@@ -84,8 +84,29 @@ async function click(p, selector) {
   }
 }
 
-const place = (p, tool, x, y) =>
-  click(p, `[data-tool="${tool}"]`).then(() => click(p, `#grid .cell[data-x="${x}"][data-y="${y}"]`));
+/* The other half of the same race, seen in CI on PR #284 and fixed here (#353).
+   `click()` above retries a click that THROWS. This is the one that does not:
+   the press lands, on a node the grid re-rendered under it, and nothing is
+   placed. Both clicks returned cleanly and the cell came back empty, 56 checks
+   into a run that had passed six times locally.
+
+   So do not trust a click that did not throw either - read the cell back and
+   place again if it is not what was asked for. Retrying cannot double-place,
+   because the only path to a retry is a cell that verifiably does not carry the
+   tool yet; a cell that does carry it returns on the spot, which also keeps the
+   retry away from onCellClick's rotate-in-place branch. */
+async function place(p, tool, x, y) {
+  const sel = `#grid .cell[data-x="${x}"][data-y="${y}"]`;
+  const landed = new RegExp(`(^| )${tool}( |$)`);
+  for (let attempt = 1; ; attempt++) {
+    await click(p, `[data-tool="${tool}"]`);
+    await click(p, sel);
+    const cls = await p.$eval(sel, el => el.className);
+    if (landed.test(cls)) return cls;
+    if (attempt >= 5) throw new Error(`place(${tool},${x},${y}) put nothing down in ${attempt} tries; cell reads "${cls}"`);
+    await new Promise(r => setTimeout(r, 120));
+  }
+}
 
 /* ------------------------------------------------------------------ static -- */
 
@@ -291,6 +312,14 @@ try {
     t.ok(needs === 'NEEDS 47', 'an impossible order is pulled down to the board\'s ceiling on load', needs);
     const hint = await p.$eval('#grid .cell.sink', el => el.title);
     t.ok(/46 fabricators/.test(hint), 'and the sink says what it would take', hint);
+    // Read through querySelector rather than $eval: a missing cost line is a
+    // failed assertion with a name on it, not an abort that takes the rest of
+    // the file with it.
+    const cost47 = await p.evaluate(() => {
+      const el = document.querySelector('#grid .cell.sink .sink-cost');
+      return el ? el.textContent.trim() : null;
+    });
+    t.ok(cost47 === '46 tiles', 'and says it on the tile, not only in the tooltip', String(cost47));
 
     // And no fresh roll produces one either — the same module the page runs,
     // loaded by the same browser, 2000 rolls at 400 orders filled.
@@ -310,6 +339,41 @@ try {
     t.ok(rolls.bad === 0, '2000 rolls at 400 orders filled, none unfillable', `${rolls.bad} bad`);
     t.ok(rolls.max === 47 && rolls.ceiling === 47,
       'and none above what the opening floor can build', `max ${rolls.max}, ceiling ${rolls.ceiling}`);
+  }
+
+  group('The order number stops being the cost, and the tile says so (#531)');
+  {
+    // The measurement is in test/smoke-targets.mjs: with +1 alone the floor tops
+    // out at 47 and 47 costs 46 tiles, so the order IS the work; unlock x2 and
+    // all 201 three-digit orders cost 7 to 14, with 100 cheaper than 47. This is
+    // that second state on screen. 231 is the number the backlog row was written
+    // about (rank 24), and it is twelve tiles.
+    await p.evaluate(k => {
+      const set = localStorage.setItem.bind(localStorage);
+      const raw = JSON.parse(localStorage.getItem(k));
+      raw.unlocked.mul2 = true;
+      raw.sinks[0].target = 231;
+      raw.ordersFilled = 120;
+      localStorage.setItem = () => {};
+      set(k, JSON.stringify(raw));
+    }, KEY);
+    await p.reload({ waitUntil: 'load' });
+    await GAMES['integer-foundry'].open(p);
+    const sink = await p.evaluate(() => {
+      const cell = document.querySelector('#grid .cell.sink');
+      const cost = cell.querySelector('.sink-cost');
+      return {
+        needs: cell.querySelector('.sink-target').textContent.trim(),
+        cost: cost ? cost.textContent.trim() : null,
+        clipped: cost ? cost.scrollWidth > cost.clientWidth + 1 : false,
+        title: cell.title,
+      };
+    });
+    t.ok(sink.needs === 'NEEDS 231', 'a three-digit order survives the load with x2 unlocked', sink.needs);
+    t.ok(sink.cost === '12 tiles', 'and the tile says what it costs, which is twelve', String(sink.cost));
+    t.ok(!sink.clipped, 'the cost line fits the cell');
+    t.ok(/12 fabricators/.test(sink.title), 'the tooltip still carries the recipe', sink.title);
+    await shot(p, 'order-cost');
   }
 
   group('Filling whatever the sink asks for, without seeding the save');
@@ -388,6 +452,41 @@ try {
     }
   }
 
+  group('A click the grid swallows is placed again (#532)');
+  {
+    // The guard-rail for place()'s read-back, and the only way to see it work:
+    // the CI failure it exists for is a click that lands on a node the factory
+    // line re-rendered under it, which cannot be scheduled on purpose. A
+    // one-shot capture listener on #grid does the same thing deterministically —
+    // the press is real, nothing throws, and the cell's own handler never runs.
+    //
+    // Reverting place() to the click-and-hope version it replaced turns this
+    // beat red: the cell comes back `cell empty`, which is the string PR #284's
+    // CI printed.
+    await p.evaluate(() => { window.confirm = () => true; });
+    await click(p, '#save-bar [data-gvb="reset"]');
+    await waitFor(p,
+      () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
+      { timeout: 10000 });
+    const armed = await p.evaluate(() => {
+      const grid = document.getElementById('grid');
+      let eaten = 0;
+      const eat = e => {
+        eaten++;
+        grid.removeEventListener('click', eat, true);
+        window.__eaten = eaten;
+        e.stopPropagation(); e.stopImmediatePropagation();
+      };
+      window.__eaten = 0;
+      grid.addEventListener('click', eat, true);
+      return true;
+    });
+    t.ok(armed, 'the next click into the grid will be swallowed');
+    const cls = await place(p, 'source', 0, 0);
+    t.ok(/source/.test(cls), 'and the tile is on the floor anyway', cls);
+    t.ok(await p.evaluate(() => window.__eaten) === 1, 'having eaten exactly one click');
+  }
+
   group('A save written by the pre-gvb-save build');
   {
     // The real thing, captured off the old build by capture-legacy-save.mjs before
@@ -449,6 +548,33 @@ try {
     await place(m, 'sink', 7, 3);
     const tapped = await m.$eval('#grid .cell[data-x="7"][data-y="3"]', el => el.className);
     t.ok(/sink/.test(tapped), 'and the far column takes a tap', tapped);
+
+    // The cost line drops its word on a narrow cell for the same reason the order
+    // above it drops NEEDS. It is not dropped entirely: a title tooltip is
+    // nothing at all on a touchscreen, so the phone is where this line matters
+    // most.
+    const cost = await m.evaluate(() => {
+      const cell = document.querySelector('#grid .cell.sink');
+      const el = cell.querySelector('.sink-cost');
+      if (!el) return null;
+      const box = sel => { const r = cell.querySelector(sel).getBoundingClientRect();
+                           return { top: Math.round(r.top), bottom: Math.round(r.bottom) }; };
+      return {
+        text: el.textContent.trim(),
+        clipped: el.scrollWidth > el.clientWidth + 1,
+        order: box('.sink-target'), mark: box('.icon'), price: box('.sink-cost'),
+      };
+    });
+    t.ok(!!cost && /^\d+t$/.test(cost.text), 'the cost reads as digits and a t on a narrow cell',
+      cost ? cost.text : 'no cost line on the cell at all');
+    t.ok(!!cost && !cost.clipped, 'and it is not clipped either');
+    // Not clipped is not the same as not on top of something. The first version
+    // of this line fitted the cell and ran straight through the sink's mark,
+    // which only a screenshot showed; three boxes in 36 px is what the `tight`
+    // class is for.
+    t.ok(!!cost && cost.order.bottom <= cost.mark.top && cost.mark.bottom <= cost.price.top,
+      'and the order, the mark and the cost are three rows, not one pile',
+      cost ? `${cost.order.top}-${cost.order.bottom} / ${cost.mark.top}-${cost.mark.bottom} / ${cost.price.top}-${cost.price.bottom}` : '');
 
     // At 36 px the word "NEEDS" crowds the number out of the label. The number is
     // the part a player needs, so at small cell sizes it goes on its own.

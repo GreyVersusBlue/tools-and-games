@@ -10893,3 +10893,134 @@ runs with nothing in its inputs changed (`downhillAt` is the trail tangent,
 not the ground), so it is the staging and not the hill. Left as it is,
 noted here. `npm run check` and `npm run social:check` green. No asset bytes,
 no new files, no offsite requests, no key.
+
+## Orbital gets a committed browser layer, and a sink says what an order costs (2026-09-16)
+
+Ranks 25 and 23 as `main` renumbered them mid-session, a ½ and a ¼ across two
+areas. Both rows named Opus 5 and both were worked under Claude Opus 5, PR #335.
+The two rows share nothing but the session; they are written up separately
+below.
+
+### Orbital: `test/browser.mjs`, 48 checks, in CI (#528 to #530)
+
+Round 1 hand-drove a live session for the reset-confirmation and mobile-aim
+answers and deliberately committed nothing, which left the repeatable half
+missing. `Projects/orbital/test/browser.mjs` is that half: the sector grid's
+render, both of `buildGrid()`'s unlock clauses, the star display against
+`starsFor`'s thresholds, one live flight from the aim to the save, the reset
+button's two behaviours, and the wipe confirm answered both ways. It borrows
+`Tools/board-check/harness.mjs` and opens the page itself rather than going
+through `games.mjs`'s `enter()`, whose Orbital opening seeds `deepspace#10` and
+clicks through to the twelfth Deep Space sector to frame a preview: half of what
+this file asserts is about a save with nothing in it, which that opening has
+already spent. In `site-ci.yml` with `install: Tools/board-check`; the whole run
+is 41 s here.
+
+- **The frame rate is the constraint, and the clock is not** (#528). Orbital's
+  rAF loop runs at **6 to 7 frames a second** under the software-rendered
+  Chromium this repo's Linux harness drives, measured against **51** on a page
+  that draws nothing. So it is not the compositor: it is `drawBg` repainting 160
+  stars and two gradients across the window every frame. `stepFly` advances
+  1/60 s of flight per frame, which makes a shot cost about ten wall-clock
+  seconds per sim-second. The suite flies exactly one, the shortest winning shot
+  on First Light: a straight line at full power across an empty field, 1.57 s of
+  sim and about 10 s of wall clock. `OrbitalPhysics.findWinningShot` on that same
+  level returns a 10.56 s arc, 634 frames, which would have been 105 s of CI on
+  its own. Locked decision #53 says a real-time movement assertion under software
+  rasterization is inconclusive either way, and it does not reach this file,
+  because nothing here is timed: `substep` advances a fixed DT and the flight is
+  a count of frames. "The probe got there in N seconds" and "the frame rate held"
+  are the two assertions that would fall foul of #53 and they are left out on
+  purpose, in the file's own header.
+- **A section that throws costs its own checks and no others** (#529). The first
+  deliberate break took the mid-flight reset guard out; the probe stopped dead,
+  the wait for the flight to end ran out its timeout, and the abort took the
+  twelve wipe and clean checks down with it, reporting 32/34 instead of 44/46.
+  Each section runs in its own try/catch now. A suite that reports a second bug
+  by not looking for it is worth less than one that reports one.
+- **The plan and the flight agree on the clock, not on the endpoint** (#530).
+  The first version of the flight beat said "the live flight ends where the plan
+  said it would" and asserted only `won`. Launching at 0.9x `MAXSPEED` still won,
+  from a green 46/46, because First Light is an empty field aimed straight at
+  the marker and any speed gets there eventually. The endpoint is nearly as weak:
+  the same break moves it **0.098 px**. The clock is what tells the two apart,
+  **1.572917 s against 1.747917 s**, and it is an equality rather than a
+  tolerance because both sides are the same fixed-DT stepper. `computePlan`'s
+  own `solve` is the preview side and `stepFly` is the live side; what the
+  assertion pins is that they agree, which is what the dotted line promises the
+  player. What `substep` itself does is `test/physics.mjs`'s.
+
+**Broken on purpose** (#34), each from a green 48, each restored and re-verified
+green. `buildGrid`'s `progress[LEVELS[idx].key] != null` clause deleted: one
+fails, `deepspace#3 is open on its own record  cell 14 locked: true`. The other
+clause, `progress[prevKey] != null`, deleted instead: two fail, `the sector after
+the one you played is open` and `the grid is untouched`, and the first break's
+assertion stays green, so the pair is not two guards over one absence.
+`starsFor`'s middle threshold moved from 3 to 4: `four is one  ★★☆`. `win()`'s
+`attempts < progress[L.key]` guard removed: `a second win at two attempts does
+not overwrite a better record  {"basics#0":2}`. The `mode !== "fly"` guard
+removed from the reset handler: `a launched probe keeps flying  aim, x 110 of
+110`. The wipe writing `removeItem` instead of `{}`: `the save is emptied, not
+deleted  null`. And `launch()` at 0.9x speed, which is the one that ran green
+first and is why #530 exists: after the rewrite, `after exactly the flight time
+the plan drew  1.747917 s against 1.572917`.
+
+### Integer Foundry: the order number stops being the cost (#531, #532)
+
+The ranked row was a design question, not a bug: once `×2` is in play a sink can
+ask for a three-digit number for an order that takes a short line, the tooltip
+already explains the cheap recipe, and whether the tile-cost hint should be more
+prominent than the raw number was Devon's call. Answered with the arithmetic
+rather than with taste, under rule 1.
+
+- **Every sink cell carries the order's cost in tiles, under the order** (#531).
+  On the opening board the two are the same quantity: the floor reaches 47 at
+  most and 47 costs 46 fabricators, so reading the raw number as the work is
+  right. Buying `×2` takes them apart completely. All **201** three-digit orders
+  then cost between **7 and 14** tiles; 100 costs 8 and 47 costs 9, so the bigger
+  number is routinely the smaller job, and 231, the number the backlog row was
+  written about, is twelve tiles. The number stops being a proxy for difficulty
+  at exactly the point it grows a third digit, which is why this belongs on the
+  tile. A `title` tooltip was also never the answer for the case that needs it
+  most: it is nothing at all on a touchscreen, and the phone is where the cell is
+  36 px. The line follows the word-dropping rule already there for `NEEDS`:
+  `12 tiles` at 48 px and up, `12t` below it, nothing at all below 34 px where
+  only one line fits. `test/smoke-targets.mjs` holds both halves of the range,
+  109 checks from 104.
+- **Three rows in 36 px, and the mark is the one that gives** (#531 as well).
+  The first version fitted the cell and was not clipped, and ran straight through
+  the sink's mark: order 244-256, mark 253-266, cost 264-274. Only a screenshot
+  showed it, because "not clipped" and "not on top of something" are different
+  questions. A `tight` class drops the mark to 10 px and `line-height:1` on all
+  three rows makes 244-253 / 254-264 / 266-274. The assertion is now the geometry
+  and not the text.
+- **`place()` reads the cell back** (#532). This is the other half of the race
+  #353 fixed, left open by the last session with a note saying it belonged to
+  whoever next opened the project. `click()` retries a click that THROWS;
+  the CI failure on PR #284 was a click that landed, on a node the factory line
+  re-rendered under it, and placed nothing: two clean clicks and `cell empty`,
+  56 checks in. `place()` now reads the class back and places again if the tile
+  is not there, up to five times. It cannot double-place, because the only route
+  to a retry is a cell that verifiably does not carry the tool yet.
+
+**Broken on purpose** (#34), each from a green 68 and 109, each restored and
+re-verified green. `place()` reverted to the click-and-hope version, against a
+new beat that arms a one-shot capture listener on `#grid` to swallow the next
+click: `and the tile is on the floor anyway  cell empty`, which is the string
+PR #284's CI printed. The cost line's narrow-cell gate raised from 34 px to
+48 px: `the cost reads as digits and a t on a narrow cell  no cost line on the
+cell at all`. `orderCost` off by one: `and the tile says what it costs, which is
+twelve  13 tiles`, and `and says it on the tile, not only in the tooltip  47
+tiles`. The `tight` class never applied: `and the order, the mark and the cost
+are three rows, not one pile  244-253 / 250-269 / 266-274`. And `mul2` made a
+tripler in `targets.js`: seven fail in the model suite, including `...the
+cheapest of them is 7 tiles  got 5, wanted 7` and `so an order of 100 is a
+SHORTER line than one of 47  7 tiles against 7`.
+
+### And a cross-reference that pointed at nothing
+
+Three suites carried the comment "see `Tools/board-check/README.md` for the
+ports already in use" and that README had never had a port list. It has one now, all
+fourteen, with the note that 8127 is doubled between `tools.mjs` and Integer
+Foundry's suite and has always been, because the two never run in the same
+process. Orbital's suite took 8155.
