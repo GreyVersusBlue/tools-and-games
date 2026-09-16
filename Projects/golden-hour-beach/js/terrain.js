@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, shorelineZ, trailX, riverX } from './field.js';
+import { groundHeight, sandHeight, shorelineZ, trailX, riverX, WET_STRIP } from './field.js';
 
 // Beach terrain: the sand, the wet strips at the waterline, and the grass.
 // The heightfield itself lives in field.js, which imports nothing, so
@@ -204,6 +204,10 @@ export function buildTerrain(scene) {
   // shorelineZ(x) + offset so the dark band bends around the headland with
   // the water instead of running straight past it. The alpha ramp along V
   // fades both edges — without it the strip's rectangle reads as tape.
+  //
+  // The band is field.js's WET_STRIP, because since the tide it is a claim
+  // about the tide: the strip is static and the water is not, so the whole
+  // excursion has to land inside it. smoke.mjs is what holds it there.
   const wetMat = new THREE.MeshStandardMaterial({
     color: 0x8a6f4d,
     transparent: true,
@@ -213,15 +217,20 @@ export function buildTerrain(scene) {
     metalness: 0.05,
   });
   const wetGroup = new THREE.Group();
+  const wetDepth = WET_STRIP.inland - WET_STRIP.seaward;
+  const wetMid = (WET_STRIP.inland + WET_STRIP.seaward) / 2;
   for (let x0 = X0; x0 < X1; x0 += CHUNK) {
-    const wetGeo = new THREE.PlaneGeometry(CHUNK, 14, 50, 10);
+    const wetGeo = new THREE.PlaneGeometry(CHUNK, wetDepth, 50, 10);
     wetGeo.rotateX(-Math.PI / 2);
     const wp = wetGeo.attributes.position;
     for (let i = 0; i < wp.count; i++) {
       const x = wp.getX(i) + x0 + CHUNK / 2;
-      const z = shorelineZ(x) + 3 + wp.getZ(i);
+      const z = shorelineZ(x) + wetMid + wp.getZ(i);
       wp.setX(i, x); wp.setZ(i, z);
-      wp.setY(i, groundHeight(x, z) + 0.015);
+      // sandHeight: the wet band belongs to the beach, and the pier's deck is
+      // not the beach. This used to pull two vertices per strip up onto the
+      // planking and paint a dark spike across it.
+      wp.setY(i, sandHeight(x, z) + 0.015);
     }
     wetGeo.computeVertexNormals();
     wetGroup.add(new THREE.Mesh(wetGeo, wetMat));

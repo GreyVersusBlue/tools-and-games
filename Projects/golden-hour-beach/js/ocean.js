@@ -1,10 +1,15 @@
 import * as THREE from 'three';
 import { Water } from '../libs/Water.js';
-import { groundHeight, shorelineZ, beachSlope } from './field.js';
+import { sandHeight, waterLineZ, seaLevel, tideLevel, tideY } from './field.js';
 
 // The sea: a big reflective Water plane whose height breathes very slowly
-// (the "slap" cycle), plus a soft foam line that slides up and down the
-// wet sand in sync.
+// (the "slap" cycle) and rides a tide under that, plus a soft foam line that
+// slides up and down the wet sand in sync with both.
+//
+// The two are separate on purpose. The swash is this second's wave and it is
+// what the surf sound and the sanderlings are timed to; the tide is the state
+// of the sea, and it is what decides which pool is a pool and where the sand
+// is wet. Both live on the water plane's y; only the swash is in swashLevel.
 
 /** Soft-edged alpha ramp across the foam strip's width, with a bias seaward. */
 function foamFade() {
@@ -83,6 +88,21 @@ export function buildOcean(scene, sunDirection) {
     // exposed so audio can sync the wave-wash sound to the visual slap
     swashLevel: 0,
 
+    // The tide. main.js owns the clock — it already owns the one the sun runs
+    // on, and the descent and the tide are the same walking seconds at the
+    // same six-times fire rate — so this end only holds what that clock means.
+    // tide is the offset on the water plane; tideY is sea level with the wave
+    // taken out, which is what anything asking about the *state* of the sea
+    // should read (field.js's sandAt and poolIsClear both take it).
+    tideT: 0,
+    tide: 0,
+    tideY: tideY(0),
+    setTide(t) {
+      state.tideT = t;
+      state.tide = tideLevel(t);
+      state.tideY = tideY(t);
+    },
+
     // The sun moves now (main.js). The Water shader keeps its own copies of the
     // direction and colour, so they have to be pushed in — leave them and the
     // sea keeps the sun path it had at load while the sky above it drops.
@@ -112,19 +132,22 @@ export function buildOcean(scene, sunDirection) {
     state.t += dt;
     water.material.uniforms['time'].value += dt * 0.35; // slow ripple
 
-    // Tide "breathing": water plane rises/falls a touch, pushing the
-    // waterline up the beach slope and back.
+    // The slap: the water plane rises and falls a touch, pushing the waterline
+    // up the beach slope and back, every 9.5 s. The tide carries that whole
+    // window up and down under it — at tide 0 the plane sits exactly where it
+    // has sat since round one, which is what keeps the opening frame the
+    // opening frame.
     const p = state.getSwashPhase();
     // asymmetric wave: quick-ish run-up, slow retreat
     const s = p < 0.35 ? Math.sin((p / 0.35) * Math.PI / 2) : Math.cos(((p - 0.35) / 0.65) * Math.PI / 2);
     state.swashLevel = s;
-    const level = 0.06 + s * 0.32;
-    water.position.y = level - 0.25;
+    water.position.y = seaLevel(s, state.tideT);
 
     // Each active strip hugs the terrain at the local waterline: where this
-    // water level meets the beach slope, starting from the shoreline curve.
+    // water level meets the ground, which field.js solves — above sea level on
+    // the beach face, below it on the seabed, and the tide spends most of its
+    // cycle below.
     const camX = camera ? camera.position.x : 0;
-    const slope = beachSlope();
     for (const strip of foamStrips) {
       if (!firstFoamPass && Math.abs(strip.cx - camX) > FOAM_ACTIVE) continue;
       const posArr = strip.mesh.geometry.attributes.position;
@@ -132,13 +155,13 @@ export function buildOcean(scene, sunDirection) {
       for (let i = 0; i < posArr.count; i++) {
         const x = base[i * 3] + strip.cx;
         const localZ = base[i * 3 + 2];
-        const sz = shorelineZ(x);
-        const zLine = Math.min(sz + 10, sz + water.position.y / slope);
+        const zLine = waterLineZ(x, water.position.y);
         const wob = Math.sin(x * 0.09 + state.t * 0.6) * 0.7 + Math.sin(x * 0.023 - state.t * 0.3) * 1.1;
         const z = zLine + localZ + wob * 0.4;
         posArr.setX(i, x);
         posArr.setZ(i, z);
-        posArr.setY(i, Math.max(groundHeight(x, z), water.position.y) + 0.03);
+        // sandHeight, not groundHeight: foam runs under the pier, not over it.
+        posArr.setY(i, Math.max(sandHeight(x, z), water.position.y) + 0.03);
       }
       posArr.needsUpdate = true;
     }

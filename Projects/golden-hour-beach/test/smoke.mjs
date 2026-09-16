@@ -21,8 +21,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Absolute paths on Windows start with a drive letter, which Node reads as the
 // URL scheme `c:` and rejects (v7 §7). Same fix Faire Weekend's suite needed.
 const { groundHeight, BOUNDS, LAYOUT, wadeLimitZ, SHELL_KINDS,
-        shorelineZ, seabedSlope, regionAt, regionWeights, walkLimits, trailX,
-        riverX, PIER, onPier, pierDeckY, CAVE } =
+        sandHeight, shorelineZ, seabedSlope, beachSlope, regionAt, regionWeights, walkLimits, trailX,
+        riverX, PIER, onPier, pierDeckY, CAVE,
+        TIDE, tideLevel, tideY, seaLevel, waterLineZ, sandAt, poolIsClear,
+        WET_REACH, WET_STRIP } =
   await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
 
 let passed = 0, failed = 0;
@@ -176,6 +178,24 @@ group('the river, the pier, and the cave');
   ok(pierDeckY(PIER.deckEnd) > pierDeckY(PIER.deckStart), 'the deck rises as it goes out');
   ok(groundHeight(PIER.x, PIER.deckEnd + 0.5) > 1.5,
     'the deck end stands well above the water');
+
+  // The planking is ground to a walker and is not the beach to anything that
+  // paints the beach. The wet strip and the foam line both used to read
+  // groundHeight and both climbed the pier because of it.
+  const deckZ = PIER.deckEnd + 0.5;
+  ok(groundHeight(PIER.x, deckZ) - sandHeight(PIER.x, deckZ) > 3,
+    'the sand under the pier is the sand, not the deck',
+    `deck ${groundHeight(PIER.x, deckZ).toFixed(2)} m, sand ${sandHeight(PIER.x, deckZ).toFixed(2)} m`);
+  let split = 0, splitAt = null;
+  for (let x = BOUNDS.minX; x <= BOUNDS.maxX; x += 3) {
+    for (let z = -40; z <= 110; z += 3) {
+      if (onPier(x, z)) continue;
+      const d = Math.abs(groundHeight(x, z) - sandHeight(x, z));
+      if (d > split) { split = d; splitAt = [x, z]; }
+    }
+  }
+  ok(split === 0, 'and everywhere off the planking the two are the same ground',
+    `worst difference ${split} at ${splitAt}`);
   // The collapsed span is not walkable: the wading limit past the deck end
   // pulls z back toward shore at any tide.
   const lim = walkLimits(PIER.x, 0.13);
@@ -191,8 +211,12 @@ group('the river, the pier, and the cave');
   const backWall = groundHeight(CAVE.x, CAVE.z + 10);
   ok(backWall - inCave > 2, 'the cave backs into the cliff',
     `${(backWall - inCave).toFixed(1)} m of wall behind the floor`);
-  ok(inCave > 0.2, 'and its floor stays above the highest swash',
-    `floor y = ${inCave.toFixed(2)}`);
+  // Against the highest water the sea ever reaches now — the crest of the wave
+  // at high tide — rather than the old figure of 0.2, which was the swash's
+  // own ceiling and is no longer the sea's.
+  const highestSea = seaLevel(1, 3 * TIDE.period / 4);
+  ok(inCave > highestSea, 'and its floor stays dry at the top of the highest tide',
+    `floor y = ${inCave.toFixed(3)}, highest sea ${highestSea.toFixed(3)}`);
   let entryOk = true;
   for (let s = 2; s <= 8; s += 0.5) {
     const z0 = shorelineZ(CAVE.x) + s, z1 = shorelineZ(CAVE.x) + s + 0.5;
@@ -238,28 +262,243 @@ group('the tide pools and the trail');
 
 group('wading');
 {
-  // ocean.js's water surface breathes between roughly -0.19 and 0.13 over the
-  // swash cycle (level 0.06 + s*0.32, minus 0.25). The wading limit should
-  // track it: a calmer trough lets a walker get closer to shore before hitting
-  // knee depth than a run-up crest does, not the other way round.
-  const trough = wadeLimitZ(-0.19), crest = wadeLimitZ(0.13);
+  // The sea's whole vertical range, off the same function ocean.js sets the
+  // water plane from: the 9.5 s slap at both ends of the tide. Nothing here is
+  // a copy of that arithmetic — seaLevel is the one writer.
+  const LOW = seaLevel(0, TIDE.period / 4);      // trough of the wave at low water
+  const HIGH = seaLevel(1, 3 * TIDE.period / 4); // crest of the wave at high water
+
+  // The wading limit should track it: a calmer trough lets a walker get closer
+  // to shore before hitting knee depth than a run-up crest does, not the other
+  // way round.
+  const trough = wadeLimitZ(LOW), crest = wadeLimitZ(HIGH);
   ok(trough < crest, 'the limit moves seaward when the water is higher',
     `trough ${trough.toFixed(2)}, crest ${crest.toFixed(2)}`);
 
   // The point it solves for actually is knee depth, on the slope the walker is
   // standing on when they hit the limit.
-  for (const waterLevel of [-0.19, 0, 0.13]) {
+  for (const waterLevel of [LOW, seaLevel(0), 0, seaLevel(1), HIGH]) {
     const z = wadeLimitZ(waterLevel, 0.45);
     const depth = waterLevel - groundHeight(0, z);
-    ok(Math.abs(depth - 0.45) < 1e-6, `depth at the limit is 0.45 m (waterLevel ${waterLevel})`,
+    ok(Math.abs(depth - 0.45) < 1e-6,
+      `depth at the limit is 0.45 m (waterLevel ${waterLevel.toFixed(2)})`,
       `z = ${z.toFixed(2)}, depth = ${depth.toFixed(3)}`);
   }
 
   // However the tide breathes, the real limit has to be tighter than the old
   // static wall at BOUNDS.minZ, -60 — that wall is what let a walker reach eye
-  // height 3.8 m underwater in the first place.
-  ok(wadeLimitZ(-0.19) > BOUNDS.minZ && wadeLimitZ(0.13) > BOUNDS.minZ,
-    'the wading limit is well short of the old -60 wall');
+  // height 3.8 m underwater in the first place. Checked at low water along the
+  // whole coast now, because that is the deepest the sea ever gets to be, and
+  // the seabed under the headland is steeper than the one at home.
+  let worstLimit = Infinity, worstAt = 0;
+  for (let x = BOUNDS.minX; x <= BOUNDS.maxX; x += 4) {
+    const z = wadeLimitZ(LOW, 0.45, x);
+    if (z < worstLimit) { worstLimit = z; worstAt = x; }
+  }
+  ok(worstLimit > BOUNDS.minZ, 'the wading limit is well short of the old -60 wall',
+    `furthest out ${worstLimit.toFixed(2)} at x = ${worstAt}`);
+}
+
+/* ---------------------------------------------------------------- the tide -- */
+
+group('the tide');
+{
+  // The opening frame is the shipped one. tideLevel(0) is exactly zero, so a
+  // fresh visit puts the water plane where it has been since round one and the
+  // walker's first minute is the ebb rather than a beach they never saw.
+  ok(Math.abs(tideLevel(0)) === 0, 'a visit opens at mid-tide, to the millimetre',
+    `tideLevel(0) = ${tideLevel(0)}`);
+  ok(tideLevel(1) < 0, 'and it is going out, not coming in',
+    `tideLevel(1) = ${tideLevel(1).toFixed(5)}`);
+
+  const low = tideLevel(TIDE.period / 4), high = tideLevel(3 * TIDE.period / 4);
+  ok(Math.abs(low + TIDE.range / 2) < 1e-12 && Math.abs(high - TIDE.range / 2) < 1e-12,
+    'low water is a quarter cycle in and high water three quarters',
+    `low ${low.toFixed(3)}, high ${high.toFixed(3)}`);
+
+  // It is a cycle, and it does not stop where the sun does. main.js holds the
+  // descent at SUN_TOTAL = 1560 because the palette has a bottom; the sea has
+  // no bottom, so a walker who stays out past the last keyframe still gets a
+  // beach that moves.
+  let worstPeriod = 0;
+  for (let t = 0; t < TIDE.period; t += 7) {
+    worstPeriod = Math.max(worstPeriod, Math.abs(tideLevel(t) - tideLevel(t + TIDE.period)));
+  }
+  ok(worstPeriod < 1e-12, 'the cycle repeats', `worst drift ${worstPeriod.toExponential(1)}`);
+  // Past SUN_TOTAL the tide has to still reach both ends of its range, which
+  // is the claim "the sun holds and the sea does not" actually makes. The
+  // first version of this compared t = 1560 with t = 2000 and wanted 0.1 m
+  // between them — both sit near high water, 0.01 m apart, so it failed while
+  // the tide was running perfectly well.
+  let afterLo = Infinity, afterHi = -Infinity;
+  for (let t = 1560; t <= 1560 + TIDE.period; t++) {
+    afterLo = Math.min(afterLo, tideLevel(t));
+    afterHi = Math.max(afterHi, tideLevel(t));
+  }
+  ok(Math.abs(afterLo + TIDE.range / 2) < 1e-3 && Math.abs(afterHi - TIDE.range / 2) < 1e-3,
+    "the sea keeps both ends of its range after the sun's last keyframe",
+    `t > 1560 reaches ${afterLo.toFixed(3)} and ${afterHi.toFixed(3)}`);
+
+  // What the axis is worth, in metres of beach. The swash alone moved the home
+  // waterline 4.3 m and always between the same two marks; the tide carries
+  // that window up and down the beach face under it.
+  const LOW = seaLevel(0, TIDE.period / 4), HIGH = seaLevel(1, 3 * TIDE.period / 4);
+  const shippedSwing = waterLineZ(0, seaLevel(1)) - waterLineZ(0, seaLevel(0));
+  const tidalSwing = waterLineZ(0, HIGH) - waterLineZ(0, LOW);
+  ok(tidalSwing > 2 * shippedSwing, 'the tide more than doubles the waterline\'s reach',
+    `${shippedSwing.toFixed(1)} m of swash → ${tidalSwing.toFixed(1)} m, ` +
+    `z ${waterLineZ(0, LOW).toFixed(1)} to ${waterLineZ(0, HIGH).toFixed(1)}`);
+
+  // The water's edge is where the water meets the ground, and that is checked
+  // against groundHeight rather than against a second copy of the slope: solve
+  // for the line, stand on it, and the sea should be exactly at your feet.
+  //
+  // Three stretches are not the beach profile and are left out by name, not by
+  // luck: the pier deck (groundHeight returns planking there, 1.9 m up, which
+  // is what makes it walkable), the pool basins carved into the headland
+  // shelf, and the river channel, which is cut below sea level on purpose.
+  // Picking sample points that happened to miss them would have been the same
+  // test with nothing holding it there.
+  const plainCoast = x =>
+    Math.abs(x - PIER.x) > PIER.halfW + 1 &&
+    (x < 545 || x > 675) &&
+    LAYOUT.headland.pools.every(p => Math.abs(x - p.x) > p.r + 1);
+  let worstEbb = 0, ebbAt = null, worstFlood = 0, floodAt = null, sampled = 0;
+  for (let x = -760; x <= 760; x += 5) {
+    if (!plainCoast(x)) continue;
+    sampled++;
+    for (const level of [LOW, seaLevel(0.25, 0), seaLevel(0), 0]) {
+      const d = Math.abs(groundHeight(x, waterLineZ(x, level)) - level);
+      if (d > worstEbb) { worstEbb = d; ebbAt = [x, level.toFixed(2)]; }
+    }
+    for (const level of [seaLevel(1, 0), seaLevel(0.5, 1800), HIGH]) {
+      const d = Math.abs(groundHeight(x, waterLineZ(x, level)) - level);
+      if (d > worstFlood) { worstFlood = d; floodAt = [x, level.toFixed(2)]; }
+    }
+  }
+  // At or below sea level the ground is a clean wedge — the dune ramp and the
+  // beach's long undulation both switch on well up the shore — so the solver
+  // is exact there, and that is the half of the cycle the ebb spends and the
+  // half the old dry-beach-slope formula got wrong.
+  ok(worstEbb < 1e-9, "on the ebb the water's edge is exactly where the water meets the ground",
+    `worst miss ${worstEbb.toExponential(1)} m at ${ebbAt}, over ${sampled} x`);
+  // Up the beach face it is a wedge with a 0.25 m undulation written over it
+  // (groundHeight's sin(x * 0.012) term, which fades in from s = 2), so the
+  // edge lands within that and not on it. 0.075 m at x = -655 is the whole of
+  // it; wanting 1e-9 here is what caught the term in the first place.
+  ok(worstFlood < 0.10, 'and on the flood it lands inside the beach\'s own undulation',
+    `worst miss ${worstFlood.toFixed(3)} m at ${floodAt}`);
+
+  // The old hand-rolled version (shorelineZ + level / beachSlope) is wrong
+  // below sea level, which is where the tide now spends most of its cycle.
+  const wrong = shorelineZ(0) + LOW / beachSlope();
+  ok(Math.abs(wrong - waterLineZ(0, LOW)) > 3,
+    'and it is not the dry-beach slope that three call sites used to divide by',
+    `old formula ${wrong.toFixed(1)}, ground ${waterLineZ(0, LOW).toFixed(1)}`);
+
+  // The static wet strip has to cover everywhere the water goes, along the
+  // whole coast — terrain.js builds it from WET_STRIP and nothing re-deforms
+  // it per frame, so a tide that outran it would leave a dry seam where the
+  // sea just was.
+  let worstOut = -Infinity, outAt = null;
+  for (let x = BOUNDS.minX; x <= BOUNDS.maxX; x += 4) {
+    const sz = shorelineZ(x);
+    for (const level of [LOW, HIGH]) {
+      const s = waterLineZ(x, level) - sz;
+      const out = Math.max(WET_STRIP.seaward - s, s - WET_STRIP.inland);
+      if (out > worstOut) { worstOut = out; outAt = [x, level.toFixed(2), s.toFixed(2)]; }
+    }
+  }
+  ok(worstOut < 0, "the tide never runs off the end of the wet sand",
+    `closest approach ${(-worstOut).toFixed(2)} m of margin, worst at ${outAt}`);
+
+  // The range is set by the beach's furniture, not by taste. The flat-stone
+  // patches are where the skipping happens and they are meant to be stood on.
+  let dryest = Infinity, stoneAt = null;
+  for (const patch of LAYOUT.stones) {
+    for (const st of patch.stones) {
+      const m = st.z - waterLineZ(st.x, HIGH);
+      if (m < dryest) { dryest = m; stoneAt = [st.x.toFixed(1), st.z.toFixed(1)]; }
+    }
+  }
+  ok(dryest > 0.5, 'high water still leaves dry sand to skip a stone from',
+    `closest stone ${dryest.toFixed(2)} m clear, at ${stoneAt}`);
+
+  // And it does reach the wrack line, which is the whole point of a wrack
+  // line: the mark the sea leaves at the top of its reach.
+  const home = LAYOUT.wrack.filter(w => Math.abs(w.x) < 140);
+  const reachedNow = home.filter(w => w.z < waterLineZ(w.x, seaLevel(1))).length;
+  const reachedHigh = home.filter(w => w.z < waterLineZ(w.x, HIGH)).length;
+  ok(reachedHigh > home.length * 0.8 && reachedNow < home.length * 0.1,
+    'the wrack line is dry at mid-tide and washed at high water',
+    `${reachedNow}/${home.length} reached at mid-tide, ${reachedHigh}/${home.length} at high`);
+}
+
+group('what the tide uncovers');
+{
+  const LOWY = tideY(TIDE.period / 4), HIGHY = tideY(3 * TIDE.period / 4);
+  const pools = LAYOUT.headland.pools;
+
+  ok(pools.every(p => poolIsClear(p, LOWY)), 'every pool on the shelf stands clear at low water');
+  ok(pools.some(p => !poolIsClear(p, HIGHY)), 'and the sea takes the low ones at high water',
+    `${pools.filter(p => !poolIsClear(p, HIGHY)).length} of ${pools.length} under at high water`);
+
+  // The shelf is never bare, though. The first version of poolIsClear asked
+  // whether the water's edge had passed the pool's seaward rim, which left a
+  // 14 minute window — 36% of the cycle — with not one pool holding water; a
+  // visitor who walked the headland inside it would have read an empty shelf
+  // rather than a high tide.
+  let bare = 0;
+  for (let t = 0; t < TIDE.period; t++) if (!pools.some(p => poolIsClear(p, tideY(t)))) bare++;
+  ok(bare === 0, 'and there is never a minute with nothing on the shelf at all',
+    `${bare} of ${TIDE.period} seconds bare`);
+
+  // Which pool holds water is a fact about the tide, so it has to change.
+  const clearAt = t => pools.filter(p => poolIsClear(p, tideY(t))).length;
+  ok(clearAt(TIDE.period / 4) > clearAt(3 * TIDE.period / 4),
+    'the count of pools changes with the tide',
+    `${clearAt(TIDE.period / 4)} at low water, ${clearAt(3 * TIDE.period / 4)} at high`);
+
+  // Sand: where a footprint may be left, asked of the tide rather than of this
+  // second's wave.
+  const level = tideY(0);
+  const line = waterLineZ(0, level);
+  ok(sandAt(0, line - 0.5, level) === 'sea' &&
+     sandAt(0, line + 0.5, level) === 'wet' &&
+     sandAt(0, line + WET_REACH + 0.5, level) === 'dry',
+    'sea below the line, wet just above it, dry past the reach');
+
+  // And the band has to fit inside the strip terrain.js painted, at the top of
+  // the tide, along the whole coast: 0.27 m of margin is what sets WET_REACH
+  // at 7, and three numbers in two files that only agree by luck do not stay
+  // agreeing.
+  let tightest = Infinity, tightAt = null;
+  for (let x = BOUNDS.minX; x <= BOUNDS.maxX; x += 4) {
+    const m = (shorelineZ(x) + WET_STRIP.inland) -
+              (waterLineZ(x, tideY(3 * TIDE.period / 4)) + WET_REACH);
+    if (m < tightest) { tightest = m; tightAt = x; }
+  }
+  ok(tightest > 0, 'a print at high water is still on sand the strip darkened',
+    `${tightest.toFixed(2)} m of margin at its tightest, x = ${tightAt}`);
+
+  const HIGH = tideY(3 * TIDE.period / 4);
+  let taken = 0, dry = 0, total = 0;
+  for (let z = line; z < line + WET_REACH; z += 0.25) {
+    total++;
+    const then = sandAt(0, z, HIGH);
+    if (then === 'sea') taken++;
+    if (then === 'dry') dry++;
+  }
+  // Most of it, not all of it: WET_REACH is 7 m and the tide's own rise moves
+  // the line 3.0 m, so prints stamped at the top of the mid-tide band outlive
+  // the high water that takes the ones nearest the sea. That is what a beach
+  // looks like at dusk. The first version of this assertion asked for all of
+  // them and failed at 24 of 28.
+  ok(taken > total * 0.3 && dry === 0,
+    'the tide comes back for the prints nearest the water',
+    `${taken}/${total} of the mid-tide wet band is sea at high water, ${dry} dry`);
+  ok(sandAt(0, line + 0.25, HIGH) === 'sea',
+    'including the ones right at the mid-tide edge');
 }
 
 /* -------------------------------------------------------------- the layout -- */

@@ -1,10 +1,18 @@
 import * as THREE from 'three';
-import { groundHeight, LAYOUT, mulberry32 } from '../field.js';
+import { groundHeight, LAYOUT, mulberry32, poolIsClear } from '../field.js';
 
 // What lives in the still water on the headland shelf: anemones swaying,
 // starfish being spectacularly unhurried, and little shannies that dart for
 // cover when your shadow falls over the pool. "Crouching at a pool" needs no
 // new control — being close with the camera pitched well down is crouching.
+//
+// A pool is only a pool while the sea is off it, and since the tide arrived
+// that is a thing that changes: all five stand clear at low water, three at
+// mid, none at high. So the sighting is gated on it (field.js's poolIsClear,
+// read against tideY so it cannot flicker with the swash). Crouching over a
+// foot of sea and logging a starfish you cannot see would make the journal's
+// "honestly watched" rule a lie, and going back at low water for the ones you
+// missed is the tide being an axis rather than a backdrop.
 
 export function makeTidepoolLife(scene, audio) {
   const rnd = mulberry32(0x71de);
@@ -55,7 +63,7 @@ export function makeTidepoolLife(scene, audio) {
       arms.position.set(sx, floorY + 0.035, szz);
       arms.scale.setScalar(1.4);
       group.add(arms);
-      stars.push(arms.position);
+      stars.push({ pos: arms.position, pool: p });
     }
 
     // Two shannies per pool.
@@ -109,8 +117,11 @@ export function makeTidepoolLife(scene, audio) {
       }
     }
 
+    // The plink is a drip into still water. There is no still water on a shelf
+    // the tide is over.
     plipT -= dt;
-    if (plipT <= 0 && audio && Math.hypot(home.x - px, home.z - pz) < 25) {
+    if (plipT <= 0 && audio && pools.some(p => poolIsClear(p, ctx.tideY)) &&
+        Math.hypot(home.x - px, home.z - pz) < 25) {
       plipT = 10 + Math.random() * 14;
       audio.plink((Math.random() - 0.5) * 0.6, 0.15);
     }
@@ -121,13 +132,14 @@ export function makeTidepoolLife(scene, audio) {
     if (ctx.journal && crouching) {
       let bestStar = null, bd = Infinity;
       for (const s of stars) {
-        const d = (s.x - px) * (s.x - px) + (s.z - pz) * (s.z - pz);
-        if (d < bd) { bd = d; bestStar = s; }
+        if (!poolIsClear(s.pool, ctx.tideY)) continue;
+        const d = (s.pos.x - px) * (s.pos.x - px) + (s.pos.z - pz) * (s.pos.z - pz);
+        if (d < bd) { bd = d; bestStar = s.pos; }
       }
       if (bestStar && bd < 36) ctx.journal.focus('starfish', bestStar, dt, ctx.camera);
       let bestFish = null; bd = Infinity;
       for (const f of fish) {
-        if (f.hide > 0) continue;
+        if (f.hide > 0 || !poolIsClear(f.pool, ctx.tideY)) continue;
         const d = (f.mesh.position.x - px) ** 2 + (f.mesh.position.z - pz) ** 2;
         if (d < bd) { bd = d; bestFish = f; }
       }

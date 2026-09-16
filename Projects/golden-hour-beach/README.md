@@ -7,6 +7,16 @@ passes six times faster) and you get blue hour, the first stars, a rising moon,
 bioluminescent surf, and a lighthouse sweeping the dark. A fresh visit always
 opens at the same golden frame; the descent is never saved.
 
+**The tide goes out and comes back.** A visit opens at mid-tide on the ebb, low
+water lands on the sunset frame, and high water five minutes into the held
+night — a full cycle is forty minutes of walking, or under seven at the fire.
+The sea's edge moves 9.3 m in and out of the home beach, against the 4.3 m the
+waves alone ever moved it: the wet sand widens, the wading limit follows, the
+sanderlings follow that, the wrack line gets washed at the top of the tide, the
+pools on the headland shelf go under and stand clear again, and the sea comes
+back for whatever footprints you left near it. The sun holds at night because a
+palette has a bottom. The tide does not, because it belongs to the moon.
+
 The coast has places now. West past the home beach the ground shoulders up into
 a headland — a climbable east flank, a real cliff face, a lighthouse on top, a
 tide-pool shelf at the base with a sea cave scooped into the rock (the audio
@@ -60,8 +70,8 @@ Or push the folder to a GitHub Pages repo as-is — no build step.
 Nothing here needs aiming, so nothing here requires the mouse to be captured.
 
 You can wade to about knee depth — the limit is a water depth, not a line on
-the sand, so it breathes with the swash and hugs the shoreline curve (steeper
-seabed off the headland stops you sooner). There are no colliders anywhere:
+the sand, so it breathes with the swash, rides the tide and hugs the shoreline
+curve (steeper seabed off the headland stops you sooner). There are no colliders anywhere:
 cliffs, the pier's broken end, and everything else tall are made solid by one
 rule — a stride that would rise more than 0.9 m is refused.
 
@@ -87,14 +97,15 @@ rule — a stride that would rise more than 0.9 m is refused.
 index.html
 css/style.css
 js/field.js       the pure world: heightfield, shoreline curve, regions,
-                  walk limits, and the fixed layout of everything placed
+                  the tide, walk limits, where the water's edge is, and the
+                  fixed layout of everything placed
 js/main.js        scene, sky, the six-keyframe palette, the descent, loop
 js/skynight.js    stars, Milky Way, moon, shooting stars
 js/terrain.js     chunked sand, wet strips, grass, reeds, the river ribbon
 js/props.js       groyne, driftwood, boulders, wrack, fence, pools, cave
 js/pier.js        the ruined pier's piles, planking and stumps
 js/lighthouse.js  the tower and its sweeping beam
-js/ocean.js       water shader, tide swash, per-chunk foam strips
+js/ocean.js       water shader, the swash on the tide, per-chunk foam strips
 js/wildlife.js    the original quartet + the creature registry
 js/creatures/     sanderlings, crabs, pelicans, seals, tidepool life,
                   fireflies/owl/bats, heron/cormorants
@@ -127,13 +138,20 @@ them to their claims.
 node test/smoke.mjs
 ```
 
-93 checks on the arithmetic: twelve golden heights hold the home beach
+116 checks on the arithmetic: twelve golden heights hold the home beach
 bit-identical to its pre-coast self, the shoreline curve never bends enough to
 fold the foam, the cliff refuses a stride while its flank climbs, the pier deck
 enters at beach level and stops at the gap, the river is carved but always
-crossable, the cave backs into the cliff with a dry floor, every placement sits
-where its purpose needs it, and the journal survives garbage, truncation and
-another game's save file. It cannot see whether any of it renders — for that,
+crossable, the cave backs into the cliff with a floor that stays dry at the top
+of the highest tide, every placement sits where its purpose needs it, and the
+journal survives garbage, truncation and another game's save file.
+
+The tide has a group of its own, and most of it is the tide held against the
+beach's furniture rather than against itself: the sea's edge is checked against
+`groundHeight` and not against a second copy of the slope, high water has to
+leave dry sand under the flat-stone patches and wash the wrack line, the whole
+excursion has to fit inside the static wet strip along all 1.6 km, and the
+headland shelf is never allowed a minute with nothing on it. It cannot see whether any of it renders — for that,
 `npm run games golden-hour` in `Tools/board-check` drives the real page. The
 game exposes a `?debug` hook (`window.__gh`) so a driver can scrub the sun to
 night, teleport down the coast, aim the camera, and read the journal.

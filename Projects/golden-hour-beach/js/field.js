@@ -5,8 +5,10 @@
 // height from here.
 //
 // Coordinate convention:
-//   +Z = inland (dunes), -Z = out to sea. The waterline swings between z ≈ -9.5
-//   and z ≈ -3.6 over the swash cycle. Sea level is y = 0.
+//   +Z = inland (dunes), -Z = out to sea. Sea level is y = 0. On the home beach
+//   the 9.5 s swash cycle swings the waterline between z ≈ -7.9 and z ≈ -3.6,
+//   and the tide below carries that window with it: z ≈ -9.7 at low water,
+//   z ≈ -0.4 at high.
 
 /* --------------------------------------------------------------- heightfield */
 
@@ -151,7 +153,29 @@ export function pierDeckY(z) {
 // arrival card and the smoke checks agree on where it is.
 export const CAVE = { x: -536, z: shorelineZ(-536) + 8, r: 9 };
 
+/**
+ * The ground a walker stands on: the sand, and the pier's planking where there
+ * is planking. Everything that moves a body or places an object reads this.
+ */
 export function groundHeight(x, z) {
+  const h = sandHeight(x, z);
+  // The pier deck is ground. That single fact is what makes it walkable — the
+  // step rule lets you stroll on where the planks meet the beach, and
+  // walkLimits (below) is what keeps you from strolling off the broken end.
+  return onPier(x, z) ? Math.max(h, pierDeckY(z)) : h;
+}
+
+/**
+ * The beach with the pier taken off it: the sand under the planking.
+ *
+ * Anything painting the beach wants this one. The wet-sand strip and the foam
+ * line both read groundHeight and both therefore climbed the pier — a dark
+ * triangular spike of wet sand and a band of foam lying across the deck at
+ * whatever height the waterline happened to be, for as long as the pier has
+ * existed. The tide is what made it worth finding: it turns a fixed stripe on
+ * the planks into one that slides up and down them.
+ */
+export function sandHeight(x, z) {
   const sz = shorelineZ(x);
   const s = z - sz;
   let h;
@@ -220,14 +244,155 @@ export function groundHeight(x, z) {
     h -= depth * ramp * Math.exp(-(drx * drx) / 50);
   }
 
-  // The pier deck is ground. That single fact is what makes it walkable —
-  // the step rule lets you stroll on where the planks meet the beach, and
-  // walkLimits (below) is what keeps you from strolling off the broken end.
-  if (onPier(x, z)) {
-    h = Math.max(h, pierDeckY(z));
-  }
-
   return h;
+}
+
+/* --------------------------------------------------------------------- tide */
+
+// The swash is a wave. This is the sea itself.
+//
+// Until now the water had one vertical axis: a 9.5 s slap of 0.32 m that put
+// the home beach's waterline between z = -9.5 and z = -3.6 and left it there
+// forever. Everything downstream already reads a water level rather than a
+// position — the wading limit, the foam, the sanderlings, the sandcastles —
+// so the axis was one slow term short, not one system short.
+//
+// Four numbers, and each is a decision:
+//
+// `period` is walking seconds, the same clock the sun runs on, and it does not
+// stop when the sun does. The descent holds at night because a palette has a
+// bottom (main.js, SUN_TOTAL); the tide has no bottom, and it is the moon's
+// anyway — the moon already keeps its own arc through the held night. Low
+// water lands at t = 600, the sunset frame; high water at t = 1800, five
+// minutes into the held night. Sitting at the fire runs it at six times, so a
+// whole cycle is under seven minutes there.
+//
+// `phase` is the reason tideLevel(0) is exactly 0: t = 0 is mid-tide, falling.
+// A visit opens on the frame the piece shipped with, to the millimetre, and
+// what the walker gets for staying is the ebb. Opening at high water would
+// have meant a narrower beach in the one frame everything was composed for.
+//
+// `range` is 0.36 m, and it is set by the furniture rather than by taste. The
+// beach face rises at 0.055, so every centimetre of sea is 18 cm of shoreline:
+// at +0.18 the swash crest reaches z = -0.4 on the home beach, which wets the
+// wrack line (a wrack line IS the high-water mark, so that is the point) and
+// still leaves the three flat-stone patches 0.8 m of dry sand to be skipped
+// from. At -0.18 the edge falls to z = -9.7. Nine metres of beach that comes
+// and goes, against the 4.3 m the swash alone ever moved.
+//
+// `msl` is the midpoint of the swash cycle: what "sea level" means with the
+// wave taken out of it. Anything that wants the state of the sea rather than
+// the state of this second's wave — which pool is a pool, where the sand is
+// wet — reads tideY(t) and not the water plane's y.
+export const TIDE = {
+  period: 2400,
+  range: 0.36,
+  msl: -0.03,
+};
+
+/** The tide's own contribution to the water's height, metres, at walking-time t. */
+export function tideLevel(t) {
+  return -(TIDE.range / 2) * Math.sin((2 * Math.PI * t) / TIDE.period);
+}
+
+/** Sea level right now with the swash taken out of it: the state of the sea. */
+export function tideY(t) {
+  return TIDE.msl + tideLevel(t);
+}
+
+/**
+ * The water plane's height: this second's wave riding this minute's tide.
+ *
+ * `swash` is 0..1 from ocean.js's asymmetric slap — 0 at the bottom of the
+ * retreat, 1 at the top of the run-up. The three literals are the ones the sea
+ * has had since round one and they are not moved, only brought here: the test
+ * suite cannot import ocean.js (it imports `three`), and a suite holding the
+ * tide to a range needs the range to come from the same place the sea gets it
+ * rather than from a copy of the formula written down beside it.
+ */
+export function seaLevel(swash, t = 0) {
+  return 0.06 + swash * 0.32 - 0.25 + tideLevel(t);
+}
+
+/**
+ * Where a sea surface of height `level` meets the ground at this x: the water's
+ * edge, which is the line the foam rides, the sanderlings chase and the swash
+ * measures a sandcastle against.
+ *
+ * Three call sites solved this for themselves and all three solved it the same
+ * wrong way — `shorelineZ(x) + level / beachSlope()`. That is right above sea
+ * level and wrong below it, because below the shoreline the ground falls away
+ * on seabedSlope, which is 0.10 on the home beach and 0.16 under the headland
+ * against the beach's 0.055. At the old swash trough the error was 1.8 m and
+ * nobody could see it; at low water it is 3.4 m of foam drawn on open sea.
+ */
+export function waterLineZ(x, level) {
+  return shorelineZ(x) + level / (level >= 0 ? beachSlope() : seabedSlope(x));
+}
+
+/**
+ * How far inland of the water's edge the sand still reads as wet.
+ *
+ * 7 m is not a taste: it is the widest band that still lands inside the
+ * painted wet strip below at the top of the tide. The strip reaches 10 m
+ * inland of the shoreline, high water puts the sea's edge 2.73 m inland of it
+ * (0.15 m over a beach face of 0.055), and 10 − 2.73 − 7 leaves 0.27 m of
+ * margin. Any wider and a walker at high tide leaves prints on sand the strip
+ * never darkened. smoke.mjs holds the three numbers against each other.
+ */
+export const WET_REACH = 7;
+
+/**
+ * The dark wet-sand strip's footprint, as shore-relative z: terrain.js builds
+ * its geometry from these two numbers and nothing else.
+ *
+ * It lives here rather than in terrain.js because it is now a claim about the
+ * tide. The strip is static — 1.6 km of painted band is not re-deformed every
+ * frame for a waterline that moves 9 m — so the tide's whole excursion has to
+ * fit inside it, or low water draws the sea's edge on sand the strip never
+ * darkened and the beach grows a dry seam where the water just was. That is a
+ * coupling between two files with no call between them, which is exactly the
+ * kind that rots quietly, so smoke.mjs holds the excursion inside these two
+ * numbers along the entire coast.
+ */
+export const WET_STRIP = { seaward: -4, inland: 10 };
+
+/**
+ * What the ground at (x, z) is: 'sea' below the water's edge, 'wet' for the
+ * band the sea has lately been over, 'dry' above that.
+ *
+ * Ask it with tideY, not with the water plane. The question is what state this
+ * patch of beach is in, and a patch two metres up the slope does not stop
+ * being wet sand for six seconds because a wave has gone out. Whether the
+ * water is over something *this instant* — which is what decides when a
+ * footprint gets taken — is waterLineZ against the plane, and footprints.js
+ * uses both, one for each question.
+ */
+export function sandAt(x, z, level) {
+  const line = waterLineZ(x, level);
+  if (z < line) return 'sea';
+  return z < line + WET_REACH ? 'wet' : 'dry';
+}
+
+/**
+ * Is this pool still a pool? A basin on the headland shelf holds standing water
+ * while the sea is below the rim it is cut into; above that it is not a pool,
+ * it is the sea with rocks in it. The rim is the shelf the basin sits in, which
+ * is this pool's own carve added back to the heightfield under it, so the rule
+ * cannot drift away from the ground it is about.
+ *
+ * Read against tideY rather than the water plane, so the answer does not
+ * flicker on and off every nine and a half seconds at mid-tide.
+ *
+ * The first version of this asked whether the water's edge had passed the
+ * pool's *seaward* rim, which is a stricter thing and measurably too strict:
+ * it left a 14 minute window, 36% of the cycle, in which not one of the five
+ * held water and the shelf had nothing on it at all. A visitor who walked the
+ * headland inside that window would have read it as an empty shelf rather than
+ * as a high tide.
+ */
+export function poolIsClear(pool, level) {
+  return level < groundHeight(pool.x, pool.z) + pool.depth;
 }
 
 /** Where the walker is allowed. Kept here so the layout can be checked against it. */

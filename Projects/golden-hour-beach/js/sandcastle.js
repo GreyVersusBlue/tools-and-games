@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, shorelineZ, beachSlope } from './field.js';
+import { groundHeight, shorelineZ, waterLineZ } from './field.js';
 
 // Sandcastles. Kneel on damp sand, shape one; it rises under your hands.
 // Build it too close to the water and the swash takes it back — a scale-melt,
@@ -86,8 +86,12 @@ export function buildSandcastles(scene, interact, controls, camera, audio, ocean
           const e = 1 - Math.pow(1 - c.rise, 3);
           c.group.scale.setScalar(0.2 + e * 0.8);
         }
-        // The swash line at this castle's x, right now.
-        const reach = shorelineZ(c.x) + waterY / beachSlope();
+        // The swash line at this castle's x, right now. With a tide under the
+        // swash this is the whole mechanic rather than a flourish: a castle
+        // built on the damp sand at low water is well above the wave that
+        // shaped it and gone by high water, which is the first thing anyone
+        // who has built one on a beach already knows.
+        const reach = waterLineZ(c.x, waterY);
         if (c.melt > 0 || (c.z < reach + 0.4 && c.rise >= 1)) {
           c.melt += dt;
           const k = Math.max(0, 1 - c.melt / 6);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, shorelineZ, beachSlope } from '../field.js';
+import { groundHeight, waterLineZ } from '../field.js';
 
 // Sanderlings: the little birds that chase the edge of every wave out and
 // sprint back in ahead of the next one. The signature piece of the bestiary,
@@ -79,9 +79,11 @@ export function makeSanderlings(scene, audio) {
     mesh.visible = active;
     if (!active) return;
 
-    // Where the water's edge is right now, at the flock's x.
-    const sz = shorelineZ(state.cx);
-    const edgeZ = sz + ctx.waterY / beachSlope();
+    // Where the water's edge is right now, at the flock's x. field.js solves
+    // it: this used to divide by the beach slope whatever the level, which put
+    // the flock a metre and a half out to sea at every swash trough and, once
+    // there was a tide under it, three at low water.
+    const edgeZ = waterLineZ(state.cx, ctx.waterY);
 
     // The flock line: just seaward of the edge as the water retreats
     // (swashLevel falling), a couple of metres inland of it as it runs up.

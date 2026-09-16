@@ -10614,3 +10614,143 @@ rather than reading `sideRate()` back. The cross-type wall deleted out of
 the number in the forties the comment above that line predicts. And in the
 browser suite, the `.flyer-uw` line forced off: `each printing NOI and a yield
 rather than bedrooms`, 53 checks 1 FAILED.
+
+## Golden Hour: the tide as a real axis (2026-09-16)
+
+Rank 1, a 1 on Fable 5.1, worked under Claude Opus 5, PR #331. The row was
+this project's named upgrade path and it was the last big thing the beach
+was short of: the sea had one vertical axis, a 9.5 s slap of 0.32 m that put
+the home waterline between z = -7.9 and z = -3.6 and left it there for the
+whole visit. Everything downstream already read a water *level* rather than a
+position — the wading limit, the foam line, the sanderlings, the sandcastles
+— so what was missing was one slow term, not one system.
+
+**The waterline now swings from z = -9.7 to z = -0.4**, 9.3 m against the
+4.3 m the waves alone ever moved it, on a 2,400 s cycle of walking seconds.
+`js/field.js` grew a tide, a solver for the water's edge, a rule for what
+state a patch of sand is in and a rule for whether a pool is still a pool;
+`ocean.js`, `main.js`, `terrain.js`, `footprints.js`, `sandcastle.js`,
+`wildlife.js` and `creatures/`, `sanderlings.js` and `tidepool.js` take one
+change each. No asset bytes, no new files, no offsite requests.
+`test/smoke.mjs` **93 → 117**.
+
+- **The tide runs on walking seconds and does not stop when the sun does**
+  (#516). `sunT` holds at `SUN_TOTAL` because the palette has a bottom; the
+  sea has no bottom, and the tide is the moon's, and the moon already keeps
+  its own arc through the held night. So `main.js` carries a second clock that
+  only stops when the walker does, at the same six-times rate at the fire.
+  **t = 0 is mid-tide, falling**, so `tideLevel(0)` is exactly zero and a
+  fresh visit opens on the frame the piece shipped with, to the millimetre —
+  opening at high water would have meant a narrower beach in the one frame
+  everything was composed for, and what the walker gets for staying is the
+  ebb. Low water lands at t = 600, the sunset frame; high water at t = 1800,
+  five minutes into the held night; a whole cycle is 40 minutes of walking or
+  under seven at the fire. Nothing is saved, because nothing needs to be: the
+  tide is a function of the same clock as the sun, and the journal's schema is
+  untouched.
+- **The range is 0.36 m, and the beach's own furniture set it** (#517). The
+  face rises at 0.055, so a centimetre of sea is 18 cm of shoreline and the
+  numbers are not free. At +0.18 the swash crest reaches z = -0.36: it washes
+  the wrack line, which is the point of a wrack line, and leaves the nearest
+  flat stone **0.80 m** of dry sand to be skipped from. At -0.18 the edge falls
+  to z = -9.70, which is **0.30 m inside** the seaward edge of the static
+  wet-sand strip. Three assertions hold those three margins rather than the
+  range itself. A fourth constraint turned up in the breaking pass and is the
+  real ceiling: `wadeLimitZ` is a closed-form solve on the *seabed* slope, so
+  it is only right while the highest sea level stays under the wade depth of
+  0.45 — at a range of 0.90 it silently returns a point on the beach face and
+  the knee-depth assertion says so (`depth at the limit is 0.45 m (waterLevel
+  0.58)`, 0.509).
+- **One solver for the water's edge, and it changes slope at the shoreline**
+  (#518). `waterLineZ(x, level)` divides by `beachSlope()` above sea level and
+  `seabedSlope(x)` below it. Three call sites had each solved this themselves
+  and all three had solved it the same wrong way, dividing by the beach slope
+  whatever the level: 1.55 m of error at the old swash trough, which nobody
+  could see, and 3.0 m at low water, which is foam drawn on open sea and a
+  flock of sanderlings standing in it. The suite checks the answer against
+  `groundHeight` rather than against a second copy of the slope — solve for
+  the line, stand on it, and the sea should be exactly at your feet — and that
+  is what caught the last 7.5 cm: above s = 2 the heightfield has a 0.25 m
+  undulation written over the wedge, so on the flood the edge lands *inside*
+  the undulation and not on it. Two assertions, one per regime, because a
+  single loose one would have hidden the exact case the fix was for.
+- **Two levels, two questions** (#519). `waterY` is this second's surface,
+  wave and all; `tideY` is the same sea with the wave taken out. Anything
+  asking what *state* a place is in reads `tideY`, or it flickers on and off
+  every 9.5 s: whether a pool holds water, whether sand is wet enough to take
+  a print. Anything asking whether the water is over something *now* reads
+  `waterY`: which prints the next run-up takes. `footprints.js` uses both, one
+  for each question, and the wildlife ctx carries both for the same reason.
+- **A pool is a pool while the sea is below its rim** (#520). The first
+  version asked whether the water's edge had passed the pool's *seaward* rim,
+  which is a stricter thing and measurably too strict: **36% of the cycle,
+  14.3 minutes**, with not one of the five holding water, so a visitor who
+  walked the headland inside that window would have read an empty shelf rather
+  than a high tide. Against the rim — the pool's own carve added back to the
+  heightfield under it — three pools hold water at every state of the tide and
+  two come and go, 69% and 77% of the cycle. The shelf is never bare, and the
+  starfish and the shannies are only logged from a pool that is holding water,
+  because crouching over a foot of sea and recording a starfish you cannot see
+  would make the journal's "honestly watched" rule a lie.
+- **`sandHeight` is the beach with the pier taken off it** (#521). The wet-sand
+  strip and the foam line both read `groundHeight`, which returns the pier's
+  planking inside the deck rectangle because that is what makes the pier
+  walkable — so both climbed it. Two vertices per strip pulled 1.9 m up onto
+  the deck: a dark triangular spike of wet sand across the planks and a band
+  of foam lying on them, for as long as the pier has existed. `groundHeight`
+  is now `sandHeight` plus the deck where there is a deck, and anything
+  painting the beach takes the beach. Found by the edge assertion above, which
+  failed at x = 300 by 2.2 m before anyone went looking.
+- **The tide gets no readout, and the surf was not retuned for it** (#522).
+  The piece has no HUD by design and the tells are all diegetic: the wrack line
+  wetted, the pools emerging, the sanderlings' line walking down the beach, the
+  wet sand widening, a sandcastle built at low water gone by high. The one
+  thing a tide obviously *should* do that was left alone is the sound — the
+  surf is 9 m further away at low water and `audio.js` has never had a distance
+  term at all — because tuning a gain curve blind is exactly the work the
+  backlog's "a real hour on the beach with ears on" row exists for. Noted
+  there rather than guessed at here.
+
+**Broken on purpose** (#34), each from a green 117, each restored and
+re-verified green. `waterLineZ` put back to dividing by the beach slope
+whatever the level: three fail, first `on the ebb the water's edge is exactly
+where the water meets the ground (worst miss 7.1e-1 m at -760,-0.37)`.
+`tideLevel` returning 0: nine fail, including `the tide more than doubles the
+waterline's reach (4.3 m of swash → 4.3 m)` and `the wrack line is dry at
+mid-tide and washed at high water (9/259 reached at mid-tide, 9/259 at high)`.
+`TIDE.range` raised to 0.90: six fail, including `and its floor stays dry at
+the top of the highest tide (floor y = 0.426, highest sea 0.580)`, `high water
+still leaves dry sand to skip a stone from (closest stone -4.10 m clear)` and
+`and there is never a minute with nothing on the shelf at all (793 of 2400
+seconds bare)`. `poolIsClear` forced true: `and the sea takes the low ones at
+high water (0 of 5 under at high water)`. `sandHeight` given the deck back —
+the state this repo shipped with until today: `the sand under the pier is the
+sand, not the deck (deck 2.04 m, sand 2.04 m)`. `sandAt` with its `'sea'` case
+deleted: three fail, including `including the ones right at the mid-tide edge`.
+And the phase moved so a visit opens at low water instead of mid-tide falling:
+eight fail, first `a visit opens at mid-tide, to the millimetre (tideLevel(0) =
+-0.18)`.
+
+**On this machine `npm run games golden-hour` is inconclusive and that is
+locked decision #53, not a result.** Under Xvfb with SwiftShader the page runs
+at one to two frames a second: a 2.5 s hold on W walks the camera 0.84 m, the
+sun drops 0.01° in six seconds, and **seven of the eighteen beats fail on
+`main` with none of this branch's code in them**. The branch fails the same
+seven. The one difference between the two runs was the footprint beat, 2
+instances on `main` and 0 here, and it is the frame rate rather than the gate.
+Driven directly through `?debug` instead — small viewport, `setTideT`,
+`teleport`, and the same 30 s walk three times, judged on the instances each
+leg adds rather than on a total that never shrinks:
+
+```
+low water, on the wet band         prints  0 -> 10 (+10) at z=-7.00 tideY=-0.21
+high water, same spot, now sea     prints 10 -> 10  (+0) at z=-7.00 tideY= 0.15
+high water, on the new wet band    prints 10 -> 20 (+10) at z=-1.00 tideY= 0.15
+```
+
+The same walk in the same place leaves ten prints at low water and none at
+high, and leaves ten again six metres up the beach where the wet sand has moved
+to. The foam line measured off the page's own strip geometry sits at **z =
+-8.19 at low water and z = -0.41 at high**, against -9.70 and -0.36 from the
+arithmetic — the difference is which swash phase the read caught. Zero page
+errors and zero offsite requests in every run, both branches.
