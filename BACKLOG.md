@@ -101,12 +101,12 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-**The last batch of ranked work that shipped** is **`gvb-save.js` v2: quota
-accounting, namespaces and an IndexedDB tier (PR #325)**, the old rank 6 alone —
-a 1, so a batch on its own under the size table. The row named Fable 5.1 and was
-worked under Fable 5.1. That is the line to update when your batch
-merges; a PR that only changes these files is not a batch and does not belong in
-it. **31 ranked items remain**, and **every one of them names a model.**
+**The last batch of ranked work that shipped** is **Closing Time's hall of past
+careers (PR #327)**, the old rank 12 alone — a 1, so a batch on its own under
+the size table. The row named Fable 5.1 and was worked under Fable 5.1. That is
+the line to update when your batch merges; a PR that only changes these files
+is not a batch and does not belong in it. **30 ranked items remain**, and
+**every one of them names a model.**
 
 **Take rank 1: a commercial tier at Broker-Track** (`Projects/Closing Time`, a 1,
 Claude Opus 5). Ranks 1 to 7 were Castle Conundrum's phases and all seven have
@@ -116,6 +116,25 @@ the size table a 1 is the whole batch.
 
 The row is deleted and everything below renumbered, so the ranks in this
 header are the new ones. What shipped, and what it means for the next session:
+
+**Closing Time files a finished year in a hall** (#503 to #507). A career
+that closes at day 336 leaves its frozen scorecard under `closingTime.hall`,
+once, on a `careerId` the career now carries, and "New career" wipes the desk
+and not the wall. The career key is a member of a `createNamespace` now, the
+first adopter of one (#504): prefix `closingTime.`, member `save.v1`, the same
+string byte for byte, so no save changed. A seventh desk screen, Hall, lists
+the years newest first with the best on each count marked, and has its own
+export and import; an import merges by id and never replaces (#506). An
+abandoned year is not filed (#503): the hall is a hall of years, not of
+attempts. A career that finished before the hall existed is filed the first
+time it loads, under an id derived from its bytes rather than rolled, because
+repair runs on every load and a rolled id would file it once per visit (#505).
+`tools/smoke.mjs` 193 → 270; the `closing-time` section of `play-games.mjs`
+27 → 38 checks, green under Xvfb here. **Worth carrying forward** (#507):
+the first dedupe assertion stayed green with the enrol-side check deleted,
+because `repairHall()` also drops a duplicated id on load. Two guards over one
+absence: the assertion reads the stored bytes now, which is what a reload has
+to survive (#39), and fails on the enrol check alone.
 
 **`gvb-save.js` has a second tier and a namespace** (#494 to #502).
 Additive: no key and no byte a v1 slot writes changed, the 54 v1 assertions
@@ -127,11 +146,11 @@ multi-key adopter hand-rolled, with one bundle file that names what it skipped
 and what it refused; `createAsyncSaveSlot()` is the same slot over IndexedDB,
 same key and same bytes, and a save in localStorage moves up on first load,
 verbatim, once (#499, which is #59's shape). A 12 M-character save writes in
-61 ms there and is refused by localStorage. **Nothing adopted it** (#501, on
-purpose and written down in `assets/js/README.md`): the first natural pull is
-rank 12, Closing Time's hall of past scorecards, and the next feature anywhere
-that needs more than 5 MiB or more than one key takes the tier or the namespace
-rather than a third prefix scheme. `gvb-save.test.mjs` 54 → 150; a new
+61 ms there and is refused by localStorage. **Nothing adopted it at the time**
+(#501, on purpose and written down in `assets/js/README.md`); Closing Time's
+hall took the namespace one batch later (#504), and the next feature anywhere
+that needs more than 5 MiB takes the tier rather than a third prefix scheme.
+`gvb-save.test.mjs` 54 → 150; a new
 `gvb-save.browser.mjs` (47, real Chromium) is in the `site-ci.yml` matrix.
 **Worth carrying forward**: the first slot-name assertion was green with the
 slot-name check deleted, because the other member's own `validate` refused
@@ -194,15 +213,15 @@ tab doing nothing at all.
 
 **Rank 1 is a commercial tier at Broker-Track** (`Projects/Closing Time`), a **1**
 on **Claude Opus 5**, and under the size table a 1 is the whole batch. The next
-half is rank 1 of the halves, rank 6. Eleven of the thirty-one are ¼: ranks 7, 9,
-14, 15, 16, 19, 20, 21, 22, 27 and 30. **Five of those eleven want hardware nothing
-here has** (14, 16, 21, 22, 30), as do three of the halves (6, 13, 23); the Parked
-section below the table says why they were left ranked anyway. Ranks 5 and 28 are
+half is rank 1 of the halves, rank 6. Eleven of the thirty are ¼: ranks 7, 9,
+13, 14, 15, 18, 19, 20, 21, 26 and 29. **Five of those eleven want hardware nothing
+here has** (13, 15, 20, 21, 29), as do three of the halves (6, 12, 22); the Parked
+section below the table says why they were left ranked anyway. Ranks 5 and 27 are
 the two 2+ rows.
 
-**The model split is 10 Opus 5, 12 Fable 5.1, 9 Sonnet 5.** Counted off the table
+**The model split is 10 Opus 5, 11 Fable 5.1, 9 Sonnet 5.** Counted off the table
 rather than decremented, which is how the 15/14/9 drift five batches ago was
-caught: 10 + 12 + 9 is 31, and the table has 31 rows. The rubric is in
+caught: 10 + 11 + 9 is 30, and the table has 30 rows. The rubric is in
 Tier 1's preamble, and it is a reading of each row, not a quota — take the
 model the row names and say in the PR body which one you actually worked
 under.
@@ -344,26 +363,25 @@ and #222 was closed unmerged an hour of suites later.
 | 9 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
 | 10 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
 | 11 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 12 | Multi-career history — a hall of past scorecards | `Projects/Closing Time` | 1 | Fable 5.1 | `claude/fable-challenging-ranks-4n4mtf` | [Closing Time](#closing-time) |
-| 13 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 14 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 15 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 16 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 17 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 18 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 19 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 20 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 21 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 22 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 23 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 24 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 25 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 26 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 27 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
-| 28 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 29 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
-| 30 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 31 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 12 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 13 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 14 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 15 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 16 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 17 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 18 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 19 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 20 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 21 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 22 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 23 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 24 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 25 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 26 | Whether the tile-cost hint should be more prominent once targets run past two digits | `Projects/integer-foundry` | ¼ | Opus 5 |  | [Integer Foundry](#integer-foundry) |
+| 27 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 28 | A committed browser-driven test layer: grid render/unlock, save/reset/wipe, star display | `Projects/orbital` | ½ | Opus 5 |  | [Orbital](#orbital) |
+| 29 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 30 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -553,22 +571,24 @@ backfills it and repair runs on every load (#386). What's left:
 
 1. **A commercial tier at Broker-Track.** The last of the README's "next layers"
    list, and rank 1.
-2. **Multi-career history.** The scorecard's button answers "how do I start the
-   next career," not "does this career leave a record anywhere." A save that
-   remembers more than the one career currently in progress — a hall of past
-   scorecards, say — is a genuinely bigger feature and still out of scope for
-   what round 3 asked. Worth raising with Devon if the ending sticks as
-   something players actually hit repeatedly, same as the last three rounds'
-   notes said.
+
+**Round 6 (2026-09-16, #503 to #507) shipped the hall of past careers**, the
+multi-career history three rounds of notes had raised. A finished year is filed
+under `closingTime.hall` on the career's `careerId`, once, and survives "New
+career"; the career key is member `save.v1` of a `createNamespace` at the key it
+always had. A seventh desk screen, Hall, with its own export and an import that
+merges by id. Finished years only: an abandoned career leaves no row.
+`tools/smoke.mjs` 193 → 270, the browser section 27 → 38.
 
 From the README's own "Design notes for future expansion", which was this
 project's only plan and is being retired from that file:
 
 - **The priority-tested slice** — the buyer loop, seller loop, open houses,
   events, brokerages, market drift, referrals, and career ladder — is all live.
-  Per-client financing shipped in round 4 and multi-offer escalation wars in
-  round 5. **One next layer is still open: a commercial tier at Broker-Track.**
-  The suite holding the rest is at 193 assertions.
+  Per-client financing shipped in round 4, multi-offer escalation wars in
+  round 5 and the hall of past careers in round 6. **One next layer is still
+  open: a commercial tier at Broker-Track.** The suite holding the rest is at
+  270 assertions.
 - **The unhandled edge case.** `repairCareer()` makes adding and removing
   content from a live career safe — it backfills and drops `listingsState`,
   `market.nb` and `knowledge` entries against what's actually in `data/`. But

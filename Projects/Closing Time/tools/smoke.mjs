@@ -11,7 +11,9 @@ import { fileURLToPath } from "url";
 import { DB } from "../js/data.js";
 import { S, newGame, makeCareer, adoptState, careerSlot, save, loadSave, wipeSave,
          validCareer, repairCareer, rand, SAVE_KEY, SAVE_VERSION, DEFAULT_BROKERAGE,
-         getClientRec, contentClient, activeClients } from "../js/state.js";
+         getClientRec, contentClient, activeClients,
+         SAVE_PREFIX, HALL_KEY, HALL_VERSION, saveNamespace, hallSlot, loadHall, saveHall,
+         validHall, repairHall, hallEntryFor, enrollFinishedCareer, mergeHall, hallBests } from "../js/state.js";
 import * as Clients from "../js/engine/clients.js";
 import * as Deals from "../js/engine/deals.js";
 import * as Seller from "../js/engine/seller.js";
@@ -791,6 +793,184 @@ const paper = (id, price, extra = {}) => ({
   eq(loaded.playerListings[0].hbDeadline, null, "and a listing with no call in flight has a null deadline");
   ok(!Esc.canCallHighestAndBest(loaded.playerListings[0]),
     "one open offer is not a field");
+}
+
+
+/* ================================================================== the hall */
+// Rank 12: a hall of past scorecards. The career key is a namespace member now
+// and the hall is the second member; both live under `closingTime.`.
+console.log("\nthe hall of past careers:");
+{
+  const st = memStore();
+  const ns = saveNamespace(st);
+  eq(ns.prefix, SAVE_PREFIX, "the namespace prefix is closingTime.");
+  eq(careerSlot(st).key, SAVE_KEY, "the career key is still closingTime.save.v1 (#36)");
+  eq(hallSlot(st).key, HALL_KEY, "and the hall is closingTime.hall, under the same prefix");
+  eq(hallSlot(st).version, HALL_VERSION, "at its own version");
+  ok(careerSlot(st) === ns.slot("save.v1"), "careerSlot() is the namespace member, not a second slot over the key");
+
+  // Day one: nothing on the wall, and the hall key is not written by playing.
+  newGame("bk_hearthstone");
+  save(st);
+  ok(typeof S.careerId === "string" && S.careerId.startsWith("career_"), "a new career carries an id", S.careerId);
+  const firstId = S.careerId;
+  eq(loadHall(st).careers.length, 0, "a fresh hall is empty");
+  ok(!st.has(HALL_KEY), "and an empty hall writes nothing");
+  eq(enrollFinishedCareer(st), null, "a career still being played is not filed");
+  ok(!st.has(HALL_KEY), "and asking did not write a hall either");
+  eq(ns.names().join(","), "save.v1", "the namespace sees the one key that exists");
+
+  // The year closes: one row, on this career's id.
+  S.day = CAREER_LENGTH_DAYS;
+  S.stats.closed = 7; S.stats.volume = 1234567; S.stats.referrals = 3; S.stats.honesty = 4; S.rep = 61;
+  endDay();
+  ok(S.careerEnded, "the career ended at 336");
+  // endDay() -> finishCareer() enrolls on the browser slot (no storage arg);
+  // the test's store is the one under test, so file it there too.
+  const filed = enrollFinishedCareer(st);
+  ok(!!filed, "a finished career is filed in the hall");
+  let hall = loadHall(st);
+  eq(hall.careers.length, 1, "one row on the wall");
+  ok(st.has(HALL_KEY), "written under closingTime.hall");
+  eq(JSON.parse(st.getItem(HALL_KEY)).__v, HALL_VERSION, "with the hall's own version stamp");
+  eq(ns.names().sort().join(","), "hall,save.v1", "the namespace sees both members now");
+  const row = hall.careers[0];
+  eq(row.id, firstId, "the row is filed under the career's id");
+  eq(row.seq, 1, "as career #1");
+  eq(row.closings, 7, "carrying the closings");
+  eq(row.volume, 1234567, "the volume");
+  eq(row.referrals, 3, "referrals");
+  eq(row.honesty, 4, "disclosures, which the scorecard modal never showed");
+  eq(row.finalRep, 61, "final reputation");
+  eq(row.day, CAREER_LENGTH_DAYS, "and day 336");
+  eq(row.brokerage, DB.brokerages.bk_hearthstone.name, "and the brokerage by name");
+  ok(S.log.some(it => /filed in your hall as career #1/.test(it.text)), "the Ledger says which number it got");
+
+  // Once. Every later load of the finished career finds its row already there.
+  eq(enrollFinishedCareer(st).id, firstId, "filing again returns the row that is there");
+  save(st); loadSave(st); loadSave(st);
+  endDay();
+  // Against the stored bytes, not loadHall(): repairHall() also drops a
+  // duplicated id, so a hall read back through it is one row whether or not
+  // enrollFinishedCareer() checked first (#34, the two-guards trap). The
+  // bytes are what a reload has to survive (#39), and they hold a second row
+  // the moment the enrol-side check goes.
+  const storedRows = JSON.parse(st.getItem(HALL_KEY)).careers.length;
+  eq(storedRows, 1, "two reloads and a second End Day click file nothing twice: the stored hall holds one row");
+
+  // "New career" wipes the desk and not the wall.
+  wipeSave(st);
+  ok(!st.has(SAVE_KEY), "wipeSave() removed the career");
+  eq(loadHall(st).careers.length, 1, "and left the hall");
+  ok(!loadSave(st), "nothing to resume");
+
+  // A second year goes in behind the first.
+  newGame("bk_indep"); save(st);
+  ok(S.careerId !== firstId, "the next career has a different id");
+  S.day = CAREER_LENGTH_DAYS; S.stats.closed = 2; S.stats.volume = 400000; S.rep = 30;
+  endDay(); enrollFinishedCareer(st);
+  hall = loadHall(st);
+  eq(hall.careers.length, 2, "two rows after two years");
+  eq(hall.careers[1].seq, 2, "the second is career #2");
+  eq(hall.careers[1].brokerage, DB.brokerages.bk_indep.name, "at the other brokerage");
+  const bests = hallBests(hall);
+  eq(bests.volume, firstId, "career #1 holds the volume record");
+  eq(bests.closings, firstId, "and closings");
+  eq(bests.finalRep, firstId, "and reputation");
+  eq(Object.keys(hallBests({ careers: [] })).length, 0, "an empty hall has no records");
+  const tieId = hall.careers[1].id;
+  eq(hallBests({ careers: [{ ...hall.careers[0], volume: 5 }, { ...hall.careers[1], volume: 5 }] }).volume, firstId,
+    "a tie goes to the earlier year, which held the record first");
+  eq(hallBests({ careers: [{ ...hall.careers[0], volume: 5 }, { ...hall.careers[1], volume: 6 }] }).volume, tieId,
+    "and a later year that beats it takes it");
+
+  // A career that ended before the hall existed: no careerId, filed on load.
+  const st2 = memStore();
+  const legacy = makeCareer("bk_hearthstone");
+  delete legacy.careerId;
+  legacy.day = CAREER_LENGTH_DAYS; legacy.careerEnded = true;
+  legacy.scorecard = { day: 336, volume: 900000, closings: 5, referrals: 1, finalRep: 44, level: 3, title: "Senior Agent", cash: 12000 };
+  const bytes = JSON.stringify(legacy);
+  st2.setItem(SAVE_KEY, bytes);
+  ok(loadSave(st2), "a finished career from before the hall loads");
+  const legacyId = S.careerId;
+  ok(typeof legacyId === "string" && legacyId.startsWith("career_legacy_"), "and repair gave it an id", legacyId);
+  eq(loadHall(st2).careers.length, 1, "and loading it filed it");
+  eq(loadHall(st2).careers[0].volume, 900000, "off the frozen scorecard, not the live stats");
+  eq(loadHall(st2).careers[0].title, "Senior Agent", "title included");
+  // The bytes never got written back (nothing rendered), so load them again.
+  st2.setItem(SAVE_KEY, bytes);
+  loadSave(st2);
+  eq(S.careerId, legacyId, "the same bytes derive the same id on a second load");
+  eq(loadHall(st2).careers.length, 1, "so the second load does not file a second row");
+  eq(repairCareer(JSON.parse(JSON.stringify(S))).careerId, legacyId, "and repair leaves an id it finds alone");
+
+  // The hall's own gate and repair.
+  ok(!validHall(null) && !validHall({}) && !validHall({ careers: "x" }) && !validHall([]), "validHall refuses a non-hall");
+  ok(validHall({ careers: [] }), "and accepts an empty one");
+  st2.setItem(HALL_KEY, "{ not json");
+  eq(loadHall(st2).careers.length, 0, "a corrupt hall reads as empty rather than crashing the desk");
+  const junk = repairHall({ careers: [
+    null, 7, { id: "" }, { id: "a", closings: "many", volume: 1 }, { id: "b", closings: 1, volume: "lots" },
+    { id: "c", closings: 1, volume: 100, seq: 9, finalRep: 400, level: 99, recordedAt: "2026-01-02T00:00:00Z" },
+    { id: "c", closings: 5, volume: 500 },
+    { id: "d", closings: 2, volume: 200, seq: 1, recordedAt: "2026-01-01T00:00:00Z" },
+  ] });
+  eq(junk.careers.map(e => e.id).join(","), "d,c", "repairHall drops junk, keeps the first of a duplicated id, and orders by seq");
+  eq(junk.careers.map(e => e.seq).join(","), "1,2", "renumbering from 1");
+  const c = junk.careers[1];
+  eq(c.finalRep, 100, "reputation is clamped to 100");
+  eq(c.level, 5, "level to the ladder");
+  eq(c.title, "Managing Broker", "and a missing title is read off the ladder");
+  eq(c.referrals, 0, "missing counts read as zero");
+  eq(c.brokerage, DB.brokerages[DEFAULT_BROKERAGE].name, "and a missing brokerage is the default one's name");
+
+  // Import merges. The file from another machine adds what this hall lacks
+  // and keeps what it has, in the order the rows were recorded there.
+  const before = loadHall(st);
+  const r0 = mergeHall(before, st);
+  eq(r0.added, 0, "merging a hall into itself adds nothing");
+  const incoming = { careers: [
+    { ...before.careers[0], closings: 99 },                                  // already here: kept as is
+    { id: "x2", seq: 1, closings: 1, volume: 50, finalRep: 10, level: 1, title: "Rookie Agent", cash: 1,
+      brokerageId: "bk_indep", brokerage: "Elsewhere", recordedAt: "2026-02-02T00:00:00Z", referrals: 0, honesty: 0, day: 336 },
+    { id: "x1", seq: 2, closings: 3, volume: 70, finalRep: 20, level: 2, title: "Associate", cash: 2,
+      brokerageId: "bk_indep", brokerage: "Elsewhere", recordedAt: "2026-01-01T00:00:00Z", referrals: 0, honesty: 0, day: 336 },
+    { id: "bad", closings: "x" },
+  ] };
+  const r1 = mergeHall(incoming, st);
+  eq(r1.added, 2, "two new rows came in, junk did not");
+  const merged = loadHall(st);
+  eq(merged.careers.length, 4, "four rows after the merge");
+  eq(merged.careers[0].closings, 7, "a row already here keeps its own numbers");
+  eq(merged.careers.slice(2).map(e => e.id).join(","), "x1,x2", "new rows are appended in the order they were recorded, not the order in the file");
+  eq(merged.careers.map(e => e.seq).join(","), "1,2,3,4", "and numbered on after the rows already here");
+  eq(mergeHall(incoming, st).added, 0, "the same file again adds nothing");
+  ok(mergeHall(null, st).added === 0 && mergeHall({ careers: "no" }, st).added === 0, "a non-hall merges nothing and does not throw");
+
+  // The two members' files do not cross. A hall export names its slot, and the
+  // career slot refuses it on that alone; the career's export names its slot
+  // too, and a v1 export with no slot name still imports.
+  const hallText = hallSlot(st).serialize(merged);
+  const hallEnv = JSON.parse(hallText);
+  eq(hallEnv.slot, "hall", "a hall export is stamped with its member name");
+  ok(hallSlot(st).deserialize(hallText) !== null, "and the hall slot reads it back");
+  eq(careerSlot(st).deserialize(hallText), null, "the career slot refuses a hall file");
+  newGame("bk_indep");
+  const careerText = careerSlot(st).serialize(S);
+  eq(JSON.parse(careerText).slot, "save.v1", "a career export is stamped with its member name");
+  eq(hallSlot(st).deserialize(careerText), null, "the hall slot refuses a career file");
+  const v1 = JSON.parse(careerText); delete v1.slot;
+  ok(careerSlot(st).deserialize(JSON.stringify(v1)) !== null, "and a career file exported before the namespace still imports");
+
+  // hallEntryFor reads the frozen scorecard first and the live numbers second.
+  const probe = makeCareer("bk_indep");
+  probe.stats = { closed: 1, volume: 2, referrals: 3, honesty: 4 };
+  probe.scorecard = { closings: 10, volume: 20 };
+  const e = hallEntryFor(probe);
+  eq(e.closings, 10, "hallEntryFor prefers the frozen scorecard");
+  eq(e.referrals, 3, "and falls back to the live stats for a field the scorecard lacks");
+  eq(e.honesty, 4, "disclosures come from the stats, which the scorecard never carried");
 }
 
 /* ------------------------------------------------------------------- report */

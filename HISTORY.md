@@ -10442,3 +10442,70 @@ was found and fixed before it shipped**: the first slot-name assertion used a
 member whose own `validate` refused the foreign file, so removing the slot-name
 check left it green. It uses a member with no `validate` now, and fails on the
 check alone.
+
+## Closing Time: a hall of past careers (2026-09-16)
+
+Rank 12, a 1 on Fable 5.1, worked under Fable 5.1, PR #327. The scorecard
+modal's button answered "how do I start the next career" and not "does this
+year go anywhere"; three rounds of notes raised it and none took it. A career
+that closes at day 336 is filed now, and "New career" wipes the desk and not
+the wall. `Projects/Closing Time/js/state.js` carries the model (`validHall`,
+`repairHall`, `hallEntryFor`, `enrollFinishedCareer`, `mergeHall`,
+`hallBests`), `ui.js` a seventh desk screen, `main.js` one line on the start
+screen. `tools/smoke.mjs` 193 → 270. The `closing-time` section of
+`Tools/board-check/play-games.mjs` 27 → 38, green under Xvfb here, and the
+shared file is edited in the same PR: its nav count went six to seven.
+
+- **The hall holds finished years and nothing else** (#503). A career filed
+  the day it reaches 336, on the scorecard `finishCareer()` already froze, with
+  disclosures added because the scorecard never carried them. A career
+  abandoned on day 200 has no scorecard and gets no row: a row for every "New
+  career" click would bury the years under the false starts, and the confirm
+  text on an unfinished career now says so. The alternative, filing attempts
+  with a "reached day N" marker, is a different feature and would want its own
+  row.
+- **The career key is a namespace member, at the key it always had** (#504).
+  `createNamespace({ game: "closing-time", prefix: "closingTime." })` with
+  members `save.v1` and `hall` writes `closingTime.save.v1` byte for byte
+  (#36, #496), and `closingTime.hall` next to it. Closing Time is the first
+  adopter of a namespace, one batch after #501 said the hall would be its
+  natural pull. It took neither the bundle export nor the IndexedDB tier: a
+  hall row is about 300 characters, and one file per member is what the two
+  buttons already on screen mean. The one visible change to the career's own
+  export is a `slot: "save.v1"` field in the envelope; a file exported before
+  it, with no `slot`, still imports, and the suite holds both.
+- **Enrolment is idempotent on `careerId`, and a legacy id is derived, not
+  rolled** (#505). `makeCareer()` stamps a `careerId` from the clock and a
+  random tail, never from the RNG seed, which `rand()` rewrites on every call.
+  `enrollFinishedCareer()` is called from `finishCareer()` the day the year
+  closes and from `loadSave()` on every later visit, so a career that ended
+  before the hall existed is filed the first time it loads. That career has no
+  id, and `repairCareer()` gives it one from a hash of the bytes it arrived
+  with (`brokerageId`, `seed`, `day`, `nextId`, `cash`, `xp`) rather than
+  `Math.random()`: repair runs on every accepted load (#37), a finished career
+  is never written back by playing, and a rolled id would file the same year
+  once per visit. The suite loads the same bytes twice and asserts one row.
+- **An imported hall merges and never replaces** (#506). `mergeHall()` appends
+  the rows this hall lacks, in the order they were recorded, numbered on after
+  the rows already here; a row already here keeps its own numbers even when the
+  file's copy differs. The other reading, replace on import, is how a player
+  moving a hall between two machines loses whichever one they exported second.
+- **Two guards over one absence, and the assertion that tells them apart**
+  (#507, #34). The first version of "two reloads do not file it twice" read
+  the hall back through `loadHall()`, and stayed green with the enrol-side
+  dedupe deleted: `repairHall()` also drops a duplicated id, so a hall read
+  through it is one row whichever guard is there. The assertion reads the
+  stored bytes now (`JSON.parse(store.getItem(HALL_KEY)).careers.length`),
+  which is what a reload has to survive (#39), and fails on the enrol check
+  alone. Both guards stay: the repair-side one is for an imported file.
+
+**Broken on purpose** (#34), each from a green 270, each restored and checked
+identical with `cmp`. The enrol-side dedupe commented out: 270 → 269, `two
+reloads and a second End Day click file nothing twice: the stored hall holds
+one row (2 !== 1)`, and only after the rewrite above; before it, the break ran
+green. The legacy id rolled with `Math.random()`: three fail, first `the same
+bytes derive the same id on a second load ("career_legacy_l1pl9mr5cqs" !==
+"career_legacy_w69txal85q8")`, then `so the second load does not file a second
+row (2 !== 1)`. `wipeSave()` clearing the whole prefix: `and left the hall
+(0 !== 1)`. `mergeHall()` not skipping ids already here: `merging a hall into
+itself adds nothing (2 !== 0)` and two more.

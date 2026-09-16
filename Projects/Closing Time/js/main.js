@@ -1,6 +1,7 @@
 // main.js — bootstrap: load content, resume or start a new career.
 import { loadAll } from "./data.js";
-import { S, newGame, loadSave, wipeSave, careerSlot, adoptState } from "./state.js";
+import { S, newGame, loadSave, wipeSave, careerSlot, adoptState, enrollFinishedCareer, loadHall, hallBests } from "./state.js";
+import { fmtMoney } from "./data.js";
 import { render, toast } from "./ui.js";
 import { mountSaveBar } from "../../../assets/js/gvb-save.js";
 
@@ -28,6 +29,9 @@ function mountSave() {
     getState: () => S,
     setState: c => {
       adoptState(c);
+      // A finished career imported from a file is a finished career: it gets
+      // its row in the hall, once, on the same id it would have had here.
+      enrollFinishedCareer();
       document.getElementById("modal-root").innerHTML = "";
       render();
       attachNewGame();
@@ -59,6 +63,7 @@ function showStartScreen() {
             <b>Go independent</b><br><span class="muted">100% commission. 0% safety net. Every client is one you found yourself.</span>
           </button>
         </div>
+        ${hallNote()}
         <p class="hint">Already have a career in a file? Import it from the footer.</p>
       </div>
     </div>`;
@@ -69,13 +74,26 @@ function showStartScreen() {
   });
 }
 
+/**
+ * The start screen is where "did my last year go anywhere" gets asked, and the
+ * hall is the answer. One line, only when there is something on the wall.
+ */
+function hallNote() {
+  const hall = loadHall();
+  const n = hall.careers.length;
+  if (!n) return "";
+  const best = hall.careers.find(e => e.id === hallBests(hall).volume);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return `<p class="hall-note">Your hall holds ${n} finished year${n === 1 ? "" : "s"}. Best volume: ${fmtMoney(best.volume)} at ${esc(best.brokerage)}, career #${best.seq}. The Hall tab on the desk has the rest.</p>`;
+}
+
 /** Every path that ends with a career on screen comes through here. */
 function attachNewGame() {
   exportBtn().disabled = false;
   document.getElementById("newGameBtn").onclick = () => {
     const msg = S.careerEnded
-      ? "Start a new career at Alder Falls? This save will be wiped."
-      : "Abandon this career and start over? The save will be wiped.";
+      ? "Start a new career at Alder Falls? This desk will be wiped; the hall keeps the year."
+      : "Abandon this career and start over? The save will be wiped, and an unfinished year is not filed in the hall.";
     if (confirm(msg)) { wipeSave(); location.reload(); }
   };
 }

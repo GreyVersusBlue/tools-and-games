@@ -246,17 +246,20 @@ async: true })` builds a namespace whose members are async slots on one shared
 store; its `names`/`usage`/`clearAll`/`snapshot`/`importAll` return promises.
 `mountSaveBar` awaits every call, so it takes either kind of slot.
 
-### Not adopted yet, on purpose
+### Who has taken v2
 
-v2 ships with no adopter moved onto it, which is against this file's own "none
-were added speculatively" and is written down because of that. The row that
-asked for it ranked the site layer, not an adopter, and each candidate is
-somebody else's call: Closing Time's hall of past scorecards (rank 13) is the
-namespace's first natural pull, Bell to Bell's `persist.js` is governed by its
-own `CLAUDE.md`, and Hearth's save lives in the address bar. The next feature
-that needs more than 5 MiB or more than one key takes the tier or the namespace
-rather than rolling a third prefix scheme; until then the table above stays a
-list of thirteen sync slots.
+v2 shipped with no adopter moved onto it, against this file's own "none were
+added speculatively", and that was written down here. **Closing Time is the
+first namespace adopter** (2026-09-16, its hall of past careers): `createNamespace({
+game: "closing-time", prefix: "closingTime." })` with `save.v1` as the career
+member, so the career key is the string it always was, and `hall` as the second
+member. What it exercised: two members under one prefix, a member's export
+carrying `slot` so the other member refuses it, and a v1 export with no `slot`
+still importing. It did not take the bundle export or the IndexedDB tier: a
+hall row is about 300 characters. The other candidates are still somebody
+else's call: Bell to Bell's `persist.js` is governed by its own `CLAUDE.md`,
+and Hearth's save lives in the address bar. The next feature that needs more
+than 5 MiB takes the tier rather than rolling a third prefix scheme.
 
 ## The rest of the surface
 
@@ -296,7 +299,7 @@ none were added speculatively.
 | --- | --- | --- |
 | **The Fourth Quarter** | `fq3d-save` | The reference integration (session 7). `defaults` as a factory, `repair`, and `buttons` were all added for it. Save bar now mounted on three screens, not just the start overlay |
 | **Aphelion** | `aphelion-save-v1` | Save bar in the logbook rather than a title screen, since the title card vanishes for good once you board |
-| **Closing Time** | `closingTime.save.v1` | `repair` catches **content drift**, not just schema drift — see `migrate` vs `repair` above. Prompted the `fresh(...args)`/`reset(...args)` and `clear()` additions |
+| **Closing Time** | `closingTime.save.v1` and `closingTime.hall`, members of one namespace | `repair` catches **content drift**, not just schema drift — see `migrate` vs `repair` above. Prompted the `fresh(...args)`/`reset(...args)` and `clear()` additions. The first `createNamespace` adopter: the career key unchanged as member `save.v1`, the hall of past careers as the second member |
 | **Torchbearer** | `torchbearer-save` | Names its export after the hero, not the game — prompted the `filename` option on `mountSaveBar` |
 | **The Absalom Inheritance** | `absalom-inheritance-save-v1` | `repair` clamps a wild coordinate back to a place a body can actually stand, not just to a number |
 | **Corner & Kettle** | (`corner-and-kettle/js/save.js`, then still inside `coffee_shop_sim.html`) | Found the `load()`/`getItem` and private-mode construction gaps this session's fixes close |
