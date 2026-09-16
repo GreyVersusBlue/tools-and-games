@@ -1,0 +1,46 @@
+{
+  "id": "cl_0202",
+  "name": "Emmett Rusk",
+  "type": "buyer",
+  "archetype": "syndicate",
+  "tier": "commercial",
+  "budget": 900000,
+  "financing": "cash",
+  "patience": 8,
+  "statedReqs": {
+    "minBeds": 0,
+    "minCap": 0.068,
+    "mustFeatures": [],
+    "neighborhoods": [
+      "nb_downtown",
+      "nb_carver_mill"
+    ],
+    "notes": "Four dentists and an orthodontist, pooled. All cash, and all five of them want to walk the building."
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "The group will accept a lower yield for a building they can drive past on the way to the office, and Carver Mill is on the way.",
+      "type": "secretMustHave",
+      "revealOn": {
+        "trigger": "feature",
+        "value": "on-site parking"
+      },
+      "data": {
+        "fitBonus": 18
+      }
+    },
+    {
+      "desc": "They have never managed a tenant and the word 'month-to-month' frightens all five of them at once.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "leases"
+      },
+      "data": {
+        "topic": "leases"
+      }
+    }
+  ],
+  "intro": "Their accountant told them to buy something. Their accountant did not tell them what, and now it is your problem.",
+  "referredBy": null
+}

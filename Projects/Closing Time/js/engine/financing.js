@@ -67,6 +67,22 @@ export const FINANCING = {
     needsAppraisal: true, needsFinancing: true,
     failBase: 0.1, rateSensitivity: 1.4, lenderCondition: true,
   },
+  // The fifth type, and the only one that is not a residential loan program.
+  // FHA and VA are not options on a building at all — they are programs for
+  // somebody's house — so a commercial buyer has exactly two ways to pay, this
+  // and cash, and financingFor()'s commercial pool holds only those two.
+  //
+  // `failBase` is low on purpose and does almost nothing. A commercial loan
+  // does not mostly die of a bad roll: it dies of a debt service coverage
+  // ratio under 1.20, which deals.js resolves as arithmetic before it ever
+  // reaches this number. See commercial.js:dscrAt().
+  commercial: {
+    id: "commercial", label: "commercial",
+    blurb: "A bank underwriting the building rather than the buyer: 70% loan-to-value, 25-year amortization, and a debt-service test at the end of it.",
+    strength: -0.005, minCloseDays: 45,
+    needsAppraisal: true, needsFinancing: true,
+    failBase: 0.03, rateSensitivity: 1.2, lenderCondition: false,
+  },
 };
 
 export const DEFAULT_FINANCING = "conventional";
@@ -74,8 +90,13 @@ export const DEFAULT_FINANCING = "conventional";
 /** The type record, for anything holding an id. Never returns undefined. */
 export const financingType = id => FINANCING[id] || FINANCING[DEFAULT_FINANCING];
 
-/** Close-day options an offer of this type may actually pick. */
-export const CLOSE_DAY_CHOICES = [14, 21, 28, 35, 45];
+/**
+ * Close-day options an offer of this type may actually pick. 60 is here for
+ * the commercial loan, whose 45-day floor would otherwise leave it a select
+ * with one entry in it; every other type gains a slow option it had no reason
+ * to want, which costs it the <=21-day strength bonus agentRespond() pays.
+ */
+export const CLOSE_DAY_CHOICES = [14, 21, 28, 35, 45, 60];
 export const closeDaysFor = id =>
   CLOSE_DAY_CHOICES.filter(d => d >= financingType(id).minCloseDays);
 
@@ -100,6 +121,10 @@ const POOLS = {
   starter: ["fha", "fha", "conventional", "va"],
   mid: ["conventional", "conventional", "fha", "va"],
   luxury: ["conventional", "cash", "cash", "conventional"],
+  // No FHA and no VA in this pool, and that is not a balance choice: those two
+  // are residential loan programs and a buyer of a six-bay strip cannot use
+  // either one. A commercial buyer borrows commercially or pays cash.
+  commercial: ["commercial", "commercial", "cash", "commercial"],
 };
 
 export function financingFor(c) {

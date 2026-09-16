@@ -1,0 +1,47 @@
+{
+  "id": "cl_0203",
+  "name": "Simone Vardy",
+  "type": "buyer",
+  "archetype": "value-add",
+  "tier": "commercial",
+  "budget": 700000,
+  "financing": "commercial",
+  "patience": 9,
+  "statedReqs": {
+    "minBeds": 0,
+    "minCap": 0.092,
+    "mustFeatures": [],
+    "neighborhoods": [
+      "nb_downtown",
+      "nb_old_foundry"
+    ],
+    "notes": "Wants the broken one. 'Nine two on today's numbers, and I will fix today's numbers.'"
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "Deferred capital is a shopping list to her, not a reason to leave — as long as it is on paper before she signs.",
+      "type": "secretMustHave",
+      "revealOn": {
+        "trigger": "issueSeverity",
+        "value": "dealbreaker"
+      },
+      "data": {
+        "ignoresIssues": true,
+        "fitBonus": 14
+      }
+    },
+    {
+      "desc": "Took a flat roof to the deck on her last project and swore off buying another one. Everything else is a line item; a roof is a year.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "roof"
+      },
+      "data": {
+        "topic": "roof"
+      }
+    }
+  ],
+  "intro": "Buys the building everyone else walked out of, and has the spreadsheet open before she is back in the car.",
+  "referredBy": null
+}

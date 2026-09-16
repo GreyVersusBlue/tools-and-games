@@ -1,0 +1,48 @@
+{
+  "id": "ls_0102",
+  "address": "9 Ironworks Way",
+  "neighborhood": "nb_old_foundry",
+  "tier": "commercial",
+  "price": 1085000,
+  "beds": 0,
+  "baths": 2,
+  "sqft": 21400,
+  "condition": 0.71,
+  "features": [
+    "loading dock",
+    "rail spur",
+    "triple-net leases",
+    "separately metered"
+  ],
+  "commercial": {
+    "assetType": "light industrial",
+    "units": 3,
+    "grossRent": 142000,
+    "vacancy": 0.05,
+    "opex": 38400,
+    "marketCap": 0.088,
+    "rollPct": 0.1,
+    "rentRoll": "Three tenants, all triple-net: a cabinet shop, a brewer's cold store, and a guy who restores fire trucks."
+  },
+  "hiddenIssues": [
+    {
+      "desc": "Floor drains in bay two run to a 1960s oil separator that has never been tested",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 22000,
+      "disclosureRequired": true,
+      "topic": "environmental"
+    },
+    {
+      "desc": "Dock leveler in bay one is seized and has been chained open",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 9500,
+      "disclosureRequired": false,
+      "topic": "parking"
+    }
+  ],
+  "listingAgentId": "ag_ruth_okafor",
+  "daysOnMarket": 28,
+  "blurb": "Twenty-one thousand feet on the spur, three tenants who pay their own taxes. Boring in the way that compounds."
+}

@@ -1,0 +1,50 @@
+{
+  "id": "cl_0201",
+  "name": "Nadia Brost",
+  "type": "buyer",
+  "archetype": "1031 exchange",
+  "tier": "commercial",
+  "budget": 1250000,
+  "financing": "commercial",
+  "patience": 6,
+  "statedReqs": {
+    "minBeds": 0,
+    "minCap": 0.075,
+    "mustFeatures": [
+      "triple-net leases"
+    ],
+    "neighborhoods": [
+      "nb_downtown",
+      "nb_old_foundry"
+    ],
+    "notes": "Sold a duplex portfolio in March. 'Seven and a half or I keep looking, and I would rather not keep looking.'"
+  },
+  "hiddenPrefs": [
+    {
+      "desc": "The exchange clock is real — she pays tax on every dollar she does not place, which is why she sounds calm and is not.",
+      "type": "realMotive",
+      "revealOn": {
+        "trigger": "schmooze",
+        "value": 1
+      },
+      "data": {
+        "patienceBonus": 2,
+        "honestyWeight": 1.5,
+        "deadlineDay": 45
+      }
+    },
+    {
+      "desc": "Will not buy a slab with an untested environmental history. A Phase II takes six weeks and she does not have six weeks.",
+      "type": "secretDealbreaker",
+      "revealOn": {
+        "trigger": "topic",
+        "value": "environmental"
+      },
+      "data": {
+        "topic": "environmental"
+      }
+    }
+  ],
+  "intro": "Trades in and out of small industrial, never holds a management headache. Reads a rent roll the way other people read a menu.",
+  "referredBy": null
+}

@@ -10509,3 +10509,108 @@ bytes derive the same id on a second load ("career_legacy_l1pl9mr5cqs" !==
 row (2 !== 1)`. `wipeSave()` clearing the whole prefix: `and left the hall
 (0 !== 1)`. `mergeHall()` not skipping ids already here: `merging a hall into
 itself adds nothing (2 !== 0)` and two more.
+
+## Closing Time's commercial tier (2026-09-16)
+
+Rank 1, a 1 on Claude Opus 5, worked under Claude Opus 5, PR #329. The last
+item on the README's "next layers" list, and the rung it opens at was already
+named for it: level 4 is `Broker-Track`. A new `js/engine/commercial.js` owns
+the whole model; `market.js`, `clients.js`, `deals.js`, `financing.js`,
+`calendar.js`, `state.js`, `ui.js` and `css/style.css` take one branch each.
+Four buildings (`ls_0101` to `ls_0104`) and three investors (`cl_0201` to
+`cl_0203`) are new content. `tools/smoke.mjs` 270 → **359**. The
+`closing-time` section of `Tools/board-check/play-games.mjs` 38 → **53**, green
+under Xvfb here, and that shared file is edited in the same PR.
+
+- **A building is priced by its income, and the ask is not an input** (#508).
+  `market.js:trueValue()` prices a house as `ask × condition × neighborhood
+  drift`: the ask is the seller's opinion and the model nudges it. On a
+  building that shape is wrong, because the income is public and every buyer
+  divides it the same way, so the commercial branch reads neither
+  `listing.price` nor `listing.condition` and returns `NOI ÷ cap rate` less
+  the capital. 401 Clocktower Sq asks $640,000 against a modeled $446,886 and
+  the board says so. The suite doubles the ask and zeroes the condition and
+  asserts the value does not move — against `listing.price` on the content
+  file, which is the field `trueValue` actually reads; the first version of
+  that assertion moved `S.listingsState[id].price` instead, which no branch of
+  `trueValue` has ever looked at, and would have passed with the dispatch
+  deleted (#34).
+- **Deferred capital is a line item, not a haircut** (#509). A house's issues
+  move value in aggregate through `condition`; a building's come off in
+  dollars, because that is how the buyer underwrites them. The market knows
+  all of it and the player knows what they turned up, which is what makes a
+  $46,000 roof worth spending a question on, and it is why `investorCeiling()`
+  subtracts the capital the player has found rather than leaving it for a
+  repair credit after the fact. An investor prices repairs into the offer.
+- **Rates move a building through the cap rate, which is the axis the tier
+  adds** (#510). A house's modeled value does not read `S.market.rate` at all.
+  A cap rate tracks the cost of debt, so a point of headline rate is 50 bp of
+  cap, and 150 bp takes 9.5% off 212 Ferry St while the house next door does
+  not move. The neighborhood index is the one term pointing the other way
+  (−20 bp per 10%), the rent roll expiring this year is worth +100 bp × its
+  share, and the whole thing clamps to 4.5%–14% so a rate spike cannot produce
+  a cap rate nobody would trade at.
+- **A commercial financing milestone is a calculation, not a roll** (#511).
+  Every other way a deal dies in this game is a die: `resolveFinancing` rolls
+  a fall-through chance, the appraisal rolls noise, an event fires on a weight.
+  A commercial loan sizes at 1.20x debt service coverage on a 70% loan, 25-year
+  amortization, at the headline rate plus 75 bp — or it does not, off numbers
+  that were on the setup sheet from day one. If it does not, the shortfall is
+  the exact dollars between the loan the price assumed and the loan the income
+  supports, and `sizingPrice()` is the price that would have worked. 212 Ferry
+  St does not finance at its own $1,095,000 ask; $1,085,489 does. The offer
+  screen prints all of it live off the price box, so the only player who ever
+  meets this milestone is the one who did not look. Two assertions hold the
+  claim rather than the arithmetic: `S.seed` is unchanged across the sizing
+  branch and across the shortfall branch, so neither can come out differently
+  on a second Tuesday. The loan constant is checked by amortizing a dollar for
+  300 months and watching the balance land on zero, not by writing the closed
+  form twice (#34).
+- **Two walls on a commercial buyer, and which one binds is a fact about the
+  building** (#512). Their yield (`NOI ÷ minCap`, less the capital found) and
+  their money (`rec.budget`), and the lower one is the ceiling. Nadia Brost's
+  yield stops her at $1,045,120 on Ferry St, a long way under her $1,250,000;
+  on Ironworks the yield would allow $1,286,667 and her chequebook stops her
+  first. A commercial buyer walking away from a building they could easily
+  afford is the tier working. The offer form treats the yield wall exactly as
+  it treats a budget: 10% of stretch, satisfaction inside it, a flat refusal
+  past it.
+- **FHA and VA are residential loan programs, so a building has two ways to
+  pay** (#513). A fifth `FINANCING` entry, `commercial`, and a `POOLS.commercial`
+  holding only it and `cash` — not a balance choice, a fact about what those
+  programs are. Its `failBase` is 0.03 and does almost nothing, because #511 is
+  what actually decides. 45-day floor to close, which is why
+  `CLOSE_DAY_CHOICES` grew a 60: a select with one entry in it is not a choice.
+  Every other type gains a slow option it has no reason to want. Commercial
+  pays **2% a side** against a house's 3%, on numbers three times the size, and
+  closes for 200 XP against luxury's 120.
+- **The ladder gate has three doors and only one of them was gated** (#514).
+  `nextIntakeCandidate()` has always filtered the queue by `levelInfo().tiers`.
+  The Monday free-lead perk and `rollReferral()` both picked out of
+  `S.clientQueue` without looking, which cost nothing while every client in the
+  game was inside somebody's reach eventually — and would have handed a Rookie
+  Agent a 1031 exchange buyer they cannot work, through a modal with a "Take
+  them on" button. Both read the same filter now. The suite asserts all three
+  doors, which is the only reason this was found.
+- **The commercial tier is buyer-side, and the seller side is a different
+  feature** (#515). `seller.js`'s prep flow is staging tiers, photo tiers and
+  weekend open houses; none of the three means anything on a six-bay strip,
+  which wants a rent roll, an offering memorandum and a broker's opinion of
+  value. Representing the seller of a building is its own row when somebody
+  wants it, not a missing half of this one. Recorded in the README's design
+  notes rather than opened in `BACKLOG.md`.
+
+**Broken on purpose** (#34), each from a green 359, each restored and
+re-verified green. The commercial dispatch deleted out of `trueValue()`: three
+fail, first `doubling the ask does not move the building (1962400.0000000002
+!== 1074414)`. `rand() > 0.02` added to the sizing branch: one fails,
+`resolving a commercial loan that sizes consumes no randomness (3135993110 !==
+881244627)`. `"commercial"` added to level 3's tiers: `a Senior Agent cannot
+work commercial (true !== false)`. The side commission set to 3%: two fail,
+including `the commission is 2% of the price at the brokerage's split (17325
+!== 11550)` — which is the one that matters, because it recomputes the number
+rather than reading `sideRate()` back. The cross-type wall deleted out of
+`fitScore()`: `a building buyer does not score a house (48 !== 5)`, which is
+the number in the forties the comment above that line predicts. And in the
+browser suite, the `.flyer-uw` line forced off: `each printing NOI and a yield
+rather than bedrooms`, 53 checks 1 FAILED.

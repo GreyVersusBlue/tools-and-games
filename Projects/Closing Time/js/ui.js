@@ -11,6 +11,7 @@ import * as Seller from "./engine/seller.js";
 import { maybeFireEvent } from "./engine/events.js";
 import { financingType, closeDaysFor } from "./engine/financing.js";
 import * as Esc from "./engine/escalation.js";
+import * as Com from "./engine/commercial.js";
 
 let screen = "dashboard";
 const $ = sel => document.querySelector(sel);
@@ -216,18 +217,32 @@ function renderMLS(main) {
 function listingCard(l, rec, tierOK) {
   const ls = S.listingsState[l.id];
   const nb = DB.neighborhoods[l.neighborhood];
-  const d = el("div", "flyer" + (tierOK ? "" : " locked"));
+  const com = Com.isCommercial(l);
+  const d = el("div", "flyer" + (tierOK ? "" : " locked") + (com ? " commercial" : ""));
   const stampTxt = ls.dom <= 7 ? "NEW" : ls.dom >= 45 ? "STALE" : "";
+  // A commercial flyer leads with the arithmetic, because that is what a
+  // commercial flyer leads with. Beds and baths on a six-bay strip would be a
+  // number nobody asked for standing where the yield should be.
+  const facts = com
+    ? `${esc(nb.name)} · ${l.commercial.units} units · ${l.sqft.toLocaleString()} sqft · DOM ${ls.dom}`
+    : `${esc(nb.name)} · ${l.beds}bd/${l.baths}ba · ${l.sqft.toLocaleString()} sqft · DOM ${ls.dom}`;
   d.innerHTML = `
     ${stampTxt ? `<span class="stamp">${stampTxt}</span>` : ""}
     <div class="flyer-price">${fmtMoney(ls.price)}</div>
     <div class="flyer-addr">${esc(l.address)}</div>
-    <div class="flyer-nb">${esc(nb.name)} · ${l.beds}bd/${l.baths}ba · ${l.sqft.toLocaleString()} sqft · DOM ${ls.dom}</div>
+    <div class="flyer-nb">${facts}</div>
+    ${com ? `<div class="flyer-uw">${esc(l.commercial.assetType)} · NOI <b>${fmtMoney(Com.noi(l))}</b> · <b>${Com.pct(Com.capAt(l, ls.price))}</b> at ask · ${Math.round(l.commercial.rollPct * 100)}% of the rent roll expires this year</div>` : ""}
     <div class="flyer-blurb">${esc(l.blurb)}</div>
+    ${com ? `<div class="flyer-blurb muted">${esc(l.commercial.rentRoll)}</div>` : ""}
     <div class="flyer-feat">${l.features.map(f => `<span class="tag">${esc(f)}</span>`).join("")}</div>
     <div class="flyer-agent">Listed by ${esc(DB.agents[l.listingAgentId].name)}</div>
     ${rec ? `<div class="fitline">Fit for ${esc(contentClient(rec).name)}: <b class="${l._fit >= 65 ? "good" : l._fit >= 45 ? "" : "bad"}">${l._fit}</b>/100</div>` : ""}`;
-  if (!tierOK) { d.appendChild(el("div", "lock-note", "Above your current tier — level up to work this listing.")); return d; }
+  if (!tierOK) {
+    d.appendChild(el("div", "lock-note", com
+      ? "Commercial. The board opens these at Broker-Track, and not before."
+      : "Above your current tier — level up to work this listing."));
+    return d;
+  }
   const acts = el("div", "actions");
   if (rec && !rec.dealId) {
     const viewed = rec.viewed[l.id];
@@ -443,11 +458,34 @@ function flowViewing(rec, l) {
 
 function flowOffer(rec, l) {
   const ls = S.listingsState[l.id];
+  const com = Com.isCommercial(l);
   const body = el("div");
   const known = (rec.knownIssues[l.id] || []).reduce((s, i) => s + l.hiddenIssues[i].repairCost, 0);
   body.appendChild(el("p", "", `Ask: <b>${fmtMoney(ls.price)}</b> · est. value: <b>${fmtMoney(Math.round(trueValue(l)))}</b>${knowledgeEdge(l.neighborhood) >= 0.4 ? " (your read, sharpened by local knowledge)" : " (rough guess — you don't know this area well yet)"} · known issue costs: ${fmtMoney(known)} · client budget: <b>${fmtMoney(rec.budget)}</b>`));
   const priceIn = el("input"); priceIn.type = "number"; priceIn.value = Math.round(ls.price * 0.97 / 500) * 500; priceIn.step = 500; priceIn.className = "input-lg";
   body.appendChild(labelWrap("Offer price", priceIn));
+
+  // The underwriting panel: the whole commercial tier, on one screen, live off
+  // the price box. Every number here comes out of commercial.js rather than
+  // being re-derived locally, so what the player reads and what the financing
+  // milestone will do two weeks from now are the same arithmetic. The two red
+  // lines are the two walls — the bank's and the client's — and neither one is
+  // a surprise later if it was read here.
+  if (com) {
+    const uw = el("div", "underwriting");
+    const paint = () => {
+      const price = parseInt(priceIn.value, 10) || ls.price;
+      const u = Com.underwrite(rec, l, price);
+      uw.innerHTML = `
+        <div class="uw-row">NOI <b>${fmtMoney(u.noi)}</b> · market cap <b>${Com.pct(u.cap)}</b> · modeled value <b>${fmtMoney(u.value)}</b>${u.knownCapex ? ` · capital you have found <b>${fmtMoney(u.knownCapex)}</b>` : ""}</div>
+        <div class="uw-row">At ${fmtMoney(price)}: yield <b>${Com.pct(u.capAtPrice)}</b> · debt service <b>${fmtMoney(u.debtService)}</b> · coverage <b class="${u.sizes ? "good" : "bad"}">${Com.dscrText(u.dscr)}</b> against ${Com.DEBT.minDscr.toFixed(2)}x</div>
+        ${u.sizes ? "" : `<div class="uw-row bad">The loan does not size here. The bank is short ${fmtMoney(u.shortfall)}; ${fmtMoney(u.sizingPrice)} is the number that finances at today's rate.</div>`}
+        ${u.overCeiling ? `<div class="uw-row bad">Above what ${esc(contentClient(rec).name)} will pay: ${Com.pct(Com.requiredCap(rec))} on this building is ${fmtMoney(u.ceiling)}.</div>` : ""}`;
+    };
+    priceIn.oninput = paint;
+    paint();
+    body.appendChild(uw);
+  }
   // The financing type is the client's, not a field on this form — you write the
   // offer your buyer can actually write. What it changes is spelled out here
   // rather than left for the player to infer from a rejection: a cash buyer has
@@ -488,12 +526,22 @@ function flowOffer(rec, l) {
     ["Submit offer", () => {
       const price = parseInt(priceIn.value, 10) || ls.price;
       if (price > rec.budget * 1.1) { toast("Your client laughs, not warmly. That's beyond even their stretch."); return; }
+      // An investor's stated yield is a wall in the same way a buyer's budget
+      // is: 10% of stretch in it, and past that they simply do not sign. Inside
+      // the stretch it costs satisfaction below, because a yield you talked
+      // them past is a yield they will remember at the closing table.
+      const ceiling = com ? Com.investorCeiling(rec, l) : Infinity;
+      if (price > ceiling * 1.1) {
+        toast(`${contentClient(rec).name} puts the pen down. At ${fmtMoney(price)} this building yields ${Com.pct(Com.capAt(l, price))}, and they told you ${Com.pct(Com.requiredCap(rec))}.`);
+        return;
+      }
       const escalation = useEsc.input.checked
         ? { cap: parseInt(capIn.value, 10), increment: parseInt(incIn.value, 10) || 1000 }
         : null;
       if (escalation && escalation.cap > rec.budget * 1.1) { toast("A cap your client cannot reach is a promise you cannot keep."); return; }
       const deal = Deals.writeOffer(rec, l, price, { waiveInspection: waiveIns.input.checked, waiveAppraisal: waiveApp.input.checked, closeDays: closeDays[closeSel.selectedIndex], escalation });
       if (price > rec.budget) Clients.satisfactionDelta(rec, -4, "you pushing past their stated budget");
+      if (com && price > ceiling) Clients.satisfactionDelta(rec, -5, "an offer priced above the yield they gave you");
       closeModal(); flowNegotiate(deal, price);
     }],
     ["Cancel", () => { S.slotsLeft++; closeModal(); render(); }],
@@ -702,6 +750,10 @@ function renderChoiceQueue() {
       ["Demand a repair credit", () => { Deals.inspectionDecision(deal, "credit", ch.totalCost); done(); }],
       ["Proceed as-is", () => { Deals.inspectionDecision(deal, "asis", ch.totalCost); done(); }],
       ["Advise the client to walk", () => { Deals.inspectionDecision(deal, "walk", ch.totalCost); done(); }]]),
+    loanShortfall: () => modal("The loan will not size", body, [
+      ["Buyer puts in more equity", () => { Deals.loanShortfallDecision(deal, "cover", ch.shortfall, ch.sizingPrice); done(); }],
+      ["Push the seller to the number that finances", () => { Deals.loanShortfallDecision(deal, "renegotiate", ch.shortfall, ch.sizingPrice); done(); }],
+      ["Let it die", () => { Deals.loanShortfallDecision(deal, "die", ch.shortfall, ch.sizingPrice); done(); }]]),
     appraisalGap: () => modal("Appraisal gap", body, [
       ["Buyer covers the gap in cash", () => { Deals.appraisalDecision(deal, "cover", ch.gap); done(); }],
       ["Push seller down to appraisal", () => { Deals.appraisalDecision(deal, "renegotiate", ch.gap); done(); }],

@@ -11,7 +11,7 @@ import { fileURLToPath } from "url";
 import { DB } from "../js/data.js";
 import { S, newGame, makeCareer, adoptState, careerSlot, save, loadSave, wipeSave,
          validCareer, repairCareer, rand, SAVE_KEY, SAVE_VERSION, DEFAULT_BROKERAGE,
-         getClientRec, contentClient, activeClients,
+         getClientRec, contentClient, activeClients, LEVELS,
          SAVE_PREFIX, HALL_KEY, HALL_VERSION, saveNamespace, hallSlot, loadHall, saveHall,
          validHall, repairHall, hallEntryFor, enrollFinishedCareer, mergeHall, hallBests } from "../js/state.js";
 import * as Clients from "../js/engine/clients.js";
@@ -21,6 +21,8 @@ import { endDay, CAREER_LENGTH_DAYS } from "../js/engine/calendar.js";
 import { maybeFireEvent } from "../js/engine/events.js";
 import { FINANCING, financingFor, financingType, closeDaysFor, DEFAULT_FINANCING } from "../js/engine/financing.js";
 import * as Esc from "../js/engine/escalation.js";
+import * as Com from "../js/engine/commercial.js";
+import { trueValue } from "../js/engine/market.js";
 
 /* ------------------------------------------------------------------ harness */
 let passed = 0; const failures = [];
@@ -971,6 +973,356 @@ console.log("\nthe hall of past careers:");
   eq(e.closings, 10, "hallEntryFor prefers the frozen scorecard");
   eq(e.referrals, 3, "and falls back to the live stats for a field the scorecard lacks");
   eq(e.honesty, 4, "disclosures come from the stats, which the scorecard never carried");
+}
+
+/* ------------------------------------------- the commercial tier ---------- */
+console.log("\ncommercial:");
+
+// A fresh career for the whole section: the hall block above closes careers
+// and wipes saves, and every number below is read off a career that has not
+// had a year happen to it.
+newGame("bk_hearthstone");
+const bldg = id => DB.listings[id];
+
+// --- the gate. The only thing standing between a Rookie Agent and a rent roll
+// is the ladder, and it has to hold on all three doors clients come through:
+// intake, the Monday lead perk, and a referral.
+{
+  eq(LEVELS[2].tiers.includes("commercial"), false, "a Senior Agent cannot work commercial");
+  eq(LEVELS[3].tiers.includes("commercial"), true, "Broker-Track can");
+  eq(LEVELS[3].title, "Broker-Track", "which is the rung the tier was named for");
+
+  S.level = 1;
+  S.clientQueue = ["cl_0201", "cl_0001"];
+  eq(Clients.nextIntakeCandidate().id, "cl_0001", "intake at level 1 skips past a commercial client");
+  S.level = 4;
+  eq(Clients.nextIntakeCandidate().id, "cl_0201", "and reaches it at Broker-Track");
+
+  // The referral pool reads the same gate. Before the tier existed every client
+  // in the queue was inside somebody's reach eventually, so this filter had
+  // nothing to catch and was not written.
+  S.level = 1;
+  S.clientQueue = ["cl_0201", "cl_0202", "cl_0203"];
+  const closed = Clients.meetClient("cl_0001");
+  closed.satisfaction = 100;
+  let referred = null;
+  for (let i = 0; i < 40 && !referred; i++) referred = Clients.rollReferral(closed);
+  eq(referred, null, "a happy client cannot refer a commercial buyer to a Rookie Agent");
+  S.level = 4;
+  referred = null;
+  for (let i = 0; i < 40 && !referred; i++) referred = Clients.rollReferral(closed);
+  ok(referred !== null, "and can at Broker-Track", String(referred));
+}
+
+// --- what a building is worth. NOI over a cap rate, less the capital, and the
+// ask is not an input to any part of it.
+newGame("bk_hearthstone");
+S.level = 4;
+{
+  const l = bldg("ls_0101");
+  eq(Com.noi(l), 78384, "NOI is gross rent less vacancy less operating expenses");
+  eq(Com.deferredCapex(l), 58200, "and every dollar of deferred capital is itemized");
+  eq(Com.marketCap(l), 0.074 + 0.22 * Com.CAP_PER_ROLL,
+    "the market cap rate at the anchor rate is the asset rate plus the roll premium");
+  eq(Com.commercialValue(l), Math.round(78384 / 0.0762 - 58200), "value is NOI over that cap, less the capital");
+  ok(Com.isCommercial(l), "a commercial listing knows what it is");
+  ok(!Com.isCommercial(bldg("ls_0001")), "and a house knows it is not one");
+
+  // The decision this file locks, tested against the field trueValue actually
+  // reads — `listing.price` on the content file, not the live ask in
+  // listingsState, which neither branch has ever looked at.
+  const before = trueValue(l);
+  l.price = 2000000;
+  eq(trueValue(l), before, "doubling the ask does not move the building");
+  const cond = l.condition;
+  l.condition = 0.05;
+  eq(trueValue(l), before, "and neither does `condition`, which the commercial model never reads");
+  l.condition = cond;
+  l.price = 1095000;
+
+  const house = bldg("ls_0001");
+  const houseBefore = trueValue(house);
+  house.price = 200000;
+  ok(trueValue(house) > houseBefore, "where a house's value moves with its ask, as it always has");
+  house.price = 168000;
+  house.condition = 0.55;
+}
+
+// --- rates. The axis the tier adds: a point of headline rate is 50 bp of cap,
+// and 50 bp on a 7.6% cap is most of a year's appreciation.
+{
+  const l = bldg("ls_0101"), house = bldg("ls_0001");
+  const bldgBefore = trueValue(l), houseBefore = trueValue(house);
+  S.market.rate = Com.RATE_ANCHOR + 1.5;
+  eq(trueValue(house), houseBefore, "a house's modeled value does not read the headline rate at all");
+  const drop = (bldgBefore - trueValue(l)) / bldgBefore;
+  ok(drop > 0.08, "where 150 bp of rate takes more than 8% off the building", (drop * 100).toFixed(1) + "%");
+  eq(Math.round((Com.marketCap(l) - 0.0762) * 10000), 75, "because the cap rate widened by 75 bp");
+  S.market.rate = Com.RATE_ANCHOR;
+
+  // Both clamps, so a rate spike cannot drive a cap rate somewhere absurd.
+  S.market.rate = 40;
+  eq(Com.marketCap(l), Com.CAP_CEIL, "the cap rate stops at its ceiling");
+  S.market.rate = 0;
+  eq(Com.marketCap(l), Com.CAP_FLOOR, "and at its floor");
+  S.market.rate = Com.RATE_ANCHOR;
+
+  // A hotter neighborhood compresses the cap, which is the one term that
+  // points the other way.
+  const capFlat = Com.marketCap(l);
+  S.market.nb[l.neighborhood] = 1.1;
+  ok(Com.marketCap(l) < capFlat, "a 10% hotter neighborhood compresses the cap rate");
+  S.market.nb[l.neighborhood] = 1.0;
+}
+
+// --- the bank. Everything here is arithmetic, and the amortization below is
+// the loan itself rather than the closed form a second time.
+{
+  const k = Com.loanConstant(7.15, 25);
+  const pay = k / 12, i = 0.0715 / 12;
+  let bal = 1;
+  for (let m = 0; m < 300; m++) bal = bal * (1 + i) - pay;
+  ok(Math.abs(bal) < 1e-9, "the annual loan constant amortizes a dollar to zero in 300 payments", bal.toExponential(2));
+  ok(Com.loanConstant(9, 25) > Com.loanConstant(7, 25), "a higher rate is a bigger constant");
+
+  const l = bldg("ls_0101");
+  const sizing = Com.sizingPrice(l);
+  ok(Math.abs(Com.dscrAt(l, sizing) - Com.DEBT.minDscr) < 0.001,
+    "the sizing price is exactly where coverage equals the test", Com.dscrAt(l, sizing).toFixed(4));
+  ok(Com.dscrAt(l, sizing - 10000) > Com.DEBT.minDscr, "a dollar under it sizes");
+  ok(Com.dscrAt(l, sizing + 10000) < Com.DEBT.minDscr, "and a dollar over it does not");
+  eq(Com.loanShortfall(l, sizing - 10000), 0, "no shortfall where the loan sizes");
+  ok(Com.loanShortfall(l, sizing + 100000) > 0, "and a shortfall where it does not");
+  // The shortfall is the gap between the loan the price assumed and the loan
+  // the income supports, not a fraction of anything.
+  const over = sizing + 100000;
+  const sized = (Com.noi(l) / Com.DEBT.minDscr) / Com.loanConstant();
+  ok(Math.abs(Com.loanShortfall(l, over) - (over * Com.DEBT.ltv - sized)) < 1,
+    "and it is exactly what the bank will not lend");
+
+  // The listing this case was authored for: its own ask does not finance.
+  eq(Com.loanShortfall(l, 1095000) > 0, true, "212 Ferry St does not finance at its own ask");
+  ok(Com.sizingPrice(l) < 1095000, "the number that does is below it", String(Com.sizingPrice(l)));
+  // And the one that does, comfortably.
+  ok(Com.dscrAt(bldg("ls_0102"), 1085000) > 1.4, "9 Ironworks Way covers its debt one and a half times at ask");
+}
+
+// --- the milestone is a calculation, not a roll. This is the tier's decision
+// and the assertion that holds it: the commercial financing branch reaches the
+// end without touching the RNG, so it cannot come out differently on a second
+// Tuesday.
+{
+  S.level = 4;
+  const rec = Clients.meetClient("cl_0201");
+  const l = bldg("ls_0102");
+  eq(rec.financing, "commercial", "a 1031 buyer borrows commercially");
+  const deal = Deals.writeOffer(rec, l, 1000000, { closeDays: 45 });
+  Deals.acceptDeal(deal);
+  const kinds = deal.milestones.map(m => m.type);
+  ok(kinds.includes("financing"), "a commercial deal schedules a financing milestone", kinds.join("/"));
+  ok(kinds.includes("appraisal"), "and an appraisal");
+  ok(deal.closeDays >= 45, "and cannot close inside 45 days", String(deal.closeDays));
+
+  const seedBefore = S.seed;
+  const m = deal.milestones.find(x => x.type === "financing");
+  const out = Deals.resolveMilestone(deal, m);
+  eq(S.seed, seedBefore, "resolving a commercial loan that sizes consumes no randomness");
+  eq(out.ok, true, "the loan funds");
+  eq(S.choiceQueue.length, 0, "and asks the player nothing");
+  eq(deal.stage, "underContract", "the deal is untouched");
+}
+
+// --- and when it does not size, the shortfall is a number rather than a mood.
+{
+  const rec = Clients.meetClient("cl_0203");
+  const l = bldg("ls_0104");
+  const price = Com.sizingPrice(l) + 60000;
+  const deal = Deals.writeOffer(rec, l, price, { closeDays: 45 });
+  Deals.acceptDeal(deal);
+  const seedBefore = S.seed;
+  S.choiceQueue.length = 0;
+  const m = deal.milestones.find(x => x.type === "financing");
+  const out = Deals.resolveMilestone(deal, m);
+  eq(S.seed, seedBefore, "a loan that does not size consumes no randomness either");
+  eq(out.pending, true, "it stops and asks");
+  eq(S.choiceQueue.length, 1, "with one choice");
+  const ch = S.choiceQueue[0];
+  eq(ch.kind, "loanShortfall", "which is the shortfall");
+  eq(ch.shortfall, Com.loanShortfall(l, price), "carrying the exact dollar gap");
+  eq(ch.sizingPrice, Com.sizingPrice(l), "and the price that would have worked");
+  ok(ch.text.includes("Short "), "and says so in words", ch.text.slice(0, 40));
+
+  // Way out one: the buyer finds the equity, if the price left room for it.
+  const covered = S.deals.find(d => d.id === deal.id);
+  rec.budget = price + ch.shortfall;
+  Deals.loanShortfallDecision(covered, "cover", ch.shortfall, ch.sizingPrice);
+  eq(covered.stage, "underContract", "a buyer with the equity covers it and the deal lives");
+  eq(covered.price, price, "at the price they wrote");
+  S.choiceQueue.length = 0;
+}
+
+// --- the other two ways out.
+{
+  const rec = Clients.meetClient("cl_0202");
+  const l = bldg("ls_0103");
+  const price = Com.sizingPrice(l) + 80000;
+  const shortfall = Com.loanShortfall(l, price);
+  const sizing = Com.sizingPrice(l);
+
+  const d1 = Deals.writeOffer(rec, l, price, { closeDays: 45 });
+  Deals.acceptDeal(d1);
+  rec.budget = price;  // no room at all for the extra equity
+  Deals.loanShortfallDecision(d1, "cover", shortfall, sizing);
+  eq(d1.stage, "dead", "a buyer with no equity left loses the deal");
+
+  rec.dealId = null;
+  const d2 = Deals.writeOffer(rec, l, price, { closeDays: 45 });
+  Deals.acceptDeal(d2);
+  // Forced, because the outcome of the ask is a roll and the price it lands on
+  // is not: what is under test is the number, not the odds.
+  S.seed = 1; S.listingsState[l.id].dom = 90;
+  let settled = false;
+  for (let i = 0; i < 60 && !settled; i++) {
+    const trial = Deals.writeOffer(rec, l, price, { closeDays: 45 });
+    trial.stage = "underContract";
+    Deals.loanShortfallDecision(trial, "renegotiate", shortfall, sizing);
+    if (trial.stage !== "dead") { eq(trial.price, sizing, "a seller who comes down comes down to the number that finances"); settled = true; }
+    rec.dealId = null;
+  }
+  ok(settled, "and some seller eventually does");
+
+  rec.dealId = null;
+  const d3 = Deals.writeOffer(rec, l, price, { closeDays: 45 });
+  Deals.acceptDeal(d3);
+  Deals.loanShortfallDecision(d3, "die", shortfall, sizing);
+  eq(d3.stage, "dead", "and letting it die kills it");
+  eq(S.listingsState[l.id].status, "onMarket", "putting the building back on the market");
+}
+
+// --- a cash buyer has no lender, so there is nothing to size.
+{
+  const rec = Clients.meetClient("cl_0202");
+  eq(rec.financing, "cash", "the syndicate pays cash, as their file says");
+  const l = bldg("ls_0101");
+  const deal = Deals.writeOffer(rec, l, 1200000, { closeDays: 14 });
+  Deals.acceptDeal(deal);
+  eq(deal.milestones.some(m => m.type === "financing"), false, "a cash commercial deal schedules no financing milestone");
+  eq(deal.milestones.some(m => m.type === "appraisal"), false, "and no appraisal, same as a cash house");
+}
+
+// --- who buys what. An investor's opening question is the yield, and both
+// walls are real: the one their money makes and the one their return makes.
+{
+  newGame("bk_hearthstone");
+  S.level = 4;
+  const nadia = Clients.meetClient("cl_0201");
+  const emmett = Clients.meetClient("cl_0202");
+  eq(Com.requiredCap(nadia), 0.075, "a stated yield is read off the client file");
+  eq(Clients.fitScore(nadia, bldg("ls_0001")), 5, "a building buyer does not score a house");
+  const buyer = Clients.meetClient("cl_0001");
+  eq(Clients.fitScore(buyer, bldg("ls_0101")), 5, "and a house buyer does not score a building");
+
+  const ironworks = bldg("ls_0102");
+  ok(Clients.fitScore(nadia, ironworks) >= 80, "the triple-net building at 8.9% is what she asked for",
+    String(Clients.fitScore(nadia, ironworks)));
+  const fitAtAsk = Clients.fitScore(nadia, ironworks);
+  S.listingsState[ironworks.id].price = 1600000;  // same building, worse yield
+  ok(Clients.fitScore(nadia, ironworks) < fitAtAsk - 25, "and the same building at a worse yield is not");
+  S.listingsState[ironworks.id].price = 1085000;
+
+  // Two walls, and which one binds is a fact about the building. On Ferry St
+  // her yield binds a long way under her chequebook.
+  const ferry = bldg("ls_0101");
+  const ceiling = Com.investorCeiling(nadia, ferry);
+  eq(ceiling, Math.round(Com.noi(ferry) / 0.075), "the ceiling is NOI over the yield they gave you");
+  ok(ceiling < nadia.budget, "which here is well under what she could actually pay", `${ceiling} of ${nadia.budget}`);
+  // Capital the player has turned up comes off it, because an investor prices
+  // repairs into the offer rather than asking for a credit afterwards.
+  Deals.startViewing(nadia, ferry);
+  Deals.orderPreInspection(nadia, ferry);
+  eq(Com.investorCeiling(nadia, ferry), ceiling - Com.deferredCapex(ferry),
+    "and every dollar of capital you found comes off it");
+
+  // On Ironworks it is the other way round: the yield would let her go to
+  // $1.29M and her money stops at $1.25M.
+  ok(Com.noi(ironworks) / 0.075 > nadia.budget, "the same buyer's yield would allow more on Ironworks");
+  eq(Com.investorCeiling(nadia, ironworks), nadia.budget, "so there her ceiling is simply her money");
+  eq(Com.investorCeiling(emmett, ferry), emmett.budget, "as it is for the syndicate on Ferry St");
+}
+
+// --- the hidden information is lease-side, and the question list says so.
+{
+  const topics = Deals.askTopics(bldg("ls_0104"));
+  ok(topics.includes("leases"), "a building can be asked about its rent roll", topics.join("/"));
+  ok(topics.includes("environmental"), "and about what was on the slab before");
+  ok(!topics.includes("neighbors"), "and not about the neighbours, which is a house's question");
+  const houseTopics = Deals.askTopics(bldg("ls_0001"));
+  ok(!houseTopics.includes("leases"), "while a house is never asked for a rent roll");
+  ok(houseTopics.includes("neighbors"), "and is asked about its neighbours");
+
+  // Every topic on a building's authored issues is one the list offers, or the
+  // issue is undiscoverable: a question-discovery issue whose topic is not on
+  // the list can never be asked about.
+  for (const id of ["ls_0101", "ls_0102", "ls_0103", "ls_0104"]) {
+    const l = bldg(id);
+    const asked = Deals.askTopics(l);
+    const missing = l.hiddenIssues.filter(is => is.discovery === "question" && !asked.includes(is.topic));
+    eq(missing.length, 0, `every question-discovery issue on ${id} has a topic the player can ask`,
+      missing.map(is => is.topic).join(","));
+  }
+}
+
+// --- a revealed dealbreaker is worth the same forty points it is on a house.
+{
+  newGame("bk_hearthstone");
+  S.level = 4;
+  const nadia = Clients.meetClient("cl_0201");
+  const l = bldg("ls_0102");
+  Deals.startViewing(nadia, l);
+  const before = Clients.fitScore(nadia, l);
+  Deals.askQuestion(nadia, l, "environmental");   // reveals the oil separator AND her fear of it
+  const after = Clients.fitScore(nadia, l);
+  ok(after < before - 30, "finding her environmental dealbreaker costs the building 40 points",
+    `${before} -> ${after}`);
+  ok(nadia.revealed.length > 0, "because the question revealed the preference");
+}
+
+// --- what a commercial closing pays. 2% a side against a house's 3%, on a
+// number three times the size, and 200 XP.
+{
+  newGame("bk_hearthstone");
+  S.level = 4;
+  eq(Com.sideRate(bldg("ls_0102")), 0.02, "commercial pays 2% a side");
+  eq(Com.sideRate(bldg("ls_0001")), 0.03, "a house pays 3%");
+
+  const rec = Clients.meetClient("cl_0201");
+  const l = bldg("ls_0102");
+  const price = 1050000;
+  const deal = Deals.writeOffer(rec, l, price, { closeDays: 45 });
+  Deals.acceptDeal(deal);
+  const cashBefore = S.cash, xpBefore = S.xp, volBefore = S.stats.volume;
+  const closing = deal.milestones.find(m => m.type === "closing");
+  Deals.resolveMilestone(deal, closing);
+  const split = DB.brokerages[S.brokerageId].commissionSplit;
+  eq(Math.round(S.cash - cashBefore), Math.round(price * 0.02 * split),
+    "the commission is 2% of the price at the brokerage's split");
+  eq(S.xp - xpBefore, 200, "a commercial closing is worth 200 XP");
+  eq(S.stats.volume - volBefore, price, "and its price lands in career volume");
+  eq(deal.stage, "closed", "and the deal closed");
+  eq(S.listingsState[l.id].status, "sold", "and the building is sold");
+}
+
+// --- content added to data/ and then taken away again, on a commercial career.
+{
+  newGame("bk_hearthstone");
+  S.level = 4;
+  ok(S.listingsState["ls_0101"], "a new career has market state for every building");
+  const saved = JSON.parse(JSON.stringify(S));
+  const stash = DB.listings["ls_0101"];
+  delete DB.listings["ls_0101"];
+  repairCareer(saved);
+  eq(saved.listingsState["ls_0101"], undefined, "and deleting one purges it from an existing save");
+  DB.listings["ls_0101"] = stash;
 }
 
 /* ------------------------------------------------------------------- report */

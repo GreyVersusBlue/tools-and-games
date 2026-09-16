@@ -23,7 +23,11 @@
     "listings/ls_0021.json",
     "listings/ls_0022.json",
     "listings/ls_0023.json",
-    "listings/ls_0024.json"
+    "listings/ls_0024.json",
+    "listings/ls_0101.json",
+    "listings/ls_0102.json",
+    "listings/ls_0103.json",
+    "listings/ls_0104.json"
   ],
   "clients": [
     "clients/cl_0001.json",
@@ -41,7 +45,10 @@
     "clients/cl_0103.json",
     "clients/cl_0104.json",
     "clients/cl_0105.json",
-    "clients/cl_0106.json"
+    "clients/cl_0106.json",
+    "clients/cl_0201.json",
+    "clients/cl_0202.json",
+    "clients/cl_0203.json"
   ],
   "agents": [
     "agents/ag_sal_dimeo.json",
