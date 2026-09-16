@@ -10757,7 +10757,7 @@ errors and zero offsite requests in every run, both branches.
 
 ## Blue Hour: the hill climbs at the trail's own height (2026-09-16)
 
-Rank 1, a 1 on Opus 5, worked under Claude Fable 5.1, PR #333. Session 6
+Rank 1, a 1 on Opus 5, worked under Claude Fable 5.1, PR #334. Session 6
 walked the trail back down for the first time and found the top half of it
 riding a causeway: `mountainH` was a ramp in z alone, `trailYof` is analytic
 in arc length, and the switchbacks make arc length outrun z, so above t 0.5

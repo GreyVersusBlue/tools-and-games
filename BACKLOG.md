@@ -102,7 +102,7 @@ table** in Tier 2.
 
 **The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
 **The last batch of ranked work that shipped** is **Blue Hour's causeway
-(PR #333)**, the old rank 1 alone — a 1, so a batch on its own under the size
+(PR #334)**, the old rank 1 alone — a 1, so a batch on its own under the size
 table. The row named Opus 5 and was worked under Claude Fable 5.1. That is the
 line to update when your batch merges; a PR that only changes these files is
 not a batch and does not belong in it. **27 ranked items remain**, and **every
