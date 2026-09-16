@@ -10754,3 +10754,142 @@ to. The foam line measured off the page's own strip geometry sits at **z =
 -8.19 at low water and z = -0.41 at high**, against -9.70 and -0.36 from the
 arithmetic — the difference is which swash phase the read caught. Zero page
 errors and zero offsite requests in every run, both branches.
+
+## Blue Hour: the hill climbs at the trail's own height (2026-09-16)
+
+Rank 1, a 1 on Opus 5, worked under Claude Fable 5.1, PR #333. Session 6
+walked the trail back down for the first time and found the top half of it
+riding a causeway: `mountainH` was a ramp in z alone, `trailYof` is analytic
+in arc length, and the switchbacks make arc length outrun z, so above t 0.5
+the bench stood proud of the hillside on both sides — 2.5 m at t 0.50 and
+10.9 m at t 0.90, with the crowns of full-height conifers level with the
+walker's boots. The row offered three ways out and Q44 asked which. This is
+the first: the hill moved, the trail did not.
+
+Measured before anything was designed, at 5 m either side of the centerline:
+
+```
+t     z      trail y   ramp   trail-ramp   proud of both shoulders
+0.10  106.9    5.8      9.3     -3.6          -13.1   (the waterfall's rock step)
+0.50   25.7   32.5     29.3     +3.2            2.5
+0.70  -13.4   46.3     38.9     +7.5            6.7
+0.90  -58.4   59.2     49.9     +9.3           10.9
+1.00 -100.0   65.0     60.1     +4.9            6.0
+```
+
+The ramp is 3.6 m too high where the first legs cross it and 9.3 m too low
+at t 0.9; the ridge-and-gully noise (±5.5 m) sits on top of that and is not
+the cause. `js/field.js` grew `hillProfile(z)` and `mountainH` reads it in
+place of the ramp; nothing else in the piece changed a line. `test/smoke.mjs`
+**104 → 107**. The same table afterwards:
+
+```
+t     z      trail y   hill    trail-hill   proud of both shoulders
+0.10  106.9    5.8     14.1     -8.3          -10.0
+0.50   25.7   32.5     32.7     -0.2           -2.1
+0.70  -13.4   46.3     45.9     +0.5           -1.6
+0.90  -58.4   59.2     57.1     +2.1            1.7
+1.00 -100.0   65.0     62.9     +2.1            1.5
+```
+
+- **The hill's climb is the trail's own height profile, read by z** (#523,
+  Q44 struck). z is strictly monotone along the trail — the suite has held
+  "every switchback still gains ground" since session 1 — so every z between
+  the trailhead and the summit is crossed exactly once and the trail's height
+  there is a function of z. That function, y averaged into 1 m bins of z and
+  smoothed with a triangular kernel over ±6 m, is the hill's climb; the noise
+  and the rock step sit on it as before. The trail then lies on the hillside
+  everywhere by construction, to within the smoothing residual of 0.18 m, and
+  what is left between bench and hill is the noise alone: worst spot on the
+  whole trail **2.1 m** above both shoulders, at t 0.95, against 10.9. The
+  mean of bench-minus-hill over the top half is +0.11 m; on the ramp it was
+  +7.03. The other two ways out were not close. Re-anchoring `trailYof` moves
+  every trail height, and `altT` (46 to 62 m of walker height), the grade
+  claims, the tower, the bench, the phantom's descent and the motif's scale
+  all key off those; this way not one of them moved a millimetre. Widening
+  the bench keeps the drop and has to explain the blaze posts at its lip.
+  A side effect worth having: the hairpins are where the trail gains most
+  height per metre of z, 0.53 m at the steepest, so the hill is steepest
+  there and gentlest along the traverses, which is what a switchback is for.
+  Off-trail walkability rose with it — at 2.2 m either side of the centerline
+  351 of 1,202 samples are too steep to stand on, against 889 on the ramp.
+- **Past the trail's end the hill holds the summit's height; behind the
+  trailhead it keeps falling** (#524). The first version continued the climb
+  past both ends at the slope it arrived with, and the browser suite failed
+  one beat on it: `the ground at the summit is legible, not black
+  (lower-half luminance 15.4/255)`, floor 18. The frame a walker arrives at
+  the bench with faces the tower, and where the old berm dropped 6 m away
+  from the bench there was now a dark slope climbing behind it. Measured at
+  the bench under the same Xvfb at all four facings:
+
+  ```
+                       arrival   yaw 0   yaw π/2   yaw π   yaw -π/2
+  main (the ramp)        23.4     19.6     29.4     24.0      9.1
+  climbing past the end  14.6     11.2     18.6     28.4     17.1
+  held flat past the end 20.0     21.7     20.0     27.4     18.3
+  ```
+
+  Held flat is the only one of the three with no facing under 18 — the
+  ramp's own summit read 9.1 with the walker's back to the tower, which the
+  suite never looked at. So the ground behind the tower is level with the
+  bench, a shoulder and not a top. The shape of the summit is still the next
+  row, and this decides nothing about it beyond "not a slope". Behind the
+  trailhead the profile keeps falling at the first leg's slope, so the creek
+  still leaves the map downhill (the suite holds that too).
+- **Merrit's page moved 30 cm** (#525). It lay 1.8 m off the trail at
+  t 0.44, on the outer shoulder where a 7.5 m ridge is cut through, and the
+  new hill tipped that one spot past the walkable gradient (0.96 against
+  0.85). It is 1.5 m out now, Doyle's distance; at 1.5 m no sample in 1,202
+  is unwalkable. The other nine pages, seven cairns and the headlamp did not
+  move.
+- **The ceiling became three claims, and the record says which catches
+  what** (#526). Session 6 held 10.9 m as a ceiling so nobody made it worse
+  by accident. The three that replace it, each broken from a green 107:
+  (a) `hillProfile` under the centerline is the trail to within 0.5 m — this
+  guards the profile, and `HILL_SMOOTH` widened to 40 fails it at 1.32 m
+  (and the cliff check, at 1.25 m/m); it does **not** guard `mountainH`
+  reading the profile: with the ramp put back it stays green, because the
+  profile is still right and merely unused. (b) the mean of bench-minus-hill
+  over the top half is within 1.5 m of zero — the ramp put back reads
+  `+7.03 m`. (c) nowhere on the trail stands more than 3 m above both
+  shoulders — the ramp put back reads `10.9 m above both shoulders at t
+  0.90`, session 6's number. The first draft of (a)'s comment claimed it
+  showed "the systematic term is gone, not hidden", and break (b) showed
+  that comment was wrong (#147): a claim the arithmetic cannot distinguish
+  is worth keeping only if it says so, so the comment now says which break
+  it survives. A fourth, for #524: the climb continued past the summit at
+  0.16 m/m fails `past the summit the hill holds the summit's height to the
+  map edge (65.0 m at the trail's end, 68.2 m at z -120)`.
+
+- **The steam beat frames its box off the camera, and reads it before the
+  burst as well as after** (#527). With the summit beat green, the second
+  full run failed a different one: `and the steam is pixels, not just
+  geometry (max 29 vs median 23)`. That beat read a box at fixed fractions
+  of the frame, 14 to 29% of its height, which was where the cab was while
+  the tower's feet stood 1.9 m below the bench; #524 put them 0.8 m below it,
+  the cab climbed about 80 px, and the box read the sky. `__bh.project(x, y,
+  z)` is a new door in `main.js`, a world point as fractions of the frame,
+  and the box is framed off where the steam's origin projects. Aimed, it
+  read 145 against a median of 26 — and then the negative probe, the same
+  box with no burst, read **80** against 26: the cab's glass sheen sits in
+  the box and a "brighter than the cab face" threshold of +18 passes with the
+  steam never drawn, which is the one bug the beat exists to catch (#34). So
+  the beat reads the box, fires the burst, reads it again, and demands the
+  burst itself add 18: with the burst, 80 before and 147 after; with
+  `steamBurst` skipped, 80 and 82, FAIL. Whether the old fixed box was also
+  reading the sheen on `main` is not known and was not measured; the old
+  numbers (`max 84 vs median 27`) are consistent with it.
+
+**`test/browser.mjs` under Xvfb here, 1.5 fps, which #53 calls inconclusive
+and not a result**: 94 of 95 green on the first version and the one failure
+was #524's; 94 of 95 on the second, the failure #527's; 94 of 95 on the
+third, with both of those green (`lower-half luminance 20.8/255`, `box max
+80 before the burst, 145 after`) and one other red that is not this work's:
+`the shape faces down the mountain wherever it stands (0.04, 0.99, 0.41)`,
+floor 0.05. That beat stages the shape at a random distance off the walker's
+current yaw and reads a dot the code's own comment says "can be ~0" from a
+descending facing; the same spot read 0.41, 0.08 and 0.04 across the three
+runs with nothing in its inputs changed (`downhillAt` is the trail tangent,
+not the ground), so it is the staging and not the hill. Left as it is,
+noted here. `npm run check` and `npm run social:check` green. No asset bytes,
+no new files, no offsite requests, no key.
