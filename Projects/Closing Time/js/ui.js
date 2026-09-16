@@ -1,7 +1,8 @@
 // ui.js — rendering + interaction flows. All engine mutation goes through engine modules.
 import { DB, fmtMoney } from "./data.js";
 import { S, save, wipeSave, dayName, isWeekend, weekOf, seasonOf, levelInfo, LEVELS, activeClients, clientSlotsMax,
-         getClientRec, contentClient, log, addRep, addCash, rand, pick } from "./state.js";
+         getClientRec, contentClient, log, addRep, addCash, rand, pick,
+         loadHall, hallSlot, hallBests, mergeHall } from "./state.js";
 import { SLOTS_PER_DAY, spendSlots, endDay } from "./engine/calendar.js";
 import { marketHeat, trueValue, suggested, bumpKnowledge, knowledgeEdge, playerListingValue } from "./engine/marketFacade.js";
 import * as Clients from "./engine/clients.js";
@@ -20,7 +21,7 @@ export function render() {
   renderTopbar(); renderNav();
   const main = $("#main"); main.innerHTML = "";
   ({ dashboard: renderDashboard, clients: renderClients, mls: renderMLS,
-     mylistings: renderMyListings, office: renderOffice, log: renderLog }[screen])(main);
+     mylistings: renderMyListings, office: renderOffice, log: renderLog, hall: renderHall }[screen])(main);
   renderChoiceQueue();
   renderScorecard();
   save();
@@ -67,7 +68,7 @@ function renderTopbar() {
 }
 
 function renderNav() {
-  const items = [["dashboard", "Desk"], ["clients", "Clients"], ["mls", "MLS Board"], ["mylistings", "My Listings"], ["office", "Office"], ["log", "Ledger"]];
+  const items = [["dashboard", "Desk"], ["clients", "Clients"], ["mls", "MLS Board"], ["mylistings", "My Listings"], ["office", "Office"], ["log", "Ledger"], ["hall", "Hall"]];
   $("#nav").innerHTML = items.map(([id, label]) =>
     `<button class="nav-item ${screen === id ? "active" : ""}" data-nav="${id}">${label}${badge(id)}</button>`).join("");
   $("#nav").querySelectorAll("[data-nav]").forEach(b => b.onclick = () => setScreen(b.dataset.nav));
@@ -337,6 +338,49 @@ function logPanel(n, filter = "all") {
   rows.slice(0, n).forEach(it => d.appendChild(el("div", "log-row log-" + (it.cls || "plain"),
     `<span class="log-day">D${it.day}</span> ${esc(it.text)}`)));
   return d;
+}
+
+
+// ---------------- HALL ----------------
+// The hall of past careers: every year that reached day 336, newest first,
+// with the best on each count marked. Read from its own key on every render
+// rather than cached, so an import or a just-closed year shows without a
+// reload. The hall is not the career: "New career" wipes the desk and leaves
+// this alone, and the export/import here move the hall on its own.
+export function renderHall(main) {
+  const hall = loadHall();
+  const bests = hallBests(hall);
+  const wrap = el("div");
+  if (!hall.careers.length) {
+    wrap.appendChild(el("p", "muted hall-empty",
+      "No year has closed its books yet. A career that reaches day 336 is filed here, and stays filed when you start the next one."));
+  } else {
+    const rows = [...hall.careers].reverse();
+    const bestMark = (e, k) => bests[k] === e.id && hall.careers.length > 1 ? ` <span class="hall-best" title="Best of your careers">★</span>` : "";
+    rows.forEach(e => wrap.appendChild(el("div", "hall-row", `
+      <div class="hall-head"><b>Career #${e.seq}</b> · ${esc(e.brokerage)} · <span class="muted">${esc(e.title)}, level ${e.level}</span></div>
+      <div class="hall-line">Closings <b>${e.closings}</b>${bestMark(e, "closings")} · Volume <b>${fmtMoney(e.volume)}</b>${bestMark(e, "volume")} · Referrals <b>${e.referrals}</b> · Disclosures <b>${e.honesty}</b></div>
+      <div class="hall-line">Reputation <b>${e.finalRep}</b>/100${bestMark(e, "finalRep")} · Cash on hand <b>${fmtMoney(e.cash)}</b>${bestMark(e, "cash")}${e.recordedAt ? ` · <span class="muted">filed ${esc(e.recordedAt.slice(0, 10))}</span>` : ""}</div>`)));
+  }
+  const acts = el("div", "actions hall-actions");
+  const slot = hallSlot();
+  const exportBtn = btn("Export hall", () => {
+    if (!hall.careers.length) { toast("Nothing to export yet."); return; }
+    toast("Saved to " + slot.exportToFile(hall));
+  });
+  exportBtn.dataset.hall = "export";
+  const importBtn = btn("Import hall", () => {
+    slot.promptImport().then(incoming => {
+      const { added } = mergeHall(incoming);
+      toast(added ? `${added} career${added === 1 ? "" : "s"} added to the hall.` : "Nothing new in that file.");
+      render();
+    }).catch(err => toast(err.message));
+  });
+  importBtn.dataset.hall = "import";
+  acts.append(exportBtn, importBtn);
+  wrap.appendChild(acts);
+  const count = hall.careers.length;
+  main.appendChild(card(`Hall of careers${count ? ` — ${count} year${count === 1 ? "" : "s"} on the wall` : ""}`, wrap));
 }
 
 // ---------------- FLOWS (modals) ----------------
@@ -749,9 +793,14 @@ function renderScorecard() {
     <p>Final reputation: <b>${sc.finalRep ?? S.rep}</b>/100</p>
     <p>Cash on hand: <b>${fmtMoney(sc.cash ?? S.cash)}</b></p>`;
   body.appendChild(stats);
+  const filed = loadHall().careers.find(e => e.id === S.careerId);
+  body.appendChild(el("p", "hall-note", filed
+    ? `Filed in your hall as career #${filed.seq}. It stays there when you start the next one.`
+    : "This year could not be filed in your hall — this browser blocks storage, so export the career before you close the tab."));
   body.appendChild(el("p", "hint", "Start fresh right now, or keep browsing the finished desk — “New career” in the footer does the same thing later."));
   modal("Year one, closed", body, [
-    ["Start a new career", () => confirmModal("Start a new career at Alder Falls? This save will be wiped.", () => { wipeSave(); location.reload(); })],
+    ["Start a new career", () => confirmModal("Start a new career at Alder Falls? This desk will be wiped; the hall keeps the year.", () => { wipeSave(); location.reload(); })],
+    ["See the hall", () => { scorecardDismissed = true; closeModal(); setScreen("hall"); }],
     ["Keep browsing the desk", () => { scorecardDismissed = true; closeModal(); }],
   ], true);
 }

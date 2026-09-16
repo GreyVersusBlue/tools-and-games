@@ -15,6 +15,16 @@ Saves persist in `localStorage` (`closingTime.save.v1`) through the shared
 back, so it survives a cleared browser or moves between machines. A browser that blocks storage
 falls back to memory for the session and says so.
 
+**A finished year is filed in the hall** (`closingTime.hall`, the second member of a gvb-save
+namespace whose first member is the career key above, unchanged). The day a career closes at
+336, its frozen scorecard goes on the wall under the career's `careerId`, once; "New career"
+wipes the desk and leaves the hall. The **Hall** tab on the desk lists every year newest first,
+marks the best on each count, and has its own **Export hall / Import hall**, and an import
+merges by career id rather than replacing. A career abandoned before day 336 has no scorecard
+and gets no row: the hall is a hall of years, not of attempts. A career that finished before the
+hall existed is filed the first time it loads, under an id derived from its bytes, so loading it
+twice files it once.
+
 A save that fails to parse, or parses into something that isn't a career, is refused: you land on
 the brokerage-choice screen with Import still available, rather than booting on it. Everything
 that loads goes through `repairCareer()` in `js/state.js`, which fills in fields added to the game
@@ -31,7 +41,7 @@ references it gets its orphaned `listingsState` / `market.nb` / `knowledge` entr
 - **Seller mode:** take the listing → walkthrough, recommend repairs and disclosures, pick staging/photos, set a price against the modeled value → go live → interest accrues daily → NPC agents submit offers with deadlines → advise your seller (who has their own hidden psychology) → host open houses → close from the other side of the table.
 - **Hidden information is the game.** Clients have hidden preferences/dealbreakers that surface through viewings, the right questions, and schmoozing. Listings have hidden issues in three severity tiers (cosmetic / moderate / dealbreaker), discovered visibly, by question topic, or only via inspection. Sitting on a disclosure-required issue you knew about will eventually detonate.
 - **Reputation** (word of mouth) is separate from **XP** (career ladder). Satisfied closings generate **referrals** — new clients who name the past client that sent them. Rivals poach, brokerages recruit, rates drift, neighborhoods trend, and your **local market knowledge** per neighborhood sharpens your valuations and negotiating odds.
-- **The career ends at day 336** — four 84-day seasons, one year. `endDay()` freezes a scorecard (closings, volume, referrals, final reputation, the ladder rung reached) instead of starting a 337th day; "End day" becomes "Career complete." The scorecard modal itself has a **Start a new career** button now, alongside "Keep browsing the desk" — the footer's "New career" still does the same thing later, but the ending no longer leaves the only way forward as a control the player has to go find.
+- **The career ends at day 336** — four 84-day seasons, one year. `endDay()` freezes a scorecard (closings, volume, referrals, final reputation, the ladder rung reached) instead of starting a 337th day; "End day" becomes "Career complete." The scorecard modal has **Start a new career**, **See the hall** and "Keep browsing the desk" — the footer's "New career" still does the same thing later, but the ending no longer leaves the only way forward as a control the player has to go find, and it says which number the year got in the hall.
 - **The Ledger's filter (Everything / Money / Reputation / one client)** matches an exact `recId` stamped on the log line, not a substring of the client's display name. A real, already-live case this closes: a referral's own intro line names the referrer verbatim ("They mention Deb..."), which a name-substring filter would have wrongly surfaced under the referrer's own filtered view.
 
 ## Architecture
@@ -43,7 +53,7 @@ css/style.css
 js/
   main.js            bootstrap: load content, resume or start, mount the save bar
   data.js            content loader (manifest-driven)
-  state.js           game state, the gvb-save slot (validate/repair), career ladder, RNG
+  state.js           game state, the gvb-save namespace (career + hall, validate/repair), career ladder, RNG
   ui.js              all rendering + interaction flows
   engine/
     calendar.js      day advancement, milestones, deadlines, weekly ticks
@@ -170,7 +180,15 @@ New events are pure JSON composed from these handlers. New handler = one functio
 
 - **Feature strings are an implicit vocabulary.** Client `mustFeatures` and `revealOn: feature` triggers match listing `features` verbatim. Check existing listings before inventing new wording.
 - **The value model:** a listing's *ask* is the seller's opinion; `trueValue` = ask × condition adjustment × neighborhood drift. Appraisals anchor between contract price and modeled value. Player-side seller listings use `baseValue` instead of ask.
-- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Per-client financing and multi-offer escalation wars have shipped. The remaining next layer is a commercial tier at Broker-Track.
+- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Per-client financing, multi-offer escalation wars and the hall of past careers have shipped. The remaining next layer is a commercial tier at Broker-Track.
+- **The hall of past careers shipped** (`state.js`, the second half of it). `createNamespace({
+  prefix: "closingTime." })` holds two members: `save.v1`, the career, at the key it has always
+  had, and `hall`, one array of frozen scorecards. `enrollFinishedCareer()` is idempotent on
+  `careerId` and is called from `finishCareer()` the day the year closes and from `loadSave()` on
+  every later visit, so a career that ended before the hall existed is filed the first time it
+  loads. `repairHall()` drops junk rows and duplicated ids and renumbers; `mergeHall()` is the
+  import path and appends what this hall lacks in the order it was recorded. Anything new on a
+  hall row belongs in `hallEntryFor()` and `repairHall()` the same day.
 - **Multi-offer escalation wars shipped** (`engine/escalation.js`). Two halves over one
   arithmetic. An escalation clause is `{cap, increment}` on the offer — "I beat any competing
   offer by the increment, up to the cap" — and **it resolves against the highest *submitted*
@@ -222,6 +240,7 @@ New events are pure JSON composed from these handlers. New handler = one functio
   (a market-rate shift, a weekly announcement, a brokerage recruitment offer).
 - `tools/smoke.mjs` is a fast regression check: `node tools/smoke.mjs` should end with
   `SMOKE OK: <n> passed`, and exits non-zero on any miss. It covers the buyer loop, the seller
-  loop, 40 days of calendar, and the whole save path (corrupt blobs refused, legacy saves
-  repaired, export re-imported, the version stamp). It is blind to the wiring by design —
+  loop, 40 days of calendar, the whole save path (corrupt blobs refused, legacy saves
+  repaired, export re-imported, the version stamp) and the hall (filed once, kept across a wipe,
+  merged on import, the two members' files refusing each other). It is blind to the wiring by design —
   `cd Tools/board-check && npm run games closing-time` drives the real page.

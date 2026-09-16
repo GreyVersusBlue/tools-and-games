@@ -138,6 +138,16 @@ body::before { /* subtle ledger rule down the left, ambient not loud */
 .know-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
 .know-pips { font-family: var(--mono); color: var(--pine); letter-spacing: 2px; }
 
+/* The hall of past careers: one row per finished year, newest first. */
+.hall-row { padding: 10px 0 10px 10px; border-bottom: 1px dotted var(--line); border-left: 3px solid var(--brass); margin-bottom: 4px; }
+.hall-head { font-size: 14px; }
+.hall-line { font-size: 13px; color: var(--ink-soft); }
+.hall-line b { color: var(--ink); font-family: var(--mono); }
+.hall-best { color: var(--brass); }
+.hall-empty { font-size: 13px; }
+.hall-actions { margin-top: 12px; }
+.hall-note { font-size: 13px; color: var(--pine); font-weight: 600; }
+
 /* Modals */
 .modal-back { position: fixed; inset: 0; background: rgba(33,38,46,.45); display: flex;
   align-items: center; justify-content: center; padding: 20px; z-index: 50; }

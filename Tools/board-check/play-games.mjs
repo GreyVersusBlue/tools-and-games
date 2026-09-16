@@ -183,7 +183,7 @@ const SUITES = {
   // ---- Closing Time ---------------------------------------------------------
   'closing-time': async (p, t) => {
     const navs = await p.$$eval('#nav [data-nav]', els => els.map(e => e.dataset.nav));
-    t.ok(navs.length === 6, 'six desk screens in the nav', navs.join(' '));
+    t.ok(navs.length === 7, 'seven desk screens in the nav, the hall being the seventh', navs.join(' '));
 
     // Every screen renders. renderMLS, renderMyListings and renderOffice each
     // reach into state that is empty on day one, which is where a render throws.
@@ -305,6 +305,58 @@ const SUITES = {
     t.ok(!(await p.$('.start-screen')), 'an unversioned legacy save boots straight into the desk');
     t.ok(typeof legacy.seed === 'number' && Number.isFinite(legacy.seed),
       'and got a real seed rather than an undefined one', `seed ${legacy.seed}`);
+
+    // The hall of past careers (rank 12). Plant the resumed career on its last
+    // day, close out the year, and read the hall off the DOM: the scorecard
+    // modal says which number the year got, the Hall screen lists it, and
+    // "New career" from that modal wipes the desk and leaves the wall alone.
+    // The key is asserted only for what a reload has to survive (#39).
+    await closeModals();
+    const hallKey = 'closingTime.hall';
+    t.ok(await p.evaluate(k => localStorage.getItem(k), hallKey) === null,
+      'no hall is written while no year has closed');
+    await p.evaluate(({ k, s }) => {
+      const c = JSON.parse(localStorage.getItem(k));
+      c.day = 336; c.careerEnded = false; c.scorecard = null; c.choiceQueue = [];
+      localStorage.setItem(k, JSON.stringify(c));
+    }, { k: 'closingTime.save.v1', s: 0 });
+    await p.reload({ waitUntil: 'load' });
+    await GAMES['closing-time'].open(p);
+    await closeModals();
+    const endLabel = await p.$eval('#endDayBtn', b => b.textContent.trim());
+    t.ok(/Close out the year/.test(endLabel), 'on day 336 the End Day button closes out the year', `"${endLabel}"`);
+    await p.click('#endDayBtn');
+    await p.waitForSelector('#modal-root .modal');
+    const note = await textContent(p, '#modal-root .hall-note');
+    t.ok(/career #1/.test(note), 'the scorecard says the year is filed as career #1', `"${note}"`);
+    const stored = await p.evaluate(k => JSON.parse(localStorage.getItem(k)), hallKey);
+    t.ok(stored && Array.isArray(stored.careers) && stored.careers.length === 1,
+      'and one row is under closingTime.hall', stored ? `${stored.careers.length} row(s), __v ${stored.__v}` : 'nothing stored');
+    const seeHall = (await p.$$('#modal-root .modal-actions button'))[1];
+    await seeHall.click();
+    await wait(200);
+    const hallRows = await p.$$eval('.hall-row', els => els.map(e => e.textContent.trim()));
+    t.ok(hallRows.length === 1 && /Career #1/.test(hallRows[0]), 'the Hall screen lists the year', hallRows[0] || 'no rows');
+    const hallBtns = await p.$$eval('[data-hall]', els => els.map(e => e.dataset.hall));
+    t.ok(hallBtns.join(' ') === 'export import', 'with its own export and import', hallBtns.join(' '));
+    await t.shot('hall');
+
+    // Start the next career from the footer. The footer button uses confirm();
+    // answer it, and read the start screen that comes back.
+    p.once('dialog', d => d.accept());
+    await p.click('#newGameBtn');
+    await p.waitForSelector('.start-screen');
+    const startNote = await textContent(p, '.start-screen .hall-note');
+    t.ok(/holds 1 finished year/.test(startNote), 'the start screen names the hall after the wipe', `"${startNote}"`);
+    t.ok(await p.evaluate(k => localStorage.getItem(k), 'closingTime.save.v1') === null, 'the career key is gone');
+    const kept = await p.evaluate(k => JSON.parse(localStorage.getItem(k)), hallKey);
+    t.ok(kept && kept.careers.length === 1, 'and the hall key is not', kept ? `${kept.careers.length} row(s)` : 'gone');
+    await p.click('[data-bk="bk_indep"]');
+    await p.waitForSelector('#nav [data-nav="hall"]');
+    await p.click('#nav [data-nav="hall"]');
+    await wait(150);
+    const rowsAfter = await p.$$eval('.hall-row', els => els.length);
+    t.ok(rowsAfter === 1, 'the new career sees the old year on the wall', `${rowsAfter} row(s)`);
   },
 
   // ---- Faire Weekend --------------------------------------------------------

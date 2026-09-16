@@ -5,11 +5,20 @@ import { clauseOf } from "./engine/escalation.js";
 // Relative, not "/assets/js/gvb-save.js": tools/smoke.mjs imports this module
 // under plain Node, which cannot resolve a leading slash. The relative form
 // resolves identically in the browser.
-import { createSaveSlot } from "../../../assets/js/gvb-save.js";
+import { createNamespace } from "../../../assets/js/gvb-save.js";
 
+/**
+ * Every key this game writes starts with this. The career's key predates the
+ * namespace and is not changing (#36): `closingTime.` + `save.v1` is the same
+ * string byte for byte, which is what a namespace prefix is for (#496).
+ */
+export const SAVE_PREFIX = "closingTime.";
 export const SAVE_KEY = "closingTime.save.v1";
 /** Bump when the shape changes. 0 means "written before this file used a slot". */
 export const SAVE_VERSION = 1;
+/** The hall of past careers: a second member under the same prefix. */
+export const HALL_KEY = "closingTime.hall";
+export const HALL_VERSION = 1;
 /** What fresh() hands back when nobody picked. The game always picks — see careerSlot(). */
 export const DEFAULT_BROKERAGE = "bk_indep";
 
@@ -57,6 +66,7 @@ export function makeCareer(brokerageId) {
     nextId: 1,
     careerEnded: false,            // set by endDay() at day 336 — see engine/calendar.js
     scorecard: null,               // frozen year-end snapshot, built once, when careerEnded flips true
+    careerId: newCareerId(),       // what the hall files this career under — see enrollFinishedCareer()
   };
   for (const id in DB.neighborhoods) { c.market.nb[id] = 1.0; c.knowledge[id] = 0; }
   for (const id in DB.listings) {
@@ -71,6 +81,15 @@ export function makeCareer(brokerageId) {
   c.log.unshift({ day: 1, cls: "milestone",
     text: `Day 1. You hang your license at ${bk ? bk.name : "your own shingle"}. The phone is very quiet. For now.` });
   return c;
+}
+
+/**
+ * An id the hall can file a career under. Time plus a random tail rather than
+ * the RNG seed: rand() rewrites `seed` on every call, so it is the one number
+ * in a career that never stays put.
+ */
+function newCareerId() {
+  return "career_" + Date.now().toString(36) + "_" + Math.floor(Math.random() * 0xffffff).toString(36);
 }
 
 export function newGame(brokerageId) {
@@ -162,6 +181,16 @@ export function repairCareer(s) {
   }
   s.careerEnded = !!s.careerEnded;
   if (!s.scorecard || typeof s.scorecard !== "object") s.scorecard = null;
+  // A career written before the hall existed has no id. It gets one derived
+  // from the bytes it arrived with rather than rolled, because repair runs on
+  // every accepted load (#37) and a finished career sitting in an old save
+  // may be loaded many times before anything writes it back: a rolled id
+  // would enrol the same year in the hall once per visit. On a career that
+  // is still being played the fields below move, but the id is written back
+  // on the next save and never derived again.
+  if (typeof s.careerId !== "string" || !s.careerId) {
+    s.careerId = "career_legacy_" + hashOf([s.brokerageId, s.seed, s.day, s.nextId, s.cash, s.xp].join("|"));
+  }
 
   // Content that did not exist when this career started.
   for (const id in DB.neighborhoods) {
@@ -352,6 +381,13 @@ export function repairCareer(s) {
   return s;
 }
 
+/** FNV-1a over a string, as eight hex digits. Stable across loads, which is all it is for. */
+function hashOf(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, "0");
+}
+
 /** Largest numeric suffix on any generated id in a save, so nextId can't collide. */
 function highestIdIn(s) {
   let max = 0;
@@ -365,17 +401,20 @@ function highestIdIn(s) {
   return max;
 }
 
-// One slot per storage, cached: main.js holds onto its slot for the save bar,
-// and two slots over one key would work but would not be the same object.
-const slots = new WeakMap();
-let browserSlot = null;
+// ---- the namespace: the career and the hall, under one prefix ---------------
+//
+// One namespace per storage, cached: main.js holds onto the career slot for
+// the save bar, and two slots over one key would work but would not be the
+// same object. Both members are registered on the first call, because a
+// member's options go on its first `slot()` and a later call with options
+// throws (#496); registering them in one place means nothing can disagree.
+const namespaces = new WeakMap();
+let browserNs = null;
 
-function buildSlot(storage) {
-  return createSaveSlot({
-    game: "closing-time",
-    key: SAVE_KEY,
+function buildNamespace(storage) {
+  const ns = createNamespace({ game: "closing-time", prefix: SAVE_PREFIX, storage });
+  ns.slot("save.v1", {
     version: SAVE_VERSION,
-    storage,
     validate: validCareer,
     repair: repairCareer,
     // makeCareer shuffles the intake queue and rolls an RNG seed, so day one
@@ -384,31 +423,184 @@ function buildSlot(storage) {
     // nothing in the game reaches fresh() with a real choice pending.
     defaults: () => makeCareer(DEFAULT_BROKERAGE),
   });
+  ns.slot("hall", {
+    version: HALL_VERSION,
+    validate: validHall,
+    repair: repairHall,
+    defaults: () => ({ careers: [] }),
+  });
+  return ns;
 }
 
 /**
- * The save slot. Pass a storage stub in tests; pass nothing in the game.
+ * The namespace. Pass a storage stub in tests; pass nothing in the game.
  *
  * Nothing in this project touches `localStorage` itself any more. Reading that
  * property throws outright in a browser configured to block storage, which is
  * the case gvb-save's memory fallback exists to survive — so let it probe, and
  * let `slot.memoryOnly` be how the game finds out.
  */
-export function careerSlot(storage) {
-  if (!storage) return (browserSlot ||= buildSlot(undefined));
-  if (!slots.has(storage)) slots.set(storage, buildSlot(storage));
-  return slots.get(storage);
+export function saveNamespace(storage) {
+  if (!storage) return (browserNs ||= buildNamespace(undefined));
+  if (!namespaces.has(storage)) namespaces.set(storage, buildNamespace(storage));
+  return namespaces.get(storage);
 }
+
+/** The career's slot: key `closingTime.save.v1`, as it has always been. */
+export function careerSlot(storage) { return saveNamespace(storage).slot("save.v1"); }
+/** The hall's slot: key `closingTime.hall`. */
+export function hallSlot(storage) { return saveNamespace(storage).slot("hall"); }
 
 export function save(storage) { return careerSlot(storage).save(S); }
 export function loadSave(storage) {
   const loaded = careerSlot(storage).load();
   if (!loaded) return false;
   S = loaded;
+  // A career that finished before the hall existed is still a finished
+  // career. Enrolling on load rather than in repair keeps repair pure: it
+  // runs on imports and on deserialize too, and must never write anywhere.
+  enrollFinishedCareer(storage);
   return true;
 }
-/** Erase the career. The caller reloads; nothing reads the returned state. */
+/** Erase the career. The hall is not the career and stays. The caller reloads. */
 export function wipeSave(storage) { careerSlot(storage).reset(); }
+
+// ---- the hall of past careers -----------------------------------------------
+//
+// A finished career leaves a record. The scorecard endDay() freezes at day
+// 336 was the whole record until now, and "New career" wiped it: the button
+// answered "how do I start the next one" and not "does this year go
+// anywhere". The hall is one array of those scorecards under its own key,
+// written once per career, kept across every wipe.
+//
+// Finished careers only. A career abandoned on day 200 has no scorecard and
+// gets no row: the hall is a hall of years, not of attempts, and a row for
+// every "New career" click would bury the years under the false starts.
+
+/** The gate on garbage: a hall is an object with a `careers` array. */
+export function validHall(h) {
+  return !!h && typeof h === "object" && Array.isArray(h.careers);
+}
+
+/** A hall entry the game can render. Anything else is dropped by repairHall. */
+function validEntry(e) {
+  return !!e && typeof e === "object" && typeof e.id === "string" && !!e.id
+    && typeof e.closings === "number" && Number.isFinite(e.closings)
+    && typeof e.volume === "number" && Number.isFinite(e.volume);
+}
+
+/**
+ * Drop what cannot be rendered, coerce what can, and keep one row per career
+ * id. Runs on every load (#37) and on every import, so the hall never holds
+ * two rows for one year however it got there. Never throws: a throw is a null
+ * load, and a null hall would look like an empty one.
+ */
+export function repairHall(h) {
+  const seen = new Set();
+  h.careers = h.careers.filter(e => {
+    if (!validEntry(e) || seen.has(e.id)) return false;
+    seen.add(e.id);
+    e.seq = Math.max(1, Math.round(num(e.seq, 1)));
+    e.day = Math.max(1, Math.round(num(e.day, 1)));
+    e.referrals = Math.max(0, num(e.referrals, 0));
+    e.honesty = Math.max(0, num(e.honesty, 0));
+    e.finalRep = Math.max(0, Math.min(100, num(e.finalRep, 0)));
+    e.level = Math.max(1, Math.min(LEVELS.length, Math.round(num(e.level, 1))));
+    e.cash = num(e.cash, 0);
+    if (typeof e.title !== "string") e.title = LEVELS[e.level - 1].title;
+    if (typeof e.brokerageId !== "string") e.brokerageId = DEFAULT_BROKERAGE;
+    if (typeof e.brokerage !== "string") e.brokerage = (DB.brokerages[e.brokerageId] || {}).name || e.brokerageId;
+    if (typeof e.recordedAt !== "string") e.recordedAt = "";
+    return true;
+  });
+  h.careers.sort((a, b) => a.seq - b.seq || a.recordedAt.localeCompare(b.recordedAt));
+  h.careers.forEach((e, i) => { e.seq = i + 1; });
+  return h;
+}
+
+/** The hall as stored, or an empty one. Never null: a hall that will not load reads as empty. */
+export function loadHall(storage) {
+  const slot = hallSlot(storage);
+  return slot.load() || slot.fresh();
+}
+export function saveHall(hall, storage) { return hallSlot(storage).save(hall); }
+
+/** What one finished career leaves behind. Pure: reads the state, writes nothing. */
+export function hallEntryFor(s) {
+  const sc = s.scorecard || {};
+  const bk = DB.brokerages[s.brokerageId];
+  return {
+    id: s.careerId,
+    seq: 0,                                     // assigned by enrollFinishedCareer
+    brokerageId: s.brokerageId,
+    brokerage: bk ? bk.name : s.brokerageId,
+    day: num(sc.day, s.day),
+    closings: num(sc.closings, s.stats.closed),
+    volume: num(sc.volume, s.stats.volume),
+    referrals: num(sc.referrals, s.stats.referrals),
+    honesty: num(s.stats.honesty, 0),
+    finalRep: num(sc.finalRep, s.rep),
+    level: num(sc.level, s.level),
+    title: typeof sc.title === "string" ? sc.title : LEVELS[num(sc.level, s.level) - 1].title,
+    cash: num(sc.cash, s.cash),
+    recordedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * File the live career in the hall, once. Returns the hall entry, or null
+ * when there is nothing to file: a career still being played, or one with no
+ * scorecard. Idempotent on the career id, so calendar.js can call it the day
+ * the year closes and loadSave() can call it on every later visit, and the
+ * hall holds one row either way.
+ */
+export function enrollFinishedCareer(storage) {
+  if (!S || !S.careerEnded || !S.scorecard || typeof S.careerId !== "string") return null;
+  const hall = loadHall(storage);
+  const already = hall.careers.find(e => e.id === S.careerId);
+  if (already) return already;
+  const entry = hallEntryFor(S);
+  entry.seq = hall.careers.length + 1;
+  hall.careers.push(entry);
+  saveHall(hall, storage);
+  return entry;
+}
+
+/**
+ * Fold another hall into this one: rows this hall has not seen are appended
+ * in the order they were recorded, rows it has are kept as they are. The
+ * import path — a hall file from another machine — so it merges rather than
+ * replaces, and it reports how many rows it added. Writes only when it
+ * changed something.
+ */
+export function mergeHall(incoming, storage) {
+  const hall = loadHall(storage);
+  const have = new Set(hall.careers.map(e => e.id));
+  const fresh = (incoming && Array.isArray(incoming.careers) ? incoming.careers : [])
+    .filter(e => validEntry(e) && !have.has(e.id))
+    .sort((a, b) => String(a.recordedAt || "").localeCompare(String(b.recordedAt || "")));
+  for (const e of fresh) {
+    have.add(e.id);
+    hall.careers.push({ ...e, seq: hall.careers.length + 1 });
+  }
+  if (fresh.length) saveHall(repairHall(hall), storage);
+  return { hall, added: fresh.length };
+}
+
+/**
+ * The best year on each count. `{ volume: id, closings: id, finalRep: id,
+ * cash: id }`, or an empty object for an empty hall; ties go to the earlier
+ * year, which held the record first.
+ */
+export function hallBests(hall) {
+  const bests = {};
+  for (const k of ["volume", "closings", "finalRep", "cash"]) {
+    let top = null;
+    for (const e of hall.careers) if (!top || e[k] > top[k]) top = e;
+    if (top) bests[k] = top.id;
+  }
+  return bests;
+}
 
 export const uid = p => p + "_" + (S.nextId++);
 

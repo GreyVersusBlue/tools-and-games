@@ -1,6 +1,6 @@
 // calendar.js — the day-by-day spine: advancing time, resolving milestones, deadlines, weekly ticks.
 import { DB, fmtMoney } from "../data.js";
-import { S, log, save, rand, pick, isWeekend, dayName, weekOf, contentClient, getClientRec, addRep, levelInfo } from "../state.js";
+import { S, log, save, rand, pick, isWeekend, dayName, weekOf, contentClient, getClientRec, addRep, levelInfo, enrollFinishedCareer } from "../state.js";
 import { weeklyMarketTick } from "./market.js";
 import { maybeFireEvent } from "./events.js";
 import { resolveMilestone } from "./deals.js";
@@ -25,7 +25,8 @@ export function spendSlots(n = 1) {
  * ending to match it. Freezes a scorecard rather than computing one on demand
  * so a finished career reads the same numbers on every later visit, even
  * after more log entries or (if the player somehow keeps clicking) more days
- * would otherwise have changed them.
+ * would otherwise have changed them. The same snapshot is filed in the hall
+ * of past careers, so it outlives the "New career" wipe.
  */
 function finishCareer() {
   const lv = levelInfo();
@@ -41,6 +42,8 @@ function finishCareer() {
   };
   S.careerEnded = true;
   log(`Day ${S.day}. The year closes: ${S.stats.closed} closings, ${fmtMoney(S.stats.volume)} in volume, ${S.rep} reputation, ${lv.title}.`, "milestone");
+  const entry = enrollFinishedCareer();
+  if (entry) log(`The year is filed in your hall as career #${entry.seq}. It survives "New career".`, "milestone");
   save();
 }
 
