@@ -76,6 +76,28 @@ const withSub = boardPlan({ ...OPENING, unlocked: { mul2: true, sub1: true } });
 eq(minCells(255, withDoubler), 14, '255 costs 14 tiles with +1 and x2');
 eq(minCells(255, withSub), 9, '...and 9 once -1 is unlocked: eight doublings and a step back');
 
+/* The order number stops being the cost, and the sink cell says so now.
+
+   This is the measurement behind the tile-cost line added under the order on
+   every sink (integer-foundry.html's `orderCost`). The design question it
+   answers was whether a three-digit `NEEDS` needs a cost beside it at all. It
+   does, and not as a matter of taste: on the opening board the two numbers are
+   the same quantity, and the moment x2 is bought they stop being correlated at
+   all — the biggest orders on the board are among the cheapest to fill. A
+   player reading 231 as "ten times the work of 23" is reading the only number
+   the tile used to show. */
+const threeDigit = [...withDoubler.cost.entries()].filter(([v]) => v >= 100);
+eq(threeDigit.length, 201, 'with x2 unlocked, every three-digit order from 100 to 300 is fillable');
+const costs = threeDigit.map(([, c]) => c);
+eq(Math.min(...costs), 7, '...the cheapest of them is 7 tiles');
+eq(Math.max(...costs), 14, '...and the dearest is 14');
+ok(minCells(100, withDoubler) < minCells(47, withDoubler),
+  'so an order of 100 is a SHORTER line than one of 47',
+  `${minCells(100, withDoubler)} tiles against ${minCells(47, withDoubler)}`);
+ok(opening.cost.get(reachableMax(opening)) === reachableMax(opening) - 1,
+  'while on the opening board the order IS its own cost, to within the source tile',
+  `${reachableMax(opening)} costs ${opening.cost.get(reachableMax(opening))}`);
+
 eq(describeRecipe(recipe(12, opening)), '11× +1', 'a long run of one tile compresses');
 eq(describeRecipe(recipe(1, opening)), 'a source straight into the sink', 'and 1 needs no tiles at all');
 

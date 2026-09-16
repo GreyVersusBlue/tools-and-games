@@ -147,7 +147,19 @@ body{
 
 .sink-target{
   position:absolute; top:2px; left:0; right:0; text-align:center;
-  font-size:9px; color:var(--paper-dim); font-family:'JetBrains Mono',monospace;
+  font-size:9px; line-height:1; color:var(--paper-dim); font-family:'JetBrains Mono',monospace;
+  pointer-events:none; white-space:nowrap; overflow:hidden;
+}
+/* The order's cost in tiles, under the order. Copper rather than paper-dim so
+   the two numbers on a sink cannot be read as one: the top one is what the sink
+   wants, this one is what it takes. */
+/* A sink carrying a cost line has three rows to fit, and on a phone the cell is
+   36 px. The mark is the row that gives: the other two are numbers, and at 15 px
+   the mark sat straight through the cost line. */
+.cell.sink.tight .icon{font-size:10px; line-height:1;}
+.sink-cost{
+  position:absolute; bottom:2px; left:0; right:0; text-align:center;
+  font-size:8px; line-height:1; color:var(--copper-dim); font-family:'JetBrains Mono',monospace;
   pointer-events:none; white-space:nowrap; overflow:hidden;
 }
 .cell.blocked-flash{background:rgba(193,84,58,0.35) !important;}
@@ -542,12 +554,31 @@ function onResize(){
 }
 
 /** What the player would have to build to fill this order. */
-function orderHint(target, plan){
-  const cells = minCells(target, plan);
+function orderHint(target, plan, cells){
   if(!Number.isFinite(cells)) return `Order ${target}: this floor cannot build it.`;
   if(cells === 0) return `Order ${target}: run a source straight into this sink.`;
   return `Order ${target}: ${cells} fabricator${cells === 1 ? '' : 's'} between a source and `
        + `this sink. Cheapest line: ${describeRecipe(recipe(target, plan))}.`;
+}
+
+/* The same number, short enough to live on the tile.
+
+   Until ×2 is bought the order and its cost ARE the same number: an 8x6 floor
+   reaches 47 at most and 47 costs 46 fabricators, so reading the raw number as
+   the work is right. Buying ×2 takes them apart completely. Every one of the 201
+   three-digit orders then costs between 7 and 14 tiles; 100 costs 8 and 47 costs
+   9, so the bigger number is routinely the SMALLER job. That is the moment the
+   sink starts showing three digits, which is why the cost belongs on the tile
+   and not only in the title tooltip, and a tooltip is nothing at all on a
+   touchscreen, where the cell is 36 px and the word NEEDS has already been
+   dropped for space. test/smoke-targets.mjs holds both halves of that range.
+
+   Same word-dropping rule as the line above it: the digits are the part that
+   has to survive a narrow cell. */
+function orderCost(cells, px){
+  if(!Number.isFinite(cells)) return '--';
+  if(cells === 0) return px >= 48 ? 'direct' : '0t';
+  return px >= 48 ? `${cells} tile${cells === 1 ? '' : 's'}` : `${cells}t`;
 }
 
 function renderGrid(){
@@ -576,6 +607,7 @@ function renderGrid(){
       if(cell.type === 'sink'){
         const sink = state.sinks[cell.sinkIndex];
         const t = sink ? sink.target : '-';
+        const cells = sink ? minCells(sink.target, getPlan()) : Infinity;
         const tgt = document.createElement('div');
         tgt.className = 'sink-target';
         // "NEEDS 12" is about 44 px at 9 px mono. On a phone the cell is 36 px, so
@@ -583,9 +615,18 @@ function renderGrid(){
         // gets clipped. Drop the word rather than the digits.
         tgt.textContent = cellPx >= 48 ? ('NEEDS ' + t) : String(t);
         div.appendChild(tgt);
+        // Below 34 px there is the icon and one line of text and that is all;
+        // the order is the line that keeps the space.
+        if(sink && cellPx >= 34){
+          const cost = document.createElement('div');
+          cost.className = 'sink-cost';
+          cost.textContent = orderCost(cells, cellPx);
+          div.appendChild(cost);
+          if(cellPx < 48) div.classList.add('tight');
+        }
         // The order is guaranteed buildable now, so it is worth saying how. A
         // target of 11 is eleven +1 tiles and nothing on screen used to hint that.
-        div.title = sink ? orderHint(sink.target, getPlan()) : 'No order on this sink yet.';
+        div.title = sink ? orderHint(sink.target, getPlan(), cells) : 'No order on this sink yet.';
         const icon = document.createElement('div');
         icon.className = 'icon'; icon.textContent = '\u25A3';
         div.appendChild(icon);
