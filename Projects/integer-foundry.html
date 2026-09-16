@@ -153,15 +153,16 @@ body{
 /* The order's cost in tiles, under the order. Copper rather than paper-dim so
    the two numbers on a sink cannot be read as one: the top one is what the sink
    wants, this one is what it takes. */
-/* A sink carrying a cost line has three rows to fit, and on a phone the cell is
-   36 px. The mark is the row that gives: the other two are numbers, and at 15 px
-   the mark sat straight through the cost line. */
-.cell.sink.tight .icon{font-size:10px; line-height:1;}
 .sink-cost{
   position:absolute; bottom:2px; left:0; right:0; text-align:center;
   font-size:8px; line-height:1; color:var(--copper-dim); font-family:'JetBrains Mono',monospace;
   pointer-events:none; white-space:nowrap; overflow:hidden;
 }
+/* A sink carrying a cost line has three rows to fit and a phone cell is 36 px.
+   The mark is the row that gives, because the other two are numbers: at 15 px it
+   sat straight through the cost line, not clipped and not readable either. The
+   line-height:1 on all three is the other half of that 34 px. */
+.cell.sink.tight .icon{font-size:10px; line-height:1;}
 .cell.blocked-flash{background:rgba(193,84,58,0.35) !important;}
 .cell.reward-flash{background:rgba(124,174,111,0.4) !important;}
 .cell.reject-flash{background:rgba(193,84,58,0.4) !important;}
