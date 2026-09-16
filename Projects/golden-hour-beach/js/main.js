@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from '../libs/Sky.js';
-import { groundHeight, regionWeights, onPier, CAVE } from './field.js';
+import { groundHeight, regionWeights, onPier, CAVE, TIDE } from './field.js';
 import { buildTerrain } from './terrain.js';
 import { buildProps } from './props.js';
 import { buildOcean } from './ocean.js';
@@ -370,6 +370,7 @@ function updateFireAudio() {
 // ---------- Loop ----------
 const clock = new THREE.Clock();
 let sunT = 0;      // seconds of walking, not seconds since the page loaded
+let tideT = 0;     // the same seconds, on a clock that never stops (see below)
 let nightT = 0;    // 0 above the horizon, 1 at held night
 
 function applySun() {
@@ -403,19 +404,28 @@ function tick() {
     applySun();
   }
 
+  // The tide runs on the same walking seconds and does not stop where the sun
+  // does. The descent holds at SUN_TOTAL because the palette has a bottom; the
+  // sea has no bottom, and the moon — which keeps its own arc through the held
+  // night a few lines down — is whose the tide is. A walker who stays out past
+  // the last keyframe gets a beach that is still moving, which is the whole
+  // argument for holding night rather than ending on it.
+  if (controls.enabled) tideT += dt * timeScale;
+  ocean.setTide(tideT);
+
   // Ocean first: controls needs this frame's water surface height to know how
   // far a walker can wade, and a one-frame-old value would be imperceptible
   // anyway against a 9.5 s swash period, but there's no reason to take the lag.
   ocean.update(dt, camera);
   const moving = controls.update(dt, ocean.water.position.y);
-  wildlife.update(dt, camera, ocean.swashLevel, ocean.water.position.y, nightT);
+  wildlife.update(dt, camera, ocean.swashLevel, ocean.water.position.y, nightT, ocean.tideY);
   const rw = regionWeights(controls.pos.x);
   audio.setRegionMix(rw.headland, rw.estuary);
   audio.setSurface(onPier(controls.pos.x, controls.pos.z) ? 'wood' : 'sand');
   const caveD = Math.hypot(controls.pos.x - CAVE.x, controls.pos.z - CAVE.z);
   audio.setCave(THREE.MathUtils.clamp(1 - caveD / CAVE.r, 0, 1));
   audio.update(dt, ocean.swashLevel, moving && controls.enabled, controls.wadeT);
-  footprints.update(dt);
+  footprints.update(dt, ocean.water.position.y, ocean.tideY);
   skynight.update(dt * timeScale, nightT, camera);
   campfire.update(dt);
   interact.update();
@@ -447,6 +457,11 @@ if (new URLSearchParams(location.search).has('debug')) {
       applySun();
     },
     getSunT() { return sunT; },
+    // The tide is the second clock and it is not the sun's: scrubbing to night
+    // says nothing about where the water is. A driver that wants low water asks
+    // for TIDE.period / 4 and gets it whatever the sun is doing.
+    setTideT(s) { tideT = Math.max(0, s); ocean.setTide(tideT); },
+    tide: () => ({ t: tideT, level: ocean.tide, y: ocean.tideY, period: TIDE.period, range: TIDE.range }),
     teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
     face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
     pos: () => ({ x: controls.pos.x, z: controls.pos.z }),

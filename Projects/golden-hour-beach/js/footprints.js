@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight } from './field.js';
+import { groundHeight, sandAt, waterLineZ } from './field.js';
 
 // Shallow dark ovals dropped one per footstep, only on wet sand, fading over a
 // minute. The piece's most obvious missing pleasure and one of the cheapest:
@@ -15,11 +15,18 @@ import { groundHeight } from './field.js';
 const MAX = 220;
 const FADE_SECONDS = 60;
 
-// terrain.js's darker wet-sand strip is centred z ≈ -3 and fades out by z ≈ -10
-// and z ≈ 4. A print outside the solid core of that reads as a stain on dry
-// sand rather than a footprint in wet sand, so keep this narrower than the
-// strip's full fade range.
-const WET_MIN_Z = -9, WET_MAX_Z = 2;
+// How much faster a print goes once the water is over it. Twenty times, so a
+// minute's fade becomes three seconds: the run-up reaches it, the sand loosens,
+// it is gone before the same wave has finished retreating.
+const WASH_RATE = 20;
+
+// Where a print may be left used to be a pair of fixed z values, -9 to 2, which
+// was the home beach's wet strip written down. Two things were wrong with it
+// and the tide made both visible: it is the shoreline curve that moves the
+// strip along the coast, so nobody had ever left a footprint on the headland
+// shelf or at the river mouth 1.6 km away; and the strip itself moves with the
+// water now. field.js's sandAt answers both — 'wet' is the band the sea has
+// lately been over, wherever that is this minute.
 
 function footGeometry() {
   const geo = new THREE.CircleGeometry(1, 10);
@@ -54,6 +61,9 @@ export function buildFootprints(scene) {
 
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
   const pos = new THREE.Vector3(), scl = new THREE.Vector3();
+  // Two levels, two questions: tideY says whether this is wet sand, waterY
+  // says whether the sea is over it this second. See field.js's sandAt.
+  let waterY = 0, tideY = 0;
 
   function place(i, scale) {
     pos.set(px[i], py[i], pz[i]);
@@ -76,7 +86,7 @@ export function buildFootprints(scene) {
     // WalkControls.yaw, so a print's long axis lines up with the way it was
     // walked rather than always pointing the same way.
     step(x, z, yaw) {
-      if (z < WET_MIN_Z || z > WET_MAX_Z) return;
+      if (sandAt(x, z, tideY) !== 'wet') return;
       const slot = next;
       next = (next + 1) % MAX;
       filled = Math.min(MAX, filled + 1);
@@ -89,12 +99,17 @@ export function buildFootprints(scene) {
       mesh.instanceMatrix.needsUpdate = true;
     },
 
-    update(dt) {
+    // level: the water plane's y this frame. tide: sea level with the wave
+    // taken out. A print the sea has come back over does not fade, it goes —
+    // which is what makes the returning tide something a walker can watch
+    // happen to their own tracks.
+    update(dt, level = waterY, tide = tideY) {
+      waterY = level; tideY = tide;
       if (!filled) return;
       let changed = false;
       for (let i = 0; i < filled; i++) {
         if (age[i] === Infinity) continue;
-        age[i] += dt;
+        age[i] += dt * (pz[i] < waterLineZ(px[i], waterY) ? WASH_RATE : 1);
         const t = age[i] / FADE_SECONDS;
         if (t >= 1) { age[i] = Infinity; place(i, 0); changed = true; continue; }
         place(i, 1 - t);

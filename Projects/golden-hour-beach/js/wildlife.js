@@ -212,12 +212,16 @@ export function buildWildlife(scene, audio) {
     makeHeron(scene, audio),
     makeCormorants(scene, audio),
   ];
+  // waterY is this second's surface, wave and all — what an animal standing in
+  // the swash reacts to. tideY is the same sea with the wave taken out, which
+  // is what anything asking whether a *place* is underwater wants, because the
+  // answer must not flicker at 9.5 s (the tide-pool life reads it).
   const ctx = {
     camera: null, playerPos: null,
-    swashLevel: 0, waterY: 0, nightT: 0, journal: null,
+    swashLevel: 0, waterY: 0, tideY: 0, nightT: 0, journal: null,
   };
 
-  state.update = (dt, camera, swashLevel = 0, waterY = 0, nightT = 0) => {
+  state.update = (dt, camera, swashLevel = 0, waterY = 0, nightT = 0, tideY = 0) => {
     state.t += dt;
 
     // The registry first: one ctx, reused, no per-frame allocation.
@@ -225,6 +229,7 @@ export function buildWildlife(scene, audio) {
     ctx.playerPos = camera.position;
     ctx.swashLevel = swashLevel;
     ctx.waterY = waterY;
+    ctx.tideY = tideY;
     ctx.nightT = nightT;
     ctx.journal = state.journal;
     for (const e of entities) {
