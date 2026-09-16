@@ -22,12 +22,19 @@ export const HALL_VERSION = 1;
 /** What fresh() hands back when nobody picked. The game always picks — see careerSlot(). */
 export const DEFAULT_BROKERAGE = "bk_indep";
 
+/**
+ * The ladder. `tiers` is what the MLS board will let you work and what intake
+ * will hand you, and it is the only gate the commercial tier has: a building
+ * is not a bigger house, and an agent who has never taken a listing does not
+ * get handed a rent roll. Broker-Track is where it opens, which is what the
+ * rung was always named for.
+ */
 export const LEVELS = [
   { level: 1, title: "Rookie Agent",   xp: 0,    slots: 2, tiers: ["starter"] },
   { level: 2, title: "Associate",      xp: 100,  slots: 3, tiers: ["starter", "mid"] },
   { level: 3, title: "Senior Agent",   xp: 300,  slots: 4, tiers: ["starter", "mid", "luxury"] },
-  { level: 4, title: "Broker-Track",   xp: 700,  slots: 5, tiers: ["starter", "mid", "luxury"] },
-  { level: 5, title: "Managing Broker",xp: 1300, slots: 6, tiers: ["starter", "mid", "luxury"] },
+  { level: 4, title: "Broker-Track",   xp: 700,  slots: 5, tiers: ["starter", "mid", "luxury", "commercial"] },
+  { level: 5, title: "Managing Broker",xp: 1300, slots: 6, tiers: ["starter", "mid", "luxury", "commercial"] },
 ];
 
 export const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];

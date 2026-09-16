@@ -197,6 +197,23 @@ const SUITES = {
     const listings = await p.$$eval('.mls-grid > *', els => els.length);
     t.ok(listings > 3, 'the MLS board is populated', `${listings} listings`);
 
+    // The commercial tier is on the board from day one and locked from day one.
+    // A Rookie Agent can read the setup sheet and cannot work the building,
+    // which is the only gate the tier has.
+    const com = await p.$$eval('.flyer.commercial', els => els.map(e => ({
+      locked: e.classList.contains('locked'),
+      uw: (e.querySelector('.flyer-uw') || {}).textContent || '',
+      note: (e.querySelector('.lock-note') || {}).textContent || '',
+      acts: e.querySelectorAll('.actions button').length,
+    })));
+    t.ok(com.length === 4, 'four commercial listings on the board', `${com.length} found`);
+    t.ok(com.every(c => c.locked), 'all of them locked at Rookie Agent');
+    t.ok(com.every(c => /Broker-Track/.test(c.note)), 'and each says where they open',
+      com[0] ? com[0].note : 'no note');
+    t.ok(com.every(c => c.acts === 0), 'with no buttons on them at all');
+    t.ok(com.every(c => /NOI \$/.test(c.uw) && /% at ask/.test(c.uw)),
+      'each printing NOI and a yield rather than bedrooms', com[0] ? com[0].uw.slice(0, 70) : '');
+
     // Two weeks of days. endDay() is the whole simulation: the calendar, market
     // drift, client patience, deal timers and the random event roll all tick
     // there, and a thrown error inside any of them leaves the day counter stuck.
@@ -357,6 +374,74 @@ const SUITES = {
     await wait(150);
     const rowsAfter = await p.$$eval('.hall-row', els => els.length);
     t.ok(rowsAfter === 1, 'the new career sees the old year on the wall', `${rowsAfter} row(s)`);
+
+    // ---- the commercial tier, unlocked. Plant a Broker-Track career with a
+    // 1031 buyer on the books, then walk the building and open the offer form.
+    // The Node suite is blind to the wiring by design, so what is under test
+    // here is that the underwriting panel exists, is live off the price box,
+    // and prints the same coverage number commercial.js computes.
+    await p.evaluate(k => {
+      const c = JSON.parse(localStorage.getItem(k));
+      c.level = 4; c.xp = 700; c.slotsLeft = 4; c.choiceQueue = [];
+      c.clients = [{ recId: 'cr_com', clientId: 'cl_0201', status: 'active', revealed: [],
+        viewed: {}, knownIssues: {}, toldIssues: {}, dealId: null, budget: 1250000, schmoozeCount: 0 }];
+      c.clientQueue = c.clientQueue.filter(id => id !== 'cl_0201');
+      localStorage.setItem(k, JSON.stringify(c));
+    }, 'closingTime.save.v1');
+    await p.reload({ waitUntil: 'load' });
+    await GAMES['closing-time'].open(p);
+    await closeModals();
+    await p.click('#nav [data-nav="mls"]');
+    await wait(200);
+    const unlocked = await p.$$eval('.flyer.commercial', els => els.map(e => e.classList.contains('locked')));
+    t.ok(unlocked.length === 4 && unlocked.every(l => !l),
+      'at Broker-Track every commercial flyer is unlocked', unlocked.join(','));
+
+    // Put the client lens on and the fit line reads the yield, not the beds.
+    await p.select('#mlsClient', 'cr_com');
+    await wait(250);
+    const fits = await p.$$eval('.flyer.commercial .fitline b', els => els.map(e => Number(e.textContent)));
+    t.ok(fits.length === 4 && fits.some(f => f >= 80),
+      'the 1031 buyer reads one of them at 80+ fit', fits.join(' '));
+
+    // Walk 9 Ironworks Way and open the offer form on it.
+    const ironIdx = await p.$$eval('.flyer.commercial .flyer-addr',
+      els => els.findIndex(e => /Ironworks/.test(e.textContent)));
+    t.ok(ironIdx >= 0, 'Ironworks Way is on the board');
+    const card = (await p.$$('.flyer.commercial'))[ironIdx];
+    const topics = await p.evaluate(() => {
+      const b = [...document.querySelectorAll('.flyer.commercial .actions button')];
+      return b.length;
+    });
+    t.ok(topics > 0, 'an unlocked building offers actions', `${topics} buttons across the four`);
+    await (await card.$('.actions button')).click();     // Schedule showing
+    await p.waitForSelector('#modal-root .modal');
+    const askable = await p.$$eval('#modal-root .btn-sm', els => els.map(e => e.textContent.trim()));
+    t.ok(askable.includes('leases'), 'the showing offers the rent roll as a question', askable.join(' '));
+    t.ok(!askable.includes('neighbors'), 'and not the neighbours');
+    const wrap = (await p.$$('#modal-root .modal-actions button')).pop();
+    await wrap.click();
+    await wait(250);
+    const card2 = (await p.$$('.flyer.commercial'))[ironIdx];
+    const buttons = await card2.$$('.actions button');
+    await buttons[buttons.length - 1].click();           // Write offer
+    await p.waitForSelector('#modal-root .underwriting');
+    const uwFirst = await textContent(p, '#modal-root .underwriting');
+    t.ok(/NOI \$96,500/.test(uwFirst), 'the offer form prints the building\'s NOI', uwFirst.slice(0, 60));
+    t.ok(/coverage/.test(uwFirst) && /x against 1.20x/.test(uwFirst),
+      'and its coverage against the 1.20x test', uwFirst.slice(-90));
+    // Type a price the loan cannot carry and watch the panel say so, live.
+    await p.$eval('#modal-root .input-lg', el => {
+      el.value = '2400000';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await wait(150);
+    const uwHigh = await textContent(p, '#modal-root .underwriting');
+    t.ok(/The loan does not size here/.test(uwHigh),
+      'raising the price to $2.4M turns the panel over to the shortfall', uwHigh.slice(-140));
+    t.ok(/Above what Nadia Brost will pay/.test(uwHigh),
+      'and names the client ceiling it also broke');
+    await t.shot('commercial-underwriting');
   },
 
   // ---- Faire Weekend --------------------------------------------------------

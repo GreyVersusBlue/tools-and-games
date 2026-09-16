@@ -1,6 +1,7 @@
 // market.js — interest rates, seasonal demand, neighborhood drift, valuations.
 import { DB } from "../data.js";
 import { S, rand, randRange, seasonOf, log } from "../state.js";
+import { isCommercial, commercialValue } from "./commercial.js";
 
 export const SEASON_DEMAND = { Winter: 0.85, Spring: 1.15, Summer: 1.1, Fall: 0.95 };
 
@@ -27,7 +28,14 @@ export function weeklyMarketTick() {
 }
 
 // True underlying value of a content listing (ask price is the seller's opinion; this is the market's).
+//
+// A building is the one listing whose value does not start from the ask. Its
+// income is public, every buyer divides it by the same cap rate, and the ask
+// is one of those buyers' arithmetic rather than an input to anybody else's.
+// So the commercial branch never reads `listing.price` or `listing.condition`
+// at all: see commercial.js, which owns the whole model.
 export function trueValue(listing) {
+  if (isCommercial(listing)) return commercialValue(listing);
   const nbMult = S.market.nb[listing.neighborhood] || 1;
   const conditionAdj = 0.9 + listing.condition * 0.14;
   return listing.price * conditionAdj * nbMult;

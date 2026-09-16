@@ -1,0 +1,55 @@
+{
+  "id": "ls_0103",
+  "address": "77-83 Spindle St",
+  "neighborhood": "nb_carver_mill",
+  "tier": "commercial",
+  "price": 849000,
+  "beds": 16,
+  "baths": 8,
+  "sqft": 11200,
+  "condition": 0.49,
+  "features": [
+    "on-site parking",
+    "separately metered",
+    "corner lot"
+  ],
+  "commercial": {
+    "assetType": "apartment building",
+    "units": 8,
+    "grossRent": 103680,
+    "vacancy": 0.11,
+    "opex": 21075,
+    "marketCap": 0.082,
+    "rollPct": 0.38,
+    "rentRoll": "Eight two-bedrooms, all month-to-month since the last owner stopped bothering with paper."
+  },
+  "hiddenIssues": [
+    {
+      "desc": "Six of the eight units are on month-to-month tenancies about $180 under market, and three have been here a decade",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 12000,
+      "disclosureRequired": false,
+      "topic": "leases"
+    },
+    {
+      "desc": "One boiler serving all eight units, 1978, and the parts are eBay-only now",
+      "discovery": "inspection",
+      "severity": "dealbreaker",
+      "repairCost": 28000,
+      "disclosureRequired": true,
+      "topic": "hvac"
+    },
+    {
+      "desc": "The rear stair is exterior wood and the treads have gone spongy",
+      "discovery": "visible",
+      "severity": "moderate",
+      "repairCost": 4000,
+      "disclosureRequired": true,
+      "topic": "roof"
+    }
+  ],
+  "listingAgentId": "ag_sal_dimeo",
+  "daysOnMarket": 39,
+  "blurb": "Eight units off the mill trail, full and cheap and loose. Every lease in the building is a handshake."
+}

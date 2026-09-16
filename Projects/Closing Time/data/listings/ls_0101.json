@@ -1,0 +1,56 @@
+{
+  "id": "ls_0101",
+  "address": "212 Ferry St",
+  "neighborhood": "nb_downtown",
+  "tier": "commercial",
+  "price": 1095000,
+  "beds": 0,
+  "baths": 4,
+  "sqft": 9800,
+  "condition": 0.58,
+  "features": [
+    "corner lot",
+    "long-term anchor tenant",
+    "second-floor offices",
+    "on-site parking"
+  ],
+  "commercial": {
+    "assetType": "retail strip",
+    "units": 6,
+    "grossRent": 128400,
+    "vacancy": 0.09,
+    "opex": 38460,
+    "marketCap": 0.074,
+    "rollPct": 0.22,
+    "rentRoll": "Six bays. The laundromat has been here since 1991 and pays like it."
+  },
+  "hiddenIssues": [
+    {
+      "desc": "Flat roof at the end of its second patch job — the membrane is done, not repairable",
+      "discovery": "inspection",
+      "severity": "dealbreaker",
+      "repairCost": 46000,
+      "disclosureRequired": true,
+      "topic": "roof"
+    },
+    {
+      "desc": "The parking easement with the courthouse lot lapses in fourteen months and nobody has re-signed it",
+      "discovery": "question",
+      "severity": "moderate",
+      "repairCost": 9000,
+      "disclosureRequired": true,
+      "topic": "parking"
+    },
+    {
+      "desc": "Two bay signs are non-conforming under the 2019 downtown sign ordinance",
+      "discovery": "visible",
+      "severity": "cosmetic",
+      "repairCost": 3200,
+      "disclosureRequired": false,
+      "topic": "zoning"
+    }
+  ],
+  "listingAgentId": "ag_priya_natesan",
+  "daysOnMarket": 61,
+  "blurb": "Six-bay strip on the courthouse block. The rent roll is honest and the roof is not."
+}

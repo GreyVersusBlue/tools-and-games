@@ -1,0 +1,54 @@
+{
+  "id": "ls_0104",
+  "address": "401 Clocktower Sq",
+  "neighborhood": "nb_downtown",
+  "tier": "commercial",
+  "price": 640000,
+  "beds": 0,
+  "baths": 3,
+  "sqft": 7600,
+  "condition": 0.42,
+  "features": [
+    "second-floor offices",
+    "corner lot"
+  ],
+  "commercial": {
+    "assetType": "mixed-use",
+    "units": 5,
+    "grossRent": 84000,
+    "vacancy": 0.16,
+    "opex": 16000,
+    "marketCap": 0.095,
+    "rollPct": 0.55,
+    "rentRoll": "Storefront, a nail salon, and three upstairs offices whose leases all run out in the same quarter."
+  },
+  "hiddenIssues": [
+    {
+      "desc": "Both upstairs office suites gave notice last month — 55% of the rent roll is walking and it is not in the setup sheet",
+      "discovery": "question",
+      "severity": "dealbreaker",
+      "repairCost": 41000,
+      "disclosureRequired": true,
+      "topic": "leases"
+    },
+    {
+      "desc": "Dry cleaner in the north bay until 2004; no Phase II has ever been run on the slab",
+      "discovery": "question",
+      "severity": "dealbreaker",
+      "repairCost": 38000,
+      "disclosureRequired": true,
+      "topic": "environmental"
+    },
+    {
+      "desc": "The second-floor offices have no second means of egress that meets current code",
+      "discovery": "inspection",
+      "severity": "moderate",
+      "repairCost": 17000,
+      "disclosureRequired": true,
+      "topic": "zoning"
+    }
+  ],
+  "listingAgentId": "ag_chuck_brandt",
+  "daysOnMarket": 94,
+  "blurb": "Five doors on the square at a yield that ought to make you suspicious. Ask what happens in the spring."
+}

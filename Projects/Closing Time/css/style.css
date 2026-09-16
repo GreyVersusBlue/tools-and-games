@@ -105,6 +105,15 @@ body::before { /* subtle ledger rule down the left, ambient not loud */
 .fitline { margin-top: 6px; font-size: 13px; border-top: 1px dashed var(--line); padding-top: 6px; }
 .lock-note { font-size: 12px; color: var(--ink-soft); margin-top: 8px; font-style: italic; }
 
+/* Commercial: a setup sheet rather than a flyer. Brass edge, numbers in mono. */
+.flyer.commercial { border-top-color: var(--brass); }
+.flyer-uw { font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--paper-2);
+  border-left: 3px solid var(--brass); padding: 6px 8px; margin: 2px 0 6px; }
+.underwriting { border: 1px solid var(--line); border-left: 3px solid var(--brass); background: var(--paper-2);
+  padding: 8px 10px; margin: 10px 0; }
+.uw-row { font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+.uw-row + .uw-row { border-top: 1px dashed var(--line); }
+
 /* Clients */
 .client-card { border-left: 4px solid var(--pine); }
 .client-head { font-size: 15px; margin-bottom: 4px; }

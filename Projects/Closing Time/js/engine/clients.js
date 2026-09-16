@@ -2,6 +2,7 @@
 import { DB } from "../data.js";
 import { S, uid, log, addRep, addXP, pick, rand, randInt, contentClient, levelInfo } from "../state.js";
 import { financingFor, financingType } from "./financing.js";
+import { isCommercial, isCommercialClient, capAt, knownCapex } from "./commercial.js";
 
 export const REL_WORDS = ["college roommate", "sister", "coworker", "old neighbor", "cousin", "book-club friend", "brother-in-law", "poker buddy"];
 
@@ -62,6 +63,12 @@ export function checkReveals(rec, ctx) {
 // Fit score 0..100 for showing/offering a listing to a buyer rec.
 export function fitScore(rec, listing) {
   const c = contentClient(rec);
+  // A building is not a big house and a house is not a small building. Scored
+  // as a wall rather than as a very bad match, because the residential
+  // arithmetic below would happily read `beds` off a rent roll and hand back a
+  // number in the forties that looks like an opinion worth arguing with.
+  if (isCommercial(listing) !== isCommercialClient(c)) return 5;
+  if (isCommercial(listing)) return commercialFit(rec, listing);
   const req = c.statedReqs;
   let fit = 50;
   if (listing.beds >= (req.minBeds || 0)) fit += 10; else fit -= 25;
@@ -87,6 +94,55 @@ export function fitScore(rec, listing) {
       fit += listing.hiddenIssues.filter(is => is.severity === "cosmetic" && is.repairCost === 0).length * 10;
     }
   });
+  return Math.max(0, Math.min(100, Math.round(fit)));
+}
+
+/**
+ * Fit for an investor on a building. The same 0..100 scale and the same
+ * hidden-preference vocabulary, over an entirely different opening question:
+ * not "could they live here" but "does the yield clear the number they gave
+ * you". Everything after the first term is manners.
+ *
+ * Read at the current ask, like the residential score, which is what makes an
+ * overpriced building read badly on the MLS board even when the player could
+ * buy it well. That is the flyer's opinion, and the offer screen is where the
+ * argument happens.
+ */
+function commercialFit(rec, listing) {
+  const c = contentClient(rec);
+  const req = c.statedReqs || {};
+  const price = S.listingsState[listing.id].price;
+  let fit = 50;
+  // A hundred basis points either side of their stated yield is twenty points
+  // of fit. Capped both ways: a wonderful cap rate does not make a building
+  // they cannot pay for a good idea, and a bad one does not need to reach zero
+  // by itself.
+  const minCap = Number.isFinite(req.minCap) ? req.minCap : 0.075;
+  fit += Math.max(-35, Math.min(25, Math.round((capAt(listing, price) - minCap) * 2000)));
+  if ((req.neighborhoods || []).includes(listing.neighborhood)) fit += 8; else fit -= 12;
+  for (const f of req.mustFeatures || []) fit += listing.features.includes(f) ? 12 : -12;
+  // A rent roll expiring inside the year is the risk an investor says out loud.
+  fit -= Math.round((listing.commercial.rollPct || 0) * 12);
+  // Money still binds, and it binds late: the yield can be beautiful.
+  if (price > rec.budget) fit -= 30;
+
+  let ignoresIssues = false;
+  (c.hiddenPrefs || []).forEach((p, i) => {
+    if (!rec.revealed.includes(i)) return;
+    if (p.data && p.data.ignoresIssues) ignoresIssues = true;
+    if (p.type === "secretMustHave") {
+      if (p.data.targetListing && p.data.targetListing === listing.id) fit += p.data.fitBonus || 30;
+      else if (p.revealOn.trigger === "feature" && listing.features.includes(p.revealOn.value)) fit += p.data.fitBonus || 20;
+      else if (p.revealOn.trigger === "issueSeverity"
+        && listing.hiddenIssues.some(is => is.severity === p.revealOn.value)) fit += p.data.fitBonus || 15;
+    }
+    if (p.type === "secretDealbreaker" && listing.hiddenIssues.some(is => is.topic === p.data.topic)) fit -= 40;
+  });
+  // Discovered capital comes off the yield, so it comes off the fit — unless
+  // they have already told you deferred capital is a shopping list. $4,000 a
+  // point, capped at twenty, because past that the number is the offer price's
+  // problem and not the flyer's.
+  if (!ignoresIssues) fit -= Math.min(20, Math.round(knownCapex(rec, listing) / 4000));
   return Math.max(0, Math.min(100, Math.round(fit)));
 }
 
@@ -118,8 +174,14 @@ export function rollReferral(closedRec) {
   if (closedRec.satisfaction < 72) return null;
   if (rand() > 0.55 + (closedRec.satisfaction - 72) / 100) return null;
   const c = contentClient(closedRec);
+  // Tier-gated, same as intake and the Monday lead. A referral is still a
+  // client walking through the door, and the door is the ladder: a Senior
+  // Agent's happy buyer cannot refer them a rent roll they are not allowed to
+  // work.
+  const tiers = levelInfo().tiers;
   const pool = S.clientQueue.filter(id => {
     const cand = DB.clients[id];
+    if (!tiers.includes(cand.tier) && cand.type !== "seller") return false;
     return cand.type === c.type || rand() < 0.4;
   });
   if (!pool.length) return null;

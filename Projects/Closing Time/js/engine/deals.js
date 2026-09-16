@@ -5,6 +5,7 @@ import { trueValue, appraisalFor, marketHeat, bumpKnowledge, knowledgeEdge } fro
 import { checkReveals, fitScore, satisfactionDelta, patienceTick, rollReferral } from "./clients.js";
 import { financingType, DEFAULT_FINANCING } from "./financing.js";
 import { clauseOf, escalateAgainst, DEFAULT_INCREMENT } from "./escalation.js";
+import { isCommercial, COMMERCIAL_TOPICS, underwrite, sideRate, DEBT, dscrText } from "./commercial.js";
 
 // ---------- VIEWINGS ----------
 export function startViewing(rec, listing) {
@@ -24,9 +25,14 @@ export function startViewing(rec, listing) {
 }
 
 export function askTopics(listing) {
-  // Topics the player can ask the listing agent about during a viewing.
+  // Topics the player can ask the listing agent about during a viewing. The
+  // red herrings matter: a topic appearing on the list must not itself be the
+  // tell. A building gets a different list of them, because nobody asks a
+  // light-industrial bay about the neighbours and nobody asks a three-bedroom
+  // for its rent roll — and a list that leaked which kind of question this
+  // listing was would answer the question before it was asked.
   const topics = new Set(listing.hiddenIssues.filter(is => is.discovery.startsWith("question")).map(is => is.topic));
-  ["roof", "water", "hvac", "permits", "neighbors"].forEach(t => topics.add(t)); // red herrings allowed
+  (isCommercial(listing) ? COMMERCIAL_TOPICS : ["roof", "water", "hvac", "permits", "neighbors"]).forEach(t => topics.add(t));
   return [...topics];
 }
 
@@ -345,6 +351,9 @@ export function appraisalDecision(deal, decision, gap) {
 
 function resolveFinancing(deal, rec) {
   const f = dealFinancing(deal);
+  const listing = DB.listings[deal.listingId];
+  // A commercial loan is not a roll. See resolveCommercialFinancing().
+  if (f.id === "commercial" && isCommercial(listing)) return resolveCommercialFinancing(deal, rec, listing);
   const rate = S.market.rate;
   // Was a flat 0.04 for every buyer alive. The seller side has charged FHA 0.12
   // against everyone else's 0.05 since it was written; these are the same
@@ -361,15 +370,90 @@ function resolveFinancing(deal, rec) {
   return { ok: true };
 }
 
+/**
+ * The commercial financing milestone: arithmetic, not a die.
+ *
+ * Every other way a deal dies in this game is a roll — a fall-through chance,
+ * noise around an appraised value, an authored issue surfacing. This one is a
+ * subtraction the player could have done on the day they wrote the offer, off
+ * numbers that were on the flyer: NOI over debt service, against 1.20. If it
+ * clears, the loan funds and nothing else happens; if it does not, the bank
+ * sizes the loan to 1.20 and the gap is the exact dollar amount nobody has.
+ *
+ * Which means the only player who meets this milestone is the one who did not
+ * look, and the shortfall tells them precisely what they missed. That is the
+ * lesson of the tier, and it is why this branch has no rand() in it at all.
+ */
+function resolveCommercialFinancing(deal, rec, listing) {
+  const u = underwrite(rec, listing, deal.price);
+  if (u.sizes) {
+    log(`The bank sizes the loan on ${listing.address}: ${dscrText(u.dscr)} coverage against a ${DEBT.minDscr.toFixed(2)}x test. Funded.`, "", undefined, rec.recId);
+    return { ok: true };
+  }
+  S.choiceQueue.push({
+    kind: "loanShortfall", dealId: deal.id, shortfall: u.shortfall, sizingPrice: u.sizingPrice,
+    text: `The bank underwrites ${listing.address} at ${dscrText(u.dscr)} against a ${DEBT.minDscr.toFixed(2)}x test and cuts the loan. `
+      + `At ${fmtMoney(deal.price)} the building's ${fmtMoney(u.noi)} of net income will not carry ${fmtMoney(u.debtService)} of debt service. `
+      + `Short ${fmtMoney(u.shortfall)}. The number that finances today is ${fmtMoney(u.sizingPrice)}.`,
+  });
+  return { ok: false, pending: true };
+}
+
+/**
+ * Three ways out of a loan that will not size, and only one of them is free.
+ * Deliberately the same shape as appraisalDecision() — cover it, push the
+ * seller to the number, or let it die — because they are the same situation
+ * from two different lenders' chairs, and a player who has met one should
+ * recognise the other.
+ */
+export function loanShortfallDecision(deal, decision, shortfall, sizingPrice) {
+  const rec = getClientRec(deal.clientRecId);
+  const listing = DB.listings[deal.listingId];
+  const agent = DB.agents[deal.agentId];
+  if (decision === "cover") {
+    // Their budget is the most building they can buy. A loan cut below what
+    // that assumed is equity they have not got, unless the price left room.
+    if (deal.price + shortfall <= rec.budget) {
+      log(`${contentClient(rec).name} wires the extra ${fmtMoney(shortfall)} in equity. Their return goes down by exactly that much and they say so.`, "deal", undefined, rec.recId);
+      satisfactionDelta(rec, -6, "putting unplanned equity into the deal");
+    } else {
+      killDeal(deal, `the loan came up ${fmtMoney(shortfall)} short and ${contentClient(rec).name} had no more equity to put in.`);
+    }
+    return;
+  }
+  if (decision === "renegotiate") {
+    // A seller asked to come down to the number the bank will lend on has one
+    // question, which is how far down. The size of the cut is most of the
+    // answer: a 2% trim on a stale building is routine and a 20% haircut is a
+    // different conversation, so the ask itself moves the odds.
+    const cut = Math.max(0, (deal.price - sizingPrice) / deal.price);
+    const odds = 0.3 + (S.listingsState[listing.id].dom > 40 ? 0.25 : 0.05)
+      + (1 - agent.counterAggression) * 0.3 + knowledgeEdge(listing.neighborhood) * 0.1
+      - cut * 1.5;
+    if (rand() < odds) {
+      deal.price = sizingPrice;
+      log(`${agent.name} takes ${fmtMoney(sizingPrice)} — the number the bank will lend on. "${pickHook(agent, "accept")}"`, "deal", undefined, rec.recId);
+      satisfactionDelta(rec, 12, "you repricing the deal to what the building finances");
+    } else {
+      killDeal(deal, `${agent.name} would not come down to what the bank would lend. "${pickHook(agent, "reject")}"`);
+    }
+    return;
+  }
+  killDeal(deal, "the loan would not size and nobody would move.");
+}
+
 function resolveClosing(deal, rec, listing) {
   deal.stage = "closed";
   S.listingsState[deal.listingId].status = "sold";
-  const gross = deal.price * 0.03;
+  // 3% a side on a house, 2% on a building. The rate is lower and the cheque
+  // is larger, which is the trade the whole tier is: one commercial closing is
+  // worth three starters and takes most of a season to find.
+  const gross = deal.price * sideRate(listing);
   const split = DB.brokerages[S.brokerageId].commissionSplit;
   const net = gross * split;
   addCash(net, `commission — ${listing.address} closed at ${fmtMoney(deal.price)}`, rec.recId);
   S.stats.closed++; S.stats.volume += deal.price;
-  const xp = { starter: 40, mid: 70, luxury: 120 }[listing.tier] || 40;
+  const xp = { starter: 40, mid: 70, luxury: 120, commercial: 200 }[listing.tier] || 40;
   addXP(xp, "closed a " + listing.tier + " purchase", rec.recId);
   // Final satisfaction: fit + budget respect
   const fit = fitScore(rec, listing);

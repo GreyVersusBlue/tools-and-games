@@ -39,6 +39,7 @@ references it gets its orphaned `listingsState` / `market.nb` / `knowledge` entr
 - Each day has **4 action slots** (●). Showings, intakes, schmoozing, offer paperwork each cost one; an **open house consumes the whole day** and can only run on weekends. Bank-side milestones (appraisal, financing) only land on weekdays.
 - **Buyer mode:** meet a client → browse the MLS Board with their "client lens" on (live fit score) → show houses → ask the listing agent pointed questions (2 per showing) or order a $450 inspection → disclose what you know (or don't — see reputation) → write an offer → negotiate with a named rival agent → survive inspection/appraisal/financing contingencies → close.
 - **Seller mode:** take the listing → walkthrough, recommend repairs and disclosures, pick staging/photos, set a price against the modeled value → go live → interest accrues daily → NPC agents submit offers with deadlines → advise your seller (who has their own hidden psychology) → host open houses → close from the other side of the table.
+- **Commercial mode** opens at Broker-Track (level 4), and a building is not a bigger house. Its value is its income — net operating income over a cap rate — and the ask is not an input to that at all, so an overpriced building says so on the flyer. Its problems are dollars off the price rather than a haircut, its buyers are investors with a required yield rather than a wish list, and its lender asks one question: does the net income cover the debt 1.20 times. That test is arithmetic, not a die roll, and every number in it is on the setup sheet from the first day.
 - **Hidden information is the game.** Clients have hidden preferences/dealbreakers that surface through viewings, the right questions, and schmoozing. Listings have hidden issues in three severity tiers (cosmetic / moderate / dealbreaker), discovered visibly, by question topic, or only via inspection. Sitting on a disclosure-required issue you knew about will eventually detonate.
 - **Reputation** (word of mouth) is separate from **XP** (career ladder). Satisfied closings generate **referrals** — new clients who name the past client that sent them. Rivals poach, brokerages recruit, rates drift, neighborhoods trend, and your **local market knowledge** per neighborhood sharpens your valuations and negotiating odds.
 - **The career ends at day 336** — four 84-day seasons, one year. `endDay()` freezes a scorecard (closings, volume, referrals, final reputation, the ladder rung reached) instead of starting a 337th day; "End day" becomes "Career complete." The scorecard modal has **Start a new career**, **See the hall** and "Keep browsing the desk" — the footer's "New career" still does the same thing later, but the ending no longer leaves the only way forward as a control the player has to go find, and it says which number the year got in the hall.
@@ -62,6 +63,7 @@ js/
     deals.js         buyer-side: viewings, offers, NPC negotiation, contingencies, closing
     financing.js     the four buyer financing types and what each one costs
     escalation.js    multi-offer fields: clauses, the resolution rule, highest and best
+    commercial.js    the commercial tier: NOI, cap rates, DSCR, the investor's ceiling
     seller.js        listing-side: prep, marketing, NPC offers, open houses, closing
     events.js        data-driven event system (weighted draws + effect handlers)
     marketFacade.js  re-exports for the UI
@@ -103,7 +105,22 @@ Every file has a unique `id` matching its filename.
 | `daysOnMarket` | starting DOM; high DOM makes listing agents flexible and triggers price cuts |
 | `condition` | 0–1; feeds true-value model (ask ≠ value; the gap is where deals live) |
 | `listingAgentId` | NPC agent id — determines negotiation style and dialogue |
+| `commercial` | commercial listings only, and the thing that makes them one — see below. `tier: "commercial"` without this block is not a commercial listing to any check in the game |
 | `hiddenIssues[]` | see below |
+
+**`commercial` block** — the income model. `price` above is still the ask, but nothing
+in the valuation reads it, and neither does `condition`:
+
+| field | meaning |
+|---|---|
+| `assetType` | display: `retail strip` / `light industrial` / `apartment building` / `mixed-use` |
+| `units` | doors. Shown where a house shows bedrooms |
+| `grossRent` | annual rent at the leases in place today |
+| `vacancy` | 0–1, physical vacancy. `NOI = grossRent × (1 − vacancy) − opex` |
+| `opex` | annual operating expenses the landlord carries |
+| `marketCap` | the cap rate this asset class trades at here, at the anchor rate of 6.4%. The game moves it: `+50 bp per point of headline rate`, `−20 bp per 10% of neighborhood index`, `+100 bp × rollPct`, clamped to 4.5%–14% |
+| `rollPct` | 0–1, the share of the rent roll whose lease expires inside the year. Widens the cap rate, and costs fit |
+| `rentRoll` | one line of flavor under the blurb |
 
 **hiddenIssues entries:**
 
@@ -124,9 +141,9 @@ Every file has a unique `id` matching its filename.
 | `type` | `buyer` or `seller` |
 | `tier` | gates when they can appear (career level) |
 | `budget` | buyers only; may be raised by a `stretchBudget` reveal |
-| `financing` | buyers only, **optional** — `cash` / `conventional` / `fha` / `va`. Omit it and `engine/financing.js` derives one from `tier`, deterministically from the client id (never `rand()`). Name it when the client's own text already says so, the way `cl_0004`'s notes read "Cash." |
+| `financing` | buyers only, **optional** — `cash` / `conventional` / `fha` / `va` / `commercial`. Omit it and `engine/financing.js` derives one from `tier`, deterministically from the client id (never `rand()`). Name it when the client's own text already says so, the way `cl_0004`'s notes read "Cash." A `commercial`-tier buyer only ever draws `commercial` or `cash`: FHA and VA are residential loan programs and cannot be used on a building |
 | `patience` | starting patience; decays every other idle day, −1 per mismatched showing; at 0 they walk |
-| `statedReqs` | buyers: `minBeds`, `mustFeatures[]` (verbatim listing-feature strings), `neighborhoods[]`, `notes`. Sellers: just `notes` |
+| `statedReqs` | buyers: `minBeds`, `mustFeatures[]` (verbatim listing-feature strings), `neighborhoods[]`, `notes`. Commercial buyers add `minCap`, the yield they said they need, which is most of their fit score and the whole of their price ceiling (`NOI ÷ minCap`, less the capital you found). Sellers: just `notes` |
 | `referredBy` | usually `null`; the engine fills it at runtime for referral chains |
 | `hiddenPrefs[]` | see below |
 | `sellerListing` | sellers only: the home they're selling — `address`, `neighborhood`, `tier`, `baseValue`, `condition`, `beds/baths/sqft`, `features[]`, `issues[]` (same shape as listing `hiddenIssues`) |
@@ -180,7 +197,29 @@ New events are pure JSON composed from these handlers. New handler = one functio
 
 - **Feature strings are an implicit vocabulary.** Client `mustFeatures` and `revealOn: feature` triggers match listing `features` verbatim. Check existing listings before inventing new wording.
 - **The value model:** a listing's *ask* is the seller's opinion; `trueValue` = ask × condition adjustment × neighborhood drift. Appraisals anchor between contract price and modeled value. Player-side seller listings use `baseValue` instead of ask.
-- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Per-client financing, multi-offer escalation wars and the hall of past careers have shipped. The remaining next layer is a commercial tier at Broker-Track.
+- **Priority-tested slice:** the buyer loop, seller loop, open houses, events, brokerages, market drift, referrals, and career ladder are all live. Per-client financing, multi-offer escalation wars, the hall of past careers and the commercial tier have all shipped. **The "next layers" list is finished.** What is open now is what the tier left for a later round, one item, at the end of this list.
+- **The commercial tier shipped** (`engine/commercial.js`, and one line in `LEVELS`). Four
+  buildings, three investors, and a model that shares nothing with the residential one but the
+  screens it renders on. Three decisions hold it up. **A building is priced by its income and
+  the ask is not an input** — `trueValue()` on a commercial listing reads neither `price` nor
+  `condition`, so 401 Clocktower Sq asks $640,000 against a modeled $446,886 and the flyer says
+  so out loud. **Deferred capital is a line item, not a haircut**: a house's problems move
+  value through `condition` as a percentage, a building's come off in dollars, which is what
+  makes a $46,000 roof worth a question. **A commercial financing milestone is a calculation,
+  not a roll**: the bank sizes at 1.20x debt service coverage on a 70% loan, 25-year
+  amortization, at the headline rate plus 75 bp, and that branch touches `rand()` zero times.
+  212 Ferry St does not finance at its own ask — $1,085,489 does — and the offer screen says
+  that before the offer is written rather than eighteen days later. Two walls sit on every
+  commercial buyer, their yield (`NOI ÷ minCap`) and their money, and which one binds is a fact
+  about the building: Nadia Brost's yield stops her at $1,045,120 on Ferry St and her
+  chequebook stops her at $1,250,000 on Ironworks. Commercial pays 2% a side against a house's
+  3%, on numbers three times the size, and closes for 200 XP.
+- **What the commercial tier left open: the seller side.** Everything above is buyer-side. A
+  commercial *listing agreement* — representing the seller of a building — is a different
+  feature, not a missing half of this one: `seller.js`'s prep flow is staging tiers, photo
+  tiers and weekend open houses, and none of the three means anything on a six-bay strip, which
+  wants a rent roll, an offering memorandum and a broker's-opinion-of-value instead. Sized as
+  its own row rather than bolted on here.
 - **The hall of past careers shipped** (`state.js`, the second half of it). `createNamespace({
   prefix: "closingTime." })` holds two members: `save.v1`, the career, at the key it has always
   had, and `hall`, one array of frozen scorecards. `enrollFinishedCareer()` is idempotent on
@@ -241,6 +280,9 @@ New events are pure JSON composed from these handlers. New handler = one functio
 - `tools/smoke.mjs` is a fast regression check: `node tools/smoke.mjs` should end with
   `SMOKE OK: <n> passed`, and exits non-zero on any miss. It covers the buyer loop, the seller
   loop, 40 days of calendar, the whole save path (corrupt blobs refused, legacy saves
-  repaired, export re-imported, the version stamp) and the hall (filed once, kept across a wipe,
-  merged on import, the two members' files refusing each other). It is blind to the wiring by design —
+  repaired, export re-imported, the version stamp), the hall (filed once, kept across a wipe,
+  merged on import, the two members' files refusing each other) and the commercial tier (the
+  ladder gate on all three doors clients come through, the income model, the loan constant
+  amortized rather than re-derived, and the two assertions that the sizing branch consumes no
+  randomness). 359 assertions. It is blind to the wiring by design —
   `cd Tools/board-check && npm run games closing-time` drives the real page.

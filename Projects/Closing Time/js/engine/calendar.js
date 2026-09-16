@@ -118,8 +118,16 @@ export function endDay() {
 
 function brokerageMondayPerks() {
   const bk = DB.brokerages[S.brokerageId];
-  if ((bk.perks || []).some(p => p.includes("free lead")) && S.clientQueue.length) {
-    const id = pick(S.clientQueue);
+  // The lead has to be one this agent could actually take. Before the
+  // commercial tier every client in the queue was inside somebody's reach
+  // eventually, so a Monday lead could ignore the ladder and nothing showed;
+  // now a Rookie Agent handed a 1031 buyer would walk into a modal offering a
+  // client the MLS board will not let them work.
+  const tiers = levelInfo().tiers;
+  const eligible = S.clientQueue.filter(id =>
+    tiers.includes(DB.clients[id].tier) || DB.clients[id].type === "seller");
+  if ((bk.perks || []).some(p => p.includes("free lead")) && eligible.length) {
+    const id = pick(eligible);
     S.choiceQueue.push({ kind: "referralArrive", clientId: id, referredBy: { name: "Deb at the front desk", rel: "office lead" },
       text: `Deb at the front desk waves you over Monday morning: "Got a live one for you, hon." (${DB.clients[id].name}.)` });
   }
