@@ -32,7 +32,7 @@ const withAuto = (l, seconds = 22) => ({ ...l, controller: { ...l.controller, ru
 group('the level pack');
 
 {
-  ok(LEVELS.length === 6 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,free-play', 'six levels: First Light, Stem, Four Ways, Crossing, Two Blocks, Free Play', LEVELS.map(l => l.id).join(', '));
+  ok(LEVELS.length === 7 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,free-play', 'seven levels: First Light, Stem, Four Ways, Crossing, Two Blocks, Rush Hour, Free Play', LEVELS.map(l => l.id).join(', '));
   const l1 = levelById('first-light');
   ok(l1.duration === 180 && l1.target > 0 && l1.waitTarget > 0 && l1.mode === 'soft', 'level 1 is 3 minutes, soft, with a target and a wait target', `${l1.target} cars, ${l1.waitTarget} s`);
   ok(Object.keys(l1.mix).every(k => ['standard', 'granny'].includes(k)), 'and only standard and granny drive it', Object.keys(l1.mix).join(', '));
@@ -57,6 +57,10 @@ group('the level pack');
   const w5 = new World(l5, 1);
   ok(w5.controllers.length === 2 && w5.controllers[0].offset === 0 && w5.controllers[1].offset === 16 && l5.unlocks.includes('offset'), 'the east box runs 16 s behind, and the level unlocks the offset note', w5.controllers.map(c => c.offset).join(','));
   ok(Object.keys(l5.mix).sort().join() === 'aggressive,rideshare,standard,trucker' && Array.isArray(l5.demand) && l5.demand.length === 2, 'standard, aggressive, rideshare and trucker drive it, with demand per box', Object.keys(l5.mix).join(', '));
+  const l6 = levelById('rush-hour');
+  ok(l6.events.map(e => e.kind).join() === 'surge,outage,ambulance' && l6.events[0].at === 60 && l6.events[0].for === 100 && l6.events[1].at === 110 && l6.events[1].for === 30 && l6.events[2].at === 185 && l6.events[2].within === 40,
+    'Rush Hour scripts the surge at 60 s for 100, the outage at 110 s for 30, and the ambulance at 185 s with 40 s to get through', l6.events.map(e => `${e.kind}@${e.at}`).join(' '));
+  ok(l6.unlocks.includes('priority') && l6.unlocks.includes('flash') && l6.network.lanesPerDir === 1 && Object.keys(l6.mix).sort().join() === 'aggressive,granny,rideshare,standard', 'one lane each way, the corridor button unlocked, and standard, granny, aggressive and rideshare driving it', l6.unlocks.join());
   let bad = null;
   for (const l of LEVELS) { try { new World(l, 1); } catch (e) { bad = `${l.id}: ${e.message}`; } }
   ok(!bad, 'every level builds a world', bad || '');
@@ -213,6 +217,47 @@ group('Two Blocks: the corridor on its offset');
   ok(out.every(o => o.handoffs > 30), 'with cars crossing between the boxes all run', out.map(o => o.handoffs).join(', '));
 }
 
+group('Rush Hour: the events and what the corridor costs');
+
+{
+  // the calibration (six seeds, a 22 s cycle, the corridor called 2 s
+  // after the ambulance arrives): 59 to 77 cleared, 13 to 21 s average
+  // wait, the ambulance on time on all six; with the corridor never called
+  // it is late on 3 of 6 and the board clears 65 to 83 at 10 to 17 s.
+  // Target 56, waitTarget 20: the corridor is the level, and the second
+  // star is what a good hand on the phases buys back. One seed of each
+  // (a 4-minute run is about 8 s).
+  const l6 = levelById('rush-hour');
+  const run = seed => {
+    const w = new World(withAuto(l6), seed);
+    let called = false;
+    for (let i = 0; i < l6.duration * 60 && !w.stats.gridlock; i++) {
+      w.step();
+      const e = w.activeEvent('ambulance');
+      if (e && !called && w.t - e.at > 2) { called = w.requestPriority(e.car); }
+    }
+    return { w, r: score(w) };
+  };
+  const { w, r } = run(2);
+  ok(r.survived && r.cleared >= l6.target && w.stats.outages === 1 && w.stats.ambulances === 1, 'seed 2 with the corridor called survives, clears the target, and saw the outage and the ambulance', `${starString(r.stars)} ${r.cleared}/${r.avgWait.toFixed(0)}s/${r.collisions}x`);
+  ok(r.ambulanceLate === 0 && r.ambulances === 1, 'the ambulance was on time', `${r.ambulances} on the map, ${r.ambulanceLate} late`);
+  const late = new World(withAuto(l6), 2);
+  for (let i = 0; i < l6.duration * 60 && !late.stats.gridlock; i++) late.step();
+  const rl = score(late);
+  ok(rl.ambulanceLate === 1, 'the same seed with the corridor never called leaves it late', `${rl.ambulanceLate} late, cleared ${rl.cleared}`);
+  // the penalty itself, on a board quiet enough that honks have not
+  // saturated it: one late ambulance is five honks' worth
+  const quiet = new World(withAuto(levelById('first-light')), 3).run(60);
+  const s0 = meters(quiet).satisfaction;
+  quiet.stats.honks += 5;
+  const s5 = meters(quiet).satisfaction;
+  quiet.stats.honks -= 5; quiet.stats.ambulanceLate = 1;
+  const sLate = meters(quiet).satisfaction;
+  ok(sLate < s0 - 0.05 && Math.abs(sLate - s5) < 1e-9, 'a late ambulance costs satisfaction, five honks\' worth exactly', `${s0.toFixed(3)} plain, ${s5.toFixed(3)} with five honks, ${sLate.toFixed(3)} with one late ambulance`);
+  const pts = r.points, ptsLate = rl.points;
+  ok(rl.points === Math.max(0, Math.round(rl.cleared * 10 + (rl.survived ? 200 : 0) + rl.stars * 150 + rl.bonus * 2 - rl.collisions * 100 - rl.honks * 5 - rl.pedLate * 5 - 50)), 'a late ambulance is 50 points', `${ptsLate} vs ${pts} with it on time`);
+}
+
 group('satisfaction never fails a level');
 
 {
@@ -249,9 +294,9 @@ group('the save');
   ok(r.levels['first-light'].stars === 3 && r.levels['first-light'].best === 0 && r.levels['first-light'].plays === 0, 'repair clamps stars to 3 and floors bad numbers at 0', JSON.stringify(r.levels['first-light']));
   ok(!('junk' in r.levels), 'and drops a null record');
   ok(r.unlocks.join() === 'phases,sensors' && r.settings.sound === false && r.lastLevel === 'first-light', 'keeps string unlocks, settings and the last level', r.unlocks.join());
-  const six = fresh();
-  for (const l of LEVELS) recordResult(six, l.id, { stars: 2, points: 100 });
-  ok(Object.keys(repair(six).levels).length === 6 && repair(six).levels['two-blocks'].stars === 2, 'a record for every M6 level comes through repair, no new field needed', Object.keys(repair(six).levels).join());
+  const seven = fresh();
+  for (const l of LEVELS) recordResult(seven, l.id, { stars: 2, points: 100 });
+  ok(Object.keys(repair(seven).levels).length === 7 && repair(seven).levels['rush-hour'].stars === 2, 'a record for every level through M7 comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
   ok(JSON.stringify(repair(null)) === JSON.stringify(fresh()), 'repair of nothing is a fresh save');
   ok(JSON.stringify(repair(repair(r))) === JSON.stringify(repair(r)), 'repair is idempotent');
   const st = fresh();

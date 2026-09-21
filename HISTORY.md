@@ -11048,6 +11048,104 @@ claims the row on `main` before starting, still opens the one PR for the
 whole batch, and still owns closing it out even if it never calls `scribe`
 itself.
 
+## 2026-09-21: Signal City, M7 second increment, three events and Rush Hour (#567 to #570)
+
+The fifth increment of the 2+ row and the second of milestone 7: a level's
+`events` list, the surge, the power outage, the ambulance under a timer,
+the corridor changed under it, the panel's event line, and "Rush Hour",
+level 6. The motorcade, the lane closure, the school zone and the funeral
+procession are the rest of M7 and stay in the row. 512 checks across six
+suites (138 + 170 + 66 + 20 + 23 + 95), no storage key or save field
+touched (`repair` takes a seventh level record with no new field), no
+shipped level's target moved. Worked under Claude Fable 5.1, the model the
+row names.
+
+- **Three events, not seven, and they are level data** (#567). The row's
+  seven events split two ways: three that the world already had the
+  plumbing for and wanted only a schedule, a line and a check (`demandCurve`
+  was read by the spawner, `setDark` was called by nobody, an emergency
+  spawn already existed), and four that each want geometry or a rule the
+  world does not have (a platoon that must not be split, a closed lane in
+  `lanesForTurn`, a beacon over a `speedScale` window). The increment takes
+  the three, all on one new single-box level, and leaves the four. An event
+  is `{ kind, at, for }` in the level, started when the clock reaches `at`
+  and ended `for` seconds later; `World.active` holds the ones in force,
+  `activeEvent(kind)` reads one, and every start and end is an `event`
+  entry the renderer draws as a banner. Putting the schedule in the level
+  rather than in a call from the page keeps a run a function of (seed,
+  level, inputs), which the suite checks against the shipped level. A kind
+  the world does not know throws at its start, not at load, so a level
+  with a typo fails on the first run of the suite and not in someone's
+  browser at 185 s.
+- **The outage refuses every command that needs power** (#568). While an
+  outage is in force `requestPhase`, `setFlash` (a new door on the world;
+  the page went through the controller before) and `requestPriority` all
+  return false and change nothing, and the page disables the phase and
+  mode buttons. Without that, a phase pressed during the outage would have
+  brought the box back to green through `requestPhase`'s dark-to-all-red
+  path and the outage would have been a suggestion. When the power
+  returns each box goes to the phase it was in (or the one it had queued)
+  through an all-red; a box that was flashing or already dark comes back
+  to phase 0. On a timed plan that return is a jump in the plan's offset
+  by however long the dark lasted, because `_alignToPlan` is the
+  constructor's (#563); no corridor level scripts an outage, and the
+  wishlist says what to do if one does.
+- **The corridor is the whole entry leg and holds until the vehicle is
+  through** (#569). Two changes to M3's priority corridor, both found by
+  the level. First, `requestPriority` preempted the vehicle's own movement
+  alone, so on a one-lane approach a left turner at the head of the queue
+  sat on a red W-L through the whole hold with the ambulance behind it:
+  calling the corridor 2 s after the ambulance arrived made it late on 3
+  of 6 rush-hour seeds, and in the suite's eight-car queue the ambulance
+  never cleared the box in 60 s. The corridor is now every vehicle
+  movement off the entry leg (W-L, W-T, W-R), which `phaseIsValid` accepts
+  because same-entry movements never conflict. Second, the hold was an
+  estimate from the vehicle's distance at the call (18 s from the map
+  edge), and at rush hour the queue in front of it is the real distance:
+  `_holdPriority` pushes the hold every step to at least 6 s past now
+  while the vehicle is still short of its box exit, capped at 60 s from
+  the green's start so a wedged vehicle cannot hold the box for good. In
+  the suite the estimate is 27 s, the ambulance clears its box at 32 s,
+  and the hold ends 6.0 s after. Free Play's two ambulances run under the
+  same rule; its checks did not move.
+- **A late ambulance is five honks and 50 points, and Rush Hour's targets
+  are the corridor's cost** (#570). Devon's brief keeps satisfaction a
+  bonus, not a third fail, so an ambulance still on the map past `within`
+  costs what five honks cost in `meters` and 50 points in `score`, and
+  nothing else; the suite asserts the equality against five real honks on
+  a quiet board. Rush Hour is one crossroads on the First Light network
+  with aggressive and rideshare drivers added: the surge at 60 s for 100
+  at 1.7, the outage at 110 s for 30, the ambulance from W at 185 s with
+  40 s. Calibrated on a 22 s cycle over six seeds: with the corridor
+  called 2 s after the ambulance arrives it is on time every seed and the
+  board clears 59 to 77 at 13 to 21 s average wait; never called, it is
+  late on 3 of 6 and the board clears 65 to 83 at 10 to 17 s. Target 56
+  and waitTarget 20: the corridor is the first star and what it costs the
+  board is what a hand on the phases has to buy back for the second. The
+  numbers are seed-fragile at the metre: a 1/60 s change in when an event
+  logs its end moved seed 2 from 63 cleared with no collision to 59 with
+  one, which is why the target is 56 and not 60.
+
+**Broken on purpose** (#34), each from green, each restored: `_eventTick`
+dropped from `step`, thirteen failures led by `at 30 s it is in force,
+scale 2, until 90 s  until null, scale 1` and `at 40 s the box is dark on
+every head  red,green`; the `powerOut` refusal dropped from
+`requestPhase`, `a phase asked for during the outage is refused and the
+box stays dark` and then `at 70 s the power is back ... green next null
+(was 1)`, because the refused phase had already brought the box back;
+`_ambulanceTick` never marking late, `behind a red queue it is late at 67
+s and still on the map  clock -0.3, cleared 0`; `_holdPriority` emptied,
+`the corridor is still green when it clears the box  through at 32.0 s,
+estimate 27.0 s` and `the hold ends about 6 s after  0.0 s after`;
+`_endEvent` resuming phase 0, `comes back through an all-red to the phase
+it was in  allred next 0 (was 1)`; the corridor narrowed to the vehicle's
+own movement, `for the whole N leg  N-T` and `through at null s`; the
+ambulance penalty zeroed in `meters`, `five honks' worth exactly  0.951
+plain, 0.851 with five honks, 0.951 with one late ambulance`; the event
+line's hidden toggle dropped from the page, `at 61 s the event line says
+rush hour at 170%` (the text was right and the line was still hidden).
+Eight breaks, eight caught by the assertion whose comment claims them.
+
 ## 2026-09-21: Signal City, M7 first increment, the green wave (#563 to #566)
 
 The fourth increment of the 2+ row and the first of milestone 7: the offset

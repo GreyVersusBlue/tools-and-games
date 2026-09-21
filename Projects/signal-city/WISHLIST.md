@@ -88,16 +88,39 @@ open work; this file is the plan it points at.
   street's cars as dots twice a second. 138 + 137 + 59 + 20 + 23 + 83
   checks.
 
+- **M7, second increment: three events and Rush Hour** (HISTORY.md #567 to
+  #570): a level's `events` list is scripted moments, `{ kind, at, for }`
+  each, started when the clock reaches `at` and ended `for` seconds later
+  (`World.active`, `activeEvent(kind)`). The surge (`{ scale }`)
+  multiplies every leg's demand on top of the level's `demandCurve`
+  (`demandScale()`). The outage calls `setDark()` on every box and refuses
+  every command that needs power (`requestPhase`, the new `World.setFlash`
+  door, `requestPriority`; the page disables the buttons) until it ends,
+  when each box comes back through an all-red to the phase it was in. The
+  ambulance (`{ leg, turn, within }`) spawns an emergency vehicle with
+  `within` seconds to leave the map; past that it is late
+  (`stats.ambulanceLate`, an `ambulance-late` event, five honks' worth of
+  satisfaction and 50 points). The corridor changed under it: it is green
+  for every movement off the vehicle's entry leg, not its own alone, and
+  it holds until the vehicle is through the box plus 6 s, capped at 60
+  (`_holdPriority`). The panel's event line says what is on and for how
+  long, and the board announces each start. "Rush Hour": one crossroads,
+  the surge at 60 s for 100 at 1.7, the power out at 110 s for 30, the
+  ambulance from W at 185 s with 40 s. 138 + 167 + 65 + 20 + 23 + 95
+  checks.
+
 ## What is next, in order
 
-7. **M7, the rest: the events** (½): rush-hour surge (`demandCurve` is read
-   by the spawner already; no level uses it), power outage (`setDark`; the
-   cars already treat dark as a four-way stop; nothing calls it), VIP
-   motorcade, ambulance under a timer, lane closure, school-zone flashing
-   yellow window, funeral procession. Each wants a level or a scripted
-   moment on one, a line in the panel or the HUD saying what is happening,
-   and a check. The platoon diagram is corridor-only; an event on a single
-   box does not need it.
+7. **M7, the rest: four events** (½): VIP motorcade, lane closure,
+   school-zone flashing yellow window, funeral procession. Each wants a
+   level or a scripted moment on one, a line on the event line saying what
+   is happening, and a check; the `events` list and `_startEvent` /
+   `_endEvent` are where they go. The platoon diagram is corridor-only; an
+   event on a single box does not need it. A motorcade and a procession
+   are a platoon of scripted spawns with a rule about being split; a lane
+   closure wants `lanesForTurn` to know a closed lane and the renderer to
+   draw cones; the school zone is a window of `speedScale` under a flashing
+   beacon, and `speedScale` is read by `drive` and set by nobody.
 8. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
    protected turns, roundabout conversion, extra phases.
 9. **M9 endless and sandbox** (1): an intersection per survived day, a grid
@@ -157,3 +180,17 @@ open work; this file is the plan it points at.
   never touches (test/sim.mjs).
 - Nothing real-time is asserted anywhere, so #53 does not reach this
   project: the loop is fixed-step and every suite is arithmetic.
+- Rush Hour's corridor costs the board. Calibrated on a 22 s cycle over
+  six seeds: with the corridor called 2 s after the ambulance arrives it
+  is on time on all six and the board clears 59 to 77 at 13 to 21 s
+  average wait; never called, it is late on 3 of 6 and the board clears
+  65 to 83 at 10 to 17 s. Target 56 and waitTarget 20 make the corridor
+  the first star and a good hand on the phases the second. Before the
+  corridor was widened to the whole entry leg, calling it early made the
+  ambulance late on 3 of 6 seeds: a left turner at the head of the one
+  lane sat on a red W-L through the whole hold (#569).
+- An outage on a timed plan (Two Blocks) is not scripted anywhere yet:
+  the box comes back to the phase it was in through an all-red, and its
+  offset drifts by however long the dark lasted, because `_alignToPlan`
+  is the constructor's and a jump (#563). If a corridor level ever gets
+  an outage, the return wants to go through `setOffset`'s shift.
