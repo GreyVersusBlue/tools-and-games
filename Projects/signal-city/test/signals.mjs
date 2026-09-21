@@ -249,6 +249,115 @@ group('timed mode and offsets');
   ok(e.stage === f.stage && e.phase === f.phase && Math.abs(e.stageT - f.stageT) < 1e-9, 'an offset of one whole cycle changes nothing');
 }
 
+group('the offset moves through a transition (M7)');
+
+{
+  // Two Blocks' plan: 22 + 12 greens, 3 s yellow, 1.5 s all-red, a 43 s cycle.
+  const plan = [{ phase: 0, green: 22 }, { phase: 1, green: 12 }];
+  const timing = { yellow: 3, allRed: 1.5, minGreen: 4 };
+  const mk = offset => new Controller({ mode: 'timed', plan, timing, offset });
+  // the reference: a controller built at the new offset. The one under test
+  // is built at 0, moved at t = 5, and has to end up stepping in lock step
+  // with it without a single jump on the way.
+  const same = (a, b) => a.stage === b.stage && a.phase === b.phase && Math.abs(a.stageT - b.stageT) < 1e-6;
+  const legal = log => {
+    // every stage change after the offset call is green -> yellow -> allred -> green
+    const kinds = log.filter(e => ['yellow', 'allred', 'green'].includes(e.kind)).map(e => e.kind);
+    const order = ['yellow', 'allred', 'green'];
+    for (let i = 1; i < kinds.length; i++) if (kinds[i] !== order[(order.indexOf(kinds[i - 1]) + 1) % 3]) return false;
+    return true;
+  };
+
+  const a = mk(0), ref = mk(16);
+  run(a, 5); run(ref, 5);
+  const before = { stage: a.stage, phase: a.phase, stageT: a.stageT };
+  const q = a.setOffset(16);
+  ok(a.offset === 16 && q === 16 && a.shift === 16, 'setOffset(16) on a 43 s cycle queues 16 s of greens to cut, the shorter way round', `offset ${a.offset} shift ${a.shift}`);
+  ok(a.stage === before.stage && a.phase === before.phase && a.stageT === before.stageT, 'and the stage in force does not move at the call', `${a.stage} ${a.stageT.toFixed(1)}`);
+  ok(Math.abs(a.timeToYellow('N-T') - (22 - 16 - 5)) < 1e-9, 'timeToYellow reads the cut green: 22 s less 16, from 5 s in', a.timeToYellow('N-T').toFixed(2));
+  const mark = a.log.length;
+  run(a, 1.05);
+  ok(a.stage === 'yellow' && a.next === 1, 'the cut green ends at 6 s with the next phase queued', `${a.stage} next ${a.next} at ${a.t.toFixed(2)}`);
+  ok(Math.abs(a.shift) < 1e-6, 'and one green paid the whole 16 s', String(a.shift));
+  run(a, 200); run(ref, a.t - ref.t);
+  ok(same(a, ref), 'four cycles on it steps in lock step with a controller built at offset 16', `${a.stage} ${a.phase} ${a.stageT.toFixed(2)} vs ${ref.stage} ${ref.phase} ${ref.stageT.toFixed(2)}`);
+  ok(legal(a.log.slice(mark)), 'and every change on the way ran yellow then all-red', a.log.slice(mark).map(e => e.kind).join(' '));
+
+  // the long way round is the stretch: 30 s further is 13 s back, so the greens stretch by 13
+  const b = mk(0), refB = mk(30);
+  run(b, 5); run(refB, 5);
+  const qb = b.setOffset(30);
+  ok(qb === -13 && b.shift === -13, 'setOffset(30) stretches by 13 s rather than cutting 30', `shift ${b.shift}`);
+  ok(Math.abs(b.timeToYellow('N-T') - (22 + 13 - 5)) < 1e-9, 'timeToYellow reads the stretched green: 35 s', b.timeToYellow('N-T').toFixed(2));
+  run(b, 200); run(refB, b.t - refB.t);
+  ok(same(b, refB), 'and it too ends in lock step with a controller built at 30', `${b.stage} ${b.phase} ${b.stageT.toFixed(2)} vs ${refB.stage} ${refB.phase} ${refB.stageT.toFixed(2)}`);
+
+  // a cut deeper than one green can pay: 21 s from 4 s in, with 22 - 4 = 18 spare on this green
+  const c = mk(0), refC = mk(21);
+  run(c, 4); run(refC, 4);
+  c.setOffset(21);
+  run(c, 0.05);
+  ok(c.stage === 'yellow', 'a 21 s cut from 4 s in ends the green at the 4 s minimum', `${c.stage} at ${c.t.toFixed(2)}`);
+  ok(Math.abs(c.shift - 3.1) < 1e-6, 'with 3.1 s still owed (the green ran 4.1 at a 0.1 s step)', c.shift.toFixed(2));
+  run(c, 4.5 + 12 - 3.1 + 0.05);
+  ok(c.stage === 'yellow' && c.phase === 1 && Math.abs(c.shift) < 1e-6, 'the 12 s side-street green pays the 3.1 and ends at 8.9', `${c.stage} phase ${c.phase} shift ${c.shift.toFixed(2)}`);
+  run(c, 200); run(refC, c.t - refC.t);
+  ok(same(c, refC), 'and the two are then in lock step', `${c.stage} ${c.phase} ${c.stageT.toFixed(2)} vs ${refC.stage} ${refC.phase} ${refC.stageT.toFixed(2)}`);
+
+  // never below the minimum green, whatever is owed: 20 s asked 1 s into
+  // a 22 s green would end it at 2 s, and it ends at 4. (The first green
+  // is not in the log, the constructor starts in it, so this reads the
+  // stage and not the log.)
+  const d = mk(0);
+  run(d, 1);
+  d.setOffset(20);
+  ok(Math.abs(d.timeToYellow('N-T') - 3) < 1e-9, 'a 20 s cut asked 1 s into a 22 s green leaves 3 s: the 4 s minimum, not 2 - 1', d.timeToYellow('N-T').toFixed(2));
+  run(d, 2.05);
+  ok(d.stage === 'green', 'at 3.05 s it is still green', `${d.stage} at ${d.t.toFixed(2)}`);
+  run(d, 1);
+  ok(d.stage === 'yellow' && Math.abs(d.shift - 2) < 0.11, 'at 4.05 s it is yellow, with 2 s of the 20 still owed', `${d.stage} at ${d.t.toFixed(2)}, shift ${d.shift.toFixed(2)}`);
+
+  // the same offset again is a no-op; a whole cycle is a no-op
+  const e = mk(16);
+  run(e, 3);
+  ok(e.setOffset(16) === 0 && e.shift === 0, 'setOffset to the offset it has queues nothing');
+  ok(e.setOffset(16 + 43) === 0 && e.shift === 0 && e.offset === 59, 'and a whole cycle further queues nothing either', `offset ${e.offset}`);
+
+  // a second call while the first is still owed: the two add up mod the cycle
+  const f = mk(0);
+  run(f, 2);
+  f.setOffset(10); f.setOffset(0);
+  ok(f.shift === 0, 'moving to 10 and straight back to 0 owes nothing', String(f.shift));
+  f.setOffset(10); f.setOffset(20);
+  ok(f.shift === 20, 'moving to 10 then 20 owes 20', String(f.shift));
+
+  // a hand on the phases while a cut is owed counts toward it
+  const g = mk(0);
+  run(g, 10);
+  g.setOffset(16);
+  g.requestPhase(1);
+  ok(g.stage === 'yellow' && Math.abs(g.shift - 4) < 1e-6, 'pressing the side street 10 s into a 22 s green pays 12 of the 16 owed', `shift ${g.shift.toFixed(2)}`);
+
+  // cyclePosition and the forecast
+  const h = mk(16);
+  ok(Math.abs(h.cyclePosition() - 16) < 1e-9, 'cyclePosition reads 16 at t = 0 for offset 16', h.cyclePosition().toFixed(2));
+  run(h, 10);
+  ok(Math.abs(h.cyclePosition() - 26) < 1e-6 && h.stage === 'allred', 'and 26 ten seconds on: 1 s into phase 0\'s all-red', `${h.cyclePosition().toFixed(2)} ${h.stage} ${h.phase}`);
+  const state = { stage: h.stage, phase: h.phase, stageT: h.stageT, t: h.t, logN: h.log.length };
+  const fc = h.forecast('N-T', 43, 0.25);
+  ok(h.stage === state.stage && h.t === state.t && h.stageT === state.stageT && h.log.length === state.logN, 'forecasting does not step the controller', `${h.stage} t ${h.t.toFixed(2)} vs ${state.stage} t ${state.t.toFixed(2)}`);
+  ok(fc.length >= 4 && fc[0].head === 'red' && fc.every((r, i) => i === 0 || r.from === fc[i - 1].to), 'a cycle of N-T forecast from phase 1 is contiguous runs starting red', fc.map(r => `${r.head} ${r.from}-${r.to}`).join(', '));
+  const greenRun = fc.find(r => r.head === 'green');
+  ok(greenRun && Math.abs(greenRun.from - (0.5 + 12 + 4.5)) < 0.26 && Math.abs(greenRun.to - greenRun.from - 22) < 0.26, 'the next N-T green begins at 17 s (the half second of all-red, then the side street\'s 12 + 4.5) and runs 22', greenRun ? `${greenRun.from} to ${greenRun.to}` : 'none');
+  // the forecast of a moved controller is the reference's, once the shift is paid
+  const k = mk(0), refK = mk(16);
+  run(k, 5); run(refK, 5);
+  k.setOffset(16);
+  run(k, 50); run(refK, 50);
+  const fk = k.forecast('N-T', 43), fr = refK.forecast('N-T', 43);
+  ok(JSON.stringify(fk) === JSON.stringify(fr), 'fifty seconds after the move its forecast is the reference\'s to the quarter second', `${fk.length} vs ${fr.length} runs`);
+}
+
 group('rules');
 
 {

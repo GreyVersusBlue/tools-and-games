@@ -604,6 +604,24 @@ group('the corridor: two boxes, one handoff, fresh decisions');
   ok(threw && /gap/.test(threw), 'a spacing that leaves a gap between the legs is refused', threw);
 }
 
+{
+  // the offset slider's door (M7): the second box moves, the first does not,
+  // and the traffic feels it
+  const lvl = { network: { nodes: 2, spacing: 220 }, demand: [{ W: 500, N: 200, S: 200 }, { E: 500, N: 200, S: 200 }], duration: 600, mix: { standard: 1 }, controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 22 }, { phase: 1, green: 12 }], timing: { yellow: 3, allRed: 1.5, minGreen: 4 } }, controllers: [{ offset: 0 }, { offset: 16 }] };
+  const w = new World(lvl, 3);
+  ok(w.offsetOf() === 16, 'offsetOf reads the level\'s 16', String(w.offsetOf()));
+  w.run(20);
+  const q = w.setOffset(30);
+  ok(q === 14 && w.controllers[1].offset === 30 && w.controllers[1].shift === 14 && w.controllers[0].offset === 0 && w.controllers[0].shift === 0, 'setOffset(30) moves the east box 14 s on and leaves the west one alone', `queued ${q}, offsets ${w.controllers.map(c => c.offset).join(',')}`);
+  ok(w.offsetOf() === 30, 'and offsetOf reads 30');
+  const other = new World(lvl, 3).run(20);
+  w.run(90); other.run(90);
+  ok(w.hash() !== other.hash(), 'ninety seconds on, the run differs from the one that kept 16', `${w.stats.cleared} vs ${other.stats.cleared} cleared`);
+  let threw = null;
+  try { w.setOffset(5, 0); } catch (e) { threw = e.message; }
+  ok(threw && /no second box/.test(threw), 'the first box has no offset to set', threw);
+}
+
 /* ---------------------------------------------------------------- the soak -- */
 
 group('a three-minute mixed run on the cycling level');

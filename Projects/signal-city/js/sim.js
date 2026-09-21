@@ -122,6 +122,17 @@ export class World {
 
   requestPhase(i, node = 0) { return this.controllers[node].requestPhase(i); }
 
+  // The corridor's offset (M7): how many seconds behind the first box the
+  // box at `node` runs its plan. The controller moves through its own
+  // transitions (Controller.setOffset); returns the seconds it queued.
+  setOffset(seconds, node = 1) {
+    if (node <= 0 || node >= this.controllers.length) throw new RangeError(`no second box ${node}`);
+    return this.controllers[node].setOffset(this.controllers[0].offset + seconds);
+  }
+
+  // The offset the box at `node` runs behind the first, for the panel.
+  offsetOf(node = 1) { return this.controllers[node] ? this.controllers[node].offset - this.controllers[0].offset : 0; }
+
   // Press the call button on a leg. A call spawns `walkers` people when its
   // WALK comes; a second call on the same leg adds its people to the first.
   callPed(leg, { node = 0, walkers = 1 } = {}) {

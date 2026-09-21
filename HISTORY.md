@@ -11048,6 +11048,90 @@ claims the row on `main` before starting, still opens the one PR for the
 whole batch, and still owns closing it out even if it never calls `scribe`
 itself.
 
+## 2026-09-21: Signal City, M7 first increment, the green wave (#563 to #566)
+
+The fourth increment of the 2+ row and the first of milestone 7: the offset
+slider on Two Blocks, the transition it runs through, and the platoon
+visualiser. The events (rush hour, power outage, motorcade, ambulance
+timer, lane closure, school zone, funeral procession) are the rest of M7
+and stay in the row. 460 checks across six suites (138 + 137 + 59 + 20 +
+23 + 83; `test/wave.mjs` is new and in the Site CI matrix), no storage key
+or save field touched, no level target moved (Two Blocks still ships offset
+16, and its scoring checks are as #562 left them). Worked under Claude
+Fable 5.1, the model the row names.
+
+- **The offset moves through a transition, the shorter way round** (#563).
+  `Controller.setOffset(o)` on a running timed plan does not touch the
+  stage in force and does not call `_alignToPlan` (that is the constructor's,
+  and at a new offset it is a jump from green to red with no yellow, #562).
+  The controller has to end up `d = (o - offset) mod L` seconds further
+  along its cycle, and it can get there by losing d seconds (the greens to
+  come cut, never below the minimum green) or gaining `L - d` (the greens
+  stretched, never past twice their plan); it takes whichever is fewer
+  seconds, so on Two Blocks' 43 s cycle a move of 30 is 13 s of stretch.
+  `shift` is what is still owed and pays down green by green in
+  `_beginYellow`, so a hand on the phases meanwhile counts toward it
+  (pressing the side street 10 s into a 22 s green pays 12 of 16), and a
+  big cut can take two or three greens: 21 s asked 4 s in ends that green
+  at 4.1, owes 3.1, and the 12 s side street pays it. Every change on the
+  way runs yellow then all-red, `timeToYellow` reads the cut or stretched
+  green so granny sees it, and once the shift is paid the controller steps
+  in lock step with one built at the new offset, which is what the suite
+  compares against rather than its own arithmetic. `World.setOffset(s)` is
+  the corridor's door (the east box, `s` seconds behind the first),
+  `offsetOf()` reads it, and the slider runs 0 to a cycle less one.
+- **The visualiser is a time-space diagram, forecast from a stepped copy**
+  (#564). `js/wave.js`: distance along the corridor across, time down,
+  twenty seconds of samples above the now line and fifty of forecast
+  below; each box a column split eastbound and westbound, coloured by the
+  head its through movement shows; a line from every green start to come,
+  at the 14 m/s a standard car holds, to where it lands at the other box;
+  the main street's cars as dots sampled twice a second (the side streets'
+  are not the wave's). The forecast is `Controller.forecast(movement,
+  seconds)` stepping `clone()` at a quarter second with no sensor, so a
+  sensed plan forecasts as its timed plan alone; Two Blocks has no loops.
+  The model is pure and `test/wave.mjs` steps it: the east column is the
+  west column 16 s later at every quarter second, and it is 27 s later a
+  minute after `setOffset(27)`.
+- **The wave first, the events after; and the wave on Two Blocks runs one
+  way** (#565). The green wave was the sub-slice because #562 deferred it
+  by name and the live page said "the slider is M7's" in the panel. What
+  the diagram shows about the level as shipped: 220 m at 14 m/s is 15.7 s
+  against a 16 s offset, so a platoon released at the east box's green
+  start reaches the west box 0.3 s before its green, and one released at
+  the west box lands 11.3 s into the east box's red; at offset 27 it is the
+  other way about. The suite asserts both numbers as "within a second of a
+  green's start" and "more than 8 s from one", not as green and red,
+  because the line is the free-flow front and a real platoon starting from
+  rest lands just after it. A two-way wave on a two-phase plan wants the
+  travel time to be half a cycle and 43 s is not 31; whether the level
+  should say so is M8's call, with the campaign. The 16 s stays.
+- **The first green is not in the log** (#566). Two assertions passed
+  their deliberate break and were rewritten. "No green on the way is cut
+  below the 4 s minimum" measured greens as the gap between a `green` log
+  entry and the `yellow` after it, and the constructor starts in a green
+  it never logs, so the one green the break shortened was the one the
+  assertion could not see; it reads the stage clock now (3 s left, still
+  green at 3.05, yellow at 4.05 with 2 s owed). "Forecasting does not step
+  the controller" captured its reference state after the call it was
+  checking; captured before, a forecast that steps the controller itself
+  reads `t 53.00 vs t 10.00`. Neither would have been found without #34.
+
+**Broken on purpose** (#34), each from green, each restored: the direction
+choice dropped from `setOffset` (always cut), `setOffset(30) stretches by
+13 s rather than cutting 30  shift 30` and `timeToYellow reads the
+stretched green: 35 s  0.00`; the minimum green dropped from
+`_plannedGreen`, `a 20 s cut asked 1 s into a 22 s green leaves 3 s: the 4
+s minimum, not 2 - 1  1.00`, `at 3.05 s it is still green  yellow at 3.00`
+and `at 4.05 s it is yellow, with 2 s of the 20 still owed  yellow at 4.00,
+shift 0.00`; `_absorbShift` dropped from `_beginYellow`, eight failures led
+by `and one green paid the whole 16 s  16` and `four cycles on it steps in
+lock step with a controller built at offset 16  yellow 1 1.60 vs green 0
+7.10`; `forecast` stepping `this` instead of a clone, `forecasting does not
+step the controller  allred t 53.00 vs allred t 10.00` and, in the wave
+suite, `two lines each way land within a hundred seconds  1 east, 2 west, 5
+drawn`. The first two runs of breaks 2 and 4 stayed green; #566 is why.
+
 ## 2026-09-21: Signal City, milestone 6 (#554 to #562)
 
 The third increment of the 2+ row: pedestrians, induction loops, the

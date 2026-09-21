@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 6, 2026-09-21)
+## What shipped (milestones 0 to 6 and the green wave, 2026-09-21)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -72,16 +72,32 @@ open work; this file is the plan it points at.
   framing both. "Crossing" (Four Ways with calls on every leg, loops in the
   bays) and "Two Blocks" (the corridor on a timed plan, the east box 16 s
   behind). 107 + 128 + 51 + 20 + 73 checks.
+- **M7, first increment: the green wave** (HISTORY.md #563 to #566): the
+  offset slider on Two Blocks, 0 to a cycle less one, through
+  `Controller.setOffset`: the controller keeps the stage it is in and pays
+  the difference over the greens to come, each cut no shorter than the
+  minimum green or stretched to at most twice its plan, whichever way round
+  the cycle is fewer seconds, every change still through yellow and
+  all-red, a hand on the phases meanwhile counting toward it (`shift` is
+  what is still owed; `cyclePosition`, `clone`, `forecast`). The platoon
+  visualiser (`js/wave.js`, `test/wave.mjs`): a time-space diagram in the
+  panel, distance across and time down, each box a column coloured by the
+  head its two throughs show (twenty seconds of samples above the now line,
+  fifty of forecast below), a line from every green start at the speed a
+  standard car holds to where it lands at the other box, and the main
+  street's cars as dots twice a second. 138 + 137 + 59 + 20 + 23 + 83
+  checks.
 
 ## What is next, in order
 
-7. **M7 events and the green wave** (½ each): the offset slider and a
-   platoon visualiser (the offset is a number in the level now; changing it
-   live means re-aligning a running plan through a proper transition, not a
-   jump); rush-hour surge (`demandCurve`), power outage (`setDark`, the cars
-   already treat dark as four-way stop), VIP motorcade, ambulance under a
-   timer, lane closure, school-zone flashing yellow window, funeral
-   procession.
+7. **M7, the rest: the events** (½): rush-hour surge (`demandCurve` is read
+   by the spawner already; no level uses it), power outage (`setDark`; the
+   cars already treat dark as a four-way stop; nothing calls it), VIP
+   motorcade, ambulance under a timer, lane closure, school-zone flashing
+   yellow window, funeral procession. Each wants a level or a scripted
+   moment on one, a line in the panel or the HUD saying what is happening,
+   and a check. The platoon diagram is corridor-only; an event on a single
+   box does not need it.
 8. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
    protected turns, roundabout conversion, extra phases.
 9. **M9 endless and sandbox** (1): an intersection per survived day, a grid
@@ -114,9 +130,24 @@ open work; this file is the plan it points at.
   a permissive left waiting for a gap in a platoon holds its one-lane
   queue past the 120 s limit. The level ships a 22 s main green, where no
   seed locks.
-- The offset is a number in the level and a line in the panel. A slider
-  that re-aligns a running plan is M7's (the green wave), because
-  `_alignToPlan` at a new offset is a jump from green to red with no yellow.
+- The offset slider does not use `_alignToPlan`: that is the constructor's
+  and a jump. `setOffset` keeps the running stage and pays the difference
+  over the greens to come (#563). It takes the shorter way round the cycle,
+  so on Two Blocks' 43 s cycle a move of 30 s is 13 s of stretch, and it
+  never cuts a green below the minimum green, so a big cut can take two or
+  three greens to pay; the panel's note says what is still owed until it is
+  paid.
+- The wave on Two Blocks runs one way at a time. 220 m at a standard car's
+  14 m/s is 15.7 s, so with the east box 16 s behind a platoon released at
+  the east box's green start reaches the west box 0.3 s before its green
+  and one released at the west box lands 11 s into the east box's red; at
+  27 s it is the other way about. `test/wave.mjs` holds both numbers. A
+  two-way wave on a two-phase plan wants the travel time to be half a
+  cycle, and 43 s is not 31; whether the level should say so is M8's, with
+  the campaign.
+- The forecast steps a clone without a sensor, so on a level with loops the
+  diagram draws the timed plan and not what a queue rule will do to it.
+  Two Blocks has no sensors.
 - The trucker's "wide" sweep is a rule, not off-tracking geometry: a turning
   truck ties up the other lanes of its entry and exit legs until its trailer
   clears the box. Readable, testable, and wrong in the way a diagram is.
