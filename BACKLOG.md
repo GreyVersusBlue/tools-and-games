@@ -102,7 +102,7 @@ table** in Tier 2.
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
 **The last batch of ranked work that shipped** is **Signal City, milestone 5
-(PR #PRNUM)**, rank 1, one increment of a 2+ worked under Claude Fable 5.1, the
+(PR #340)**, rank 1, one increment of a 2+ worked under Claude Fable 5.1, the
 model the row names. That is the line to update when your batch merges; a PR
 that only changes these files is not a batch and does not belong in it.
 **26 ranked items remain**, and **every one of them names a model.**
@@ -465,7 +465,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 5 shipped (PRs #338, #PRNUM); next M6, pedestrians, sensors and the corridor | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 5 shipped (PRs #338, #340); next M6, pedestrians, sensors and the corridor | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1130,7 +1130,7 @@ its `WISHLIST.md` carries the milestone plan in full. The ranked row is a 2+:
 one increment per session, the row rewritten to say what is done.
 
 **Milestones 0 to 4 shipped in PR #338 (2026-09-21, #534 to #543) and
-milestone 5 in PR #PRNUM (2026-09-21, #544 to #553)**: items 1 to 7 below are
+milestone 5 in PR #340 (2026-09-21, #544 to #553)**: items 1 to 7 below are
 done, 305 checks across five suites, all in Site CI. Item 8 is the next
 increment. Still open from the brief and not yet placed: a `games.mjs` recipe
 and a preview capture (a ¼ row for the site, like Blue Hour's ranks 16 and
