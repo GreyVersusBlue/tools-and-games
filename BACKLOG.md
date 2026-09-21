@@ -468,7 +468,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 6 and M7's green wave shipped (PRs #338, #340, #342, #344); next the rest of M7, the events | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 6 and M7's green wave shipped (PRs #338, #340, #342, #344); next the rest of M7, the events | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/signal-city-events-zceqde` | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
