@@ -82,6 +82,12 @@ group('phases');
   ok(p.every(ph => phaseIsValid(ph.movements).ok), 'every one of them validates');
 }
 {
+  const p = standardPhases(LEGS, { main: 'EW' });
+  ok(p[0].name === 'E-W' && p[1].name === 'N-S' && new Controller({ main: 'EW' }).majorLegs().join() === 'E,W', "main: 'EW' puts the east-west phase first, and the major legs follow it", p.map(x => x.name).join(', '));
+  const q = standardPhases(LEGS, { lefts: true, main: 'EW' });
+  ok(q.map(x => x.name).join() === 'E-W,E-W lefts,N-S,N-S lefts', 'and with protected lefts the four phases keep that order', q.map(x => x.name).join(', '));
+}
+{
   const p = standardPhases(['N', 'E', 'S']);
   ok(p.length === 2 && p[1].movements.every(m => m.startsWith('E-')), 'a T-junction gets a main phase and a stem phase', p.map(x => x.movements.join('+')).join(' | '));
 }
@@ -267,6 +273,25 @@ group('rules');
   const d = new Controller({ rules: [{ when: 'queue', movement: 'E-T', threshold: 1, then: 1 }] });
   run(d, 10);
   ok(d.phase === 0, 'without a sensor the queue rule sleeps');
+  // a jump is an insertion: four phases, E-W lefts pulled in from N-S, and
+  // 'next' after it goes to N-S lefts (the phase N-S would have led to), not
+  // back around to N-S
+  const j = new Controller({ lefts: true, rules: [{ when: 'queue', movement: 'E-L', threshold: 3, then: 3 }, { when: 'elapsed', seconds: 5, then: 'next' }], timing: { yellow: 1, allRed: 1, minGreen: 2 } });
+  let bay = 0;
+  run(j, 2.1, 0.1, () => bay);
+  bay = 3;
+  run(j, 2.2, 0.1, () => bay);
+  ok(j.stage === 'green' && j.phase === 3, 'a full E bay during N-S pulls the E-W lefts in', `${j.stage} ${j.phase}`);
+  bay = 0;
+  run(j, 7.2, 0.1, () => bay);
+  ok(j.stage === 'green' && j.phase === 1, "and the 'next' after it is N-S lefts, where the cycle was, not E-W", `${j.stage} ${j.phase}`);
+  run(j, 7.2, 0.1, () => bay);
+  ok(j.phase === 2, 'then the cycle runs on: E-W', `${j.phase}`);
+  const e = new Controller({ rules: [{ when: 'queue', movement: 'E-T', threshold: 1, after: 16, then: 1 }], timing: { yellow: 1, allRed: 1, minGreen: 2 } });
+  run(e, 15, 0.1, () => 5);
+  ok(e.stage === 'green' && e.phase === 0, "a queue rule with `after: 16` does not cut a green short of 16 s, whatever the loop reads", `${e.stage} at ${e.t.toFixed(1)} s`);
+  run(e, 1.2, 0.1, () => 5);
+  ok(e.stage === 'yellow' && e.next === 1, 'and fires at 16', `${e.stage} next ${e.next}`);
 }
 
 group('flashing and dark');

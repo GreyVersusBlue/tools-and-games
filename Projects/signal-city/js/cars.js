@@ -64,6 +64,7 @@ export class Car {
     this.width = st.width;
     this.spawnedAt = spawnedAt;
     this.wait = 0;              // seconds stopped by traffic or a light
+    this.stallT = 0;            // seconds sitting still inside the box, this stop
     this.patience = st.patience;
     this.honked = 0;            // honks so far
     this.honkCooldown = 0;
@@ -129,8 +130,8 @@ export class Car {
     this.histI = (this.histI + 1) % HIST;
   }
 
-  // Reset the once-per-approach decisions (a corridor level will call this
-  // as a car leaves one box for the next).
+  // Reset the once-per-approach decisions: the world calls this as a car
+  // leaves one box for the next (a corridor's handoff, sim.js).
   newApproach() {
     this.yellowDecision = null; this.redRollDone = false; this.cautiousDone = false; this.cautiousStop = false;
     this.wrongTurnDone = false; this.stoppedAtLine = false; this.stoppedAt = -1; this.hesitateRolled = false;
@@ -167,7 +168,7 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
       // a fresh green clears last cycle's decisions
       car.yellowDecision = null; car.redRollDone = false; car.stoppedAtLine = false; car.stoppedAt = -1;
       // and is trusted, once, by a driver it releases within its first second
-      if (!car.trustRolled && d < 30 && world.controller.stageT < TRUST_WINDOW) rollTrust();
+      if (!car.trustRolled && d < 30 && world.controllerFor(car).stageT < TRUST_WINDOW) rollTrust();
       // granny: a green that is about to end, and room to stop, and she stops
       if (st.cautious && !car.cautiousDone && timeToYellow < 3 && d > 8 && car.v > 2) {
         car.cautiousDone = true;
@@ -198,7 +199,7 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
       }
       // a green on its way: the anticipator rolls once, and then does not
       // slow for a line they will reach as it turns green
-      const tg = world.controller.timeToGreen(p.movement);
+      const tg = world.controllerFor(car).timeToGreen(p.movement);
       if (!Number.isFinite(tg)) { car.trustRolled = false; car.trusting = false; }
       else {
         if (!car.trustRolled && d < 80 && car.v > 4) rollTrust();
@@ -230,18 +231,23 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
 export function boxVerdict(car, head, world) {
   const p = car.path;
   const mine = p.movement;
-  const permissive = world.controller.current.permissive.includes(mine) && (head === 'green' || head === 'yellow');
+  const ctl = world.controllerFor(car);
+  if (car.front < p.stopLine - 30) return 0;        // too far to care
+  // a walker on the crosswalk I leave by, still short of my lane or in it:
+  // I hold at the box edge before the zebra. Every driver sees a person,
+  // trusting or not; it is the box they stop looking at.
+  if (car.front < p.boxExit + 0.2 && world.walkerBlocks(p)) { car.blockedBy = -1; return Math.max(car.front - 0.05, p.boxExit - 0.3); }
+  const permissive = ctl.current.permissive.includes(mine) && (head === 'green' || head === 'yellow');
   const waitAt = permissive ? p.boxEnter + 4 : p.boxEnter;
   const inside = car.front > waitAt + 0.5;          // already in: only a committed car still gets a look
   if (inside && car.front > p.boxExit - 4) return 0;
-  if (car.front < p.stopLine - 30) return 0;        // too far to care
   const uncontrolled = head === 'flash-red' || head === 'flash-yellow' || head === 'dark';
   const allWayStop = head === 'flash-red' || head === 'dark';
   const gapNeed = allWayStop ? 3.0 : permissive ? 4.0 : 1.2;
   const trusting = car.trusting && !uncontrolled && !permissive;   // a crossing is trusted through; a merge (same exit) is not
   const net = world.network;
   for (const o of world.cars) {
-    if (o === car || o.done) continue;
+    if (o === car || o.done || o.path.node !== p.node) continue;
     const other = o.path.movement;
     const clash = world.conflicts(mine, other) || (car.stats.wide && car.path.turn !== 'T' && world.wideConflicts(mine, other)) || (o.stats.wide && o.path.turn !== 'T' && world.wideConflicts(other, mine));
     if (!clash) continue;
@@ -279,7 +285,7 @@ export function boxVerdict(car, head, world) {
     const dEnter = o.path.boxEnter - o.front;
     if (dEnter < 0 || o.v < 0.5) continue;
     const eta = dEnter / o.v;
-    const theirHead = world.controller.head(other);
+    const theirHead = ctl.head(other);
     const theyHaveGreen = theirHead === 'green' || theirHead === 'green-arrow' || theirHead === 'yellow';
     if (car.committed && !o.committed) continue;
     if (permissive || uncontrolled) { if (eta < gapNeed) { car.blockedBy = o.id; return waitAt; } continue; }

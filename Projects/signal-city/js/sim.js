@@ -1,6 +1,6 @@
-// Signal City: the world. One intersection (a corridor is a later
-// milestone: the Path/Car design already carries the hooks), its
-// controller, its cars, the spawner and the bookkeeping the score reads.
+// Signal City: the world. One intersection or a corridor of them
+// (`network.nodes`), a controller per node, the cars, the walkers, the
+// spawner and the bookkeeping the score reads.
 //
 // Fixed step: DT = 1/60 s, always. main.js accumulates real time into whole
 // steps; the suite steps by hand. Every roll of the dice goes through one
@@ -13,15 +13,38 @@
 //   wait                       seconds a car sat at under 0.5 m/s for reasons
 //                              not its own (a pickup stop is its own fault)
 //   honks                      patience ran out
+//   pedLate                    a pedestrian call unserved past `pedWait`
+//                              seconds, and again every `pedWait` after
 //   gridlock                   set once a car has waited past `gridlockWait`
-//                              or a car has sat in the box past `boxStall`
+//                              or one car has sat in the box past `boxStall`
+//                              (per car: two lefts waiting in turn are two
+//                              short stalls, not one long one)
+//
+// Walkers (M6). A call on a leg (`callPed`, a scripted `calls` entry or the
+// Poisson `pedDemand`) reaches that node's controller; when its WALK comes
+// the call's walkers step off the curb and cross the zebra at about 1.4 m/s
+// (1.1 to 1.7). A walker waits at the edge of a lane a car is about to use
+// or is in; a car turning onto the leg holds at the box edge until every
+// walker has passed its lane (cars.js boxVerdict). A car whose body reaches
+// a walker anyway has struck them: the walker is gone, the car is crashed,
+// and it counts as a collision.
+//
+// The corridor (M6). A path leaving a node by a linked leg ends where the
+// next node's entry path begins (network.js linkNodes). When a car's centre
+// passes that end it is handed on: a fresh turn from the level's weights
+// among the paths its lane can take, `s` and the perception ring shifted
+// into the new frame, and `newApproach()` so every once-per-approach
+// decision (the yellow, the red roll, the trust roll, the four-way order)
+// is made again at the second box.
 
 import { makeRng } from './rng.js';
 import { Controller, conflicts, wideConflicts } from './signals.js';
-import { Network, rectsOverlap } from './network.js';
+import { Network, buildNodes, rectsOverlap, pointInRect, LANE_WIDTH, CROSSWALK } from './network.js';
 import { Car, ARCHETYPES, DT, resetIds, drive, stopLineVerdict, boxVerdict, specialStops } from './cars.js';
 
 export { DT };
+
+export const LOOP_LENGTH = 8;   // metres of lane the drawn loop covers, back from the stop line
 
 export const DEFAULT_MIX = { standard: 6, granny: 1, aggressive: 1, tourist: 1, trucker: 0.5, student: 0.5, rideshare: 1, emergency: 0 };
 export const DEFAULT_TURNS = { T: 0.6, L: 0.2, R: 0.2 };
@@ -31,9 +54,25 @@ export class World {
     this.level = level;
     this.seed = seed;
     this.rng = makeRng(seed);
-    this.network = new Network(level.network || {});
-    this.controller = new Controller({ legs: this.network.legs, ...(level.controller || {}) });
+    this.nodes = buildNodes(level.network || {});
+    this.network = this.nodes[0];                 // the first box: every single-node caller reads this
+    // one controller per node: `controller` is every node's base, and
+    // `controllers[i]` (an offset, a start phase) is merged over it
+    const perNode = level.controllers || [];
+    this.controllers = this.nodes.map((n, i) => {
+      const spec = { ...(level.controller || {}), ...(perNode[i] || {}) };
+      const c = new Controller({ legs: n.legs, ...spec });
+      // the clearance is the road's width at a slow walker's 1.2 m/s, unless the level says otherwise
+      if (!(spec.pedTiming && spec.pedTiming.clear)) c.pedTiming.clear = Math.ceil(2 * n.halfRoad / 1.2);
+      return c;
+    });
+    this.controller = this.controllers[0];
     this.cars = [];
+    this.walkers = [];
+    this.pedCalls = this.nodes.map(() => ({}));   // per node: leg -> { since, walkers, late }
+    this.pedWait = level.pedWait ?? 40;
+    this.pedDemand = level.pedDemand || null;     // calls per hour per leg, applied at every node with walks
+    this.loops = level.loops || null;             // movements with a loop, or null for every lane once sensors are on
     this.t = 0;
     this.tick = 0;
     this.duration = level.duration ?? 180;
@@ -47,17 +86,28 @@ export class World {
     this.gridlockWait = level.gridlockWait ?? 120;
     this.boxStall = level.boxStall ?? 30;
     this.crashClear = level.crashClear ?? 8;
-    this.nextArrival = {};
-    for (const leg of this.network.legs) this.nextArrival[leg] = this.rng.exp((this.demand[leg] || 0) / 3600);
-    this.scheduled = (level.spawns || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, archetype, turn }]
-    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0 };
+    this.nextArrival = this.nodes.map(n => { const o = {}; for (const leg of n.spawnLegs) o[leg] = this.rng.exp(this.demandFor(n.node, leg) / 3600); return o; });
+    this.nextCall = this.nodes.map(n => { const o = {}; if (this.pedDemand) for (const leg of n.legs) o[leg] = this.rng.exp((this.pedDemand[leg] || 0) / 3600); return o; });
+    this.scheduled = (level.spawns || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, archetype, turn, node }]
+    this.scheduledCalls = (level.calls || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, node, walkers }]
+    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0 };
     this.events = [];       // [{ t, kind, ... }], the renderer drains these
     this.boxStallT = 0;
     this._conf = new Map();
+    this._walkerId = 0;
     resetIds();
   }
 
   get over() { return this.t >= this.duration; }
+
+  // Vehicles per hour arriving on a node's leg: `demand` is one object for
+  // every node, or an array with one per node.
+  demandFor(node, leg) {
+    const d = Array.isArray(this.demand) ? (this.demand[node] || {}) : this.demand;
+    return d[leg] || 0;
+  }
+
+  controllerFor(car) { return this.controllers[car.path.node]; }
 
   // cached conflict lookups
   conflicts(a, b) {
@@ -70,7 +120,20 @@ export class World {
 
   // ---- player inputs ------------------------------------------------------
 
-  requestPhase(i) { return this.controller.requestPhase(i); }
+  requestPhase(i, node = 0) { return this.controllers[node].requestPhase(i); }
+
+  // Press the call button on a leg. A call spawns `walkers` people when its
+  // WALK comes; a second call on the same leg adds its people to the first.
+  callPed(leg, { node = 0, walkers = 1 } = {}) {
+    const ctl = this.controllers[node];
+    const r = ctl.callPed(leg);
+    if (r === false && !this.pedCalls[node][leg]) return false;
+    const pending = this.pedCalls[node][leg] || (this.pedCalls[node][leg] = { since: this.t, walkers: 0, late: 0 });
+    pending.walkers += walkers;
+    this.stats.pedCalls++;
+    this.events.push({ t: this.t, kind: 'call', node, leg });
+    return true;
+  }
 
   // The emergency corridor: hold green for that vehicle's movement until it
   // is through, plus a margin.
@@ -79,7 +142,7 @@ export class World {
     const p = car.path;
     const dist = Math.max(0, p.boxExit - car.rear);
     const hold = Math.min(40, dist / Math.max(4, car.v || 4) + 6);
-    this.controller.preempt([p.movement], hold);
+    this.controllerFor(car).preempt([p.movement], hold);
     car.priority = true;
     this.events.push({ t: this.t, kind: 'priority', car: car.id });
     return true;
@@ -87,9 +150,9 @@ export class World {
 
   // ---- spawning -----------------------------------------------------------
 
-  spawnCar({ leg, archetype, turn, variant, lane } = {}) {
-    const net = this.network;
-    leg = leg || this.rng.pick(net.legs);
+  spawnCar({ leg, archetype, turn, variant, lane, node = 0 } = {}) {
+    const net = this.nodes[node];
+    leg = leg || this.rng.pick(net.spawnLegs);
     archetype = archetype || this.rng.weighted(this.mix);
     if (!ARCHETYPES[archetype]) throw new Error(`unknown archetype ${archetype}`);
     let paths = [];
@@ -114,7 +177,7 @@ export class World {
     let v = Math.min(st.vmax, 9);
     for (const o of this.cars) {
       if (o.done) continue;
-      if (o.path.entry === path.entry && o.path.lane === path.lane && o.front < path.boxEnter) {
+      if (o.path.node === path.node && o.path.entry === path.entry && o.path.lane === path.lane && o.front < path.boxEnter) {
         if (o.rear < len + st.s0 + 3) return null;
         if (o.rear < len + 25) v = Math.min(v, o.v);
       }
@@ -136,17 +199,152 @@ export class World {
       if (!car) { s.t = this.t + 1; this.scheduled.unshift(s); break; } // lane full: retry in a second
       this.events.push({ t: this.t, kind: 'spawn', car: car.id, archetype: car.archetype, scheduled: true });
     }
-    // Poisson arrivals per leg
-    for (const leg of this.network.legs) {
-      const rate = (this.demand[leg] || 0) * (this.level.demandCurve ? this.level.demandCurve(this.t / this.duration) : 1) / 3600;
-      if (rate <= 0) continue;
-      this.nextArrival[leg] -= DT;
-      if (this.nextArrival[leg] <= 0) {
-        this.nextArrival[leg] = this.rng.exp(rate);
-        const car = this.spawnCar({ leg });
-        if (!car) this.nextArrival[leg] = Math.min(this.nextArrival[leg], 0.5); // lane full: try again soon
+    // Poisson arrivals per leg, on every node's spawning legs
+    const curve = this.level.demandCurve ? this.level.demandCurve(this.t / this.duration) : 1;
+    for (const net of this.nodes) {
+      const next = this.nextArrival[net.node];
+      for (const leg of net.spawnLegs) {
+        const rate = this.demandFor(net.node, leg) * curve / 3600;
+        if (rate <= 0) continue;
+        next[leg] -= DT;
+        if (next[leg] <= 0) {
+          next[leg] = this.rng.exp(rate);
+          const car = this.spawnCar({ leg, node: net.node });
+          if (!car) next[leg] = Math.min(next[leg], 0.5); // lane full: try again soon
+        }
       }
     }
+    // pedestrian calls: scripted, then Poisson per leg
+    while (this.scheduledCalls.length && this.scheduledCalls[0].t <= this.t) {
+      const c = this.scheduledCalls.shift();
+      this.callPed(c.leg, { node: c.node || 0, walkers: c.walkers || 1 });
+    }
+    if (this.pedDemand) {
+      for (const net of this.nodes) {
+        if (!this.controllers[net.node].hasPeds) continue;
+        const next = this.nextCall[net.node];
+        for (const leg of net.legs) {
+          const rate = (this.pedDemand[leg] || 0) / 3600;
+          if (rate <= 0) continue;
+          next[leg] -= DT;
+          if (next[leg] <= 0) {
+            next[leg] = this.rng.exp(rate);
+            this.callPed(leg, { node: net.node, walkers: 1 + this.rng.int(0, 2) });
+          }
+        }
+      }
+    }
+  }
+
+  // ---- walkers --------------------------------------------------------------
+
+  // A call whose WALK has come sends its people across; a call still waiting
+  // past `pedWait` costs satisfaction, the way a honk does, and again every
+  // `pedWait` after.
+  _pedTick(dt) {
+    for (const net of this.nodes) {
+      const ctl = this.controllers[net.node];
+      const calls = this.pedCalls[net.node];
+      for (const leg of Object.keys(calls)) {
+        const c = calls[leg];
+        if (!c) continue;
+        if (ctl.pedHead(leg) === 'walk') {
+          for (let i = 0; i < c.walkers; i++) this._spawnWalker(net, leg);
+          this.stats.pedServed++;
+          this.events.push({ t: this.t, kind: 'walk', node: net.node, leg, waited: this.t - c.since });
+          delete calls[leg];
+          continue;
+        }
+        if (this.t - c.since >= this.pedWait * (c.late + 1)) {
+          c.late++;
+          this.stats.pedLate++;
+          this.events.push({ t: this.t, kind: 'ped-late', node: net.node, leg, waited: this.t - c.since });
+        }
+      }
+    }
+    for (const w of this.walkers) {
+      if (w.done) continue;
+      const blocked = this._walkerBlocked(w);
+      w.v = blocked ? 0 : w.speed;
+      w.lat += w.dir * w.v * dt;
+      if (blocked) w.waited += dt;
+      const [x, y] = w.cw.point(w.lat, w.jitter);
+      w.x = x; w.y = y;
+      if (w.dir > 0 ? w.lat >= w.cw.half + 1 : w.lat <= -w.cw.half - 1) { w.done = true; continue; }
+      // struck: a body over the walker's point
+      for (const c of this.cars) {
+        if (c.done || c.crashed) continue;
+        const r = c.rects();
+        if (Math.abs(r[0].x - x) > 12 || Math.abs(r[0].y - y) > 12) continue;
+        if (r.some(rr => pointInRect(x, y, rr))) {
+          w.done = true; w.struck = true;
+          c.crashed = true; c.crashedAt = this.t; c.v = 0;
+          this.stats.collisions++; this.stats.struck++;
+          this.events.push({ t: this.t, kind: 'collision', cars: [c.id], walker: w.id, who: [{ id: c.id, archetype: c.archetype, movement: c.path.movement, v: +c.v.toFixed(1), head: this.controllerFor(c).head(c.path.movement) }], where: { x, y } });
+          break;
+        }
+      }
+    }
+    if (this.tick % 60 === 0) this.walkers = this.walkers.filter(w => !w.done);
+  }
+
+  _spawnWalker(net, leg) {
+    const cw = net.crosswalk(leg);
+    const dir = this.rng.chance(0.5) ? 1 : -1;
+    const w = {
+      id: ++this._walkerId, node: net.node, leg, cw, dir,
+      lat: dir > 0 ? -cw.half - 1 - this.rng.range(0, 1.5) : cw.half + 1 + this.rng.range(0, 1.5),
+      jitter: this.rng.range(-0.9, 0.9), speed: this.rng.range(1.1, 1.7), v: 0, waited: 0,
+      tint: this.rng.int(0, 5), x: 0, y: 0, done: false, struck: false, born: this.t,
+    };
+    const [x, y] = cw.point(w.lat, w.jitter);
+    w.x = x; w.y = y;
+    this.walkers.push(w);
+    this.stats.walkers++;
+    return w;
+  }
+
+  // Is a car about to use, or in, the lane just ahead of this walker? Looks
+  // 2.5 s ahead along every path that crosses this zebra.
+  _walkerBlocked(w) {
+    const cw = w.cw, net = this.nodes[w.node];
+    const aheadLat = w.lat + w.dir * 1.6;
+    for (const c of this.cars) {
+      if (c.done || c.path.node !== w.node) continue;
+      const p = c.path;
+      let laneLat, dist, inBand;
+      if (p.exit === w.leg) {
+        laneLat = cw.laneLat(p.exitLane, false);
+        dist = p.boxExit - c.front;
+        inBand = c.front > p.boxExit && c.rear < p.boxExit + CROSSWALK;
+      } else if (p.entry === w.leg) {
+        laneLat = cw.laneLat(p.lane, true);
+        dist = (p.boxEnter - CROSSWALK) - c.front;
+        inBand = c.front > p.boxEnter - CROSSWALK && c.rear < p.boxEnter;
+      } else continue;
+      if (Math.abs(laneLat - aheadLat) > LANE_WIDTH / 2 + 1.2) continue;
+      if (inBand) return true;
+      if (dist > 0 && c.v > 0.5 && dist / c.v < 2.5) return true;
+    }
+    return false;
+  }
+
+  // Walkers on a node's leg who still have this path's exit lane to cross,
+  // or are in it: the car holds at the box edge.
+  walkerBlocks(path) {
+    const cw = this.nodes[path.node].crosswalk(path.exit);
+    const laneLat = cw.laneLat(path.exitLane, false);
+    for (const w of this.walkers) {
+      if (w.done || w.node !== path.node || w.leg !== path.exit) continue;
+      if (w.dir > 0 ? w.lat < laneLat + LANE_WIDTH / 2 + 1.0 : w.lat > laneLat - LANE_WIDTH / 2 - 1.0) return true;
+    }
+    return false;
+  }
+
+  walkersOn(node, leg) {
+    let n = 0;
+    for (const w of this.walkers) if (!w.done && w.node === node && w.leg === leg) n++;
+    return n;
   }
 
   // ---- following ----------------------------------------------------------
@@ -159,12 +357,18 @@ export class World {
   // { car, gap } with gap from the leader's rear to my front, or null.
   leaderOf(car) {
     const p = car.path;
+    const link = p.link;
     let best = null, bestGap = Infinity;
     for (const o of this.cars) {
       if (o === car || o.done) continue;
       const q = o.path;
       let pos;
       if (q === p) pos = o.s;
+      else if (q.node !== p.node) {
+        // across a handoff: a car already on the next box's approach, in my lane
+        if (link && q.node === link.node && q.entry === link.entry && q.lane === p.exitLane && o.rear < q.boxEnter && car.front > p.boxExit) pos = o.s - link.atS + p.length;
+        else continue;
+      }
       else if (q.entry === p.entry && q.lane === p.lane && o.rear < q.boxEnter && car.front < p.boxEnter + 1) pos = o.s;
       else if (q.exit === p.exit && q.exitLane === p.exitLane && o.front > q.boxExit) pos = o.s - q.boxExit + p.boxExit;
       else continue;
@@ -191,7 +395,7 @@ export class World {
       // a trusting driver (cars.js) looks at the light, not the box: a car
       // still crossing their line is not seen until it is a stationary body.
       // A merge at the exit is not a crossing, and the last 4 m are the exit.
-      if (car.trusting && car.front < p.boxExit - 4 && o.v >= 0.5 && !o.crashed && o.path.exit !== p.exit && this.conflicts(p.movement, o.path.movement)) continue;
+      if (car.trusting && car.front < p.boxExit - 4 && o.v >= 0.5 && !o.crashed && o.path.node === p.node && o.path.exit !== p.exit && this.conflicts(p.movement, o.path.movement)) continue;
       // a lane leader is already handled by leaderOf
       near.push({ o, rects: r });
     }
@@ -216,11 +420,35 @@ export class World {
     return null;
   }
 
-  // Queue length behind a movement's stop line, for induction loops.
-  queued(movement) {
+  // Queue length behind a movement's stop line, for induction loops: cars
+  // stopped short of the box on that movement. A level with `loops` lists
+  // the movements that have one; any other reads 0.
+  queued(movement, node = 0) {
+    if (this.loops && !this.loops.includes(movement)) return 0;
     let n = 0;
-    for (const c of this.cars) if (!c.done && c.path.movement === movement && c.front < c.path.boxEnter && c.v < 1) n++;
+    for (const c of this.cars) if (!c.done && c.path.node === node && c.path.movement === movement && c.front < c.path.boxEnter && c.v < 1) n++;
     return n;
+  }
+
+  // Does this lane have a loop, given the level's list?
+  hasLoop(node, leg, lane) {
+    if (!this.sensors) return false;
+    const net = this.nodes[node];
+    for (const turn of ['L', 'T', 'R']) {
+      const p = net.pathFor(leg, lane, turn);
+      if (p && (!this.loops || this.loops.includes(p.movement))) return true;
+    }
+    return false;
+  }
+
+  // Is a car sitting on the loop in this lane (the `LOOP_LENGTH` metres
+  // before the stop line)? The renderer lights the rectangle from this.
+  onLoop(node, leg, lane) {
+    for (const c of this.cars) {
+      if (c.done || c.path.node !== node || c.path.entry !== leg || c.path.lane !== lane) continue;
+      if (c.front > c.path.stopLine - LOOP_LENGTH && c.rear < c.path.stopLine + 0.5) return true;
+    }
+    return false;
   }
 
   // ---- the step -----------------------------------------------------------
@@ -229,13 +457,14 @@ export class World {
     const dt = DT;
     this.t += dt;
     this.tick++;
-    this.controller.step(dt, this.sensors ? m => this.queued(m) : null);
+    this.controllers.forEach((ctl, i) => ctl.step(dt, this.sensors ? m => this.queued(m, i) : null));
     this._spawnTick();
+    this._pedTick(dt);
 
-    const ctl = this.controller;
     // 1. verdicts, from the true present, recorded for later perception
     for (const car of this.cars) {
       if (car.done) continue;
+      const ctl = this.controllerFor(car);
       const head = ctl.head(car.path.movement);
       specialStops(car, this, dt);
       if (car.crashed) { car.stopVerdict = 0; car.boxVerdict = 0; }
@@ -270,7 +499,8 @@ export class World {
           }
         }
       }
-      if (car.s - car.length >= car.path.length) {
+      if (car.path.link && car.s >= car.path.length) this._handoff(car);
+      else if (car.s - car.length >= car.path.length) {
         car.done = true;
         this.stats.cleared++;
         this.stats.waitCleared += car.wait;
@@ -279,23 +509,50 @@ export class World {
     }
     // 3. collisions
     this._collide();
-    // 4. crashed cars are towed after a while; stalls in the box
-    let boxStalled = false;
+    // 4. crashed cars are towed after a while; stalls in the box, per car
+    let longest = 0;
     for (const car of this.cars) {
       if (car.done) continue;
       if (car.crashed && this.t - car.crashedAt >= this.crashClear) {
         car.done = true;
         this.events.push({ t: this.t, kind: 'towed', car: car.id });
       }
-      if (car.touchesBox() && car.v < 0.3 && !car.done) boxStalled = true;
+      // in the box by its true front and rear (touchesBox measures a truck
+      // from its cab centre with the trailer's length and reads 4.7 m early)
+      if (car.front > car.path.boxEnter && car.rear < car.path.boxExit && car.v < 0.3 && !car.done) { car.stallT += dt; this.stats.boxStalled += dt; }
+      else car.stallT = 0;
+      if (car.stallT > longest) longest = car.stallT;
     }
-    if (boxStalled) { this.boxStallT += dt; this.stats.boxStalled += dt; } else this.boxStallT = 0;
+    this.boxStallT = longest;
     if (!this.stats.gridlock && (this.stats.maxWait >= this.gridlockWait || this.boxStallT >= this.boxStall)) {
       this.stats.gridlock = true; this.stats.gridlockAt = this.t;
       this.events.push({ t: this.t, kind: 'gridlock' });
     }
     // 5. drop finished cars
     if (this.tick % 60 === 0) this.cars = this.cars.filter(c => !c.done);
+  }
+
+  // The corridor handoff: the car's centre has passed the end of a linked
+  // path. Pick the next turn from the level's weights among the paths its
+  // lane can take at the next box, move `s` and the perception ring into the
+  // new frame, and start the approach fresh.
+  _handoff(car) {
+    const old = car.path, link = old.link;
+    const net = this.nodes[link.node];
+    const choices = net.choicesFrom(link.entry, old.exitLane);
+    if (!choices.length) { car.done = true; this.stats.cleared++; return; }
+    const weights = {};
+    for (const p of choices) weights[p.turn] = this.turns[p.turn] || 0;
+    let turn = Object.values(weights).some(w => w > 0) ? this.rng.weighted(weights) : choices[0].turn;
+    let next = choices.find(p => p.turn === turn) || choices[0];
+    const shift = link.atS - old.length;
+    car.path = next;
+    car.s += shift;
+    for (const h of car.hist) h.s += shift;
+    car.stopVerdict = 0; car.boxVerdict = 0;
+    car.newApproach();
+    this.stats.handoffs++;
+    this.events.push({ t: this.t, kind: 'handoff', car: car.id, to: next.movement, node: link.node });
   }
 
   _collide() {
@@ -315,7 +572,7 @@ export class World {
         if (!hit) continue;
         for (const c of [a, b]) if (!c.crashed) { c.crashed = true; c.crashedAt = this.t; c.v = 0; }
         this.stats.collisions++;
-        const who = [a, b].map(c => ({ id: c.id, archetype: c.archetype, movement: c.path.movement, committed: c.committed, v: +c.v.toFixed(1), head: this.controller.head(c.path.movement), special: c.specialKind, front: +c.front.toFixed(1), stop: +c.stopVerdict.toFixed(1), box: +c.boxVerdict.toFixed(1) }));
+        const who = [a, b].map(c => ({ id: c.id, archetype: c.archetype, movement: c.path.movement, node: c.path.node, committed: c.committed, v: +c.v.toFixed(1), head: this.controllerFor(c).head(c.path.movement), special: c.specialKind, front: +c.front.toFixed(1), stop: +c.stopVerdict.toFixed(1), box: +c.boxVerdict.toFixed(1) }));
         this.events.push({ t: this.t, kind: 'collision', cars: [a.id, b.id], who, where: { x: (ra.x + rb.x) / 2, y: (ra.y + rb.y) / 2 } });
       }
     }
@@ -329,15 +586,17 @@ export class World {
     let h = 2166136261;
     const mix = x => { h ^= Math.round(x * 1000) & 0xffff; h = Math.imul(h, 16777619) >>> 0; };
     mix(this.t);
-    for (const c of this.cars) { if (!c.done) { mix(c.s); mix(c.v); mix(c.id); } }
-    mix(this.stats.cleared); mix(this.stats.collisions); mix(this.stats.honks);
+    for (const c of this.cars) { if (!c.done) { mix(c.s); mix(c.v); mix(c.id); mix(c.path.node); } }
+    for (const w of this.walkers) { if (!w.done) { mix(w.lat); mix(w.id); } }
+    mix(this.stats.cleared); mix(this.stats.collisions); mix(this.stats.honks); mix(this.stats.pedLate);
     return h >>> 0;
   }
 
   snapshot() {
     return {
-      t: this.t, stats: { ...this.stats }, controller: this.controller.snapshot(),
-      cars: this.cars.filter(c => !c.done).map(c => ({ id: c.id, archetype: c.archetype, movement: c.path.movement, s: +c.s.toFixed(2), v: +c.v.toFixed(2), crashed: c.crashed, wait: +c.wait.toFixed(1) })),
+      t: this.t, stats: { ...this.stats }, controller: this.controller.snapshot(), controllers: this.controllers.map(c => c.snapshot()),
+      cars: this.cars.filter(c => !c.done).map(c => ({ id: c.id, archetype: c.archetype, movement: c.path.movement, node: c.path.node, s: +c.s.toFixed(2), v: +c.v.toFixed(2), crashed: c.crashed, wait: +c.wait.toFixed(1) })),
+      walkers: this.walkers.filter(w => !w.done).map(w => ({ id: w.id, node: w.node, leg: w.leg, lat: +w.lat.toFixed(2), v: +w.v.toFixed(2) })),
     };
   }
 }

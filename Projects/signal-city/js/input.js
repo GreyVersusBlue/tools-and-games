@@ -33,7 +33,16 @@ export function bindInput({ canvas, renderer, game }) {
     return renderer.toWorld(e.clientX - r.left, e.clientY - r.top);
   };
 
+  // a drag pans (a corridor is wider than the board once zoomed); a click
+  // that did not move picks a car or a box
+  let drag = null;
   canvas.addEventListener('pointermove', e => {
+    if (drag) {
+      renderer.panBy(e.clientX - drag.x, e.clientY - drag.y);
+      drag.moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y);
+      drag.x = e.clientX; drag.y = e.clientY;
+      return;
+    }
     const p = pointerWorld(e);
     const car = game.carAt(p.x, p.y);
     renderer.selected = car ? car.id : null;
@@ -41,8 +50,19 @@ export function bindInput({ canvas, renderer, game }) {
   });
 
   canvas.addEventListener('pointerdown', e => {
+    drag = { x: e.clientX, y: e.clientY, moved: 0 };
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* a synthetic event */ }
+  });
+  const release = e => {
+    if (!drag) return;
+    const moved = drag.moved;
+    drag = null;
+    if (moved > 4) return;
     const p = pointerWorld(e);
     const car = game.carAt(p.x, p.y);
     if (car) game.clickCar(car);
-  });
+    else game.clickMap(p.x, p.y);
+  };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', () => { drag = null; });
 }

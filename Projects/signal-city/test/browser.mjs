@@ -6,9 +6,11 @@
 // a keypress queues a phase and the clearance runs, the rule panel adds the
 // elapsed rule that runs level 1 out, the end card appears with stars, the
 // Stem's all-red slider reaches the controller, Four Ways offers four phases
-// with arrow heads and drops to flashing red and back, the sprite gallery
-// draws eight rows. Screenshots land in test/shots/ (ignored by git) as
-// evidence for the run.
+// with arrow heads and drops to flashing red and back, Crossing takes a
+// pedestrian call and walks it with the loops live, Two Blocks shows two
+// boxes and drives the one the panel selects, the sprite gallery draws
+// eight rows. Screenshots land in test/shots/ (ignored by git) as evidence
+// for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
 // is fixed-step, and every "after N steps" below is __signalCity.step(N),
@@ -62,7 +64,7 @@ try {
       stars: document.getElementById('starTotal').textContent,
     }));
     ok(sel.shown, 'the level select is up');
-    ok(sel.cards.length === 4 && sel.cards.join() === 'First Light,Stem,Four Ways,Free Play', 'with four cards, First Light first and Free Play last', sel.cards.join(', '));
+    ok(sel.cards.length === 6 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Free Play', 'with six cards, First Light first and Free Play last', sel.cards.join(', '));
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
     await shot(page, 'select');
     ok(errors.length === 0, 'no page errors so far', errors.join(' | '));
@@ -146,7 +148,7 @@ try {
       badge: document.querySelector('#rules .rule.sleeping .badge')?.textContent || '',
       rules: window.__signalCity.world.controller.rules.map(r => r.when).join(','),
     }));
-    ok(qr.rows.length === 2 && qr.rows[1] === 'rule sleeping' && /needs sensors \(M6\)/.test(qr.badge), 'a queue rule shows greyed with "needs sensors (M6)"', `${qr.rows.join(' | ')} ${qr.badge}`);
+    ok(qr.rows.length === 2 && qr.rows[1] === 'rule sleeping' && /needs sensors/.test(qr.badge), 'a queue rule on a level without sensors shows greyed with "needs sensors"', `${qr.rows.join(' | ')} ${qr.badge}`);
     await page.click('#rules .rule.sleeping .up');
     const moved = await page.evaluate(() => window.__signalCity.world.controller.rules.map(r => r.when).join(','));
     ok(moved === 'queue,elapsed', 'the up button reorders the list in the controller', moved);
@@ -250,6 +252,96 @@ try {
     const f5 = await page.evaluate(() => ({ stage: window.__signalCity.world.controller.stage, phase: window.__signalCity.world.controller.phase, on: document.getElementById('signalsBtn').classList.contains('on') }));
     ok(f5.stage === 'green' && f5.phase === 1 && f5.on, 'and 2 s later the lefts are green again', `${f5.stage} ${f5.phase}`);
     ok(errors.length === 0, 'no page errors on Four Ways', errors.join(' | '));
+  });
+
+  await section('Crossing: a call, a walk, and the loops live', async () => {
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="crossing"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'crossing', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const c0 = await page.evaluate(() => ({
+      phases: [...document.querySelectorAll('#phases .phase .name')].map(e => e.textContent),
+      walks: window.__signalCity.world.controller.phases.map(p => p.walks.join('+')),
+      peds: !document.getElementById('pedsBox').classList.contains('hidden'),
+      sensorsNote: !document.getElementById('sensorsNote').classList.contains('hidden'),
+      calls: [...document.querySelectorAll('#calls .call')].map(b => b.dataset.leg),
+      rows: [...document.querySelectorAll('#rules .rule')].map(r => r.className),
+      badge: document.querySelector('#rules .badge')?.textContent || '',
+      sensors: window.__signalCity.world.sensors,
+      loops: [window.__signalCity.world.hasLoop(0, 'N', 1), window.__signalCity.world.hasLoop(0, 'N', 0)],
+    }));
+    ok(c0.phases.join() === 'N-S,N-S lefts,E-W,E-W lefts' && c0.walks.join('|') === 'P-E+P-W||P-N+P-S|', 'Four Ways\' four phases, the throughs carrying the parallel walks', c0.walks.join(' | '));
+    ok(c0.peds && c0.calls.join('') === 'NESW', 'the panel shows a call button per leg', c0.calls.join(''));
+    ok(c0.sensors && c0.sensorsNote && c0.loops[0] && !c0.loops[1], 'the loops are live, on the left bays only', `bay ${c0.loops[0]}, curb ${c0.loops[1]}`);
+    ok(c0.rows.length === 3 && c0.rows.filter(r => /sensed/.test(r)).length === 2 && !c0.rows.some(r => /sleeping/.test(r)) && c0.badge === '', 'its two queue rules show live, not greyed, with no badge', c0.rows.join(' | '));
+    await page.click('#calls .call[data-leg="N"]');
+    const c1 = await page.evaluate(() => ({
+      pending: !!window.__signalCity.world.pedCalls[0].N,
+      cls: document.querySelector('#calls .call[data-leg="N"]').className,
+      head: window.__signalCity.world.controller.pedHead('N'),
+    }));
+    ok(c1.pending && /waiting/.test(c1.cls) && c1.head === 'dont-walk', 'pressing N registers a call that waits: N-S is green and its walk runs with E-W', `${c1.cls}, ${c1.head}`);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 5);
+    await page.keyboard.press('3');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 6);
+    await new Promise(r => setTimeout(r, 300));
+    const c2 = await page.evaluate(() => ({
+      phase: window.__signalCity.world.controller.phase, stage: window.__signalCity.world.controller.stage,
+      head: window.__signalCity.world.controller.pedHead('N'),
+      walkers: window.__signalCity.world.walkers.filter(w => !w.done).length,
+      cls: document.querySelector('#calls .call[data-leg="N"]').className,
+      state: document.querySelector('#calls .call[data-leg="N"] .state').textContent,
+      stageText: document.getElementById('stage').textContent,
+    }));
+    ok(c2.phase === 2 && c2.stage === 'green' && c2.head === 'walk', 'six seconds after pressing 3, E-W is green and the N crossing says WALK', `${c2.stage} ${c2.phase}, ${c2.head}`);
+    ok(c2.walkers >= 1 && /walk/.test(c2.cls) && c2.state === 'WALK' && /WALK N/.test(c2.stageText), 'a walker is on the zebra and the panel says so', `${c2.walkers} walkers, ${c2.state}, ${c2.stageText}`);
+    await shot(page, 'crossing-walk');
+    await page.keyboard.press('1');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 3);
+    const c3 = await page.evaluate(() => ({ stage: window.__signalCity.world.controller.stage, next: window.__signalCity.world.controller.next, walk: window.__signalCity.world.controller.walk && window.__signalCity.world.controller.walk.stage }));
+    ok(c3.stage === 'green' && c3.next === 0 && c3.walk, 'pressing 1 during the walk is held: the green waits for the clearance', `${c3.stage} next ${c3.next}, walk ${c3.walk}`);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 22);
+    const c4 = await page.evaluate(() => ({ stage: window.__signalCity.world.controller.stage, phase: window.__signalCity.world.controller.phase, head: window.__signalCity.world.controller.pedHead('N'), struck: window.__signalCity.world.stats.struck }));
+    ok(c4.head === 'dont-walk' && (c4.stage !== 'green' || c4.phase !== 2), 'and once it has cleared the change goes through', `${c4.stage} ${c4.phase}, ${c4.head}`);
+    ok(c4.struck === 0, 'nobody was struck');
+    await page.click('#addQueueBtn');
+    const c5 = await page.evaluate(() => ({ rows: [...document.querySelectorAll('#rules .rule')].map(r => r.className), badge: document.querySelector('#rules .badge')?.textContent || '' }));
+    ok(c5.rows.length === 4 && /sensed/.test(c5.rows[3]) && c5.badge === '', 'a queue rule added here is live at once', c5.rows[3]);
+    ok(errors.length === 0, 'no page errors on Crossing', errors.join(' | '));
+  });
+
+  await section('Two Blocks: the corridor and the box the panel drives', async () => {
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="two-blocks"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'two-blocks', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const t0 = await page.evaluate(() => {
+      const w = window.__signalCity.world, r = window.__signalCity.game.renderer;
+      return {
+        nodes: w.nodes.length, origins: w.nodes.map(n => n.origin[0]).join(','),
+        offsets: w.controllers.map(c => c.offset).join(','),
+        buttons: [...document.querySelectorAll('#nodes .node')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')),
+        note: document.getElementById('offsetNote').classList.contains('hidden') ? '' : document.getElementById('offsetNote').textContent,
+        stage: document.getElementById('stage').textContent,
+        aspect: r.width / r.height, scale: r.scale,
+        phases: [...document.querySelectorAll('#phases .phase .name')].map(e => e.textContent),
+      };
+    });
+    ok(t0.nodes === 2 && t0.origins === '-110,110' && t0.offsets === '0,16', 'two boxes 220 m apart, the east one 16 s behind', `${t0.origins} offsets ${t0.offsets}`);
+    ok(t0.buttons.join() === 'West box*,East box' && /16 s behind/.test(t0.note), 'the panel offers both boxes, the west one selected, and names the offset', `${t0.buttons.join()} ${t0.note}`);
+    ok(/^W: .* · E: /.test(t0.stage) && t0.phases.join() === 'E-W,N-S', 'the stage line reads both boxes, and E-W is phase 1', t0.stage);
+    ok(t0.aspect > 1.6 && t0.scale >= 2.5, 'the board is wider than it is tall to frame both boxes', `${t0.aspect.toFixed(2)} at ${t0.scale.toFixed(2)} px/m`);
+    await page.click('#nodes .node[data-node="1"]');
+    await page.keyboard.press('2');
+    const t1 = await page.evaluate(() => ({ node: window.__signalCity.game.node, on: document.querySelector('#nodes .node.on').dataset.node, c0: window.__signalCity.world.controllers[0].next, c1: window.__signalCity.world.controllers[1].next, s1: window.__signalCity.world.controllers[1].stage }));
+    ok(t1.node === 1 && t1.on === '1', 'clicking East box selects it');
+    ok(t1.c1 === 1 && t1.s1 === 'yellow' && t1.c0 === null, 'and pressing 2 reaches the east controller, not the west', `east next ${t1.c1} ${t1.s1}, west next ${t1.c0}`);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 40);
+    await new Promise(r => setTimeout(r, 300));
+    const t2 = await page.evaluate(() => ({ handoffs: window.__signalCity.world.stats.handoffs, onMap: window.__signalCity.world.cars.filter(c => !c.done).length, nodes: new Set(window.__signalCity.world.cars.filter(c => !c.done).map(c => c.path.node)).size }));
+    ok(t2.handoffs > 0 && t2.nodes === 2, 'forty seconds in, cars have crossed from one box to the other', `${t2.handoffs} handoffs, ${t2.onMap} on the map`);
+    await shot(page, 'two-blocks');
+    ok(errors.length === 0, 'no page errors on Two Blocks', errors.join(' | '));
   });
 
   await section('Free Play and the priority corridor', async () => {

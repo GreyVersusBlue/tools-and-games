@@ -11048,6 +11048,156 @@ claims the row on `main` before starting, still opens the one PR for the
 whole batch, and still owns closing it out even if it never calls `scribe`
 itself.
 
+## 2026-09-21: Signal City, milestone 6 (#554 to #562)
+
+The third increment of the 2+ row: pedestrians, induction loops, the
+corridor, levels 4 and 5, all in one PR. 389 checks across the five suites
+(110 + 132 + 54 + 20 + 73; sprites unchanged; the scoring suite runs about
+two minutes, so Crossing gets one seed of its plan and one run as shipped
+there, and the six seeds are the tool's), `tools/calibrate.mjs` grown an
+offset axis, a `--rules` mode and `--lefts=`, no storage key or save field
+touched (`signal_city_v1` and its `repair` are as #539 left them; a level
+record is keyed by level id, so "crossing" and "two-blocks" come through
+untouched and the scoring suite checks that). Worked under Claude Fable 5.1,
+the model the row names.
+
+- **A walk is a flag on a through phase, not a phase of its own** (#554).
+  `walks: ['P-N', 'P-S']` on the E-W phase, and `standardPhases(legs, {
+  peds: true })` gives every through phase the crossings parallel to it and
+  the lefts phases none. The crossing a through phase can carry is exactly
+  the one the geometry already permits (`walksFor`: no conflict with any
+  non-permissive movement, a yielding right excepted), and a walk phase of
+  its own would cost every driver a whole cycle for one walker. The
+  constructor refuses a walk on a phase whose traffic crosses it.
+- **A call is served when its phase is green, and the green then holds**
+  (#555). `Controller.callPed(leg)` registers the call; it starts a walk at
+  once if the green has just begun (`stageT < 0.5`) or has time enough left
+  for WALK plus the clearance (`_scheduledEnd()`, the plan or the first
+  elapsed rule or a queued request; Infinity in manual mode), else at the
+  phase's next green. WALK runs `pedTiming.walk` (7 s), the flashing
+  clearance `pedTiming.clear`, which the world sets from the road's width at
+  1.2 m/s (6 s on one lane, 12 on two) unless the level says otherwise. While
+  a walk runs `_beginYellow` refuses: a request, a rule and the plan all wait
+  for the clearance, and `timeToYellow` reads the walk's remaining time so
+  granny sees it. A call unserved past the level's `pedWait` (40 s default,
+  45 on Crossing) counts `stats.pedLate`, once and again every `pedWait`,
+  and it costs satisfaction alongside the honks and 5 points each; nothing
+  about it fails a level. Priority, flash and dark cut the walk short.
+- **Walkers are bodies on the zebra** (#556). A served call's people (1 to 3
+  per Poisson call) step off the curb and cross at 1.1 to 1.7 m/s; a walker
+  waits at the edge of a lane a car is in or will reach within 2.5 s; a car
+  turning onto the leg holds at the box edge (`boxVerdict`, before every
+  other check, trusting or not: a person is not the box) until every walker
+  has passed its exit lane. A body over a walker's point is a strike: the
+  walker is gone, the car is crashed, and it is a collision. On the
+  calibration below no walker was struck.
+- **Loops, `after`, and a jump is an insertion** (#557). `sensors: true`
+  hands the controller `World.queued` (#547); `loops` names the movements
+  that have one and every other reads 0; the renderer draws a dashed
+  rectangle in each sensed lane, the 8 m before the stop line, lit while a
+  car sits on it. A queue rule carries `after`, the green it may not cut
+  short (the minimum green by default, editable in the panel): at the 4 s
+  minimum Crossing's bays cut every through short and the board locked on
+  3 of 6 seeds. And a queue rule that jumps to a phase remembers where the
+  cycle was: the first `next` after it goes to the phase the interrupted one
+  would have led to (`resumeAt`), skipping the served one. Before that a full
+  N bay during E-W pulled N-S lefts, `next` went back to E-W, and the N-S
+  throughs waited 180 s.
+- **The corridor is two boxes with their legs laid end to end** (#558).
+  `nodes: 2` builds two Networks on one east-west street `spacing` m apart
+  (220 by default: exactly two 110 m legs, #541 untouched); `linkNodes`
+  marks every path leaving A by E with `link = { node, entry, atS }` onto
+  B's W approach and refuses a gap between the legs. A car whose centre
+  passes the end of a linked path is handed on: a fresh turn from the
+  level's weights among the paths its lane allows (so on a two-lane
+  corridor with a bay the inner lane can only turn left; Two Blocks is one
+  lane), `s` and the perception ring shifted into the new frame (without
+  the shift the leader's remembered s sat 212 m back and its follower read
+  no gap at all), then `newApproach()`. The lane leader is read across the
+  handoff. One controller per node, `controllers[i]` merged over
+  `controller`; every driver reads `world.controllerFor(car)`, and a box
+  verdict looks only at cars on its own node.
+- **The camera frames both boxes; phase 0 is the main street** (#559). A
+  corridor is framed with 50 m past each outer box, about 3 px per metre on
+  a 950 px board, the canvas sized by the world's aspect, and a drag pans
+  (a click that did not move still picks a car, or the nearer box). The
+  panel drives the box it selects (`game.node`: phases, sliders, rules,
+  calls), the stage line reads both. `standardPhases(legs, { main: 'EW' })`
+  puts E-W first, because phase 0 is what `majorLegs` and a timed plan's
+  first entry mean by the main street, and the first cut of Two Blocks gave
+  N-S the 22 s green.
+- **The box stall is per car** (#560). `boxStall` used to accumulate while
+  any car sat still in the box, so two permissive lefts waiting in turn read
+  as one 30 s stall and Two Blocks locked on random seeds; and a truck at
+  its stop line read as in the box, because `touchesBox` measures from the
+  cab centre with the trailer's length (4.7 m early). The stall is
+  `car.stallT` now, by true front and rear. `touchesBox` itself is left as
+  the physics was tuned on it.
+- **Crossing: Four Ways with calls on every leg, loops in the bays, target
+  48, waitTarget 36** (#561). Standard, granny, tourist and student (5 : 1 :
+  1.5 : 1.5), 520/520/400/400 veh/h, 25% lefts, 60 calls an hour per leg,
+  `pedWait` 45, four minutes, shipped with queue rules on N-L and E-L
+  (threshold 3, after 16) and a 24 s elapsed rule. Calibration on the 26 s /
+  8 s timed plan with the calls: 55 to 76 cleared, 28 to 37 s average wait,
+  2 to 7 calls late; 22 s / 8 s: 61 to 75, 34 to 43 s. The level's own rules
+  at 20 s: 53 to 62, 35 to 48 s; at 24 s: 55 to 63, 47 to 52 s; at 30 s: 48
+  to 68, 47 to 52 s. The waits are Four Ways' plus the walks: a call holds a
+  through green up to 19 s, and every phase of a four-phase cycle pays.
+- **Two Blocks: the corridor on a 22 s / 12 s timed plan, the east box 16 s
+  behind, target 80, waitTarget 16** (#562). Standard, aggressive, rideshare
+  and trucker (5 : 1.5 : 1.2 : 0.6), 520 veh/h into each outer main-street
+  leg and 220 on each side street, 10% lefts, four minutes, unlocking
+  `offset` as a note. Calibration, six seeds by four offsets at the 22 s
+  main green: offset 16 clears 87 to 103 with 9 to 15 s average wait and no collision on
+  5 of 6 seeds; offset 0 clears 85 to 102 with 12 to 19 s; offset 8 clears
+  81 to 102 with 11 to 18 s and offset 24 clears 80 to 99 with 11 to 16 s. At 26 s the four offsets clear 78 to 107 with 11 to 27 s, and offset 8 is the
+  one with no collision on 3 of 6 seeds; no cell at 22 or 26 s locks now.
+  The offset is the second star over six seeds; on seed 1 alone the two
+  offsets are within 2 s of each other, so the scoring suite asserts the
+  shipped offset's stars on three seeds and not the difference (the wave is
+  M7's). The 30 s cycles lock on 2 to 3 seeds at
+  every offset (a permissive left waiting for a gap in a platoon holds its
+  one-lane queue past 120 s), so the level ships 22. The offset is a number
+  in the level and a line in the panel: a slider means re-aligning a running
+  plan through a proper transition, and `_alignToPlan` at a new offset is a
+  jump from green to red with no yellow, so the slider is M7's with the
+  platoon visualiser.
+
+**Broken on purpose** (#34), each from green, each restored: the walk guard
+on `_beginYellow`, `a request 1 s in is held: the walk is running  green next
+null`; the walker hold in `boxVerdict`, `the right turn holds at the box edge
+for the walkers  0.0 s`; `newApproach()` dropped from the handoff, `the
+handoff resets the yellow decision, the commitment and the trust roll  go,
+committed true`; the ring shift dropped, `and its perception ring moved with
+it: the s it remembers is in the new frame, not 220 m back  211.6 m behind`;
+the being-served skip dropped, `three cars queued on a green movement fire
+nothing: it is being served  4 queued, green 1`; the sensors flag ignored,
+`without sensors the same queue fires nothing  0 queued, phase 1`;
+`resumeAt` never set, `and the 'next' after it is N-S lefts, where the cycle
+was, not E-W  green 0`; `after` ignored, `a queue rule with \`after: 16\`
+does not cut a green short of 16 s, whatever the loop reads  green at 15.0
+s`; the gap check dropped from `linkNodes`, `a spacing that leaves a gap
+between the legs is refused`; the start-of-green clause dropped from
+`_walkFits`, `a walk that starts as the green begins holds it past the 10 s
+rule  yellow 0 at 1.0 s, walk null`; the fits-the-time-left clause always
+true, `a call with 8 s of green left does not fit a 13 s walk and waits  0
+waiting`; `pedLate` never counted, `past pedWait it counts as late, once so
+far  0 late`; the walks stripped from `standardPhases`, `the through phases
+carry the crossings parallel to them   |`; the stall accumulated across
+cars, `two cars stalled in the box for 20 s each, in turn, are not a
+gridlock  longest stall 40.0 s`.
+
+**Wrong first, on record.** Two breaks left the suite green on the first
+pass: the ring shift at the handoff (no check read a car's memory) and the
+walk's start-of-green clause (in manual mode the open-ended green let both
+start paths through), so each got a check of its own before the line
+above. Crossing's first rule set locked 3 of 6 seeds twice: once with the
+bays cutting throughs at the 4 s minimum, then with the sequence skipping
+N-S after a jump. Two Blocks' first plan gave N-S the long green. One
+browser check that passed for two sessions failed once on the first run
+here (the phase button's green class read 300 ms after a step), so the
+debug hook's `step(n)` refreshes the HUD itself now.
+
 ## 2026-09-21: Signal City, milestone 5 (#544 to #553)
 
 The second increment of the 2+ row: signal mechanics 2 to 4, the rule panel,

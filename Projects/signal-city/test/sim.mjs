@@ -191,6 +191,26 @@ group('the box: conflicts, permissive lefts, gridlock');
   ok(w.stats.honks > 0, 'and patience ran out somewhere', `${w.stats.honks} honks`);
 }
 
+{
+  // the box stall is per car: two cars stuck in the box for 20 s each, one
+  // after the other, are two short stalls; one car for 31 s is a gridlock
+  const park = (w, t) => {
+    const c = w.spawnCar({ leg: 'N', archetype: 'standard', turn: 'T' });
+    while (!(c.front > c.path.boxEnter + 3)) w.step();
+    c.crashed = true; c.crashedAt = w.t; c.v = 0;
+    return c;
+  };
+  const w = new World({ demand: {}, duration: 600, crashClear: 1e9, boxStall: 30, controller: { startPhase: 0 } }, 6);
+  const a = park(w);
+  w.run(20);
+  a.done = true;
+  const b = park(w);
+  w.run(20);
+  ok(!w.stats.gridlock && w.boxStallT < 25, 'two cars stalled in the box for 20 s each, in turn, are not a gridlock', `longest stall ${f1(w.boxStallT)} s`);
+  w.run(11);
+  ok(w.stats.gridlock, 'one car stalled for 31 s is', `at ${f1(w.stats.gridlockAt)} s`);
+}
+
 /* -------------------------------------------------------------- archetypes -- */
 
 group('archetypes: each against standard on the same run');
@@ -230,7 +250,8 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
     const rng = makeRng(99);
     const n = new Network();
     const p = n.pathFor('N', 0, 'T');
-    const world = { redRunScale: 1, controller: { current: { permissive: [] }, timeToGreen: () => Infinity } };
+    const ctl = { current: { permissive: [] }, timeToGreen: () => Infinity };
+    const world = { redRunScale: 1, controller: ctl, controllerFor: () => ctl };
     let ran = 0;
     for (let i = 0; i < 1000; i++) {
       const c = new Car({ archetype, path: p, rng });
@@ -254,7 +275,8 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
     const p = n.pathFor('N', 0, 'T');
     const c = new Car({ archetype, path: p, rng });
     c.s = p.stopLine - 45 - c.stats.length / 2; c.v = 14;
-    stopLineVerdict(c, 'yellow', 0, { redRunScale: 1, controller: { current: { permissive: [] }, timeToGreen: () => Infinity } });
+    const ctl = { current: { permissive: [] }, timeToGreen: () => Infinity };
+    stopLineVerdict(c, 'yellow', 0, { redRunScale: 1, controller: ctl, controllerFor: () => ctl });
     return c.yellowDecision;
   };
   ok(decide('standard') === 'stop' && decide('aggressive') === 'go', '45 m out at 14 m/s: standard stops for the yellow, aggressive goes', `${decide('standard')} / ${decide('aggressive')}`);
@@ -395,6 +417,191 @@ group('first come, first served at a four-way stop');
   let aIn = -1, bIn = -1;
   for (let i = 0; i < 60 * 40; i++) { w2.step(); if (aIn < 0 && a.front > a.path.boxEnter + 0.5) aIn = w2.t; if (bIn < 0 && b.front > b.path.boxEnter + 0.5) bIn = w2.t; }
   ok(aIn > 0 && bIn > 0 && bIn - aIn < 2.5, 'an opposing through does not wait for the first car: it goes 2 s behind, when it has stopped', `${f1(bIn - aIn)} s apart`);
+}
+
+
+/* ------------------------------------------------------- pedestrians (M6) -- */
+
+group('pedestrians: calls, the walk, and the box held for walkers');
+
+{
+  // E-W green with walks on P-N and P-S. A right turn from E exits by N and
+  // crosses the N zebra; a call on N sends two walkers over it, and the car
+  // holds at the box edge until they have passed its lane.
+  const PEDS = { demand: {}, duration: 600, controller: { peds: true, timing: { yellow: 3, allRed: 1, minGreen: 1 } } };
+  const w = new World(PEDS, 3);
+  ok(w.controller.phases.map(p => p.walks.join('+')).join(' | ') === 'P-E+P-W | P-N+P-S', 'the through phases carry the crossings parallel to them', w.controller.phases.map(p => p.walks.join('+')).join(' | '));
+  ok(w.controller.pedTiming.clear === 6, 'a one-lane road clears in 6 s at 1.2 m/s', String(w.controller.pedTiming.clear));
+  const r = w.spawnCar({ leg: 'E', archetype: 'standard', turn: 'R' });
+  w.run(2);
+  w.requestPhase(1);
+  w.run(5);
+  ok(w.controller.head('E-R') === 'green' && w.controller.pedHead('N') === 'dont-walk', 'E-W is green and the N crossing says don\'t walk');
+  ok(w.callPed('N', { walkers: 2 }) === true, 'a call on N is taken');
+  w.step();
+  ok(w.controller.pedHead('N') === 'walk' && w.walkers.length === 2, 'and the green has just begun, so the walk starts at once with two people on the curb', `${w.controller.pedHead('N')}, ${w.walkers.length} walkers`);
+  let held = 0, crossed = false;
+  for (let i = 0; i < 60 * 30; i++) {
+    w.step();
+    if (!r.done && r.boxVerdict > 0 && r.blockedBy === -1) held++;
+    if (w.walkers.some(k => k.done && !k.struck)) crossed = true;
+  }
+  ok(held > 60 * 3, 'the right turn holds at the box edge for the walkers', `${f1(held / 60)} s`);
+  ok(crossed && w.stats.struck === 0 && w.stats.collisions === 0, 'they cross, nobody is struck', `${w.stats.walkers} walkers, ${w.stats.struck} struck`);
+  ok(r.done, 'and the car goes on once they have passed its lane');
+  const kinds = w.controller.log.map(l => l.kind).join(' ');
+  ok(/walk clear dont-walk/.test(kinds), 'the walk ran WALK, then the clearance, then don\'t walk', kinds);
+}
+{
+  // the walk holds the green: a phase request during a walk waits for the clearance
+  const PEDS = { demand: {}, duration: 600, controller: { peds: true, timing: { yellow: 3, allRed: 1, minGreen: 1 } } };
+  const w = new World(PEDS, 3);
+  w.run(1);
+  w.callPed('E');
+  w.step();
+  ok(w.controller.walk && w.controller.walk.stage === 'walk', 'a call on E during the N-S green starts its walk');
+  w.requestPhase(1);
+  w.run(4);
+  ok(w.controller.stage === 'green' && w.controller.next === 1, 'a request 1 s in is held: the walk is running', `${w.controller.stage} next ${w.controller.next}`);
+  ok(Math.abs(w.controller.timeToYellow('N-T') - w.controller.walkRemaining()) < 1e-6 && w.controller.walkRemaining() > 7, 'and timeToYellow reads the walk\'s remaining time, so granny can see it', f1(w.controller.timeToYellow('N-T')));
+  w.run(9.1);   // 7 s walk + 6 s clear from t = 1
+  ok(w.controller.stage === 'yellow', 'the yellow comes when the clearance ends', `${w.controller.stage} at ${f1(w.t)} s`);
+  // a call that does not fit the green left waits for the phase's next green, and is late
+  const w2 = new World({ ...PEDS, pedWait: 20, controller: { ...PEDS.controller, rules: [{ when: 'elapsed', seconds: 20, then: 'next' }] } }, 3);
+  w2.run(12);
+  w2.callPed('E');
+  w2.run(2);
+  ok(!w2.controller.walk && w2.controller.pedCalls.has('E'), 'a call with 8 s of green left does not fit a 13 s walk and waits', `${w2.controller.pedCalls.size} waiting`);
+  w2.run(24);
+  ok(w2.stats.pedLate === 1 && w2.stats.pedServed === 0, 'past pedWait it counts as late, once so far', `${w2.stats.pedLate} late`);
+  w2.run(20);
+  ok(w2.stats.pedServed === 1 && w2.controller.log.some(l => l.kind === 'walk'), 'and is served on the next N-S green', w2.controller.log.map(l => l.kind + '@' + l.t.toFixed(0)).join(' '));
+  // a call that could not fit is served as the phase's next green begins,
+  // and holds that green past a 10 s rule until the 13 s walk has cleared
+  const w3 = new World({ ...PEDS, controller: { ...PEDS.controller, rules: [{ when: 'elapsed', seconds: 10, then: 'next' }] } }, 3);
+  w3.run(2);
+  w3.callPed('E');
+  w3.run(37);   // 8 s of N-S left, then E-W's 10 s, and N-S is green again at 28 s
+  ok(w3.controller.phase === 0 && w3.controller.stage === 'green' && w3.controller.walk && w3.controller.stageT > 10.5, 'a walk that starts as the green begins holds it past the 10 s rule', `${w3.controller.stage} ${w3.controller.phase} at ${f1(w3.controller.stageT)} s, walk ${w3.controller.walk && w3.controller.walk.stage}`);
+  const t = new World({ ...PEDS, network: { legs: ['N', 'E', 'S'] } }, 1);
+  ok(t.callPed('W') === false && t.callPed('E') === true, 'a call on a leg the junction does not have is refused; one on the stem is taken');
+}
+{
+  // a level without walks takes no calls
+  const w = new World(GREEN_NS, 1);
+  ok(w.callPed('N') === false && w.stats.pedCalls === 0, 'a controller without walks refuses a call');
+}
+
+/* ------------------------------------------------------ induction loops -- */
+
+group('induction loops fire the queue rules');
+
+{
+  // N-S green, a queue rule on E-T with threshold 3 to phase 1, sensors on.
+  const LOOP = { demand: {}, duration: 600, sensors: true, controller: { startPhase: 0, timing: { yellow: 3, allRed: 1, minGreen: 4 }, rules: [{ when: 'queue', movement: 'E-T', threshold: 3, then: 1 }] } };
+  const w = new World(LOOP, 5);
+  w.spawnCar({ leg: 'E', archetype: 'standard', turn: 'T' }); w.run(3);
+  w.spawnCar({ leg: 'E', archetype: 'standard', turn: 'T' }); w.run(25);
+  ok(w.queued('E-T') === 2 && w.controller.phase === 0 && w.controller.stage === 'green', 'two cars on the loop do not fire a rule that asks for three', `${w.queued('E-T')} queued, ${w.controller.stage} ${w.controller.phase}`);
+  ok(w.onLoop(0, 'E', 0) && !w.onLoop(0, 'W', 0), 'the E loop reads a body on it and the W loop does not');
+  w.spawnCar({ leg: 'E', archetype: 'standard', turn: 'T' });
+  let firedAt = -1;
+  for (let i = 0; i < 60 * 30 && firedAt < 0; i++) { w.step(); if (w.controller.next === 1) firedAt = w.t; }
+  ok(firedAt > 0 && w.queued('E-T') >= 3, 'the third car fires it', `at ${f1(firedAt)} s with ${w.queued('E-T')} queued`);
+  w.run(6);
+  ok(w.controller.phase === 1 && w.controller.stage === 'green', 'and E-W is green', `${w.controller.stage} ${w.controller.phase}`);
+  // the same three cars with the sensors off: nothing
+  const d = new World({ ...LOOP, sensors: false }, 5);
+  for (let i = 0; i < 3; i++) { d.spawnCar({ leg: 'E', archetype: 'standard', turn: 'T' }); d.run(3); }
+  d.run(30);
+  ok(d.queued('E-T') === 3 && d.controller.phase === 0, 'without sensors the same queue fires nothing', `${d.queued('E-T')} queued, phase ${d.controller.phase}`);
+  // a rule on a movement that is green never fires while it is served: three
+  // N-T cars queued behind a stalled one on the N-S green, rule N-T -> phase 1
+  const g = new World({ ...LOOP, crashClear: 1e9, controller: { ...LOOP.controller, rules: [{ when: 'queue', movement: 'N-T', threshold: 3, then: 1 }] } }, 5);
+  const stall = g.spawnCar({ leg: 'N', archetype: 'standard', turn: 'T' });
+  while (stall.path.stopLine - stall.front > 4) g.step();
+  stall.crashed = true; stall.crashedAt = g.t; stall.v = 0;
+  for (let i = 0; i < 3; i++) { g.spawnCar({ leg: 'N', archetype: 'standard', turn: 'T' }); g.run(3); }
+  g.run(30);
+  ok(g.queued('N-T') >= 3 && g.controller.phase === 0 && g.controller.stage === 'green' && g.controller.next === null, 'three cars queued on a green movement fire nothing: it is being served', `${g.queued('N-T')} queued, ${g.controller.stage} ${g.controller.phase}`);
+  // a level that lists its loops reads only those lanes
+  const l = new World({ ...LOOP, loops: ['N-L', 'S-L'] }, 5);
+  for (let i = 0; i < 3; i++) { l.spawnCar({ leg: 'E', archetype: 'standard', turn: 'T' }); l.run(3); }
+  l.run(30);
+  ok(l.queued('E-T') === 0 && l.controller.phase === 0 && !l.hasLoop(0, 'E', 0) && l.hasLoop(0, 'N', 0), 'with loops on the lefts only, the E-T queue reads 0 and fires nothing', `${l.queued('E-T')} queued`);
+}
+
+/* ------------------------------------------------------------ the corridor -- */
+
+group('the corridor: two boxes, one handoff, fresh decisions');
+
+{
+  // node 0 E-W green, node 1 N-S green: a W-T car clears box 1 on its green
+  // and stops for the red at box 2
+  const CORRIDOR = { network: { nodes: 2, spacing: 220 }, demand: {}, duration: 600, turns: { T: 1 }, controller: { timing: { yellow: 3, allRed: 1, minGreen: 1 } }, controllers: [{ startPhase: 1 }, { startPhase: 0 }] };
+  const w = new World(CORRIDOR, 1);
+  ok(w.nodes.length === 2 && w.controllers.length === 2 && w.nodes[0].origin[0] === -110 && w.nodes[1].origin[0] === 110, 'two nodes 220 m apart, a controller each', w.nodes.map(n => n.origin.join(',')).join(' | '));
+  ok(w.nodes[0].spawnLegs.join('') === 'NSW' && w.nodes[1].spawnLegs.join('') === 'NES', 'the legs between them spawn nothing', `${w.nodes[0].spawnLegs.join('')} ${w.nodes[1].spawnLegs.join('')}`);
+  const p0 = w.nodes[0].pathFor('W', 0, 'T');
+  ok(p0.link && p0.link.node === 1 && p0.link.entry === 'W' && p0.link.atS === 0, 'W-T at box 1 links onto W at box 2', JSON.stringify(p0.link));
+  ok(!w.nodes[0].pathFor('N', 0, 'T').link, 'and a path leaving by an outer leg does not');
+  const c = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', node: 0 });
+  let jump = 0, handedAt = -1, vAtHandoff = 0, memory = 0;
+  for (let i = 0; i < 60 * 60 && !c.done; i++) {
+    const before = c.path.at(c.s), node = c.path.node;
+    w.step();
+    const after = c.path.at(c.s);
+    const d = Math.hypot(after.x - before.x, after.y - before.y);
+    if (d > c.v / 60 + 0.05) jump = Math.max(jump, d);
+    if (node === 0 && c.path.node === 1) { handedAt = w.t; vAtHandoff = c.v; memory = Math.abs(c.s - c.perceived().s); }
+  }
+  ok(handedAt > 0 && vAtHandoff > 12, 'it is handed to box 2 at speed', `at ${f1(handedAt)} s, ${f1(vAtHandoff)} m/s`);
+  ok(jump < 0.01, 'with no jump in position at the handoff', `${jump.toFixed(3)} m`);
+  ok(memory < 15, 'and its perception ring moved with it: the s it remembers is in the new frame, not 220 m back', `${f1(memory)} m behind`);
+  ok(c.path.node === 1 && c.v === 0 && c.path.stopLine - c.front > 0 && c.path.stopLine - c.front < 3.5, 'and stops for the red at box 2', `node ${c.path.node}, ${f1(c.path.stopLine - c.front)} m short`);
+  ok(w.stats.handoffs === 1 && w.stats.cleared === 0, 'one handoff, nothing cleared yet');
+  w.requestPhase(1, 1);
+  w.run(25);
+  ok(c.done && w.stats.cleared === 1, 'the second box\'s green clears it', `done ${c.done}`);
+}
+{
+  // the yellow decision is made again at box 2: a car that went on the
+  // yellow at box 1 (committed) stops for a yellow far out at box 2
+  const CORRIDOR = { network: { nodes: 2, spacing: 220 }, demand: {}, duration: 600, turns: { T: 1 }, controller: { timing: { yellow: 3, allRed: 1, minGreen: 1 } }, controllers: [{ startPhase: 1 }, { startPhase: 1 }] };
+  const w = new World(CORRIDOR, 1);
+  const c = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', node: 0 });
+  while (c.path.stopLine - c.front > 10) w.step();
+  w.requestPhase(0, 0);     // yellow at box 1 with the car 10 m out: go
+  w.step();
+  ok(c.yellowDecision === 'go' && c.committed, 'ten metres out at box 1 the yellow decision is go', `${c.yellowDecision}, committed ${c.committed}`);
+  while (c.path.node === 0 && !c.done) w.step();
+  ok(c.path.node === 1 && c.yellowDecision === null && !c.committed && !c.trustRolled, 'the handoff resets the yellow decision, the commitment and the trust roll', `${c.yellowDecision}, committed ${c.committed}`);
+  while (c.path.stopLine - c.front > 70) w.step();
+  w.requestPhase(0, 1);     // yellow at box 2 with the car 70 m out: stop
+  w.run(11);
+  ok(c.yellowDecision === 'stop' && c.v === 0 && c.front < c.path.stopLine, 'seventy metres out at box 2 the fresh decision is stop, and it stops', `${c.yellowDecision}, front ${f1(c.front)} vs line ${f1(c.path.stopLine)}`);
+}
+{
+  // a queue on box 2's approach is followed across the handoff, and the
+  // second box's turn is the level's roll
+  const CORRIDOR = { network: { nodes: 2, spacing: 220 }, demand: {}, duration: 600, turns: { T: 0.5, L: 0.25, R: 0.25 }, mix: { standard: 1 }, controller: { timing: { yellow: 3, allRed: 1, minGreen: 1 } }, controllers: [{ startPhase: 1 }, { startPhase: 0 }] };
+  const w = new World(CORRIDOR, 2);
+  const cars = [];
+  for (let i = 0; i < 6; i++) { cars.push(w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', node: 0 })); w.run(2.5); }
+  w.run(30);
+  ok(cars.every(c => c.path.node === 1 && c.v === 0), 'six cars sent through box 1 queue at box 2\'s red', cars.map(c => `${c.path.node}:${f1(c.front)}`).join(' '));
+  const gaps = cars.slice(1).map((c, i) => cars[i].rear - c.front);
+  ok(gaps.every(g => g > 0.5 && g < 6), 'each 0.5 to 6 m behind the one ahead', gaps.map(f1).join(' '));
+  const turns = new Set(cars.map(c => c.path.turn));
+  ok(turns.size >= 2, 'and their turns at box 2 were rolled fresh', [...cars.map(c => c.path.turn)].join(''));
+  ok(w.stats.collisions === 0, 'without touching');
+  // determinism holds across the handoff
+  const a = new World({ ...CORRIDOR, demand: [{ W: 500, N: 200, S: 200 }, { E: 500, N: 200, S: 200 }], controller: { rules: [{ when: 'elapsed', seconds: 20, then: 'next' }] }, controllers: [] }, 4).run(90);
+  const b = new World({ ...CORRIDOR, demand: [{ W: 500, N: 200, S: 200 }, { E: 500, N: 200, S: 200 }], controller: { rules: [{ when: 'elapsed', seconds: 20, then: 'next' }] }, controllers: [] }, 4).run(90);
+  ok(a.hash() === b.hash() && a.stats.handoffs > 5, 'a corridor run is deterministic and cars do cross between the boxes', `${a.stats.handoffs} handoffs, ${a.stats.cleared} cleared, ${a.stats.collisions} collisions`);
+  let threw = null;
+  try { new World({ network: { nodes: 2, spacing: 240 } }); } catch (e) { threw = e.message; }
+  ok(threw && /gap/.test(threw), 'a spacing that leaves a gap between the legs is refused', threw);
 }
 
 /* ---------------------------------------------------------------- the soak -- */

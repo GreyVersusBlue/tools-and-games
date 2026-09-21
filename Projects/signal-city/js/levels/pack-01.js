@@ -1,8 +1,16 @@
 // Signal City: level pack 1. A level is plain data the World reads:
 //
-//   network     { legs, lanesPerDir, leftLane } the intersection's shape
-//   controller  { phases?, lefts?, timing, mode, plan, rules, startPhase }
-//   demand      { N: veh/h, ... }               Poisson arrivals per leg
+//   network     { legs, lanesPerDir, leftLane, nodes, spacing } the shape:
+//               `nodes: 2` is a corridor, two boxes `spacing` m apart on an
+//               east-west main street (M6)
+//   controller  { phases?, lefts?, peds?, main?, timing, mode, plan, rules, startPhase }
+//   controllers [{ offset, startPhase }, ...]    per-node overrides of it
+//   demand      { N: veh/h, ... }               Poisson arrivals per leg, or
+//               one such object per node in an array
+//   pedDemand   { N: calls/h, ... }             pedestrian calls per leg
+//   pedWait     seconds a call may wait before it costs satisfaction
+//   sensors     true: the induction loops are live and `queue` rules fire
+//   loops       the movements that have a loop (default: every lane)
 //   demandCurve (fraction of duration) -> multiplier, for surges
 //   mix         { archetype: weight }
 //   turns       { T, L, R } weights
@@ -19,9 +27,13 @@
 //                         the unlock, the panel names it
 //               flash     the flashing red / flashing yellow / signals buttons
 //               priority  the emergency corridor button
+//               peds      the pedestrian call buttons and the walk lamps
+//               sensors   a note: the loops are live and the queue rules run
+//               offset    a note: the second box runs its plan `offset`
+//                         seconds behind the first (the slider is M7's)
 //
 // Milestone 4 shipped level 1 and the free-play board; milestone 5 levels 2
-// and 3. Levels 4 to 6 are the rest of the campaign in WISHLIST.md.
+// and 3; milestone 6 levels 4 and 5. Level 6 is M8's, with the campaign.
 
 export const LEVELS = [
   {
@@ -79,6 +91,58 @@ export const LEVELS = [
     gridlockWait: 180,
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred', 'lefts', 'flash'],
+  },
+  {
+    id: 'crossing',
+    name: 'Crossing',
+    blurb: 'Four Ways again, with people. A call on any leg wants a walk, and a walk holds the green until the last walker is across.',
+    hint: 'Calls light up on the panel and on the map. The walk runs with the through phase parallel to it; give the E-W phase when N or S calls, and the loops in the left bays will ask for the arrows for you.',
+    network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2, leftLane: true },
+    // a full bay pulls its arrow in once the through has had 16 s; the
+    // elapsed rule keeps the board cycling on its own. `after` matters: at
+    // the 4 s minimum green the bays cut every through short and the board
+    // locked on 3 of 6 seeds
+    controller: {
+      lefts: true, peds: true, timing: { yellow: 3, allRed: 1.5, minGreen: 4 },
+      rules: [
+        { when: 'queue', movement: 'N-L', threshold: 3, after: 16, then: 1 },
+        { when: 'queue', movement: 'E-L', threshold: 3, after: 16, then: 3 },
+        { when: 'elapsed', seconds: 24, then: 'next' },
+      ],
+    },
+    demand: { N: 520, S: 520, E: 400, W: 400 },
+    pedDemand: { N: 60, S: 60, E: 60, W: 60 },
+    pedWait: 45,
+    sensors: true,
+    loops: ['N-L', 'S-L', 'E-L', 'W-L'],
+    mix: { standard: 5, granny: 1, tourist: 1.5, student: 1.5 },
+    turns: { T: 0.55, L: 0.25, R: 0.2 },
+    duration: 240,
+    target: 48,
+    waitTarget: 36,
+    gridlockWait: 180,
+    mode: 'soft',
+    unlocks: ['phases', 'auto', 'allred', 'lefts', 'flash', 'peds', 'sensors'],
+  },
+  {
+    id: 'two-blocks',
+    name: 'Two Blocks',
+    blurb: 'Two crossroads on one street, 220 m apart, on a timed plan. The east box runs 16 s behind the west one, so a platoon released at one meets a green at the other.',
+    hint: 'Both boxes run the same plan; the offset is the level\'s. Watch a platoon leave the west box and arrive at the east one. Press a phase to override the selected box, and pick which box the panel drives above the phases.',
+    network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1, nodes: 2, spacing: 220 },
+    // phase 0 is the main street, E-W here (`main: 'EW'`): 22 s to it, 12 to the side streets
+    controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 22 }, { phase: 1, green: 12 }], timing: { yellow: 3, allRed: 1.5, minGreen: 4 } },
+    controllers: [{ offset: 0 }, { offset: 16 }],
+    demand: [{ W: 520, N: 220, S: 220 }, { E: 520, N: 220, S: 220 }],
+    mix: { standard: 5, aggressive: 1.5, rideshare: 1.2, trucker: 0.6 },
+    turns: { T: 0.7, L: 0.1, R: 0.2 },
+    duration: 240,
+    // the offset is the second star: at 22 s the shipped 16 s offset waits
+    // 8 to 14 s over six seeds, offset 0 waits 12 to 19
+    target: 80,
+    waitTarget: 16,
+    mode: 'soft',
+    unlocks: ['phases', 'allred', 'offset'],
   },
   {
     id: 'free-play',
