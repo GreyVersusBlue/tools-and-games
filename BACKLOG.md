@@ -106,11 +106,11 @@ Integer Foundry's order cost (PR #335)**, the old ranks 25 and 23 — a ½ and a
 across two areas, inside the spanning-areas cap. Both rows named Opus 5 and both
 were worked under Claude Opus 5. That is the line to update when your batch
 merges; a PR that only changes these files is not a batch and does not belong in
-it. **25 ranked items remain**, and **every one of them names a model.**
+it. **26 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 1: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
+**Rank 1 is Signal City, claimed** (`Projects/signal-city`, a 2+, Fable 5.1); its section below is the plan. **After it, take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
-quarters in the same area, and Blue Hour's two ranked quarters (17 and 18) both
+quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
 want hardware this machine does not have — so take it alone. Its plan is Blue
 Hour's section below, item 7. **It needs no hardware this machine lacks.** The
 heightfield it reshapes is `hillProfile` now, not a ramp (#523), and past the
@@ -461,31 +461,32 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 2 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 3 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 4 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
-| 5 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 6 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 7 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 8 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 9 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 10 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 11 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 12 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 13 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 14 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 15 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 16 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 17 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 18 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 19 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 20 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 21 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 22 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 23 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 24 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 25 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 1 | Signal City, milestones 0 to 4: scaffold, signal model, sprites, car physics, eight archetypes, scoring on one intersection | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/adoring-fermi-xma1dn` | [Signal City](#signal-city) |
+| 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
+| 5 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
+| 6 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 7 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 8 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 9 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 10 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 11 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 12 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 13 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 14 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 15 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 16 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 17 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 18 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 19 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 20 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 21 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 22 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 23 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 24 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 25 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 26 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -1115,6 +1116,40 @@ console before committing a `games.mjs` recipe. The candidate that shipped:
 `start` (120, 540), which grazes the blackhole at ~75px and the first wormhole
 at ~42px and resolves `plan.outcome === "WIN"`.
 
+## Signal City
+
+A traffic-signal programming game, asked for by Devon on 2026-09-21: the
+player never drives, only programs the lights, and has to keep a city grid
+moving without gridlock or collisions. Top-down canvas, ES modules, no build,
+zero offsite requests, a Node suite per module. Folder `Projects/signal-city/`;
+its `WISHLIST.md` carries the milestone plan in full. The ranked row is a 2+:
+one increment per session, the row rewritten to say what is done.
+
+1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
+2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
+   from geometry, phases, green/yellow/all-red transitions, manual and timed
+   modes, flashing states, and the rule list that later triggers phases
+   automatically.
+3. **M1b sprites** (`js/sprites.js`, `sprites.html`): the eight archetype
+   silhouettes drawn procedurally, four glossy colour variants each, cached to
+   offscreen canvases, with a gallery page that exports a sheet.
+4. **M2 network and physics** (`js/network.js`, `js/cars.js`, `js/sim.js`):
+   lanes as arc-length polylines, turn arcs with swept width, IDM-style
+   following with reaction delay, dilemma-zone stop rule, collisions, a
+   Poisson spawner, fixed-dt determinism.
+5. **M3 archetypes**: the eight stat rows and their tick-level faults; the
+   emergency priority request.
+6. **M4 scoring and level 1**: throughput, safety and satisfaction meters,
+   stars (survive / average wait / zero collisions), a 4-way manual level,
+   `signal_city_v1` save through `gvb-save.js`.
+7. M5: tunable all-red, protected lefts, flashing modes, the rule panel;
+   levels 2 and 3.
+8. M6: pedestrian calls, induction loops, a two-intersection corridor with
+   offsets; M7 the green wave.
+9. M7 events: rush hour, power outage, motorcade, ambulance timer, lane
+   closure, school zone, funeral procession.
+10. M8 campaign and unlocks; M9 endless and sandbox with a roundabout node.
+
 ## Tools/board-check
 
 The site-wide check and regression suite. Owns `check-integrity.mjs`,
@@ -1467,6 +1502,7 @@ now.
 | The Fracture Cycle | `Projects/the-fracture-cycle.html`, `Projects/the-fracture-cycle/` | the four shared |
 | Orbital | `Projects/orbital/` | the four shared |
 | Blue Hour | `Projects/blue-hour-trail/` | the four shared |
+| Signal City | `Projects/signal-city/` | the four shared |
 | Hearth | `Projects/hearth/`, `.github/workflows/hearth-ci.yml` | the four shared |
 | Bell to Bell | `Projects/bell-to-bell/` — and its own `CLAUDE.md` governs inside it | the four shared |
 | School Generator | `Projects/school-generator/`, `.github/workflows/school-generator-ci.yml` | the four shared |
