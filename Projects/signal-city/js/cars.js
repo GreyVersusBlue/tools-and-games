@@ -15,16 +15,30 @@
 // from, and why aggressive tailgaters cause them.
 
 export const ARCHETYPES = {
-  //           accel brake bComf vmax  turnV  T    s0   react runRed patience yellowBias len   wid
-  standard:  { accel: 2.6, brake: 4.5, bComf: 2.6, vmax: 14, turnV: 6.0, T: 1.5, s0: 2.0, reaction: 0.6, runRed: 0.02, patience: 45, yellowBias: 1.0, length: 4.6, width: 1.8 },
-  granny:    { accel: 1.4, brake: 4.8, bComf: 1.8, vmax: 10, turnV: 4.0, T: 2.2, s0: 3.0, reaction: 0.9, runRed: 0.00, patience: 150, yellowBias: 1.7, length: 5.8, width: 1.9, cautious: 0.5 },
-  aggressive:{ accel: 3.8, brake: 6.5, bComf: 4.5, vmax: 17, turnV: 8.0, T: 0.7, s0: 1.2, reaction: 0.4, runRed: 0.08, patience: 15, yellowBias: 0.35, length: 5.0, width: 2.2 },
-  tourist:   { accel: 2.4, brake: 4.5, bComf: 2.6, vmax: 13, turnV: 5.0, T: 1.6, s0: 2.2, reaction: 0.7, runRed: 0.02, patience: 50, yellowBias: 1.1, length: 5.0, width: 2.0, hesitate: 0.35, hesitateFor: 1.6, wrongTurn: 0.15 },
-  trucker:   { accel: 1.0, brake: 2.8, bComf: 1.5, vmax: 12, turnV: 3.5, T: 2.0, s0: 4.0, reaction: 1.2, runRed: 0.01, patience: 70, yellowBias: 1.2, length: 2.6, width: 2.4, trailer: { length: 9.0, width: 2.5, gap: 0.3 }, wide: true },
-  student:   { accel: 1.8, brake: 3.8, bComf: 2.2, vmax: 11, turnV: 4.5, T: 2.0, s0: 2.5, reaction: 1.1, runRed: 0.00, patience: 55, yellowBias: 1.3, length: 3.8, width: 1.7, jitter: 1.5, jerky: 0.45 },
-  rideshare: { accel: 2.6, brake: 4.5, bComf: 2.6, vmax: 14, turnV: 6.0, T: 1.4, s0: 2.0, reaction: 0.6, runRed: 0.02, patience: 30, yellowBias: 1.0, length: 4.4, width: 1.7, pickup: 0.012, pickupFor: 4.0 },
-  emergency: { accel: 3.6, brake: 6.5, bComf: 4.0, vmax: 20, turnV: 8.0, T: 1.0, s0: 2.0, reaction: 0.4, runRed: 1.00, patience: 0, yellowBias: 0.0, length: 5.6, width: 2.2, ignoresSignals: true },
+  //           accel brake bComf vmax  turnV  T    s0   react runRed patience yellowBias len   wid   greenTrust
+  standard:  { accel: 2.6, brake: 4.5, bComf: 2.6, vmax: 14, turnV: 6.0, T: 1.5, s0: 2.0, reaction: 0.6, runRed: 0.02, patience: 45, yellowBias: 1.0, length: 4.6, width: 1.8, greenTrust: 0.15 },
+  granny:    { accel: 1.4, brake: 4.8, bComf: 1.8, vmax: 10, turnV: 4.0, T: 2.2, s0: 3.0, reaction: 0.9, runRed: 0.00, patience: 150, yellowBias: 1.7, length: 5.8, width: 1.9, greenTrust: 0.0, cautious: 0.5 },
+  aggressive:{ accel: 3.8, brake: 6.5, bComf: 4.5, vmax: 17, turnV: 8.0, T: 0.7, s0: 1.2, reaction: 0.4, runRed: 0.08, patience: 15, yellowBias: 0.35, length: 5.0, width: 2.2, greenTrust: 0.6 },
+  tourist:   { accel: 2.4, brake: 4.5, bComf: 2.6, vmax: 13, turnV: 5.0, T: 1.6, s0: 2.2, reaction: 0.7, runRed: 0.02, patience: 50, yellowBias: 1.1, length: 5.0, width: 2.0, greenTrust: 0.25, hesitate: 0.35, hesitateFor: 1.6, wrongTurn: 0.15 },
+  trucker:   { accel: 1.0, brake: 2.8, bComf: 1.5, vmax: 12, turnV: 3.5, T: 2.0, s0: 4.0, reaction: 1.2, runRed: 0.01, patience: 70, yellowBias: 1.2, length: 2.6, width: 2.4, greenTrust: 0.05, trailer: { length: 9.0, width: 2.5, gap: 0.3 }, wide: true },
+  student:   { accel: 1.8, brake: 3.8, bComf: 2.2, vmax: 11, turnV: 4.5, T: 2.0, s0: 2.5, reaction: 1.1, runRed: 0.00, patience: 55, yellowBias: 1.3, length: 3.8, width: 1.7, greenTrust: 0.05, jitter: 1.5, jerky: 0.45 },
+  rideshare: { accel: 2.6, brake: 4.5, bComf: 2.6, vmax: 14, turnV: 6.0, T: 1.4, s0: 2.0, reaction: 0.6, runRed: 0.02, patience: 30, yellowBias: 1.0, length: 4.4, width: 1.7, greenTrust: 0.2, pickup: 0.012, pickupFor: 4.0 },
+  emergency: { accel: 3.6, brake: 6.5, bComf: 4.0, vmax: 20, turnV: 8.0, T: 1.0, s0: 2.0, reaction: 0.4, runRed: 1.00, patience: 0, yellowBias: 0.0, length: 5.6, width: 2.2, greenTrust: 0.0, ignoresSignals: true },
 };
+
+// Green trust, the fault the all-red clearance exists for. Once per
+// approach, a driver whose green is on its way (the other street's yellow or
+// the all-red is running, Controller.timeToGreen is finite) or has just come
+// (within TRUST_WINDOW seconds of it, at the line) rolls `greenTrust`. A
+// trusting driver anticipates: on the red they do not slow for a line they
+// will reach as it turns green, and on the green they look at the light, not
+// the box, so a car still crossing (a yellow puncher finishing, a red runner)
+// is not waited for and not braked for until it is a stationary body on their
+// line. With 1 s of all-red a main-street through that punched the yellow at
+// 17 m/s is still crossing the stem's left path when the anticipating stem
+// driver arrives on the green; with 2 s it has cleared (test/sim.mjs scripts
+// it and measures the rate over seeds).
+export const TRUST_WINDOW = 1.0;
 
 export const ARCHETYPE_NAMES = Object.keys(ARCHETYPES);
 
@@ -63,6 +77,8 @@ export class Car {
     this.cautiousDone = false; this.cautiousStop = false;
     this.wrongTurnDone = false;
     this.stoppedAtLine = false; // flash-red: have I actually stopped at the line
+    this.stoppedAt = -1;        // world time I stopped at a flashing or dark head, for first come first served
+    this.trustRolled = false; this.trusting = false; // fresh-green trust, once per green
     this.stopJitter = st.jitter ? rng.range(-st.jitter, st.jitter) : 0;
     this.jerk = 1; this.jerkT = 0;
     // special stops (tourist hesitation, rideshare pickup, granny caution)
@@ -117,7 +133,8 @@ export class Car {
   // as a car leaves one box for the next).
   newApproach() {
     this.yellowDecision = null; this.redRollDone = false; this.cautiousDone = false; this.cautiousStop = false;
-    this.wrongTurnDone = false; this.stoppedAtLine = false; this.hesitateRolled = false;
+    this.wrongTurnDone = false; this.stoppedAtLine = false; this.stoppedAt = -1; this.hesitateRolled = false;
+    this.trustRolled = false; this.trusting = false;
     this.committed = this.stats.ignoresSignals === true;
   }
 }
@@ -140,10 +157,17 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
   const d = line - car.front;
   if (car.committed) return 0;
   if (car.front > p.stopLine + 0.5) return 0;   // past the line: committed by position
+  const rollTrust = () => {
+    car.trustRolled = true;
+    const chance = (st.greenTrust || 0) * (world.greenTrustScale ?? 1);
+    if (chance > 0 && car.rng.chance(chance)) { car.trusting = true; world.events.push({ t: world.t, kind: 'trust', car: car.id }); }
+  };
   switch (head) {
     case 'green': case 'green-arrow': {
       // a fresh green clears last cycle's decisions
-      car.yellowDecision = null; car.redRollDone = false; car.stoppedAtLine = false;
+      car.yellowDecision = null; car.redRollDone = false; car.stoppedAtLine = false; car.stoppedAt = -1;
+      // and is trusted, once, by a driver it releases within its first second
+      if (!car.trustRolled && d < 30 && world.controller.stageT < TRUST_WINDOW) rollTrust();
       // granny: a green that is about to end, and room to stop, and she stops
       if (st.cautious && !car.cautiousDone && timeToYellow < 3 && d > 8 && car.v > 2) {
         car.cautiousDone = true;
@@ -172,24 +196,26 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
         const p = st.runRed * (world.redRunScale ?? 1);
         if (p > 0 && car.rng.chance(p)) { car.committed = true; return 0; }
       }
+      // a green on its way: the anticipator rolls once, and then does not
+      // slow for a line they will reach as it turns green
+      const tg = world.controller.timeToGreen(p.movement);
+      if (!Number.isFinite(tg)) { car.trustRolled = false; car.trusting = false; }
+      else {
+        if (!car.trustRolled && d < 80 && car.v > 4) rollTrust();
+        if (car.trusting && d / Math.max(car.v, 0.5) >= tg) return 0;
+      }
       return line;
     }
-    case 'flash-red': {
-      // stop at the line, then treat it as a box-entry question
+    case 'flash-red': case 'dark': {
+      // stop at the line, then treat it as a box-entry question, in the
+      // order the cars stopped (boxVerdict reads stoppedAt)
       if (!car.stoppedAtLine) {
-        if (car.v < 0.3 && d < 3) car.stoppedAtLine = true;
+        if (car.v < 0.3 && d < 3) { car.stoppedAtLine = true; car.stoppedAt = world.t; }
         else return line;
       }
       return 0;
     }
     case 'flash-yellow': return 0;
-    case 'dark': {
-      if (!car.stoppedAtLine) {
-        if (car.v < 0.3 && d < 3) car.stoppedAtLine = true;
-        else return line;
-      }
-      return 0;
-    }
     default: return line;
   }
 }
@@ -210,14 +236,22 @@ export function boxVerdict(car, head, world) {
   if (inside && car.front > p.boxExit - 4) return 0;
   if (car.front < p.stopLine - 30) return 0;        // too far to care
   const uncontrolled = head === 'flash-red' || head === 'flash-yellow' || head === 'dark';
-  const gapNeed = head === 'flash-red' || head === 'dark' ? 3.0 : permissive ? 4.0 : 1.2;
+  const allWayStop = head === 'flash-red' || head === 'dark';
+  const gapNeed = allWayStop ? 3.0 : permissive ? 4.0 : 1.2;
+  const trusting = car.trusting && !uncontrolled && !permissive;   // a crossing is trusted through; a merge (same exit) is not
   const net = world.network;
   for (const o of world.cars) {
     if (o === car || o.done) continue;
     const other = o.path.movement;
     const clash = world.conflicts(mine, other) || (car.stats.wide && car.path.turn !== 'T' && world.wideConflicts(mine, other)) || (o.stats.wide && o.path.turn !== 'T' && world.wideConflicts(other, mine));
     if (!clash) continue;
+    // first come, first served at a four-way stop: a conflicting car that
+    // stopped at its line before I did, and has not yet entered, goes first
+    if (allWayStop && !inside && car.stoppedAtLine && o.stoppedAtLine && !o.crashed && o.front <= o.path.boxEnter + 0.5
+      && (o.stoppedAt < car.stoppedAt || (o.stoppedAt === car.stoppedAt && o.id < car.id))) { car.blockedBy = o.id; return waitAt; }
+    const crossing = o.path.exit !== p.exit;
     if (inside) {
+      if (trusting && crossing) continue;
       if (!o.committed || o.touchesBox() || o.v < 0.5) continue;
       const x = net.crossing(car.path, o.path);
       if (car.front > x.sA) continue;                 // past where we would meet
@@ -235,10 +269,13 @@ export function boxVerdict(car, head, world) {
       if (o.v < 0.5 || o.crashed) continue;
       // moving through, and not yet clear of me
       if (car.committed && !o.crashed) continue;
+      // a trusting starter looked at the light, not the box
+      if (trusting && crossing) continue;
       car.blockedBy = o.id;
       return waitAt;
     }
     // approaching and about to enter, with the right of way or committed
+    if (trusting && crossing) continue;
     const dEnter = o.path.boxEnter - o.front;
     if (dEnter < 0 || o.v < 0.5) continue;
     const eta = dEnter / o.v;

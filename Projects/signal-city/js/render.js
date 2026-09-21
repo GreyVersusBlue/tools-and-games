@@ -9,7 +9,7 @@
 
 import { spriteFor, SPRITES } from './sprites.js';
 import { LANE_WIDTH, CROSSWALK, legDir } from './network.js';
-import { parseMovement, exitLeg } from './signals.js';
+import { parseMovement } from './signals.js';
 
 const GRASS = '#5d7a4a';
 const GRASS_2 = '#556f43';
@@ -220,8 +220,10 @@ export class Renderer {
   }
 
   // One head per leg on the far side of the box (where the driver looks),
-  // on the driver's right, on a pole. Three lamps, plus an arrow lamp when
-  // the left has its own state.
+  // on the driver's right, on a pole. Three lamps for the leg's through (or,
+  // on a stem with no through, its right), plus an arrow lamp for a leg
+  // whose left has a phase of its own: it draws that movement's head, red
+  // arrow included, whatever the through is showing.
   _heads(ctx, world, now) {
     const net = world.network, ctl = world.controller;
     const blink = Math.floor(now * 2) % 2 === 0;
@@ -231,15 +233,21 @@ export class Renderer {
       const across = -1;                              // far side of the box
       const base = [d[0] * across * (net.boxHalf + 1.2) + rr[0] * (net.halfRoad + 1.8), d[1] * across * (net.boxHalf + 1.2) + rr[1] * (net.halfRoad + 1.8)];
       const heading = Math.atan2(-d[1], -d[0]);        // facing the driver: the head points back up the leg
-      const through = ctl.head(`${leg}-T`);
-      const left = net.legs.includes(exitLeg(leg, 'L')) ? ctl.head(`${leg}-L`) : null;
-      const showArrow = left && left !== through && (left.includes('arrow') || through === 'red');
+      const mainMv = ['T', 'R', 'L'].map(t => `${leg}-${t}`).find(m => ctl.movements.includes(m));
+      const main = ctl.head(mainMv);
+      const leftMv = `${leg}-L`;
+      const showArrow = ctl.movements.includes(leftMv) && protectedLeft(ctl, leftMv);
       ctx.save();
       ctx.translate(base[0], base[1]);
       ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(0, 0, 0.45, 0, Math.PI * 2); ctx.fill();
       ctx.rotate(heading + Math.PI);
-      this._headBody(ctx, through, blink, 0);
-      if (showArrow) this._headBody(ctx, left, blink, 1);
+      this._headBody(ctx, main, blink, 0);
+      if (showArrow) {
+        // a left that is permissive right now (the 'both' phase set) shows a
+        // flashing yellow arrow: take a gap, the arrow comes later
+        const lh = ctl.head(leftMv);
+        this._headBody(ctx, lh === 'green' && ctl.current.permissive.includes(leftMv) ? 'flash-yellow' : lh, blink, 1);
+      }
       ctx.restore();
     }
   }
@@ -348,5 +356,11 @@ export class Renderer {
 }
 
 function blinkColor(now) { return Math.floor(now * 6) % 2 ? '#ff3b30' : '#2f6fe6'; }
+
+// Does this left have a phase of its own (one that carries it and does not
+// list it as permissive)? Then it has an arrow lamp.
+export function protectedLeft(ctl, movement) {
+  return ctl.phases.some(p => p.movements.includes(movement) && !p.permissive.includes(movement));
+}
 
 export { parseMovement };

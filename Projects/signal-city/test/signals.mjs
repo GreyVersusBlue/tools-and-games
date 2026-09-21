@@ -161,6 +161,65 @@ group('minimum green');
   ok(Math.abs(c.timeToYellow('N-T') - 0) < 1e-9 || c.timeToYellow('N-T') === Infinity, 'timeToYellow of a yellow head is not a number a driver acts on');
 }
 
+group('the green on its way');
+
+{
+  const c = new Controller({ timing: { yellow: 3, allRed: 2, minGreen: 1 } });
+  ok(c.timeToGreen('N-T') === 0 && c.timeToGreen('E-T') === Infinity, 'green now is 0, and a red with nothing queued is Infinity');
+  run(c, 1);
+  c.requestPhase(1);
+  ok(Math.abs(c.timeToGreen('E-T') - 5) < 1e-9, 'at the start of a 3 s yellow with 2 s of all-red, E-T is 5 s away', c.timeToGreen('E-T').toFixed(2));
+  ok(c.timeToGreen('N-T') === Infinity, 'and N-T, whose green is ending, is not on its way');
+  run(c, 2);
+  ok(Math.abs(c.timeToGreen('E-T') - 3) < 1e-9, '2 s later it is 3 s away', c.timeToGreen('E-T').toFixed(2));
+  run(c, 1.5);
+  ok(c.stage === 'allred' && Math.abs(c.timeToGreen('E-T') - 1.5) < 1e-9, 'and in the all-red it counts that down', `${c.stage} ${c.timeToGreen('E-T').toFixed(2)}`);
+  c.setTiming({ allRed: 4 });
+  ok(Math.abs(c.timeToGreen('E-T') - 3.5) < 1e-9, 'setTiming mid-clearance stretches the wait the driver reads', c.timeToGreen('E-T').toFixed(2));
+  run(c, 3.6);
+  ok(c.stage === 'green' && c.phase === 1 && c.timeToGreen('E-T') === 0, 'then it is green', `${c.stage} ${c.phase}`);
+}
+
+group('the rule list is live');
+
+{
+  const c = new Controller({ timing: { yellow: 1, allRed: 1, minGreen: 1 } });
+  run(c, 30);
+  ok(c.stage === 'green' && c.phase === 0, 'with no rules nothing changes');
+  c.setRules([{ when: 'elapsed', seconds: 5, then: 'next' }]);
+  run(c, 0.2);
+  ok(c.stage === 'yellow', 'a rule added mid-green fires against the green already elapsed', c.stage);
+  run(c, 2.1);
+  ok(c.phase === 1, 'and moves on');
+  c.setRules([{ when: 'queue', movement: 'N-T', threshold: 2, then: 0 }, { when: 'elapsed', seconds: 3, then: 0 }]);
+  run(c, 3.1, 0.1, () => 0);
+  ok(c.stage === 'yellow' && c.next === 0, 'a queue rule with nobody on the loop lets the elapsed rule after it fire', `${c.stage} next ${c.next}`);
+  ok(c.rules.length === 2 && c.rules[0].when === 'queue', 'and the list keeps the order it was given');
+  let threw = null;
+  try { c.setRules([{ when: 'elapsed', seconds: 5, then: 9 }]); } catch (e) { threw = e.message; }
+  ok(threw && /no phase 9/.test(threw), 'a rule naming a phase that does not exist is refused', threw);
+  ok(c.rules.length === 2, 'and the list is untouched');
+}
+
+group('flashing as a mode, and back');
+
+{
+  const c = new Controller({ rules: [{ when: 'elapsed', seconds: 5, then: 'next' }], timing: { yellow: 1, allRed: 1, minGreen: 1 } });
+  run(c, 2);
+  c.setFlash('red');
+  run(c, 20);
+  ok(c.stage === 'flash' && c.phase === 0, 'flashing red holds and the rules do not fire', `${c.stage} ${c.phase}`);
+  ok(c.majorLegs().join() === 'N,S', 'the major legs are the entries of phase 0', c.majorLegs().join());
+  c.setFlash({ major: c.majorLegs() });
+  ok(c.head('N-T') === 'flash-yellow' && c.head('E-T') === 'flash-red' && c.head('N-L') === 'flash-yellow', 'flashing yellow on the majors, red on the minors');
+  c.setFlash(null);
+  ok(c.stage === 'allred' && c.next === 0, 'back to signals passes through an all-red into the phase that was running', `${c.stage} next ${c.next}`);
+  run(c, 1.1);
+  ok(c.stage === 'green' && c.phase === 0, 'and is green again');
+  run(c, 5.1);
+  ok(c.stage === 'yellow', 'and the rules fire again');
+}
+
 group('timed mode and offsets');
 
 {

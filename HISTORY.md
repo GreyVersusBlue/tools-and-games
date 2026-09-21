@@ -11048,6 +11048,141 @@ claims the row on `main` before starting, still opens the one PR for the
 whole batch, and still owns closing it out even if it never calls `scribe`
 itself.
 
+## 2026-09-21: Signal City, milestone 5 (#544 to #553)
+
+The second increment of the 2+ row: signal mechanics 2 to 4, the rule panel,
+levels 2 and 3, all in one PR. 305 checks across the five suites (103 + 85 +
+44 + 20 + 53; sprites unchanged), `tools/calibrate.mjs` committed as the
+six-seeds-by-four-cycles table the last session ran and did not keep, no
+storage key or save field touched (`signal_city_v1` and its `repair` are as
+#539 left them). Worked under Claude Fable 5.1, the model the row names.
+
+- **Green trust is the fault the all-red clearance exists for** (#544). The
+  brief asked for a `test/sim.mjs` check where 1 s of all-red collides and 2 s
+  does not, or a header saying why the arithmetic cannot show it, and the
+  arithmetic could not: 20 seeds of the cycling soak (400/400/300/300 veh/h,
+  three minutes each) had one collision between them, and a T-junction
+  candidate over 12 seeds ran 0 collisions at 1 s and 0 at 2 s, because every
+  car released by a fresh green already yielded to anything moving in the box
+  and the probe that sees a body on its line is instantaneous. So the slider
+  was a pure cost. The fault now in `js/cars.js`: once per approach a driver
+  whose green is on its way (`Controller.timeToGreen` is finite: the other
+  street's yellow or the all-red is running with their phase queued) or has
+  just come (within 1 s, at the line) rolls `greenTrust` (aggressive 0.6,
+  tourist 0.25, rideshare 0.2, standard 0.15, trucker and student 0.05,
+  granny 0). A trusting driver anticipates, not slowing on the red for a line
+  they will reach as it turns green, and then looks at the light and not the
+  box: a car still crossing is neither waited for nor braked for until it is
+  a stationary body. A merge at the exit is not a crossing and is never
+  trusted through (the first cut trusted merges too and put two of the T's
+  four collisions on the exit lane). The scripted case: an aggressive S-T 70
+  m out at 17 m/s when the yellow comes punches it (#M3's 0.35 bias) and
+  reaches the line 1.1 s into the red; an aggressive E-L on the stem 65 m
+  out anticipates; at 1 s they collide at 5.1 s, at 2 s the through has
+  cleared the stem's left path, and with nobody anticipating 1 s is enough.
+  At level scale, the Stem on a 22 s cycle over 12 seeds: 3 collisions at 1 s,
+  0 at 2 s, 0 at 1.5 s, 1 at 3 s.
+- **Level 1 runs a 2 s all-red now** (#545). With the fault in, First Light
+  at 1 s had a collision in 3 of its 24 calibration cells (18 and 22 s
+  cycles), and a tutorial with no slider cannot ask the player to fix that.
+  At 2 s it is 1 in 24 (seed 5 at 22 s). The #540 targets hold: the 22 s
+  cycle clears 32 to 45 with 7 to 11 s average wait, the 55 s cycle 29 to 44
+  with 14 to 25 s. The hint says five seconds now. The scoring suite's "slow
+  but safe" check reads the 55 s cycle on seed 4 instead of a 30 s cycle on
+  seed 3, which the rng shift showed had only ever been above target by luck
+  (it reads 8 s now).
+- **First come, first served at a four-way stop** (#546). The brief asked
+  whether to add arrival order to flashing red and dark, where the rule was
+  "whoever sees a 3 s gap first". Added: `stoppedAt` is recorded when a car
+  comes to rest at a flashing or dark head, and a conflicting car that
+  stopped earlier and has not entered the box goes first (ties by id). The
+  gap rule stays underneath it, and the flashing-yellow majors never stop, so
+  they are not in the order. The first test of it passed with the rule
+  deleted: with two cars the box's own "yield to a car moving in the box"
+  produced the same order, so the check is three cars, S then E then N, where
+  N and S do not conflict and without the order N jumps E.
+- **Queue rules sleep until a level has sensors** (#547). `World.step` hands
+  the controller no sense function unless `level.sensors` is set (M6), so a
+  `queue` row the panel adds is stored, shown greyed with "needs sensors
+  (M6)", and does nothing. The panel edits a copy of the list and hands the
+  whole thing back through `Controller.setRules`, which refuses a rule naming
+  a phase index that does not exist and leaves the list untouched.
+- **The Stem: N, E, S, target 30, waitTarget 15** (#548). Standard, granny
+  and aggressive (6 : 1.5 : 2.5), 380/380/320 veh/h, 20% lefts, starting at 1
+  s of all-red with the slider unlocked. Calibration at 2 s: the 18 s cycle
+  clears 38 to 45 with 9 to 17 s average wait, 22 s clears 31 to 46 with 5 to
+  21 s, 30 s clears 33 to 44 with 9 to 15 s. At 1 s the same cycles clear 34
+  to 42, 31 to 51 and 29 to 42. A T's N leg cannot turn right, so its 20%
+  right share is rerolled and it runs 25% lefts across the opposing through,
+  which is the level's second lesson.
+- **Four Ways: a left bay, protected-only lefts, a 180 s gridlock wait,
+  target 52, waitTarget 32** (#549). Two lanes each way with the lefts from
+  the inner lane as the brief said, but that lane is a bay (`network.leftLane`
+  makes the inner lane lefts only; throughs keep to the curb lane), because
+  a protected left waiting for its arrow at the head of a shared lane holds
+  every through behind it for the whole through phase: on the shared lane the
+  four-phase plan gridlocked 4 of 6 seeds at 560/440 and again at 420/340.
+  The 120 s single-car gridlock wait is ordinary queueing on a 90 s
+  four-phase cycle, so the level sets 180. Standard, granny, tourist and
+  trucker (5 : 1 : 1.5 : 0.8), 420/420/340/340 veh/h, 25% lefts, four
+  minutes. Calibration on a timed plan of 26 s throughs and 8 s arrows: 59 to
+  75 cleared, 26 to 33 s average wait, no collisions, no gridlock on six
+  seeds; 30 s and 8 s: 54 to 72, 24 to 34 s. Driven on phases 1 and 3 alone
+  the bay starves and every seed gridlocks at 191 to 207 s, which is what the
+  brief's "unplayable on two phases" is true of. Two permissive phases on the
+  same network are a different thing and are on record: faster (11 to 27 s
+  average wait at 22 s) and not clean (1 collision in six runs at 22 s, 5 and
+  a gridlock at 30 s), against 0 on the four.
+- **`standardPhases(legs, { lefts: 'both' })`** (#550) exists for a shared
+  lane: the lefts permissive during their street's through phase and
+  protected on their own, the flashing-yellow-arrow intersection, and the
+  renderer draws that arrow flashing yellow while the left is permissive.
+  No level uses it: it was measured on the way to #549 (it locked as often
+  as the protected-only set on the shared lane, because the extra phases
+  cost the throughs their green) and kept because a corridor level may want
+  it.
+- **Unlocks are the level's literal list** (#551). Level 1 unlocks the
+  phases and the rule panel (its "auto" is that panel with one elapsed rule,
+  and the browser suite now runs it out that way instead of poking
+  `controller.rules`); the Stem adds the sliders; Four Ways adds lefts (a
+  note, the four phases are the control) and flash; Free Play has all of
+  them plus priority and keeps its 24 s rule. Stars still buy nothing (M8).
+- **The arrow lamp draws from a real phase** (#552). A leg whose left has a
+  phase that carries it un-permissively gets the second head, and that head
+  shows `head(leg-L)` whatever the through shows, red arrow included; before,
+  it appeared and vanished with the stage. A stem leg with no through shows
+  its right's head on the main lamp.
+- **`tools/calibrate.mjs` is a tool, not a check** (#553). It prints the
+  table and exits 0; the numbers a level ships with are asserted in
+  `test/scoring.mjs` (three seeds of Four Ways, since a two-lane four-minute
+  run costs about 15 s there, and the six-seed table is the tool's).
+
+**Broken on purpose** (#34), each from green, each restored: the trust skip
+dropped from the obstacle probe, `with 1 s of all-red they meet in the box  0
+collisions`; the left bay ignored, `with a left bay the inner lane is lefts
+only and throughs keep to the curb lane  16 paths, T from 0,1`; `timeToGreen`
+blind in the all-red, `and in the all-red it counts that down  allred
+Infinity` and `setTiming mid-clearance stretches the wait the driver reads
+Infinity`; `setRules` taking anything, `a rule naming a phase that does not
+exist is refused` and `and the list is untouched`; `majorLegs` inverted, `the
+major legs are the entries of phase 0  E,W`; the arrival order deleted, `and
+they enter the box in the order they stopped: S, E, N  SNE`; Four Ways at 5%
+lefts, `on the through phases alone every one of them gridlocks before the
+clock runs out  at 237, 211 s` (two of three seeds ran the clock out); the
+panel's seconds field ignored, `editing the seconds field reaches the
+controller  [{"when":"elapsed","seconds":20,"then":"next"}]`; the slider cut
+off from the controller, `dragging the slider to 2.5 reaches
+Controller.setTiming and leaves the yellow alone  1 1.0 s yellow 3` and `and
+still is 1.5 s later, because the slider said 2.5  green`.
+
+**Wrong first, on record.** The four-way-stop check passed with its rule
+deleted (above). The first trust roll only skipped the box verdict and left
+the instant obstacle probe in, so the trusting starter braked anyway and the
+scripted case ran 0 collisions at both settings; the first Four Ways demand
+(560/440) gridlocked the four-phase plan on 4 of 6 seeds and so did 420/340
+until the bay; the first scoring suite took 3 min 52 s with six seeds of Four
+Ways on both plans.
+
 ## 2026-09-21: Signal City, milestones 0 to 4 (#534 to #543)
 
 A new game, asked for by Devon the same day: program the traffic lights,

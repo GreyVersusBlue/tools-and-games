@@ -45,14 +45,35 @@
       <b id="stage">&nbsp;</b>
     </div>
     <div id="phases" class="phases"></div>
+    <p id="leftsNote" class="note hidden">Protected lefts: the arrow phases serve the inner lanes alone.</p>
     <button id="priorityBtn" class="priority">Priority corridor <span class="key">E</span></button>
+    <div id="flashBox" class="section hidden">
+      <span class="label">Mode</span>
+      <div class="controls">
+        <button id="flashRedBtn" title="Four-way stop: everyone stops, first come first served">Flash red</button>
+        <button id="flashYellowBtn" title="The main road flashes yellow and does not stop; the rest flash red">Flash yellow</button>
+        <button id="signalsBtn" title="Back to the phases, through an all-red">Signals</button>
+      </div>
+    </div>
+    <div id="timingBox" class="section hidden">
+      <label class="slider"><span><span class="label">Yellow</span> <b id="yellowVal">3.0 s</b></span><input id="yellowRange" type="range" min="2" max="5" step="0.5" value="3"></label>
+      <label class="slider"><span><span class="label">All-red</span> <b id="allRedVal">1.0 s</b></span><input id="allRedRange" type="range" min="0.5" max="4" step="0.5" value="1"></label>
+    </div>
+    <div id="rulesBox" class="section hidden">
+      <span class="label">Rules, in order</span>
+      <div id="rules" class="rules"></div>
+      <div class="controls">
+        <button id="addElapsedBtn" class="small">+ after N seconds</button>
+        <button id="addQueueBtn" class="small">+ when queued</button>
+      </div>
+    </div>
     <p id="hint" class="hint"></p>
     <div class="controls">
       <button id="pauseBtn">Pause</button>
       <button id="speedBtn">1x</button>
       <button id="menuBtn">Levels</button>
     </div>
-    <p class="keys">1 to 4 pick a phase · space pauses · F is fast · scroll zooms · click an ambulance</p>
+    <p class="keys">1 to 4 pick a phase · space pauses · F is fast · scroll zooms · click an ambulance · the rules run on their own</p>
     <div id="saveBar" class="save"></div>
   </aside>
 </main>

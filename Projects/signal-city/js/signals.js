@@ -132,7 +132,12 @@ export function phaseIsValid(movements, permissive = []) {
   return { ok: true };
 }
 
-// The standard phase sets a level can start from.
+// The standard phase sets a level can start from. `lefts`: false is two
+// phases with permissive lefts; true is four, the lefts protected on their
+// own arrow and red during the throughs; 'both' is four with the lefts also
+// permissive during their street's through phase (the flashing-yellow-arrow
+// intersection: a left takes a gap if it sees one and its arrow if it does
+// not), which is what a shared through-and-left lane needs.
 export function standardPhases(legs, { lefts = false } = {}) {
   const has = l => legs.includes(l);
   const group = (a, b) => {
@@ -140,7 +145,7 @@ export function standardPhases(legs, { lefts = false } = {}) {
     for (const e of [a, b]) {
       if (!has(e)) continue;
       for (const t of ['T', 'R']) if (has(exitLeg(e, t))) ms.push(`${e}-${t}`);
-      if (!lefts && has(exitLeg(e, 'L'))) ms.push(`${e}-L`); // permissive, yields
+      if (lefts !== true && has(exitLeg(e, 'L'))) ms.push(`${e}-L`); // permissive, yields
     }
     return ms;
   };
@@ -179,6 +184,7 @@ export class Controller {
   constructor({
     legs = LEGS.slice(),
     phases,
+    lefts = false,        // no phases given: standardPhases with protected lefts
     timing = {},
     mode = 'manual',      // 'manual' | 'timed'
     plan = null,          // timed: [{ phase: index, green: seconds }]
@@ -190,7 +196,7 @@ export class Controller {
     this.legs = legs.slice();
     this.movements = movementsFor(this.legs);
     this.timing = { ...DEFAULT_TIMING, ...timing };
-    this.phases = (phases || standardPhases(this.legs)).map((p, i) => {
+    this.phases = (phases || standardPhases(this.legs, { lefts })).map((p, i) => {
       const v = phaseIsValid(p.movements, p.permissive || []);
       if (!v.ok) throw new Error(`phase ${p.name || i} holds a conflicting pair: ${v.pair.join(' vs ')}`);
       return { name: p.name || `phase ${i + 1}`, movements: p.movements.slice(), permissive: (p.permissive || []).slice() };
@@ -252,6 +258,19 @@ export class Controller {
     return Infinity;
   }
 
+  // Seconds until this movement's green begins, when one is already on its
+  // way (yellow or all-red running with this movement in the queued phase),
+  // 0 if it is green now, else Infinity. An anticipating driver reads this.
+  timeToGreen(movement) {
+    if (this.isGreen(movement)) return 0;
+    if (this.next === null || this.preemption) return Infinity;
+    if (!this.phases[this.next].movements.includes(movement)) return Infinity;
+    const { yellow, allRed } = this.timing;
+    if (this.stage === 'yellow') return Math.max(0, yellow - this.stageT) + allRed;
+    if (this.stage === 'allred') return Math.max(0, allRed - this.stageT);
+    return Infinity;
+  }
+
   cycleLength() {
     if (!this.plan) return 0;
     const { yellow, allRed } = this.timing;
@@ -287,6 +306,24 @@ export class Controller {
   requestNext() { return this.requestPhase((this.phase + 1) % this.phases.length); }
 
   setTiming(patch) { Object.assign(this.timing, patch); }
+
+  // Replace the rule list. The panel edits a copy and hands it back here, so
+  // a half-typed row never runs. A rule naming a phase index that does not
+  // exist is refused and the list is left as it was.
+  setRules(rules) {
+    for (const r of rules) {
+      if (typeof r.then === 'number' && (r.then < 0 || r.then >= this.phases.length || !Number.isInteger(r.then))) throw new RangeError(`no phase ${r.then}`);
+    }
+    this.rules = rules.map(r => ({ ...r }));
+  }
+
+  // The legs that flash yellow in a major/minor flash: the entries of phase
+  // 0, which is the main street on every standard phase set.
+  majorLegs() {
+    const legs = new Set();
+    for (const m of this.phases[0].movements) { const mv = parseMovement(m); if (!mv.ped) legs.add(mv.entry); }
+    return LEGS.filter(l => legs.has(l));
+  }
 
   // 'red': four-way flashing red. { major: ['N','S'] }: those legs flash
   // yellow, the rest red. null: back to phase 0 through an all-red.

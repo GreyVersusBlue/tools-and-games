@@ -85,7 +85,21 @@ class Game {
     $('levelName').textContent = lvl.name;
     $('hint').textContent = lvl.hint || '';
     this.buildPhaseButtons();
+    this.showUnlocks();
+    this.buildTiming();
+    this.buildRules();
     this.updateHud(true);
+  }
+
+  // A level's unlocks list decides which panel controls show (stars are not
+  // spent on anything yet: that is M8).
+  showUnlocks() {
+    const u = new Set(this.level.unlocks || []);
+    $('flashBox').classList.toggle('hidden', !u.has('flash'));
+    $('timingBox').classList.toggle('hidden', !u.has('allred'));
+    $('rulesBox').classList.toggle('hidden', !u.has('auto'));
+    $('leftsNote').classList.toggle('hidden', !u.has('lefts'));
+    $('phases').classList.toggle('hidden', !u.has('phases'));
   }
 
   end() {
@@ -147,6 +161,107 @@ class Game {
     this.updateHud(true);
   }
 
+  // ---- the M5 controls -------------------------------------------------------
+
+  setFlash(mode) {
+    if (this.state !== 'playing' || !this.world) return;
+    const ctl = this.world.controller;
+    if (mode === 'red') ctl.setFlash('red');
+    else if (mode === 'yellow') ctl.setFlash({ major: ctl.majorLegs() });
+    else ctl.setFlash(null);
+    this.updateHud(true);
+  }
+
+  setTiming(patch) {
+    if (!this.world) return;
+    this.world.controller.setTiming(patch);
+    this.buildTiming();
+  }
+
+  buildTiming() {
+    const t = this.world.controller.timing;
+    $('yellowRange').value = String(t.yellow);
+    $('allRedRange').value = String(t.allRed);
+    $('yellowVal').textContent = `${t.yellow.toFixed(1)} s`;
+    $('allRedVal').textContent = `${t.allRed.toFixed(1)} s`;
+  }
+
+  // The rule panel edits a copy of controller.rules and hands the whole list
+  // back through setRules on every change, so the controller never sees a
+  // half-typed row. Queue rules are shown asleep: the sensors are M6.
+  buildRules() {
+    const box = $('rules');
+    const ctl = this.world.controller;
+    box.innerHTML = '';
+    if (!ctl.rules.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'No rules: the phases change when you press them.'; box.appendChild(p); return; }
+    const thenOptions = sel => {
+      const opts = [['next', 'the next phase']].concat(ctl.phases.map((p, i) => [String(i), `${i + 1}: ${p.name}`]));
+      for (const [v, label] of opts) { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); }
+    };
+    ctl.rules.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'rule' + (r.when === 'queue' ? ' sleeping' : '');
+      row.dataset.i = i;
+      const body = document.createElement('div');
+      body.className = 'body';
+      const then = document.createElement('select'); then.className = 'then'; thenOptions(then);
+      then.value = r.then === undefined || r.then === 'next' ? 'next' : String(r.then);
+      if (r.when === 'elapsed') {
+        const n = document.createElement('input'); n.type = 'number'; n.className = 'seconds'; n.min = '1'; n.max = '180'; n.step = '1'; n.value = String(r.seconds);
+        body.append('after ', n, ' s, go to ', then);
+      } else {
+        const mv = document.createElement('select'); mv.className = 'movement';
+        for (const m of ctl.movements) { const o = document.createElement('option'); o.value = m; o.textContent = m; mv.appendChild(o); }
+        mv.value = r.movement || ctl.movements[0];
+        const th = document.createElement('input'); th.type = 'number'; th.className = 'threshold'; th.min = '1'; th.max = '30'; th.step = '1'; th.value = String(r.threshold ?? 3);
+        body.append('when ', mv, ' has ', th, ' queued, go to ', then);
+      }
+      const ops = document.createElement('div'); ops.className = 'ops';
+      for (const [cls, glyph, title] of [['up', '▲', 'earlier'], ['down', '▼', 'later'], ['remove', '✕', 'remove']]) {
+        const b = document.createElement('button'); b.className = cls; b.textContent = glyph; b.title = title; b.type = 'button';
+        b.addEventListener('click', () => this.editRules(list => {
+          if (cls === 'remove') list.splice(i, 1);
+          else { const j = cls === 'up' ? i - 1 : i + 1; if (j >= 0 && j < list.length) [list[i], list[j]] = [list[j], list[i]]; }
+        }));
+        ops.appendChild(b);
+      }
+      row.append(body, ops);
+      if (r.when === 'queue') { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = 'needs sensors (M6)'; row.appendChild(badge); }
+      body.addEventListener('change', () => this.editRules(list => { list[i] = this.readRule(row, list[i]); }));
+      box.appendChild(row);
+    });
+  }
+
+  readRule(row, r) {
+    const out = { ...r };
+    const then = row.querySelector('select.then').value;
+    out.then = then === 'next' ? 'next' : Number(then);
+    if (r.when === 'elapsed') out.seconds = Math.max(1, Number(row.querySelector('input.seconds').value) || 1);
+    else { out.movement = row.querySelector('select.movement').value; out.threshold = Math.max(1, Number(row.querySelector('input.threshold').value) || 1); }
+    return out;
+  }
+
+  editRules(fn) {
+    if (!this.world) return;
+    const ctl = this.world.controller;
+    const list = ctl.rules.map(r => ({ ...r }));
+    fn(list);
+    try { ctl.setRules(list); } catch (e) { console.warn(e.message); }
+    this.buildRules();
+  }
+
+  addRule(when) {
+    if (this.state !== 'playing' || !this.world) return;
+    const ctl = this.world.controller;
+    this.editRules(list => {
+      if (when === 'elapsed') list.push({ when: 'elapsed', seconds: 20, then: 'next' });
+      else {
+        const m = ctl.movements.find(x => !ctl.phases[0].movements.includes(x)) || ctl.movements[0];
+        list.push({ when: 'queue', movement: m, threshold: 3, then: 'next' });
+      }
+    });
+  }
+
   togglePause() { if (this.state === 'playing') { this.paused = !this.paused; $('pauseBtn').textContent = this.paused ? 'Resume' : 'Pause'; } }
   toggleSpeed() { this.speed = this.speed === 1 ? 2 : 1; $('speedBtn').textContent = `${this.speed}x`; }
 
@@ -204,14 +319,19 @@ class Game {
     $('satBar').style.width = `${Math.round(m.satisfaction * 100)}%`;
     $('satBar').style.background = m.satisfaction > 0.6 ? '#2ee06b' : m.satisfaction > 0.3 ? '#ffc21f' : '#ff3b30';
     $('waitNow').textContent = `${m.avgWait.toFixed(0)} s avg · ${m.waiting} waiting · ${m.honks} honks`;
-    const stage = ctl.preemption ? 'PRIORITY' : ctl.stage === 'green' ? `${ctl.current.name} green` : ctl.stage === 'yellow' ? 'yellow' : ctl.stage === 'allred' ? 'all red' : ctl.stage;
+    const flashing = ctl.stage === 'flash';
+    const stage = ctl.preemption ? 'PRIORITY' : ctl.stage === 'green' ? `${ctl.current.name} green` : ctl.stage === 'yellow' ? 'yellow' : ctl.stage === 'allred' ? 'all red'
+      : flashing ? (ctl.flash === 'red' ? 'flashing red: four-way stop' : `flashing yellow on ${ctl.flash.major.join(' and ')}`) : ctl.stage;
     $('stage').textContent = stage + (ctl.next !== null ? ` → ${ctl.phases[ctl.next].name}` : '');
     for (const b of $('phases').children) {
       const i = +b.dataset.phase;
-      b.classList.toggle('active', i === ctl.phase && !ctl.preemption);
+      b.classList.toggle('active', i === ctl.phase && !ctl.preemption && !flashing);
       b.classList.toggle('queued', ctl.next === i);
       b.classList.toggle('green', i === ctl.phase && ctl.stage === 'green' && !ctl.preemption);
     }
+    $('flashRedBtn').classList.toggle('on', flashing && ctl.flash === 'red');
+    $('flashYellowBtn').classList.toggle('on', flashing && ctl.flash !== 'red');
+    $('signalsBtn').classList.toggle('on', !flashing && ctl.stage !== 'dark');
     const em = w.cars.find(c => !c.done && c.archetype === 'emergency' && !c.priority);
     $('priorityBtn').classList.toggle('show', !!em);
   }
@@ -234,6 +354,13 @@ $('priorityBtn').addEventListener('click', () => game.priorityNearest());
 $('retryBtn').addEventListener('click', () => game.start(game.level.id));
 $('levelsBtn').addEventListener('click', () => { $('endScrim').classList.remove('show'); $('selectScrim').classList.add('show'); game.state = 'select'; });
 $('menuBtn').addEventListener('click', () => game.escape());
+$('flashRedBtn').addEventListener('click', () => game.setFlash('red'));
+$('flashYellowBtn').addEventListener('click', () => game.setFlash('yellow'));
+$('signalsBtn').addEventListener('click', () => game.setFlash(null));
+$('yellowRange').addEventListener('input', e => game.setTiming({ yellow: Number(e.target.value) }));
+$('allRedRange').addEventListener('input', e => game.setTiming({ allRed: Number(e.target.value) }));
+$('addElapsedBtn').addEventListener('click', () => game.addRule('elapsed'));
+$('addQueueBtn').addEventListener('click', () => game.addRule('queue'));
 
 if (DEBUG) {
   window.__signalCity = {

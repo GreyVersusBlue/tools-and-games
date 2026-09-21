@@ -101,16 +101,17 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City, milestones 0 to 4
-(PR #338)**, rank 1, one increment of a 2+ worked under Claude Fable 5.1, the
+**The last batch of ranked work that shipped** is **Signal City, milestone 5
+(PR #PRNUM)**, rank 1, one increment of a 2+ worked under Claude Fable 5.1, the
 model the row names. That is the line to update when your batch merges; a PR
 that only changes these files is not a batch and does not belong in it.
 **26 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 1 again: Signal City's next increment, M5** (`Projects/signal-city`, a
-2+, Fable 5.1): the all-red slider, protected left phases, flashing modes, the
-rule panel, levels 2 and 3. The plan is `Projects/signal-city/WISHLIST.md`;
-milestones 0 to 4 are on `main` and `HISTORY.md` #534 to #543 carry the calls
+**Take rank 1 again: Signal City's next increment, M6** (`Projects/signal-city`, a
+2+, Fable 5.1): pedestrian call buttons, induction loops that wake the `queue`
+rules the panel already shows asleep, a two-intersection corridor with offsets,
+then the green wave. The plan is `Projects/signal-city/WISHLIST.md` item 6;
+milestones 0 to 5 are on `main` and `HISTORY.md` #534 to #553 carry the calls
 already made. A 2+ is the whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
 quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
@@ -464,7 +465,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 4 shipped (PR #338); next M5, the signal mechanics 2 to 4 and the rule panel, levels 2 and 3 | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/vibrant-johnson-g7gcz5` | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 5 shipped (PRs #338, #PRNUM); next M6, pedestrians, sensors and the corridor | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1128,12 +1129,13 @@ zero offsite requests, a Node suite per module. Folder `Projects/signal-city/`;
 its `WISHLIST.md` carries the milestone plan in full. The ranked row is a 2+:
 one increment per session, the row rewritten to say what is done.
 
-**Milestones 0 to 4 shipped in PR #338 (2026-09-21, #534 to #543)**: items 1
-to 6 below are done, 234 checks across five suites, all in Site CI. Item 7 is
-the next increment. Still open from the brief and not yet placed: a
-`games.mjs` recipe and a preview capture (a ¼ row for the site, like Blue
-Hour's ranks 16 and 17), and the trucker's sweep as real off-tracking
-geometry rather than the lane rule it is now.
+**Milestones 0 to 4 shipped in PR #338 (2026-09-21, #534 to #543) and
+milestone 5 in PR #PRNUM (2026-09-21, #544 to #553)**: items 1 to 7 below are
+done, 305 checks across five suites, all in Site CI. Item 8 is the next
+increment. Still open from the brief and not yet placed: a `games.mjs` recipe
+and a preview capture (a ¼ row for the site, like Blue Hour's ranks 16 and
+17), and the trucker's sweep as real off-tracking geometry rather than the
+lane rule it is now.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
@@ -1152,8 +1154,11 @@ geometry rather than the lane rule it is now.
 6. **M4 scoring and level 1**: throughput, safety and satisfaction meters,
    stars (survive / average wait / zero collisions), a 4-way manual level,
    `signal_city_v1` save through `gvb-save.js`.
-7. M5: tunable all-red, protected lefts, flashing modes, the rule panel;
-   levels 2 and 3.
+7. **M5 mechanics and the panel**: the yellow and all-red sliders, protected
+   lefts from a bay on "Four Ways", flashing red (a four-way stop, first come
+   first served) and flashing yellow as a mode, the rule panel with `queue`
+   rows asleep until M6, "Stem" (the T where the all-red is the lesson), and
+   the driver fault the all-red exists for (`greenTrust`).
 8. M6: pedestrian calls, induction loops, a two-intersection corridor with
    offsets; M7 the green wave.
 9. M7 events: rush hour, power outage, motorcade, ambulance timer, lane
