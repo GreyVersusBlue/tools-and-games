@@ -11047,3 +11047,91 @@ these agents doesn't relax the definition of done — the lead session still
 claims the row on `main` before starting, still opens the one PR for the
 whole batch, and still owns closing it out even if it never calls `scribe`
 itself.
+
+## 2026-09-21: Signal City, milestones 0 to 4 (#534 to #543)
+
+A new game, asked for by Devon the same day: program the traffic lights,
+never the cars. `Projects/signal-city/`, 4,343 lines across the page, the
+modules and five suites (83 + 73 + 31 + 20 + 27 checks), a board card, an
+Ownership area, a Site CI matrix entry. The plan is the project's
+`WISHLIST.md`; the ranked row is a 2+ and stays in place with milestones 0 to
+4 marked done. Devon's brief said single-file; asked, he said "this does NOT
+need to be a single file, use as much as we need to make this as
+technologically deep as needed", so it is ES modules in the house style with
+a Node suite per module (#543).
+
+- **Conflicts come from ring geometry, not a hand table** (#534). Each leg
+  has an inbound and an outbound point on a ring around the box; a movement
+  is a chord; two chords conflict when their endpoints interleave or land on
+  the same outbound point. That last clause is what makes a left and the
+  opposing right conflict (they merge), and it is also why "a right turn
+  crosses nothing" was a wrong claim in the first draft of the suite: N-R and
+  E-T both exit west. The claim is now "crosses nothing, but merges", and the
+  break that drops the merge rule fails that line and the symmetry check.
+  Permissive lefts are exempt from the phase validator and flagged, because
+  "permissive" means the driver yields, which is `cars.js`'s job.
+- **Fixed 1/60 s steps, one seeded rng, and a hash** (#535). Every roll goes
+  through `World.rng` in one order, `run(seed)` twice gives one hash, and
+  the browser loop is an accumulator over the same `step()`. Nothing in any
+  suite is timed, so #53 does not reach the project.
+- **Reaction delay is perception, not a timer** (#536). Each car records its
+  (s, v, stop verdict, box verdict) every tick into a 90-deep ring, and a
+  follower reads the leader's record and its own verdicts `reaction` seconds
+  back. That is where a tailgater's chain collision comes from, and why
+  aggressive at 0.4 s and a 0.7 s headway settles 3 m closer behind the same
+  granny than standard does (test/sim.mjs measures it).
+- **The box is entered by crossing points** (#537). A conflicting car in the
+  box stops blocking me once its rear is past the point where our two paths
+  come closest; a stationary car blocks me only if a probe of my width swept
+  along my line actually overlaps it; a permissive left waits 4 m inside the
+  box and finishes on the all-red. Before the first of those the opposing
+  through and the creeping left waited on each other for 30 s; before the
+  second, a follower whose leader turned off its lane had no leader and hit
+  it. The trucker's sweep is a rule (`wideConflicts`: its own entry leg and
+  its exit leg, clearing at its box exit), not off-tracking geometry.
+- **Stars are cumulative and satisfaction never fails a level** (#538).
+  Survive is no gridlock, the throughput floor, and in hard mode no
+  collision; the second star is average wait over every car, cleared or
+  still queued, because counting only the cleared ones let a 55 s cycle hide
+  its damage in the cars it never released; the third is zero collisions,
+  which in hard mode is the second star again, and the card says so.
+- **`signal_city_v1`** (#539), through `gvb-save.js`; `repair` clamps stars
+  to 3, floors bad numbers at 0 and drops null records; nothing mid-run is
+  saved.
+- **Level 1 runs 6% lefts, and its targets are 32 cleared and a 15 s average
+  wait** (#540). On a one-lane approach a permissive left waiting for a gap
+  holds its whole queue, which is real and is also nothing a level 1 player
+  can fix; at 12% lefts the longest wait in a well-run three minutes was 66
+  s. The targets come from six seeds at 18, 22, 30 and 55 s fixed cycles:
+  the 22 s cycle clears 38 to 49 with average waits of 4 to 10 s, the 55 s
+  cycle 32 to 42 with 12 to 21 s.
+- **Legs are 110 m and the camera shows the middle 72 m** (#541). Cutting
+  the legs to 90 m to make the map read bigger changed the traffic (cars
+  reached the box faster from spawn) and cost the calibrated run a
+  collision; the physics stays on the geometry it was tuned on and the
+  renderer frames the middle instead, with the wheel to zoom.
+- **The browser suite steps the world through `?debug`** (#542). It pauses
+  the loop, calls `__signalCity.step(n)`, and reads the HUD; rAF only draws.
+  That found the one real page bug of the session: the HUD refresh was gated
+  on `world.tick % 6`, which never moves while paused, so the panel showed
+  the level's opening state after 1,200 hand steps. Port 8157.
+
+**Broken on purpose** (#34), each from green, each restored: the merge rule
+dropped, `a left and the opposing right merge into the same lane, which
+conflicts` and `the matrix is symmetric`; the stop line never binding,
+twelve fail starting `on a red it stops  v = 13.999959106191044`; the
+student's `runRed` set to 0.05, `a student never runs a red in 1,000
+approaches  50`; the box verdict always clear, `a permissive left waits in
+the box for the opposing throughs` and `a truck turning left holds the
+curb-lane car at the box  0.0 s held`; stars ignoring collisions, `one
+collision in soft mode: two stars, and the card says why  ★★★`. The sprite
+suite's two breaks are in its builder's report: a flat-painted tourist,
+`every one of them lays down the gloss gradient  tourist/teal drew no linear
+gradient`, and a 3-digit hex, `every body, glass and accent is a 6-digit hex
+standard/silver.body = #ccd`.
+
+**Wrong first, on record.** A yellow-stop decision persisted into the next
+green and a car sat through it (the first mixed run cleared 18 of 70 and
+gridlocked at 149 s); IDM creeps toward its resting gap forever, so a car at
+under 0.35 m/s within half a metre of it now stops outright; the spawner put
+a 9 m/s car behind a stopped queue at the map edge.
