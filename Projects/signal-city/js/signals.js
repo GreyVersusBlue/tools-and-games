@@ -29,6 +29,18 @@
 // Yellow and all-red are per-controller numbers the player can tune (the
 // all-red clearance is mechanic 2 in the unlock order). A request that lands
 // mid-clearance waits its turn.
+//
+// Pedestrians (M6). A walk is not a phase of its own: it is a flag on a
+// through phase (`walks: ['P-N', 'P-S']` on the E-W phase, the crossings
+// parallel to its traffic), because on every standard phase set the walk
+// that can run with a through phase is exactly the one the geometry
+// already permits, and a walk phase of its own would cost every driver a
+// whole cycle for one walker. A call (`callPed(leg)`) is served when the
+// phase carrying that walk is green: at once if the green has just begun or
+// has time enough left, else at its next green. While a walk runs (WALK for
+// `pedTiming.walk` seconds, then the flashing clearance for
+// `pedTiming.clear`) the green cannot end: a request, a rule or the plan
+// waits for the clearance. That is the mechanic the player feels.
 
 export const LEGS = ['N', 'E', 'S', 'W'];
 export const TURNS = ['L', 'T', 'R'];
@@ -132,13 +144,25 @@ export function phaseIsValid(movements, permissive = []) {
   return { ok: true };
 }
 
+// The walks a phase may carry: the crossings of the legs its traffic does
+// not enter or leave except by a yielding right. Refuses a walk that
+// conflicts with any movement in the phase that is not permissive.
+export function walksFor(legs, movements, permissive = []) {
+  return pedMovementsFor(legs).filter(w => movements.every(m => permissive.includes(m) || !conflicts(w, m)));
+}
+
 // The standard phase sets a level can start from. `lefts`: false is two
 // phases with permissive lefts; true is four, the lefts protected on their
 // own arrow and red during the throughs; 'both' is four with the lefts also
 // permissive during their street's through phase (the flashing-yellow-arrow
 // intersection: a left takes a gap if it sees one and its arrow if it does
-// not), which is what a shared through-and-left lane needs.
-export function standardPhases(legs, { lefts = false } = {}) {
+// not), which is what a shared through-and-left lane needs. `peds` adds the
+// walks each phase can carry: the through phases get the crossings parallel
+// to them, the lefts phases none.
+// `main` names the street phase 0 serves ('NS' or 'EW'): phase 0 is the
+// main street everywhere (majorLegs, a timed plan's first entry), and a
+// corridor's main street runs east-west.
+export function standardPhases(legs, { lefts = false, peds = false, main = 'NS' } = {}) {
   const has = l => legs.includes(l);
   const group = (a, b) => {
     const ms = [];
@@ -150,27 +174,31 @@ export function standardPhases(legs, { lefts = false } = {}) {
     return ms;
   };
   const phases = [];
-  const ns = group('N', 'S'), ew = group('E', 'W');
-  if (ns.length) phases.push({ name: 'N-S', movements: ns });
-  if (lefts) {
-    const l = ['N-L', 'S-L'].filter(m => has(m[0]) && has(exitLeg(m[0], 'L')));
-    if (l.length) phases.push({ name: 'N-S lefts', movements: l });
-  }
-  if (ew.length) phases.push({ name: 'E-W', movements: ew });
-  if (lefts) {
-    const l = ['E-L', 'W-L'].filter(m => has(m[0]) && has(exitLeg(m[0], 'L')));
-    if (l.length) phases.push({ name: 'E-W lefts', movements: l });
-  }
+  const street = (a, b) => {
+    const ms = group(a, b);
+    if (ms.length) phases.push({ name: `${a}-${b}`, movements: ms });
+    if (lefts) {
+      const l = [`${a}-L`, `${b}-L`].filter(m => has(m[0]) && has(exitLeg(m[0], 'L')));
+      if (l.length) phases.push({ name: `${a}-${b} lefts`, movements: l });
+    }
+  };
+  if (main === 'EW') { street('E', 'W'); street('N', 'S'); }
+  else { street('N', 'S'); street('E', 'W'); }
   // A left that shares its phase with its own through is permissive: it
   // conflicts with the opposing through by geometry and its driver yields.
   for (const p of phases) {
     p.permissive = p.movements.filter(m => parseMovement(m).turn === 'L'
       && p.movements.some(o => parseMovement(o).entry === parseMovement(m).entry && parseMovement(o).turn === 'T'));
+    p.walks = peds ? walksFor(legs, p.movements, p.permissive) : [];
   }
   return phases;
 }
 
 export const DEFAULT_TIMING = { yellow: 3, allRed: 1, minGreen: 4 };
+// WALK for `walk` seconds, then the flashing clearance for `clear`. The
+// world sets `clear` from the road's width at 1.2 m/s (a slow walker) and a
+// level may override it.
+export const DEFAULT_PED_TIMING = { walk: 7, clear: 8 };
 
 export const STAGES = ['green', 'yellow', 'allred', 'flash', 'dark'];
 
@@ -185,21 +213,28 @@ export class Controller {
     legs = LEGS.slice(),
     phases,
     lefts = false,        // no phases given: standardPhases with protected lefts
+    peds = false,         // no phases given: standardPhases with walks on the through phases
+    main = 'NS',          // no phases given: which street phase 0 serves
     timing = {},
+    pedTiming = {},
     mode = 'manual',      // 'manual' | 'timed'
     plan = null,          // timed: [{ phase: index, green: seconds }]
     offset = 0,           // timed: seconds the cycle is shifted by
-    rules = [],           // [{ when: 'elapsed', seconds, then }] | [{ when: 'queue', movement, threshold, then }]
+    rules = [],           // [{ when: 'elapsed', seconds, then }] | [{ when: 'queue', movement, threshold, after?, then }]
     flash = null,         // null | 'red' | { major: ['N','S'] } (major legs flash yellow, others red)
     startPhase = 0,
   } = {}) {
     this.legs = legs.slice();
     this.movements = movementsFor(this.legs);
     this.timing = { ...DEFAULT_TIMING, ...timing };
-    this.phases = (phases || standardPhases(this.legs, { lefts })).map((p, i) => {
+    this.pedTiming = { ...DEFAULT_PED_TIMING, ...pedTiming };
+    this.phases = (phases || standardPhases(this.legs, { lefts, peds, main })).map((p, i) => {
       const v = phaseIsValid(p.movements, p.permissive || []);
       if (!v.ok) throw new Error(`phase ${p.name || i} holds a conflicting pair: ${v.pair.join(' vs ')}`);
-      return { name: p.name || `phase ${i + 1}`, movements: p.movements.slice(), permissive: (p.permissive || []).slice() };
+      const walks = (p.walks || []).slice();
+      const allowed = walksFor(this.legs, p.movements, p.permissive || []);
+      for (const w of walks) if (!allowed.includes(w)) throw new Error(`phase ${p.name || i} cannot carry ${w}: it crosses a movement in the phase`);
+      return { name: p.name || `phase ${i + 1}`, movements: p.movements.slice(), permissive: (p.permissive || []).slice(), walks };
     });
     if (!this.phases.length) throw new Error('a controller needs at least one phase');
     this.mode = mode;
@@ -211,8 +246,12 @@ export class Controller {
     this.stage = 'green';
     this.stageT = 0;
     this.next = null;      // phase index queued during clearance, or null
+    this.resumeAt = null;  // where 'next' goes after a queue rule jumped the sequence
     this.preemption = null; // { movements, hold, resume } while a priority corridor holds the box
     this.flash = null;
+    this.pedCalls = new Set();   // legs with a call waiting, 'N' for P-N
+    this.walk = null;            // { legs, stage: 'walk' | 'clear', t } while a walk runs
+    this.walksServed = 0;
     this.log = [];         // transitions, for the suite and the HUD
     if (flash) this.setFlash(flash);
     if (mode === 'timed') this._alignToPlan();
@@ -220,7 +259,9 @@ export class Controller {
 
   // ---- queries ------------------------------------------------------------
 
-  get current() { return this.preemption ? { name: 'priority', movements: this.preemption.movements, permissive: [] } : this.phases[this.phase]; }
+  get current() { return this.preemption ? { name: 'priority', movements: this.preemption.movements, permissive: [], walks: [] } : this.phases[this.phase]; }
+
+  get hasPeds() { return this.phases.some(p => p.walks.length); }
 
   isGreen(movement) { return this.stage === 'green' && this.current.movements.includes(movement); }
 
@@ -246,6 +287,12 @@ export class Controller {
   // nothing is scheduled to end it. Granny reads this.
   timeToYellow(movement) {
     if (!this.isGreen(movement)) return Infinity;
+    return Math.max(this._scheduledEnd(), this.walkRemaining());
+  }
+
+  // Seconds of green left by the plan, the rules or a queued request; no
+  // walk considered. Infinity when nothing is scheduled to end it.
+  _scheduledEnd() {
     if (this.next !== null) return Math.max(0, this.timing.minGreen - this.stageT);
     if (this.preemption) return Math.max(0, this.preemption.hold - this.stageT);
     if (this.mode === 'timed' && this.plan) {
@@ -256,6 +303,63 @@ export class Controller {
       if (r.when === 'elapsed') return Math.max(0, r.seconds - this.stageT);
     }
     return Infinity;
+  }
+
+  // ---- pedestrians --------------------------------------------------------
+
+  // Seconds until the walk in progress has cleared, 0 with none.
+  walkRemaining() {
+    if (!this.walk) return 0;
+    const { walk, clear } = this.pedTiming;
+    return Math.max(0, (this.walk.stage === 'walk' ? walk + clear : clear) - this.walk.t);
+  }
+
+  // The lamp a walker on leg `leg` sees: 'walk', 'clear' (flashing don't
+  // walk, the clearance) or 'dont-walk'.
+  pedHead(leg) {
+    if (this.walk && this.walk.legs.includes(leg)) return this.walk.stage;
+    return 'dont-walk';
+  }
+
+  // Press the call button on a leg. Returns 'walk' if that crossing is in
+  // its WALK interval right now (step off, no call needed), true if a call
+  // was registered, false if one was already waiting or no phase carries
+  // that crossing.
+  callPed(leg) {
+    if (!this.phases.some(p => p.walks.includes(`P-${leg}`))) return false;
+    if (this.pedHead(leg) === 'walk') return 'walk';
+    if (this.pedCalls.has(leg)) return false;
+    this.pedCalls.add(leg);
+    return true;
+  }
+
+  // Start the walk for every called crossing the current phase carries.
+  _startWalk() {
+    const legs = this.current.walks.map(w => w.slice(2)).filter(l => this.pedCalls.has(l));
+    if (!legs.length) return false;
+    for (const l of legs) this.pedCalls.delete(l);
+    this.walk = { legs, stage: 'walk', t: 0 };
+    this.walksServed++;
+    this._log('walk', legs.join(','));
+    return true;
+  }
+
+  // A call is served on this green if the green has just begun (the walk
+  // extends it) or has time enough left for the walk and its clearance;
+  // otherwise it waits for the phase's next green.
+  _walkFits() {
+    if (this.walk || this.next !== null || this.preemption) return false;
+    if (this.stageT < 0.5) return true;
+    const { walk, clear } = this.pedTiming;
+    return this._scheduledEnd() >= walk + clear;
+  }
+
+  _stepWalk(dt) {
+    if (!this.walk) return;
+    this.walk.t += dt;
+    const { walk, clear } = this.pedTiming;
+    if (this.walk.stage === 'walk' && this.walk.t >= walk - EPS) { this.walk.stage = 'clear'; this.walk.t -= walk; this._log('clear', this.walk.legs.join(',')); }
+    else if (this.walk.stage === 'clear' && this.walk.t >= clear - EPS) { this.walk = null; this._log('dont-walk'); }
   }
 
   // Seconds until this movement's green begins, when one is already on its
@@ -293,6 +397,7 @@ export class Controller {
     }
     if (this.preemption) { this.preemption.resume = i; return true; }
     if (i === this.phase && this.stage === 'green' && this.next === null) return false;
+    this.resumeAt = null;   // a hand on the phases restarts the sequence from there
     if (this.next !== null) { this.next = i; return true; }
     if (this.stage === 'green') {
       this.next = i;
@@ -334,6 +439,7 @@ export class Controller {
     this.stageT = 0;
     this.next = null;
     this.preemption = null;
+    this.walk = null;
     this._log('flash', f);
     return true;
   }
@@ -343,6 +449,7 @@ export class Controller {
     this.stageT = 0;
     this.next = null;
     this.preemption = null;
+    this.walk = null;
     this._log('dark');
   }
 
@@ -355,6 +462,7 @@ export class Controller {
     const already = this.stage === 'green' && movements.every(m => this.current.movements.includes(m));
     this.preemption = { movements: movements.slice(), hold, resume };
     this.next = null;
+    this.walk = null;   // an emergency cuts the walk short; walkers already on the road are the world's
     if (!already) {
       if (this.stage === 'green') this._beginYellow();
       else if (this.stage === 'flash' || this.stage === 'dark') { this.stage = 'allred'; this.stageT = 0; this.flash = null; }
@@ -372,6 +480,8 @@ export class Controller {
     const { yellow, allRed } = this.timing;
     switch (this.stage) {
       case 'green':
+        this._stepWalk(dt);
+        if (this.pedCalls.size && this._walkFits()) this._startWalk();
         if (this.preemption) {
           if (this.stageT >= this.preemption.hold - EPS) {
             const back = this.preemption.resume;
@@ -421,11 +531,18 @@ export class Controller {
 
   _beginYellow() {
     if (this.stage !== 'green') return;
+    if (this.walk) return;   // the green holds until the walk has cleared; callers set `next` first and retry
+
     this.stage = 'yellow';
     this.stageT = 0;
     this._log('yellow');
   }
 
+  // A queue rule that jumps to a phase is an insertion, not a skip: the
+  // phase 'next' would have brought is remembered, and the first 'next' after
+  // the jump goes there. Without this a full N bay during E-W pulled N-S
+  // lefts, 'next' went back to E-W, and the N-S throughs waited 180 s
+  // (Crossing locked 3 of 6 seeds).
   _runRules(sense) {
     for (const r of this.rules) {
       let fire = false;
@@ -433,11 +550,17 @@ export class Controller {
       else if (r.when === 'queue') {
         if (!sense) continue;
         if (this.current.movements.includes(r.movement)) continue; // it is being served
-        fire = sense(r.movement) >= r.threshold && this.stageT >= this.timing.minGreen - EPS;
+        // `after`: the green this rule may not cut short, the minimum green by default
+        const after = Math.max(this.timing.minGreen, r.after || 0);
+        fire = sense(r.movement) >= r.threshold && this.stageT >= after - EPS;
       }
       if (!fire) continue;
-      const target = r.then === 'next' || r.then === undefined ? (this.phase + 1) % this.phases.length : r.then;
+      const n = this.phases.length;
+      const isNext = r.then === 'next' || r.then === undefined;
+      const target = isNext ? (this.resumeAt !== null ? this.resumeAt : (this.phase + 1) % n) : r.then;
       if (target === this.phase) continue;
+      if (isNext) this.resumeAt = null;
+      else if (r.when === 'queue') { const after = (this.phase + 1) % n; this.resumeAt = after === target ? (after + 1) % n : after; }
       this.next = target;
       this._beginYellow();
       return;
@@ -477,6 +600,7 @@ export class Controller {
     return {
       t: this.t, phase: this.phase, stage: this.stage, stageT: this.stageT, next: this.next,
       heads: Object.fromEntries(this.movements.map(m => [m, this.head(m)])),
+      walk: this.walk ? { ...this.walk } : null, pedCalls: [...this.pedCalls],
     };
   }
 }

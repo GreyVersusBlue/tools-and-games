@@ -31,6 +31,7 @@ class Game {
     this.slot = makeSlot();
     this.save = this.slot.load() || this.slot.fresh();
     this.seed = 1;
+    this.node = 0;           // the box the panel drives (a corridor has two)
     this.hudEls = {};
     bindInput({ canvas: this.canvas, renderer: this.renderer, game: this });
     window.addEventListener('resize', () => this.layout());
@@ -45,10 +46,15 @@ class Game {
   layout() {
     const wrap = $('boardWrap');
     const r = wrap.getBoundingClientRect();
-    const size = Math.max(280, Math.min(r.width, window.innerHeight - 40));
+    // a corridor is wider than it is tall: size the board by the world's aspect
+    const aspect = this.world ? this.renderer.aspect(this.world) : 1;
+    const size = Math.max(280, Math.min(r.width / Math.max(1, aspect), window.innerHeight - 40));
     this.renderer.resize(Math.floor(r.width), Math.floor(size), Math.min(2, window.devicePixelRatio || 1));
     if (this.world) this.renderer.fit(this.world);
   }
+
+  // The controller the panel edits.
+  get ctl() { return this.world ? this.world.controllers[Math.min(this.node, this.world.controllers.length - 1)] : null; }
 
   buildLevelSelect() {
     const list = $('levelList');
@@ -74,8 +80,9 @@ class Game {
     this.seed = seed ?? ((Date.now() % 100000) + 1);
     if (DEBUG) this.seed = seed ?? 7;
     this.world = new World(lvl, this.seed);
+    this.node = 0;
     this.renderer.reset();
-    this.renderer.fit(this.world);
+    this.layout();
     this.state = 'playing';
     this.paused = false;
     this.result = null;
@@ -84,10 +91,12 @@ class Game {
     $('endScrim').classList.remove('show');
     $('levelName').textContent = lvl.name;
     $('hint').textContent = lvl.hint || '';
+    this.buildNodeButtons();
     this.buildPhaseButtons();
     this.showUnlocks();
     this.buildTiming();
     this.buildRules();
+    this.buildCalls();
     this.updateHud(true);
   }
 
@@ -100,6 +109,76 @@ class Game {
     $('rulesBox').classList.toggle('hidden', !u.has('auto'));
     $('leftsNote').classList.toggle('hidden', !u.has('lefts'));
     $('phases').classList.toggle('hidden', !u.has('phases'));
+    $('pedsBox').classList.toggle('hidden', !u.has('peds'));
+    $('sensorsNote').classList.toggle('hidden', !u.has('sensors'));
+    const offset = u.has('offset') && this.world.controllers.length > 1;
+    $('offsetNote').classList.toggle('hidden', !offset);
+    if (offset) {
+      const o = this.world.controllers[1].offset - this.world.controllers[0].offset;
+      $('offsetNote').textContent = `Offset: the east box runs its plan ${Math.abs(o)} s ${o >= 0 ? 'behind' : 'ahead of'} the west one (${this.world.controllers[0].cycleLength()} s cycle). The slider is M7's.`;
+    }
+    $('nodes').classList.toggle('hidden', this.world.controllers.length < 2);
+  }
+
+  // A corridor: which box the panel drives. The phases, the sliders and the
+  // rules all read `this.ctl`.
+  buildNodeButtons() {
+    const box = $('nodes');
+    box.innerHTML = '';
+    if (this.world.controllers.length < 2) return;
+    const names = this.world.controllers.length === 2 ? ['West box', 'East box'] : this.world.controllers.map((c, i) => `Box ${i + 1}`);
+    this.world.controllers.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.className = 'node' + (i === this.node ? ' on' : '');
+      b.dataset.node = i;
+      b.textContent = names[i];
+      b.addEventListener('click', () => this.selectNode(i));
+      box.appendChild(b);
+    });
+  }
+
+  selectNode(i) {
+    if (!this.world || i < 0 || i >= this.world.controllers.length || i === this.node) return;
+    this.node = i;
+    for (const b of $('nodes').children) b.classList.toggle('on', +b.dataset.node === i);
+    this.buildPhaseButtons();
+    this.buildTiming();
+    this.buildRules();
+    this.buildCalls();
+    this.updateHud(true);
+  }
+
+  // A click on the map that hit no car: on a corridor, the nearer box
+  // becomes the one the panel drives.
+  clickMap(x, y) {
+    if (!this.world || this.world.nodes.length < 2) return;
+    let best = 0, bd = Infinity;
+    this.world.nodes.forEach((n, i) => { const d = Math.hypot(n.origin[0] - x, n.origin[1] - y); if (d < bd) { bd = d; best = i; } });
+    this.selectNode(best);
+  }
+
+  // The pedestrian call buttons: one per leg the selected box has a walk
+  // for. The player can press them; the level's own calls press them too.
+  buildCalls() {
+    const box = $('calls');
+    box.innerHTML = '';
+    const ctl = this.ctl;
+    if (!ctl) return;
+    for (const leg of this.world.nodes[this.node].legs) {
+      if (!ctl.phases.some(p => p.walks.includes(`P-${leg}`))) continue;
+      const b = document.createElement('button');
+      b.className = 'call';
+      b.dataset.leg = leg;
+      b.innerHTML = `<span class="leg">${leg}</span><span class="state">don't walk</span>`;
+      b.addEventListener('click', () => this.callPed(leg));
+      box.appendChild(b);
+    }
+  }
+
+  callPed(leg) {
+    if (this.state !== 'playing' || !this.world) return;
+    this.world.callPed(leg, { node: this.node, walkers: 1 });
+    this.updateHud(true);
   }
 
   end() {
@@ -117,6 +196,7 @@ class Game {
       `<div class="end-row"><span>Average wait</span><b>${r.avgWait.toFixed(0)} s (target ${r.waitTarget})</b></div>` +
       `<div class="end-row"><span>Collisions</span><b>${r.collisions}</b></div>` +
       `<div class="end-row"><span>Honks</span><b>${r.honks}</b></div>` +
+      (this.world.controller.hasPeds ? `<div class="end-row"><span>Walks served · kept waiting</span><b>${r.pedServed} · ${r.pedLate}</b></div>` : '') +
       `<div class="end-row"><span>Satisfaction bonus</span><b>${r.bonus}</b></div>` +
       `<div class="end-row total"><span>Points</span><b>${r.points}</b></div>` +
       (r.reasons.length ? `<p class="end-why">${r.reasons.join('. ')}.</p>` : '');
@@ -156,8 +236,8 @@ class Game {
 
   requestPhase(i) {
     if (this.state !== 'playing' || !this.world) return;
-    if (i >= this.world.controller.phases.length) return;
-    this.world.requestPhase(i);
+    if (i >= this.ctl.phases.length) return;
+    this.world.requestPhase(i, this.node);
     this.updateHud(true);
   }
 
@@ -165,7 +245,7 @@ class Game {
 
   setFlash(mode) {
     if (this.state !== 'playing' || !this.world) return;
-    const ctl = this.world.controller;
+    const ctl = this.ctl;
     if (mode === 'red') ctl.setFlash('red');
     else if (mode === 'yellow') ctl.setFlash({ major: ctl.majorLegs() });
     else ctl.setFlash(null);
@@ -174,12 +254,12 @@ class Game {
 
   setTiming(patch) {
     if (!this.world) return;
-    this.world.controller.setTiming(patch);
+    this.ctl.setTiming(patch);
     this.buildTiming();
   }
 
   buildTiming() {
-    const t = this.world.controller.timing;
+    const t = this.ctl.timing;
     $('yellowRange').value = String(t.yellow);
     $('allRedRange').value = String(t.allRed);
     $('yellowVal').textContent = `${t.yellow.toFixed(1)} s`;
@@ -188,10 +268,11 @@ class Game {
 
   // The rule panel edits a copy of controller.rules and hands the whole list
   // back through setRules on every change, so the controller never sees a
-  // half-typed row. Queue rules are shown asleep: the sensors are M6.
+  // half-typed row. Queue rules are shown asleep on a level without sensors
+  // and live on one with them (M6).
   buildRules() {
     const box = $('rules');
-    const ctl = this.world.controller;
+    const ctl = this.ctl;
     box.innerHTML = '';
     if (!ctl.rules.length) { const p = document.createElement('p'); p.className = 'empty'; p.textContent = 'No rules: the phases change when you press them.'; box.appendChild(p); return; }
     const thenOptions = sel => {
@@ -200,7 +281,7 @@ class Game {
     };
     ctl.rules.forEach((r, i) => {
       const row = document.createElement('div');
-      row.className = 'rule' + (r.when === 'queue' ? ' sleeping' : '');
+      row.className = 'rule' + (r.when === 'queue' && !this.world.sensors ? ' sleeping' : '') + (r.when === 'queue' && this.world.sensors ? ' sensed' : '');
       row.dataset.i = i;
       const body = document.createElement('div');
       body.className = 'body';
@@ -214,7 +295,8 @@ class Game {
         for (const m of ctl.movements) { const o = document.createElement('option'); o.value = m; o.textContent = m; mv.appendChild(o); }
         mv.value = r.movement || ctl.movements[0];
         const th = document.createElement('input'); th.type = 'number'; th.className = 'threshold'; th.min = '1'; th.max = '30'; th.step = '1'; th.value = String(r.threshold ?? 3);
-        body.append('when ', mv, ' has ', th, ' queued, go to ', then);
+        const af = document.createElement('input'); af.type = 'number'; af.className = 'after'; af.min = '0'; af.max = '180'; af.step = '1'; af.value = String(r.after ?? ctl.timing.minGreen);
+        body.append('when ', mv, ' has ', th, ' queued, after ', af, ' s, go to ', then);
       }
       const ops = document.createElement('div'); ops.className = 'ops';
       for (const [cls, glyph, title] of [['up', '▲', 'earlier'], ['down', '▼', 'later'], ['remove', '✕', 'remove']]) {
@@ -226,7 +308,7 @@ class Game {
         ops.appendChild(b);
       }
       row.append(body, ops);
-      if (r.when === 'queue') { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = 'needs sensors (M6)'; row.appendChild(badge); }
+      if (r.when === 'queue' && !this.world.sensors) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = 'needs sensors: this level has none'; row.appendChild(badge); }
       body.addEventListener('change', () => this.editRules(list => { list[i] = this.readRule(row, list[i]); }));
       box.appendChild(row);
     });
@@ -237,13 +319,13 @@ class Game {
     const then = row.querySelector('select.then').value;
     out.then = then === 'next' ? 'next' : Number(then);
     if (r.when === 'elapsed') out.seconds = Math.max(1, Number(row.querySelector('input.seconds').value) || 1);
-    else { out.movement = row.querySelector('select.movement').value; out.threshold = Math.max(1, Number(row.querySelector('input.threshold').value) || 1); }
+    else { out.movement = row.querySelector('select.movement').value; out.threshold = Math.max(1, Number(row.querySelector('input.threshold').value) || 1); out.after = Math.max(0, Number(row.querySelector('input.after').value) || 0); }
     return out;
   }
 
   editRules(fn) {
     if (!this.world) return;
-    const ctl = this.world.controller;
+    const ctl = this.ctl;
     const list = ctl.rules.map(r => ({ ...r }));
     fn(list);
     try { ctl.setRules(list); } catch (e) { console.warn(e.message); }
@@ -252,12 +334,12 @@ class Game {
 
   addRule(when) {
     if (this.state !== 'playing' || !this.world) return;
-    const ctl = this.world.controller;
+    const ctl = this.ctl;
     this.editRules(list => {
       if (when === 'elapsed') list.push({ when: 'elapsed', seconds: 20, then: 'next' });
       else {
         const m = ctl.movements.find(x => !ctl.phases[0].movements.includes(x)) || ctl.movements[0];
-        list.push({ when: 'queue', movement: m, threshold: 3, then: 'next' });
+        list.push({ when: 'queue', movement: m, threshold: 3, after: 12, then: 'next' });
       }
     });
   }
@@ -292,7 +374,7 @@ class Game {
   buildPhaseButtons() {
     const box = $('phases');
     box.innerHTML = '';
-    this.world.controller.phases.forEach((p, i) => {
+    this.ctl.phases.forEach((p, i) => {
       const b = document.createElement('button');
       b.className = 'phase';
       b.dataset.phase = i;
@@ -310,7 +392,7 @@ class Game {
     this.frameN = (this.frameN || 0) + 1;
     if (!force && this.frameN % 4 !== 0) return;
     const m = meters(w);
-    const ctl = w.controller;
+    const ctl = this.ctl;
     $('clock').textContent = fmtTime(m.timeLeft);
     $('cleared').textContent = `${m.cleared} / ${m.target}`;
     $('throughBar').style.width = `${Math.min(100, m.throughput * 100)}%`;
@@ -318,11 +400,24 @@ class Game {
     $('collisions').className = m.collisions ? 'bad' : '';
     $('satBar').style.width = `${Math.round(m.satisfaction * 100)}%`;
     $('satBar').style.background = m.satisfaction > 0.6 ? '#2ee06b' : m.satisfaction > 0.3 ? '#ffc21f' : '#ff3b30';
-    $('waitNow').textContent = `${m.avgWait.toFixed(0)} s avg · ${m.waiting} waiting · ${m.honks} honks`;
+    $('waitNow').textContent = `${m.avgWait.toFixed(0)} s avg · ${m.waiting} waiting · ${m.honks} honks` + (ctl.hasPeds ? ` · ${m.pedLate} walkers kept waiting` : '');
     const flashing = ctl.stage === 'flash';
-    const stage = ctl.preemption ? 'PRIORITY' : ctl.stage === 'green' ? `${ctl.current.name} green` : ctl.stage === 'yellow' ? 'yellow' : ctl.stage === 'allred' ? 'all red'
-      : flashing ? (ctl.flash === 'red' ? 'flashing red: four-way stop' : `flashing yellow on ${ctl.flash.major.join(' and ')}`) : ctl.stage;
-    $('stage').textContent = stage + (ctl.next !== null ? ` → ${ctl.phases[ctl.next].name}` : '');
+    const stageOf = c => {
+      const fl = c.stage === 'flash';
+      const st = c.preemption ? 'PRIORITY' : c.stage === 'green' ? `${c.current.name} green` : c.stage === 'yellow' ? 'yellow' : c.stage === 'allred' ? 'all red'
+        : fl ? (c.flash === 'red' ? 'flashing red: four-way stop' : `flashing yellow on ${c.flash.major.join(' and ')}`) : c.stage;
+      return st + (c.next !== null ? ` → ${c.phases[c.next].name}` : '') + (c.walk ? ` · ${c.walk.stage === 'walk' ? 'WALK' : 'clearing'} ${c.walk.legs.join(' ')}` : '');
+    };
+    $('stage').textContent = w.controllers.length > 1 ? w.controllers.map((c, i) => `${i === 0 ? 'W' : 'E'}: ${stageOf(c)}`).join(' · ') : stageOf(ctl);
+    for (const b of $('calls').children) {
+      const leg = b.dataset.leg;
+      const head = ctl.pedHead(leg);
+      const pending = w.pedCalls[this.node][leg];
+      b.classList.toggle('waiting', !!pending);
+      b.classList.toggle('walk', head === 'walk');
+      b.classList.toggle('clear', head === 'clear');
+      b.querySelector('.state').textContent = head === 'walk' ? 'WALK' : head === 'clear' ? 'clearing' : pending ? `called ${Math.floor(w.t - pending.since)} s ago` : "don't walk";
+    }
     for (const b of $('phases').children) {
       const i = +b.dataset.phase;
       b.classList.toggle('active', i === ctl.phase && !ctl.preemption && !flashing);
@@ -366,7 +461,9 @@ if (DEBUG) {
   window.__signalCity = {
     game,
     get world() { return game.world; },
-    step(n = 1) { for (let i = 0; i < n; i++) game.world.step(); game.renderer.takeEvents(game.world); },
+    step(n = 1) { for (let i = 0; i < n; i++) game.world.step(); game.renderer.takeEvents(game.world); game.updateHud(true); },
+    callPed(leg) { game.callPed(leg); },
+    selectNode(i) { game.selectNode(i); },
     score() { return score(game.world); },
     meters() { return meters(game.world); },
   };

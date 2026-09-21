@@ -1,9 +1,19 @@
 // Signal City: the road network. Pure geometry, no DOM.
 //
 // Units are metres, y grows downward (canvas convention), the intersection's
-// centre is the origin. A leg is a road leaving the centre toward a compass
-// point; each carries `lanesPerDir` inbound lanes (on the driver's right as
-// they arrive, right-hand traffic) and the same number outbound.
+// centre is its `origin` (0, 0 for a single box). A leg is a road leaving
+// the centre toward a compass point; each carries `lanesPerDir` inbound
+// lanes (on the driver's right as they arrive, right-hand traffic) and the
+// same number outbound.
+//
+// A corridor (M6) is two Networks on one street, `spacing` metres apart, and
+// nothing else: the road between them is node A's east leg laid end to end
+// with node B's west leg, each still its 110 m (#541: the physics stays on
+// the geometry it was tuned on). `linkNodes` marks every path leaving A by
+// that leg with `link = { node, entry, atS }`, and the world hands a car
+// reaching the end of such a path onto a path of B entering by `entry`, in
+// the same lane, `atS` metres along it (0 when the legs meet exactly). A
+// leg that receives cars this way spawns none of its own.
 //
 // A Path is one vehicle's whole line through the map: a polyline with
 // cumulative arc length, so a car is a single number `s` along it and every
@@ -32,8 +42,11 @@ function rightOf([x, y]) { return [-y, x]; }
 export function legDir(leg) { return DIR[leg]; }
 
 export class Network {
-  constructor({ legs = LEGS.slice(), lanesPerDir = 1, leftLane = false, legLength = 110, cornerRadius = 5 } = {}) {
+  constructor({ legs = LEGS.slice(), lanesPerDir = 1, leftLane = false, legLength = 110, cornerRadius = 5, origin = [0, 0], node = 0 } = {}) {
     this.legs = legs.slice();
+    this.origin = [origin[0], origin[1]];
+    this.node = node;
+    this.linkedIn = [];                                 // legs fed by another node's exit: no spawns there
     this.lanesPerDir = lanesPerDir;
     this.leftLane = leftLane && lanesPerDir > 1;
     this.legLength = legLength;
@@ -62,7 +75,25 @@ export class Network {
     const arriveHeading = [-out[0], -out[1]];
     const r = rightOf(arriveHeading);
     const off = (this.lanesPerDir - lane - 0.5) * LANE_WIDTH * (inbound ? 1 : -1);
-    return [out[0] * d + r[0] * off, out[1] * d + r[1] * off];
+    return [this.origin[0] + out[0] * d + r[0] * off, this.origin[1] + out[1] * d + r[1] * off];
+  }
+
+  // The legs that spawn traffic: every leg not fed by another node.
+  get spawnLegs() { return this.legs.filter(l => !this.linkedIn.includes(l)); }
+
+  // A crosswalk's frame on one leg: its band lies `along` metres out from
+  // the centre (the middle of the zebra), and a walker crosses it from
+  // lateral -halfRoad to +halfRoad (or back) along `perp`, the driver's right
+  // as they arrive. `laneLat(lane, inbound)` is a lane's centre in that
+  // same lateral coordinate, so a car and a walker can be compared by it.
+  crosswalk(leg) {
+    const out = DIR[leg];
+    const perp = rightOf([-out[0], -out[1]]);
+    return {
+      leg, along: this.boxHalf + CROSSWALK / 2, dir: out, perp, half: this.halfRoad,
+      point: (lat, jitter = 0) => [this.origin[0] + out[0] * (this.boxHalf + CROSSWALK / 2 + jitter) + perp[0] * lat, this.origin[1] + out[1] * (this.boxHalf + CROSSWALK / 2 + jitter) + perp[1] * lat],
+      laneLat: (lane, inbound) => (this.lanesPerDir - lane - 0.5) * LANE_WIDTH * (inbound ? 1 : -1),
+    };
   }
 
   pathKey(entry, lane, turn) { return `${entry}${lane}-${turn}`; }
@@ -160,7 +191,7 @@ export class Network {
     }
     // departure: box edge to the far end of the exit leg
     pts.push(this.lanePoint(exit, exitLane, false, L));
-    const path = new Path({ key: this.pathKey(entry, lane, turn), entry, lane, turn, exit, exitLane, movement: `${entry}-${turn}`, points: pts });
+    const path = new Path({ key: this.pathKey(entry, lane, turn), entry, lane, turn, exit, exitLane, movement: `${entry}-${turn}`, points: pts, node: this.node });
     // arc-length marks
     path.stopLine = path.lengthAt(1);
     path.boxEnter = path.lengthAt(2);
@@ -170,9 +201,11 @@ export class Network {
 }
 
 export class Path {
-  constructor({ key, entry, lane, turn, exit, exitLane, movement, points }) {
+  constructor({ key, entry, lane, turn, exit, exitLane, movement, points, node = 0 }) {
     this.key = key; this.entry = entry; this.lane = lane; this.turn = turn;
     this.exit = exit; this.exitLane = exitLane; this.movement = movement;
+    this.node = node;
+    this.link = null;           // { node, entry, atS } when this path feeds another box
     this.points = points;
     this.cum = [0];
     for (let i = 1; i < points.length; i++) {
@@ -205,6 +238,49 @@ export class Path {
 
   // Does a vehicle of `len` metres centred at s overlap the box at all?
   touchesBox(s, len) { return s + len / 2 > this.boxEnter && s - len / 2 < this.boxExit; }
+}
+
+// Join two nodes: every path of `a` leaving by `legA` continues onto `b`'s
+// paths entering by `legB`, in the same lane. The legs must meet or overlap
+// (a gap between them would be road nobody built): with 110 m legs that is
+// a spacing of 220 m or less, and `atS` is how far along b's approach a's
+// leg ends.
+export function linkNodes(a, legA, b, legB) {
+  const da = DIR[legA];
+  const endA = [a.origin[0] + da[0] * a.legLength, a.origin[1] + da[1] * a.legLength];
+  const db = DIR[legB];
+  const startB = [b.origin[0] + db[0] * b.legLength, b.origin[1] + db[1] * b.legLength];
+  // distance from b's leg start to a's leg end, measured toward b's centre
+  const atS = -((endA[0] - startB[0]) * db[0] + (endA[1] - startB[1]) * db[1]);
+  if (atS < -1e-6) throw new Error(`nodes ${a.node} and ${b.node} leave a ${(-atS).toFixed(1)} m gap between ${legA} and ${legB}`);
+  if (atS > b.legLength - b.stopDist - 20) throw new Error(`nodes ${a.node} and ${b.node} overlap too far: ${atS.toFixed(1)} m into the approach`);
+  const lateral = Math.abs((endA[0] - startB[0]) * db[1] - (endA[1] - startB[1]) * db[0]);
+  if (lateral > 1e-6) throw new Error(`legs ${legA} of node ${a.node} and ${legB} of node ${b.node} are not on one line`);
+  for (const p of a.paths.values()) if (p.exit === legA) p.link = { node: b.node, entry: legB, atS: Math.max(0, atS) };
+  if (!b.linkedIn.includes(legB)) b.linkedIn.push(legB);
+}
+
+// Build a level's nodes: one, or `nodes` of them along an east-west main
+// street `spacing` metres apart, joined end to end.
+export function buildNodes(spec = {}) {
+  const { nodes = 1, spacing = 220, ...rest } = spec;
+  if (nodes <= 1) return [new Network({ ...rest, origin: [0, 0], node: 0 })];
+  const out = [];
+  const x0 = -spacing * (nodes - 1) / 2;
+  for (let i = 0; i < nodes; i++) out.push(new Network({ ...rest, origin: [x0 + i * spacing, 0], node: i }));
+  for (let i = 0; i + 1 < out.length; i++) {
+    linkNodes(out[i], 'E', out[i + 1], 'W');
+    linkNodes(out[i + 1], 'W', out[i], 'E');
+  }
+  return out;
+}
+
+// Is a point inside an oriented rectangle?
+export function pointInRect(x, y, r) {
+  const c = Math.cos(r.heading), s = Math.sin(r.heading);
+  const dx = x - r.x, dy = y - r.y;
+  const u = dx * c + dy * s, v = -dx * s + dy * c;
+  return Math.abs(u) <= r.length / 2 && Math.abs(v) <= r.width / 2;
 }
 
 // Oriented rectangle overlap by separating axes: the collision test.

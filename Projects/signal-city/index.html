@@ -44,8 +44,15 @@
       <span class="label">Signal</span>
       <b id="stage">&nbsp;</b>
     </div>
+    <div id="nodes" class="nodes hidden"></div>
     <div id="phases" class="phases"></div>
     <p id="leftsNote" class="note hidden">Protected lefts: the arrow phases serve the inner lanes alone.</p>
+    <p id="sensorsNote" class="note hidden">Loops are live: a queue rule fires when its lane fills.</p>
+    <p id="offsetNote" class="note hidden"></p>
+    <div id="pedsBox" class="section hidden">
+      <span class="label">Crossings</span>
+      <div id="calls" class="calls"></div>
+    </div>
     <button id="priorityBtn" class="priority">Priority corridor <span class="key">E</span></button>
     <div id="flashBox" class="section hidden">
       <span class="label">Mode</span>
@@ -73,7 +80,7 @@
       <button id="speedBtn">1x</button>
       <button id="menuBtn">Levels</button>
     </div>
-    <p class="keys">1 to 4 pick a phase · space pauses · F is fast · scroll zooms · click an ambulance · the rules run on their own</p>
+    <p class="keys">1 to 4 pick a phase · space pauses · F is fast · scroll zooms, drag pans · click an ambulance · the rules run on their own</p>
     <div id="saveBar" class="save"></div>
   </aside>
 </main>

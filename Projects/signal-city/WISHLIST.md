@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 5, 2026-09-21)
+## What shipped (milestones 0 to 6, 2026-09-21)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -54,19 +54,34 @@ open work; this file is the plan it points at.
   once it comes, looks at the light and not the box (`greenTrust` in
   `js/cars.js`). `tools/calibrate.mjs` is the six-seeds-by-four-cycles table
   behind every level's targets. 103 + 85 + 44 + 20 + 53 checks.
+- **M6 pedestrians, sensors, the corridor, levels 4 and 5** (HISTORY.md
+  #554 to #562): a walk is a flag on a through phase (`walks` on the phase,
+  `peds: true` on `standardPhases`), a call per leg (`Controller.callPed`,
+  `World.callPed`, the panel's buttons, scripted `calls` and Poisson
+  `pedDemand`), WALK then a flashing clearance sized from the road's width,
+  the green held until the clearance ends, a call unserved past `pedWait`
+  costing satisfaction the way a honk does, and walkers on the zebra at 1.1
+  to 1.7 m/s who hold the box for anything turning onto their leg. Induction
+  loops: `sensors: true` wakes the `queue` rules, `loops` names the lanes
+  that have one, the renderer draws the rectangle and lights it, and a rule
+  carries `after` (the green it may not cut short). The corridor: `nodes:
+  2` builds two boxes on one east-west street with their legs laid end to
+  end (`linkNodes`), a controller per node with `controllers[i]` overriding
+  `controller` (an offset, a start phase), the handoff through
+  `Car.newApproach()`, the panel driving the box it selects, the camera
+  framing both. "Crossing" (Four Ways with calls on every leg, loops in the
+  bays) and "Two Blocks" (the corridor on a timed plan, the east box 16 s
+  behind). 107 + 128 + 51 + 20 + 73 checks.
 
 ## What is next, in order
 
-6. **M6 pedestrians, sensors, corridor** (1): pedestrian call buttons with
-   serve-within-X, induction loops that fire the `queue` rules (the
-   controller already evaluates them from `World.queued`), a level with two
-   intersections and connecting road segments (the Path/Car design carries
-   `newApproach()` for exactly this), offsets, and then the green wave: the
-   offset UI plus a platoon visualiser.
-7. **M7 events** (½ each): rush-hour surge (`demandCurve`), power outage
-   (`setDark`, the cars already treat dark as four-way stop), VIP motorcade,
-   ambulance under a timer, lane closure, school-zone flashing yellow window,
-   funeral procession.
+7. **M7 events and the green wave** (½ each): the offset slider and a
+   platoon visualiser (the offset is a number in the level now; changing it
+   live means re-aligning a running plan through a proper transition, not a
+   jump); rush-hour surge (`demandCurve`), power outage (`setDark`, the cars
+   already treat dark as four-way stop), VIP motorcade, ambulance under a
+   timer, lane closure, school-zone flashing yellow window, funeral
+   procession.
 8. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
    protected turns, roundabout conversion, extra phases.
 9. **M9 endless and sandbox** (1): an intersection per survived day, a grid
@@ -85,8 +100,23 @@ open work; this file is the plan it points at.
   collisions per six runs against 0). The level ships the four; "unplayable
   on two" is true of the level as built, where phases 1 and 3 alone starve
   the bay and gridlock every seed, not of permissive lefts in general.
-- Queue rules are in the panel and asleep: the world hands the controller no
-  sensor until a level says `sensors: true`, which is M6.
+- Queue rules sleep on a level without `sensors: true` and fire on one with
+  it. A queue rule cuts the running green as soon as its `after` seconds
+  have run (the minimum green by default): at 4 s Crossing's bays cut every
+  through short and the board locked on 3 of 6 seeds, so the level ships
+  `after: 16`. A rule that *calls* a phase for its next turn in the
+  sequence, the way an actuated controller does, is not built.
+- A corridor's handoff keeps the car in its lane: at the second box it picks
+  among the turns that lane allows, so on a two-lane corridor with a left
+  bay a car that arrived in the inner lane can only turn left. Two Blocks
+  runs one lane each way. Lane changes on the segment are not built.
+- Two Blocks' 30 s cycles gridlock on 2 to 3 of 6 seeds at every offset:
+  a permissive left waiting for a gap in a platoon holds its one-lane
+  queue past the 120 s limit. The level ships a 22 s main green, where no
+  seed locks.
+- The offset is a number in the level and a line in the panel. A slider
+  that re-aligns a running plan is M7's (the green wave), because
+  `_alignToPlan` at a new offset is a jump from green to red with no yellow.
 - The trucker's "wide" sweep is a rule, not off-tracking geometry: a turning
   truck ties up the other lanes of its entry and exit legs until its trailer
   clears the box. Readable, testable, and wrong in the way a diagram is.

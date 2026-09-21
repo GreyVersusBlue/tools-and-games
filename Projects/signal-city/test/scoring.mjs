@@ -32,7 +32,7 @@ const withAuto = (l, seconds = 22) => ({ ...l, controller: { ...l.controller, ru
 group('the level pack');
 
 {
-  ok(LEVELS.length === 4 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,free-play', 'four levels: First Light, Stem, Four Ways, Free Play', LEVELS.map(l => l.id).join(', '));
+  ok(LEVELS.length === 6 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,free-play', 'six levels: First Light, Stem, Four Ways, Crossing, Two Blocks, Free Play', LEVELS.map(l => l.id).join(', '));
   const l1 = levelById('first-light');
   ok(l1.duration === 180 && l1.target > 0 && l1.waitTarget > 0 && l1.mode === 'soft', 'level 1 is 3 minutes, soft, with a target and a wait target', `${l1.target} cars, ${l1.waitTarget} s`);
   ok(Object.keys(l1.mix).every(k => ['standard', 'granny'].includes(k)), 'and only standard and granny drive it', Object.keys(l1.mix).join(', '));
@@ -46,6 +46,17 @@ group('the level pack');
   const w3 = new World(l3, 1);
   ok(w3.controller.phases.length === 4 && w3.controller.phases.map(p => p.name).join() === 'N-S,N-S lefts,E-W,E-W lefts', 'its world has the four phases', w3.controller.phases.map(p => p.name).join(', '));
   ok(w3.controller.head('N-L') === 'red' && w3.controller.head('N-T') === 'green', 'and on the first phase the left arrow is red while the through is green');
+  const l4 = levelById('crossing');
+  ok(l4.network.lanesPerDir === 2 && l4.controller.lefts === true && l4.controller.peds === true && l4.sensors === true, 'Crossing is Four Ways\' network with walks and live sensors');
+  ok(l4.loops.join() === 'N-L,S-L,E-L,W-L' && l4.pedDemand && Object.keys(l4.pedDemand).join('') === 'NSEW', 'its loops are in the four left bays and every leg takes calls', l4.loops.join());
+  ok(Object.keys(l4.mix).sort().join() === 'granny,standard,student,tourist' && l4.unlocks.includes('peds') && l4.unlocks.includes('sensors'), 'standard, granny, tourist and student drive it, and it unlocks peds and sensors', l4.unlocks.join());
+  const w4 = new World(l4, 1);
+  ok(w4.controller.phases.map(p => p.walks.join('+')).join('|') === 'P-E+P-W||P-N+P-S|' && w4.controller.rules.filter(r => r.when === 'queue').every(r => r.after === 16), 'its through phases carry the walks and its queue rules hold a through 16 s', w4.controller.phases.map(p => p.walks.join('+')).join('|'));
+  const l5 = levelById('two-blocks');
+  ok(l5.network.nodes === 2 && l5.network.spacing === 220 && l5.controller.mode === 'timed' && l5.controller.main === 'EW', 'Two Blocks is two boxes 220 m apart on a timed plan with E-W as phase 1', `${l5.network.nodes} nodes, ${l5.network.spacing} m`);
+  const w5 = new World(l5, 1);
+  ok(w5.controllers.length === 2 && w5.controllers[0].offset === 0 && w5.controllers[1].offset === 16 && l5.unlocks.includes('offset'), 'the east box runs 16 s behind, and the level unlocks the offset note', w5.controllers.map(c => c.offset).join(','));
+  ok(Object.keys(l5.mix).sort().join() === 'aggressive,rideshare,standard,trucker' && Array.isArray(l5.demand) && l5.demand.length === 2, 'standard, aggressive, rideshare and trucker drive it, with demand per box', Object.keys(l5.mix).join(', '));
   let bad = null;
   for (const l of LEVELS) { try { new World(l, 1); } catch (e) { bad = `${l.id}: ${e.message}`; } }
   ok(!bad, 'every level builds a world', bad || '');
@@ -152,6 +163,56 @@ group('Four Ways: the lefts phases are the level');
   ok(locks === 3, 'on the through phases alone every one of them gridlocks before the clock runs out', `at ${at.join(', ')} s`);
 }
 
+group('Crossing: walks and loops on Four Ways\' board');
+
+{
+  // the calibration (six seeds, the 26 s / 8 s plan with the level's calls
+  // and loops): 55 to 76 cleared, 28 to 37 s average wait, 2 to 7 calls
+  // late; the level's own rules at 24 s: 55 to 63 cleared, 47 to 52 s. Target
+  // 48, waitTarget 36. A two-lane four-minute run with walkers costs about
+  // 18 s here, so this is one seed of the plan and one of the level as
+  // shipped, and the six are the tool's.
+  const l4 = levelById('crossing');
+  const plan = { ...l4, controller: { ...l4.controller, mode: 'timed', rules: [], plan: [{ phase: 0, green: 26 }, { phase: 1, green: 8 }, { phase: 2, green: 26 }, { phase: 3, green: 8 }] } };
+  const out = [];
+  for (const seed of [3]) {
+    const w = new World(plan, seed);
+    for (let i = 0; i < l4.duration * 60 && !w.stats.gridlock; i++) w.step();
+    const r = score(w);
+    out.push({ seed, r, lock: w.stats.gridlock, walkers: w.stats.walkers, struck: w.stats.struck });
+  }
+  ok(out.every(o => !o.lock && o.r.cleared >= l4.target), 'the 26 s plan clears the target with no gridlock on seed 3', out.map(o => `${starString(o.r.stars)} ${o.r.cleared}/${o.r.avgWait.toFixed(0)}s/${o.r.collisions}x`).join(' | '));
+  ok(out.every(o => o.walkers > 5 && o.struck === 0 && o.r.pedServed > 3), 'walkers crossed and none was struck', out.map(o => `${o.walkers} walkers, ${o.r.pedServed} walks, ${o.r.pedLate} late`).join(' | '));
+  ok(out[0].r.stars === 3, 'and it is three stars', `${starString(out[0].r.stars)} ${out[0].r.reasons.join('; ')}`);
+  // as shipped: the queue rules on the bays and the 24 s elapsed rule
+  const w = new World(l4, 1);
+  for (let i = 0; i < l4.duration * 60 && !w.stats.gridlock; i++) w.step();
+  const r = score(w);
+  ok(r.survived && r.pedLate > 0 && r.bonus < 100, 'the level as shipped survives seed 1, and the calls it kept waiting cost the bonus', `${starString(r.stars)} ${r.cleared} cleared, ${r.avgWait.toFixed(0)} s, ${r.pedLate} late, bonus ${r.bonus}`);
+  ok(w.controller.log.some(l => l.kind === 'green' && /lefts/.test(l.detail)) && w.controller.log.some(l => l.kind === 'walk'), 'its bays pulled their arrows and its calls were walked', '');
+}
+
+group('Two Blocks: the corridor on its offset');
+
+{
+  // the calibration (six seeds, 22 s main and 12 s side greens): offset 16
+  // clears 87 to 103 with 9 to 15 s average wait; offset 0 clears 85 to
+  // 102 with 12 to 19 s. Target 80, waitTarget 16: the offset is the
+  // second star over six seeds, though on seed 1 alone the two offsets are
+  // within 2 s of each other, so no check here claims the difference (the
+  // wave is M7's). Three seeds, at about 5 s each.
+  const l5 = levelById('two-blocks');
+  const out = [];
+  for (const seed of [1, 2, 3]) {
+    const w = new World(l5, seed);
+    for (let i = 0; i < l5.duration * 60 && !w.stats.gridlock; i++) w.step();
+    const r = score(w);
+    out.push({ seed, r, lock: w.stats.gridlock, handoffs: w.stats.handoffs });
+  }
+  ok(out.every(o => !o.lock && o.r.cleared >= l5.target && o.r.avgWait <= l5.waitTarget), 'the shipped plan and offset clear the target under the wait target on seeds 1 to 3', out.map(o => `${starString(o.r.stars)} ${o.r.cleared}/${o.r.avgWait.toFixed(0)}s/${o.r.collisions}x`).join(' | '));
+  ok(out.every(o => o.handoffs > 30), 'with cars crossing between the boxes all run', out.map(o => o.handoffs).join(', '));
+}
+
 group('satisfaction never fails a level');
 
 {
@@ -188,6 +249,9 @@ group('the save');
   ok(r.levels['first-light'].stars === 3 && r.levels['first-light'].best === 0 && r.levels['first-light'].plays === 0, 'repair clamps stars to 3 and floors bad numbers at 0', JSON.stringify(r.levels['first-light']));
   ok(!('junk' in r.levels), 'and drops a null record');
   ok(r.unlocks.join() === 'phases,sensors' && r.settings.sound === false && r.lastLevel === 'first-light', 'keeps string unlocks, settings and the last level', r.unlocks.join());
+  const six = fresh();
+  for (const l of LEVELS) recordResult(six, l.id, { stars: 2, points: 100 });
+  ok(Object.keys(repair(six).levels).length === 6 && repair(six).levels['two-blocks'].stars === 2, 'a record for every M6 level comes through repair, no new field needed', Object.keys(repair(six).levels).join());
   ok(JSON.stringify(repair(null)) === JSON.stringify(fresh()), 'repair of nothing is a fresh save');
   ok(JSON.stringify(repair(repair(r))) === JSON.stringify(repair(r)), 'repair is idempotent');
   const st = fresh();
