@@ -149,6 +149,21 @@ the prompt a session is started with.
 Still not a session's call: **re-ranking the list wholesale**, and **overruling the
 Ownership table**.
 
+**Three subagents live in `.claude/agents/`** (#533), carried over from Castle
+Conundrum's split and rewritten against this repo's own files instead of its
+`SPECS.md`/`ROADMAP.md`: `architect` (opus) makes the judgement call a row
+needs before it can be built — a locked decision, a storage-key or
+`migrate`/`repair` change, an assertion moved across a suite line, a Size or
+Model call — and writes down what the next `builder` increment is. `builder`
+(opus) ships that increment inside one area's Ownership once every open call
+is already resolved, and never touches `HISTORY.md` or `BACKLOG.md` itself.
+`scribe` (sonnet) does the bookkeeping afterward: the `BACKLOG.md`
+header/ranks/Claimed column, the `HISTORY.md` entry, retiring a row into
+`ARCHIVE.md`. Using them is optional — a session can still do all three
+itself, as before — but a session that delegates keeps the lead role: it
+still claims the row on `main` first, still opens the one PR for the whole
+batch, and still owns the definition of done below.
+
 ## Ownership, and claiming a row
 
 The parallel-round system that used to keep sessions off each other's files is
