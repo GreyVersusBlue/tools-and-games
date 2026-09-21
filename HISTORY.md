@@ -11024,3 +11024,26 @@ ports already in use" and that README had never had a port list. It has one now,
 fourteen, with the note that 8127 is doubled between `tools.mjs` and Integer
 Foundry's suite and has always been, because the two never run in the same
 process. Orbital's suite took 8155.
+
+### The agent split from Castle Conundrum, adapted rather than copied (#533)
+
+Castle Conundrum's own `.claude/agents/architect.md`, `builder.md` and
+`scribe.md` stayed on that side of the split; only the pattern crossed back.
+The source files cite `SPECS.md`, `ROADMAP.md`, `src/save.js`'s
+`castleConundrumSave_v1` and a `layout.mjs`/`plan-vs-scene.mjs`/`mystery.mjs`/
+`budget.mjs` suite line — none of which exist here — so copying them verbatim
+would have shipped three agents whose first instruction is to read a file
+that is not on disk. Rewritten instead against this repo's own files:
+`architect` reads `BACKLOG.md` and a project's `WISHLIST.md` where Castle
+Conundrum's read `SPECS.md`; a locked decision goes in *this* repo's
+`HISTORY.md` band, never the other repo's #389–490; `builder` runs the
+project's own suite from the npm-scripts table in `CLAUDE.md` instead of a
+fixed `npm test`; `scribe` retires a row into `ARCHIVE.md` and clears the
+`Claimed` column instead of touching a `ROADMAP.md` lane.
+
+**Using them is optional.** The standing instruction (#382 and the note
+above) already has one session working a batch unattended; delegating to
+these agents doesn't relax the definition of done — the lead session still
+claims the row on `main` before starting, still opens the one PR for the
+whole batch, and still owns closing it out even if it never calls `scribe`
+itself.
