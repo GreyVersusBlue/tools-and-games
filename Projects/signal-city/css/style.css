@@ -53,6 +53,26 @@ canvas#board { display: block; border-radius: var(--radius); background: #5d7a4a
 .priority .key, .keys { color: var(--dim); }
 @keyframes pulse { from { box-shadow: 0 0 0 0 rgba(255,59,48,0.5); } to { box-shadow: 0 0 0 6px rgba(255,59,48,0); } }
 .hint { font-size: 13px; color: var(--dim); margin: 0; line-height: 1.4; }
+.note { font-size: 12px; color: var(--dim); margin: -4px 0 0; }
+.hidden { display: none !important; }
+.section { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid #2c3138; }
+.section .controls button { padding: 6px 10px; font-size: 13px; }
+button.small { padding: 5px 9px; font-size: 12px; }
+button.on { border-color: var(--yellow); background: #3a3320; }
+.slider { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.slider > span { display: flex; justify-content: space-between; align-items: baseline; }
+.slider b { font-variant-numeric: tabular-nums; }
+.slider input { width: 100%; accent-color: var(--yellow); }
+.rules { display: flex; flex-direction: column; gap: 6px; }
+.rule { display: grid; grid-template-columns: 1fr auto; gap: 4px 6px; align-items: center; background: var(--panel-2); border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+.rule .body { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.rule input, .rule select { font: inherit; font-size: 12px; color: var(--ink); background: var(--panel); border: 1px solid #3a4048; border-radius: 5px; padding: 2px 4px; }
+.rule input.seconds, .rule input.threshold { width: 52px; }
+.rule .ops { display: flex; gap: 2px; }
+.rule .ops button { padding: 2px 6px; font-size: 12px; border-radius: 5px; }
+.rule.sleeping .body { opacity: 0.45; }
+.rule.sleeping .badge { grid-column: 1 / span 2; font-size: 11px; color: var(--yellow); }
+.rules .empty { font-size: 12px; color: var(--dim); margin: 0; }
 .controls { display: flex; gap: 8px; flex-wrap: wrap; }
 .keys { font-size: 11px; margin: 0; line-height: 1.5; }
 .save { font-size: 12px; }

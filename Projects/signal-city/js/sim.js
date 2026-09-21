@@ -41,6 +41,8 @@ export class World {
     this.mix = level.mix || DEFAULT_MIX;
     this.turns = level.turns || DEFAULT_TURNS;
     this.redRunScale = level.redRunScale ?? 1;
+    this.greenTrustScale = level.greenTrustScale ?? 1;   // scales every archetype's greenTrust
+    this.sensors = !!level.sensors;                      // induction loops (M6): until then queue rules sleep
     this.speedScale = 1;
     this.gridlockWait = level.gridlockWait ?? 120;
     this.boxStall = level.boxStall ?? 30;
@@ -186,6 +188,10 @@ export class World {
       if (o === car || o.done) continue;
       const r = o.rects();
       if (Math.abs(r[0].x - me.x) > reach + 8 || Math.abs(r[0].y - me.y) > reach + 8) continue;
+      // a trusting driver (cars.js) looks at the light, not the box: a car
+      // still crossing their line is not seen until it is a stationary body.
+      // A merge at the exit is not a crossing, and the last 4 m are the exit.
+      if (car.trusting && car.front < p.boxExit - 4 && o.v >= 0.5 && !o.crashed && o.path.exit !== p.exit && this.conflicts(p.movement, o.path.movement)) continue;
       // a lane leader is already handled by leaderOf
       near.push({ o, rects: r });
     }
@@ -223,7 +229,7 @@ export class World {
     const dt = DT;
     this.t += dt;
     this.tick++;
-    this.controller.step(dt, m => this.queued(m));
+    this.controller.step(dt, this.sensors ? m => this.queued(m) : null);
     this._spawnTick();
 
     const ctl = this.controller;

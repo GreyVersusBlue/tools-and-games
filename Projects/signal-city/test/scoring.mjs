@@ -1,7 +1,9 @@
 // node test/scoring.mjs
 //
-// Stars and meters against scripted runs, and the save's repair. Exits
-// non-zero on any FAIL (#13). Imports through pathToFileURL (Windows rule).
+// Stars and meters against scripted runs, the levels against their
+// calibration (tools/calibrate.mjs is the table; the numbers a level ships
+// with are in HISTORY.md), and the save's repair. Exits non-zero on any FAIL
+// (#13). Imports through pathToFileURL (Windows rule).
 
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -13,6 +15,7 @@ const { World } = await load('sim.js');
 const { meters, score, failedEarly, starString } = await load('scoring.js');
 const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { repair, fresh, recordResult, totalStars, SAVE_KEY } = await load('save.js');
+const { standardPhases } = await load('signals.js');
 
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
@@ -21,16 +24,28 @@ const ok = (cond, what, detail = '') => {
 };
 const group = name => console.log(`\n${name}`);
 
-// A tidy controller for scripted runs: alternate phases every 22 s.
-const auto = { rules: [{ when: 'elapsed', seconds: 22, then: 'next' }], timing: { yellow: 3, allRed: 1, minGreen: 4 } };
+// A tidy controller for scripted runs: alternate phases every 22 s, on the
+// level's own timing (level 1 runs a 2 s all-red, see pack-01.js).
+const auto = { rules: [{ when: 'elapsed', seconds: 22, then: 'next' }] };
+const withAuto = (l, seconds = 22) => ({ ...l, controller: { ...l.controller, rules: [{ when: 'elapsed', seconds, then: 'next' }] } });
 
 group('the level pack');
 
 {
-  ok(LEVELS.length >= 2 && levelById('first-light') && levelById('free-play'), 'level 1 and free play exist');
+  ok(LEVELS.length === 4 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,free-play', 'four levels: First Light, Stem, Four Ways, Free Play', LEVELS.map(l => l.id).join(', '));
   const l1 = levelById('first-light');
   ok(l1.duration === 180 && l1.target > 0 && l1.waitTarget > 0 && l1.mode === 'soft', 'level 1 is 3 minutes, soft, with a target and a wait target', `${l1.target} cars, ${l1.waitTarget} s`);
   ok(Object.keys(l1.mix).every(k => ['standard', 'granny'].includes(k)), 'and only standard and granny drive it', Object.keys(l1.mix).join(', '));
+  ok(l1.controller.timing.allRed === 2 && l1.unlocks.join() === 'phases,auto', 'it runs a 2 s all-red with no slider to change it, and unlocks the phases and the rule panel', `${l1.controller.timing.allRed} s, ${l1.unlocks.join()}`);
+  const l2 = levelById('stem');
+  ok(l2.network.legs.join('') === 'NES' && l2.duration === 180 && l2.controller.timing.allRed === 1, 'the Stem is a T of N, E and S, 3 minutes, starting at 1 s of all-red', `${l2.network.legs.join('')} ${l2.controller.timing.allRed} s`);
+  ok(Object.keys(l2.mix).sort().join() === 'aggressive,granny,standard' && l2.unlocks.includes('allred') && !l2.unlocks.includes('flash'), 'standard, granny and aggressive drive it, and it unlocks the all-red slider', l2.unlocks.join());
+  const l3 = levelById('four-ways');
+  ok(l3.network.lanesPerDir === 2 && l3.controller.lefts === true && Math.abs(l3.turns.L - 0.25) < 1e-9, 'Four Ways has two lanes each way, protected lefts, and a quarter of the traffic turning left', `${l3.network.lanesPerDir} lanes, L ${l3.turns.L}`);
+  ok(Object.keys(l3.mix).sort().join() === 'granny,standard,tourist,trucker' && l3.unlocks.includes('lefts') && l3.unlocks.includes('flash'), 'standard, granny, tourist and trucker drive it, and it unlocks lefts and flash', l3.unlocks.join());
+  const w3 = new World(l3, 1);
+  ok(w3.controller.phases.length === 4 && w3.controller.phases.map(p => p.name).join() === 'N-S,N-S lefts,E-W,E-W lefts', 'its world has the four phases', w3.controller.phases.map(p => p.name).join(', '));
+  ok(w3.controller.head('N-L') === 'red' && w3.controller.head('N-T') === 'green', 'and on the first phase the left arrow is red while the through is green');
   let bad = null;
   for (const l of LEVELS) { try { new World(l, 1); } catch (e) { bad = `${l.id}: ${e.message}`; } }
   ok(!bad, 'every level builds a world', bad || '');
@@ -70,10 +85,71 @@ group('stars on level 1');
   ok(w4.stats.gridlock && !r4.survived && r4.stars === 0 && /locked/.test(r4.reasons.join(' ')), 'never changing the light gridlocks, for zero stars', `at ${w4.stats.gridlockAt.toFixed(0)} s: ${r4.reasons.join('; ')}`);
 
   // a slow but safe run: one star for surviving, no second for the wait
-  const w5 = new World({ ...l1, controller: { ...l1.controller, rules: [{ when: 'elapsed', seconds: 30, then: 'next' }] } }, 3).run(l1.duration);
+  // (the 55 s cycle: 14 to 25 s average wait over the six calibration seeds)
+  const w5 = new World(withAuto(l1, 55), 4).run(l1.duration);
   const r5 = score(w5);
-  ok(r5.avgWait > l1.waitTarget, 'a 30 s cycle leaves the average wait above target', `${r5.avgWait.toFixed(1)} s`);
+  ok(r5.avgWait > l1.waitTarget, 'a 55 s cycle leaves the average wait above target', `${r5.avgWait.toFixed(1)} s`);
   ok(r5.stars <= 1 || r5.avgWait <= l1.waitTarget, 'and it earns at most one star', `${starString(r5.stars)} ${r5.reasons.join('; ')}`);
+}
+
+group('the Stem, and what the all-red buys');
+
+{
+  // the calibration table (six seeds, 18/22/30 s cycles) at 2 s of all-red
+  // clears 31 to 46 at 22 s with 5 to 21 s average wait; target 30, wait 15
+  const l2 = levelById('stem');
+  const w = new World({ ...withAuto(l2), controller: { ...withAuto(l2).controller, timing: { ...l2.controller.timing, allRed: 2 } } }, 3).run(l2.duration);
+  const r = score(w);
+  ok(r.survived && r.stars === 3, 'a 22 s cycle at 2 s of all-red on seed 3 is three stars', `${starString(r.stars)} ${r.cleared} cleared, ${r.avgWait.toFixed(0)} s, ${r.collisions} collisions`);
+  // the slider's worth: the same six seeds (7 to 12, the ones where a 22 s
+  // cycle met a puncher) at 1 s and at 2 s. Seeds 1 to 6 are the table above
+  // and showed nothing at 22 s; 7 to 12 are named so the check is honest
+  // about being the half of the twelve-seed measurement that carries it.
+  const total = allRed => {
+    let n = 0;
+    for (let seed = 7; seed <= 12; seed++) {
+      const w = new World({ ...withAuto(l2), controller: { ...withAuto(l2).controller, timing: { ...l2.controller.timing, allRed } } }, seed).run(l2.duration);
+      n += w.stats.collisions;
+    }
+    return n;
+  };
+  const one = total(1), two = total(2);
+  ok(one >= 2, 'at 1 s of all-red, six runs at 22 s cost at least two collisions', `${one}`);
+  ok(two === 0, 'at 2 s they cost none', `${two}`);
+}
+
+group('Four Ways: the lefts phases are the level');
+
+{
+  // the calibration (six seeds, a timed plan of 26 s throughs and 8 s
+  // arrows, allRed 1.5): 59 to 75 cleared with 26 to 33 s average wait, no
+  // collisions, no gridlock; on phases 1 and 3 alone every seed gridlocks at
+  // 191 to 207 s. Target 52, waitTarget 32. A two-lane four-minute run costs
+  // about 15 s here, so the suite checks three seeds of each and the six
+  // are tools/calibrate.mjs's.
+  const l3 = levelById('four-ways');
+  const plan = { ...l3, controller: { ...l3.controller, mode: 'timed', rules: [], plan: [{ phase: 0, green: 26 }, { phase: 1, green: 8 }, { phase: 2, green: 26 }, { phase: 3, green: 8 }] } };
+  const stars = [];
+  let clean = 0;
+  for (let seed = 1; seed <= 3; seed++) {
+    const w = new World(plan, seed);
+    for (let i = 0; i < l3.duration * 60 && !w.stats.gridlock; i++) w.step();
+    const r = score(w);
+    stars.push(`${starString(r.stars)} ${r.cleared}/${r.avgWait.toFixed(0)}s/${r.collisions}x${w.stats.gridlock ? ' LOCK' : ''}`);
+    if (!w.stats.gridlock && !r.collisions && r.cleared >= l3.target) clean++;
+  }
+  ok(clean === 3, 'the 26 s plan clears the target with no collision and no gridlock on seeds 1 to 3', stars.join(' | '));
+  ok(/★★★/.test(stars[0]), 'and seed 1 is three stars', stars[0]);
+  // the same board driven on phases 1 and 3 alone: the bay never gets an
+  // arrow, and the lefts in it wait until the 180 s gridlock limit
+  const skip = { ...l3, controller: { ...l3.controller, mode: 'timed', rules: [], plan: [{ phase: 0, green: 22 }, { phase: 2, green: 22 }] } };
+  let locks = 0, at = [];
+  for (let seed = 1; seed <= 3; seed++) {
+    const w = new World(skip, seed);
+    for (let i = 0; i < l3.duration * 60 && !w.stats.gridlock; i++) w.step();
+    if (w.stats.gridlock) { locks++; at.push(w.stats.gridlockAt.toFixed(0)); }
+  }
+  ok(locks === 3, 'on the through phases alone every one of them gridlocks before the clock runs out', `at ${at.join(', ')} s`);
 }
 
 group('satisfaction never fails a level');

@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 4, 2026-09-21)
+## What shipped (milestones 0 to 5, 2026-09-21)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -40,15 +40,23 @@ open work; this file is the plan it points at.
   and hard modes, "First Light" (one 4-way, two phases, standard and granny)
   and a Free Play board with the whole mix and two ambulance calls, a save
   under `signal_city_v1` through `gvb-save.js`.
+- **M5 signal mechanics 2 to 4, the panel, levels 2 and 3** (HISTORY.md
+  #544 to #553): the yellow and all-red sliders through
+  `Controller.setTiming`; protected left phases on "Four Ways" (two lanes
+  each way, the inner lane a left bay, `standardPhases(legs, { lefts:
+  true })`), the arrow lamp drawn from a real phase; flashing red (a
+  four-way stop with first come, first served) and flashing yellow on the
+  main road as a mode with a button back to the phases; the rule panel that
+  adds, edits, reorders and removes `elapsed` rules live and shows `queue`
+  rules asleep until M6's sensors; "Stem" (a T-junction where the all-red
+  is the lesson) and "Four Ways". The fault that gives the all-red its
+  meaning is new: a driver whose green is on its way anticipates it and,
+  once it comes, looks at the light and not the box (`greenTrust` in
+  `js/cars.js`). `tools/calibrate.mjs` is the six-seeds-by-four-cycles table
+  behind every level's targets. 103 + 85 + 44 + 20 + 53 checks.
 
 ## What is next, in order
 
-5. **M5 signal mechanics 2 to 4 and the panel** (1): the all-red clearance
-   as a slider, protected left phases (the model has them; the level needs
-   them and the heads need the arrow lamp wired to a real phase), flashing
-   yellow and red as a mode the player can drop into, and the rule panel that
-   edits the `rules` list live. Levels 2 (a T-junction) and 3 (a 4-way with
-   lefts).
 6. **M6 pedestrians, sensors, corridor** (1): pedestrian call buttons with
    serve-within-X, induction loops that fire the `queue` rules (the
    controller already evaluates them from `World.queued`), a level with two
@@ -67,8 +75,18 @@ open work; this file is the plan it points at.
 ## Known gaps and decisions
 
 - A permissive left on a one-lane approach holds its whole queue while it
-  waits for a gap. That is real and it is also why level 1 runs 6% lefts;
-  level 3 is where protected lefts arrive.
+  waits for a gap. That is real and it is also why level 1 runs 6% lefts.
+  Level 3 gives the lefts a bay and an arrow of their own instead, because
+  on a shared inner lane a protected left at the head of the queue holds
+  every through behind it for the whole through phase, and that locked the
+  four-phase board on 4 of 6 seeds before the bay (#549).
+- Two permissive phases on Four Ways' network are faster than its four
+  (11 to 27 s average wait against 26 to 33 s) and not clean (1 to 5
+  collisions per six runs against 0). The level ships the four; "unplayable
+  on two" is true of the level as built, where phases 1 and 3 alone starve
+  the bay and gridlock every seed, not of permissive lefts in general.
+- Queue rules are in the panel and asleep: the world hands the controller no
+  sensor until a level says `sensors: true`, which is M6.
 - The trucker's "wide" sweep is a rule, not off-tracking geometry: a turning
   truck ties up the other lanes of its entry and exit legs until its trailer
   clears the box. Readable, testable, and wrong in the way a diagram is.

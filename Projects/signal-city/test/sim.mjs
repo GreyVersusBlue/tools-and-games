@@ -55,6 +55,10 @@ group('the network');
   const two = new Network({ lanesPerDir: 2 });
   ok(two.paths.size === 16 && two.pathFor('N', 1, 'L') && !two.pathFor('N', 0, 'L') && two.pathFor('N', 0, 'R') && !two.pathFor('N', 1, 'R'),
     'with two lanes, lefts leave from the inner lane and rights from the curb', String(two.paths.size));
+  const bay = new Network({ lanesPerDir: 2, leftLane: true });
+  ok(bay.paths.size === 12 && bay.pathFor('N', 1, 'L') && !bay.pathFor('N', 1, 'T') && bay.pathFor('N', 0, 'T') && bay.lanesForTurn('T').join() === '0',
+    'with a left bay the inner lane is lefts only and throughs keep to the curb lane', `${bay.paths.size} paths, T from ${bay.lanesForTurn('T').join()}`);
+  ok(new Network({ lanesPerDir: 1, leftLane: true }).lanesForTurn('T').join() === '0', 'a one-lane road ignores the bay flag');
 }
 {
   const a = { x: 0, y: 0, heading: 0, length: 4, width: 2 };
@@ -226,7 +230,7 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
     const rng = makeRng(99);
     const n = new Network();
     const p = n.pathFor('N', 0, 'T');
-    const world = { redRunScale: 1, controller: { current: { permissive: [] } } };
+    const world = { redRunScale: 1, controller: { current: { permissive: [] }, timeToGreen: () => Infinity } };
     let ran = 0;
     for (let i = 0; i < 1000; i++) {
       const c = new Car({ archetype, path: p, rng });
@@ -250,7 +254,7 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
     const p = n.pathFor('N', 0, 'T');
     const c = new Car({ archetype, path: p, rng });
     c.s = p.stopLine - 45 - c.stats.length / 2; c.v = 14;
-    stopLineVerdict(c, 'yellow', 0, { redRunScale: 1, controller: { current: { permissive: [] } } });
+    stopLineVerdict(c, 'yellow', 0, { redRunScale: 1, controller: { current: { permissive: [] }, timeToGreen: () => Infinity } });
     return c.yellowDecision;
   };
   ok(decide('standard') === 'stop' && decide('aggressive') === 'go', '45 m out at 14 m/s: standard stops for the yellow, aggressive goes', `${decide('standard')} / ${decide('aggressive')}`);
@@ -321,6 +325,76 @@ const clearTime = (archetype, leg = 'N', turn = 'T', level = GREEN_NS) => {
   ok(amb.done && amb.wait < 1, 'the ambulance cleared without waiting', `waited ${f1(amb.wait)} s`);
   w.run(15);
   ok(w.controller.preemption === null && w.controller.phase === 1, 'and the old phase resumed', `phase ${w.controller.phase}`);
+}
+
+/* ------------------------------------------------------- the all-red (M5) -- */
+
+group('the all-red clearance, on the T-junction');
+
+// The case the slider exists for. Main street green; an aggressive S-T
+// 70 m out at 17 m/s when the yellow comes decides 'go' (yellowBias 0.35)
+// and reaches the line 1.1 s into the red; an aggressive E-L on the stem
+// 65 m out at 17 m/s anticipates the green (greenTrust, made certain here
+// so the check is about the clearance and not the dice) and does not slow
+// for a line it reaches as it turns green. With 1 s of all-red the puncher
+// is still crossing the stem's left path when the stem car gets there; with
+// 2 s it has cleared.
+const punchCase = (allRed, greenTrustScale = 10) => {
+  const w = new World({ network: { legs: ['N', 'E', 'S'] }, demand: {}, duration: 300, greenTrustScale, controller: { startPhase: 0, timing: { yellow: 3, allRed, minGreen: 1 } } }, 1);
+  w.run(2);
+  const p = w.spawnCar({ leg: 'S', archetype: 'aggressive', turn: 'T' });
+  p.v = 17; for (const h of p.hist) h.v = 17;
+  while (p.path.stopLine - p.front > 70) w.step();
+  const n = w.spawnCar({ leg: 'E', archetype: 'aggressive', turn: 'L' });
+  n.s = n.path.stopLine - 65 - n.stats.length / 2; n.v = 17; for (const h of n.hist) { h.s = n.s; h.v = 17; }
+  w.requestPhase(1);
+  const t0 = w.t;
+  let lineAt = -1;
+  for (let i = 0; i < 60 * 12; i++) { w.step(); if (lineAt < 0 && n.front > n.path.stopLine) lineAt = w.t - t0; }
+  return { collisions: w.stats.collisions, puncher: p, stem: n, lineAt, green: allRed + 3 };
+};
+{
+  const one = punchCase(1), two = punchCase(2);
+  ok(one.puncher.yellowDecision === 'go' && one.puncher.committed, 'the aggressive through 70 m out punches the yellow', one.puncher.yellowDecision);
+  ok(one.stem.trusting && one.lineAt > one.green - 0.2 && one.lineAt < one.green + 1.2, 'the anticipating stem car crosses its line within a second of its green, not stopped', `line at ${f1(one.lineAt)} s, green at ${one.green}`);
+  ok(one.collisions === 1, 'with 1 s of all-red they meet in the box', `${one.collisions} collisions`);
+  ok(two.collisions === 0, 'with 2 s of all-red, same seed, they do not', `${two.collisions} collisions`);
+  const sober = punchCase(1, 0);
+  ok(!sober.stem.trusting && sober.collisions === 0, 'and with nobody anticipating, 1 s is enough: the fault is the driver\'s, the fix is the clearance', `${sober.collisions} collisions, line at ${f1(sober.lineAt)} s`);
+}
+
+group('first come, first served at a four-way stop');
+
+{
+  // Three cars reach a flashing red 1.5 s apart: S-T first, E-T second, N-T
+  // third. S and E conflict (E waits for S), N and S do not. Without an
+  // arrival order N, which stopped last, goes as soon as it has stopped and
+  // enters the box before E, who has been waiting longer; with it, N waits
+  // for E because E stopped first and has not gone yet.
+  const w = new World({ demand: {}, duration: 120, controller: { flash: 'red' } }, 2);
+  const s = w.spawnCar({ leg: 'S', archetype: 'standard', turn: 'T' });
+  w.run(1.5);
+  const e = w.spawnCar({ leg: 'E', archetype: 'standard', turn: 'T' });
+  w.run(1.5);
+  const n = w.spawnCar({ leg: 'N', archetype: 'standard', turn: 'T' });
+  const entered = [];
+  for (let i = 0; i < 60 * 40; i++) {
+    w.step();
+    for (const c of [s, e, n]) if (!entered.some(x => x.car === c) && c.front > c.path.boxEnter + 0.5) entered.push({ car: c, t: w.t });
+  }
+  const order = entered.map(x => x.car.path.entry).join('');
+  ok(s.stoppedAt > 0 && e.stoppedAt > s.stoppedAt && n.stoppedAt > e.stoppedAt, 'all three stopped at their lines, S then E then N', `${f1(s.stoppedAt)}, ${f1(e.stoppedAt)}, ${f1(n.stoppedAt)} s`);
+  ok(order === 'SEN', 'and they enter the box in the order they stopped: S, E, N', order);
+  ok(entered.length === 3 && entered[2].t - entered[1].t > 0.5, 'N holds until E is inside, not a tick behind it', entered.length === 3 ? `${f1(entered[2].t - entered[1].t)} s apart` : order);
+  ok(s.done && e.done && n.done && w.stats.collisions === 0, 'all three clear without touching', `${w.stats.collisions} collisions`);
+  // an opposing through is not a conflict: it goes as soon as it has stopped
+  const w2 = new World({ demand: {}, duration: 120, controller: { flash: 'red' } }, 2);
+  const a = w2.spawnCar({ leg: 'E', archetype: 'standard', turn: 'T' });
+  w2.run(2);
+  const b = w2.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T' });
+  let aIn = -1, bIn = -1;
+  for (let i = 0; i < 60 * 40; i++) { w2.step(); if (aIn < 0 && a.front > a.path.boxEnter + 0.5) aIn = w2.t; if (bIn < 0 && b.front > b.path.boxEnter + 0.5) bIn = w2.t; }
+  ok(aIn > 0 && bIn > 0 && bIn - aIn < 2.5, 'an opposing through does not wait for the first car: it goes 2 s behind, when it has stopped', `${f1(bIn - aIn)} s apart`);
 }
 
 /* ---------------------------------------------------------------- the soak -- */

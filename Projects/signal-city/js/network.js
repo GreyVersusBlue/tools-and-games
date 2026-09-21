@@ -12,7 +12,11 @@
 // lane, movement) and shared.
 //
 // Lane index 0 is the curb lane. With two lanes per direction, lefts leave
-// from lane 1 (inner), rights from lane 0, throughs from either.
+// from lane 1 (inner), rights from lane 0, throughs from either; with
+// `leftLane` the inner lane is a left-turn bay and throughs keep to the
+// rest, which is what a protected-left intersection needs (a left waiting
+// for its arrow at the head of a shared lane holds every through behind it
+// for the whole through phase).
 
 import { LEGS, exitLeg, parseMovement } from './signals.js';
 
@@ -28,9 +32,10 @@ function rightOf([x, y]) { return [-y, x]; }
 export function legDir(leg) { return DIR[leg]; }
 
 export class Network {
-  constructor({ legs = LEGS.slice(), lanesPerDir = 1, legLength = 110, cornerRadius = 5 } = {}) {
+  constructor({ legs = LEGS.slice(), lanesPerDir = 1, leftLane = false, legLength = 110, cornerRadius = 5 } = {}) {
     this.legs = legs.slice();
     this.lanesPerDir = lanesPerDir;
+    this.leftLane = leftLane && lanesPerDir > 1;
     this.legLength = legLength;
     this.halfRoad = lanesPerDir * LANE_WIDTH;          // half the road's width
     this.boxHalf = this.halfRoad + cornerRadius;        // the box edge, where the crosswalk starts
@@ -47,7 +52,7 @@ export class Network {
     if (n === 1) return [0];
     if (turn === 'L') return [n - 1];
     if (turn === 'R') return [0];
-    return Array.from({ length: n }, (_, i) => i);
+    return Array.from({ length: this.leftLane ? n - 1 : n }, (_, i) => i);
   }
 
   // Centre point of a lane on a leg at distance d from the intersection
