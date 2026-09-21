@@ -100,15 +100,18 @@ table** in Tier 2.
 
 ## Where things stand — start here
 
-**The site is at version 15** (`index.html:575`, and `landing.html:840,861`).
-**The last batch of ranked work that shipped** is **Orbital's browser layer and
-Integer Foundry's order cost (PR #335)**, the old ranks 25 and 23 — a ½ and a ¼
-across two areas, inside the spanning-areas cap. Both rows named Opus 5 and both
-were worked under Claude Opus 5. That is the line to update when your batch
-merges; a PR that only changes these files is not a batch and does not belong in
-it. **26 ranked items remain**, and **every one of them names a model.**
+**The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
+**The last batch of ranked work that shipped** is **Signal City, milestones 0 to 4
+(PR #338)**, rank 1, one increment of a 2+ worked under Claude Fable 5.1, the
+model the row names. That is the line to update when your batch merges; a PR
+that only changes these files is not a batch and does not belong in it.
+**26 ranked items remain**, and **every one of them names a model.**
 
-**Rank 1 is Signal City, claimed** (`Projects/signal-city`, a 2+, Fable 5.1); its section below is the plan. **After it, take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
+**Take rank 1 again: Signal City's next increment, M5** (`Projects/signal-city`, a
+2+, Fable 5.1): the all-red slider, protected left phases, flashing modes, the
+rule panel, levels 2 and 3. The plan is `Projects/signal-city/WISHLIST.md`;
+milestones 0 to 4 are on `main` and `HISTORY.md` #534 to #543 carry the calls
+already made. A 2+ is the whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
 quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
 want hardware this machine does not have — so take it alone. Its plan is Blue
@@ -461,7 +464,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City, milestones 0 to 4: scaffold, signal model, sprites, car physics, eight archetypes, scoring on one intersection | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/adoring-fermi-xma1dn` | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 4 shipped (PR #338); next M5, the signal mechanics 2 to 4 and the rule panel, levels 2 and 3 | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1124,6 +1127,13 @@ moving without gridlock or collisions. Top-down canvas, ES modules, no build,
 zero offsite requests, a Node suite per module. Folder `Projects/signal-city/`;
 its `WISHLIST.md` carries the milestone plan in full. The ranked row is a 2+:
 one increment per session, the row rewritten to say what is done.
+
+**Milestones 0 to 4 shipped in PR #338 (2026-09-21, #534 to #543)**: items 1
+to 6 below are done, 234 checks across five suites, all in Site CI. Item 7 is
+the next increment. Still open from the brief and not yet placed: a
+`games.mjs` recipe and a preview capture (a ¼ row for the site, like Blue
+Hour's ranks 16 and 17), and the trucker's sweep as real off-tracking
+geometry rather than the lane rule it is now.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived

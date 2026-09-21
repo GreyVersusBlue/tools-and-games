@@ -39,6 +39,7 @@
     },
     "Orbital": { "owns": ["Projects/orbital/"] },
     "Blue Hour": { "owns": ["Projects/blue-hour-trail/"] },
+    "Signal City": { "owns": ["Projects/signal-city/"] },
     "Hearth": {
       "owns": ["Projects/hearth/", ".github/workflows/hearth-ci.yml"]
     },

@@ -175,6 +175,19 @@ jobs:
               node test/generator.mjs
               node test/browser.mjs
 
+          # Four Node suites and one headless page drive. browser.mjs steps the
+          # world through the ?debug hook and lets rAF only draw, so nothing in
+          # it is timed and #53 does not reach it.
+          - name: Signal City
+            dir: Projects/signal-city
+            install: Tools/board-check
+            commands: |
+              node test/signals.mjs
+              node test/sim.mjs
+              node test/scoring.mjs
+              node test/sprites.mjs
+              node test/browser.mjs
+
           - name: The Fracture Cycle
             dir: Projects/the-fracture-cycle
             commands: |

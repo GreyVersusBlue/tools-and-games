@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal City sprites</title>
+<style>
+  :root {
+    --ink: #e8ecf2;
+    --dim: #8a94a4;
+    --panel: #1b1f26;
+    --line: #2a3038;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: #0f1115;
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; font-weight: 650; margin: 0 0 4px; letter-spacing: 0.01em; }
+  p.lede { color: var(--dim); margin: 0 0 20px; max-width: 62ch; }
+  button {
+    font: inherit;
+    font-weight: 600;
+    color: #0f1115;
+    background: #d7dde6;
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  button:hover { background: #ffffff; }
+  .bar { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .bar span { color: var(--dim); font-size: 13px; }
+  section { margin: 0 0 22px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+  h2 {
+    font-size: 14px;
+    font-weight: 650;
+    margin: 0;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  h2 small { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--dim); margin-left: 8px; }
+  .rows { padding: 6px 0 10px; overflow-x: auto; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 2px 14px; }
+  .row .name { width: 104px; flex: none; color: var(--dim); font-size: 13px; }
+  canvas { display: block; background: #23282f; border-radius: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Signal City sprites</h1>
+  <p class="lede">
+    Every archetype in every palette, drawn from <code>js/sprites.js</code>.
+    Each row is one palette: four headings at 12 px per metre, then the same car
+    at 28 px per metre. The trucker rows draw the cab with its trailer hinged
+    behind it. Rideshare signs and emergency light bars animate.
+  </p>
+  <div class="bar">
+    <button id="sheet">Download sheet</button>
+    <span id="status">32 sprites at 16 px per metre, PNG</span>
+  </div>
+  <div id="gallery"></div>
+</main>
+
+<script type="module">
+import { ARCHETYPES, SPRITES, drawCar } from './js/sprites.js';
+
+const SMALL = 12;          // px per metre for the four headings
+const BIG = 28;            // px per metre for the close look
+const HEADINGS = [0, 90, 180, 270];
+const HINGE_GAP = 0.25;    // metres between cab tail and trailer nose
+const HINGE = 0.14;        // radians of articulation, so the rig reads as two bodies
+const SHEET_SCALE = 16;
+
+const isRig = a => a === 'trucker';
+
+// The metre-space footprint of one archetype, trailer included.
+function extent(a) {
+  const spec = SPRITES[a];
+  if (!isRig(a)) return { len: spec.length, wid: spec.width, shift: 0 };
+  const t = spec.trailer;
+  const front = spec.length / 2;
+  const back = -(spec.length / 2 + HINGE_GAP + t.length);
+  return { len: front - back, wid: Math.max(spec.width, t.width), shift: -(front + back) / 2 };
+}
+
+// Draws the archetype centred on the current origin, nose at +x, in metres.
+function drawUnit(ctx, a, variant, t) {
+  const spec = SPRITES[a];
+  const { shift } = extent(a);
+  ctx.save();
+  ctx.translate(shift, 0);
+  if (isRig(a)) {
+    const palette = spec.palettes[variant % spec.palettes.length];
+    ctx.save();
+    ctx.translate(-(spec.length / 2), 0);
+    ctx.rotate(HINGE);
+    ctx.translate(-(HINGE_GAP + spec.trailer.length / 2), 0);
+    spec.trailer.draw(ctx, palette);
+    ctx.restore();
+  }
+  drawCar(ctx, a, variant, t);
+  ctx.restore();
+}
+
+function cellSize(a) {
+  const e = extent(a);
+  const side = Math.ceil(Math.max(e.len, e.wid) * SMALL) + 18;
+  return {
+    side,
+    bigW: Math.ceil(e.len * BIG) + 18,
+    bigH: Math.ceil(e.wid * BIG) + 18,
+  };
+}
+
+function paintRow(canvas, a, variant, t) {
+  const ctx = canvas.getContext('2d');
+  const { side, bigW, bigH } = cellSize(a);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const midY = canvas.height / 2;
+  HEADINGS.forEach((deg, i) => {
+    ctx.save();
+    ctx.translate(side * i + side / 2, midY);
+    ctx.rotate(deg * Math.PI / 180);
+    ctx.scale(SMALL, SMALL);
+    drawUnit(ctx, a, variant, t);
+    ctx.restore();
+  });
+  ctx.save();
+  ctx.translate(side * HEADINGS.length + bigW / 2, midY);
+  ctx.scale(BIG, BIG);
+  drawUnit(ctx, a, variant, t);
+  ctx.restore();
+  // A hairline under the close look, so the 28 px/m cell reads as its own slot.
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(side * HEADINGS.length + 0.5, midY - bigH / 2);
+  ctx.lineTo(side * HEADINGS.length + 0.5, midY + bigH / 2);
+  ctx.stroke();
+}
+
+const animated = [];
+const gallery = document.getElementById('gallery');
+
+for (const a of ARCHETYPES) {
+  const spec = SPRITES[a];
+  const section = document.createElement('section');
+  const h2 = document.createElement('h2');
+  const size = isRig(a)
+    ? `cab ${spec.length} x ${spec.width} m, trailer ${spec.trailer.length} x ${spec.trailer.width} m`
+    : `${spec.length} x ${spec.width} m`;
+  h2.innerHTML = `${a}<small>${size}</small>`;
+  section.appendChild(h2);
+
+  const rows = document.createElement('div');
+  rows.className = 'rows';
+  const { side, bigW, bigH } = cellSize(a);
+
+  spec.palettes.forEach((palette, variant) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = palette.name;
+    const canvas = document.createElement('canvas');
+    canvas.width = side * HEADINGS.length + bigW;
+    canvas.height = Math.max(side, bigH);
+    row.appendChild(name);
+    row.appendChild(canvas);
+    rows.appendChild(row);
+    paintRow(canvas, a, variant, 0);
+    if (a === 'rideshare' || a === 'emergency') animated.push({ canvas, a, variant });
+  });
+
+  section.appendChild(rows);
+  gallery.appendChild(section);
+}
+
+if (animated.length) {
+  const start = performance.now();
+  const tick = now => {
+    const t = (now - start) / 1000;
+    for (const item of animated) paintRow(item.canvas, item.a, item.variant, t);
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/* ------------------------------------------------------------- the sheet -- */
+
+function buildSheet() {
+  const cols = 4;
+  const gutter = 96;
+  const cellW = Math.max(...ARCHETYPES.map(a => extent(a).len)) * SHEET_SCALE + 28;
+  const cellH = Math.max(...ARCHETYPES.map(a => extent(a).wid)) * SHEET_SCALE + 40;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(gutter + cols * cellW);
+  canvas.height = Math.ceil(44 + ARCHETYPES.length * cellH);
+  const ctx = canvas.getContext('2d');
+  const sans = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
+  ctx.fillStyle = '#12151a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#e8ecf2';
+  ctx.font = `650 16px ${sans}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('Signal City sprites', 16, 26);
+  ctx.fillStyle = '#8a94a4';
+  ctx.font = `12px ${sans}`;
+  ctx.fillText(`${SHEET_SCALE} px per metre`, 176, 26);
+
+  ARCHETYPES.forEach((a, r) => {
+    const top = 44 + r * cellH;
+    ctx.fillStyle = r % 2 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)';
+    ctx.fillRect(0, top, canvas.width, cellH);
+    ctx.fillStyle = '#e8ecf2';
+    ctx.font = `600 13px ${sans}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(a, 12, top + cellH / 2);
+
+    SPRITES[a].palettes.forEach((palette, c) => {
+      const cx = gutter + c * cellW + cellW / 2;
+      ctx.save();
+      ctx.translate(cx, top + cellH / 2 - 8);
+      ctx.scale(SHEET_SCALE, SHEET_SCALE);
+      drawUnit(ctx, a, c, 0);
+      ctx.restore();
+      ctx.fillStyle = '#8a94a4';
+      ctx.font = `11px ${sans}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(palette.name, cx, top + cellH - 10);
+    });
+  });
+  return canvas;
+}
+
+document.getElementById('sheet').addEventListener('click', () => {
+  const status = document.getElementById('status');
+  buildSheet().toBlob(blob => {
+    if (!blob) { status.textContent = 'the browser refused to encode the sheet'; return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'signal-city-sprites.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    status.textContent = `saved signal-city-sprites.png, ${(blob.size / 1024).toFixed(0)} KB`;
+  }, 'image/png');
+});
+</script>
+</body>
+</html>
