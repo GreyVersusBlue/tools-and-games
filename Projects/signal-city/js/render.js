@@ -118,6 +118,13 @@ export class Renderer {
         case 'call': { const [x, y] = this.callPost(world.nodes[e.node], e.leg); this.effects.push({ kind: 'text', text: 'call', x, y, t0: world.t, ttl: 1.6 }); break; }
         case 'ped-late': { const [x, y] = this.callPost(world.nodes[e.node], e.leg); this.effects.push({ kind: 'text', text: 'still waiting', x, y, t0: world.t, ttl: 2.2 }); break; }
         case 'gridlock': this.effects.push({ kind: 'banner', text: 'GRIDLOCK', x: 0, y: 0, t0: world.t, ttl: 4 }); break;
+        case 'event': {
+          // a scripted moment (M7) announces itself over the box
+          const text = e.event === 'surge' ? (e.on ? 'RUSH HOUR' : 'RUSH HOUR OVER') : e.event === 'outage' ? (e.on ? 'POWER OUT' : 'POWER BACK') : e.event === 'ambulance' ? (e.on ? 'AMBULANCE' : null) : null;
+          if (text) this.effects.push({ kind: 'banner', text, x: 0, y: 0, t0: world.t, ttl: 3 });
+          break;
+        }
+        case 'ambulance-late': if (at) this.effects.push({ kind: 'text', text: 'LATE', x: at.x, y: at.y, t0: world.t, ttl: 2.5, car: e.car }); break;
         default: break;
       }
     }

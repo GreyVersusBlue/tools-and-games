@@ -36,15 +36,37 @@
 // into the new frame, and `newApproach()` so every once-per-approach
 // decision (the yellow, the red roll, the trust roll, the four-way order)
 // is made again at the second box.
+//
+// Events (M7). A level's `events` list is scripted moments, each `{ kind,
+// at, for }` and a few fields of its own, started when the clock reaches
+// `at` and ended `for` seconds later (`active` holds the ones in force;
+// `activeEvent(kind)` reads one). Three kinds so far:
+//   surge      { scale }         every leg's demand times `scale` while it
+//                                runs, on top of the level's `demandCurve`
+//   outage     the power is out: every controller goes dark (a four-way
+//                                stop), and every command that needs power
+//                                (a phase, a flash mode, the priority
+//                                corridor) is refused until it is back, when
+//                                each box returns to the phase it was in
+//                                through an all-red
+//   ambulance  { leg, turn, within }   an emergency vehicle spawned at `at`
+//                                that has `within` seconds from its arrival
+//                                to leave the map; past that it is late
+//                                (stats.ambulanceLate, an 'ambulance-late'
+//                                event) and the level's satisfaction pays
+// The lists sit in the level, so a run is still a function of (seed, level,
+// inputs). The page reads `active` for its event line.
 
 import { makeRng } from './rng.js';
-import { Controller, conflicts, wideConflicts } from './signals.js';
+import { Controller, conflicts, wideConflicts, parseMovement } from './signals.js';
 import { Network, buildNodes, rectsOverlap, pointInRect, LANE_WIDTH, CROSSWALK } from './network.js';
 import { Car, ARCHETYPES, DT, resetIds, drive, stopLineVerdict, boxVerdict, specialStops } from './cars.js';
 
 export { DT };
 
 export const LOOP_LENGTH = 8;   // metres of lane the drawn loop covers, back from the stop line
+export const PRIORITY_MARGIN = 6;  // seconds a corridor stays green after its vehicle is through the box
+export const PRIORITY_CAP = 60;    // and the most a corridor's green can run, whatever is still in the way
 
 export const DEFAULT_MIX = { standard: 6, granny: 1, aggressive: 1, tourist: 1, trucker: 0.5, student: 0.5, rideshare: 1, emergency: 0 };
 export const DEFAULT_TURNS = { T: 0.6, L: 0.2, R: 0.2 };
@@ -90,7 +112,9 @@ export class World {
     this.nextCall = this.nodes.map(n => { const o = {}; if (this.pedDemand) for (const leg of n.legs) o[leg] = this.rng.exp((this.pedDemand[leg] || 0) / 3600); return o; });
     this.scheduled = (level.spawns || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, archetype, turn, node }]
     this.scheduledCalls = (level.calls || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, node, walkers }]
-    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0 };
+    this.schedule = (level.events || []).map(e => ({ ...e })).sort((a, b) => a.at - b.at); // events yet to start (M7)
+    this.active = [];       // events in force: { kind, at, until, ... }
+    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0, outages: 0, ambulances: 0, ambulanceLate: 0 };
     this.events = [];       // [{ t, kind, ... }], the renderer drains these
     this.boxStallT = 0;
     this._conf = new Map();
@@ -118,9 +142,104 @@ export class World {
   }
   wideConflicts(a, b) { return wideConflicts(a, b); }
 
+  // ---- events (M7) --------------------------------------------------------
+
+  // Is the power out? While it is, the boxes are dark and nothing the
+  // player asks of a signal can happen.
+  get powerOut() { return this.active.some(e => e.kind === 'outage'); }
+
+  // The event of `kind` in force, or null.
+  activeEvent(kind) { return this.active.find(e => e.kind === kind) || null; }
+
+  // What every leg's demand is multiplied by right now: the level's curve
+  // times every surge in force.
+  demandScale() {
+    let s = this.level.demandCurve ? this.level.demandCurve(this.t / this.duration) : 1;
+    for (const e of this.active) if (e.kind === 'surge') s *= e.scale ?? 1;
+    return s;
+  }
+
+  _eventTick() {
+    while (this.schedule.length && this.schedule[0].at <= this.t) {
+      const e = this.schedule.shift();
+      if (!this._startEvent(e)) { e.at = this.t + 1; this.schedule.unshift(e); break; } // an ambulance's lane was full: try in a second
+    }
+    for (const e of this.active) {
+      if (e.kind === 'ambulance') this._ambulanceTick(e);
+      if (e.until !== null && this.t >= e.until && !e.ended) this._endEvent(e);
+    }
+    this.active = this.active.filter(e => !e.ended);
+  }
+
+  _startEvent(spec) {
+    const e = { ...spec, at: this.t, until: spec.for ? spec.at + spec.for : null, ended: false };
+    switch (e.kind) {
+      case 'surge':
+        e.scale = e.scale ?? 1.5;
+        break;
+      case 'outage':
+        // the phase each box was in, to come back to; a box already dark or
+        // flashing comes back to phase 0
+        e.resume = this.controllers.map(c => c.stage === 'flash' || c.stage === 'dark' ? 0 : (c.next !== null ? c.next : c.phase));
+        for (const c of this.controllers) c.setDark();
+        this.stats.outages++;
+        break;
+      case 'ambulance': {
+        const car = this.spawnCar({ leg: e.leg, archetype: 'emergency', turn: e.turn, node: e.node || 0 });
+        if (!car) return false;
+        e.car = car;
+        e.within = e.within ?? 45;
+        e.until = null;                       // it ends when the vehicle leaves the map
+        e.deadline = this.t + e.within;
+        e.late = false;
+        this.stats.ambulances++;
+        this.events.push({ t: this.t, kind: 'spawn', car: car.id, archetype: 'emergency', scheduled: true });
+        break;
+      }
+      default: throw new Error(`unknown event ${e.kind}`);
+    }
+    this.active.push(e);
+    this.events.push({ t: this.t, kind: 'event', event: e.kind, on: true });
+    return true;
+  }
+
+  _endEvent(e) {
+    e.ended = true;
+    if (e.kind === 'outage') this.controllers.forEach((c, i) => { if (c.stage === 'dark') c.requestPhase(e.resume[i]); });
+    this.events.push({ t: this.t, kind: 'event', event: e.kind, on: false });
+  }
+
+  // The clock on an ambulance: late once past its deadline still on the
+  // map, over once it has left.
+  _ambulanceTick(e) {
+    if (e.car.done) { e.clearedAt = this.t; this._endEvent(e); return; }
+    if (!e.late && this.t >= e.deadline) {
+      e.late = true;
+      this.stats.ambulanceLate++;
+      this.events.push({ t: this.t, kind: 'ambulance-late', car: e.car.id });
+    }
+  }
+
+  // Seconds an ambulance under a timer still has, negative once late, or
+  // null with none on the map.
+  ambulanceClock() {
+    const e = this.activeEvent('ambulance');
+    return e ? e.deadline - this.t : null;
+  }
+
   // ---- player inputs ------------------------------------------------------
 
-  requestPhase(i, node = 0) { return this.controllers[node].requestPhase(i); }
+  // Every signal command is refused while the power is out (M7).
+  requestPhase(i, node = 0) {
+    if (this.powerOut) return false;
+    return this.controllers[node].requestPhase(i);
+  }
+
+  // Flash red, flash yellow on the main road, or null for the phases.
+  setFlash(f, node = 0) {
+    if (this.powerOut) return false;
+    return this.controllers[node].setFlash(f);
+  }
 
   // The corridor's offset (M7): how many seconds behind the first box the
   // box at `node` runs its plan. The controller moves through its own
@@ -147,16 +266,38 @@ export class World {
   }
 
   // The emergency corridor: hold green for that vehicle's movement until it
-  // is through, plus a margin.
+  // is through, plus a margin. The green is for every movement off its
+  // entry leg, not its own alone (M7): on a one-lane approach the queue is
+  // shared, and a left turner at its head on a red held the ambulance
+  // behind it through the whole hold on 3 of 6 rush-hour seeds.
   requestPriority(car) {
-    if (!car || car.priority || car.done) return false;
+    if (!car || car.priority || car.done || this.powerOut) return false;
     const p = car.path;
     const dist = Math.max(0, p.boxExit - car.rear);
     const hold = Math.min(40, dist / Math.max(4, car.v || 4) + 6);
-    this.controllerFor(car).preempt([p.movement], hold);
+    const ctl = this.controllerFor(car);
+    const leg = ctl.movements.filter(m => { const mv = parseMovement(m); return !mv.ped && mv.entry === p.entry; });
+    ctl.preempt(leg.includes(p.movement) ? leg : [p.movement], hold);
     car.priority = true;
     this.events.push({ t: this.t, kind: 'priority', car: car.id });
     return true;
+  }
+
+  // The corridor holds until its vehicle is through the box, plus a margin
+  // (M7): the hold `requestPriority` set was an estimate from the vehicle's
+  // distance, and at rush hour the queue in front of it is the real
+  // distance. Every step a priority vehicle still short of its box exit
+  // pushes the hold to at least PRIORITY_MARGIN seconds from now, up to
+  // PRIORITY_CAP from the green's start, so a wedged vehicle cannot hold
+  // the box for good.
+  _holdPriority() {
+    for (const car of this.cars) {
+      if (car.done || !car.priority || car.crashed) continue;
+      const ctl = this.controllerFor(car);
+      const pre = ctl.preemption;
+      if (!pre || ctl.stage !== 'green' || !pre.movements.includes(car.path.movement)) continue;
+      if (car.rear < car.path.boxExit) pre.hold = Math.min(PRIORITY_CAP, Math.max(pre.hold, ctl.stageT + PRIORITY_MARGIN));
+    }
   }
 
   // ---- spawning -----------------------------------------------------------
@@ -211,7 +352,7 @@ export class World {
       this.events.push({ t: this.t, kind: 'spawn', car: car.id, archetype: car.archetype, scheduled: true });
     }
     // Poisson arrivals per leg, on every node's spawning legs
-    const curve = this.level.demandCurve ? this.level.demandCurve(this.t / this.duration) : 1;
+    const curve = this.demandScale();
     for (const net of this.nodes) {
       const next = this.nextArrival[net.node];
       for (const leg of net.spawnLegs) {
@@ -468,7 +609,9 @@ export class World {
     const dt = DT;
     this.t += dt;
     this.tick++;
+    this._holdPriority();
     this.controllers.forEach((ctl, i) => ctl.step(dt, this.sensors ? m => this.queued(m, i) : null));
+    this._eventTick();
     this._spawnTick();
     this._pedTick(dt);
 
@@ -599,7 +742,7 @@ export class World {
     mix(this.t);
     for (const c of this.cars) { if (!c.done) { mix(c.s); mix(c.v); mix(c.id); mix(c.path.node); } }
     for (const w of this.walkers) { if (!w.done) { mix(w.lat); mix(w.id); } }
-    mix(this.stats.cleared); mix(this.stats.collisions); mix(this.stats.honks); mix(this.stats.pedLate);
+    mix(this.stats.cleared); mix(this.stats.collisions); mix(this.stats.honks); mix(this.stats.pedLate); mix(this.stats.ambulanceLate);
     return h >>> 0;
   }
 

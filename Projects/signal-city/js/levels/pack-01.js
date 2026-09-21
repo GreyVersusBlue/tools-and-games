@@ -15,6 +15,8 @@
 //   mix         { archetype: weight }
 //   turns       { T, L, R } weights
 //   spawns      [{ t, leg, archetype, turn }]   scripted arrivals
+//   events      [{ kind, at, for, ... }]        scripted moments (M7):
+//               surge { scale }, outage, ambulance { leg, turn, within }
 //   duration    seconds
 //   target      cars to clear for a star
 //   waitTarget  average wait, seconds, for the second star
@@ -35,7 +37,7 @@
 //                         plan through its own yellows (M7)
 //
 // Milestone 4 shipped level 1 and the free-play board; milestone 5 levels 2
-// and 3; milestone 6 levels 4 and 5. Level 6 is M8's, with the campaign.
+// and 3; milestone 6 levels 4 and 5; milestone 7 level 6, the events.
 
 export const LEVELS = [
   {
@@ -145,6 +147,31 @@ export const LEVELS = [
     waitTarget: 16,
     mode: 'soft',
     unlocks: ['phases', 'allred', 'offset'],
+  },
+  {
+    id: 'rush-hour',
+    name: 'Rush Hour',
+    blurb: 'One crossroads and four minutes that do not go to plan: the evening surge, the power going out in the middle of it, and an ambulance behind the queue it leaves.',
+    hint: 'Traffic climbs at the one-minute mark. When the power goes out the signals are dark and every driver treats the box as a four-way stop: nothing you press reaches it until it is back. The ambulance has forty seconds from the map edge; press E, or click it, and its corridor goes green.',
+    network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1 },
+    controller: { timing: { yellow: 3, allRed: 1.5, minGreen: 4 }, rules: [{ when: 'elapsed', seconds: 22, then: 'next' }] },
+    demand: { N: 300, S: 300, E: 220, W: 220 },
+    mix: { standard: 6, granny: 1, aggressive: 1.5, rideshare: 1 },
+    turns: { T: 0.74, L: 0.06, R: 0.2 },
+    events: [
+      { kind: 'surge', at: 60, for: 100, scale: 1.7 },
+      { kind: 'outage', at: 110, for: 30 },
+      { kind: 'ambulance', at: 185, leg: 'W', turn: 'T', within: 40 },
+    ],
+    duration: 240,
+    // calibrated on a 22 s cycle over six seeds: the corridor called 2 s
+    // after the ambulance arrives clears 59 to 77 at 13 to 21 s with it on
+    // time every seed; never called, 65 to 83 at 10 to 17 s and late on 3
+    target: 56,
+    waitTarget: 20,
+    gridlockWait: 150,
+    mode: 'soft',
+    unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],
   },
   {
     id: 'free-play',

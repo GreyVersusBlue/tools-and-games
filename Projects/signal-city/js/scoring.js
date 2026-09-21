@@ -6,8 +6,10 @@
 //   safety        collisions; a near-miss is a warning, never a fail
 //   satisfaction  patience, the bonus: honks cost it, and so does a
 //                 pedestrian call left unserved past the level's pedWait
-//                 (M6); nothing about it fails a level (Devon's brief:
-//                 bonus scoring, not a third fail)
+//                 (M6) and an ambulance still on the map past its timer
+//                 (M7, five honks' worth and 50 points); nothing about it
+//                 fails a level (Devon's brief: bonus scoring, not a third
+//                 fail)
 //
 // Stars are cumulative:
 //   1  survived: the clock ran out with no gridlock, the throughput floor was
@@ -34,11 +36,13 @@ export function meters(world) {
   let pat = 0, n = 0;
   for (const c of alive) if (c.stats.patience > 0) { pat += Math.max(0, c.patience) / c.stats.patience; n++; }
   const live = n ? pat / n : 1;
-  const honkPenalty = Math.min(0.6, (s.honks + (s.pedLate || 0)) * 0.03);
+  // an ambulance late past its timer (M7) costs five honks' worth
+  const honkPenalty = Math.min(0.6, (s.honks + (s.pedLate || 0) + 5 * (s.ambulanceLate || 0)) * 0.03);
   const satisfaction = Math.max(0, Math.min(1, 0.6 * live + 0.4 * (1 - honkPenalty / 0.6)));
   return {
     cleared: s.cleared, target, throughput: Math.min(1.5, s.cleared / target),
     collisions: s.collisions, honks: s.honks, pedLate: s.pedLate || 0, pedServed: s.pedServed || 0,
+    ambulances: s.ambulances || 0, ambulanceLate: s.ambulanceLate || 0,
     avgWait, maxWait: s.maxWait, gridlock: s.gridlock,
     satisfaction, waiting: alive.filter(c => c.isWaiting).length, onMap: alive.length,
     timeLeft: Math.max(0, world.duration - world.t),
@@ -72,7 +76,7 @@ export function score(world) {
     if (stars === 2 && m.collisions === 0) stars = 3; else if (stars === 2) reasons.push(`${m.collisions} collision${m.collisions === 1 ? '' : 's'}`);
   }
   const bonus = Math.round(m.satisfaction * 100);
-  const points = Math.round(m.cleared * 10 + (survived ? 200 : 0) + stars * 150 + bonus * 2 - m.collisions * 100 - m.honks * 5 - m.pedLate * 5);
+  const points = Math.round(m.cleared * 10 + (survived ? 200 : 0) + stars * 150 + bonus * 2 - m.collisions * 100 - m.honks * 5 - m.pedLate * 5 - m.ambulanceLate * 50);
   return { ...m, mode, survived, stars, reasons, bonus, points: Math.max(0, points), waitTarget };
 }
 

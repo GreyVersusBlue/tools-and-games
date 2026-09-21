@@ -10,7 +10,8 @@
 // pedestrian call and walks it with the loops live, Two Blocks shows two
 // boxes and drives the one the panel selects, its offset slider moves the
 // east box through a yellow and not a jump while the platoon diagram draws,
-// the sprite gallery draws eight rows. Screenshots land in test/shots/ (ignored by git) as evidence
+// Rush Hour's surge, outage and ambulance clock reach the event line and
+// the box (M7), the sprite gallery draws eight rows. Screenshots land in test/shots/ (ignored by git) as evidence
 // for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
@@ -65,7 +66,7 @@ try {
       stars: document.getElementById('starTotal').textContent,
     }));
     ok(sel.shown, 'the level select is up');
-    ok(sel.cards.length === 6 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Free Play', 'with six cards, First Light first and Free Play last', sel.cards.join(', '));
+    ok(sel.cards.length === 7 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,Free Play', 'with seven cards, First Light first and Free Play last', sel.cards.join(', '));
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
     await shot(page, 'select');
     ok(errors.length === 0, 'no page errors so far', errors.join(' | '));
@@ -411,6 +412,52 @@ try {
     ok(/PRIORITY/.test(p.stage) && p.head === 'green', 'the panel says PRIORITY and the westbound head is green', `${p.stage}, W-T ${p.head}`);
     await shot(page, 'free-play-priority');
     ok(errors.length === 0, 'no page errors in free play', errors.join(' | '));
+  });
+
+  await section('Rush Hour: the surge, the outage and the ambulance clock (M7)', async () => {
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="rush-hour"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'rush-hour', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const r0 = await page.evaluate(() => ({ hidden: document.getElementById('eventLine').classList.contains('hidden'), text: document.getElementById('eventLine').textContent }));
+    ok(r0.hidden && r0.text === '', 'before anything happens the event line is hidden');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 61);
+    await new Promise(r => setTimeout(r, 300));
+    const r1 = await page.evaluate(() => ({ hidden: document.getElementById('eventLine').classList.contains('hidden'), text: document.getElementById('eventLine').textContent, scale: window.__signalCity.world.demandScale(), power: window.__signalCity.world.powerOut }));
+    ok(!r1.hidden && /Rush hour: traffic at 170%/.test(r1.text) && Math.abs(r1.scale - 1.7) < 1e-9 && !r1.power, 'at 61 s the event line says rush hour at 170% and the spawner reads 1.7', r1.text);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 50);
+    await new Promise(r => setTimeout(r, 300));
+    const r2 = await page.evaluate(() => {
+      const w = window.__signalCity.world, c = w.controller;
+      return { power: w.powerOut, stage: c.stage, heads: [...new Set(c.movements.map(m => c.head(m)))].join(), line: document.getElementById('eventLine').textContent, stageText: document.getElementById('stage').textContent, disabled: [...document.querySelectorAll('#phases .phase')].every(b => b.disabled) && document.getElementById('flashRedBtn').disabled };
+    });
+    ok(r2.power && r2.stage === 'dark' && r2.heads === 'dark', 'at 111 s the power is out and every head is dark', r2.heads);
+    ok(/Power out/.test(r2.line) && /Rush hour/.test(r2.line) && /dark: four-way stop/.test(r2.stageText), 'the event line says so, with the surge still on, and the stage line reads a four-way stop', `${r2.stageText} | ${r2.line}`);
+    ok(r2.disabled, 'and the phase and flash buttons are disabled');
+    await page.keyboard.press('1');
+    await page.keyboard.press('2');
+    const r3 = await page.evaluate(() => { const c = window.__signalCity.world.controller; return { stage: c.stage, next: c.next }; });
+    ok(r3.stage === 'dark' && r3.next === null, 'pressing 1 and 2 reaches nothing: the box stays dark', `${r3.stage} next ${r3.next}`);
+    await shot(page, 'rush-hour-outage');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 30);
+    await new Promise(r => setTimeout(r, 300));
+    const r4 = await page.evaluate(() => { const w = window.__signalCity.world; return { power: w.powerOut, stage: w.controller.stage, line: document.getElementById('eventLine').textContent, outages: w.stats.outages }; });
+    ok(!r4.power && r4.stage !== 'dark' && r4.outages === 1 && !/Power out/.test(r4.line), 'at 141 s the power is back and the line has dropped the outage', `${r4.stage} | ${r4.line}`);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 45);
+    await new Promise(r => setTimeout(r, 300));
+    const r5 = await page.evaluate(() => { const w = window.__signalCity.world; const e = w.activeEvent('ambulance'); return { amb: !!e, clock: w.ambulanceClock(), line: document.getElementById('eventLine').textContent, btn: document.getElementById('priorityBtn').classList.contains('show'), late: document.getElementById('eventLine').classList.contains('late') }; });
+    ok(r5.amb && r5.clock > 38 && r5.clock <= 40 && r5.btn, 'at 186 s the ambulance is on the map with 40 s on the clock and the corridor button shows', `clock ${r5.clock && r5.clock.toFixed(1)}`);
+    ok(/Ambulance from W: (39|40) s to get it through/.test(r5.line) && !r5.late, 'the event line counts it down', r5.line);
+    await page.keyboard.press('e');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 1);
+    const r6 = await page.evaluate(() => { const w = window.__signalCity.world; const e = w.activeEvent('ambulance'); return { priority: e && e.car.priority, movements: w.controller.preemption ? w.controller.preemption.movements.join() : '', stageText: document.getElementById('stage').textContent }; });
+    ok(r6.priority && r6.movements === 'W-L,W-T,W-R' && /PRIORITY/.test(r6.stageText), 'E calls the corridor for the whole W leg', r6.movements);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 39);
+    await new Promise(r => setTimeout(r, 300));
+    const r7 = await page.evaluate(() => { const w = window.__signalCity.world; return { amb: !!w.activeEvent('ambulance'), late: w.stats.ambulanceLate, hidden: document.getElementById('eventLine').classList.contains('hidden'), cleared: w.stats.cleared }; });
+    ok(!r7.amb && r7.late === 0 && r7.hidden, 'forty seconds on it is through, on time, and the event line is hidden again', `${r7.cleared} cleared`);
+    await shot(page, 'rush-hour-ambulance');
+    ok(errors.length === 0, 'no page errors on Rush Hour', errors.join(' | '));
   });
 
   await section('the sprite gallery', async () => {

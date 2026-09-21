@@ -48,12 +48,15 @@ canvas#board { display: block; border-radius: var(--radius); background: #5d7a4a
 .phase.active { border-left-color: var(--yellow); }
 .phase.green { border-left-color: var(--green); background: #253328; }
 .phase.queued { border-left-color: var(--blue); }
+.phase:disabled, .controls button:disabled { opacity: 0.45; cursor: default; }   /* the power is out (M7) */
 .priority { display: none; background: #4a1d1a; border-color: #8a2f28; }
 .priority.show { display: block; animation: pulse 0.8s infinite alternate; }
 .priority .key, .keys { color: var(--dim); }
 @keyframes pulse { from { box-shadow: 0 0 0 0 rgba(255,59,48,0.5); } to { box-shadow: 0 0 0 6px rgba(255,59,48,0); } }
 .hint { font-size: 13px; color: var(--dim); margin: 0; line-height: 1.4; }
 .note { font-size: 12px; color: var(--dim); margin: -4px 0 0; }
+.event { font-size: 13px; font-weight: 600; color: var(--yellow); margin: 0; line-height: 1.4; }
+.event.late { color: #ff3b30; }
 .hidden { display: none !important; }
 .section { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid #2c3138; }
 .section .controls button { padding: 6px 10px; font-size: 13px; }

@@ -622,6 +622,118 @@ group('the corridor: two boxes, one handoff, fresh decisions');
   ok(threw && /no second box/.test(threw), 'the first box has no offset to set', threw);
 }
 
+/* ------------------------------------------------------------ the events -- */
+
+group('events (M7): the surge');
+
+{
+  // standard-only, N-S green for good: only the arrival rate can change
+  const SURGE = { demand: { N: 600, S: 600 }, duration: 300, mix: { standard: 1 }, controller: { startPhase: 0 }, events: [{ kind: 'surge', at: 30, for: 60, scale: 2 }] };
+  const w = new World(SURGE, 5), plain = new World({ ...SURGE, events: [] }, 5);
+  ok(w.demandScale() === 1 && w.active.length === 0 && w.schedule.length === 1, 'before its time a surge is scheduled and the demand scale reads 1', `scale ${w.demandScale()}`);
+  w.run(30.5); plain.run(30.5);
+  const s0 = w.stats.spawned, p0 = plain.stats.spawned;
+  const e = w.activeEvent('surge');
+  ok(e && e.scale === 2 && Math.abs(e.until - 90) < 0.05 && w.demandScale() === 2, 'at 30 s it is in force, scale 2, until 90 s', `until ${e && e.until.toFixed(2)}, scale ${w.demandScale()}`);
+  ok(w.events.some(x => x.kind === 'event' && x.event === 'surge' && x.on === true), 'and it announced itself as an event');
+  w.run(59); plain.run(59);
+  const during = w.stats.spawned - s0, plainDuring = plain.stats.spawned - p0;
+  ok(during > plainDuring * 1.4, 'a minute at twice the demand spawns well over the plain run\'s count', `${during} vs ${plainDuring} (1200 veh/h is 20 a minute)`);
+  w.run(1);
+  ok(!w.activeEvent('surge') && w.demandScale() === 1 && w.events.some(x => x.kind === 'event' && x.event === 'surge' && x.on === false), 'at 90 s it has ended and the scale is back to 1', `scale ${w.demandScale()}`);
+  // the level's own curve still counts, under the surge
+  const curved = new World({ ...SURGE, demandCurve: () => 0.5 }, 5);
+  const before = curved.demandScale();
+  curved.run(31);
+  ok(before === 0.5 && curved.demandScale() === 1, 'a demandCurve of 0.5 under a surge of 2 reads 1: the two multiply', `${before} then ${curved.demandScale()}`);
+}
+
+group('events (M7): the power outage');
+
+{
+  const OUT = { demand: { N: 400, S: 400, E: 300, W: 300 }, duration: 300, mix: { standard: 1 }, controller: { timing: { yellow: 3, allRed: 1.5, minGreen: 4 }, rules: [{ when: 'elapsed', seconds: 20, then: 'next' }] }, events: [{ kind: 'outage', at: 40, for: 30 }] };
+  const w = new World(OUT, 2);
+  w.run(39.5);
+  const phaseBefore = w.controller.next !== null ? w.controller.next : w.controller.phase;
+  ok(!w.powerOut && w.controller.stage !== 'dark', 'at 39.5 s the power is on', w.controller.stage);
+  w.run(0.6);
+  const heads = new Set(w.controller.movements.map(m => w.controller.head(m)));
+  ok(w.powerOut && w.controller.stage === 'dark' && heads.size === 1 && heads.has('dark') && w.stats.outages === 1, 'at 40 s the box is dark on every head', [...heads].join());
+  ok(w.requestPhase(1) === false && w.controller.stage === 'dark', 'a phase asked for during the outage is refused and the box stays dark');
+  ok(w.setFlash('red') === false && w.controller.stage === 'dark' && w.controller.flash === null, 'so is a flash mode');
+  const amb = w.spawnCar({ leg: 'E', archetype: 'emergency', turn: 'T' });
+  ok(amb && w.requestPriority(amb) === false && !amb.priority && !w.controller.preemption, 'and so is the priority corridor: no power, no preemption');
+  const c0 = w.stats.cleared;
+  w.run(28);
+  ok(w.stats.cleared > c0 + 4 && w.stats.collisions === 0, 'through the outage the cars take turns at the four-way stop and nobody hits anybody', `${w.stats.cleared - c0} cleared dark, ${w.stats.collisions} collisions`);
+  w.run(1.4);
+  ok(w.powerOut && w.controller.stage === 'dark', 'at 69.5 s it is still dark');
+  w.run(0.6);
+  ok(!w.powerOut && w.controller.stage === 'allred' && w.controller.next === phaseBefore, 'at 70 s the power is back and the box comes back through an all-red to the phase it was in', `${w.controller.stage} next ${w.controller.next} (was ${phaseBefore})`);
+  w.run(1.6);
+  ok(w.controller.stage === 'green' && w.controller.phase === phaseBefore, 'and is green on it 1.5 s later', `${w.controller.stage} ${w.controller.phase}`);
+  ok(w.requestPhase((phaseBefore + 1) % 2) === true, 'the phases answer again');
+  ok(w.events.filter(x => x.kind === 'event' && x.event === 'outage').map(x => x.on).join() === 'true,false', 'the outage announced its start and its end', w.events.filter(x => x.kind === 'event').map(x => `${x.event}:${x.on}`).join(' '));
+}
+
+group('events (M7): the ambulance under a timer');
+
+{
+  // E-W green for good, three standard cars queued on the red N leg, and
+  // an ambulance arriving behind them at 10 s with 30 s to get through
+  // E-W green for good, eight standard cars queued on the red N leg (the
+  // first of them a left turner), and an ambulance arriving behind them
+  // at 22 s with 45 s to get through
+  const AMB = { demand: {}, duration: 300, controller: { timing: { yellow: 3, allRed: 1, minGreen: 4 }, startPhase: 1 }, events: [{ kind: 'ambulance', at: 22, leg: 'N', turn: 'T', within: 45 }] };
+  const build = () => { const w = new World(AMB, 1); for (let i = 0; i < 8; i++) { w.spawnCar({ leg: 'N', archetype: 'standard', turn: i === 0 ? 'L' : 'T' }); w.run(2.5); } return w; };
+  const stuck = build(), helped = build();
+  ok(stuck.ambulanceClock() === null && stuck.activeEvent('ambulance') === null, 'before it arrives there is no clock');
+  stuck.run(22.1 - stuck.t); helped.run(22.1 - helped.t);
+  const e = stuck.activeEvent('ambulance');
+  ok(e && e.car && e.car.archetype === 'emergency' && e.car.path.movement === 'N-T' && stuck.stats.ambulances === 1, 'at 22 s the ambulance is on the N leg', e && e.car && e.car.path.movement);
+  ok(stuck.ambulanceClock() > 44 && stuck.ambulanceClock() <= 45 && e.until === null, 'with 45 s on the clock and no end time of its own', `${stuck.ambulanceClock().toFixed(2)} s`);
+  const amb = helped.activeEvent('ambulance').car;
+  ok(helped.requestPriority(amb) === true && helped.controller.preemption, 'the other run gets the corridor called at once');
+  ok(helped.controller.preemption.movements.join() === 'N-L,N-T,N-R', 'for the whole N leg, so the left turner at the head of the lane goes too', helped.controller.preemption.movements.join());
+  const estimate = helped.controller.preemption.hold;
+  // step the helped run until the ambulance clears its box: the corridor
+  // is still in force at that moment, however long the queue took
+  let through = null, held = null, ended = null;
+  for (let i = 0; i < 60 * 60 && through === null; i++) {
+    helped.step();
+    if (amb.rear >= amb.path.boxExit) { through = helped.t - 22.1; held = !!helped.controller.preemption && helped.controller.stage === 'green'; }
+  }
+  for (let i = 0; i < 60 * 30 && ended === null; i++) { helped.step(); if (!helped.controller.preemption) ended = helped.t - 22.1 - through; }
+  ok(through !== null && through > estimate && held, 'the queue takes the ambulance longer than the estimated hold, and the corridor is still green when it clears the box', `through at ${through && through.toFixed(1)} s, estimate ${estimate.toFixed(1)} s`);
+  ok(ended !== null && ended > 5 && ended < 8, 'and the hold ends about 6 s after', `${ended && ended.toFixed(1)} s after`);
+  stuck.run(45.2); helped.run(67.3 - helped.t);
+  ok(stuck.stats.ambulanceLate === 1 && stuck.activeEvent('ambulance').late && stuck.ambulanceClock() < 0 && !stuck.activeEvent('ambulance').car.done, 'behind a red queue it is late at 67 s and still on the map', `clock ${stuck.ambulanceClock().toFixed(1)}, cleared ${stuck.stats.cleared}`);
+  ok(stuck.events.some(x => x.kind === 'ambulance-late'), 'and the world said so');
+  const done = helped.events.find(x => x.kind === 'event' && x.event === 'ambulance' && x.on === false);
+  ok(helped.stats.ambulanceLate === 0 && !helped.activeEvent('ambulance') && done && done.t < 67, 'with the corridor it cleared before the deadline and the event is over', `over at ${done && done.t.toFixed(1)} s, cleared ${helped.stats.cleared}`);
+  let threw = null;
+  try { new World({ demand: {}, events: [{ kind: 'parade', at: 1 }] }, 1).run(2); } catch (err) { threw = err.message; }
+  ok(threw && /unknown event/.test(threw), 'an event kind the world does not know is refused', threw);
+}
+
+{
+  // the shipped level: its moments fire when its text says, and the run is
+  // still a function of the seed
+  const { levelById } = await load('levels/pack-01.js');
+  const lvl = levelById('rush-hour');
+  const a = new World(lvl, 3);
+  a.run(61);
+  ok(a.activeEvent('surge') && !a.powerOut, 'Rush Hour: the surge is on at 61 s');
+  a.run(50);
+  ok(a.powerOut && a.activeEvent('surge'), 'the power is out at 111 s, in the middle of it');
+  a.run(30);
+  ok(!a.powerOut && a.controller.stage !== 'dark' && a.stats.outages === 1, 'and back at 141 s', a.controller.stage);
+  a.run(45);
+  ok(a.activeEvent('ambulance') && a.ambulanceClock() > 38 && !a.activeEvent('surge'), 'the ambulance arrives at 186 s, after the surge, with 40 s on the clock', `clock ${a.ambulanceClock() && a.ambulanceClock().toFixed(1)}`);
+  const b = new World(lvl, 3).run(186);
+  ok(a.hash() === b.hash(), 'and two runs of the seed agree to the metre', `${a.stats.cleared} cleared, ${a.stats.collisions} collisions`);
+}
+
 /* ---------------------------------------------------------------- the soak -- */
 
 group('a three-minute mixed run on the cycling level');

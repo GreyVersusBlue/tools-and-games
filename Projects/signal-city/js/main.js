@@ -196,6 +196,7 @@ class Game {
       `<div class="end-row"><span>Collisions</span><b>${r.collisions}</b></div>` +
       `<div class="end-row"><span>Honks</span><b>${r.honks}</b></div>` +
       (this.world.controller.hasPeds ? `<div class="end-row"><span>Walks served · kept waiting</span><b>${r.pedServed} · ${r.pedLate}</b></div>` : '') +
+      (r.ambulances ? `<div class="end-row"><span>Ambulances on time · late</span><b>${r.ambulances - r.ambulanceLate} · ${r.ambulanceLate}</b></div>` : '') +
       `<div class="end-row"><span>Satisfaction bonus</span><b>${r.bonus}</b></div>` +
       `<div class="end-row total"><span>Points</span><b>${r.points}</b></div>` +
       (r.reasons.length ? `<p class="end-why">${r.reasons.join('. ')}.</p>` : '');
@@ -246,9 +247,8 @@ class Game {
   setFlash(mode) {
     if (this.state !== 'playing' || !this.world) return;
     const ctl = this.ctl;
-    if (mode === 'red') ctl.setFlash('red');
-    else if (mode === 'yellow') ctl.setFlash({ major: ctl.majorLegs() });
-    else ctl.setFlash(null);
+    // through the world, which refuses while the power is out (M7)
+    this.world.setFlash(mode === 'red' ? 'red' : mode === 'yellow' ? { major: ctl.majorLegs() } : null, this.node);
     this.updateHud(true);
   }
 
@@ -442,10 +442,22 @@ class Game {
     const stageOf = c => {
       const fl = c.stage === 'flash';
       const st = c.preemption ? 'PRIORITY' : c.stage === 'green' ? `${c.current.name} green` : c.stage === 'yellow' ? 'yellow' : c.stage === 'allred' ? 'all red'
-        : fl ? (c.flash === 'red' ? 'flashing red: four-way stop' : `flashing yellow on ${c.flash.major.join(' and ')}`) : c.stage;
+        : fl ? (c.flash === 'red' ? 'flashing red: four-way stop' : `flashing yellow on ${c.flash.major.join(' and ')}`) : c.stage === 'dark' ? 'dark: four-way stop' : c.stage;
       return st + (c.next !== null ? ` → ${c.phases[c.next].name}` : '') + (c.walk ? ` · ${c.walk.stage === 'walk' ? 'WALK' : 'clearing'} ${c.walk.legs.join(' ')}` : '');
     };
     $('stage').textContent = w.controllers.length > 1 ? w.controllers.map((c, i) => `${i === 0 ? 'W' : 'E'}: ${stageOf(c)}`).join(' · ') : stageOf(ctl);
+    // the event line (M7): what is happening, and for how much longer
+    const lines = w.active.map(e => {
+      const left = e.until === null ? 0 : Math.max(0, Math.ceil(e.until - w.t));
+      if (e.kind === 'surge') return `Rush hour: traffic at ${Math.round(e.scale * 100)}% for ${left} s more.`;
+      if (e.kind === 'outage') return `Power out: the signals are dark, a four-way stop. Back in ${left} s; nothing you press reaches the box until then.`;
+      if (e.kind === 'ambulance') { const c = e.deadline - w.t; return c >= 0 ? `Ambulance from ${e.leg}: ${Math.ceil(c)} s to get it through.` : `Ambulance from ${e.leg} is late by ${Math.floor(-c)} s: give it the corridor.`; }
+      return '';
+    }).filter(Boolean);
+    const ev = $('eventLine');
+    ev.textContent = lines.join(' ');
+    ev.classList.toggle('hidden', !lines.length);
+    ev.classList.toggle('late', w.active.some(e => e.kind === 'ambulance' && e.late));
     for (const b of $('calls').children) {
       const leg = b.dataset.leg;
       const head = ctl.pedHead(leg);
@@ -464,6 +476,8 @@ class Game {
     $('flashRedBtn').classList.toggle('on', flashing && ctl.flash === 'red');
     $('flashYellowBtn').classList.toggle('on', flashing && ctl.flash !== 'red');
     $('signalsBtn').classList.toggle('on', !flashing && ctl.stage !== 'dark');
+    for (const id of ['flashRedBtn', 'flashYellowBtn', 'signalsBtn']) $(id).disabled = w.powerOut;
+    for (const b of $('phases').children) b.disabled = w.powerOut;
     const em = w.cars.find(c => !c.done && c.archetype === 'emergency' && !c.priority);
     $('priorityBtn').classList.toggle('show', !!em);
     if (!$('waveBox').classList.contains('hidden')) {
