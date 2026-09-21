@@ -63,6 +63,7 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .slider > span { display: flex; justify-content: space-between; align-items: baseline; }
 .slider b { font-variant-numeric: tabular-nums; }
 .slider input { width: 100%; accent-color: var(--yellow); }
+.wave { display: block; width: 100%; height: auto; border-radius: 8px; background: #1a1d22; }
 .rules { display: flex; flex-direction: column; gap: 6px; }
 .rule { display: grid; grid-template-columns: 1fr auto; gap: 4px 6px; align-items: center; background: var(--panel-2); border-radius: 8px; padding: 6px 8px; font-size: 12px; }
 .rule .body { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }

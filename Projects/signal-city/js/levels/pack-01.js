@@ -29,8 +29,10 @@
 //               priority  the emergency corridor button
 //               peds      the pedestrian call buttons and the walk lamps
 //               sensors   a note: the loops are live and the queue rules run
-//               offset    a note: the second box runs its plan `offset`
-//                         seconds behind the first (the slider is M7's)
+//               offset    the offset slider and the platoon diagram: the
+//                         second box runs its plan `offset` seconds behind
+//                         the first, and moving it re-aligns the running
+//                         plan through its own yellows (M7)
 //
 // Milestone 4 shipped level 1 and the free-play board; milestone 5 levels 2
 // and 3; milestone 6 levels 4 and 5. Level 6 is M8's, with the campaign.
@@ -128,7 +130,7 @@ export const LEVELS = [
     id: 'two-blocks',
     name: 'Two Blocks',
     blurb: 'Two crossroads on one street, 220 m apart, on a timed plan. The east box runs 16 s behind the west one, so a platoon released at one meets a green at the other.',
-    hint: 'Both boxes run the same plan; the offset is the level\'s. Watch a platoon leave the west box and arrive at the east one. Press a phase to override the selected box, and pick which box the panel drives above the phases.',
+    hint: 'Both boxes run the same plan, the east one behind the west by the offset. The diagram draws where each box\'s green will be and where a platoon leaving one lands at the other: slide the offset until the line meets the green, both ways if you can. Press a phase to override the selected box.',
     network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1, nodes: 2, spacing: 220 },
     // phase 0 is the main street, E-W here (`main: 'EW'`): 22 s to it, 12 to the side streets
     controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 22 }, { phase: 1, green: 12 }], timing: { yellow: 3, allRed: 1.5, minGreen: 4 } },

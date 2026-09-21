@@ -8,8 +8,9 @@
 // Stem's all-red slider reaches the controller, Four Ways offers four phases
 // with arrow heads and drops to flashing red and back, Crossing takes a
 // pedestrian call and walks it with the loops live, Two Blocks shows two
-// boxes and drives the one the panel selects, the sprite gallery draws
-// eight rows. Screenshots land in test/shots/ (ignored by git) as evidence
+// boxes and drives the one the panel selects, its offset slider moves the
+// east box through a yellow and not a jump while the platoon diagram draws,
+// the sprite gallery draws eight rows. Screenshots land in test/shots/ (ignored by git) as evidence
 // for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
@@ -342,6 +343,44 @@ try {
     ok(t2.handoffs > 0 && t2.nodes === 2, 'forty seconds in, cars have crossed from one box to the other', `${t2.handoffs} handoffs, ${t2.onMap} on the map`);
     await shot(page, 'two-blocks');
     ok(errors.length === 0, 'no page errors on Two Blocks', errors.join(' | '));
+  });
+
+  await section('Two Blocks: the offset slider and the platoon diagram (M7)', async () => {
+    const s0 = await page.evaluate(() => {
+      const r = document.getElementById('offsetRange'), c = document.getElementById('wave');
+      const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const colours = new Set();
+      for (let i = 0; i < px.length; i += 4 * 97) colours.add(`${px[i]},${px[i + 1]},${px[i + 2]}`);
+      return { shown: !document.getElementById('waveBox').classList.contains('hidden'), min: r.min, max: r.max, value: r.value, label: document.getElementById('offsetVal').textContent, colours: colours.size, samples: window.__signalCity.game.wave.samples.length, w: c.width, h: c.height };
+    });
+    ok(s0.shown && s0.min === '0' && s0.max === '42' && s0.value === '16' && s0.label === '16 s', 'the slider runs 0 to 42 on the 43 s cycle and sits at the level\'s 16', `${s0.min}..${s0.max} at ${s0.value}, ${s0.label}`);
+    ok(s0.colours >= 4 && s0.w > 100, 'the diagram drew more than a flat colour', `${s0.colours} colours sampled on ${s0.w}x${s0.h}`);
+    ok(s0.samples >= 30, 'and holds the last twenty seconds of samples', `${s0.samples} samples`);
+    // move the slider to 27 with the east box mid-green: no jump, a shift queued
+    const before = await page.evaluate(() => { const c = window.__signalCity.world.controllers[1]; return { stage: c.stage, phase: c.phase, stageT: c.stageT, t: window.__signalCity.world.t }; });
+    await page.evaluate(v => { const r = document.getElementById('offsetRange'); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })); }, 27);
+    const s1 = await page.evaluate(() => {
+      const w = window.__signalCity.world, c = w.controllers[1];
+      return { offset: c.offset, shift: c.shift, stage: c.stage, phase: c.phase, stageT: c.stageT, west: w.controllers[0].offset, note: document.getElementById('offsetNote').textContent, label: document.getElementById('offsetVal').textContent };
+    });
+    ok(s1.offset === 27 && s1.west === 0 && Math.abs(s1.shift - 11) < 1e-9, 'sliding to 27 queues 11 s of cuts on the east box and leaves the west one alone', `offset ${s1.offset} shift ${s1.shift} west ${s1.west}`);
+    ok(s1.stage === before.stage && s1.phase === before.phase && s1.stageT === before.stageT, 'and the east box did not jump at the call', `${s1.stage} ${s1.phase} ${s1.stageT.toFixed(2)}`);
+    ok(/27 s behind/.test(s1.note) && /11 s still to cut/.test(s1.note) && s1.label === '27 s', 'the note names the new offset and what is still to cut', s1.note);
+    // step through the shift: the log after the call is only yellow, all-red, green
+    const mark = await page.evaluate(() => window.__signalCity.world.controllers[1].log.length);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 60);
+    await new Promise(r => setTimeout(r, 300));
+    const s2 = await page.evaluate(m => {
+      const c = window.__signalCity.world.controllers[1];
+      return { shift: c.shift, kinds: c.log.slice(m).map(e => e.kind), note: document.getElementById('offsetNote').textContent, offsetOf: window.__signalCity.world.offsetOf() };
+    }, mark);
+    const order = ['yellow', 'allred', 'green'];
+    const legal = s2.kinds.filter(k => order.includes(k)).every((k, i, a) => i === 0 || k === order[(order.indexOf(a[i - 1]) + 1) % 3]);
+    ok(Math.abs(s2.shift) < 1e-6 && s2.offsetOf === 27, 'a minute on the shift is paid and the corridor reads 27', `shift ${s2.shift}`);
+    ok(legal && s2.kinds.includes('yellow'), 'and every change on the way ran yellow then all-red', s2.kinds.join(' '));
+    ok(!/Re-aligning/.test(s2.note), 'the note has dropped the re-aligning line', s2.note);
+    await shot(page, 'two-blocks-wave');
+    ok(errors.length === 0, 'no page errors on the slider', errors.join(' | '));
   });
 
   await section('Free Play and the priority corridor', async () => {

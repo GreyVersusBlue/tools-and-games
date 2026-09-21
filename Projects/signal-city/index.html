@@ -48,7 +48,11 @@
     <div id="phases" class="phases"></div>
     <p id="leftsNote" class="note hidden">Protected lefts: the arrow phases serve the inner lanes alone.</p>
     <p id="sensorsNote" class="note hidden">Loops are live: a queue rule fires when its lane fills.</p>
-    <p id="offsetNote" class="note hidden"></p>
+    <div id="waveBox" class="section hidden">
+      <label class="slider"><span><span class="label">Offset</span> <b id="offsetVal">16 s</b></span><input id="offsetRange" type="range" min="0" max="42" step="1" value="16"></label>
+      <p id="offsetNote" class="note"></p>
+      <canvas id="wave" class="wave" width="242" height="200" aria-label="The corridor's green windows over time"></canvas>
+    </div>
     <div id="pedsBox" class="section hidden">
       <span class="label">Crossings</span>
       <div id="calls" class="calls"></div>

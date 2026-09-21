@@ -30,6 +30,15 @@
 // all-red clearance is mechanic 2 in the unlock order). A request that lands
 // mid-clearance waits its turn.
 //
+// The offset (M7). A timed controller is `offset` seconds into its cycle at
+// t = 0, so two boxes on one street can be set apart. Changing it on a
+// running controller (`setOffset`) is not a jump: the controller keeps its
+// stage and works off the difference over the greens that follow, each one
+// cut no shorter than the minimum green or stretched to at most twice its
+// plan, whichever direction round the cycle is the shorter, and every
+// change still runs yellow and all-red. `shift` is what is left to absorb.
+// `forecast` steps a copy ahead so the page can draw the windows to come.
+//
 // Pedestrians (M6). A walk is not a phase of its own: it is a flag on a
 // through phase (`walks: ['P-N', 'P-S']` on the E-W phase, the crossings
 // parallel to its traffic), because on every standard phase set the walk
@@ -240,6 +249,7 @@ export class Controller {
     this.mode = mode;
     this.plan = plan;
     this.offset = offset;
+    this.shift = 0;        // seconds of plan still to lose (> 0, greens cut) or gain (< 0, greens stretched) after setOffset
     this.rules = rules.map(r => ({ ...r }));
     this.t = 0;
     this.phase = startPhase;
@@ -295,10 +305,7 @@ export class Controller {
   _scheduledEnd() {
     if (this.next !== null) return Math.max(0, this.timing.minGreen - this.stageT);
     if (this.preemption) return Math.max(0, this.preemption.hold - this.stageT);
-    if (this.mode === 'timed' && this.plan) {
-      const green = this.plan[this._planIndex()].green;
-      return Math.max(0, green - this.stageT);
-    }
+    if (this.mode === 'timed' && this.plan) return Math.max(0, this._plannedGreen() - this.stageT);
     for (const r of this.rules) {
       if (r.when === 'elapsed') return Math.max(0, r.seconds - this.stageT);
     }
@@ -381,6 +388,21 @@ export class Controller {
     return this.plan.reduce((s, p) => s + p.green + yellow + allRed, 0);
   }
 
+  // Seconds into the plan's cycle the controller is right now, by the plan's
+  // own greens (a green being cut or stretched reads by where its clock is).
+  // 0 with no plan.
+  cyclePosition() {
+    if (!this.plan || !this.plan.length) return 0;
+    const { yellow, allRed } = this.timing;
+    let x = 0;
+    const k = this._planIndex();
+    for (let i = 0; i < k; i++) x += this.plan[i].green + yellow + allRed;
+    if (this.stage === 'green') return x + Math.min(this.stageT, this.plan[k].green);
+    if (this.stage === 'yellow') return x + this.plan[k].green + Math.min(this.stageT, yellow);
+    if (this.stage === 'allred') return x + this.plan[k].green + yellow + Math.min(this.stageT, allRed);
+    return x;
+  }
+
   // ---- commands -----------------------------------------------------------
 
   // Ask for a phase. Returns true if it will happen (now or after the
@@ -411,6 +433,70 @@ export class Controller {
   requestNext() { return this.requestPhase((this.phase + 1) % this.phases.length); }
 
   setTiming(patch) { Object.assign(this.timing, patch); }
+
+  // Move a running timed plan to a new offset through its own transitions.
+  // The controller has to end up `d = (o - offset) mod L` seconds further
+  // along its cycle: it can lose d seconds by cutting the greens to come
+  // (never below the minimum green) or gain L - d by stretching them (never
+  // past twice their plan), and it takes whichever is fewer seconds. The
+  // stage in force is untouched at the call; the difference is absorbed
+  // green by green from the next green end, each through yellow and
+  // all-red. Returns the signed seconds queued (> 0 cut, < 0 stretched).
+  // Without a plan the number is just stored.
+  setOffset(o) {
+    if (typeof o !== 'number' || !Number.isFinite(o)) throw new RangeError(`offset ${o}`);
+    const was = this.offset;
+    this.offset = o;
+    if (this.mode !== 'timed' || !this.plan || !this.plan.length) return 0;
+    const L = this.cycleLength();
+    const d = ((((o - was) + this.shift) % L) + L) % L;   // what is still owed, all told, as a forward distance
+    this.shift = d < EPS || L - d < EPS ? 0 : d <= L - d ? d : -(L - d);
+    this._log('offset', o);
+    return this.shift;
+  }
+
+  // The green this plan entry runs this time round: the plan's, less what
+  // a shift still has to cut (to the minimum green), or plus what it has to
+  // stretch (to twice the plan).
+  _plannedGreen() {
+    const base = this.plan[this._planIndex()].green;
+    if (this.shift > EPS) return Math.max(this.timing.minGreen, base - this.shift);
+    if (this.shift < -EPS) return base + Math.min(-this.shift, base);
+    return base;
+  }
+
+  // A copy that steps on its own: same plan, rules and state, its own log.
+  // `forecast` uses it; the page draws from it.
+  clone() {
+    const c = Object.create(Controller.prototype);
+    Object.assign(c, this);
+    c.timing = { ...this.timing };
+    c.pedTiming = { ...this.pedTiming };
+    c.rules = this.rules.map(r => ({ ...r }));
+    c.pedCalls = new Set(this.pedCalls);
+    c.walk = this.walk ? { ...this.walk } : null;
+    c.preemption = this.preemption ? { ...this.preemption } : null;
+    c.log = [];
+    return c;
+  }
+
+  // The head `movement` will show over the next `seconds`, as runs of
+  // [{ from, to, head }] in seconds from now, by stepping a copy at `dt`.
+  // Queue rules are stepped without a sensor (nothing to sense ahead of
+  // time), so a sensed plan forecasts as its timed plan alone.
+  forecast(movement, seconds, dt = 0.25) {
+    const c = this.clone();
+    const out = [];
+    let head = c.head(movement), from = 0;
+    const n = Math.max(1, Math.round(seconds / dt));
+    for (let i = 1; i <= n; i++) {
+      c.step(dt);
+      const h = c.head(movement);
+      if (h !== head) { out.push({ from, to: i * dt, head }); head = h; from = i * dt; }
+    }
+    out.push({ from, to: n * dt, head });
+    return out;
+  }
 
   // Replace the rule list. The panel edits a copy and hands it back here, so
   // a half-typed row never runs. A rule naming a phase index that does not
@@ -496,8 +582,7 @@ export class Controller {
           break;
         }
         if (this.mode === 'timed' && this.plan) {
-          const green = this.plan[this._planIndex()].green;
-          if (this.stageT >= green - EPS) {
+          if (this.stageT >= this._plannedGreen() - EPS) {
             this.next = this.plan[(this._planIndex() + 1) % this.plan.length].phase;
             this._beginYellow();
           }
@@ -532,7 +617,7 @@ export class Controller {
   _beginYellow() {
     if (this.stage !== 'green') return;
     if (this.walk) return;   // the green holds until the walk has cleared; callers set `next` first and retry
-
+    if (this.mode === 'timed' && this.plan && !this.preemption) this._absorbShift();
     this.stage = 'yellow';
     this.stageT = 0;
     this._log('yellow');
@@ -567,6 +652,17 @@ export class Controller {
     }
   }
 
+  // A timed green is ending: what it lost against the plan (or gained) comes
+  // off the shift, a hand on the phases included, and a shift that changed
+  // sign from stepping past zero is done.
+  _absorbShift() {
+    if (Math.abs(this.shift) < EPS) return;
+    const base = this.plan[this._planIndex()].green;
+    const was = this.shift;
+    this.shift -= base - this.stageT;
+    if (Math.abs(this.shift) < 1e-6 || (was > 0) !== (this.shift > 0)) this.shift = 0;
+  }
+
   _planIndex() {
     const i = this.plan.findIndex(p => p.phase === this.phase);
     return i < 0 ? 0 : i;
@@ -598,7 +694,7 @@ export class Controller {
   // A plain snapshot for saves and the debug hook.
   snapshot() {
     return {
-      t: this.t, phase: this.phase, stage: this.stage, stageT: this.stageT, next: this.next,
+      t: this.t, phase: this.phase, stage: this.stage, stageT: this.stageT, next: this.next, offset: this.offset, shift: this.shift,
       heads: Object.fromEntries(this.movements.map(m => [m, this.head(m)])),
       walk: this.walk ? { ...this.walk } : null, pedCalls: [...this.pedCalls],
     };

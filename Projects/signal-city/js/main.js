@@ -12,6 +12,7 @@ import { meters, score, failedEarly, starString } from './scoring.js';
 import { LEVELS, levelById } from './levels/pack-01.js';
 import { makeSlot, recordResult, totalStars } from './save.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
+import { waveModel, WaveHistory, drawWave } from './wave.js';
 
 const $ = id => document.getElementById(id);
 const DEBUG = new URLSearchParams(location.search).has('debug');
@@ -32,6 +33,7 @@ class Game {
     this.save = this.slot.load() || this.slot.fresh();
     this.seed = 1;
     this.node = 0;           // the box the panel drives (a corridor has two)
+    this.wave = new WaveHistory();   // the platoon diagram's samples (M7)
     this.hudEls = {};
     bindInput({ canvas: this.canvas, renderer: this.renderer, game: this });
     window.addEventListener('resize', () => this.layout());
@@ -81,6 +83,7 @@ class Game {
     if (DEBUG) this.seed = seed ?? 7;
     this.world = new World(lvl, this.seed);
     this.node = 0;
+    this.wave.reset();
     this.renderer.reset();
     this.layout();
     this.state = 'playing';
@@ -97,6 +100,7 @@ class Game {
     this.buildTiming();
     this.buildRules();
     this.buildCalls();
+    this.buildWave();
     this.updateHud(true);
   }
 
@@ -111,12 +115,7 @@ class Game {
     $('phases').classList.toggle('hidden', !u.has('phases'));
     $('pedsBox').classList.toggle('hidden', !u.has('peds'));
     $('sensorsNote').classList.toggle('hidden', !u.has('sensors'));
-    const offset = u.has('offset') && this.world.controllers.length > 1;
-    $('offsetNote').classList.toggle('hidden', !offset);
-    if (offset) {
-      const o = this.world.controllers[1].offset - this.world.controllers[0].offset;
-      $('offsetNote').textContent = `Offset: the east box runs its plan ${Math.abs(o)} s ${o >= 0 ? 'behind' : 'ahead of'} the west one (${this.world.controllers[0].cycleLength()} s cycle). The slider is M7's.`;
-    }
+    $('waveBox').classList.toggle('hidden', !(u.has('offset') && this.world.controllers.length > 1 && this.world.controllers[0].plan));
     $('nodes').classList.toggle('hidden', this.world.controllers.length < 2);
   }
 
@@ -219,6 +218,7 @@ class Game {
       let steps = 0;
       while (this.acc >= DT && steps < 12) {
         this.world.step();
+        this.wave.sample(this.world);
         this.acc -= DT;
         steps++;
         if (this.world.over || failedEarly(this.world)) { this.end(); break; }
@@ -256,6 +256,43 @@ class Game {
     if (!this.world) return;
     this.ctl.setTiming(patch);
     this.buildTiming();
+  }
+
+  // ---- the M7 green wave ------------------------------------------------------
+
+  // The offset slider runs the corridor: the east box's plan `offset`
+  // seconds behind the west one's, 0 to a cycle less one. Moving it is not
+  // a jump: Controller.setOffset cuts or stretches the greens to come.
+  setOffset(seconds) {
+    if (this.state !== 'playing' || !this.world || this.world.controllers.length < 2) return;
+    this.world.setOffset(seconds);
+    this.buildWave();
+  }
+
+  buildWave() {
+    if ($('waveBox').classList.contains('hidden')) return;
+    const w = this.world;
+    const L = w.controllers[0].cycleLength();
+    const o = w.offsetOf();
+    const r = $('offsetRange');
+    r.max = String(Math.max(1, Math.ceil(L) - 1));
+    r.value = String(((Math.round(o) % L) + L) % L);
+    $('offsetVal').textContent = `${Math.round(o)} s`;
+    const shift = w.controllers[1].shift;
+    $('offsetNote').textContent = `The east box runs its plan ${Math.round(o)} s behind the west one (${L} s cycle).` +
+      (Math.abs(shift) > 1e-6 ? ` Re-aligning: ${Math.abs(shift).toFixed(0)} s still to ${shift > 0 ? 'cut from' : 'add to'} its greens.` : '');
+    this.drawWave();
+  }
+
+  drawWave() {
+    if (!this.world || $('waveBox').classList.contains('hidden')) return;
+    const c = $('wave');
+    const ctx = c.getContext('2d');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cssW = Math.max(120, Math.floor(c.getBoundingClientRect().width) || 242), cssH = 200;
+    if (c.width !== Math.round(cssW * dpr) || c.height !== Math.round(cssH * dpr)) { c.width = Math.round(cssW * dpr); c.height = Math.round(cssH * dpr); c.style.height = cssH + 'px'; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawWave(ctx, waveModel(this.world), this.wave, this.world.t, cssW, cssH);
   }
 
   buildTiming() {
@@ -429,6 +466,15 @@ class Game {
     $('signalsBtn').classList.toggle('on', !flashing && ctl.stage !== 'dark');
     const em = w.cars.find(c => !c.done && c.archetype === 'emergency' && !c.priority);
     $('priorityBtn').classList.toggle('show', !!em);
+    if (!$('waveBox').classList.contains('hidden')) {
+      this.drawWave();
+      const shift = w.controllers[1].shift;
+      if ((Math.abs(shift) > 1e-6) !== /Re-aligning/.test($('offsetNote').textContent) || Math.abs(shift) > 1e-6) {
+        const L = w.controllers[0].cycleLength(), o = w.offsetOf();
+        $('offsetNote').textContent = `The east box runs its plan ${Math.round(o)} s behind the west one (${L} s cycle).` +
+          (Math.abs(shift) > 1e-6 ? ` Re-aligning: ${Math.abs(shift).toFixed(0)} s still to ${shift > 0 ? 'cut from' : 'add to'} its greens.` : '');
+      }
+    }
   }
 
   mountSave() {
@@ -454,6 +500,7 @@ $('flashYellowBtn').addEventListener('click', () => game.setFlash('yellow'));
 $('signalsBtn').addEventListener('click', () => game.setFlash(null));
 $('yellowRange').addEventListener('input', e => game.setTiming({ yellow: Number(e.target.value) }));
 $('allRedRange').addEventListener('input', e => game.setTiming({ allRed: Number(e.target.value) }));
+$('offsetRange').addEventListener('input', e => game.setOffset(Number(e.target.value)));
 $('addElapsedBtn').addEventListener('click', () => game.addRule('elapsed'));
 $('addQueueBtn').addEventListener('click', () => game.addRule('queue'));
 
@@ -461,7 +508,8 @@ if (DEBUG) {
   window.__signalCity = {
     game,
     get world() { return game.world; },
-    step(n = 1) { for (let i = 0; i < n; i++) game.world.step(); game.renderer.takeEvents(game.world); game.updateHud(true); },
+    step(n = 1) { for (let i = 0; i < n; i++) { game.world.step(); game.wave.sample(game.world); } game.renderer.takeEvents(game.world); game.updateHud(true); },
+    setOffset(s) { game.setOffset(s); },
     callPed(leg) { game.callPed(leg); },
     selectNode(i) { game.selectNode(i); },
     score() { return score(game.world); },
