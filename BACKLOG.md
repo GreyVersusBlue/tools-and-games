@@ -101,20 +101,21 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City, milestone 6
-(PR #342)**, rank 1, one increment of a 2+ worked under Claude Fable 5.1, the
-model the row names. That is the line to update when your batch merges; a PR
+**The last batch of ranked work that shipped** is **Signal City, M7's first
+increment, the green wave (PR #344)**, rank 1, one increment of a 2+ worked
+under Claude Fable 5.1, the model the row names. That is the line to update when your batch merges; a PR
 that only changes these files is not a batch and does not belong in it.
 **26 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 1 again: Signal City's next increment, M7** (`Projects/signal-city`, a
-2+, Fable 5.1): the green wave (the offset slider that re-aligns a running plan
-through a real transition, and a platoon visualiser) and the events: rush hour,
-power outage, motorcade, ambulance timer, lane closure, school zone, funeral
-procession. The plan is `Projects/signal-city/WISHLIST.md` item 7; milestones 0
-to 6 are on `main` and `HISTORY.md` #534 to #562 carry the calls already made
-(#557 says why a queue rule's jump is an insertion and #562 why the offset is a
-number and not yet a slider). A 2+ is the whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
+**Take rank 1 again: Signal City's next increment, the rest of M7, the events**
+(`Projects/signal-city`, a 2+, Fable 5.1): rush-hour surge, power outage,
+motorcade, ambulance timer, lane closure, school zone, funeral procession. The
+plan is `Projects/signal-city/WISHLIST.md` item 7; milestones 0 to 6 and the
+green wave are on `main` and `HISTORY.md` #534 to #566 carry the calls already
+made (#563 is how the offset slider moves a running plan, #564 how the platoon
+diagram forecasts, and #565 why the shipped wave runs one way). `demandCurve`
+and `setDark` exist and nothing uses them; start there. A 2+ is the whole
+batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
 quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
 want hardware this machine does not have — so take it alone. Its plan is Blue
@@ -467,7 +468,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 6 shipped (PRs #338, #340, #342); next M7, the green wave and the events | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/elegant-wright-6d6omw` | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 6 and M7's green wave shipped (PRs #338, #340, #342, #344); next the rest of M7, the events | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1132,9 +1133,11 @@ its `WISHLIST.md` carries the milestone plan in full. The ranked row is a 2+:
 one increment per session, the row rewritten to say what is done.
 
 **Milestones 0 to 4 shipped in PR #338 (2026-09-21, #534 to #543),
-milestone 5 in PR #340 (2026-09-21, #544 to #553) and milestone 6 in PR
-#342 (2026-09-21, #554 to #562)**: items 1 to 8 below are done, 394 checks
-across five suites, all in Site CI. Item 9 is the next increment. Still open
+milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
+(2026-09-21, #554 to #562) and M7's first half, the green wave, in PR
+#344 (2026-09-21, #563 to #566)**: items 1 to 9 below are done, 460
+checks across six suites, all in Site CI. Item 10 is the next increment,
+the rest of M7. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
 (a ¼ row for the site, like Blue Hour's ranks 16 and 17), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
@@ -1168,10 +1171,22 @@ sweep as real off-tracking geometry rather than the lane rule it is now.
    boxes on one street with a controller each and the handoff through
    `newApproach()`, "Crossing" and "Two Blocks" (the east box 16 s behind,
    the offset a number in the level).
-9. M7 the green wave (the offset slider, a platoon visualiser) and the
-   events: rush hour, power outage, motorcade, ambulance timer, lane
-   closure, school zone, funeral procession.
-10. M8 campaign and unlocks; M9 endless and sandbox with a roundabout node.
+9. **M7, first increment: the green wave**: the offset slider on Two
+   Blocks through `Controller.setOffset`, a running plan re-aligned by
+   cutting or stretching the greens to come (never below the minimum
+   green, never past twice the plan, the shorter way round the cycle),
+   every change through yellow and all-red; the platoon visualiser in
+   `js/wave.js`, a time-space diagram of both boxes' through heads with a
+   line from every green start to where it lands at the other box, and
+   the cars as dots. The diagram shows the shipped level's wave runs one
+   way at a time (#565).
+10. M7, the rest: the events. Rush-hour surge (`demandCurve`, read by the
+    spawner, used by no level), power outage (`setDark`, the cars already
+    treat dark as a four-way stop, nothing calls it), VIP motorcade,
+    ambulance under a timer, lane closure, school-zone flashing yellow
+    window, funeral procession. Each wants a level or a scripted moment on
+    one, a line saying what is happening, and a check.
+11. M8 campaign and unlocks; M9 endless and sandbox with a roundabout node.
 
 ## Tools/board-check
 
