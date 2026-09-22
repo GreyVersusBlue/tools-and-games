@@ -474,7 +474,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 7 shipped (PRs #338, #340, #342, #344, #346, 348); next M8, campaign and unlocks | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 7 shipped (PRs #338, #340, #342, #344, #346, #348); next M8, campaign and unlocks | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1142,7 +1142,7 @@ one increment per session, the row rewritten to say what is done.
 milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
 (2026-09-21, #554 to #562), M7's green wave in PR #344 (2026-09-21, #563
 to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
-and the rest of M7 in PR 348 (2026-09-22, #571 to #576)**: items 1 to
+and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
 11 below are done, 616 checks across six suites, all in Site CI. Item 12
 is the next increment, M8. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
