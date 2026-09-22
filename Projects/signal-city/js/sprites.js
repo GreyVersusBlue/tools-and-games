@@ -19,6 +19,7 @@
 export const ARCHETYPES = [
   'standard', 'granny', 'aggressive', 'tourist',
   'trucker', 'student', 'rideshare', 'emergency',
+  'motorcade', 'procession',
 ];
 
 /* The only two archetypes whose draw() reads `t`. spriteFor caches on a frame
@@ -400,6 +401,58 @@ function drawEmergency(ctx, palette, t) {
   ctx.fillRect(0.30, -1.35, 0.92, 2.70);
 }
 
+/* The motorcade car (M7): the aggressive SUV's hull in state black, a light
+   bar with no flash, and a pennant on each front wing. */
+function drawMotorcade(ctx, palette) {
+  const len = 5.2, wid = 2.1, halfW = wid / 2;
+  wheels(ctx, { axleX: [1.60, -1.60], halfW, len: 0.84, thick: 0.34, peek: 0.12 });
+  paint(ctx, [
+    [2.60, -0.82], [2.60, 0.82], [2.42, 1.05], [-2.42, 1.05],
+    [-2.60, 0.82], [-2.60, -0.82], [-2.42, -1.05], [2.42, -1.05],
+  ], 0.22, palette, len, wid);
+  const dark = darken(palette.glass, 0.3);
+  glassShape(ctx, -0.60, -0.78, 1.70, 1.56, 0.20, { glass: dark });
+  glassShape(ctx, -2.12, -0.72, 0.60, 1.44, 0.16, { glass: dark });
+  // the low light bar, unlit: it is the escort's job to flash
+  ctx.fillStyle = '#2a2e34';
+  rr(ctx, 0.30, -0.92, 0.34, 1.84, 0.08); ctx.fill();
+  ctx.fillStyle = palette.accent;
+  rr(ctx, 2.38, -0.74, 0.20, 1.48, 0.08); ctx.fill();
+  // pennants on the wings
+  for (const s of [-1, 1]) {
+    ctx.strokeStyle = CHROME; ctx.lineWidth = 0.05;
+    ctx.beginPath(); ctx.moveTo(2.10, s * 0.88); ctx.lineTo(2.10, s * 1.35); ctx.stroke();
+    ctx.fillStyle = palette.accent;
+    ctx.beginPath(); ctx.moveTo(2.10, s * 1.35); ctx.lineTo(1.60, s * 1.30); ctx.lineTo(2.10, s * 1.10); ctx.closePath(); ctx.fill();
+  }
+}
+
+/* The hearse (M7): a long roof carried right back, a landau bar on each
+   rear flank, the headlamps lit, and a wreath on the roof for the tail. */
+function drawProcession(ctx, palette) {
+  const len = 5.6, wid = 1.9, halfW = wid / 2;
+  wheels(ctx, { axleX: [1.75, -1.60], halfW, len: 0.76 });
+  paint(ctx, [
+    [2.80, -0.66], [2.80, 0.66], [2.30, 0.92], [-2.60, 0.95],
+    [-2.80, 0.78], [-2.80, -0.78], [-2.60, -0.95], [2.30, -0.92],
+  ], 0.26, palette, len, wid);
+  glassShape(ctx, 0.55, -0.66, 0.80, 1.32, 0.22, palette);
+  // the long rear compartment, its roof a shade lighter
+  ctx.fillStyle = lighten(palette.body, 0.08);
+  rr(ctx, -2.45, -0.72, 2.85, 1.44, 0.18); ctx.fill();
+  // landau bars
+  ctx.strokeStyle = CHROME; ctx.lineWidth = 0.07; ctx.lineCap = 'round';
+  for (const s of [-1, 1]) {
+    ctx.beginPath(); ctx.moveTo(-0.35, s * 0.80); ctx.quadraticCurveTo(-1.00, s * 0.55, -1.75, s * 0.80); ctx.stroke();
+  }
+  // headlamps on, as a procession runs them
+  ctx.fillStyle = '#fff4c2';
+  rr(ctx, 2.62, -0.62, 0.16, 0.34, 0.06); ctx.fill();
+  rr(ctx, 2.62, 0.28, 0.16, 0.34, 0.06); ctx.fill();
+  ctx.fillStyle = palette.accent;
+  rr(ctx, -2.78, -0.60, 0.18, 1.20, 0.07); ctx.fill();
+}
+
 /* --------------------------------------------------------------- the table -- */
 
 export const SPRITES = {
@@ -486,6 +539,26 @@ export const SPRITES = {
       P('rescue orange', '#eef0f2', '#2a2e33', '#e3701a'),
     ],
     draw(ctx, palette, t = 0) { drawEmergency(ctx, palette, t); },
+  },
+  motorcade: {
+    length: 5.2, width: 2.1,
+    palettes: [
+      P('state black', '#141517', '#090a0c', '#c9a13c'),
+      P('escort black', '#1a1c20', '#0b0d10', '#b8bec6'),
+      P('consular grey', '#2e3238', '#0e1013', '#c9a13c'),
+      P('state black 2', '#101113', '#08090b', '#a8302a'),
+    ],
+    draw(ctx, palette) { drawMotorcade(ctx, palette); },
+  },
+  procession: {
+    length: 5.6, width: 1.9,
+    palettes: [
+      P('hearse black', '#111214', '#1c2026', '#d8d0c0'),
+      P('mourning grey', '#3a3d42', '#1e2228', '#d8d0c0'),
+      P('hearse black 2', '#15161a', '#1b1f25', '#b9a56a'),
+      P('silver', '#b3b7bc', '#2c3238', '#5a5f66'),
+    ],
+    draw(ctx, palette) { drawProcession(ctx, palette); },
   },
 };
 

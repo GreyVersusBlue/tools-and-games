@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 6 and the green wave, 2026-09-21)
+## What shipped (milestones 0 to 7, 2026-09-21 to 2026-09-22)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -109,21 +109,52 @@ open work; this file is the plan it points at.
   ambulance from W at 185 s with 40 s. 138 + 167 + 65 + 20 + 23 + 95
   checks.
 
+- **M7, the rest: four events, and levels 7 and 8** (HISTORY.md #571 to
+  #576): the platoons, `{ kind: 'motorcade' | 'procession', at, leg,
+  turn, size, spacing }`, two archetypes of their own (`motorcade` fast
+  and tight, `procession` slow and tight, both obeying the light like a
+  standard car) spawned one member at a time; a platoon is split when a
+  member is held at its stop line by the light while another is past the
+  box (`stats.platoonSplits`, a `split` event, five honks' worth and 50
+  points, once), and a motorcade takes the priority corridor (E, or a
+  click on any member; the hold covers every member, the ones still to
+  arrive included) where a procession gets none. The hand on the green:
+  pressing the green phase again calls `Controller.holdGreen`, and its
+  elapsed rule counts from now (`heldT`). The lane closure, `{ kind:
+  'closure', at, for, leg, lane, length }`: `Network.close`/`open`,
+  `lanesForTurn(turn, leg)` leaving a closed lane out, traffic still
+  arriving in every lane (the cones stand 54 m from the box, the map edge
+  is 110 m out), a car in the closed lane merging onto the open lane's
+  path at its own `s` before the taper when there is room ahead and behind
+  (`_mergeTick`, `_roomFor`; the body slides across over a second,
+  `Car.easeLateral`) or holding at the taper (`car.mergeS`, read by
+  `drive`) until there is, and the zipper: a car in the open lane coming up
+  behind one waiting at the taper takes it as its leader (`leaderOf`) and
+  slows for it. The renderer draws the taper, the cones, the tint and the
+  sign. The school zone, `{ kind: 'school', at, for, scale, peds }`:
+  `world.speedScale` (the product of every zone in force, read by `drive`)
+  and `pedScale()` on the pedestrian calls, whose Poisson clock now runs
+  `pedScale` times faster with intervals drawn at the level's rate, under a
+  flashing beacon on every leg. Three zebra rules that the new boards
+  forced (#575): a permissive left that can still stop short of a zebra
+  with people on it does, a permissive left that sees walkers on its exit
+  zebra before it has committed holds at its own yield point in its lane,
+  and speed decides who yields on a zebra (a walker passes a car standing
+  still; a standing car holds for a walker in its lane ahead). Granny's
+  cautious stop lets go when the green is extended. "School Run" (two
+  lanes each way with walks, the zone at 40 s for 90 at half speed and
+  four times the calls, W's curb lane closed at 150 s for 90) and "Main
+  Street" (one lane each way, a motorcade of 5 from W at 50 s, a
+  procession of 8 from N at 160 s, a 22 s rule to hold against, `boxStall:
+  45`). `tools/calibrate.mjs` gained `--hold` (the hand under a platoon)
+  and a splits column. The level select's scrim centres with `safe`
+  (#132). 148 + 240 + 75 + 24 + 23 + 106 checks.
+
 ## What is next, in order
 
-7. **M7, the rest: four events** (½): VIP motorcade, lane closure,
-   school-zone flashing yellow window, funeral procession. Each wants a
-   level or a scripted moment on one, a line on the event line saying what
-   is happening, and a check; the `events` list and `_startEvent` /
-   `_endEvent` are where they go. The platoon diagram is corridor-only; an
-   event on a single box does not need it. A motorcade and a procession
-   are a platoon of scripted spawns with a rule about being split; a lane
-   closure wants `lanesForTurn` to know a closed lane and the renderer to
-   draw cones; the school zone is a window of `speedScale` under a flashing
-   beacon, and `speedScale` is read by `drive` and set by nobody.
-8. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
+7. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
    protected turns, roundabout conversion, extra phases.
-9. **M9 endless and sandbox** (1): an intersection per survived day, a grid
+8. **M9 endless and sandbox** (1): an intersection per survived day, a grid
    generator from `js/rng.js`, a roundabout node type.
 
 ## Known gaps and decisions
@@ -194,3 +225,33 @@ open work; this file is the plan it points at.
   offset drifts by however long the dark lasted, because `_alignToPlan`
   is the constructor's and a jump (#563). If a corridor level ever gets
   an outage, the return wants to go through `setOffset`'s shift.
+- A platoon member obeys the light like anyone else: a funeral
+  procession's follow-through on a red (a courtesy law in much of the
+  world) is not built, because with it a procession could only be split
+  by something intruding, and the split is meant to be the signal's doing
+  and so the player's (#571). The motorcade's escort is the corridor.
+- IDM settles a platoon below its archetype's `vmax`: at 8 m/s and a 2 s
+  spacing the procession's followers run 6.6 to 7.2 m/s, and the eighth
+  hearse reaches the line 34 s after the first rather than the 28 the
+  spacing alone would give. That is why the suite's held procession is
+  held twice and Main Street's hint says the green is a long one.
+- The lane closure's spawner still sends cars into the closed lane, on
+  purpose: the cones are 54 m from the box and the map edge 110 m out, so
+  the merge is the event. A first draft kept spawns out of the closed lane
+  and the closure did nothing visible: on School Run seed 3 no car was in
+  the lane when the cones went up (#573).
+- The merge has no lane change anywhere else: a car changes lanes only
+  out of a closed lane, at the taper, by a path swap. A right-turner
+  merging into a lane with no right becomes a through.
+- A car that stands on a zebra is walked past, and never strikes anyone
+  under 1 m/s (#575). Two rules tried and dropped on the way: holding a
+  through at the box edge for walkers on its exit zebra (its body sat on
+  the entry zebra and two throughs on opposite legs held each other's
+  walkers; Crossing's average wait rose 6 s), and nothing else. The rules
+  that stayed leave Crossing's calibration exactly where #558 recorded it.
+- `boxStall` is 45 s on Main Street: a permissive left waiting mid-box for
+  a 30 s procession is not a gridlock (#576). Every other level keeps 30.
+- Main Street's second star is loose: the 22 s rule alone waits 10 to 15
+  s and the hand under each platoon 10 to 26 s, so holding the green
+  costs the wait target on 2 of 6 seeds. The split is a points and
+  satisfaction cost, not a star, by #570's rule for the ambulance.

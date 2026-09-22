@@ -16,6 +16,7 @@ const { meters, score, failedEarly, starString } = await load('scoring.js');
 const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { repair, fresh, recordResult, totalStars, SAVE_KEY } = await load('save.js');
 const { standardPhases } = await load('signals.js');
+const { holdPlatoon } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
 
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
@@ -32,7 +33,7 @@ const withAuto = (l, seconds = 22) => ({ ...l, controller: { ...l.controller, ru
 group('the level pack');
 
 {
-  ok(LEVELS.length === 7 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,free-play', 'seven levels: First Light, Stem, Four Ways, Crossing, Two Blocks, Rush Hour, Free Play', LEVELS.map(l => l.id).join(', '));
+  ok(LEVELS.length === 9 && LEVELS.map(l => l.id).join() === 'first-light,stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street,free-play', 'nine levels: First Light, Stem, Four Ways, Crossing, Two Blocks, Rush Hour, School Run, Main Street, Free Play', LEVELS.map(l => l.id).join(', '));
   const l1 = levelById('first-light');
   ok(l1.duration === 180 && l1.target > 0 && l1.waitTarget > 0 && l1.mode === 'soft', 'level 1 is 3 minutes, soft, with a target and a wait target', `${l1.target} cars, ${l1.waitTarget} s`);
   ok(Object.keys(l1.mix).every(k => ['standard', 'granny'].includes(k)), 'and only standard and granny drive it', Object.keys(l1.mix).join(', '));
@@ -61,6 +62,12 @@ group('the level pack');
   ok(l6.events.map(e => e.kind).join() === 'surge,outage,ambulance' && l6.events[0].at === 60 && l6.events[0].for === 100 && l6.events[1].at === 110 && l6.events[1].for === 30 && l6.events[2].at === 185 && l6.events[2].within === 40,
     'Rush Hour scripts the surge at 60 s for 100, the outage at 110 s for 30, and the ambulance at 185 s with 40 s to get through', l6.events.map(e => `${e.kind}@${e.at}`).join(' '));
   ok(l6.unlocks.includes('priority') && l6.unlocks.includes('flash') && l6.network.lanesPerDir === 1 && Object.keys(l6.mix).sort().join() === 'aggressive,granny,rideshare,standard', 'one lane each way, the corridor button unlocked, and standard, granny, aggressive and rideshare driving it', l6.unlocks.join());
+  const l7 = levelById('school-run');
+  ok(l7.network.lanesPerDir === 2 && l7.controller.peds === true && !l7.controller.lefts && l7.events.map(e => e.kind).join() === 'school,closure', 'School Run is two lanes each way with walks, two permissive phases, a school zone then a closure', l7.events.map(e => `${e.kind}@${e.at}`).join(' '));
+  ok(l7.events[0].at === 40 && l7.events[0].for === 90 && l7.events[0].scale === 0.5 && l7.events[0].peds === 4 && l7.events[1].at === 150 && l7.events[1].for === 90 && l7.events[1].leg === 'W' && l7.events[1].lane === 0, 'the zone at 40 s for 90 at half speed and four times the calls, the W curb lane closed at 150 s for 90', l7.events.map(e => JSON.stringify(e)).join(' '));
+  const l8 = levelById('main-street');
+  ok(l8.network.lanesPerDir === 1 && l8.events.map(e => e.kind).join() === 'motorcade,procession' && l8.events[0].at === 50 && l8.events[0].leg === 'W' && l8.events[0].size === 5 && l8.events[1].at === 160 && l8.events[1].leg === 'N' && l8.events[1].size === 8, 'Main Street is one lane each way with a motorcade of 5 from W at 50 s and a procession of 8 from N at 160 s', l8.events.map(e => `${e.kind}@${e.at}`).join(' '));
+  ok(l8.unlocks.includes('priority') && l8.controller.rules.length === 1 && l8.controller.rules[0].seconds === 22, 'it unlocks the corridor and cycles on a 22 s rule the player will have to hold', l8.unlocks.join());
   let bad = null;
   for (const l of LEVELS) { try { new World(l, 1); } catch (e) { bad = `${l.id}: ${e.message}`; } }
   ok(!bad, 'every level builds a world', bad || '');
@@ -258,6 +265,37 @@ group('Rush Hour: the events and what the corridor costs');
   ok(rl.points === Math.max(0, Math.round(rl.cleared * 10 + (rl.survived ? 200 : 0) + rl.stars * 150 + rl.bonus * 2 - rl.collisions * 100 - rl.honks * 5 - rl.pedLate * 5 - 50)), 'a late ambulance is 50 points', `${ptsLate} vs ${pts} with it on time`);
 }
 
+group('Main Street: the platoons and what a hand on the green buys');
+
+{
+  // the calibration is in HISTORY.md with the level, from
+  // tools/calibrate.mjs with and without --hold: the hold is the hand a
+  // player has, the platoon's phase asked for as its lead comes within
+  // 60 m of the line and the green pressed again every 10 s until the last
+  // member is through the box (the same routine the tool runs)
+  const l8 = levelById('main-street');
+  const run = (seed, hold) => {
+    const w = new World(l8, seed);
+    for (let i = 0; i < l8.duration * 60 && !w.stats.gridlock; i++) { w.step(); if (hold) holdPlatoon(w); }
+    return { w, r: score(w) };
+  };
+  const alone = run(2, false), held = run(2, true);
+  ok(alone.w.stats.platoons === 2 && alone.r.splits >= 1, 'seed 2 on the rule alone splits a platoon', `${alone.r.splits} split, ${alone.r.cleared} cleared`);
+  ok(held.w.stats.platoons === 2 && held.r.splits === 0 && held.r.survived && held.r.cleared >= l8.target, 'the same seed with the green held under each platoon splits neither and clears the target', `${starString(held.r.stars)} ${held.r.cleared}/${held.r.avgWait.toFixed(0)}s/${held.r.collisions}x`);
+  // the penalty: a split is five honks' worth and 50 points, the late
+  // ambulance's price (#570)
+  const quiet = new World(withAuto(levelById('first-light')), 3).run(60);
+  const s0 = meters(quiet).satisfaction;
+  quiet.stats.honks += 5;
+  const s5 = meters(quiet).satisfaction;
+  quiet.stats.honks -= 5; quiet.stats.platoonSplits = 1;
+  const sSplit = meters(quiet).satisfaction;
+  ok(sSplit < s0 - 0.05 && Math.abs(sSplit - s5) < 1e-9, 'a split costs satisfaction, five honks\' worth exactly', `${s0.toFixed(3)} plain, ${s5.toFixed(3)} with five honks, ${sSplit.toFixed(3)} with one split`);
+  const ra = alone.r;
+  ok(ra.splits >= 1 && ra.points === Math.max(0, Math.round(ra.cleared * 10 + (ra.survived ? 200 : 0) + ra.stars * 150 + ra.bonus * 2 - ra.collisions * 100 - ra.honks * 5 - ra.pedLate * 5 - ra.ambulanceLate * 50 - ra.splits * 50)), 'a split is 50 points', `${ra.splits} split: ${ra.points} vs ${held.r.points} held`);
+  ok(ra.platoons === 2 && held.r.platoons === 2, 'and the card can say how many platoons there were');
+}
+
 group('satisfaction never fails a level');
 
 {
@@ -296,7 +334,7 @@ group('the save');
   ok(r.unlocks.join() === 'phases,sensors' && r.settings.sound === false && r.lastLevel === 'first-light', 'keeps string unlocks, settings and the last level', r.unlocks.join());
   const seven = fresh();
   for (const l of LEVELS) recordResult(seven, l.id, { stars: 2, points: 100 });
-  ok(Object.keys(repair(seven).levels).length === 7 && repair(seven).levels['rush-hour'].stars === 2, 'a record for every level through M7 comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
+  ok(Object.keys(repair(seven).levels).length === 9 && repair(seven).levels['main-street'].stars === 2, 'a record for every level through M7 comes through repair, no new field needed', Object.keys(repair(seven).levels).join());
   ok(JSON.stringify(repair(null)) === JSON.stringify(fresh()), 'repair of nothing is a fresh save');
   ok(JSON.stringify(repair(repair(r))) === JSON.stringify(repair(r)), 'repair is idempotent');
   const st = fresh();

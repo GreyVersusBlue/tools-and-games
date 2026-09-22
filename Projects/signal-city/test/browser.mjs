@@ -11,7 +11,8 @@
 // boxes and drives the one the panel selects, its offset slider moves the
 // east box through a yellow and not a jump while the platoon diagram draws,
 // Rush Hour's surge, outage and ambulance clock reach the event line and
-// the box (M7), the sprite gallery draws eight rows. Screenshots land in test/shots/ (ignored by git) as evidence
+// the box (M7), School Run's zone and cones and Main Street's platoons
+// reach the event line and the board, the sprite gallery draws ten rows. Screenshots land in test/shots/ (ignored by git) as evidence
 // for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
@@ -66,7 +67,7 @@ try {
       stars: document.getElementById('starTotal').textContent,
     }));
     ok(sel.shown, 'the level select is up');
-    ok(sel.cards.length === 7 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,Free Play', 'with seven cards, First Light first and Free Play last', sel.cards.join(', '));
+    ok(sel.cards.length === 9 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Free Play', 'with nine cards, First Light first and Free Play last', sel.cards.join(', '));
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
     await shot(page, 'select');
     ok(errors.length === 0, 'no page errors so far', errors.join(' | '));
@@ -460,6 +461,81 @@ try {
     ok(errors.length === 0, 'no page errors on Rush Hour', errors.join(' | '));
   });
 
+  await section('School Run: the zone, the beacons and the cones (M7)', async () => {
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="school-run"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'school-run', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 41);
+    await new Promise(r => setTimeout(r, 300));
+    // a pixel sample in a window around one beacon: the diamond is #ffd21e
+    const sample = (label, wx, wy, half) => page.evaluate(([wx, wy, half]) => {
+      const r = window.__signalCity.game.renderer, c = document.getElementById('board');
+      const p = r.toScreen(wx, wy);
+      const d = c.getContext('2d').getImageData(Math.round((p.x - half) * r.dpr), Math.round((p.y - half) * r.dpr), Math.round(2 * half * r.dpr), Math.round(2 * half * r.dpr)).data;
+      const seen = {};
+      for (let i = 0; i < d.length; i += 4) { const k = `${d[i] >> 4},${d[i + 1] >> 4},${d[i + 2] >> 4}`; seen[k] = (seen[k] || 0) + 1; }
+      return seen;
+    }, [wx, wy, half]);
+    const s1 = await page.evaluate(() => {
+      const w = window.__signalCity.world, net = w.network;
+      return { line: document.getElementById('eventLine').textContent, scale: w.speedScale, ped: w.pedScale(), zone: !!w.activeEvent('school'), beacon: [net.stopDist + 14, -(net.halfRoad + 2.0)] };
+    });
+    ok(s1.zone && s1.scale === 0.5 && s1.ped === 4 && /School zone for \d+ s more: every car at 50% speed, and children crossing/.test(s1.line), 'at 41 s the zone is on, the world reads half speed and four times the calls, and the event line says so', s1.line);
+    // the E leg's beacon stands at (stopDist + 14, -(halfRoad + 2)): yellow #ffd21e is 15,13,1 at 4 bits
+    const px = await sample('beacon', s1.beacon[0], s1.beacon[1], 4);
+    ok((px['15,13,1'] || 0) > 4, 'the E beacon\'s yellow diamond is on the board', JSON.stringify(px).slice(0, 120));
+    await shot(page, 'school-run-zone');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 110);
+    await new Promise(r => setTimeout(r, 300));
+    const s2 = await page.evaluate(() => {
+      const w = window.__signalCity.world, net = w.network, e = w.activeEvent('closure');
+      // the first cone of the taper: at d0 from the centre on W, at the curb side of lane 0
+      const d = [-1, 0], rr = [0, 1];
+      const inner = (net.lanesPerDir - 0 - 0.5) * 3.5;
+      return { line: document.getElementById('eventLine').textContent, closed: net.isClosed('W', 0), zone: !!w.activeEvent('school'), scale: w.speedScale, cone: e ? [d[0] * e.d0 + rr[0] * (inner + 1.75), d[1] * e.d0 + rr[1] * (inner + 1.75)] : null, merges: w.stats.merges };
+    });
+    ok(!s2.zone && s2.scale === 1 && s2.closed && /Lane closed on W for \d+ s more/.test(s2.line), 'at 151 s the zone is over and the W curb lane is closed, and the line says so', s2.line);
+    const cone = await sample('cone', s2.cone[0], s2.cone[1], 3);
+    // a cone is orange (#ff7a1a) with a white ring, so at 2 px across most of its pixels are the blend
+    const orange = Object.entries(cone).filter(([k]) => { const [r, g, b] = k.split(',').map(Number); return r === 15 && g >= 7 && g <= 11 && b <= 7; }).reduce((n, [, v]) => n + v, 0);
+    ok(orange > 2, 'the first cone of the taper is orange on the board', `${orange} orange pixels of ${JSON.stringify(cone).slice(0, 100)}`);
+    await shot(page, 'school-run-cones');
+    ok(errors.length === 0, 'no page errors on School Run', errors.join(' | '));
+  });
+
+  await section('Main Street: the motorcade, the corridor and the held green (M7)', async () => {
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="main-street"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'main-street', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 52);
+    await new Promise(r => setTimeout(r, 300));
+    const m1 = await page.evaluate(() => { const w = window.__signalCity.world, p = w.platoon; return { kind: p && p.kind, n: p && p.cars.length, line: document.getElementById('eventLine').textContent, btn: document.getElementById('priorityBtn').classList.contains('show') }; });
+    ok(m1.kind === 'motorcade' && m1.n >= 2 && m1.btn && /Motorcade from W: 5 cars, \d still to arrive\. Hold its green until the last is through; E calls its corridor\./.test(m1.line), 'at 52 s the motorcade is arriving, the corridor button shows, and the line says what to do', m1.line);
+    await page.keyboard.press('e');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 1);
+    await new Promise(r => setTimeout(r, 300));
+    const m2 = await page.evaluate(() => { const w = window.__signalCity.world, p = w.platoon; return { priority: p && p.priority, all: p && p.cars.every(c => c.priority), movements: w.controller.preemption ? w.controller.preemption.movements.join() : '', stageText: document.getElementById('stage').textContent, line: document.getElementById('eventLine').textContent }; });
+    ok(m2.priority && m2.all && m2.movements === 'W-L,W-T,W-R' && /PRIORITY/.test(m2.stageText) && /its corridor is called/.test(m2.line), 'E calls the corridor for the whole platoon and the line says it is called', `${m2.movements} | ${m2.line}`);
+    await shot(page, 'main-street-motorcade');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 40);
+    const m3 = await page.evaluate(() => { const w = window.__signalCity.world; return { platoon: !!w.platoon, splits: w.stats.platoonSplits, cleared: w.stats.cleared }; });
+    ok(!m3.platoon && m3.splits === 0, 'forty seconds on it is through, unsplit', `${m3.cleared} cleared`);
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 70);
+    await new Promise(r => setTimeout(r, 300));
+    const m4 = await page.evaluate(() => { const w = window.__signalCity.world, p = w.platoon; return { kind: p && p.kind, line: document.getElementById('eventLine').textContent, btn: document.getElementById('priorityBtn').classList.contains('show'), phase: w.controller.phase, stage: w.controller.stage }; });
+    ok(m4.kind === 'procession' && !m4.btn && /Funeral procession from N: 8 cars/.test(m4.line) && /it gets no escort/.test(m4.line), 'at 163 s the procession is arriving with no corridor button and the line says it gets no escort', m4.line);
+    // press the N-S phase: a request if E-W is up, a hold if N-S is already green
+    const before = await page.evaluate(() => { const c = window.__signalCity.world.controller; return { phase: c.phase, stage: c.stage, heldT: c.heldT, next: c.next }; });
+    await page.keyboard.press('1');
+    const after = await page.evaluate(() => { const c = window.__signalCity.world.controller; return { phase: c.phase, stage: c.stage, heldT: c.heldT, next: c.next, log: c.log.slice(-1)[0].kind }; });
+    const wasGreen = before.phase === 0 && before.stage === 'green' && before.next === null;
+    ok(wasGreen ? (after.heldT > 0 && after.log === 'hold') : (after.next === 0 || after.phase === 0), wasGreen ? 'pressing 1 on the N-S green holds it: the rule counts from now' : 'pressing 1 asks for N-S', JSON.stringify(after));
+    await shot(page, 'main-street-procession');
+    ok(errors.length === 0, 'no page errors on Main Street', errors.join(' | '));
+  });
+
   await section('the sprite gallery', async () => {
     await page.goto(`${BASE}/Projects/signal-city/sprites.html`, { waitUntil: 'load', timeout: 45000 });
     await new Promise(r => setTimeout(r, 800));
@@ -468,7 +544,7 @@ try {
       text: document.body.textContent,
       button: !!document.querySelector('button'),
     }));
-    ok(g.canvases >= 8, 'the gallery drew at least eight canvases', String(g.canvases));
+    ok(g.canvases >= 10, 'the gallery drew at least ten canvases', String(g.canvases));
     ok(/STUDENT|student/i.test(g.text) && /trucker/i.test(g.text), 'and names the archetypes');
     ok(g.button, 'with a download button');
     await shot(page, 'sprites');

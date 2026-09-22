@@ -470,7 +470,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 6, M7's green wave and its first three events shipped (PRs #338, #340, #342, #344, #346); next the rest of M7, four events | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/signal-city-m7-rest-44899` | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 7 shipped (PRs #338, #340, #342, #344, #346, #PRNUM); next M8, campaign and unlocks | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1137,9 +1137,10 @@ one increment per session, the row rewritten to say what is done.
 **Milestones 0 to 4 shipped in PR #338 (2026-09-21, #534 to #543),
 milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
 (2026-09-21, #554 to #562), M7's green wave in PR #344 (2026-09-21, #563
-to #566) and M7's first three events in PR #346 (2026-09-21, #567 to
-#570)**: items 1 to 10 below are done, 512 checks across six suites, all
-in Site CI. Item 11 is the next increment, the rest of M7. Still open
+to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
+and the rest of M7 in PR #PRNUM (2026-09-22, #571 to #576)**: items 1 to
+11 below are done, 616 checks across six suites, all in Site CI. Item 12
+is the next increment, M8. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
 (a ¼ row for the site, like Blue Hour's ranks 16 and 17), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
@@ -1193,11 +1194,20 @@ sweep as real off-tracking geometry rather than the lane rule it is now.
     it is through the box plus 6 s (60 s cap); the panel's event line and
     the board's banners; "Rush Hour" (the surge at 60 s for 100 at 1.7,
     the outage at 110 s for 30, the ambulance from W at 185 s with 40 s).
-11. M7, the rest: four events. VIP motorcade, lane closure, school-zone
-    flashing yellow window, funeral procession. Each wants a level or a
-    scripted moment on one, a line on the event line, and a check; a new
-    kind goes in `_startEvent` / `_endEvent`.
-12. M8 campaign and unlocks; M9 endless and sandbox with a roundabout node.
+11. **M7, the rest: four events, levels 7 and 8**: the motorcade and the
+    funeral procession as platoons of scripted spawns with archetypes of
+    their own, split when the light holds a member at its line while
+    another is through (five honks' worth and 50 points), the motorcade
+    taking the corridor; the hand on the green (`holdGreen`, the green
+    phase pressed again); the lane closure as a zipper, traffic still
+    arriving in the closed lane and merging out before the taper, the car
+    behind in the open lane yielding, cones drawn; the school zone as a
+    window of `speedScale` and four times the calls under flashing
+    beacons; three zebra rules the new boards forced (#575); "School Run"
+    and "Main Street"; `calibrate.mjs --hold`.
+12. M8 campaign and unlocks (1): six levels, stars spent on sensors,
+    protected turns, roundabout conversion, extra phases. Then M9 endless
+    and sandbox with a roundabout node (1).
 
 ## Tools/board-check
 

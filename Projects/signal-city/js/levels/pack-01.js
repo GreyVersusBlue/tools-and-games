@@ -16,7 +16,9 @@
 //   turns       { T, L, R } weights
 //   spawns      [{ t, leg, archetype, turn }]   scripted arrivals
 //   events      [{ kind, at, for, ... }]        scripted moments (M7):
-//               surge { scale }, outage, ambulance { leg, turn, within }
+//               surge { scale }, outage, ambulance { leg, turn, within },
+//               motorcade / procession { leg, turn, size, spacing },
+//               closure { leg, lane, length }, school { scale, peds }
 //   duration    seconds
 //   target      cars to clear for a star
 //   waitTarget  average wait, seconds, for the second star
@@ -37,7 +39,7 @@
 //                         plan through its own yellows (M7)
 //
 // Milestone 4 shipped level 1 and the free-play board; milestone 5 levels 2
-// and 3; milestone 6 levels 4 and 5; milestone 7 level 6, the events.
+// and 3; milestone 6 levels 4 and 5; milestone 7 levels 6 to 8, the events.
 
 export const LEVELS = [
   {
@@ -172,6 +174,62 @@ export const LEVELS = [
     gridlockWait: 150,
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],
+  },
+  {
+    id: 'school-run',
+    name: 'School Run',
+    blurb: 'Two lanes each way past a school. The zone flashes on and everyone crawls while the children cross; then the roadworks close a lane.',
+    hint: 'While the beacons flash every car runs at half speed, so a green clears half the cars it did: give each phase longer. When the cones go up on W, its curb lane merges into the inner one before the taper; the W queue will need more green than E.',
+    network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 2 },
+    // two permissive phases on two lanes, few lefts (the inner lane is
+    // shared, and a waiting left holds the throughs behind it)
+    controller: { peds: true, timing: { yellow: 3, allRed: 1.5, minGreen: 4 }, rules: [{ when: 'elapsed', seconds: 22, then: 'next' }] },
+    demand: { N: 420, S: 420, E: 360, W: 360 },
+    pedDemand: { N: 30, S: 30, E: 30, W: 30 },
+    pedWait: 45,
+    mix: { standard: 6, granny: 1, tourist: 1, student: 1.5 },
+    turns: { T: 0.76, L: 0.06, R: 0.18 },
+    events: [
+      { kind: 'school', at: 40, for: 90, scale: 0.5, peds: 4 },
+      { kind: 'closure', at: 150, for: 90, leg: 'W', lane: 0, length: 30 },
+    ],
+    duration: 270,
+    // calibrated on six seeds: a 22 s rule alone clears 91 to 103 at 9 to
+    // 13 s; the zone halves every green's worth and the closure halves
+    // W's, and the second star is the hand that gives them more
+    target: 88,
+    waitTarget: 12,
+    gridlockWait: 150,
+    mode: 'soft',
+    unlocks: ['phases', 'auto', 'allred', 'peds'],
+  },
+  {
+    id: 'main-street',
+    name: 'Main Street',
+    blurb: 'A motorcade at speed from the west, then a funeral procession at walking pace from the north. Neither may be split by a light.',
+    hint: 'A platoon is split when one of its cars is held at the line while another is already through: hold its green. Press the green phase again to restart its rule\'s clock. The motorcade takes a corridor (E, or click it); the procession gets no escort and runs slow, so its green is a long one.',
+    network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1 },
+    controller: { timing: { yellow: 3, allRed: 1.5, minGreen: 4 }, rules: [{ when: 'elapsed', seconds: 22, then: 'next' }] },
+    demand: { N: 260, S: 260, E: 240, W: 240 },
+    mix: { standard: 6, granny: 1, tourist: 1, student: 1, rideshare: 1 },
+    turns: { T: 0.74, L: 0.06, R: 0.2 },
+    events: [
+      { kind: 'motorcade', at: 50, leg: 'W', turn: 'T', size: 5, spacing: 1.2 },
+      { kind: 'procession', at: 160, leg: 'N', turn: 'T', size: 8, spacing: 2 },
+    ],
+    duration: 270,
+    // calibrated on six seeds: the 22 s rule alone clears 65 to 76 at 10
+    // to 15 s and splits 7 of 12 platoons; the green held under each (the
+    // tool's --hold) clears 67 to 80 at 10 to 26 s and splits none
+    target: 60,
+    waitTarget: 20,
+    gridlockWait: 150,
+    // a permissive left waiting mid-box for a procession to pass is not a
+    // gridlock: the stream is 30 s long, and the default 30 s stall locked
+    // 2 of 6 seeds with the green held under it
+    boxStall: 45,
+    mode: 'soft',
+    unlocks: ['phases', 'auto', 'allred', 'priority'],
   },
   {
     id: 'free-play',

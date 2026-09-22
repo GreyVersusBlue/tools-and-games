@@ -197,6 +197,7 @@ class Game {
       `<div class="end-row"><span>Honks</span><b>${r.honks}</b></div>` +
       (this.world.controller.hasPeds ? `<div class="end-row"><span>Walks served · kept waiting</span><b>${r.pedServed} · ${r.pedLate}</b></div>` : '') +
       (r.ambulances ? `<div class="end-row"><span>Ambulances on time · late</span><b>${r.ambulances - r.ambulanceLate} · ${r.ambulanceLate}</b></div>` : '') +
+      (r.platoons ? `<div class="end-row"><span>Platoons kept together · split</span><b>${r.platoons - r.splits} · ${r.splits}</b></div>` : '') +
       `<div class="end-row"><span>Satisfaction bonus</span><b>${r.bonus}</b></div>` +
       `<div class="end-row total"><span>Points</span><b>${r.points}</b></div>` +
       (r.reasons.length ? `<p class="end-why">${r.reasons.join('. ')}.</p>` : '');
@@ -235,10 +236,12 @@ class Game {
 
   // ---- inputs ---------------------------------------------------------------
 
+  // Pressing the phase already green holds it (M7): its elapsed rule counts
+  // from now again, which is how a hand keeps a green under a platoon.
   requestPhase(i) {
     if (this.state !== 'playing' || !this.world) return;
     if (i >= this.ctl.phases.length) return;
-    this.world.requestPhase(i, this.node);
+    if (!this.world.requestPhase(i, this.node)) this.world.holdGreen(this.node);
     this.updateHud(true);
   }
 
@@ -396,13 +399,14 @@ class Game {
     return best;
   }
 
+  // An ambulance or a motorcade car (M7): the corridor
   clickCar(car) {
-    if (car.archetype === 'emergency' && !car.priority) this.world.requestPriority(car);
+    if ((car.archetype === 'emergency' || car.archetype === 'motorcade') && !car.priority) this.world.requestPriority(car);
   }
 
   priorityNearest() {
     if (!this.world) return;
-    const e = this.world.cars.find(c => !c.done && c.archetype === 'emergency' && !c.priority);
+    const e = this.world.cars.find(c => !c.done && (c.archetype === 'emergency' || c.archetype === 'motorcade') && !c.priority);
     if (e) this.world.requestPriority(e);
   }
 
@@ -452,12 +456,20 @@ class Game {
       if (e.kind === 'surge') return `Rush hour: traffic at ${Math.round(e.scale * 100)}% for ${left} s more.`;
       if (e.kind === 'outage') return `Power out: the signals are dark, a four-way stop. Back in ${left} s; nothing you press reaches the box until then.`;
       if (e.kind === 'ambulance') { const c = e.deadline - w.t; return c >= 0 ? `Ambulance from ${e.leg}: ${Math.ceil(c)} s to get it through.` : `Ambulance from ${e.leg} is late by ${Math.floor(-c)} s: give it the corridor.`; }
+      if (e.kind === 'motorcade' || e.kind === 'procession') {
+        const name = e.kind === 'motorcade' ? 'Motorcade' : 'Funeral procession';
+        const left = e.size - e.cars.length, onMap = e.cars.filter(c => !c.done).length;
+        if (e.split) return `${name} from ${e.leg} was split by the light: ${onMap} car${onMap === 1 ? '' : 's'} still to get through.`;
+        return `${name} from ${e.leg}: ${e.size} cars${left ? `, ${left} still to arrive` : ''}. Hold its green until the last is through` + (e.kind === 'motorcade' ? (e.priority ? '; its corridor is called.' : '; E calls its corridor.') : '; it gets no escort.');
+      }
+      if (e.kind === 'closure') return `Lane closed on ${e.leg} for ${left} s more: everything there merges into one lane before the cones.`;
+      if (e.kind === 'school') return `School zone for ${left} s more: every car at ${Math.round(e.scale * 100)}% speed, and children crossing.`;
       return '';
     }).filter(Boolean);
     const ev = $('eventLine');
     ev.textContent = lines.join(' ');
     ev.classList.toggle('hidden', !lines.length);
-    ev.classList.toggle('late', w.active.some(e => e.kind === 'ambulance' && e.late));
+    ev.classList.toggle('late', w.active.some(e => (e.kind === 'ambulance' && e.late) || e.split));
     for (const b of $('calls').children) {
       const leg = b.dataset.leg;
       const head = ctl.pedHead(leg);
@@ -478,7 +490,7 @@ class Game {
     $('signalsBtn').classList.toggle('on', !flashing && ctl.stage !== 'dark');
     for (const id of ['flashRedBtn', 'flashYellowBtn', 'signalsBtn']) $(id).disabled = w.powerOut;
     for (const b of $('phases').children) b.disabled = w.powerOut;
-    const em = w.cars.find(c => !c.done && c.archetype === 'emergency' && !c.priority);
+    const em = w.cars.find(c => !c.done && (c.archetype === 'emergency' || c.archetype === 'motorcade') && !c.priority);
     $('priorityBtn').classList.toggle('show', !!em);
     if (!$('waveBox').classList.contains('hidden')) {
       this.drawWave();

@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World, DT } = await load('sim.js');
-const { Network, rectsOverlap, LANE_WIDTH } = await load('network.js');
+const { Network, rectsOverlap, LANE_WIDTH, CROSSWALK } = await load('network.js');
 const { ARCHETYPES, Car, stopLineVerdict } = await load('cars.js');
 const { makeRng } = await load('rng.js');
 
@@ -732,6 +732,308 @@ group('events (M7): the ambulance under a timer');
   ok(a.activeEvent('ambulance') && a.ambulanceClock() > 38 && !a.activeEvent('surge'), 'the ambulance arrives at 186 s, after the surge, with 40 s on the clock', `clock ${a.ambulanceClock() && a.ambulanceClock().toFixed(1)}`);
   const b = new World(lvl, 3).run(186);
   ok(a.hash() === b.hash(), 'and two runs of the seed agree to the metre', `${a.stats.cleared} cleared, ${a.stats.collisions} collisions`);
+}
+
+group('events (M7): the motorcade, a platoon the light can split');
+
+{
+  // E-W green for good: five motorcade cars from W, 1.2 s apart, obey it
+  // like anyone else and go straight through
+  const MOTO = { demand: {}, duration: 600, controller: { startPhase: 1, timing: { yellow: 3, allRed: 1, minGreen: 4 } }, events: [{ kind: 'motorcade', at: 5, leg: 'W', turn: 'T', size: 5, spacing: 1.2 }] };
+  const w = new World(MOTO, 1);
+  ok(w.platoon === null && w.stats.platoons === 0, 'before its time there is no platoon');
+  w.run(5.1);
+  const e = w.platoon;
+  ok(e && e.kind === 'motorcade' && e.cars.length === 1 && e.size === 5 && e.until === null && w.stats.platoons === 1, 'at 5 s the lead car is on the W leg, four to come, with no end time of its own', e && `${e.cars.length} of ${e.size}`);
+  ok(e.cars[0].archetype === 'motorcade' && e.cars[0].platoon === e && !e.cars[0].committed, 'it is a motorcade car that belongs to the event and does not ignore signals');
+  w.run(6);
+  ok(e.cars.length === 5 && e.cars.every(c => c.path.movement === 'W-T'), 'six seconds on all five have arrived, every one a W-T', e.cars.map(c => f1(c.spawnedAt)).join(' '));
+  const gaps = e.cars.slice(1).map((c, i) => e.cars[i].rear - c.front);
+  ok(gaps.every(g => g > 3 && g < 40), 'in a platoon, 3 to 40 m nose to tail', gaps.map(f1).join(' '));
+  w.run(25);
+  ok(e.ended && !w.platoon && e.cars.every(c => c.done) && !e.split && w.stats.platoonSplits === 0 && w.stats.collisions === 0, 'on a green the whole platoon clears, unsplit, and the event ends with the last car', `${w.stats.cleared} cleared`);
+  ok(w.events.filter(x => x.kind === 'event' && x.event === 'motorcade').map(x => x.on).join() === 'true,false', 'it announced its start and its end');
+  // the same platoon at a red waits as a whole: not a split
+  const red = new World({ ...MOTO, controller: { ...MOTO.controller, startPhase: 0 } }, 1);
+  red.run(35);
+  const r = red.platoon;
+  ok(r && r.cars.length === 5 && r.cars.every(c => !c.done && c.v === 0 && c.front < c.path.stopLine) && !r.split, 'at a red all five queue short of the line and the platoon is whole', r && r.cars.map(c => f1(c.path.stopLine - c.front)).join(' '));
+  red.requestPhase(1);
+  red.run(35);
+  ok(r.ended && !r.split && red.stats.collisions === 0, 'the green releases them together', `${red.stats.cleared} cleared`);
+  // split: the yellow comes as the lead crosses the line, so the tail stops
+  // while the head is through
+  const cut = new World(MOTO, 1);
+  cut.run(5.1);
+  const lead = cut.platoon.cars[0];
+  while (lead.front < lead.path.stopLine) cut.step();
+  cut.requestPhase(0);
+  const p = cut.platoon;
+  let splitAt = null;
+  for (let i = 0; i < 60 * 12 && splitAt === null; i++) { cut.step(); if (p.split) splitAt = cut.t; }
+  ok(splitAt !== null && splitAt < lead.spawnedAt + 15 && cut.stats.platoonSplits === 1, 'a yellow as the lead crosses splits it within seconds', `split at ${splitAt && f1(splitAt)} s`);
+  cut.run(4);
+  const held = p.cars.filter(c => !c.done && c.v < 0.5 && c.front < c.path.stopLine);
+  const throughN = p.cars.filter(c => c.done || c.rear > c.path.boxExit).length;
+  ok(throughN >= 1 && held.length >= 1 && cut.events.some(x => x.kind === 'split' && x.event === 'motorcade'), 'with the head past the box and the tail stopped at the red, and the world said so', `${throughN} through, ${held.length} held`);
+  cut.run(10);
+  ok(cut.stats.platoonSplits === 1 && p.split, 'it counts once, however long the tail waits');
+  cut.requestPhase(1);
+  cut.run(40);
+  ok(p.ended && cut.stats.platoonSplits === 1, 'and the event still ends when the tail is finally through', `${cut.stats.cleared} cleared`);
+  // the corridor: called on the lead while the platoon is still arriving,
+  // it covers every member, the ones still to spawn included
+  const esc = new World({ ...MOTO, controller: { ...MOTO.controller, startPhase: 0 } }, 1);
+  esc.run(6);
+  const first = esc.platoon.cars[0];
+  ok(esc.requestPriority(first) === true && esc.platoon.priority && esc.controller.preemption && esc.controller.preemption.movements.join() === 'W-L,W-T,W-R', 'the corridor is called on the lead car for the whole W leg', esc.controller.preemption && esc.controller.preemption.movements.join());
+  ok(esc.requestPriority(first) === false, 'and cannot be called twice');
+  esc.run(6);
+  ok(esc.platoon.cars.length === 5 && esc.platoon.cars.every(c => c.priority), 'the members that arrived after the call carry the priority too', esc.platoon.cars.map(c => c.priority ? 'p' : '-').join(''));
+  let holdEnd = null;
+  for (let i = 0; i < 60 * 60 && holdEnd === null; i++) { esc.step(); if (!esc.controller.preemption) holdEnd = esc.t; }
+  const lastOut = esc.events.filter(x => x.kind === 'cleared').reduce((m, x) => Math.max(m, x.t), 0);
+  const lastBox = Math.max(...esc.platoon.cars.map(c => c.rear));
+  ok(holdEnd !== null && esc.stats.cleared === 4 && lastBox > esc.platoon.cars[4].path.boxExit, 'the hold ends with the last member past the box and still on the map (#569: six seconds past the box, not the map edge)', `hold ended ${holdEnd && f1(holdEnd)} s, 4 cleared by ${f1(lastOut)} s, the fifth at ${f1(lastBox)} m`);
+  esc.run(12);
+  ok(esc.stats.platoonSplits === 0 && esc.stats.collisions === 0 && esc.stats.cleared === 5 && !esc.platoon, 'under the corridor all five clear unsplit', `splits ${esc.stats.platoonSplits}, collisions ${esc.stats.collisions}, cleared ${esc.stats.cleared}`);
+}
+
+group('events (M7): the funeral procession');
+
+{
+  // N-S green for good: eight hearses from N at walking pace
+  const PROC = { demand: {}, duration: 600, controller: { startPhase: 0, timing: { yellow: 3, allRed: 1, minGreen: 4 } }, events: [{ kind: 'procession', at: 2, leg: 'N', turn: 'T', size: 8, spacing: 2 }] };
+  const w = new World(PROC, 1);
+  w.run(2.1);
+  const e = w.platoon;
+  ok(e && e.kind === 'procession' && e.cars[0].archetype === 'procession' && e.size === 8, 'at 2 s the hearse leads a procession of eight');
+  let vmax = 0, doneAt = null;
+  const lead = e.cars[0];
+  for (let i = 0; i < 60 * 60 && doneAt === null; i++) { w.step(); if (!lead.done) vmax = Math.max(vmax, lead.v); else doneAt = w.t; }
+  ok(vmax < 8.5 && doneAt > 26 && doneAt < 34, 'the hearse never tops 8.5 m/s and takes 26 to 34 s to clear 220 m', `${f1(vmax)} m/s, cleared at ${f1(doneAt)} s`);
+  ok(w.requestPriority(lead.done ? e.cars[e.cars.length - 1] : lead) === false && !w.controller.preemption, 'a procession gets no corridor');
+  w.run(40);
+  ok(e.ended && !e.split && w.stats.collisions === 0, 'and on a green it clears whole', `${w.stats.cleared} cleared`);
+  // under a 22 s rule the tail is cut off; a hand on the green saves it
+  const RULE = { ...PROC, controller: { ...PROC.controller, rules: [{ when: 'elapsed', seconds: 22, then: 'next' }] } };
+  const cut = new World(RULE, 1).run(60);
+  ok(cut.stats.platoonSplits === 1 && cut.platoon && cut.platoon.split, 'with an elapsed rule at 22 s the procession is split: the tail meets the red', `${cut.stats.platoonSplits} split, ${cut.stats.cleared} cleared`);
+  const held = new World(RULE, 1);
+  held.run(12);
+  ok(held.holdGreen() === true && held.controller.heldT > 11.9, 'holdGreen at 12 s takes, and the rule counts from there', `heldT ${f1(held.controller.heldT)}`);
+  held.run(10);
+  ok(held.holdGreen() === true && held.controller.stage === 'green', 'and again at 22 s: a procession of eight at walking pace is a long green', `heldT ${f1(held.controller.heldT)}`);
+  held.run(38);
+  ok(held.stats.platoonSplits === 0 && held.platoon === null && held.stats.cleared === 8, 'the same seed with the green held twice gets all eight through whole', `${held.stats.cleared} cleared, ${held.stats.platoonSplits} split`);
+  ok(held.hash() !== cut.hash(), 'the two runs are different runs');
+  // the hold is refused while the power is out
+  const dark = new World({ ...RULE, events: [{ kind: 'outage', at: 1, for: 20 }] }, 1).run(5);
+  ok(dark.holdGreen() === false, 'and refused while the power is out');
+}
+
+group('events (M7): the lane closure');
+
+{
+  // two lanes each way, E-W green for good, W's curb lane closed at 10 s
+  // for 60 s, coned 30 m back from the stop line
+  const CLOSE = { network: { lanesPerDir: 2 }, demand: {}, duration: 600, controller: { startPhase: 1, timing: { yellow: 3, allRed: 1, minGreen: 4 } }, events: [{ kind: 'closure', at: 10, for: 60, leg: 'W', lane: 0, length: 30 }] };
+  const w = new World(CLOSE, 1);
+  const net = w.network;
+  ok(net.lanesForTurn('T', 'W').join() === '0,1' && !net.closed.size, 'before the cones both W lanes take throughs');
+  const early = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });   // past the taper by 10 s
+  w.run(8);
+  const late = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });    // 20 m in at 10 s: in the merge window
+  w.run(2.05);
+  const e = w.activeEvent('closure');
+  ok(e && net.isClosed('W', 0) && net.lanesForTurn('T', 'W').join() === '1' && net.lanesForTurn('R', 'W').join() === '' && net.lanesForTurn('T').join() === '0,1', 'at 10 s W0 is closed: a merging through may keep its turn in lane 1, a right cannot, and the geometry itself is unchanged', `T from ${net.lanesForTurn('T', 'W').join()}, R from ${net.lanesForTurn('R', 'W').join()}`);
+  ok(Math.abs(e.taperS - (net.legLength - (net.stopDist + 30 + 12))) < 1e-9, 'the taper stands 12 m before the 30 m of cones', `${f1(e.taperS)} m along the lane`);
+  ok(early.path.lane === 0 && early.front > e.taperS, 'a car already past the taper stays in its lane', `front ${f1(early.front)} vs taper ${f1(e.taperS)}`);
+  const lat0 = Math.hypot(late.latX, late.latY);
+  ok(late.path.lane === 1 && late.path.turn === 'T' && Math.abs(lat0 - LANE_WIDTH) < 0.6 && w.stats.merges === 1, 'the one in the window has merged into lane 1 with its body still a lane over', `lane ${late.path.lane}, ${lat0.toFixed(2)} m over`);
+  ok(w.events.some(x => x.kind === 'merge' && x.car === late.id), 'and the world said so');
+  w.run(1.5);
+  ok(late.latX === 0 && late.latY === 0, 'a second and a half later the body is on its new line');
+  const rt = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'R' });
+  ok(rt && rt.path.lane === 0, 'a right still arrives in the curb lane: the cones are downstream of the map edge', rt && rt.path.movement);
+  let mergedAt = null;
+  for (let i = 0; i < 60 * 20 && mergedAt === null; i++) { w.step(); if (rt.path.lane === 1) mergedAt = w.t; }
+  ok(mergedAt !== null && rt.path.turn === 'T' && rt.front < e.taperS + 0.5, 'and merges out before the taper as a through, since lane 1 has no right', `at ${mergedAt && f1(mergedAt)} s, front ${f1(rt.front)} vs taper ${f1(e.taperS)}`);
+  w.run(70.5 - w.t);
+  ok(!w.activeEvent('closure') && !net.closed.size && net.lanesForTurn('T', 'W').join() === '0,1' && w.stats.collisions === 0, 'at 70 s the lane is open again and nobody touched', `${w.stats.cleared} cleared, ${w.stats.collisions} collisions, closed ${[...net.closed].join()}`);
+  // no room: a queue in the open lane back to the map edge holds the merge
+  // at the taper; on the green the zipper lets it in
+  const RED = { ...CLOSE, controller: { ...CLOSE.controller, startPhase: 0 }, events: [{ kind: 'closure', at: 1, for: 200, leg: 'W', lane: 0, length: 30 }] };
+  const q = new World(RED, 2);
+  for (let i = 0; i < 16; i++) { q.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 1 }); q.run(2.5); }
+  q.run(15);
+  const inLane = q.cars.filter(c => !c.done && c.path.lane === 1);
+  const tail = inLane.slice().sort((a, b) => a.s - b.s)[0];
+  const ev = q.activeEvent('closure');
+  ok(inLane.length >= 12 && tail.v === 0 && tail.rear < 12, 'a dozen cars queued at the red in lane 1 reach back to the map edge', `${inLane.length} queued, tail rear ${f1(tail.rear)} vs taper ${f1(ev.taperS)}`);
+  const b = q.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });
+  q.run(20);
+  ok(b.path.lane === 0 && b.v === 0 && b.mergeS > 0 && b.mergeLane === 1 && b.front < ev.taperS && b.front > ev.taperS - 6 && b.wait > 5, 'a car in the closed lane holds short of the taper with no gap to take, and waits', `front ${f1(b.front)}, taper ${f1(ev.taperS)}, waited ${f1(b.wait)} s`);
+  const beside = inLane.filter(c => c.s < b.s).sort((a, b2) => b2.s - a.s)[0];
+  const lead0 = q.leaderOf(beside);
+  ok(beside && beside.front > b.rear && lead0 && lead0.car !== b, 'the queued car level with it is not held by it: a car beside is nobody\'s leader', `car ${beside && beside.id} front ${beside && f1(beside.front)} vs its rear ${f1(b.rear)}`);
+  q.requestPhase(1);
+  let bMergedAt = null, passedAt = null, yielder = null;
+  for (let i = 0; i < 60 * 60 && (bMergedAt === null || passedAt === null); i++) {
+    q.step();
+    if (bMergedAt === null && yielder === null) { for (const c of inLane) { const l = q.leaderOf(c); if (l && l.car === b) { yielder = c; break; } } }
+    if (bMergedAt === null && b.path.lane === 1) bMergedAt = q.t;
+    if (passedAt === null && (tail.done || tail.front > ev.taperS)) passedAt = q.t;
+  }
+  ok(yielder !== null && yielder.s < b.s, 'as the queue moves, the car coming up behind it in lane 1 takes it as its leader and slows: the zipper', `car ${yielder && yielder.id}`);
+  ok(bMergedAt !== null && b.mergeS === 0 && bMergedAt < passedAt, 'the green moves the queue and it is let in before the queue\'s tail has passed the taper', `merged at ${bMergedAt && f1(bMergedAt)} s, the tail passed at ${passedAt && f1(passedAt)} s`);
+  q.run(45);
+  ok(b.done && q.stats.collisions === 0, 'and clears without touching anyone', `${q.stats.cleared} cleared, ${q.stats.collisions} collisions`);
+  let threw = null;
+  try { new World({ ...CLOSE, events: [{ kind: 'closure', at: 1, leg: 'Q', lane: 0 }] }, 1).run(2); } catch (err) { threw = err.message; }
+  ok(threw && /closure needs a leg/.test(threw), 'a closure on a leg the box does not have is refused', threw);
+  threw = null;
+  try { new World({ ...CLOSE, events: [{ kind: 'closure', at: 1, leg: 'W', lane: 3 }] }, 1).run(2); } catch (err) { threw = err.message; }
+  ok(threw && /no lane 3/.test(threw), 'and so is a lane the road does not have', threw);
+}
+
+group('events (M7): the school zone');
+
+{
+  const SCHOOL = { demand: {}, duration: 600, pedDemand: { N: 120, E: 120, S: 120, W: 120 }, controller: { peds: true, startPhase: 0, timing: { yellow: 3, allRed: 1, minGreen: 4 } }, events: [{ kind: 'school', at: 10, for: 30, scale: 0.5, peds: 4 }] };
+  const w = new World(SCHOOL, 4), plain = new World({ ...SCHOOL, events: [] }, 4);
+  ok(w.speedScale === 1 && w.pedScale() === 1, 'before the zone the speed scale and the call scale read 1');
+  w.run(10.1); plain.run(10.1);
+  ok(w.speedScale === 0.5 && w.pedScale() === 4 && w.activeEvent('school'), 'at 10 s they read 0.5 and 4');
+  const c = w.spawnCar({ leg: 'N', archetype: 'standard', turn: 'T' });
+  const pc = plain.spawnCar({ leg: 'N', archetype: 'standard', turn: 'T' });
+  let vmax = 0, pmax = 0;
+  const calls0 = w.stats.pedCalls, pcalls0 = plain.stats.pedCalls;
+  for (let i = 0; i < 60 * 29; i++) { w.step(); plain.step(); if (!c.done && i > 60 * 3) vmax = Math.max(vmax, c.v); if (!pc.done) pmax = Math.max(pmax, pc.v); }
+  ok(vmax > 6 && vmax < 7.2, 'a standard car in the zone settles near 7 m/s, half its 14 (it arrives at 9 and brakes to it)', `${f1(vmax)} m/s`);
+  ok(pmax > 13, 'where the same car on the plain run reaches 14', `${f1(pmax)} m/s`);
+  const calls = w.stats.pedCalls - calls0, pcalls = plain.stats.pedCalls - pcalls0;
+  ok(calls >= 8 && calls > 2 * pcalls, 'and four times the calls: at least 8 in the zone\'s 29 s (480 an hour a leg is 15), over twice the plain run\'s', `${calls} vs ${pcalls}`);
+  w.run(1);
+  ok(!w.activeEvent('school') && w.speedScale === 1 && w.pedScale() === 1, 'at 40 s the zone is over and both scales read 1 again');
+  ok(w.events.filter(x => x.kind === 'event' && x.event === 'school').map(x => x.on).join() === 'true,false', 'it announced its start and its end');
+}
+
+group('zebras and the box (M7, #575)');
+
+// Walkers planted on a zebra by hand, `n` of them heading `dir`, at the
+// curb they start from: the scenarios below need people on a crossing at
+// the moment a car reaches it, which a call's timing cannot promise.
+const plant = (world, leg, n, dir) => {
+  const net = world.network, cw = net.crosswalk(leg);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const k = world._spawnWalker(net, leg);
+    k.dir = dir; k.lat = dir > 0 ? -cw.half - 1 - i * 0.4 : cw.half + 1 + i * 0.4; k.speed = 1.2;
+    const [x, y] = cw.point(k.lat, k.jitter); k.x = x; k.y = y;
+    out.push(k);
+  }
+  return out;
+};
+
+{
+  // E-W green for good, walks on the crossings parallel to it. An E-L exits
+  // by N: people planted on the N zebra as it reaches the box, crossing its
+  // exit lane last, hold it at its own yield point in its lane, never
+  // mid-turn across the opposing through's lane.
+  const PEDS = { demand: {}, duration: 600, controller: { peds: true, startPhase: 1, timing: { yellow: 3, allRed: 1, minGreen: 1 } } };
+  const w = new World(PEDS, 3);
+  const left = w.spawnCar({ leg: 'E', archetype: 'granny', turn: 'L' });
+  const out = left.path.exit;
+  while (left.front < left.path.stopLine - 12) w.step();
+  plant(w, out, 3, -1);
+  ok(out === 'S' && w.walkersOn(0, out) === 3 && w.walkerBlocks(left.path), 'an E-L exits by S, and three people on the S zebra still have its exit lane to cross', `exit ${out}`);
+  let deepest = 0, held = 0;
+  for (let i = 0; i < 60 * 40 && !left.done; i++) {
+    w.step();
+    if (w.walkersOn(0, out) > 0 && left.v < 0.5 && left.front > left.path.boxEnter) { deepest = Math.max(deepest, left.front - left.path.boxEnter); held++; }
+  }
+  ok(held > 60 * 2 && deepest >= 0 && deepest < 4.7, 'the left waits for them just inside the box (its front rests s0 short of the 4 m point), in its own lane, not mid-turn', `held ${f1(held / 60)} s, deepest ${f1(deepest)} m in`);
+  ok(left.done && w.stats.struck === 0 && w.stats.collisions === 0, 'then turns once they are across', `${w.stats.walkers} walkers, ${w.stats.struck} struck`);
+  // the other zebra: a permissive left that can still stop short of the
+  // zebra it enters by, with people on it, does. With opposing throughs to
+  // yield to (a left with nothing to yield to drives on, and the walkers
+  // yield to it, M6): planted as she reaches it, she waits before it;
+  // planted once she is on it, she waits at her 4 m as before and the
+  // walkers pass her standing body.
+  const before = new World(PEDS, 2);
+  const g1 = before.spawnCar({ leg: 'E', archetype: 'granny', turn: 'L' });
+  const zebra = g1.path.boxEnter - CROSSWALK;
+  while (g1.front < zebra - 85) before.step();
+  for (let i = 0; i < 5; i++) { before.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T' }); before.run(1.6); }   // opposing throughs crossing the box as she arrives
+  while (g1.front < zebra - 30) before.step();
+  plant(before, 'E', 3, -1);
+  let parked1 = 0, waited1 = 0;
+  for (let i = 0; i < 60 * 50 && !g1.done; i++) {
+    before.step();
+    if (before.walkersOn(0, 'E') && g1.v < 0.3 && g1.front > zebra && g1.rear < g1.path.boxEnter) parked1++;
+    if (before.walkersOn(0, 'E') && g1.v < 0.3 && g1.front < zebra) waited1++;
+  }
+  ok(waited1 > 60 && parked1 === 0, 'people on the E zebra as she reaches it, and throughs to yield to: she waits short of it, and never stands on it', `waited ${f1(waited1 / 60)} s before it, parked ${f1(parked1 / 60)} s on it`);
+  const on = new World(PEDS, 2);
+  const g2 = on.spawnCar({ leg: 'E', archetype: 'granny', turn: 'L' });
+  while (g2.front < zebra - 60) on.step();
+  for (let i = 0; i < 5; i++) { on.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T' }); on.run(1.6); }   // opposing throughs, in the box as she pulls past
+  while (g2.front < zebra + 1.0) on.step();
+  const people = plant(on, 'E', 3, 1);
+  on.step();
+  ok(g2.boxVerdict > g2.path.boxEnter && g2.boxVerdict < g2.path.boxEnter + 4.01, 'people on it once she is on it: she yields at her 4 m point as before, her rear still on the zebra', `hold at ${f1(g2.boxVerdict - g2.path.boxEnter)} m in`);
+  for (let i = 0; i < 60 * 60 && !g2.done; i++) on.step();
+  const waits = people.map(k => k.waited);
+  ok(people.every(k => k.done && !k.struck) && Math.max(...waits) < 10, 'the crossing finishes: the walkers pass her standing body rather than wait on it (they wait only for the throughs moving past)', `waited ${waits.map(f1).join(', ')} s`);
+  ok(g1.done && g2.done && before.stats.struck === 0 && on.stats.struck === 0 && before.stats.collisions + on.stats.collisions === 0, 'and both turn without touching anyone', `struck ${before.stats.struck}+${on.stats.struck}, collisions ${before.stats.collisions}+${on.stats.collisions}, done ${g1.done} ${g2.done}`);
+}
+
+{
+  // granny's cautious stop for a green about to end lets go when the green
+  // is extended by a hand on it (holdGreen)
+  const RULE = { demand: {}, duration: 600, controller: { startPhase: 0, timing: { yellow: 3, allRed: 1, minGreen: 1 }, rules: [{ when: 'elapsed', seconds: 14, then: 'next' }] } };
+  let found = null;
+  for (let seed = 1; seed <= 12 && !found; seed++) {
+    const w = new World(RULE, seed);
+    w.run(4);
+    const g = w.spawnCar({ leg: 'N', archetype: 'granny', turn: 'T' });
+    w.run(8.5);
+    if (g.cautiousStop) found = { w, g, seed };
+  }
+  ok(found && found.g.front < found.g.path.stopLine && found.g.a < 0, 'a granny 3 s from the yellow decides to stop early for it, and is braking', found ? `seed ${found.seed}, v ${f1(found.g.v)}, a ${f1(found.g.a)}` : 'no seed of twelve stopped');
+  if (found) {
+    const { w, g } = found;
+    ok(w.holdGreen() === true && w.controller.stage === 'green', 'the green is held at 12.5 s');
+    w.run(5);
+    ok(!g.cautiousStop && g.v > 4 && w.controller.stage === 'green', 'and she goes: the green has 14 s in it again', `v ${f1(g.v)}, cautious ${g.cautiousStop}`);
+  }
+}
+
+{
+  // the two shipped levels: their moments fire when their text says, and
+  // each run is still a function of the seed
+  const { levelById } = await load('levels/pack-01.js');
+  const sr = levelById('school-run');
+  const a = new World(sr, 3);
+  a.run(41);
+  ok(a.activeEvent('school') && a.speedScale === 0.5 && !a.activeEvent('closure'), 'School Run: the zone is on at 41 s at half speed');
+  a.run(90);
+  ok(!a.activeEvent('school') && a.speedScale === 1 && !a.activeEvent('closure'), 'at 131 s it is over and the cones are not up yet');
+  a.run(20);
+  ok(a.network.isClosed('W', 0) && a.activeEvent('closure'), 'at 151 s W\'s curb lane is closed', `closed ${[...a.network.closed].join()}`);
+  a.run(40);
+  ok(a.stats.merges >= 1, 'and by 191 s at least one car has merged out of it', `${a.stats.merges} merges`);
+  const b = new World(sr, 3).run(191);
+  ok(a.hash() === b.hash(), 'two runs of the seed agree to the metre', `${a.stats.cleared} cleared, ${a.stats.collisions} collisions`);
+  const ms = levelById('main-street');
+  const m = new World(ms, 3);
+  m.run(51);
+  ok(m.platoon && m.platoon.kind === 'motorcade' && m.platoon.leg === 'W', 'Main Street: the motorcade is on the W leg at 51 s');
+  m.run(110);
+  ok(m.platoon && m.platoon.kind === 'procession' && m.platoon.leg === 'N', 'and the procession on N at 161 s', m.platoon && m.platoon.kind);
+  const m2 = new World(ms, 3).run(161);
+  ok(m.hash() === m2.hash(), 'two runs of the seed agree to the metre', `${m.stats.cleared} cleared, ${m.stats.platoonSplits} split`);
 }
 
 /* ---------------------------------------------------------------- the soak -- */

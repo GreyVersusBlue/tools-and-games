@@ -403,6 +403,34 @@ group('rules');
   ok(e.stage === 'yellow' && e.next === 1, 'and fires at 16', `${e.stage} next ${e.next}`);
 }
 
+group('holding a green against its rule (M7)');
+
+{
+  const c = new Controller({ rules: [{ when: 'elapsed', seconds: 8, then: 'next' }], timing: { yellow: 1, allRed: 1, minGreen: 1 } });
+  run(c, 5);
+  ok(c.holdGreen() === true && Math.abs(c.heldT - 5) < 1e-9 && c.stage === 'green' && Math.abs(c.stageT - 5) < 1e-9, 'holdGreen at 5 s takes and leaves the stage clock alone', `heldT ${c.heldT}, stageT ${c.stageT}`);
+  ok(Math.abs(c.timeToYellow('N-T') - 8) < 1e-9, 'and the green now has 8 s left again, not 3', c.timeToYellow('N-T').toFixed(2));
+  run(c, 5.05);
+  ok(c.stage === 'green', 'so at 10 s it is still green, where the rule alone would have ended it at 8');
+  run(c, 3.1);
+  ok(c.stage === 'yellow', 'and goes yellow at 13', `${c.stage} at ${c.t.toFixed(1)} s`);
+  run(c, 2.1);
+  ok(c.phase === 1 && c.stage === 'green' && c.heldT === 0, 'the next green starts with nothing held', `heldT ${c.heldT}`);
+  run(c, 8.05);
+  ok(c.stage === 'yellow', 'and ends at its 8 s again');
+  ok(c.log.some(l => l.kind === 'hold'), 'the log carries the hold');
+  const t = new Controller({ mode: 'timed', plan: [{ phase: 0, green: 10 }, { phase: 1, green: 10 }] });
+  run(t, 2);
+  ok(t.holdGreen() === false, 'a timed plan cannot be held: its offsets are the point');
+  const n = new Controller({ rules: [{ when: 'elapsed', seconds: 8, then: 'next' }], timing: { yellow: 1, allRed: 1, minGreen: 4 } });
+  run(n, 2);
+  n.requestPhase(1);
+  ok(n.holdGreen() === false, 'nor a green with a request queued');
+  const q = new Controller({ rules: [{ when: 'queue', movement: 'E-T', threshold: 3, then: 1 }] });
+  run(q, 2);
+  ok(q.holdGreen() === false, 'nor one with no elapsed rule to hold against');
+}
+
 group('flashing and dark');
 
 {

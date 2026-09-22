@@ -11048,6 +11048,169 @@ claims the row on `main` before starting, still opens the one PR for the
 whole batch, and still owns closing it out even if it never calls `scribe`
 itself.
 
+## 2026-09-22: Signal City, M7 third increment, the four events and levels 7 and 8 (#571 to #576)
+
+The sixth increment of the 2+ row and the last of milestone 7: the VIP
+motorcade, the funeral procession, the lane closure and the school zone,
+two archetypes, a hand on the green, three zebra rules the new boards
+forced, and "School Run" and "Main Street", levels 7 and 8. M8, the
+campaign, is the row's next increment. 616 checks across six suites (148 +
+240 + 75 + 24 + 23 + 106), no storage key or save field touched (`repair`
+takes nine level records with no new field), no shipped level's target
+moved, and Crossing's calibration exactly where #558 left it (55 to 76 at
+28 to 37 s on the plan, 55 to 63 at 47 to 52 s on its rules). Worked
+under Claude Fable 5.1, the model the row names. PR #PRNUM.
+
+- **A platoon obeys the light, and the split is the signal's doing**
+  (#571). A motorcade and a procession are `{ kind, at, leg, turn, size,
+  spacing }`: `size` cars of an archetype of their own (`motorcade` at 16
+  m/s with a 0.8 s headway, `procession` at 8 m/s with 1.0 s), spawned
+  `spacing` seconds apart as the lane start clears, each with `car.platoon`
+  pointing at the event. They run no red, trust no green and decide the
+  yellow by the same physics as a standard car, so the only thing that
+  can split them is the light: a split is a member held at its stop line
+  by its verdict (a red, or a yellow it chose to stop for) while another
+  member is already past the box exit or gone. A whole platoon waiting at
+  a red is not split, and neither is a tail still queued on a green the
+  head has cleared; the suite checks both, and that the yellow as the lead
+  crosses splits a motorcade at 13.3 s. It counts once
+  (`stats.platoonSplits`, a `split` event the renderer writes over the
+  held car) and costs what a late ambulance costs, five honks' worth and
+  50 points (#570). The procession's follow-through on a red, a courtesy
+  law in much of the world, was considered and left out: with it a
+  procession could only be split by something intruding, and the point is
+  that the player's hand on the green is what keeps it whole. The
+  motorcade is the VIP: `requestPriority` on any member gives the whole
+  platoon the corridor (the members still to arrive included, and
+  `_holdPriority` keeps the green while any are short of the box), the E
+  key and a click reach it as they reach an ambulance, and the event line
+  says whether it is called. A procession gets no escort, and
+  `requestPriority` now refuses anything that is not an emergency vehicle
+  or a motorcade car. The event ends when the last member leaves the map.
+- **A hand on the green: the green phase pressed again holds it** (#572).
+  A platoon on a level that cycles itself needs a way to keep its green
+  without editing the rule list mid-event, so `Controller.holdGreen`
+  restarts the elapsed rule's clock (`heldT`, what `_runRules` and
+  `_scheduledEnd` now count from) and leaves the stage clock alone: the
+  minimum green, a walk's fit and a queue rule's `after` still read
+  `stageT`. It is refused on a timed plan (its offsets are the point),
+  with a request queued, with no elapsed rule to hold against, and while
+  the power is out (`World.holdGreen`). The page calls it when
+  `requestPhase` returns false, which is exactly the green phase pressed
+  again; the keys line and Main Street's hint say so. The procession under
+  a 22 s rule is split with the rule left alone and whole with the green
+  held at 12 s and again at 22 s: held once it is still split, because
+  IDM settles the followers at 6.6 to 7.2 m/s rather than 8 and the eighth
+  hearse reaches the line 34 s after the first.
+- **The lane closure is a zipper, and traffic still arrives in the closed
+  lane** (#573). `{ kind: 'closure', at, for, leg, lane, length }` cones
+  off the inbound lane for `length` metres back from the stop line with a
+  12 m taper before it (`Network.close`/`open`, `lanesForTurn(turn, leg)`
+  leaving a closed lane out, which is the answer a merging car wants: may
+  it keep its turn in the lane it is moving to?). The first draft kept
+  spawns out of the closed lane too, and the closure did nothing anyone
+  could see: on School Run seed 3 no car was in the lane when the cones
+  went up, and 41 s in there had been no merge. The cones stand 54 m from
+  the box and the map edge is 110 m out, so the spawner sends cars into
+  every lane and the merge is the event. A car in the closed lane inside
+  40 m of the taper moves onto the open lane's path at its own `s` (the
+  approaches share their geometry; the body slides across at 3 m/s,
+  `Car.easeLateral`, and `rects()` carries the offset so the collision
+  test sees it) when there is 1 m of daylight to the car ahead there and,
+  behind, 1 m plus 0.4 s of the follower's speed plus 1.2 s of the speed
+  it is closing at; otherwise it holds at the taper (`car.mergeS`, a stop
+  `drive` reads like a special stop) and looks again next step. That rule
+  alone never merges a standing car into a flowing lane of IDM-spaced
+  cars, so the zipper: a car in the open lane coming up behind one waiting
+  at the taper (`car.mergeLane`) takes it as its leader in `leaderOf` and
+  slows for it, and the room comes; one beside it, its rear not ahead of
+  the follower's front, is nobody's leader, or the two would wait on each
+  other for good. In the suite a dozen cars queued to the map edge hold
+  the merger at the taper 20 s, and on the green it is let in at 92 s
+  where the queue's tail passes the taper at 112. A right-turner merging
+  into a lane with no right becomes a through; a car past the taper when
+  the cones go up carries on. The renderer draws the taper, the line of
+  cones down the lane's inner edge, the tint and a LANE CLOSED sign at the
+  curb, and the browser suite reads the first cone's orange off the board.
+- **The school zone is a speed window and a call multiplier under a
+  beacon** (#574). `{ kind: 'school', at, for, scale, peds }` sets
+  `world.speedScale`, the product of every zone in force (read by `drive`,
+  set by nobody until now), so a standard car settles at 7 m/s; and
+  `pedScale()` multiplies every leg's pedestrian calls. The pedestrian
+  Poisson clock changed to make that exact: it runs `pedScale` times
+  faster with intervals drawn at the level's rate, where the scheme the
+  vehicle spawner uses (the rate read when the interval is drawn) would
+  have lagged the zone by an interval, a minute at 60 calls an hour. With
+  the scale at 1 the two schemes are the same arithmetic, and no level
+  without a zone moved. The vehicle spawner keeps its scheme, because the
+  surge and Rush Hour's targets were calibrated on it (#570) and its
+  intervals are seconds. A beacon on every leg, a yellow diamond with a
+  lamp flashing above it, draws while the zone is in force; the browser
+  suite reads the diamond's yellow off the board. The zone has no
+  penalty of its own: what it costs is the greens, which clear half the
+  cars they did.
+- **Three zebra rules, because the new boards found three ways to lock the
+  box through a crossing** (#575). School Run is two lanes each way with
+  permissive lefts and walks on the through phases, a shape no shipped
+  level had, and its calibration locked 3 of 18 cells before these. First,
+  a granny turning left across a school crossing waited 4 m into the box
+  for a gap with her 5.8 m body across the zebra she had entered by; the
+  walkers waited for her, every car leaving by her leg waited for the
+  walkers, and one of those was the through she was waiting for. A
+  permissive left longer than 4 m that can still stop short of a zebra
+  with people on it does; one already on it waits at its 4 m as before and
+  is walked past (the third rule). Pulling it fully past instead was
+  tried first: nine metres into a 17 m box put its nose across the
+  opposing lane, and a through pulled up to it. Second, a permissive left that found walkers on
+  the zebra it exits by held for them mid-turn, at the box exit, with its
+  body across the opposing through's lane; the through pulled up to it
+  and neither could move again, on seed 6 at 22 s and seed 1 at 18 s. A
+  permissive left that has not committed into the box holds for exit
+  walkers at its own yield point in its lane. Holding a through at the box
+  edge the same way was tried and dropped: its body sat on the entry
+  zebra, two throughs on opposite legs held each other's walkers, and
+  Crossing's average wait rose 6 s with a lock on its own rules. Third,
+  with the first two in, a left waiting at its 4 m point with her rear on
+  the zebra held the walkers, who held a through standing at the exit edge
+  on her line, who held her. Speed decides who yields on a zebra now: a
+  walker passes a car standing still with no
+  push on the pedal, a standing car (under 2 m/s) holds while a walker is
+  in its lane ahead of it on its entry zebra, and a car under 1 m/s
+  strikes nobody. A moving car is yielded to as M6 had it. Crossing's two
+  calibration rows did not move by a car or a second under the three, and
+  the suite plants walkers on a zebra by hand to check each rule, because
+  a call's timing cannot promise people on a crossing at the moment a car
+  reaches it. And a granny who stopped for a green about to end lets go
+  when the green turns out to have time in it (a hold, a walk that
+  extended it): before that, Main Street held under a procession locked
+  seed 2 with a granny at the line 150 s under a green.
+- **School Run and Main Street, and what their numbers say** (#576).
+  School Run: the First Light mix with tourists and students, 420 and 360
+  vehicles an hour, 30 calls an hour a leg, the zone at 40 s for 90 at
+  half speed and four times the calls, W's curb lane closed at 150 s for
+  90 with 30 m of cones. On a 22 s rule alone over six seeds it clears 91
+  to 103 at 9 to 13 s with 0 to 2 collisions and 0 to 2 calls late; target
+  88 and waitTarget 12, so the rule alone survives every seed and takes
+  the second star on three, and a hand that gives the zone's greens and
+  the closure's W more time is what buys the rest. Main Street: one
+  crossroads on a 22 s rule, a motorcade of 5 from W at 50 s and a
+  procession of 8 from N at 160 s. The rule alone clears 65 to 76 at 10 to
+  15 s and splits 7 of 12 platoons; the hand `calibrate.mjs --hold` plays
+  (the platoon's phase asked for as its lead comes within 60 m of the
+  line, the green pressed again every 10 s until the last member is
+  through the box) clears 67 to 80 at 10 to 26 s and splits none. Target
+  60 and waitTarget 20: the first star is the board's, the split is a
+  points and satisfaction cost by #570's rule, and holding the green
+  costs the wait target on 2 of 6 seeds. `boxStall` is 45 there: a
+  permissive left waiting mid-box for a 30 s procession is not a gridlock,
+  and the default 30 locked seeds 2 and 5 with the green held. The level
+  select's scrim centres with `safe` now (#132): nine cards overflow a 900
+  px window and the first two sat above the scroll origin where the browser
+  suite's click could not reach them, which is the same fault Torchbearer's
+  title screen had.
+
+BROKEN_PLACEHOLDER
+
 ## 2026-09-21: Signal City, M7 second increment, three events and Rush Hour (#567 to #570)
 
 The fifth increment of the 2+ row and the second of milestone 7: a level's
