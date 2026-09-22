@@ -101,23 +101,27 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City, M7's second
-increment, three events and Rush Hour (PR #346)**, rank 1, one increment of a 2+ worked
-under Claude Fable 5.1, the model the row names. That is the line to update when your batch merges; a PR
-that only changes these files is not a batch and does not belong in it.
+**The last batch of ranked work that shipped** is **Signal City, M7's third
+increment, the four events and levels 7 and 8 (PR #348)**, rank 1, one increment of a 2+
+worked under Claude Fable 5.1, the model the row names. That is the line to update when your
+batch merges; a PR that only changes these files is not a batch and does not belong in it.
 **26 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 1 again: Signal City's next increment, the rest of M7, four
-events** (`Projects/signal-city`, a 2+, Fable 5.1): VIP motorcade, lane
-closure, school-zone flashing yellow window, funeral procession. The plan is
-`Projects/signal-city/WISHLIST.md` item 7; milestones 0 to 6, the green wave
-and the first three events (surge, outage, ambulance under a timer, on "Rush
-Hour") are on `main` and `HISTORY.md` #534 to #570 carry the calls already
-made (#567 is the `events` list an event lives in, #568 what an outage
-refuses, #569 the corridor widened to the whole entry leg and held until the
-vehicle is through). `_startEvent` and `_endEvent` in `js/sim.js` are where
-a new kind goes, and the panel's event line reads `World.active`. A 2+ is the
-whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
+**Take rank 1 again: Signal City's next increment, M8, the campaign and
+unlocks** (`Projects/signal-city`, a 2+, Fable 5.1): six levels in an order,
+stars spent on sensors, protected turns, roundabout conversion and extra
+phases. The plan is `Projects/signal-city/WISHLIST.md` item 7; milestones 0
+to 7 are on `main` (nine levels, First Light to Main Street and Free Play,
+every M7 event built) and `HISTORY.md` #534 to #576 carry the calls already
+made. Read before designing the campaign: #571 (a platoon obeys the light;
+the split is a points and satisfaction cost by #570's rule), #572 (the green
+phase pressed again holds it), #573 (the closure is a zipper and its spawner
+still sends cars into the closed lane), #575 (three zebra rules and the two
+tried and dropped) and #576 (every level's calibration numbers and why Main
+Street's second star is loose). `unlocks` on a level is already the list the
+panel reads and `save.unlocks` already exists with `phases` in it; the
+campaign is the thing that spends stars into that list. A 2+ is the whole
+batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
 quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
 want hardware this machine does not have — so take it alone. Its plan is Blue
@@ -470,7 +474,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 7 shipped (PRs #338, #340, #342, #344, #346, #PRNUM); next M8, campaign and unlocks | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 7 shipped (PRs #338, #340, #342, #344, #346, 348); next M8, campaign and unlocks | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1138,7 +1142,7 @@ one increment per session, the row rewritten to say what is done.
 milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
 (2026-09-21, #554 to #562), M7's green wave in PR #344 (2026-09-21, #563
 to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
-and the rest of M7 in PR #PRNUM (2026-09-22, #571 to #576)**: items 1 to
+and the rest of M7 in PR 348 (2026-09-22, #571 to #576)**: items 1 to
 11 below are done, 616 checks across six suites, all in Site CI. Item 12
 is the next increment, M8. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture

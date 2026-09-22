@@ -11059,7 +11059,7 @@ campaign, is the row's next increment. 616 checks across six suites (148 +
 takes nine level records with no new field), no shipped level's target
 moved, and Crossing's calibration exactly where #558 left it (55 to 76 at
 28 to 37 s on the plan, 55 to 63 at 47 to 52 s on its rules). Worked
-under Claude Fable 5.1, the model the row names. PR #PRNUM.
+under Claude Fable 5.1, the model the row names. PR #348.
 
 - **A platoon obeys the light, and the split is the signal's doing**
   (#571). A motorcade and a procession are `{ kind, at, leg, turn, size,
@@ -11209,7 +11209,31 @@ under Claude Fable 5.1, the model the row names. PR #PRNUM.
   suite's click could not reach them, which is the same fault Torchbearer's
   title screen had.
 
-BROKEN_PLACEHOLDER
+**Broken on purpose** (#34), each from the green baseline of 617 checks,
+each in a copy of the project so the ten could run at once, and each
+restored: the split rule dropped from `_platoonTick`, `a yellow as the
+lead crosses splits it within seconds  split at null s` and four behind
+it; `heldT` ignored by the elapsed rule, `and goes yellow at 13  green at
+13.1 s` in the controller suite and `the same seed with the green held
+twice gets all eight through whole  3 cleared, 1 split` in the world's;
+`_roomFor` skipped, `a car in the closed lane holds short of the taper
+with no gap to take  front 17.8, taper 52.4, waited 0.0 s` and `and
+clears without touching anyone  9 cleared, 2 collisions`; `speedScale`
+pinned at 1, `a standard car in the zone settles near 7 m/s  14.0 m/s`;
+the cautious release dropped, `and she goes: the green has 14 s in it
+again  v 0.0, cautious true`; the split's price dropped from `meters`,
+`a split costs satisfaction, five honks' worth exactly  0.951 plain,
+0.851 with five honks, 0.951 with one split` (that one rerun in place,
+because the copy outside the repo died of `ERR_MODULE_NOT_FOUND` on the
+shared save module, which #34 says is not a catch); the zipper clause
+dropped from `leaderOf`, `the car coming up behind it in lane 1 takes it
+as its leader  car null` and `merged at 109.2 s, the tail passed at
+108.8 s`; walkers waiting for a standing car again, `the crossing
+finishes  waited 58.6, 58.2, 57.9 s` and the granny never done; the
+left's hold in its own lane dropped, `not mid-turn  held 0.5 s, deepest
+11.7 m in`; a motorcade's later members spawned without the corridor,
+`the members that arrived after the call carry the priority too  p----`.
+Ten breaks, ten caught by the assertion whose comment claims them.
 
 ## 2026-09-21: Signal City, M7 second increment, three events and Rush Hour (#567 to #570)
 
