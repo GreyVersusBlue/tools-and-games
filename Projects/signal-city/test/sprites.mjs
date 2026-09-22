@@ -84,9 +84,9 @@ const record = (archetype, variant, t = 0) => {
 group('the archetype table');
 
 {
-  const want = ['standard', 'granny', 'aggressive', 'tourist', 'trucker', 'student', 'rideshare', 'emergency'];
+  const want = ['standard', 'granny', 'aggressive', 'tourist', 'trucker', 'student', 'rideshare', 'emergency', 'motorcade', 'procession'];
   ok(ARCHETYPES.length === want.length && ARCHETYPES.every((a, i) => a === want[i]),
-    'the eight archetypes are there, in order', ARCHETYPES.join(', '));
+    'the ten archetypes are there, in order: the eight drivers, then the two platoons (M7)', ARCHETYPES.join(', '));
   const keys = Object.keys(SPRITES);
   ok(keys.length === want.length && keys.every((k, i) => k === want[i]),
     'and SPRITES carries exactly those keys', keys.join(', '));
@@ -153,7 +153,7 @@ group('every car draws');
       if (!filledWith(ops, p.body)) noBody ||= `${a}/${p.name} never fills ${p.body}`;
     }
   }
-  ok(threw === '', 'all 32 archetype-by-palette draws run without throwing', threw);
+  ok(threw === '', 'all 40 archetype-by-palette draws run without throwing', threw);
   ok(noGloss === '', 'every one of them lays down the gloss gradient',
     noGloss ? `${noGloss} drew no linear gradient` : '');
   ok(noBody === '', 'and fills the body in its palette\'s body colour', noBody);
@@ -176,6 +176,16 @@ group('the details each archetype owes');
   const red = '#e8332b', blue = '#2f6fe6';
   ok(a.includes(red) && a.includes(blue) && b.includes(red) && b.includes(blue),
     'and both frames light red and blue', `${red} and ${blue}`);
+}
+
+{
+  const h = record('procession', 0);
+  ok(filledWith(h, '#fff4c2'), 'the hearse runs its headlamps', 'looked for the lamp colour #fff4c2 in a fill');
+  ok(h.some(o => o.op === 'quadraticCurveTo'), 'and carries landau bars on its flanks');
+  const m = record('motorcade', 0);
+  const pennants = m.filter(o => o.op === 'closePath').length;
+  ok(pennants >= 4 && filledWith(m, SPRITES.motorcade.palettes[0].accent), 'the motorcade car flies a pennant on each wing in the palette\'s accent', `${pennants} closed paths`);
+  ok(SPRITES.motorcade.palettes.every(p => p.body < '#40') && SPRITES.procession.palettes.filter(p => p.body < '#40').length >= 3, 'both platoons are painted dark, the hearse with one silver exception', SPRITES.procession.palettes.map(p => p.body).join(' '));
 }
 
 {

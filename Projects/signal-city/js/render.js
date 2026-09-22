@@ -7,7 +7,8 @@
 // signal heads, the walk lamps and call posts; then walkers, cars (cached
 // sprites, rotated to the path tangent, the trailer drawn live behind the
 // cab), then the effects layer: honks, hesitations, pickups, crash marks,
-// the priority halo.
+// the priority halo. A lane closure's cones and a school zone's beacons
+// (M7) draw with the node's roads, from the world's active events.
 //
 // The camera (M6): a single box shows the middle 72 m of its legs (#541); a
 // corridor frames every box with 50 m of road either side, which on a
@@ -17,7 +18,7 @@
 import { spriteFor, SPRITES } from './sprites.js';
 import { LANE_WIDTH, CROSSWALK, legDir } from './network.js';
 import { parseMovement } from './signals.js';
-import { LOOP_LENGTH } from './sim.js';
+import { LOOP_LENGTH, TAPER } from './sim.js';
 
 const GRASS = '#5d7a4a';
 const GRASS_2 = '#556f43';
@@ -120,11 +121,12 @@ export class Renderer {
         case 'gridlock': this.effects.push({ kind: 'banner', text: 'GRIDLOCK', x: 0, y: 0, t0: world.t, ttl: 4 }); break;
         case 'event': {
           // a scripted moment (M7) announces itself over the box
-          const text = e.event === 'surge' ? (e.on ? 'RUSH HOUR' : 'RUSH HOUR OVER') : e.event === 'outage' ? (e.on ? 'POWER OUT' : 'POWER BACK') : e.event === 'ambulance' ? (e.on ? 'AMBULANCE' : null) : null;
+          const text = BANNERS[e.event] ? BANNERS[e.event][e.on ? 0 : 1] : null;
           if (text) this.effects.push({ kind: 'banner', text, x: 0, y: 0, t0: world.t, ttl: 3 });
           break;
         }
         case 'ambulance-late': if (at) this.effects.push({ kind: 'text', text: 'LATE', x: at.x, y: at.y, t0: world.t, ttl: 2.5, car: e.car }); break;
+        case 'split': if (at) this.effects.push({ kind: 'text', text: 'SPLIT', x: at.x, y: at.y, t0: world.t, ttl: 3, car: e.car }); break;
         default: break;
       }
     }
@@ -148,7 +150,9 @@ export class Renderer {
       ctx.save();
       ctx.translate(net.origin[0], net.origin[1]);
       this._roads(ctx, world, net);
+      this._closures(ctx, world, net);
       this._loops(ctx, world, net);
+      this._beacons(ctx, world, net, now);
       this._heads(ctx, world, net, now);
       if (world.controllers[net.node].hasPeds) this._pedHeads(ctx, world, net, now);
       ctx.restore();
@@ -296,6 +300,75 @@ export class Renderer {
     }
   }
 
+  // A lane closure's cones (M7): a taper from the curb across the closed
+  // lane, then a line of cones down the lane's inner edge to the stop line,
+  // the closed stretch tinted, and a sign at the curb where the taper
+  // begins. Geometry from the event: `d0` is the first cone's distance
+  // from the centre, `length` the coned stretch back from the stop line.
+  _closures(ctx, world, net) {
+    for (const e of world.active) {
+      if (e.kind !== 'closure' || e.node !== net.node) continue;
+      const d = legDir(e.leg);
+      const rr = [d[1], -d[0]];                          // the driver's right, arriving: toward the curb
+      const inner = (net.lanesPerDir - e.lane - 0.5) * LANE_WIDTH;   // the closed lane's centre, along rr
+      const at = (dist, off) => [d[0] * dist + rr[0] * (inner + off), d[1] * dist + rr[1] * (inner + off)];
+      const sd = net.stopDist, d0 = e.d0, half = LANE_WIDTH / 2;
+      // the tint
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,140,0,0.14)';
+      ctx.beginPath();
+      const c0 = at(sd, -half), c1 = at(d0 - TAPER, -half), c2 = at(d0, half), c3 = at(sd, half);
+      ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c1[1]); ctx.lineTo(c2[0], c2[1]); ctx.lineTo(c3[0], c3[1]); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      // the cones: the taper, then the line
+      const cones = [];
+      for (let k = 0; k <= 4; k++) cones.push(at(d0 - TAPER * k / 4, half - LANE_WIDTH * k / 4));
+      for (let dist = d0 - TAPER - 3; dist > sd + 0.8; dist -= 3) cones.push(at(dist, -half + 0.2));
+      for (const [x, y] of cones) {
+        ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.arc(x, y, 0.36, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.1; ctx.beginPath(); ctx.arc(x, y, 0.2, 0, Math.PI * 2); ctx.stroke();
+      }
+      // the sign at the curb
+      const [sx, sy] = at(d0 + 4, half + 1.6);
+      ctx.save();
+      ctx.translate(sx, sy); ctx.rotate(Math.atan2(-d[1], -d[0]) + Math.PI / 4);
+      ctx.fillStyle = '#ff7a1a'; ctx.fillRect(-1.3, -1.3, 2.6, 2.6);
+      ctx.strokeStyle = '#111'; ctx.lineWidth = 0.15; ctx.strokeRect(-1.3, -1.3, 2.6, 2.6);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = '#111'; ctx.font = 'bold 0.62px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('LANE', 0, -0.35); ctx.fillText('CLOSED', 0, 0.4);
+      ctx.restore();
+    }
+  }
+
+  // A school zone's beacons (M7): on every leg, a yellow diamond at the
+  // curb 14 m before the stop line with a lamp above it, flashing while the
+  // zone is in force. Nothing draws when it is not.
+  _beacons(ctx, world, net, now) {
+    const zone = world.activeEvent('school');
+    if (!zone) return;
+    const on = Math.floor(now * 2) % 2 === 0;
+    for (const leg of net.legs) {
+      const d = legDir(leg);
+      const rr = [d[1], -d[0]];
+      const dist = net.stopDist + 14;
+      const x = d[0] * dist + rr[0] * (net.halfRoad + 2.0), y = d[1] * dist + rr[1] * (net.halfRoad + 2.0);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(0, 0, 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = '#ffd21e'; ctx.fillRect(-1.2, -1.2, 2.4, 2.4);
+      ctx.strokeStyle = '#111'; ctx.lineWidth = 0.14; ctx.strokeRect(-1.2, -1.2, 2.4, 2.4);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = '#111'; ctx.font = 'bold 0.5px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('SCHOOL', 0, 0.05);
+      ctx.fillStyle = on ? LAMP.yellow : '#4a3d10';
+      ctx.beginPath(); ctx.arc(0, -2.3, 0.55, 0, Math.PI * 2); ctx.fill();
+      if (on) { ctx.fillStyle = 'rgba(255,194,31,0.25)'; ctx.beginPath(); ctx.arc(0, -2.3, 1.1, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+    }
+  }
+
   // The walk lamps and call posts: one post per leg on the near-side
   // corner, a ring that lights while a call waits, and a lamp above it that
   // shows the crossing's head: white for WALK, orange for the clearance
@@ -426,7 +499,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(body.x, body.y); ctx.rotate(body.heading);
       if (car.crashed) ctx.globalAlpha = 0.8;
-      if (car.archetype === 'emergency' && !car.priority) {
+      if ((car.archetype === 'emergency' || car.archetype === 'motorcade') && !car.priority) {
         ctx.strokeStyle = blinkColor(now); ctx.lineWidth = 0.5;
         ctx.strokeRect(-body.length / 2 - 0.6, -body.width / 2 - 0.6, body.length + 1.2, body.width + 1.2);
       }
@@ -489,6 +562,13 @@ export class Renderer {
 }
 
 function blinkColor(now) { return Math.floor(now * 6) % 2 ? '#ff3b30' : '#2f6fe6'; }
+
+// What each scripted moment (M7) announces over the box, on and off.
+const BANNERS = {
+  surge: ['RUSH HOUR', 'RUSH HOUR OVER'], outage: ['POWER OUT', 'POWER BACK'], ambulance: ['AMBULANCE', null],
+  motorcade: ['MOTORCADE', null], procession: ['PROCESSION', null],
+  closure: ['LANE CLOSED', 'LANE OPEN'], school: ['SCHOOL ZONE', 'SCHOOL ZONE OVER'],
+};
 
 // Does this left have a phase of its own (one that carries it and does not
 // list it as permissive)? Then it has an arrow lamp.

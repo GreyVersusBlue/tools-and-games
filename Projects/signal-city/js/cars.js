@@ -14,6 +14,8 @@
 // close up before it notices a stop. That is where chain collisions come
 // from, and why aggressive tailgaters cause them.
 
+import { CROSSWALK } from './network.js';
+
 export const ARCHETYPES = {
   //           accel brake bComf vmax  turnV  T    s0   react runRed patience yellowBias len   wid   greenTrust
   standard:  { accel: 2.6, brake: 4.5, bComf: 2.6, vmax: 14, turnV: 6.0, T: 1.5, s0: 2.0, reaction: 0.6, runRed: 0.02, patience: 45, yellowBias: 1.0, length: 4.6, width: 1.8, greenTrust: 0.15 },
@@ -24,6 +26,11 @@ export const ARCHETYPES = {
   student:   { accel: 1.8, brake: 3.8, bComf: 2.2, vmax: 11, turnV: 4.5, T: 2.0, s0: 2.5, reaction: 1.1, runRed: 0.00, patience: 55, yellowBias: 1.3, length: 3.8, width: 1.7, greenTrust: 0.05, jitter: 1.5, jerky: 0.45 },
   rideshare: { accel: 2.6, brake: 4.5, bComf: 2.6, vmax: 14, turnV: 6.0, T: 1.4, s0: 2.0, reaction: 0.6, runRed: 0.02, patience: 30, yellowBias: 1.0, length: 4.4, width: 1.7, greenTrust: 0.2, pickup: 0.012, pickupFor: 4.0 },
   emergency: { accel: 3.6, brake: 6.5, bComf: 4.0, vmax: 20, turnV: 8.0, T: 1.0, s0: 2.0, reaction: 0.4, runRed: 1.00, patience: 0, yellowBias: 0.0, length: 5.6, width: 2.2, greenTrust: 0.0, ignoresSignals: true },
+  // the platoons (M7): a motorcade runs fast and tight, a funeral procession
+  // slow and tight; both obey the light like a standard car (no red running,
+  // no trust), so what splits one is the signal
+  motorcade: { accel: 3.0, brake: 5.5, bComf: 3.5, vmax: 16, turnV: 7.0, T: 0.8, s0: 1.5, reaction: 0.4, runRed: 0.00, patience: 40, yellowBias: 1.0, length: 5.2, width: 2.1, greenTrust: 0.0 },
+  procession:{ accel: 1.6, brake: 4.0, bComf: 2.0, vmax: 8, turnV: 4.0, T: 1.0, s0: 2.0, reaction: 0.6, runRed: 0.00, patience: 300, yellowBias: 1.0, length: 5.6, width: 1.9, greenTrust: 0.0 },
 };
 
 // Green trust, the fault the all-red clearance exists for. Once per
@@ -43,6 +50,7 @@ export const TRUST_WINDOW = 1.0;
 export const ARCHETYPE_NAMES = Object.keys(ARCHETYPES);
 
 export const DT = 1 / 60;
+export const MERGE_EASE = 3;   // m/s the body slides across after a merge's path swap
 const HIST = 90;               // ring buffer depth: 1.5 s at 60 Hz, past any reaction
 
 let nextId = 1;
@@ -92,6 +100,10 @@ export class Car {
     this.boxVerdict = 0;        // 0 free, else the s the front waits at
     this.blockedBy = 0;         // the car the last box verdict waited for
     this.priority = false;      // emergency: player has called the corridor
+    this.platoon = null;        // the motorcade or procession event this car belongs to (M7)
+    this.mergeS = 0;            // a lane closure's taper this car must merge before, or 0
+    this.mergeLane = -1;        // and the lane it is waiting to merge into
+    this.latX = 0; this.latY = 0;   // where the body still is, relative to its path, after a merge: eases to 0
     this.rng = rng;
   }
 
@@ -109,13 +121,24 @@ export class Car {
   rects() {
     const st = this.stats;
     const body = this.path.at(this.s);
-    const out = [{ x: body.x, y: body.y, heading: body.heading, length: st.length, width: st.width, part: 'body' }];
+    const out = [{ x: body.x + this.latX, y: body.y + this.latY, heading: body.heading, length: st.length, width: st.width, part: 'body' }];
     if (st.trailer) {
       const back = this.s - st.length / 2 - st.trailer.gap - st.trailer.length / 2;
       const t = this.path.at(back);
-      out.push({ x: t.x, y: t.y, heading: t.heading, length: st.trailer.length, width: st.trailer.width, part: 'trailer' });
+      out.push({ x: t.x + this.latX, y: t.y + this.latY, heading: t.heading, length: st.trailer.length, width: st.trailer.width, part: 'trailer' });
     }
     return out;
+  }
+
+  // A merge swaps the path under the car and leaves the body where it was;
+  // the offset eases out at MERGE_EASE metres a second (cars.js keeps the
+  // number, sim.js calls this every step).
+  easeLateral(dt) {
+    const m = Math.hypot(this.latX, this.latY);
+    if (m === 0) return;
+    const k = Math.max(0, m - MERGE_EASE * dt) / m;
+    this.latX *= k; this.latY *= k;
+    if (Math.abs(this.latX) < 1e-6 && Math.abs(this.latY) < 1e-6) { this.latX = 0; this.latY = 0; }
   }
 
   // The (s, v, verdicts) this driver believes, `reaction` seconds late.
@@ -174,6 +197,9 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
         car.cautiousDone = true;
         if (car.rng.chance(st.cautious)) { car.cautiousStop = true; world.events.push({ t: world.t, kind: 'cautious', car: car.id }); }
       }
+      // a green she stopped for that turns out to have time in it after
+      // all (a hold, a walk that extended it): she goes
+      if (car.cautiousStop && timeToYellow > 5) car.cautiousStop = false;
       if (car.cautiousStop && d > 0) return line;
       return 0;
     }
@@ -227,19 +253,35 @@ export function stopLineVerdict(car, head, timeToYellow, world) {
 //
 // A permissive left waits 4 m inside the box rather than at its edge, the
 // way real drivers do, so that on the yellow it can finish the turn during
-// the all-red instead of sitting through another cycle.
+// the all-red instead of sitting through another cycle. Unless there are
+// people on the zebra it would be parked across and it can still stop short
+// of it (M7, #575): then a car longer than those 4 m waits before the
+// zebra. One already on it waits at its 4 m as before and is walked past
+// (sim.js, the walkers). Pulling fully past instead was tried: nine metres
+// into a 17 m box put the left's nose across the opposing lane, and a
+// through pulled up to it.
 export function boxVerdict(car, head, world) {
   const p = car.path;
   const mine = p.movement;
   const ctl = world.controllerFor(car);
   if (car.front < p.stopLine - 30) return 0;        // too far to care
+  const permissive = ctl.current.permissive.includes(mine) && (head === 'green' || head === 'yellow');
+  let waitAt = permissive ? p.boxEnter + 4 : p.boxEnter;
+  if (permissive && car.length > 4 && car.front < p.boxEnter - CROSSWALK - 0.3 && world.walkersOn(p.node, p.entry) > 0) waitAt = p.boxEnter - CROSSWALK - 0.3;
+  const inside = car.front > waitAt + 0.5;          // already in: only a committed car still gets a look
   // a walker on the crosswalk I leave by, still short of my lane or in it:
   // I hold at the box edge before the zebra. Every driver sees a person,
-  // trusting or not; it is the box they stop looking at.
-  if (car.front < p.boxExit + 0.2 && world.walkerBlocks(p)) { car.blockedBy = -1; return Math.max(car.front - 0.05, p.boxExit - 0.3); }
-  const permissive = ctl.current.permissive.includes(mine) && (head === 'green' || head === 'yellow');
-  const waitAt = permissive ? p.boxEnter + 4 : p.boxEnter;
-  const inside = car.front > waitAt + 0.5;          // already in: only a committed car still gets a look
+  // trusting or not; it is the box they stop looking at. A permissive left
+  // that has not yet committed holds at its own yield point in its lane
+  // instead (#575): one that went on and held mid-turn had its body across
+  // the opposing through's lane, the through pulled up to it, and neither
+  // could move again. (Holding a through at the box edge instead was tried
+  // and cost Crossing 6 s of average wait: its body sat on the entry
+  // zebra, and two throughs on opposite legs held each other's walkers.)
+  if (car.front < p.boxExit + 0.2 && world.walkerBlocks(p)) { car.blockedBy = -1; return permissive && !inside ? waitAt : Math.max(car.front - 0.05, p.boxExit - 0.3); }
+  // and one in my own lane on the zebra I am entering by, ahead of me,
+  // while I am standing still (#575): walkers pass a standing car
+  if (world.walkerAheadOnEntry(car)) { car.blockedBy = -1; return Math.max(0.05, car.front - 0.05); }
   if (inside && car.front > p.boxExit - 4) return 0;
   const uncontrolled = head === 'flash-red' || head === 'flash-yellow' || head === 'dark';
   const allWayStop = head === 'flash-red' || head === 'dark';
@@ -328,6 +370,8 @@ export function drive(car, world, dt) {
   if (seen.box > 0) consider(seen.box - car.front, car.v);
   // my own stop
   if (car.specialKind) consider(car.specialS - car.front, car.v);
+  // a lane closure's taper I have not found a gap to merge before (sim.js)
+  if (car.mergeS > 0) consider(car.mergeS - car.front, car.v);
 
   // IDM only ever approaches its resting gap; once it is nearly there and
   // nearly stopped, stop, rather than creep for ten seconds

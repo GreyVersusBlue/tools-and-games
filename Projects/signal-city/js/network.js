@@ -56,16 +56,38 @@ export class Network {
     this.cornerRadius = cornerRadius;
     this.paths = new Map();                             // key -> Path
     this._cross = new Map();
+    this.closed = new Set();                            // 'W0': inbound lanes a closure (M7) has coned off
     this._build();
   }
 
-  // Which lanes a turn may leave from.
-  lanesForTurn(turn) {
+  // Which lanes a turn may leave from. With a leg named, a lane closed on
+  // that leg (M7) is left out: that is the answer a car merging out of the
+  // cones wants (may it keep its turn in the lane it is moving to?). The
+  // geometry's own answer, with no leg, is what the paths were built from
+  // and what the spawner uses, because the cones stand downstream of the
+  // map edge and traffic still arrives in every lane.
+  lanesForTurn(turn, leg = null) {
     const n = this.lanesPerDir;
-    if (n === 1) return [0];
-    if (turn === 'L') return [n - 1];
-    if (turn === 'R') return [0];
-    return Array.from({ length: this.leftLane ? n - 1 : n }, (_, i) => i);
+    let lanes;
+    if (n === 1) lanes = [0];
+    else if (turn === 'L') lanes = [n - 1];
+    else if (turn === 'R') lanes = [0];
+    else lanes = Array.from({ length: this.leftLane ? n - 1 : n }, (_, i) => i);
+    return leg === null || !this.closed.size ? lanes : lanes.filter(l => !this.isClosed(leg, l));
+  }
+
+  // A lane closure: a car in the inbound `lane` of `leg` merges out before
+  // the taper (sim.js). Nothing here moves a car; the paths stay built.
+  close(leg, lane) { if (!this.legs.includes(leg) || lane < 0 || lane >= this.lanesPerDir) throw new RangeError(`no lane ${lane} on ${leg}`); this.closed.add(leg + lane); }
+  open(leg, lane) { this.closed.delete(leg + lane); }
+  isClosed(leg, lane) { return this.closed.has(leg + lane); }
+
+  // The nearest open inbound lane to a closed one on this leg, or -1.
+  openLaneNear(leg, lane) {
+    for (let d = 1; d < this.lanesPerDir; d++) {
+      for (const l of [lane - d, lane + d]) if (l >= 0 && l < this.lanesPerDir && !this.isClosed(leg, l)) return l;
+    }
+    return -1;
   }
 
   // Centre point of a lane on a leg at distance d from the intersection

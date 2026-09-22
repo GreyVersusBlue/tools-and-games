@@ -17,6 +17,10 @@
 // replaces the level's rule list, except with `--rules`, which keeps the
 // list (a level's queue rules on its loops) and sets only its elapsed
 // rule's seconds to the cycle: that is how a level with sensors is played.
+// `--hold` plays a platoon level the way a hand would (M7): the platoon's
+// phase asked for as its lead comes within 60 m of the line, and the green
+// pressed again every 10 s until the last member is through the box. A
+// level with platoons prints a splits column either way.
 
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -61,34 +65,52 @@ export function controllerFor(level, cycle, { plan = false, twoPhase = false, al
   return { ...base, mode: 'manual', plan: null, rules: [{ when: 'elapsed', seconds: cycle, then: 'next' }] };
 }
 
+// The hand under a platoon (M7): once per step. The platoon's phase is the
+// one carrying its movement; the green is held (holdGreen, the elapsed
+// rule's clock restarted) every 10 s while any member is short of its box
+// exit, and the hold stops there, not when the last member leaves the map.
+export function holdPlatoon(w) {
+  const p = w.platoon;
+  if (!p) return;
+  const ctl = w.controllers[p.node];
+  const lead = p.cars[0];
+  if (lead.front < lead.path.stopLine - 60) return;
+  if (p.cars.length >= p.size && p.cars.every(c => c.done || c.rear > c.path.boxExit)) return;
+  const want = ctl.phases.findIndex(ph => ph.movements.includes(lead.path.movement));
+  if (want < 0) return;
+  if (ctl.phase !== want || ctl.stage !== 'green') { if (ctl.next !== want) w.requestPhase(want, p.node); return; }
+  if (p._heldAt === undefined || w.t - p._heldAt >= 10) { if (w.holdGreen(p.node)) p._heldAt = w.t; }
+}
+
 // One run. `offset` (a corridor only) shifts the second box's plan.
 export function cell(level, seed, cycle, opts = {}, offset = null) {
   const lvl = { ...level, controller: controllerFor(level, cycle, opts) };
   if (offset !== null) lvl.controllers = [{ offset: 0 }, { offset }];
   const w = new World(lvl, seed);
-  for (let i = 0; i < level.duration * 60; i++) { w.step(); if (w.stats.gridlock) break; }
+  for (let i = 0; i < level.duration * 60; i++) { w.step(); if (opts.hold) holdPlatoon(w); if (w.stats.gridlock) break; }
   const r = score(w);
-  return { cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, gridlock: w.stats.gridlock, stars: r.stars, survived: r.survived, pedLate: r.pedLate, pedServed: r.pedServed };
+  return { cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, gridlock: w.stats.gridlock, stars: r.stars, survived: r.survived, pedLate: r.pedLate, pedServed: r.pedServed, splits: r.splits, platoons: r.platoons };
 }
 
 // Run as a script; importing the file (a suite borrowing controllerFor) does nothing.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 const levels = !isMain ? [] : which === 'all' ? LEVELS : [levelById(which)].filter(Boolean);
 if (isMain && !levels.length) { console.log(`no level ${which}`); process.exit(1); }
-const opts = { plan: flags.includes('--plan'), twoPhase: flags.includes('--two-phase'), allRed: allRedOverride, rules: flags.includes('--rules'), lefts: leftsGreen };
+const opts = { plan: flags.includes('--plan'), twoPhase: flags.includes('--two-phase'), allRed: allRedOverride, rules: flags.includes('--rules'), lefts: leftsGreen, hold: flags.includes('--hold') };
 for (const level of levels) {
   const corridor = isCorridor(level);
   const peds = !!level.pedDemand;
+  const platoons = (level.events || []).some(e => e.kind === 'motorcade' || e.kind === 'procession');
   const offs = corridor ? (offsets || [level.controllers && level.controllers[1] ? level.controllers[1].offset || 0 : 0]) : [null];
-  console.log(`\n${level.name} (${level.id}): target ${level.target}, waitTarget ${level.waitTarget}, ${level.duration} s${opts.plan || corridor ? ', timed plan' : ''}${opts.rules ? ', the level\'s rules' : ''}${opts.twoPhase ? ', two permissive phases' : ''}${allRedOverride !== null ? `, all-red ${allRedOverride} s` : ''}${peds ? ', pedestrian calls' : ''}`);
-  console.log((corridor ? 'cycle offset ' : 'cycle  ') + seeds.map(s => `seed ${s}`.padEnd(peds ? 20 : 16)).join('') + ' cleared      wait' + (peds ? '        late' : ''));
+  console.log(`\n${level.name} (${level.id}): target ${level.target}, waitTarget ${level.waitTarget}, ${level.duration} s${opts.plan || corridor ? ', timed plan' : ''}${opts.rules ? ', the level\'s rules' : ''}${opts.twoPhase ? ', two permissive phases' : ''}${allRedOverride !== null ? `, all-red ${allRedOverride} s` : ''}${peds ? ', pedestrian calls' : ''}${platoons ? (opts.hold ? ', the green held under each platoon' : ', the platoons left to the rule') : ''}`);
+  console.log((corridor ? 'cycle offset ' : 'cycle  ') + seeds.map(s => `seed ${s}`.padEnd(peds || platoons ? 20 : 16)).join('') + ' cleared      wait' + (peds ? '        late' : '') + (platoons ? '      split' : ''));
   for (const cycle of cycles) {
     for (const offset of offs) {
       const row = seeds.map(s => cell(level, s, cycle, opts, offset));
-      const cl = row.map(c => c.cleared), wt = row.map(c => c.wait), late = row.map(c => c.pedLate);
-      const txt = row.map(c => `${c.gridlock ? 'LOCK' : String(c.cleared).padStart(3)} ${c.wait.toFixed(0).padStart(3)}s ${c.collisions}x ${'★'.repeat(c.stars).padEnd(3, '☆')}${peds ? ` ${String(c.pedLate).padStart(2)}L` : ''}`.padEnd(peds ? 20 : 16)).join('');
+      const cl = row.map(c => c.cleared), wt = row.map(c => c.wait), late = row.map(c => c.pedLate), sp = row.map(c => c.splits);
+      const txt = row.map(c => `${c.gridlock ? 'LOCK' : String(c.cleared).padStart(3)} ${c.wait.toFixed(0).padStart(3)}s ${c.collisions}x ${'★'.repeat(c.stars).padEnd(3, '☆')}${peds ? ` ${String(c.pedLate).padStart(2)}L` : ''}${platoons ? ` ${c.splits}S` : ''}`.padEnd(peds || platoons ? 20 : 16)).join('');
       const head = corridor ? `${String(cycle).padStart(4)} s ${String(offset).padStart(4)} s ` : `${String(cycle).padStart(4)} s `;
-      console.log(`${head}${txt} ${Math.min(...cl)} to ${Math.max(...cl)}   ${Math.min(...wt).toFixed(0)} to ${Math.max(...wt).toFixed(0)} s${peds ? `   ${Math.min(...late)} to ${Math.max(...late)}` : ''}`);
+      console.log(`${head}${txt} ${Math.min(...cl)} to ${Math.max(...cl)}   ${Math.min(...wt).toFixed(0)} to ${Math.max(...wt).toFixed(0)} s${peds ? `   ${Math.min(...late)} to ${Math.max(...late)}` : ''}${platoons ? `   ${sp.reduce((a, b) => a + b, 0)} of ${row.reduce((a, c) => a + c.platoons, 0)}` : ''}`);
     }
   }
 }

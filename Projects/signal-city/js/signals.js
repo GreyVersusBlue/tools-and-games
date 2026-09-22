@@ -255,6 +255,7 @@ export class Controller {
     this.phase = startPhase;
     this.stage = 'green';
     this.stageT = 0;
+    this.heldT = 0;        // stageT at the last holdGreen: the elapsed rules count from here
     this.next = null;      // phase index queued during clearance, or null
     this.resumeAt = null;  // where 'next' goes after a queue rule jumped the sequence
     this.preemption = null; // { movements, hold, resume } while a priority corridor holds the box
@@ -307,7 +308,7 @@ export class Controller {
     if (this.preemption) return Math.max(0, this.preemption.hold - this.stageT);
     if (this.mode === 'timed' && this.plan) return Math.max(0, this._plannedGreen() - this.stageT);
     for (const r of this.rules) {
-      if (r.when === 'elapsed') return Math.max(0, r.seconds - this.stageT);
+      if (r.when === 'elapsed') return Math.max(0, r.seconds - (this.stageT - this.heldT));
     }
     return Infinity;
   }
@@ -431,6 +432,22 @@ export class Controller {
   }
 
   requestNext() { return this.requestPhase((this.phase + 1) % this.phases.length); }
+
+  // Hold the running green (M7): the elapsed rule that would end it counts
+  // from now again, so a hand can keep a green under a platoon on a level
+  // that cycles itself. Only a manual green with nothing queued and an
+  // elapsed rule to hold against: a timed plan keeps its offsets, a queued
+  // request keeps its turn, and a green nothing will end needs no holding.
+  // The stage clock itself is untouched (the minimum green, a walk's fit,
+  // a queue rule's `after` all still read it).
+  holdGreen() {
+    if (this.stage !== 'green' || this.next !== null || this.preemption) return false;
+    if (this.mode === 'timed' && this.plan) return false;
+    if (!this.rules.some(r => r.when === 'elapsed')) return false;
+    this.heldT = this.stageT;
+    this._log('hold', this.current.name);
+    return true;
+  }
 
   setTiming(patch) { Object.assign(this.timing, patch); }
 
@@ -604,6 +621,7 @@ export class Controller {
           }
           this.stage = 'green';
           this.stageT -= allRed;
+          this.heldT = 0;
           this._log('green', this.current.name);
         }
         break;
@@ -620,6 +638,7 @@ export class Controller {
     if (this.mode === 'timed' && this.plan && !this.preemption) this._absorbShift();
     this.stage = 'yellow';
     this.stageT = 0;
+    this.heldT = 0;
     this._log('yellow');
   }
 
@@ -631,7 +650,7 @@ export class Controller {
   _runRules(sense) {
     for (const r of this.rules) {
       let fire = false;
-      if (r.when === 'elapsed') fire = this.stageT >= r.seconds - EPS;
+      if (r.when === 'elapsed') fire = this.stageT - this.heldT >= r.seconds - EPS;
       else if (r.when === 'queue') {
         if (!sense) continue;
         if (this.current.movements.includes(r.movement)) continue; // it is being served
@@ -694,7 +713,7 @@ export class Controller {
   // A plain snapshot for saves and the debug hook.
   snapshot() {
     return {
-      t: this.t, phase: this.phase, stage: this.stage, stageT: this.stageT, next: this.next, offset: this.offset, shift: this.shift,
+      t: this.t, phase: this.phase, stage: this.stage, stageT: this.stageT, heldT: this.heldT, next: this.next, offset: this.offset, shift: this.shift,
       heads: Object.fromEntries(this.movements.map(m => [m, this.head(m)])),
       walk: this.walk ? { ...this.walk } : null, pedCalls: [...this.pedCalls],
     };
