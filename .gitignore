@@ -66,3 +66,6 @@ Projects/school-generator/walk.html
 
 # Daredevil: the fresh run a `transcript.mjs --check` failure leaves behind
 Projects/daredevil/test/transcripts/*.actual.md
+
+# Python bytecode
+__pycache__/
