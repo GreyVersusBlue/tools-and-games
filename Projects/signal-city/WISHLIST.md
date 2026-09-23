@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 8 and the UI pass, 2026-09-21 to 2026-09-23)
+## What shipped (milestones 0 to 8, the UI pass and M9's grid, 2026-09-21 to 2026-09-23)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -201,15 +201,53 @@ open work; this file is the plan it points at.
   --ring` measures a converted board. 176 + 274 + 75 + 24 + 23 + 35 + 182
   checks.
 
+- **M9, first increment: the grid** (HISTORY.md #601 to #606), no new
+  mode yet. `js/grid.js growCells(seed, count)` grows a 4 by 3 district a
+  box at a time from one seeded generator: the first box in the middle
+  and a signal, each later one next to a built one (weighted by built
+  neighbours squared), a T on the edge at 0.25 with its missing leg facing
+  out, a ring at 0.2, one lane everywhere, 150 to 260 vehicles an hour on
+  every leg, and the first n boxes of a seed the same whatever count is
+  asked for. `gridLevel` makes it a runnable level (a 20 s rule at every
+  signal, no target). `network.js buildCells` takes `cells: [{ at: [col,
+  row], ...own }]`, puts each at its cell times 220 m and joins neighbours
+  both ways through `linkNodes`, north-south included; a leg into a box
+  with no leg back, two lane counts on one join and two boxes on a cell
+  all throw. Two bugs from box one fixed with it: the crossing cache per
+  node (#602) and the tourist's wrong turn at its own box (#603). The page
+  runs one through `__signalCity.startGrid(seed, count)`: boxes by number,
+  three to a row, the stage and cause lines on the selected box, the ring
+  note and strip following the selection, a ring's phases disabled, the
+  camera down to 1.2 px/m. 176 + 274 + 75 + 24 + 23 + 35 + 34 + 194
+  checks (`test/grid.mjs` is new).
+
 ## What is next, in order
 
-7. **M9 endless and sandbox** (1): an intersection per survived day, a grid
-   generator from `js/rng.js`. The roundabout node it was to build shipped
-   with M8 (#594); a sandbox can place one with `roundabout: true`.
-   Carried from M8: whatever play shows the four prices want, and the
-   brief's time of day per level (#585), still render.js's `DUSK_LEVELS`.
+7. **M9 endless and sandbox, second increment** (1): the grid is built
+   (#601 to #606); what is left is the two modes on it. Endless is a new
+   card (#604): day n is `gridLevel(seed, n)`, one box more per survived
+   day on the same seed, a best to beat. It needs a day's target and wait
+   target from `gridLevel`'s numbers (#605 has 2 to 12 boxes on six seeds),
+   what ends a run, and how the best is stored: a new field through
+   `repair` with a default for older saves (#36, #37), `signal_city_v1`
+   unchanged. The sandbox is Free Play grown (#604): one box as now,
+   hashing as today, or a generated district with a seed to reroll; its
+   two scripted ambulances name W on node 0, which a grid may have linked,
+   so they need a spawning leg. Carried from M8: whatever play shows the
+   four prices want, and the brief's time of day per level (#585), still
+   render.js's `DUSK_LEVELS`.
 
 ## Known gaps and decisions
+
+- A grid's edge legs end in grass inside the district: a box whose
+  neighbour cell is empty has a 110 m spawning leg that stops where cars
+  appear. The generator fills the district compactly, so it reads as
+  suburbs being built, but nothing draws a road end. The grid has no
+  target (the HUD reads "/ 1") until endless says what a day asks for.
+  At 12 boxes the camera is at 1.27 px/m and a car is 6 px long; the
+  wheel zooms to three times that. `test/grid.mjs` runs twelve boxes for
+  90 s and the calibration for 240 s at about 17 s a run: a longer
+  endless day will want the suite to sample, not soak.
 
 - The ring is one lane (#595); a two-lane ring is refused, so Four Ways
   and School Run cannot convert. It has no zebras, loops or cones, and

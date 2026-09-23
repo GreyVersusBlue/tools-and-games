@@ -44,6 +44,14 @@
 // decision (the yellow, the red roll, the trust roll, the four-way order)
 // is made again at the second box.
 //
+// The grid (M9). `network.cells` builds a box per cell (network.js
+// buildCells, js/grid.js growCells), joined north-south as well as
+// east-west by the same linkNodes, and everything above runs unchanged on
+// it: the handoff was never told which way the street ran. What had read
+// box one whatever box a car was at now reads the car's own: a tourist's
+// wrong turn (#603), and the crossing cache, keyed by node as well as path
+// (#602).
+//
 // Events (M7). A level's `events` list is scripted moments, each `{ kind,
 // at, for }` and a few fields of its own, started when the clock reaches
 // `at` and ended `for` seconds later (`active` holds the ones in force;
