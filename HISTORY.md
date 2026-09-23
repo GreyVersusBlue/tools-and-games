@@ -14,7 +14,7 @@ decision's short form is not enough to reverse it safely.
 **How to add to it.** A new decision is one entry at the end of "Locked
 decisions", in the same shape: bold rule, one to three sentences of why, the
 project in italics. A shipped batch adds one paragraph to its project's log.
-Numbering continues from #577.
+Numbering continues from #588.
 
 ---
 
@@ -1033,6 +1033,28 @@ Generator.
 
 **#576. School Run and Main Street ship with targets from calibration.** School Run: 420/360 veh/h, zone at 40 s for 90, W curb lane closed at 150 s, target 88, waitTarget 12. Main Street: motorcade of 5 at 50 s, procession of 8 at 160 s, target 60, waitTarget 20, `boxStall` 45. The level select's scrim centres with `safe` (#132). *Signal City, levels 7 and 8.*
 
+**#577. Event banners are a DOM queue in the board's top-left corner.** Two events at once drew their canvas banners on the same point over the box (School Run at 151 s: SCHOOL ZONE OVER over LANE CLOSED). The renderer keeps the list; the page shows it as an `aria-live` stack, newest last, which the suite can measure. *Signal City, UI pass.*
+
+**#578. The cause of a change is a read-only `Controller.cause`, written where the change starts.** `{ by, t, rule?, text? }`, by one of start, player, rule, plan, offset, corridor, outage, flash; every log entry carries the `by` in force. `requestPhase(i, by = 'player')` lets the world pass 'outage' when the power returns. Nothing reads it to decide anything, and a 300 s four-phase run with the write stubbed out matches change for change. *Signal City, UI pass.*
+
+**#579. The panel is tabs, a level opens on its lesson's, and nothing about the panel is saved.** First Light, Four Ways, Rush Hour, Main Street and Free Play open on Phases; Stem and Two Blocks on Timing; Crossing on Crossings; School Run on Rules. A remembered last tab would be overruled on every level start, so `signal_city_v1` is untouched and has no `repair` change. *Signal City, UI pass.*
+
+**#580. The board fills the window's height, and `fit()` frames the world in whatever rectangle that is.** Sized by the world's aspect, Two Blocks left an empty band under a 430 px board and a single box ran 40 px past a 900 px window. A corridor now shows more of its cross streets; the legs are drawn 60 m past the map edge so no road ends on screen. *Signal City, UI pass.*
+
+**#581. A phase card draws every movement, rights included, from the phase's own list.** The old text dropped the rights. An arrow per movement is what the suite counts against `ctl.phases`, permissive lefts are dashed and walks are bars across their leg. *Signal City, UI pass.*
+
+**#582. A lane is washed green if any movement it carries is green, amber if any is yellow.** Read from `ctl.head`, so a shared lane with a permissive left washes green and a protected left's bay washes only on its arrow. Every stop line also carries a short wash in the colour its lane shows, red included; none while dark. *Signal City, UI pass.*
+
+**#583. Brake lamps are `a < -0.8 m/s²` or standing, and the indicator runs from 45 m before the stop line to the box exit.** Standing is `v < 0.3`: 98.5% of a queue's standing steps already read below -0.8, and the rest are the eased ones a driver still holds. A car waiting at a closure's taper indicates toward the lane it merges into. Both are getters on `Car` (`braking`, `indicator`); asking every car every step leaves the hash unchanged. *Signal City, visual pass.*
+
+**#584. The ground is its own canvas under a transparent board, and a drag slides it.** One canvas with a cached layer cost more than no cache: blitting it took 6.7 ms and a full-board multiply for dusk 9.3 ms under a software Chromium. The ground canvas takes the tint when it is drawn and each car is tinted over its own pixels (`source-atop`). Frames went from 27 to 22 ms (Rush Hour at 115 s) and 5.5 to 3 (First Light). A zoom redraws the ground once per step; a drag redraws it once on release. *Signal City, visual pass.*
+
+**#585. Dusk is a set of level ids in render.js, not a level field.** `DUSK_LEVELS = { 'rush-hour' }` keeps the visual pass out of the level data; night is the outage, whatever the level. If the campaign wants a time of day per level, move it to the level then. *Signal City, visual pass.*
+
+**#586. The cache is guarded by a rebuild counter, not a timing.** A cached-against-rebuilt frame timing passed at 12.5 against 49.5 ms, then failed at 1.2 against 1.0 once the ground had its own canvas, because each canvas defers its draws until read. Flushing both left a 30% gap, too thin for CI. `staticBuilds` holds still across half a second of frames and a drag, and moves once for a zoom and once on release. *Signal City, visual pass.*
+
+**#587. Both increments of the UI pass shipped in one PR, and the row is retired.** Increment 1 was green with room to spare, and the brief allowed going on; one PR carried both. *Signal City, UI pass.*
+
 ---
 
 # The log
@@ -1309,3 +1331,6 @@ Level-data events (surge, power outage, ambulance timer), a whole-leg priority c
 
 ## Signal City, M7 third increment, four events and levels 7 and 8, 2026-09-22
 PR #348 finished milestone 7: motorcade and funeral procession platoons, holding a green by pressing it again, the zipper lane closure, the school zone, three zebra deadlock rules, and levels 7 and 8 (School Run, Main Street). 616 checks across six suites, no storage change, Crossing's calibration unmoved. Decisions #571 to #576. M8, the campaign, is next. Lesson: a #34 break run outside the repo died of `ERR_MODULE_NOT_FOUND`, which is not a catch.
+
+## Signal City, the UI clarity and visual pass, 2026-09-23
+PR #352, asked for by Devon ahead of M8, shipped both increments. The UI: a banner queue, green and amber lane washes with a hover preview of each phase, phase cards drawn as diagrams, `Controller.cause` behind a Signal line that names every change's cause, a flashing rule card, a 60 s strip, tabs that open on each level's lesson, and four stats. The visuals: pavement, curbed corners, rooftops, trees and noisy asphalt on a ground canvas drawn once per camera, car shadows, brake lamps and indicators from new read-only `Car` getters, lamp glows, stop-line washes, dusk and night. signals 148 to 163, sim 241 to 252, browser 106 to 156, no storage change. Decisions #577 to #587. Lesson: two first-draft guards stayed green against real breaks (a read-only check on a two-phase run with no hand, a brake-hold check on one car), and a timing guard went red once the ground moved to its own canvas, so the rebuild counter replaced it.
