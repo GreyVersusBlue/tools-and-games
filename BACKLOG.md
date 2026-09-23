@@ -36,6 +36,9 @@ you finish. A merged PR is not the end of the session.
 
 Break any guard-rail you added on purpose once, from a green baseline, and say which
 assertion failed and what it said (#34).
+
+End your last message with a handoff prompt for the next session, in one fenced
+block, as CLAUDE.md's definition of done item 7 describes (#600).
 ```
 
 **1. Never stop to ask.** If a row needs a judgement call, make it: decide, ship, and record

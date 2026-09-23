@@ -221,3 +221,14 @@ your own branch, in the same commit, and say so in the PR body.
    session batched two phases, saved both backlog rewrites for the end, and its
    first PR merged with the row still in the ranked table — the next session
    spent an hour rebuilding what already existed.
+7. **The session's last message ends with a handoff prompt** (#600): one fenced
+   block, ready to paste into a fresh session, that starts the next piece of
+   work. It names the row (rank, Size, Model, area), the plan it points at
+   (`WISHLIST.md` item, or the `BACKLOG.md` section), the open call the next
+   session has to make first if there is one, the `HISTORY.md` decisions the
+   work builds on, what cost this session time and how to avoid it, the setup
+   and the suites to run with their current counts, and the house rules that
+   bite on that row. It goes in the chat, not in a file: every file here is a
+   live URL, and a handoff file would be stale by the next merge. When the
+   next row is a 2+, the prompt is for its next increment; when this session
+   stopped mid-row, it says exactly where.
