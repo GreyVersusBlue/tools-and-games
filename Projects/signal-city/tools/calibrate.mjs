@@ -21,6 +21,9 @@
 // phase asked for as its lead comes within 60 m of the line, and the green
 // pressed again every 10 s until the last member is through the box. A
 // level with platoons prints a splits column either way.
+// `--ring` plays the board as the roundabout converts it (loadout with the
+// roundabout bought, #595): one row, no cycle, scored against the level's
+// `ring` calibration. A board the roundabout does not convert is skipped.
 
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -32,6 +35,7 @@ const { World } = await load('sim.js');
 const { score } = await load('scoring.js');
 const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { standardPhases } = await load('signals.js');
+const { loadout, convertible } = await load('campaign.js');
 
 const args = process.argv.slice(2).filter(a => !a.startsWith('--'));
 const flags = process.argv.slice(2).filter(a => a.startsWith('--'));
@@ -84,7 +88,7 @@ export function holdPlatoon(w) {
 
 // One run. `offset` (a corridor only) shifts the second box's plan.
 export function cell(level, seed, cycle, opts = {}, offset = null) {
-  const lvl = { ...level, controller: controllerFor(level, cycle, opts) };
+  const lvl = opts.ring ? loadout(level, ['roundabout']) : { ...level, controller: controllerFor(level, cycle, opts) };
   if (offset !== null) lvl.controllers = [{ offset: 0 }, { offset }];
   const w = new World(lvl, seed);
   for (let i = 0; i < level.duration * 60; i++) { w.step(); if (opts.hold) holdPlatoon(w); if (w.stats.gridlock) break; }
@@ -96,8 +100,18 @@ export function cell(level, seed, cycle, opts = {}, offset = null) {
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 const levels = !isMain ? [] : which === 'all' ? LEVELS : [levelById(which)].filter(Boolean);
 if (isMain && !levels.length) { console.log(`no level ${which}`); process.exit(1); }
-const opts = { plan: flags.includes('--plan'), twoPhase: flags.includes('--two-phase'), allRed: allRedOverride, rules: flags.includes('--rules'), lefts: leftsGreen, hold: flags.includes('--hold') };
+const opts = { plan: flags.includes('--plan'), twoPhase: flags.includes('--two-phase'), allRed: allRedOverride, rules: flags.includes('--rules'), lefts: leftsGreen, hold: flags.includes('--hold'), ring: flags.includes('--ring') };
 for (const level of levels) {
+  if (opts.ring) {
+    if (!convertible(level)) continue;
+    const r = loadout(level, ['roundabout']);
+    console.log(`\n${level.name} (${level.id}) as a roundabout: target ${r.target}, waitTarget ${r.waitTarget}, ${level.duration} s`);
+    console.log('       ' + seeds.map(s => `seed ${s}`.padEnd(16)).join('') + ' cleared      wait');
+    const row = seeds.map(s => cell(level, s, 0, opts));
+    const cl = row.map(c => c.cleared), wt = row.map(c => c.wait);
+    console.log(`  ring ${row.map(c => `${c.gridlock ? 'LOCK' : String(c.cleared).padStart(3)} ${c.wait.toFixed(0).padStart(3)}s ${c.collisions}x ${'★'.repeat(c.stars).padEnd(3, '☆')}`.padEnd(16)).join('')} ${Math.min(...cl)} to ${Math.max(...cl)}   ${Math.min(...wt).toFixed(0)} to ${Math.max(...wt).toFixed(0)} s`);
+    continue;
+  }
   const corridor = isCorridor(level);
   const peds = !!level.pedDemand;
   const platoons = (level.events || []).some(e => e.kind === 'motorcade' || e.kind === 'procession');

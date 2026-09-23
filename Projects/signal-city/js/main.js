@@ -48,6 +48,7 @@ class Game {
     this.save = this.slot.load() || this.slot.fresh();
     this.seed = 1;
     this.node = 0;           // the box the panel drives (a corridor has two)
+    this.ringOn = true;      // the roundabout's switch, when it is owned (#599)
     this.wave = new WaveHistory();   // the platoon diagram's samples (M7)
     this.hudEls = {};
     this.tab = 'phases';
@@ -78,6 +79,13 @@ class Game {
     if (this.world) this.renderer.fit(this.world);
   }
 
+  // What the player owns and has switched on (#599): the roundabout's
+  // switch is this session's, on until it is pressed, and nothing stores
+  // it. Everything else bought is always on.
+  bought() { return owned(this.save).filter(id => id !== 'roundabout' || this.ringOn); }
+
+  get onRing() { return !!(this.world && this.world.nodes.some(n => n.roundabout)); }
+
   // The controller the panel edits.
   get ctl() { return this.world ? this.world.controllers[Math.min(this.node, this.world.controllers.length - 1)] : null; }
 
@@ -87,7 +95,7 @@ class Game {
   buildLevelSelect() {
     const list = $('levelList');
     list.innerHTML = '';
-    const mine = owned(this.save);
+    const mine = this.bought();
     const next = nextLevel(this.save);
     LEVELS.forEach((lvl, i) => {
       const rec = this.save.levels[lvl.id] || { stars: 0, best: 0, plays: 0 };
@@ -120,10 +128,19 @@ class Game {
       row.className = 'shop-item' + (c.why === 'owned' ? ' owned' : '');
       row.dataset.item = item.id;
       const btn = document.createElement('button');
-      btn.className = 'small buy';
-      btn.disabled = !c.ok;
-      btn.textContent = c.why === 'owned' ? 'owned' : `${item.cost} ★`;
-      btn.addEventListener('click', () => this.buy(item.id));
+      if (item.id === 'roundabout' && c.why === 'owned') {
+        // an owned roundabout's button is its switch
+        btn.className = 'small buy ring-switch' + (this.ringOn ? ' on' : '');
+        btn.textContent = this.ringOn ? 'on' : 'off';
+        btn.setAttribute('aria-pressed', String(this.ringOn));
+        btn.title = 'Roundabouts on the boards it converts, or their signals';
+        btn.addEventListener('click', () => { this.ringOn = !this.ringOn; this.buildLevelSelect(); });
+      } else {
+        btn.className = 'small buy';
+        btn.disabled = !c.ok;
+        btn.textContent = c.why === 'owned' ? 'owned' : `${item.cost} ★`;
+        btn.addEventListener('click', () => this.buy(item.id));
+      }
       const why = c.why === 'shut' ? `A star on ${levelById(item.after).name} puts it on the shelf.`
         : c.why === 'short' ? `${item.cost - wallet(this.save)} more to go.` : '';
       row.innerHTML = `<div class="shop-text"><b>${item.name}</b><span>${item.blurb}</span>${why ? `<span class="shop-why">${why}</span>` : ''}</div>`;
@@ -143,7 +160,7 @@ class Game {
   start(levelId, seed = null) {
     const base = levelById(levelId);
     if (!base) return;
-    const lvl = loadout(base, owned(this.save));
+    const lvl = loadout(base, this.bought());
     this.level = lvl;
     this.seed = seed ?? ((Date.now() % 100000) + 1);
     if (DEBUG) this.seed = seed ?? 7;
@@ -207,6 +224,8 @@ class Game {
     const has = { phases: u.has('phases'), timing: u.has('allred') || !$('waveBox').classList.contains('hidden'), rules: u.has('auto'), crossings: u.has('peds'), mode: u.has('flash') };
     for (const b of $('tabs').children) b.classList.toggle('hidden', !has[b.dataset.tab]);
     $('pedLateStat').classList.toggle('hidden', !this.world.controllers.some(c => c.hasPeds));
+    $('ringNote').classList.toggle('hidden', !this.onRing);
+    $('strip').classList.toggle('hidden', this.onRing);
   }
 
   // A corridor: which box the panel drives. The phases, the sliders and the
@@ -560,6 +579,7 @@ class Game {
     $('pedLate').className = m.pedLate ? 'bad' : '';
     const flashing = ctl.stage === 'flash';
     const stageOf = c => {
+      if (c.roundabout) return 'Roundabout: no signals';
       const fl = c.stage === 'flash';
       const st = c.preemption ? 'PRIORITY' : c.stage === 'green' ? `${c.current.name} green` : c.stage === 'yellow' ? 'yellow' : c.stage === 'allred' ? 'all red'
         : fl ? (c.flash === 'red' ? 'flashing red: four-way stop' : `flashing yellow on ${c.flash.major.join(' and ')}`) : c.stage === 'dark' ? 'dark: four-way stop' : c.stage;
@@ -618,7 +638,7 @@ class Game {
     for (const id of ['flashRedBtn', 'flashYellowBtn', 'signalsBtn']) $(id).disabled = w.powerOut;
     for (const b of $('phases').children) b.disabled = w.powerOut;
     const em = w.cars.find(c => !c.done && (c.archetype === 'emergency' || c.archetype === 'motorcade') && !c.priority);
-    $('priorityBtn').classList.toggle('show', !!em);
+    $('priorityBtn').classList.toggle('show', !!em && !this.onRing);   // a ring refuses the corridor
     if (!$('waveBox').classList.contains('hidden')) {
       this.drawWave();
       const shift = w.controllers[1].shift;
@@ -669,6 +689,7 @@ class Game {
 // What changed the signal, in words, for the Signal line.
 const BY_LABEL = { start: 'the level\'s start', player: 'you', rule: 'a rule', plan: 'the timed plan', offset: 'the offset', corridor: 'the priority corridor', outage: 'the power', flash: 'flash mode' };
 function causeText(ctl) {
+  if (ctl.roundabout) return 'Every entry yields to the ring';
   const c = ctl.cause;
   switch (c.by) {
     case 'player': return c.hold ? 'Held by you: its rule counts from the press' : 'Changed by you';

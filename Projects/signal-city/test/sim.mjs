@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World, DT } = await load('sim.js');
-const { Network, rectsOverlap, LANE_WIDTH, CROSSWALK } = await load('network.js');
+const { Network, rectsOverlap, LANE_WIDTH, CROSSWALK, RING_R, buildNodes } = await load('network.js');
 const { ARCHETYPES, Car, stopLineVerdict, BRAKE_LIGHT_A, INDICATE_FROM } = await load('cars.js');
 const { makeRng } = await load('rng.js');
 
@@ -1089,6 +1089,127 @@ const plant = (world, leg, n, dir) => {
 }
 
 /* ---------------------------------------------------------------- the soak -- */
+
+group('the roundabout (M8, #595): a ring, a yield line, no lights');
+
+const net0 = () => new Network({ roundabout: true });
+{
+  const net = net0();
+  const all = [...net.paths.values()];
+  ok(all.length === 12 && all.every(p => p.ring && p.stopLine < p.boxEnter && p.boxEnter < p.boxExit),
+    'four legs, three ways out of each, every one a ring path: yield line, then the join, then the leave', `${all.length} paths`);
+  // leaderOf reads a car on the shared approach and exit by its own s: the
+  // geometry has to be one line up to the join and from the leave
+  const same = (a, b, s0, s1, fa = s => s, fb = s => s) => { for (let s = s0; s <= s1; s += 0.5) { const x = a.at(fa(s)), y = b.at(fb(s)); if (Math.hypot(x.x - y.x, x.y - y.y) > 1e-6) return false; } return true; };
+  const byEntry = all.filter(p => p.entry === 'W');
+  ok(byEntry.every(p => same(p, byEntry[0], 0, p.boxEnter)), 'every path from one lane is the same line up to the join');
+  const toE = all.filter(p => p.exit === 'E');
+  ok(toE.every(p => same(p, toE[0], 0, p.length - p.boxExit, s => p.boxExit + s, s => toE[0].boxExit + s)), 'and every path to one exit the same line from the leave');
+  const mid = net.pathFor('W', 0, 'T');
+  const onCircle = [mid.boxEnter, (mid.boxEnter + mid.boxExit) / 2, mid.boxExit].map(s => Math.hypot(mid.at(s).x, mid.at(s).y));
+  ok(onCircle.every(r => Math.abs(r - RING_R) < 0.05), 'the arc lies on the ring\'s centre line', onCircle.map(f1).join(', '));
+  const arc = t => { const p = net.pathFor('W', 0, t); return p.boxExit - p.boxEnter; };
+  ok(arc('R') < arc('T') && arc('T') < arc('L'), 'a right is the shortest way round, a left the longest', `${f1(arc('R'))} / ${f1(arc('T'))} / ${f1(arc('L'))} m`);
+  // the ring runs anticlockwise on the screen: from N, a car comes round
+  // past the west join before the south; a right from N leaves before it
+  const wJoin = mid.ring.aIn;
+  ok(net.pathFor('N', 0, 'L').sAtAngle(wJoin) !== null && net.pathFor('N', 0, 'T').sAtAngle(wJoin) !== null && net.pathFor('N', 0, 'R').sAtAngle(wJoin) === null,
+    'the traffic from N passes the west join on a through or a left, and a right from N leaves the ring before it');
+  ok(Math.abs(mid.ringAngle(mid.sAtAngle(wJoin - 0.4)) - (wJoin - 0.4)) < 1e-9, 'ringAngle and sAtAngle are each other\'s inverse');
+  let threw = false; try { new Network({ roundabout: true, lanesPerDir: 2 }); } catch { threw = true; }
+  ok(threw, 'a two-lane ring is refused, not built wrong');
+  ok(buildNodes({ roundabout: true, legs: ['N', 'E', 'S'] })[0].paths.size === 6, 'a three-legged ring (the Stem) has six ways through');
+}
+{
+  const w = new World({ network: { roundabout: true }, demand: {}, duration: 60, spawns: [{ t: 0, leg: 'W', archetype: 'emergency', turn: 'T' }] }, 1);
+  w.run(1);
+  const em = w.cars[0];
+  ok(w.controller.roundabout && w.controller.stage === 'dark', 'the ring\'s controller is built and dark for good');
+  ok(!w.requestPhase(1) && !w.setFlash('red') && !w.holdGreen() && !w.requestPriority(em) && w.controller.stage === 'dark',
+    'and every command for it is refused: a phase, a flash, a hold, a corridor');
+}
+{
+  // a car circulating from N to W (a left: it passes the west join) and a
+  // W through that arrives while it is on its way. Without the yield the W
+  // car goes in at 9 s, 5 s before the ring car is past, and the ring car
+  // stands on its brakes behind it; spawned at 3 s they collide.
+  const run = (ringTurn, tW) => {
+    const w = new World({ network: { roundabout: true }, demand: {}, duration: 60, mix: { standard: 1 }, spawns: [{ t: 0, leg: 'N', archetype: 'standard', turn: ringTurn }, { t: tW, leg: 'W', archetype: 'standard', turn: 'T' }] }, 1);
+    const r = { minW: Infinity, enterW: -1, clearN: -1, minN: Infinity, w };
+    for (let i = 0; i < 60 * 40; i++) {
+      w.step();
+      const n = w.cars.find(x => x.path.entry === 'N'), c = w.cars.find(x => x.path.entry === 'W');
+      if (c && c.front > c.path.stopLine - 25 && c.front < c.path.stopLine + 0.5) r.minW = Math.min(r.minW, c.v);
+      if (c && r.enterW < 0 && c.front > c.path.stopLine + 0.5) r.enterW = w.t;
+      const sx = n && n.path.sAtAngle(wJoinOf(w));
+      if (n && sx !== null && r.clearN < 0 && n.rear > sx + 1) r.clearN = w.t;
+      if (n && sx !== null && n.front > sx - 20 && n.rear < sx + 1) r.minN = Math.min(r.minN, n.v);
+    }
+    return r;
+  };
+  const wJoinOf = w => w.network.pathFor('W', 0, 'T').ring.aIn;
+  const a = run('L', 2);
+  ok(a.minW < 1, 'the W car stops at its yield line for a car coming round', `slowest ${f1(a.minW)} m/s`);
+  ok(a.enterW > a.clearN && a.clearN > 0, 'and goes in only once that car is past its join', `in at ${f1(a.enterW)} s, the ring car past at ${f1(a.clearN)} s`);
+  ok(a.minN > 5, 'the car on the ring never slows for it: the ring has the right of way', `slowest ${f1(a.minN)} m/s at the join`);
+  ok(a.w.stats.collisions === 0 && a.w.stats.cleared === 2, 'both through, no collision', `${a.w.stats.cleared} cleared`);
+  const b = run('R', 2);
+  ok(b.minW > 3 && b.w.stats.collisions === 0, 'a car from N turning right leaves the ring before the west join: the W car does not wait for it', `slowest ${f1(b.minW)} m/s`);
+}
+{
+  // the level's demand, standard drivers only, on six seeds: no collision
+  // and no gridlock, on four legs and on the Stem's three
+  const rows = [];
+  for (const [legs, demand] of [[['N', 'E', 'S', 'W'], { N: 330, S: 330, E: 220, W: 220 }], [['N', 'E', 'S'], { N: 380, S: 380, E: 320 }]]) {
+    for (let seed = 1; seed <= 6; seed++) {
+      const w = new World({ network: { roundabout: true, legs }, demand, mix: { standard: 1 }, turns: { T: 0.6, L: 0.2, R: 0.2 }, duration: 180 }, seed).run(180);
+      rows.push({ legs: legs.length, seed, coll: w.stats.collisions, lock: w.stats.gridlock, cleared: w.stats.cleared, maxWait: w.stats.maxWait });
+    }
+  }
+  ok(rows.every(r => r.coll === 0), 'twelve three-minute runs at First Light\'s and the Stem\'s demand, standard drivers: no collision', rows.map(r => r.coll).join(''));
+  ok(rows.every(r => !r.lock), 'and no gridlock', `longest wait ${f1(Math.max(...rows.map(r => r.maxWait)))} s`);
+  ok(rows.every(r => r.cleared >= 28), 'and the traffic goes round', `${Math.min(...rows.map(r => r.cleared))} to ${Math.max(...rows.map(r => r.cleared))} cleared`);
+}
+{
+  // the splitter island (network.js SPLIT): a trucker leaving by a leg,
+  // swept along every path to it, against a car stopped at that leg's yield
+  // line or up to 6 m past it on its way in. With no splitter the trailer
+  // cuts across a car 5 m in on four of the twelve exits.
+  const { Car } = await load('cars.js');
+  const rng = makeRng(1);
+  const hits = [];
+  for (const leg of ['N', 'E', 'S', 'W']) {
+    const inCar = new Car({ archetype: 'standard', path: net0().pathFor(leg, 0, 'T'), rng });
+    for (const ahead of [0, 2, 4, 5, 6]) {
+      inCar.s = inCar.path.stopLine + ahead - inCar.stats.length / 2;
+      const body = inCar.rects();
+      for (const p of net0().paths.values()) {
+        if (p.exit !== leg) continue;
+        const truck = new Car({ archetype: 'trucker', path: p, rng });
+        for (let s = p.boxEnter; s < p.length - 50; s += 0.25) { truck.s = s; if (truck.rects().some(r => body.some(q => rectsOverlap(r, q)))) { hits.push(`${p.key} over a car ${ahead} m in`); break; } }
+      }
+    }
+  }
+  ok(!hits.length, 'a trailer leaving by a leg clears a car entering by it: the splitter keeps them apart', hits.slice(0, 3).join('; ') || 'no overlap');
+}
+{
+  // Free Play's drivers, trucks and tourists and students included, at 1.2
+  // times its demand, five minutes on six seeds. This is the check on the
+  // merge-in leader (sim.js leaderOf): with the ring reading a car on its
+  // way in only once it is a body in the probe, three of these six runs
+  // have a collision.
+  const fp = { network: { roundabout: true }, demand: { N: 432, S: 432, E: 360, W: 360 }, mix: { standard: 5, granny: 1, aggressive: 1.5, tourist: 1, trucker: 0.6, student: 0.8, rideshare: 1.2 }, duration: 300 };
+  const got = [];
+  for (let seed = 1; seed <= 6; seed++) { const w = new World(fp, seed).run(300); got.push(w.stats.collisions + (w.stats.gridlock ? 'L' : '')); }
+  ok(got.every(c => c === '0'), 'every kind of driver round the ring at 1.2 times Free Play\'s demand: no collision, no gridlock', got.join(' '));
+}
+{
+  const L = { network: { roundabout: true }, demand: { N: 400, S: 400, E: 300, W: 300 }, duration: 120 };
+  const h1 = new World(L, 5).run(90).hash();
+  const h2 = new World(L, 5).run(90).hash();
+  const h3 = new World(L, 6).run(90).hash();
+  ok(h1 === h2 && h1 !== h3, 'the same seed round the ring is the same run, a different seed is not', `${h1} ${h2} ${h3}`);
+}
 
 group('a three-minute mixed run on the cycling level');
 

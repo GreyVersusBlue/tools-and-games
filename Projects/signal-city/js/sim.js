@@ -97,11 +97,21 @@
 //                                renderer draws.
 // The lists sit in the level, so a run is still a function of (seed, level,
 // inputs). The page reads `active` for its event line.
+//
+// The roundabout (M8, #595). A node built with `roundabout: true` is a ring
+// (network.js): every path goes round it anticlockwise on the screen, and
+// a car's stop line is its yield line. The controller is built dark and
+// stays dark, and every command for that node is refused. Each step a car
+// on a ring path takes its verdict from cars.js ringVerdict instead of the
+// light and the box; a car on the ring reads one merging in ahead of it as
+// its leader (leaderOf), and finds everything else on the ring through
+// obstacleAhead's probe. Walkers, loops and closures are not built for it:
+// the boards it converts have none (campaign.js convertible, #597).
 
 import { makeRng } from './rng.js';
 import { Controller, conflicts, wideConflicts, parseMovement } from './signals.js';
 import { Network, buildNodes, rectsOverlap, pointInRect, LANE_WIDTH, CROSSWALK } from './network.js';
-import { Car, ARCHETYPES, DT, resetIds, drive, stopLineVerdict, boxVerdict, specialStops } from './cars.js';
+import { Car, ARCHETYPES, DT, resetIds, drive, stopLineVerdict, boxVerdict, ringVerdict, specialStops } from './cars.js';
 
 export { DT };
 
@@ -131,6 +141,10 @@ export class World {
       const c = new Controller({ legs: n.legs, ...spec });
       // the clearance is the road's width at a slow walker's 1.2 m/s, unless the level says otherwise
       if (!(spec.pedTiming && spec.pedTiming.clear)) c.pedTiming.clear = Math.ceil(2 * n.halfRoad / 1.2);
+      // a roundabout has no heads: its controller is built, so everything
+      // that indexes `controllers` still works, and dark for good, and the
+      // world refuses every command for it (#595)
+      if (n.roundabout) { c.setDark(); c.roundabout = true; }
       return c;
     });
     this.controller = this.controllers[0];
@@ -398,20 +412,20 @@ export class World {
 
   // Every signal command is refused while the power is out (M7).
   requestPhase(i, node = 0) {
-    if (this.powerOut) return false;
+    if (this.powerOut || this.nodes[node].roundabout) return false;
     return this.controllers[node].requestPhase(i);
   }
 
   // Hold the running green against its elapsed rule (M7): a hand's way of
   // keeping a green under a platoon. Refused while the power is out.
   holdGreen(node = 0) {
-    if (this.powerOut) return false;
+    if (this.powerOut || this.nodes[node].roundabout) return false;
     return this.controllers[node].holdGreen();
   }
 
   // Flash red, flash yellow on the main road, or null for the phases.
   setFlash(f, node = 0) {
-    if (this.powerOut) return false;
+    if (this.powerOut || this.nodes[node].roundabout) return false;
     return this.controllers[node].setFlash(f);
   }
 
@@ -445,7 +459,7 @@ export class World {
   // shared, and a left turner at its head on a red held the ambulance
   // behind it through the whole hold on 3 of 6 rush-hour seeds.
   requestPriority(car) {
-    if (!car || car.priority || car.done || this.powerOut) return false;
+    if (!car || car.priority || car.done || this.powerOut || this.nodes[car.path.node].roundabout) return false;
     if (!car.stats.ignoresSignals && car.archetype !== 'motorcade') return false;   // a funeral gets no escort here
     if (car.platoon) {
       if (car.platoon.priority) return false;
@@ -737,6 +751,17 @@ export class World {
       }
       else if (q.entry === p.entry && q.lane === p.lane && o.rear < q.boxEnter && car.front < p.boxEnter + 1) pos = o.s;
       else if (q.exit === p.exit && q.exitLane === p.exitLane && o.front > q.boxExit) pos = o.s - q.boxExit + p.boxExit;
+      // round a ring (#595): a car past its yield line on its way in, placed
+      // at its join on my arc less the curve it still has to drive, so the
+      // ring slows for a car merging in front of it before it is a body in
+      // the way. A car already on the ring ahead of me is not read here:
+      // obstacleAhead's probe finds it, and reading it as a leader as well
+      // changed no collision in 36 runs of Free Play's drivers (#596).
+      else if (p.ring && q.ring && q.node === p.node && car.front > p.stopLine - 1 && o.s <= q.ring.sIn && o.front > q.stopLine + 0.5) {
+        const at = p.sAtAngle(q.ring.aIn);
+        if (at === null) continue;
+        pos = at - (q.ring.sIn - o.s);
+      }
       // the zipper (M7): a car in the next lane waiting at a closure's taper
       // to merge into mine, ahead of me, is my leader; I slow for it and the
       // room it needs comes. One beside me (its rear not ahead of my front)
@@ -842,6 +867,7 @@ export class World {
       const head = ctl.head(car.path.movement);
       specialStops(car, this, dt);
       if (car.crashed) { car.stopVerdict = 0; car.boxVerdict = 0; }
+      else if (car.path.ring) { car.stopVerdict = ringVerdict(car, this); car.boxVerdict = 0; }
       else {
         car.stopVerdict = stopLineVerdict(car, head, ctl.timeToYellow(car.path.movement), this);
         car.boxVerdict = car.stopVerdict > 0 ? 0 : boxVerdict(car, head, this);

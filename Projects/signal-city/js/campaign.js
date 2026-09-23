@@ -17,8 +17,12 @@ import { totalStars } from './save.js';
 export const CAMPAIGN = LEVELS.filter(l => !l.sandbox).map(l => l.id);
 
 // `after`: the level whose star puts the item on the shelf, the one that
-// teaches it. `cost` in stars. The roundabout is not here yet: it wants the
-// node type M9 builds.
+// teaches it. `cost` in stars. The roundabout (#594 to #599) converts the
+// boards `convertible` allows, and after Rush Hour, where the power goes
+// out and the box becomes a four-way stop, the roundabout is the box built
+// to run with no power at all. At 6 it cannot pay for itself: the two
+// starred boards it converts each already hold a star, so it can win back
+// four at most.
 export const SHOP = [
   {
     id: 'lefts', name: 'Protected turns', cost: 3, after: 'four-ways',
@@ -32,7 +36,27 @@ export const SHOP = [
     id: 'sensors', name: 'Sensors', cost: 5, after: 'crossing',
     blurb: 'Induction loops in every lane on every board with rules, so a queue rule fires when its lane fills.',
   },
+  {
+    id: 'roundabout', name: 'Roundabout', cost: 6, after: 'rush-hour',
+    blurb: 'The box on First Light, the Stem and Free Play rebuilt as a ring. No lights and nothing to press: every entry yields to the ring. Switch it off here to play the signals again.',
+  },
 ];
+
+export const RING_HINT = 'Nothing to press here. A car at a yield line waits for a gap in the ring, and the ring never waits for it. Watch where the queues build, then switch the ring off in the shop and see whether your signals beat it.';
+
+// Which boards a roundabout converts (#597): one box, one lane each way, no
+// walks, no timed plan and no scripted events. A corridor's lesson is its
+// offset, a walk needs a signal to call, and every event is a signal's
+// problem (an outage, an ambulance's corridor, a platoon a light splits);
+// the ring is built one lane wide. Each board it converts carries its own
+// calibration, `ring: { target, waitTarget }`, because a level's numbers
+// were measured on signals.
+export function convertible(level) {
+  const net = level.network || {};
+  const ctl = level.controller || {};
+  return (net.nodes || 1) === 1 && (net.lanesPerDir || 1) === 1 && !ctl.peds && !level.pedDemand
+    && ctl.mode !== 'timed' && !(level.events || []).length;
+}
 
 export const shopItem = id => SHOP.find(s => s.id === id) || null;
 
@@ -85,12 +109,15 @@ export function buy(save, id) {
 // lefts protected takes no arrows, and sensors go only where there are
 // rules to fire.
 export function applies(level, bought) {
+  // a roundabout replaces the box, and everything else was for its signals
+  if (bought.includes('roundabout') && convertible(level)) return ['roundabout'];
   const ctl = level.controller || {};
   const legs = (level.network && level.network.legs) || ['N', 'E', 'S', 'W'];
   const timed = ctl.mode === 'timed';
   const own = ctl.phases || standardPhases(legs, { lefts: !!ctl.lefts, peds: !!ctl.peds, main: ctl.main || 'NS' });
   const out = [];
   for (const id of bought) {
+    if (id === 'roundabout') continue;
     if (id === 'sensors') { if (!level.sensors && (level.unlocks || []).includes('auto')) out.push(id); continue; }
     if (timed) continue;
     if (extraPhases(legs, [id], own).length) out.push(id);
@@ -99,11 +126,22 @@ export function applies(level, bought) {
 }
 
 // The level the world is built from: a copy with what was bought folded in.
+// `bought` is what the player owns and has switched on: the page leaves the
+// roundabout out of it while its switch is off.
 // The level itself is never changed, and a level that takes nothing comes
 // back as the same object.
 export function loadout(level, bought) {
   const use = applies(level, bought);
   if (!use.length) return level;
+  // the ring: no controls to show, and the level's own calibration for it.
+  // The controller stays in the copy; the World builds it dark (#595).
+  if (use[0] === 'roundabout') {
+    const ring = level.ring || {};
+    return {
+      ...level, network: { ...(level.network || {}), roundabout: true }, controller: { ...(level.controller || {}) }, unlocks: [], bought: use, hint: RING_HINT,
+      target: ring.target ?? level.target, waitTarget: ring.waitTarget ?? level.waitTarget,
+    };
+  }
   const out = { ...level, controller: { ...(level.controller || {}) }, unlocks: (level.unlocks || []).slice(), bought: use };
   const phases = use.filter(id => id !== 'sensors');
   if (phases.length) out.controller.extra = phases;

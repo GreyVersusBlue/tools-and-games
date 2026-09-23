@@ -354,13 +354,58 @@ export function boxVerdict(car, head, world) {
   return 0;
 }
 
+// The roundabout (M8, #595): no light, a yield line. A driver short of it
+// yields to every car that will pass the point where they join the ring
+// before they could be there and RING_HEADWAY seconds clear of it: one on
+// the ring, one already past its own yield line upstream, or one rolling up
+// to its line on a go. One sitting across the join holds them outright. A
+// car past its line is in; so is one that decided to go and can no longer
+// stop short of the line at its full brake. Returns the s the front must
+// stop before, or 0 for go. Everyone yields, an ambulance included: the
+// ring has nothing to preempt.
+export const RING_HEADWAY = 1.5;
+export const RING_LOOK = 40;   // metres before the yield line a driver starts looking
+export function ringVerdict(car, world) {
+  const p = car.path, st = car.stats;
+  if (car.front > p.stopLine + 0.5) return 0;
+  const d = p.stopLine - car.front;
+  if (d > RING_LOOK) return 0;
+  if (car.stopVerdict === 0 && car.v * car.v / (2 * Math.max(0.1, d)) > st.brake * 0.9) return 0;
+  const join = p.ring.aIn;
+  // my front's time to the join from here, pulling away at 0.8 of my accel
+  const need = timeToCover(st, car.v, p.boxEnter - car.front, 0.8) + st.reaction + RING_HEADWAY;
+  for (const o of world.cars) {
+    if (o === car || o.done || o.path.node !== p.node || !o.path.ring) continue;
+    const q = o.path;
+    // at or short of its own yield line: counted only once it is moving in
+    // on a go of its own, close enough that it will be in before I am
+    if (o.front <= q.stopLine + 0.5 && (o.stopVerdict !== 0 || o.v < 1 || q.stopLine - o.front > 12)) continue;
+    const sx = q.sAtAngle(join);
+    if (sx === null || o.rear > sx + 1.0) continue;           // never passes my join, or is clear of it
+    if (o.front >= sx - 1.0) { car.blockedBy = o.id; return p.stopLine; }   // across it now
+    // theirs, on the assumption they speed up to their turn speed, and the
+    // time they take to see me: a trucker is 1.2 s late to anything
+    if (timeToCover(o.stats, o.v, sx - o.front, 1) < need + o.stats.reaction) { car.blockedBy = o.id; return p.stopLine; }
+  }
+  return 0;
+}
+
+// Seconds to cover D metres from speed v, accelerating at `k` of the
+// archetype's accel up to its turn speed (or holding a faster v).
+function timeToCover(st, v, D, k) {
+  if (D <= 0) return 0;
+  const a = st.accel * k, top = Math.max(st.turnV, v);
+  const t1 = (top - v) / a, d1 = v * t1 + a * t1 * t1 / 2;
+  return d1 >= D ? (-v + Math.sqrt(v * v + 2 * a * D)) / a : t1 + (D - d1) / top;
+}
+
 // Compute this tick's acceleration from what the driver perceives.
 export function drive(car, world, dt) {
   const st = car.stats, p = car.path;
   const seen = car.perceived();
   let v0 = st.vmax * (world.speedScale ?? 1);
   // slow for the turn, and slow early enough to make it
-  if (p.turn !== 'T') {
+  if (p.turn !== 'T' || p.ring) {   // every way round a ring is a turn
     const dToBox = p.boxEnter - car.front;
     if (car.touchesBox()) v0 = Math.min(v0, st.turnV);
     else if (dToBox > 0) v0 = Math.min(v0, Math.sqrt(st.turnV * st.turnV + 2 * st.bComf * dToBox));
