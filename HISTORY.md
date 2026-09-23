@@ -1079,6 +1079,8 @@ Generator.
 
 **#599. The roundabout has an on/off switch, held for the session and never stored.** Unlike a bought phase, which costs nothing unpressed (#590), a ring takes a board's lights away for every run, and a buyer should still be able to play the signals. The owned item's button in the shop is the switch; it starts on at every page load, and `loadout` sees the ring only while it is on. #589 holds: the save gained no field. *Signal City, M8.*
 
+**#600. Every session ends with a handoff prompt for the next one.** Asked for by Devon on 2026-09-23. The prompt a session is started with carried hand-written context (the calls it builds on, what cost time, the suite counts) that only the last session knew, and nothing required writing it down. CLAUDE.md's definition of done item 7 now requires it, and the session prompt in `BACKLOG.md` says so. It lives in the chat, not in a file, because every file here is a live URL and a handoff file would go stale at the next merge. *Process.*
+
 ---
 
 # The log
