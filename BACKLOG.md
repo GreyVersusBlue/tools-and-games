@@ -104,21 +104,22 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City's M8,
-second increment: the roundabout node and its sale (PR #358)**, rank 1, a
-2+ worked under Opus 5.5 (the row names Fable 5.1), and still rank 1 with
-its text rewritten to say what is done: M8 is finished. That is the line to
+**The last batch of ranked work that shipped** is **Signal City's M9,
+first increment: the grid (PR #362)**, rank 1, a 2+ worked under Opus 5.5
+(the row names Fable 5.1), and still rank 1 with its text rewritten to say
+what is done: the grid is built, endless and the sandbox are next. That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
 **26 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 1: Signal City's next increment, M9 endless and sandbox**
-(`Projects/signal-city`, a 2+, Fable 5.1): an intersection per survived
-day and a grid generator from `js/rng.js`. The plan is
-`Projects/signal-city/WISHLIST.md` item 7. The roundabout node M9 was to
-build shipped with M8 (#594), so a generated grid can place one with
-`roundabout: true` on a one-lane node; a two-lane ring is refused (#595).
-A 2+ is the whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
+**Take rank 1: Signal City's M9, second increment, endless and the
+sandbox** (`Projects/signal-city`, a 2+, Fable 5.1). The grid is built
+(#601 to #606): `js/grid.js growCells`/`gridLevel`, `network.cells`, and
+the page runs one through `__signalCity.startGrid`. What is left is the
+two modes on it: endless a new card, one box per survived day on one
+seed with a best to beat (its storage is the open call, through `repair`,
+#36 and #37), and the sandbox as Free Play grown (#604). The plan is
+`Projects/signal-city/WISHLIST.md` item 7. A 2+ is the whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
 quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
 want hardware this machine does not have — so take it alone. Its plan is Blue
@@ -132,6 +133,15 @@ measure the four facings at the bench after, not just the one the suite reads.
 The two shipped rows are deleted and everything below them renumbered; the ranks
 in this header are the new ones, and ranks 1 to 22 did not move. What shipped,
 and what it means for the next session:
+
+**Signal City has a grid** (#601 to #606, PR #362). `growCells(seed,
+count)` grows a 4 by 3 district a box at a time, one lane everywhere, Ts
+facing out and rings at 0.2, and the first n boxes of a seed never change
+as n grows. `network.cells` joins neighbours north-south as well as
+east-west. Two box-one bugs went with it: the crossing cache (#602) and
+the tourist's wrong turn (#603). No card yet: the debug hook runs it, and
+every existing level hashes as before. `test/grid.mjs` is new and in
+Site CI.
 
 **Signal City has a roundabout** (#594 to #599, PR #358). A ring node
 (`roundabout: true`): one lane, anticlockwise on the screen, splitter
@@ -505,7 +515,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 8 and the UI pass shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358); next M9, endless and sandbox | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/signal-city-m9-grid-endless-oavmp9` | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 8, the UI pass and M9's grid shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358, #362); next M9's second increment, endless and the sandbox | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1174,7 +1184,7 @@ milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
 (2026-09-21, #554 to #562), M7's green wave in PR #344 (2026-09-21, #563
 to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
-13 below are done (M8 in PRs #355 and #358): 789 checks across seven suites, all in Site CI. M9, endless and sandbox, is the next increment. Still open
+13 below are done (M8 in PRs #355 and #358), and M9's grid in PR #362: 835 checks across eight suites, all in Site CI. M9's second increment, endless and the sandbox, is next. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
 (a ¼ row for the site, like Blue Hour's ranks 16 and 17), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
