@@ -102,25 +102,19 @@ table** in Tier 2.
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
 **The last batch of ranked work that shipped** is **Signal City's M8,
-first increment: the campaign order, the star wallet and the shop (PR
-#355)**, rank 1, a 2+ worked under Opus 5.5 (the row names Fable 5.1), and
-still rank 1 with its text rewritten to say what is done. That is the line to
+second increment: the roundabout node and its sale (PR #358)**, rank 1, a
+2+ worked under Opus 5.5 (the row names Fable 5.1), and still rank 1 with
+its text rewritten to say what is done: M8 is finished. That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
 **26 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 1: Signal City's next increment, the rest of M8**
-(`Projects/signal-city`, a 2+, Fable 5.1). Roundabout conversion is what is
-left. It needs a roundabout node, which M9 was going to build, so this
-increment either builds that node first or folds M9's node into M8. The
-plan is `Projects/signal-city/WISHLIST.md` item 7. The first increment's
-calls are `HISTORY.md` #588 to #593: the campaign is the eight starred
-levels (#588), nothing new is stored (#589), bought phases go after a
-level's own and `next` never reaches them (#590), the three prices and
-gates (#591), no bought phases on a timed plan (#592), and the roundabout
-off the shelf until its node exists (#593). A roundabout is a network
-change, not a phase change, so `loadout` will have to swap
-`level.network`, and the calibration in #576 will not carry over to it.
+**Take rank 1: Signal City's next increment, M9 endless and sandbox**
+(`Projects/signal-city`, a 2+, Fable 5.1): an intersection per survived
+day and a grid generator from `js/rng.js`. The plan is
+`Projects/signal-city/WISHLIST.md` item 7. The roundabout node M9 was to
+build shipped with M8 (#594), so a generated grid can place one with
+`roundabout: true` on a one-lane node; a two-lane ring is refused (#595).
 A 2+ is the whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
 quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
@@ -135,6 +129,15 @@ measure the four facings at the bench after, not just the one the suite reads.
 The two shipped rows are deleted and everything below them renumbered; the ranks
 in this header are the new ones, and ranks 1 to 22 did not move. What shipped,
 and what it means for the next session:
+
+**Signal City has a roundabout** (#594 to #599, PR #358). A ring node
+(`roundabout: true`): one lane, anticlockwise on the screen, splitter
+islands and yield lines, every entry yielding to the ring and the node's
+controller dark with every command refused. The shop sells it at 6 after
+Rush Hour for First Light, the Stem and Free Play, each scored on its own
+`ring` calibration, and the owned item's button switches it off for the
+session. Nothing new is stored. Every signalled level hashes the same as
+before it on seed 3.
 
 **Signal City has a campaign** (#588 to #593, PR #355). The eight starred
 levels run in pack order, each shut until the one before it has a star; a
@@ -499,7 +502,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 7, the UI pass and M8's campaign and shop shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355); next the rest of M8, roundabout conversion | `Projects/signal-city` | 2+ | Fable 5.1 | claude/signal-city-roundabout-node-bgjthj | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 8 and the UI pass shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358); next M9, endless and sandbox | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1168,7 +1171,7 @@ milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
 (2026-09-21, #554 to #562), M7's green wave in PR #344 (2026-09-21, #563
 to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
-12 below are done, and so is item 13's first increment (PR #355): 741 checks across seven suites, all in Site CI. The rest of item 13, roundabout conversion, is the next increment. Still open
+13 below are done (M8 in PRs #355 and #358): 789 checks across seven suites, all in Site CI. M9, endless and sandbox, is the next increment. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
 (a ¼ row for the site, like Blue Hour's ranks 16 and 17), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
@@ -1240,8 +1243,10 @@ sweep as real off-tracking geometry rather than the lane rule it is now.
     on the one before; stars bought into `save.unlocks` with no new
     field; protected turns, extra phases and sensors, folded into a copy
     of the level by `js/campaign.js`, the bought phases appended where
-    `next` never goes. **Still open**: roundabout conversion, which wants
-    a roundabout node (1). Then M9 endless and sandbox (1).
+    `next` never goes. **Second increment** (PR #358, #594 to #599): the
+    roundabout node, sold at 6 after Rush Hour for the three boards it
+    converts, with its own calibration and a session switch. M8 is done.
+    **Still open**: M9 endless and sandbox (1).
 
 ## Tools/board-check
 
