@@ -45,14 +45,16 @@ button:hover { background: #343a43; }
 .bar i { display: block; height: 100%; width: 0; background: var(--green); transition: width 0.3s; }
 
 .play { display: flex; gap: 16px; padding: 16px; flex: 1; align-items: flex-start; }
-.board-wrap { flex: 1; min-width: 0; position: relative; }
+.board-wrap { flex: 1; min-width: 0; position: relative; background: #5d7a4a; border-radius: var(--radius); overflow: hidden; }   /* grass behind the ground canvas while a drag slides it */
 /* (a) event banners queue in the board's top-left corner, newest last, and never overlap */
 .banners { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; max-width: 45%; }
 .banner { font-weight: 800; font-size: 15px; letter-spacing: 1px; padding: 5px 10px; border-radius: 6px; background: rgba(20,22,26,0.88); color: var(--yellow); border-left: 4px solid var(--yellow); box-shadow: 0 2px 8px rgba(0,0,0,0.4); animation: banner-in 0.25s ease-out; }
 .banner.off { color: var(--dim); border-left-color: var(--dim); }
 .banner.alarm { color: #fff; background: rgba(160,28,22,0.92); border-left-color: #fff; }
 @keyframes banner-in { from { transform: translateX(-12px); opacity: 0; } to { transform: none; opacity: 1; } }
-canvas#board { display: block; border-radius: var(--radius); background: #5d7a4a; width: 100%; }
+/* the ground (roads, roofs, trees) is its own canvas under the board, redrawn only when the camera moves */
+canvas#board { display: block; position: relative; border-radius: var(--radius); width: 100%; }
+canvas#ground { display: block; position: absolute; left: 0; top: 0; border-radius: var(--radius); background: #5d7a4a; }
 .panel { width: 270px; flex: none; background: var(--panel); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .panel-head { display: flex; flex-direction: column; gap: 2px; }
 .panel-head b { font-size: 15px; }
@@ -80,7 +82,7 @@ canvas#board { display: block; border-radius: var(--radius); background: #5d7a4a
 .by-corridor { background: var(--by-corridor); --c: var(--by-corridor); }
 .by-outage { background: var(--by-outage); --c: var(--by-outage); outline: 1px solid #3a4048; }
 .by-flash { background: var(--by-flash); --c: var(--by-flash); }
-.cause[class*="by-"] { background: none; }
+.cause[class*="by-"] { background: none; outline: none; }
 /* (e) one section at a time */
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid #2c3138; }
 .tab { flex: 1; padding: 6px 2px; font-size: 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; background: transparent; color: var(--dim); }

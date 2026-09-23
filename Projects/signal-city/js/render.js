@@ -16,6 +16,20 @@
 // box (`preview`); event banners are a queue the page draws in the DOM,
 // kept here as `banners` and no longer painted over the box.
 //
+// The visual pass (increment 2): everything that does not move is drawn
+// once onto the ground canvas under the board (grass, sidewalks and curbs,
+// the asphalt with a faint noise, the markings, rooftops with drop
+// shadows, trees, and the light: dusk on Rush Hour, night in an outage),
+// and redrawn only when the camera, the world or the light changes
+// (`staticBuilds` counts them). The board above it is transparent and
+// carries only what moves: the lane washes and a coloured wash at every
+// stop line, soft shadows under the cars, the cars (tinted car by car to
+// the light), then over them the lights: signal lamps with a glow, brake
+// lamps from each car's `braking`, indicators from its `indicator` (both
+// read-only fields in cars.js), and at night the headlamps. A ground on
+// its own canvas costs nothing a frame; blitting it, or tinting the whole
+// board, cost 6.7 and 9.3 ms of a frame under a software Chromium.
+//
 // The camera (M6): a single box shows the middle 72 m of its legs (#541); a
 // corridor frames every box with 50 m of road either side, which on a
 // 950 px board is about 3 px per metre, and the wheel zooms and a drag pans
@@ -29,18 +43,26 @@ import { LOOP_LENGTH, TAPER } from './sim.js';
 const GRASS = '#5d7a4a';
 const GRASS_2 = '#556f43';
 const ASPHALT = '#3a3d42';
-const ASPHALT_EDGE = '#2c2f33';
 const LINE = '#e8e2c8';
 const LINE_DIM = 'rgba(232,226,200,0.55)';
 const LAMP = { red: '#ff3b30', yellow: '#ffc21f', green: '#2ee06b', off: '#2a2a2a' };
 const LOOP = 'rgba(232,226,200,0.35)';
 const LOOP_LIT = 'rgba(79,140,255,0.85)';
+const SIDEWALK = '#a9a79d';
+const CURB = '#d6d4c8';
+const SIDEWALK_W = 2.6;                         // metres of pavement outside the curb
+const ROOFS = ['#8f8b84', '#a27453', '#707b88', '#9d968a', '#7d6f63', '#b3aca0'];
+const GLOW = { red: '255,59,48', yellow: '255,194,31', green: '46,224,107' };
+const DUSK_LEVELS = new Set(['rush-hour']);     // which levels are played at dusk
+// multiply: over the whole ground; over: the same light laid on each car's own pixels
+const TINT = { dusk: { multiply: '#e0b49e', over: 'rgba(110,60,45,0.22)' }, night: { multiply: '#3a4266', over: 'rgba(14,18,40,0.62)' } };
 const WALKER_TINTS = ['#f2d16b', '#e8734a', '#7fc8f8', '#c9a0ff', '#9fe37a', '#f7f7f7'];
 
 export class Renderer {
-  constructor(canvas) {
+  constructor(canvas, ground = null) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.ground = ground;  // a canvas under this one for the static layer; without one it is drawn off-screen and blitted
     this.scale = 4;        // px per metre
     this.cx = 0; this.cy = 0;
     this.dpr = 1;
@@ -51,6 +73,9 @@ export class Renderer {
     this.banners = [];     // { id, text, tone, t0, ttl }: the page shows these in a queue
     this.bannerN = 0;
     this.preview = null;   // { node, movements, permissive } while a phase card is hovered
+    this.staticCanvas = null; this.staticKey = ''; this.staticWorld = null;
+    this.staticBuilds = 0; // how many times the static layer has been drawn: once per camera change
+    this.light = 'day';    // 'day' | 'dusk' | 'night', as last drawn
   }
 
   resize(cssW, cssH, dpr = 1) {
@@ -60,6 +85,7 @@ export class Renderer {
     this.canvas.height = Math.round(cssH * dpr);
     this.canvas.style.width = cssW + 'px';
     this.canvas.style.height = cssH + 'px';
+    if (this.ground) { this.ground.style.width = cssW + 'px'; this.ground.style.height = cssH + 'px'; }
   }
 
   // Frame the middle of the map: the legs run 110 m each way, the camera
@@ -99,6 +125,18 @@ export class Renderer {
 
   panBy(dxPx, dyPx) {
     this.cx -= dxPx / this.scale; this.cy -= dyPx / this.scale;
+    this._slideGround();
+  }
+
+  // A drag slides the ground canvas under the board with a CSS transform
+  // and redraws it once, on release: a ground redrawn every drag frame
+  // costs about 40 ms a frame under a software Chromium.
+  beginPan() { if (this.ground && !this.panFrom) this.panFrom = { cx: this.cx, cy: this.cy, scale: this.scale }; }
+  endPan() { this.panFrom = null; this._slideGround(); }
+  _slideGround() {
+    if (!this.ground) return;
+    const p = this.panFrom;
+    this.ground.style.transform = p && p.scale === this.scale ? `translate(${(p.cx - this.cx) * this.scale}px, ${(p.cy - this.cy) * this.scale}px)` : '';
   }
 
   toWorld(px, py) {
@@ -143,36 +181,197 @@ export class Renderer {
     this.banners = this.banners.filter(b => world.t - b.t0 < b.ttl);
   }
 
-  reset() { this.effects = []; this.crashMarks = []; this.banners = []; this.preview = null; }
+  reset() { this.effects = []; this.crashMarks = []; this.banners = []; this.preview = null; this.staticWorld = null; }
+
+  // The light a world is drawn in: night while the power is out, dusk on a
+  // dusk level, day otherwise.
+  lightFor(world) { return world.powerOut ? 'night' : world.level && DUSK_LEVELS.has(world.level.id) ? 'dusk' : 'day'; }
+
+  // The layer nothing moves on, drawn at device resolution for the camera
+  // as it is, and kept until the camera or the world changes.
+  _staticLayer(world) {
+    const light = this.lightFor(world);
+    // mid-drag the ground stands where the drag began (see beginPan); a zoom mid-drag ends the slide
+    if (this.panFrom && this.panFrom.scale !== this.scale) this.panFrom = null;
+    const keyAt = cam => [this.width, this.height, this.dpr, this.scale, cam.cx, cam.cy, light].join('|');
+    if (this.staticCanvas && this.staticWorld === world && this.staticKey === keyAt(this.panFrom || this)) return this.staticCanvas;
+    // a rebuild (a first frame, a new world, the light turning) mid-drag draws where the camera is and slides on from there
+    if (this.panFrom) this.panFrom = { cx: this.cx, cy: this.cy, scale: this.scale };
+    this._slideGround();
+    const key = keyAt(this);
+    const W = Math.max(1, Math.round(this.width * this.dpr)), H = Math.max(1, Math.round(this.height * this.dpr));
+    if (this.ground) { this.staticCanvas = this.ground; if (this.ground.width !== W) this.ground.width = W; if (this.ground.height !== H) this.ground.height = H; }
+    else if (!this.staticCanvas || this.staticCanvas.width !== W || this.staticCanvas.height !== H) this.staticCanvas = makeCanvas(W, H);
+    const g = this.staticCanvas.getContext('2d');
+    const S = this.scale;
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.fillStyle = GRASS;
+    g.fillRect(0, 0, this.width, this.height);
+    g.translate(this.width / 2 - this.cx * S, this.height / 2 - this.cy * S);
+    g.scale(S, S);
+    this._grassTexture(g, world);
+    for (const net of world.nodes) {
+      g.save();
+      g.translate(net.origin[0], net.origin[1]);
+      this._roads(g, world, net);
+      g.restore();
+    }
+    const blocks = this._blocks(g, world);
+    this._trees(g, world, blocks);
+    if (light !== 'day') {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalCompositeOperation = 'multiply';
+      g.fillStyle = TINT[light].multiply;
+      g.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'source-over';
+    }
+    this.staticWorld = world; this.staticKey = key; this.staticBuilds++;
+    return this.staticCanvas;
+  }
 
   draw(world, now) {
     const { ctx } = this;
     const S = this.scale;
+    const layer = this._staticLayer(world);
     ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (this.ground) ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    else ctx.drawImage(layer, 0, 0);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    // grass
-    ctx.fillStyle = GRASS;
-    ctx.fillRect(0, 0, this.width, this.height);
     ctx.translate(this.width / 2 - this.cx * S, this.height / 2 - this.cy * S);
     ctx.scale(S, S);
-    this._grassTexture(ctx, world);
-    for (const net of world.nodes) {
-      ctx.save();
-      ctx.translate(net.origin[0], net.origin[1]);
-      this._roads(ctx, world, net);
+    const perNode = fn => { for (const net of world.nodes) { ctx.save(); ctx.translate(net.origin[0], net.origin[1]); fn(net); ctx.restore(); } };
+    perNode(net => {
       this._greenLanes(ctx, world, net);
+      this._stopWash(ctx, world, net);
       this._closures(ctx, world, net);
       this._loops(ctx, world, net);
+    });
+    this._walkers(ctx, world, now);
+    this._carShadows(ctx, world);
+    this._cars(ctx, world, now);
+    // the light: the ground was tinted when it was drawn; each car and
+    // walker is tinted here over its own body (source-atop touches only
+    // what is already drawn), and everything after glows through it
+    this.light = this.lightFor(world);
+    if (this.light !== 'day') this._tintMovers(ctx, world);
+    perNode(net => {
       this._beacons(ctx, world, net, now);
       this._heads(ctx, world, net, now);
       if (world.controllers[net.node].hasPeds) this._pedHeads(ctx, world, net, now);
-      ctx.restore();
-    }
-    this._walkers(ctx, world, now);
-    this._cars(ctx, world, now);
+    });
+    this._carLamps(ctx, world);
     this._preview(ctx, world);
     this._effects(ctx, world);
     ctx.restore();
+  }
+
+  // A wash across each inbound lane just behind its stop line, in the
+  // colour that lane is showing: red, amber or green. Nothing while dark.
+  _stopWash(ctx, world, net) {
+    const ctl = world.controllers[net.node];
+    if (ctl.stage === 'dark') return;
+    const sd = net.stopDist;
+    for (const leg of net.legs) {
+      const d = legDir(leg);
+      const flashing = ctl.stage === 'flash';
+      for (let lane = 0; lane < net.lanesPerDir; lane++) {
+        let st = this.laneState(world, net, leg, lane) || 'red';
+        if (flashing) st = ['L', 'T', 'R'].some(t => ctl.movements.includes(`${leg}-${t}`) && ctl.head(`${leg}-${t}`) === 'flash-yellow') ? 'yellow' : 'red';
+        const a = net.lanePoint(leg, lane, true, sd - 0.2), b = net.lanePoint(leg, lane, true, sd + 2.6);
+        const ax = a[0] - net.origin[0], ay = a[1] - net.origin[1], bx = b[0] - net.origin[0], by = b[1] - net.origin[1];
+        const w = LANE_WIDTH - 0.3, px = -d[1] * w / 2, py = d[0] * w / 2;
+        const g = ctx.createLinearGradient(ax, ay, bx, by);
+        g.addColorStop(0, `rgba(${GLOW[st]},0.55)`); g.addColorStop(1, `rgba(${GLOW[st]},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(ax + px, ay + py); ctx.lineTo(bx + px, by + py); ctx.lineTo(bx - px, by - py); ctx.lineTo(ax - px, ay - py); ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  _tintMovers(ctx, world) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = TINT[this.light].over;
+    for (const car of world.cars) {
+      if (car.done) continue;
+      for (const r of car.rects()) {
+        if (!r) continue;
+        ctx.save(); ctx.translate(r.x, r.y); ctx.rotate(r.heading);
+        ctx.fillRect(-r.length / 2 - 0.3, -r.width / 2 - 0.3, r.length + 0.6, r.width + 0.6);
+        ctx.restore();
+      }
+    }
+    for (const w of world.walkers) if (!w.done) ctx.fillRect(w.x - 0.6, w.y - 0.7, 1.2, 1.4);
+    ctx.restore();
+  }
+
+  // A soft shadow under every car and trailer: two offset rounded shapes,
+  // the wider one fainter, so the edge reads soft without a blur.
+  _carShadows(ctx, world) {
+    for (const car of world.cars) {
+      if (car.done) continue;
+      for (const r of car.rects()) {
+        if (!r) continue;
+        ctx.save();
+        ctx.translate(r.x + 0.35, r.y + 0.55); ctx.rotate(r.heading);
+        ctx.fillStyle = 'rgba(0,0,0,0.13)';
+        roundRect(ctx, -r.length / 2 - 0.35, -r.width / 2 - 0.35, r.length + 0.7, r.width + 0.7, 0.9); ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        roundRect(ctx, -r.length / 2, -r.width / 2, r.length, r.width, 0.6); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  // The lamps on the cars, over the tint: brake lamps from `car.braking`
+  // (on the trailer's tail when there is one), the indicator from
+  // `car.indicator` at the front and rear corners on that side, blinking on
+  // the world's clock so a paused board holds still, and at night a pool
+  // of headlamp ahead of every car.
+  _carLamps(ctx, world) {
+    const blinkOn = Math.floor(world.t * 3) % 2 === 0;
+    const night = this.light === 'night';
+    for (const car of world.cars) {
+      if (car.done) continue;
+      const rects = car.rects();
+      const body = rects[0], tail = rects[1] || body;
+      if (night) {
+        ctx.save();
+        ctx.translate(body.x, body.y); ctx.rotate(body.heading);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = 'rgba(255,214,140,0.13)';
+        ctx.beginPath(); ctx.ellipse(body.length / 2 + 4, 0, 4.5, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,214,140,0.16)';
+        ctx.beginPath(); ctx.ellipse(body.length / 2 + 2.2, 0, 2.4, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+      if (car.braking) {
+        ctx.save();
+        ctx.translate(tail.x, tail.y); ctx.rotate(tail.heading);
+        const x = -tail.length / 2 + 0.12;
+        for (const side of [-1, 1]) {
+          const y = side * (tail.width / 2 - 0.4);
+          ctx.fillStyle = 'rgba(255,40,20,0.32)'; ctx.beginPath(); ctx.arc(x - 0.2, y, 0.85, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ff2a1a'; ctx.fillRect(x - 0.12, y - 0.28, 0.3, 0.56);
+        }
+        ctx.restore();
+      }
+      const ind = car.indicator;
+      if (ind && blinkOn) {
+        const side = ind === 'L' ? -1 : 1;   // +y is the car's right
+        for (const [r, x] of [[body, body.length / 2 - 0.3], [tail, -tail.length / 2 + 0.3]]) {
+          ctx.save();
+          ctx.translate(r.x, r.y); ctx.rotate(r.heading);
+          const y = side * (r.width / 2 - 0.1);
+          ctx.fillStyle = 'rgba(255,179,26,0.35)'; ctx.beginPath(); ctx.arc(x, y, 0.8, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ffb31a'; ctx.beginPath(); ctx.arc(x, y, 0.3, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
   }
 
   // Which way each inbound lane is going right now: 'green' if any
@@ -258,7 +457,6 @@ export class Renderer {
   }
 
   _grassTexture(ctx, world) {
-    const L = world.network.legLength + 40;
     ctx.fillStyle = GRASS_2;
     const { minX, maxX } = this.extent(world);
     const i0 = Math.floor((minX - 120) / 33), i1 = Math.ceil((maxX + 120) / 33);
@@ -268,17 +466,67 @@ export class Renderer {
         ctx.fillRect(i * 33 + 9, j * 29 + 4, 14, 10);
       }
     }
-    // a few blocks, so the grid reads as a city and not a field
-    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  }
+
+  // The blocks, so the grid reads as a city and not a field: the same
+  // places they always stood, drawn now as rooftops with a drop shadow to
+  // the south-east, a parapet and a unit or two on the roof. Returns the
+  // rectangles, for the trees to keep out of.
+  _blocks(ctx, world) {
+    const L = world.network.legLength + 40;
+    const out = [];
+    let n = 0;
     for (const net of world.nodes) {
       const b = net.halfRoad + 14;
       for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
         for (let k = 0; k < 3; k++) {
           const x = sx * (b + 4 + k * 30), y = sy * (b + 4 + ((k * 2) % 3) * 22);
-          ctx.fillRect(net.origin[0] + Math.min(x, x + sx * 22), net.origin[1] + Math.min(y, y + sy * 16), 22, 16);
+          out.push({ x: net.origin[0] + Math.min(x, x + sx * 22), y: net.origin[1] + Math.min(y, y + sy * 16), w: 22, h: 16, n: n++ });
           if (Math.abs(x) > L || Math.abs(y) > L) break;
         }
       }
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    for (const r of out) ctx.fillRect(r.x + 1.1, r.y + 1.5, r.w, r.h);
+    for (const r of out) {
+      const h = hash2(r.n, 7);
+      const roof = ROOFS[h % ROOFS.length];
+      ctx.fillStyle = roof; ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.5; ctx.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(r.x + 0.8, r.y + 0.8, r.w - 1.6, (r.h - 1.6) / 2);
+      // one or two rooftop units, each with its own small shadow
+      for (let u = 0; u < 1 + (h >>> 3) % 2; u++) {
+        const ux = r.x + 3 + ((h >>> (4 + u * 3)) % 12), uy = r.y + 3 + ((h >>> (6 + u * 2)) % 7), uw = 2.6 + u, uh = 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(ux + 0.4, uy + 0.6, uw, uh);
+        ctx.fillStyle = '#c7cacd'; ctx.fillRect(ux, uy, uw, uh);
+      }
+    }
+    return out;
+  }
+
+  // Trees on the grass: a jittered 9 m grid in world coordinates (so a pan
+  // does not reshuffle them), about a third kept, none on a road, its
+  // pavement or a block.
+  _trees(ctx, world, blocks) {
+    const tl = this.toWorld(0, 0), br = this.toWorld(this.width, this.height);
+    const G = 9;
+    const trees = [];
+    for (let i = Math.floor(tl.x / G) - 1; i <= Math.ceil(br.x / G) + 1; i++) {
+      for (let j = Math.floor(tl.y / G) - 1; j <= Math.ceil(br.y / G) + 1; j++) {
+        const h = hash2(i, j);
+        if (h % 100 >= 34) continue;
+        const x = i * G + ((h >>> 8) % 60) / 10, y = j * G + ((h >>> 14) % 60) / 10, r = 1.5 + ((h >>> 20) % 10) / 10;
+        const clear = r + 1.2;
+        if (world.nodes.some(net => Math.abs(x - net.origin[0]) < net.halfRoad + SIDEWALK_W + clear || Math.abs(y - net.origin[1]) < net.halfRoad + SIDEWALK_W + clear)) continue;
+        if (blocks.some(b => x > b.x - clear && x < b.x + b.w + clear && y > b.y - clear && y < b.y + b.h + clear)) continue;
+        trees.push({ x, y, r, h });
+      }
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    for (const t of trees) { ctx.beginPath(); ctx.arc(t.x + 0.8, t.y + 1.1, t.r, 0, Math.PI * 2); ctx.fill(); }
+    for (const t of trees) {
+      ctx.fillStyle = (t.h >>> 5) % 2 ? '#3d6a34' : '#456f37'; ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(150,200,110,0.3)'; ctx.beginPath(); ctx.arc(t.x - t.r * 0.3, t.y - t.r * 0.3, t.r * 0.55, 0, Math.PI * 2); ctx.fill();
     }
   }
 
@@ -286,17 +534,50 @@ export class Renderer {
   _roads(ctx, world, net) {
     const half = net.halfRoad;
     const L = net.legLength + 60;   // past the map edge: a board sized to the window can show 130 m of a cross street
-    // asphalt legs
-    ctx.fillStyle = ASPHALT;
+    const bh = net.boxHalf, R = net.cornerRadius, sw = SIDEWALK_W;
+    const has = leg => net.legs.includes(leg);
+    // the pavement along both edges of every leg, from the box out
+    ctx.fillStyle = SIDEWALK;
     for (const leg of net.legs) {
       const d = legDir(leg);
-      if (d[0] === 0) ctx.fillRect(-half, d[1] < 0 ? -L : 0, half * 2, L);
-      else ctx.fillRect(d[0] < 0 ? -L : 0, -half, L, half * 2);
+      if (d[0] === 0) { const y = d[1] < 0 ? -L : bh; ctx.fillRect(-half - sw, y, sw, L - bh); ctx.fillRect(half, y, sw, L - bh); }
+      else { const x = d[0] < 0 ? -L : bh; ctx.fillRect(x, -half - sw, L - bh, sw); ctx.fillRect(x, half, L - bh, sw); }
     }
-    // box
-    const bh = net.boxHalf;
-    ctx.fillRect(-bh, -bh, bh * 2, bh * 2);
-    ctx.strokeStyle = ASPHALT_EDGE; ctx.lineWidth = 0.6;
+    // asphalt legs, with the faint noise over them
+    const asphalt = draw => { ctx.fillStyle = ASPHALT; draw(); ctx.fillStyle = noisePattern(ctx); draw(); };
+    asphalt(() => {
+      for (const leg of net.legs) {
+        const d = legDir(leg);
+        if (d[0] === 0) ctx.fillRect(-half, d[1] < 0 ? -L : 0, half * 2, L);
+        else ctx.fillRect(d[0] < 0 ? -L : 0, -half, L, half * 2);
+      }
+      ctx.fillRect(-bh, -bh, bh * 2, bh * 2);
+    });
+    // each corner of the box: the curb turns on a radius R about the
+    // block's corner, with the pavement inside it and grass inside that;
+    // a side of the box with no leg (the Stem's) is a straight curb
+    ctx.strokeStyle = CURB; ctx.lineWidth = 0.28;
+    for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const vert = has(sy < 0 ? 'N' : 'S'), horiz = has(sx < 0 ? 'W' : 'E');
+      const cx = sx * bh, cy = sy * bh;
+      const u0 = [-sx, 0], u1 = [0, -sy];          // from the block's corner toward the two legs
+      const sector = (r0, r1) => {
+        ctx.beginPath();
+        for (let k = 0; k <= 12; k++) { const a = (k / 12) * Math.PI / 2; ctx.lineTo(cx + (u0[0] * Math.cos(a) + u1[0] * Math.sin(a)) * r1, cy + (u0[1] * Math.cos(a) + u1[1] * Math.sin(a)) * r1); }
+        for (let k = 12; k >= 0; k--) { const a = (k / 12) * Math.PI / 2; ctx.lineTo(cx + (u0[0] * Math.cos(a) + u1[0] * Math.sin(a)) * r0, cy + (u0[1] * Math.cos(a) + u1[1] * Math.sin(a)) * r0); }
+        ctx.closePath();
+      };
+      ctx.fillStyle = SIDEWALK; sector(Math.max(0, R - sw), R); ctx.fill();
+      ctx.fillStyle = GRASS; sector(0, Math.max(0, R - sw)); ctx.fill();
+      if (!horiz) { ctx.fillStyle = SIDEWALK; ctx.fillRect(sx > 0 ? bh : -bh - sw, Math.min(0, sy * half), sw, half); }
+      if (!vert) { ctx.fillStyle = SIDEWALK; ctx.fillRect(Math.min(0, sx * half), sy > 0 ? bh : -bh - sw, half, sw); }
+      ctx.beginPath();
+      for (let k = 0; k <= 12; k++) { const a = (k / 12) * Math.PI / 2; ctx.lineTo(cx + (u0[0] * Math.cos(a) + u1[0] * Math.sin(a)) * R, cy + (u0[1] * Math.cos(a) + u1[1] * Math.sin(a)) * R); }
+      ctx.stroke();
+      if (!horiz) { ctx.beginPath(); ctx.moveTo(sx * bh, sy * half); ctx.lineTo(sx * bh, 0); ctx.stroke(); }
+      if (!vert) { ctx.beginPath(); ctx.moveTo(sx * half, sy * bh); ctx.lineTo(0, sy * bh); ctx.stroke(); }
+    }
+    // the curb down both edges of every leg
     for (const leg of net.legs) {
       const d = legDir(leg);
       ctx.beginPath();
@@ -557,6 +838,10 @@ export class Renderer {
       if (state === 'red' || state === 'flash-red') on = lamps[i] === 'red' && (state === 'red' || blink);
       else if (state === 'yellow' || state === 'yellow-arrow' || state === 'flash-yellow') on = lamps[i] === 'yellow' && (state !== 'flash-yellow' || blink);
       else if (state === 'green' || state === 'green-arrow') on = lamps[i] === 'green';
+      if (on) {
+        ctx.fillStyle = `rgba(${GLOW[lamps[i]]},0.16)`; ctx.beginPath(); ctx.arc(x, cy, 1.9, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgba(${GLOW[lamps[i]]},0.3)`; ctx.beginPath(); ctx.arc(x, cy, 1.05, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.fillStyle = on ? LAMP[lamps[i]] : LAMP.off;
       ctx.beginPath(); ctx.arc(x, cy, 0.5, 0, Math.PI * 2); ctx.fill();
       if (on) { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.arc(x - 0.15, cy - 0.15, 0.2, 0, Math.PI * 2); ctx.fill(); }
@@ -640,6 +925,48 @@ export class Renderer {
       ctx.restore();
     }
   }
+}
+
+// A canvas in the page, or anywhere OffscreenCanvas exists.
+function makeCanvas(w, h) {
+  if (typeof document !== 'undefined') { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+  return new OffscreenCanvas(w, h);
+}
+
+// A small deterministic hash of two integers, for the trees and the roofs.
+function hash2(i, j) {
+  let h = Math.imul(i | 0, 374761393) ^ Math.imul(j | 0, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') { ctx.roundRect(x, y, w, h, r); return; }
+  ctx.rect(x, y, w, h);
+}
+
+// The asphalt's noise: a 96 px tile of dark and light specks from a fixed
+// seed, made once, laid in device pixels whatever the zoom (the pattern's
+// transform undoes the context's), so it reads as grain and not as blocks.
+let NOISE = null;
+function noisePattern(ctx) {
+  if (!NOISE) {
+    const c = makeCanvas(96, 96), g = c.getContext('2d'), img = g.createImageData(96, 96);
+    let s = 12345;
+    for (let i = 0; i < img.data.length; i += 4) {
+      s = (Math.imul(s, 1103515245) + 12345) >>> 0;
+      const v = (s >>> 16) & 255;
+      const light = v > 200, dark = v < 70;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = light ? 255 : 0;
+      img.data[i + 3] = light ? (v - 200) * 0.22 : dark ? (70 - v) * 0.26 : 0;
+    }
+    g.putImageData(img, 0, 0);
+    NOISE = c;
+  }
+  const p = ctx.createPattern(NOISE, 'repeat');
+  if (p.setTransform) p.setTransform(ctx.getTransform().inverse());
+  return p;
 }
 
 function blinkColor(now) { return Math.floor(now * 6) % 2 ? '#ff3b30' : '#2f6fe6'; }

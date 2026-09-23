@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 7, 2026-09-21 to 2026-09-22)
+## What shipped (milestones 0 to 7 and the UI pass, 2026-09-21 to 2026-09-23)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -150,49 +150,44 @@ open work; this file is the plan it points at.
   and a splits column. The level select's scrim centres with `safe`
   (#132). 148 + 240 + 75 + 24 + 23 + 106 checks.
 
+- **The UI clarity and visual pass** (2026-09-23, asked for by Devon ahead
+  of M8, both increments in one PR): event banners queue in the board's
+  top-left corner in the DOM instead of drawing over each other at the box;
+  lanes whose movement is green are washed green (amber on yellow) and a
+  hovered or focused phase card draws its movements as arrows on the board;
+  phase cards draw the box with one arrow per movement; `Controller.cause`
+  (read-only) names what started every change and the Signal line, the
+  firing rule's card and a 60 s strip show it; the panel is five tabs, each
+  level opening on its lesson's, with the hint and keys behind "?"; the
+  Satisfaction line is four stats and the board fills the window. The
+  visuals: sidewalks and curbed corners, rooftops with shadows, trees,
+  noisy asphalt, all on a ground canvas under the board drawn once per
+  camera and slid under a drag; soft car shadows; brake lamps and
+  indicators from `Car.braking` and `Car.indicator` (read-only); lamp
+  glows and a wash at every stop line; dusk on Rush Hour, night in the
+  outage. Frames cost less than before it: 22 ms against 27 on Rush Hour
+  at 115 s, 3 against 5.5 on First Light, under a software Chromium.
+  163 + 252 + 75 + 24 + 23 + 156 checks.
+
 ## What is next, in order
 
-7. **UI clarity and visual pass** (2+, asked for by Devon on 2026-09-23,
-   ahead of M8): the board does not say what is changing what. Two
-   increments.
-   - **Increment 1, the UI** (`js/main.js`, `js/render.js`, `index.html`,
-     `css/style.css`):
-     a. Two active events draw their banners on top of each other in the
-        board's centre (School Run's zone and closure). Stack them in a
-        queue at a corner, with a check that fails against the overlap first.
-     b. Tint the lanes whose movement is green now, amber on yellow; hovering
-        or focusing a phase card previews its movements as arrows on the
-        asphalt.
-     c. Phase cards drop the "N-T N-L" text for a drawn diagram of the
-        intersection, one arrow per allowed movement, built from the phase's
-        real movements. Name and number key stay.
-     d. The Signal line names the cause of every change: the player, a rule
-        (which, and why it fired), the offset, the corridor, an outage, flash
-        mode. The cause is read from the controller, added there read-only if
-        missing. The firing rule's card flashes. A strip shows the last 60 s
-        of phases marked by cause.
-     e. The panel shows one section at a time as tabs: Phases, Timing, Rules,
-        plus Crossings and Mode where a level has them. A level opens on the
-        tab its lesson is about. Keys and the long hint go behind a "?".
-        Nothing below the fold at 1280x900 on Crossing.
-     f. The Satisfaction line splits into separate small stats. Two Blocks'
-        board is sized so it leaves no empty area under it.
-   - **Increment 2, the visuals** (`js/render.js`, `js/sprites.js` only, 2D
-     canvas): sidewalks and curbs, blocks as rooftops with drop shadows,
-     trees, a soft shadow under each car, brake lights from the car's real
-     deceleration and turn signals on turning cars, glowing lamps and a wash
-     on each approach's stop line, faint noise on the asphalt, a dusk tint on
-     Rush Hour and night during the outage. The static layer precomputed and
-     cached; the frame rate held. Any image is a PNG committed here (#17).
-   - Both: no sim behaviour changes for a visual; anything the renderer needs
-     is a read-only field covered in `test/sim.mjs` or `test/signals.mjs`.
-     A saved UI preference goes inside `signal_city_v1` through `repair`.
-8. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
+7. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
    protected turns, roundabout conversion, extra phases.
-9. **M9 endless and sandbox** (1): an intersection per survived day, a grid
+8. **M9 endless and sandbox** (1): an intersection per survived day, a grid
    generator from `js/rng.js`, a roundabout node type.
 
 ## Known gaps and decisions
+
+- The UI pass saves nothing: a level opens on its lesson's tab every time,
+  so a remembered last tab would only ever be overruled, and the save and
+  `signal_city_v1` are untouched.
+- The strip reads the controller's log, which keeps 200 transitions; at a
+  change every 2 s that is 400 s, far more than the strip's 60.
+- The Stem's side with no leg is a straight curb with a square of
+  pavement at each end, not a curve. Cones and school beacons are not
+  tinted at dusk or night (the beacons glow on purpose; the cones do not).
+- A zoom redraws the ground once per wheel step (about 5 ms of a frame
+  here); only a drag slides it.
 
 - A permissive left on a one-lane approach holds its whole queue while it
   waits for a gap. That is real and it is also why level 1 runs 6% lefts.

@@ -17,7 +17,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World, DT } = await load('sim.js');
 const { Network, rectsOverlap, LANE_WIDTH, CROSSWALK } = await load('network.js');
-const { ARCHETYPES, Car, stopLineVerdict } = await load('cars.js');
+const { ARCHETYPES, Car, stopLineVerdict, BRAKE_LIGHT_A, INDICATE_FROM } = await load('cars.js');
 const { makeRng } = await load('rng.js');
 
 let passed = 0, failed = 0;
@@ -108,6 +108,56 @@ group('one car, one light');
   w2.run(6);
   ok(near.front > near.path.boxExit, 'a car 10 m out when the yellow comes goes through', `front ${f1(near.front)} vs box exit ${f1(near.path.boxExit)}`);
   ok(w2.stats.collisions === 0, 'and nothing was there to hit');
+}
+
+group('the lamps the renderer reads (the UI pass): braking and the indicator');
+
+{
+  // a through arriving at a red: cruising dark, lit while it slows, held while it stands, dark again on the green
+  const w = new World(GREEN_EW, 1);
+  const c = w.spawnCar({ leg: 'N', archetype: 'standard', turn: 'T' });
+  let cruiseLit = false, slowLit = 0, hardest = 0, litMoving = 0, litWrongly = 0;
+  for (let i = 0; i < 60 * 25; i++) {
+    w.step();
+    if (w.t < 2 && c.v > 5 && c.braking) cruiseLit = true;
+    if (c.braking && c.v > 0.3) { litMoving++; hardest = Math.min(hardest, c.a); if (c.a >= -BRAKE_LIGHT_A) litWrongly++; }
+    if (c.a < -2 && c.v > 1 && c.braking) slowLit++;
+  }
+  ok(!cruiseLit, 'a car cruising in at speed shows no brake lamps');
+  ok(slowLit > 30 && litMoving > 30 && litWrongly === 0, 'they light while it slows for the red, and only while its deceleration is past the threshold', `${litMoving} lit steps moving, hardest ${f1(hardest)} m/s/s`);
+  ok(c.v === 0 && c.braking, 'and stay lit while it stands at the line');
+  // most of a standing queue is still pressing below -BRAKE_LIGHT_A, so the
+  // single car above cannot tell the hold from the deceleration; a queue can
+  const q = new World({ demand: { N: 700 }, duration: 600, controller: { startPhase: 1 } }, 3);
+  let standing = 0, eased = 0, dark = 0;
+  for (let i = 0; i < 60 * 60; i++) { q.step(); for (const x of q.cars) if (!x.done && !x.crashed && x.v < 0.3) { standing++; if (x.a >= -BRAKE_LIGHT_A) eased++; if (!x.braking) dark++; } }
+  ok(eased > 20 && dark === 0, 'a minute of queue at a red is lit end to end, the standing steps whose deceleration had eased past the threshold included', `${standing} standing steps, ${eased} of them eased, ${dark} dark`);
+  w.requestPhase(0);
+  w.run(8);
+  ok(c.v > 5 && !c.braking, 'on the green it pulls away with them dark', `v ${f1(c.v)}`);
+  ok(c.indicator === null, 'a through never indicates');
+}
+{
+  const w = new World(GREEN_NS, 1);
+  const l = w.spawnCar({ leg: 'N', archetype: 'standard', turn: 'L' });
+  w.run(1);
+  const r = w.spawnCar({ leg: 'S', archetype: 'standard', turn: 'R' });
+  const seen = { lFar: null, lNear: null, rNear: null, lOut: null };
+  for (let i = 0; i < 60 * 30; i++) {
+    w.step();
+    if (seen.lFar === null && l.front < l.path.stopLine - INDICATE_FROM - 5) seen.lFar = l.indicator;
+    if (seen.lNear === null && l.front > l.path.stopLine - 20 && l.front < l.path.stopLine) seen.lNear = l.indicator;
+    if (seen.rNear === null && r.front > r.path.stopLine - 20 && r.front < r.path.stopLine) seen.rNear = r.indicator;
+    if (seen.lOut === null && !l.done && l.rear > l.path.boxExit + 2) seen.lOut = l.indicator;
+  }
+  ok(seen.lFar === null && seen.lNear === 'L' && seen.lOut === null, `a left indicates left from ${INDICATE_FROM} m out until it has left the box`, JSON.stringify(seen));
+  ok(seen.rNear === 'R', 'a right indicates right');
+  // read-only: stepping a world whose cars are asked every step runs the same as one never asked
+  // (one after the other: car ids come from a module counter, so two worlds stepped in lockstep hand out different ids)
+  const A = new World(CYCLING, 11);
+  for (let i = 0; i < 60 * 40; i++) { A.step(); for (const c of A.cars) { void c.braking; void c.indicator; } }
+  const B = new World(CYCLING, 11).run(40);
+  ok(A.hash() === B.hash(), 'asking every car for its lamps every step changes nothing', `${A.hash()} vs ${B.hash()}`);
 }
 
 /* --------------------------------------------------------------- following -- */
@@ -875,6 +925,7 @@ group('events (M7): the lane closure');
   const b = q.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });
   q.run(20);
   ok(b.path.lane === 0 && b.v === 0 && b.mergeS > 0 && b.mergeLane === 1 && b.front < ev.taperS && b.front > ev.taperS - 6 && b.wait > 5, 'a car in the closed lane holds short of the taper with no gap to take, and waits', `front ${f1(b.front)}, taper ${f1(ev.taperS)}, waited ${f1(b.wait)} s`);
+  ok(b.indicator === 'L' && b.braking, 'waiting to merge it indicates left, toward lane 1, with its brake lamps held', `${b.indicator}`);
   const beside = inLane.filter(c => c.s < b.s).sort((a, b2) => b2.s - a.s)[0];
   const lead0 = q.leaderOf(beside);
   ok(beside && beside.front > b.rear && lead0 && lead0.car !== b, 'the queued car level with it is not held by it: a car beside is nobody\'s leader', `car ${beside && beside.id} front ${beside && f1(beside.front)} vs its rear ${f1(b.rear)}`);

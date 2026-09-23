@@ -34,7 +34,7 @@ const FRESH = 2.5;          // seconds a change's cause reads as new, and a fire
 class Game {
   constructor() {
     this.canvas = $('board');
-    this.renderer = new Renderer(this.canvas);
+    this.renderer = new Renderer(this.canvas, $('ground'));
     this.world = null;
     this.level = null;
     this.state = 'select';   // select | playing | ended
@@ -531,6 +531,7 @@ class Game {
     for (const row of $('rules').children) if (row.dataset.i !== undefined) row.classList.toggle('fired', +row.dataset.i === fired);
     $('tabs').querySelector('[data-tab="rules"]').classList.toggle('fired', fired >= 0 && this.tab !== 'rules');
     this.syncBanners();
+    $('boardWrap').dataset.light = this.renderer.lightFor(w);
     // the event line (M7): what is happening, and for how much longer
     const lines = w.active.map(e => {
       const left = e.until === null ? 0 : Math.max(0, Math.ceil(e.until - w.t));
@@ -725,5 +726,7 @@ if (DEBUG) {
     meters() { return meters(game.world); },
     banners() { return [...document.querySelectorAll('#banners .banner')].map(e => { const r = e.getBoundingClientRect(); return { text: e.textContent, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }); },
     tab(name) { game.selectTab(name); },
+    // what the player sees: the ground with the board drawn over it, for the suite's pixel reads
+    canvas() { const b = game.canvas, c = document.createElement('canvas'); c.width = b.width; c.height = b.height; const x = c.getContext('2d'); x.drawImage($('ground'), 0, 0); x.drawImage(b, 0, 0); return c; },
   };
 }

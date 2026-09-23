@@ -38,6 +38,7 @@ export function bindInput({ canvas, renderer, game }) {
   let drag = null;
   canvas.addEventListener('pointermove', e => {
     if (drag) {
+      renderer.beginPan();
       renderer.panBy(e.clientX - drag.x, e.clientY - drag.y);
       drag.moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y);
       drag.x = e.clientX; drag.y = e.clientY;
@@ -57,6 +58,7 @@ export function bindInput({ canvas, renderer, game }) {
     if (!drag) return;
     const moved = drag.moved;
     drag = null;
+    renderer.endPan();
     if (moved > 4) return;
     const p = pointerWorld(e);
     const car = game.carAt(p.x, p.y);
@@ -64,5 +66,5 @@ export function bindInput({ canvas, renderer, game }) {
     else game.clickMap(p.x, p.y);
   };
   canvas.addEventListener('pointerup', release);
-  canvas.addEventListener('pointercancel', () => { drag = null; });
+  canvas.addEventListener('pointercancel', () => { drag = null; renderer.endPan(); });
 }

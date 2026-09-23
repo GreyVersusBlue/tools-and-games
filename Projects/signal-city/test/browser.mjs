@@ -12,8 +12,16 @@
 // east box through a yellow and not a jump while the platoon diagram draws,
 // Rush Hour's surge, outage and ambulance clock reach the event line and
 // the box (M7), School Run's zone and cones and Main Street's platoons
-// reach the event line and the board, the sprite gallery draws ten rows. Screenshots land in test/shots/ (ignored by git) as evidence
-// for the run.
+// reach the event line and the board, the sprite gallery draws ten rows.
+// The UI pass adds: the tab each level opens on and nothing under the fold,
+// the phase cards' arrows against the controller's phases, the Signal
+// line's cause and the strip after a press, a rule, the offset, the
+// corridor and the outage, the firing rule's card, the lane washes and the
+// hover preview, the banner queue, the split stats, a board that reaches
+// the fold; and the visual pass: the ground drawn once per camera and
+// slid under a drag, brake lamps, indicators, pavement, the stop-line
+// wash, dusk and night. Screenshots land in test/shots/ (ignored by git)
+// as evidence for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
 // is fixed-step, and every "after N steps" below is __signalCity.step(N),
@@ -162,7 +170,7 @@ try {
     ok(cy.segs.join() === 'green:start,yellow:player,allred:player,green:player', 'and the strip shows the first green, then your yellow, all-red and green', cy.segs.join());
     // (b) the lanes that may go are washed green: sample 4 m up the E and N approaches
     const wash = await page.evaluate(() => {
-      const w = window.__signalCity.world, r = window.__signalCity.game.renderer, net = w.network, c = document.getElementById('board').getContext('2d');
+      const w = window.__signalCity.world, r = window.__signalCity.game.renderer, net = w.network, c = window.__signalCity.canvas().getContext('2d');
       // the median of 9 samples 9 to 17 m up the lane's centre: clear of the turn arrow, robust to a car
       const at = leg => {
         const px = [];
@@ -177,7 +185,7 @@ try {
     await page.hover('#phases .phase[data-phase="0"]');
     await new Promise(r => setTimeout(r, 200));
     const pv = await page.evaluate(() => {
-      const r = window.__signalCity.game.renderer, c = document.getElementById('board'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const r = window.__signalCity.game.renderer, c = window.__signalCity.canvas(), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
       let n = 0;
       for (let i = 0; i < d.length; i += 4) if (d[i] >> 4 === 7 && d[i + 1] >> 4 === 13 && d[i + 2] >> 4 === 15) n++;
       return { data: document.getElementById('boardWrap').dataset.preview, n, card: document.querySelector('#phases .phase.previewing')?.dataset.phase };
@@ -191,7 +199,7 @@ try {
     ok(pv2.data === '' && pv2.pre === null, 'and moving off it clears the preview');
     // the canvas is not a flat colour: cars and roads drew
     const px = await page.evaluate(() => {
-      const c = document.getElementById('board');
+      const c = window.__signalCity.canvas();
       const ctx = c.getContext('2d');
       const d = ctx.getImageData(0, 0, c.width, c.height).data;
       const seen = new Set();
@@ -537,6 +545,9 @@ try {
     await new Promise(r => setTimeout(r, 300));
     const r1 = await page.evaluate(() => ({ hidden: document.getElementById('eventLine').classList.contains('hidden'), text: document.getElementById('eventLine').textContent, scale: window.__signalCity.world.demandScale(), power: window.__signalCity.world.powerOut }));
     ok(!r1.hidden && /Rush hour: traffic at 170%/.test(r1.text) && Math.abs(r1.scale - 1.7) < 1e-9 && !r1.power, 'at 61 s the event line says rush hour at 170% and the spawner reads 1.7', r1.text);
+    const lum = () => page.evaluate(() => { const c = window.__signalCity.canvas(), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0, t = 0; for (let i = 0; i < d.length; i += 4 * 53) { t += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; n++; } return { lum: t / n, light: document.getElementById('boardWrap').dataset.light }; });
+    const duskL = await lum();
+    ok(duskL.light === 'dusk', 'Rush Hour is played at dusk', JSON.stringify(duskL));
     await page.evaluate(n => window.__signalCity.step(n), 60 * 50);
     await new Promise(r => setTimeout(r, 300));
     const r2 = await page.evaluate(() => {
@@ -546,6 +557,19 @@ try {
     ok(r2.power && r2.stage === 'dark' && r2.heads === 'dark', 'at 111 s the power is out and every head is dark', r2.heads);
     ok(/Power out/.test(r2.line) && /Rush hour/.test(r2.line) && /dark: four-way stop/.test(r2.stageText), 'the event line says so, with the surge still on, and the stage line reads a four-way stop', `${r2.stageText} | ${r2.line}`);
     ok(r2.disabled, 'and the phase and flash buttons are disabled');
+    const nightL = await lum();
+    ok(nightL.light === 'night' && nightL.lum < 0.6 * duskL.lum, 'and the outage is night: the board is under 60% of the dusk board\'s brightness', `${nightL.lum.toFixed(1)} vs ${duskL.lum.toFixed(1)}`);
+    // the cars are on the board, not the ground: each is tinted over its own body
+    const carLum = await page.evaluate(() => {
+      const g = window.__signalCity, r = g.game.renderer, w = g.world;
+      const car = w.cars.find(c => { if (c.done || c.stats.trailer) return false; const p = r.toScreen(c.rects()[0].x, c.rects()[0].y); return p.x > 20 && p.y > 20 && p.x < r.width - 20 && p.y < r.height - 20; });
+      if (!car) return null;
+      const read = () => { r.draw(w, 0); const b = car.rects()[0], p = r.toScreen(b.x, b.y), d = g.canvas().getContext('2d').getImageData(Math.round(p.x * r.dpr) - 1, Math.round(p.y * r.dpr) - 1, 3, 3).data; let t = 0; for (let i = 0; i < d.length; i += 4) t += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]; return t / 9; };
+      const tinted = read();
+      r._tintMovers = () => {}; const bare = read(); delete r._tintMovers;
+      return { id: car.id, tinted, bare };
+    });
+    ok(carLum && carLum.tinted < 0.7 * carLum.bare, 'and every car is darkened to the night with it, not left lit on a dark board', carLum ? `car ${carLum.id}: ${carLum.tinted.toFixed(0)} against ${carLum.bare.toFixed(0)} untinted` : 'no car on screen');
     ok(await page.evaluate(() => document.getElementById('cause').textContent) === 'Dark: the power is out', 'the Signal line names the outage as the cause');
     await page.keyboard.press('1');
     await page.keyboard.press('2');
@@ -587,7 +611,7 @@ try {
     await new Promise(r => setTimeout(r, 300));
     // a pixel sample in a window around one beacon: the diamond is #ffd21e
     const sample = (label, wx, wy, half) => page.evaluate(([wx, wy, half]) => {
-      const r = window.__signalCity.game.renderer, c = document.getElementById('board');
+      const r = window.__signalCity.game.renderer, c = window.__signalCity.canvas();
       const p = r.toScreen(wx, wy);
       const d = c.getContext('2d').getImageData(Math.round((p.x - half) * r.dpr), Math.round((p.y - half) * r.dpr), Math.round(2 * half * r.dpr), Math.round(2 * half * r.dpr)).data;
       const seen = {};
@@ -660,6 +684,88 @@ try {
     ok(wasGreen ? (after.heldT > 0 && after.log === 'hold') : (after.next === 0 || after.phase === 0), wasGreen ? 'pressing 1 on the N-S green holds it: the rule counts from now' : 'pressing 1 asks for N-S', JSON.stringify(after));
     await shot(page, 'main-street-procession');
     ok(errors.length === 0, 'no page errors on Main Street', errors.join(' | '));
+  });
+
+  await section('the visual pass: the cached ground, the lamps, the washes', async () => {
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="free-play"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'free-play', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 40);
+    await new Promise(r => setTimeout(r, 400));
+    const light = await page.evaluate(() => document.getElementById('boardWrap').dataset.light);
+    ok(light === 'day', 'Free Play is played by day', light);
+    // the ground is drawn once per camera, not once per frame
+    const b0 = await page.evaluate(() => window.__signalCity.game.renderer.staticBuilds);
+    await new Promise(r => setTimeout(r, 500));
+    const b1 = await page.evaluate(() => window.__signalCity.game.renderer.staticBuilds);
+    await page.evaluate(() => window.__signalCity.game.renderer.zoomBy(1.1));
+    await new Promise(r => setTimeout(r, 300));
+    const b2 = await page.evaluate(() => window.__signalCity.game.renderer.staticBuilds);
+    ok(b1 === b0 && b2 === b0 + 1, 'half a second of frames rebuilds the static layer no times, and a zoom rebuilds it once', `${b0} → ${b1} → ${b2}`);
+    await page.evaluate(() => window.__signalCity.game.renderer.fit(window.__signalCity.world));
+    // a drag slides the ground and redraws it once, on release
+    const box = await page.evaluate(() => { const b = document.getElementById('board').getBoundingClientRect(); return { x: b.left + b.width * 0.3, y: b.top + b.height * 0.3 }; });
+    await new Promise(r => setTimeout(r, 300));   // the fit() above redraws the ground on the next frame: let it
+    const d0 = await page.evaluate(() => window.__signalCity.game.renderer.staticBuilds);
+    await page.mouse.move(box.x, box.y);
+    await page.mouse.down();
+    for (let k = 1; k <= 6; k++) { await page.mouse.move(box.x + k * 12, box.y + k * 6); await new Promise(r => setTimeout(r, 60)); }
+    const mid = await page.evaluate(() => ({ builds: window.__signalCity.game.renderer.staticBuilds, slide: document.getElementById('ground').style.transform }));
+    await page.mouse.up();
+    await new Promise(r => setTimeout(r, 300));
+    const after = await page.evaluate(() => ({ builds: window.__signalCity.game.renderer.staticBuilds, slide: document.getElementById('ground').style.transform }));
+    ok(mid.builds === d0 && /translate\(72px, 36px\)/.test(mid.slide), 'a 72 px drag slides the ground under the board without redrawing it', `${d0} → ${mid.builds}, ${mid.slide}`);
+    ok(after.builds === d0 + 1 && after.slide === '', 'and letting go redraws it once, in place', `${after.builds}, '${after.slide}'`);
+    await page.evaluate(() => window.__signalCity.game.renderer.fit(window.__signalCity.world));
+    // a pixel search in a small window round a world point, in device pixels
+    const find = (x, y, half, test) => page.evaluate(([x, y, half, test]) => {
+      const r = window.__signalCity.game.renderer, c = window.__signalCity.canvas(), p = r.toScreen(x, y);
+      const d = c.getContext('2d').getImageData(Math.round((p.x - half) * r.dpr), Math.round((p.y - half) * r.dpr), Math.round(2 * half * r.dpr), Math.round(2 * half * r.dpr)).data;
+      const f = new Function('r', 'g', 'b', `return ${test}`);
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (f(d[i], d[i + 1], d[i + 2])) n++;
+      return n;
+    }, [x, y, half, test]);
+    await page.evaluate(() => window.__signalCity.game.renderer.draw(window.__signalCity.world, 0));
+    // the brake lamps of a car standing at a red
+    const stopped = await page.evaluate(() => {
+      const w = window.__signalCity.world, r = window.__signalCity.game.renderer;
+      const c = w.cars.find(c => !c.done && c.braking && c.v === 0 && !c.stats.trailer && (() => { const p = r.toScreen(c.path.at(c.s).x, c.path.at(c.s).y); return p.x > 20 && p.y > 20 && p.x < r.width - 20 && p.y < r.height - 20; })());
+      if (!c) return null;
+      const b = c.rects()[0], x = -b.length / 2, cos = Math.cos(b.heading), sin = Math.sin(b.heading);
+      return { id: c.id, x: b.x + x * cos, y: b.y + x * sin };
+    });
+    const red = stopped ? await find(stopped.x, stopped.y, 5, 'r > 200 && g < 90 && b < 90') : 0;
+    ok(stopped && red >= 2, 'a car standing at its line shows lit brake lamps at its tail', stopped ? `car ${stopped.id}: ${red} lamp-red pixels` : 'no standing car on screen');
+    // an indicator: step until a turning car is on screen with its lamp in the on half of the blink
+    const turning = await page.evaluate(() => {
+      const w = window.__signalCity.world, r = window.__signalCity.game.renderer;
+      for (let i = 0; i < 60 * 60; i++) {
+        const c = w.cars.find(c => !c.done && c.indicator && !c.stats.trailer && c.front > c.path.stopLine - 30 && c.front < c.path.stopLine);
+        if (c && Math.floor(w.t * 3) % 2 === 0) {
+          r.draw(w, 0);
+          const b = c.rects()[0], side = c.indicator === 'L' ? -1 : 1, x = b.length / 2 - 0.3, y = side * (b.width / 2 - 0.1), cos = Math.cos(b.heading), sin = Math.sin(b.heading);
+          return { id: c.id, ind: c.indicator, x: b.x + x * cos - y * sin, y: b.y + x * sin + y * cos };
+        }
+        w.step();
+      }
+      return null;
+    });
+    const amber = turning ? await find(turning.x, turning.y, 4, 'r > 220 && g > 140 && g < 200 && b < 80') : 0;
+    ok(turning && amber >= 2, 'a car about to turn blinks its indicator on the side it is turning to', turning ? `car ${turning.id} ${turning.ind}: ${amber} amber pixels` : 'no turning car found');
+    // the pavement beside a leg, and the wash behind a red stop line
+    const spots = await page.evaluate(() => {
+      const w = window.__signalCity.world, net = w.network, c = w.controller;
+      const redLeg = net.legs.find(l => !['L', 'T', 'R'].some(t => c.movements.includes(`${l}-${t}`) && c.head(`${l}-${t}`) !== 'red'));
+      return { walk: [-(net.halfRoad + 1.3), -40], redLeg, wash: redLeg ? net.lanePoint(redLeg, 0, true, net.stopDist + 0.4) : null };
+    });
+    const pave = await find(spots.walk[0], spots.walk[1], 1.5, 'Math.abs(r - 169) < 14 && Math.abs(g - 167) < 14 && Math.abs(b - 157) < 14');
+    ok(pave >= 4, 'the N leg has pavement beside its curb', `${pave} pavement pixels`);
+    const wash = spots.wash ? await find(spots.wash[0], spots.wash[1], 1.5, 'r > g + 40') : 0;
+    ok(spots.redLeg && wash >= 4, 'and a leg on red has a red wash behind its stop line', `${spots.redLeg}: ${wash} red pixels`);
+    await shot(page, 'visual-pass');
+    ok(errors.length === 0, 'no page errors in the visual pass', errors.join(' | '));
   });
 
   await section('the sprite gallery', async () => {
