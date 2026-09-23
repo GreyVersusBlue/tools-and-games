@@ -475,6 +475,60 @@ group('priority preemption');
   ok(c.head('S-T') === 'red', 'and the rest of that phase drops to red');
 }
 
+group('the cause of a change (UI pass): read-only, for the page');
+
+{
+  const RULES = [{ when: 'elapsed', seconds: 30, then: 'next' }, { when: 'queue', movement: 'E-T', threshold: 3, after: 6, then: 1 }];
+  const c = new Controller({ rules: RULES, timing: { yellow: 1, allRed: 1, minGreen: 4 } });
+  ok(c.cause.by === 'start', 'a new controller names the level\'s start', JSON.stringify(c.cause));
+  run(c, 7, 0.1, m => (m === 'E-T' ? 5 : 0));
+  ok(c.cause.by === 'rule' && c.cause.rule === 1 && c.cause.text === 'rule 2: E-T had 5 queued', 'a queue rule firing names itself by its place in the list and what it read', JSON.stringify(c.cause));
+  ok(c.log.filter(l => l.kind === 'yellow').slice(-1)[0].by === 'rule' && c.log.slice(-1)[0].by === 'rule', 'and the yellow it began and the all-red after are logged with that cause', c.log.slice(-2).map(l => `${l.kind}:${l.by}`).join(' '));
+  run(c, 2.1);
+  ok(c.log.slice(-1)[0].kind === 'green' && c.log.slice(-1)[0].by === 'rule', 'so is the green it brought');
+  run(c, 30.1);
+  ok(c.cause.by === 'rule' && c.cause.rule === 0 && c.cause.text === 'rule 1: 30 s of E-W', 'the elapsed rule names the green it ended', JSON.stringify(c.cause));
+  run(c, 6);
+  ok(c.requestPhase(1) === true && c.cause.by === 'player', 'a phase asked for is the player\'s', JSON.stringify(c.cause));
+  run(c, 6);
+  ok(c.holdGreen() === true && c.cause.by === 'player' && c.cause.hold === true, 'and so is a held green');
+  c.preempt(['N-T', 'N-L', 'N-R'], 5);
+  ok(c.cause.by === 'corridor' && !c.cause.back, 'the priority corridor names itself');
+  run(c, 8);
+  ok(c.cause.by === 'corridor' && c.cause.back === true, 'and names itself again for the change back', JSON.stringify(c.cause));
+  c.setFlash('red');
+  ok(c.cause.by === 'flash', 'flash mode names itself');
+  c.setDark();
+  ok(c.cause.by === 'outage', 'the dark names the outage');
+  c.requestPhase(0, 'outage');
+  ok(c.cause.by === 'outage' && c.cause.back === true, 'and the world\'s return from it passes the outage on');
+  const t = new Controller({ mode: 'timed', plan: [{ phase: 0, green: 10 }, { phase: 1, green: 10 }], timing: { yellow: 1, allRed: 1, minGreen: 4 } });
+  run(t, 10.05);
+  ok(t.cause.by === 'plan', 'a timed plan\'s change is the plan\'s', JSON.stringify(t.cause));
+  t.setOffset(6);
+  run(t, 12);
+  ok(t.cause.by === 'offset' && t.log.some(l => l.kind === 'yellow' && l.by === 'offset'), 'and while an offset is being paid its changes are the offset\'s', JSON.stringify(t.cause));
+  // read-only: the same controller with the cause never written runs the
+  // same 300 s, change for change, through everything that writes one: a
+  // four-phase set, an elapsed rule, a queue rule that jumps the sequence
+  // (so `resumeAt` matters), a hand every 37 s, a held green, a corridor
+  const R4 = [{ when: 'elapsed', seconds: 14, then: 'next' }, { when: 'queue', movement: 'E-L', threshold: 2, after: 5, then: 3 }];
+  const a = new Controller({ lefts: true, rules: R4, timing: { yellow: 3, allRed: 1.5, minGreen: 4 } });
+  const b = new Controller({ lefts: true, rules: R4, timing: { yellow: 3, allRed: 1.5, minGreen: 4 } });
+  b._setCause = () => {};
+  for (const x of [a, b]) {
+    const sense = m => (m === 'E-L' && Math.floor(x.t / 17) % 2 ? 3 : 0);
+    for (let i = 0; i < 3000; i++) {
+      if (i % 370 === 100) x.requestPhase((i / 370 | 0) % 4);
+      if (i % 370 === 200) x.holdGreen();
+      if (i === 1500) x.preempt(['W-T', 'W-L', 'W-R'], 8);
+      x.step(0.1, sense);
+    }
+  }
+  const trace = x => x.log.map(l => `${l.kind}${l.detail}@${l.t}`).join(' ');
+  ok(trace(a) === trace(b) && a.log.length > 40 && a.log.some(l => l.by === 'rule') && a.log.some(l => l.kind === 'hold') && b.cause.by === 'start', 'writing the cause changes nothing the controller does', `${a.log.length} transitions each`);
+}
+
 group('determinism');
 
 {

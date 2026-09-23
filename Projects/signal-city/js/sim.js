@@ -293,7 +293,7 @@ export class World {
 
   _endEvent(e) {
     e.ended = true;
-    if (e.kind === 'outage') this.controllers.forEach((c, i) => { if (c.stage === 'dark') c.requestPhase(e.resume[i]); });
+    if (e.kind === 'outage') this.controllers.forEach((c, i) => { if (c.stage === 'dark') c.requestPhase(e.resume[i], 'outage'); });
     if (e.kind === 'closure') {
       this.nodes[e.node].open(e.leg, e.lane);
       for (const c of this.cars) if (!c.done && c.path.node === e.node && c.path.entry === e.leg && c.path.lane === e.lane) { c.mergeS = 0; c.mergeLane = -1; }

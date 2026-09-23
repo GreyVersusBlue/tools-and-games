@@ -10,6 +10,15 @@
   --yellow: #ffc21f;
   --red: #ff3b30;
   --blue: #4f8cff;
+  /* what changed the signal (the Signal line, the strip, the legend) */
+  --by-start: #6b7480;
+  --by-player: #4f8cff;
+  --by-rule: #b07cff;
+  --by-plan: #8b95a1;
+  --by-offset: #2ec4b6;
+  --by-corridor: #ff5a4f;
+  --by-outage: #0b0c0e;
+  --by-flash: #ffc21f;
   --radius: 10px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
@@ -25,9 +34,10 @@ button:hover { background: #343a43; }
 .top h1 { font-size: 20px; margin: 0; letter-spacing: 0.3px; }
 .top h1 .lv { color: var(--dim); font-weight: 400; font-size: 15px; margin-left: 8px; }
 .home { text-decoration: none; color: var(--dim); font-size: 14px; }
-.hud { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap; }
-.stat { display: flex; flex-direction: column; min-width: 70px; }
-.stat.wide { min-width: 170px; }
+.hud { display: flex; gap: 16px; margin-left: auto; flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; min-width: 54px; }
+.stat.wide { min-width: 130px; }
+.stat.mid { min-width: 90px; }
 .stat .label, .panel .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--dim); }
 .stat b { font-size: 17px; font-variant-numeric: tabular-nums; }
 .stat b.bad { color: var(--red); }
@@ -35,16 +45,67 @@ button:hover { background: #343a43; }
 .bar i { display: block; height: 100%; width: 0; background: var(--green); transition: width 0.3s; }
 
 .play { display: flex; gap: 16px; padding: 16px; flex: 1; align-items: flex-start; }
-.board-wrap { flex: 1; min-width: 0; }
+.board-wrap { flex: 1; min-width: 0; position: relative; }
+/* (a) event banners queue in the board's top-left corner, newest last, and never overlap */
+.banners { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; max-width: 45%; }
+.banner { font-weight: 800; font-size: 15px; letter-spacing: 1px; padding: 5px 10px; border-radius: 6px; background: rgba(20,22,26,0.88); color: var(--yellow); border-left: 4px solid var(--yellow); box-shadow: 0 2px 8px rgba(0,0,0,0.4); animation: banner-in 0.25s ease-out; }
+.banner.off { color: var(--dim); border-left-color: var(--dim); }
+.banner.alarm { color: #fff; background: rgba(160,28,22,0.92); border-left-color: #fff; }
+@keyframes banner-in { from { transform: translateX(-12px); opacity: 0; } to { transform: none; opacity: 1; } }
 canvas#board { display: block; border-radius: var(--radius); background: #5d7a4a; width: 100%; }
-.panel { width: 270px; flex: none; background: var(--panel); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
-.panel-head { display: flex; flex-direction: column; }
+.panel { width: 270px; flex: none; background: var(--panel); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.panel-head { display: flex; flex-direction: column; gap: 2px; }
 .panel-head b { font-size: 15px; }
-.phases { display: flex; flex-direction: column; gap: 8px; }
-.phase { display: grid; grid-template-columns: 26px 1fr; grid-template-rows: auto auto; text-align: left; padding: 8px 10px; border-left: 4px solid #3a4048; }
-.phase .key { grid-row: 1 / span 2; align-self: center; font-weight: 700; color: var(--dim); }
+.head-row { display: flex; justify-content: space-between; align-items: center; }
+.help-btn { width: 24px; height: 24px; padding: 0; border-radius: 50%; font-size: 13px; font-weight: 700; line-height: 1; }
+.help-btn[aria-expanded="true"] { border-color: var(--yellow); background: #3a3320; }
+.help-box { display: flex; flex-direction: column; gap: 8px; background: #1a1d22; border-radius: 8px; padding: 10px; }
+.help-box .legend { font-size: 11px; color: var(--dim); margin: 0; line-height: 1.8; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 3px 0 6px; vertical-align: -1px; }
+/* (d) why the signal changed: a coloured dot and a line */
+.cause { font-size: 12px; color: var(--dim); min-height: 16px; }
+.cause::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--c, var(--by-start)); vertical-align: 0; }
+.cause.fresh { color: var(--ink); }
+.strip { position: relative; height: 16px; margin-top: 6px; background: #1a1d22; border-radius: 4px; overflow: hidden; }
+.strip .seg { position: absolute; top: 0; bottom: 0; font-size: 9px; font-weight: 700; line-height: 16px; color: rgba(255,255,255,0.9); text-align: center; overflow: hidden; white-space: nowrap; }
+.strip .seg.yellow { background: var(--yellow) !important; top: 5px; bottom: 5px; }
+.strip .seg.allred { background: #7a1d18 !important; top: 5px; bottom: 5px; }
+.strip .seg.flash { background: repeating-linear-gradient(90deg, var(--by-flash) 0 3px, #3a3320 3px 6px) !important; }
+.strip .seg.dark { background: var(--by-outage) !important; outline: 1px solid #3a4048; }
+.by-start { background: var(--by-start); --c: var(--by-start); }
+.by-player { background: var(--by-player); --c: var(--by-player); }
+.by-rule { background: var(--by-rule); --c: var(--by-rule); }
+.by-plan { background: var(--by-plan); --c: var(--by-plan); }
+.by-offset { background: var(--by-offset); --c: var(--by-offset); }
+.by-corridor { background: var(--by-corridor); --c: var(--by-corridor); }
+.by-outage { background: var(--by-outage); --c: var(--by-outage); outline: 1px solid #3a4048; }
+.by-flash { background: var(--by-flash); --c: var(--by-flash); }
+.cause[class*="by-"] { background: none; }
+/* (e) one section at a time */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid #2c3138; }
+.tab { flex: 1; padding: 6px 2px; font-size: 12px; border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; background: transparent; color: var(--dim); }
+.tab:hover { background: var(--panel-2); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--yellow); background: var(--panel-2); }
+.tab.fired { animation: fired 0.5s 3 alternate; }
+.pane { display: none; flex-direction: column; gap: 8px; }
+.panel[data-tab="phases"] .pane[data-pane="phases"], .panel[data-tab="timing"] .pane[data-pane="timing"], .panel[data-tab="rules"] .pane[data-pane="rules"],
+.panel[data-tab="crossings"] .pane[data-pane="crossings"], .panel[data-tab="mode"] .pane[data-pane="mode"] { display: flex; }
+.pane > .section:first-child { border-top: 0; padding-top: 0; }
+.foot-controls { padding-top: 8px; border-top: 1px solid #2c3138; }
+.phases { display: flex; flex-direction: column; gap: 6px; }
+/* (c) a phase card: key, a drawn diagram of its movements, its name */
+.phase { display: grid; grid-template-columns: 18px 44px 1fr; align-items: center; gap: 8px; text-align: left; padding: 5px 10px 5px 8px; border-left: 4px solid #3a4048; }
+.phase .key { font-weight: 700; color: var(--dim); }
 .phase .name { font-weight: 600; }
-.phase .mv { font-size: 11px; color: var(--dim); }
+.phase .dia { width: 44px; height: 44px; display: block; }
+.dia .road { fill: #474c54; }
+.dia .mv { fill: none; stroke: #e9ecef; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.dia .mv.permissive { stroke-dasharray: 1.6 1.4; stroke: #c9ced4; }
+.dia .head { fill: #e9ecef; }
+.dia .walk { fill: #e9ecef; opacity: 0.7; }
+.phase.green .dia .mv { stroke: var(--green); }
+.phase.green .dia .head { fill: var(--green); }
+.phase:focus-visible, .phase.previewing { outline: 2px solid #7fd4ff; outline-offset: 1px; }
 .phase.active { border-left-color: var(--yellow); }
 .phase.green { border-left-color: var(--green); background: #253328; }
 .phase.queued { border-left-color: var(--blue); }
@@ -76,6 +137,8 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .rule .ops button { padding: 2px 6px; font-size: 12px; border-radius: 5px; }
 .rule.sleeping .body { opacity: 0.45; }
 .rule.sensed { border-left: 3px solid var(--blue); }
+.rule.fired { animation: fired 0.5s 3 alternate; }
+@keyframes fired { from { box-shadow: 0 0 0 0 rgba(176,124,255,0.9); background: #3a2d52; } to { box-shadow: 0 0 0 5px rgba(176,124,255,0); } }
 .nodes { display: flex; gap: 6px; }
 .nodes .node { flex: 1; padding: 6px 8px; font-size: 13px; }
 .nodes .node.on { border-color: var(--blue); background: #22304a; }

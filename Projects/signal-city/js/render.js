@@ -10,6 +10,12 @@
 // the priority halo. A lane closure's cones and a school zone's beacons
 // (M7) draw with the node's roads, from the world's active events.
 //
+// The UI pass: every inbound lane whose movement is green now is washed
+// green from its stop line back, amber on yellow, so the board says what
+// the panel says; a hovered phase card's movements draw as arrows over the
+// box (`preview`); event banners are a queue the page draws in the DOM,
+// kept here as `banners` and no longer painted over the box.
+//
 // The camera (M6): a single box shows the middle 72 m of its legs (#541); a
 // corridor frames every box with 50 m of road either side, which on a
 // 950 px board is about 3 px per metre, and the wheel zooms and a drag pans
@@ -42,6 +48,9 @@ export class Renderer {
     this.crashMarks = [];  // { x, y, heading }
     this.width = 0; this.height = 0;
     this.selected = null;  // a car id the pointer is over
+    this.banners = [];     // { id, text, tone, t0, ttl }: the page shows these in a queue
+    this.bannerN = 0;
+    this.preview = null;   // { node, movements, permissive } while a phase card is hovered
   }
 
   resize(cssW, cssH, dpr = 1) {
@@ -118,11 +127,11 @@ export class Renderer {
         case 'priority': if (at) this.effects.push({ kind: 'text', text: 'PRIORITY', x: at.x, y: at.y, t0: world.t, ttl: 2.5, car: e.car }); break;
         case 'call': { const [x, y] = this.callPost(world.nodes[e.node], e.leg); this.effects.push({ kind: 'text', text: 'call', x, y, t0: world.t, ttl: 1.6 }); break; }
         case 'ped-late': { const [x, y] = this.callPost(world.nodes[e.node], e.leg); this.effects.push({ kind: 'text', text: 'still waiting', x, y, t0: world.t, ttl: 2.2 }); break; }
-        case 'gridlock': this.effects.push({ kind: 'banner', text: 'GRIDLOCK', x: 0, y: 0, t0: world.t, ttl: 4 }); break;
+        case 'gridlock': this.banners.push({ id: ++this.bannerN, text: 'GRIDLOCK', tone: 'alarm', t0: world.t, ttl: 4 }); break;
         case 'event': {
-          // a scripted moment (M7) announces itself over the box
+          // a scripted moment (M7) announces itself in the banner queue
           const text = BANNERS[e.event] ? BANNERS[e.event][e.on ? 0 : 1] : null;
-          if (text) this.effects.push({ kind: 'banner', text, x: 0, y: 0, t0: world.t, ttl: 3 });
+          if (text) this.banners.push({ id: ++this.bannerN, text, tone: e.on ? 'on' : 'off', t0: world.t, ttl: 3 });
           break;
         }
         case 'ambulance-late': if (at) this.effects.push({ kind: 'text', text: 'LATE', x: at.x, y: at.y, t0: world.t, ttl: 2.5, car: e.car }); break;
@@ -131,9 +140,10 @@ export class Renderer {
       }
     }
     world.events.length = 0;
+    this.banners = this.banners.filter(b => world.t - b.t0 < b.ttl);
   }
 
-  reset() { this.effects = []; this.crashMarks = []; }
+  reset() { this.effects = []; this.crashMarks = []; this.banners = []; this.preview = null; }
 
   draw(world, now) {
     const { ctx } = this;
@@ -150,6 +160,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(net.origin[0], net.origin[1]);
       this._roads(ctx, world, net);
+      this._greenLanes(ctx, world, net);
       this._closures(ctx, world, net);
       this._loops(ctx, world, net);
       this._beacons(ctx, world, net, now);
@@ -159,8 +170,82 @@ export class Renderer {
     }
     this._walkers(ctx, world, now);
     this._cars(ctx, world, now);
+    this._preview(ctx, world);
     this._effects(ctx, world);
     ctx.restore();
+  }
+
+  // Which way each inbound lane is going right now: 'green' if any
+  // movement it carries is green (arrow or ball), else 'yellow' if any is
+  // yellow, else null. Read from the controller's heads, nothing else.
+  laneState(world, net, leg, lane) {
+    const ctl = world.controllers[net.node];
+    let st = null;
+    for (const turn of ['L', 'T', 'R']) {
+      const m = `${leg}-${turn}`;
+      if (!ctl.movements.includes(m) || !net.lanesForTurn(turn).includes(lane)) continue;
+      const h = ctl.head(m);
+      if (h === 'green' || h === 'green-arrow') return 'green';
+      if (h === 'yellow' || h === 'yellow-arrow') st = 'yellow';
+    }
+    return st;
+  }
+
+  // The wash on every lane that may go: from the stop line back up the
+  // approach, fading out over 36 m.
+  _greenLanes(ctx, world, net) {
+    const sd = net.stopDist, len = 36;
+    for (const leg of net.legs) {
+      const d = legDir(leg);
+      for (let lane = 0; lane < net.lanesPerDir; lane++) {
+        const st = this.laneState(world, net, leg, lane);
+        if (!st) continue;
+        const a = net.lanePoint(leg, lane, true, sd), b = net.lanePoint(leg, lane, true, sd + len);
+        const ax = a[0] - net.origin[0], ay = a[1] - net.origin[1], bx = b[0] - net.origin[0], by = b[1] - net.origin[1];
+        const g = ctx.createLinearGradient(ax, ay, bx, by);
+        const rgb = st === 'green' ? '46,224,107' : '255,194,31';
+        g.addColorStop(0, `rgba(${rgb},0.42)`); g.addColorStop(1, `rgba(${rgb},0)`);
+        ctx.fillStyle = g;
+        const w = LANE_WIDTH - 0.5;
+        const px = -d[1] * w / 2, py = d[0] * w / 2;   // across the lane
+        ctx.beginPath();
+        ctx.moveTo(ax + px, ay + py); ctx.lineTo(bx + px, by + py); ctx.lineTo(bx - px, by - py); ctx.lineTo(ax - px, ay - py); ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
+  // A hovered phase card's movements as arrows over the box: each along a
+  // real path of that movement, from 8 m before its stop line to 6 m past
+  // the box, with a head at the end. A permissive left is dashed.
+  _preview(ctx, world) {
+    const pv = this.preview;
+    if (!pv) return;
+    const net = world.nodes[pv.node];
+    if (!net) return;
+    for (const m of pv.movements) {
+      let path = null;
+      for (const p of net.paths.values()) if (p.movement === m) { path = p; break; }
+      if (!path) continue;
+      const s0 = path.stopLine - 8, s1 = path.boxExit + 6;
+      const pts = [];
+      for (let s = s0; s < s1; s += 1) pts.push(path.at(s));
+      const end = path.at(s1);
+      ctx.save();
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (const [w, colour] of [[1.9, 'rgba(10,14,20,0.55)'], [1.1, '#7fd4ff']]) {
+        ctx.strokeStyle = colour; ctx.lineWidth = w;
+        ctx.setLineDash(pv.permissive.includes(m) ? [1.6, 1.2] : []);
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+        for (const p of pts) ctx.lineTo(p.x, p.y);
+        ctx.lineTo(end.x, end.y); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.translate(end.x, end.y); ctx.rotate(end.heading);
+      ctx.fillStyle = '#7fd4ff'; ctx.strokeStyle = 'rgba(10,14,20,0.55)'; ctx.lineWidth = 0.4;
+      ctx.beginPath(); ctx.moveTo(2.6, 0); ctx.lineTo(-0.6, -1.7); ctx.lineTo(-0.6, 1.7); ctx.closePath(); ctx.stroke(); ctx.fill();
+      ctx.restore();
+    }
   }
 
   // Where a leg's call post stands: the near-side corner as the driver
@@ -200,7 +285,7 @@ export class Renderer {
   // One node's roads, drawn about its own origin (the caller translates).
   _roads(ctx, world, net) {
     const half = net.halfRoad;
-    const L = net.legLength + 20;
+    const L = net.legLength + 60;   // past the map edge: a board sized to the window can show 130 m of a cross street
     // asphalt legs
     ctx.fillStyle = ASPHALT;
     for (const leg of net.legs) {
@@ -551,10 +636,6 @@ export class Renderer {
         ctx.beginPath();
         for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.moveTo(Math.cos(a) * r * 0.5, Math.sin(a) * r * 0.5); ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
         ctx.stroke();
-      } else if (e.kind === 'banner') {
-        ctx.translate(x, y - 20);
-        ctx.fillStyle = '#ff3b30'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.strokeStyle = '#000'; ctx.lineWidth = 0.6; ctx.strokeText(e.text, 0, 0); ctx.fillText(e.text, 0, 0);
       }
       ctx.restore();
     }
@@ -563,7 +644,7 @@ export class Renderer {
 
 function blinkColor(now) { return Math.floor(now * 6) % 2 ? '#ff3b30' : '#2f6fe6'; }
 
-// What each scripted moment (M7) announces over the box, on and off.
+// What each scripted moment (M7) announces in the banner queue, on and off.
 const BANNERS = {
   surge: ['RUSH HOUR', 'RUSH HOUR OVER'], outage: ['POWER OUT', 'POWER BACK'], ambulance: ['AMBULANCE', null],
   motorcade: ['MOTORCADE', null], procession: ['PROCESSION', null],

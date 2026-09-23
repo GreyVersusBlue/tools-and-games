@@ -670,6 +670,7 @@ group('events (M7): the power outage');
   ok(w.powerOut && w.controller.stage === 'dark', 'at 69.5 s it is still dark');
   w.run(0.6);
   ok(!w.powerOut && w.controller.stage === 'allred' && w.controller.next === phaseBefore, 'at 70 s the power is back and the box comes back through an all-red to the phase it was in', `${w.controller.stage} next ${w.controller.next} (was ${phaseBefore})`);
+  ok(w.controller.cause.by === 'outage' && w.controller.cause.back === true, 'and the controller names the outage as the cause of that change, not the player', JSON.stringify(w.controller.cause));
   w.run(1.6);
   ok(w.controller.stage === 'green' && w.controller.phase === phaseBefore, 'and is green on it 1.5 s later', `${w.controller.stage} ${w.controller.phase}`);
   ok(w.requestPhase((phaseBefore + 1) % 2) === true, 'the phases answer again');

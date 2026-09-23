@@ -31,62 +31,89 @@
     <div class="stat"><span class="label">Time</span><b id="clock">3:00</b></div>
     <div class="stat wide"><span class="label">Cleared</span><b id="cleared">0 / 0</b><div class="bar"><i id="throughBar"></i></div></div>
     <div class="stat"><span class="label">Collisions</span><b id="collisions">0</b></div>
-    <div class="stat wide"><span class="label">Satisfaction</span><b id="waitNow">&nbsp;</b><div class="bar"><i id="satBar"></i></div></div>
+    <div class="stat"><span class="label">Avg wait</span><b id="avgWait">0 s</b></div>
+    <div class="stat"><span class="label">Waiting</span><b id="waitingNow">0</b></div>
+    <div class="stat"><span class="label">Honks</span><b id="honks">0</b></div>
+    <div id="pedLateStat" class="stat hidden"><span class="label">Walkers late</span><b id="pedLate">0</b></div>
+    <div class="stat mid"><span class="label">Mood</span><b id="satVal">100%</b><div class="bar"><i id="satBar"></i></div></div>
   </div>
 </header>
 
 <main class="play">
   <div id="boardWrap" class="board-wrap">
     <canvas id="board" aria-label="The intersection"></canvas>
+    <div id="banners" class="banners" aria-live="polite"></div>
   </div>
-  <aside class="panel">
+  <aside id="panel" class="panel" data-tab="phases">
     <div class="panel-head">
-      <span class="label">Signal</span>
+      <div class="head-row"><span class="label">Signal</span><button id="helpBtn" class="help-btn" aria-expanded="false" aria-controls="helpBox" title="Keys, and how this level works">?</button></div>
       <b id="stage">&nbsp;</b>
+      <span id="cause" class="cause">&nbsp;</span>
+      <div id="strip" class="strip" title="The last 60 s of phases, coloured by what changed them"></div>
+    </div>
+    <div id="helpBox" class="help-box hidden">
+      <p id="hint" class="hint"></p>
+      <p class="keys">1 to 4 pick a phase, and the green one again holds it · space pauses · F is fast · scroll zooms, drag pans · click an ambulance or a motorcade · the rules run on their own</p>
+      <p class="legend"><i class="by-player"></i>you <i class="by-rule"></i>a rule <i class="by-plan"></i>the plan <i class="by-offset"></i>the offset <i class="by-corridor"></i>the corridor <i class="by-outage"></i>the outage <i class="by-flash"></i>flash</p>
+      <div id="saveBar" class="save"></div>
     </div>
     <p id="eventLine" class="event hidden"></p>
     <div id="nodes" class="nodes hidden"></div>
-    <div id="phases" class="phases"></div>
-    <p id="leftsNote" class="note hidden">Protected lefts: the arrow phases serve the inner lanes alone.</p>
-    <p id="sensorsNote" class="note hidden">Loops are live: a queue rule fires when its lane fills.</p>
-    <div id="waveBox" class="section hidden">
-      <label class="slider"><span><span class="label">Offset</span> <b id="offsetVal">16 s</b></span><input id="offsetRange" type="range" min="0" max="42" step="1" value="16"></label>
-      <p id="offsetNote" class="note"></p>
-      <canvas id="wave" class="wave" width="242" height="200" aria-label="The corridor's green windows over time"></canvas>
-    </div>
-    <div id="pedsBox" class="section hidden">
-      <span class="label">Crossings</span>
-      <div id="calls" class="calls"></div>
-    </div>
     <button id="priorityBtn" class="priority">Priority corridor <span class="key">E</span></button>
-    <div id="flashBox" class="section hidden">
-      <span class="label">Mode</span>
-      <div class="controls">
-        <button id="flashRedBtn" title="Four-way stop: everyone stops, first come first served">Flash red</button>
-        <button id="flashYellowBtn" title="The main road flashes yellow and does not stop; the rest flash red">Flash yellow</button>
-        <button id="signalsBtn" title="Back to the phases, through an all-red">Signals</button>
+    <div id="tabs" class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="phases">Phases</button>
+      <button class="tab" role="tab" data-tab="timing">Timing</button>
+      <button class="tab" role="tab" data-tab="rules">Rules</button>
+      <button class="tab" role="tab" data-tab="crossings">Crossings</button>
+      <button class="tab" role="tab" data-tab="mode">Mode</button>
+    </div>
+    <div class="pane" data-pane="phases" role="tabpanel">
+      <div id="phases" class="phases"></div>
+      <p id="leftsNote" class="note hidden">Protected lefts: the arrow phases serve the inner lanes alone.</p>
+      <p id="sensorsNote" class="note hidden">Loops are live: a queue rule fires when its lane fills.</p>
+    </div>
+    <div class="pane" data-pane="timing" role="tabpanel">
+      <div id="waveBox" class="section hidden">
+        <label class="slider"><span><span class="label">Offset</span> <b id="offsetVal">16 s</b></span><input id="offsetRange" type="range" min="0" max="42" step="1" value="16"></label>
+        <p id="offsetNote" class="note"></p>
+        <canvas id="wave" class="wave" width="242" height="200" aria-label="The corridor's green windows over time"></canvas>
+      </div>
+      <div id="timingBox" class="section hidden">
+        <label class="slider"><span><span class="label">Yellow</span> <b id="yellowVal">3.0 s</b></span><input id="yellowRange" type="range" min="2" max="5" step="0.5" value="3"></label>
+        <label class="slider"><span><span class="label">All-red</span> <b id="allRedVal">1.0 s</b></span><input id="allRedRange" type="range" min="0.5" max="4" step="0.5" value="1"></label>
       </div>
     </div>
-    <div id="timingBox" class="section hidden">
-      <label class="slider"><span><span class="label">Yellow</span> <b id="yellowVal">3.0 s</b></span><input id="yellowRange" type="range" min="2" max="5" step="0.5" value="3"></label>
-      <label class="slider"><span><span class="label">All-red</span> <b id="allRedVal">1.0 s</b></span><input id="allRedRange" type="range" min="0.5" max="4" step="0.5" value="1"></label>
-    </div>
-    <div id="rulesBox" class="section hidden">
-      <span class="label">Rules, in order</span>
-      <div id="rules" class="rules"></div>
-      <div class="controls">
-        <button id="addElapsedBtn" class="small">+ after N seconds</button>
-        <button id="addQueueBtn" class="small">+ when queued</button>
+    <div class="pane" data-pane="rules" role="tabpanel">
+      <div id="rulesBox" class="section hidden">
+        <span class="label">Rules, in order</span>
+        <div id="rules" class="rules"></div>
+        <div class="controls">
+          <button id="addElapsedBtn" class="small">+ after N seconds</button>
+          <button id="addQueueBtn" class="small">+ when queued</button>
+        </div>
       </div>
     </div>
-    <p id="hint" class="hint"></p>
-    <div class="controls">
+    <div class="pane" data-pane="crossings" role="tabpanel">
+      <div id="pedsBox" class="section hidden">
+        <span class="label">Crossings</span>
+        <div id="calls" class="calls"></div>
+      </div>
+    </div>
+    <div class="pane" data-pane="mode" role="tabpanel">
+      <div id="flashBox" class="section hidden">
+        <span class="label">Mode</span>
+        <div class="controls">
+          <button id="flashRedBtn" title="Four-way stop: everyone stops, first come first served">Flash red</button>
+          <button id="flashYellowBtn" title="The main road flashes yellow and does not stop; the rest flash red">Flash yellow</button>
+          <button id="signalsBtn" title="Back to the phases, through an all-red">Signals</button>
+        </div>
+      </div>
+    </div>
+    <div class="controls foot-controls">
       <button id="pauseBtn">Pause</button>
       <button id="speedBtn">1x</button>
       <button id="menuBtn">Levels</button>
     </div>
-    <p class="keys">1 to 4 pick a phase, and the green one again holds it · space pauses · F is fast · scroll zooms, drag pans · click an ambulance or a motorcade · the rules run on their own</p>
-    <div id="saveBar" class="save"></div>
   </aside>
 </main>
 
