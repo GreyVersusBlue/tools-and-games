@@ -452,13 +452,15 @@ ok(
   hashedPagefind.length === 0,
   `no file under pagefind/ contributes to the version${hashedPagefind.length ? `: ${hashedPagefind.map((e) => e.url).join(", ")}` : ` (${hashedFiles(root).length} files hashed)`}`
 );
-// The worker updates only when the browser fetches a new sw.js, and it only
-// fetches a new one if the old one was not cached. This header has been in
-// firebase.json since batch 1 for a worker that did not exist; now it matters.
-const firebase = readFileSync(join(root, "..", "firebase.json"), "utf8");
+// The worker updates only when the browser fetches a new sw.js. That used to
+// rest on a no-cache header in firebase.json; the site left Firebase and the
+// host sets no per-file headers now, so it rests on the registration instead.
+// The default `updateViaCache: 'imports'` already skips the HTTP cache for
+// sw.js itself; `'all'` would let a cached copy hide every update.
+const offlineJs = readFileSync(join(root, "js", "offline.js"), "utf8");
 ok(
-  /"source":\s*"\*\*\/sw\.js"[\s\S]{0,200}?"Cache-Control"[^}]*"no-cache"/.test(firebase),
-  "firebase.json still serves sw.js with no-cache, which is the whole update path"
+  !/updateViaCache\s*:\s*["']all["']/.test(offlineJs),
+  "offline.js does not register sw.js with updateViaCache 'all', which is the whole update path"
 );
 // The banner and the registration ship on every page, not just the one that
 // talks about them.

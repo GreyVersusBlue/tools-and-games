@@ -1,54 +1,95 @@
 # tools & games
 
-A personal collection of browser-based games, tools, and TTRPG projects — mostly single-file or lightweight multi-file HTML/JS builds, hosted as a static site.
+Browser games, a Pathfinder 2e reference shelf and a LARP rules site, built by
+Devon with Claude and served as plain static files at
+**[greyversusblue.com](https://greyversusblue.com)**.
 
-**Live site:** [greyversusblue.com](https://greyversusblue.com)
-
-## Repo structure
-
-| Path | What it is |
-| --- | --- |
-| `index.html` / `404.html` | The site shell — landing page and board of everything below |
-| `landing.html` | A studio-style landing mockup of the same site — Three.js hero, editorial sections, mobile-first; not linked from the board (like `newindex.html`) |
-| `Projects/` | The games — each is its own subfolder with its own assets and (mostly) its own save data |
-| `Tools/` | Standalone utilities — classroom tools, reference browsers, etc. |
-| `Pathfinder/` | Reference data (PF2e Remaster rules JSON) shared by the TTRPG-adjacent tools |
-| `BACKLOG.md` | Every open idea on the site, ranked — the entry point for picking up work |
-| `Audio/`, `assets/` | Shared media, fonts, and JS (including a shared save/load module used across games) |
-| `HISTORY.md` | What already shipped — 58 locked design decisions, ten site sessions, and every project's phase log |
-| `CLAUDE.md` | House rules, the npm scripts and where each runs, ownership, and the definition of done for a session |
+No build step, no bundler, no runtime npm dependency, and no offsite requests:
+every font, model and library a page needs is vendored next to it. The repo
+root is the site, so every file here is a live URL.
 
 ## Games
 
-- **The Absalom Inheritance** — isometric CRPG built on PF2e Remaster rules
-- **Aphelion** — cozy 3D life-sim about a lone astronaut maintaining a ship
-- **Castle Conundrum** — first-person medieval murder mystery. Linked from the
-  board, but lives in
-  [`GreyVersusBlue/castle-conundrum`](https://github.com/GreyVersusBlue/castle-conundrum)
-  and is served from <https://greyversusblue.github.io/castle-conundrum/> since
-  2026-09-15
-- **Closing Time** — real estate agent sim (buying and selling modes)
-- **Corner & Kettle** — coffee shop management sim
-- **Daredevil** — narrative RPG following stuntman Duke Harlan
-- **Golden Hour** — sunset beach-walk sim (waves, wildlife, passing boats and planes)
-- **Integer Foundry** — factory/logic incremental math game
-- **The Fourth Quarter** — sports management sim
-- **The Fracture Cycle** — short branching narrative game with multiple endings
-- **Torchbearer** — PF2e Remaster adventure engine
+Each lives in its own folder under `Projects/` and keeps its own saves.
+
+| Game | What it is |
+| --- | --- |
+| [The Absalom Inheritance](https://greyversusblue.com/Projects/absalom_inheritance.html) | Isometric dungeon crawler on PF2e Remaster rules |
+| [Aphelion](https://greyversusblue.com/Projects/aphelion/) | A lone astronaut keeps the ship alive, one quiet shift at a time |
+| [Bell to Bell](https://greyversusblue.com/Projects/bell-to-bell/) | 3D classroom sim: forty-seven minutes, twelve kids, one period |
+| [Blue Hour](https://greyversusblue.com/Projects/blue-hour-trail/) | Walk a fog-bound switchback trail after dark, up to a fire lookout |
+| [Closing Time](https://greyversusblue.com/Projects/Closing%20Time/) | Climb the ranks as a real estate agent, one deal at a time |
+| [Corner & Kettle](https://greyversusblue.com/Projects/corner-and-kettle/) | Run a coffee shop, one order at a time |
+| [Daredevil](https://greyversusblue.com/Projects/daredevil/) | Narrative RPG: stuntman Duke Harlan chases the next big stunt |
+| [Faire Weekend](https://greyversusblue.com/Projects/Ren-Faire-Claude/) | Build the grounds, book the acts, run a renaissance faire |
+| [The Fourth Quarter](https://greyversusblue.com/Projects/fourth-quarter/) | Sports bar management sim in 3D ([the original 2D build](https://greyversusblue.com/Projects/The-Fourth-Quarter.html) is still up) |
+| [The Fracture Cycle](https://greyversusblue.com/Projects/the-fracture-cycle.html) | Choose-your-own-adventure through Dota 2's lore |
+| [Golden Hour](https://greyversusblue.com/Projects/golden-hour-beach/) | Walk a sunset beach: waves, gulls, a dolphin past the break |
+| [Hearth](https://greyversusblue.com/Projects/hearth/) | An island village that lives its years without you |
+| [Integer Foundry](https://greyversusblue.com/Projects/integer-foundry.html) | Route numbers through belts and forges to fill every order |
+| [Orbital](https://greyversusblue.com/Projects/orbital/) | Launch a probe and let gravity fly it to the marker |
+| [School Generator](https://greyversusblue.com/Projects/school-generator/) | Draw or generate a school, read its code report, walk its halls |
+| [Signal City](https://greyversusblue.com/Projects/signal-city/) | Program the traffic lights, never the cars |
+| [Torchbearer](https://greyversusblue.com/Projects/torchbearer.html) | Solo PF2e Remaster adventure engine |
+
+**Castle Conundrum**, a first-person medieval murder mystery, is on the board
+but lives in [its own repo](https://github.com/GreyVersusBlue/castle-conundrum)
+and is served from <https://greyversusblue.github.io/castle-conundrum/>.
+
+## Pathfinder and Numina
+
+- **[Anathema Archive](https://greyversusblue.com/Pathfinder/Anathema_Archive.html)**:
+  a search tool over PF2e rules data. The data in `Pathfinder/data/` is Paizo
+  content under the ORC License (and OGL for legacy books); see
+  [`Pathfinder/data/README.md`](Pathfinder/data/README.md) for the notice.
+- **[Campaigns](https://greyversusblue.com/Pathfinder/campaigns.html)** and
+  **[Characters](https://greyversusblue.com/Pathfinder/characters.html)**:
+  campaigns run, scenarios played and characters built.
+- **[Numina](https://greyversusblue.com/Numina/)**: lore, rules and player guides
+  for a LARP set in the world of Aeledd. The one exception to "no build step":
+  an Eleventy site whose built output is committed.
 
 ## Tools
 
-- **Final Grade Checker** — grade/report-card calculator for teachers
-- **Schedule Browser / Schedule Visualizer** — school schedule lookup tools
-- **Name Picker** / **Seating Chart Generator** — classroom randomizers
-- **Anathema Archive** — PF2e Remaster rules compendium browser (à la Archives of Nethys)
+The five classroom tools (Final Grade Checker, Image to PDF, Name Picker,
+Seating Chart Generator, Schedule Visualizer) are archived. Their pages under
+`Tools/` still work, but new classroom work lives at
+[aspermylessonplan.com](https://aspermylessonplan.com/). `Tools/board-check/`
+is the site's own test harness, and `Tools/prompt-builder.html` is a small
+standalone utility.
 
-## Notes on how this repo is maintained
+## Layout
 
-Most of these were built and are maintained in collaboration with Claude. Two files at the repo root carry that record. **`BACKLOG.md`** is the entry point: every open idea, ranked, with the per-project `WISHLIST.md` files holding the plans it links to. **`HISTORY.md`** is what already shipped — 58 numbered design decisions that code across the repo cites by number, ten site-wide maintenance sessions, three rounds of a parallel prompt system since retired, and each project's own phase or sprint log. `CLAUDE.md` has the house rules and the definition of done. Useful context if you're picking up work on this repo after a break.
+| Path | What it is |
+| --- | --- |
+| `index.html`, `404.html` | The board: every project as a pinned notice |
+| `Projects/` | The games |
+| `Pathfinder/`, `Numina/` | The TTRPG and LARP pages |
+| `Tools/` | Archived classroom tools, plus `board-check/` |
+| `assets/`, `Audio/` | Site-wide fonts, previews, social cards and the shared save module (`assets/js/gvb-save.js`) |
+| `BACKLOG.md` | Open work, ranked. Start here |
+| `HISTORY.md` | What shipped, and the numbered decisions code cites |
+| `ARCHIVE.md` | Work that will not be done |
+| `CLAUDE.md` | House rules, where each test suite runs, and how a session works the backlog |
 
-There's a small internal test/check suite used to catch regressions across the games and tools before publishing. **The site-wide scripts all live in `Tools/board-check/`** — `npm run check`, `npm run games`, `npm run tools`, `npm run previews`, `npm run social:check` and the rest — not in the individual project folders; most projects' own suites are a bare `node` invocation against a file in their `test/` folder. `CLAUDE.md` has the full table of what runs where.
+## Tests
+
+Site-wide checks run from `Tools/board-check/`:
+
+```
+cd Tools/board-check
+npm install
+npm run check          # integrity and collisions
+npm run social:check   # generated social tags are current
+```
+
+Most projects have their own suite as a bare `node` script under their `test/`
+or `tests/` folder; `CLAUDE.md` lists where each one runs. GitHub Actions runs
+the site checks on every pull request, and each project's suite on the pull
+requests that touch it.
 
 ## License
 
-Personal project — not currently licensed for reuse. Feel free to poke around and play, but please don't redistribute the code or assets.
+Personal project, not licensed for reuse. Play and poke around, but please
+don't redistribute the code or assets. Pathfinder content belongs to Paizo Inc.
+and is used under the licences noted in `Pathfinder/data/README.md`.

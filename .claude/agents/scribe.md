@@ -14,8 +14,12 @@ missing.
 Rules that bite here:
 
 - **Nothing open lives in `HISTORY.md`, nothing shipped lives in
-  `BACKLOG.md`.** Moving a row is a delete in one file and a section in the
-  other; its plan comes out of `WISHLIST.md` the same way.
+  `BACKLOG.md`.** Moving a row is a delete in one file and a log paragraph
+  in the other; its plan comes out of `WISHLIST.md` the same way.
+- **`HISTORY.md` stays short.** A decision is one entry appended to "Locked
+  decisions": `**#N. Bold rule.** One to three sentences of why. *Project.*`
+  A shipped batch is one paragraph of at most 90 words under "The log". No
+  test transcripts, no retellings; the PR holds those.
 - **A locked-decision number resolves in this repo's own `HISTORY.md`.**
   #389–394 and #411–490 are Castle Conundrum's and moved with that project;
   from #491 the two files number independently. Use the next free number in

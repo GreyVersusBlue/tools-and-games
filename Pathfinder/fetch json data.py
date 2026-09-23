@@ -7,17 +7,26 @@ strips non-display data, and writes one consolidated file per type
 (spell.json, feat.json, npc.json, ...) plus a manifest.json summarizing
 what was built.
 
-Usage:  python build_packs.py
+Usage:  python "fetch json data.py"
+        (set PF2E_PACKS=<path to pf2e/packs/pf2e> if the pf2e clone is
+        not next to tools-and-games)
 Re-run any time you pull a fresh copy of the pf2e repo.
 """
 
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 
 # ---------------------------------------------------------------- paths
-SOURCE = Path(r"C:\Users\devon\OneDrive\Documents\GitHub\pf2e\packs\pf2e")
-DEST   = Path(r"C:\Users\devon\OneDrive\Documents\GitHub\tools-and-games\Pathfinder\data")
+# Both are worked out from where this file sits, so no machine's path is
+# written down here. This file lives at <GitHub>/tools-and-games/Pathfinder/,
+# so the default SOURCE is the pf2e clone beside tools-and-games:
+# <GitHub>/pf2e/packs/pf2e. Set PF2E_PACKS to point anywhere else.
+HERE   = Path(__file__).resolve().parent
+SOURCE = Path(os.environ.get("PF2E_PACKS",
+                             HERE.parent.parent / "pf2e" / "packs" / "pf2e"))
+DEST   = HERE / "data"
 
 # Document types to skip entirely (Foundry plumbing, not reference content)
 SKIP_TYPES = {"script", "effect", "character"}

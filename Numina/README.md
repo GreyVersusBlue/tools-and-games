@@ -4,7 +4,7 @@ Reference site for the Numina LARP (world of Aeledd, campaign Numina III):
 lore from the campaign guide and rules/safety material from the rulebook.
 
 Live at `/Numina/` on greyversusblue.com. Built with Eleventy; the
-built output is **committed** because Firebase Hosting deploys this repo
+built output is **committed** because the site is served from this repo
 as-is with no CI build step.
 
 ## Layout

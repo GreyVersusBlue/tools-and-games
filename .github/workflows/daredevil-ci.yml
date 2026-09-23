@@ -2,7 +2,7 @@
 # suites in a session's terminal and nowhere else: 433 assertions across four
 # suites, nine committed transcripts, and no workflow path-matching
 # Projects/daredevil/**. Nothing in the deploy path executes a line of the
-# game — Firebase copies files — so without this job a commit that makes the
+# game (the host serves files as committed), so without this job a commit that makes the
 # game uncompletable again reaches production unremarked. That is not a
 # hypothetical here: the game shipped with four wiring bugs that between them
 # made it impossible to finish and not one of which threw, logged, or showed a
