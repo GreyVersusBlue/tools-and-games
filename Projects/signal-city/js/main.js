@@ -10,6 +10,7 @@ import { Renderer } from './render.js';
 import { bindInput } from './input.js';
 import { meters, score, failedEarly, starString } from './scoring.js';
 import { LEVELS, levelById } from './levels/pack-01.js';
+import { gridLevel } from './grid.js';
 import { makeSlot, recordResult, totalStars } from './save.js';
 import { SHOP, shopItem, isOpen, nextLevel, owned, wallet, canBuy, buy, applies, loadout } from './campaign.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
@@ -30,6 +31,8 @@ const LESSON_TAB = {
   'rush-hour': 'phases', 'school-run': 'rules', 'main-street': 'phases', 'free-play': 'phases',
 };
 const STRIP_SECONDS = 60;
+const RING_NOTE = 'A roundabout: no lights and nothing to press. Every car yields to the ring, and the ring never stops for anyone.';
+const RING_SWITCH = ' Switch it off in the shop to play this board\'s signals.';
 const FRESH = 2.5;          // seconds a change's cause reads as new, and a fired rule's card flashes
 
 class Game {
@@ -84,7 +87,15 @@ class Game {
   // it. Everything else bought is always on.
   bought() { return owned(this.save).filter(id => id !== 'roundabout' || this.ringOn); }
 
-  get onRing() { return !!(this.world && this.world.nodes.some(n => n.roundabout)); }
+  // Is the box the panel drives a ring? On a converted board that is the
+  // only box; on a grid (M9) it is the selected one.
+  get onRing() { return !!(this.world && this.world.nodes[Math.min(this.node, this.world.nodes.length - 1)].roundabout); }
+
+  // A grid (M9) names its boxes by number and reads one at a time, even
+  // at two, which may stand one above the other; a corridor's two are West
+  // and East.
+  get isGrid() { return !!(this.world && (this.level.network?.cells || this.world.nodes.length > 2)); }
+  nodeLabel(i) { return this.isGrid ? `Box ${i + 1}` : (i === 0 ? 'W' : 'E'); }
 
   // The controller the panel edits.
   get ctl() { return this.world ? this.world.controllers[Math.min(this.node, this.world.controllers.length - 1)] : null; }
@@ -160,7 +171,12 @@ class Game {
   start(levelId, seed = null) {
     const base = levelById(levelId);
     if (!base) return;
-    const lvl = loadout(base, this.bought());
+    this.play(loadout(base, this.bought()), seed);
+  }
+
+  // Run a level object: the select's, or a generated grid through the
+  // debug hook (M9, before endless and the sandbox give it a card).
+  play(lvl, seed = null) {
     this.level = lvl;
     this.seed = seed ?? ((Date.now() % 100000) + 1);
     if (DEBUG) this.seed = seed ?? 7;
@@ -224,7 +240,15 @@ class Game {
     const has = { phases: u.has('phases'), timing: u.has('allred') || !$('waveBox').classList.contains('hidden'), rules: u.has('auto'), crossings: u.has('peds'), mode: u.has('flash') };
     for (const b of $('tabs').children) b.classList.toggle('hidden', !has[b.dataset.tab]);
     $('pedLateStat').classList.toggle('hidden', !this.world.controllers.some(c => c.hasPeds));
+    this.showRing();
+  }
+
+  // The ring note and the strip follow the selected box: on a grid a ring
+  // sits among signals, and switching it off in the shop is not the way
+  // to its signals because it has none.
+  showRing() {
     $('ringNote').classList.toggle('hidden', !this.onRing);
+    $('ringNote').textContent = RING_NOTE + (this.isGrid ? '' : RING_SWITCH);
     $('strip').classList.toggle('hidden', this.onRing);
   }
 
@@ -234,7 +258,7 @@ class Game {
     const box = $('nodes');
     box.innerHTML = '';
     if (this.world.controllers.length < 2) return;
-    const names = this.world.controllers.length === 2 ? ['West box', 'East box'] : this.world.controllers.map((c, i) => `Box ${i + 1}`);
+    const names = this.isGrid ? this.world.controllers.map((c, i) => this.nodeLabel(i) + (this.world.nodes[i].roundabout ? ' · ring' : '')) : ['West box', 'East box'];
     this.world.controllers.forEach((c, i) => {
       const b = document.createElement('button');
       b.className = 'node' + (i === this.node ? ' on' : '');
@@ -249,6 +273,7 @@ class Game {
     if (!this.world || i < 0 || i >= this.world.controllers.length || i === this.node) return;
     this.node = i;
     for (const b of $('nodes').children) b.classList.toggle('on', +b.dataset.node === i);
+    this.showRing();
     this.buildPhaseButtons();
     this.buildTiming();
     this.buildRules();
@@ -585,10 +610,11 @@ class Game {
         : fl ? (c.flash === 'red' ? 'flashing red: four-way stop' : `flashing yellow on ${c.flash.major.join(' and ')}`) : c.stage === 'dark' ? 'dark: four-way stop' : c.stage;
       return st + (c.next !== null ? ` → ${c.phases[c.next].name}` : '') + (c.walk ? ` · ${c.walk.stage === 'walk' ? 'WALK' : 'clearing'} ${c.walk.legs.join(' ')}` : '');
     };
-    $('stage').textContent = w.controllers.length > 1 ? w.controllers.map((c, i) => `${i === 0 ? 'W' : 'E'}: ${stageOf(c)}`).join(' · ') : stageOf(ctl);
+    // a corridor reads both boxes; a grid only the one the panel drives
+    $('stage').textContent = this.isGrid ? `${this.nodeLabel(this.node)}: ${stageOf(ctl)}` : w.controllers.length > 1 ? w.controllers.map((c, i) => `${this.nodeLabel(i)}: ${stageOf(c)}`).join(' · ') : stageOf(ctl);
     // (d) what changed it, the strip of the last minute, and the rule that fired
     const cause = $('cause');
-    cause.textContent = (w.controllers.length > 1 ? `${this.node === 0 ? 'W' : 'E'}: ` : '') + causeText(ctl);
+    cause.textContent = (w.controllers.length > 1 ? `${this.nodeLabel(this.node)}: ` : '') + causeText(ctl);
     cause.className = `cause by-${ctl.cause.by}` + (w.t - ctl.cause.t < FRESH ? ' fresh' : '');
     cause.dataset.by = ctl.cause.by;
     this.drawStrip();
@@ -636,9 +662,9 @@ class Game {
     $('flashYellowBtn').classList.toggle('on', flashing && ctl.flash !== 'red');
     $('signalsBtn').classList.toggle('on', !flashing && ctl.stage !== 'dark');
     for (const id of ['flashRedBtn', 'flashYellowBtn', 'signalsBtn']) $(id).disabled = w.powerOut;
-    for (const b of $('phases').children) b.disabled = w.powerOut;
+    for (const b of $('phases').children) b.disabled = w.powerOut || this.onRing;
     const em = w.cars.find(c => !c.done && (c.archetype === 'emergency' || c.archetype === 'motorcade') && !c.priority);
-    $('priorityBtn').classList.toggle('show', !!em && !this.onRing);   // a ring refuses the corridor
+    $('priorityBtn').classList.toggle('show', !!em && !w.nodes[em.path.node].roundabout);   // a ring refuses the corridor
     if (!$('waveBox').classList.contains('hidden')) {
       this.drawWave();
       const shift = w.controllers[1].shift;
@@ -788,6 +814,8 @@ if (DEBUG) {
     setOffset(s) { game.setOffset(s); },
     callPed(leg) { game.callPed(leg); },
     selectNode(i) { game.selectNode(i); },
+    // a generated grid (M9), until endless and the sandbox give it a card
+    startGrid(seed, count, opts = {}) { game.play(gridLevel(seed, count, opts), seed); },
     score() { return score(game.world); },
     meters() { return meters(game.world); },
     banners() { return [...document.querySelectorAll('#banners .banner')].map(e => { const r = e.getBoundingClientRect(); return { text: e.textContent, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }); },

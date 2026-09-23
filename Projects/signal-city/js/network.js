@@ -142,9 +142,10 @@ export class Network {
   pathKey(entry, lane, turn) { return `${entry}${lane}-${turn}`; }
 
   // Where two paths come closest inside the box: { sA, sB, dist }. A car on
-  // B has cleared A's way once its rear is past sB. Cached per pair.
+  // B has cleared A's way once its rear is past sB. Cached per pair, by
+  // node as well as key: every box has a W0-T (#602).
   crossing(a, b) {
-    const key = a.key + '|' + b.key;
+    const key = a.node + ':' + a.key + '|' + b.node + ':' + b.key;
     let c = this._cross.get(key);
     if (c) return c;
     let best = { sA: a.boxExit, sB: b.boxExit, dist: Infinity };
@@ -371,8 +372,9 @@ export function linkNodes(a, legA, b, legB) {
 }
 
 // Build a level's nodes: one, or `nodes` of them along an east-west main
-// street `spacing` metres apart, joined end to end.
+// street `spacing` metres apart, joined end to end, or a grid of `cells`.
 export function buildNodes(spec = {}) {
+  if (spec.cells) return buildCells(spec);
   const { nodes = 1, spacing = 220, ...rest } = spec;
   if (nodes <= 1) return [new Network({ ...rest, origin: [0, 0], node: 0 })];
   const out = [];
@@ -382,6 +384,41 @@ export function buildNodes(spec = {}) {
     linkNodes(out[i], 'E', out[i + 1], 'W');
     linkNodes(out[i + 1], 'W', out[i], 'E');
   }
+  return out;
+}
+
+// A grid (M9): `cells` is one spec per node, `{ at: [col, row], ...own }`,
+// where `own` is anything a Network takes (legs, roundabout, lanesPerDir)
+// laid over the level's spec for that node alone. Cell (col, row) stands at
+// (col, row) times `spacing`, unshifted, so a grid that grows keeps every
+// box where it was. Two cells side by side are joined both ways by
+// linkNodes when they face each other with a leg each; a leg facing a
+// neighbour with no leg back would be a road into a wall, and two joined
+// nodes with different lane counts would hand a car a lane that is not
+// there, so both throw. Node i is cells[i].
+export function buildCells({ cells, spacing = 220, nodes: _n, ...rest }) {
+  const byAt = new Map();
+  const out = cells.map((c, i) => {
+    const { at, ...own } = c;
+    const k = at[0] + ',' + at[1];
+    if (byAt.has(k)) throw new Error(`two nodes at cell ${k}`);
+    const n = new Network({ ...rest, ...own, origin: [at[0] * spacing, at[1] * spacing], node: i });
+    byAt.set(k, n);
+    return n;
+  });
+  cells.forEach((c, i) => {
+    const a = out[i];
+    for (const [leg, dc, dr, back] of [['E', 1, 0, 'W'], ['S', 0, 1, 'N']]) {
+      const b = byAt.get((c.at[0] + dc) + ',' + (c.at[1] + dr));
+      if (!b) continue;
+      const has = a.legs.includes(leg), hasB = b.legs.includes(back);
+      if (has !== hasB) throw new Error(`node ${has ? a.node : b.node}'s ${has ? leg : back} leg runs into node ${has ? b.node : a.node}, which has no ${has ? back : leg} leg`);
+      if (!has) continue;
+      if (a.lanesPerDir !== b.lanesPerDir) throw new Error(`nodes ${a.node} and ${b.node} are joined with ${a.lanesPerDir} and ${b.lanesPerDir} lanes`);
+      linkNodes(a, leg, b, back);
+      linkNodes(b, back, a, leg);
+    }
+  });
   return out;
 }
 

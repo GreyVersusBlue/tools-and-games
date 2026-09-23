@@ -24,7 +24,10 @@
 // a star opening the next, the shop spending stars into unlocks, and a
 // bought phase on the Stem, marked and run by its key; then the roundabout
 // bought, First Light played as a ring with no controls, and switched off
-// again in the shop. Screenshots land in test/shots/ (ignored by git)
+// again in the shop. M9 adds a generated grid of six boxes through the
+// debug hook: the picker by number, the camera framing the district, a
+// click on the board selecting a ring and the ring note following it, and
+// twelve boxes still framed. Screenshots land in test/shots/ (ignored by git)
 // as evidence for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
@@ -909,6 +912,57 @@ try {
     ok(spots.redLeg && wash >= 4, 'and a leg on red has a red wash behind its stop line', `${spots.redLeg}: ${wash} red pixels`);
     await shot(page, 'visual-pass');
     ok(errors.length === 0, 'no page errors in the visual pass', errors.join(' | '));
+  });
+
+  await section('a grid of six boxes (M9): the picker, the camera, a ring among signals', async () => {
+    // growCells(2, 6): 1,1 1,2 0,1 2,2oT 3,2 0,0o, two rings and a T across the whole 4 by 3 district
+    await page.evaluate(() => { window.__signalCity.startGrid(2, 6); window.__signalCity.game.paused = true; });
+    await new Promise(r => setTimeout(r, 300));
+    const g0 = await page.evaluate(() => {
+      const w = window.__signalCity.world, r = window.__signalCity.game.renderer;
+      return {
+        nodes: w.nodes.length, rings: w.nodes.filter(n => n.roundabout).map(n => n.node).join(','),
+        buttons: [...document.querySelectorAll('#nodes .node')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')),
+        widths: [...document.querySelectorAll('#nodes .node')].map(b => Math.round(b.getBoundingClientRect().width)),
+        onScreen: w.nodes.map(n => { const p = r.toScreen(n.origin[0], n.origin[1]); return p.x > 20 && p.x < r.width - 20 && p.y > 20 && p.y < r.height - 20; }),
+        scale: r.scale, stage: document.getElementById('stage').textContent, ringNote: !document.getElementById('ringNote').classList.contains('hidden'),
+      };
+    });
+    ok(g0.nodes === 6 && g0.rings === '3,5', 'six boxes, the fourth and sixth of them rings', `rings at ${g0.rings}`);
+    ok(g0.buttons.join() === 'Box 1*,Box 2,Box 3,Box 4 · ring,Box 5,Box 6 · ring', 'the panel offers every box by number, the rings marked, the first selected', g0.buttons.join());
+    ok(g0.widths.every(x => x >= 70), 'and the buttons wrap three to a row rather than shrink past reading', g0.widths.join(' '));
+    ok(g0.onScreen.every(Boolean) && g0.scale >= 1.2 && g0.scale < 2.5, 'the camera frames all six boxes, under the corridor\'s 2.5 px/m floor', `${g0.onScreen.join(' ')} at ${g0.scale.toFixed(2)} px/m`);
+    ok(/^Box 1: /.test(g0.stage) && !/ · Box/.test(g0.stage) && !g0.ringNote, 'the stage line reads the selected box alone, and it is a signal', g0.stage);
+    // a click on the board at box 4 (a ring) selects it
+    const at = await page.evaluate(() => { const n = window.__signalCity.world.nodes[3], r = window.__signalCity.game.renderer, b = document.getElementById('board').getBoundingClientRect(); const p = r.toScreen(n.origin[0], n.origin[1]); return { x: b.left + p.x, y: b.top + p.y }; });
+    await page.mouse.click(at.x, at.y);
+    await page.evaluate(() => window.__signalCity.step(1));
+    const g1 = await page.evaluate(() => ({
+      node: window.__signalCity.game.node, on: document.querySelector('#nodes .node.on')?.dataset.node,
+      note: document.getElementById('ringNote').classList.contains('hidden') ? '' : document.getElementById('ringNote').textContent,
+      strip: !document.getElementById('strip').classList.contains('hidden'),
+      disabled: [...document.querySelectorAll('#phases .phase')].every(b => b.disabled),
+      stage: document.getElementById('stage').textContent,
+    }));
+    ok(g1.node === 3 && g1.on === '3', 'a click on the board at the fourth box selects it', `node ${g1.node}`);
+    ok(/^A roundabout/.test(g1.note) && !/shop/.test(g1.note) && !g1.strip, 'the ring note shows, without the shop\'s switch a grid has none of, and the strip hides', g1.note);
+    ok(g1.disabled && g1.stage === 'Box 4: Roundabout: no signals', 'its phase buttons are off and the stage line says why', g1.stage);
+    await page.click('#nodes .node[data-node="1"]');
+    await page.keyboard.press('2');
+    const g2 = await page.evaluate(() => ({ node: window.__signalCity.game.node, next: window.__signalCity.world.controllers.map(c => c.next), note: !document.getElementById('ringNote').classList.contains('hidden'), strip: !document.getElementById('strip').classList.contains('hidden') }));
+    ok(g2.node === 1 && g2.next[1] === 1 && g2.next.filter(x => x !== null).length === 1 && !g2.note && g2.strip, 'Box 2 by its button, and pressing 2 reaches its controller and no other', JSON.stringify(g2.next));
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 60);
+    await new Promise(r => setTimeout(r, 300));
+    const g3 = await page.evaluate(() => { const w = window.__signalCity.world; return { handoffs: w.stats.handoffs, nodes: new Set(w.cars.filter(c => !c.done).map(c => c.path.node)).size }; });
+    ok(g3.handoffs > 10 && g3.nodes >= 5, 'a minute in, cars cross between the boxes and most boxes have some', `${g3.handoffs} handoffs, cars at ${g3.nodes} boxes`);
+    await shot(page, 'grid-6');
+    // the whole district: twelve boxes still framed
+    await page.evaluate(() => { window.__signalCity.startGrid(2, 12); window.__signalCity.game.paused = true; });
+    await new Promise(r => setTimeout(r, 300));
+    const g4 = await page.evaluate(() => { const w = window.__signalCity.world, r = window.__signalCity.game.renderer; return { n: document.querySelectorAll('#nodes .node').length, onScreen: w.nodes.every(n => { const p = r.toScreen(n.origin[0], n.origin[1]); return p.x > 0 && p.x < r.width && p.y > 0 && p.y < r.height; }), scale: r.scale }; });
+    ok(g4.n === 12 && g4.onScreen, 'twelve boxes, twelve buttons, every box on the board', `at ${g4.scale.toFixed(2)} px/m`);
+    await shot(page, 'grid-12');
+    ok(errors.length === 0, 'no page errors on a grid', errors.join(' | '));
   });
 
   await section('the sprite gallery', async () => {

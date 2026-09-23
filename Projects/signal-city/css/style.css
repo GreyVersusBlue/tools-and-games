@@ -141,8 +141,8 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .rule.sensed { border-left: 3px solid var(--blue); }
 .rule.fired { animation: fired 0.5s 3 alternate; }
 @keyframes fired { from { box-shadow: 0 0 0 0 rgba(176,124,255,0.9); background: #3a2d52; } to { box-shadow: 0 0 0 5px rgba(176,124,255,0); } }
-.nodes { display: flex; gap: 6px; }
-.nodes .node { flex: 1; padding: 6px 8px; font-size: 13px; }
+.nodes { display: flex; flex-wrap: wrap; gap: 6px; }
+.nodes .node { flex: 1 0 30%; padding: 6px 8px; font-size: 13px; }
 .nodes .node.on { border-color: var(--blue); background: #22304a; }
 .calls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .call { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 8px; font-size: 12px; border-left: 4px solid #3a4048; }

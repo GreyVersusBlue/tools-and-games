@@ -305,7 +305,7 @@ export function boxVerdict(car, head, world) {
   const allWayStop = head === 'flash-red' || head === 'dark';
   const gapNeed = allWayStop ? 3.0 : permissive ? 4.0 : 1.2;
   const trusting = car.trusting && !uncontrolled && !permissive;   // a crossing is trusted through; a merge (same exit) is not
-  const net = world.network;
+  const net = world.nodes[p.node];
   for (const o of world.cars) {
     if (o === car || o.done || o.path.node !== p.node) continue;
     const other = o.path.movement;
@@ -475,7 +475,8 @@ export function specialStops(car, world, dt) {
   if (st.wrongTurn && !car.wrongTurnDone && p.stopLine - car.front < 14) {
     car.wrongTurnDone = true;
     if (car.rng.chance(st.wrongTurn)) {
-      const others = world.network.choicesFrom(p.entry, p.lane).filter(q => q !== p);
+      // the box this car is approaching, not box one (#603)
+      const others = world.nodes[p.node].choicesFrom(p.entry, p.lane).filter(q => q !== p);
       if (others.length) {
         car.path = car.rng.pick(others);
         world.events.push({ t, kind: 'wrong-turn', car: car.id, to: car.path.movement });

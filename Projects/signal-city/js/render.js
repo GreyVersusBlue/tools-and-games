@@ -96,13 +96,15 @@ export class Renderer {
   // Frame the middle of the map: the legs run 110 m each way, the camera
   // shows about 72 m of each, and cars arrive from off-screen. A corridor
   // frames every box, 50 m of road past the outer ones. The wheel zooms and
-  // a drag pans from there.
+  // a drag pans from there. A grid of more than two boxes (M9) may go
+  // down to 1.2 px a metre to get them all in: a 4 by 3 district is 760 m
+  // across, and at 2.5 its corners were off a 1,000 px board.
   fit(world) {
     const view = Math.min(world.network.legLength, 72);
     const { minX, maxX, minY, maxY } = this.extent(world);
     const spanX = maxX - minX + 2 * (world.nodes.length > 1 ? 50 : view);
     const spanY = maxY - minY + 2 * view;
-    this.scale = Math.max(2.5, Math.min(9, Math.min(this.width / spanX, this.height / spanY)));
+    this.scale = Math.max(world.nodes.length > 2 ? 1.2 : 2.5, Math.min(9, Math.min(this.width / spanX, this.height / spanY)));
     this.baseScale = this.scale;
     this.cx = (minX + maxX) / 2; this.cy = (minY + maxY) / 2;
   }
@@ -463,10 +465,12 @@ export class Renderer {
 
   _grassTexture(ctx, world) {
     ctx.fillStyle = GRASS_2;
-    const { minX, maxX } = this.extent(world);
+    const { minX, maxX, minY, maxY } = this.extent(world);
     const i0 = Math.floor((minX - 120) / 33), i1 = Math.ceil((maxX + 120) / 33);
+    // -6 to 6 is the band one street needs; a grid (M9) runs further south
+    const j0 = Math.min(-6, Math.floor((minY - 150) / 29)), j1 = Math.max(6, Math.ceil((maxY + 150) / 29));
     for (let i = i0; i <= i1; i++) {
-      for (let j = -6; j <= 6; j++) {
+      for (let j = j0; j <= j1; j++) {
         if (((i * 7 + j * 13) % 5 + 5) % 5 !== 0) continue;
         ctx.fillRect(i * 33 + 9, j * 29 + 4, 14, 10);
       }
