@@ -141,7 +141,7 @@ ok(data.attributes.every((a) => ["cp", "none", "unpublished"].includes(a.costToI
 ok(data.hidden.every((h) => (h.kind === "Expression") === (h.elements.length === 0)), "hidden Expressions have no elements; hidden Excellencies have at least one");
 
 // Every source anchor resolves to an id the built page emits. Read from the
-// committed build, the same thing smoke.mjs checks and Firebase serves.
+// committed build, the same thing smoke.mjs checks and the host serves.
 // The Excellencies chapter (Phase 6). It is the one skills chapter with no
 // source-material/markdown conversion behind it, so nothing but this says it
 // came out whole: thirty Excellencies, each with exactly one Included skill,

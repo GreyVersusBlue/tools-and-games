@@ -24,7 +24,7 @@ is A1, A4 and A8, and Phases 7 and 8 carried all three.
 A static reference site for the Numina LARP — the world of Aeledd, campaign
 Numina III — at `Numina/` in this repo, served at `/Numina/` on
 greyversusblue.com. Eleventy 3.1 reads `src/` and writes the built site back
-into the project root, and **that output is committed**, because Firebase
+into the project root, and **that output is committed**, because Firebase (the host until 2026-09-23)
 Hosting deploys this repo as-is with `public: "."` and no build step of its
 own. A content change is therefore a two-part commit: the markdown and the
 regenerated HTML together.
@@ -156,9 +156,11 @@ hand-maintained duplication.
   sub-result titles from the heading's own text, so a real character in the
   heading surfaces in search as "Vitality §Link to this section"; the
   accessible name comes from `aria-label`.
-- **`source-material/**` and `discord-logs/**` are in `firebase.json`'s
-  ignore list.** The books are copyrighted and were briefly downloadable from
-  the live site; that ignore rule is the only thing keeping them off the web.
+- **`source-material/**` is no longer kept off the web.** It sat in
+  `firebase.json`'s ignore list, because the books are copyrighted and were
+  briefly downloadable from the live site. Firebase was dropped on 2026-09-23
+  and the current host serves every committed file, so the two PDFs and the
+  markdown conversions are public until they leave the repo.
 - **The test invocation is `npm test` from `Numina/`** (`node test/smoke.mjs`,
   runs from anywhere), against the *committed* build. `npm run build` is
   `clean && eleventy && pagefind`; `npm run serve` is the dev server.
@@ -255,7 +257,7 @@ its files, not repeated here; add to this list rather than starting a second.
   still named on the pages it points at.
 - `world.md` is 397 words for "The World of Aeledd", the first stop off the
   home page's second hero button.
-- `firebase.json` sets `no-cache` on `**/sw.js`. No service worker has ever
+- `firebase.json` set `no-cache` on `**/sw.js` (gone with Firebase on 2026-09-23; `offline.js` relies on the default `updateViaCache` now). No service worker has ever
   existed. (Phase 7 would write one.)
 - `tools/social-card.mjs` needs a Playwright the project does not depend on
   and a local server on port 8099, and is documented only in its own header

@@ -6,7 +6,7 @@
 // thing axe wants and nothing else in the build can give: a reading of the
 // finished document. It needs no browser, which is why it is a 28 MB install
 // rather than a 300 MB one, and it reads the committed output — the same files
-// Firebase serves.
+// the host serves.
 //
 // Why this is worth a check rather than a glance. The markdown that became this
 // site is converted rulebook text with `html: true` set on markdown-it, so a

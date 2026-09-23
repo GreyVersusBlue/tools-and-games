@@ -3,9 +3,11 @@
 A static site at [greyversusblue.com](https://greyversusblue.com): browser
 games under `Projects/`, classroom tools under `Tools/`, the Numina rules site
 under `Numina/`, PF2e Remaster reference data under `Pathfinder/`, and shared
-media and JS under `assets/` and `Audio/`. Firebase Hosting serves the repo
-root whole (`firebase.json` sets `"public": "."`), so **every file here is a
-live URL**, markdown included.
+media and JS under `assets/` and `Audio/`. The repo root is served whole
+(Firebase Hosting was dropped on 2026-09-23 and `firebase.json` with it; the
+`CNAME` and `.nojekyll` files are the host's config now), so **every file here
+is a live URL**, markdown included, and nothing can be hidden from the web by
+an ignore rule any more.
 
 **`BACKLOG.md` is the entry point. `HISTORY.md` is the record. `ARCHIVE.md`
 is work that will not be done.** Open work is ranked in `BACKLOG.md`; the
@@ -88,9 +90,13 @@ from here.
   top three buttons to this the day it grew a fourth shelf card, with 1,531
   Node assertions green.
 
-`HISTORY.md` carries the locked decisions by number. **388 of them are here in
-full; #389 to #490 are Castle Conundrum's and moved with the project**, and that
-file keeps a pointer where they were. A number in that band cited by code in
+`HISTORY.md` carries the locked decisions by number, **one short entry each**
+(bold rule, one to three sentences of why), then a log of one paragraph per
+phase or batch. It was cut from 11,791 lines to about 1,300 on 2026-09-23; the
+long form of any entry is `git show ce70ad9:HISTORY.md`. Keep new entries in the
+same shape and append them; do not grow it back. **#389 to #394 and #411 to
+#490 are Castle Conundrum's and moved with the project**, and this file keeps a
+pointer where they were. A number in that band cited by code in
 *this* repo resolves in the other one. This repo's own numbering continues from
 #491, and so does theirs — from #491 the two files number independently (#492),
 so a number means the file it is written in.

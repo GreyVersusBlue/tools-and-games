@@ -33,3 +33,35 @@ stopped short of using it, which was the right call until someone said so.
 The Archive may still regenerate or reshape these files. Before merging a
 change that renames, moves or drops a file or a field, search the repo for
 `Pathfinder/data` and run the suite of every project that turns up.
+
+## Licence
+
+Everything in this folder is Paizo's game content. It comes from the
+[Foundry VTT pf2e system](https://github.com/foundryvtt/pf2e)'s compendium packs,
+reshaped by `Pathfinder/fetch json data.py`, and every entry keeps the
+`system.publication` block that names its source book and licence. As of the
+2026-09-23 count, 8,403 entries carry `"license": "ORC"` and 3,660 carry
+`"license": "OGL"` (legacy, pre-Remaster books).
+
+**ORC Notice.** This product is licensed under the ORC License, located at the
+Library of Congress at TX 9-307-067, and available online at various locations
+including www.paizo.com/orclicense, www.azoralaw.com/orclicense,
+www.gencon.com/orclicense and others. All warranties are disclaimed as set
+forth therein.
+
+**Attribution.** This product is based on the following Licensed Material:
+the Pathfinder Remaster rulebooks and supplements named in each entry's
+`system.publication.title` (among them Pathfinder Player Core, Player Core 2,
+GM Core and Monster Core), © Paizo Inc. and published under the ORC License.
+
+**Reserved Material.** Paizo's trade dress, trademarks, proper names, setting
+and lore are not Licensed Material under the ORC License. Where this data
+carries them, it does so under Paizo's
+[Community Use Policy](https://paizo.com/licenses/communityuse): this is a
+free, non-commercial reference, not published, endorsed or approved by Paizo.
+Pathfinder is a registered trademark of Paizo Inc.
+
+**OGL entries.** The entries tagged `"license": "OGL"` come from legacy
+(pre-Remaster) books released under the Open Game License v1.0a, which asks
+for its own licence text and a Section 15 copyright notice rather than the ORC
+notice above.

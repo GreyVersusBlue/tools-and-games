@@ -26,7 +26,7 @@
 #            files the way the rest of this job does.
 #
 # It reads the committed output, not a fresh build: that output is what
-# Firebase serves, and the build job above is already the check that the two
+# the host serves, and the build job above is already the check that the two
 # agree.
 name: Numina CI
 
@@ -36,9 +36,9 @@ on:
       - "Numina/**"
   # A direct push to main was unchecked: both jobs only ran on pull requests, so
   # a commit that landed without one — a hotfix, a rebase that went in by hand —
-  # could break the deployed site and nothing would say so. Firebase Hosting
-  # deploys from main (firebase-hosting-merge.yml), which makes main the branch
-  # where a red build actually matters.
+  # could break the deployed site and nothing would say so. The site is
+  # served from main, which makes main the branch where a red build actually
+  # matters.
   push:
     branches: [main]
     paths:
