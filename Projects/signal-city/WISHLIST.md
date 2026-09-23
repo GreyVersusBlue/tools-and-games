@@ -152,9 +152,44 @@ open work; this file is the plan it points at.
 
 ## What is next, in order
 
-7. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
+7. **UI clarity and visual pass** (2+, asked for by Devon on 2026-09-23,
+   ahead of M8): the board does not say what is changing what. Two
+   increments.
+   - **Increment 1, the UI** (`js/main.js`, `js/render.js`, `index.html`,
+     `css/style.css`):
+     a. Two active events draw their banners on top of each other in the
+        board's centre (School Run's zone and closure). Stack them in a
+        queue at a corner, with a check that fails against the overlap first.
+     b. Tint the lanes whose movement is green now, amber on yellow; hovering
+        or focusing a phase card previews its movements as arrows on the
+        asphalt.
+     c. Phase cards drop the "N-T N-L" text for a drawn diagram of the
+        intersection, one arrow per allowed movement, built from the phase's
+        real movements. Name and number key stay.
+     d. The Signal line names the cause of every change: the player, a rule
+        (which, and why it fired), the offset, the corridor, an outage, flash
+        mode. The cause is read from the controller, added there read-only if
+        missing. The firing rule's card flashes. A strip shows the last 60 s
+        of phases marked by cause.
+     e. The panel shows one section at a time as tabs: Phases, Timing, Rules,
+        plus Crossings and Mode where a level has them. A level opens on the
+        tab its lesson is about. Keys and the long hint go behind a "?".
+        Nothing below the fold at 1280x900 on Crossing.
+     f. The Satisfaction line splits into separate small stats. Two Blocks'
+        board is sized so it leaves no empty area under it.
+   - **Increment 2, the visuals** (`js/render.js`, `js/sprites.js` only, 2D
+     canvas): sidewalks and curbs, blocks as rooftops with drop shadows,
+     trees, a soft shadow under each car, brake lights from the car's real
+     deceleration and turn signals on turning cars, glowing lamps and a wash
+     on each approach's stop line, faint noise on the asphalt, a dusk tint on
+     Rush Hour and night during the outage. The static layer precomputed and
+     cached; the frame rate held. Any image is a PNG committed here (#17).
+   - Both: no sim behaviour changes for a visual; anything the renderer needs
+     is a read-only field covered in `test/sim.mjs` or `test/signals.mjs`.
+     A saved UI preference goes inside `signal_city_v1` through `repair`.
+8. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
    protected turns, roundabout conversion, extra phases.
-8. **M9 endless and sandbox** (1): an intersection per survived day, a grid
+9. **M9 endless and sandbox** (1): an intersection per survived day, a grid
    generator from `js/rng.js`, a roundabout node type.
 
 ## Known gaps and decisions
