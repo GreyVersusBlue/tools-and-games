@@ -22,7 +22,9 @@
 // slid under a drag, brake lamps, indicators, pavement, the stop-line
 // wash, dusk and night. M8 adds the campaign: shut cards on a fresh save,
 // a star opening the next, the shop spending stars into unlocks, and a
-// bought phase on the Stem, marked and run by its key. Screenshots land in test/shots/ (ignored by git)
+// bought phase on the Stem, marked and run by its key; then the roundabout
+// bought, First Light played as a ring with no controls, and switched off
+// again in the shop. Screenshots land in test/shots/ (ignored by git)
 // as evidence for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
@@ -110,7 +112,7 @@ try {
     ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street' && camp.disabled === 7,
       'a fresh save has seven cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
     ok(camp.next === 'first-light' && camp.shut === 'A star on First Light opens it.', 'First Light is marked next and the Stem says what opens it', `${camp.next}; ${camp.shut}`);
-    ok(camp.wallet === '0 to spend' && camp.shop === 'lefts:off,split:off,sensors:off', 'the shop has three things on it and nothing to spend', `${camp.wallet}; ${camp.shop}`);
+    ok(camp.wallet === '0 to spend' && camp.shop === 'lefts:off,split:off,sensors:off,roundabout:off', 'the shop has four things on it and nothing to spend', `${camp.wallet}; ${camp.shop}`);
     await shot(page, 'select');
     ok(errors.length === 0, 'no page errors so far', errors.join(' | '));
   });
@@ -325,6 +327,76 @@ try {
       g.slot.save(g.save); g.buildLevelSelect();
     });
     ok(errors.length === 0, 'no page errors in the campaign', errors.join(' | '));
+  });
+
+  await section('the roundabout: bought, played as a ring, switched off (M8, #594 to #599)', async () => {
+    await page.keyboard.press('Escape');
+    // stars enough, Rush Hour's among them; the levels go back as they were after
+    const before = await page.evaluate(() => { const g = window.__signalCity.game; const b = JSON.stringify(g.save.levels); for (const id of ['first-light', 'stem', 'four-ways', 'crossing', 'two-blocks', 'rush-hour']) g.save.levels[id] = { stars: 3, best: 100, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); return b; });
+    const r0 = await page.evaluate(() => ({ wallet: parseInt(document.getElementById('wallet').textContent, 10), btn: document.querySelector('.shop-item[data-item="roundabout"] .buy').textContent, off: document.querySelector('.shop-item[data-item="roundabout"] .buy').disabled }));
+    ok(r0.btn === '6 ★' && !r0.off, 'with Rush Hour starred the roundabout is on the shelf at 6', `${r0.btn}, ${r0.wallet} to spend`);
+    await page.click('.shop-item[data-item="roundabout"] .buy');
+    const r1 = await page.evaluate(() => {
+      const b = document.querySelector('.shop-item[data-item="roundabout"] .buy');
+      const saved = JSON.parse(localStorage.getItem('signal_city_v1'));
+      return {
+        wallet: parseInt(document.getElementById('wallet').textContent, 10), label: b.textContent, pressed: b.getAttribute('aria-pressed'), on: b.classList.contains('on'),
+        unlocks: (saved.data || saved).unlocks || [],
+        cards: Object.fromEntries([...document.querySelectorAll('.level-card')].map(c => [c.dataset.level, c.querySelector('.lv-bought')?.textContent || ''])),
+      };
+    });
+    ok(r1.wallet === r0.wallet - 6 && r1.unlocks.includes('roundabout'), 'buying it takes 6 and the save carries it in unlocks', `${r0.wallet} to ${r1.wallet}; ${r1.unlocks.join(',')}`);
+    ok(r1.label === 'on' && r1.pressed === 'true' && r1.on, 'owned, its button is a switch, and it starts on', `${r1.label} ${r1.pressed}`);
+    ok(r1.cards['first-light'] === '+ roundabout' && r1.cards.stem === '+ roundabout' && r1.cards['free-play'] === '+ roundabout' && r1.cards['four-ways'] === '' && r1.cards['rush-hour'] === '',
+      'First Light, the Stem and Free Play say they take it; Four Ways and Rush Hour do not', JSON.stringify(r1.cards));
+    await page.click('.level-card[data-level="first-light"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'first-light', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const r2 = await page.evaluate(() => ({
+      ring: window.__signalCity.world.nodes[0].roundabout === true,
+      note: !document.getElementById('ringNote').classList.contains('hidden'),
+      offered: [...document.querySelectorAll('#tabs .tab:not(.hidden)')].map(b => b.dataset.tab).join(','),
+      stage: document.getElementById('stage').textContent, cause: document.getElementById('cause').textContent,
+      target: window.__signalCity.world.level.target, waitTarget: window.__signalCity.world.level.waitTarget,
+      strip: document.getElementById('strip').classList.contains('hidden'), hint: document.getElementById('hint').textContent,
+    }));
+    ok(r2.ring && r2.note && r2.offered === '', 'First Light opens as a ring: the note shows and no tab is offered', `tabs "${r2.offered}"`);
+    ok(r2.stage === 'Roundabout: no signals' && r2.cause === 'Every entry yields to the ring' && r2.strip, 'the Signal line says there are none, with no strip of phases under it', `${r2.stage}; ${r2.cause}`);
+    ok(/^Nothing to press here/.test(r2.hint), 'and the help says there is nothing to press, not First Light\'s "press 1 and 2"', r2.hint.slice(0, 40));
+    ok(r2.target === 30 && r2.waitTarget === 6, 'and the level is scored on the ring\'s own calibration', `${r2.target}, ${r2.waitTarget} s`);
+    await page.keyboard.press('2');
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 40);
+    await new Promise(r => setTimeout(r, 300));
+    const r3 = await page.evaluate(() => {
+      const w = window.__signalCity.world;
+      const ring = w.cars.filter(c => !c.done && c.front > c.path.boxEnter && c.rear < c.path.boxExit).length;
+      return { stage: w.controller.stage, cleared: w.stats.cleared, coll: document.getElementById('collisions').textContent, ring, clearedHud: document.getElementById('cleared').textContent };
+    });
+    ok(r3.stage === 'dark' && r3.cleared > 0 && r3.clearedHud.startsWith(`${r3.cleared} /`), 'a key reaches nothing; at 40 s the cars are going round and the HUD counts them', `${r3.clearedHud}, ${r3.ring} on the ring, collisions ${r3.coll}`);
+    await shot(page, 'roundabout-first-light');
+    // Free Play on the ring: its ambulance comes at 60 s and yields like
+    // anyone, so the priority button stays hidden
+    await page.keyboard.press('Escape');
+    await page.click('.level-card[data-level="free-play"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'free-play', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    await page.evaluate(n => window.__signalCity.step(n), 60 * 62);
+    await new Promise(r => setTimeout(r, 300));
+    const fp = await page.evaluate(() => ({ ring: window.__signalCity.world.nodes[0].roundabout === true, amb: window.__signalCity.world.cars.some(c => !c.done && c.archetype === 'emergency'), btn: document.getElementById('priorityBtn').classList.contains('show') }));
+    ok(fp.ring && fp.amb && !fp.btn, 'Free Play on the ring: its ambulance is on the map at 62 s and no priority button offers a corridor the ring would refuse', JSON.stringify(fp));
+    // switched off in the shop, First Light is its signals again
+    await page.keyboard.press('Escape');
+    await page.click('.shop-item[data-item="roundabout"] .buy');
+    const r4 = await page.evaluate(() => ({ label: document.querySelector('.shop-item[data-item="roundabout"] .buy').textContent, card: document.querySelector('.level-card[data-level="first-light"] .lv-bought')?.textContent || '', unlocks: window.__signalCity.game.save.unlocks.join() }));
+    ok(r4.label === 'off' && r4.card === '' && r4.unlocks.includes('roundabout'), 'the switch reads off, First Light\'s card no longer says it, and the ring is still owned', JSON.stringify(r4));
+    await page.click('.level-card[data-level="first-light"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'first-light', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const r5 = await page.evaluate(() => ({ strip: !document.getElementById('strip').classList.contains('hidden'), ring: !!window.__signalCity.world.nodes[0].roundabout, note: document.getElementById('ringNote').classList.contains('hidden'), offered: [...document.querySelectorAll('#tabs .tab:not(.hidden)')].map(b => b.dataset.tab).join(','), stage: document.getElementById('stage').textContent }));
+    ok(!r5.ring && r5.note && r5.offered === 'phases,rules' && /green/.test(r5.stage) && r5.strip, 'and plays with its lights, its phases and rules tabs and its strip back', `${r5.offered}; ${r5.stage}`);
+    // back as the rest of the suite expects: nothing bought, the switch on, the levels as they were
+    await page.evaluate(b => { const g = window.__signalCity.game; g.save.unlocks = ['phases']; g.save.levels = JSON.parse(b); g.ringOn = true; g.slot.save(g.save); g.buildLevelSelect(); }, before);
+    ok(errors.length === 0, 'no page errors on the ring', errors.join(' | '));
   });
 
   await section('Stem and the all-red slider', async () => {

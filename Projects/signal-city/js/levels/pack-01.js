@@ -22,6 +22,9 @@
 //   duration    seconds
 //   target      cars to clear for a star
 //   waitTarget  average wait, seconds, for the second star
+//   ring        { target, waitTarget } the same two numbers for the board
+//               as the roundabout converts it (campaign.js convertible,
+//               #598): measured on the ring, not on signals
 //   mode        'soft' (collisions count) | 'hard' (one collision ends it)
 //   unlocks     which signal controls the panel shows:
 //               phases    the phase buttons
@@ -59,6 +62,8 @@ export const LEVELS = [
     duration: 180,
     target: 32,
     waitTarget: 15,
+    // as a roundabout, six seeds clear 31 to 53 at 1 to 3 s (#598)
+    ring: { target: 30, waitTarget: 6 },
     mode: 'soft',
     unlocks: ['phases', 'auto'],
   },
@@ -75,6 +80,8 @@ export const LEVELS = [
     duration: 180,
     target: 30,
     waitTarget: 15,
+    // as a roundabout, six seeds clear 34 to 50 at 0 to 5 s (#598)
+    ring: { target: 32, waitTarget: 8 },
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred'],
   },
@@ -244,6 +251,8 @@ export const LEVELS = [
     duration: 300,
     target: 60,
     waitTarget: 30,
+    // as a roundabout, six seeds clear 84 to 94 at 6 to 18 s (#598)
+    ring: { target: 80, waitTarget: 24 },
     mode: 'soft',
     sandbox: true,
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],

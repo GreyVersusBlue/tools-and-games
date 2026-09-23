@@ -30,13 +30,18 @@
 // its own canvas costs nothing a frame; blitting it, or tinting the whole
 // board, cost 6.7 and 9.3 ms of a frame under a software Chromium.
 //
+// A roundabout (M8, #595) is drawn by `_ring` in place of the box: the
+// ring's asphalt, a cobbled apron and a grass island in the middle, each
+// leg flaring round a splitter island to a dashed yield line with its
+// triangles, and no heads, washes or zebras (its controller is dark).
+//
 // The camera (M6): a single box shows the middle 72 m of its legs (#541); a
 // corridor frames every box with 50 m of road either side, which on a
 // 950 px board is about 3 px per metre, and the wheel zooms and a drag pans
 // from there. The legs stay 110 m whatever is framed.
 
 import { spriteFor, SPRITES } from './sprites.js';
-import { LANE_WIDTH, CROSSWALK, legDir } from './network.js';
+import { LANE_WIDTH, CROSSWALK, legDir, RING_R, RING_W, YIELD_D, SPLIT, SPLIT_TAPER } from './network.js';
 import { parseMovement } from './signals.js';
 import { LOOP_LENGTH, TAPER } from './sim.js';
 
@@ -257,7 +262,7 @@ export class Renderer {
     if (this.light !== 'day') this._tintMovers(ctx, world);
     perNode(net => {
       this._beacons(ctx, world, net, now);
-      this._heads(ctx, world, net, now);
+      if (!net.roundabout) this._heads(ctx, world, net, now);
       if (world.controllers[net.node].hasPeds) this._pedHeads(ctx, world, net, now);
     });
     this._carLamps(ctx, world);
@@ -518,6 +523,9 @@ export class Renderer {
         const x = i * G + ((h >>> 8) % 60) / 10, y = j * G + ((h >>> 14) % 60) / 10, r = 1.5 + ((h >>> 20) % 10) / 10;
         const clear = r + 1.2;
         if (world.nodes.some(net => Math.abs(x - net.origin[0]) < net.halfRoad + SIDEWALK_W + clear || Math.abs(y - net.origin[1]) < net.halfRoad + SIDEWALK_W + clear)) continue;
+        // a ring's disc, and its legs' flare round the splitter
+        if (world.nodes.some(net => net.roundabout && (Math.hypot(x - net.origin[0], y - net.origin[1]) < RING_R + RING_W / 2 + SIDEWALK_W + clear
+          || Math.abs(x - net.origin[0]) < net.halfRoad + SPLIT + SIDEWALK_W + clear || Math.abs(y - net.origin[1]) < net.halfRoad + SPLIT + SIDEWALK_W + clear))) continue;
         if (blocks.some(b => x > b.x - clear && x < b.x + b.w + clear && y > b.y - clear && y < b.y + b.h + clear)) continue;
         trees.push({ x, y, r, h });
       }
@@ -532,6 +540,7 @@ export class Renderer {
 
   // One node's roads, drawn about its own origin (the caller translates).
   _roads(ctx, world, net) {
+    if (net.roundabout) { this._ring(ctx, world, net); return; }
     const half = net.halfRoad;
     const L = net.legLength + 60;   // past the map edge: a board sized to the window can show 130 m of a cross street
     const bh = net.boxHalf, R = net.cornerRadius, sw = SIDEWALK_W;
@@ -639,6 +648,66 @@ export class Renderer {
         this._arrow(ctx, pt[0] - net.origin[0], pt[1] - net.origin[1], Math.atan2(-d[1], -d[0]), net.lanesForTurn('L').includes(lane), net.lanesForTurn('T').includes(lane), net.lanesForTurn('R').includes(lane));
       }
       void inSide;
+    }
+  }
+
+  // A roundabout's ground, about its own origin (see the header).
+  _ring(ctx, world, net) {
+    const half = net.halfRoad, L = net.legLength + 60, sw = SIDEWALK_W;
+    const outer = RING_R + RING_W / 2, island = RING_R - RING_W / 2;
+    const flare = YIELD_D + SPLIT_TAPER, wide = half + SPLIT;
+    // each leg's outline: its full width out to the flare's start, tapering
+    // to `wide` at the yield line and holding it into the ring
+    const outline = (leg, grow) => {
+      const d = legDir(leg), r = [-d[1], d[0]];
+      const at = (along, lat) => [d[0] * along + r[0] * lat, d[1] * along + r[1] * lat];
+      return [at(L, half + grow), at(flare, half + grow), at(YIELD_D, wide + grow), at(RING_R, wide + grow),
+        at(RING_R, -wide - grow), at(YIELD_D, -wide - grow), at(flare, -half - grow), at(L, -half - grow)];
+    };
+    const poly = pts => { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); };
+    const disc = r => { ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); };
+    ctx.fillStyle = SIDEWALK;
+    for (const leg of net.legs) { poly(outline(leg, sw)); ctx.fill(); }
+    disc(outer + sw); ctx.fill();
+    const asphalt = draw => { ctx.fillStyle = ASPHALT; draw(); ctx.fillStyle = noisePattern(ctx); draw(); };
+    asphalt(() => { for (const leg of net.legs) { poly(outline(leg, 0)); ctx.fill(); } disc(outer); ctx.fill(); });
+    // the curbs: every leg's two edges, and the ring's outer edge between legs
+    ctx.strokeStyle = CURB; ctx.lineWidth = 0.28;
+    for (const leg of net.legs) {
+      const o = outline(leg, 0);
+      ctx.beginPath(); ctx.moveTo(...o[0]); ctx.lineTo(...o[1]); ctx.lineTo(...o[2]); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(...o[7]); ctx.lineTo(...o[6]); ctx.lineTo(...o[5]); ctx.stroke();
+    }
+    const legAng = net.legs.map(l => Math.atan2(legDir(l)[1], legDir(l)[0])).sort((a, b) => a - b);
+    const gap = Math.asin(Math.min(1, (wide + 0.3) / outer));
+    legAng.forEach((a, i) => {
+      const b = i + 1 < legAng.length ? legAng[i + 1] : legAng[0] + 2 * Math.PI;
+      ctx.beginPath(); ctx.arc(0, 0, outer, a + gap, b - gap); ctx.stroke();
+    });
+    // the island: a cobbled apron a truck's trailer may cut, grass inside it
+    ctx.fillStyle = '#8c857a'; disc(island); ctx.fill();
+    ctx.fillStyle = GRASS; disc(island - 1.4); ctx.fill();
+    ctx.strokeStyle = CURB; disc(island); ctx.stroke(); disc(island - 1.4); ctx.stroke();
+    for (const leg of net.legs) {
+      const d = legDir(leg), r = [-d[1], d[0]];
+      const at = (along, lat) => [d[0] * along + r[0] * lat, d[1] * along + r[1] * lat];
+      // the splitter island between the way in and the way out
+      const tip = flare - 4, edge = SPLIT - 0.35;
+      ctx.fillStyle = SIDEWALK; ctx.strokeStyle = CURB;
+      poly([at(tip, 0), at(YIELD_D, edge), at(outer + 0.6, edge), at(outer + 0.6, -edge), at(YIELD_D, -edge)]); ctx.fill(); ctx.stroke();
+      // the centre line out from the splitter's tip
+      ctx.strokeStyle = '#e0b830'; ctx.lineWidth = 0.25;
+      for (const off of [-0.35, 0.35]) { ctx.beginPath(); ctx.moveTo(...at(tip, off)); ctx.lineTo(...at(L, off)); ctx.stroke(); }
+      // the yield line across the way in (on the driver's right arriving:
+      // -r here), dashed, with its triangles pointing at the driver
+      const inSide = -1;
+      ctx.strokeStyle = LINE; ctx.lineWidth = 0.4; ctx.setLineDash([0.6, 0.5]);
+      ctx.beginPath(); ctx.moveTo(...at(YIELD_D, inSide * edge)); ctx.lineTo(...at(YIELD_D, inSide * wide)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = LINE_DIM;
+      for (let lat = edge + 0.5; lat < wide - 0.4; lat += 1.1) {
+        poly([at(YIELD_D + 0.6, inSide * (lat - 0.4)), at(YIELD_D + 0.6, inSide * (lat + 0.4)), at(YIELD_D + 1.6, inSide * lat)]); ctx.fill();
+      }
     }
   }
 

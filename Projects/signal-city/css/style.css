@@ -184,6 +184,8 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .shop-text span { color: var(--dim); }
 .shop-text .shop-why { font-size: 11px; }
 .shop-item .buy { flex: none; min-width: 56px; }
+.shop-item .ring-switch.on { border-color: var(--green); color: var(--green); }
+.ring-note { margin: 10px 0; }
 .phase.bought .name::before { content: '+ '; }
 .foot { margin: 16px 0 0; color: var(--dim); font-size: 13px; }
 .stars { font-size: 34px; color: var(--yellow); letter-spacing: 6px; margin: 4px 0 12px; }

@@ -34,6 +34,22 @@ export const LANE_WIDTH = 3.5;
 export const CROSSWALK = 3.0;      // depth of the crosswalk band, from the box edge outward
 export const STOP_GAP = 0.6;       // stop line sits this far before the crosswalk
 
+// The roundabout (M8, #595): one circulating lane about the centre, driven
+// anticlockwise on the screen (right-hand traffic keeps the island on its
+// left). RING_R is the lane's centre line, RING_W its width; a car joins
+// ENTRY_SKEW radians before its own leg's axis and leaves the same after
+// the exit leg's, so the entry and the exit of one leg sit either side of
+// the splitter island. The yield line is YIELD_D metres out.
+export const RING_R = 12;
+export const RING_W = 5;
+export const ENTRY_SKEW = 0.62;
+export const YIELD_D = 18;
+// The splitter island: each lane of a leg is shifted SPLIT metres off the
+// centre line by the yield line, over the TAPER_D metres before it, so a
+// trailer leaving by a leg clears a car waiting to enter by it.
+export const SPLIT = 1.5;
+export const SPLIT_TAPER = 22;
+
 const DIR = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };   // outward unit vector per leg
 
 // Right-hand perpendicular of a heading (x, y) in screen coordinates.
@@ -42,7 +58,8 @@ function rightOf([x, y]) { return [-y, x]; }
 export function legDir(leg) { return DIR[leg]; }
 
 export class Network {
-  constructor({ legs = LEGS.slice(), lanesPerDir = 1, leftLane = false, legLength = 110, cornerRadius = 5, origin = [0, 0], node = 0 } = {}) {
+  constructor({ legs = LEGS.slice(), lanesPerDir = 1, leftLane = false, legLength = 110, cornerRadius = 5, origin = [0, 0], node = 0, roundabout = false } = {}) {
+    if (roundabout && lanesPerDir !== 1) throw new RangeError('a roundabout is built with one lane each way');
     this.legs = legs.slice();
     this.origin = [origin[0], origin[1]];
     this.node = node;
@@ -54,6 +71,10 @@ export class Network {
     this.boxHalf = this.halfRoad + cornerRadius;        // the box edge, where the crosswalk starts
     this.stopDist = this.boxHalf + CROSSWALK + STOP_GAP; // stop line distance from centre
     this.cornerRadius = cornerRadius;
+    // a roundabout's "box" is the ring: its edge is where the legs flare
+    // into it, and its stop line is the yield line
+    this.roundabout = !!roundabout;
+    if (this.roundabout) { this.boxHalf = RING_R + RING_W / 2 + 2; this.stopDist = YIELD_D; }
     this.paths = new Map();                             // key -> Path
     this._cross = new Map();
     this.closed = new Set();                            // 'W0': inbound lanes a closure (M7) has coned off
@@ -172,7 +193,7 @@ export class Network {
         if (!this.legs.includes(exit)) continue;
         for (const lane of this.lanesForTurn(turn)) {
           const exitLane = turn === 'T' ? lane : turn === 'R' ? 0 : this.lanesPerDir - 1;
-          const p = this._makePath(entry, lane, turn, exit, exitLane);
+          const p = this.roundabout ? this._ringPath(entry, lane, turn, exit, exitLane) : this._makePath(entry, lane, turn, exit, exitLane);
           this.paths.set(p.key, p);
         }
       }
@@ -220,6 +241,55 @@ export class Network {
     path.boxExit = path.lengthAt(pts.length - 2);
     return path;
   }
+
+  // A path round the ring: the approach, tapering out round the splitter
+  // island to the yield line, a curve onto the
+  // ring's centre line, the arc anticlockwise on the screen (the angle,
+  // atan2 in screen coordinates, falls), a curve off it onto the exit lane,
+  // and the departure. The entry curve and the arc are shared by every path
+  // from one lane, and the exit curve by every path to one exit lane, which
+  // is what leaderOf's approach and exit rules need. `boxEnter` is the
+  // join, `boxExit` the leave, and `ring` maps an s between them to an
+  // angle (Path.ringAngle).
+  _ringPath(entry, lane, turn, exit, exitLane) {
+    const O = this.origin, L = this.legLength;
+    const ang = leg => Math.atan2(DIR[leg][1], DIR[leg][0]);
+    const aIn = ang(entry) - ENTRY_SKEW;
+    let aOut = ang(exit) + ENTRY_SKEW;
+    while (aOut >= aIn) aOut -= 2 * Math.PI;
+    const onRing = a => [O[0] + RING_R * Math.cos(a), O[1] + RING_R * Math.sin(a)];
+    const tangent = a => [Math.sin(a), -Math.cos(a)];   // the direction of travel at angle a
+    const cubic = (p0, h0, p1, h1, k, n, into) => {
+      const dist = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+      const c0 = [p0[0] + h0[0] * dist * k, p0[1] + h0[1] * dist * k];
+      const c1 = [p1[0] - h1[0] * dist * k, p1[1] - h1[1] * dist * k];
+      for (let i = 1; i <= n; i++) {
+        const t = i / n, u = 1 - t;
+        into.push([
+          u * u * u * p0[0] + 3 * u * u * t * c0[0] + 3 * u * t * t * c1[0] + t * t * t * p1[0],
+          u * u * u * p0[1] + 3 * u * u * t * c0[1] + 3 * u * t * t * c1[1] + t * t * t * p1[1],
+        ]);
+      }
+    };
+    const split = (leg, ln, inbound, d) => {
+      const p = this.lanePoint(leg, ln, inbound, d), r = rightOf([-DIR[leg][0], -DIR[leg][1]]), k = SPLIT * (inbound ? 1 : -1);
+      return [p[0] + r[0] * k, p[1] + r[1] * k];
+    };
+    const pts = [this.lanePoint(entry, lane, true, L), this.lanePoint(entry, lane, true, YIELD_D + SPLIT_TAPER), split(entry, lane, true, YIELD_D)];
+    cubic(pts[2], [-DIR[entry][0], -DIR[entry][1]], onRing(aIn), tangent(aIn), 0.4, 12, pts);
+    const iJoin = pts.length - 1;
+    const steps = Math.max(2, Math.ceil((aIn - aOut) * RING_R / 0.75));
+    for (let i = 1; i <= steps; i++) pts.push(onRing(aIn - (aIn - aOut) * i / steps));
+    const iLeave = pts.length - 1;
+    cubic(pts[iLeave], tangent(aOut), split(exit, exitLane, false, YIELD_D), DIR[exit], 0.4, 12, pts);
+    pts.push(this.lanePoint(exit, exitLane, false, YIELD_D + SPLIT_TAPER), this.lanePoint(exit, exitLane, false, L));
+    const path = new Path({ key: this.pathKey(entry, lane, turn), entry, lane, turn, exit, exitLane, movement: `${entry}-${turn}`, points: pts, node: this.node });
+    path.stopLine = path.lengthAt(2);
+    path.boxEnter = path.lengthAt(iJoin);
+    path.boxExit = path.lengthAt(iLeave);
+    path.ring = { aIn, aOut, sIn: path.boxEnter, sOut: path.boxExit };
+    return path;
+  }
 }
 
 export class Path {
@@ -236,6 +306,24 @@ export class Path {
     }
     this.length = this.cum[this.cum.length - 1];
     this.stopLine = 0; this.boxEnter = 0; this.boxExit = 0;
+    this.ring = null;           // { aIn, aOut, sIn, sOut } on a roundabout's path
+  }
+
+  // The angle on the ring (screen atan2, falling as the car goes round) of
+  // the point s along a roundabout's path, for s from the join to the leave.
+  ringAngle(s) {
+    const r = this.ring;
+    return r.aIn - (r.aIn - r.aOut) * (s - r.sIn) / (r.sOut - r.sIn);
+  }
+
+  // The s at which this path's arc reaches the ring angle `a`, or null
+  // when its arc does not pass that angle.
+  sAtAngle(a) {
+    const r = this.ring;
+    let w = (r.aIn - a) % (2 * Math.PI);
+    if (w < 0) w += 2 * Math.PI;
+    if (w > r.aIn - r.aOut + 1e-9) return null;
+    return r.sIn + w * (r.sOut - r.sIn) / (r.aIn - r.aOut);
   }
 
   lengthAt(i) { return this.cum[Math.max(0, Math.min(i, this.cum.length - 1))]; }

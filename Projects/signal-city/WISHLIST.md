@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 7, the UI pass and M8's first increment, 2026-09-21 to 2026-09-23)
+## What shipped (milestones 0 to 8 and the UI pass, 2026-09-21 to 2026-09-23)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -187,16 +187,37 @@ open work; this file is the plan it points at.
   marks a bought phase + with a note. 176 + 252 + 75 + 24 + 23 + 22 +
   169 checks.
 
+- **M8, second increment: the roundabout** (HISTORY.md #594 to #599),
+  node and sale together. `roundabout: true` on a network builds a ring:
+  one lane on a 12 m centre line, anticlockwise on the screen, a splitter
+  island on every leg and a yield line where the stop line was. Every car
+  yields to anything that would reach its join before it could get in with
+  1.5 s to spare (`cars.js ringVerdict`), the ring slows for a car merging
+  in ahead of it (`leaderOf`), and the node's controller is built dark and
+  refuses every command. The shop sells it at 6 after Rush Hour; it
+  converts First Light, the Stem and Free Play (`campaign.js
+  convertible`), each scored on its own `ring` calibration, and the owned
+  item's button switches it off for the session. `tools/calibrate.mjs
+  --ring` measures a converted board. 176 + 274 + 75 + 24 + 23 + 35 + 182
+  checks.
+
 ## What is next, in order
 
-7. **M8 campaign and unlocks, the rest** (1): roundabout conversion
-   (with M9's node type, or the node built here first), and whatever the
-   first increment's play shows the prices want. The brief's time of day
-   per level (#585) is still render.js's `DUSK_LEVELS`.
-8. **M9 endless and sandbox** (1): an intersection per survived day, a grid
-   generator from `js/rng.js`, a roundabout node type.
+7. **M9 endless and sandbox** (1): an intersection per survived day, a grid
+   generator from `js/rng.js`. The roundabout node it was to build shipped
+   with M8 (#594); a sandbox can place one with `roundabout: true`.
+   Carried from M8: whatever play shows the four prices want, and the
+   brief's time of day per level (#585), still render.js's `DUSK_LEVELS`.
 
 ## Known gaps and decisions
+
+- The ring is one lane (#595); a two-lane ring is refused, so Four Ways
+  and School Run cannot convert. It has no zebras, loops or cones, and
+  nothing on a converted board needs them (#597). With nothing to press, a
+  ring run plays itself: entry metering (a signal on one approach of a
+  ring, the real fix for a dominant leg) would give the player a hand in
+  it, and is not built. The switch is the session's and starts on at every
+  load (#599).
 
 - The campaign's locks are the select's, not `start()`'s (#588). A bought
   item cannot be sold back, and there is no per-run toggle: an unpressed
