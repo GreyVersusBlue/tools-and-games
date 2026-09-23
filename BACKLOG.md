@@ -101,28 +101,27 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City's UI
-clarity and visual pass, both increments (PR #352)**, the rank 1 Devon put
-ahead of M8 on 2026-09-23, a 2+ worked under Opus 5.5, the model the row
-named, and now retired. That is the line to update when your batch merges; a
-PR that only changes these files is not a batch and does not belong in it.
+**The last batch of ranked work that shipped** is **Signal City's M8,
+first increment: the campaign order, the star wallet and the shop (PR
+#355)**, rank 1, a 2+ worked under Opus 5.5 (the row names Fable 5.1), and
+still rank 1 with its text rewritten to say what is done. That is the line to
+update when your batch merges; a PR that only changes these files is not a
+batch and does not belong in it.
 **26 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 1: Signal City's next increment, M8, the campaign and
-unlocks** (`Projects/signal-city`, a 2+, Fable 5.1): six levels in an order,
-stars spent on sensors, protected turns, roundabout conversion and extra
-phases. The plan is `Projects/signal-city/WISHLIST.md` item 7; milestones 0
-to 7 and the UI pass (#577 to #587, PR #352) are on `main` (nine levels, First Light to Main Street and Free Play,
-every M7 event built) and `HISTORY.md` #534 to #576 carry the calls already
-made. Read before designing the campaign: #571 (a platoon obeys the light;
-the split is a points and satisfaction cost by #570's rule), #572 (the green
-phase pressed again holds it), #573 (the closure is a zipper and its spawner
-still sends cars into the closed lane), #575 (three zebra rules and the two
-tried and dropped) and #576 (every level's calibration numbers and why Main
-Street's second star is loose). `unlocks` on a level is already the list the
-panel reads and `save.unlocks` already exists with `phases` in it; the
-campaign is the thing that spends stars into that list. A 2+ is the whole
-batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
+**Take rank 1: Signal City's next increment, the rest of M8**
+(`Projects/signal-city`, a 2+, Fable 5.1). Roundabout conversion is what is
+left. It needs a roundabout node, which M9 was going to build, so this
+increment either builds that node first or folds M9's node into M8. The
+plan is `Projects/signal-city/WISHLIST.md` item 7. The first increment's
+calls are `HISTORY.md` #588 to #593: the campaign is the eight starred
+levels (#588), nothing new is stored (#589), bought phases go after a
+level's own and `next` never reaches them (#590), the three prices and
+gates (#591), no bought phases on a timed plan (#592), and the roundabout
+off the shelf until its node exists (#593). A roundabout is a network
+change, not a phase change, so `loadout` will have to swap
+`level.network`, and the calibration in #576 will not carry over to it.
+A 2+ is the whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
 Under the size table a 1 is the whole batch unless it is paired with two
 quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
 want hardware this machine does not have — so take it alone. Its plan is Blue
@@ -136,6 +135,16 @@ measure the four facings at the bench after, not just the one the suite reads.
 The two shipped rows are deleted and everything below them renumbered; the ranks
 in this header are the new ones, and ranks 1 to 22 did not move. What shipped,
 and what it means for the next session:
+
+**Signal City has a campaign** (#588 to #593, PR #355). The eight starred
+levels run in pack order, each shut until the one before it has a star; a
+save from before M8 keeps every level it has played. Stars buy protected
+turns (3), extra phases (4) and sensors (5) into `save.unlocks`. The stars
+to spend are worked out from the save, and `signal_city_v1` did not change.
+Bought phases go after the level's own and nothing but a press or a rule
+that names one ever runs them, so owning one changes nothing until it is
+used: Rush Hour with all three bought runs the same 65 cleared and 24
+changes. `test/campaign.mjs` is new and in Site CI.
 
 **Signal City shows what is changing what** (#577 to #587, PR #352). Every
 change of signal names its cause on the Signal line (you, a rule and why it
@@ -490,7 +499,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 7 and the UI pass shipped (PRs #338, #340, #342, #344, #346, #348, #352); next M8, campaign and unlocks | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/dazzling-pasteur-xim5uc` | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 7, the UI pass and M8's campaign and shop shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355); next the rest of M8, roundabout conversion | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
@@ -1159,7 +1168,7 @@ milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
 (2026-09-21, #554 to #562), M7's green wave in PR #344 (2026-09-21, #563
 to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
-12 below are done, 693 checks across six suites, all in Site CI. Item 13, M8, is the next increment. Still open
+12 below are done, and so is item 13's first increment (PR #355): 741 checks across seven suites, all in Site CI. The rest of item 13, roundabout conversion, is the next increment. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
 (a ¼ row for the site, like Blue Hour's ranks 16 and 17), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
@@ -1226,9 +1235,13 @@ sweep as real off-tracking geometry rather than the lane rule it is now.
     and "Main Street"; `calibrate.mjs --hold`.
 12. **UI clarity and visual pass** (Devon, 2026-09-23, PR #352, #577 to
     #587): both increments shipped; see WISHLIST.md's "What shipped".
-13. M8 campaign and unlocks (1): six levels, stars spent on sensors,
-    protected turns, roundabout conversion, extra phases. Then M9 endless
-    and sandbox with a roundabout node (1).
+13. **M8, first increment: the campaign and the shop** (PR #355, #588
+    to #593): the eight starred levels in order, each opened by a star
+    on the one before; stars bought into `save.unlocks` with no new
+    field; protected turns, extra phases and sensors, folded into a copy
+    of the level by `js/campaign.js`, the bought phases appended where
+    `next` never goes. **Still open**: roundabout conversion, which wants
+    a roundabout node (1). Then M9 endless and sandbox (1).
 
 ## Tools/board-check
 
