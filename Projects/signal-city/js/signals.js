@@ -264,8 +264,15 @@ export class Controller {
     this.walk = null;            // { legs, stage: 'walk' | 'clear', t } while a walk runs
     this.walksServed = 0;
     this.log = [];         // transitions, for the suite and the HUD
+    // Why the signal is doing what it is doing, for the page to show: set
+    // whenever a change is started, read by nothing that decides anything.
+    // { by, t, rule?, text? }: by is 'start' | 'player' | 'rule' | 'plan' |
+    // 'offset' | 'corridor' | 'outage' | 'flash'. Every log entry carries
+    // the `by` in force when it was written.
+    this.cause = { by: 'start', t: 0 };
     if (flash) this.setFlash(flash);
     if (mode === 'timed') this._alignToPlan();
+    this.initial = { phase: this.phase, stage: this.stage };   // what the log's first entry changed from
   }
 
   // ---- queries ------------------------------------------------------------
@@ -408,18 +415,22 @@ export class Controller {
 
   // Ask for a phase. Returns true if it will happen (now or after the
   // clearance already in flight), false if it is already the phase in force.
-  requestPhase(i) {
+  // `by` names the cause for the page (the world passes 'outage' when the
+  // power comes back); it changes nothing about what happens.
+  requestPhase(i, by = 'player') {
     if (i < 0 || i >= this.phases.length) throw new RangeError(`no phase ${i}`);
     if (this.stage === 'flash' || this.stage === 'dark') {
       this.stage = 'allred';
       this.stageT = 0;
       this.next = i;
       this.flash = null;
+      this._setCause(by, { back: true });
       this._log('resume', i);
       return true;
     }
     if (this.preemption) { this.preemption.resume = i; return true; }
     if (i === this.phase && this.stage === 'green' && this.next === null) return false;
+    this._setCause(by);
     this.resumeAt = null;   // a hand on the phases restarts the sequence from there
     if (this.next !== null) { this.next = i; return true; }
     if (this.stage === 'green') {
@@ -445,6 +456,7 @@ export class Controller {
     if (this.mode === 'timed' && this.plan) return false;
     if (!this.rules.some(r => r.when === 'elapsed')) return false;
     this.heldT = this.stageT;
+    this._setCause('player', { hold: true });
     this._log('hold', this.current.name);
     return true;
   }
@@ -468,6 +480,7 @@ export class Controller {
     const L = this.cycleLength();
     const d = ((((o - was) + this.shift) % L) + L) % L;   // what is still owed, all told, as a forward distance
     this.shift = d < EPS || L - d < EPS ? 0 : d <= L - d ? d : -(L - d);
+    if (this.shift) this._setCause('offset');
     this._log('offset', o);
     return this.shift;
   }
@@ -543,6 +556,7 @@ export class Controller {
     this.next = null;
     this.preemption = null;
     this.walk = null;
+    this._setCause('flash');
     this._log('flash', f);
     return true;
   }
@@ -553,6 +567,7 @@ export class Controller {
     this.next = null;
     this.preemption = null;
     this.walk = null;
+    this._setCause('outage');
     this._log('dark');
   }
 
@@ -566,6 +581,7 @@ export class Controller {
     this.preemption = { movements: movements.slice(), hold, resume };
     this.next = null;
     this.walk = null;   // an emergency cuts the walk short; walkers already on the road are the world's
+    this._setCause('corridor');
     if (!already) {
       if (this.stage === 'green') this._beginYellow();
       else if (this.stage === 'flash' || this.stage === 'dark') { this.stage = 'allred'; this.stageT = 0; this.flash = null; }
@@ -590,6 +606,7 @@ export class Controller {
             const back = this.preemption.resume;
             this.preemption = null;
             this.next = back;
+            this._setCause('corridor', { back: true });
             this._beginYellow();
           }
           break;
@@ -601,6 +618,7 @@ export class Controller {
         if (this.mode === 'timed' && this.plan) {
           if (this.stageT >= this._plannedGreen() - EPS) {
             this.next = this.plan[(this._planIndex() + 1) % this.plan.length].phase;
+            this._setCause(Math.abs(this.shift) > EPS ? 'offset' : 'plan');
             this._beginYellow();
           }
           break;
@@ -648,15 +666,17 @@ export class Controller {
   // lefts, 'next' went back to E-W, and the N-S throughs waited 180 s
   // (Crossing locked 3 of 6 seeds).
   _runRules(sense) {
-    for (const r of this.rules) {
-      let fire = false;
+    for (let k = 0; k < this.rules.length; k++) {
+      const r = this.rules[k];
+      let fire = false, queued = 0;
       if (r.when === 'elapsed') fire = this.stageT - this.heldT >= r.seconds - EPS;
       else if (r.when === 'queue') {
         if (!sense) continue;
         if (this.current.movements.includes(r.movement)) continue; // it is being served
         // `after`: the green this rule may not cut short, the minimum green by default
         const after = Math.max(this.timing.minGreen, r.after || 0);
-        fire = sense(r.movement) >= r.threshold && this.stageT >= after - EPS;
+        queued = sense(r.movement);
+        fire = queued >= r.threshold && this.stageT >= after - EPS;
       }
       if (!fire) continue;
       const n = this.phases.length;
@@ -665,6 +685,10 @@ export class Controller {
       if (target === this.phase) continue;
       if (isNext) this.resumeAt = null;
       else if (r.when === 'queue') { const after = (this.phase + 1) % n; this.resumeAt = after === target ? (after + 1) % n : after; }
+      this._setCause('rule', {
+        rule: k,
+        text: r.when === 'queue' ? `rule ${k + 1}: ${r.movement} had ${queued} queued` : `rule ${k + 1}: ${r.seconds} s of ${this.current.name}`,
+      });
       this.next = target;
       this._beginYellow();
       return;
@@ -705,8 +729,10 @@ export class Controller {
     this.phase = this.plan[0].phase; this.stage = 'green'; this.stageT = 0;
   }
 
+  _setCause(by, extra = {}) { this.cause = { by, t: +this.t.toFixed(3), ...extra }; }
+
   _log(kind, detail = '') {
-    this.log.push({ t: +this.t.toFixed(3), kind, detail });
+    this.log.push({ t: +this.t.toFixed(3), kind, detail, by: this.cause.by });
     if (this.log.length > 200) this.log.shift();
   }
 

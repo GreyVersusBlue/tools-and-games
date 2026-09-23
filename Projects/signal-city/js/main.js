@@ -13,14 +13,28 @@ import { LEVELS, levelById } from './levels/pack-01.js';
 import { makeSlot, recordResult, totalStars } from './save.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 import { waveModel, WaveHistory, drawWave } from './wave.js';
+import { legDir } from './network.js';
+import { exitLeg, parseMovement } from './signals.js';
 
 const $ = id => document.getElementById(id);
 const DEBUG = new URLSearchParams(location.search).has('debug');
+const SVG = 'http://www.w3.org/2000/svg';
+
+// The panel shows one section at a time (the UI pass). Each level opens on
+// the tab its lesson is about; a tab whose controls the level has not
+// unlocked is not offered.
+const TABS = ['phases', 'timing', 'rules', 'crossings', 'mode'];
+const LESSON_TAB = {
+  'first-light': 'phases', stem: 'timing', 'four-ways': 'phases', crossing: 'crossings', 'two-blocks': 'timing',
+  'rush-hour': 'phases', 'school-run': 'rules', 'main-street': 'phases', 'free-play': 'phases',
+};
+const STRIP_SECONDS = 60;
+const FRESH = 2.5;          // seconds a change's cause reads as new, and a fired rule's card flashes
 
 class Game {
   constructor() {
     this.canvas = $('board');
-    this.renderer = new Renderer(this.canvas);
+    this.renderer = new Renderer(this.canvas, $('ground'));
     this.world = null;
     this.level = null;
     this.state = 'select';   // select | playing | ended
@@ -35,6 +49,8 @@ class Game {
     this.node = 0;           // the box the panel drives (a corridor has two)
     this.wave = new WaveHistory();   // the platoon diagram's samples (M7)
     this.hudEls = {};
+    this.tab = 'phases';
+    this.bannerKey = '';
     bindInput({ canvas: this.canvas, renderer: this.renderer, game: this });
     window.addEventListener('resize', () => this.layout());
     this.layout();
@@ -45,13 +61,19 @@ class Game {
 
   // ---- screens --------------------------------------------------------------
 
+  // The board fills the height left under the header (the UI pass): sized
+  // by the world's aspect, a corridor left an empty band under it, and a
+  // single box ran 40 px past a 900 px window. fit() frames the world in
+  // whatever rectangle this is, so a corridor shows more of its cross
+  // streets instead. On a narrow screen the panel goes under the board and
+  // the board stays square.
   layout() {
     const wrap = $('boardWrap');
     const r = wrap.getBoundingClientRect();
-    // a corridor is wider than it is tall: size the board by the world's aspect
-    const aspect = this.world ? this.renderer.aspect(this.world) : 1;
-    const size = Math.max(280, Math.min(r.width / Math.max(1, aspect), window.innerHeight - 40));
-    this.renderer.resize(Math.floor(r.width), Math.floor(size), Math.min(2, window.devicePixelRatio || 1));
+    const avail = window.innerHeight - (r.top + window.scrollY) - 16;
+    const narrow = window.innerWidth <= 760;
+    const h = narrow ? Math.min(r.width, Math.max(280, avail)) : Math.max(280, avail);
+    this.renderer.resize(Math.floor(r.width), Math.floor(h), Math.min(2, window.devicePixelRatio || 1));
     if (this.world) this.renderer.fit(this.world);
   }
 
@@ -101,7 +123,27 @@ class Game {
     this.buildRules();
     this.buildCalls();
     this.buildWave();
+    this.selectTab(LESSON_TAB[lvl.id] || 'phases');
     this.updateHud(true);
+  }
+
+  // ---- the tabs and the help (the UI pass) ------------------------------------
+
+  tabAvailable(name) { const b = $('tabs').querySelector(`[data-tab="${name}"]`); return !!b && !b.classList.contains('hidden'); }
+
+  selectTab(name) {
+    if (!this.tabAvailable(name)) name = TABS.find(t => this.tabAvailable(t)) || 'phases';
+    this.tab = name;
+    $('panel').dataset.tab = name;
+    for (const b of $('tabs').children) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+    if (name === 'timing') this.buildWave();   // the diagram sizes itself off a box that was not laid out while hidden
+  }
+
+  toggleHelp(open = null) {
+    const box = $('helpBox');
+    const show = open === null ? box.classList.contains('hidden') : open;
+    box.classList.toggle('hidden', !show);
+    $('helpBtn').setAttribute('aria-expanded', String(show));
   }
 
   // A level's unlocks list decides which panel controls show (stars are not
@@ -117,6 +159,9 @@ class Game {
     $('sensorsNote').classList.toggle('hidden', !u.has('sensors'));
     $('waveBox').classList.toggle('hidden', !(u.has('offset') && this.world.controllers.length > 1 && this.world.controllers[0].plan));
     $('nodes').classList.toggle('hidden', this.world.controllers.length < 2);
+    const has = { phases: u.has('phases'), timing: u.has('allred') || !$('waveBox').classList.contains('hidden'), rules: u.has('auto'), crossings: u.has('peds'), mode: u.has('flash') };
+    for (const b of $('tabs').children) b.classList.toggle('hidden', !has[b.dataset.tab]);
+    $('pedLateStat').classList.toggle('hidden', !this.world.controllers.some(c => c.hasPeds));
   }
 
   // A corridor: which box the panel drives. The phases, the sliders and the
@@ -412,17 +457,38 @@ class Game {
 
   // ---- HUD ------------------------------------------------------------------
 
+  // A phase card (the UI pass): its key, a drawn diagram of the box with
+  // one arrow per movement the phase carries, and its name. Hovering or
+  // focusing a card previews its movements on the board.
   buildPhaseButtons() {
     const box = $('phases');
     box.innerHTML = '';
+    this.preview(null);
+    const legs = this.world.nodes[this.node].legs;
     this.ctl.phases.forEach((p, i) => {
       const b = document.createElement('button');
       b.className = 'phase';
       b.dataset.phase = i;
-      b.innerHTML = `<span class="key">${i + 1}</span><span class="name">${p.name}</span><span class="mv">${p.movements.filter(m => !m.endsWith('-R')).join(' ')}</span>`;
+      b.setAttribute('aria-label', `${i + 1}: ${p.name}, ${p.movements.join(' ')}`);
+      const key = document.createElement('span'); key.className = 'key'; key.textContent = String(i + 1);
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = p.name;
+      b.append(key, phaseDiagram(legs, p), name);
       b.addEventListener('click', () => this.requestPhase(i));
+      b.addEventListener('mouseenter', () => this.preview(i));
+      b.addEventListener('focus', () => this.preview(i));
+      b.addEventListener('mouseleave', () => this.preview(null));
+      b.addEventListener('blur', () => this.preview(null));
       box.appendChild(b);
     });
+  }
+
+  // The board draws the hovered phase's movements as arrows over the
+  // asphalt; the wrap carries them as data for the suite.
+  preview(i) {
+    const p = i === null || !this.world ? null : this.ctl.phases[i];
+    this.renderer.preview = p ? { node: this.node, movements: p.movements.slice(), permissive: p.permissive.slice() } : null;
+    $('boardWrap').dataset.preview = p ? p.movements.join(',') : '';
+    for (const b of $('phases').children) b.classList.toggle('previewing', p !== null && +b.dataset.phase === i);
   }
 
   updateHud(force = false) {
@@ -441,7 +507,12 @@ class Game {
     $('collisions').className = m.collisions ? 'bad' : '';
     $('satBar').style.width = `${Math.round(m.satisfaction * 100)}%`;
     $('satBar').style.background = m.satisfaction > 0.6 ? '#2ee06b' : m.satisfaction > 0.3 ? '#ffc21f' : '#ff3b30';
-    $('waitNow').textContent = `${m.avgWait.toFixed(0)} s avg · ${m.waiting} waiting · ${m.honks} honks` + (ctl.hasPeds ? ` · ${m.pedLate} walkers kept waiting` : '');
+    $('satVal').textContent = `${Math.round(m.satisfaction * 100)}%`;
+    $('avgWait').textContent = `${m.avgWait.toFixed(0)} s`;
+    $('waitingNow').textContent = String(m.waiting);
+    $('honks').textContent = String(m.honks);
+    $('pedLate').textContent = String(m.pedLate);
+    $('pedLate').className = m.pedLate ? 'bad' : '';
     const flashing = ctl.stage === 'flash';
     const stageOf = c => {
       const fl = c.stage === 'flash';
@@ -450,6 +521,17 @@ class Game {
       return st + (c.next !== null ? ` → ${c.phases[c.next].name}` : '') + (c.walk ? ` · ${c.walk.stage === 'walk' ? 'WALK' : 'clearing'} ${c.walk.legs.join(' ')}` : '');
     };
     $('stage').textContent = w.controllers.length > 1 ? w.controllers.map((c, i) => `${i === 0 ? 'W' : 'E'}: ${stageOf(c)}`).join(' · ') : stageOf(ctl);
+    // (d) what changed it, the strip of the last minute, and the rule that fired
+    const cause = $('cause');
+    cause.textContent = (w.controllers.length > 1 ? `${this.node === 0 ? 'W' : 'E'}: ` : '') + causeText(ctl);
+    cause.className = `cause by-${ctl.cause.by}` + (w.t - ctl.cause.t < FRESH ? ' fresh' : '');
+    cause.dataset.by = ctl.cause.by;
+    this.drawStrip();
+    const fired = ctl.cause.by === 'rule' && w.t - ctl.cause.t < FRESH ? ctl.cause.rule : -1;
+    for (const row of $('rules').children) if (row.dataset.i !== undefined) row.classList.toggle('fired', +row.dataset.i === fired);
+    $('tabs').querySelector('[data-tab="rules"]').classList.toggle('fired', fired >= 0 && this.tab !== 'rules');
+    this.syncBanners();
+    $('boardWrap').dataset.light = this.renderer.lightFor(w);
     // the event line (M7): what is happening, and for how much longer
     const lines = w.active.map(e => {
       const left = e.until === null ? 0 : Math.max(0, Math.ceil(e.until - w.t));
@@ -503,6 +585,33 @@ class Game {
     }
   }
 
+  // The last 60 s of the selected box, read back out of its log: each green
+  // a block coloured by what brought it, each clearance a thin band.
+  drawStrip() {
+    const ctl = this.ctl, T = this.world.t;
+    const segs = stripSegments(ctl, T, STRIP_SECONDS);
+    const x0 = T - STRIP_SECONDS;
+    $('strip').innerHTML = segs.map(g => {
+      const left = ((g.from - x0) / STRIP_SECONDS) * 100, width = ((g.to - g.from) / STRIP_SECONDS) * 100;
+      const n = g.stage === 'green' ? (g.name === 'priority' ? 'P' : String(ctl.phases.findIndex(p => p.name === g.name) + 1)) : '';
+      return `<span class="seg ${g.stage} by-${g.by}" data-by="${g.by}" data-stage="${g.stage}" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%" title="${g.stage === 'green' ? g.name + ' green' : g.stage}, ${Math.round(g.to - g.from)} s, ${BY_LABEL[g.by] || g.by}">${width > 5 ? n : ''}</span>`;
+    }).join('');
+  }
+
+  // (a) the board's banners are a queue in its top-left corner, in the DOM
+  // over the canvas: two events at once used to draw over each other at the
+  // box's centre. The renderer keeps the list; this keeps the DOM in step.
+  syncBanners() {
+    const t = this.world.t;
+    const live = this.renderer.banners.filter(b => t - b.t0 < b.ttl);
+    const key = live.map(b => b.id).join(',');
+    if (key === this.bannerKey) return;
+    this.bannerKey = key;
+    const box = $('banners');
+    box.innerHTML = '';
+    for (const b of live) { const d = document.createElement('div'); d.className = `banner ${b.tone}`; d.textContent = b.text; box.appendChild(d); }
+  }
+
   mountSave() {
     mountSaveBar($('saveBar'), this.slot, {
       getState: () => this.save,
@@ -510,6 +619,79 @@ class Game {
       filename: 'signal-city-save.json',
     });
   }
+}
+
+// What changed the signal, in words, for the Signal line.
+const BY_LABEL = { start: 'the level\'s start', player: 'you', rule: 'a rule', plan: 'the timed plan', offset: 'the offset', corridor: 'the priority corridor', outage: 'the power', flash: 'flash mode' };
+function causeText(ctl) {
+  const c = ctl.cause;
+  switch (c.by) {
+    case 'player': return c.hold ? 'Held by you: its rule counts from the press' : 'Changed by you';
+    case 'rule': return `Changed by ${c.text}`;
+    case 'plan': return 'Changed by the timed plan';
+    case 'offset': return Math.abs(ctl.shift) > 1e-6 ? `Changed by the offset: ${Math.abs(ctl.shift).toFixed(0)} s still to ${ctl.shift > 0 ? 'cut' : 'add'}` : 'Changed by the offset, now paid';
+    case 'corridor': return c.back ? 'Handed back by the priority corridor' : 'Changed by the priority corridor';
+    case 'outage': return c.back ? 'Changed by the power coming back' : 'Dark: the power is out';
+    case 'flash': return 'Flash mode, set by you';
+    default: return 'The level\'s opening phase';
+  }
+}
+
+// The runs of the last `span` seconds of one controller, from its log:
+// [{ from, to, stage, name, by }]. The state before the window is the
+// last entry before it, or the controller's first state.
+const STAGE_OF = { green: 'green', yellow: 'yellow', allred: 'allred', resume: 'allred', flash: 'flash', dark: 'dark' };
+function stripSegments(ctl, T, span) {
+  const x0 = Math.max(0, T - span);
+  const log = ctl.log.filter(l => STAGE_OF[l.kind]);
+  let cur = { stage: ctl.initial.stage, name: ctl.phases[ctl.initial.phase].name, by: 'start', from: 0 };
+  const out = [];
+  for (const l of log) {
+    const st = STAGE_OF[l.kind];
+    const next = { stage: st, name: st === 'green' ? l.detail : cur.name, by: l.by || 'start', from: l.t };
+    if (l.t > x0) out.push({ ...cur, from: Math.max(cur.from, x0), to: l.t });
+    cur = next;
+  }
+  out.push({ ...cur, from: Math.max(cur.from, x0), to: T });
+  return out.filter(g => g.to > g.from);
+}
+
+// The phase diagram: the box and its legs in a 24-unit square, one arrow
+// per movement from the entry lane (the driver's right, arriving) to the
+// exit lane, curved through the corner for a turn; a permissive left is
+// dashed, a walk is a bar across its leg. Built from the phase's own
+// movements, so a phase set changed in a level draws itself.
+function phaseDiagram(legs, phase) {
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '-12 -12 24 24');
+  svg.setAttribute('class', 'dia');
+  svg.setAttribute('aria-hidden', 'true');
+  const el = (tag, attrs) => { const e = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); svg.appendChild(e); return e; };
+  el('rect', { class: 'road', x: -4, y: -4, width: 8, height: 8 });
+  for (const leg of legs) {
+    const [dx, dy] = legDir(leg);
+    el('rect', { class: 'road', x: dx === 0 ? -4 : Math.min(0, dx * 12), y: dy === 0 ? -4 : Math.min(0, dy * 12), width: dx === 0 ? 8 : 12, height: dy === 0 ? 8 : 12 });
+  }
+  for (const w of phase.walks) {
+    const [dx, dy] = legDir(w.slice(2));
+    el('rect', { class: 'walk', x: dx === 0 ? -4 : dx * 6 - 0.7, y: dy === 0 ? -4 : dy * 6 - 0.7, width: dx === 0 ? 8 : 1.4, height: dy === 0 ? 8 : 1.4 });
+  }
+  const f = n => +n.toFixed(2);
+  for (const m of phase.movements) {
+    const mv = parseMovement(m);
+    if (mv.ped) continue;
+    const d = legDir(mv.entry), e = legDir(exitLeg(mv.entry, mv.turn));
+    const rr = [d[1], -d[0]];                    // the driver's right, arriving
+    const re = [-e[1], e[0]];                    // the driver's right, leaving
+    const p0 = [d[0] * 11 + rr[0] * 2, d[1] * 11 + rr[1] * 2];
+    const pe = [e[0] * 9 + re[0] * 2, e[1] * 9 + re[1] * 2];
+    const c = d[0] === 0 ? [p0[0], pe[1]] : [pe[0], p0[1]];
+    const path = mv.turn === 'T' ? `M${f(p0[0])} ${f(p0[1])}L${f(pe[0])} ${f(pe[1])}` : `M${f(p0[0])} ${f(p0[1])}Q${f(c[0])} ${f(c[1])} ${f(pe[0])} ${f(pe[1])}`;
+    el('path', { class: 'mv' + (phase.permissive.includes(m) ? ' permissive' : ''), 'data-mv': m, d: path });
+    const tip = [pe[0] + e[0] * 2.2, pe[1] + e[1] * 2.2];
+    el('path', { class: 'head', d: `M${f(tip[0])} ${f(tip[1])}L${f(pe[0] + re[0] * 1.3)} ${f(pe[1] + re[1] * 1.3)}L${f(pe[0] - re[0] * 1.3)} ${f(pe[1] - re[1] * 1.3)}Z` });
+  }
+  return svg;
 }
 
 function fmtTime(s) { const m = Math.floor(s / 60), r = Math.floor(s % 60); return `${m}:${r < 10 ? '0' : ''}${r}`; }
@@ -529,6 +711,8 @@ $('allRedRange').addEventListener('input', e => game.setTiming({ allRed: Number(
 $('offsetRange').addEventListener('input', e => game.setOffset(Number(e.target.value)));
 $('addElapsedBtn').addEventListener('click', () => game.addRule('elapsed'));
 $('addQueueBtn').addEventListener('click', () => game.addRule('queue'));
+$('helpBtn').addEventListener('click', () => game.toggleHelp());
+for (const b of $('tabs').children) b.addEventListener('click', () => game.selectTab(b.dataset.tab));
 
 if (DEBUG) {
   window.__signalCity = {
@@ -540,5 +724,9 @@ if (DEBUG) {
     selectNode(i) { game.selectNode(i); },
     score() { return score(game.world); },
     meters() { return meters(game.world); },
+    banners() { return [...document.querySelectorAll('#banners .banner')].map(e => { const r = e.getBoundingClientRect(); return { text: e.textContent, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }); },
+    tab(name) { game.selectTab(name); },
+    // what the player sees: the ground with the board drawn over it, for the suite's pixel reads
+    canvas() { const b = game.canvas, c = document.createElement('canvas'); c.width = b.width; c.height = b.height; const x = c.getContext('2d'); x.drawImage($('ground'), 0, 0); x.drawImage(b, 0, 0); return c; },
   };
 }

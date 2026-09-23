@@ -51,6 +51,8 @@ export const ARCHETYPE_NAMES = Object.keys(ARCHETYPES);
 
 export const DT = 1 / 60;
 export const MERGE_EASE = 3;   // m/s the body slides across after a merge's path swap
+export const BRAKE_LIGHT_A = 0.8;   // m/s/s of slowing that lights the brake lamps (the renderer's, read-only)
+export const INDICATE_FROM = 45;    // m before its stop line a turning car starts to indicate
 const HIST = 90;               // ring buffer depth: 1.5 s at 60 Hz, past any reaction
 
 let nextId = 1;
@@ -112,6 +114,22 @@ export class Car {
   get movement() { return this.path.movement; }
   get inSpecialStop() { return this.specialKind !== null; }
   get isWaiting() { return !this.crashed && !this.done && this.v < 0.5 && !this.inSpecialStop; }
+
+  // Read-only, for the renderer's lamps (the UI pass); nothing in the sim
+  // reads either. The brake lamps are the car's own deceleration: lit while
+  // it is slowing harder than BRAKE_LIGHT_A, and held while it stands, the
+  // way a driver holds the pedal at a light. The indicator is the turn it is
+  // about to make, from INDICATE_FROM metres before its stop line until it
+  // is out of the box, or, waiting at a closure's taper, the side it is
+  // merging to (a higher lane index is further from the curb: the left).
+  get braking() { return !this.done && !this.crashed && (this.a < -BRAKE_LIGHT_A || this.v < 0.3); }
+  get indicator() {
+    if (this.done || this.crashed) return null;
+    if (this.mergeS > 0 && this.mergeLane >= 0) return this.mergeLane > this.path.lane ? 'L' : 'R';
+    const t = this.path.turn;
+    if (t !== 'L' && t !== 'R') return null;
+    return this.front > this.path.stopLine - INDICATE_FROM && this.rear < this.path.boxExit ? t : null;
+  }
 
   touchesBox() { return this.path.touchesBox(this.s, this.length); }
   inBox() { return this.front > this.path.boxEnter && this.rear < this.path.boxExit; }
