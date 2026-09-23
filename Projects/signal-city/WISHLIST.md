@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 7 and the UI pass, 2026-09-21 to 2026-09-23)
+## What shipped (milestones 0 to 7, the UI pass and M8's first increment, 2026-09-21 to 2026-09-23)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -169,14 +169,39 @@ open work; this file is the plan it points at.
   at 115 s, 3 against 5.5 on First Light, under a software Chromium.
   163 + 252 + 75 + 24 + 23 + 156 checks.
 
+- **M8, first increment: the campaign and the shop** (HISTORY.md #588
+  to #593): the eight starred levels in pack order, each shut until the
+  one before has a star (or it has been played, for saves from before
+  M8), Free Play always open, the next level outlined. `js/campaign.js`
+  (`test/campaign.mjs`) reads what is open, the stars to spend and the
+  shop off the save, with no new field: a bought item is its id in
+  `save.unlocks`, and the stars to spend are stars earned less the price
+  of what is owned. Three things on the shelf, each once its teaching
+  level has a star: protected turns (3 stars, after Four Ways), an arrow
+  phase per street's lefts; extra phases (4, after the Stem), one phase
+  per leg; sensors (5, after Crossing), loops in every lane of a level
+  with rules. `loadout` folds them into a copy of the level, and
+  `Controller`'s `extra` option appends the phases after the level's own,
+  where `next` never goes (`cycle`, `lastBase`, `_after`): owned and
+  unpressed they change nothing. A timed plan takes none. The panel
+  marks a bought phase + with a note. 176 + 252 + 75 + 24 + 23 + 22 +
+  169 checks.
+
 ## What is next, in order
 
-7. **M8 campaign and unlocks** (1): six levels, stars spent on sensors,
-   protected turns, roundabout conversion, extra phases.
+7. **M8 campaign and unlocks, the rest** (1): roundabout conversion
+   (with M9's node type, or the node built here first), and whatever the
+   first increment's play shows the prices want. The brief's time of day
+   per level (#585) is still render.js's `DUSK_LEVELS`.
 8. **M9 endless and sandbox** (1): an intersection per survived day, a grid
    generator from `js/rng.js`, a roundabout node type.
 
 ## Known gaps and decisions
+
+- The campaign's locks are the select's, not `start()`'s (#588). A bought
+  item cannot be sold back, and there is no per-run toggle: an unpressed
+  bought phase costs nothing (#590). Split phases carry no walks, so a
+  pedestrian call waits through one.
 
 - The UI pass saves nothing: a level opens on its lesson's tab every time,
   so a remembered last tab would only ever be overruled, and the save and

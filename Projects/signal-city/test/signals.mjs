@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const S = await import(pathToFileURL(path.join(HERE, '..', 'js', 'signals.js')).href);
 const { LEGS, exitLeg, parseMovement, conflicts, wideConflicts, movementsFor, conflictMatrix,
-  phaseIsValid, standardPhases, Controller } = S;
+  phaseIsValid, standardPhases, extraPhases, Controller } = S;
 
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
@@ -537,6 +537,63 @@ group('determinism');
   const trace = c => { const out = []; for (let i = 0; i < 600; i++) { c.step(1 / 60); out.push(c.stage[0] + c.phase); } return out.join(''); };
   ok(trace(a) === trace(b), 'two controllers stepped identically produce identical traces');
   ok(JSON.stringify(a.snapshot()) === JSON.stringify(b.snapshot()), 'and identical snapshots');
+}
+
+
+group('bought phases (M8): appended, and never reached by next');
+
+{
+  const four = standardPhases(LEGS);
+  const arrows = extraPhases(LEGS, ['lefts'], four);
+  ok(arrows.length === 2 && arrows[0].movements.join() === 'N-L,S-L' && arrows[1].movements.join() === 'E-L,W-L' && arrows.every(p => p.extra === 'lefts' && !p.permissive.length),
+    'protected turns on a two-phase 4-way are two arrow phases, N-S and E-W, protected', arrows.map(p => `${p.name}: ${p.movements}`).join(' | '));
+  ok(extraPhases(LEGS, ['lefts'], standardPhases(LEGS, { lefts: true })).length === 0, 'and none on a board whose lefts already run protected');
+  const split = extraPhases(LEGS, ['split'], four);
+  ok(split.length === 4 && split.every(p => p.movements.length === 3 && phaseIsValid(p.movements, p.permissive).ok && p.extra === 'split'),
+    'extra phases are one phase per leg, all three movements, valid with the left protected', split.map(p => p.name).join(', '));
+  const t = extraPhases(['N', 'E', 'S'], ['lefts', 'split'], standardPhases(['N', 'E', 'S']));
+  ok(t.map(p => p.name).join() === 'N-S arrows,N alone,S alone' && t[0].movements.join() === 'N-L',
+    'on the Stem the arrows are N-L alone (the stem\'s left is already protected) and E alone is left out, being the stem phase over again', t.map(p => `${p.name}: ${p.movements}`).join(' | '));
+
+  const c = new Controller({ extra: ['lefts', 'split'], timing: { yellow: 3, allRed: 1, minGreen: 4 }, rules: [{ when: 'elapsed', seconds: 10, then: 'next' }] });
+  ok(c.phases.length === 8 && c.cycle === 2 && c.phases.slice(0, 2).every(p => !p.extra) && c.phases.slice(2).every(p => p.extra),
+    'a controller with both bought has its own two phases first and six bought after', `${c.phases.length} phases, cycle ${c.cycle}`);
+  const seen = new Set();
+  for (let i = 0; i < 1200; i++) { c.step(0.1); if (c.stage === 'green') seen.add(c.phase); }
+  ok([...seen].sort().join() === '0,1', 'a 10 s next rule runs 120 s on phases 0 and 1 and never a bought one', [...seen].join());
+  // from phase 1, press the N-S arrows; then a next rule goes on to phase 0.
+  // Started on 1 so that the answer is not also (2 + 1) % 2 (#147)
+  const a = new Controller({ extra: ['lefts'], startPhase: 1, timing: { yellow: 3, allRed: 1, minGreen: 4 } });
+  a.requestPhase(2); run(a, 4 + 3 + 1 + 0.05);
+  ok(a.phase === 2 && a.stage === 'green' && a.head('N-L') === 'green-arrow' && a.head('N-T') === 'red',
+    'a press reaches the arrows: N-L on a green arrow, N-T red', `phase ${a.phase} ${a.stage} N-L ${a.head('N-L')}`);
+  const base0 = a.lastBase;
+  a.setRules([{ when: 'elapsed', seconds: 5, then: 'next' }]); run(a, 5 + 3 + 1 + 0.05);
+  ok(base0 === 1 && a.phase === 0 && a.stage === 'green',
+    'and a next rule goes on to phase 0, after phase 1, the last of the level\'s own to run, not to phase 3', `lastBase ${base0}, now ${a.phase}`);
+  // lastBase follows the level's own greens: started on 0, sent to 1, then the arrows
+  const b = new Controller({ extra: ['lefts'], timing: { yellow: 3, allRed: 1, minGreen: 4 } });
+  b.requestPhase(1); run(b, 4 + 3 + 1 + 0.05);
+  b.requestPhase(3); run(b, 4 + 3 + 1 + 0.05);
+  const bBase = b.lastBase;
+  b.requestNext(); run(b, 4 + 3 + 1 + 0.05);
+  ok(bBase === 1 && b.phase === 0, 'a phase of the level\'s own that goes green becomes the one next goes on from: 1, so the arrows hand back to 0', `lastBase ${bBase}, then ${b.phase}`);
+  // a rule may name a bought phase, and requestNext from one goes the same way
+  const r = new Controller({ extra: ['split'], rules: [{ when: 'elapsed', seconds: 6, then: 5 }] });
+  run(r, 6 + 3 + 1 + 0.05);
+  ok(r.phase === 5 && r.current.name === 'W alone', 'a rule that names a bought phase by index runs it', r.current.name);
+  r.setRules([]); r.requestNext(); run(r, 4 + 3 + 1 + 0.05);
+  ok(r.phase === 1, 'and requestNext from it goes to phase 1, after phase 0, the last own phase to run (not (5 + 1) % 2)', String(r.phase));
+  // a queue rule's jump to a bought phase remembers the own phase next was due
+  const q = new Controller({ extra: ['lefts'], rules: [{ when: 'queue', movement: 'E-L', threshold: 2, then: 3 }, { when: 'elapsed', seconds: 8, then: 'next' }] });
+  run(q, 5, 0.1, m => (m === 'E-L' ? 3 : 0));
+  run(q, 3 + 1 + 0.05);
+  const jumped = q.phase;
+  run(q, 8 + 3 + 1 + 0.05);
+  ok(jumped === 3 && q.phase === 1, 'a queue rule\'s jump to the E-W arrows comes back to phase 1, the one next was due', `jumped to ${jumped}, then ${q.phase}`);
+  let threw = false;
+  try { new Controller({ phases: [{ name: 'x', movements: ['N-T'], extra: 'lefts' }, { name: 'y', movements: ['E-T'] }] }); } catch { threw = true; }
+  ok(threw, 'a bought phase ahead of a level\'s own is refused');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

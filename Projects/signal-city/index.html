@@ -54,7 +54,7 @@
     </div>
     <div id="helpBox" class="help-box hidden">
       <p id="hint" class="hint"></p>
-      <p class="keys">1 to 4 pick a phase, and the green one again holds it · space pauses · F is fast · scroll zooms, drag pans · click an ambulance or a motorcade · the rules run on their own</p>
+      <p class="keys">1 to 9 pick a phase, and the green one again holds it · space pauses · F is fast · scroll zooms, drag pans · click an ambulance or a motorcade · the rules run on their own</p>
       <p class="legend"><i class="by-player"></i>you <i class="by-rule"></i>a rule <i class="by-plan"></i>the plan <i class="by-offset"></i>the offset <i class="by-corridor"></i>the corridor <i class="by-outage"></i>the outage <i class="by-flash"></i>flash</p>
       <div id="saveBar" class="save"></div>
     </div>
@@ -72,6 +72,7 @@
       <div id="phases" class="phases"></div>
       <p id="leftsNote" class="note hidden">Protected lefts: the arrow phases serve the inner lanes alone.</p>
       <p id="sensorsNote" class="note hidden">Loops are live: a queue rule fires when its lane fills.</p>
+      <p id="boughtNote" class="note hidden">Phases marked + are bought: the cycle never comes round to them. Press one, or name it in a rule.</p>
     </div>
     <div class="pane" data-pane="timing" role="tabpanel">
       <div id="waveBox" class="section hidden">
@@ -123,6 +124,10 @@
     <h2>Signal City</h2>
     <p class="tagline">You never drive. You only program the lights.</p>
     <div id="levelList" class="levels"></div>
+    <div id="shop" class="shop">
+      <div class="shop-head"><h3>Spend stars</h3><b id="wallet">0 to spend</b></div>
+      <div id="shopList" class="shop-list"></div>
+    </div>
     <p class="foot"><span id="starTotal">0 stars</span> · <a href="sprites.html">the drivers</a></p>
   </div>
 </div>

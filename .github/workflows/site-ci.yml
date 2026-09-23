@@ -175,7 +175,7 @@ jobs:
               node test/generator.mjs
               node test/browser.mjs
 
-          # Five Node suites and one headless page drive. browser.mjs steps the
+          # Six Node suites and one headless page drive. browser.mjs steps the
           # world through the ?debug hook and lets rAF only draw, so nothing in
           # it is timed and #53 does not reach it.
           - name: Signal City
@@ -187,6 +187,7 @@ jobs:
               node test/scoring.mjs
               node test/sprites.mjs
               node test/wave.mjs
+              node test/campaign.mjs
               node test/browser.mjs
 
           - name: The Fracture Cycle

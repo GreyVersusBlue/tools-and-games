@@ -1055,6 +1055,18 @@ Generator.
 
 **#587. Both increments of the UI pass shipped in one PR, and the row is retired.** Increment 1 was green with room to spare, and the brief allowed going on; one PR carried both. *Signal City, UI pass.*
 
+**#588. The campaign is the eight starred levels in pack order, not six.** The brief's "six levels" was written before M7 added three. Free Play sits outside it and is always open. A level opens on one star from the level before it, or if it has been played at all, so a save from before M8 keeps every board it reached. `start()` does not check the lock: the select only offers open levels, and the suite and `?debug` start any. *Signal City, M8.*
+
+**#589. The campaign adds nothing to the save.** A bought item is its id in `save.unlocks`, the list the save has carried since M4. Stars to spend are stars earned less the price of what `unlocks` holds, never stored. A hand-edited save that owns more than it earned reads 0, not a debt, and an unknown id costs nothing. `signal_city_v1`, `repair` and `migrate` are unchanged. *Signal City, M8.*
+
+**#590. Bought phases go after a level's own, and `next` never reaches them.** Appending keeps every index a plan or a rule names. `next`, from a rule or `requestNext`, cycles only the level's own phases, and from a bought phase it goes on after `lastBase`, the last of the level's own phases to go green. So owning something changes nothing until it is pressed: Rush Hour with all three bought and nothing pressed clears 65 and logs 24 changes, the same as without them. There is no per-run toggle, because an unpressed phase costs nothing. *Signal City, M8.*
+
+**#591. Three things on the shelf: protected turns (3 stars, after Four Ways), extra phases (4, after the Stem), sensors (5, after Crossing).** Protected turns add an arrow phase for each street's lefts, except where a phase already runs that left protected. Extra phases add one phase per leg with every movement off it, except where one of the level's own phases is that leg already (the Stem's stem). Sensors turn on loops in every lane of a level that has rules and no loops. The item shows up in the shop once the level that teaches it has a star. 24 stars are there to earn, and the three items cost 12 together. *Signal City, M8.*
+
+**#592. A timed plan takes no bought phases.** On Two Blocks the offset is the lesson, and nothing on a timed plan would ever press a bought phase, so the level takes nothing from the shop. *Signal City, M8.*
+
+**#593. Roundabout conversion is not on the shelf until M9 builds the roundabout node.** Selling something that does not exist yet would be selling a promise. The row stays open for it. *Signal City, M8.*
+
 ---
 
 # The log
@@ -1334,3 +1346,6 @@ PR #348 finished milestone 7: motorcade and funeral procession platoons, holding
 
 ## Signal City, the UI clarity and visual pass, 2026-09-23
 PR #352, asked for by Devon ahead of M8, shipped both increments. The UI: a banner queue, green and amber lane washes with a hover preview of each phase, phase cards drawn as diagrams, `Controller.cause` behind a Signal line that names every change's cause, a flashing rule card, a 60 s strip, tabs that open on each level's lesson, and four stats. The visuals: pavement, curbed corners, rooftops, trees and noisy asphalt on a ground canvas drawn once per camera, car shadows, brake lamps and indicators from new read-only `Car` getters, lamp glows, stop-line washes, dusk and night. signals 148 to 163, sim 241 to 252, browser 106 to 156, no storage change. Decisions #577 to #587. Lesson: two first-draft guards stayed green against real breaks (a read-only check on a two-phase run with no hand, a brake-hold check on one car), and a timing guard went red once the ground moved to its own canvas, so the rebuild counter replaced it.
+
+## Signal City, M8 first increment, the campaign and the shop, 2026-09-23
+The first increment of M8. The eight starred levels run in pack order, and each is shut until the one before it has a star. `js/campaign.js` works out what is open, the stars to spend and the shop from `save.unlocks`, which needed no new save field. Stars buy three things: protected turns (3), extra phases (4) and sensors (5). `loadout` folds them into a copy of the level. The controller takes the phases through a new `extra` option that appends them after the level's own and keeps `next` off them (`cycle`, `lastBase`, `_after`). The select shows the shut cards, the next level and the shop; bought phases are marked + in the panel, with a note. signals 163 to 176, campaign 22 (new, in Site CI), browser 156 to 169. No storage change. Decisions #588 to #593. Lesson: the first `next` check passed with the fix removed, because from phase 2 of a two-phase cycle `(p + 1) % 2` and `lastBase + 1` both land on 1. Starting from phase 1 separates them (#147).

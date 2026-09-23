@@ -11,6 +11,7 @@ import { bindInput } from './input.js';
 import { meters, score, failedEarly, starString } from './scoring.js';
 import { LEVELS, levelById } from './levels/pack-01.js';
 import { makeSlot, recordResult, totalStars } from './save.js';
+import { SHOP, shopItem, isOpen, nextLevel, owned, wallet, canBuy, buy, applies, loadout } from './campaign.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 import { waveModel, WaveHistory, drawWave } from './wave.js';
 import { legDir } from './network.js';
@@ -80,26 +81,69 @@ class Game {
   // The controller the panel edits.
   get ctl() { return this.world ? this.world.controllers[Math.min(this.node, this.world.controllers.length - 1)] : null; }
 
+  // The campaign (M8): the starred levels in order, each shut until the one
+  // before it has a star, and the shop under them. A shut card is a
+  // disabled button that says what opens it.
   buildLevelSelect() {
     const list = $('levelList');
     list.innerHTML = '';
-    for (const lvl of LEVELS) {
+    const mine = owned(this.save);
+    const next = nextLevel(this.save);
+    LEVELS.forEach((lvl, i) => {
       const rec = this.save.levels[lvl.id] || { stars: 0, best: 0, plays: 0 };
+      const open = isOpen(this.save, lvl.id);
       const card = document.createElement('button');
-      card.className = 'level-card';
+      card.className = 'level-card' + (open ? '' : ' locked') + (lvl.id === next ? ' next' : '');
       card.dataset.level = lvl.id;
-      card.innerHTML = `<div class="lv-name">${lvl.name}</div><div class="lv-blurb">${lvl.blurb}</div>` +
-        `<div class="lv-stars">${lvl.sandbox ? 'no stars here' : starString(rec.stars)}${rec.best ? ` · best ${rec.best}` : ''}</div>` +
-        `<div class="lv-meta">${Math.round(lvl.duration / 60)} min · ${lvl.mode === 'hard' ? 'one collision ends it' : 'collisions cost a star'} · clear ${lvl.target}</div>`;
-      card.addEventListener('click', () => this.start(lvl.id));
+      card.disabled = !open;
+      const takes = applies(lvl, mine).map(id => shopItem(id).name.toLowerCase());
+      card.innerHTML = open
+        ? `<div class="lv-name">${lvl.name}</div><div class="lv-blurb">${lvl.blurb}</div>` +
+          `<div class="lv-stars">${lvl.sandbox ? 'no stars here' : starString(rec.stars)}${rec.best ? ` · best ${rec.best}` : ''}</div>` +
+          `<div class="lv-meta">${Math.round(lvl.duration / 60)} min · ${lvl.mode === 'hard' ? 'one collision ends it' : 'collisions cost a star'} · clear ${lvl.target}</div>` +
+          (takes.length ? `<div class="lv-bought">+ ${takes.join(', ')}</div>` : '')
+        : `<div class="lv-name">${lvl.name}</div><div class="lv-shut">A star on ${LEVELS[i - 1].name} opens it.</div>`;
+      if (open) card.addEventListener('click', () => this.start(lvl.id));
       list.appendChild(card);
-    }
+    });
     $('starTotal').textContent = `${totalStars(this.save)} stars`;
+    this.buildShop();
   }
 
+  buildShop() {
+    const box = $('shopList');
+    box.innerHTML = '';
+    $('wallet').textContent = `${wallet(this.save)} to spend`;
+    for (const item of SHOP) {
+      const c = canBuy(this.save, item.id);
+      const row = document.createElement('div');
+      row.className = 'shop-item' + (c.why === 'owned' ? ' owned' : '');
+      row.dataset.item = item.id;
+      const btn = document.createElement('button');
+      btn.className = 'small buy';
+      btn.disabled = !c.ok;
+      btn.textContent = c.why === 'owned' ? 'owned' : `${item.cost} ★`;
+      btn.addEventListener('click', () => this.buy(item.id));
+      const why = c.why === 'shut' ? `A star on ${levelById(item.after).name} puts it on the shelf.`
+        : c.why === 'short' ? `${item.cost - wallet(this.save)} more to go.` : '';
+      row.innerHTML = `<div class="shop-text"><b>${item.name}</b><span>${item.blurb}</span>${why ? `<span class="shop-why">${why}</span>` : ''}</div>`;
+      row.appendChild(btn);
+      box.appendChild(row);
+    }
+  }
+
+  buy(id) {
+    if (!buy(this.save, id).ok) return;
+    this.slot.save(this.save);
+    this.buildLevelSelect();
+  }
+
+  // start() does not check the campaign's locks: the select only offers an
+  // open level, and the debug hook and the suite start any.
   start(levelId, seed = null) {
-    const lvl = levelById(levelId);
-    if (!lvl) return;
+    const base = levelById(levelId);
+    if (!base) return;
+    const lvl = loadout(base, owned(this.save));
     this.level = lvl;
     this.seed = seed ?? ((Date.now() % 100000) + 1);
     if (DEBUG) this.seed = seed ?? 7;
@@ -146,8 +190,8 @@ class Game {
     $('helpBtn').setAttribute('aria-expanded', String(show));
   }
 
-  // A level's unlocks list decides which panel controls show (stars are not
-  // spent on anything yet: that is M8).
+  // A level's unlocks list decides which panel controls show; what the shop
+  // sold is already folded into it by loadout (M8).
   showUnlocks() {
     const u = new Set(this.level.unlocks || []);
     $('flashBox').classList.toggle('hidden', !u.has('flash'));
@@ -157,6 +201,7 @@ class Game {
     $('phases').classList.toggle('hidden', !u.has('phases'));
     $('pedsBox').classList.toggle('hidden', !u.has('peds'));
     $('sensorsNote').classList.toggle('hidden', !u.has('sensors'));
+    $('boughtNote').classList.toggle('hidden', !this.world.controllers.some(c => c.phases.some(p => p.extra)));
     $('waveBox').classList.toggle('hidden', !(u.has('offset') && this.world.controllers.length > 1 && this.world.controllers[0].plan));
     $('nodes').classList.toggle('hidden', this.world.controllers.length < 2);
     const has = { phases: u.has('phases'), timing: u.has('allred') || !$('waveBox').classList.contains('hidden'), rules: u.has('auto'), crossings: u.has('peds'), mode: u.has('flash') };
@@ -467,7 +512,7 @@ class Game {
     const legs = this.world.nodes[this.node].legs;
     this.ctl.phases.forEach((p, i) => {
       const b = document.createElement('button');
-      b.className = 'phase';
+      b.className = 'phase' + (p.extra ? ' bought' : '');
       b.dataset.phase = i;
       b.setAttribute('aria-label', `${i + 1}: ${p.name}, ${p.movements.join(' ')}`);
       const key = document.createElement('span'); key.className = 'key'; key.textContent = String(i + 1);
