@@ -169,6 +169,22 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .lv-blurb { color: var(--dim); font-size: 13px; }
 .lv-stars { color: var(--yellow); font-size: 14px; letter-spacing: 2px; }
 .lv-meta { font-size: 11px; color: var(--dim); }
+.lv-bought { font-size: 11px; color: var(--green); }
+.lv-shut { font-size: 13px; color: var(--dim); }
+.level-card.locked { opacity: 0.55; cursor: default; }
+.level-card.next { outline: 2px solid var(--yellow); outline-offset: -2px; }
+.shop { margin-top: 16px; }
+.shop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.shop-head h3 { margin: 0 0 8px; font-size: 16px; }
+.shop-head b { color: var(--yellow); }
+.shop-list { display: flex; flex-direction: column; gap: 8px; }
+.shop-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--panel-2); border-radius: 6px; }
+.shop-item.owned { opacity: 0.7; }
+.shop-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; font-size: 13px; }
+.shop-text span { color: var(--dim); }
+.shop-text .shop-why { font-size: 11px; }
+.shop-item .buy { flex: none; min-width: 56px; }
+.phase.bought .name::before { content: '+ '; }
 .foot { margin: 16px 0 0; color: var(--dim); font-size: 13px; }
 .stars { font-size: 34px; color: var(--yellow); letter-spacing: 6px; margin: 4px 0 12px; }
 .end-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #2c3138; }

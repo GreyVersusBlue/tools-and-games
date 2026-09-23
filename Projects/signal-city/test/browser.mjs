@@ -20,7 +20,9 @@
 // hover preview, the banner queue, the split stats, a board that reaches
 // the fold; and the visual pass: the ground drawn once per camera and
 // slid under a drag, brake lamps, indicators, pavement, the stop-line
-// wash, dusk and night. Screenshots land in test/shots/ (ignored by git)
+// wash, dusk and night. M8 adds the campaign: shut cards on a fresh save,
+// a star opening the next, the shop spending stars into unlocks, and a
+// bought phase on the Stem, marked and run by its key. Screenshots land in test/shots/ (ignored by git)
 // as evidence for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
@@ -97,6 +99,18 @@ try {
     ok(sel.shown, 'the level select is up');
     ok(sel.cards.length === 9 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Free Play', 'with nine cards, First Light first and Free Play last', sel.cards.join(', '));
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
+    const camp = await page.evaluate(() => ({
+      locked: [...document.querySelectorAll('.level-card.locked')].map(e => e.dataset.level),
+      disabled: [...document.querySelectorAll('.level-card')].filter(e => e.disabled).length,
+      next: [...document.querySelectorAll('.level-card.next')].map(e => e.dataset.level).join(),
+      shut: document.querySelector('.level-card[data-level="stem"] .lv-shut')?.textContent || '',
+      wallet: document.getElementById('wallet').textContent,
+      shop: [...document.querySelectorAll('#shopList .shop-item')].map(e => `${e.dataset.item}:${e.querySelector('.buy').disabled ? 'off' : 'on'}`).join(),
+    }));
+    ok(camp.locked.join() === 'stem,four-ways,crossing,two-blocks,rush-hour,school-run,main-street' && camp.disabled === 7,
+      'a fresh save has seven cards shut and disabled, First Light and Free Play open (M8)', camp.locked.join());
+    ok(camp.next === 'first-light' && camp.shut === 'A star on First Light opens it.', 'First Light is marked next and the Stem says what opens it', `${camp.next}; ${camp.shut}`);
+    ok(camp.wallet === '0 to spend' && camp.shop === 'lefts:off,split:off,sensors:off', 'the shop has three things on it and nothing to spend', `${camp.wallet}; ${camp.shop}`);
     await shot(page, 'select');
     ok(errors.length === 0, 'no page errors so far', errors.join(' | '));
   });
@@ -256,8 +270,65 @@ try {
     ok(errors.length === 0, 'no page errors through the run', errors.join(' | '));
   });
 
-  await section('Stem and the all-red slider', async () => {
+  await section('the campaign: a star opens the next level, and stars buy phases (M8)', async () => {
     await page.click('#levelsBtn');
+    const c0 = await page.evaluate(() => ({
+      stem: document.querySelector('.level-card[data-level="stem"]').disabled,
+      four: document.querySelector('.level-card[data-level="four-ways"]').disabled,
+      fourText: document.querySelector('.level-card[data-level="four-ways"]').textContent,
+      next: document.querySelector('.level-card.next')?.dataset.level,
+      earned: window.__signalCity.game.save.levels['first-light'].stars,
+      wallet: document.getElementById('wallet').textContent,
+    }));
+    ok(!c0.stem && c0.four && /A star on Stem opens it/.test(c0.fourText) && c0.next === 'stem', 'First Light\'s star opened the Stem and only the Stem, now marked next', JSON.stringify(c0).slice(0, 120));
+    ok(c0.wallet === `${c0.earned} to spend`, 'and its stars are there to spend', c0.wallet);
+    await page.evaluate(() => document.querySelector('.level-card[data-level="four-ways"]').click());
+    const stay = await page.evaluate(() => ({ shown: document.getElementById('selectScrim').classList.contains('show'), level: window.__signalCity.world.level.id }));
+    ok(stay.shown && stay.level === 'first-light', 'a click on a shut card starts nothing', JSON.stringify(stay));
+    // three stars each on the Stem and Four Ways, as if they had been played
+    await page.evaluate(() => { const g = window.__signalCity.game; for (const id of ['stem', 'four-ways']) g.save.levels[id] = { stars: 3, best: 100, plays: 1 }; g.slot.save(g.save); g.buildLevelSelect(); });
+    const w0 = await page.evaluate(() => parseInt(document.getElementById('wallet').textContent, 10));
+    await page.click('.shop-item[data-item="lefts"] .buy');
+    const c1 = await page.evaluate(() => ({
+      wallet: parseInt(document.getElementById('wallet').textContent, 10),
+      owned: document.querySelector('.shop-item[data-item="lefts"]').classList.contains('owned'),
+      label: document.querySelector('.shop-item[data-item="lefts"] .buy').textContent,
+      sensors: document.querySelector('.shop-item[data-item="sensors"]').textContent,
+      saved: JSON.parse(localStorage.getItem('signal_city_v1')),
+      stem: document.querySelector('.level-card[data-level="stem"] .lv-bought')?.textContent || '',
+      four: document.querySelector('.level-card[data-level="four-ways"] .lv-bought')?.textContent || '',
+    }));
+    const unlocks = (c1.saved.data || c1.saved).unlocks || [];
+    ok(c1.wallet === w0 - 3 && c1.owned && c1.label === 'owned', 'buying protected turns takes 3 stars and marks them owned', `${w0} to ${c1.wallet}`);
+    ok(unlocks.includes('lefts'), 'and the save under signal_city_v1 carries them in unlocks', JSON.stringify(unlocks));
+    ok(/A star on Crossing puts it on the shelf/.test(c1.sensors), 'Sensors wait for a star on Crossing and say so');
+    ok(c1.stem === '+ protected turns' && c1.four === '', 'the Stem\'s card says it takes them; Four Ways, whose lefts have arrows already, does not', `"${c1.stem}" / "${c1.four}"`);
+    await page.click('.level-card[data-level="stem"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'stem', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const p0 = await page.evaluate(() => ({
+      cards: [...document.querySelectorAll('#phases .phase')].map(b => `${b.querySelector('.name').textContent}${b.classList.contains('bought') ? '+' : ''}`),
+      note: !document.getElementById('boughtNote').classList.contains('hidden') && !!document.getElementById('boughtNote').textContent,
+    }));
+    ok(p0.cards.join() === 'N-S,E-W,N-S arrows+' && p0.note, 'the Stem opens with its two phases and a third, bought, marked, and a note on what that means', p0.cards.join(' | '));
+    await page.keyboard.press('3');
+    await page.evaluate(n => window.__signalCity.step(n), Math.round(60 * 8.2));
+    const p1 = await page.evaluate(() => ({ stage: document.getElementById('stage').textContent, head: window.__signalCity.world.controller.head('N-L'), t: window.__signalCity.world.controller.head('N-T') }));
+    ok(/^N-S arrows green/.test(p1.stage) && p1.head === 'green-arrow' && p1.t === 'red', 'key 3 runs it: the Signal line reads N-S arrows green, N-L on its arrow, N-T red', `${p1.stage}; ${p1.head}, ${p1.t}`);
+    await shot(page, 'campaign-stem-arrows');
+    // put the save back the way the rest of the suite expects it: nothing
+    // bought, and every level open
+    await page.evaluate(() => {
+      const g = window.__signalCity.game;
+      g.save.unlocks = ['phases'];
+      for (const c of document.querySelectorAll('.level-card')) if (!g.save.levels[c.dataset.level]) g.save.levels[c.dataset.level] = { stars: 0, best: 0, plays: 1 };
+      g.slot.save(g.save); g.buildLevelSelect();
+    });
+    ok(errors.length === 0, 'no page errors in the campaign', errors.join(' | '));
+  });
+
+  await section('Stem and the all-red slider', async () => {
+    await page.keyboard.press('Escape');
     await page.click('.level-card[data-level="stem"]');
     await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'stem', { timeout: 5000 });
     await page.evaluate(() => { window.__signalCity.game.paused = true; });

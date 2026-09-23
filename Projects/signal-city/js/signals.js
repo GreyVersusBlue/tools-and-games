@@ -203,6 +203,36 @@ export function standardPhases(legs, { lefts = false, peds = false, main = 'NS' 
   return phases;
 }
 
+// Phases bought in the campaign (M8), appended after a controller's own so
+// every index a level, a plan or a rule names keeps meaning what it did.
+// 'lefts' is a protected arrow for each street's lefts, left out where a
+// phase already runs that left protected; 'split' is one phase per leg,
+// every movement off it with its left protected because nothing opposes it,
+// left out where a phase of the level's is that leg already (the Stem's stem).
+// Each carries `extra`: 'next' never goes to one (Controller._after), only
+// a press or a rule that names it.
+export function extraPhases(legs, kinds = [], base = []) {
+  const has = l => legs.includes(l);
+  const guarded = new Set();
+  for (const p of base) for (const m of p.movements) if (parseMovement(m).turn === 'L' && !(p.permissive || []).includes(m)) guarded.add(m);
+  const out = [];
+  if (kinds.includes('lefts')) {
+    for (const [a, b] of [['N', 'S'], ['E', 'W']]) {
+      const l = [`${a}-L`, `${b}-L`].filter(m => has(m[0]) && has(exitLeg(m[0], 'L')) && !guarded.has(m));
+      if (l.length) out.push({ name: `${a}-${b} arrows`, movements: l, permissive: [], walks: [], extra: 'lefts' });
+    }
+  }
+  if (kinds.includes('split')) {
+    for (const leg of LEGS) {
+      if (!has(leg)) continue;
+      const ms = ['T', 'R', 'L'].filter(t => has(exitLeg(leg, t))).map(t => `${leg}-${t}`);
+      const same = p => p.movements.length === ms.length && ms.every(m => p.movements.includes(m));
+      if (ms.length && !base.some(same)) out.push({ name: `${leg} alone`, movements: ms, permissive: [], walks: [], extra: 'split' });
+    }
+  }
+  return out;
+}
+
 export const DEFAULT_TIMING = { yellow: 3, allRed: 1, minGreen: 4 };
 // WALK for `walk` seconds, then the flashing clearance for `clear`. The
 // world sets `clear` from the road's width at 1.2 m/s (a slow walker) and a
@@ -232,20 +262,25 @@ export class Controller {
     rules = [],           // [{ when: 'elapsed', seconds, then }] | [{ when: 'queue', movement, threshold, after?, then }]
     flash = null,         // null | 'red' | { major: ['N','S'] } (major legs flash yellow, others red)
     startPhase = 0,
+    extra = [],           // campaign purchases (M8): 'lefts' | 'split', appended by extraPhases
   } = {}) {
     this.legs = legs.slice();
     this.movements = movementsFor(this.legs);
     this.timing = { ...DEFAULT_TIMING, ...timing };
     this.pedTiming = { ...DEFAULT_PED_TIMING, ...pedTiming };
-    this.phases = (phases || standardPhases(this.legs, { lefts, peds, main })).map((p, i) => {
+    const own = phases || standardPhases(this.legs, { lefts, peds, main });
+    this.phases = [...own, ...extraPhases(this.legs, extra, own)].map((p, i) => {
       const v = phaseIsValid(p.movements, p.permissive || []);
       if (!v.ok) throw new Error(`phase ${p.name || i} holds a conflicting pair: ${v.pair.join(' vs ')}`);
       const walks = (p.walks || []).slice();
       const allowed = walksFor(this.legs, p.movements, p.permissive || []);
       for (const w of walks) if (!allowed.includes(w)) throw new Error(`phase ${p.name || i} cannot carry ${w}: it crosses a movement in the phase`);
-      return { name: p.name || `phase ${i + 1}`, movements: p.movements.slice(), permissive: (p.permissive || []).slice(), walks };
+      return { name: p.name || `phase ${i + 1}`, movements: p.movements.slice(), permissive: (p.permissive || []).slice(), walks, ...(p.extra ? { extra: p.extra } : {}) };
     });
     if (!this.phases.length) throw new Error('a controller needs at least one phase');
+    // the phases 'next' cycles through: the level's own, never a bought one
+    this.cycle = this.phases.filter(p => !p.extra).length;
+    if (this.phases.slice(0, this.cycle).some(p => p.extra)) throw new Error('bought phases go after the level\'s own');
     this.mode = mode;
     this.plan = plan;
     this.offset = offset;
@@ -253,6 +288,7 @@ export class Controller {
     this.rules = rules.map(r => ({ ...r }));
     this.t = 0;
     this.phase = startPhase;
+    this.lastBase = startPhase;   // the last of the level's own phases to run green: 'next' from a bought phase goes on from it
     this.stage = 'green';
     this.stageT = 0;
     this.heldT = 0;        // stageT at the last holdGreen: the elapsed rules count from here
@@ -272,6 +308,7 @@ export class Controller {
     this.cause = { by: 'start', t: 0 };
     if (flash) this.setFlash(flash);
     if (mode === 'timed') this._alignToPlan();
+    if (this.phase < this.cycle) this.lastBase = this.phase;
     this.initial = { phase: this.phase, stage: this.stage };   // what the log's first entry changed from
   }
 
@@ -442,7 +479,7 @@ export class Controller {
     return true;
   }
 
-  requestNext() { return this.requestPhase((this.phase + 1) % this.phases.length); }
+  requestNext() { return this.requestPhase(this._after(this.phase)); }
 
   // Hold the running green (M7): the elapsed rule that would end it counts
   // from now again, so a hand can keep a green under a platoon on a level
@@ -640,6 +677,7 @@ export class Controller {
           this.stage = 'green';
           this.stageT -= allRed;
           this.heldT = 0;
+          if (!this.preemption && this.phase < this.cycle) this.lastBase = this.phase;
           this._log('green', this.current.name);
         }
         break;
@@ -679,12 +717,11 @@ export class Controller {
         fire = queued >= r.threshold && this.stageT >= after - EPS;
       }
       if (!fire) continue;
-      const n = this.phases.length;
       const isNext = r.then === 'next' || r.then === undefined;
-      const target = isNext ? (this.resumeAt !== null ? this.resumeAt : (this.phase + 1) % n) : r.then;
+      const target = isNext ? (this.resumeAt !== null ? this.resumeAt : this._after(this.phase)) : r.then;
       if (target === this.phase) continue;
       if (isNext) this.resumeAt = null;
-      else if (r.when === 'queue') { const after = (this.phase + 1) % n; this.resumeAt = after === target ? (after + 1) % n : after; }
+      else if (r.when === 'queue') { const after = this._after(this.phase); this.resumeAt = after === target ? this._after(after) : after; }
       this._setCause('rule', {
         rule: k,
         text: r.when === 'queue' ? `rule ${k + 1}: ${r.movement} had ${queued} queued` : `rule ${k + 1}: ${r.seconds} s of ${this.current.name}`,
@@ -693,6 +730,13 @@ export class Controller {
       this._beginYellow();
       return;
     }
+  }
+
+  // The phase 'next' brings after `p`: the level's own phases in order, and
+  // from a bought phase the one after the last of them to run.
+  _after(p) {
+    const n = this.cycle;
+    return p < n ? (p + 1) % n : (this.lastBase + 1) % n;
   }
 
   // A timed green is ending: what it lost against the plan (or gained) comes
