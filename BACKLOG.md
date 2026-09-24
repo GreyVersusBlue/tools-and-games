@@ -1300,10 +1300,14 @@ milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
 (2026-09-21, #554 to #562), M7's green wave in PR #344 (2026-09-21, #563
 to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
-13 below are done (M8 in PRs #355 and #358), and M9 in PRs #362, #367 and #373 (the grid, endless, the sandbox): 919 checks across nine suites, all in Site CI. **Milestones 0 to 9 are done and the ranked row is retired.** Still open
-from the brief and not yet placed: a `games.mjs` recipe and a preview capture
-(a ¼ row for the site, like Blue Hour's ranks 8 and 9), and the trucker's
-sweep as real off-tracking geometry rather than the lane rule it is now.
+13 below are done (M8 in PRs #355 and #358), and M9 in PRs #362, #367 and #373 (the grid, endless, the sandbox): 919 checks across nine suites, all in Site CI. **Milestones 0 to 9 are done and the ranked row is retired.** What comes
+next is the **Roadmap** in `Projects/signal-city/WISHLIST.md` (2026-09-24):
+R1 to R14 in build order, all runnable in a cloud container, then H1 to H4,
+which need a real device, ears or a person. It absorbs the items that were
+open here (the `games.mjs` recipe and preview capture are R5, the trucker's
+sweep is R11, the one-box priority corridor is R6). None of it is ranked in
+the table above yet; R1 (¼) and R2 (½) are the first to rank, since a review
+found Rush Hour and Main Street three-star on six seeds of six with no input.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived

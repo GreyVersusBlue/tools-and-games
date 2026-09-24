@@ -3,7 +3,10 @@
 A browser game about programming traffic lights. You never drive; you set
 the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
-open work; this file is the plan it points at.
+open work; this file is the plan it points at. Milestones 0 to 9 are done;
+the **Roadmap** section below is the development list from here, written
+after a review on 2026-09-24, in build order, with everything that needs a
+real device or a person at the end.
 
 ## What shipped (milestones 0 to 9 and the UI pass, 2026-09-21 to 2026-09-24)
 
@@ -249,13 +252,302 @@ open work; this file is the plan it points at.
   roundabout converts only the one box, and the row says so when it is
   owned. M9 is done. 176 + 274 + 75 + 24 + 23 + 35 + 46 + 39 + 227 checks.
 
-## What is next, in order
+## Roadmap (from 2026-09-24)
 
-Milestones 0 to 9 are done. Nothing from the brief is left in order; what
-is still open is placed in `BACKLOG.md`'s Signal City section: a
-`games.mjs` recipe and a preview capture, and the trucker's sweep as real
-off-tracking geometry. Carried from M8: the brief's time of day per level
-(#585) is still render.js's `DUSK_LEVELS`.
+Milestones 0 to 9 are done and nothing from the brief is left. This is the
+development list that replaced "What is next", built from a review of the
+shipped game on 2026-09-24 and the open items it inherited (the `games.mjs`
+recipe and preview, the trucker's sweep, the one-box priority corridor, the
+time of day per level). It is in build order. **R1 to R14 all run in a
+cloud container as it stands today**: Node for every suite, and the
+harness's headless Chromium (SwiftShader on Linux) for `test/browser.mjs`,
+`games.mjs` and the preview capture, which is enough for a 2D canvas with
+no pointer lock. **H1 to H4 need a real device, real ears or a person**, and
+come last on purpose: nothing in R1 to R14 waits on them.
+
+Size and Model follow `BACKLOG.md`'s columns. None of these is ranked in
+`BACKLOG.md` yet; a row gets ranked there before anyone builds it.
+
+### Before you start: the cloud setup
+
+- `test/browser.mjs` imports `Tools/board-check/harness.mjs`, which needs
+  that folder's packages: `cd Tools/board-check && npm install` once per
+  container, or the suite dies of `ERR_MODULE_NOT_FOUND` before it runs a
+  check. The postinstall pulls two copies of three.js for other projects;
+  let it.
+- The suites, run from `Projects/signal-city/`, and their counts on
+  2026-09-24: `node test/signals.mjs` 176, `sim.mjs` 274, `scoring.mjs`
+  75, `sprites.mjs` 24, `wave.mjs` 23, `campaign.mjs` 35, `grid.mjs` 46,
+  `endless.mjs` 39, `browser.mjs` 227. 919 checks, all green, all in Site
+  CI. `browser.mjs` writes its screenshots to `test/shots/` (ignored).
+- Nothing in this project asserts anything real-time (#53 does not
+  reach it), so a pass here is a pass. The frame-cost numbers are the one
+  exception, and they are H2.
+
+### The evidence behind R1 to R4
+
+Every level run as it ships, with no input at all, six seeds each
+(cleared / target, average wait, collisions, stars):
+
+| Level | With no input |
+| --- | --- |
+| First Light, Stem, Four Ways | locks on all six (right: nothing runs the lights) |
+| Crossing | 55 to 63 / 48, 47 to 52 s, 0 collisions: ★ on all six |
+| Two Blocks | 87 to 103 / 80: ★★★ on 5, ★★ on 1 |
+| Rush Hour | 65 to 83 / 56, 10 to 17 s: ★★★ on all six |
+| School Run | 91 to 103 / 88: ★★★ on 2, ★★ on 1, ★ on 3 |
+| Main Street | 65 to 76 / 60, 10 to 15 s: ★★★ on all six |
+| Free Play | ★★★ on 2, ★★ on 4 (a sandbox; no change wanted) |
+
+Rush Hour, School Run and Main Street open with a 22 s `elapsed` rule and
+Two Blocks with a timed plan, and that default earns the stars on its own.
+The skill each level teaches (the offset, the ambulance corridor, the
+held procession) moves points and never a star: #570 made a late ambulance
+a points cost and Main Street's second star is recorded as loose. So half
+the campaign can be three-starred by watching it. Every level ships
+`mode: 'soft'`, and the hard mode in `scoring.js` (one collision ends the
+run) is used by none.
+
+### R1. A reference hand, and a no-input table, in the calibration tool
+
+**Size ¼. Model Opus 5.** `tools/calibrate.mjs` plays fixed cycles, timed
+plans and `--hold` (the platoon hand). Add two things:
+
+- `--baseline`: every level exactly as it ships, no input, the table above.
+- `--hand`: one scripted good player, built from pieces that already
+  exist: `holdPlatoon` for platoons, the corridor requested the moment an
+  emergency vehicle spawns, a queue-greedy phase choice at each green's end
+  (the phase with the longest waiting queue, never below the minimum
+  green), and on a corridor level the offset swept at load and the best
+  one kept.
+
+The hand is a yardstick, not a solver: R2 needs to know what "played
+well" earns before it can set a star above "not played". It must call the
+game's own `World` and `Controller`, never a copy of their logic (#34: a
+test that re-implements the thing it checks is not a check). Done when both
+tables print for all nine levels, and the hand beats the baseline on
+cleared or wait on every level with a default. It is a tool, so it prints
+and exits 0 like the rest of `calibrate.mjs`.
+
+### R2. The lesson decides a star
+
+**Size ½. Model Fable 5.1. Open call first (architect).** The rule to hold:
+**as a level ships, no input earns three stars on no seed of six, and R1's
+hand earns three on at least four.** Two ways there, and the call is which:
+
+- **A lesson star.** A level may carry `lesson: { kind, ... }` and, when it
+  does, the lesson replaces the wait target as the second star: Rush Hour's
+  is the ambulance on time, Main Street's is no split platoon, Two Blocks'
+  is a wait target the shipped offset misses and a good offset makes,
+  School Run's is no late pedestrian call. Levels 1 to 4 keep the wait star.
+  The end card's reason line names the lesson ("the ambulance was 6 s
+  late"). Recommended: it says what the level is about in the one place
+  every player reads.
+- **Worse defaults.** Open those levels with a slower rule or a
+  mis-set offset, and keep the stars as they are. Cheaper, and it teaches
+  "fix what you were handed", but a default that is bad on purpose reads
+  as a bug.
+
+Either way: stars stay 0 to 3, so the save's shape, `signal_city_v1` and
+`repair` do not change (#36, #37). `recordResult` keeps the best, so a
+player who three-starred Rush Hour under the old rule keeps those stars and
+the shop money they paid for; record that as a locked decision rather than
+clawing them back. Re-run R1's two tables and put the new ones in the
+`HISTORY.md` entry. A new `test/stars.mjs` in Site CI plays each starred
+level on six seeds with no input and fails if any reaches three stars;
+break it by restoring the old second star on one level and watch that
+level's line fail, not another's.
+
+### R3. Hard mode on one level
+
+**Size ¼. Model Fable 5.1.** Put `mode: 'hard'` on one late level, so a
+collision ends the run there and the all-red and yellow sliders become a
+survival tool rather than a third-star tool. School Run is the candidate:
+with no input it collides on 2 of 6 seeds (seeds 4 and 5, one each), so the
+cost is real, and it has the half-speed zone and the zipper to make a
+careful hand pay off. Calibrate with R1's hand first: if the hand cannot
+keep all six seeds clean because the collisions come from red-runners no
+timing prevents, the level is unfair in hard mode and the answer is a
+different level or none. The level card already switches its line to
+"one collision ends it" on a hard level (`main.js`), so there is no UI to
+build. Guard: a scripted collision on that level
+ends the run with the "does not forgive one" reason; on a soft level the
+same collision does not.
+
+### R4. Endless: measure the hand, then fix the ramp
+
+**Size ½. Model Fable 5.1.** Hands-off, an endless city clears every day to
+the ninth on five of six seeds: 27 minutes before the target bites (#609).
+First run R1's hand through `--endless` and print both columns. If the hand
+survives no more than two or three days longer than hands-off, skill does
+not matter in endless and the ramp is wrong. Levers, in the order to try
+them: start the run on day 3's district; give each day from day 4 one
+seeded event from the pack's list (a surge, an outage, an ambulance); keep
+the target's slope. Do not steepen the start alone, which fails day one on
+seeds that clear 25. `test/endless.mjs` gains the rule that decides it:
+the hand outlasts no input by at least N days on at least four seeds, with
+N fixed by the calibration and written down before the rule is.
+
+### R5. The site's side: board check, preview, card copy
+
+**Size ¼. Model Sonnet 5. Shared files: say so in the PR body.**
+
+- A `signal-city` recipe in `Tools/board-check/games.mjs`: load First
+  Light, press 2, run 20 s at 1x, assert the Signal line reads "Changed by
+  you", cleared is above zero and there are no page errors. Break it by
+  pointing the key at a phase that does not exist.
+- A preview in `capture-previews.mjs`: Rush Hour at dusk mid-surge, or a
+  district of six in the sandbox. Capture on Linux, promote through
+  `promote-previews.mjs` into `assets/previews/signal-city.jpg` and
+  `assets/og/signal-city.jpg`, then `npm run social` and `social:check`.
+  SwiftShader draws a 2D canvas the same as a GPU; this one is not a draft.
+- The card in `index.html` and `landing.html` still says "one
+  crossroads". Mention the district and endless.
+- Fold in #585 while here: `DUSK_LEVELS` in `render.js` becomes a `light`
+  field on the level (`'dusk'`), read by `lightFor`. Every level renders
+  the same; the browser suite's dusk check holds it.
+
+`cd Tools/board-check && npm run check && npm run social:check && node
+ci-check.mjs` is the bar.
+
+### R6. The priority corridor follows the vehicle across boxes
+
+**Size ½. Model Opus 5. Open call first (architect).** A car keeps
+`priority` across a handoff, so the next box does not hold for it and E
+does not offer it again (Known gaps). The sandbox's ambulances cross two to
+four boxes. The call: at the next box, is the corridor automatic (the
+player called the vehicle once, and the city's pre-emption follows it,
+which is how real emergency pre-emption works), or does the player call it
+again at each box? Recommended: automatic once called, so the lesson stays
+"call it early" and a district does not ask for a key press per box.
+Changes Two Blocks and Main Street under play, so re-run their calibration
+(Main Street's motorcade takes the corridor) and record both tables. Guard
+in `test/grid.mjs`: an ambulance called at box 1 of a three-box route is
+held for at box 2; break it by clearing the request on handoff and watch
+that line fail. Ask the World where the car is, not the helper that
+decided (#614's lesson).
+
+### R7. Sound
+
+**Size ½. Model Fable 5.1.** The game is silent, and it counts honks. A
+`js/audio.js` on Web Audio, every sound synthesized in code, so nothing is
+vendored and nothing is fetched: a horn per archetype (the trucker's low,
+the aggressive driver's short and repeated), the relay click of a signal
+change, a siren that rises as the vehicle nears the box and pans with its
+x, a crash, the pedestrian push-button chirp, and a traffic bed whose
+level follows the cars on screen. Caps: at most three horns a second, so
+Rush Hour's surge is a jam and not a noise. The context starts on the
+first input. The mute switch is `settings.sound`, **already in the save
+and already defaulting to true** (`js/save.js fresh()`), so there is no
+storage change. Tests: a Node check with a stub `AudioContext` that counts
+what a seeded Rush Hour asks to play (the siren starts when the ambulance
+spawns, stops when it leaves, a surge's honks never pass the cap), and a
+browser check that the switch writes `settings.sound` and a reload keeps
+it. Whether it sounds right is H3, not this row.
+
+### R8. The phone layout, in emulation
+
+**Size ¼. Model Opus 5.** There is one breakpoint (760 px: the panel goes
+under the board) and nothing has ever loaded the page at phone size. Zoom
+is the wheel and the + and - keys, so a phone cannot zoom at all, and
+hover is how a car is picked for the pointer cursor. Add a section to
+`test/browser.mjs` at 390 by 844 with `hasTouch`: the board fills the
+width, every phase card and the Levels button are reachable by scrolling,
+a tap on a phase card changes the signal, a tap on an ambulance calls its
+corridor. Add two-pointer pinch zoom to `js/input.js` (the camera already
+has `zoomBy`), and a tap that did not move picks a car, as the click does
+now. Watch for #132 on the level list: a centred scroll container needs
+`safe`. How it feels under a thumb is H1.
+
+### R9. A rule that calls a phase instead of cutting one
+
+**Size ½. Model Opus 5.** Known gaps: a `queue` rule cuts the running green
+as soon as its `after` has run, which on Crossing cut every through short
+and locked 3 of 6 seeds at 4 s, so the level ships `after: 16`. A real
+actuated controller *calls* the phase for its next turn and *skips* a
+phase nobody is waiting for. Add `then: 'call'` (the phase runs at its
+turn in the sequence, not now) and a skip-when-empty flag on a phase for
+levels with sensors. Crossing's calibration re-runs with the call form; if
+it beats `after: 16` the level's default can move to it. Sensors are a
+shop item, so this gives the purchase something new to do.
+
+### R10. Entry metering: a hand in a roundabout run
+
+**Size ½. Model Fable 5.1.** With the ring bought, a run has nothing to
+press (#599). Entry metering is the real fix for a dominant leg: a signal
+on one approach that holds that leg for a few seconds when the leg it
+starves has queued past a loop. One meter per ring, on the leg the player
+picks, with a red time slider; the ring's controller stays dark apart from
+it. It extends #595's ring without a two-lane ring (still refused). Each
+converted board gets a `ring.meter` calibration: the meter set well should
+beat the bare ring's wait on at least four of six seeds, or the item is
+not worth selling.
+
+### R11. The trucker's sweep as geometry
+
+**Size 1. Model Fable 5.1.** Known gaps: the wide sweep is a rule (a
+turning truck ties up every other lane of its entry and exit legs until it
+clears) and "wrong in the way a diagram is". Model the trailer: a second
+body hinged at the fifth wheel, following the tractor's path with the
+off-tracking of a tractor-trailer, swept against the other lanes' paths by
+the same SAT test collisions use, so a truck blocks only the lanes its
+trailer actually crosses. Every level with trucks shifts, so re-run all
+calibrations and hold every shipped target, or move it and say so in
+`HISTORY.md`. A 1 because the calibration is the job, not the geometry.
+
+### R12. Lane changes on a corridor segment
+
+**Size ½. Model Opus 5.** A car handed from one box to the next keeps its
+lane, so on a two-lane corridor with a left bay a car in the inner lane can
+only turn left (Known gaps). Two Blocks runs one lane each way so nothing
+shows it today. Give the segment a lane change: a gap-acceptance swap on
+the straight between boxes toward a lane that allows the car's next turn,
+the same path swap the zipper uses. Needed before any two-lane corridor
+level, and a prerequisite for R13's second corridor level.
+
+### R13. More board: a second pack
+
+**Size 2+. Model Fable 5.1. After R2, R6 and R12.** Eight levels teach
+eight ideas. Candidates that use what exists: a two-lane corridor with a
+green wave both ways (the two-way wave wants travel time at half a cycle;
+Two Blocks' 43 s cycle is not 31, so a new block length), a grid of three
+where the ambulance crosses every box (R6), a ring with a metered leg
+(R10), an outage on a timed corridor (its return wants `setOffset`'s
+shift, Known gaps). Each level gets R1's two tables and R2's rule from the
+first commit. One increment a session, a level or two at a time.
+
+### R14. Endless keeps a day that was left halfway
+
+**Size ½. Model Sonnet 5. Low priority.** #612: nothing is saved mid-day,
+so a run closed in the middle loses that day. The fix is an
+`endless.pending` record (seed, day, carried rules) that `repair` fills
+empty on older saves, key unchanged. Only worth doing if R4 makes runs
+long enough that losing a day hurts.
+
+### Needs a real device, real ears or a person (last)
+
+None of these can be done from a cloud container, and none blocks R1 to
+R14. They are the same kind of row as the site's real-hardware passes.
+
+- **H1. A touch playtest on real glass** (after R8). A phone and a tablet:
+  can a thumb hit a phase card mid-surge, does pinch fight the page's own
+  scroll, is an ambulance big enough to tap at 12 boxes. **Size ¼. Model
+  Opus 5.**
+- **H2. Frame cost on a real GPU.** Every number here is software
+  Chromium: 22 ms a frame on Rush Hour at 115 s (#584), and the 12-box
+  district zoomed out has never been timed on anything else. A low-end
+  laptop and a phone, with the frame times written down, and the
+  district's cars and trees checked for what drops first. **Size ¼. Model
+  Sonnet 5.**
+- **H3. An hour with ears on** (after R7). Horn density at Rush Hour's
+  surge, whether the siren is heard before the ambulance is seen, the
+  traffic bed's level against the rest, fatigue over a long endless run.
+  **Size ½. Model Fable 5.1.**
+- **H4. A first-time player on the retuned campaign** (after R2). Someone
+  who has not seen the game plays First Light to Main Street while you
+  watch: does the lesson star read, where do they stall, does anyone find
+  the Timing tab on Two Blocks without the hint. Devon's to arrange.
+  **Size ½. Model Opus 5.**
 
 ## Known gaps and decisions
 
