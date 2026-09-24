@@ -590,8 +590,8 @@ try {
         phases: [...document.querySelectorAll('#phases .phase .name')].map(e => e.textContent),
       };
     });
-    ok(t0.nodes === 2 && t0.origins === '-110,110' && t0.offsets === '0,16', 'two boxes 220 m apart, the east one 16 s behind', `${t0.origins} offsets ${t0.offsets}`);
-    ok(t0.buttons.join() === 'West box*,East box' && /16 s behind/.test(t0.note), 'the panel offers both boxes, the west one selected, and names the offset', `${t0.buttons.join()} ${t0.note}`);
+    ok(t0.nodes === 2 && t0.origins === '-110,110' && t0.offsets === '0,0', 'two boxes 220 m apart, on one clock as the level ships (R2: the offset is the lesson)', `${t0.origins} offsets ${t0.offsets}`);
+    ok(t0.buttons.join() === 'West box*,East box' && /same clock/.test(t0.note), 'the panel offers both boxes, the west one selected, and says they share a clock', `${t0.buttons.join()} ${t0.note}`);
     ok(/^W: .* · E: /.test(t0.stage) && t0.phases.join() === 'E-W,N-S', 'the stage line reads both boxes, and E-W is phase 1', t0.stage);
     const fit = await page.evaluate(() => {
       const w = window.__signalCity.world, r = window.__signalCity.game.renderer, b = document.getElementById('board').getBoundingClientRect();
@@ -604,9 +604,10 @@ try {
     await page.click('#nodes .node[data-node="1"]');
     await page.keyboard.press('2');
     await page.click('#tabs .tab[data-tab="timing"]');
-    const t1 = await page.evaluate(() => ({ node: window.__signalCity.game.node, on: document.querySelector('#nodes .node.on').dataset.node, c0: window.__signalCity.world.controllers[0].next, c1: window.__signalCity.world.controllers[1].next, s1: window.__signalCity.world.controllers[1].stage }));
+    const t1 = await page.evaluate(() => { const c = window.__signalCity.world.controllers[1]; return { node: window.__signalCity.game.node, on: document.querySelector('#nodes .node.on').dataset.node, c0: window.__signalCity.world.controllers[0].next, c1: c.next, s1: c.stage, early: c.stage === 'green' && c.stageT < c.timing.minGreen }; });
     ok(t1.node === 1 && t1.on === '1', 'clicking East box selects it');
-    ok(t1.c1 === 1 && t1.s1 === 'yellow' && t1.c0 === null, 'and pressing 2 reaches the east controller, not the west', `east next ${t1.c1} ${t1.s1}, west next ${t1.c0}`);
+    // on one clock (R2) the east box can still be inside its minimum green: the change is queued, not yet yellow
+    ok(t1.c1 === 1 && (t1.s1 === 'yellow' || t1.early) && t1.c0 === null, 'and pressing 2 reaches the east controller, not the west', `east next ${t1.c1} ${t1.s1}${t1.early ? ' (minimum green)' : ''}, west next ${t1.c0}`);
     await page.evaluate(n => window.__signalCity.step(n), 60 * 40);
     await new Promise(r => setTimeout(r, 300));
     const t2 = await page.evaluate(() => ({ handoffs: window.__signalCity.world.stats.handoffs, onMap: window.__signalCity.world.cars.filter(c => !c.done).length, nodes: new Set(window.__signalCity.world.cars.filter(c => !c.done).map(c => c.path.node)).size }));
@@ -623,19 +624,19 @@ try {
       for (let i = 0; i < px.length; i += 4 * 97) colours.add(`${px[i]},${px[i + 1]},${px[i + 2]}`);
       return { shown: !document.getElementById('waveBox').classList.contains('hidden'), min: r.min, max: r.max, value: r.value, label: document.getElementById('offsetVal').textContent, colours: colours.size, samples: window.__signalCity.game.wave.samples.length, w: c.width, h: c.height };
     });
-    ok(s0.shown && s0.min === '0' && s0.max === '42' && s0.value === '16' && s0.label === '16 s', 'the slider runs 0 to 42 on the 43 s cycle and sits at the level\'s 16', `${s0.min}..${s0.max} at ${s0.value}, ${s0.label}`);
+    ok(s0.shown && s0.min === '0' && s0.max === '42' && s0.value === '0' && s0.label === '0 s', 'the slider runs 0 to 42 on the 43 s cycle and sits at the level\'s 0', `${s0.min}..${s0.max} at ${s0.value}, ${s0.label}`);
     ok(s0.colours >= 4 && s0.w > 100, 'the diagram drew more than a flat colour', `${s0.colours} colours sampled on ${s0.w}x${s0.h}`);
     ok(s0.samples >= 30, 'and holds the last twenty seconds of samples', `${s0.samples} samples`);
-    // move the slider to 27 with the east box mid-green: no jump, a shift queued
+    // move the slider to 11 with the east box mid-green: no jump, a shift queued
     const before = await page.evaluate(() => { const c = window.__signalCity.world.controllers[1]; return { stage: c.stage, phase: c.phase, stageT: c.stageT, t: window.__signalCity.world.t }; });
-    await page.evaluate(v => { const r = document.getElementById('offsetRange'); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })); }, 27);
+    await page.evaluate(v => { const r = document.getElementById('offsetRange'); r.value = String(v); r.dispatchEvent(new Event('input', { bubbles: true })); }, 11);
     const s1 = await page.evaluate(() => {
       const w = window.__signalCity.world, c = w.controllers[1];
       return { offset: c.offset, shift: c.shift, stage: c.stage, phase: c.phase, stageT: c.stageT, west: w.controllers[0].offset, note: document.getElementById('offsetNote').textContent, label: document.getElementById('offsetVal').textContent };
     });
-    ok(s1.offset === 27 && s1.west === 0 && Math.abs(s1.shift - 11) < 1e-9, 'sliding to 27 queues 11 s of cuts on the east box and leaves the west one alone', `offset ${s1.offset} shift ${s1.shift} west ${s1.west}`);
+    ok(s1.offset === 11 && s1.west === 0 && Math.abs(s1.shift - 11) < 1e-9, 'sliding to 11 queues 11 s of cuts on the east box and leaves the west one alone', `offset ${s1.offset} shift ${s1.shift} west ${s1.west}`);
     ok(s1.stage === before.stage && s1.phase === before.phase && s1.stageT === before.stageT, 'and the east box did not jump at the call', `${s1.stage} ${s1.phase} ${s1.stageT.toFixed(2)}`);
-    ok(/27 s behind/.test(s1.note) && /11 s still to cut/.test(s1.note) && s1.label === '27 s', 'the note names the new offset and what is still to cut', s1.note);
+    ok(/11 s behind/.test(s1.note) && /11 s still to cut/.test(s1.note) && s1.label === '11 s', 'the note names the new offset and what is still to cut', s1.note);
     const co = await page.evaluate(() => { const g = window.__signalCity, c = g.world.controllers[1]; for (let i = 0; i < 60 * 30 && !(c.cause.by === 'offset' && c.stage === 'yellow'); i++) g.world.step(); g.step(1); return { text: document.getElementById('cause').textContent, by: c.cause.by, node: g.game.node }; });
     ok(co.by === 'offset' && co.node === 1 && /^E: Changed by the offset: \d+ s still to cut$/.test(co.text), 'the east box\'s next change is the offset\'s, and the Signal line says what is left to cut', co.text);
     // step through the shift: the log after the call is only yellow, all-red, green
@@ -648,11 +649,34 @@ try {
     }, mark);
     const order = ['yellow', 'allred', 'green'];
     const legal = s2.kinds.filter(k => order.includes(k)).every((k, i, a) => i === 0 || k === order[(order.indexOf(a[i - 1]) + 1) % 3]);
-    ok(Math.abs(s2.shift) < 1e-6 && s2.offsetOf === 27, 'a minute on the shift is paid and the corridor reads 27', `shift ${s2.shift}`);
+    ok(Math.abs(s2.shift) < 1e-6 && s2.offsetOf === 11, 'a minute on the shift is paid and the corridor reads 11', `shift ${s2.shift}`);
     ok(legal && s2.kinds.includes('yellow'), 'and every change on the way ran yellow then all-red', s2.kinds.join(' '));
     ok(!/Re-aligning/.test(s2.note), 'the note has dropped the re-aligning line', s2.note);
     await shot(page, 'two-blocks-wave');
     ok(errors.length === 0, 'no page errors on the slider', errors.join(' | '));
+  });
+
+  await section('the lesson on the cards and the end card (R2)', async () => {
+    // run Two Blocks out: the world to a second short of its clock, then the page's own loop ends it
+    await page.evaluate(() => { const w = window.__signalCity.world; while (w.t < w.duration - 1 && !w.stats.gridlock) w.step(); window.__signalCity.game.paused = false; });
+    await waitFor(page, () => document.getElementById('endScrim').classList.contains('show'), { timeout: 15000 });
+    const e = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#endBody .end-row')];
+      const g = window.__signalCity.game, st = g.world.stats;
+      return {
+        lesson: document.querySelector('#endBody [data-lesson]')?.textContent || '', wait: rows.find(r => /Average wait/.test(r.textContent))?.textContent || '',
+        why: document.querySelector('#endBody .end-why')?.textContent || '', met: g.result.lesson && g.result.lesson.met, stars: g.result.stars, survived: g.result.survived,
+        share: st.carried ? st.carriedStops / st.carried : null,
+      };
+    });
+    ok(/^The lesson: at most 50% of cars stopping again at the next box(yes|no)$/.test(e.lesson) && e.lesson.endsWith(e.met ? 'yes' : 'no'), 'the end card names the lesson and says whether it was played', e.lesson);
+    ok(e.share !== null && e.met === (e.share <= 0.5), 'and what it says is the World\'s share of handed-on cars that stopped again', `${e.share === null ? 'none carried' : (e.share * 100).toFixed(0) + '%'}, ${e.met ? 'met' : 'missed'}`);
+    ok(!/target/.test(e.wait), 'the wait row drops its target on a lesson level', e.wait);
+    ok(!e.survived || e.met || /stopped again at the next, against 50%/.test(e.why), 'a missed lesson is the reason line', e.why || `${e.stars} stars`);
+    await page.click('#levelsBtn');
+    const cards = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.level-card')].map(c => [c.dataset.level, c.querySelector('.lv-lesson')?.textContent || ''])));
+    ok(cards['two-blocks'] === 'second star: at most 50% of cars stopping again at the next box' && cards['first-light'] === '' && cards['free-play'] === '', 'Two Blocks\' card names its second star, and First Light\'s and Free Play\'s name none', JSON.stringify({ tb: cards['two-blocks'], fl: cards['first-light'], fp: cards['free-play'] }));
+    ok(errors.length === 0, 'no page errors on the end card', errors.join(' | '));
   });
 
   await section('Free Play and the priority corridor', async () => {

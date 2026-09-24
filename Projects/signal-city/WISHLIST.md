@@ -320,38 +320,21 @@ because the corridor and the held procession cost the board. The greedy
 alone (`--hand=phases`) beats no input on all three. That is R2's problem
 measured: playing the lesson costs the wait star.
 
-### R2. The lesson decides a star
+### R2. The lesson decides a star: done (HISTORY.md #639, #640)
 
-**Size ½. Model Fable 5.1. Open call first (architect).** The rule to hold:
-**as a level ships, no input earns three stars on no seed of six, and R1's
-hand earns three on at least four.** Two ways there, and the call is which:
-
-- **A lesson star.** A level may carry `lesson: { kind, ... }` and, when it
-  does, the lesson replaces the wait target as the second star: Rush Hour's
-  is the ambulance on time, Main Street's is no split platoon, Two Blocks'
-  is a wait target the shipped offset misses and a good offset makes,
-  School Run's is no late pedestrian call. Levels 1 to 4 keep the wait star.
-  The end card's reason line names the lesson ("the ambulance was 6 s
-  late"). Recommended: it says what the level is about in the one place
-  every player reads.
-- **Worse defaults.** Open those levels with a slower rule or a
-  mis-set offset, and keep the stars as they are. Cheaper, and it teaches
-  "fix what you were handed", but a default that is bad on purpose reads
-  as a bug.
-
-Either way: stars stay 0 to 3, so the save's shape, `signal_city_v1` and
-`repair` do not change (#36, #37). `recordResult` keeps the best, so a
-player who three-starred Rush Hour under the old rule keeps those stars and
-the shop money they paid for; record that as a locked decision rather than
-clawing them back. Re-run R1's two tables and put the new ones in the
-`HISTORY.md` entry. R1 measured the shipped rule's hand (#637): the full
-hand three-stars Rush Hour 5/6, Main Street 3/6 and Two Blocks 5/6, so
-"R1's hand earns three on at least four" already fails on Main Street as
-it ships. The lesson star has to be one the hand's lesson move earns, not
-the wait target it costs. A new `test/stars.mjs` in Site CI plays each starred
-level on six seeds with no input and fails if any reaches three stars;
-break it by restoring the old second star on one level and watch that
-level's line fail, not another's.
+A level with a default carries `lesson: { kind, ... }` and the move it
+teaches is its second star (`scoring.js lessonMet`): Rush Hour the
+ambulance on time on its corridor, Main Street no split platoon, Two
+Blocks at most half the cars one box hands on stopping again at the next,
+School Run no walk call over 40 s. Two Blocks ships both boxes on one clock
+(offset 0), because at its old 16 s no input already made the progression.
+The card names the second star and the end card says whether it was
+played. `test/stars.mjs` in Site CI plays every starred level six seeds
+with no input and fails a level that three-stars. **Left open, for R3**:
+R1's hand, taught to answer a walk call (`answerWalks`), earns School
+Run's three stars on 0 of 6 seeds (the lesson on at most 2 of 6 with any walk move tried), because a walk and its clearance put
+any call's worst wait near 40 s under every hand tried; #639 has the
+numbers.
 
 ### R3. Hard mode on one level
 

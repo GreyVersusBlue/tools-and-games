@@ -22,6 +22,9 @@
 //   duration    seconds
 //   target      cars to clear for a star
 //   waitTarget  average wait, seconds, for the second star
+//   lesson      { kind, ... } the move the level teaches, which replaces
+//               the wait target as the second star (R2, scoring.js):
+//               ambulance, platoons, progression { stops }, walks { within }
 //   ring        { target, waitTarget } the same two numbers for the board
 //               as the roundabout converts it (campaign.js convertible,
 //               #598): measured on the ring, not on signals
@@ -140,20 +143,25 @@ export const LEVELS = [
   {
     id: 'two-blocks',
     name: 'Two Blocks',
-    blurb: 'Two crossroads on one street, 220 m apart, on a timed plan. The east box runs 16 s behind the west one, so a platoon released at one meets a green at the other.',
+    blurb: 'Two crossroads on one street, 220 m apart, on one timed plan. Both boxes run it on the same clock, so a platoon released at one meets the other on its way to red.',
     hint: 'Both boxes run the same plan, the east one behind the west by the offset. The diagram draws where each box\'s green will be and where a platoon leaving one lands at the other: slide the offset until the line meets the green, both ways if you can. Press a phase to override the selected box.',
     network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1, nodes: 2, spacing: 220 },
     // phase 0 is the main street, E-W here (`main: 'EW'`): 22 s to it, 12 to the side streets
     controller: { main: 'EW', mode: 'timed', plan: [{ phase: 0, green: 22 }, { phase: 1, green: 12 }], timing: { yellow: 3, allRed: 1.5, minGreen: 4 } },
-    controllers: [{ offset: 0 }, { offset: 16 }],
+    // both boxes on one clock: the offset is the lesson, and at 0 six
+    // seeds with no input stop 65 to 95% of the cars one box hands the
+    // other; at 16 they stop 19 to 71% (R2, #639)
+    controllers: [{ offset: 0 }, { offset: 0 }],
     demand: [{ W: 520, N: 220, S: 220 }, { E: 520, N: 220, S: 220 }],
     mix: { standard: 5, aggressive: 1.5, rideshare: 1.2, trucker: 0.6 },
     turns: { T: 0.7, L: 0.1, R: 0.2 },
     duration: 240,
-    // the offset is the second star: at 22 s the shipped 16 s offset waits
-    // 8 to 14 s over six seeds, offset 0 waits 12 to 19
+    // the average wait no longer tells the offsets apart (0 waits 12 to
+    // 19 s over six seeds, 16 waits 9 to 15), so the second star is the
+    // progression: half or fewer of the handed-on cars stopping again
     target: 80,
     waitTarget: 16,
+    lesson: { kind: 'progression', stops: 0.5 },
     mode: 'soft',
     unlocks: ['phases', 'allred', 'offset'],
   },
@@ -175,9 +183,12 @@ export const LEVELS = [
     duration: 240,
     // calibrated on a 22 s cycle over six seeds: the corridor called 2 s
     // after the ambulance arrives clears 59 to 77 at 13 to 21 s with it on
-    // time every seed; never called, 65 to 83 at 10 to 17 s and late on 3
+    // time every seed; never called, 65 to 83 at 10 to 17 s and late on 3.
+    // The corridor cost the wait star it was meant to earn, so the second
+    // star is the ambulance on time on its corridor (R2, #639)
     target: 56,
     waitTarget: 20,
+    lesson: { kind: 'ambulance' },
     gridlockWait: 150,
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],
@@ -203,9 +214,12 @@ export const LEVELS = [
     duration: 270,
     // calibrated on six seeds: a 22 s rule alone clears 91 to 103 at 9 to
     // 13 s; the zone halves every green's worth and the closure halves
-    // W's, and the second star is the hand that gives them more
+    // W's. The rule alone met the wait target on 3 of 6, so the second
+    // star is the walks: on it a call waits 41 to 49 s at the longest (R2,
+    // #639)
     target: 88,
     waitTarget: 12,
+    lesson: { kind: 'walks', within: 40 },
     gridlockWait: 150,
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred', 'peds'],
@@ -227,14 +241,17 @@ export const LEVELS = [
     duration: 270,
     // calibrated on six seeds: the 22 s rule alone clears 65 to 76 at 10
     // to 15 s and splits 7 of 12 platoons; the green held under each (the
-    // tool's --hold) clears 67 to 80 at 10 to 26 s and splits none
+    // tool's --hold) clears 67 to 80 at 10 to 26 s and splits none. The
+    // hold cost the wait star, so the second star is no split (R2, #639)
     target: 60,
     waitTarget: 20,
+    lesson: { kind: 'platoons' },
     gridlockWait: 150,
     // a permissive left waiting mid-box for a procession to pass is not a
     // gridlock: the stream is 30 s long, and the default 30 s stall locked
-    // 2 of 6 seeds with the green held under it
-    boxStall: 45,
+    // 2 of 6 seeds with the green held under it. From the far edge at a
+    // walk it can be 48 s (R1's hand, seed 1), so 60 (R2, #639)
+    boxStall: 60,
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred', 'priority'],
   },
