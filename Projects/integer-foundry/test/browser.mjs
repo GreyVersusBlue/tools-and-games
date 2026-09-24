@@ -108,6 +108,34 @@ async function place(p, tool, x, y) {
   }
 }
 
+/* The same read-back for "Start over", where a beat needs an empty floor to
+   begin from (#532's beat aborted on this in CI on PR #371). The sidebar's log
+   sits above the save bar and grows by a line for every packet a sink rejects,
+   up to its 130 px cap, so a line built for the last order keeps pushing the
+   button down: sampled for two seconds before #532's beat, it moved from 1016
+   to 1033 px, one 17 px line, with the log at 65 px. Puppeteer measures the
+   button and then presses where it was; a line landing in between moves it, the
+   press lands on the panel above, nothing throws, and the floor stays full. A
+   first press swallowed on purpose reproduces CI's "Waiting failed: 10000ms
+   exceeded" on the old single press and passes here on the second. Pressing
+   again is safe: confirm() is stubbed and erasing an empty save erases nothing.
+   The beat that tests the button itself ("Start over cleared the floor") still
+   presses it once. */
+async function startOver(p) {
+  await p.evaluate(() => { window.confirm = () => true; });
+  const empty = () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0;
+  for (let attempt = 1; ; attempt++) {
+    await click(p, '#save-bar [data-gvb="reset"]');
+    try { await waitFor(p, empty, { timeout: 2000 }); return attempt; }
+    catch (e) {
+      if (attempt >= 5) {
+        const left = await p.evaluate(() => document.querySelectorAll('#grid .cell:not(.empty)').length);
+        throw new Error(`Start over left ${left} tiles on the floor after ${attempt} presses`);
+      }
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ static -- */
 
 group('The file on disk');
@@ -385,14 +413,11 @@ try {
     // the sink wants and build a line that delivers exactly that.
     //
     // Proven here before being handed over as a shared-file request.
-    await p.evaluate(() => { window.confirm = () => true; });
-    await click(p, '#save-bar [data-gvb="reset"]');
     // Wait for the empty floor rather than for a fixed delay: reset goes through
     // adoptState(), which rebuilds the palette, so a click fired mid-rebuild lands
-    // on a detached button.
-    await waitFor(p,
-      () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
-      { timeout: 10000 });
+    // on a detached button. startOver() waits for it, and presses again if the
+    // first press missed.
+    await startOver(p);
 
     // A sink has to be on the floor before its order is on screen. Park one, read
     // it, clear it. state.sinks[0] survives the erase, so the number holds.
@@ -463,11 +488,7 @@ try {
     // Reverting place() to the click-and-hope version it replaced turns this
     // beat red: the cell comes back `cell empty`, which is the string PR #284's
     // CI printed.
-    await p.evaluate(() => { window.confirm = () => true; });
-    await click(p, '#save-bar [data-gvb="reset"]');
-    await waitFor(p,
-      () => document.querySelectorAll('#grid .cell:not(.empty)').length === 0,
-      { timeout: 10000 });
+    await startOver(p);
     const armed = await p.evaluate(() => {
       const grid = document.getElementById('grid');
       let eaten = 0;
@@ -523,6 +544,20 @@ try {
 
   group('Mobile, 375x812');
   {
+    // Park the desktop page first. Under Puppeteer, prepPage() opens the phone in
+    // the same browser context, so both pages share one localStorage, and the
+    // desktop page's autosave rewrites its factory (the legacy save above, sink
+    // at 7,2) into the shared key every 700 ms for as long as it runs. enter()
+    // wipes the key and reloads; a desktop write landing between the two hands
+    // the phone that factory, its one sink slot taken, and place(sink,7,3) below
+    // is refused five times over: "cell reads cell empty", as main's CI printed in
+    // run 230. The phone writes the same key on the same clock, so it is a race,
+    // not a certainty: reloading the phone the moment the key held the desktop's
+    // nine tiles aborted with that message in 1 run of 3, and with the desktop
+    // parked the key never held them in 3 of 3. Nothing after this beat needs the
+    // desktop page live: 'Clean' reads the arrays its listeners already filled.
+    // Leaving it flushes its last save before enter() wipes the key.
+    await p.goto('about:blank');
     const m = await prepPage(browser, BASE, { width: 375, height: 812, dsf: 2, mobile: true });
     await enter(m, 'integer-foundry', { base: BASE });
     await m.evaluate(() => document.fonts.ready);

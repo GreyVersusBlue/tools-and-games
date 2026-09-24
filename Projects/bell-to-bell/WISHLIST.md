@@ -334,6 +334,17 @@ new list.
   drag the cabinet onto a desk. Nothing breaks; it looks wrong.
 - The front row's advantage may be too small to notice. Do not decide without
   `SPREAD=1 node balance.mjs`.
+- **`poseIdle()` does not leave the students idling** (found 2026-09-24, #619).
+  It plays the Idle clip for 1.2 s, then `mixer.stopAllAction()`, and
+  deactivating an action makes three's AnimationMixer restore every binding's
+  original state. Every student stands in the file's rest pose, whatever clip
+  was sampled: keeping `Death` instead of `Idle` measures the same to 0.1 mm.
+  The comment's promise ("comes back standing naturally") is the rest pose
+  happening to look natural. Idle at 1.2 s would put the head up to 8.3 mm
+  higher. The fix is to drop the `stopAllAction()` (or `uncacheRoot` without
+  deactivating), and it moves the rest captures in `buildCharacterBody`, so
+  check `reactions.js`'s tweens against it. `tests/characters.mjs` already
+  baselines the clip's own bones for that day.
 
 **Weight and plumbing**
 - `Assets/` is 1,037 files and 142 MB, of which **932 files and 82 MB are

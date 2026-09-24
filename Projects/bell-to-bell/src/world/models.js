@@ -1,5 +1,9 @@
 import * as THREE from '../three.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+// The characters are EXT_meshopt_compression .glb files, written offline by
+// Tools/board-check/asset-pipeline.mjs (#619). Without this decoder the loader
+// refuses them and every student falls back to the primitive body.
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 // This module has no export actually named `SkeletonUtils` — it exports
 // `clone`/`retarget`/`retargetClip` directly, so the namespace import is what
 // gets `SkeletonUtils.clone(...)` to resolve to something real.
@@ -10,6 +14,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 // network request, cached by URL.
 export function createModelLoader() {
   const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
   const pending = new Map();
 
   function fetchGltf(path) {

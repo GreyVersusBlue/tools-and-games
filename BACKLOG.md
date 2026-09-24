@@ -1348,13 +1348,42 @@ Two of them are closed.
    page (#357); and Numina keeps its own tags, exempt but verified, because it
    is an Eleventy site whose committed build output would drop any block
    injected into it (#357).
-2. **Asset weight.** Bell to Bell and The Fourth Quarter together carry ~335
-   MB: unreferenced props and texture variants, duplicate model formats,
-   uncompressed glTF buffers and 2k textures with no smaller tier. One shared
-   pipeline (prune, resize, draco/meshopt) pays off twice here. Castle
-   Conundrum was the third and is doing its own version of this work as rank 1
-   in its own repo (#491) — whichever lands first is worth reading before the
-   other starts.
+2. **Asset weight. Increment 1 of 3 shipped** (#619, #620): the row's ~335
+   MB was stale by the time anyone measured it. Bell to Bell's Phase 6 had
+   pruned 149 to 77 MB and Fourth Quarter's Phase 4 had added a 1k tier, so the
+   two stood at 77 and 76 MB. `Tools/board-check/asset-pipeline.mjs` is the
+   pipeline: dev-only, recipes read their originals from git at a named commit,
+   packages installed `--no-save` from the versions in its header, and every
+   output's raw size must beat its source's gzipped size or it exits 1. Its one
+   recipe took Bell to Bell's eight outfits from 25.3 MB of embedded `.gltf` to
+   1.6 MB of meshopt `.glb` with the decoder vendored in the project's own
+   `libs/`, and `tests/characters.mjs` holds each to 1 mm of the original.
+   Referenced bytes 62.1 MB to 38.4 MB. What is left, measured 2026-09-24:
+   - **Increment 2, textures (sharp).** Bell to Bell's eleven props are 19.0 MB,
+     almost all of it 1k Poly Haven maps on hand-sized objects: the clipboard,
+     stapler, binder, stationery, wall clock and fire alarm are 1.6 to 2.3 MB
+     each for objects a hand could cover. A 512 tier for those, and the same
+     question for the 15.2 MB of room textures, which do fill the screen.
+     Fourth Quarter's 2k originals are 66 MiB that only a Retina-class device
+     downloads (#201); its WISHLIST says re-encoding them at q88, 4:4:4 for
+     normals, takes them to about 27 MiB (#202 left them as downloaded). That
+     becomes a recipe, and `tools/make-textures.mjs` either becomes one too or
+     stays and says why. The open call: a smaller tier is new files a page
+     picks between, and whether Bell to Bell grows a `pickTier()` like Fourth
+     Quarter's or just ships the smaller set is increment 2's to make.
+     Before/after screenshots of every re-encoded surface: a smaller, uglier
+     texture is a regression no byte count shows.
+   - **Increment 3, the props' meshes.** Their `.bin` buffers are 3.7 MB, the
+     potted plant's 1.85 MB of it, as `.gltf` plus loose textures. The same
+     meshopt recipe fits, but the `.gltf` names its textures by relative path,
+     so the output is a `.glb` that keeps them external or embeds the tier
+     increment 2 chose. Needs a `characters.mjs`-style check for static props.
+   - **Not measurable here:** whether the host gzips `.gltf` and `.glb`. The
+     sandbox's proxy 403s greyversusblue.com, so every number above is raw
+     bytes and gzip-6 bytes side by side. A `curl -sI -H 'Accept-Encoding:
+     gzip'` from a real machine settles it.
+   Castle Conundrum was the third game and is doing its own version of this in
+   its own repo (#491).
 3. **`gvb-save.js` v2. Closed by PR #325** (#494 to #502): `slot.usage()` and
    `slot.lastError` for quota accounting, `createNamespace()` for many keys under
    one prefix with one bundle file, and `createAsyncSaveSlot()` for the IndexedDB

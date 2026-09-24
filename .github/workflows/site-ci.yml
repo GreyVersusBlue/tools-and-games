@@ -142,6 +142,7 @@ jobs:
               node smoke.mjs
               node balance.mjs
               node assets.mjs
+              node characters.mjs
 
           - name: Blue Hour
             dir: Projects/blue-hour-trail
