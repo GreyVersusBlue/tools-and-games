@@ -104,21 +104,35 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Pathfinder's three
-conditional rows (PR #383)**, old ranks 2 to 4, two ¼ and a ½ naming Sonnet 5,
-worked under Opus 5.5. All three are retired and every rank below them moved
-up three. That is the line to update when your batch merges; a PR that only
+**The last batch of ranked work that shipped** is **Pathfinder's living-sheet
+row (PR #386)**, old rank 2, a ½ naming Fable 5.1, worked under Opus 5.5. It
+was retired to Q39 without building anything (#628), and every rank below it
+moved up one. That is the line to update when your batch merges; a PR that only
 changes these files is not a batch and does not belong in it.
-**20 ranked items remain**, and **every one of them names a model.**
+**19 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 2, in-browser editing for `characters.html`** (`Pathfinder`, ½,
-Fable 5.1), alone: rank 3 is a 1 in another area and cannot share its batch.
-Its row is conditional ("if the page's role shifts from showcase to living
-sheet"), and deciding whether that condition holds is the first call.
-Rank 1, the real-hardware pass, needs hardware this machine lacks.
+**Take rank 2, touch/gamepad input for Aphelion** (`Projects/aphelion`, 1,
+Opus 5), alone: a 1 is the whole batch when no ¼ in its area can join it, and
+none can. Rank 1, the real-hardware pass, needs hardware this machine lacks.
+**Rank 2 is conditional on Q40** ("does Aphelion ever need to run on a tablet
+or phone?"), which is Devon's call and unanswered in four rounds, so #628 is
+the precedent to read first: a row waiting on a person's decision leaves the
+ranked table for that person's question, with a check that fails on the
+first line of the feature.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Pathfinder's living-sheet row went to Q39, not to a build** (#628, PR #386).
+Whether `characters.html` becomes an editable character sheet is Devon's
+decision, and no test can see a decision. So nothing was built, the row was
+retired to Q39, and `Pathfinder/tests/showcase.test.mjs` (10, in Site CI)
+fails when either Pathfinder page gains browser storage, `gvb-save.js`, an
+editable field or a script from a file. **Worth carrying forward**: #626 fits
+a condition that shows up in the code, and #628 fits one only a person can
+settle. Break a regex guard-rail with each spelling the feature could take:
+the first static-import pattern only matched at a line start, and a
+`gvb-save.js` import on the `<script>` line walked past it.
 
 **Pathfinder's conditional rows are checks now, and the dossier template is
 built** (#626, #627, PR #383). Neither condition held: the Anathema page had
