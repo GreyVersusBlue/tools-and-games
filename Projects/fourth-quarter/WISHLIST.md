@@ -305,11 +305,13 @@ starting a new list.
   written by `stepToward()` and read by nothing.
 
 **Assets**
-- The 2k originals are still 66 MiB on disk and still what a Retina laptop
-  downloads. Re-encoding them at q88 would take them to about 27 MiB with no
-  visible cost (the 1k measurements in `tools/make-textures.mjs` say so), at
-  the price of 27 more binaries in git history; Phase 4 left them as
-  downloaded (#202). KTX2/basis was not measured — no encoder offline.
+- ~~The 2k originals are still 66 MiB on disk.~~ Re-encoded at q88 (4:4:4
+  for normals) by `Tools/board-check/asset-pipeline.mjs`, recipe
+  `fourth-quarter-textures`, on 2026-09-24: 69,218,191 bytes to 22,965,335,
+  the worst channel 6.14 RMSE against the download at 2048, and a Retina
+  laptop fully textured in 13.45 s at 20 Mbps instead of 30.86 (#622). The 1k
+  tier is the same recipe now, byte for byte what `tools/make-textures.mjs`
+  wrote. KTX2/basis is still not measured — no encoder offline.
 - The 1k tier is one size for every surface. A 512 tier for phones, or a
   per-surface size (the leather and the table top repeat 1×1 and could go
   smaller), has not been looked at.
@@ -606,7 +608,8 @@ checked in here and produced offline.
   `textures/<key>/1k/<slug>_<map>_1k.jpg`. The 404 fallback is untouched.
 - [x] **The 1k set, generated offline and checked in.** `tools/make-textures.mjs`
   (sharp, Lanczos-3, mozjpeg): 27 files, 5,076,840 bytes against 69,218,191,
-  13.6×. The README has the exact command.
+  13.6×. (Retired into `Tools/board-check/asset-pipeline.mjs` on
+  2026-09-24, #622; the README has the command.)
 - [x] **Normal maps as JPEG, where it showed.** The damage was 4:2:0 chroma
   subsampling on the tangent channels, not the container. Measured on a 1024²
   reference: 4:4:4 at q88 takes the plaster normal's R error from 6.92 to 5.11

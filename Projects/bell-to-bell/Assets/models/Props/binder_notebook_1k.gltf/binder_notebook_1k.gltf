@@ -93,17 +93,17 @@
     {
       "mimeType": "image/jpeg",
       "name": "binder_notebook_nor_gl",
-      "uri": "textures/binder_notebook_nor_gl_1k.jpg"
+      "uri": "textures/binder_notebook_nor_gl_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "binder_notebook_diff",
-      "uri": "textures/binder_notebook_diff_1k.jpg"
+      "uri": "textures/binder_notebook_diff_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "binder_notebook_metal-binder_notebook_rough",
-      "uri": "textures/binder_notebook_arm_1k.jpg"
+      "uri": "textures/binder_notebook_arm_512.jpg"
     }
   ],
   "accessors": [

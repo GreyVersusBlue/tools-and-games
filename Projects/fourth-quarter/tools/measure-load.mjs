@@ -17,7 +17,7 @@
 // the instance and a prototype patch never fires (WISHLIST.md, Phase 4).
 //
 // Exits non-zero when a tier fails to finish its textures, when any file 404s,
-// or when the 1k tier is not at least 5× lighter on the wire than 2k — a
+// or when the 1k tier is not at least 4× lighter on the wire than 2k — a
 // measurement that only prints is a measurement that gets ignored (#13).
 
 import { chromium } from "playwright-core";
@@ -112,6 +112,8 @@ for (const r of Object.values(results)) {
 if (results["1k"] && results["2k"]) {
   const ratio = results["2k"].tex / results["1k"].tex;
   console.log(`\n1k is ${ratio.toFixed(1)}× lighter than 2k on the wire.`);
-  if (ratio < 5) { bad++; console.error("FAIL: the 1k tier is not 5× lighter than 2k"); }
+  // 5× until the 2k set was re-encoded at q88 (#622): four times the pixels at
+  // one quality is about 4.5×, so 4× is the floor that still says the tier pays.
+  if (ratio < 4) { bad++; console.error("FAIL: the 1k tier is not 4× lighter than 2k"); }
 }
 process.exit(bad ? 1 : 0);

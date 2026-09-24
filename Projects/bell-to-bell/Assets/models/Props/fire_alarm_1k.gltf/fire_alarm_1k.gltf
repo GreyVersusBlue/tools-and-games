@@ -93,17 +93,17 @@
     {
       "mimeType": "image/jpeg",
       "name": "fire_alarm_nor_gl",
-      "uri": "textures/fire_alarm_nor_gl_1k.jpg"
+      "uri": "textures/fire_alarm_nor_gl_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "fire_alarm_diff",
-      "uri": "textures/fire_alarm_diff_1k.jpg"
+      "uri": "textures/fire_alarm_diff_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "fire_alarm_metal-fire_alarm_rough",
-      "uri": "textures/fire_alarm_arm_1k.jpg"
+      "uri": "textures/fire_alarm_arm_512.jpg"
     }
   ],
   "accessors": [

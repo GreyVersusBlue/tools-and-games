@@ -32,6 +32,17 @@ which reads the original `.gltf` files out of git. Do not hand-edit a `.glb`;
 change the recipe and re-run it, then `node characters.mjs`. A new outfit goes
 through the same recipe, and gets a `BASELINE` entry measured from its original.
 
+Every texture the game loads (the room's seven sets, the props, the picture
+frame) is written by the same pipeline's `bell-to-bell-textures` recipe from
+the Poly Haven downloads in git (#621, #622): q88 mozjpeg, and the six props a
+hand could cover (clock, fire alarm, clipboard, stationery, binder, stapler) at
+512, as `*_512.jpg` files their `.gltf` names. There is one set and no tier
+picker. Do not re-save a texture by hand; change the recipe, re-run it, and run
+`node asset-pipeline.mjs bell-to-bell-textures --check` from
+`Tools/board-check/` (it needs `npm i --no-save sharp@0.35.4`), which fails a
+committed file measurably worse than the recipe's own output. `assets.mjs`
+holds each tier-named file to its width, from the JPEG header, in CI.
+
 `src/persist.js` is the only thing that writes to `localStorage`, and it degrades to
 an in-memory store if the browser refuses. Nothing else may reach for storage.
 Period-scoped keys go through `slot(periodId, key)` and day-scoped ones through

@@ -141,17 +141,17 @@
     {
       "mimeType": "image/jpeg",
       "name": "vintage_stapler_nor_gl",
-      "uri": "textures/vintage_stapler_nor_gl_1k.jpg"
+      "uri": "textures/vintage_stapler_nor_gl_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "vintage_stapler_diff",
-      "uri": "textures/vintage_stapler_diff_1k.jpg"
+      "uri": "textures/vintage_stapler_diff_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "vintage_stapler_metal-vintage_stapler_rough",
-      "uri": "textures/vintage_stapler_arm_1k.jpg"
+      "uri": "textures/vintage_stapler_arm_512.jpg"
     }
   ],
   "accessors": [

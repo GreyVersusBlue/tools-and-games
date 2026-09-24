@@ -69,17 +69,17 @@
     {
       "mimeType": "image/jpeg",
       "name": "clipboard_nor_gl",
-      "uri": "textures/clipboard_nor_gl_1k.jpg"
+      "uri": "textures/clipboard_nor_gl_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "clipboard_diff",
-      "uri": "textures/clipboard_diff_1k.jpg"
+      "uri": "textures/clipboard_diff_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "clipboard_metal-clipboard_rough",
-      "uri": "textures/clipboard_arm_1k.jpg"
+      "uri": "textures/clipboard_arm_512.jpg"
     }
   ],
   "accessors": [
