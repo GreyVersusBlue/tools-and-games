@@ -104,21 +104,32 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Golden Hour's night moves
-and Blue Hour's fall line (PR #395)**: old ranks 5 and 9, two ½ naming Fable
-5.1, worked under Opus 5.5. Every rank below them moved up. That is the line to
-update when your batch merges; a PR that only changes these files is not a
-batch and does not belong in it.
+**The last batch of ranked work that shipped** is **Blue Hour's beats in
+kind above the fog line, increment 1 (PR #397)**: rank 8, a 1 naming Fable
+5.1, worked under Opus 5.5. The row stays at rank 8 with its text rewritten;
+nothing moved. That is the line to update when your batch merges; a PR that
+only changes these files is not a batch and does not belong in it.
 **12 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 8 alone** (Blue Hour's beats that change in kind above the fog
-line, a 1 naming Fable 5.1, Blue Hour item 2). Ranks 1 to 7 want a real GPU, a
-real phone or a person listening for an hour, which a cloud session does not
-have. Rank 9 (Integer Foundry, also a 1) is the alternative if rank 8's design
-call cannot be made.
+**Take rank 8 alone again** (Blue Hour item 2's second increment: the shape
+and the eyes above the fog line, a 1 naming Fable 5.1). Ranks 1 to 7 want a
+real GPU, a real phone or a person listening for an hour, which a cloud
+session does not have. Rank 9 (Integer Foundry, also a 1) is the alternative
+if the visual beats' summit kind cannot be made honestly.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Above the fog line the silence stills the wind and the snap is a stone**
+(#635, PR #397). Birdsong already ended at altT 0.6, so the silence beat was
+spending itself on nothing up there; `field.js` owns the band (`summitAir`)
+and the threshold (`STILL_AIR`, `summitKind`) now, and the birds and both
+beats read it. **Worth carrying forward**: a detail string that formats a
+value the break removes takes the whole suite down with a TypeError before
+the count prints; format defensively so the line fails instead. And a break
+that makes one kind fire everywhere can leave the state another line reads
+already changed (the wind was still before the bench read it), so name the
+collateral line as well as the target.
 
 **The owl hunts, fireflies drift to the fire, and Blue Hour's phantom steps
 lean toward the valley** (#633, #634, PR #395). Rank 5's "if night proves
