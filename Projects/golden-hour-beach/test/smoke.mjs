@@ -811,6 +811,10 @@ group('the owl hunts the dunes');
   ok(found === 200, 'every hunt finds somewhere to drop', `${found} of 200`);
   ok(onSand, `and it is dry dune sand ${H.reachLo} to ${H.reachHi} m from the snag`);
   ok(onSnags, 'each hunt leaves from a snag and ends on one');
+  // Said out loud (#147): the path's own curve already clears these dunes, so
+  // this line is a floor more than a catch. With huntPos's ground clamp deleted
+  // the least clearance was 0.149 m, a millimetre under, and it failed by that.
+  // A dune in the way of a future snag is what the clamp and this line are for.
   ok(under >= H.grass - 1e-9, 'the owl never goes into the dunes', `least clearance ${under.toFixed(3)} m`);
   ok(lowest <= 0.2, 'every swoop goes all the way down into the grass', `highest low point ${lowest.toFixed(3)} m`);
   ok(grassFor >= 1, 'and stays down there a moment, out of sight', `shortest ${grassFor.toFixed(2)} s`);
