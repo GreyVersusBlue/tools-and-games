@@ -104,24 +104,38 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Aphelion's touch/gamepad
-row (PR #389)**, old rank 2, a 1 naming Opus 5, worked under Opus 5.5. It was
-retired to Q40 without building anything (#629), and every rank below it
-moved up one. That is the line to update when your batch merges; a PR that only
+**The last batch of ranked work that shipped** is **board-check's Golden Hour
+and Blue Hour rows (PR #392)**: old ranks 4, 6, 8 and 9, a ¼ naming Opus 5 and
+a ½ and two ¼ naming Sonnet 5, worked under Opus 5.5. Every rank below them
+moved up. That is the line to update when your batch merges; a PR that only
 changes these files is not a batch and does not belong in it.
-**18 ranked items remain**, and **every one of them names a model.**
+**14 ranked items remain**, and **every one of them names a model.**
 
-**Take ranks 4, 6, 8 and 9 together, all `Tools/board-check`** (a ¼ naming
-Opus 5, a ½ and two ¼ naming Sonnet 5: five quarters in one area, inside
-#382's six). Ranks 1 to 3 want a real GPU, a real phone or a person listening
-for an hour, which a cloud session does not have. Rank 4 is the one naming
-Opus 5, so work the batch under it. `npm run previews` and `npm run games`
-open real, visible windows, one at a time; a session without a display needs
-one before it starts, and a capture from a software rasterizer is a draft for
-Devon to look at, not a promotion to trust (#53).
+**Take ranks 5 and 9 together** (two ½ in two areas, #382's spanning cap,
+both naming Fable 5.1). Ranks 1 to 4 and 6 to 8 want a real GPU, a real phone
+or a person listening for an hour, which a cloud session does not have. Rank 5
+is Golden Hour's owl and fireflies, "if night proves popular": that condition
+is a person's judgement, so decide first whether #628 sends it to a question
+for Devon with a check, or whether the row is buildable as written. Rank 9 is
+Blue Hour's phantom pan, a real design call (Blue Hour item 8).
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Golden Hour's `?debug` hook has twelve beats in `play-games.mjs`, Blue Hour
+is on the board, and both previews are new drafts** (#630 to #632, PR #392).
+This container has no display, so every headed run went through `xvfb-run`,
+and `Tools/board-check/README.md` now says how and what each kind of result
+means there. Scrub-and-read beats are trustworthy under it; six to eight of
+Golden Hour's real-time beats fail from run to run, as on `main`, and are #53's
+to settle on a real GPU. `assets/previews/{golden-hour,blue-hour}.jpg` and
+their og cards are SwiftShader captures, promoted as drafts; the real-hardware
+pass (rank 1) recaptures them. **Worth carrying forward**: engaging pointer
+lock under Xvfb can throw the camera about 1.45 rad of yaw and 0.88 of pitch,
+which sent the first Blue Hour capture into the sky and a thrown stone up the
+beach; put the view back yourself after the lock engages. A guard-rail's floor
+wants a break that removes part of the thing, not all of it: Blue Hour's `> 10`
+meshes stayed green with the scene's direct meshes dropped.
 
 **Aphelion's touch/gamepad row went to Q40, not to a build** (#629, PR #389).
 Whether Aphelion ever runs on a tablet or phone is Devon's decision, the same
@@ -616,7 +630,7 @@ readings, in the same terms the project wishlists already use:
   inherits, authored content whose coherence no assertion can hold, or a change
   with no safety net under it at all.
 
-Nine rows read Fable, which at 9 of 23 is a heavier share than any single
+Eight rows read Fable, which at 8 of 14 is a heavier share than any single
 project's wishlist carries, and the reason is what this list is: the leftovers
 of ten projects are disproportionately save layers, pure models, and atmosphere
 nothing in CI can look at. (It said "fifteen" from #380 until 2026-09-16, when a
@@ -635,21 +649,17 @@ and #222 was closed unmerged an hour of suites later.
 | 1 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
 | 2 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
 | 3 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 4 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 | claude/dazzling-mccarthy-55sji6 | [Golden Hour](#golden-hour) |
-| 5 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 6 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 | claude/dazzling-mccarthy-55sji6 | [Golden Hour](#golden-hour) |
-| 7 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 8 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 | claude/dazzling-mccarthy-55sji6 | [Blue Hour](#blue-hour) |
-| 9 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 | claude/dazzling-mccarthy-55sji6 | [Blue Hour](#blue-hour) |
-| 10 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 11 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 12 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 13 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 14 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 15 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 16 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 17 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 18 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 4 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 5 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 6 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 7 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 8 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 9 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 10 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 11 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 12 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 13 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 14 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -939,24 +949,23 @@ What's left:
    (water stays the dominant relative cost); the actual absolute numbers on a
    weak integrated GPU are still unmeasured. `renderer.info` at the widest home
    view reads 157 draw calls and 316k triangles, against a 300-call budget.
-3. **Preview recapture (`npm run previews`) and a board card refresh for the
-   description: it undersells the piece by about six features now.**
+3. **Preview recapture and board card refresh. Closed 2026-09-24** (#630,
+   PR #392). The card names the night, the tide, the lighthouse, the stones
+   and the journal on `index.html` and `landing.html`, and the new frame has
+   the lighthouse in it. The frame is a SwiftShader draft; the real-hardware
+   pass recaptures it with `npm run previews golden-hour` and
+   `npm run promote golden-hour`.
 4. **Touch playtest on a real phone:** the pill-as-throw-control needs a thumb
    on glass, not a mouse pretending.
 5. **If night proves popular:** the owl could hunt (one swoop over the dunes,
    no kill shown), and the fireflies could drift toward the fire when it burns.
-6. **`Tools/board-check/play-games.mjs` can lean on the debug hook**
-   (`?debug` exposes `window.__gh`: `setSunT` which also syncs the moon,
-   `setTideT` and `tide()`, which are the tide's own clock and are not the
-   sun's, plus `teleport`, `face`, `pos`, `journal`, `events`, `info`).
-   Suggested beats: scrub to 1560 and assert star opacity plus a journal DOM
-   entry; teleport to the headland and assert the place card; throw a stone and
-   assert the hint cycle; reload and assert the journal survived while `sunT`
-   reset. **And now the tide**: `setTideT(600)` then `setTideT(1800)` and read
-   the foam line's z off the strip geometry — it measured -8.19 and -0.41
-   driven by hand on 2026-09-16 — or teleport onto the wet band and count
-   footprint instances. All assertions can go against the DOM or
-   `__gh.journal()`, per locked decision #39's split.
+6. **`play-games.mjs` beats off the `__gh` hook. Closed 2026-09-24** (#631,
+   PR #392). Twelve beats after the real-time ones: the hook shut without
+   `?debug`, stars at `setSunT(1560)`, the headland's card and journal page,
+   the foam line from `setTideT(600)` to `(1800)`, the stone's pill cycle, and
+   a reload that keeps the journal and resets the sun. Each was broken once
+   from green. Footprint-counting on the wet band was not added: it is a
+   real-time walk, and #53 makes it a maybe.
 7. **A bar and a runnel, or any structure at all in the intertidal zone.** This
    is what the tide leaves for a later increment and it is the obvious next
    one: the sea's edge crosses 9.3 m of seabed that is a plain 0.10 ramp, so a
@@ -1053,75 +1062,18 @@ Deliberately not done, and still the right call:
    head-flip too, since all three read the same function — which is an argument
    for doing it deliberately or not at all. A browser check fails the moment
    anyone changes it, on purpose.
-9. **`Tools/board-check/games.mjs` — register the piece** so the integrity,
-   collision and preview passes stop skipping it. It boots exactly like Golden
-   Hour (click `#overlay`, never the canvas — while the overlay is up it covers
-   `#scene` and a canvas click never lands):
-
-   ```js
-     'blue-hour': {
-       title: 'Blue Hour',
-       url: '/Projects/blue-hour-trail/',
-       vw: 1320, vh: 800, dsf: 1,
-       three: '/Projects/blue-hour-trail/libs/three.module.js',
-       intro: ['#overlay'],
-       async open(p, { probe } = {}) {
-         await p.waitForSelector('#scene');
-         if (probe) await probe();
-         await p.click('#overlay');
-         await p.waitForSelector('#overlay.hidden', attached);
-         await wait(1200);
-       },
-     },
-   ```
-
-   There is no `saveKey`: the piece has no save, on purpose, and adding one
-   would imply a save it does not have.
-10. **`Tools/board-check/capture-previews.mjs` — a recipe, then `npm run
-    previews blue-hour` and `npm run promote`** to produce
-    `assets/previews/blue-hour.jpg`. The board card at `index.html:460` exists
-    but carries no `data-preview`, so this is the half of the original request
-    that never landed.
-
-    ```js
-      // ---- Blue Hour: stay in the woods. The trail corridor with the footbridge
-      // ahead is the piece's best single frame.
-      'blue-hour': {
-        async play(p, { shot }) {
-          await p.keyboard.down('KeyW'); await wait(4000); await p.keyboard.up('KeyW');
-          await wait(1500);                 // let the mist layer drift
-          await shot('trail');
-          const c = await camState(p);
-          return `walking at ${c.pos.join(', ')}, yaw ${c.yaw}`;
-        },
-      },
-    ```
-
-    The summit reads at 24.3/255 now and the fire lookout in fog is the
-    strongest single frame in the piece, so either shot is defensible; the trail
-    recipe is the safer capture (no teleport, no debug hook), and a summit shot
-    would give away the figure on the board card, which is an argument against
-    it. The `?debug` hook is available to any of these if a deterministic frame
-    is wanted. The full set of doors, from session 1:
-    `setWeatherT`/`getWeatherT`/`fogT`/`altT` (the fog cycle is this piece's
-    sun, and scrubbing it is how you see both phases in one run),
-    `teleport`/`face`/`pos`/`surface`, `cairns`/`layout`,
-    `trail`/`yawAlongTrail`, `fireDread`, `dread`, and `info`. Nothing in the
-    piece itself opens any of them.
-
-    **`yawAlongTrail` exists because of a bug somebody wrote and then had to
-    diagnose**: the trailhead sits at z 145 with `BOUNDS.maxZ` at 150, so a
-    test that guesses "face +z and hold W" walks into the edge of the world 5 m
-    later and reports a movement bug that isn't there. Handing tests the
-    centerline is cheaper than every future session rediscovering it.
-
-    **Absolute timing under software GL is worthless here.** The browser suite
-    measures its own frame rate and scales its one timing assertion by it
-    rather than hard-coding a distance. Under swiftshader it sees **1.7 fps**,
-    and `main.js` clamps `dt` to 0.1 s, so the world genuinely runs in slow
-    motion at roughly a tenth speed. That clamp is correct — it stops a stalled
-    tab from teleporting the walker — but any future session reading a walk
-    distance from this piece must scale it.
+9. **Registered in `games.mjs`. Closed 2026-09-24** (#631, PR #392). No
+   `saveKey`, on purpose. `play-games.mjs blue-hour` is 4 checks (the hook shut,
+   at least 100 meshes and instanced sets of the 112, no errors, nothing
+   offsite) and does not walk; the climb stays `test/browser.mjs`'s.
+10. **Capture recipe and preview. Closed 2026-09-24** (#630, #632, PR #392).
+    The trail corridor with the footbridge ahead, `assets/previews/blue-hour.jpg`
+    and `assets/og/blue-hour.jpg`, on the board card and the landing row. The
+    recipe boots with `?debug` for one call, `face(yawAlongTrail(0), 0)`,
+    because Xvfb's pointer-lock warp had thrown the camera into the sky. The
+    frame is a SwiftShader draft. **Absolute timing under software GL is still
+    worthless here**: the browser suite sees about 1.7 fps and `main.js` clamps
+    `dt` to 0.1 s, so any walk distance read from this piece must be scaled.
 
 Deliberately not done, and still the right call:
 
@@ -1472,7 +1424,11 @@ Three of them are closed.
 4. **Real hardware.** The atmospheric pieces' performance numbers are all
    software rasterization (The Fourth Quarter is the exception: its round-1
    frame times were real Chrome). Touch input has "never had a thumb on it" in
-   three separate notes files.
+   three separate notes files. **And two previews are drafts** (#630): Golden
+   Hour's and Blue Hour's were captured under Xvfb and SwiftShader on
+   2026-09-24. Recapture both (`npm run previews golden-hour`, then
+   `blue-hour`), look, and `npm run promote golden-hour blue-hour`; the same
+   run is the one that can settle Golden Hour's real-time `play-games` beats.
 5. **Ownership. Closed by PR #278** (#354, #355). `Tools/prompt-builder.html`
    was owned by no prompt and hotlinked Google Fonts, and the second was
    downstream of the first: no area owned the page, so no area's round ever
