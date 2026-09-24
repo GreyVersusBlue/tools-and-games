@@ -175,6 +175,31 @@ const RECIPES = {
     },
   },
 
+  // ---- Blue Hour: stay in the woods. The trail corridor with the footbridge
+  // ahead is the piece's best single frame that gives nothing away; the fire
+  // lookout in fog is stronger, and would put the figure on the board card. No
+  // teleport, so the frame is the one a visitor gets from the trailhead. Under
+  // software GL the page runs at a tenth speed (main.js clamps dt to 0.1 s), so
+  // four seconds of W is a metre or so, which is all this wants.
+  //
+  // `?debug` is here for one line: `face(yawAlongTrail(0), 0)` puts back the
+  // view main.js gives every visitor at the trailhead. Under Xvfb, engaging
+  // pointer lock delivered one mousemove the size of the cursor's offset from
+  // the window centre, +1.452 rad of yaw and +0.88 of pitch, and the first
+  // capture was a frame of fog sky and one branch. The same code in Golden Hour
+  // did not do it on the same run, so it is the display, not the piece.
+  'blue-hour': {
+    query: '?debug',
+    async play(p, { shot }) {
+      await p.evaluate(() => window.__bh.face(window.__bh.yawAlongTrail(0), 0));
+      await p.keyboard.down('KeyW'); await wait(4000); await p.keyboard.up('KeyW');
+      await wait(1500);                 // let the mist layer drift
+      await shot('trail');
+      const c = await camState(p);
+      return `walking at ${c.pos.join(', ')}, yaw ${c.yaw}`;
+    },
+  },
+
   // ---- Aphelion: click the title card, wait out the 2 s fade-from-black, walk
   // into the hab so the frame has ship interior in it, and catch the CERES
   // toast that lands at ~1.2 s — the HUD gauges plus that toast are the whole
@@ -459,7 +484,7 @@ for (const name of names) {
 
   try {
     // Load it, wipe any save this browser had for it, and play it in — games.mjs.
-    await enter(page, name, { base: BASE, probe });
+    await enter(page, name, { base: BASE, probe, query: rec.query ?? '' });
     const reached = await rec.play(page, { shot, probe, camState, aimAt, setYaw, walkTo, wait });
     ok('played into gameplay', reached);
     entry.reached = reached;

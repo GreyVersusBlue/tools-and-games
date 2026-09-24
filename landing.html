@@ -532,7 +532,7 @@
             <div class="numeral" aria-hidden="true">II</div>
             <p class="eyebrow">Walking sim · In three dimensions</p>
             <h3>Golden Hour</h3>
-            <p>Walk a sunset beach — waves, gulls, and a dolphin out past the break.</p>
+            <p>Walk a mile of coast from sunset into night: a tide that comes and goes, a lighthouse on the headland, stones to skip, and a field journal that remembers what you found.</p>
             <p class="reward">Reward: <b>Sand in your boots</b></p>
             <a class="go" href="Projects/golden-hour-beach/">Accept the quest <span class="arr" aria-hidden="true">→</span></a>
           </div>
@@ -583,9 +583,10 @@
         <button class="chip" type="button" aria-pressed="false" data-filter="3D">In 3D<span class="n"></span></button>
         <span class="ledger-count" aria-live="polite"></span>
       </div>
-      <!-- Three rows carry a sealed tile instead of a still (no capture exists yet):
-           Blue Hour, Bell to Bell, Hearth. Set MEDIA.previews[slug] to a same-origin
-           330x200 still and the tile becomes an image with no markup change. -->
+      <!-- Three rows carry a sealed tile in markup: Blue Hour, Bell to Bell, Hearth.
+           Set MEDIA.previews[slug] to a same-origin 330x200 still and the tile
+           becomes an image with no markup change. Blue Hour's is set (2026-09-24),
+           so its sealed tile is only what a visitor without JS sees. -->
       <div class="rows">
         <a class="row reveal" href="Projects/absalom_inheritance.html" data-slug="absalom-inheritance" data-tags="CRPG" data-preview="assets/previews/absalom-inheritance.jpg" data-cursor="view">
           <span class="idx">01</span>
@@ -893,7 +894,7 @@ window.__gvbBooted = true;
 const MEDIA = {
   heroVideo: null,                 // { src: 'assets/landing/hero.mp4', poster: 'assets/landing/hero-poster.jpg' }
   featured: {},                    // { 'castle-conundrum': 'assets/landing/castle.jpg' } — replaces the og still
-  previews: {},                    // { 'blue-hour-trail': 'assets/previews/blue-hour.jpg' } — 330x200, replaces a sealed tile
+  previews: { 'blue-hour-trail': 'assets/previews/blue-hour.jpg' }, // 330x200, replaces a sealed tile
   backdrops: { chronicles: null, numina: null },
 };
 

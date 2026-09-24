@@ -84,6 +84,10 @@ export const GAMES = {
     url: '/Projects/golden-hour-beach/',
     vw: 1320, vh: 800, dsf: 1,
     three: '/Projects/golden-hour-beach/libs/three.module.js',
+    // The field journal (journal.js), the one thing a reload survives. gvb-save's
+    // default key for `game: 'golden-hour'`; named here so enter() starts every
+    // run with an empty journal. Never change it (#36).
+    saveKey: 'gvb:golden-hour',
     intro: ['#overlay'],
     // No `allow` list any more: session 7 vendored the sand texture terrain.js
     // used to hotlink from dl.polyhaven.org, so this page is served entirely from
@@ -93,6 +97,25 @@ export const GAMES = {
       await p.waitForSelector('#scene');
       if (probe) await probe();
       await p.click('#overlay');                       // trusted click: begins + locks
+      await p.waitForSelector('#overlay.hidden', attached);
+      await wait(1200);
+    },
+  },
+
+  // ---- Blue Hour: boots exactly like Golden Hour. Click #overlay, never the
+  // canvas: while the overlay is up it covers #scene and a canvas click never
+  // lands. No `saveKey` on purpose — the piece has no save, and naming one would
+  // imply a save it does not have.
+  'blue-hour': {
+    title: 'Blue Hour',
+    url: '/Projects/blue-hour-trail/',
+    vw: 1320, vh: 800, dsf: 1,
+    three: '/Projects/blue-hour-trail/libs/three.module.js',
+    intro: ['#overlay'],
+    async open(p, { probe } = {}) {
+      await p.waitForSelector('#scene');
+      if (probe) await probe();
+      await p.click('#overlay');
       await p.waitForSelector('#overlay.hidden', attached);
       await wait(1200);
     },
@@ -281,6 +304,10 @@ export const NAMES = Object.keys(GAMES);
  * time this runs, so removing the key without a reload leaves the stale campaign
  * in memory. Passing `wipe: false` is how a script tests that a save resumes.
  *
+ * `query` is appended to the game's URL: `'?debug'` for a caller that needs a
+ * piece's debug hook (Golden Hour's `__gh`, Blue Hour's `__bh`). Empty by
+ * default, so everything else loads the page a visitor gets.
+ *
  * `probe` is the caller's scene-probe hook (drive.mjs's attachSceneProbe +
  * waitForProbe). It runs inside `open()` at the point that game is ready for it,
  * which for the three.js games is before the click that starts them.
@@ -290,10 +317,10 @@ export const NAMES = Object.keys(GAMES);
  * element that is hidden by definition never becomes visible — so the default
  * waits out the entire timeout instead of resolving immediately.
  */
-export async function enter(page, name, { base, probe = null, wipe = true, open = {} } = {}) {
+export async function enter(page, name, { base, probe = null, wipe = true, open = {}, query = '' } = {}) {
   const g = GAMES[name];
   if (!g) throw new Error(`no such game: ${name}`);
-  await page.goto(base + g.url, { waitUntil: 'load', timeout: 45000 });
+  await page.goto(base + g.url + query, { waitUntil: 'load', timeout: 45000 });
   if (wipe && g.saveKey) {
     const had = await page.evaluate(k => {
       const h = localStorage.getItem(k) !== null;
