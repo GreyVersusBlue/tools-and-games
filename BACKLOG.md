@@ -105,15 +105,15 @@ table** in Tier 2.
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
 **The last batch of ranked work that shipped** is **the shared asset
-pipeline, increment 1 (PR #371)**, rank 1, a 2+ worked under Opus 5.5 (the
-row names Fable 5.1). The row stays at rank 1 with its text rewritten; no
+pipeline, increment 2, textures (PR #377)**, rank 1, a 2+ worked under Opus 5.5
+(the row names Fable 5.1). The row stays at rank 1 with its text rewritten; no
 rank moved. That is the line to update when your batch merges; a PR that
 only changes these files is not a batch and does not belong in it.
 **24 ranked items remain**, and **every one of them names a model.**
 
-**Rank 1 is open again**: the asset pipeline's increment 2, textures
-(`assets`, 2+, Fable 5.1). It is the whole batch if taken; its plan and
-its open call are item 2 of "The site itself". Rank 2, the real-hardware
+**Rank 1 is open again**: the asset pipeline's increment 3, the props'
+meshes (`assets`, 2+, Fable 5.1), the last one. It is the whole batch if
+taken; its plan is item 2 of "The site itself". Rank 2, the real-hardware
 pass, needs hardware this machine lacks. A session that would rather not
 take a 2+ takes **rank 3, the first Pathfinder quarter** (`Pathfinder`,
 ¼, Sonnet 5): ranks 3 to 5 batch together (same area, all Sonnet 5; two ¼
@@ -121,6 +121,21 @@ and a ½, inside the same-area cap).
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Bell to Bell's textures weigh 8.9 MB, not 31.1, and Fourth Quarter's 2k
+tier 23.0 MB, not 69.2** (#621 to #623, PR #377). Two texture recipes in
+`asset-pipeline.mjs`, reading the Poly Haven downloads from git with sharp
+0.35.4: Bell to Bell's six hand-sized props at 512 as `*_512.jpg`, every
+other map re-encoded at q88 at its size, one set and no tier picker (#621);
+Fourth Quarter's 2k re-encoded, its 1k the same recipe byte for byte, and
+`tools/make-textures.mjs` retired (#622). Bell to Bell's referenced bytes
+38.4 MB to 16.2 MB. `--check` holds each committed texture to its RMSE
+against the original and against the recipe's own encode, and CI holds each
+file's width to the tier its name claims (#623). Before/after renders differ
+by 0.40 to 1.20 RMSE per pixel. **Worth carrying forward**: a packed arm map
+is data, not colour, and 4:2:0 put the clipboard's metalness at 13.0 RMSE at
+512; and an absolute error ceiling let q60 through where a slack against
+the recipe's own encode catches q80.
 
 **Bell to Bell's students weigh 1.6 MB, not 25.3** (#619, #620, PR #371).
 `Tools/board-check/asset-pipeline.mjs` is the site's one offline asset
@@ -561,7 +576,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | One shared asset pipeline for Bell to Bell and Fourth Quarter: increment 1 shipped (PR #371, the tool and Bell to Bell's outfits as meshopt, 25.3 to 1.6 MB); next increment 2, textures (B2B props to 512, FQ's 2k re-encode), then 3, the props' meshes | `assets` | 2+ | Fable 5.1 | `claude/asset-pipeline-increment-2-textures-19jsm9` | [The site itself](#the-site-itself) |
+| 1 | One shared asset pipeline for Bell to Bell and Fourth Quarter: increments 1 (PR #371, outfits as meshopt, 25.3 to 1.6 MB) and 2 (PR #377, textures: B2B 31.1 to 8.9 MB, FQ's 2k 69.2 to 23.0 MB) shipped; next increment 3, the props' meshes | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 2 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
 | 3 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
 | 4 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
@@ -1364,7 +1379,7 @@ Two of them are closed.
    page (#357); and Numina keeps its own tags, exempt but verified, because it
    is an Eleventy site whose committed build output would drop any block
    injected into it (#357).
-2. **Asset weight. Increment 1 of 3 shipped** (#619, #620): the row's ~335
+2. **Asset weight. Increments 1 and 2 of 3 shipped** (#619 to #623): the row's ~335
    MB was stale by the time anyone measured it. Bell to Bell's Phase 6 had
    pruned 149 to 77 MB and Fourth Quarter's Phase 4 had added a 1k tier, so the
    two stood at 77 and 76 MB. `Tools/board-check/asset-pipeline.mjs` is the
@@ -1375,25 +1390,18 @@ Two of them are closed.
    1.6 MB of meshopt `.glb` with the decoder vendored in the project's own
    `libs/`, and `tests/characters.mjs` holds each to 1 mm of the original.
    Referenced bytes 62.1 MB to 38.4 MB. What is left, measured 2026-09-24:
-   - **Increment 2, textures (sharp).** Bell to Bell's eleven props are 19.0 MB,
-     almost all of it 1k Poly Haven maps on hand-sized objects: the clipboard,
-     stapler, binder, stationery, wall clock and fire alarm are 1.6 to 2.3 MB
-     each for objects a hand could cover. A 512 tier for those, and the same
-     question for the 15.2 MB of room textures, which do fill the screen.
-     Fourth Quarter's 2k originals are 66 MiB that only a Retina-class device
-     downloads (#201); its WISHLIST says re-encoding them at q88, 4:4:4 for
-     normals, takes them to about 27 MiB (#202 left them as downloaded). That
-     becomes a recipe, and `tools/make-textures.mjs` either becomes one too or
-     stays and says why. The open call: a smaller tier is new files a page
-     picks between, and whether Bell to Bell grows a `pickTier()` like Fourth
-     Quarter's or just ships the smaller set is increment 2's to make.
-     Before/after screenshots of every re-encoded surface: a smaller, uglier
-     texture is a regression no byte count shows.
+   - **Increment 2, textures. Shipped, PR #377** (#621 to #623): recipes
+     `bell-to-bell-textures` (64 maps, 31.1 to 8.9 MB, the six hand-sized
+     props at 512, no tier picker) and `fourth-quarter-textures` (2k 69.2 to
+     23.0 MB; 1k byte-identical, `make-textures.mjs` retired). `--check`
+     measures error against the originals; CI pins widths by tier name.
    - **Increment 3, the props' meshes.** Their `.bin` buffers are 3.7 MB, the
      potted plant's 1.85 MB of it, as `.gltf` plus loose textures. The same
      meshopt recipe fits, but the `.gltf` names its textures by relative path,
-     so the output is a `.glb` that keeps them external or embeds the tier
-     increment 2 chose. Needs a `characters.mjs`-style check for static props.
+     so the output is a `.glb` that keeps them external or embeds them;
+     increment 2 left one set, so there is no tier to choose. Six of the
+     `.gltf` files now name `*_512.jpg` maps; read them at a commit after
+     PR #377. Needs a `characters.mjs`-style check for static props.
    - **Not measurable here:** whether the host gzips `.gltf` and `.glb`. The
      host is Cloudflare Pages (its check and preview deploy run on every PR),
      but the sandbox's proxy 403s both greyversusblue.com and the
