@@ -104,21 +104,34 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **the shared asset
-pipeline, increment 3, the props' meshes (PR #380)**, rank 1, a 2+ worked
-under Opus 5.5 (the row names Fable 5.1). It was the last increment, so the
-row is retired and every rank below it moved up one. That is the line to
-update when your batch merges; a PR that only changes these files is not a
-batch and does not belong in it.
-**23 ranked items remain**, and **every one of them names a model.**
+**The last batch of ranked work that shipped** is **Pathfinder's three
+conditional rows (PR #383)**, old ranks 2 to 4, two ¼ and a ½ naming Sonnet 5,
+worked under Opus 5.5. All three are retired and every rank below them moved
+up three. That is the line to update when your batch merges; a PR that only
+changes these files is not a batch and does not belong in it.
+**20 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 2, the first Pathfinder quarter** (`Pathfinder`, ¼, Sonnet 5):
-ranks 2 to 4 batch together (same area, all Sonnet 5; two ¼ and a ½, inside
-the same-area cap). Rank 1, the real-hardware pass, needs hardware this
-machine lacks.
+**Take rank 2, in-browser editing for `characters.html`** (`Pathfinder`, ½,
+Fable 5.1), alone: rank 3 is a 1 in another area and cannot share its batch.
+Its row is conditional ("if the page's role shifts from showcase to living
+sheet"), and deciding whether that condition holds is the first call.
+Rank 1, the real-hardware pass, needs hardware this machine lacks.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Pathfinder's conditional rows are checks now, and the dossier template is
+built** (#626, #627, PR #383). Neither condition held: the Anathema page had
+not changed since its suite, and the chronicle views agreed on all 44 rows.
+So `anathema.test.mjs` (33 to 37) lists the page's 47 input entry points and
+fails on a new one, and `tests/chronicle.test.mjs` (15, in Site CI) fails
+when the By Character and Chronological views drift. `characters.html` has a
+commented-out dossier `<template>`, held to the nine dossiers by
+`tests/dossier-template.test.mjs` (10, in Site CI). **Worth carrying
+forward**: a conditional row whose condition does not hold ships the check
+that fails when it does, not the feature (#626); and commit before you break
+a guard-rail, since `git checkout` to restore the page also restores away
+your uncommitted work.
 
 **Bell to Bell's props weigh 1.1 MB of mesh, not 3.8, and the asset pipeline
 row is retired** (#624, #625, PR #380). The recipe `bell-to-bell-props`
@@ -265,7 +278,7 @@ adding a beat**: a section that throws now costs its own checks and no others
 (#529), after the first deliberate break lost twelve unrelated ones to an abort;
 and the plan-vs-flight assertion has to be the clock and not the endpoint
 (#530), because launching at 0.9x `MAXSPEED` still wins on an empty field and
-the break ran green from 46/46. Rank 22's rotate-to-play gate is still a real
+the break ran green from 46/46. Rank 19's rotate-to-play gate is still a real
 device's job and is untouched.
 
 **A sink says what an order costs** (#531, #532). The tile-cost row was a design
@@ -445,18 +458,19 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**The only 2+ left is rank 21.** Ten of the twenty-three are ¼: ranks 2, 4,
-8, 9, 10, 13, 14, 15, 16 and 22. **Five of those ten want hardware nothing
-here has** (8, 10, 15, 16, 22), as do three of the halves (1, 7, 17); the
-Parked section below the table says why they were left ranked anyway.
-Signal City's row retired on 2026-09-24 when M9 shipped (PR #373), and the
-shared asset pipeline's the same day when its increment 3 did (PR #380).
+**The only 2+ left is rank 18.** Eight of the twenty are ¼: ranks 5, 6, 7,
+10, 11, 12, 13 and 19. **Five of those eight want hardware nothing here has**
+(5, 7, 12, 13, 19), as do three of the halves (1, 4, 14); the Parked section
+below the table says why they were left ranked anyway. Signal City's row
+retired on 2026-09-24 when M9 shipped (PR #373), the shared asset pipeline's
+the same day when its increment 3 did (PR #380), and Pathfinder's three
+conditional rows the same day again (PR #383).
 
-**The model split is 5 Opus 5, 9 Fable 5.1, 9 Sonnet 5.** Counted off the
+**The model split is 5 Opus 5, 9 Fable 5.1, 6 Sonnet 5.** Counted off the
 table rather than decremented, which is how the 15/14/9 drift was caught and
 how this paragraph's own drift was caught on 2026-09-24 (it still said 27
-rows and named the peak rank 1): 5 + 9 + 9 is 23, and the table has 23
-rows. By size it is 10 ¼, 9 ½, 3 ones and 1 of the 2+, which is the same 23.
+rows and named the peak rank 1): 5 + 9 + 6 is 20, and the table has 20
+rows. By size it is 8 ¼, 8 ½, 3 ones and 1 of the 2+, which is the same 20.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under.
@@ -590,28 +604,25 @@ and #222 was closed unmerged an hour of suites later.
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 2 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 | `claude/quirky-gauss-rg7e6q` | [Anathema Archive](#anathema-archive) |
-| 3 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 | `claude/quirky-gauss-rg7e6q` | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 4 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 | `claude/quirky-gauss-rg7e6q` | [Pathfinder Characters](#pathfinder-characters) |
-| 5 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 6 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 7 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 8 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 9 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 10 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 11 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 12 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 13 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 14 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 15 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 16 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 17 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 18 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 19 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 20 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 21 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 22 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 23 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 2 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 3 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 4 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 5 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 6 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 7 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 8 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 9 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 10 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 11 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 12 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 13 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 14 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 15 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 16 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 17 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 18 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 19 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 20 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -1272,7 +1283,7 @@ to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
 13 below are done (M8 in PRs #355 and #358), and M9 in PRs #362, #367 and #373 (the grid, endless, the sandbox): 919 checks across nine suites, all in Site CI. **Milestones 0 to 9 are done and the ranked row is retired.** Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
-(a ¼ row for the site, like Blue Hour's ranks 13 and 14), and the trucker's
+(a ¼ row for the site, like Blue Hour's ranks 10 and 11), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
@@ -1360,8 +1371,8 @@ the one file-level exception and left with that project on 2026-09-15 (#491),
 taking `npm run play` with it.
 
 Everything open against this folder is filed under the project that needs it:
-Golden Hour's preview recapture and debug-hook beats (ranks 9 and 11) and Blue
-Hour's `games.mjs` entry and preview recipe (13 and 14). Those four numbers were
+Golden Hour's preview recapture and debug-hook beats (ranks 6 and 8) and Blue
+Hour's `games.mjs` entry and preview recipe (10 and 11). Those four numbers were
 read off the table rather than decremented with the rest, which is how the drift
 the line before this one carried was caught twice running — and on 2026-09-16 it
 caught it twice more, once when the four had been left reading 17, 19, 21 and 22
