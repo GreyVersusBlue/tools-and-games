@@ -336,21 +336,18 @@ Run's three stars on 0 of 6 seeds (the lesson on at most 2 of 6 with any walk mo
 any call's worst wait near 40 s under every hand tried; #639 has the
 numbers.
 
-### R3. Hard mode on one level
+### R3. Hard mode on one level: done (HISTORY.md #641)
 
-**Size ¼. Model Fable 5.1.** Put `mode: 'hard'` on one late level, so a
-collision ends the run there and the all-red and yellow sliders become a
-survival tool rather than a third-star tool. School Run is the candidate:
-with no input it collides on 2 of 6 seeds (seeds 4 and 5, one each), so the
-cost is real, and it has the half-speed zone and the zipper to make a
-careful hand pay off. Calibrate with R1's hand first: if the hand cannot
-keep all six seeds clean because the collisions come from red-runners no
-timing prevents, the level is unfair in hard mode and the answer is a
-different level or none. The level card already switches its line to
-"one collision ends it" on a hard level (`main.js`), so there is no UI to
-build. Guard: a scripted collision on that level
-ends the run with the "does not forgive one" reason; on a soft level the
-same collision does not.
+Rush Hour ships `mode: 'hard'`, not School Run. R1's hand collides on
+School Run (seeds 4 to 6), Main Street (4 and 5) and Two Blocks (1), and
+runs Rush Hour clean on all six with three stars on each. Rush Hour's
+crash is the corridor called on the shipped rule: the W left's arrow
+meets an E through left in the box on seeds 2, 5 and 6 at 1.5 s of
+all-red and on none at 2.5 s, so the all-red slider is what keeps the
+run alive there. `test/scoring.mjs` crashes two cars through the World
+on the shipped Rush Hour (the run ends with the "does not forgive one"
+reason) and on the shipped Main Street (it goes on), and `test/browser.mjs`
+checks that only Rush Hour's card says "one collision ends it".
 
 ### R4. Endless: measure the hand, then fix the ramp
 

@@ -233,10 +233,15 @@ group('Rush Hour: the events and what the corridor costs');
   // it is late on 3 of 6 and the board clears 65 to 83 at 10 to 17 s.
   // Target 56, waitTarget 20: the corridor is the level, and the second
   // star is what a good hand on the phases buys back. One seed of each
-  // (a 4-minute run is about 8 s).
+  // (a 4-minute run is about 8 s). Rush Hour ships hard (R3, #641): at the
+  // shipped 1.5 s all-red the corridor, called this way, puts the W left's
+  // arrow into an E through still in the box on seeds 2, 5 and 6, and the
+  // run ends; at 2.5 s none of the six collide. So the lesson is played
+  // here with the slider at 2.5.
   const l6 = levelById('rush-hour');
-  const run = seed => {
-    const w = new World(withAuto(l6), seed);
+  const run = (seed, allRed = 2.5) => {
+    const lvl = withAuto(l6);
+    const w = new World({ ...lvl, controller: { ...lvl.controller, timing: { ...lvl.controller.timing, allRed } } }, seed);
     let called = false;
     for (let i = 0; i < l6.duration * 60 && !w.stats.gridlock; i++) {
       w.step();
@@ -248,6 +253,10 @@ group('Rush Hour: the events and what the corridor costs');
   const { w, r } = run(2);
   ok(r.survived && r.cleared >= l6.target && w.stats.outages === 1 && w.stats.ambulances === 1, 'seed 2 with the corridor called survives, clears the target, and saw the outage and the ambulance', `${starString(r.stars)} ${r.cleared}/${r.avgWait.toFixed(0)}s/${r.collisions}x`);
   ok(r.ambulanceLate === 0 && r.ambulances === 1, 'the ambulance was on time', `${r.ambulances} on the map, ${r.ambulanceLate} late`);
+  // the all-red as a survival tool (R3): the same seed and the same call at
+  // the shipped 1.5 s is a collision the World counts, and hard mode ends it
+  const short = run(2, 1.5);
+  ok(short.w.stats.collisions > 0 && !short.r.survived && short.r.reasons[0] === 'a collision, and this level does not forgive one', 'at the shipped 1.5 s all-red the same run collides and hard mode ends it', `${short.w.stats.collisions}x: ${short.r.reasons.join('; ')}`);
   const late = new World(withAuto(l6), 2);
   for (let i = 0; i < l6.duration * 60 && !late.stats.gridlock; i++) late.step();
   const rl = score(late);
@@ -335,6 +344,33 @@ group('the lesson decides a star (R2)');
   recordResult(st, 'rush-hour', { stars: 3, points: 900 });
   recordResult(st, 'rush-hour', { stars: 1, points: 700 });
   ok(st.levels['rush-hour'].stars === 3 && totalStars(st) === 3, 'three stars earned before the lesson stand after a one-star run under it');
+}
+
+group('hard mode on one shipped level (R3)');
+
+{
+  // Rush Hour ships hard (#641); every other level ships soft. The
+  // collision is the World's: a W through and an S through placed a metre
+  // past their lines at 12 m/s meet in the box one second later, whatever
+  // the light says. Nothing here writes the count or builds a hard level.
+  const crash = id => {
+    const w = new World(levelById(id), 1);
+    w.run(1);
+    const a = w.spawnCar({ leg: 'W', archetype: 'standard', turn: 'T', lane: 0 });
+    const b = w.spawnCar({ leg: 'S', archetype: 'standard', turn: 'T', lane: 0 });
+    for (const c of [a, b]) { c.s = c.path.stopLine + 1 - c.stats.length / 2; c.v = 12; for (const h of c.hist) { h.s = c.s; h.v = 12; } }
+    for (let i = 0; i < 60 * 5 && !(a.crashed && b.crashed); i++) w.step();
+    return { w, a, b, r: score(w) };
+  };
+  const ONE = 'a collision, and this level does not forgive one';
+  const hard = LEVELS.filter(l => l.mode === 'hard').map(l => l.id);
+  ok(hard.join() === 'rush-hour', 'Rush Hour is the one level that ships hard', hard.join(', ') || 'none');
+  const h = crash('rush-hour');
+  ok(h.w.stats.collisions > 0 && h.a.crashed && h.b.crashed, 'on Rush Hour the scripted pair meet in the box', `${h.w.stats.collisions} collision at ${h.w.t.toFixed(1)} s`);
+  ok(h.r.reasons.length === 1 && h.r.reasons[0] === ONE && !h.r.survived && h.r.stars === 0, 'and the run ends there, with the "does not forgive one" reason', h.r.reasons.join('; '));
+  const s = crash('main-street');
+  ok(s.w.stats.collisions > 0 && s.a.crashed && s.b.crashed, 'the same pair meet on Main Street, which ships soft', `${s.w.stats.collisions} collision at ${s.w.t.toFixed(1)} s`);
+  ok(failedEarly(s.w) === null && !s.r.reasons.includes(ONE), 'and the run goes on', s.r.reasons.join('; '));
 }
 
 group('satisfaction never fails a level');
