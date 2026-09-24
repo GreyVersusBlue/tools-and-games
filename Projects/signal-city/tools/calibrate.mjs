@@ -86,17 +86,19 @@ export function controllerFor(level, cycle, { plan = false, twoPhase = false, al
 // one carrying its movement; the green is held (holdGreen, the elapsed
 // rule's clock restarted) every 10 s while any member is short of its box
 // exit, and the hold stops there, not when the last member leaves the map.
+// Returns the node it is holding, or -1.
 export function holdPlatoon(w) {
   const p = w.platoon;
-  if (!p) return;
+  if (!p) return -1;
   const ctl = w.controllers[p.node];
   const lead = p.cars[0];
-  if (lead.front < lead.path.stopLine - 60) return;
-  if (p.cars.length >= p.size && p.cars.every(c => c.done || c.rear > c.path.boxExit)) return;
+  if (lead.front < lead.path.stopLine - 60) return -1;
+  if (p.cars.length >= p.size && p.cars.every(c => c.done || c.rear > c.path.boxExit)) return -1;
   const want = ctl.phases.findIndex(ph => ph.movements.includes(lead.path.movement));
-  if (want < 0) return;
-  if (ctl.phase !== want || ctl.stage !== 'green') { if (ctl.next !== want) w.requestPhase(want, p.node); return; }
+  if (want < 0) return -1;
+  if (ctl.phase !== want || ctl.stage !== 'green') { if (ctl.next !== want) w.requestPhase(want, p.node); return p.node; }
   if (p._heldAt === undefined || w.t - p._heldAt >= 10) { if (w.holdGreen(p.node)) p._heldAt = w.t; }
+  return p.node;
 }
 
 // One run. `offset` (a corridor only) shifts the second box's plan.
@@ -147,6 +149,9 @@ function greedy(w, node, max = HAND_MAX) {
   const others = q.map((n, i) => (i === ctl.phase ? -1 : n));
   const other = others.indexOf(Math.max(...others));
   if (left !== Infinity) {
+    // a hold restarts the rule's clock, so the cap is kept here: past max
+    // the green goes to the next-longest queue whatever the clock says
+    if (ctl.stageT >= max && q[other] > 0) { w.requestPhase(other, node); return; }
     if (left > 1 / 60 + 1e-9) return;
     if (q[ctl.phase] >= q[other] && ctl.stageT < max) { w.holdGreen(node); return; }
     if (q[other] > 0) w.requestPhase(other, node);
@@ -157,9 +162,9 @@ function greedy(w, node, max = HAND_MAX) {
 }
 
 export function handStep(w, { platoons = true, corridor = true, phases = true, max = HAND_MAX } = {}) {
-  if (platoons) holdPlatoon(w);
+  const held = platoons ? holdPlatoon(w) : -1;   // a box held under a platoon is the platoon's, not the greedy's
   if (corridor) for (const c of w.cars) if (!c.done && !c.priority && (c.archetype === 'emergency' || c.archetype === 'motorcade')) w.requestPriority(c);
-  if (phases) for (let n = 0; n < w.controllers.length; n++) greedy(w, n, max);
+  if (phases) for (let n = 0; n < w.controllers.length; n++) if (n !== held) greedy(w, n, max);
 }
 
 // One run of a level exactly as it ships: no input, or the hand. `offset`
