@@ -44,6 +44,32 @@ frame-dependent assertion hangs instead of failing usefully. So those scripts
 open a visible window and visibly play the games. Don't "fix" them back to
 headless.
 
+**On a Linux box with no display** (a cloud container), give them one:
+
+```
+xvfb-run -a -s "-screen 0 1600x1000x24" node play-games.mjs golden-hour
+xvfb-run -a -s "-screen 0 1600x1000x24" node capture-previews.mjs blue-hour
+```
+
+That is the same SwiftShader rasterizer `launch()` forces on Linux headed or
+not; Xvfb only supplies the screen `requestAnimationFrame` and pointer lock
+want. What it means for a result (2026-09-24, measured at about 0.8 fps):
+
+- A beat that scrubs a clock or moves the walker by hand and then reads what
+  changed is trustworthy either way. Golden Hour's `?debug` beats are all this
+  kind.
+- A real-time movement beat (hold W, wait for the sun) is inconclusive either
+  way (#53). Six to eight of Golden Hour's fail under Xvfb from one run to the
+  next (the walk, mouse look, the arrow keys, the sun and fog, the re-aim, the
+  wade settle, the footprints); do not "fix" them from here.
+- Engaging pointer lock under Xvfb can deliver one mousemove the size of the
+  cursor's offset from the window centre, which throws the camera about 1.45
+  rad of yaw and 0.88 of pitch. It came and went between runs. Anything that
+  depends on where the camera points after the lock engages should put the view
+  back itself, as the Blue Hour recipe does.
+- A capture is a draft for a person with a real GPU to look at, not a frame to
+  trust. Say so wherever it is promoted.
+
 ## The two shims
 
 `harness.mjs` intercepts requests so a render is the real thing and not a

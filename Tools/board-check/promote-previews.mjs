@@ -2,7 +2,13 @@
 // wants for each quest.
 //
 //   npm run promote            # write both sizes for everything in chosen.json
+//   npm run promote blue-hour  # just the named entries of chosen.json
 //   npm run promote -- --dry   # encode and report sizes, write nothing
+//
+// Naming entries matters because candidates/ is not tracked: a fresh checkout
+// has chosen.json and none of the PNGs it names, so promoting every entry from
+// one session's single capture fails twelve times over for frames nobody asked
+// to replace. A name that is not in chosen.json is a failure, not a no-op.
 //
 // Reads `candidates/chosen.json`: { "<preview-name>": "<candidate filename>" }.
 // Writes, per entry:
@@ -44,7 +50,7 @@ const KNOWN = new Set([
   'castle-conundrum', 'aphelion', 'golden-hour', 'fourth-quarter',
   'faire-weekend', 'closing-time', 'integer-foundry',
   'absalom-inheritance', 'daredevil', 'fracture-cycle', 'corner-and-kettle',
-  'torchbearer', 'orbital',
+  'torchbearer', 'orbital', 'blue-hour',
 ]);
 
 const OUTPUTS = [
@@ -54,6 +60,7 @@ const OUTPUTS = [
 const V_ANCHOR = 0.42; // crop window centre, as a fraction of source height
 
 const dry = process.argv.includes('--dry');
+const only = process.argv.slice(2).filter(a => !a.startsWith('--'));
 
 const chosenPath = path.join(CAND, 'chosen.json');
 if (!fs.existsSync(chosenPath)) {
@@ -62,7 +69,16 @@ if (!fs.existsSync(chosenPath)) {
     '  { "aphelion": "aphelion-00-aboard.png", ... }');
   process.exit(2);
 }
-const chosen = JSON.parse(fs.readFileSync(chosenPath, 'utf8'));
+const chosenAll = JSON.parse(fs.readFileSync(chosenPath, 'utf8'));
+const unchosen = only.filter(n => !(n in chosenAll));
+if (unchosen.length) {
+  console.error(`not in candidates/chosen.json: ${unchosen.join(', ')}\n` +
+    `chosen: ${Object.keys(chosenAll).join(', ')}`);
+  process.exit(2);
+}
+const chosen = only.length
+  ? Object.fromEntries(only.map(n => [n, chosenAll[n]]))
+  : chosenAll;
 
 const bad = Object.keys(chosen).filter(k => !KNOWN.has(k));
 if (bad.length) {

@@ -34,6 +34,160 @@ const OUT = path.join(HERE, 'shots', 'games');
 const PORT = 8126; // 8123 checks/shoot, 8125 previews
 const BASE = `http://127.0.0.1:${PORT}`;
 
+/** Resolve after `n` requestAnimationFrame callbacks: "the render loop ran". */
+const frames = (p, n = 2) => p.evaluate(n => new Promise(r => {
+  let k = 0;
+  const f = () => (++k >= n ? r() : requestAnimationFrame(f));
+  requestAnimationFrame(f);
+}), n);
+
+/**
+ * Golden Hour through `?debug`, which exposes `window.__gh` (main.js, the end).
+ *
+ * Every beat here scrubs a clock or moves the walker by hand and then reads what
+ * changed, so none of it is a real-time movement assertion and #53 does not
+ * reach it: the same numbers come out at 0.8 fps under Xvfb and SwiftShader as
+ * at 60 on a real GPU, only slower. The real-time beats above (the walk, the
+ * sun going down on its own, the wade) are the other kind, and stay that kind.
+ *
+ * #39's split, beat by beat: what just happened is read off the DOM (the place
+ * card, the journal's page, the hint pill) or off the scene graph where the
+ * thing is only pixels (the stars, the foam line); what a reload has to survive
+ * is read off `__gh.journal()`, which is the save's in-memory side.
+ */
+async function ghDebugBeats(p, t) {
+  const g = GAMES['golden-hour'];
+  t.ok(await p.evaluate(() => window.__gh === undefined),
+    'without ?debug the page exposes no __gh');
+
+  await p.goto(new URL(p.url()).origin + g.url + '?debug', { waitUntil: 'load' });
+  await g.open(p, { probe: t.probe });
+  t.ok(await p.evaluate(() => typeof window.__gh?.setSunT === 'function'),
+    'with ?debug it does');
+
+  // -- The sun: scrub to held night (SUN_TOTAL, 1560 walking seconds) and read
+  // the stars. They are the 3,000-point cloud; the 40-point one is the fireflies,
+  // which are lit from the start.
+  const stars = () => p.evaluate(() => {
+    let best = null;
+    window.__scene.traverse(o => {
+      if (o.isPoints && (!best || o.geometry.attributes.position.count > best.n)) {
+        best = { n: o.geometry.attributes.position.count, a: o.material.opacity };
+      }
+    });
+    return best?.a ?? null;
+  });
+  const dayStars = await stars();
+  await p.evaluate(() => window.__gh.setSunT(1560));
+  await frames(p);
+  const nightStars = await stars();
+  t.ok(dayStars !== null && dayStars < 0.1 && nightStars > 0.8,
+    'setSunT(1560) scrubs to night: the stars come out',
+    `star opacity ${dayStars} -> ${nightStars}, sunT ${await p.evaluate(() => window.__gh.getSunT())}`);
+  await t.shot('night');
+
+  // -- A place: teleport past x -420 onto the headland. regions.js raises the
+  // card and the journal records the place, first time ever. Before the move,
+  // the headland is in neither, so the beat cannot pass on a leftover save.
+  const journalPage = () => p.evaluate(() =>
+    [...document.querySelectorAll('#journal li.got')].map(li => li.textContent));
+  const before = await p.evaluate(() => window.__gh.journal().places);
+  t.ok(!before.includes('headland') && !(await journalPage()).includes('The Headland'),
+    'the headland is not in the journal before anyone goes there', `places [${before}]`);
+  await p.evaluate(() => { window.__gh.teleport(-440, 0); window.__gh.face(0, 0); });
+  await waitFor(p, () => document.getElementById('region-card').classList.contains('show'),
+    { timeout: 30000 }).catch(() => {});
+  const card = await p.$eval('#region-card', el => ({ text: el.textContent, show: el.classList.contains('show') }));
+  t.ok(card.show && card.text === 'The Headland', 'teleporting to the headland raises its place card',
+    `"${card.text}"${card.show ? '' : ' (not shown)'}`);
+  t.ok((await journalPage()).includes('The Headland'),
+    "and writes it onto the journal's page", (await journalPage()).join(', '));
+
+  // -- The tide: the second clock, not the sun's. setTideT(600) is low water
+  // (period / 4), 1800 is high. Read the foam strip nearest the walker, which
+  // hugs the waterline, rather than the tide's own numbers: the claim is that
+  // the sea's edge moved on the sand, not that a variable changed. Measured
+  // -8.35 m and -2.33 m on 2026-09-24 (-8.19 and -0.41 by hand on 09-16); the
+  // swash rides on top and moves either reading by a metre or two, which is
+  // what the 2.5 m floor leaves room for.
+  await p.evaluate(() => window.__gh.teleport(-50, 10));
+  const foamZ = () => p.evaluate(() => {
+    const x = window.__gh.pos().x;
+    let best = null;
+    window.__scene.traverse(o => {
+      if (!o.isMesh || o.geometry.type !== 'PlaneGeometry') return;
+      const a = o.geometry.attributes.position;
+      if (a.count !== 123) return;            // 40 x 2 segments: the foam strips, 16 of them
+      let sx = 0, sz = 0;
+      for (let i = 0; i < a.count; i++) { sx += a.getX(i); sz += a.getZ(i); }
+      const cx = sx / a.count;
+      if (!best || Math.abs(cx - x) < Math.abs(best.cx - x)) best = { cx, z: sz / a.count };
+    });
+    return best ? +best.z.toFixed(2) : null;
+  });
+  await p.evaluate(() => window.__gh.setTideT(600));
+  await frames(p);
+  const lowZ = await foamZ();
+  await p.evaluate(() => window.__gh.setTideT(1800));
+  await frames(p);
+  const highZ = await foamZ();
+  t.ok(lowZ !== null && highZ - lowZ > 2.5, 'setTideT(1800) brings the foam line up the beach from low water',
+    `foam z ${lowZ} at 600 -> ${highZ} at 1800`);
+
+  // -- A stone: stand at the -24 patch facing the sea, pick one up, wind up,
+  // throw. The pill is the whole interface, so the cycle is read off it.
+  //
+  // Pointer lock is released first. stones.js listens for the wind-up on
+  // `document`, lock or not, so the beat loses nothing; and under Xvfb a held
+  // lock turned the camera about 90 degrees between the E press and the release
+  // (a warp-sized movementX), the stone flew west up the beach, and the walker
+  // was left facing away from the patch with a pill that was quiet for that
+  // reason and not because the cycle broke. The walker is faced back at the
+  // patch after the throw for the same reason: the claim is that the pill comes
+  // back, not where the walker happens to be looking.
+  await p.evaluate(() => document.exitPointerLock?.());
+  const facePatch = () => p.evaluate(() => { window.__gh.teleport(-24, 5); window.__gh.face(0, -0.3); });
+  await facePatch();
+  const pill = () => p.$eval('#action-hint', el => el.classList.contains('show') ? el.textContent : '');
+  const PICK = 'pick up a flat stone · E';
+  // (drive.mjs's waitFor passes no arguments through, so the text is inlined.)
+  const pickShown = () => document.getElementById('action-hint').textContent === 'pick up a flat stone · E';
+  await waitFor(p, pickShown, { timeout: 30000 }).catch(() => {});
+  const cycle = [await pill()];
+  await p.keyboard.down('KeyE'); await frames(p); await p.keyboard.up('KeyE'); await frames(p);
+  cycle.push(await pill());
+  await p.mouse.down(); await frames(p);
+  cycle.push(await pill());
+  await p.mouse.up(); await frames(p);
+  cycle.push(await pill());
+  await facePatch();
+  // In flight the patch is unavailable, so the pill goes quiet until the stone
+  // is down. Under software GL that is tens of seconds of wall clock.
+  await waitFor(p, pickShown, { timeout: 120000 }).catch(() => {});
+  cycle.push(await pill());
+  const want = [PICK, 'hold click to wind up, release to throw', 'release to throw', '', PICK];
+  t.ok(cycle.every((s, i) => s === want[i]),
+    'a stone cycles the hint: pick up, wind up, release, quiet in flight, pick up again',
+    cycle.map(s => `"${s}"`).join(' -> '));
+
+  // -- A reload: the journal is the one thing it survives, and the sun is
+  // pointedly not in it. The headland was written tens of seconds ago, so the
+  // slot's 4 s autosave has long since fired; this reads the load side, not
+  // the pagehide flush, and does not claim to test that flush.
+  await p.reload({ waitUntil: 'load' });
+  await g.open(p, { probe: t.probe });
+  const after = await p.evaluate(() => ({ j: window.__gh.journal(), sunT: window.__gh.getSunT() }));
+  t.ok(after.j.places.includes('headland'), 'after a reload the journal still has the headland',
+    `places [${after.j.places}]`);
+  t.ok(after.sunT < 60, 'and the sun started over', `sunT ${after.sunT.toFixed(1)}`);
+  t.ok(await stars() < 0.1, 'so the stars are gone again', `star opacity ${await stars()}`);
+  await p.keyboard.press('KeyJ');
+  await frames(p);
+  t.ok((await journalPage()).includes('The Headland'), "and the journal's page says so when opened",
+    (await journalPage()).join(', '));
+  await p.keyboard.press('KeyJ');
+}
+
 /* ------------------------------------------------------------------- beats -- */
 
 const SUITES = {
@@ -606,7 +760,14 @@ const SUITES = {
     });
     t.ok(props.instances > 400, 'the wrack line is on the sand',
       `${props.instances} pieces across ${props.instanced} instanced meshes`);
-    t.ok(props.instanced <= 4, 'and it is instanced, not 460 separate objects');
+    // Six on 2026-09-24: three wrack kinds (821, 259 and 220 pieces), a 10-piece
+    // prop set, the footprints and one more small basic-material set. This read
+    // `<= 4` from session 8 until then and failed on every run since the beach
+    // grew; nothing about it was a GPU question. The bound is loose on purpose —
+    // what it guards is the wrack becoming 1,300 separate meshes, not a seventh
+    // instanced set arriving.
+    t.ok(props.instanced <= 10, 'and it is instanced, not 1,300 separate objects',
+      `${props.instanced} instanced meshes`);
 
     // Arrow keys look. This is the whole keyboard-only path: nothing in this
     // piece needs aiming, so nothing in it should require pointer lock, and a
@@ -689,17 +850,54 @@ const SUITES = {
     t.ok(settledWade.y > 0.5, 'and the walker never goes fully underwater',
       `eye y ${settledWade.y.toFixed(2)}`);
 
-    // Footprints: a small-geometry InstancedMesh (the wrack kinds are all
-    // bigger than 60 vertices) should have instances on it after walking
-    // toward the shoreline.
+    // Footprints: the one InstancedMesh that is both basic-material and under
+    // 60 vertices (12). This used to pick "under 60 vertices" alone, on the
+    // claim that the wrack kinds were all bigger; they are 48, 42 and 24 now,
+    // and the old selector found the footprints only because traversal happens
+    // to reach them after the wrack.
     const footCount = await p.evaluate(() => {
       let found = 0;
       window.__scene.traverse(o => {
-        if (o.isInstancedMesh && o.geometry.attributes.position.count < 60) found = o.count;
+        if (o.isInstancedMesh && o.material.isMeshBasicMaterial
+            && o.geometry.attributes.position.count < 60) found = o.count;
       });
       return found;
     });
     t.ok(footCount > 0, 'footprints are left in the wet sand', `${footCount} instances`);
+
+    await ghDebugBeats(p, t);
+  },
+
+  // ---- Blue Hour ------------------------------------------------------------
+  // The project's own test/browser.mjs drives the mountain through ?debug and
+  // owns the climb, the fog and every dread beat. What this adds is the page a
+  // visitor gets: it boots through games.mjs's opening, builds, keeps its debug
+  // door shut, and (the tail below, for every game) raises no error and reaches
+  // for nothing offsite. No walk: a W-hold here is a real-time movement claim,
+  // and #53 makes one inconclusive on the only machines that run this headed
+  // without a person, so it would be a beat that can only ever say "maybe".
+  'blue-hour': async (p, t) => {
+    t.ok(await p.evaluate(() => window.__bh === undefined),
+      'without ?debug the page exposes no __bh');
+    const scene = await p.evaluate(() => {
+      let meshes = 0, instanced = 0;
+      window.__scene.traverse(o => {
+        if (o.isInstancedMesh) instanced++;
+        else if (o.isMesh) meshes++;
+      });
+      return { meshes, instanced };
+    });
+    // 104 meshes and 8 instanced sets on 2026-09-24, so the floor is 100 of the
+    // 112. It read `> 10` first and stayed green with every mesh added straight
+    // to the scene dropped (92 left, because most of the mountain arrives inside
+    // groups): that proved the scene existed and nothing more. A deliberate cut
+    // below 100 should move this number with it. No fog clause: main.js
+    // reads scene.fog every frame, so a page without it dies before the probe
+    // attaches and this line is never reached. Broken on purpose, that is what
+    // happened; the error line below is what catches it.
+    t.ok(scene.meshes + scene.instanced >= 100, 'the mountain is built',
+      `${scene.meshes} meshes, ${scene.instanced} instanced`);
+    await t.shot('trailhead');
   },
 
   // ---- Aphelion -------------------------------------------------------------
