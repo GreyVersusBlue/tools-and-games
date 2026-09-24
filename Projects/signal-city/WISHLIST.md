@@ -308,26 +308,17 @@ the campaign can be three-starred by watching it. Every level ships
 `mode: 'soft'`, and the hard mode in `scoring.js` (one collision ends the
 run) is used by none.
 
-### R1. A reference hand, and a no-input table, in the calibration tool
+### R1. A reference hand, and a no-input table: done (HISTORY.md #636, #637)
 
-**Size ¼. Model Opus 5.** `tools/calibrate.mjs` plays fixed cycles, timed
-plans and `--hold` (the platoon hand). Add two things:
-
-- `--baseline`: every level exactly as it ships, no input, the table above.
-- `--hand`: one scripted good player, built from pieces that already
-  exist: `holdPlatoon` for platoons, the corridor requested the moment an
-  emergency vehicle spawns, a queue-greedy phase choice at each green's end
-  (the phase with the longest waiting queue, never below the minimum
-  green), and on a corridor level the offset swept at load and the best
-  one kept.
-
-The hand is a yardstick, not a solver: R2 needs to know what "played
-well" earns before it can set a star above "not played". It must call the
-game's own `World` and `Controller`, never a copy of their logic (#34: a
-test that re-implements the thing it checks is not a check). Done when both
-tables print for all nine levels, and the hand beats the baseline on
-cleared or wait on every level with a default. It is a tool, so it prints
-and exits 0 like the rest of `calibrate.mjs`.
+`node tools/calibrate.mjs all --baseline --hand` prints both tables and the
+hand against no input (about 25 minutes here); `--hand=phases,platoons,
+corridor,offset` plays only the parts named. The no-input table matched the
+one above cell for cell. The full hand beats no input on cleared or wait on
+five levels and not on four: Two Blocks ties (its shipped 16 s is the
+sweep's best offset), and Rush Hour, Main Street and Free Play lose both
+because the corridor and the held procession cost the board. The greedy
+alone (`--hand=phases`) beats no input on all three. That is R2's problem
+measured: playing the lesson costs the wait star.
 
 ### R2. The lesson decides a star
 
@@ -353,7 +344,11 @@ Either way: stars stay 0 to 3, so the save's shape, `signal_city_v1` and
 player who three-starred Rush Hour under the old rule keeps those stars and
 the shop money they paid for; record that as a locked decision rather than
 clawing them back. Re-run R1's two tables and put the new ones in the
-`HISTORY.md` entry. A new `test/stars.mjs` in Site CI plays each starred
+`HISTORY.md` entry. R1 measured the shipped rule's hand (#637): the full
+hand three-stars Rush Hour 5/6, Main Street 3/6 and Two Blocks 5/6, so
+"R1's hand earns three on at least four" already fails on Main Street as
+it ships. The lesson star has to be one the hand's lesson move earns, not
+the wait target it costs. A new `test/stars.mjs` in Site CI plays each starred
 level on six seeds with no input and fails if any reaches three stars;
 break it by restoring the old second star on one level and watch that
 level's line fail, not another's.

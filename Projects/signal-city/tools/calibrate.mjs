@@ -29,6 +29,13 @@
 // row per day (cleared against the day's target, LOCK for a locked grid)
 // and, when the days start at 1 and run on unbroken, each seed's first
 // missed day. Twelve boxes cost about 13 s a run. #609 has the table.
+// `--baseline` (R1) plays every level exactly as it ships with no input,
+// and `--hand` plays it with the reference hand (handStep below), or with
+// `--hand=phases,platoons,corridor,offset` only the parts named; both at
+// once add a table of the hand against no input. They print markdown tables
+// HISTORY.md can quote, one row a level: `node tools/calibrate.mjs all
+// --baseline --hand` is about 25 minutes in a cloud container, most of it
+// Two Blocks' offset sweep.
 
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -102,8 +109,142 @@ export function cell(level, seed, cycle, opts = {}, offset = null) {
   return { cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, gridlock: w.stats.gridlock, stars: r.stars, survived: r.survived, pedLate: r.pedLate, pedServed: r.pedServed, splits: r.splits, platoons: r.platoons };
 }
 
+// ---- the reference hand (R1) ------------------------------------------------
+//
+// One scripted good player, a yardstick for R2 and not a solver. Every
+// command goes through the World the way the page's own buttons do; the
+// hand decides only when and which. Per step: holdPlatoon under a platoon,
+// the corridor for every emergency vehicle or motorcade car the moment it
+// is on the map (priorityNearest, without waiting for E), and at the end
+// of each green the phase whose queue has waited longest. A timed plan is
+// left to run: on a corridor the plan is the lesson, and the hand's part
+// there is the offset, swept at load (handOffset).
+
+export const HAND_MAX = 25;   // seconds a green is held for its own queue before the hand serves the next-longest: under boxStall, where a left waiting mid-box locks the board
+
+// What the player sees waiting on a phase: cars stopped short of the box on
+// any of its movements, loop or none, each weighed as one plus the seconds
+// it has waited. A player reads the screen, not the loops, so this is not
+// World.queued, which answers for a sensor. By count alone a lone left
+// never outweighs a through queue: Four Ways' W-L trucker waited 180 s and
+// locked the board on 4 of 6 seeds.
+function waiting(w, node, phase) {
+  const mv = [...phase.movements, ...phase.permissive];
+  let n = 0;
+  for (const c of w.cars) if (!c.done && c.path.node === node && mv.includes(c.path.movement) && c.front < c.path.boxEnter && c.v < 1) n += 1 + c.wait;
+  return n;
+}
+
+// The queue-greedy choice at one box. A green ends where the controller
+// would end it (the elapsed rule's clock, as the page's own timer reads it),
+// or on a box with no rule where the hand ends it: its own queue empty and
+// another waiting, or HAND_MAX run. The controller keeps the minimum green.
+function greedy(w, node, max = HAND_MAX) {
+  const ctl = w.controllers[node];
+  if (ctl.roundabout || w.powerOut || ctl.mode === 'timed' || ctl.stage !== 'green' || ctl.next !== null || ctl.preemption || ctl.walk) return;
+  const left = ctl.timeToYellow(ctl.current.movements[0]);
+  const q = ctl.phases.map(p => waiting(w, node, p));
+  const others = q.map((n, i) => (i === ctl.phase ? -1 : n));
+  const other = others.indexOf(Math.max(...others));
+  if (left !== Infinity) {
+    if (left > 1 / 60 + 1e-9) return;
+    if (q[ctl.phase] >= q[other] && ctl.stageT < max) { w.holdGreen(node); return; }
+    if (q[other] > 0) w.requestPhase(other, node);
+    return;
+  }
+  if (ctl.stageT < ctl.timing.minGreen || q[other] === 0) return;
+  if (q[ctl.phase] === 0 || ctl.stageT >= max) w.requestPhase(other, node);
+}
+
+export function handStep(w, { platoons = true, corridor = true, phases = true, max = HAND_MAX } = {}) {
+  if (platoons) holdPlatoon(w);
+  if (corridor) for (const c of w.cars) if (!c.done && !c.priority && (c.archetype === 'emergency' || c.archetype === 'motorcade')) w.requestPriority(c);
+  if (phases) for (let n = 0; n < w.controllers.length; n++) greedy(w, n, max);
+}
+
+// One run of a level exactly as it ships: no input, or the hand. `offset`
+// (a corridor) is set through World.setOffset right after load, the way the
+// Timing tab's slider sets it, each box after the first that much further on.
+export function played(level, seed, { hand = false, offset = null } = {}) {
+  const parts = typeof hand === 'object' ? hand : {};
+  const w = new World(level, seed);
+  if (offset !== null) for (let n = 1; n < w.controllers.length; n++) w.setOffset(offset * n, n);
+  for (let i = 0; i < level.duration * 60; i++) { w.step(); if (hand) handStep(w, parts); if (w.stats.gridlock) break; }
+  const r = score(w);
+  return { cleared: r.cleared, wait: r.avgWait, collisions: r.collisions, gridlock: w.stats.gridlock, stars: r.stars, ambulanceLate: w.stats.ambulanceLate, splits: r.splits, pedLate: r.pedLate };
+}
+
+// The offset the hand plays a corridor at: every 4 s round the second box's
+// cycle, six seeds each, and the best kept (most stars, then most cleared,
+// then least wait). Every 2 s doubles a sweep that already costs Two Blocks
+// 66 runs. Null on a single box.
+export function handOffset(level, parts = {}) {
+  if (!isCorridor(level)) return null;
+  const L = new World(level, 1).controllers[1].cycleLength();
+  let best = null;
+  const sweep = [];
+  for (let o = 0; o < L; o += 4) {
+    const rows = seeds.map(s => played(level, s, { hand: parts, offset: o }));
+    const key = [rows.reduce((a, r) => a + r.stars, 0), rows.reduce((a, r) => a + r.cleared, 0), -rows.reduce((a, r) => a + r.wait, 0)];
+    sweep.push(`${o} s: ${key[0]} stars, ${key[1]} cleared`);
+    if (!best || key[0] > best.key[0] || (key[0] === best.key[0] && (key[1] > best.key[1] || (key[1] === best.key[1] && key[2] > best.key[2])))) best = { offset: o, key, rows };
+  }
+  return { ...best, sweep };
+}
+
+// A row's cells and its summary, as a markdown table row HISTORY.md can quote.
+const cellText = c => `${c.gridlock ? 'LOCK' : c.cleared} ${c.wait.toFixed(0)}s ${'★'.repeat(c.stars) + '☆'.repeat(3 - c.stars)}${c.collisions ? ` ${c.collisions}x` : ''}${c.ambulanceLate ? ` ${c.ambulanceLate}A` : ''}${c.splits ? ` ${c.splits}S` : ''}`;
+const range = (xs, f = x => x) => { const a = Math.min(...xs), b = Math.max(...xs); return a === b ? f(a) : `${f(a)} to ${f(b)}`; };
+function tableRow(level, rows, note = '') {
+  const three = rows.filter(r => r.stars === 3).length;
+  const locks = rows.filter(r => r.gridlock).length;
+  return `| ${level.name}${note} | ${level.target}, ${level.waitTarget} s | ${rows.map(cellText).join(' | ')} | ${range(rows.map(r => r.cleared))} | ${range(rows.map(r => r.wait), x => x.toFixed(0))} s | ${three}/6 | ${locks}/6 |`;
+}
+const tableHead = title => `\n${title}\n\n| Level | target, wait | ${seeds.map(s => `seed ${s}`).join(' | ')} | cleared | wait | ★★★ | locks |\n| --- | --- | ${seeds.map(() => '---').join(' | ')} | --- | --- | --- | --- |`;
+
 // Run as a script; importing the file (a suite borrowing controllerFor) does nothing.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+const handFlag = flags.find(f => f === '--hand' || f.startsWith('--hand='));
+if (isMain && (flags.includes('--baseline') || handFlag)) {
+  // `--hand=phases,platoons,corridor,offset` plays only the parts named; `--hand` is all four
+  const named = handFlag && handFlag.includes('=') ? handFlag.split('=')[1].split(',') : ['phases', 'platoons', 'corridor', 'offset'];
+  const parts = { phases: named.includes('phases'), platoons: named.includes('platoons'), corridor: named.includes('corridor') };
+  const partText = { phases: `the longest-waited queue at each green's end (held to ${HAND_MAX} s)`, platoons: 'holdPlatoon', corridor: 'the corridor on spawn', offset: "a corridor's offset swept at load" };
+  const list = which === 'all' ? LEVELS : [levelById(which)].filter(Boolean);
+  if (!list.length) { console.log(`no level ${which}`); process.exit(1); }
+  const mean = rows => ({ cleared: rows.reduce((a, r) => a + r.cleared, 0) / rows.length, wait: rows.reduce((a, r) => a + r.wait, 0) / rows.length });
+  const base = new Map(), hand = new Map(), swept = [];
+  if (flags.includes('--baseline')) {
+    console.log(tableHead('No input: every level as it ships, six seeds. A cell is cleared, average wait, stars; Nx collisions, NA a late ambulance, NS a split platoon.'));
+    for (const level of list) { const rows = seeds.map(s => played(level, s)); base.set(level.id, rows); console.log(tableRow(level, rows)); }
+  }
+  if (handFlag) {
+    console.log(tableHead(`The reference hand${named.length < 4 ? ', in part' : ''}: ${named.map(n => partText[n]).join('; ')}.`));
+    for (const level of list) {
+      const sweep = named.includes('offset') ? handOffset(level, parts) : null;
+      const rows = sweep ? sweep.rows : seeds.map(s => played(level, s, { hand: parts }));
+      hand.set(level.id, rows);
+      console.log(tableRow(level, rows, sweep ? ` (offset ${sweep.offset} s)` : ''));
+      if (sweep) swept.push(`${level.name}'s offset sweep, the hand on six seeds: ${sweep.sweep.join('; ')}.`);
+    }
+  }
+  if (swept.length) console.log('\n' + swept.join('\n'));
+  if (base.size && hand.size) {
+    console.log('\nThe hand against no input, means over six seeds. "default" is a level that ships a rule or a plan.\n');
+    console.log('| Level | default | no input: cleared, wait, late ambulances | hand: cleared, wait, late ambulances | hand beats it on |\n| --- | --- | --- | --- | --- |');
+    for (const level of list) {
+      const b = mean(base.get(level.id)), h = mean(hand.get(level.id));
+      const c = level.controller || {};
+      const shipsDefault = !!(c.plan || (c.rules && c.rules.length));
+      const amb = rows => rows.reduce((a, r) => a + r.ambulanceLate, 0);
+      const hasAmb = (level.events || []).some(e => e.kind === 'ambulance');
+      const on = [h.cleared > b.cleared ? 'cleared' : '', h.wait < b.wait ? 'wait' : '', hasAmb && amb(hand.get(level.id)) < amb(base.get(level.id)) ? 'the ambulance' : ''].filter(Boolean).join(', ') || 'nothing';
+      const a = rows => (hasAmb ? `, ${amb(rows)} of 6` : '');
+      console.log(`| ${level.name} | ${shipsDefault ? 'yes' : 'no'} | ${b.cleared.toFixed(1)}, ${b.wait.toFixed(1)} s${a(base.get(level.id))} | ${h.cleared.toFixed(1)}, ${h.wait.toFixed(1)} s${a(hand.get(level.id))} | ${on} |`);
+    }
+  }
+  process.exit(0);
+}
 if (isMain && flags.includes('--endless')) {
   const days = (args[1] || '1,2,3,4,5,6,7,8,9,10,11,12').split(',').map(Number);
   const missed = seeds.map(() => null);
