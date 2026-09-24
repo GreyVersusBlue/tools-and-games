@@ -104,21 +104,34 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Blue Hour's beats in
-kind above the fog line, increment 1 (PR #397)**: rank 8, a 1 naming Fable
-5.1, worked under Opus 5.5. The row stays at rank 8 with its text rewritten;
-nothing moved. That is the line to update when your batch merges; a PR that
-only changes these files is not a batch and does not belong in it.
-**12 ranked items remain**, and **every one of them names a model.**
+**The last batch of ranked work that shipped** is **Signal City R1, a
+reference hand and a no-input table (PR #399)**: rank 13, a ¼ naming Opus 5,
+worked under Opus 5.5, ranked and claimed in PR #398. Its row is gone and
+Signal City R2 took rank 13. That is the line to update when your batch
+merges; a PR that only changes these files is not a batch and does not
+belong in it. **13 ranked items remain**, and **every one of them names a
+model.**
 
-**Take rank 8 alone again** (Blue Hour item 2's second increment: the shape
-and the eyes above the fog line, a 1 naming Fable 5.1). Ranks 1 to 7 want a
-real GPU, a real phone or a person listening for an hour, which a cloud
-session does not have. Rank 9 (Integer Foundry, also a 1) is the alternative
-if the visual beats' summit kind cannot be made honestly.
+**Take rank 13 alone** (Signal City R2, the lesson decides a star, a ½
+naming Fable 5.1, with an architect call first), or rank 8 (Blue Hour's
+shape and eyes, a 1 naming Fable 5.1). Ranks 1 to 7 want a real GPU, a real
+phone or a person listening for an hour, which a cloud session does not
+have.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Signal City's calibration tool plays every level with no input and with a
+reference hand** (#636, #637, PR #399). `node tools/calibrate.mjs all
+--baseline --hand` prints both tables and the hand against no input;
+`--hand=phases` and the like play only the parts named. The hand beats no
+input on five levels and not on Two Blocks (the shipped offset is already
+the best), Rush Hour, Main Street or Free Play, where the corridor and the
+held procession cost the board. That is R2's evidence. **Worth carrying
+forward**: a queue-greedy hand that counts cars starves a lone left (Four
+Ways locked 4 of 6); weigh the queue by its waiting. And the sim runs 5 to
+17 s a level in a cloud container, so the full two tables are about 25
+minutes, not one.
 
 **Above the fog line the silence stills the wind and the snap is a stone**
 (#635, PR #397). Birdsong already ended at altT 0.6, so the silence beat was
@@ -522,10 +535,11 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**The only 2+ left is rank 16.** Eight of the eighteen are ¼: ranks 3, 4, 5,
-8, 9, 10, 11 and 17. **Five of those eight want hardware nothing here has**
-(3, 5, 10, 11, 17), as do three of the halves (1, 2, 12); the Parked section
-below the table says why they were left ranked anyway. Signal City's row
+**The only 2+ left is rank 10.** Five of the thirteen are ¼: ranks 3, 4, 5,
+6 and 11, and **all five want hardware nothing here has**, as do three of the
+halves (1, 2, 7); the Parked section below the table says why they were left
+ranked anyway. Recounted off the table on 2026-09-24, when this paragraph
+still named eighteen rows and rank 16. Signal City's row
 retired on 2026-09-24 when M9 shipped (PR #373), the shared asset pipeline's
 the same day when its increment 3 did (PR #380), and Pathfinder's three
 conditional rows the same day again (PR #383). The living-sheet row left the
@@ -533,11 +547,11 @@ same day for Q39 rather than for `HISTORY.md` (#628): nothing was built, and
 the question it waited on is Devon's. Aphelion's touch/gamepad row left the
 same way the same day, for Q40 (#629).
 
-**The model split is 4 Opus 5, 8 Fable 5.1, 6 Sonnet 5.** Counted off the
+**The model split is 3 Opus 5, 7 Fable 5.1, 3 Sonnet 5.** Counted off the
 table rather than decremented, which is how the 15/14/9 drift was caught and
-how this paragraph's own drift was caught on 2026-09-24 (it still said 27
-rows and named the peak rank 1): 4 + 8 + 6 is 18, and the table has 18
-rows. By size it is 8 ¼, 7 ½, 2 ones and 1 of the 2+, which is the same 18.
+how this paragraph's own drift was caught twice on 2026-09-24 (it said 27
+rows, then 18 against a table of 12): 3 + 7 + 3 is 13, and the table has 13
+rows. By size it is 5 ¼, 5 ½, 2 ones and 1 of the 2+, which is the same 13.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under.
@@ -682,7 +696,7 @@ and #222 was closed unmerged an hour of suites later.
 | 10 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 11 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
 | 12 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
-| 13 | Signal City R1: a reference hand and a no-input table in `tools/calibrate.mjs` (`--baseline`, `--hand`) | `Projects/signal-city` | ¼ | Opus 5 | claude/hopeful-ritchie-fvaalm | [Signal City](#signal-city), `WISHLIST.md` R1 |
+| 13 | Signal City R2: the lesson decides a star (architect call first: a lesson star or worse defaults) | `Projects/signal-city` | ½ | Fable 5.1 |  | [Signal City](#signal-city), `WISHLIST.md` R2 |
 
 ## Parked — needs a person at a real device
 
@@ -1306,9 +1320,9 @@ next is the **Roadmap** in `Projects/signal-city/WISHLIST.md` (2026-09-24):
 R1 to R14 in build order, all runnable in a cloud container, then H1 to H4,
 which need a real device, ears or a person. It absorbs the items that were
 open here (the `games.mjs` recipe and preview capture are R5, the trucker's
-sweep is R11, the one-box priority corridor is R6). None of it is ranked in
-the table above yet; R1 (¼) and R2 (½) are the first to rank, since a review
-found Rush Hour and Main Street three-star on six seeds of six with no input.
+sweep is R11, the one-box priority corridor is R6). R1 (¼) shipped in PR #399
+(#636, #637): the calibration tool's `--baseline` and `--hand`, which
+measured the move each level teaches costing the board. R2 (½) is rank 13.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
