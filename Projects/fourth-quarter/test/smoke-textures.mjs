@@ -1,7 +1,7 @@
 // smoke-textures.mjs — node test/smoke-textures.mjs
 // The texture registry and its tiers, under bare Node. Two kinds of check:
-// (1) every file MATS names exists on disk at every tier — the 1k set is a
-// generated artifact (tools/make-textures.mjs) and a surface it forgot would
+// (1) every file MATS names exists on disk at every tier — both sets are
+// generated artifacts (Tools/board-check/asset-pipeline.mjs) and a surface it forgot would
 // paint flat in the room with no test red; (2) pickTier() is the one rule for
 // which tier a device downloads, so its cases are pinned here rather than
 // discovered on somebody's phone.
@@ -23,6 +23,23 @@ ok(files.every(f => /_2k\.jpg$/.test(f.file)), "every registry filename is a Pol
 ok(TIERS.includes(DEFAULT_TIER), "the default tier is a tier on disk");
 ok(TIERS[TIERS.length - 1] === "2k", "2k is the largest tier, and the registry's own filename");
 
+// A JPEG's width and height, from its first start-of-frame marker. Bare Node
+// has no image decoder and this suite takes no dependency; the header is
+// enough to say whether a file is the size its tier claims.
+function jpegSize(buf) {
+  let i = 2;
+  while (i + 9 < buf.length) {
+    if (buf[i] !== 0xff) return null;
+    const m = buf[i + 1], len = buf.readUInt16BE(i + 2);
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+      return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+const EDGE = { "1k": 1024, "2k": 2048 };
+
 // --- (1) every file, every tier, on disk and non-trivial ---
 let bytes = {};
 for (const tier of TIERS) {
@@ -37,12 +54,23 @@ for (const tier of TIERS) {
       ok(size > 1024, `${tier}: ${file} is not an empty or truncated file (${size} bytes)`);
       const head = readFileSync(p).subarray(0, 3);
       ok(head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff, `${tier}: ${file} starts with a JPEG SOI marker`);
+      // The 2k set is re-encoded by Tools/board-check/asset-pipeline.mjs, whose
+      // --check measures its error against the originals at the output's own
+      // size. A 2k file quietly written at 1024 would measure clean there, so
+      // the size is pinned here, where CI runs it.
+      const dim = jpegSize(readFileSync(p));
+      ok(dim && dim.w === EDGE[tier] && dim.h === EDGE[tier], `${tier}: ${file} is ${EDGE[tier]} square (got ${dim ? dim.w + "x" + dim.h : "no SOF"})`);
     }
   }
 }
-// The whole point of the phase: the default tier is an order of magnitude
-// lighter than the originals. 10× is the bar the wishlist set; 13.6× shipped.
-ok(bytes["1k"] * 10 <= bytes["2k"], `the 1k set is at least 10× lighter than 2k (${bytes["1k"]} vs ${bytes["2k"]} bytes, ${(bytes["2k"] / bytes["1k"]).toFixed(1)}×)`);
+// Phase 4 held the 1k set to a tenth of the 2k one, and shipped 13.6×, but the
+// 2k files were Poly Haven's downloads at a quality near 100 then. The asset
+// pipeline re-encoded them at q88 (#622): 69,218,191 bytes to 22,965,335, so
+// the gap is now what four times the pixels costs at one quality, 4.5×. The
+// two ceilings are what hold: 2k under 24 MB, so the downloads cannot come
+// back, and 1k at least 4× lighter, so the default tier is still worth having.
+ok(bytes["2k"] < 24_000_000, `the 2k set is under 24,000,000 bytes, the pipeline's re-encode (${bytes["2k"]} bytes)`);
+ok(bytes["1k"] * 4 <= bytes["2k"], `the 1k set is at least 4× lighter than 2k (${bytes["1k"]} vs ${bytes["2k"]} bytes, ${(bytes["2k"] / bytes["1k"]).toFixed(1)}×)`);
 ok(bytes["1k"] < 8 * 1024 * 1024, `the 1k set is under 8 MB (${bytes["1k"]} bytes)`);
 
 // --- paths ---

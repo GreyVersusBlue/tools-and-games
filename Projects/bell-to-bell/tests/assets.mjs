@@ -17,6 +17,12 @@
 //   3. a `_pruned` path that IS on disk (something deleted came back without
 //      the record changing with it)
 //   4. either byte total over its `_budget` ceiling
+//   5. a referenced JPEG whose filename names a tier (`_1k`, `_512`) and whose
+//      header says another width. Tools/board-check/asset-pipeline.mjs writes
+//      these files and its `--check` measures their error, but it needs sharp
+//      and git history and CI has neither; a file written at the wrong size
+//      would pass that measurement against a reference of its own size, so
+//      the size is held here, from the JPEG header, with no dependency.
 //
 // Run from tests/: `node assets.mjs`. smoke.mjs imports auditAssets() for the
 // same budget assertion, so the ceiling is enforced by the suite people
@@ -38,6 +44,21 @@ function walk(dir, out = new Map()) {
   }
   return out;
 }
+
+// A JPEG's width and height, from its first start-of-frame marker.
+export function jpegSize(buf) {
+  let i = 2;
+  while (i + 9 < buf.length) {
+    if (buf[i] !== 0xff) return null;
+    const m = buf[i + 1], len = buf.readUInt16BE(i + 2);
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+      return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+    }
+    i += 2 + len;
+  }
+  return null;
+}
+const TIER_WIDTH = { '1k': 1024, '512': 512 };
 
 // --- resolving what the manifest means --------------------------------------
 
@@ -137,6 +158,20 @@ export function auditAssets() {
     unreferenced: { count: unreferenced.length, bytes: unreferenced.reduce((n, f) => n + tree.get(f), 0) },
     all: { count: tree.size, bytes: [...tree.values()].reduce((a, b) => a + b, 0) }
   };
+
+  let tiered = 0;
+  for (const f of referenced) {
+    const tier = /_(1k|512)\.jpg$/.exec(f)?.[1];
+    if (!tier || !tree.has(f)) continue;
+    tiered++;
+    const size = jpegSize(fs.readFileSync(f));
+    if (!size || size.w !== TIER_WIDTH[tier]) {
+      problems.push(`${f.slice(ROOT.length + 1)} is named ${tier} and is ${size ? size.w + ' wide' : 'not a JPEG'}`);
+    }
+  }
+  // Every texture the game loads is named by tier, so this cannot pass by
+  // matching nothing: 64 today, the room's 21 and the models' 43.
+  if (tiered < 64) problems.push(`only ${tiered} referenced JPEGs are named by tier, expected 64`);
 
   // A budget that can be deleted is a budget, not a ceiling. Its absence is
   // the failure, so nobody gets past this check by removing the block.

@@ -170,7 +170,26 @@
       "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Adventurer.gltf",
       "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Casual.gltf",
       "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Formal.gltf",
-      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Worker.gltf"
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Worker.gltf",
+      "Assets/models/Props/binder_notebook_1k.gltf/textures/binder_notebook_arm_1k.jpg",
+      "Assets/models/Props/binder_notebook_1k.gltf/textures/binder_notebook_diff_1k.jpg",
+      "Assets/models/Props/binder_notebook_1k.gltf/textures/binder_notebook_nor_gl_1k.jpg",
+      "Assets/models/Props/clipboard_1k.gltf/textures/clipboard_arm_1k.jpg",
+      "Assets/models/Props/clipboard_1k.gltf/textures/clipboard_diff_1k.jpg",
+      "Assets/models/Props/clipboard_1k.gltf/textures/clipboard_nor_gl_1k.jpg",
+      "Assets/models/Props/fire_alarm_1k.gltf/textures/fire_alarm_arm_1k.jpg",
+      "Assets/models/Props/fire_alarm_1k.gltf/textures/fire_alarm_diff_1k.jpg",
+      "Assets/models/Props/fire_alarm_1k.gltf/textures/fire_alarm_nor_gl_1k.jpg",
+      "Assets/models/Props/stationery_supplies_1k.gltf/textures/stationery_supplies_arm_1k.jpg",
+      "Assets/models/Props/stationery_supplies_1k.gltf/textures/stationery_supplies_diff_1k.jpg",
+      "Assets/models/Props/stationery_supplies_1k.gltf/textures/stationery_supplies_nor_gl_1k.jpg",
+      "Assets/models/Props/vintage_stapler_1k.gltf/textures/vintage_stapler_arm_1k.jpg",
+      "Assets/models/Props/vintage_stapler_1k.gltf/textures/vintage_stapler_diff_1k.jpg",
+      "Assets/models/Props/vintage_stapler_1k.gltf/textures/vintage_stapler_nor_gl_1k.jpg",
+      "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_arm_1k.jpg",
+      "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_diff_1k.jpg",
+      "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_glass_arm_1k.jpg",
+      "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_nor_gl_1k.jpg"
     ],
     "notes": [
       "The Kenney kit shipped one furniture set in five formats. 700 files, 12.8 MB, and GLTFLoader is the only loader in src/ -- nothing here could read a .dae, .fbx, .obj or .stl even if something asked for it.",
@@ -186,8 +205,8 @@
   },
   "_budget": {
     "_comment": "Ceilings in bytes, asserted by tests/assets.mjs and by tests/smoke.mjs. Raising one is the moment an asset argues for itself: say in the commit what the new file buys.",
-    "referencedBytes": 40000000,
+    "referencedBytes": 16500000,
     "unreferencedBytes": 5000000,
-    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files. The asset pipeline's first recipe (#619) took referenced to 38,424,608 across the same 104 files, and the tree to 53,007,119; the ceiling came down from 66,000,000 with it."
+    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files. The asset pipeline's first recipe (#619) took referenced to 38,424,608 across the same 104 files, and the tree to 53,007,119; the ceiling came down from 66,000,000 with it. The second recipe (#621, #622) re-encoded the room's 21 maps and the props' and picture frame's 43 at q88, the six hand-sized props at 512, and took referenced to 16,198,599 across the same 104 files; the ceiling came down from 40,000,000 to 16,500,000."
   }
 }

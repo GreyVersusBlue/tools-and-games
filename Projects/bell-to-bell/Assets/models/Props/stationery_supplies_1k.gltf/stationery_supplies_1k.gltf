@@ -266,17 +266,17 @@
     {
       "mimeType": "image/jpeg",
       "name": "stationery_supplies_nor_gl",
-      "uri": "textures/stationery_supplies_nor_gl_1k.jpg"
+      "uri": "textures/stationery_supplies_nor_gl_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "stationery_supplies_diff",
-      "uri": "textures/stationery_supplies_diff_1k.jpg"
+      "uri": "textures/stationery_supplies_diff_512.jpg"
     },
     {
       "mimeType": "image/jpeg",
       "name": "stationery_supplies_metal-stationery_supplies_rough",
-      "uri": "textures/stationery_supplies_arm_1k.jpg"
+      "uri": "textures/stationery_supplies_arm_512.jpg"
     }
   ],
   "accessors": [
