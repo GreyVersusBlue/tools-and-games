@@ -1,4 +1,4 @@
-// asset-pipeline.mjs — the one offline pipeline for the site's heavy games (#608).
+// asset-pipeline.mjs — the one offline pipeline for the site's heavy games (#614).
 //
 //   npm i --no-save @gltf-transform/core@4.5.0 @gltf-transform/extensions@4.5.0 \
 //                   @gltf-transform/functions@4.5.0 meshoptimizer@1.2.0

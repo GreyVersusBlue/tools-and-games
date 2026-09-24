@@ -334,7 +334,7 @@ new list.
   drag the cabinet onto a desk. Nothing breaks; it looks wrong.
 - The front row's advantage may be too small to notice. Do not decide without
   `SPREAD=1 node balance.mjs`.
-- **`poseIdle()` does not leave the students idling** (found 2026-09-24, #608).
+- **`poseIdle()` does not leave the students idling** (found 2026-09-24, #614).
   It plays the Idle clip for 1.2 s, then `mixer.stopAllAction()`, and
   deactivating an action makes three's AnimationMixer restore every binding's
   original state. Every student stands in the file's rest pose, whatever clip

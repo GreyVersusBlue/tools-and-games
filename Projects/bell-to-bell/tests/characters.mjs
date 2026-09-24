@@ -2,7 +2,7 @@
 //
 // The eight outfits used to be embedded .gltf files, 25.3 MB with 24 clips
 // each. Tools/board-check/asset-pipeline.mjs rewrote them as meshopt-compressed
-// .glb files with the one clip the game plays (#608). Compression is lossy: it
+// .glb files with the one clip the game plays (#614). Compression is lossy: it
 // quantizes positions, normals and the animation's keys. A body that came out
 // a centimetre shorter, or a clip that came out bent, weighs less just the
 // same, so a byte count cannot tell the difference. This can.
@@ -11,8 +11,9 @@
 // decoder wiring included), poseIdle and findBone, then is measured: the whole
 // body's box, the Head and torso bones, a box and a vertex centroid per
 // material with the skinning applied, and the Head and torso again with the
-// Idle clip left applied (see measure() for why that is a separate number). BASELINE is those numbers measured the
-// same way from the original .gltf files at afbcae9, before the pipeline ran.
+// Idle clip left applied (see measure() for why that is a separate number).
+// BASELINE is those numbers measured the same way from the original .gltf
+// files at afbcae9, before the pipeline ran.
 //
 //   node characters.mjs           check the outfits against BASELINE
 //   node characters.mjs --print   print what the current files measure

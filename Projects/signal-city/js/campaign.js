@@ -8,7 +8,9 @@
 // `levels` (a star on the level before, or a play of this one, so nobody
 // loses a board they already reached); what is bought is `unlocks`, the
 // list the save has carried since M4; stars to spend are the stars earned
-// less the price of everything in `unlocks`.
+// less the price of everything in `unlocks`. Endless (M9) keeps its own
+// record, `endless` in save.js; this file only reads it to say whether
+// the card is open.
 
 import { LEVELS, levelById } from './levels/pack-01.js';
 import { standardPhases, extraPhases } from './signals.js';
@@ -51,8 +53,10 @@ export const RING_HINT = 'Nothing to press here. A car at a yield line waits for
 // the ring is built one lane wide. Each board it converts carries its own
 // calibration, `ring: { target, waitTarget }`, because a level's numbers
 // were measured on signals.
+// A generated grid (M9) is never converted: its rings are its own.
 export function convertible(level) {
   const net = level.network || {};
+  if (net.cells) return false;
   const ctl = level.controller || {};
   return (net.nodes || 1) === 1 && (net.lanesPerDir || 1) === 1 && !ctl.peds && !level.pedDemand
     && ctl.mode !== 'timed' && !(level.events || []).length;
@@ -71,6 +75,13 @@ export function isOpen(save, id) {
   if (lvl.sandbox) return true;
   const i = CAMPAIGN.indexOf(id);
   return i <= 0 || starsOn(save, CAMPAIGN[i - 1]) > 0 || played(save, id);
+}
+
+// Endless (M9) opens on a star from Two Blocks, the board that teaches a
+// second box, or once a run has been started, so nobody loses it.
+export const ENDLESS_AFTER = 'two-blocks';
+export function endlessOpen(save) {
+  return starsOn(save, ENDLESS_AFTER) > 0 || ((save.endless && save.endless.runs) || 0) > 0;
 }
 
 // The first open level with no star yet: where the select points you.
