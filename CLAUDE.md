@@ -152,6 +152,10 @@ text rewritten to say what is done. Never mix a 2+ row into a batch with others.
 `BACKLOG.md`'s "How this repo is worked" carries the table, the measurements behind it, and
 the prompt a session is started with.
 
+**Sessions run on Opus 5.5 or Sonnet 5 only, never Fable** (#638, from 2026-09-24). A row
+naming Fable 5.1 or Opus 5 runs on Opus 5.5; a row naming Sonnet 5 runs on Sonnet 5. The Model
+column keeps the name its source gave it; the mapping is the rule.
+
 Still not a session's call: **re-ranking the list wholesale**, and **overruling the
 Ownership table**.
 
@@ -208,8 +212,9 @@ your own branch, in the same commit, and say so in the PR body.
 3. Any guard-rail you added has been broken on purpose once, and you watched it
    fail (#34).
 4. The PR merged to `main` with CI green.
-5. The closing report names the next open item's rank and its model, so
-   whoever opens the next session knows which row to take.
+5. The closing report names the next open item's rank and its model, the
+   one the row runs on under #638, so whoever opens the next session knows
+   which row to take.
 6. **Update `BACKLOG.md` as soon as your merge is confirmed** — its header (the
    last **batch of ranked work** that shipped and its PR number, the ranked-item
    count, what to pick up next), the ranks if your work reordered anything, and
@@ -223,7 +228,8 @@ your own branch, in the same commit, and say so in the PR body.
    spent an hour rebuilding what already existed.
 7. **The session's last message ends with a handoff prompt** (#600): one fenced
    block, ready to paste into a fresh session, that starts the next piece of
-   work. It names the row (rank, Size, Model, area), the plan it points at
+   work. It names the row (rank, Size, Model, area, and the model it runs on
+   under #638), the plan it points at
    (`WISHLIST.md` item, or the `BACKLOG.md` section), the open call the next
    session has to make first if there is one, the `HISTORY.md` decisions the
    work builds on, what cost this session time and how to avoid it, the setup

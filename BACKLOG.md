@@ -25,6 +25,7 @@ now, Size and how many areas the batch spans.
 Prefer rows whose Model column matches the model this session is running. Take a
 mismatched row anyway rather than skipping down the list, and say in the PR body
 which rows you took and which model you actually worked under.
+Match by #638: Fable 5.1 and Opus 5 rows run on Opus 5.5, Sonnet 5 rows on Sonnet 5.
 
 If a row needs hardware this machine does not have — a real GPU, a phone, a pair of
 ears — move it to Parked with its context and take the next row, so the batch still
@@ -89,7 +90,8 @@ absorb whatever time the others leave and finish neither well.
 carried across unchanged; every ranked row's model was assigned in Tier 1 on 2026-09-13
 (#380), because no ranked row's source named one. Rows naming different models are still one
 batch if the sizes allow, but say in the PR body which rows you took and under which model you
-actually worked.
+actually worked. Under #638 a row naming Fable 5.1 or Opus 5 runs on Opus 5.5 and
+a row naming Sonnet 5 runs on Sonnet 5; the cell keeps its name.
 
 **Update `BACKLOG.md` as soon as your one PR merges — never leave it for a later session.**
 This is the rule most likely to be dropped as batches grow. Its casualty is on record in the
@@ -554,7 +556,8 @@ rows, then 18 against a table of 12): 3 + 7 + 3 is 13, and the table has 13
 rows. By size it is 5 ¼, 5 ½, 2 ones and 1 of the 2+, which is the same 13.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
-actually worked under.
+actually worked under. The split counts the names; under #638 the 3 Opus and 7 Fable
+rows run on Opus 5.5 and the 3 Sonnet rows on Sonnet 5.
 
 **`Projects/corner-and-kettle` has no open phase.** Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
@@ -667,6 +670,10 @@ readings, in the same terms the project wishlists already use:
   invariants nothing on screen reveals, a save schema every later adopter
   inherits, authored content whose coherence no assertion can hold, or a change
   with no safety net under it at all.
+
+These are the names a row carries, not the model a session runs on: under #638
+(2026-09-24) Fable 5.1 and Opus 5 rows run on Opus 5.5 and Sonnet 5 rows on
+Sonnet 5.
 
 Six rows read Fable, which at 6 of 12 is a heavier share than any single
 project's wishlist carries, and the reason is what this list is: the leftovers
