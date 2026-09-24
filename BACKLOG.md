@@ -106,22 +106,30 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City R2, the
-lesson decides a star (PR #403)**: rank 13, a ½ naming Fable 5.1, worked
-under Opus 5.5 (#638), claimed in PR #402. Its row is gone and Signal City
-R3 took rank 13. That is the line to update when your batch
+**The last batch of ranked work that shipped** is **Signal City R3, hard
+mode on one level (PR #405)**: rank 13, a ¼ naming Fable 5.1, worked
+under Opus 5.5 (#638), claimed in PR #404. Its row is gone and Signal City
+R4 took rank 13. That is the line to update when your batch
 merges; a PR that only changes these files is not a batch and does not
 belong in it. **13 ranked items remain**, and **every one of them names a
 model.**
 
-**Take rank 13 alone** (Signal City R3, hard mode on one level, a ¼
-naming Fable 5.1, which runs on Opus 5.5), or rank 8 (Blue Hour's
+**Take rank 13 alone** (Signal City R4, endless: measure the hand, then
+fix the ramp, a ½ naming Fable 5.1, which runs on Opus 5.5), or rank 8 (Blue Hour's
 shape and eyes, a 1 naming Fable 5.1). Ranks 1 to 7 want a real GPU, a real
 phone or a person listening for an hour, which a cloud session does not
 have.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Rush Hour is Signal City's one hard level** (#641, PR #405): one
+collision ends the run there. R1's hand collides on School Run, Main Street
+and Two Blocks and runs Rush Hour clean on six seeds, and Rush Hour's one
+crash (the corridor's left arrow into a through car still in the box) is
+gone at 2.5 s of all-red. **Worth carrying forward**: the long calibration
+runs die with the session that started them, so write each to a file and
+check the file, not the task.
 
 **Signal City's second star is the lesson on the four levels with a
 default** (#639, #640, PR #403): Rush Hour the ambulance on its corridor,
@@ -562,7 +570,7 @@ same way the same day, for Q40 (#629).
 table rather than decremented, which is how the 15/14/9 drift was caught and
 how this paragraph's own drift was caught twice on 2026-09-24 (it said 27
 rows, then 18 against a table of 12): 3 + 7 + 3 is 13, and the table has 13
-rows. By size it is 6 ¼, 4 ½, 2 ones and 1 of the 2+, which is the same 13 (recounted 2026-09-24, when R3's ¼ replaced R2's ½).
+rows. By size it is 5 ¼, 5 ½, 2 ones and 1 of the 2+, which is the same 13 (recounted 2026-09-24, when R4's ½ replaced R3's ¼).
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under. The split counts the names; under #638 the 3 Opus and 7 Fable
@@ -712,7 +720,7 @@ and #222 was closed unmerged an hour of suites later.
 | 10 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 11 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
 | 12 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
-| 13 | Signal City R3: hard mode on one level (School Run is the candidate, but R1's hand three-stars it 0 of 6, #639) | `Projects/signal-city` | ¼ | Fable 5.1 | claude/signal-city-r3-hard-7k2q | [Signal City](#signal-city), `WISHLIST.md` R3 |
+| 13 | Signal City R4: endless, measure the hand, then fix the ramp | `Projects/signal-city` | ½ | Fable 5.1 |  | [Signal City](#signal-city), `WISHLIST.md` R4 |
 
 ## Parked — needs a person at a real device
 
@@ -1340,7 +1348,8 @@ sweep is R11, the one-box priority corridor is R6). R1 (¼) shipped in PR #399
 (#636, #637): the calibration tool's `--baseline` and `--hand`, which
 measured the move each level teaches costing the board. R2 (½) shipped in PR #403 (#639, #640): the lesson decides a star on the
 four levels with a default, and `test/stars.mjs` holds it (952 checks
-across ten suites). R3 (¼) is rank 13.
+across ten suites). R3 (¼) shipped in PR #405 (#641): Rush Hour ships
+hard, the one level R1's hand runs clean (959 checks). R4 (½) is rank 13.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
