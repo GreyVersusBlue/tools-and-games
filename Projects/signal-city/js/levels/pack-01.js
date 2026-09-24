@@ -190,7 +190,10 @@ export const LEVELS = [
     waitTarget: 20,
     lesson: { kind: 'ambulance' },
     gridlockWait: 150,
-    mode: 'soft',
+    // the one hard level (R3, #641): one collision ends the run. No input
+    // and R1's hand both run all six seeds clean here, so a crash is the
+    // player's timing and not a red-runner no timing prevents
+    mode: 'hard',
     unlocks: ['phases', 'auto', 'allred', 'flash', 'priority'],
   },
   {

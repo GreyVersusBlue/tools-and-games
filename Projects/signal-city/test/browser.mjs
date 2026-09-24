@@ -676,6 +676,10 @@ try {
     await page.click('#levelsBtn');
     const cards = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.level-card')].map(c => [c.dataset.level, c.querySelector('.lv-lesson')?.textContent || ''])));
     ok(cards['two-blocks'] === 'second star: at most 50% of cars stopping again at the next box' && cards['first-light'] === '' && cards['free-play'] === '', 'Two Blocks\' card names its second star, and First Light\'s and Free Play\'s name none', JSON.stringify({ tb: cards['two-blocks'], fl: cards['first-light'], fp: cards['free-play'] }));
+    // R3 (#641): the one hard level's card says what hard means, and no other card does
+    const metas = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.level-card')].map(c => [c.dataset.level, c.querySelector('.lv-meta')?.textContent || c.querySelector('.lv-shut')?.textContent || ''])));
+    const hardCards = Object.keys(metas).filter(id => /one collision ends it/.test(metas[id]));
+    ok(hardCards.join() === 'rush-hour', 'Rush Hour\'s card says one collision ends it, and only Rush Hour\'s', JSON.stringify({ hard: hardCards, rh: metas['rush-hour'] }));
     ok(errors.length === 0, 'no page errors on the end card', errors.join(' | '));
   });
 
