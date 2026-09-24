@@ -221,7 +221,7 @@ open work; this file is the plan it points at.
   camera down to 1.2 px/m. 176 + 274 + 75 + 24 + 23 + 35 + 34 + 194
   checks (`test/grid.mjs` is new).
 
-- **M9, second increment: endless** (HISTORY.md #607 to #612). `js/endless.js
+- **M9, second increment: endless** (HISTORY.md #608 to #613). `js/endless.js
   dayLevel(seed, day)` is day n of a city: `gridLevel(seed, n)` up to twelve
   boxes, demand 10% up a day, 180 s, a target of 20 plus 8 a day with no
   cap (a full district clears a flat 50 to 130 a day and nothing locks at
@@ -239,7 +239,7 @@ open work; this file is the plan it points at.
 ## What is next, in order
 
 7. **M9, third increment: the sandbox** (the last of the 2+): the grid and endless are built
-   (#601 to #612); what is left is Free Play grown (#604). Free Play keeps
+   (#601 to #613); what is left is Free Play grown (#604). Free Play keeps
    one box, hashing as today, and gains a district choice: a generated grid
    of 2 to 12 boxes on a seed the player can reroll (`gridLevel`, no
    target, `sandbox: true`, nothing recorded). Its two scripted ambulances
@@ -269,7 +269,7 @@ open work; this file is the plan it points at.
   hand beats the default by enough to matter is unmeasured; the
   calibration plays hands-off only. Nothing is saved mid-day, so a run
   closed in the middle of a day loses that day and counts only the days
-  before it (#611).
+  before it (#612).
 
 - The ring is one lane (#595); a two-lane ring is refused, so Four Ways
   and School Run cannot convert. It has no zebras, loops or cones, and

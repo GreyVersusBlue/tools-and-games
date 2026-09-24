@@ -80,7 +80,7 @@ group('the days: one city, a box more each day, then more traffic');
 group('the calibration: a hands-off city clears the early days and not the full district');
 
 {
-  // a 20 s rule at every box, the grid's own; #608 has the full table
+  // a 20 s rule at every box, the grid's own; #609 has the full table
   // (days 1 to 12 and 14, 17, 21 on seeds 1 to 6). This samples it.
   const rows = [];
   let all = true;

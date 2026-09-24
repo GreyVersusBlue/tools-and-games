@@ -127,11 +127,19 @@ it; coming down, it was the view. The hill's climb is now `hillProfile(z)`,
 the trail's own height read by z (z is strictly monotone along the trail, so
 that is a function), and the trail sits on the hillside everywhere by
 construction: worst spot 2.1 m above both shoulders, from the ridge-and-gully
-noise. Past the trail's end the hill holds the summit's height rather than
-climbing on — the peak is still the open question, but a slope rising behind
-the tower put the arrival frame's lower half at 14.6/255, and held flat it
-reads 20.0. `test/smoke.mjs` holds three claims on the profile, and
+noise. Past the trail's end the profile holds the summit's height rather than
+climbing on, because a slope rising behind the tower put the arrival frame's
+lower half at 14.6/255. `test/smoke.mjs` holds three claims on the profile, and
 `HISTORY.md` (#523 to #527) says which of the three catches what.
+
+The profile left the top a dip: ridge noise on a flat shoulder put a ridge
+40 m from the trail's end at 71.3 m, 6.3 m over it, and the ground 20 m
+behind the tower rose to 70.5 m. Closed on 2026-09-24 (#607): `summitCap` in
+`field.js` is a ceiling centred on the tower, gentle along the spur the last
+leg climbs and falling steeply across it and behind, applied with a smooth min
+so it only removes ground. Nothing within 100 m of the trail's end stands above
+it now, the far side falls to 54.4 m 40 m past the tower, and the bench frame
+got brighter at every facing but one (back down the trail, 20.3 to 19.4).
 
 The rest: `terrain.js` (ground + undergrowth), `forest.js` (tree tiers),
 `props.js` (built things), `creek.js` (water + spray), `atmosphere.js`

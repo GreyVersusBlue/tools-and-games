@@ -206,7 +206,7 @@ class Game {
   }
 
   // Day `run.day` of the run, with yesterday's rules and timing on every
-  // box that stood yesterday (#610).
+  // box that stood yesterday (#611).
   playDay(yesterday) {
     const r = this.run;
     this.play(loadout(dayLevel(r.seed, r.day), this.bought()), daySeed(r.seed, r.day));

@@ -28,7 +28,7 @@
 // rule at every box: `node tools/calibrate.mjs endless 1,2,3,12` prints a
 // row per day (cleared against the day's target, LOCK for a locked grid)
 // and, when the days start at 1 and run on unbroken, each seed's first
-// missed day. Twelve boxes cost about 13 s a run. #608 has the table.
+// missed day. Twelve boxes cost about 13 s a run. #609 has the table.
 
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';

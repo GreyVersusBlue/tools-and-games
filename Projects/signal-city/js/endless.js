@@ -7,7 +7,7 @@
 // instead. Every day the traffic is heavier: demand on every leg is
 // `GROWTH` more per day than on day one.
 //
-// A day's target climbs 8 cars a day from 20 and never stops (#608). A
+// A day's target climbs 8 cars a day from 20 and never stops (#609). A
 // district tops out: past five boxes it clears 50 to 130 cars in a day
 // whatever its demand and whatever its cycle, because a queue backed up to
 // the edge stops cars entering, and at three times day one's traffic (day
