@@ -200,6 +200,8 @@ export function buildWildlife(scene, audio) {
   state.feedActive = () => !!state.crumbs;
 
   // ---------- The creature registry ----------
+  // The owl is kept by name too: the ?debug hook can start its hunt.
+  state.owl = makeOwl(scene, audio);
   const entities = [
     makeSanderlings(scene, audio),
     makeCrabs(scene, audio),
@@ -207,7 +209,7 @@ export function buildWildlife(scene, audio) {
     makeSeals(scene, audio),
     makeTidepoolLife(scene, audio),
     makeFireflies(scene),
-    makeOwl(scene, audio),
+    state.owl,
     makeBats(scene),
     makeHeron(scene, audio),
     makeCormorants(scene, audio),

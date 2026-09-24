@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, mulberry32 } from './field.js';
+import { groundHeight, mulberry32, CAMP } from './field.js';
 
 // A small camp at the mouth of the dunes: stone ring, a tepee of sticks, two
 // log seats, and a fire. The fire is the project's one added realtime light —
@@ -7,7 +7,7 @@ import { groundHeight, mulberry32 } from './field.js';
 // fake. Sitting is handled in main.js; this module owns the objects, the
 // flicker, and the particles.
 
-export const CAMP = { x: 20, z: 34 };   // read by main.js for the sit check
+export { CAMP };   // read by main.js for the sit check; lives in field.js
 
 function flameTexture() {
   const c = document.createElement('canvas');

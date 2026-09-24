@@ -715,6 +715,122 @@ group('the journal survives what a reload throws at it');
     'shell names are complete and unique', `${jc.SHELL_NAMES.length} names`);
 }
 
+/* ---------------------------------------------------------------- the night -- */
+
+// Rank 5 on 2026-09-24: the fireflies drift toward the fire and the owl hunts.
+// Both are pure clocks in nightpaths.js, so the paths are held here against the
+// ground and the camp. play-games.mjs holds what the page does with them.
+group('some of the fireflies go to the fire');
+{
+  const N = await import(pathToFileURL(path.join(HERE, '..', 'js', 'creatures', 'nightpaths.js')).href);
+  const { CAMP } = await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
+  const flies = N.fireflyField();
+  const toCamp = p => Math.hypot(p.x - CAMP.x, p.z - CAMP.z);
+  const drawn = flies.filter(f => f.fire), kept = flies.filter(f => !f.fire);
+  const steps = Array.from({ length: 201 }, (_, i) => i / 200);
+
+  ok(flies.length === 40 && drawn.length === 14, 'fourteen of the forty are drawn',
+    `${drawn.length} of ${flies.length}`);
+  ok(Math.max(...drawn.map(toCamp)) <= Math.min(...kept.map(toCamp)),
+    'and they are the fourteen nearest the camp',
+    `drawn from ${Math.min(...drawn.map(toCamp)).toFixed(0)} to ${Math.max(...drawn.map(toCamp)).toFixed(0)} m, the nearest kept one ${Math.min(...kept.map(toCamp)).toFixed(0)} m`);
+  ok(flies.every(f => { const a = N.fireflyAnchor(f, 0.15); return a.x === f.x && a.z === f.z && a.y === f.y; }),
+    'every fly rises in its hollow');
+  ok(kept.every(f => steps.every(t => { const a = N.fireflyAnchor(f, t); return a.x === f.x && a.z === f.z; })),
+    'the other twenty-six never leave it');
+  const arrived = drawn.map(f => {
+    const a = N.fireflyAnchor(f, 0.66);
+    return { d: toCamp(a), k: a.k };
+  });
+  ok(arrived.every(a => a.k === 1 && a.d >= N.FIREFLY.ringMin - 1e-9 && a.d <= N.FIREFLY.ringMax + 1e-9),
+    'by nightT 0.66, before their window shuts at 0.7, all fourteen are round the fire',
+    `${arrived.filter(a => a.k === 1).length} arrived, ${Math.min(...arrived.map(a => a.d)).toFixed(1)} to ${Math.max(...arrived.map(a => a.d)).toFixed(1)} m out`);
+  const reach = Math.min(...arrived.map(a => a.d)) - N.FIREFLY.wanderFire * Math.SQRT2;
+  ok(reach >= 1.7, 'and none wanders into the flames or the stone ring',
+    `closest a fly can get: ${reach.toFixed(2)} m from the fire's centre`);
+  let flock = false;
+  for (const t of steps) {
+    const ks = drawn.map(f => N.fireflyPull(f, t));
+    if (ks.some(k => k === 0) && ks.some(k => k > 0 && k < 1) && ks.some(k => k === 1)) flock = true;
+  }
+  ok(flock, 'they come in ones and twos: at some point one is home, one on the way and one there');
+  let closes = true, above = true, worst = Infinity;
+  for (const f of drawn) {
+    let prev = Infinity;
+    for (const t of steps) {
+      const a = N.fireflyAnchor(f, t);
+      const d = Math.hypot(a.x - f.fire.x, a.z - f.fire.z);
+      if (d > prev + 1e-9) closes = false;
+      prev = d;
+      const c = a.y - groundHeight(a.x, a.z);
+      worst = Math.min(worst, c);
+      if (c < 0.4 - 1e-9) above = false;
+    }
+  }
+  ok(closes, 'the drift only ever closes on the fire');
+  ok(above, 'and never goes into a dune on the way', `lowest ${worst.toFixed(2)} m over the sand`);
+}
+
+group('the owl hunts the dunes');
+{
+  const N = await import(pathToFileURL(path.join(HERE, '..', 'js', 'creatures', 'nightpaths.js')).href);
+  const { mulberry32 } = await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
+  const H = N.HUNT;
+  const perches = N.owlPerches();
+  ok(perches.every(p => regionAt(p.x, p.z) === 'dunes'), 'both snags stand in the dunes');
+
+  const rnd = mulberry32(0x5eed);
+  let found = 0, onSand = true, onSnags = true, under = Infinity, lowest = -Infinity, grassFor = Infinity, fastest = 0;
+  const SAMPLES = 2000;
+  for (let h = 0; h < 200; h++) {
+    const from = perches[h % 2];
+    const walker = { x: from.x + (rnd() - 0.5) * 80, z: from.z + (rnd() - 0.5) * 80 };
+    const target = N.huntTarget(from, walker, rnd);
+    if (!target) continue;
+    found++;
+    const r = Math.hypot(target.x - from.x, target.z - from.z);
+    if (regionAt(target.x, target.z) !== 'dunes' || groundHeight(target.x, target.z) < 1.5
+        || r < H.reachLo - 1e-9 || r > H.reachHi + 1e-9) onSand = false;
+    const to = perches[N.huntReturn(perches, target)];
+    const start = N.huntPos(from, target, to, 0), end = N.huntPos(from, target, to, 1);
+    if (Math.hypot(start.x - from.x, start.y - from.y, start.z - from.z) > 1e-9
+        || Math.hypot(end.x - to.x, end.y - to.y, end.z - to.z) > 1e-9) onSnags = false;
+    let low = Infinity, down = 0, prev = null;
+    for (let i = 0; i <= SAMPLES; i++) {
+      const q = N.huntPos(from, target, to, i / SAMPLES);
+      const c = q.y - groundHeight(q.x, q.z);
+      low = Math.min(low, c);
+      if (c < H.grass + 0.05) down++;
+      if (prev) fastest = Math.max(fastest, Math.hypot(q.x - prev.x, q.z - prev.z) / (H.dur / SAMPLES));
+      prev = q;
+    }
+    under = Math.min(under, low);
+    lowest = Math.max(lowest, low);
+    grassFor = Math.min(grassFor, down / SAMPLES * H.dur);
+  }
+  ok(found === 200, 'every hunt finds somewhere to drop', `${found} of 200`);
+  ok(onSand, `and it is dry dune sand ${H.reachLo} to ${H.reachHi} m from the snag`);
+  ok(onSnags, 'each hunt leaves from a snag and ends on one');
+  ok(under >= H.grass - 1e-9, 'the owl never goes into the dunes', `least clearance ${under.toFixed(3)} m`);
+  ok(lowest <= 0.2, 'every swoop goes all the way down into the grass', `highest low point ${lowest.toFixed(3)} m`);
+  ok(grassFor >= 1, 'and stays down there a moment, out of sight', `shortest ${grassFor.toFixed(2)} s`);
+  ok(fastest < 8, 'no faster than a barn owl flies', `${fastest.toFixed(2)} m/s at the most`);
+
+  // Wary: a walker 15 m off the snag in any of eight directions, and the owl
+  // drops on the far side of its snag from them.
+  const wary = [];
+  for (const from of perches) {
+    for (let k = 0; k < 8; k++) {
+      const a = k * Math.PI / 4;
+      const walker = { x: from.x + Math.cos(a) * 15, z: from.z + Math.sin(a) * 15 };
+      const t = N.huntTarget(from, walker, mulberry32(k + 1));
+      wary.push(t ? Math.hypot(t.x - walker.x, t.z - walker.z) : 0);
+    }
+  }
+  ok(wary.every(d => d > 15), 'it hunts the ground the walker is not standing on',
+    `drops ${Math.min(...wary).toFixed(1)} m from the walker at the nearest`);
+}
+
 /* --------------------------------------------------------------------------- */
 
 console.log(`\n${passed + failed} checks, ${failed} failed`);

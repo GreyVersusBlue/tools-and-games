@@ -118,6 +118,11 @@ export function trailX(z) {
   return 18 * Math.sin(z * 0.045) + 26 * Math.sin(z * 0.012 + 1);
 }
 
+// The camp at the mouth of the dunes: stone ring, fire, two log seats. Here
+// rather than in campfire.js (which re-exports it) so the night's paths toward
+// the fire can be checked without a browser.
+export const CAMP = { x: 20, z: 34 };
+
 // The river's centreline through the estuary, mouth to marsh. Pure for the
 // same reason as trailX: the channel carve, the water ribbon, the reed beds
 // and the heron all follow the same curve.
