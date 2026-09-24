@@ -960,7 +960,9 @@ try {
       buttons: [...document.querySelectorAll('#nodes .node')].map(b => b.textContent).join(), t: window.__signalCity.world.t,
     }));
     ok(d2.name === 'Endless, day 2' && d2.run.day === 2 && d2.run.days === 1 && d2.cleared === '0 / 28' && d2.buttons === 'Box 1,Box 2', 'Next day builds day 2: two boxes, a target of 28, the run one day in', `${d2.name}, ${d2.cleared}, ${d2.buttons}`);
-    ok(d2.allRed.join() === '2.5,1' && d2.slider === '2.5 s' && d2.t === 0, 'box 1 kept its 2.5 s all-red overnight, the new box has the default, and the slider shows box 1\'s', `${d2.allRed.join(', ')}; ${d2.slider}`);
+    // a fresh World: yesterday's ended at 180 s. Not 0: the page runs a
+    // frame or two between the click and the pause above.
+    ok(d2.allRed.join() === '2.5,1' && d2.slider === '2.5 s' && d2.t < 1, 'box 1 kept its 2.5 s all-red overnight into a fresh day, the new box has the default, and the slider shows box 1\'s', `${d2.allRed.join(', ')}; ${d2.slider}; ${d2.t.toFixed(2)} s in`);
     // the grid locks: the run is over, and the best stays
     await page.evaluate(() => { window.__signalCity.step(60); window.__signalCity.world.stats.gridlock = true; window.__signalCity.game.paused = false; });
     await waitFor(page, () => document.getElementById('endScrim').classList.contains('show'), { timeout: 15000 });
