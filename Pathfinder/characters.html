@@ -703,6 +703,80 @@
         </div>
       </article>
 
+      <!-- dossier template. Every part a dossier on this page uses, once, in
+           the order they appear. Copy the <article> out of the <template>,
+           paste it above this comment, and delete the parts this character
+           does not have. The comment and the <template> both keep it inert.
+           Pathfinder/tests/dossier-template.test.mjs fails if a real dossier
+           uses a class this template does not show, or this template shows a
+           class the page has no style for.
+
+      <template>
+      <article class="dossier" id="character-slug">
+        <span class="stud s1"></span><span class="stud s2"></span><span class="stud s3"></span><span class="stud s4"></span>
+        <div class="dossier-banner">
+          <div class="medallion">XX</div>
+          <h2 class="dossier-name">Character Name</h2>
+          <div class="dossier-class">Pathfinder Society Character</div>
+        </div>
+        <div class="dossier-body">
+          <div class="pill-row">
+            <span class="pill">PFS</span>
+          </div>
+          <div class="class-line">Ancestry (Heritage) Class N · Background · Deity</div>
+          <div class="ability-grid">
+            <div class="ability"><span class="stat-label">Str</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Dex</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Con</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Int</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Wis</span><span class="stat-val">+0</span></div>
+            <div class="ability"><span class="stat-label">Cha</span><span class="stat-val">+0</span></div>
+          </div>
+          <div class="vitals-row">
+            <span>HP<span class="vital-val">0</span></span>
+            <span>AC<span class="vital-val">0</span></span>
+            <span>Perc<span class="vital-val">+0</span></span>
+            <span>Fort<span class="vital-val">+0</span></span>
+          </div>
+          <div class="campaign-tags">
+            Played in: <a href="campaigns.html#character-slug-log">Scenario Title</a>
+          </div>
+          <div class="feature-box signature">
+            <h3>Signature Moves</h3>
+            <ul>
+              <li>One line per move</li>
+            </ul>
+          </div>
+          <div class="feature-box">
+            <h3>Pathfinder Society Record</h3>
+            <p>N scenarios logged · N XP · <a href="campaigns.html#character-slug-log">full chronicle →</a></p>
+          </div>
+          <div class="feature-box">
+            <h3>Who They Are</h3>
+            <p>Backstory.</p>
+          </div>
+          <span class="placeholder-flag">Backstory pending</span>
+        </div>
+      </article>
+      </template>
+
+           Notes on the parts:
+           - id is the slug campaigns.html links to (characters.html#slug),
+             and campaigns.html's chronicle for this character is slug-log.
+           - medallion is two initials. dossier-class and the pill say
+             Pathfinder Society/PFS or Starfinder Society/SFS; a Starfinder
+             character's record box is "Starfinder Society Record" and counts
+             credits, not gp.
+           - vitals-row always has HP, AC and Perc; the fourth and later
+             slots are whatever the character leans on (Fort, Reflex, Fly
+             Spd, a skill).
+           - campaign-tags says "Appeared in:" and links campaigns.html for a
+             campaign Devon GMs, "Played in:" and links the -log anchor for
+             a society scenario.
+           - Who They Are and Backstory pending are either/or: a dossier
+             with a backstory has no placeholder flag.
+      -->
+
     </div>
   </main>
 

@@ -79,7 +79,11 @@ chronicle table (a character who's played exactly one scenario so far).
   org's table. Generating it from the same per-character data (instead of
   hand-keeping two views in sync) is a reasonable next step, but it needs
   a merge/sort step this script doesn't have yet — build it if the two
-  views actually drift, not speculatively.
+  views actually drift, not speculatively. `Pathfinder/tests/chronicle.test.mjs`
+  (in Site CI, #626) is what says they have: it fails when a row is in one
+  view and not the other, when the Chronological table is out of
+  scenario-number order, or when a summary line miscounts its rows. Its
+  `order()` is the sort the merge step would need.
 - **No writing to `campaigns.html`.** Deliberate — see the top of this file.
 - **No validation beyond `JSON.parse`.** A missing field just prints
   `undefined` in the output; check the block before you paste it, same as

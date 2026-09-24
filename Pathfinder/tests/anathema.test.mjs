@@ -10,6 +10,7 @@
 // hash-routing round trips (including the 3-segment npc/<level>/<name> form),
 // and bookmark-stub resolution. Exits non-zero on any failure.
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve, launch, prepPage } from '../../Tools/board-check/harness.mjs';
@@ -233,10 +234,87 @@ async function testBookmarkResolution(browser) {
   await page.close();
 }
 
+/* ============================ 5. the page's interaction surface ============================ */
+/* Every way the page takes input, read out of its source, against the list
+   below. No browser. A new listener, key, delegated target or data-* action
+   fails here until it is listed, which is the moment BACKLOG.md's "extend this
+   suite if the page gains interaction logic" row comes true (#626): list it
+   with the scenario that drives it, or '' if none does yet and say why in the
+   PR. A listed entry the page no longer has fails too, so the list cannot rot.
+
+   The value is the scenario that drives the entry through the real page, or
+   '' where nothing does. On 2026-09-24, 6 of 47 were driven: the four
+   scenarios above were written for four hand-tested-only behaviours, not for
+   coverage, and the encounter builder, filters, deep search, bookmark
+   import/export, back button and keyboard navigation predate this list. */
+const SURFACE = {
+  '#cats click': 'testLevelBar',          // clickCat, in every scenario
+  'closest .cat': 'testLevelBar',
+  '#shardbar click': 'testLevelBar',
+  'closest .chip': 'testLevelBar',        // shared with #traitchips, which nothing drives
+  '#vspacer click': 'testBookmarkResolution',
+  'closest .row': 'testBookmarkResolution',
+  'window hashchange': '',                // the hash tests load with a hash; init reads it, not hashchange
+  'data-lvl clear': '',
+  '#rarity input': '', '#trait input': '', '#source input': '', '#tradition input': '',
+  '#spelltype input': '', '#sort input': '', '#q input': '',
+  '#trait change': '', '#trait keydown': '', '#traitchips click': '',
+  '#encToggle click': '', '#encbar click': '', '#encbar input': '',
+  'closest [data-enc]': '', 'data-enc inc': '', 'data-enc dec': '', 'data-enc del': '', 'data-enc clear': '',
+  'closest .encadd': '', 'closest .encaddbtn': '',
+  '#detail click': '', 'closest .star': '', 'closest .trait[data-trait]': '', 'closest a.ref': '',
+  '#vlist scroll': '', 'window resize': '',
+  '#scopeBtn click': '', '#deepBtn click': '', '#srcModeBtn click': '',
+  '#bmExport click': '', '#bmImport click': '', '#bmFile change': '', 'rd load': '',
+  '#backbtn click': '',
+  'document keydown': '', 'key Escape': '', 'key ArrowDown': '', 'key ArrowUp': '', 'key Enter': '',
+};
+
+function interactionSurface(src) {
+  const found = new Set();
+  let listeners = 0;
+  // `for (const el of ['rarity', ...]) $(el).addEventListener('input', ...)`, one entry per id
+  for (const m of src.matchAll(/for \(const (\w+) of \[([^\]]*)\]\) \$\(\1\)\.addEventListener\('(\w+)'/g)) {
+    listeners++;
+    for (const id of m[2].match(/'[\w-]+'/g)) found.add(`#${id.slice(1, -1)} ${m[3]}`);
+  }
+  for (const m of src.matchAll(/(?:\$\('([\w-]+)'\)|\b(window|document))\.addEventListener\('(\w+)'/g)) {
+    listeners++;
+    found.add(`${m[1] ? '#' + m[1] : m[2]} ${m[3]}`);
+  }
+  for (const m of src.matchAll(/(?:\$\('([\w-]+)'\)|\b(\w+))\.on(\w+)\s*=/g)) found.add(`${m[1] ? '#' + m[1] : m[2]} ${m[3]}`);
+  for (const m of src.matchAll(/<[^>]*\son(\w+)\s*=/g)) found.add(`inline on${m[1]}`);
+  for (const m of src.matchAll(/\.key === '(\w+)'/g)) found.add(`key ${m[1]}`);
+  for (const m of src.matchAll(/\.closest\('([^']+)'\)/g)) found.add(`closest ${m[1]}`);
+  for (const m of src.matchAll(/\.dataset\.(\w+) === '([^']+)'/g)) found.add(`data-${m[1]} ${m[2]}`);
+  // A listener in a form the patterns above do not read would slip past them.
+  const unread = (src.match(/addEventListener\(/g) || []).length - listeners;
+  return { found, unread };
+}
+
+async function testInteractionSurface() {
+  console.log('\nthe page\'s interaction surface (static, against SURFACE)');
+  const src = fs.readFileSync(path.join(HERE, '..', 'Anathema_Archive.html'), 'utf8');
+  const { found, unread } = interactionSurface(src);
+  ok(unread === 0, 'every addEventListener call is in a form this check reads',
+    unread === 0 ? '' : `${unread} call(s) it cannot attribute to a target; teach interactionSurface() the form`);
+  const added = [...found].filter(k => !(k in SURFACE));
+  ok(added.length === 0, `no entry point the suite has not been told about (${found.size} found)`,
+    added.length === 0 ? '' : `new: ${added.join(', ')}. The page gained interaction logic; drive it from a scenario here and list it in SURFACE`);
+  const gone = Object.keys(SURFACE).filter(k => !found.has(k));
+  ok(gone.length === 0, 'every entry point in SURFACE is still on the page', gone.length === 0 ? '' : `gone: ${gone.join(', ')}`);
+  const names = new Set(tests.map(t => t.name));
+  const unknown = [...new Set(Object.values(SURFACE).filter(Boolean))].filter(n => !names.has(n));
+  ok(unknown.length === 0, 'every scenario SURFACE credits is one this file runs', unknown.length === 0 ? '' : `not run: ${unknown.join(', ')}`);
+  const driven = Object.values(SURFACE).filter(Boolean).length;
+  console.log(`        ${driven} of ${Object.keys(SURFACE).length} driven by a scenario`);
+}
+
 /* ============================ run ============================ */
+const tests = [testLevelBar, testShardSync, testHashRouting, testBookmarkResolution];
+await testInteractionSurface();
 const server = await serve(PORT);
 const browser = await launch({ headed: false });
-const tests = [testLevelBar, testShardSync, testHashRouting, testBookmarkResolution];
 for (const t of tests) {
   try { await t(browser); }
   catch (err) {

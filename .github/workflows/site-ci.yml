@@ -120,6 +120,20 @@ jobs:
             commands: |
               node Pathfinder/tests/shared-chrome.test.mjs
 
+          # campaigns.html's By Character and Chronological views against each
+          # other (#626). No browser: it parses the page and compares the rows.
+          - name: Pathfinder chronicle views
+            dir: .
+            commands: |
+              node Pathfinder/tests/chronicle.test.mjs
+
+          # characters.html's commented-out dossier <template> against the
+          # page's real dossiers and its own <style> (#627). No browser.
+          - name: Pathfinder dossier template
+            dir: .
+            commands: |
+              node Pathfinder/tests/dossier-template.test.mjs
+
           - name: Faire Weekend
             dir: Projects/Ren-Faire-Claude
             install: Projects/Ren-Faire-Claude
