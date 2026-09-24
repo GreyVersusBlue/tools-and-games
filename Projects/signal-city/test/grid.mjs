@@ -12,7 +12,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World } = await load('sim.js');
 const { Network, buildNodes } = await load('network.js');
-const { growCells, gridLevel, GRID_SPACING } = await load('grid.js');
+const { growCells, gridLevel, GRID_SPACING, districtLevel } = await load('grid.js');
+const { levelById } = await load('levels/pack-01.js');
+const { loadout } = await load('campaign.js');
 
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
@@ -195,6 +197,71 @@ group('the world on a grid: handed on south as well as east');
   ok(w.nodes.length === 12 && w.controllers.length === 12 && w.stats.spawned > 60, 'twelve boxes, twelve controllers, traffic arriving on the district\'s edge', `${where(growCells(5, 12))}; ${w.stats.spawned} spawned, ${w.stats.handoffs} handoffs`);
   ok(w.nodes.filter(n => n.roundabout).every(n => w.controllers[n.node].stage === 'dark'), 'and every ring\'s controller is dark');
   ok(GRID_SPACING === 220, 'two 110 m legs laid end to end');
+}
+
+/* ------------------------------------------------------------- the sandbox -- */
+
+group('the sandbox: Free Play grown into a district (M9, #614 to #618)');
+
+{
+  const fp = levelById('free-play');
+  // one box is the board itself: the same object, so the same run (#615)
+  ok(districtLevel(fp, 3, 1) === fp && districtLevel(fp, 99, 1) === fp, 'one box is Free Play itself, whatever the city seed');
+
+  const d = districtLevel(fp, 5, 6);
+  const g = gridLevel(5, 6);
+  ok(JSON.stringify(d.network) === JSON.stringify(g.network) && JSON.stringify(d.demand) === JSON.stringify(g.demand) && JSON.stringify(d.controller) === JSON.stringify(g.controller),
+    'a district of 6 on city 5 is gridLevel(5, 6): its boxes, its demand, its 20 s rule', where(growCells(5, 6)));
+  ok(d.id === 'free-play' && d.sandbox === true && d.target === undefined && d.duration === fp.duration && d.mix === fp.mix,
+    'with Free Play\'s id, drivers and five minutes, a sandbox, and no target', `${d.name}, ${d.duration} s`);
+  ok(d.unlocks.join() === fp.unlocks.join() && d.unlocks !== fp.unlocks, 'and Free Play\'s controls, flash and the priority corridor among them, on a copy', d.unlocks.join());
+  ok(JSON.stringify(districtLevel(fp, 5, 6)) === JSON.stringify(d), 'the same city and size build the same district');
+
+  // the scripted ambulances: every one on a leg that spawns (#616). Box 1
+  // is interior at twelve boxes, so its W leg is linked on every seed.
+  let bad = [], moved = 0, kept = 0;
+  for (let seed = 1; seed <= 30; seed++) for (let n = 2; n <= 12; n++) {
+    const L = districtLevel(fp, seed, n);
+    // asked of the World's network (linkedIn), not of spawningLegs, the
+    // helper under test: that check once passed a spawningLegs that
+    // ignored every neighbour
+    const nodes = new World(L, 1).nodes;
+    for (const [i, s] of L.spawns.entries()) {
+      if (!(nodes[s.node] && nodes[s.node].spawnLegs.includes(s.leg))) bad.push(`${seed}/${n}: ${s.node}${s.leg}`);
+      if (s.leg !== fp.spawns[i].leg) moved++; else kept++;
+      if (s.t !== fp.spawns[i].t || s.turn !== fp.spawns[i].turn || s.archetype !== 'emergency') bad.push(`${seed}/${n}: timing`);
+    }
+  }
+  ok(!bad.length, 'on 330 districts (seeds 1 to 30, 2 to 12 boxes) both ambulances come in on a leg that spawns, at their own time and turn', bad.slice(0, 4).join(' ') || `${kept} kept their leg, ${moved} moved`);
+  {
+    const L = districtLevel(fp, 5, 12);
+    const w = new World(L, 5);
+    ok(w.nodes[0].linkedIn.includes('W') && L.spawns[0].leg === 'W' && L.spawns[0].node > 0 && w.nodes[L.spawns[0].node].spawnLegs.includes('W'),
+      'at twelve boxes box 1\'s W is joined to a neighbour, and the first ambulance comes in on the W of the first box that spawns there', `Box ${L.spawns[0].node + 1} ${L.spawns[0].leg}`);
+    // a World agrees with the cells: the leg the level picked spawns there
+    ok(L.spawns.every(s => w.nodes[s.node] && w.nodes[s.node].spawnLegs.includes(s.leg)), 'and the World built from it spawns on both legs the level picked');
+  }
+  {
+    // run it: both ambulances arrive, on their boxes, and get through
+    const L = districtLevel(fp, 3, 8);
+    const w = new World(L, 3);
+    const seen = [];
+    let t = 0;
+    while (t < 300) {
+      w.step(); t = w.t;
+      for (const e of w.events) if (e.kind === 'spawn' && e.scheduled) { const c = w.cars.find(x => x.id === e.car); seen.push(`${c.path.node}${c.path.entry}@${Math.round(w.t)}`); }
+      w.events.length = 0;
+      if (w.stats.gridlock) break;
+    }
+    const want = L.spawns.map(s => `${s.node}${s.leg}@${s.t}`);
+    ok(seen.join() === want.join(), 'eight boxes on city 3: the two ambulances come in where and when the level says', seen.join(' '));
+    ok(!w.stats.gridlock && w.stats.cleared > 100, 'and the district runs its five minutes hands-off', `${w.stats.cleared} cleared, ${w.stats.handoffs} handoffs, ${w.stats.collisions} collisions`);
+  }
+
+  // the roundabout never converts a district (#613, #618); one box still converts
+  const withRing = loadout(districtLevel(fp, 5, 4), ['roundabout']);
+  ok(!withRing.network.roundabout && !(withRing.bought || []).includes('roundabout'), 'an owned roundabout leaves a district\'s signals alone');
+  ok(loadout(districtLevel(fp, 5, 1), ['roundabout']).network.roundabout === true, 'and still converts Free Play\'s one box');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
