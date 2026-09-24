@@ -104,23 +104,36 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **board-check's Golden Hour
-and Blue Hour rows (PR #392)**: old ranks 4, 6, 8 and 9, a ¼ naming Opus 5 and
-a ½ and two ¼ naming Sonnet 5, worked under Opus 5.5. Every rank below them
-moved up. That is the line to update when your batch merges; a PR that only
-changes these files is not a batch and does not belong in it.
-**14 ranked items remain**, and **every one of them names a model.**
+**The last batch of ranked work that shipped** is **Golden Hour's night moves
+and Blue Hour's fall line (PR #PRNUM)**: old ranks 5 and 9, two ½ naming Fable
+5.1, worked under Opus 5.5. Every rank below them moved up. That is the line to
+update when your batch merges; a PR that only changes these files is not a
+batch and does not belong in it.
+**12 ranked items remain**, and **every one of them names a model.**
 
-**Take ranks 5 and 9 together** (two ½ in two areas, #382's spanning cap,
-both naming Fable 5.1). Ranks 1 to 4 and 6 to 8 want a real GPU, a real phone
-or a person listening for an hour, which a cloud session does not have. Rank 5
-is Golden Hour's owl and fireflies, "if night proves popular": that condition
-is a person's judgement, so decide first whether #628 sends it to a question
-for Devon with a check, or whether the row is buildable as written. Rank 9 is
-Blue Hour's phantom pan, a real design call (Blue Hour item 8).
+**Take rank 8 alone** (Blue Hour's beats that change in kind above the fog
+line, a 1 naming Fable 5.1, Blue Hour item 2). Ranks 1 to 7 want a real GPU, a
+real phone or a person listening for an hour, which a cloud session does not
+have. Rank 9 (Integer Foundry, also a 1) is the alternative if rank 8's design
+call cannot be made.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**The owl hunts, fireflies drift to the fire, and Blue Hour's phantom steps
+lean toward the valley** (#633, #634, PR #PRNUM). Rank 5's "if night proves
+popular" was read as a priority gate, not a question for Devon, because
+building it changes nothing about what the page is; #628 still governs
+conditions that do. Both Golden Hour movers are pure clocks in
+`js/creatures/nightpaths.js` and the `?debug` hook has `owlHunt(p)` and
+`owl()`. Blue Hour's `downhillAt` is `fallLine` in `field.js`, which also moved
+the eyes' drift and the shape's head-flip; session 6's tripwire now fails if
+the pan goes back to zero. **Worth carrying forward**: pgrep for a script name
+matches the shell loop waiting on it, so `until ! pgrep -f browser.mjs` never
+ends; wait on a line in the log instead. Running breaks in a `git worktree`
+copy keeps the branch clean and lets two browser suites run at once under
+separate `xvfb-run -a` displays, at the cost of real-time beats wobbling
+further (#53).
 
 **Golden Hour's `?debug` hook has twelve beats in `play-games.mjs`, Blue Hour
 is on the board, and both previews are new drafts** (#630 to #632, PR #392).
