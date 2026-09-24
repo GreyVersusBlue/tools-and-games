@@ -292,7 +292,7 @@ adding a beat**: a section that throws now costs its own checks and no others
 (#529), after the first deliberate break lost twelve unrelated ones to an abort;
 and the plan-vs-flight assertion has to be the clock and not the endpoint
 (#530), because launching at 0.9x `MAXSPEED` still wins on an empty field and
-the break ran green from 46/46. Rank 18's rotate-to-play gate is still a real
+the break ran green from 46/46. Rank 17's rotate-to-play gate is still a real
 device's job and is untouched.
 
 **A sink says what an order costs** (#531, #532). The tile-cost row was a design
@@ -472,21 +472,22 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**The only 2+ left is rank 17.** Eight of the nineteen are ¼: ranks 4, 5, 6,
-9, 10, 11, 12 and 18. **Five of those eight want hardware nothing here has**
-(4, 6, 11, 12, 18), as do three of the halves (1, 3, 13); the Parked section
+**The only 2+ left is rank 16.** Eight of the eighteen are ¼: ranks 3, 4, 5,
+8, 9, 10, 11 and 17. **Five of those eight want hardware nothing here has**
+(3, 5, 10, 11, 17), as do three of the halves (1, 2, 12); the Parked section
 below the table says why they were left ranked anyway. Signal City's row
 retired on 2026-09-24 when M9 shipped (PR #373), the shared asset pipeline's
 the same day when its increment 3 did (PR #380), and Pathfinder's three
 conditional rows the same day again (PR #383). The living-sheet row left the
 same day for Q39 rather than for `HISTORY.md` (#628): nothing was built, and
-the question it waited on is Devon's.
+the question it waited on is Devon's. Aphelion's touch/gamepad row left the
+same way the same day, for Q40 (#629).
 
-**The model split is 5 Opus 5, 8 Fable 5.1, 6 Sonnet 5.** Counted off the
+**The model split is 4 Opus 5, 8 Fable 5.1, 6 Sonnet 5.** Counted off the
 table rather than decremented, which is how the 15/14/9 drift was caught and
 how this paragraph's own drift was caught on 2026-09-24 (it still said 27
-rows and named the peak rank 1): 5 + 8 + 6 is 19, and the table has 19
-rows. By size it is 8 ¼, 7 ½, 3 ones and 1 of the 2+, which is the same 19.
+rows and named the peak rank 1): 4 + 8 + 6 is 18, and the table has 18
+rows. By size it is 8 ¼, 7 ½, 2 ones and 1 of the 2+, which is the same 18.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under.
@@ -620,24 +621,23 @@ and #222 was closed unmerged an hour of suites later.
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 2 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 | `claude/epic-pascal-zo3iep` | [Aphelion](#aphelion) |
-| 3 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 4 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 5 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 6 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 7 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 8 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 9 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 10 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 11 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 12 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 13 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 14 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 15 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 16 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 17 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 18 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 19 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 2 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 3 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 4 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 5 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 6 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 7 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 8 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 9 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 10 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 11 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 12 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 13 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 14 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 15 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 16 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 17 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 18 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -789,21 +789,20 @@ back in. The blocker that had carried this across three rounds was not Aphelion
 at all: `camState` could not read a heading of ±π, so the walk aft was
 unsteerable (#383).
 
-**Nothing urgent is left on the core game.** What remains is one low-urgency
-item the notes have carried across four rounds now, still with no forcing
-signal:
+**Nothing urgent is left on the core game, and nothing is ranked.**
 
-1. **Touch/gamepad input, if this ever needs to run somewhere pointer lock
-   isn't an option** (a tablet, say). A full second input scheme, not a HUD
-   addition. Round 1's arrow-key look closed the specific gap the original
-   audit found (pointer lock denied leaves a player able to walk in a straight
-   line and nothing else); this would be a genuine mobile-support feature. Not
-   attempted in any round. **Only worth it if there's an actual reason this
-   needs to run on a touch device** — still no such reason. Third round
-   carrying this with the same conclusion. If a future session wants to settle
-   it rather than carry it a fourth time, the honest move is to ask Devon
-   directly whether Aphelion ever needs to run on a tablet or phone, rather
-   than each round re-deriving "no evidence yet" from scratch.
+1. **Touch/gamepad input is Q40, not a rank** (#629, 2026-09-24). It was
+   ranked "only if Aphelion ever needs to run on a tablet or phone", four
+   rounds carried it with no reason to build it, and whether there is one is
+   Devon's to say. Round 1's arrow-key look already covers a desktop player
+   whose browser denies pointer lock, so no smaller piece of the row was left
+   that would not answer Q40 for him. `test/desktop-input.mjs`, in Site CI,
+   fails on the first line of the feature: a touch or non-lock pointer event,
+   a gamepad read, a coarse-pointer or hover query, `touch-action`, device
+   orientation, a second file in `libs/`, a file named for touch or a
+   gamepad, or a viewport other than the plain responsive one. If Devon
+   answers Q40 yes, record it, then delete the rule the scheme needs in the
+   same edit.
 
 Two full audit rounds (fun, data-driven extension points, audio, performance,
 accessibility) plus a re-check found nothing else worth touching. Inventing a
@@ -1302,7 +1301,7 @@ to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
 13 below are done (M8 in PRs #355 and #358), and M9 in PRs #362, #367 and #373 (the grid, endless, the sandbox): 919 checks across nine suites, all in Site CI. **Milestones 0 to 9 are done and the ranked row is retired.** Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
-(a ¼ row for the site, like Blue Hour's ranks 9 and 10), and the trucker's
+(a ¼ row for the site, like Blue Hour's ranks 8 and 9), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
@@ -1390,8 +1389,8 @@ the one file-level exception and left with that project on 2026-09-15 (#491),
 taking `npm run play` with it.
 
 Everything open against this folder is filed under the project that needs it:
-Golden Hour's preview recapture and debug-hook beats (ranks 5 and 7) and Blue
-Hour's `games.mjs` entry and preview recipe (9 and 10). Those four numbers were
+Golden Hour's preview recapture and debug-hook beats (ranks 4 and 6) and Blue
+Hour's `games.mjs` entry and preview recipe (8 and 9). Those four numbers were
 read off the table rather than decremented with the rest, which is how the drift
 the line before this one carried was caught twice running — and on 2026-09-16 it
 caught it twice more, once when the four had been left reading 17, 19, 21 and 22
@@ -1624,7 +1623,7 @@ live. Nothing in that column is a link to follow.
 | # | Question | Raised | Where |
 | --- | --- | --- | --- |
 | Q39 | **Should `characters.html` adopt `gvb-save.js` for in-browser editing?** Only if the page's role should shift from showcase to living character sheet. Not requested in three rounds. Its ranked row was retired here on 2026-09-24 (#628); `Pathfinder/tests/showcase.test.mjs` fails on the first line of the feature, so a yes means narrowing that check. | 4 | prompt 03, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
-| Q40 | **Does Aphelion ever need to run on a tablet or phone?** Three rounds have each re-derived "no evidence yet" from scratch rather than asking. The answer decides whether the touch/gamepad input scheme is worth building. | 3 | prompt 04, and its notes in rounds 2 and 3 |
+| Q40 | **Does Aphelion ever need to run on a tablet or phone?** Four rounds re-derived "no evidence yet" from scratch rather than asking. The answer decides whether a touch/gamepad input scheme gets built. Nothing in the game reads a touch or a gamepad today, so on a phone without a keyboard it can be looked at and not played. Its ranked row was retired here on 2026-09-24 (#629); `Projects/aphelion/test/desktop-input.mjs` fails on the first line of the feature, so a yes means deleting the rule it trips. | 4 | prompt 04, and its notes in rounds 2 and 3; rank 2 on 2026-09-24 |
 | Q42 | **Is Closing Time's multi-career history worth the save-shape work?** Whether the career ending is more than a one-time wall, and whether players actually hit it repeatedly. Three rounds of notes have said the same. | 3 | prompt 06's notes across three rounds |
 | Q43 | **If Golden Hour's night proves popular, should the owl hunt?** One swoop over the dunes, no kill shown; and the fireflies drifting toward the fire when it burns. | 1 | the project's notes |
 | Q45 | **Blue Hour's direction: keep pushing into `dread.js`, or lock "no save, no verbs, no collection" as a decision?** The ending pass committed hard to dread over collection, so Golden Hour parity is now the odd option out and shouldn't be adopted without asking. | 2 | prompt 24, the notes' sessions 2 and 4 |
