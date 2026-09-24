@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAIL, LAYOUT, creekInfo, trailInfo } from './field.js';
+import { TRAIL, LAYOUT, creekInfo, trailInfo, summitAir } from './field.js';
 import { createGhost } from './ghost.js';
 import { buildTerrain } from './terrain.js';
 import { buildForest } from './forest.js';
@@ -111,10 +111,6 @@ scene.add(lampLight, lampLight.target);
 const lampState = { found: false, on: false, mix: 0 };
 
 const mixN = (a, b, t) => a + (b - a) * t;
-const smoothstep = (a, b, v) => {
-  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
 
 let weatherT = 0;    // seconds of walking, not seconds since the page loaded
 
@@ -327,7 +323,7 @@ function tick() {
   // the title card shouldn't burn through the cycle before the first step.
   if (controls.enabled) weatherT += dt;
   const fogT = fogPhase();
-  const altT = smoothstep(46, 62, controls.pos.y);
+  const altT = summitAir(controls.pos.y);
   applyWeather(fogT, altT);
 
   const moving = controls.update(dt);
@@ -352,6 +348,7 @@ function tick() {
     creekDist: ck.dist,
     waterfallDist: Math.hypot(controls.pos.x - wf.x, controls.pos.z - wf.z),
     birdsSilent: dread.birdsSilent,
+    windStill: dread.windStill,
     watched: dread.lookoutWatching,
     lamp: lampState.on,
   });
@@ -373,11 +370,11 @@ if (new URLSearchParams(location.search).has('debug')) {
     // phase and the clear one in the same run.
     setWeatherT(t) {
       weatherT = Math.max(0, t);
-      applyWeather(fogPhase(), smoothstep(46, 62, controls.pos.y));
+      applyWeather(fogPhase(), summitAir(controls.pos.y));
     },
     getWeatherT: () => weatherT,
     fogT: () => fogPhase(),
-    altT: () => smoothstep(46, 62, controls.pos.y),
+    altT: () => summitAir(controls.pos.y),
     density: () => scene.fog.density,
 
     teleport(x, z) { controls.pos.x = x; controls.pos.z = z; },
@@ -435,6 +432,7 @@ if (new URLSearchParams(location.search).has('debug')) {
     // descent, the downhill lean and the echo without ears.
     lastPhantom: () => audio._lastPhantom,
     lastRadio: () => audio._lastRadio,
+    lastStone: () => audio._lastStone ?? null,
     // How many low stings the piece has played. The suite counts them to hold
     // the promise that nothing acknowledges the walker's leaving.
     stings: () => audio._stings || 0,

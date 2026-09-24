@@ -820,6 +820,83 @@ ok('the carrier opens at the summit', transmission.fired === 'transmission' && !
 ok('answered by nothing but your own delayed static', transmission.last.echoGain === 0.5,
   `echo ${transmission.last.echoGain}`);
 
+// #635: the silence and the snap change kind above STILL_AIR. Low down they
+// are what they always were: no still, no stone.
+const lowKinds = await page.evaluate(async () => {
+  __bh.teleport(0, 140);
+  await new Promise(r => setTimeout(r, 300));
+  const d = __bh.dread;
+  d._lastBeat = null;
+  __bh.fireDread('silence');
+  const still = d.windStill;
+  d._lastBeat = null;
+  __bh.fireDread('snap');
+  return { still, stone: __bh.lastStone(), altT: __bh.altT() };
+});
+ok('low down the silence takes the birds and leaves the wind', lowKinds.still === false,
+  `altT ${lowKinds.altT.toFixed(2)}`);
+ok('and a snap is a branch, not a stone', lowKinds.stone === null);
+
+// The still, heard through the wind bus's own gain. Real seconds, not world
+// ones: the AudioContext runs on the wall clock whatever the frame rate, and
+// the lull settles with a 1.2 s time constant.
+const stillBefore = await page.evaluate(async () => {
+  const L = __bh.layout();
+  __bh.teleport(L.bench.x, L.bench.z);
+  await new Promise(r => setTimeout(r, 2500));
+  return { wind: __bh.music().wind, altT: __bh.altT() };
+});
+await page.evaluate(() => { __bh.dread._lastBeat = null; __bh.fireDread('silence'); });
+await wait(7000);
+const stillHeld = await page.evaluate(() => ({ d: __bh.dread.windStill, m: __bh.music() }));
+ok('at the bench the silence takes the wind instead',
+  stillHeld.d === true && stillHeld.m.still === true,
+  `altT ${stillBefore.altT.toFixed(2)}`);
+ok('and the wind actually goes', stillBefore.wind > 0.08 && stillHeld.m.wind < 0.02,
+  `wind ${stillBefore.wind.toFixed(3)} down to ${stillHeld.m.wind.toFixed(4)}`);
+
+await page.evaluate(() => { __bh.dread._silenceLeft = 0; });
+await wait(2000);
+const stillGone = await page.evaluate(() => ({
+  d: { windStill: __bh.dread.windStill, birdsSilent: __bh.dread.birdsSilent }, m: __bh.music() }));
+ok('when it lets go the wind comes back as one hard gust',
+  !stillGone.d.windStill && !stillGone.d.birdsSilent && !stillGone.m.still && stillGone.m.gustTarget === 1,
+  `gust target ${stillGone.m.gustTarget}`);
+
+// The stone. Staged on the upper legs, climbing and then descending, and read
+// against the valley side the way the phantom's pan is further down: from
+// mountainH six metres either side, not from the code under test.
+const stones = await page.evaluate(async () => {
+  const { mountainH } = await import('/Projects/blue-hour-trail/js/field.js');
+  const trail = __bh.trail();
+  const i = Math.round(0.9 * (trail.length - 1));
+  const out = {};
+  for (const f of ['up', 'down']) {
+    const yaw = Math.atan2(-trail[i].dx, -trail[i].dz) + (f === 'down' ? Math.PI : 0);
+    __bh.teleport(trail[i].x, trail[i].z);
+    __bh.face(yaw, 0);
+    await new Promise(r => setTimeout(r, 300));
+    __bh.dread._lastBeat = null;
+    __bh.fireDread('snap');
+    const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    const x = trail[i].x, z = trail[i].z;
+    const st = __bh.lastStone();
+    out[f] = {
+      altT: __bh.altT(), from: st && st.from, to: st && st.to, knocks: st ? st.plan.length : 0,
+      valley: Math.sign(mountainH(x - rx * 6, z - rz * 6) - mountainH(x + rx * 6, z + rz * 6)),
+    };
+  }
+  return out;
+});
+ok('high on the trail a snap is a stone let go upslope',
+  stones.up.knocks >= 5 && stones.down.knocks >= 5 && stones.up.altT >= 0.6,
+  `altT ${stones.up.altT.toFixed(2)}, ${stones.up.knocks} and ${stones.down.knocks} knocks`);
+ok('and it rolls from the uphill ear to the valley one, whichever way you face',
+  Math.sign(stones.up.to) === stones.up.valley && Math.sign(stones.up.from) === -stones.up.valley
+    && Math.sign(stones.down.to) === stones.down.valley && Math.sign(stones.down.from) === -stones.down.valley
+    && stones.up.valley === -stones.down.valley && Math.abs(stones.up.to) > 0.3,
+  `climbing ${stones.up.from.toFixed(2)} to ${stones.up.to.toFixed(2)}, descending ${stones.down.from.toFixed(2)} to ${stones.down.to.toFixed(2)}`);
+
 group('the headlamp');
 // Ladder 6: findable at the cabin, one toggle, and honest — the cone is a
 // real light and the world outside it genuinely darkens while it burns.

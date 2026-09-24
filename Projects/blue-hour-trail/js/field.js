@@ -377,6 +377,28 @@ export function fallLine(x, z) {
   return { x: -gx / len, z: -gz / len };
 }
 
+/**
+ * How far into the summit air a height is: 0 at the fog line's foot (46 m),
+ * 1 at its head (62 m), smoothstepped between. main.js weathers the scene by
+ * it (its altT), audio.js ends the birdsong by it, and dread.js reads it to
+ * decide what KIND of beat a height gets.
+ */
+export const FOG_LINE = { lo: 46, hi: 62 };
+export function summitAir(y) {
+  const t = clamp((y - FOG_LINE.lo) / (FOG_LINE.hi - FOG_LINE.lo), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Where the woods' voices give way to the mountain's (#635). Past this much
+ * summit air audio.js has no birdsong left to silence, so the silence beat
+ * takes the wind instead, and a snap is a stone let go upslope rather than a
+ * branch. One threshold for both, and the same one the birds stop at, so the
+ * silence can never again be spent on birds that are not there.
+ */
+export const STILL_AIR = 0.6;
+export function summitKind(y) { return summitAir(y) >= STILL_AIR; }
+
 /** 0 off-trail → 1 on the packed dirt. Also drives the ground shader blend. */
 export function trailBlend(x, z) {
   const { dist } = trailInfo(x, z);
