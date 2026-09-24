@@ -1155,6 +1155,8 @@ Generator.
 
 **#637. R1's done line was not met as written, and that is the finding: the move each level teaches costs the board.** The full hand beats no input on cleared or wait on First Light, Stem, Four Ways, Crossing and School Run. It does not on the other four. Two Blocks ties, because the sweep's best offset is the 16 s it ships. Rush Hour loses both (67.3 cleared, 14.7 s against 74.7, 13.2 s) and wins the ambulance, on time 6 of 6 against 3 late. Main Street loses both, with the procession held and the motorcade given its corridor (66.7, 19.5 s against 71.8, 11.7 s, one lock). Free Play loses both to the corridor on its two ambulances (two locks). With `--hand=phases` alone the greedy beats no input on Rush Hour (wait 11.8 s), Main Street (cleared 76.8) and Free Play (wait 21.3 s). The hand was not bent to pass the line: a hand that skips the corridor to win the wait target is the problem R2 exists to fix, and the tables are its evidence. The comparison table counts a late ambulance as a third measure on a level that has one. *Signal City, R1.*
 
+**#638. Sessions run on Opus 5.5 or Sonnet 5 only.** A row whose Model names Fable 5.1 runs on Opus 5.5; Opus 5 rows run on Opus 5.5; Sonnet 5 rows run on Sonnet 5. The Model column keeps the name its source gave it, so the mapping is the rule rather than a relabel of every row and `WISHLIST.md`. Devon's call, from 2026-09-24. *The repo.*
+
 ---
 
 # The log
