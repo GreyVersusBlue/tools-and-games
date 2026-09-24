@@ -86,6 +86,60 @@ async function ghDebugBeats(p, t) {
     `star opacity ${dayStars} -> ${nightStars}, sunT ${await p.evaluate(() => window.__gh.getSunT())}`);
   await t.shot('night');
 
+  // -- The night's two movers (rank 5, 2026-09-24): some fireflies drift from
+  // the dune hollows to the fire as the dark comes down, and the owl hunts.
+  // Both run on clocks the hook can scrub, so these are read-after-scrub beats.
+  // The fire is found as the scene's one PointLight (campfire.js says it is the
+  // project's only realtime light), and the ground is read from field.js in the
+  // page, so neither number comes from the code under test.
+  const fireflies = () => p.evaluate(() => {
+    let flies = null;
+    const lights = [];
+    window.__scene.traverse(o => {
+      if (o.isPoints && o.geometry.attributes.position.count === 40) flies = o;
+      if (o.isPointLight) lights.push(o);
+    });
+    if (!flies || lights.length !== 1) return { near: -1, lights: lights.length };
+    const fire = lights[0].getWorldPosition(lights[0].position.clone());
+    const a = flies.geometry.attributes.position;
+    let near = 0;
+    for (let i = 0; i < a.count; i++) {
+      if (Math.hypot(a.getX(i) - fire.x, a.getZ(i) - fire.z) < 8) near++;
+    }
+    return { near, visible: flies.visible, lights: lights.length };
+  });
+  await p.evaluate(() => window.__gh.setSunT(760));
+  await frames(p, 3);
+  const dusk = await fireflies();
+  await p.evaluate(() => window.__gh.setSunT(1230));
+  await frames(p, 3);
+  const dark = await fireflies();
+  t.ok(dusk.visible && dark.visible && dusk.near === 0 && dark.near >= 12,
+    'as the dark comes down, fireflies leave the hollows for the fire',
+    `${dusk.near} within 8 m of the fire at sunT 760 -> ${dark.near} at 1230 (${dark.lights} point light)`);
+
+  const owlAt = () => p.evaluate(async () => {
+    const { groundHeight } = await import(new URL('js/field.js', location.href).href);
+    const o = window.__scene.getObjectByName('owl');
+    if (!o) return null;
+    const { x, y, z } = o.position;
+    return { x, z, over: y - groundHeight(x, z), visible: o.visible };
+  });
+  const byDay = await p.evaluate(() => window.__gh.owlHunt(0.5));
+  t.ok(byDay === false, 'before full dark the owl is not out, and will not hunt', `owlHunt -> ${JSON.stringify(byDay)}`);
+  await p.evaluate(() => window.__gh.setSunT(1560));
+  await frames(p, 3);
+  const perched = await owlAt();
+  const target = await p.evaluate(() => window.__gh.owlHunt(0.5));
+  await frames(p, 2);
+  const down = await owlAt();
+  const moved = perched && down ? Math.hypot(down.x - perched.x, down.z - perched.z) : 0;
+  t.ok(perched?.visible && perched.over > 3 && !!target && down.over < 0.4 && moved > 10,
+    'at night the owl leaves its snag and drops into the dune grass',
+    perched && down
+      ? `${perched.over.toFixed(2)} m up on the snag -> ${down.over.toFixed(2)} m over the sand, ${moved.toFixed(1)} m out`
+      : 'no owl in the scene');
+
   // -- A place: teleport past x -420 onto the headland. regions.js raises the
   // card and the journal records the place, first time ever. Before the move,
   // the headland is in neither, so the beat cannot pass on a leftover save.
