@@ -104,24 +104,36 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Pathfinder's living-sheet
-row (PR #386)**, old rank 2, a ½ naming Fable 5.1, worked under Opus 5.5. It
-was retired to Q39 without building anything (#628), and every rank below it
+**The last batch of ranked work that shipped** is **Aphelion's touch/gamepad
+row (PR #389)**, old rank 2, a 1 naming Opus 5, worked under Opus 5.5. It was
+retired to Q40 without building anything (#629), and every rank below it
 moved up one. That is the line to update when your batch merges; a PR that only
 changes these files is not a batch and does not belong in it.
-**19 ranked items remain**, and **every one of them names a model.**
+**18 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 2, touch/gamepad input for Aphelion** (`Projects/aphelion`, 1,
-Opus 5), alone: a 1 is the whole batch when no ¼ in its area can join it, and
-none can. Rank 1, the real-hardware pass, needs hardware this machine lacks.
-**Rank 2 is conditional on Q40** ("does Aphelion ever need to run on a tablet
-or phone?"), which is Devon's call and unanswered in four rounds, so #628 is
-the precedent to read first: a row waiting on a person's decision leaves the
-ranked table for that person's question, with a check that fails on the
-first line of the feature.
+**Take ranks 4, 6, 8 and 9 together, all `Tools/board-check`** (a ¼ naming
+Opus 5, a ½ and two ¼ naming Sonnet 5: five quarters in one area, inside
+#382's six). Ranks 1 to 3 want a real GPU, a real phone or a person listening
+for an hour, which a cloud session does not have. Rank 4 is the one naming
+Opus 5, so work the batch under it. `npm run previews` and `npm run games`
+open real, visible windows, one at a time; a session without a display needs
+one before it starts, and a capture from a software rasterizer is a draft for
+Devon to look at, not a promotion to trust (#53).
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Aphelion's touch/gamepad row went to Q40, not to a build** (#629, PR #389).
+Whether Aphelion ever runs on a tablet or phone is Devon's decision, the same
+shape as Q39 (#628). Round 1's arrow-key look had already closed the one gap
+the audit found, so no smaller honest piece was left. `Projects/aphelion/test/
+desktop-input.mjs` (9, in Site CI) fails on a touch or non-lock pointer event,
+a gamepad read, a coarse-pointer query, `touch-action`, device orientation, a
+second vendored lib, a file named for the scheme or a changed viewport. **Worth
+carrying forward**: 28 breaks from green, one per spelling (listener, `on*`
+property, a name in an array, inline `<script>`, CSS, a new file); and break
+the check's own walk too, since losing `index.html` first crashed the suite
+after its assertion printed instead of reporting.
 
 **Pathfinder's living-sheet row went to Q39, not to a build** (#628, PR #386).
 Whether `characters.html` becomes an editable character sheet is Devon's
