@@ -244,8 +244,8 @@ function rockStep(x, z) {
  * frame the walker arrives at the bench with read 14.6/255 in its lower half,
  * a dark rising slope where the old berm's drop-off used to be; held flat it
  * reads 20.0, and the four facings sit between 18.3 and 27.4 where the ramp's
- * summit ran from 9.1 to 29.4. The shape of the summit itself is a separate,
- * still-open question (BACKLOG.md, Blue Hour: the mountain has no peak).
+ * summit ran from 9.1 to 29.4. The profile is only the climb: the shape of
+ * the summit itself is summitCap's job (#607), below.
  */
 const HILL_SMOOTH = 6;
 const HILL_PROFILE = (() => {
@@ -293,13 +293,65 @@ export function hillProfile(z) {
   return lerp(table[i], table[i + 1], f - i);
 }
 
+/**
+ * The peak: a ceiling over the top of the mountain that nothing near the
+ * summit stands above. Before it, hillProfile held 65 m flat behind the tower
+ * and the ridge noise did the rest: a ridge 26 m west of the tower stood at
+ * 71.3 m, 6.3 m over the trail's end, and 71.8 m further back, and 20 m
+ * behind the tower the ground rose to 70.5 m. The walk ended in a dip.
+ *
+ * Centred on the tower, which is where a fire lookout goes. In the tower's own
+ * frame, u runs back down the trail's arrival direction and v across it. The
+ * last leg comes in almost level (1.4 m of drop over its final 34 m, the eased
+ * end of trailYof), so a round cone steep enough to read as a peak would cut
+ * under the approach. Instead the summit is a spur: gentle along +u, where the
+ * trail climbs, and falling steeply across it and behind the tower, which is
+ * how real trails reach real tops. Distance is stretched per axis, then the
+ * drop grows from flat at the crown toward PEAK.slope per metre.
+ *
+ * Applied with a smooth min in mountainH, so it only ever REMOVES ground that
+ * stands higher than the summit would let it. Nothing under the crown moves:
+ * the bench, the tower and the trail's own height are where they were, and
+ * smoke.mjs holds the trail's clearance under the cap.
+ */
+const PEAK = (() => {
+  const e = trailPoint(1);
+  return {
+    x: e.x + e.dx * 13, z: e.z + e.dz * 13,        // the tower (buildLayout)
+    ux: -e.dx, uz: -e.dz,                           // back down the approach
+    top: e.y,                                       // the trail's own summit height
+    crown: 7,                                       // flat radius, metres
+    along: 0.22, across: 1, behind: 1.25,           // per-axis stretch of distance
+    slope: 0.42, ease: 30,                          // far slope, and metres to reach it
+    blend: 1.5,                                     // smooth-min width
+    fadeLo: -85, fadeHi: -50,                       // z: full cap above, none below
+  };
+})();
+
+/** The ceiling the peak puts over (x, z), before mountainH's z fade. */
+export function summitCap(x, z) {
+  const P = PEAK;
+  const rx = x - P.x, rz = z - P.z;
+  const u = rx * P.ux + rz * P.uz, v = -rx * P.uz + rz * P.ux;
+  const d = Math.max(0, Math.hypot(u * (u > 0 ? P.along : P.behind), v * P.across) - P.crown);
+  return P.top - P.slope * d * d / (d + P.ease);
+}
+
+/** Polynomial smooth min: equal to min(a, b) once they are `k` apart. */
+function smin(a, b, k) {
+  const h = clamp(0.5 + 0.5 * (b - a) / k, 0, 1);
+  return lerp(b, a, h) - k * h * (1 - h);
+}
+
 /** The raw hillside, before the trail is benched in or the creek cut. */
 export function mountainH(x, z) {
   let h = hillProfile(z);                                    // the climb itself
   h += fbm(x * 0.018 + 7.3, z * 0.021) * 11 - 5.5;          // ridges and gullies
   h += fbm(x * 0.09, z * 0.09) * 1.6 - 0.8;                 // small roughness
   h += rockStep(x, z);
-  return h;
+  if (z >= PEAK.fadeHi) return h;                           // the peak is the top's business
+  const capped = smin(h, summitCap(x, z), PEAK.blend);      // nothing out-tops it
+  return lerp(capped, h, smooth(clamp((z - PEAK.fadeLo) / (PEAK.fadeHi - PEAK.fadeLo), 0, 1)));
 }
 
 /** 0 off-trail → 1 on the packed dirt. Also drives the ground shader blend. */

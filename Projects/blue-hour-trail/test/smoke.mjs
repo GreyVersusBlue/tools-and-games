@@ -205,22 +205,55 @@ group('the way back down');
   ok(worstCauseway < 3, 'and nowhere on the trail is a causeway',
     `worst ${worstCauseway.toFixed(1)} m above both shoulders at t ${worstAt.toFixed(2)} (was 10.9 at t 0.90)`);
 
-  // Past the trail's end the hill HOLDS the summit's height to the map edge
-  // (#524): a shoulder, not a peak and not a slope. With the climb continued
-  // behind the tower instead, the frame a walker arrives at the bench with
-  // read 14.6/255 in its lower half, under the browser suite's floor of 18 —
-  // a dark rising slope where the old berm's drop-off had been. Held flat it
-  // reads 20.0. The summit's own shape is still open (BACKLOG.md, Blue Hour:
-  // the mountain has no peak); this only says the ground behind the tower is
-  // level with the bench. Behind the trailhead the hill keeps falling, so the
-  // creek still leaves the map downhill.
+  // Past the trail's end the climb's PROFILE holds the summit's height to the
+  // map edge (#524). With the climb continued behind the tower instead, the
+  // frame a walker arrives at the bench with read 14.6/255 in its lower half,
+  // under the browser suite's floor of 18: a dark rising slope. The profile
+  // is only the climb, though; the ground past the summit is the peak's
+  // business now (summitCap, below). Behind the trailhead the hill keeps
+  // falling, so the creek still leaves the map downhill.
   {
     const end = trailPoint(1), top = hillProfile(end.z), edge = hillProfile(BOUNDS.minZ);
-    ok(Math.abs(edge - top) < 0.01, 'past the summit the hill holds the summit\'s height to the map edge',
+    ok(Math.abs(edge - top) < 0.01, 'past the summit the climb\'s profile holds the summit\'s height',
       `${top.toFixed(1)} m at the trail\'s end, ${edge.toFixed(1)} m at z ${BOUNDS.minZ}`);
     const head = hillProfile(145), behind = hillProfile(BOUNDS.maxZ);
     ok(behind < head && head - behind < 3, 'and falls away gently behind the trailhead',
       `${head.toFixed(1)} m at the trailhead, ${behind.toFixed(1)} m at z ${BOUNDS.maxZ}`);
+  }
+
+  // 3. The mountain has a peak (#607). Before summitCap the ridge noise sat on
+  //    a held-flat profile, so a ridge 40 m from the trail's end stood at
+  //    71.3 m, 6.3 m over it (71.8 m at 56 m), and 20 m behind the tower
+  //    the ground ROSE to 70.5 m: the walk ended in a dip. Two claims, each broken once (#34):
+  //    (d) nothing within 100 m of the trail's end stands above it. With the
+  //        cap removed from mountainH this reads 71.8 m at 56 m out (and (e)
+  //        reads a 4.7 m rise).
+  //    (e) behind the tower the ground falls: 40 m past it, 8 m below its
+  //        feet. With `behind` stretched to 0 the cap stops falling behind
+  //        the tower and holds it at the summit's height, #524's shoulder
+  //        again: (e) reads 65.0 m, a 1.9 m rise, and (d) stays GREEN,
+  //        because a flat shoulder at 65 m out-tops nothing. So (e) is the
+  //        only thing holding the far side.
+  //    What keeps the cap off the rest of the mountain is claims (b) and (c)
+  //    above, not a new one: with PEAK's z fade removed the cap reaches down
+  //    the slope, (b) reads +3.30 m, (c) a 13.2 m causeway at t 0.07, and
+  //    a logbook page lands on ground too steep to stand on.
+  {
+    const end = trailPoint(1), T = LAYOUT.tower;
+    let high = -Infinity, hx = 0, hz = 0;
+    for (let x = end.x - 100; x <= end.x + 100; x += 1) {
+      for (let z = end.z - 100; z <= end.z + 100; z += 1) {
+        if (Math.hypot(x - end.x, z - end.z) > 100) continue;
+        const h = groundHeight(x, z);
+        if (h > high) { high = h; hx = x; hz = z; }
+      }
+    }
+    const top = groundHeight(end.x, end.z);
+    ok(high < top + 0.1, 'nothing within 100 m of the trail\'s end stands above it',
+      `highest ${high.toFixed(1)} m at ${Math.hypot(hx - end.x, hz - end.z).toFixed(0)} m out, the trail\'s end ${top.toFixed(1)} m (was 71.8)`);
+    const feet = groundHeight(T.x, T.z), back = groundHeight(T.x + end.dx * 40, T.z + end.dz * 40);
+    ok(feet - back > 8, 'and behind the tower the mountain falls away',
+      `${feet.toFixed(1)} m at the tower, ${back.toFixed(1)} m 40 m past it (was a 4.7 m rise)`);
   }
 }
 

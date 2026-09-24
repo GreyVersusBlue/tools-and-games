@@ -201,24 +201,51 @@ ok('the fog closes at the top rather than parting', summitWeather.density > 0.04
 // 2. The near-black frame is gone. The old summit measured 6-14/255 across four
 //    facings; the trail below, which is deliberately dim, reads about 22.
 //    Read in-page from the drawing buffer so the suite needs no PNG decoder.
-const lum = await page.evaluate(() => new Promise(res => {
-  const src = document.getElementById('scene');
-  // The renderer runs without preserveDrawingBuffer, so sample inside a rAF —
-  // after the frame is drawn, before it is cleared.
-  requestAnimationFrame(() => {
-    const gl = src.getContext('webgl2') || src.getContext('webgl');
-    const w = src.width, h = Math.floor(src.height / 2);
-    const buf = new Uint8Array(w * h * 4);
-    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);   // y=0 is the BOTTOM half
-    let s = 0;
-    for (let i = 0; i < buf.length; i += 4) {
-      s += 0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2];
-    }
-    res(s / (buf.length / 4));
+//
+//    All four facings now, not just the one the walker arrives with (#607).
+//    That one was the only facing held when #524 chose the flat shoulder, and
+//    the other three read 18.3 to 27.4 with nothing holding them. With the
+//    peak they read, at the bench: toward the tower 23.6 (was 20.0), left
+//    32.5 (30.2), back down the trail 19.4 (20.3), right 22.7 (21.0), from
+//    one probe; the suite's own run read 24.6, 33.5, 23.3, 24.0, because the
+//    fog cycle moves every reading a few points. Back down is the thin one:
+//    it looks along the approach spur, which the peak barely touches.
+//    Broken once (#34) by putting back the shape #524 rejected, no cap and the
+//    climb continuing behind the tower: toward the tower 12.7, right 10.0.
+//    The darkest facing was one the single reading never looked at.
+const summitLums = await page.evaluate(() => new Promise(async res => {
+  const L = __bh.layout();
+  const toTower = Math.atan2(-(L.tower.x - L.bench.x), -(L.tower.z - L.bench.z));
+  const read = () => new Promise(r => {
+    // The renderer runs without preserveDrawingBuffer, so sample inside a rAF:
+    // after the frame is drawn, before it is cleared.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const src = document.getElementById('scene');
+      const gl = src.getContext('webgl2') || src.getContext('webgl');
+      const w = src.width, h = Math.floor(src.height / 2);
+      const buf = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);   // y=0 is the BOTTOM half
+      let s = 0;
+      for (let i = 0; i < buf.length; i += 4) {
+        s += 0.2126 * buf[i] + 0.7152 * buf[i + 1] + 0.0722 * buf[i + 2];
+      }
+      r(s / (buf.length / 4));
+    }));
   });
+  const out = [];
+  for (let k = 0; k < 4; k++) {
+    __bh.teleport(L.bench.x, L.bench.z);
+    __bh.face(toTower + k * Math.PI / 2, 0);
+    await new Promise(r => setTimeout(r, 1500));
+    out.push(await read());
+  }
+  __bh.face(toTower, 0);          // leave it where the old single reading did
+  res(out);
 }));
-ok('the ground at the summit is legible, not black', lum > 18,
-  `lower-half luminance ${lum.toFixed(1)}/255 (was 6-14)`);
+const FACINGS = ['toward the tower', 'left', 'back down the trail', 'right'];
+const darkest = Math.min(...summitLums);
+ok('the ground at the summit is legible, not black, whichever way you face', darkest > 18,
+  summitLums.map((l, k) => `${FACINGS[k]} ${l.toFixed(1)}`).join(', ') + ' /255 (was 6-14)');
 
 group('somebody is in the lookout');
 const figure = await page.evaluate(async () => {
