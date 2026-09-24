@@ -249,8 +249,9 @@ export const LEVELS = [
     gridlockWait: 150,
     // a permissive left waiting mid-box for a procession to pass is not a
     // gridlock: the stream is 30 s long, and the default 30 s stall locked
-    // 2 of 6 seeds with the green held under it
-    boxStall: 45,
+    // 2 of 6 seeds with the green held under it. From the far edge at a
+    // walk it can be 48 s (R1's hand, seed 1), so 60 (R2, #639)
+    boxStall: 60,
     mode: 'soft',
     unlocks: ['phases', 'auto', 'allred', 'priority'],
   },

@@ -92,7 +92,7 @@ export function holdPlatoon(w) {
   if (!p) return -1;
   const ctl = w.controllers[p.node];
   const lead = p.cars[0];
-  if (lead.front < lead.path.stopLine - 60) return -1;
+  if (lead.front < lead.path.stopLine - 60 || (lead.path.stopLine - lead.front) / Math.max(lead.v, 0.5) > 10) return -1;
   if (p.cars.length >= p.size && p.cars.every(c => c.done || c.rear > c.path.boxExit)) return -1;
   const want = ctl.phases.findIndex(ph => ph.movements.includes(lead.path.movement));
   if (want < 0) return -1;
@@ -147,7 +147,8 @@ const calls = (w, node, phase) => phase.walks.map(p => w.pedCalls[node][p.slice(
 export const PED_ASK = 12;   // seconds a call waits on another phase before the hand cuts the running green for it (R2)
 
 // The hand's walk (R2), before the queue-greedy choice and while a walk
-// runs. A call on another phase that has waited PED_ASK is served first,
+// runs. A call on another phase that has waited PED_ASK, and longer than
+// any car stopped at the box, is served first,
 // by asking for its phase once the minimum green has run (the green ends
 // when the running walk has cleared). A call on a crossing the running
 // green carries is served by holding the green, until it has run HAND_MAX:
@@ -156,7 +157,12 @@ export const PED_ASK = 12;   // seconds a call waits on another phase before the
 function answerWalks(w, node, max) {
   const ctl = w.controllers[node];
   if (!ctl.hasPeds) return false;
-  const i = ctl.phases.findIndex((p, j) => j !== ctl.phase && calls(w, node, p).some(c => w.t - c.since >= PED_ASK));
+  // a call jumps the queue only once it has waited longer than every car
+  // stopped at the box: on Crossing a left bay waits a cycle, and serving
+  // the walks first starved it to the 180 s gridlock on 4 of 6 seeds
+  let oldest = 0;
+  for (const c of w.cars) if (!c.done && c.path.node === node && c.front < c.path.boxEnter && c.v < 1) oldest = Math.max(oldest, c.wait);
+  const i = ctl.phases.findIndex((p, j) => j !== ctl.phase && calls(w, node, p).some(c => w.t - c.since >= Math.max(PED_ASK, oldest)));
   if (i >= 0) return ctl.stageT >= ctl.timing.minGreen && w.requestPhase(i, node);
   if (!ctl.walk && calls(w, node, ctl.current).length && ctl.stageT < max && ctl.timeToYellow(ctl.current.movements[0]) !== Infinity) return w.holdGreen(node);
   return false;
