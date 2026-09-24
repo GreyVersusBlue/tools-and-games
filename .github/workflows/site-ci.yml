@@ -143,6 +143,7 @@ jobs:
               node balance.mjs
               node assets.mjs
               node characters.mjs
+              node props.mjs
 
           - name: Blue Hour
             dir: Projects/blue-hour-trail

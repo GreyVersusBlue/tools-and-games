@@ -58,8 +58,10 @@ const require = createRequire(import.meta.url);
 
 // --- recipes ----------------------------------------------------------------
 //
-// A recipe is a list of { from, to } pairs, repo-relative, the commit `from`
-// is read at, and the steps. Add a game by adding a recipe, not a script.
+// A recipe is a list of { from, to } pairs, repo-relative (or a function of
+// the commit that derives them from the project's own manifest at it), the
+// commit `from` is read at, and the steps. Add a game by adding a recipe, not
+// a script.
 
 const B2B_CHAR = "Projects/bell-to-bell/Assets/models";
 const MEN = `${B2B_CHAR}/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF`;
@@ -85,6 +87,29 @@ export const RECIPES = {
       outfit(WOMEN, "Adventurer")
     ],
     keepClips: ["Idle"],
+    meshopt: "high",
+    decoder: "Projects/bell-to-bell/libs/addons/libs/meshopt_decoder.module.js"
+  },
+
+  // Bell to Bell's eleven props and the picture frame. Poly Haven ships each as
+  // a .gltf, a .bin and a folder of JPEGs; the .bin is the mesh and is what
+  // this recipe compresses. The JPEGs stay where they are, loose, and the .glb
+  // names them by the same relative URI the .gltf did (#624): they are already
+  // the texture recipe's output, a JPEG does not get smaller inside a .glb, and
+  // keeping them out means `bell-to-bell-textures --check` still reads the
+  // files it wrote. Six of these .gltf files were rewritten by that recipe to
+  // name *_512.jpg maps, so the sources are read at 52d2a59, the merge of PR
+  // #377, not at the texture recipe's own 24b6b99.
+  "bell-to-bell-props": {
+    rev: "52d2a5955a58db51c3122f48ebf85d91c70a7b80",
+    pairs: rev => {
+      const manifest = readJSONAt(rev, `${B2B}/data/assets.json`);
+      return [...Object.values(manifest.props), manifest.art.frame].map(p => ({
+        from: `${B2B}/${p}`,
+        to: `${B2B}/${p.replace(/[^/]+\.gltf$/, name => name.replace(/\.gltf$/, ".glb"))}`
+      }));
+    },
+    externalImages: true,
     meshopt: "high",
     decoder: "Projects/bell-to-bell/libs/addons/libs/meshopt_decoder.module.js"
   }
@@ -252,11 +277,28 @@ function gitShow(rev, file) {
 const gz = buf => zlib.gzipSync(buf, { level: 6 }).byteLength;
 const kb = n => (n / 1024).toFixed(0).padStart(6) + " KB";
 
+// A .glb is a 12-byte header, a JSON chunk, then the binary chunk. These read
+// the JSON and put a new one in, padded to four bytes with spaces as the spec
+// asks, leaving the binary chunk byte for byte.
+function glbJSON(buf) { return JSON.parse(buf.subarray(20, 20 + buf.readUInt32LE(12)).toString("utf8")); }
+function withGlbJSON(buf, json) {
+  let text = Buffer.from(JSON.stringify(json), "utf8");
+  if (text.length % 4) text = Buffer.concat([text, Buffer.alloc(4 - text.length % 4, 0x20)]);
+  const rest = buf.subarray(20 + buf.readUInt32LE(12));
+  const head = Buffer.alloc(20);
+  head.writeUInt32LE(0x46546c67, 0);
+  head.writeUInt32LE(2, 4);
+  head.writeUInt32LE(20 + text.length + rest.length, 8);
+  head.writeUInt32LE(text.length, 12);
+  head.writeUInt32LE(0x4e4f534a, 16);
+  return Buffer.concat([head, text, rest]);
+}
+
 // --- the steps --------------------------------------------------------------
 
-async function build(recipe, src, io, fns, encoder) {
+async function build(recipe, src, io, fns, encoder, resources = {}) {
   const json = JSON.parse(src.toString("utf8"));
-  const doc = await io.readJSON({ json, resources: {} });
+  const doc = await io.readJSON({ json, resources });
   const root = doc.getRoot();
 
   if (recipe.keepClips) {
@@ -277,7 +319,18 @@ async function build(recipe, src, io, fns, encoder) {
     }
   }
 
-  const steps = [fns.prune(), fns.dedup(), fns.resample()];
+  // With the images left out of the document, every texture's image is null,
+  // so dedup() would call them all equal and fold them into one, and prune()
+  // would try to read pixels to find single-colour ones. Neither is this
+  // recipe's business: the textures are the texture recipe's. Material names
+  // are kept because tests/props.mjs measures per material.
+  const ext = recipe.externalImages;
+  const { PropertyType } = need("@gltf-transform/core");
+  const steps = [
+    fns.prune(ext ? { keepSolidTextures: true } : {}),
+    fns.dedup(ext ? { keepUniqueNames: true, propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH, PropertyType.MATERIAL] } : {}),
+    fns.resample()
+  ];
   if (recipe.meshopt) steps.push(fns.meshopt({ encoder, level: recipe.meshopt }));
   await doc.transform(...steps);
 
@@ -359,8 +412,20 @@ async function runTextures(name, recipe, { dry, check }) {
     }
   }
 
+  // A .gltf this recipe rewrote may since have become a .glb (the props,
+  // bell-to-bell-props, #624). Then the .glb is what has to name the new
+  // files, in the same order, and the .gltf is not written back: it is gone
+  // on purpose, and tests/assets.mjs fails the day it reappears.
   for (const t of texts) {
     const disk = path.join(REPO, t.to);
+    const glb = disk.replace(/\.gltf$/, ".glb");
+    if (!fs.existsSync(disk) && fs.existsSync(glb)) {
+      const want = (JSON.parse(t.text).images || []).map(i => i.uri).join();
+      const got = (glbJSON(fs.readFileSync(glb)).images || []).map(i => i.uri).join();
+      if (got !== want) problems.push(`${path.relative(REPO, glb).split(path.sep).join("/")}: names ${got}, the recipe's .gltf named ${want}`);
+      console.log(`  ${path.basename(glb)}: image URIs are the recipe's`);
+      continue;
+    }
     if (check) {
       if (!fs.existsSync(disk) || fs.readFileSync(disk, "utf8") !== t.text) problems.push(`${t.to}: not what the recipe writes`);
     } else if (!dry) {
@@ -395,7 +460,7 @@ async function main() {
     }
     return;
   }
-  if (check) { console.error("--check is for texture recipes; characters.mjs checks the meshes"); process.exit(1); }
+  if (check) { console.error("--check is for texture recipes; Bell to Bell's tests/characters.mjs and tests/props.mjs check the meshes"); process.exit(1); }
 
   const { NodeIO } = need("@gltf-transform/core");
   const { ALL_EXTENSIONS } = need("@gltf-transform/extensions");
@@ -414,21 +479,52 @@ async function main() {
   const problems = [];
   let before = 0, beforeGz = 0, after = 0, afterGz = 0;
   console.log(`${name} (sources at ${recipe.rev.slice(0, 7)})\n`);
-  for (const { from, to } of recipe.pairs) {
+  const pairs = typeof recipe.pairs === "function" ? recipe.pairs(recipe.rev) : recipe.pairs;
+  for (const { from, to } of pairs) {
     const src = gitShow(recipe.rev, from);
-    const { doc, clips } = await build(recipe, src, io, fns, MeshoptEncoder);
-    const out = Buffer.from(await io.writeBinary(doc));
+
+    // A .gltf that names its buffers by URI (the props' .bin files) is read
+    // with them, from git at the same commit. Its images are not read at all.
+    const dir = path.posix.dirname(from);
+    const resources = {}, sources = [src];
+    for (const { uri } of JSON.parse(src.toString("utf8")).buffers || []) {
+      if (!uri || uri.startsWith("data:")) continue;
+      resources[uri] = gitShow(recipe.rev, path.posix.join(dir, decodeURIComponent(uri)));
+      sources.push(resources[uri]);
+    }
+    const { doc, clips } = await build(recipe, src, io, fns, MeshoptEncoder, resources);
+    let out = Buffer.from(await io.writeBinary(doc));
+
+    // An image with no bytes is written with no URI either, so the .glb would
+    // name nothing. Each texture kept its URI from the .gltf, in the same
+    // order the writer lists images, so they go back in by index.
+    if (recipe.externalImages) {
+      const json = glbJSON(out);
+      const uris = doc.getRoot().listTextures().map(t => t.getURI());
+      if ((json.images || []).length !== uris.length || uris.some(u => !u)) {
+        problems.push(`${to}: ${uris.length} textures, ${(json.images || []).length} images, not every one with a URI`);
+      }
+      (json.images || []).forEach((img, i) => { img.uri = uris[i]; });
+      out = withGlbJSON(out, json);
+    }
 
     // Read it back the way a browser would have to: through the decoder.
-    const back = await io.readBinary(new Uint8Array(out));
+    // readBinary() refuses a .glb naming an image it was not handed, so the
+    // two chunks go in by hand, and the images stay unread as they did going in.
+    const bin = out.subarray(20 + out.readUInt32LE(12) + 8);
+    const back = await io.readJSON({ json: glbJSON(out), resources: { "@glb.bin": new Uint8Array(bin) } });
     const backClips = back.getRoot().listAnimations().map(a => a.getName());
     if (backClips.join() !== clips.join()) problems.push(`${to}: clips changed on decode`);
 
-    const s = src.length, sg = gz(src), o = out.length, og = gz(out);
+    // The source is every file the .glb replaces, each its own request, so its
+    // gzipped size is theirs summed. The images are in neither side.
+    const s = sources.reduce((n, b) => n + b.length, 0), sg = sources.reduce((n, b) => n + gz(b), 0);
+    const o = out.length, og = gz(out);
     before += s; beforeGz += sg; after += o; afterGz += og;
     if (o >= sg) problems.push(`${to}: ${o} bytes raw is not under the source's ${sg} gzipped`);
-    console.log(`  ${path.basename(path.dirname(path.dirname(path.dirname(from)))).slice(0, 22).padEnd(22)} ` +
-      `${path.basename(to).padEnd(18)} ${kb(s)} (gz ${kb(sg)}) -> ${kb(o)} (gz ${kb(og)})`);
+    const label = recipe.externalImages ? path.basename(dir) : path.basename(path.dirname(path.dirname(path.dirname(from))));
+    console.log(`  ${label.slice(0, 34).padEnd(34)} ` +
+      `${path.basename(to).slice(0, 30).padEnd(30)} ${kb(s)} (gz ${kb(sg)}) -> ${kb(o)} (gz ${kb(og)})`);
     if (!dry) fs.writeFileSync(path.join(REPO, to), out);
   }
   console.log(`\n  total ${before} bytes (gz ${beforeGz}) -> ${after} bytes (gz ${afterGz}), ` +
