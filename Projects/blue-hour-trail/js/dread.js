@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, trailInfo, fallLine, LAYOUT } from './field.js';
+import { groundHeight, trailInfo, fallLine, summitKind, LAYOUT } from './field.js';
 
 // The other thing in the woods. A scheduler of directed beats, none of which
 // can hurt the walker and none of which ever resolves: a branch breaking off
@@ -34,6 +34,14 @@ import { groundHeight, trailInfo, fallLine, LAYOUT } from './field.js';
 // gates that the deep woods used to be required for are now satisfied by
 // altitude instead — high on the mountain the weather no longer has to
 // cooperate for the woods to lie to you.
+//
+// And above the fog line two of the woods' beats stop being the woods' (#635).
+// Past field.js's STILL_AIR there is no birdsong left, so the silence that
+// used to take the birds takes the wind; and a branch breaking becomes a stone
+// let go upslope, knocking down past the walker into the fog. The same
+// scheduler, the same cooldowns, the same doctrine: nothing new to do, nothing
+// kept, nothing that knows it was listened to. What changes is who is holding
+// its breath. Low down it is the woods. Up here it is the mountain.
 //
 // Still true, and not negotiable: nothing here can hurt you. Nothing chases,
 // nothing closes, nothing touches the walker. The lookout below is the furthest
@@ -181,6 +189,7 @@ export function createDread(scene, audio) {
 
   const state = {
     birdsSilent: false,
+    windStill: false,       // the silence's summit kind; main.js hands it to audio
     lookoutWatching: false,
     ghostRhythm: null,      // main.js wires the previous walk's gait in here
     headlampOn: false,      // main.js mirrors the lamp; beats prefer its edge
@@ -253,7 +262,8 @@ export function createDread(scene, audio) {
   // Which beats are drawable from where the walker stands. Split out of
   // tryFire so the suite can hold the gates without waiting out a cooldown —
   // notably the one gate that changes the beats in KIND, not just rate: the
-  // transmission only exists above the fog line.
+  // transmission only exists above the fog line. (The silence and the snap
+  // change kind too, but inside runBeat, where they are staged: #635.)
   function candidatesFor(controls, fogT) {
     const pt = trailInfo(controls.pos.x, controls.pos.z);
     // How far into the bad air the walker is. The same 46→62 m band main.js
@@ -314,9 +324,18 @@ export function createDread(scene, audio) {
   // no _lastBeat and costs no cooldown.
   function runBeat(beat, camera, controls) {
     switch (beat) {
-      case 'snap':
-        audio.branchSnap();
+      case 'snap': {
+        if (!summitKind(controls.pos.y)) { audio.branchSnap(); break; }
+        // The summit's kind: a stone, from the uphill side of the walker's
+        // head to the downhill side, and gone. Same fall line and same pan
+        // arithmetic as the phantom steps, so the two agree about which ear
+        // the valley is in.
+        const dh = downhillAt(controls.pos.x, controls.pos.z);
+        const side = Math.max(-1, Math.min(1,
+          dh.x * Math.cos(controls.yaw) - dh.z * Math.sin(controls.yaw)));
+        audio.stoneFall({ from: -side * 0.7, to: side * 0.9 });
         break;
+      }
 
       case 'phantom':
         // armed, not fired: it lands the moment the walker's own steps stop.
@@ -326,6 +345,10 @@ export function createDread(scene, audio) {
 
       case 'silence':
         state.birdsSilent = true;
+        // Decided where it is staged and held for its whole length: a walker
+        // who drops below the line mid-silence does not get the wind back
+        // early, and one who climbs into it does not get a crow.
+        state.windStill = summitKind(controls.pos.y);
         state._silenceLeft = 22 + Math.random() * 10;
         break;
 
@@ -537,7 +560,10 @@ export function createDread(scene, audio) {
       state._silenceLeft -= dt;
       if (state._silenceLeft <= 0) {
         state.birdsSilent = false;
-        audio.crowCaw();                 // the woods exhale
+        // The woods exhale with a crow. The summit exhales with the wind,
+        // which audio.js brings back as one hard gust when this goes false.
+        if (state.windStill) state.windStill = false;
+        else audio.crowCaw();
       }
     }
 

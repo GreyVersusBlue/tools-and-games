@@ -104,21 +104,32 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Golden Hour's night moves
-and Blue Hour's fall line (PR #395)**: old ranks 5 and 9, two ½ naming Fable
-5.1, worked under Opus 5.5. Every rank below them moved up. That is the line to
-update when your batch merges; a PR that only changes these files is not a
-batch and does not belong in it.
+**The last batch of ranked work that shipped** is **Blue Hour's beats in
+kind above the fog line, increment 1 (PR #397)**: rank 8, a 1 naming Fable
+5.1, worked under Opus 5.5. The row stays at rank 8 with its text rewritten;
+nothing moved. That is the line to update when your batch merges; a PR that
+only changes these files is not a batch and does not belong in it.
 **12 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 8 alone** (Blue Hour's beats that change in kind above the fog
-line, a 1 naming Fable 5.1, Blue Hour item 2). Ranks 1 to 7 want a real GPU, a
-real phone or a person listening for an hour, which a cloud session does not
-have. Rank 9 (Integer Foundry, also a 1) is the alternative if rank 8's design
-call cannot be made.
+**Take rank 8 alone again** (Blue Hour item 2's second increment: the shape
+and the eyes above the fog line, a 1 naming Fable 5.1). Ranks 1 to 7 want a
+real GPU, a real phone or a person listening for an hour, which a cloud
+session does not have. Rank 9 (Integer Foundry, also a 1) is the alternative
+if the visual beats' summit kind cannot be made honestly.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Above the fog line the silence stills the wind and the snap is a stone**
+(#635, PR #397). Birdsong already ended at altT 0.6, so the silence beat was
+spending itself on nothing up there; `field.js` owns the band (`summitAir`)
+and the threshold (`STILL_AIR`, `summitKind`) now, and the birds and both
+beats read it. **Worth carrying forward**: a detail string that formats a
+value the break removes takes the whole suite down with a TypeError before
+the count prints; format defensively so the line fails instead. And a break
+that makes one kind fire everywhere can leave the state another line reads
+already changed (the wind was still before the bench read it), so name the
+collateral line as well as the target.
 
 **The owl hunts, fireflies drift to the fire, and Blue Hour's phantom steps
 lean toward the valley** (#633, #634, PR #395). Rank 5's "if night proves
@@ -666,7 +677,7 @@ and #222 was closed unmerged an hour of suites later.
 | 5 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
 | 6 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 7 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 8 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 | `claude/blue-hour-beats-fog-line-93x6f3` | [Blue Hour](#blue-hour) |
+| 8 | Beats that change in kind above the fog line: the silence and the snap done (#635), the shape and the eyes left | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
 | 9 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
 | 10 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 11 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
@@ -1024,11 +1035,19 @@ Deliberately not done, and still the right call:
    grant, and Golden Hour parity remains the odd one out. The live choice now
    is: keep pushing into `dread.js`, or write "no save, no verbs, no
    collection" into the record as a locked decision.
-2. **Beats in kind above the fog line.** The beats are still the same five
-   everywhere on the mountain — only their *rate* changes with altitude.
-   Something should change in kind up there. The figure in the lookout is one
-   answer and currently the only one. Session 4 filled the slot the original
-   task was holding open; more are welcome if they obey the doctrine.
+2. **Beats in kind above the fog line. First increment shipped 2026-09-24**
+   (#635). The rule: above the fog line a beat changes kind by passing from
+   the woods to the mountain. Past `STILL_AIR` (0.6 of `summitAir`, where the
+   birdsong already ended) the silence stills the wind and lets go with one
+   gust, and the snap is a stone rolling from the uphill ear to the valley
+   one. The transmission and the figure in the lookout were already
+   altitude-only. **Left**: the two visual beats, the shape and the eyes,
+   which are still the same animal everywhere. One candidate that obeys the
+   doctrine is a pale light low in the trees below, going away downhill, for
+   the eyes' summit kind: the only other sign of a person on the mountain,
+   leaving. It wants pixel checks, which under Xvfb are drafts (#630). The
+   phantom steps, the howl and the radio stay as they are; the steps already
+   borrow the previous walk's gait and the radio is the cabin's.
 3. **A real GPU run.** Every number on this project is still swiftshader —
    1.0–1.8 fps — now including the headlamp's SpotLight cost and the newly-alive
    mist/breath fill rate, which makes this MORE urgent than before, not less:

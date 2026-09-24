@@ -10,7 +10,8 @@
 //     twig), bridge planks, bare rock, creek splash.
 //   • Creek and waterfall: looped filtered noise, gained by distance.
 //   • Stingers for the wildlife and dread systems: owl, elk, wolf, crow,
-//     snapped branch, phantom footsteps, the cairn chime, the low sting.
+//     snapped branch (a falling stone above the fog line), phantom
+//     footsteps, the cairn chime, the low sting.
 //   • Music: a drone in D minor that surfaces out of the wind half a minute
 //     in and never quite sits still, plus a lonely horn phrase every couple
 //     of minutes that always falls back down to the root. The fog thickens
@@ -19,6 +20,15 @@
 //     Foreboding, not haunted house: nothing stabs, everything leans.
 //
 // The class shape is Golden Hour's Soundscape; the instruments are new.
+
+import { STILL_AIR } from './field.js';
+
+/**
+ * Whether there is birdsong at this much summit air. Past STILL_AIR there is
+ * none, and dread.js's silence beat takes the wind instead (#635): the two
+ * read one threshold so the silence is never spent on birds already gone.
+ */
+export function birdsSing(altT) { return altT < STILL_AIR; }
 
 // The motif engine's pitch tables, D3 to D4. Above the fog line the scale
 // turns phrygian — E gives way to E♭, and every phrase that falls through the
@@ -63,6 +73,33 @@ export function phantomStepPlan(rand, opts = {}) {
 }
 
 /**
+ * The summit's snap (#635): not a branch but a stone let go somewhere upslope,
+ * knocking its way down past the walker and on into the fog. Every knock is
+ * lower, duller and quieter than the last, the gaps close up as it picks up
+ * speed, and the pan travels from `from` (dread.js hands in the uphill side)
+ * to `to` (the downhill side) and never back. Like everything else here it is
+ * leaving. Pure — rand in, [{at, pan, rate, cutoff, gain}] out — so the smoke
+ * suite can hold it without an AudioContext.
+ */
+export function stonePlan(rand, { from = 0, to = 0 } = {}) {
+  const count = 5 + ((rand() * 3) | 0);
+  const knocks = [];
+  let at = 0.1, gap = 0.46 + rand() * 0.08;
+  for (let i = 0; i < count; i++) {
+    if (i > 0) { at += gap; gap *= 0.82; }
+    const fall = i / (count - 1);
+    knocks.push({
+      at,
+      pan: from + (to - from) * fall,
+      rate: 1.15 - fall * 0.35,
+      cutoff: 2600 - fall * 1800,
+      gain: 0.1 * (1 - fall * 0.7),
+    });
+  }
+  return knocks;
+}
+
+/**
  * One phrase of foreboding woe: 3-5 notes, biased downhill, always ending on
  * the root or the fifth below it. Pure — rand in, [{freq, dur}] out — so the
  * smoke suite can hold it to the scale without an AudioContext.
@@ -94,6 +131,7 @@ export class Soundscape {
     this._stepPhase = 0;
     this._gust = 0;
     this._gustTarget = 0;
+    this._stillHeld = false;
     this._gustTimer = 3;
     this.onFootstep = null;
     this._motifTimer = 90;       // the first phrase waits out the fade-in
@@ -316,12 +354,12 @@ export class Soundscape {
   /**
    * Called every frame.
    * state: { moving, surface, fogT, altT, creekDist, waterfallDist,
-   *          birdsSilent, watched }
+   *          birdsSilent, watched, lamp, windStill }
    */
   update(dt, state) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent, watched, lamp } = state;
+    const { moving, surface, fogT, altT, creekDist, waterfallDist, birdsSilent, watched, lamp, windStill } = state;
 
     // The fog closes the world's top end down.
     this._fogFilter.frequency.setTargetAtTime(12000 - fogT * 9200, t, 0.8);
@@ -334,10 +372,27 @@ export class Soundscape {
     }
     this._gust += (this._gustTarget - this._gust) * Math.min(1, dt * 0.35);
 
+    // The still (#635). Above the fog line the silence beat has no birds to
+    // take, so it takes the wind: bed and canopy both settle to nearly nothing
+    // over a couple of seconds, a lull rather than a cut. When it lets go the
+    // wind does not ease back in; it comes back as one hard gust, which is
+    // the summit's version of the crow that ends the silence lower down.
+    if (windStill && !this._stillHeld) {
+      this._stillHeld = true;
+    } else if (!windStill && this._stillHeld) {
+      this._stillHeld = false;
+      this._gustTarget = 1;
+      this._gustTimer = 10 + Math.random() * 6;
+    }
     const wind = 0.035 + altT * 0.1 + this._gust * 0.07 - fogT * 0.012;
-    this._windGain.gain.setTargetAtTime(Math.max(0.02, wind), t, 0.4);
+    if (this._stillHeld) {
+      this._windGain.gain.setTargetAtTime(0.004, t, 1.2);
+      this._canopyGain.gain.setTargetAtTime(0, t, 1.2);
+    } else {
+      this._windGain.gain.setTargetAtTime(Math.max(0.02, wind), t, 0.4);
+      this._canopyGain.gain.setTargetAtTime(this._gust * this._gust * 0.075, t, 0.3);
+    }
     this._windFilt.frequency.setTargetAtTime(220 + this._gust * 160 + altT * 120, t, 0.5);
-    this._canopyGain.gain.setTargetAtTime(this._gust * this._gust * 0.075, t, 0.3);
 
     // Water by distance.
     const creekNear = Math.max(0, 1 - (isFinite(creekDist) ? creekDist : 999) / 40);
@@ -350,7 +405,7 @@ export class Soundscape {
     this._birdTimer -= dt;
     if (this._birdTimer <= 0) {
       this._birdTimer = 5 + fogT * 18 + Math.random() * 8;
-      if (!birdsSilent && altT < 0.6) this._birdCall();
+      if (!birdsSilent && birdsSing(altT)) this._birdCall();
     }
 
     // Footsteps.
@@ -420,6 +475,9 @@ export class Soundscape {
       ducked: this._duckTimer > 0 || this._duckHeld,
       droneHz,
       motifIn: this._motifTimer,
+      wind: this._windGain.gain.value,
+      still: !!this._stillHeld,
+      gustTarget: this._gustTarget,
       voices: {
         d2, a2, d3: fogT * 0.014, f3: 0.006 + fogT * 0.01,
         eb2: altT * altT * 0.03, ab2: tritone, d5: lampPartial,
@@ -579,6 +637,41 @@ export class Soundscape {
     g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.09);
     src.connect(f).connect(g).connect(out);
     src.start(t0, Math.random() * 2); src.stop(t0 + 0.1);
+  }
+
+  /**
+   * A stone let go upslope and knocking its way down past the walker — the
+   * summit's snap (#635). opts.from and opts.to are the pans dread.js hands
+   * in, uphill side to downhill side; see stonePlan for the score.
+   */
+  stoneFall(opts = {}) {
+    if (!this.ctx) return;
+    this._duckMusic(6);
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.05;
+    const plan = stonePlan(Math.random, opts);
+    this._lastStone = { ...opts, plan };        // read-only, for the suite
+    for (const k of plan) {
+      const at = t0 + k.at;
+      const src = ctx.createBufferSource();
+      src.buffer = this._noiseBuf;
+      src.playbackRate.value = k.rate;
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = k.cutoff * 0.45; f.Q.value = 2.2;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = k.cutoff;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, at);
+      g.gain.linearRampToValueAtTime(k.gain, at + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.001, at + 0.07);
+      let node = src.connect(f).connect(lp).connect(g);
+      if (ctx.createStereoPanner) {
+        const p = ctx.createStereoPanner();
+        p.pan.value = Math.max(-1, Math.min(1, k.pan));
+        node = node.connect(p);
+      }
+      node.connect(this.master);
+      src.start(at, Math.random() * 2); src.stop(at + 0.09);
+    }
   }
 
   /**

@@ -682,6 +682,84 @@ group('the motif engine writes only woe');
   ok(sawFlatTwo, 'and the flat second actually gets used up there');
 }
 
+group('above the fog line the woods give way to the mountain');
+{
+  // #635. Past STILL_AIR the silence beat stills the wind instead of the
+  // birds, and the snap is a stone rather than a branch. dread.js imports
+  // three and cannot be loaded here, so what this group holds is the
+  // arithmetic the beats read: where the line is, that it agrees with where
+  // the birds stop, and the stone's score.
+  const { summitAir, summitKind, STILL_AIR, FOG_LINE, walkHeight } = await import(
+    pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
+  const { birdsSing, stonePlan } = await import(
+    pathToFileURL(path.join(HERE, '..', 'js', 'audio.js')).href);
+
+  // main.js weathered by a local smoothstep(46, 62, y) until this row; the
+  // band is field.js's now and must still be that band.
+  ok(summitAir(FOG_LINE.lo) === 0 && summitAir(FOG_LINE.hi) === 1
+    && Math.abs(summitAir(54) - 0.5) < 1e-12 && FOG_LINE.lo === 46 && FOG_LINE.hi === 62,
+    'the summit air is the weather\'s own 46 to 62 m band');
+
+  // The claim the silence's change of kind rests on: it takes the wind exactly
+  // where there are no birds to take. Both sides read STILL_AIR, so what this
+  // catches is a literal creeping back into either one.
+  let agree = true, at = null;
+  for (let y = 30; y <= 75; y += 0.05) {
+    if (summitKind(y) === birdsSing(summitAir(y))) { agree = false; at = y; break; }
+  }
+  ok(agree, 'the silence stills the wind exactly where the birdsong has ended',
+    agree ? `STILL_AIR ${STILL_AIR}` : `disagree at y ${at.toFixed(2)}`);
+
+  // And the line is somewhere a walker goes: not the trailhead, the bench,
+  // and a real stretch of the trail between. Measured 19% of the trail from
+  // t 0.808 at STILL_AIR 0.6. The 15% floor holds the kind to more than a
+  // sliver at the top: it fails with STILL_AIR at 0.97 (11%), and says
+  // nothing about nudges up to about 0.8 (16%), which move the birds' line
+  // with it and are a tuning call, not a fault.
+  const eye = 1.62;
+  let firstT = null, n = 0, m = 0;
+  for (let i = 0; i <= 1000; i++) {
+    const p = trailPoint(i / 1000);
+    const high = summitKind(walkHeight(p.x, p.z) + eye);
+    if (high && firstT === null) firstT = i / 1000;
+    if (high) n++;
+    m++;
+  }
+  ok(!summitKind(walkHeight(0, 147) + eye) && summitKind(walkHeight(LAYOUT.bench.x, LAYOUT.bench.z) + eye),
+    'the trailhead has the woods\' kind and the bench the mountain\'s');
+  ok(firstT > 0.7 && firstT < 0.9 && n / m > 0.15,
+    'the mountain\'s kind begins on the upper legs and holds to the top',
+    `from t ${firstT}, ${(100 * n / m).toFixed(0)}% of the trail`);
+
+  // The stone's score. It is leaving, like everything else: uphill ear to
+  // downhill ear and never back, each knock lower, duller and quieter, the
+  // gaps closing as it picks up speed.
+  const lcg = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+  let ordered = true, quicker = true, travels = true, falling = true, dulling = true, fading = true;
+  let counts = new Set();
+  for (let seed = 1; seed <= 200; seed++) {
+    for (const [from, to] of [[-0.6, 0.8], [0.7, -0.9], [0, 0]]) {
+      // Seeds spread by a multiplicative hash: the LCG's first draw from
+      // 1..200 unspread is always under a third, which only ever made 5 knocks.
+      const k = stonePlan(lcg(Math.imul(seed, 2654435761) >>> 0), { from, to });
+      counts.add(k.length);
+      if (Math.abs(k[0].pan - from) > 1e-9 || Math.abs(k[k.length - 1].pan - to) > 1e-9) travels = false;
+      for (let i = 1; i < k.length; i++) {
+        if (k[i].at <= k[i - 1].at) ordered = false;
+        if (i > 1 && k[i].at - k[i - 1].at >= k[i - 1].at - k[i - 2].at) quicker = false;
+        if (to !== from && Math.sign(k[i].pan - k[i - 1].pan) !== Math.sign(to - from)) travels = false;
+        if (k[i].rate >= k[i - 1].rate) falling = false;
+        if (k[i].cutoff >= k[i - 1].cutoff) dulling = false;
+        if (k[i].gain >= k[i - 1].gain) fading = false;
+      }
+    }
+  }
+  ok(ordered && quicker, 'the stone knocks in order, quicker as it goes',
+    `${Math.min(...counts)} to ${Math.max(...counts)} knocks`);
+  ok(travels, 'from the uphill ear to the downhill one, and never back');
+  ok(falling && dulling && fading, 'every knock lower, duller and further off than the last');
+}
+
 /* --------------------------------------------------------------------------- */
 
 console.log(`\n${passed + failed} checks, ${failed} failed`);
