@@ -104,23 +104,39 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City's M9,
-third increment: the sandbox (PR #373)**, rank 1, a 2+ worked under Opus
-5.5 (the row names Fable 5.1). It was the last increment, so M9 is done
-and the row is out of the table; every rank below it moved up one. That
-is the line to update when your batch merges; a PR that only changes
-these files is not a batch and does not belong in it.
+**The last batch of ranked work that shipped** is **the shared asset
+pipeline, increment 1 (PR #371)**, rank 1, a 2+ worked under Opus 5.5 (the
+row names Fable 5.1). The row stays at rank 1 with its text rewritten; no
+rank moved. That is the line to update when your batch merges; a PR that
+only changes these files is not a batch and does not belong in it.
 **24 ranked items remain**, and **every one of them names a model.**
 
-**Rank 1, the shared asset pipeline, is claimed** by
-`claude/shared-asset-pipeline-t3gdh5`; leave it unless that claim is
-cleared. Rank 2, the real-hardware pass, needs hardware this machine
-lacks. **So take rank 3, the first Pathfinder quarter** (`Pathfinder`, ¼,
-Sonnet 5): ranks 3 to 5 batch together (same area, all Sonnet 5; two ¼
+**Rank 1 is open again**: the asset pipeline's increment 2, textures
+(`assets`, 2+, Fable 5.1). It is the whole batch if taken; its plan and
+its open call are item 2 of "The site itself". Rank 2, the real-hardware
+pass, needs hardware this machine lacks. A session that would rather not
+take a 2+ takes **rank 3, the first Pathfinder quarter** (`Pathfinder`,
+¼, Sonnet 5): ranks 3 to 5 batch together (same area, all Sonnet 5; two ¼
 and a ½, inside the same-area cap).
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Bell to Bell's students weigh 1.6 MB, not 25.3** (#619, #620, PR #371).
+`Tools/board-check/asset-pipeline.mjs` is the site's one offline asset
+pipeline, dev-only, reading its originals from git at a named commit, and
+exiting 1 on any output not smaller raw than its source gzipped. Its first
+recipe rewrote the eight outfits as meshopt `.glb` with the Idle clip only;
+the 24.8 KB decoder is vendored in the project's own `libs/`. Referenced
+bytes 62.1 MB to 38.4 MB. `tests/characters.mjs` (59, in Site CI) holds
+each student to 1 mm of the original through the game's own loader; worst
+drift 0.3 mm. The same PR fixed two races in Integer Foundry's browser
+suite that had failed Site CI on main and on the PR. **Worth carrying
+forward**: `poseIdle()` ends in the rest pose whatever clip it samples (a
+pre-existing Bell to Bell bug, in its WISHLIST.md), which a per-pose check
+cannot see, so the suite samples the clip separately. And in r160
+`getVertexPosition` already skins a SkinnedMesh; skinning it again passes
+on originals and reads 1.1 m wrong on quantized files.
 
 **Signal City has a sandbox, and M9 is done** (#614 to #618, PR #373).
 Free Play's card has a district row: one box, which is Free Play itself
@@ -545,7 +561,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 | `claude/shared-asset-pipeline-t3gdh5` | [The site itself](#the-site-itself) |
+| 1 | One shared asset pipeline for Bell to Bell and Fourth Quarter: increment 1 shipped (PR #371, the tool and Bell to Bell's outfits as meshopt, 25.3 to 1.6 MB); next increment 2, textures (B2B props to 512, FQ's 2k re-encode), then 3, the props' meshes | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 2 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
 | 3 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
 | 4 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
@@ -1379,9 +1395,11 @@ Two of them are closed.
      so the output is a `.glb` that keeps them external or embeds the tier
      increment 2 chose. Needs a `characters.mjs`-style check for static props.
    - **Not measurable here:** whether the host gzips `.gltf` and `.glb`. The
-     sandbox's proxy 403s greyversusblue.com, so every number above is raw
-     bytes and gzip-6 bytes side by side. A `curl -sI -H 'Accept-Encoding:
-     gzip'` from a real machine settles it.
+     host is Cloudflare Pages (its check and preview deploy run on every PR),
+     but the sandbox's proxy 403s both greyversusblue.com and the
+     `*.pages.dev` previews, so every number above is raw bytes and gzip-6
+     bytes side by side. A `curl -sI -H 'Accept-Encoding: gzip'` from a real
+     machine settles it.
    Castle Conundrum was the third game and is doing its own version of this in
    its own repo (#491).
 3. **`gvb-save.js` v2. Closed by PR #325** (#494 to #502): `slot.usage()` and
