@@ -150,10 +150,13 @@ jobs:
               node tests/mapview.mjs
               node tests/wiring.mjs
 
+          # desktop-input.mjs fails on the first line of a touch or gamepad
+          # scheme (#629): that scheme is Q40, Devon's call. No browser.
           - name: Aphelion
             dir: Projects/aphelion
             commands: |
               node test/smoke-state.mjs
+              node test/desktop-input.mjs
 
           # Bell to Bell's suites read ../data relative to the working
           # directory, so they run from tests/ and nowhere else.
