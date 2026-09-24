@@ -105,22 +105,35 @@ table** in Tier 2.
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
 **The last batch of ranked work that shipped** is **the shared asset
-pipeline, increment 2, textures (PR #377)**, rank 1, a 2+ worked under Opus 5.5
-(the row names Fable 5.1). The row stays at rank 1 with its text rewritten; no
-rank moved. That is the line to update when your batch merges; a PR that
-only changes these files is not a batch and does not belong in it.
-**24 ranked items remain**, and **every one of them names a model.**
+pipeline, increment 3, the props' meshes (PR #380)**, rank 1, a 2+ worked
+under Opus 5.5 (the row names Fable 5.1). It was the last increment, so the
+row is retired and every rank below it moved up one. That is the line to
+update when your batch merges; a PR that only changes these files is not a
+batch and does not belong in it.
+**23 ranked items remain**, and **every one of them names a model.**
 
-**Rank 1 is open again**: the asset pipeline's increment 3, the props'
-meshes (`assets`, 2+, Fable 5.1), the last one. It is the whole batch if
-taken; its plan is item 2 of "The site itself". Rank 2, the real-hardware
-pass, needs hardware this machine lacks. A session that would rather not
-take a 2+ takes **rank 3, the first Pathfinder quarter** (`Pathfinder`,
-¼, Sonnet 5): ranks 3 to 5 batch together (same area, all Sonnet 5; two ¼
-and a ½, inside the same-area cap).
+**Take rank 2, the first Pathfinder quarter** (`Pathfinder`, ¼, Sonnet 5):
+ranks 2 to 4 batch together (same area, all Sonnet 5; two ¼ and a ½, inside
+the same-area cap). Rank 1, the real-hardware pass, needs hardware this
+machine lacks.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Bell to Bell's props weigh 1.1 MB of mesh, not 3.8, and the asset pipeline
+row is retired** (#624, #625, PR #380). The recipe `bell-to-bell-props`
+rewrote the eleven props and the picture frame, a `.gltf` and a `.bin` each,
+as twelve meshopt `.glb` files that name the same loose JPEGs by the same
+relative paths, so the texture recipe and its `--check` keep reading files.
+Referenced bytes 16.2 MB to 13.4 MB; across the three increments Bell to Bell
+went from 62.1 MB referenced to 13.4. `tests/props.mjs` (100, in Site CI)
+holds each prop, loaded raw through the game's own loader, to its original's
+per-material vertex and UV bounds, images and texture slots. **Worth carrying
+forward**: GLTFLoader loads a prop with a missing JPEG untextured rather than
+failing, so the check that catches it is the filled-slots one; `node
+assets.mjs` had never run its report on Windows until this PR; and a `git
+worktree` under the long scratchpad path pushes deep asset files past 260
+characters, which a local server answers with 404s.
 
 **Bell to Bell's textures weigh 8.9 MB, not 31.1, and Fourth Quarter's 2k
 tier 23.0 MB, not 69.2** (#621 to #623, PR #377). Two texture recipes in
@@ -252,7 +265,7 @@ adding a beat**: a section that throws now costs its own checks and no others
 (#529), after the first deliberate break lost twelve unrelated ones to an abort;
 and the plan-vs-flight assertion has to be the clock and not the endpoint
 (#530), because launching at 0.9x `MAXSPEED` still wins on an empty field and
-the break ran green from 46/46. Rank 23's rotate-to-play gate is still a real
+the break ran green from 46/46. Rank 22's rotate-to-play gate is still a real
 device's job and is untouched.
 
 **A sink says what an order costs** (#531, #532). The tile-cost row was a design
@@ -432,18 +445,18 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Rank 1 is the shared asset pipeline** (claimed), a **2+** on **Fable 5.1**,
-and the only other 2+ is rank 22. Ten of the twenty-four are ¼: ranks 3, 5,
-9, 10, 11, 14, 15, 16, 17 and 23. **Five of those ten want hardware nothing
-here has** (9, 11, 16, 17, 23), as do three of the halves (2, 8, 18); the
+**The only 2+ left is rank 21.** Ten of the twenty-three are ¼: ranks 2, 4,
+8, 9, 10, 13, 14, 15, 16 and 22. **Five of those ten want hardware nothing
+here has** (8, 10, 15, 16, 22), as do three of the halves (1, 7, 17); the
 Parked section below the table says why they were left ranked anyway.
-Signal City's row retired on 2026-09-24 when M9 shipped (PR #373).
+Signal City's row retired on 2026-09-24 when M9 shipped (PR #373), and the
+shared asset pipeline's the same day when its increment 3 did (PR #380).
 
-**The model split is 5 Opus 5, 10 Fable 5.1, 9 Sonnet 5.** Counted off the
+**The model split is 5 Opus 5, 9 Fable 5.1, 9 Sonnet 5.** Counted off the
 table rather than decremented, which is how the 15/14/9 drift was caught and
 how this paragraph's own drift was caught on 2026-09-24 (it still said 27
-rows and named the peak rank 1): 5 + 10 + 9 is 24, and the table has 24
-rows. By size it is 10 ¼, 9 ½, 3 ones and 2 of the 2+, which is the same 24.
+rows and named the peak rank 1): 5 + 9 + 9 is 23, and the table has 23
+rows. By size it is 10 ¼, 9 ½, 3 ones and 1 of the 2+, which is the same 23.
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under.
@@ -560,7 +573,7 @@ readings, in the same terms the project wishlists already use:
   inherits, authored content whose coherence no assertion can hold, or a change
   with no safety net under it at all.
 
-Ten rows read Fable, which at 10 of 27 is a heavier share than any single
+Nine rows read Fable, which at 9 of 23 is a heavier share than any single
 project's wishlist carries, and the reason is what this list is: the leftovers
 of ten projects are disproportionately save layers, pure models, and atmosphere
 nothing in CI can look at. (It said "fifteen" from #380 until 2026-09-16, when a
@@ -576,30 +589,29 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | One shared asset pipeline for Bell to Bell and Fourth Quarter: increments 1 (PR #371, outfits as meshopt, 25.3 to 1.6 MB) and 2 (PR #377, textures: B2B 31.1 to 8.9 MB, FQ's 2k 69.2 to 23.0 MB) shipped; next increment 3, the props' meshes | `assets` | 2+ | Fable 5.1 | `claude/asset-pipeline-increment-3-props` | [The site itself](#the-site-itself) |
-| 2 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 3 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
-| 4 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 5 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 6 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 7 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 8 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 9 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 10 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 11 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 12 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 13 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 14 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 15 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 16 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 17 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 18 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 19 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 20 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 21 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 22 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 23 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 24 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 1 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
+| 2 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
+| 3 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 4 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 5 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 6 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 7 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 8 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 9 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 10 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 11 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 12 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 13 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 14 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 15 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 16 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 17 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 18 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 19 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 20 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 21 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 22 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 23 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -1249,7 +1261,7 @@ to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
 13 below are done (M8 in PRs #355 and #358), and M9 in PRs #362, #367 and #373 (the grid, endless, the sandbox): 919 checks across nine suites, all in Site CI. **Milestones 0 to 9 are done and the ranked row is retired.** Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
-(a ¼ row for the site, like Blue Hour's ranks 14 and 15), and the trucker's
+(a ¼ row for the site, like Blue Hour's ranks 13 and 14), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
@@ -1337,8 +1349,8 @@ the one file-level exception and left with that project on 2026-09-15 (#491),
 taking `npm run play` with it.
 
 Everything open against this folder is filed under the project that needs it:
-Golden Hour's preview recapture and debug-hook beats (ranks 10 and 12) and Blue
-Hour's `games.mjs` entry and preview recipe (14 and 15). Those four numbers were
+Golden Hour's preview recapture and debug-hook beats (ranks 9 and 11) and Blue
+Hour's `games.mjs` entry and preview recipe (13 and 14). Those four numbers were
 read off the table rather than decremented with the rest, which is how the drift
 the line before this one carried was caught twice running — and on 2026-09-16 it
 caught it twice more, once when the four had been left reading 17, 19, 21 and 22
@@ -1365,7 +1377,7 @@ Two things about this folder that are decided, not open:
 `.github/`.
 
 Five things came up in more than one survey and belong to no single project.
-Two of them are closed.
+Three of them are closed.
 
 1. **CI ran almost nothing, and the failures it inherited are cleared. Closed
    by PR #276 then PR #278** (#351 to #358): `site-ci.yml` runs board-check and
@@ -1379,37 +1391,25 @@ Two of them are closed.
    page (#357); and Numina keeps its own tags, exempt but verified, because it
    is an Eleventy site whose committed build output would drop any block
    injected into it (#357).
-2. **Asset weight. Increments 1 and 2 of 3 shipped** (#619 to #623): the row's ~335
-   MB was stale by the time anyone measured it. Bell to Bell's Phase 6 had
-   pruned 149 to 77 MB and Fourth Quarter's Phase 4 had added a 1k tier, so the
-   two stood at 77 and 76 MB. `Tools/board-check/asset-pipeline.mjs` is the
-   pipeline: dev-only, recipes read their originals from git at a named commit,
-   packages installed `--no-save` from the versions in its header, and every
-   output's raw size must beat its source's gzipped size or it exits 1. Its one
-   recipe took Bell to Bell's eight outfits from 25.3 MB of embedded `.gltf` to
-   1.6 MB of meshopt `.glb` with the decoder vendored in the project's own
-   `libs/`, and `tests/characters.mjs` holds each to 1 mm of the original.
-   Referenced bytes 62.1 MB to 38.4 MB. What is left, measured 2026-09-24:
-   - **Increment 2, textures. Shipped, PR #377** (#621 to #623): recipes
-     `bell-to-bell-textures` (64 maps, 31.1 to 8.9 MB, the six hand-sized
-     props at 512, no tier picker) and `fourth-quarter-textures` (2k 69.2 to
-     23.0 MB; 1k byte-identical, `make-textures.mjs` retired). `--check`
-     measures error against the originals; CI pins widths by tier name.
-   - **Increment 3, the props' meshes.** Their `.bin` buffers are 3.7 MB, the
-     potted plant's 1.85 MB of it, as `.gltf` plus loose textures. The same
-     meshopt recipe fits, but the `.gltf` names its textures by relative path,
-     so the output is a `.glb` that keeps them external or embeds them;
-     increment 2 left one set, so there is no tier to choose. Six of the
-     `.gltf` files now name `*_512.jpg` maps; read them at a commit after
-     PR #377. Needs a `characters.mjs`-style check for static props.
-   - **Not measurable here:** whether the host gzips `.gltf` and `.glb`. The
-     host is Cloudflare Pages (its check and preview deploy run on every PR),
-     but the sandbox's proxy 403s both greyversusblue.com and the
-     `*.pages.dev` previews, so every number above is raw bytes and gzip-6
-     bytes side by side. A `curl -sI -H 'Accept-Encoding: gzip'` from a real
-     machine settles it.
+2. **Asset weight. Closed by PRs #371, #377 and #380** (#619 to #625). The
+   row's ~335 MB was stale by the time anyone measured it: Bell to Bell stood
+   at 77 MB and Fourth Quarter at 76. `Tools/board-check/asset-pipeline.mjs` is
+   the pipeline: dev-only, recipes read their originals from git at a named
+   commit, packages installed `--no-save` from the versions in its header, and
+   every output's raw size must beat its source's gzipped size or it exits 1.
+   Four recipes: Bell to Bell's eight outfits (25.3 to 1.6 MB of meshopt
+   `.glb`, `tests/characters.mjs`), its 64 textures (31.1 to 8.9 MB, the six
+   hand-sized props at 512, one set), its eleven props and picture frame (3.8
+   to 1.1 MB of meshopt `.glb` naming the same loose JPEGs,
+   `tests/props.mjs`), and Fourth Quarter's two texture tiers (2k 69.2 to
+   23.0 MB, 1k byte for byte). Bell to Bell's referenced bytes went from 62.1
+   MB to 13.4. `--check` holds every texture to its error against the
+   original. Still **not measurable here**: whether the host gzips `.gltf`
+   and `.glb`. The host is Cloudflare Pages, whose proxy 403s this sandbox,
+   so every number above is raw bytes and gzip-6 bytes side by side; a
+   `curl -sI -H 'Accept-Encoding: gzip'` from a real machine settles it.
    Castle Conundrum was the third game and is doing its own version of this in
-   its own repo (#491).
+   its own repo (#491). Not touched: Bell to Bell's four paintings (1.78 MB).
 3. **`gvb-save.js` v2. Closed by PR #325** (#494 to #502): `slot.usage()` and
    `slot.lastError` for quota accounting, `createNamespace()` for many keys under
    one prefix with one bundle file, and `createAsyncSaveSlot()` for the IndexedDB
