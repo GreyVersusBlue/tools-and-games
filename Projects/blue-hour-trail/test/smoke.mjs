@@ -21,7 +21,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const {
   groundHeight, mountainH, hillProfile, BOUNDS, TRAIL, trailPoint, trailInfo, trailBlend,
   CREEK, creekX, creekInfo, creekWaterY, walkHeight, walkable, surfaceAt,
-  LAYOUT, buildLayout, KEEPERS,
+  LAYOUT, buildLayout, KEEPERS, fallLine,
 } = await import(pathToFileURL(path.join(HERE, '..', 'js', 'field.js')).href);
 
 let passed = 0, failed = 0;
@@ -462,6 +462,39 @@ group('determinism');
     'two builds of the layout are byte-identical');
   ok(a.trees.length === LAYOUT.trees.length, 'and match the exported layout',
     `${a.trees.length} trees`);
+}
+
+/* ------------------------------------------------------------ off the mountain -- */
+
+group('which way is off the mountain');
+{
+  // dread.js's downhillAt is fallLine (2026-09-24). The shape's head, the
+  // eyes' drift and the phantom steps' pan all read it, so what it has to be
+  // is held here: downhill, never back up the mountain, and ACROSS the trail,
+  // which is the whole reason it replaced the reverse of the trail tangent.
+  // The browser suite holds what the pan then does with it.
+  const pts = TRAIL.points;
+  const below = pts.filter(p => p.z > -50);               // under the summit's cap
+  const worstZ = Math.min(...below.map(p => fallLine(p.x, p.z).z));
+  ok(worstZ > 0, 'below the summit, nowhere on the trail does it point up the mountain',
+    `least trailhead-ward component ${worstZ.toFixed(2)}`);
+
+  const drops = pts.filter(p => {
+    const f = fallLine(p.x, p.z);
+    return mountainH(p.x + f.x * 4, p.z + f.z * 4) < mountainH(p.x, p.z);
+  }).length;
+  ok(drops >= 594, 'a 4 m step down it is a step down the hillside',
+    `${drops} of ${pts.length} points; the rest sit on roughness the 4 m baseline steps over`);
+
+  const across = pts.map(p => { const f = fallLine(p.x, p.z); return Math.abs(f.x * -p.dz + f.z * p.dx); })
+    .sort((a, b) => a - b);
+  const med = across[across.length >> 1], p10 = across[Math.floor(across.length / 10)];
+  ok(med > 0.8 && p10 > 0.4, 'and it runs across the trail, not along it',
+    `sideways share: median ${med.toFixed(2)}, tenth percentile ${p10.toFixed(2)}`);
+
+  const unit = [...pts, { x: LAYOUT.tower.x, z: LAYOUT.tower.z }]
+    .every(p => { const f = fallLine(p.x, p.z); return Math.abs(Math.hypot(f.x, f.z) - 1) < 1e-9; });
+  ok(unit, 'it is a direction everywhere, the summit crown included');
 }
 
 /* ------------------------------------------------------------------- music -- */

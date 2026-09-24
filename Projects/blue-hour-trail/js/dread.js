@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { groundHeight, trailInfo, trailPoint, LAYOUT } from './field.js';
+import { groundHeight, trailInfo, fallLine, LAYOUT } from './field.js';
 
 // The other thing in the woods. A scheduler of directed beats, none of which
 // can hurt the walker and none of which ever resolves: a branch breaking off
@@ -237,13 +237,14 @@ export function createDread(scene, audio) {
       + 0.5 * gaze[(b + GAZE_N - 1) % GAZE_N];
   }
 
-  // Which way is off the mountain, from anywhere: the downhill direction of
-  // the nearest trail point. The trail's own samples point uphill (trailhead
-  // to summit), so downhill is their negation.
-  function downhillAt(x, z) {
-    const p = trailPoint(trailInfo(x, z).t);
-    return { x: -p.dx, z: -p.dz };
-  }
+  // Which way is off the mountain, from anywhere: the hillside's fall line
+  // (field.js). Until 2026-09-24 this was the reverse of the nearest trail
+  // tangent, which put the phantom's pan at exactly 0.000 for a walker facing
+  // along the trail and left the shape no profile to point with. The fall line
+  // runs across every switchback leg, so the steps come from the valley side,
+  // where the leg below you is, and the eyes slide off down the slope rather
+  // than back along the path.
+  const downhillAt = fallLine;
 
   function intensity(progressT, highT) {
     return Math.min(1, state._elapsed / 480) * 0.4 + progressT * 0.4 + highT * 0.2;
