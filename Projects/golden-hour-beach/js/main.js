@@ -466,6 +466,11 @@ if (new URLSearchParams(location.search).has('debug')) {
     face(yaw, pitch = 0) { controls.yaw = yaw; controls.pitch = pitch; },
     pos: () => ({ x: controls.pos.x, z: controls.pos.z }),
     journal: () => JSON.parse(JSON.stringify(journal.state)),
+    // The owl's hunt runs on its own clock (nightpaths.js). This starts one
+    // now, `p` of the way through, instead of waiting out a real minute of
+    // night; it answers false by day. owl() reads where the hunt stands.
+    owlHunt: (p = 0) => wildlife.owl.forceHunt(p),
+    owl: () => wildlife.owl.info(),
     events,
     info: () => renderer.info.render,
   };

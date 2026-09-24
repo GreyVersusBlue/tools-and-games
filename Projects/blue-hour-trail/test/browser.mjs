@@ -1071,40 +1071,49 @@ ok('and on the switchbacks, where a profile can still be seen, it reads',
   bearDescending.filter(d => d > 0.3).length >= 2,
   `${bearDescending.filter(d => d > 0.3).length} of 8 stagings show the head clearly`);
 
-// The phantom steps' downhill pan is the same geometry, and it comes out
-// EXACTLY zero — not nearly. The pan is the downhill direction's component
-// along the walker's right, and downhill is the reverse of the trail tangent,
-// so facing along the trail (which is what a walker who has just been walking
-// is doing) it is dead ahead or dead behind and nothing is left to lean on.
-// Provable in closed form: with yaw = atan2(-dx, -dz), pan = (-dx)(-dz) -
-// (-dz)(-dx) = 0, and the about-face only flips both signs.
+// The phantom steps' downhill pan. Until 2026-09-24 it came out EXACTLY zero:
+// downhillAt was the reverse of the trail tangent, and a walker facing along
+// the trail had it dead ahead or dead behind, nothing left for stereo to lean
+// on. Session 6 left a tripwire here asserting the zero, pointed at the
+// decision; the decision was taken the other way (downhillAt is the hillside's
+// fall line now, field.js), so the tripwire is turned round. It fails if the
+// pan goes back to nothing, and it fails if it comes from the wrong side.
 //
-// This is a finding, not an endorsement: "panned toward the downhill side" is
-// what the ladder shipped and the stereo field does not in fact carry it — the
-// falling pitch does, and that is pinned in the descending-family group above.
-// The tripwire is deliberate. If a future session gives downhillAt the
-// terrain's fall line instead of the trail tangent (which WOULD pan, because
-// the trail crosses the slope), this check fails and points at the decision.
+// Which side is the valley is read here, not taken from the code under test:
+// the raw hillside six metres to the walker's right against six to the left,
+// straight from field.js's mountainH. Climbing and descending the same spot
+// the valley swaps ears, so the two pans must have opposite signs.
 const panBoth = await page.evaluate(async () => {
+  const { mountainH } = await import('/Projects/blue-hour-trail/js/field.js');
   const trail = __bh.trail();
   const out = {};
   for (const f of ['down', 'up']) {
     const i = Math.round(0.55 * (trail.length - 1));
+    const yaw = Math.atan2(-trail[i].dx, -trail[i].dz) + (f === 'down' ? Math.PI : 0);
     __bh.teleport(trail[i].x, trail[i].z);
-    __bh.face(Math.atan2(-trail[i].dx, -trail[i].dz) + (f === 'down' ? Math.PI : 0), 0);
+    __bh.face(yaw, 0);
     await new Promise(r => setTimeout(r, 200));
     __bh.dread._lastBeat = null;
     __bh.fireDread('phantom');
     __bh.dread._movingFor = 4;
     __bh.dread._wasMoving = true;
     await new Promise(r => setTimeout(r, 600));
-    out[f] = __bh.lastPhantom().pan;
+    const rx = Math.cos(yaw), rz = -Math.sin(yaw);        // the walker's right
+    const x = trail[i].x, z = trail[i].z;
+    out[f] = {
+      pan: __bh.lastPhantom().pan,
+      valley: Math.sign(mountainH(x - rx * 6, z - rz * 6) - mountainH(x + rx * 6, z + rz * 6)),
+    };
   }
   return out;
 });
-ok('the phantom\'s downhill pan is a no-op in both directions of travel',
-  Math.abs(panBoth.down) < 1e-9 && Math.abs(panBoth.up) < 1e-9,
-  `pan ${panBoth.down} descending, ${panBoth.up} climbing`);
+ok('the phantom\'s downhill pan leans, in both directions of travel',
+  Math.abs(panBoth.down.pan) > 0.3 && Math.abs(panBoth.up.pan) > 0.3,
+  `pan ${panBoth.down.pan.toFixed(3)} descending, ${panBoth.up.pan.toFixed(3)} climbing`);
+ok('and it leans toward the valley side, whichever ear that is',
+  Math.sign(panBoth.down.pan) === panBoth.down.valley && Math.sign(panBoth.up.pan) === panBoth.up.valley
+    && panBoth.down.valley === -panBoth.up.valley,
+  `valley on the ${panBoth.down.valley > 0 ? 'right' : 'left'} descending, the ${panBoth.up.valley > 0 ? 'right' : 'left'} climbing`);
 
 group('the whole run');
 ok('no page errors, start to finish', errors.length === 0, errors.slice(0, 5).join(' | '));

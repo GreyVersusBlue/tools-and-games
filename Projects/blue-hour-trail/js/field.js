@@ -354,6 +354,29 @@ export function mountainH(x, z) {
   return lerp(capped, h, smooth(clamp((z - PEAK.fadeLo) / (PEAK.fadeHi - PEAK.fadeLo), 0, 1)));
 }
 
+/**
+ * Which way is off the mountain from (x, z): straight down the raw hillside,
+ * the way water would run, as a unit vector in x and z. Read from mountainH,
+ * not groundHeight, because the trail's bench is cut level across the slope
+ * and a walker standing on it would otherwise get the trail's own grade back.
+ * The 4 m baseline reads the ridges and gullies and steps over the small
+ * roughness; measured on 2026-09-24 it never points up the mountain (toward
+ * -z) anywhere on the trail, and it runs across every switchback leg, median
+ * 0.94 of the way sideways. Where the hillside is flat (the summit's crown)
+ * it falls back on the way the trail goes down.
+ */
+export function fallLine(x, z) {
+  const e = 4;
+  const gx = (mountainH(x + e, z) - mountainH(x - e, z)) / (2 * e);
+  const gz = (mountainH(x, z + e) - mountainH(x, z - e)) / (2 * e);
+  const len = Math.hypot(gx, gz);
+  if (len < 0.02) {
+    const p = trailPoint(trailInfo(x, z).t);
+    return { x: -p.dx, z: -p.dz };
+  }
+  return { x: -gx / len, z: -gz / len };
+}
+
 /** 0 off-trail → 1 on the packed dirt. Also drives the ground shader blend. */
 export function trailBlend(x, z) {
   const { dist } = trailInfo(x, z);

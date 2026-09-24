@@ -104,23 +104,36 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **board-check's Golden Hour
-and Blue Hour rows (PR #392)**: old ranks 4, 6, 8 and 9, a ¼ naming Opus 5 and
-a ½ and two ¼ naming Sonnet 5, worked under Opus 5.5. Every rank below them
-moved up. That is the line to update when your batch merges; a PR that only
-changes these files is not a batch and does not belong in it.
-**14 ranked items remain**, and **every one of them names a model.**
+**The last batch of ranked work that shipped** is **Golden Hour's night moves
+and Blue Hour's fall line (PR #395)**: old ranks 5 and 9, two ½ naming Fable
+5.1, worked under Opus 5.5. Every rank below them moved up. That is the line to
+update when your batch merges; a PR that only changes these files is not a
+batch and does not belong in it.
+**12 ranked items remain**, and **every one of them names a model.**
 
-**Take ranks 5 and 9 together** (two ½ in two areas, #382's spanning cap,
-both naming Fable 5.1). Ranks 1 to 4 and 6 to 8 want a real GPU, a real phone
-or a person listening for an hour, which a cloud session does not have. Rank 5
-is Golden Hour's owl and fireflies, "if night proves popular": that condition
-is a person's judgement, so decide first whether #628 sends it to a question
-for Devon with a check, or whether the row is buildable as written. Rank 9 is
-Blue Hour's phantom pan, a real design call (Blue Hour item 8).
+**Take rank 8 alone** (Blue Hour's beats that change in kind above the fog
+line, a 1 naming Fable 5.1, Blue Hour item 2). Ranks 1 to 7 want a real GPU, a
+real phone or a person listening for an hour, which a cloud session does not
+have. Rank 9 (Integer Foundry, also a 1) is the alternative if rank 8's design
+call cannot be made.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**The owl hunts, fireflies drift to the fire, and Blue Hour's phantom steps
+lean toward the valley** (#633, #634, PR #395). Rank 5's "if night proves
+popular" was read as a priority gate, not a question for Devon, because
+building it changes nothing about what the page is; #628 still governs
+conditions that do. Both Golden Hour movers are pure clocks in
+`js/creatures/nightpaths.js` and the `?debug` hook has `owlHunt(p)` and
+`owl()`. Blue Hour's `downhillAt` is `fallLine` in `field.js`, which also moved
+the eyes' drift and the shape's head-flip; session 6's tripwire now fails if
+the pan goes back to zero. **Worth carrying forward**: pgrep for a script name
+matches the shell loop waiting on it, so `until ! pgrep -f browser.mjs` never
+ends; wait on a line in the log instead. Running breaks in a `git worktree`
+copy keeps the branch clean and lets two browser suites run at once under
+separate `xvfb-run -a` displays, at the cost of real-time beats wobbling
+further (#53).
 
 **Golden Hour's `?debug` hook has twelve beats in `play-games.mjs`, Blue Hour
 is on the board, and both previews are new drafts** (#630 to #632, PR #392).
@@ -630,7 +643,7 @@ readings, in the same terms the project wishlists already use:
   inherits, authored content whose coherence no assertion can hold, or a change
   with no safety net under it at all.
 
-Eight rows read Fable, which at 8 of 14 is a heavier share than any single
+Six rows read Fable, which at 6 of 12 is a heavier share than any single
 project's wishlist carries, and the reason is what this list is: the leftovers
 of ten projects are disproportionately save layers, pure models, and atmosphere
 nothing in CI can look at. (It said "fifteen" from #380 until 2026-09-16, when a
@@ -650,16 +663,14 @@ and #222 was closed unmerged an hour of suites later.
 | 2 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
 | 3 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
 | 4 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 5 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 | `claude/determined-fermi-yc16zl` | [Golden Hour](#golden-hour) |
-| 6 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 7 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 8 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 9 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 | `claude/determined-fermi-yc16zl` | [Blue Hour](#blue-hour) |
-| 10 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 11 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 12 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 13 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 14 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 5 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 6 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 7 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 8 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 9 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 10 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 11 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 12 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -943,6 +954,9 @@ What's left:
    the dune line as from the waterline, and now the waterline moves 9.3 m.
    Deliberately not guessed at in the tide's own PR — a gain curve tuned
    without ears is the thing this row exists to stop.
+   **And the night's two new movers** (#633): the owl's 80 to 140 s between
+   hunts and the fireflies' two-minute drift to the fire are as unwatched as
+   the bait ball's interval was.
 2. **The still-open real low-end-GPU run from the last backlog, now genuinely
    urgent:** the world is 10x bigger and the proxy numbers are software
    rasterization, not a weak real GPU. Confirmed the qualitative direction
@@ -957,8 +971,15 @@ What's left:
    `npm run promote golden-hour`.
 4. **Touch playtest on a real phone:** the pill-as-throw-control needs a thumb
    on glass, not a mouse pretending.
-5. **If night proves popular:** the owl could hunt (one swoop over the dunes,
-   no kill shown), and the fireflies could drift toward the fire when it burns.
+5. **The owl hunts and the fireflies drift toward the fire. Closed 2026-09-24**
+   (#633, PR #395). The condition, "if night proves popular", sets the
+   row's priority, not what the page is, so the batch naming it was the ask.
+   Both movers are clocks in `js/creatures/nightpaths.js`: the fourteen flies
+   nearest the camp leave the hollows one or two at a time from nightT 0.2 and
+   are all round the fire, 3 to 6.5 m out, by 0.60; the owl swoops 12 to 20 m
+   from its snag every 80 to 140 s of night, drops into the grass for 1.2 s and
+   climbs back to the nearer snag. The timings are guesses a person should
+   hear and watch, and belong to item 1's ears-on hour.
 6. **`play-games.mjs` beats off the `__gh` hook. Closed 2026-09-24** (#631,
    PR #392). Twelve beats after the real-time ones: the hook shut without
    `?debug`, stars at `setSunT(1560)`, the headland's card and journal page,
@@ -1051,17 +1072,14 @@ Deliberately not done, and still the right call:
    browser suite reads the lower-half luminance at the bench and holds it
    above 18, and only at the facing the walker arrives with — the other three
    facings read 18.3 to 27.4 now and nothing holds them.
-8. **The phantom's downhill pan does nothing — decide whether to mean it**
-   (session 6). `downhillAt` returns the reverse of the trail tangent, so for a
-   walker facing along the trail the pan is exactly 0.000 in both directions of
-   travel; the beat's descent is carried entirely by the falling pitch. Either
-   accept that (the honest reading: those steps are behind you or ahead of you,
-   and stereo cannot say which) and reword the ladder, or point `downhillAt` at
-   the terrain's fall line, which IS lateral on every switchback leg and would
-   make the sentence true. The second changes the eyes' drift and the shape's
-   head-flip too, since all three read the same function — which is an argument
-   for doing it deliberately or not at all. A browser check fails the moment
-   anyone changes it, on purpose.
+8. **The phantom's downhill pan. Closed 2026-09-24** (#634, PR #395).
+   `downhillAt` is the hillside's fall line now (`fallLine` in `field.js`),
+   not the reverse of the trail tangent, so the steps lean toward the valley
+   side, where the leg below you is: median 0.95 of the way sideways across
+   the trail, pan 0.53 on the browser suite's real stop. The eyes' drift and
+   the shape's head-flip moved with it, deliberately. Session 6's tripwire in
+   `test/browser.mjs` is turned round: it fails if the pan goes back to zero or
+   leans uphill, and `smoke.mjs` holds the fall line itself.
 9. **Registered in `games.mjs`. Closed 2026-09-24** (#631, PR #392). No
    `saveKey`, on purpose. `play-games.mjs blue-hour` is 4 checks (the hook shut,
    at least 100 meshes and instanced sets of the 112, no errors, nothing
