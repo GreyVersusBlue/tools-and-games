@@ -24,6 +24,11 @@
 // `--ring` plays the board as the roundabout converts it (loadout with the
 // roundabout bought, #595): one row, no cycle, scored against the level's
 // `ring` calibration. A board the roundabout does not convert is skipped.
+// `--endless` (M9) plays endless's days hands-off instead, the grid's 20 s
+// rule at every box: `node tools/calibrate.mjs endless 1,2,3,12` prints a
+// row per day (cleared against the day's target, LOCK for a locked grid)
+// and, when the days start at 1 and run on unbroken, each seed's first
+// missed day. Twelve boxes cost about 13 s a run. #609 has the table.
 
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -36,6 +41,7 @@ const { score } = await load('scoring.js');
 const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { standardPhases } = await load('signals.js');
 const { loadout, convertible } = await load('campaign.js');
+const { dayLevel, daySeed } = await load('endless.js');
 
 const args = process.argv.slice(2).filter(a => !a.startsWith('--'));
 const flags = process.argv.slice(2).filter(a => a.startsWith('--'));
@@ -98,6 +104,25 @@ export function cell(level, seed, cycle, opts = {}, offset = null) {
 
 // Run as a script; importing the file (a suite borrowing controllerFor) does nothing.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (isMain && flags.includes('--endless')) {
+  const days = (args[1] || '1,2,3,4,5,6,7,8,9,10,11,12').split(',').map(Number);
+  const missed = seeds.map(() => null);
+  console.log(`Endless, hands-off: a 20 s rule at every box, ${dayLevel(1, 1).duration} s a day`);
+  console.log('  day target  ' + seeds.map(s => `seed ${s}`.padEnd(12)).join(''));
+  days.forEach((day, j) => {
+    const row = seeds.map((seed, i) => {
+      const lvl = dayLevel(seed, day);
+      const w = new World(lvl, daySeed(seed, day));
+      for (let k = 0; k < lvl.duration * 60; k++) { w.step(); if (w.stats.gridlock) break; }
+      const r = score(w);
+      if (!r.survived && missed[i] === null && days.slice(0, j + 1).every((d, x) => d === x + 1)) missed[i] = day;
+      return `${w.stats.gridlock ? 'LOCK' : String(r.cleared).padStart(4)} ${r.avgWait.toFixed(0).padStart(3)}s`.padEnd(12);
+    });
+    console.log(`  ${String(day).padStart(3)} ${String(dayLevel(1, day).target).padStart(6)}  ${row.join('')}`);
+  });
+  if (days[0] === 1) console.log('  first missed day: ' + missed.map(m => m ?? `>${days.filter((d, x) => d === x + 1).length}`).join(', '));
+  process.exit(0);
+}
 const levels = !isMain ? [] : which === 'all' ? LEVELS : [levelById(which)].filter(Boolean);
 if (isMain && !levels.length) { console.log(`no level ${which}`); process.exit(1); }
 const opts = { plan: flags.includes('--plan'), twoPhase: flags.includes('--two-phase'), allRed: allRedOverride, rules: flags.includes('--rules'), lefts: leftsGreen, hold: flags.includes('--hold'), ring: flags.includes('--ring') };

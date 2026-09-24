@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 8, the UI pass and M9's grid, 2026-09-21 to 2026-09-23)
+## What shipped (milestones 0 to 8, the UI pass and M9's grid and endless, 2026-09-21 to 2026-09-24)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -221,21 +221,34 @@ open work; this file is the plan it points at.
   camera down to 1.2 px/m. 176 + 274 + 75 + 24 + 23 + 35 + 34 + 194
   checks (`test/grid.mjs` is new).
 
+- **M9, second increment: endless** (HISTORY.md #608 to #613). `js/endless.js
+  dayLevel(seed, day)` is day n of a city: `gridLevel(seed, n)` up to twelve
+  boxes, demand 10% up a day, 180 s, a target of 20 plus 8 a day with no
+  cap (a full district clears a flat 50 to 130 a day and nothing locks at
+  21 days' traffic, so the target is what ends a run), a 20 s wait target.
+  A day ends the run if the grid locks or the target is missed; collisions
+  cost points. The seed is rolled per run and Again replays it. Each new day
+  is a new World, and `carryOver` keeps every old box's rules and timing.
+  The card comes after the levels and opens on a star from Two Blocks; the
+  end card reads the day, the run and the best, with Next day or Again. The
+  best is `endless: { days, points, seed, runs }` through `repair`,
+  `signal_city_v1` unchanged, recorded after every day. `convertible` now
+  refuses a grid. `tools/calibrate.mjs --endless` prints the days. 176 +
+  274 + 75 + 24 + 23 + 35 + 34 + 39 + 209 checks (`test/endless.mjs` is new).
+
 ## What is next, in order
 
-7. **M9 endless and sandbox, second increment** (1): the grid is built
-   (#601 to #606); what is left is the two modes on it. Endless is a new
-   card (#604): day n is `gridLevel(seed, n)`, one box more per survived
-   day on the same seed, a best to beat. It needs a day's target and wait
-   target from `gridLevel`'s numbers (#605 has 2 to 12 boxes on six seeds),
-   what ends a run, and how the best is stored: a new field through
-   `repair` with a default for older saves (#36, #37), `signal_city_v1`
-   unchanged. The sandbox is Free Play grown (#604): one box as now,
-   hashing as today, or a generated district with a seed to reroll; its
-   two scripted ambulances name W on node 0, which a grid may have linked,
-   so they need a spawning leg. Carried from M8: whatever play shows the
-   four prices want, and the brief's time of day per level (#585), still
-   render.js's `DUSK_LEVELS`.
+7. **M9, third increment: the sandbox** (the last of the 2+): the grid and endless are built
+   (#601 to #613); what is left is Free Play grown (#604). Free Play keeps
+   one box, hashing as today, and gains a district choice: a generated grid
+   of 2 to 12 boxes on a seed the player can reroll (`gridLevel`, no
+   target, `sandbox: true`, nothing recorded). Its two scripted ambulances
+   name leg W on node 0, which a grid may have linked (`spawnCar` does not
+   check `linkedIn`), so on a grid they need a spawning leg picked from the
+   network. The open call is where the choice lives: on Free Play's card or
+   in its panel. Carried from M8: whatever play shows the four prices want,
+   and the brief's time of day per level (#585), still render.js's
+   `DUSK_LEVELS`.
 
 ## Known gaps and decisions
 
@@ -243,11 +256,20 @@ open work; this file is the plan it points at.
   neighbour cell is empty has a 110 m spawning leg that stops where cars
   appear. The generator fills the district compactly, so it reads as
   suburbs being built, but nothing draws a road end. The grid has no
-  target (the HUD reads "/ 1") until endless says what a day asks for.
+  target outside endless (the HUD reads "/ 1" through the debug hook).
   At 12 boxes the camera is at 1.27 px/m and a car is 6 px long; the
   wheel zooms to three times that. `test/grid.mjs` runs twelve boxes for
   90 s and the calibration for 240 s at about 17 s a run: a longer
   endless day will want the suite to sample, not soak.
+
+- Endless's early days ask little: a hands-off city clears every day to
+  the ninth on five of six calibration seeds, which is 27 minutes before
+  the target bites. The ramp is the district's capacity, not the target's
+  slope: a steeper start fails day one on seeds that clear 25. Whether a
+  hand beats the default by enough to matter is unmeasured; the
+  calibration plays hands-off only. Nothing is saved mid-day, so a run
+  closed in the middle of a day loses that day and counts only the days
+  before it (#612).
 
 - The ring is one lane (#595); a two-lane ring is refused, so Four Ways
   and School Run cannot convert. It has no zebras, loops or cones, and

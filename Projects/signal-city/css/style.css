@@ -168,6 +168,7 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .lv-name { font-weight: 700; font-size: 16px; }
 .lv-blurb { color: var(--dim); font-size: 13px; }
 .lv-stars { color: var(--yellow); font-size: 14px; letter-spacing: 2px; }
+.lv-best { color: var(--yellow); font-size: 13px; }
 .lv-meta { font-size: 11px; color: var(--dim); }
 .lv-bought { font-size: 11px; color: var(--green); }
 .lv-shut { font-size: 13px; color: var(--dim); }

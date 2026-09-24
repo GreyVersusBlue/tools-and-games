@@ -4,8 +4,8 @@
 // `spacing` metres apart (network.js buildCells). growCells(seed, count)
 // places `count` boxes one at a time from one seeded generator (rng.js),
 // so the first n boxes of a seed are the same whatever count is asked for:
-// endless (M9's next increment) adds a box per survived day without moving
-// or re-rolling the ones already built. test/grid.mjs holds that.
+// endless (endless.js) adds a box per survived day without moving or
+// re-rolling the ones already built. test/grid.mjs holds that.
 //
 // The rules, one step per box:
 //   the first box stands in the middle cell (the lower middle when a side
@@ -66,8 +66,9 @@ export function growCells(seed, count, { cols = 4, rows = 3, tee = 0.25, ring = 
 
 // A runnable level from a grown district: every signal on the same timing
 // and a 20 s elapsed rule, so a grid runs itself until someone presses
-// something; demand per node from the cells. No stars and no card yet:
-// endless and the sandbox are the next increment. The suite, the
+// something; demand per node from the cells, no target and no stars.
+// Endless (endless.js) builds each day on it with a target of its own;
+// the sandbox, M9's next increment, will give it a card. The suites, the
 // calibration and the page's debug hook run it.
 export function gridLevel(seed, count, opts = {}) {
   const cells = growCells(seed, count, opts);

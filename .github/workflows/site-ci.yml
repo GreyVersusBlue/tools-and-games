@@ -189,6 +189,7 @@ jobs:
               node test/wave.mjs
               node test/campaign.mjs
               node test/grid.mjs
+              node test/endless.mjs
               node test/browser.mjs
 
           - name: The Fracture Cycle
