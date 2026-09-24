@@ -105,7 +105,7 @@ table** in Tier 2.
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
 **The last batch of ranked work that shipped** is **Golden Hour's night moves
-and Blue Hour's fall line (PR #PRNUM)**: old ranks 5 and 9, two ½ naming Fable
+and Blue Hour's fall line (PR #395)**: old ranks 5 and 9, two ½ naming Fable
 5.1, worked under Opus 5.5. Every rank below them moved up. That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
@@ -121,7 +121,7 @@ The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
 
 **The owl hunts, fireflies drift to the fire, and Blue Hour's phantom steps
-lean toward the valley** (#633, #634, PR #PRNUM). Rank 5's "if night proves
+lean toward the valley** (#633, #634, PR #395). Rank 5's "if night proves
 popular" was read as a priority gate, not a question for Devon, because
 building it changes nothing about what the page is; #628 still governs
 conditions that do. Both Golden Hour movers are pure clocks in
@@ -972,7 +972,7 @@ What's left:
 4. **Touch playtest on a real phone:** the pill-as-throw-control needs a thumb
    on glass, not a mouse pretending.
 5. **The owl hunts and the fireflies drift toward the fire. Closed 2026-09-24**
-   (#633, this batch). The condition, "if night proves popular", sets the
+   (#633, PR #395). The condition, "if night proves popular", sets the
    row's priority, not what the page is, so the batch naming it was the ask.
    Both movers are clocks in `js/creatures/nightpaths.js`: the fourteen flies
    nearest the camp leave the hollows one or two at a time from nightT 0.2 and
@@ -1072,7 +1072,7 @@ Deliberately not done, and still the right call:
    browser suite reads the lower-half luminance at the bench and holds it
    above 18, and only at the facing the walker arrives with — the other three
    facings read 18.3 to 27.4 now and nothing holds them.
-8. **The phantom's downhill pan. Closed 2026-09-24** (#634, this batch).
+8. **The phantom's downhill pan. Closed 2026-09-24** (#634, PR #395).
    `downhillAt` is the hillside's fall line now (`fallLine` in `field.js`),
    not the reverse of the trail tangent, so the steps lean toward the valley
    side, where the leg below you is: median 0.95 of the way sideways across
