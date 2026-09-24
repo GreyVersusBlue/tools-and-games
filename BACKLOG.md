@@ -104,35 +104,44 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City's M9,
-first increment: the grid (PR #362)**, rank 1, a 2+ worked under Opus 5.5
-(the row names Fable 5.1), and still rank 1 with its text rewritten to say
-what is done: the grid is built, endless and the sandbox are next. That is the line to
+**The last batch of ranked work that shipped** is **Blue Hour's missing
+peak (PR #366)**, rank 2, a 1 worked under Opus 5.5 (the row names Opus 5).
+The row is deleted and ranks 3 to 26 moved up one. That is the line to
 update when your batch merges; a PR that only changes these files is not a
 batch and does not belong in it.
-**26 ranked items remain**, and **every one of them names a model.**
+**25 ranked items remain**, and **every one of them names a model.**
 
-**Take rank 1: Signal City's M9, second increment, endless and the
-sandbox** (`Projects/signal-city`, a 2+, Fable 5.1). The grid is built
-(#601 to #606): `js/grid.js growCells`/`gridLevel`, `network.cells`, and
-the page runs one through `__signalCity.startGrid`. What is left is the
-two modes on it: endless a new card, one box per survived day on one
-seed with a best to beat (its storage is the open call, through `repair`,
-#36 and #37), and the sandbox as Free Play grown (#604). The plan is
-`Projects/signal-city/WISHLIST.md` item 7. A 2+ is the whole batch. **Otherwise take rank 2: the missing peak** (`Projects/blue-hour-trail`, a 1, Opus 5).
-Under the size table a 1 is the whole batch unless it is paired with two
-quarters in the same area, and Blue Hour's two ranked quarters (18 and 19) both
-want hardware this machine does not have — so take it alone. Its plan is Blue
-Hour's section below, item 7. **It needs no hardware this machine lacks.** The
-heightfield it reshapes is `hillProfile` now, not a ramp (#523), and past the
-trail's end it holds the summit's height flat to the map edge (#524) because a
-slope climbing behind the tower put the arrival frame under the browser
-suite's luminance floor; read that decision before choosing a peak shape, and
-measure the four facings at the bench after, not just the one the suite reads.
+**Rank 1 is claimed** by `claude/signal-city-endless-600s9r`: Signal City's
+M9, second increment, endless and the sandbox (`Projects/signal-city`, a
+2+, Fable 5.1). Leave it unless that claim is cleared. The grid is built
+(#601 to #606); what is left is endless as a new card, one box per
+survived day on one seed with a best to beat (its storage is the open
+call, through `repair`, #36 and #37), and the sandbox as Free Play grown
+(#604). The plan is `Projects/signal-city/WISHLIST.md` item 7.
+**Otherwise take rank 2: one shared asset pipeline** (`assets`, a 2+,
+Fable 5.1): prune, resize and draco/meshopt the ~335 MB across two games.
+A 2+ is the whole batch; do one increment and leave the row with its text
+rewritten. Its plan is "The site itself" below. Rank 3, the real-hardware
+pass, needs hardware this machine lacks; if rank 2 is taken, rank 4 is the
+first Pathfinder quarter and ranks 4 to 6 batch together (same area, all
+Sonnet 5).
 
-The two shipped rows are deleted and everything below them renumbered; the ranks
-in this header are the new ones, and ranks 1 to 22 did not move. What shipped,
-and what it means for the next session:
+The ranks in this header are the new ones. What shipped, and what it means
+for the next session:
+
+**Blue Hour has a peak** (#607, PR #366). The profile held 65 m flat past
+the trail's end and the ridge noise put a ridge 40 m from the trail's end
+at 71.3 m and the ground 20 m behind the tower at 70.5 m: the walk ended in
+a dip. `summitCap` in `field.js` is a ceiling centred on the tower, gentle
+along the spur the last leg climbs and steep across it and behind,
+smooth-minned into `mountainH` so it only removes ground, and faded out
+below z -50. Nothing within 100 m out-tops the trail's end now, and the far
+side falls to 54.4 m 40 m past the tower. No trail height, bench or tower
+moved. `test/smoke.mjs` 107 → **109**; `test/browser.mjs` holds the summit's
+luminance at all four facings now, 95/95. **Worth carrying forward**: a
+round cone was ruled out by arithmetic before it was tried (the last leg
+drops 1.4 m in 34 m), and one number in the new test comment was written
+before its break and was wrong. Write the comment after the break.
 
 **Signal City has a grid** (#601 to #606, PR #362). `growCells(seed,
 count)` grows a 4 by 3 district a box at a time, one lane everywhere, Ts
@@ -193,7 +202,7 @@ adding a beat**: a section that throws now costs its own checks and no others
 (#529), after the first deliberate break lost twelve unrelated ones to an abort;
 and the plan-vs-flight assertion has to be the clock and not the endpoint
 (#530), because launching at 0.9x `MAXSPEED` still wins on an empty field and
-the break ran green from 46/46. Rank 25's rotate-to-play gate is still a real
+the break ran green from 46/46. Rank 24's rotate-to-play gate is still a real
 device's job and is untouched.
 
 **A sink says what an order costs** (#531, #532). The tile-cost row was a design
@@ -373,19 +382,21 @@ in a real browser found: Escape reaching two key handlers at once, the rail
 hiding the launch point of every draft, and a link pasted into an already-open
 tab doing nothing at all.
 
-**Rank 1 is the missing peak** (`Projects/blue-hour-trail`), a **1** on **Opus 5**.
-The first half is rank 3. Ten of the twenty-five are ¼: ranks 4, 6, 10, 11, 12,
-15, 16, 17, 18 and 24. **Five of those ten want hardware nothing here has**
-(10, 12, 17, 18, 24), as do three of the halves (3, 9, 19); the Parked section
-below the table says why they were left ranked anyway. Ranks 2 and 23 are the
-two 2+ rows.
+**Rank 1 is Signal City's M9** (claimed), a **2+** on **Fable 5.1**, and
+rank 2 is the asset pipeline, the other live 2+. Ten of the twenty-five are
+¼: ranks 4, 6, 10, 11, 12, 15, 16, 17, 18 and 24. **Five of those ten want
+hardware nothing here has** (10, 12, 17, 18, 24), as do three of the halves
+(3, 9, 19); the Parked section below the table says why they were left
+ranked anyway. Ranks 1, 2 and 23 are the three 2+ rows.
 
-**The model split is 6 Opus 5, 10 Fable 5.1, 9 Sonnet 5.** Counted off the table
-rather than decremented, which is how the 15/14/9 drift seven batches ago was
-caught: 8 + 10 + 9 is 27, and the table has 27 rows. By size it is 11 ¼, 10 ½,
-4 ones and 2 of the 2+, which is the same 27. The rubric is in Tier 1's
-preamble, and it is a reading of each row, not a quota — take the model the row
-names and say in the PR body which one you actually worked under.
+**The model split is 5 Opus 5, 11 Fable 5.1, 9 Sonnet 5.** Counted off the
+table rather than decremented, which is how the 15/14/9 drift was caught and
+how this paragraph's own drift was caught on 2026-09-24 (it still said 27
+rows and named the peak rank 1): 5 + 11 + 9 is 25, and the table has 25
+rows. By size it is 10 ¼, 9 ½, 3 ones and 3 of the 2+, which is the same 25.
+The rubric is in Tier 1's preamble, and it is a reading of each row, not a
+quota — take the model the row names and say in the PR body which one you
+actually worked under.
 
 **`Projects/corner-and-kettle` has no open phase.** Arc one (Phases 1 to 4) and
 arc two (5 to 9) have both shipped. What is left is its wishlist's "What this
@@ -516,31 +527,30 @@ and #222 was closed unmerged an hour of suites later.
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Signal City: milestones 0 to 8, the UI pass and M9's grid shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358, #362); next M9's second increment, endless and the sandbox | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/signal-city-endless-600s9r` | [Signal City](#signal-city) |
-| 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 | `claude/open-ended-session-1fg9dz` | [Blue Hour](#blue-hour) |
-| 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
-| 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 5 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
-| 6 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
-| 7 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 8 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
-| 9 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
-| 10 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 11 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 12 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 13 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
-| 14 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
-| 15 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
-| 16 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 17 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 18 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
-| 19 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
-| 20 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 21 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 22 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 23 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
-| 24 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
-| 25 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
-| 26 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
+| 2 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 3 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
+| 4 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
+| 5 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
+| 6 | A commented-out `<template>` dossier block | `Pathfinder` | ¼ | Sonnet 5 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 7 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 8 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
+| 9 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 10 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 11 | Preview recapture and a board-card description refresh — it undersells the piece by about six features | `Tools/board-check` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 12 | A touch playtest on a real phone — the pill-as-throw-control needs a thumb on glass | `Projects/golden-hour-beach` | ¼ | Opus 5 |  | [Golden Hour](#golden-hour) |
+| 13 | `play-games.mjs` beats off the new `?debug` `__gh` hook | `Tools/board-check` | ½ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
+| 14 | If night proves popular: the owl hunts, and the fireflies drift toward the fire | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
+| 15 | Register Blue Hour in `Tools/board-check/games.mjs` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 16 | A `capture-previews.mjs` recipe, then `npm run previews blue-hour` and `npm run promote` | `Tools/board-check` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 17 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
+| 18 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 19 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 20 | The phantom's downhill pan is exactly 0.000 — decide whether to mean it | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 21 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
+| 22 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
+| 23 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
+| 24 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
+| 25 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
 
 ## Parked — needs a person at a real device
 
@@ -905,7 +915,11 @@ Deliberately not done, and still the right call:
    10.9 m; the trail itself did not move a millimetre, so nothing keyed to
    `altT` or the grade changed. `smoke.mjs` 104 → 107 and the record says which
    of the three new claims catches what.
-7. **The mountain still has no peak.** `hillProfile` holds the summit's
+7. **The peak — closed 2026-09-24** (#607, PR #366). `summitCap` is a
+   ceiling centred on the tower, gentle along the approach spur and steep
+   across it and behind; nothing within 100 m out-tops the trail's end, and
+   the browser suite holds all four facings at the bench above 18. What
+   follows is the item as it stood. `hillProfile` holds the summit's
    65.0 m flat from the trail's end to the map edge (#524): a shoulder, chosen
    because a slope still climbing behind the tower put the arrival frame's
    lower half at 14.6/255 and the flat one reads 20.0. The ~5 m berm the last
@@ -1186,7 +1200,7 @@ to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
 13 below are done (M8 in PRs #355 and #358), and M9's grid in PR #362: 835 checks across eight suites, all in Site CI. M9's second increment, endless and the sandbox, is next. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
-(a ¼ row for the site, like Blue Hour's ranks 16 and 17), and the trucker's
+(a ¼ row for the site, like Blue Hour's ranks 15 and 16), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
@@ -1272,8 +1286,8 @@ the one file-level exception and left with that project on 2026-09-15 (#491),
 taking `npm run play` with it.
 
 Everything open against this folder is filed under the project that needs it:
-Golden Hour's preview recapture and debug-hook beats (ranks 12 and 14) and Blue
-Hour's `games.mjs` entry and preview recipe (16 and 17). Those four numbers were
+Golden Hour's preview recapture and debug-hook beats (ranks 11 and 13) and Blue
+Hour's `games.mjs` entry and preview recipe (15 and 16). Those four numbers were
 read off the table rather than decremented with the rest, which is how the drift
 the line before this one carried was caught twice running — and on 2026-09-16 it
 caught it twice more, once when the four had been left reading 17, 19, 21 and 22
