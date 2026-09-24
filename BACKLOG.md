@@ -561,7 +561,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | One shared asset pipeline for Bell to Bell and Fourth Quarter: increment 1 shipped (PR #371, the tool and Bell to Bell's outfits as meshopt, 25.3 to 1.6 MB); next increment 2, textures (B2B props to 512, FQ's 2k re-encode), then 3, the props' meshes | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
+| 1 | One shared asset pipeline for Bell to Bell and Fourth Quarter: increment 1 shipped (PR #371, the tool and Bell to Bell's outfits as meshopt, 25.3 to 1.6 MB); next increment 2, textures (B2B props to 512, FQ's 2k re-encode), then 3, the props' meshes | `assets` | 2+ | Fable 5.1 | `claude/asset-pipeline-increment-2-textures-19jsm9` | [The site itself](#the-site-itself) |
 | 2 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
 | 3 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
 | 4 | Build the generator's Chronological merge/sort step, if the two chronicle views ever drift | `Pathfinder` | ½ | Sonnet 5 |  | [Pathfinder Campaigns](#pathfinder-campaigns) |
