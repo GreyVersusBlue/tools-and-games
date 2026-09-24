@@ -895,7 +895,10 @@ ok('and it rolls from the uphill ear to the valley one, whichever way you face',
   Math.sign(stones.up.to) === stones.up.valley && Math.sign(stones.up.from) === -stones.up.valley
     && Math.sign(stones.down.to) === stones.down.valley && Math.sign(stones.down.from) === -stones.down.valley
     && stones.up.valley === -stones.down.valley && Math.abs(stones.up.to) > 0.3,
-  `climbing ${stones.up.from.toFixed(2)} to ${stones.up.to.toFixed(2)}, descending ${stones.down.from.toFixed(2)} to ${stones.down.to.toFixed(2)}`);
+  // Formatted defensively: with no stone at all, this line has to FAIL, not
+  // take the suite down with a TypeError before the count prints.
+  [stones.up, stones.down].map((st, i) => `${i ? 'descending' : 'climbing'} ${
+    typeof st.from === 'number' ? `${st.from.toFixed(2)} to ${st.to.toFixed(2)}` : 'no stone'}`).join(', '));
 
 group('the headlamp');
 // Ladder 6: findable at the cabin, one toggle, and honest — the cone is a

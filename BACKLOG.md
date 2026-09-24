@@ -666,7 +666,7 @@ and #222 was closed unmerged an hour of suites later.
 | 5 | A real GPU run: the mist banks' fill cost, the headlamp at decay 1, the lamp's feet-pool at real pixel density | `Projects/blue-hour-trail` | ¼ | Sonnet 5 |  | [Blue Hour](#blue-hour) |
 | 6 | A touch playtest on real glass — hold-the-bottom-third-to-walk has never had a thumb on it | `Projects/blue-hour-trail` | ¼ | Opus 5 |  | [Blue Hour](#blue-hour) |
 | 7 | An hour on the trail with ears on: dread cooldowns, fog periods, drone gains, the new stingers | `Projects/blue-hour-trail` | ½ | Fable 5.1 |  | [Blue Hour](#blue-hour) |
-| 8 | Beats that change in kind above the fog line, not just in rate | `Projects/blue-hour-trail` | 1 | Fable 5.1 | `claude/blue-hour-beats-fog-line-93x6f3` | [Blue Hour](#blue-hour) |
+| 8 | Beats that change in kind above the fog line: the silence and the snap done (#635), the shape and the eyes left | `Projects/blue-hour-trail` | 1 | Fable 5.1 |  | [Blue Hour](#blue-hour) |
 | 9 | The two conservative model gaps, as one coupled piece of work | `Projects/integer-foundry` | 1 | Fable 5.1 |  | [Integer Foundry](#integer-foundry) |
 | 10 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 11 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
@@ -1024,11 +1024,19 @@ Deliberately not done, and still the right call:
    grant, and Golden Hour parity remains the odd one out. The live choice now
    is: keep pushing into `dread.js`, or write "no save, no verbs, no
    collection" into the record as a locked decision.
-2. **Beats in kind above the fog line.** The beats are still the same five
-   everywhere on the mountain — only their *rate* changes with altitude.
-   Something should change in kind up there. The figure in the lookout is one
-   answer and currently the only one. Session 4 filled the slot the original
-   task was holding open; more are welcome if they obey the doctrine.
+2. **Beats in kind above the fog line. First increment shipped 2026-09-24**
+   (#635). The rule: above the fog line a beat changes kind by passing from
+   the woods to the mountain. Past `STILL_AIR` (0.6 of `summitAir`, where the
+   birdsong already ended) the silence stills the wind and lets go with one
+   gust, and the snap is a stone rolling from the uphill ear to the valley
+   one. The transmission and the figure in the lookout were already
+   altitude-only. **Left**: the two visual beats, the shape and the eyes,
+   which are still the same animal everywhere. One candidate that obeys the
+   doctrine is a pale light low in the trees below, going away downhill, for
+   the eyes' summit kind: the only other sign of a person on the mountain,
+   leaving. It wants pixel checks, which under Xvfb are drafts (#630). The
+   phantom steps, the howl and the radio stay as they are; the steps already
+   borrow the previous walk's gait and the radio is the cabin's.
 3. **A real GPU run.** Every number on this project is still swiftshader —
    1.0–1.8 fps — now including the headlamp's SpotLight cost and the newly-alive
    mist/breath fill rate, which makes this MORE urgent than before, not less:

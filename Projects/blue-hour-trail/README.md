@@ -58,6 +58,11 @@ down to the root.
   when you look again, and they have a way of happening just where you
   weren't looking. Nothing here can hurt you, which is not the same as
   nothing being here.
+- Past the fog line the woods stop being the ones doing it. The silence
+  that takes the birds lower down has no birds left to take up there, so it
+  takes the wind, and gives it back all at once. A branch breaking is a
+  stone instead, let go somewhere above you and knocking its way down past
+  you into the fog.
 - There is somebody in the fire lookout. It is the only structure up there,
   the only thing on the mountain that implies other people, and it has
   someone standing at the rail facing whichever way you go. Look away and
