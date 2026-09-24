@@ -540,7 +540,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 8, the UI pass, and M9's grid and endless shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358, #362, #367); next M9's third increment, the sandbox | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 8, the UI pass, and M9's grid and endless shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358, #362, #367); next M9's third increment, the sandbox | `Projects/signal-city` | 2+ | Fable 5.1 | claude/signal-city-m9-sandbox-h8iu80 | [Signal City](#signal-city) |
 | 2 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 | `claude/shared-asset-pipeline-t3gdh5` | [The site itself](#the-site-itself) |
 | 3 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
 | 4 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
