@@ -604,7 +604,7 @@ and #222 was closed unmerged an hour of suites later.
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
-| 2 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 |  | [Pathfinder Characters](#pathfinder-characters) |
+| 2 | In-browser editing via `gvb-save.js`, if the page's role shifts from showcase to living sheet | `Pathfinder` | ½ | Fable 5.1 | `claude/busy-planck-gyjjky` | [Pathfinder Characters](#pathfinder-characters) |
 | 3 | Touch/gamepad input — a full second input scheme, not a HUD addition | `Projects/aphelion` | 1 | Opus 5 |  | [Aphelion](#aphelion) |
 | 4 | A real hour on the beach with ears on: event pacing, sanderling flush distance, cricket density, night palette banding | `Projects/golden-hour-beach` | ½ | Fable 5.1 |  | [Golden Hour](#golden-hour) |
 | 5 | A real low-end-GPU run — the world is 10x bigger and every number is software rasterization | `Projects/golden-hour-beach` | ¼ | Sonnet 5 |  | [Golden Hour](#golden-hour) |
