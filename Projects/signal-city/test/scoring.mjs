@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World } = await load('sim.js');
-const { meters, score, failedEarly, starString } = await load('scoring.js');
+const { meters, score, failedEarly, starString, lessonMet, lessonName } = await load('scoring.js');
 const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { repair, fresh, recordResult, totalStars, SAVE_KEY } = await load('save.js');
 const { standardPhases } = await load('signals.js');
@@ -56,7 +56,7 @@ group('the level pack');
   const l5 = levelById('two-blocks');
   ok(l5.network.nodes === 2 && l5.network.spacing === 220 && l5.controller.mode === 'timed' && l5.controller.main === 'EW', 'Two Blocks is two boxes 220 m apart on a timed plan with E-W as phase 1', `${l5.network.nodes} nodes, ${l5.network.spacing} m`);
   const w5 = new World(l5, 1);
-  ok(w5.controllers.length === 2 && w5.controllers[0].offset === 0 && w5.controllers[1].offset === 16 && l5.unlocks.includes('offset'), 'the east box runs 16 s behind, and the level unlocks the offset note', w5.controllers.map(c => c.offset).join(','));
+  ok(w5.controllers.length === 2 && w5.controllers[0].offset === 0 && w5.controllers[1].offset === 0 && l5.unlocks.includes('offset'), 'both boxes run the plan on one clock, and the level unlocks the offset note (R2: the offset is the lesson)', w5.controllers.map(c => c.offset).join(','));
   ok(Object.keys(l5.mix).sort().join() === 'aggressive,rideshare,standard,trucker' && Array.isArray(l5.demand) && l5.demand.length === 2, 'standard, aggressive, rideshare and trucker drive it, with demand per box', Object.keys(l5.mix).join(', '));
   const l6 = levelById('rush-hour');
   ok(l6.events.map(e => e.kind).join() === 'surge,outage,ambulance' && l6.events[0].at === 60 && l6.events[0].for === 100 && l6.events[1].at === 110 && l6.events[1].for === 30 && l6.events[2].at === 185 && l6.events[2].within === 40,
@@ -207,11 +207,11 @@ group('Two Blocks: the corridor on its offset');
 
 {
   // the calibration (six seeds, 22 s main and 12 s side greens): offset 16
-  // clears 87 to 103 with 9 to 15 s average wait; offset 0 clears 85 to
-  // 102 with 12 to 19 s. Target 80, waitTarget 16: the offset is the
-  // second star over six seeds, though on seed 1 alone the two offsets are
-  // within 2 s of each other, so no check here claims the difference (the
-  // wave is M7's). Three seeds, at about 5 s each.
+  // clears 87 to 103 with 9 to 15 s average wait; offset 0, which it ships
+  // at since R2, clears 85 to 102 with 12 to 19 s. The wait does not tell
+  // them apart, so the second star is the progression lesson (#639,
+  // test/stars.mjs); these seeds check the board clears. Three seeds, at
+  // about 5 s each.
   const l5 = levelById('two-blocks');
   const out = [];
   for (const seed of [1, 2, 3]) {
@@ -220,7 +220,7 @@ group('Two Blocks: the corridor on its offset');
     const r = score(w);
     out.push({ seed, r, lock: w.stats.gridlock, handoffs: w.stats.handoffs });
   }
-  ok(out.every(o => !o.lock && o.r.cleared >= l5.target && o.r.avgWait <= l5.waitTarget), 'the shipped plan and offset clear the target under the wait target on seeds 1 to 3', out.map(o => `${starString(o.r.stars)} ${o.r.cleared}/${o.r.avgWait.toFixed(0)}s/${o.r.collisions}x`).join(' | '));
+  ok(out.every(o => !o.lock && o.r.cleared >= l5.target && o.r.avgWait <= l5.waitTarget), 'the shipped plan clears the target under the wait target on seeds 1 to 3', out.map(o => `${starString(o.r.stars)} ${o.r.cleared}/${o.r.avgWait.toFixed(0)}s/${o.r.collisions}x`).join(' | '));
   ok(out.every(o => o.handoffs > 30), 'with cars crossing between the boxes all run', out.map(o => o.handoffs).join(', '));
 }
 
@@ -252,6 +252,9 @@ group('Rush Hour: the events and what the corridor costs');
   for (let i = 0; i < l6.duration * 60 && !late.stats.gridlock; i++) late.step();
   const rl = score(late);
   ok(rl.ambulanceLate === 1, 'the same seed with the corridor never called leaves it late', `${rl.ambulanceLate} late, cleared ${rl.cleared}`);
+  // the lesson (R2, #639): the corridor, not the wait target, is the second star
+  ok(r.lesson && r.lesson.met && w.stats.ambulanceEscorted === 1 && r.stars >= 2, 'with the corridor called the lesson is met and the second star is earned', `${starString(r.stars)}, ${w.stats.ambulanceEscorted} escorted`);
+  ok(rl.lesson && !rl.lesson.met && rl.stars === 1 && /^the ambulance was \d+ s late$/.test(rl.reasons.at(-1)), 'never called, it is not, and the reason line says how late', rl.reasons.join('. '));
   // the penalty itself, on a board quiet enough that honks have not
   // saturated it: one late ambulance is five honks' worth
   const quiet = new World(withAuto(levelById('first-light')), 3).run(60);
@@ -294,6 +297,44 @@ group('Main Street: the platoons and what a hand on the green buys');
   const ra = alone.r;
   ok(ra.splits >= 1 && ra.points === Math.max(0, Math.round(ra.cleared * 10 + (ra.survived ? 200 : 0) + ra.stars * 150 + ra.bonus * 2 - ra.collisions * 100 - ra.honks * 5 - ra.pedLate * 5 - ra.ambulanceLate * 50 - ra.splits * 50)), 'a split is 50 points', `${ra.splits} split: ${ra.points} vs ${held.r.points} held`);
   ok(ra.platoons === 2 && held.r.platoons === 2, 'and the card can say how many platoons there were');
+  // the lesson (R2, #639): no split is the second star, whatever the hold cost the wait
+  ok(held.r.lesson.met && held.r.stars >= 2 && !alone.r.lesson.met && alone.r.stars === 1, 'the held run meets the lesson and earns the second star; the rule alone does not', `${starString(held.r.stars)} held, ${starString(alone.r.stars)} alone`);
+  ok(/^the light split (a platoon|\d+ platoons)$/.test(alone.r.reasons.at(-1)), 'and the reason line names the split', alone.r.reasons.join('. '));
+}
+
+group('the lesson decides a star (R2)');
+
+{
+  const lessons = Object.fromEntries(LEVELS.filter(l => l.lesson).map(l => [l.id, l.lesson]));
+  ok(JSON.stringify(lessons) === JSON.stringify({ 'two-blocks': { kind: 'progression', stops: 0.5 }, 'rush-hour': { kind: 'ambulance' }, 'school-run': { kind: 'walks', within: 40 }, 'main-street': { kind: 'platoons' } }), 'the four levels with a default carry a lesson, and levels 1 to 4 and Free Play keep the wait star', JSON.stringify(lessons));
+  ok(Object.values(lessons).every(l => lessonName(l).length > 10) && lessonName(null) === '', 'every lesson has a name for the cards', Object.values(lessons).map(lessonName).join(' / '));
+  let threw = false;
+  try { lessonName({ kind: 'nonsense' }); } catch { threw = true; }
+  ok(threw, 'an unknown lesson kind throws rather than reading as met');
+  // progression: the shipped offset (0) against the 16 s one, seed 2, asked
+  // of the World's handoffs and not of the lesson helper
+  const l5 = levelById('two-blocks');
+  const run5 = lvl => { const w = new World(lvl, 2); for (let i = 0; i < lvl.duration * 60 && !w.stats.gridlock; i++) w.step(); return { w, r: score(w) }; };
+  const shipped = run5(l5), sixteen = run5({ ...l5, controllers: [{ offset: 0 }, { offset: 16 }] });
+  const share = w => w.stats.carriedStops / w.stats.carried;
+  ok(shipped.w.stats.carried > 20 && share(shipped.w) > 0.5 && !shipped.r.lesson.met && shipped.r.stars === 1, 'Two Blocks on one clock: over half the handed-on cars stop again, and the star is not earned', `${shipped.w.stats.carriedStops} of ${shipped.w.stats.carried}, ${starString(shipped.r.stars)}`);
+  ok(share(sixteen.w) <= 0.5 && sixteen.r.lesson.met && sixteen.r.stars === 3, 'at 16 s the platoon runs through and it is', `${sixteen.w.stats.carriedStops} of ${sixteen.w.stats.carried}, ${starString(sixteen.r.stars)}`);
+  ok(/^\d+% of the cars one box sent on stopped again at the next, against 50%$/.test(shipped.r.reasons.at(-1)), 'the reason line gives the share', shipped.r.reasons.at(-1));
+  // walks: the World's longest served call, against its own walk events
+  const l4 = levelById('crossing');
+  const w4 = new World(withAuto(l4), 3).run(120);
+  const longest = w4.events.filter(e => e.kind === 'walk').reduce((a, e) => Math.max(a, e.waited), 0);
+  ok(w4.stats.pedServed > 3 && Math.abs(w4.stats.pedMaxWait - longest) < 1e-9, 'the World keeps the longest a served call waited', `${w4.stats.pedMaxWait.toFixed(1)} s over ${w4.stats.pedServed} walks`);
+  const as = (within, pedCalls = w4.pedCalls) => { const f = Object.create(w4); f.level = { ...l4, lesson: { kind: 'walks', within } }; f.pedCalls = pedCalls; return lessonMet(f); };
+  const none = w4.pedCalls.map(() => ({}));
+  ok(as(Math.ceil(longest), none).met && !as(Math.floor(longest) - 1, none).met && /^a walk call waited \d+ s, against \d+ s$/.test(as(Math.floor(longest) - 1, none).why), 'a walks lesson is met at the longest served wait and missed a second under it', `${longest.toFixed(1)} s`);
+  const waiting = [{ N: { since: w4.t - longest - 10, walkers: 1, late: 0 } }];
+  ok(!as(Math.ceil(longest), waiting).met, 'and a call still waiting at the end counts, served or not', `${(longest + 10).toFixed(1)} s at the curb`);
+  // a record made under the old second star stands (#640)
+  const st = fresh();
+  recordResult(st, 'rush-hour', { stars: 3, points: 900 });
+  recordResult(st, 'rush-hour', { stars: 1, points: 700 });
+  ok(st.levels['rush-hour'].stars === 3 && totalStars(st) === 3, 'three stars earned before the lesson stand after a one-star run under it');
 }
 
 group('satisfaction never fails a level');

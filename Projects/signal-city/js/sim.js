@@ -15,6 +15,15 @@
 //   honks                      patience ran out
 //   pedLate                    a pedestrian call unserved past `pedWait`
 //                              seconds, and again every `pedWait` after
+//   pedMaxWait                 the longest a served call waited for its
+//                              WALK (R2; score adds the calls still waiting)
+//   carried, carriedStops      cars a corridor handed from one box to the
+//                              next and cleared, and those of them that
+//                              waited again after the handoff: a platoon
+//                              the offset let through does not (R2)
+//   ambulanceEscorted          ambulances that left the map on time with
+//                              their corridor called, and ambulanceLateBy
+//                              the most seconds one left late (R2)
 //   gridlock                   set once a car has waited past `gridlockWait`
 //                              or one car has sat in the box past `boxStall`
 //                              (per car: two lefts waiting in turn are two
@@ -181,7 +190,7 @@ export class World {
     this.scheduledCalls = (level.calls || []).slice().sort((a, b) => a.t - b.t); // [{ t, leg, node, walkers }]
     this.schedule = (level.events || []).map(e => ({ ...e })).sort((a, b) => a.at - b.at); // events yet to start (M7)
     this.active = [];       // events in force: { kind, at, until, ... }
-    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0, outages: 0, ambulances: 0, ambulanceLate: 0, platoons: 0, platoonSplits: 0, closures: 0, merges: 0 };
+    this.stats = { spawned: 0, cleared: 0, collisions: 0, honks: 0, wait: 0, waitCleared: 0, maxWait: 0, gridlock: false, gridlockAt: -1, boxStalled: 0, nearMisses: 0, pedCalls: 0, pedServed: 0, pedLate: 0, walkers: 0, struck: 0, handoffs: 0, outages: 0, ambulances: 0, ambulanceLate: 0, platoons: 0, platoonSplits: 0, closures: 0, merges: 0, pedMaxWait: 0, carried: 0, carriedStops: 0, ambulanceEscorted: 0, ambulanceLateBy: 0 };
     this.events = [];       // [{ t, kind, ... }], the renderer drains these
     this.boxStallT = 0;
     this._conf = new Map();
@@ -401,7 +410,13 @@ export class World {
   // The clock on an ambulance: late once past its deadline still on the
   // map, over once it has left.
   _ambulanceTick(e) {
-    if (e.car.done) { e.clearedAt = this.t; this._endEvent(e); return; }
+    if (e.car.done) {
+      e.clearedAt = this.t;
+      if (!e.late && e.car.priority) this.stats.ambulanceEscorted++;
+      if (e.late) this.stats.ambulanceLateBy = Math.max(this.stats.ambulanceLateBy, this.t - e.deadline);
+      this._endEvent(e);
+      return;
+    }
     if (!e.late && this.t >= e.deadline) {
       e.late = true;
       this.stats.ambulanceLate++;
@@ -617,6 +632,7 @@ export class World {
         if (ctl.pedHead(leg) === 'walk') {
           for (let i = 0; i < c.walkers; i++) this._spawnWalker(net, leg);
           this.stats.pedServed++;
+          this.stats.pedMaxWait = Math.max(this.stats.pedMaxWait, this.t - c.since);
           this.events.push({ t: this.t, kind: 'walk', node: net.node, leg, waited: this.t - c.since });
           delete calls[leg];
           continue;
@@ -913,6 +929,7 @@ export class World {
         car.done = true;
         this.stats.cleared++;
         this.stats.waitCleared += car.wait;
+        if (car.waitAtHandoff !== undefined) { this.stats.carried++; if (car.wait > car.waitAtHandoff) this.stats.carriedStops++; }
         this.events.push({ t: this.t, kind: 'cleared', car: car.id, wait: car.wait, travel: this.t - car.spawnedAt });
       }
     }
@@ -960,6 +977,7 @@ export class World {
     for (const h of car.hist) h.s += shift;
     car.stopVerdict = 0; car.boxVerdict = 0;
     car.newApproach();
+    car.waitAtHandoff = car.wait;
     this.stats.handoffs++;
     this.events.push({ t: this.t, kind: 'handoff', car: car.id, to: next.movement, node: link.node });
   }

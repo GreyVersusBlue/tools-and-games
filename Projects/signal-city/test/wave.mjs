@@ -33,10 +33,12 @@ ok(arrival(110, 5, -110, 14) === arrival(-110, 5, 110, 14), 'and the same westbo
   ok(platoonLines([nodes[0]], 14).length === 0, 'one box draws no line');
 }
 
-group('Two Blocks as shipped');
+group('Two Blocks at the 16 s offset it shipped until R2');
 
 {
-  const w = new World(levelById('two-blocks'), 1);
+  // R2 (#639) ships both boxes on one clock, so the offset is the lesson;
+  // the wave's geometry is checked where it has a picture to draw
+  const w = new World({ ...levelById('two-blocks'), controllers: [{ offset: 0 }, { offset: 16 }] }, 1);
   w.run(30);
   const m = waveModel(w);
   ok(m.nodes.length === 2 && m.nodes[0].x === -110 && m.nodes[1].x === 110 && m.nodes[0].name === 'West' && m.nodes[1].name === 'East', 'two columns 220 m apart, West and East', m.nodes.map(n => `${n.name} ${n.x}`).join(', '));
@@ -74,6 +76,18 @@ group('Two Blocks as shipped');
   const east2 = wide2.lines.filter(l => l.dir === 'east' && l.t1 < wide2.ahead);
   ok(east2.length >= 2 && east2.every(l => toGreen(wide2.nodes[1].east, l.t1) < 1), 'and now the eastbound platoons land within a second of an east green\'s start', east2.map(l => `${f1(l.t0)} → ${f1(l.t1)}, ${f1(toGreen(wide2.nodes[1].east, l.t1))} s off`).join(', '));
   ok(waveModel(w).nodes[0].east.length === m2.nodes[0].east.length && w.controllers[0].log.length === w.controllers[0].log.length, 'building the model does not step the world');
+}
+
+group('Two Blocks as shipped');
+
+{
+  const w = new World(levelById('two-blocks'), 1);
+  w.run(30);
+  const m = waveModel(w);
+  const headAt = (runs, t) => { const r = runs.find(r => t >= r.from && t < r.to); return r ? r.head : null; };
+  let agree = 0, total = 0;
+  for (let t = 0; t < m.ahead; t += 0.25) { total++; if (headAt(m.nodes[1].east, t) === headAt(m.nodes[0].east, t)) agree++; }
+  ok(w.offsetOf() === 0 && agree === total, 'both boxes run the plan on one clock: the east column is the west column, at every quarter second', `offset ${w.offsetOf()}, ${agree} of ${total}`);
 }
 
 group('the history');

@@ -8,7 +8,7 @@
 import { World, DT } from './sim.js';
 import { Renderer } from './render.js';
 import { bindInput } from './input.js';
-import { meters, score, failedEarly, starString } from './scoring.js';
+import { meters, score, failedEarly, starString, lessonName } from './scoring.js';
 import { LEVELS, levelById } from './levels/pack-01.js';
 import { gridLevel, districtLevel } from './grid.js';
 import { makeSlot, recordResult, recordEndless, totalStars } from './save.js';
@@ -42,6 +42,14 @@ const FRESH = 2.5;
 const SANDBOX = 'free-play';
 const DISTRICT_MAX = 12;
 const rollCity = () => (Date.now() % 100000) + 1;          // seconds a change's cause reads as new, and a fired rule's card flashes
+
+
+// The Timing tab's line under the offset slider. At 0 both boxes run the
+// plan on one clock, which is how Two Blocks ships (R2).
+function offsetNote(o, L, shift) {
+  const at = Math.round(o) % L === 0 ? `Both boxes run the plan on the same clock (${L} s cycle).` : `The east box runs its plan ${Math.round(o)} s behind the west one (${L} s cycle).`;
+  return at + (Math.abs(shift) > 1e-6 ? ` Re-aligning: ${Math.abs(shift).toFixed(0)} s still to ${shift > 0 ? 'cut from' : 'add to'} its greens.` : '');
+}
 
 class Game {
   constructor() {
@@ -133,6 +141,7 @@ class Game {
           (lvl.district
             ? `<div class="lv-meta">${Math.round(lvl.duration / 60)} min · ${lvl.district} boxes on city ${lvl.citySeed} · no target</div>`
             : `<div class="lv-meta">${Math.round(lvl.duration / 60)} min · ${lvl.mode === 'hard' ? 'one collision ends it' : 'collisions cost a star'} · clear ${lvl.target}</div>`) +
+          (lvl.lesson ? `<div class="lv-meta lv-lesson">second star: ${lessonName(lvl.lesson)}</div>` : '') +
           (takes.length ? `<div class="lv-bought">+ ${takes.join(', ')}</div>` : '')
         : `<div class="lv-name">${lvl.name}</div><div class="lv-shut">A star on ${LEVELS[i - 1].name} opens it.</div>`;
       if (open) card.addEventListener('click', () => this.start(lvl.id));
@@ -426,7 +435,8 @@ class Game {
     $('endStars').textContent = this.level.sandbox ? '' : starString(r.stars);
     $('endBody').innerHTML =
       `<div class="end-row"><span>Cleared</span><b>${this.level.target ? `${r.cleared} / ${r.target}` : r.cleared}</b></div>` +
-      `<div class="end-row"><span>Average wait</span><b>${r.avgWait.toFixed(0)} s${this.level.target ? ` (target ${r.waitTarget})` : ''}</b></div>` +
+      `<div class="end-row"><span>Average wait</span><b>${r.avgWait.toFixed(0)} s${this.level.target && !r.lesson ? ` (target ${r.waitTarget})` : ''}</b></div>` +
+      (r.lesson ? `<div class="end-row" data-lesson><span>The lesson: ${lessonName(this.level.lesson)}</span><b>${r.lesson.met ? 'yes' : 'no'}</b></div>` : '') +
       (this.level.district ? `<div class="end-row"><span>District</span><b data-district>${this.level.district} boxes · city ${this.level.citySeed}</b></div>` : '') +
       `<div class="end-row"><span>Collisions</span><b>${r.collisions}</b></div>` +
       `<div class="end-row"><span>Honks</span><b>${r.honks}</b></div>` +
@@ -544,8 +554,7 @@ class Game {
     r.value = String(((Math.round(o) % L) + L) % L);
     $('offsetVal').textContent = `${Math.round(o)} s`;
     const shift = w.controllers[1].shift;
-    $('offsetNote').textContent = `The east box runs its plan ${Math.round(o)} s behind the west one (${L} s cycle).` +
-      (Math.abs(shift) > 1e-6 ? ` Re-aligning: ${Math.abs(shift).toFixed(0)} s still to ${shift > 0 ? 'cut from' : 'add to'} its greens.` : '');
+    $('offsetNote').textContent = offsetNote(o, L, shift);
     this.drawWave();
   }
 
@@ -800,8 +809,7 @@ class Game {
       const shift = w.controllers[1].shift;
       if ((Math.abs(shift) > 1e-6) !== /Re-aligning/.test($('offsetNote').textContent) || Math.abs(shift) > 1e-6) {
         const L = w.controllers[0].cycleLength(), o = w.offsetOf();
-        $('offsetNote').textContent = `The east box runs its plan ${Math.round(o)} s behind the west one (${L} s cycle).` +
-          (Math.abs(shift) > 1e-6 ? ` Re-aligning: ${Math.abs(shift).toFixed(0)} s still to ${shift > 0 ? 'cut from' : 'add to'} its greens.` : '');
+        $('offsetNote').textContent = offsetNote(o, L, shift);
       }
     }
   }

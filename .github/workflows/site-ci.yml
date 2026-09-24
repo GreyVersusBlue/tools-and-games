@@ -201,9 +201,11 @@ jobs:
               node test/generator.mjs
               node test/browser.mjs
 
-          # Seven Node suites and one headless page drive. browser.mjs steps the
+          # Nine Node suites and one headless page drive. browser.mjs steps the
           # world through the ?debug hook and lets rAF only draw, so nothing in
-          # it is timed and #53 does not reach it.
+          # it is timed and #53 does not reach it. stars.mjs (R2) plays every
+          # starred level six seeds with no input, a child process a level,
+          # about two minutes on four cores.
           - name: Signal City
             dir: Projects/signal-city
             install: Tools/board-check
@@ -216,6 +218,7 @@ jobs:
               node test/campaign.mjs
               node test/grid.mjs
               node test/endless.mjs
+              node test/stars.mjs
               node test/browser.mjs
 
           - name: The Fracture Cycle
