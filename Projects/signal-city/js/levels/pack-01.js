@@ -169,7 +169,7 @@ export const LEVELS = [
     id: 'rush-hour',
     name: 'Rush Hour',
     blurb: 'One crossroads and four minutes that do not go to plan: the evening surge, the power going out in the middle of it, and an ambulance behind the queue it leaves.',
-    hint: 'Traffic climbs at the one-minute mark. When the power goes out the signals are dark and every driver treats the box as a four-way stop: nothing you press reaches it until it is back. The ambulance has forty seconds from the map edge; press E, or click it, and its corridor goes green.',
+    hint: 'Traffic climbs at the one-minute mark. When the power goes out the signals are dark and every driver treats the box as a four-way stop: nothing you press reaches it until it is back. The ambulance has forty seconds from the map edge; press E, or click it, and its corridor goes green. One crash ends this level, and a corridor called on a short all-red can turn a left into a car still crossing: give the box more all-red first.',
     network: { legs: ['N', 'E', 'S', 'W'], lanesPerDir: 1 },
     controller: { timing: { yellow: 3, allRed: 1.5, minGreen: 4 }, rules: [{ when: 'elapsed', seconds: 22, then: 'next' }] },
     demand: { N: 300, S: 300, E: 220, W: 220 },
