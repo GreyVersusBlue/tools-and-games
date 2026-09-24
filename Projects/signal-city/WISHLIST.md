@@ -332,7 +332,7 @@ The card names the second star and the end card says whether it was
 played. `test/stars.mjs` in Site CI plays every starred level six seeds
 with no input and fails a level that three-stars. **Left open, for R3**:
 R1's hand, taught to answer a walk call (`answerWalks`), earns School
-Run's lesson on only 2 of 6 seeds, because a walk and its clearance put
+Run's three stars on 0 of 6 seeds (the lesson on at most 2 of 6 with any walk move tried), because a walk and its clearance put
 any call's worst wait near 40 s under every hand tried; #639 has the
 numbers.
 
