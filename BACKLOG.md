@@ -720,7 +720,7 @@ and #222 was closed unmerged an hour of suites later.
 | 10 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 11 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
 | 12 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
-| 13 | Signal City R4: endless, measure the hand, then fix the ramp | `Projects/signal-city` | ½ | Fable 5.1 |  | [Signal City](#signal-city), `WISHLIST.md` R4 |
+| 13 | Signal City R4: endless, measure the hand, then fix the ramp | `Projects/signal-city` | ½ | Fable 5.1 | `claude/signal-city-r4-q8m3` | [Signal City](#signal-city), `WISHLIST.md` R4 |
 
 ## Parked — needs a person at a real device
 
