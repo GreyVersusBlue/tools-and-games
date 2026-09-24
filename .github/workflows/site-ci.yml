@@ -134,6 +134,13 @@ jobs:
             commands: |
               node Pathfinder/tests/dossier-template.test.mjs
 
+          # characters.html and campaigns.html keep nothing in the browser and
+          # have no editable field (#628): editing is Q39, Devon's call. No browser.
+          - name: Pathfinder showcase pages
+            dir: .
+            commands: |
+              node Pathfinder/tests/showcase.test.mjs
+
           - name: Faire Weekend
             dir: Projects/Ren-Faire-Claude
             install: Projects/Ren-Faire-Claude
