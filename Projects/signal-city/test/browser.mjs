@@ -27,7 +27,10 @@
 // again in the shop. M9 adds a generated grid of six boxes through the
 // debug hook: the picker by number, the camera framing the district, a
 // click on the board selecting a ring and the ring note following it, and
-// twelve boxes still framed. Screenshots land in test/shots/ (ignored by git)
+// twelve boxes still framed. Endless (M9) adds its card, shut until Two
+// Blocks has a star, a day survived and the next day built with box 1's
+// timing kept, a locked grid ending the run, Again, and the best on the
+// card after a reload. Screenshots land in test/shots/ (ignored by git)
 // as evidence for the run.
 //
 // Nothing here is timed against wall clock (#53 does not reach it): the loop
@@ -98,15 +101,17 @@ try {
     ok(true, 'main.js ran and exposed the debug hook');
     const sel = await page.evaluate(() => ({
       shown: document.getElementById('selectScrim').classList.contains('show'),
-      cards: [...document.querySelectorAll('.level-card .lv-name')].map(e => e.textContent),
+      cards: [...document.querySelectorAll('.level-card:not(.endless) .lv-name')].map(e => e.textContent),
+      endless: !!document.querySelector('.level-card.endless.locked[data-level="endless"]'),
       stars: document.getElementById('starTotal').textContent,
     }));
     ok(sel.shown, 'the level select is up');
     ok(sel.cards.length === 9 && sel.cards.join() === 'First Light,Stem,Four Ways,Crossing,Two Blocks,Rush Hour,School Run,Main Street,Free Play', 'with nine cards, First Light first and Free Play last', sel.cards.join(', '));
+    ok(sel.endless, 'and after them Endless, shut (M9)');
     ok(sel.stars === '0 stars', 'and no stars yet', sel.stars);
     const camp = await page.evaluate(() => ({
-      locked: [...document.querySelectorAll('.level-card.locked')].map(e => e.dataset.level),
-      disabled: [...document.querySelectorAll('.level-card')].filter(e => e.disabled).length,
+      locked: [...document.querySelectorAll('.level-card.locked:not(.endless)')].map(e => e.dataset.level),
+      disabled: [...document.querySelectorAll('.level-card:not(.endless)')].filter(e => e.disabled).length,
       next: [...document.querySelectorAll('.level-card.next')].map(e => e.dataset.level).join(),
       shut: document.querySelector('.level-card[data-level="stem"] .lv-shut')?.textContent || '',
       wallet: document.getElementById('wallet').textContent,
@@ -326,7 +331,7 @@ try {
     await page.evaluate(() => {
       const g = window.__signalCity.game;
       g.save.unlocks = ['phases'];
-      for (const c of document.querySelectorAll('.level-card')) if (!g.save.levels[c.dataset.level]) g.save.levels[c.dataset.level] = { stars: 0, best: 0, plays: 1 };
+      for (const c of document.querySelectorAll('.level-card:not(.endless)')) if (!g.save.levels[c.dataset.level]) g.save.levels[c.dataset.level] = { stars: 0, best: 0, plays: 1 };
       g.slot.save(g.save); g.buildLevelSelect();
     });
     ok(errors.length === 0, 'no page errors in the campaign', errors.join(' | '));
@@ -912,6 +917,74 @@ try {
     ok(spots.redLeg && wash >= 4, 'and a leg on red has a red wash behind its stop line', `${spots.redLeg}: ${wash} red pixels`);
     await shot(page, 'visual-pass');
     ok(errors.length === 0, 'no page errors in the visual pass', errors.join(' | '));
+  });
+
+  await section('endless (M9): the card, a day survived, the next day, a run lost, the best kept', async () => {
+    // a clean record, and Two Blocks without its star: the card is shut
+    const keep = await page.evaluate(() => { const g = window.__signalCity.game; const k = JSON.stringify({ tb: g.save.levels['two-blocks'] || null, e: g.save.endless }); g.save.levels['two-blocks'] = { stars: 0, best: 0, plays: 1 }; g.save.endless = { days: 0, points: 0, seed: null, runs: 0 }; g.slot.save(g.save); g.buildLevelSelect(); g.state = 'select'; document.getElementById('endScrim').classList.remove('show'); document.getElementById('selectScrim').classList.add('show'); return k; });
+    const c0 = await page.evaluate(() => { const c = document.querySelector('.level-card[data-level="endless"]'); return { last: c === document.querySelector('#levelList').lastElementChild, disabled: c.disabled, text: c.textContent }; });
+    ok(c0.last && c0.disabled && /A star on Two Blocks opens it/.test(c0.text), 'the Endless card comes last, shut, and says a star on Two Blocks opens it', c0.text);
+    await page.evaluate(() => { const g = window.__signalCity.game; g.save.levels['two-blocks'].stars = 1; g.slot.save(g.save); g.buildLevelSelect(); });
+    const c1 = await page.evaluate(() => { const c = document.querySelector('.level-card[data-level="endless"]'); return { disabled: c.disabled, best: c.querySelector('.lv-best')?.textContent }; });
+    ok(!c1.disabled && c1.best === 'no run yet', 'a star on Two Blocks opens it, with no run yet to beat', c1.best);
+    await page.click('.level-card[data-level="endless"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'endless', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const d1 = await page.evaluate(() => ({
+      name: document.getElementById('levelName').textContent, nodes: window.__signalCity.world.nodes.length, run: window.__signalCity.run,
+      cleared: document.getElementById('cleared').textContent, tab: document.getElementById('panel').dataset.tab, nodeBar: !document.getElementById('nodes').classList.contains('hidden'),
+    }));
+    ok(d1.name === 'Endless, day 1' && d1.nodes === 1 && d1.run.seed === 7 && d1.run.day === 1, 'the card starts day 1: one box, on the city the debug seed rolls', `${d1.name}, ${d1.nodes} box, seed ${d1.run.seed}`);
+    ok(d1.cleared === '0 / 20' && d1.tab === 'rules', 'the HUD asks for the day\'s 20, and the panel opens on the rules', `${d1.cleared}, ${d1.tab}`);
+    // something the player set on box 1, to see it again tomorrow
+    await page.evaluate(() => { window.__signalCity.game.setTiming({ allRed: 2.5 }); });
+    for (let i = 0; i < 9; i++) await page.evaluate(n => window.__signalCity.step(n), 60 * 20);
+    await page.evaluate(() => { window.__signalCity.game.paused = false; });
+    await waitFor(page, () => document.getElementById('endScrim').classList.contains('show'), { timeout: 15000 });
+    const e1 = await page.evaluate(() => ({
+      title: document.getElementById('endTitle').textContent, stars: document.getElementById('endStars').textContent,
+      run: document.querySelector('#endBody [data-run]')?.textContent, best: document.querySelector('#endBody [data-best]')?.textContent,
+      city: document.querySelector('#endBody [data-city]')?.textContent,
+      button: document.getElementById('retryBtn').textContent, result: window.__signalCity.game.result,
+      saved: (s => (s.data || s).endless)(JSON.parse(localStorage.getItem('signal_city_v1'))), levels: Object.keys((s => (s.data || s).levels)(JSON.parse(localStorage.getItem('signal_city_v1')))),
+    }));
+    ok(e1.title === 'Day 1 survived.' && e1.stars === '' && e1.button === 'Next day', 'the day ends on "Day 1 survived.", no stars, and a Next day button', `${e1.title} ${e1.result.cleared}/${e1.result.target}; ${e1.button}`);
+    ok(e1.run === `1 day · ${e1.result.points} points` && /^1 day · \d+ points · new$/.test(e1.best) && e1.city === '7', 'the card reads the run, the city it is on and the new best', `${e1.run}; city ${e1.city}; ${e1.best}`);
+    ok(e1.saved.days === 1 && e1.saved.points === e1.result.points && e1.saved.runs === 1 && e1.saved.seed === 7 && !e1.levels.includes('endless'), 'and the save under signal_city_v1 holds the best under endless, not among the levels', JSON.stringify(e1.saved));
+    await page.click('#retryBtn');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 2, { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const d2 = await page.evaluate(() => ({
+      name: document.getElementById('levelName').textContent, run: window.__signalCity.run, cleared: document.getElementById('cleared').textContent,
+      allRed: window.__signalCity.world.controllers.map(c => c.timing.allRed), slider: document.getElementById('allRedVal').textContent,
+      buttons: [...document.querySelectorAll('#nodes .node')].map(b => b.textContent).join(), t: window.__signalCity.world.t,
+    }));
+    ok(d2.name === 'Endless, day 2' && d2.run.day === 2 && d2.run.days === 1 && d2.cleared === '0 / 28' && d2.buttons === 'Box 1,Box 2', 'Next day builds day 2: two boxes, a target of 28, the run one day in', `${d2.name}, ${d2.cleared}, ${d2.buttons}`);
+    ok(d2.allRed.join() === '2.5,1' && d2.slider === '2.5 s' && d2.t === 0, 'box 1 kept its 2.5 s all-red overnight, the new box has the default, and the slider shows box 1\'s', `${d2.allRed.join(', ')}; ${d2.slider}`);
+    // the grid locks: the run is over, and the best stays
+    await page.evaluate(() => { window.__signalCity.step(60); window.__signalCity.world.stats.gridlock = true; window.__signalCity.game.paused = false; });
+    await waitFor(page, () => document.getElementById('endScrim').classList.contains('show'), { timeout: 15000 });
+    const e2 = await page.evaluate(() => ({
+      title: document.getElementById('endTitle').textContent, why: document.querySelector('#endBody .end-why')?.textContent,
+      run: document.querySelector('#endBody [data-run]')?.textContent, best: document.querySelector('#endBody [data-best]')?.textContent,
+      button: document.getElementById('retryBtn').textContent, saved: (s => (s.data || s).endless)(JSON.parse(localStorage.getItem('signal_city_v1'))),
+    }));
+    ok(e2.title === 'The run is over.' && /the grid locked/.test(e2.why) && e2.button === 'Again', 'a locked grid ends the run: "The run is over.", the reason, and Again', `${e2.title} ${e2.why}`);
+    ok(/^1 day · /.test(e2.run) && !/new/.test(e2.best) && e2.saved.days === 1 && e2.saved.runs === 1, 'the run stands at the one day it survived, and the best is unchanged', `${e2.run}; ${e2.best}; ${JSON.stringify(e2.saved)}`);
+    await page.click('#retryBtn');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.nodes.length === 1, { timeout: 5000 });
+    const d3 = await page.evaluate(() => ({ run: window.__signalCity.run, name: document.getElementById('levelName').textContent, allRed: window.__signalCity.world.controllers[0].timing.allRed }));
+    ok(d3.run.seed === 7 && d3.run.day === 1 && d3.run.days === 0 && d3.name === 'Endless, day 1' && d3.allRed === 1, 'Again starts the same city over from day 1, with nothing carried', JSON.stringify(d3.run));
+    // what a reload has to survive: the best on the card (#39)
+    await page.reload({ waitUntil: 'load' });
+    await waitFor(page, () => !!window.__signalCity && !!document.querySelector('.level-card[data-level="endless"]'), { timeout: 15000 });
+    const c2 = await page.evaluate(() => ({ best: document.querySelector('.level-card[data-level="endless"] .lv-best')?.textContent, e: window.__signalCity.game.save.endless }));
+    ok(c2.best === `best 1 day · ${e1.result.points} points` && c2.e.runs === 1, 'after a reload the card reads the best; the second run, left before its first day ended, is not counted', `${c2.best}; ${c2.e.runs} run`);
+    await page.evaluate(() => document.querySelector('.level-card[data-level="endless"]').scrollIntoView({ block: 'center' }));
+    await shot(page, 'endless-card');
+    // put the save back
+    await page.evaluate(k => { const g = window.__signalCity.game; const o = JSON.parse(k); if (o.tb) g.save.levels['two-blocks'] = o.tb; else delete g.save.levels['two-blocks']; g.save.endless = o.e; g.slot.save(g.save); g.buildLevelSelect(); }, keep);
+    ok(errors.length === 0, 'no page errors through a run', errors.join(' | '));
   });
 
   await section('a grid of six boxes (M9): the picker, the camera, a ring among signals', async () => {

@@ -1,7 +1,11 @@
 // Signal City: the save. One slot through the site's gvb-save.js, key
 // `signal_city_v1`, never to be renamed (locked decision #36). It holds stars
-// and best scores per level and the unlock list; nothing mid-run is saved,
-// a level is short enough to replay.
+// and best scores per level, the unlock list, and endless's best run (M9);
+// nothing mid-run is saved, a level is short enough to replay.
+//
+// `endless` is the one field added since version 1 shipped. A save from
+// before it has none and gets the empty record from `repair`, so the key
+// and the version stay as they are.
 //
 // `migrate` is for version drift; `repair` runs on every load and fills any
 // field a hand-edited or truncated save is missing (#37).
@@ -12,8 +16,14 @@ export const SAVE_KEY = 'signal_city_v1';
 export const SAVE_VERSION = 1;
 
 export function fresh() {
-  return { levels: {}, unlocks: ['phases'], settings: { sound: true }, lastLevel: null };
+  return { levels: {}, unlocks: ['phases'], settings: { sound: true }, lastLevel: null, endless: freshEndless() };
 }
+
+// Endless's record: the best run's days survived and its points, the city
+// seed it was on, and how many runs have played out a first day (nothing
+// is saved mid-day, so a run left before its first day ends is not one).
+const freshEndless = () => ({ days: 0, points: 0, seed: null, runs: 0 });
+const count = x => Math.max(0, Math.floor(Number(x) || 0));
 
 export function repair(state) {
   const s = state && typeof state === 'object' ? state : {};
@@ -31,6 +41,10 @@ export function repair(state) {
   if (Array.isArray(s.unlocks)) out.unlocks = Array.from(new Set(['phases', ...s.unlocks.filter(u => typeof u === 'string')]));
   if (s.settings && typeof s.settings === 'object') out.settings = { ...out.settings, ...s.settings };
   if (typeof s.lastLevel === 'string') out.lastLevel = s.lastLevel;
+  if (s.endless && typeof s.endless === 'object') {
+    const e = s.endless;
+    out.endless = { days: count(e.days), points: count(e.points), seed: Number.isFinite(e.seed) ? e.seed : null, runs: count(e.runs) };
+  }
   return out;
 }
 
@@ -57,6 +71,18 @@ export function recordResult(state, levelId, result) {
   state.levels[levelId] = rec;
   state.lastLevel = levelId;
   return rec;
+}
+
+// Endless (M9): a run's days survived and points so far, recorded after
+// every day it plays, so a run left halfway still counts what it survived.
+// The best is the most days, and on a tie the most points. `first` is the
+// run's first day: it counts one run. Returns whether this is a new best.
+export function recordEndless(state, run, { first = false } = {}) {
+  const e = state.endless || (state.endless = freshEndless());
+  if (first) e.runs++;
+  const better = run.days > e.days || (run.days === e.days && run.points > e.points);
+  if (better) { e.days = run.days; e.points = run.points; e.seed = run.seed; }
+  return better;
 }
 
 export function totalStars(state) {

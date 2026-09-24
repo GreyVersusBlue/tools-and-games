@@ -11,8 +11,9 @@ import { bindInput } from './input.js';
 import { meters, score, failedEarly, starString } from './scoring.js';
 import { LEVELS, levelById } from './levels/pack-01.js';
 import { gridLevel } from './grid.js';
-import { makeSlot, recordResult, totalStars } from './save.js';
-import { SHOP, shopItem, isOpen, nextLevel, owned, wallet, canBuy, buy, applies, loadout } from './campaign.js';
+import { makeSlot, recordResult, recordEndless, totalStars } from './save.js';
+import { SHOP, shopItem, isOpen, nextLevel, owned, wallet, canBuy, buy, applies, loadout, endlessOpen, ENDLESS_AFTER } from './campaign.js';
+import { dayLevel, daySeed, carryOver, DAY_SECONDS } from './endless.js';
 import { mountSaveBar } from '../../../assets/js/gvb-save.js';
 import { waveModel, WaveHistory, drawWave } from './wave.js';
 import { legDir } from './network.js';
@@ -29,6 +30,7 @@ const TABS = ['phases', 'timing', 'rules', 'crossings', 'mode'];
 const LESSON_TAB = {
   'first-light': 'phases', stem: 'timing', 'four-ways': 'phases', crossing: 'crossings', 'two-blocks': 'timing',
   'rush-hour': 'phases', 'school-run': 'rules', 'main-street': 'phases', 'free-play': 'phases',
+  endless: 'rules',
 };
 const STRIP_SECONDS = 60;
 const RING_NOTE = 'A roundabout: no lights and nothing to press. Every car yields to the ring, and the ring never stops for anyone.';
@@ -56,6 +58,7 @@ class Game {
     this.hudEls = {};
     this.tab = 'phases';
     this.bannerKey = '';
+    this.run = null;         // an endless run (M9): { seed, day, days, points }
     bindInput({ canvas: this.canvas, renderer: this.renderer, game: this });
     window.addEventListener('resize', () => this.layout());
     this.layout();
@@ -125,8 +128,27 @@ class Game {
       if (open) card.addEventListener('click', () => this.start(lvl.id));
       list.appendChild(card);
     });
+    list.appendChild(this.endlessCard());
     $('starTotal').textContent = `${totalStars(this.save)} stars`;
     this.buildShop();
+  }
+
+  // Endless (M9): one card after the levels. Its line is the best run, in
+  // days and points, where a level's is its stars.
+  endlessCard() {
+    const open = endlessOpen(this.save);
+    const e = this.save.endless;
+    const card = document.createElement('button');
+    card.className = 'level-card endless' + (open ? '' : ' locked');
+    card.dataset.level = 'endless';
+    card.disabled = !open;
+    card.innerHTML = open
+      ? `<div class="lv-name">Endless</div><div class="lv-blurb">One city and a box more every day you clear it. The traffic grows every day too. How many days?</div>` +
+        `<div class="lv-best">${e.days || e.runs ? `best ${e.days} day${e.days === 1 ? '' : 's'} · ${e.points} points` : 'no run yet'}</div>` +
+        `<div class="lv-meta">${Math.round(DAY_SECONDS / 60)} min a day · collisions cost points · miss a target and the run ends</div>`
+      : `<div class="lv-name">Endless</div><div class="lv-shut">A star on ${levelById(ENDLESS_AFTER).name} opens it.</div>`;
+    if (open) card.addEventListener('click', () => this.startEndless());
+    return card;
   }
 
   buildShop() {
@@ -171,11 +193,37 @@ class Game {
   start(levelId, seed = null) {
     const base = levelById(levelId);
     if (!base) return;
+    this.run = null;
     this.play(loadout(base, this.bought()), seed);
   }
 
-  // Run a level object: the select's, or a generated grid through the
-  // debug hook (M9, before endless and the sandbox give it a card).
+  // Endless (M9): a new run on a rolled city, or `seed`'s. The debug hook
+  // may start one on a later day to reach a full district.
+  startEndless(seed = null, day = 1) {
+    seed = seed ?? (DEBUG ? 7 : (Date.now() % 100000) + 1);
+    this.run = { seed, day, days: day - 1, points: 0 };
+    this.playDay(null);
+  }
+
+  // Day `run.day` of the run, with yesterday's rules and timing on every
+  // box that stood yesterday (#610).
+  playDay(yesterday) {
+    const r = this.run;
+    this.play(loadout(dayLevel(r.seed, r.day), this.bought()), daySeed(r.seed, r.day));
+    if (yesterday) { carryOver(yesterday, this.world); this.buildTiming(); this.buildRules(); }
+  }
+
+  // The end card's first button: the next day of a run that survived, the
+  // same city from day one of one that did not, or the level again.
+  retry() {
+    if (!this.level) return;
+    if (!this.level.endless || !this.run) return this.start(this.level.id);
+    if (this.result && this.result.survived) { const yesterday = this.world; this.run.day++; return this.playDay(yesterday); }
+    this.startEndless(this.run.seed);
+  }
+
+  // Run a level object: the select's, an endless day (M9), or a generated
+  // grid through the debug hook (until the sandbox gives it a card).
   play(lvl, seed = null) {
     this.level = lvl;
     this.seed = seed ?? ((Date.now() % 100000) + 1);
@@ -318,6 +366,8 @@ class Game {
     this.state = 'ended';
     this.result = score(this.world);
     const r = this.result;
+    $('retryBtn').textContent = 'Again';
+    if (this.level.endless) return this.endDay();
     if (!this.level.sandbox) {
       recordResult(this.save, this.level.id, r);
       this.slot.save(this.save);
@@ -335,6 +385,33 @@ class Game {
       `<div class="end-row"><span>Satisfaction bonus</span><b>${r.bonus}</b></div>` +
       `<div class="end-row total"><span>Points</span><b>${r.points}</b></div>` +
       (r.reasons.length ? `<p class="end-why">${r.reasons.join('. ')}.</p>` : '');
+    $('endScrim').classList.add('show');
+    this.buildLevelSelect();
+  }
+
+  // An endless day's card: the day's own rows, then the run's. A survived
+  // day adds its points to the run and is recorded at once, so a run left
+  // at the select still counts what it survived; a failed day adds
+  // nothing, and ends the run.
+  endDay() {
+    const r = this.result, run = this.run;
+    if (r.survived) { run.days = run.day; run.points += r.points; }
+    const best = recordEndless(this.save, { days: run.days, points: run.points, seed: run.seed }, { first: run.day === 1 });
+    this.slot.save(this.save);
+    const e = this.save.endless;
+    $('endTitle').textContent = r.survived ? `Day ${run.day} survived.` : 'The run is over.';
+    $('endStars').textContent = '';
+    $('endBody').innerHTML =
+      `<div class="end-row"><span>Cleared</span><b>${r.cleared} / ${r.target}</b></div>` +
+      `<div class="end-row"><span>Average wait</span><b>${r.avgWait.toFixed(0)} s</b></div>` +
+      `<div class="end-row"><span>Collisions</span><b>${r.collisions}</b></div>` +
+      `<div class="end-row"><span>Honks</span><b>${r.honks}</b></div>` +
+      `<div class="end-row"><span>Day's points</span><b>${r.survived ? r.points : 0}</b></div>` +
+      `<div class="end-row total"><span>Run</span><b data-run>${run.days} day${run.days === 1 ? '' : 's'} · ${run.points} points</b></div>` +
+      `<div class="end-row"><span>City</span><b data-city>${run.seed}</b></div>` +
+      `<div class="end-row"><span>Best</span><b data-best>${e.days} day${e.days === 1 ? '' : 's'} · ${e.points} points${best && run.days ? ' · new' : ''}</b></div>` +
+      (r.reasons.length && !r.survived ? `<p class="end-why">${r.reasons.join('. ')}.</p>` : '');
+    $('retryBtn').textContent = r.survived ? 'Next day' : 'Again';
     $('endScrim').classList.add('show');
     this.buildLevelSelect();
   }
@@ -792,7 +869,7 @@ const game = new Game();
 $('pauseBtn').addEventListener('click', () => game.togglePause());
 $('speedBtn').addEventListener('click', () => game.toggleSpeed());
 $('priorityBtn').addEventListener('click', () => game.priorityNearest());
-$('retryBtn').addEventListener('click', () => game.start(game.level.id));
+$('retryBtn').addEventListener('click', () => game.retry());
 $('levelsBtn').addEventListener('click', () => { $('endScrim').classList.remove('show'); $('selectScrim').classList.add('show'); game.state = 'select'; });
 $('menuBtn').addEventListener('click', () => game.escape());
 $('flashRedBtn').addEventListener('click', () => game.setFlash('red'));
@@ -814,8 +891,11 @@ if (DEBUG) {
     setOffset(s) { game.setOffset(s); },
     callPed(leg) { game.callPed(leg); },
     selectNode(i) { game.selectNode(i); },
-    // a generated grid (M9), until endless and the sandbox give it a card
-    startGrid(seed, count, opts = {}) { game.play(gridLevel(seed, count, opts), seed); },
+    // a generated grid (M9), until the sandbox gives it a card
+    startGrid(seed, count, opts = {}) { game.run = null; game.play(gridLevel(seed, count, opts), seed); },
+    // an endless run on `seed`, from `day` (M9)
+    startEndless(seed, day = 1) { game.startEndless(seed, day); },
+    get run() { return game.run; },
     score() { return score(game.world); },
     meters() { return meters(game.world); },
     banners() { return [...document.querySelectorAll('#banners .banner')].map(e => { const r = e.getBoundingClientRect(); return { text: e.textContent, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }); },
