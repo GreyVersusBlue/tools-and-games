@@ -1040,6 +1040,84 @@ try {
     ok(errors.length === 0, 'no page errors on a grid', errors.join(' | '));
   });
 
+  await section('the sandbox (M9, #614 to #618): Free Play grown into a district on its card', async () => {
+    const before = await page.evaluate(k => localStorage.getItem(k), KEY);
+    await page.evaluate(() => { const g = window.__signalCity.game; g.state = 'select'; document.getElementById('endScrim').classList.remove('show'); document.getElementById('selectScrim').classList.add('show'); g.buildLevelSelect(); });
+    const row = () => page.evaluate(() => {
+      const r = document.querySelector('#levelList .district'), card = document.querySelector('.level-card[data-level="free-play"]');
+      return {
+        after: r && r.previousElementSibling === card, size: r?.querySelector('.district-size')?.textContent, city: r?.querySelector('.district-city b')?.textContent || null,
+        reroll: !!r?.querySelector('[data-district="reroll"]'), less: r?.querySelector('[data-district="less"]')?.disabled, more: r?.querySelector('[data-district="more"]')?.disabled,
+        meta: card.querySelector('.lv-meta').textContent, bought: card.querySelector('.lv-bought')?.textContent || '', note: r?.querySelector('.district-note')?.textContent || '',
+        focus: document.activeElement?.dataset?.district || null, cards: document.querySelectorAll('#levelList .level-card').length,
+      };
+    });
+    const r0 = await row();
+    ok(r0.after && r0.size === 'one box' && r0.less && !r0.more && !r0.reroll && r0.city === null, 'under Free Play\'s card a district row reads one box, with no city to reroll yet', JSON.stringify(r0));
+    ok(/clear 60$/.test(r0.meta) && r0.cards === 10, 'the card still asks for Free Play\'s 60, and the row is not a card', r0.meta);
+    for (let i = 0; i < 5; i++) await page.click('#levelList .district [data-district="more"]');
+    const r1 = await row();
+    ok(r1.size === '6 boxes' && r1.city === '7' && r1.reroll && !r1.less && r1.focus === 'more', 'five presses of + make six boxes on city 7 (the debug seed), and the keyboard stays on +', `${r1.size}, city ${r1.city}, focus ${r1.focus}`);
+    ok(/6 boxes on city 7 · no target$/.test(r1.meta), 'and the card says so, with no target', r1.meta);
+    // three rolls to city 10, where box 1's W is joined and the first ambulance moves to Box 2's
+    for (let i = 0; i < 3; i++) await page.click('#levelList .district [data-district="reroll"]');
+    const r2 = await row();
+    ok(r2.city === '10' && r2.size === '6 boxes', 'New city rolls another city and keeps the size', `city ${r2.city}`);
+    // an owned, switched-on roundabout: the row says a district keeps its signals (#618); in memory only
+    const r3 = await page.evaluate(() => { const g = window.__signalCity.game; g.save.unlocks.push('roundabout'); g.buildLevelSelect(); const c = document.querySelector('.level-card[data-level="free-play"]'); const out = { note: document.querySelector('#levelList .district .district-note')?.textContent || '', bought: c.querySelector('.lv-bought')?.textContent || '' }; g.save.unlocks.pop(); g.buildLevelSelect(); return out; });
+    ok(/converts one box; a district keeps its signals/.test(r3.note) && !/roundabout/.test(r3.bought), 'with the ring owned the row says a district keeps its signals, and the card does not claim it', JSON.stringify(r3));
+
+    await page.click('.level-card[data-level="free-play"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'free-play', { timeout: 5000 });
+    await page.evaluate(() => { window.__signalCity.game.paused = true; });
+    const p0 = await page.evaluate(() => {
+      const w = window.__signalCity.world;
+      return {
+        nodes: w.nodes.length, district: w.level.district, city: w.level.citySeed, name: document.getElementById('levelName').textContent,
+        buttons: document.querySelectorAll('#nodes .node').length, cleared: document.getElementById('cleared').textContent,
+        flash: !document.getElementById('flashBox').classList.contains('hidden'),
+        spawns: w.level.spawns.map(s => `${s.node}${s.leg}@${s.t}`),
+      };
+    });
+    ok(p0.nodes === 6 && p0.district === 6 && p0.city === 10 && p0.buttons === 6 && p0.name === 'Free Play, 6 boxes', 'the card plays the district chosen: six boxes on city 10, a button for each', `${p0.name}, ${p0.nodes} boxes`);
+    ok(/^\d+$/.test(p0.cleared) && p0.flash, 'the HUD counts cars with no target to reach, and Free Play\'s flash modes come along', p0.cleared);
+    const amb = await page.evaluate(() => { window.__signalCity.step(61 * 60); const w = window.__signalCity.world; const c = w.cars.find(x => x.archetype === 'emergency'); return { car: c ? `${c.path.node}${c.path.entry}` : null, banners: window.__signalCity.banners().map(b => b.text) }; });
+    const want = p0.spawns[0].replace(/@.*/, '');
+    ok(amb.car === want && want === '1W', 'the first ambulance comes in at 60 s on the leg the district picked, Box 2\'s W, box 1\'s being joined', `${amb.car}, level says ${p0.spawns.join(' ')}`);
+    const nm = `Ambulance at Box ${+want[0] + 1} ${want.slice(1)}`;
+    await new Promise(r => setTimeout(r, 300));
+    const bn = await page.evaluate(() => window.__signalCity.banners().map(b => b.text));
+    ok(bn.includes(nm), 'and a banner names the box it came in at', `${bn.join(' | ')} (want ${nm})`);
+    await page.evaluate(() => window.__signalCity.game.priorityNearest());
+    const pr = await page.evaluate(() => !!window.__signalCity.world.cars.find(x => x.archetype === 'emergency' && x.priority));
+    ok(pr, 'E\'s corridor takes it, on whichever box it is');
+    await page.evaluate(() => { const g = window.__signalCity.game; g.paused = false; g.speed = 1; window.__signalCity.step(240 * 60); });
+    await waitFor(page, () => document.getElementById('endScrim').classList.contains('show'), { timeout: 10000 });
+    const e0 = await page.evaluate(k => ({
+      title: document.getElementById('endTitle').textContent, stars: document.getElementById('endStars').textContent,
+      district: document.querySelector('#endBody [data-district]')?.textContent, cleared: [...document.querySelectorAll('#endBody .end-row')].find(r => /Cleared/.test(r.textContent))?.querySelector('b').textContent,
+      save: localStorage.getItem(k),
+    }), KEY);
+    ok(/^The district (ran|locked)\.$/.test(e0.title) && e0.stars === '' && e0.district === '6 boxes · city 10' && /^\d+$/.test(e0.cleared), 'the end card names the district, with no stars and no target', `${e0.title} ${e0.district}, ${e0.cleared} cleared`);
+    ok(e0.save === before, 'and nothing is saved: signal_city_v1 reads as it did before the sandbox');
+    await page.click('#retryBtn');
+    await waitFor(page, () => window.__signalCity.game.state === 'playing', { timeout: 5000 });
+    const a0 = await page.evaluate(() => { window.__signalCity.game.paused = true; const w = window.__signalCity.world; return { n: w.nodes.length, city: w.level.citySeed }; });
+    ok(a0.n === 6 && a0.city === 10, 'Again plays the same district', JSON.stringify(a0));
+    await shot(page, 'sandbox-6');
+    // back to one box: Free Play as it always was (#615)
+    await page.evaluate(() => { const g = window.__signalCity.game; g.state = 'select'; document.getElementById('selectScrim').classList.add('show'); g.buildLevelSelect(); });
+    for (let i = 0; i < 5; i++) await page.click('#levelList .district [data-district="less"]');
+    const r4 = await row();
+    ok(r4.size === 'one box' && r4.less && !r4.reroll && r4.focus === 'more', 'five presses of − come back to one box, and with − spent the keyboard moves to +', `${r4.size}, focus ${r4.focus}`);
+    await page.click('.level-card[data-level="free-play"]');
+    await waitFor(page, () => window.__signalCity.world && window.__signalCity.world.level.id === 'free-play' && window.__signalCity.world.nodes.length === 1, { timeout: 5000 });
+    const o0 = await page.evaluate(() => { window.__signalCity.game.paused = true; const w = window.__signalCity.world; return { district: w.level.district ?? null, target: w.level.target, name: document.getElementById('levelName').textContent, cleared: document.getElementById('cleared').textContent }; });
+    ok(o0.district === null && o0.target === 60 && o0.name === 'Free Play' && o0.cleared === '0 / 60', 'one box plays Free Play itself: one box, a target of 60', JSON.stringify(o0));
+    ok(await page.evaluate(k => localStorage.getItem(k), KEY) === before, 'and the save is still untouched');
+    ok(errors.length === 0, 'no page errors in the sandbox', errors.join(' | '));
+  });
+
   await section('the sprite gallery', async () => {
     await page.goto(`${BASE}/Projects/signal-city/sprites.html`, { waitUntil: 'load', timeout: 45000 });
     await new Promise(r => setTimeout(r, 800));

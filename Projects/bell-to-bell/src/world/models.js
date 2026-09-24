@@ -1,7 +1,7 @@
 import * as THREE from '../three.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // The characters are EXT_meshopt_compression .glb files, written offline by
-// Tools/board-check/asset-pipeline.mjs (#614). Without this decoder the loader
+// Tools/board-check/asset-pipeline.mjs (#619). Without this decoder the loader
 // refuses them and every student falls back to the primitive body.
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 // This module has no export actually named `SkeletonUtils` — it exports

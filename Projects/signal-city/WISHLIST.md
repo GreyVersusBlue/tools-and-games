@@ -5,7 +5,7 @@ the signals, and the cars do the rest, obeying them or not according to who
 is behind the wheel. Asked for by Devon on 2026-09-21. `BACKLOG.md` ranks the
 open work; this file is the plan it points at.
 
-## What shipped (milestones 0 to 8, the UI pass and M9's grid and endless, 2026-09-21 to 2026-09-24)
+## What shipped (milestones 0 to 9 and the UI pass, 2026-09-21 to 2026-09-24)
 
 - **M0 scaffold**: `Projects/signal-city/` with `index.html`, `css/`, `js/`,
   `test/`, this file; the board card; an area in
@@ -236,21 +236,36 @@ open work; this file is the plan it points at.
   refuses a grid. `tools/calibrate.mjs --endless` prints the days. 176 +
   274 + 75 + 24 + 23 + 35 + 34 + 39 + 209 checks (`test/endless.mjs` is new).
 
+- **M9, third increment: the sandbox** (HISTORY.md #614 to #618). Free
+  Play's card has a district row under it: a stepper from one box to
+  twelve and, past one, the city with New city. One box is Free Play
+  itself, the same object (`grid.js districtLevel(base, seed, 1) ===
+  base`), so it runs and hashes as it always did. A district is
+  `gridLevel(seed, n)` with Free Play's name, drivers, five minutes,
+  controls and two ambulances: no target (the HUD counts, the end card
+  names the district), nothing recorded, the save unchanged. The
+  ambulances come in on the first box, in build order, whose leg of that
+  name spawns (`spawningLegs`), and a banner names the box. The
+  roundabout converts only the one box, and the row says so when it is
+  owned. M9 is done. 176 + 274 + 75 + 24 + 23 + 35 + 46 + 39 + 227 checks.
+
 ## What is next, in order
 
-7. **M9, third increment: the sandbox** (the last of the 2+): the grid and endless are built
-   (#601 to #613); what is left is Free Play grown (#604). Free Play keeps
-   one box, hashing as today, and gains a district choice: a generated grid
-   of 2 to 12 boxes on a seed the player can reroll (`gridLevel`, no
-   target, `sandbox: true`, nothing recorded). Its two scripted ambulances
-   name leg W on node 0, which a grid may have linked (`spawnCar` does not
-   check `linkedIn`), so on a grid they need a spawning leg picked from the
-   network. The open call is where the choice lives: on Free Play's card or
-   in its panel. Carried from M8: whatever play shows the four prices want,
-   and the brief's time of day per level (#585), still render.js's
-   `DUSK_LEVELS`.
+Milestones 0 to 9 are done. Nothing from the brief is left in order; what
+is still open is placed in `BACKLOG.md`'s Signal City section: a
+`games.mjs` recipe and a preview capture, and the trucker's sweep as real
+off-tracking geometry. Carried from M8: the brief's time of day per level
+(#585) is still render.js's `DUSK_LEVELS`.
 
 ## Known gaps and decisions
+
+- The priority corridor is one box's. A car keeps `priority` across a
+  handoff, so on a corridor or a district the next box does not hold for
+  it and E does not offer it again (`priorityNearest` skips a car that has
+  it). On one box it never mattered; the sandbox's ambulances cross two to
+  four boxes. Clearing it on handoff would change Two Blocks and Main
+  Street under play, so it waits for a row of its own. A district has no
+  target and no calibration: it is a sandbox (#615).
 
 - A grid's edge legs end in grass inside the district: a box whose
   neighbour cell is empty has a 110 m spawning leg that stops where cars

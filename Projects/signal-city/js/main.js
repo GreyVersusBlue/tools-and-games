@@ -10,7 +10,7 @@ import { Renderer } from './render.js';
 import { bindInput } from './input.js';
 import { meters, score, failedEarly, starString } from './scoring.js';
 import { LEVELS, levelById } from './levels/pack-01.js';
-import { gridLevel } from './grid.js';
+import { gridLevel, districtLevel } from './grid.js';
 import { makeSlot, recordResult, recordEndless, totalStars } from './save.js';
 import { SHOP, shopItem, isOpen, nextLevel, owned, wallet, canBuy, buy, applies, loadout, endlessOpen, ENDLESS_AFTER } from './campaign.js';
 import { dayLevel, daySeed, carryOver, DAY_SECONDS } from './endless.js';
@@ -35,7 +35,13 @@ const LESSON_TAB = {
 const STRIP_SECONDS = 60;
 const RING_NOTE = 'A roundabout: no lights and nothing to press. Every car yields to the ring, and the ring never stops for anyone.';
 const RING_SWITCH = ' Switch it off in the shop to play this board\'s signals.';
-const FRESH = 2.5;          // seconds a change's cause reads as new, and a fired rule's card flashes
+const FRESH = 2.5;
+// The sandbox (M9, #614): Free Play's card carries a district choice, one
+// box (the board as it always was) or a generated grid of 2 to 12 on a
+// city seed the player can reroll. This session's, never saved.
+const SANDBOX = 'free-play';
+const DISTRICT_MAX = 12;
+const rollCity = () => (Date.now() % 100000) + 1;          // seconds a change's cause reads as new, and a fired rule's card flashes
 
 class Game {
   constructor() {
@@ -59,6 +65,7 @@ class Game {
     this.tab = 'phases';
     this.bannerKey = '';
     this.run = null;         // an endless run (M9): { seed, day, days, points }
+    this.district = { boxes: 1, seed: DEBUG ? 7 : rollCity() };   // the sandbox's choice (#614)
     bindInput({ canvas: this.canvas, renderer: this.renderer, game: this });
     window.addEventListener('resize', () => this.layout());
     this.layout();
@@ -111,7 +118,8 @@ class Game {
     list.innerHTML = '';
     const mine = this.bought();
     const next = nextLevel(this.save);
-    LEVELS.forEach((lvl, i) => {
+    LEVELS.forEach((base, i) => {
+      const lvl = this.sandboxed(base);
       const rec = this.save.levels[lvl.id] || { stars: 0, best: 0, plays: 0 };
       const open = isOpen(this.save, lvl.id);
       const card = document.createElement('button');
@@ -122,15 +130,57 @@ class Game {
       card.innerHTML = open
         ? `<div class="lv-name">${lvl.name}</div><div class="lv-blurb">${lvl.blurb}</div>` +
           `<div class="lv-stars">${lvl.sandbox ? 'no stars here' : starString(rec.stars)}${rec.best ? ` · best ${rec.best}` : ''}</div>` +
-          `<div class="lv-meta">${Math.round(lvl.duration / 60)} min · ${lvl.mode === 'hard' ? 'one collision ends it' : 'collisions cost a star'} · clear ${lvl.target}</div>` +
+          (lvl.district
+            ? `<div class="lv-meta">${Math.round(lvl.duration / 60)} min · ${lvl.district} boxes on city ${lvl.citySeed} · no target</div>`
+            : `<div class="lv-meta">${Math.round(lvl.duration / 60)} min · ${lvl.mode === 'hard' ? 'one collision ends it' : 'collisions cost a star'} · clear ${lvl.target}</div>`) +
           (takes.length ? `<div class="lv-bought">+ ${takes.join(', ')}</div>` : '')
         : `<div class="lv-name">${lvl.name}</div><div class="lv-shut">A star on ${LEVELS[i - 1].name} opens it.</div>`;
       if (open) card.addEventListener('click', () => this.start(lvl.id));
       list.appendChild(card);
+      if (open && base.id === SANDBOX) list.appendChild(this.districtRow(mine));
     });
     list.appendChild(this.endlessCard());
     $('starTotal').textContent = `${totalStars(this.save)} stars`;
     this.buildShop();
+  }
+
+  // The level the select's card plays: the sandbox's district when one is
+  // chosen, and every other level as it is.
+  sandboxed(base) {
+    return base.id === SANDBOX ? districtLevel(base, this.district.seed, this.district.boxes) : base;
+  }
+
+  // The sandbox's district choice (#614), under Free Play's card: a
+  // stepper from one box to twelve, and the city with a reroll once there
+  // is more than one box. A district is never a roundabout (#613), so an
+  // owned ring that is switched on says so here.
+  districtRow(mine) {
+    const d = this.district;
+    const row = document.createElement('div');
+    row.className = 'district';
+    row.dataset.for = SANDBOX;
+    const one = d.boxes === 1;
+    row.innerHTML =
+      `<span class="label">District</span>` +
+      `<button class="small" data-district="less" aria-label="One box fewer"${one ? ' disabled' : ''}>−</button>` +
+      `<b class="district-size">${one ? 'one box' : `${d.boxes} boxes`}</b>` +
+      `<button class="small" data-district="more" aria-label="One box more"${d.boxes >= DISTRICT_MAX ? ' disabled' : ''}>+</button>` +
+      (one ? '' : `<span class="district-city">city <b>${d.seed}</b></span><button class="small" data-district="reroll">New city</button>`) +
+      (!one && mine.includes('roundabout') ? `<span class="district-note">The roundabout converts one box; a district keeps its signals.</span>` : '');
+    for (const b of row.querySelectorAll('button')) b.addEventListener('click', () => this.setDistrict(b.dataset.district));
+    return row;
+  }
+
+  setDistrict(how) {
+    const d = this.district;
+    if (how === 'less') d.boxes = Math.max(1, d.boxes - 1);
+    else if (how === 'more') d.boxes = Math.min(DISTRICT_MAX, d.boxes + 1);
+    else if (how === 'reroll') { const old = d.seed; d.seed = DEBUG ? old + 1 : rollCity(); if (d.seed === old) d.seed = old % 100000 + 1; }
+    this.buildLevelSelect();
+    // the row was rebuilt: keep the keyboard where it was, or on the stepper
+    const row = $('levelList').querySelector('.district');
+    const b = row && (row.querySelector(`[data-district="${how}"]:not([disabled])`) || row.querySelector('[data-district]:not([disabled])'));
+    if (b) b.focus();
   }
 
   // Endless (M9): one card after the levels. Its line is the best run, in
@@ -194,7 +244,7 @@ class Game {
     const base = levelById(levelId);
     if (!base) return;
     this.run = null;
-    this.play(loadout(base, this.bought()), seed);
+    this.play(loadout(this.sandboxed(base), this.bought()), seed);
   }
 
   // Endless (M9): a new run on a rolled city, or `seed`'s. The debug hook
@@ -222,8 +272,8 @@ class Game {
     this.startEndless(this.run.seed);
   }
 
-  // Run a level object: the select's, an endless day (M9), or a generated
-  // grid through the debug hook (until the sandbox gives it a card).
+  // Run a level object: the select's (Free Play's district among them), an
+  // endless day (M9), or a bare generated grid through the debug hook.
   play(lvl, seed = null) {
     this.level = lvl;
     this.seed = seed ?? ((Date.now() % 100000) + 1);
@@ -372,11 +422,12 @@ class Game {
       recordResult(this.save, this.level.id, r);
       this.slot.save(this.save);
     }
-    $('endTitle').textContent = r.survived ? (r.stars === 3 ? 'Clean board.' : r.stars === 2 ? 'Moving.' : 'Survived.') : 'Not this time.';
+    $('endTitle').textContent = this.level.district ? (r.survived ? 'The district ran.' : 'The district locked.') : r.survived ? (r.stars === 3 ? 'Clean board.' : r.stars === 2 ? 'Moving.' : 'Survived.') : 'Not this time.';
     $('endStars').textContent = this.level.sandbox ? '' : starString(r.stars);
     $('endBody').innerHTML =
-      `<div class="end-row"><span>Cleared</span><b>${r.cleared} / ${r.target}</b></div>` +
-      `<div class="end-row"><span>Average wait</span><b>${r.avgWait.toFixed(0)} s (target ${r.waitTarget})</b></div>` +
+      `<div class="end-row"><span>Cleared</span><b>${this.level.target ? `${r.cleared} / ${r.target}` : r.cleared}</b></div>` +
+      `<div class="end-row"><span>Average wait</span><b>${r.avgWait.toFixed(0)} s${this.level.target ? ` (target ${r.waitTarget})` : ''}</b></div>` +
+      (this.level.district ? `<div class="end-row"><span>District</span><b data-district>${this.level.district} boxes · city ${this.level.citySeed}</b></div>` : '') +
       `<div class="end-row"><span>Collisions</span><b>${r.collisions}</b></div>` +
       `<div class="end-row"><span>Honks</span><b>${r.honks}</b></div>` +
       (this.world.controller.hasPeds ? `<div class="end-row"><span>Walks served · kept waiting</span><b>${r.pedServed} · ${r.pedLate}</b></div>` : '') +
@@ -667,8 +718,10 @@ class Game {
     const m = meters(w);
     const ctl = this.ctl;
     $('clock').textContent = fmtTime(m.timeLeft);
-    $('cleared').textContent = `${m.cleared} / ${m.target}`;
-    $('throughBar').style.width = `${Math.min(100, m.throughput * 100)}%`;
+    // a sandbox district has no target (#615): the count alone
+    const aim = !!this.level.target;
+    $('cleared').textContent = aim ? `${m.cleared} / ${m.target}` : String(m.cleared);
+    $('throughBar').style.width = aim ? `${Math.min(100, m.throughput * 100)}%` : '0%';
     $('collisions').textContent = String(m.collisions);
     $('collisions').className = m.collisions ? 'bad' : '';
     $('satBar').style.width = `${Math.round(m.satisfaction * 100)}%`;
@@ -891,11 +944,13 @@ if (DEBUG) {
     setOffset(s) { game.setOffset(s); },
     callPed(leg) { game.callPed(leg); },
     selectNode(i) { game.selectNode(i); },
-    // a generated grid (M9), until the sandbox gives it a card
+    // a generated grid (M9), bare: no card plays one without Free Play's own
     startGrid(seed, count, opts = {}) { game.run = null; game.play(gridLevel(seed, count, opts), seed); },
     // an endless run on `seed`, from `day` (M9)
     startEndless(seed, day = 1) { game.startEndless(seed, day); },
     get run() { return game.run; },
+    // the sandbox's choice on Free Play's card (#614)
+    get district() { return { ...game.district }; },
     score() { return score(game.world); },
     meters() { return meters(game.world); },
     banners() { return [...document.querySelectorAll('#banners .banner')].map(e => { const r = e.getBoundingClientRect(); return { text: e.textContent, left: r.left, top: r.top, right: r.right, bottom: r.bottom }; }); },

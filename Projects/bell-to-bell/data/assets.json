@@ -181,13 +181,13 @@
       "office_notepads: redundant with stationery_supplies, which is placed.",
       "plastic_crate_01: named by nothing, not even the old alternates list.",
       "Every Poly Haven texture set ships a preview sphere: a .gltf and a 2.37 MB .bin beside the textures/ folder. materials.js builds its jpg filenames out of `dir` and `base` and never opens either one, so ten sets carried 23.7 MB of mesh nothing could reach. The jpgs stay; the sphere does not.",
-      "The eight outfit .gltf files: 25,316,305 bytes of base64 JSON carrying 24 animation clips each, of which poseIdle() samples one. Tools/board-check/asset-pipeline.mjs (recipe bell-to-bell-characters, reading them from git at afbcae9) rewrote each as a meshopt .glb holding only Idle, 1,638,220 bytes for all eight. libs/addons/libs/meshopt_decoder.module.js is what reads them; tests/characters.mjs is what says they still stand where they stood (HISTORY.md #614)."
+      "The eight outfit .gltf files: 25,316,305 bytes of base64 JSON carrying 24 animation clips each, of which poseIdle() samples one. Tools/board-check/asset-pipeline.mjs (recipe bell-to-bell-characters, reading them from git at afbcae9) rewrote each as a meshopt .glb holding only Idle, 1,638,220 bytes for all eight. libs/addons/libs/meshopt_decoder.module.js is what reads them; tests/characters.mjs is what says they still stand where they stood (HISTORY.md #619)."
     ]
   },
   "_budget": {
     "_comment": "Ceilings in bytes, asserted by tests/assets.mjs and by tests/smoke.mjs. Raising one is the moment an asset argues for itself: say in the commit what the new file buys.",
     "referencedBytes": 40000000,
     "unreferencedBytes": 5000000,
-    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files. The asset pipeline's first recipe (#614) took referenced to 38,424,608 across the same 104 files, and the tree to 53,007,119; the ceiling came down from 66,000,000 with it."
+    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files. The asset pipeline's first recipe (#619) took referenced to 38,424,608 across the same 104 files, and the tree to 53,007,119; the ceiling came down from 66,000,000 with it."
   }
 }

@@ -18,7 +18,7 @@ What is here, and why each one:
 | `addons/loaders/GLTFLoader.js` | `src/world/models.js` |
 | `addons/utils/SkeletonUtils.js` | `src/world/models.js`, for cloning a rigged character per student |
 | `addons/utils/BufferGeometryUtils.js` | `GLTFLoader.js` itself, for `toTrianglesDrawMode` |
-| `addons/libs/meshopt_decoder.module.js` | `src/world/models.js`, because the eight outfits are `EXT_meshopt_compression` `.glb` files (HISTORY.md #614). 24,850 bytes, no worker, no fetch: its wasm is inlined |
+| `addons/libs/meshopt_decoder.module.js` | `src/world/models.js`, because the eight outfits are `EXT_meshopt_compression` `.glb` files (HISTORY.md #619). 24,850 bytes, no worker, no fetch: its wasm is inlined |
 
 That is the whole closure. Nothing else in the tarball is reachable from
 `src/`, and `tests/smoke.mjs` asserts the list stays that way, so adding an

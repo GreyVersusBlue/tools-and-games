@@ -179,6 +179,13 @@ export class Renderer {
           if (text) this.banners.push({ id: ++this.bannerN, text, tone: e.on ? 'on' : 'off', t0: world.t, ttl: 3 });
           break;
         }
+        // a scripted emergency on a district (#617): at 1.3 px/m among
+        // twelve boxes it is 6 px long, so the banner names where it came in
+        case 'spawn':
+          if (e.scheduled && e.archetype === 'emergency' && car && world.level.network && world.level.network.cells) {
+            this.banners.push({ id: ++this.bannerN, text: `Ambulance at Box ${car.path.node + 1} ${car.path.entry}`, tone: 'on', t0: world.t, ttl: 4 });
+          }
+          break;
         case 'ambulance-late': if (at) this.effects.push({ kind: 'text', text: 'LATE', x: at.x, y: at.y, t0: world.t, ttl: 2.5, car: e.car }); break;
         case 'split': if (at) this.effects.push({ kind: 'text', text: 'SPLIT', x: at.x, y: at.y, t0: world.t, ttl: 3, car: e.car }); break;
         default: break;

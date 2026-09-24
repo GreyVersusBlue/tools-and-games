@@ -27,7 +27,7 @@ import means vendoring the file beside the others; `smoke.mjs` fails if you do
 not.
 
 The eight student outfits are meshopt `.glb` files written offline by
-`Tools/board-check/asset-pipeline.mjs` (recipe `bell-to-bell-characters`, #614),
+`Tools/board-check/asset-pipeline.mjs` (recipe `bell-to-bell-characters`, #619),
 which reads the original `.gltf` files out of git. Do not hand-edit a `.glb`;
 change the recipe and re-run it, then `node characters.mjs`. A new outfit goes
 through the same recipe, and gets a `BASELINE` entry measured from its original.

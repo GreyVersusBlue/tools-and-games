@@ -2,7 +2,7 @@
 //
 // The eight outfits used to be embedded .gltf files, 25.3 MB with 24 clips
 // each. Tools/board-check/asset-pipeline.mjs rewrote them as meshopt-compressed
-// .glb files with the one clip the game plays (#614). Compression is lossy: it
+// .glb files with the one clip the game plays (#619). Compression is lossy: it
 // quantizes positions, normals and the animation's keys. A body that came out
 // a centimetre shorter, or a clip that came out bent, weighs less just the
 // same, so a byte count cannot tell the difference. This can.
