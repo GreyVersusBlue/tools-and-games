@@ -85,6 +85,8 @@ chronicle table (a character who's played exactly one scenario so far).
   scenario-number order, or when a summary line miscounts its rows. Its
   `order()` is the sort the merge step would need.
 - **No writing to `campaigns.html`.** Deliberate — see the top of this file.
+  `Pathfinder/tests/showcase.test.mjs` (in Site CI, #628) holds the page to
+  it: it fails on browser storage, `gvb-save.js` or an editable field.
 - **No validation beyond `JSON.parse`.** A missing field just prints
   `undefined` in the output; check the block before you paste it, same as
   you'd proofread anything else you typed by hand.
