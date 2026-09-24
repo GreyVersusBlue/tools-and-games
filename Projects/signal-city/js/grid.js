@@ -67,9 +67,9 @@ export function growCells(seed, count, { cols = 4, rows = 3, tee = 0.25, ring = 
 // A runnable level from a grown district: every signal on the same timing
 // and a 20 s elapsed rule, so a grid runs itself until someone presses
 // something; demand per node from the cells, no target and no stars.
-// Endless (endless.js) builds each day on it with a target of its own;
-// the sandbox, M9's next increment, will give it a card. The suites, the
-// calibration and the page's debug hook run it.
+// Endless (endless.js) builds each day on it with a target of its own,
+// and the sandbox (districtLevel, below) grows Free Play into one. The
+// suites, the calibration and the page's debug hook run it bare.
 export function gridLevel(seed, count, opts = {}) {
   const cells = growCells(seed, count, opts);
   return {
@@ -86,5 +86,52 @@ export function gridLevel(seed, count, opts = {}) {
     mode: 'soft',
     sandbox: true,
     unlocks: ['phases', 'auto', 'allred'],
+  };
+}
+
+// The legs of a district's boxes that spawn: a box's leg spawns while the
+// cell it faces is empty (network.js linkedIn is the World's version of
+// the same fact). [{ node, leg }] in box order, then N E S W.
+export function spawningLegs(cells) {
+  const taken = new Set(cells.map(c => c.at.join(',')));
+  const out = [];
+  cells.forEach((c, node) => {
+    for (const leg of LEG_ORDER) {
+      if (!c.legs.includes(leg)) continue;
+      if (!taken.has((c.at[0] + STEPS[leg][0]) + ',' + (c.at[1] + STEPS[leg][1]))) out.push({ node, leg });
+    }
+  });
+  return out;
+}
+
+// The sandbox (M9, third increment, #614): a one-box board grown into a
+// generated district of `count` boxes on `seed`. One box is the board
+// itself, the same object, so Free Play with no district chosen is the
+// run it always was. A district is gridLevel's (its 20 s rule at every
+// signal, its demand, no target) with the board's name, drivers,
+// duration, controls and scripted arrivals. A scripted arrival names a
+// leg of box 1, which a district may have joined to a neighbour, and
+// spawnCar never checks: it moves to the first box, in build order, that
+// spawns on that leg, or failing that to the first leg that spawns at
+// all (#616). Nothing a district plays is recorded: it is a sandbox.
+export function districtLevel(base, seed, count) {
+  if (count === 1) return base;
+  const lvl = gridLevel(seed, count, { mix: base.mix, duration: base.duration });
+  const open = spawningLegs(lvl.network.cells);
+  const spawns = (base.spawns || []).map(s => {
+    const at = open.find(o => o.leg === s.leg) || open[0];
+    return { ...s, node: at.node, leg: at.leg };
+  });
+  return {
+    ...lvl,
+    id: base.id,
+    name: `${base.name}, ${count} boxes`,
+    blurb: base.blurb,
+    hint: `${count} boxes on city ${seed}, every signal on a 20 s rule until you change it. Click a box, or pick it above the phases, to drive it. ${base.hint}`,
+    spawns,
+    unlocks: (base.unlocks || []).slice(),
+    sandbox: true,
+    district: count,
+    citySeed: seed,
   };
 }

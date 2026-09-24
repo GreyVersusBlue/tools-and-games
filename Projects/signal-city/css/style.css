@@ -173,6 +173,11 @@ button.on { border-color: var(--yellow); background: #3a3320; }
 .lv-bought { font-size: 11px; color: var(--green); }
 .lv-shut { font-size: 13px; color: var(--dim); }
 .level-card.locked { opacity: 0.55; cursor: default; }
+/* the sandbox's district choice (#614), tucked under Free Play's card */
+.district { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: -6px 0 0 14px; padding: 6px 10px; border-left: 2px solid var(--dim); font-size: 13px; }
+.district .district-size { min-width: 5.5em; text-align: center; }
+.district .district-city { color: var(--dim); }
+.district .district-note { flex-basis: 100%; font-size: 11px; color: var(--dim); }
 .level-card.next { outline: 2px solid var(--yellow); outline-offset: -2px; }
 .shop { margin-top: 16px; }
 .shop-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
