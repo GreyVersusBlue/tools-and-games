@@ -711,7 +711,11 @@ group('above the fog line the woods give way to the mountain');
     agree ? `STILL_AIR ${STILL_AIR}` : `disagree at y ${at.toFixed(2)}`);
 
   // And the line is somewhere a walker goes: not the trailhead, the bench,
-  // and a real stretch of the trail between.
+  // and a real stretch of the trail between. Measured 19% of the trail from
+  // t 0.808 at STILL_AIR 0.6. The 15% floor holds the kind to more than a
+  // sliver at the top: it fails with STILL_AIR at 0.97 (11%), and says
+  // nothing about nudges up to about 0.8 (16%), which move the birds' line
+  // with it and are a tuning call, not a fault.
   const eye = 1.62;
   let firstT = null, n = 0, m = 0;
   for (let i = 0; i <= 1000; i++) {
@@ -723,7 +727,7 @@ group('above the fog line the woods give way to the mountain');
   }
   ok(!summitKind(walkHeight(0, 147) + eye) && summitKind(walkHeight(LAYOUT.bench.x, LAYOUT.bench.z) + eye),
     'the trailhead has the woods\' kind and the bench the mountain\'s');
-  ok(firstT > 0.7 && firstT < 0.9 && n / m > 0.1,
+  ok(firstT > 0.7 && firstT < 0.9 && n / m > 0.15,
     'the mountain\'s kind begins on the upper legs and holds to the top',
     `from t ${firstT}, ${(100 * n / m).toFixed(0)}% of the trail`);
 
