@@ -645,7 +645,12 @@ is currently outstanding for this project's own feature work.**
 If a future round finds something real:
 
 1. **Extend `Pathfinder/tests/anathema.test.mjs`** rather than starting a
-   second suite, if this page gets more interaction logic. The
+   second suite, if this page gets more interaction logic. **The suite says
+   when that happens now** (#626, 2026-09-24): its static section lists all 47
+   ways the page takes input in `SURFACE` and fails on a new one. That failure
+   is this item coming true; it is not a ranked row until then. 41 of the 47
+   are listed with `''`, driven by nothing (the encounter builder, the
+   filters, deep search, bookmark import/export, keyboard navigation). The
    `waitFor`/`clickCat`/`clickLevelChip` helpers and the `freshPage()` pattern
    (fresh headless page per scenario, cheap since boot only fetches
    `manifest.json` until a category is picked) should cover new
@@ -700,7 +705,11 @@ review. Round 3 made zero edits and found zero findings.
    per-character scenarios, re-sorted by scenario number across each org. The
    generator already reads the same per-character JSON that could derive this
    automatically — not worth building ahead of an actual sync problem. Checked
-   again in round 3; still in sync. Building it speculatively is exactly the
+   again in round 3; still in sync. **The check is a suite now**:
+   `tests/chronicle.test.mjs`, in Site CI (#626, 2026-09-24), fails on a row
+   in one view and not the other, on the Chronological order, and on a
+   miscounted summary. When it fails on a real edit, build the step; its
+   `order()` is the sort the step needs. Building it speculatively is exactly the
    scope creep the "keep it a small script, not a live editor" reasoning was
    written to avoid.
 2. **The merge with `characters.html` is answered and closed** — "harmonize,
@@ -716,9 +725,11 @@ contrast fixed, now cross-checked against its twin and confirmed to still
 match. The merge question — this project's own headline item across two rounds
 — is answered; don't re-litigate it.
 
-1. **A commented-out `<template>` dossier block**, if Devon specifically asks
-   for it (documentation convenience, not a bug — still not built, still
-   Devon's call on style).
+1. **The commented-out `<template>` dossier block is built** (#627,
+   2026-09-24), just above `</div>` at the end of `.muster`, with notes on each
+   part. `tests/dossier-template.test.mjs`, in Site CI, fails when a real
+   dossier uses a class or a section heading the template does not show. If
+   you add a new part to a dossier, add it to the template in the same edit.
 2. **In-browser editing via `gvb-save.js`**, only if Devon decides this page's
    role should shift from showcase to living character sheet. Still not
    requested, still not built.
