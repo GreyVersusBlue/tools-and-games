@@ -516,7 +516,7 @@ and #222 was closed unmerged an hour of suites later.
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Signal City: milestones 0 to 8, the UI pass and M9's grid shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358, #362); next M9's second increment, endless and the sandbox | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/signal-city-endless-600s9r` | [Signal City](#signal-city) |
-| 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 |  | [Blue Hour](#blue-hour) |
+| 2 | The mountain has no peak — `hillProfile` holds the summit's height flat to the map edge | `Projects/blue-hour-trail` | 1 | Opus 5 | `claude/open-ended-session-1fg9dz` | [Blue Hour](#blue-hour) |
 | 3 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 |  | [The site itself](#the-site-itself) |
 | 4 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
 | 5 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
