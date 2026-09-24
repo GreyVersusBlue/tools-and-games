@@ -48,14 +48,14 @@
   "characters": {
     "targetHeight": 1.48,
     "outfits": [
-      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Casual_2.gltf",
-      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Casual.gltf",
-      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Worker.gltf",
-      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Formal.gltf",
-      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Adventurer.gltf",
-      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Worker.gltf",
-      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Casual_Hoodie.gltf",
-      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Adventurer.gltf"
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Casual_2.glb",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Casual.glb",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Worker.glb",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Formal.glb",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Adventurer.glb",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Worker.glb",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Casual_Hoodie.glb",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Adventurer.glb"
     ]
   },
   "art": {
@@ -128,7 +128,7 @@
     ]
   },
   "_pruned": {
-    "_comment": "Deleted in Phase 6, kept here as the record of what was here and why. tests/assets.mjs asserts every path is still absent, so none of this can come back without this block changing with it.",
+    "_comment": "Deleted in Phase 6 and by the asset pipeline since, kept here as the record of what was here and why. tests/assets.mjs asserts every path is still absent, so none of this can come back without this block changing with it.",
     "paths": [
       "Assets/models/kenney_furniture-kit/Models/DAE format",
       "Assets/models/kenney_furniture-kit/Models/FBX format",
@@ -162,7 +162,15 @@
       "Assets/textures/wall/painted_concrete_02_1k.gltf/painted_concrete_02_1k.gltf",
       "Assets/textures/wall/painted_concrete_02_1k.gltf/painted_concrete_02.bin",
       "Assets/textures/wood/wood_planks_1k.gltf/wood_planks_1k.gltf",
-      "Assets/textures/wood/wood_planks_1k.gltf/wood_planks.bin"
+      "Assets/textures/wood/wood_planks_1k.gltf/wood_planks.bin",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Adventurer.gltf",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Casual_2.gltf",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Casual_Hoodie.gltf",
+      "Assets/models/Ultimate Modular Men/Ultimate Modular Men- Feb 2022/Individual Characters/glTF/Worker.gltf",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Adventurer.gltf",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Casual.gltf",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Formal.gltf",
+      "Assets/models/Ultimate Modular Women/Ultimate Modular Women - April 2022/Individual Characters/glTF/Worker.gltf"
     ],
     "notes": [
       "The Kenney kit shipped one furniture set in five formats. 700 files, 12.8 MB, and GLTFLoader is the only loader in src/ -- nothing here could read a .dae, .fbx, .obj or .stl even if something asked for it.",
@@ -172,13 +180,14 @@
       "pine_sapling_small: an outdoor prop, 21.9 MB of it, in a game that has never been outdoors. The single largest thing in the tree.",
       "office_notepads: redundant with stationery_supplies, which is placed.",
       "plastic_crate_01: named by nothing, not even the old alternates list.",
-      "Every Poly Haven texture set ships a preview sphere: a .gltf and a 2.37 MB .bin beside the textures/ folder. materials.js builds its jpg filenames out of `dir` and `base` and never opens either one, so ten sets carried 23.7 MB of mesh nothing could reach. The jpgs stay; the sphere does not."
+      "Every Poly Haven texture set ships a preview sphere: a .gltf and a 2.37 MB .bin beside the textures/ folder. materials.js builds its jpg filenames out of `dir` and `base` and never opens either one, so ten sets carried 23.7 MB of mesh nothing could reach. The jpgs stay; the sphere does not.",
+      "The eight outfit .gltf files: 25,316,305 bytes of base64 JSON carrying 24 animation clips each, of which poseIdle() samples one. Tools/board-check/asset-pipeline.mjs (recipe bell-to-bell-characters, reading them from git at afbcae9) rewrote each as a meshopt .glb holding only Idle, 1,638,220 bytes for all eight. libs/addons/libs/meshopt_decoder.module.js is what reads them; tests/characters.mjs is what says they still stand where they stood (HISTORY.md #608)."
     ]
   },
   "_budget": {
     "_comment": "Ceilings in bytes, asserted by tests/assets.mjs and by tests/smoke.mjs. Raising one is the moment an asset argues for itself: say in the commit what the new file buys.",
-    "referencedBytes": 66000000,
+    "referencedBytes": 40000000,
     "unreferencedBytes": 5000000,
-    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files."
+    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files. The asset pipeline's first recipe (#608) took referenced to 38,424,608 across the same 104 files, and the tree to 53,007,119; the ceiling came down from 66,000,000 with it."
   }
 }

@@ -17,6 +17,7 @@ cd tests && node smoke.mjs      # headless logic checks — run before you claim
 cd tests && node balance.mjs    # whole-period sim, the 50-seed generator soak (asserts), and a week
 cd tests && SOAK=500 node balance.mjs   # more seeds through the generator
 cd tests && node assets.mjs     # what Assets/ weighs, and what of it the game opens
+cd tests && node characters.mjs # the eight compressed outfits still stand where the originals stood
 node --check src/<file>.js      # syntax check a module
 ```
 No build step, no package manager, no `node_modules`. three.js is vendored in
@@ -24,6 +25,12 @@ No build step, no package manager, no `node_modules`. three.js is vendored in
 offsite requests and Phase 6 is where that became true. Adding a `three/addons/`
 import means vendoring the file beside the others; `smoke.mjs` fails if you do
 not.
+
+The eight student outfits are meshopt `.glb` files written offline by
+`Tools/board-check/asset-pipeline.mjs` (recipe `bell-to-bell-characters`, #608),
+which reads the original `.gltf` files out of git. Do not hand-edit a `.glb`;
+change the recipe and re-run it, then `node characters.mjs`. A new outfit goes
+through the same recipe, and gets a `BASELINE` entry measured from its original.
 
 `src/persist.js` is the only thing that writes to `localStorage`, and it degrades to
 an in-memory store if the browser refuses. Nothing else may reach for storage.
