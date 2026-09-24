@@ -104,30 +104,44 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Blue Hour's missing
-peak (PR #366)**, rank 2, a 1 worked under Opus 5.5 (the row names Opus 5).
-The row is deleted and ranks 3 to 26 moved up one. That is the line to
-update when your batch merges; a PR that only changes these files is not a
-batch and does not belong in it.
+**The last batch of ranked work that shipped** is **Signal City's M9,
+second increment: endless (PR #367)**, rank 1, a 2+ worked under Opus 5.5
+(the row names Fable 5.1), and still rank 1 with its text rewritten: the
+grid and endless are built, the sandbox is next. No rank moved. That is
+the line to update when your batch merges; a PR that only changes these
+files is not a batch and does not belong in it.
 **25 ranked items remain**, and **every one of them names a model.**
 
-**Rank 1 is claimed** by `claude/signal-city-endless-600s9r`: Signal City's
-M9, second increment, endless and the sandbox (`Projects/signal-city`, a
-2+, Fable 5.1). Leave it unless that claim is cleared. The grid is built
-(#601 to #606); what is left is endless as a new card, one box per
-survived day on one seed with a best to beat (its storage is the open
-call, through `repair`, #36 and #37), and the sandbox as Free Play grown
-(#604). The plan is `Projects/signal-city/WISHLIST.md` item 7.
-**Otherwise take rank 2: one shared asset pipeline** (`assets`, a 2+,
-Fable 5.1): prune, resize and draco/meshopt the ~335 MB across two games.
-A 2+ is the whole batch; do one increment and leave the row with its text
-rewritten. Its plan is "The site itself" below. Rank 3, the real-hardware
-pass, needs hardware this machine lacks; if rank 2 is taken, rank 4 is the
-first Pathfinder quarter and ranks 4 to 6 batch together (same area, all
-Sonnet 5).
+**Take rank 1: Signal City's M9, third increment, the sandbox**
+(`Projects/signal-city`, a 2+, Fable 5.1). The grid (#601 to #606) and
+endless (#608 to #613) are built; what is left is Free Play grown (#604):
+one box as now, hashing as today, or a generated district of 2 to 12
+boxes on a seed to reroll. Its two scripted ambulances name leg W on node
+0, which a grid may have linked, so they need a spawning leg. The open
+call is where the district choice lives, on the card or in the panel.
+The plan is `Projects/signal-city/WISHLIST.md` item 7. A 2+ is the whole
+batch. **Rank 2, the shared asset pipeline, is claimed** by
+`claude/shared-asset-pipeline-t3gdh5`; leave it unless that claim is
+cleared. Rank 3, the real-hardware pass, needs hardware this machine
+lacks; otherwise rank 4 is the first Pathfinder quarter and ranks 4 to 6
+batch together (same area, all Sonnet 5).
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Signal City has endless** (#608 to #613, PR #367). A card after the
+levels, open on a star from Two Blocks. Day n of a city is
+`dayLevel(seed, n)`: n boxes (12 at most), demand 10% up a day, 180 s, a
+target of 20 plus 8 a day with no cap. A lock or a missed target ends
+the run; collisions cost points. Every old box keeps its rules and timing
+overnight. The best is `endless` in the save through `repair`,
+`signal_city_v1` unchanged. **Worth carrying forward**: the first target
+design (a share of each city's own demand) died on the calibration, since
+a district clears a flat 50 to 130 cars a day whatever its traffic and at
+21 days' traffic nothing locks. Calibrate before writing the rule a number
+feeds. `test/endless.mjs` is new (39) and in Site CI; browser 209. The
+merge renumbered the decisions: this PR had #607 to #612 until Blue Hour
+took #607 while it was open.
 
 **Blue Hour has a peak** (#607, PR #366). The profile held 65 m flat past
 the trail's end and the ridge noise put a ridge 40 m from the trail's end
@@ -526,7 +540,7 @@ and #222 was closed unmerged an hour of suites later.
 
 | Rank | Item | Area | Size | Model | Claimed | Detail |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Signal City: milestones 0 to 8, the UI pass and M9's grid shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358, #362); next M9's second increment, endless and the sandbox | `Projects/signal-city` | 2+ | Fable 5.1 | `claude/signal-city-endless-600s9r` | [Signal City](#signal-city) |
+| 1 | Signal City: milestones 0 to 8, the UI pass, and M9's grid and endless shipped (PRs #338, #340, #342, #344, #346, #348, #352, #355, #358, #362, #367); next M9's third increment, the sandbox | `Projects/signal-city` | 2+ | Fable 5.1 |  | [Signal City](#signal-city) |
 | 2 | One shared asset pipeline (prune, resize, draco/meshopt) for the ~335 MB across two games | `assets` | 2+ | Fable 5.1 | `claude/shared-asset-pipeline-t3gdh5` | [The site itself](#the-site-itself) |
 | 3 | A real-hardware pass: every atmospheric piece's numbers are software rasterization, and touch has never had a thumb on it | `site` | ½ | Opus 5 |  | [The site itself](#the-site-itself) |
 | 4 | Extend `Pathfinder/tests/anathema.test.mjs` rather than starting a second suite, if the page gains interaction logic | `Pathfinder` | ¼ | Sonnet 5 |  | [Anathema Archive](#anathema-archive) |
@@ -1198,7 +1212,7 @@ milestone 5 in PR #340 (2026-09-21, #544 to #553), milestone 6 in PR #342
 (2026-09-21, #554 to #562), M7's green wave in PR #344 (2026-09-21, #563
 to #566), M7's first three events in PR #346 (2026-09-21, #567 to #570)
 and the rest of M7 in PR #348 (2026-09-22, #571 to #576)**: items 1 to
-13 below are done (M8 in PRs #355 and #358), and M9's grid in PR #362: 835 checks across eight suites, all in Site CI. M9's second increment, endless and the sandbox, is next. Still open
+13 below are done (M8 in PRs #355 and #358), M9's grid in PR #362 and endless in PR #367: 889 checks across nine suites, all in Site CI. M9's third increment, the sandbox, is next. Still open
 from the brief and not yet placed: a `games.mjs` recipe and a preview capture
 (a ¼ row for the site, like Blue Hour's ranks 15 and 16), and the trucker's
 sweep as real off-tracking geometry rather than the lane rule it is now.
@@ -1273,7 +1287,8 @@ sweep as real off-tracking geometry rather than the lane rule it is now.
     `next` never goes. **Second increment** (PR #358, #594 to #599): the
     roundabout node, sold at 6 after Rush Hour for the three boards it
     converts, with its own calibration and a session switch. M8 is done.
-    **Still open**: M9 endless and sandbox (1).
+    **M9**: the grid (PR #362, #601 to #606) and endless (PR #367, #608
+    to #613) shipped. **Still open**: the sandbox, Free Play grown.
 
 ## Tools/board-check
 
