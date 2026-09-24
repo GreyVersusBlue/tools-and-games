@@ -106,22 +106,31 @@ table** in Tier 2.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City R1, a
-reference hand and a no-input table (PR #399)**: rank 13, a ¼ naming Opus 5,
-worked under Opus 5.5, ranked and claimed in PR #398. Its row is gone and
-Signal City R2 took rank 13. That is the line to update when your batch
+**The last batch of ranked work that shipped** is **Signal City R2, the
+lesson decides a star (PR #403)**: rank 13, a ½ naming Fable 5.1, worked
+under Opus 5.5 (#638), claimed in PR #402. Its row is gone and Signal City
+R3 took rank 13. That is the line to update when your batch
 merges; a PR that only changes these files is not a batch and does not
 belong in it. **13 ranked items remain**, and **every one of them names a
 model.**
 
-**Take rank 13 alone** (Signal City R2, the lesson decides a star, a ½
-naming Fable 5.1, with an architect call first), or rank 8 (Blue Hour's
+**Take rank 13 alone** (Signal City R3, hard mode on one level, a ¼
+naming Fable 5.1, which runs on Opus 5.5), or rank 8 (Blue Hour's
 shape and eyes, a 1 naming Fable 5.1). Ranks 1 to 7 want a real GPU, a real
 phone or a person listening for an hour, which a cloud session does not
 have.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Signal City's second star is the lesson on the four levels with a
+default** (#639, #640, PR #403): Rush Hour the ambulance on its corridor,
+Main Street no split, Two Blocks (now shipped on one clock) the platoon
+through the second box, School Run no walk call over 40 s. `test/stars.mjs`
+fails any starred level that no input three-stars. **Worth carrying
+forward**: a hold restarts a rule's clock, so a cap checked only at the
+clock's end caps nothing; and the reference hand three-stars School Run on
+0 of 6, which R3 has to face before it picks School Run for hard mode.
 
 **Signal City's calibration tool plays every level with no input and with a
 reference hand** (#636, #637, PR #399). `node tools/calibrate.mjs all
@@ -553,7 +562,7 @@ same way the same day, for Q40 (#629).
 table rather than decremented, which is how the 15/14/9 drift was caught and
 how this paragraph's own drift was caught twice on 2026-09-24 (it said 27
 rows, then 18 against a table of 12): 3 + 7 + 3 is 13, and the table has 13
-rows. By size it is 5 ¼, 5 ½, 2 ones and 1 of the 2+, which is the same 13.
+rows. By size it is 6 ¼, 4 ½, 2 ones and 1 of the 2+, which is the same 13 (recounted 2026-09-24, when R3's ¼ replaced R2's ½).
 The rubric is in Tier 1's preamble, and it is a reading of each row, not a
 quota — take the model the row names and say in the PR body which one you
 actually worked under. The split counts the names; under #638 the 3 Opus and 7 Fable
@@ -703,7 +712,7 @@ and #222 was closed unmerged an hour of suites later.
 | 10 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 11 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 |  | [Orbital](#orbital) |
 | 12 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  | [Orbital](#orbital) |
-| 13 | Signal City R2: the lesson decides a star (architect call first: a lesson star or worse defaults) | `Projects/signal-city` | ½ | Fable 5.1 | `claude/funny-mayer-5boqcv` | [Signal City](#signal-city), `WISHLIST.md` R2 |
+| 13 | Signal City R3: hard mode on one level (School Run is the candidate, but R1's hand three-stars it 0 of 6, #639) | `Projects/signal-city` | ¼ | Fable 5.1 |  | [Signal City](#signal-city), `WISHLIST.md` R3 |
 
 ## Parked — needs a person at a real device
 
@@ -1329,7 +1338,9 @@ which need a real device, ears or a person. It absorbs the items that were
 open here (the `games.mjs` recipe and preview capture are R5, the trucker's
 sweep is R11, the one-box priority corridor is R6). R1 (¼) shipped in PR #399
 (#636, #637): the calibration tool's `--baseline` and `--hand`, which
-measured the move each level teaches costing the board. R2 (½) is rank 13.
+measured the move each level teaches costing the board. R2 (½) shipped in PR #403 (#639, #640): the lesson decides a star on the
+four levels with a default, and `test/stars.mjs` holds it (952 checks
+across ten suites). R3 (¼) is rank 13.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
