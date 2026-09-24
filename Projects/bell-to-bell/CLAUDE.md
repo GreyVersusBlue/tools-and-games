@@ -18,6 +18,7 @@ cd tests && node balance.mjs    # whole-period sim, the 50-seed generator soak (
 cd tests && SOAK=500 node balance.mjs   # more seeds through the generator
 cd tests && node assets.mjs     # what Assets/ weighs, and what of it the game opens
 cd tests && node characters.mjs # the eight compressed outfits still stand where the originals stood
+cd tests && node props.mjs      # the eleven props and the frame still have their shape, UVs and textures
 node --check src/<file>.js      # syntax check a module
 ```
 No build step, no package manager, no `node_modules`. three.js is vendored in
@@ -32,11 +33,21 @@ which reads the original `.gltf` files out of git. Do not hand-edit a `.glb`;
 change the recipe and re-run it, then `node characters.mjs`. A new outfit goes
 through the same recipe, and gets a `BASELINE` entry measured from its original.
 
+The eleven props and the picture frame are meshopt `.glb` files too, from the
+recipe `bell-to-bell-props` (#624), which reads Poly Haven's `.gltf` and `.bin`
+pairs out of git at 52d2a59. Their textures stay loose JPEGs beside them: each
+`.glb` names its maps by the same relative path its `.gltf` did, so a prop is
+one mesh request plus its maps. `node props.mjs` loads each through the game's
+own loader and holds it to its original's box, per-material vertex and UV
+bounds, image list and filled texture slots. A new prop goes in as a `.gltf` in
+one commit, then through the recipe (re-pointed at that commit) and a
+`BASELINE` entry in the next.
+
 Every texture the game loads (the room's seven sets, the props, the picture
 frame) is written by the same pipeline's `bell-to-bell-textures` recipe from
 the Poly Haven downloads in git (#621, #622): q88 mozjpeg, and the six props a
 hand could cover (clock, fire alarm, clipboard, stationery, binder, stapler) at
-512, as `*_512.jpg` files their `.gltf` names. There is one set and no tier
+512, as `*_512.jpg` files their `.glb` names. There is one set and no tier
 picker. Do not re-save a texture by hand; change the recipe, re-run it, and run
 `node asset-pipeline.mjs bell-to-bell-textures --check` from
 `Tools/board-check/` (it needs `npm i --no-save sharp@0.35.4`), which fails a

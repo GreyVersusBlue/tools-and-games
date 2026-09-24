@@ -30,6 +30,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 const ROOT = '..';
 const MANIFEST = `${ROOT}/data/assets.json`;
@@ -77,9 +78,26 @@ function gltfSidecars(file) {
     .map(u => path.posix.join(dir, decodeURIComponent(u)));
 }
 
+// A .glb carries its buffers in its own binary chunk, but the props' .glb
+// files name their JPEGs by URI the way the .gltf files they replaced did
+// (#624), so the images are sidecars still. The JSON chunk says which.
+function glbSidecars(file) {
+  let doc;
+  try {
+    const b = fs.readFileSync(file);
+    doc = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString('utf8'));
+  } catch { return []; }
+  const dir = path.posix.dirname(file);
+  return (doc.images || []).map(x => x.uri)
+    .filter(u => u && !u.startsWith('data:'))
+    .map(u => path.posix.join(dir, decodeURIComponent(u)));
+}
+
 // A model path pulls its own sidecars in with it; anything else is just itself.
 function expand(p) {
-  return p.endsWith('.gltf') ? [p, ...gltfSidecars(p)] : [p];
+  if (p.endsWith('.gltf')) return [p, ...gltfSidecars(p)];
+  if (p.endsWith('.glb')) return [p, ...glbSidecars(p)];
+  return [p];
 }
 
 // materials.js builds three or four jpg names out of each texture entry: diff,
@@ -190,7 +208,10 @@ export function auditAssets() {
 
 // --- report -----------------------------------------------------------------
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+// fileURLToPath, not URL.pathname: on Windows the pathname is /C:/..., which
+// never equals the resolved argv path, and this block was silently skipped
+// there, exit code and all, until 2026-09-24.
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const { totals, problems, budget, unreferenced } = auditAssets();
   const mb = n => (n / 1048576).toFixed(1) + ' MB';

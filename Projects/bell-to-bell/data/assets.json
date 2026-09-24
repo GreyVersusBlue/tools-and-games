@@ -59,7 +59,7 @@
     ]
   },
   "art": {
-    "frame": "Assets/models/art/fancy_picture_frame_01_1k.gltf/fancy_picture_frame_01_1k.gltf",
+    "frame": "Assets/models/art/fancy_picture_frame_01_1k.gltf/fancy_picture_frame_01_1k.glb",
     "paintings": {
       "posterA": "Assets/models/art/public domain art/George Washington by John Trumbull (1780).jpg",
       "posterB": "Assets/models/art/public domain art/The Geography Lesson or The Black Spot.jpg",
@@ -68,17 +68,17 @@
     }
   },
   "props": {
-    "wallClock": "Assets/models/Props/wall_clock_1k.gltf/wall_clock_1k.gltf",
-    "fireAlarm": "Assets/models/Props/fire_alarm_1k.gltf/fire_alarm_1k.gltf",
-    "pottedPlant2": "Assets/models/Props/potted_plant_02_1k.gltf/potted_plant_02_1k.gltf",
-    "pottedPlant4": "Assets/models/Props/potted_plant_04_1k.gltf/potted_plant_04_1k.gltf",
-    "displayShelves": "Assets/models/Props/wooden_display_shelves_01_1k.gltf/wooden_display_shelves_01_1k.gltf",
-    "metalRack": "Assets/models/Props/worn_metal_rack_1k.gltf/worn_metal_rack_1k.gltf",
-    "wetFloorSign": "Assets/models/Props/WetFloorSign_01_1k.gltf/WetFloorSign_01_1k.gltf",
-    "clipboard": "Assets/models/Props/clipboard_1k.gltf/clipboard_1k.gltf",
-    "stationery": "Assets/models/Props/stationery_supplies_1k.gltf/stationery_supplies_1k.gltf",
-    "binder": "Assets/models/Props/binder_notebook_1k.gltf/binder_notebook_1k.gltf",
-    "stapler": "Assets/models/Props/vintage_stapler_1k.gltf/vintage_stapler_1k.gltf"
+    "wallClock": "Assets/models/Props/wall_clock_1k.gltf/wall_clock_1k.glb",
+    "fireAlarm": "Assets/models/Props/fire_alarm_1k.gltf/fire_alarm_1k.glb",
+    "pottedPlant2": "Assets/models/Props/potted_plant_02_1k.gltf/potted_plant_02_1k.glb",
+    "pottedPlant4": "Assets/models/Props/potted_plant_04_1k.gltf/potted_plant_04_1k.glb",
+    "displayShelves": "Assets/models/Props/wooden_display_shelves_01_1k.gltf/wooden_display_shelves_01_1k.glb",
+    "metalRack": "Assets/models/Props/worn_metal_rack_1k.gltf/worn_metal_rack_1k.glb",
+    "wetFloorSign": "Assets/models/Props/WetFloorSign_01_1k.gltf/WetFloorSign_01_1k.glb",
+    "clipboard": "Assets/models/Props/clipboard_1k.gltf/clipboard_1k.glb",
+    "stationery": "Assets/models/Props/stationery_supplies_1k.gltf/stationery_supplies_1k.glb",
+    "binder": "Assets/models/Props/binder_notebook_1k.gltf/binder_notebook_1k.glb",
+    "stapler": "Assets/models/Props/vintage_stapler_1k.gltf/vintage_stapler_1k.glb"
   },
   "_alternates": {
     "_comment": "The sets we chose against and kept on disk on purpose, so the choice stays re-makeable. tests/assets.mjs asserts every path here still resolves, so this block can never advertise a file that is gone.",
@@ -189,7 +189,31 @@
       "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_arm_1k.jpg",
       "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_diff_1k.jpg",
       "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_glass_arm_1k.jpg",
-      "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_nor_gl_1k.jpg"
+      "Assets/models/Props/wall_clock_1k.gltf/textures/wall_clock_nor_gl_1k.jpg",
+      "Assets/models/Props/WetFloorSign_01_1k.gltf/WetFloorSign_01.bin",
+      "Assets/models/Props/WetFloorSign_01_1k.gltf/WetFloorSign_01_1k.gltf",
+      "Assets/models/Props/binder_notebook_1k.gltf/binder_notebook.bin",
+      "Assets/models/Props/binder_notebook_1k.gltf/binder_notebook_1k.gltf",
+      "Assets/models/Props/clipboard_1k.gltf/clipboard.bin",
+      "Assets/models/Props/clipboard_1k.gltf/clipboard_1k.gltf",
+      "Assets/models/Props/fire_alarm_1k.gltf/fire_alarm.bin",
+      "Assets/models/Props/fire_alarm_1k.gltf/fire_alarm_1k.gltf",
+      "Assets/models/Props/potted_plant_02_1k.gltf/potted_plant_02.bin",
+      "Assets/models/Props/potted_plant_02_1k.gltf/potted_plant_02_1k.gltf",
+      "Assets/models/Props/potted_plant_04_1k.gltf/potted_plant_04.bin",
+      "Assets/models/Props/potted_plant_04_1k.gltf/potted_plant_04_1k.gltf",
+      "Assets/models/Props/stationery_supplies_1k.gltf/stationery_supplies.bin",
+      "Assets/models/Props/stationery_supplies_1k.gltf/stationery_supplies_1k.gltf",
+      "Assets/models/Props/vintage_stapler_1k.gltf/vintage_stapler.bin",
+      "Assets/models/Props/vintage_stapler_1k.gltf/vintage_stapler_1k.gltf",
+      "Assets/models/Props/wall_clock_1k.gltf/wall_clock.bin",
+      "Assets/models/Props/wall_clock_1k.gltf/wall_clock_1k.gltf",
+      "Assets/models/Props/wooden_display_shelves_01_1k.gltf/wooden_display_shelves_01.bin",
+      "Assets/models/Props/wooden_display_shelves_01_1k.gltf/wooden_display_shelves_01_1k.gltf",
+      "Assets/models/Props/worn_metal_rack_1k.gltf/worn_metal_rack.bin",
+      "Assets/models/Props/worn_metal_rack_1k.gltf/worn_metal_rack_1k.gltf",
+      "Assets/models/art/fancy_picture_frame_01_1k.gltf/fancy_picture_frame_01.bin",
+      "Assets/models/art/fancy_picture_frame_01_1k.gltf/fancy_picture_frame_01_1k.gltf"
     ],
     "notes": [
       "The Kenney kit shipped one furniture set in five formats. 700 files, 12.8 MB, and GLTFLoader is the only loader in src/ -- nothing here could read a .dae, .fbx, .obj or .stl even if something asked for it.",
@@ -200,13 +224,14 @@
       "office_notepads: redundant with stationery_supplies, which is placed.",
       "plastic_crate_01: named by nothing, not even the old alternates list.",
       "Every Poly Haven texture set ships a preview sphere: a .gltf and a 2.37 MB .bin beside the textures/ folder. materials.js builds its jpg filenames out of `dir` and `base` and never opens either one, so ten sets carried 23.7 MB of mesh nothing could reach. The jpgs stay; the sphere does not.",
-      "The eight outfit .gltf files: 25,316,305 bytes of base64 JSON carrying 24 animation clips each, of which poseIdle() samples one. Tools/board-check/asset-pipeline.mjs (recipe bell-to-bell-characters, reading them from git at afbcae9) rewrote each as a meshopt .glb holding only Idle, 1,638,220 bytes for all eight. libs/addons/libs/meshopt_decoder.module.js is what reads them; tests/characters.mjs is what says they still stand where they stood (HISTORY.md #619)."
+      "The eight outfit .gltf files: 25,316,305 bytes of base64 JSON carrying 24 animation clips each, of which poseIdle() samples one. Tools/board-check/asset-pipeline.mjs (recipe bell-to-bell-characters, reading them from git at afbcae9) rewrote each as a meshopt .glb holding only Idle, 1,638,220 bytes for all eight. libs/addons/libs/meshopt_decoder.module.js is what reads them; tests/characters.mjs is what says they still stand where they stood (HISTORY.md #619).",
+      "The eleven props and the picture frame, as Poly Haven shipped them: a .gltf and a .bin each, 3,821,137 bytes of mesh. The same pipeline (recipe bell-to-bell-props, reading them from git at 52d2a59) rewrote each pair as one meshopt .glb, 1,069,504 bytes for all twelve, that names the same loose JPEGs by the same relative paths (HISTORY.md #624). The JPEGs stay; tests/props.mjs is what says each prop still has its shape, its UVs and its textures."
     ]
   },
   "_budget": {
     "_comment": "Ceilings in bytes, asserted by tests/assets.mjs and by tests/smoke.mjs. Raising one is the moment an asset argues for itself: say in the commit what the new file buys.",
-    "referencedBytes": 16500000,
+    "referencedBytes": 13700000,
     "unreferencedBytes": 5000000,
-    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files. The asset pipeline's first recipe (#619) took referenced to 38,424,608 across the same 104 files, and the tree to 53,007,119; the ceiling came down from 66,000,000 with it. The second recipe (#621, #622) re-encoded the room's 21 maps and the props' and picture frame's 43 at q88, the six hand-sized props at 512, and took referenced to 16,198,599 across the same 104 files; the ceiling came down from 40,000,000 to 16,500,000."
+    "_measured": "Phase 6 left this at 62,102,693 bytes referenced across 104 files and 3,745,076 unreferenced across 147, out of 76,685,204 in the tree. It arrived at 149,313,216 bytes across 1,037 files. The asset pipeline's first recipe (#619) took referenced to 38,424,608 across the same 104 files, and the tree to 53,007,119; the ceiling came down from 66,000,000 with it. The second recipe (#621, #622) re-encoded the room's 21 maps and the props' and picture frame's 43 at q88, the six hand-sized props at 512, and took referenced to 16,198,599 across the same 104 files; the ceiling came down from 40,000,000 to 16,500,000. The third (#624) rewrote the eleven props and the picture frame, a .gltf and a .bin each, as twelve meshopt .glb files naming the same JPEGs, and took referenced to 13,446,966 across 92 files; the ceiling came down from 16,500,000 to 13,700,000."
   }
 }
