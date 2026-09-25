@@ -818,7 +818,7 @@ and #222 was closed unmerged an hour of suites later.
 | 57 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 58 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 59 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
-| 60 | Signal City R5: the site's side, a board-check recipe, a preview, the card copy | `Projects/signal-city` | ¼ | Sonnet 5 |  |  | [Signal City](#signal-city), `WISHLIST.md` R5 |
+| 60 | Signal City R5: the site's side, a board-check recipe, a preview, the card copy | `Projects/signal-city` | ¼ | Sonnet 5 |  | `claude/signal-city-r5-k7p2` | [Signal City](#signal-city), `WISHLIST.md` R5 |
 
 ## Parked — needs a person at a real device
 
