@@ -117,10 +117,10 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City R4,
-endless: measure the hand, then fix the ramp (PR #409)**: rank 60 (13 when
-claimed in PR #407), a ½ naming Fable 5.1, worked under Opus 5.5 (#638).
-Its row is gone and Signal City R5 took rank 60. That is the line to update
+**The last batch of ranked work that shipped** is **Signal City R5, the
+site's side: a board-check recipe, a preview, the card copy (PR #413)**:
+rank 60, a ¼ naming Sonnet 5, worked under Opus 5.5 (#638), claimed in PR
+#412. Its row is gone and Signal City R6 took rank 60. That is the line to update
 when your batch merges; a PR that only changes these files is not a batch
 and does not belong in it.
 **60 ranked items remain**, and **every one of them names a model.**
@@ -148,6 +148,16 @@ listening for an hour, and their `Gate` cell says which.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Signal City is on the board's checks and has a preview** (#649, #650,
+PR #413). `npm run games signal-city` plays First Light with a real `2` key
+and reads the Signal line at 20 s; the cleared count waits for the first
+car, which leaves the map 20.9 to 48.3 s in, never by 20 s. The preview is
+Rush Hour at dusk mid-surge, captured on Windows, and Rush Hour's dusk is a
+`light` field on the level now (#585 folded in). **Worth carrying
+forward**: a row's number for a DOM beat is worth checking against the sim
+before the recipe is written, since "cleared at 20 s" could not pass on any
+seed.
 
 **Endless starts on the district's third day, and the hand holds on five
 seeds** (#648, PR #409). R1's hand in `--endless` first misses on about the
@@ -818,7 +828,7 @@ and #222 was closed unmerged an hour of suites later.
 | 57 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 58 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 59 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
-| 60 | Signal City R5: the site's side, a board-check recipe, a preview, the card copy | `Projects/signal-city` | ¼ | Sonnet 5 |  | claude/signal-city-r5-k7t2 | [Signal City](#signal-city), `WISHLIST.md` R5 |
+| 60 | Signal City R6: the priority corridor follows the vehicle across boxes | `Projects/signal-city` | ½ | Opus 5 |  |  | [Signal City](#signal-city), `WISHLIST.md` R6 |
 
 ## Parked — needs a person at a real device
 
@@ -1713,7 +1723,9 @@ four levels with a default, and `test/stars.mjs` holds it (952 checks
 across ten suites). R3 (¼) shipped in PR #405 (#641): Rush Hour ships
 hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
 #409 (#648): endless starts on day 3's district, and the hand lasts as long
-as no input on five seeds of six (962 checks). R5 (¼) is rank 60.
+as no input on five seeds of six (962 checks). R5 (¼) shipped in PR #413
+(#649, #650): a board-check recipe, the Rush Hour preview and the card
+copy, and Rush Hour's dusk is a level field. R6 (½) is rank 60.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
