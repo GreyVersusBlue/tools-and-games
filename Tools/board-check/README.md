@@ -265,6 +265,8 @@ taking a new one.
 | 8153 | `assets/js/gvb-save.browser.mjs` |
 | 8155 | `Projects/orbital/test/browser.mjs` |
 | 8157 | `Projects/signal-city/test/browser.mjs` |
+| 8161 | `Projects/golden-hour-beach/test/gltf-loader.mjs` |
+| 8162 | `Projects/blue-hour-trail/test/gltf-loader.mjs` |
 
 8127 is doubled and always has been: `tools.mjs` and Integer Foundry's suite are
 never run in the same process, and neither is in the other's CI job. It is on the

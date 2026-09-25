@@ -82,6 +82,12 @@ Same shape as Golden Hour: no build step, ES modules resolved through an
 import map, three.js vendored in `libs/`, zero offsite requests, every
 texture drawn into a canvas at load, every sound synthesized in Web Audio.
 
+`libs/` holds three.js r185 (`three.module.js`, `three.core.js`) and, under
+`libs/addons/` in three's own `examples/jsm/` layout (#18), GLTFLoader and the
+two utils it imports (`utils/BufferGeometryUtils.js`, `utils/SkeletonUtils.js`),
+r185 and unmodified. They are Blue Hour's own copies, not Golden Hour's (#17).
+Nothing loads a model yet; the Blender animal pack will.
+
 The piece saves nothing — no progress, no score, no position. The one thing
 it keeps (in `localStorage`, under `blue-hour-last-walk`) is the rhythm of
 your previous walk's footsteps, and what it does with that is its own
@@ -93,6 +99,16 @@ everything standing on it), and `test/smoke.mjs` checks it under bare Node:
 
 ```
 node test/smoke.mjs
+```
+
+`test/gltf-loader.mjs` proves the vendored loader before any model exists to
+feed it. It borrows `Tools/board-check`'s harness (so `npm ci` there first),
+writes a page with `index.html`'s import map, and parses a GLB built byte by
+byte in the page: one plain triangle, and one quad as a triangle strip, which
+the loader can only convert through `toTrianglesDrawMode`. 15 checks, port 8162:
+
+```
+node test/gltf-loader.mjs   # after `npm ci` in Tools/board-check
 ```
 
 `test/browser.mjs` is the other half: it serves the site, boots the real page in
