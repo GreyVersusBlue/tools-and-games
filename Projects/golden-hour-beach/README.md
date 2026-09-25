@@ -77,7 +77,10 @@ rule — a stride that would rise more than 0.9 m is refused.
 
 ## Assets & audio
 
-- three.js (r-current), Sky and Water addons — bundled locally in `libs/`.
+- three.js (r185), Sky and Water addons — bundled locally in `libs/`.
+- GLTFLoader and the two utils it imports (`BufferGeometryUtils.js`,
+  `SkeletonUtils.js`), r185 and unmodified, in `libs/addons/` under three's own
+  `examples/jsm/` layout (#18). Nothing loads a model yet; the Blender packs will.
 - `assets/waternormals.jpg` — bundled (from the three.js examples repo).
 - Sand texture: Poly Haven's `aerial_beach_01` diffuse + normal maps, **bundled**
   in `assets/textures/` (370 KB, CC0 — see the README there). `terrain.js`
@@ -121,9 +124,11 @@ js/regions.js     arrival cards and journal places
 js/controls.js    first-person stroll, wading, the step rule, sitting
 js/audio.js       the whole synthesized soundscape
 js/footprints.js  footprint ring buffer (glows teal at night)
-libs/             three.module.js, Sky.js, Water.js
+libs/             three.module.js, three.core.js, Sky.js, Water.js
+libs/addons/      loaders/GLTFLoader.js, utils/ (its two imports)
 assets/           waternormals.jpg, textures/
 test/smoke.mjs    node test/smoke.mjs — the world's arithmetic, no browser
+test/gltf-loader.mjs  a hand-built GLB through the vendored loader, headless
 ```
 
 `field.js` and `journal-core.js` import nothing, and that is the point of them:
@@ -136,6 +141,7 @@ them to their claims.
 
 ```
 node test/smoke.mjs
+node test/gltf-loader.mjs   # after `npm ci` in Tools/board-check
 ```
 
 116 checks on the arithmetic: twelve golden heights hold the home beach

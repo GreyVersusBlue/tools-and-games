@@ -176,8 +176,10 @@ jobs:
 
           - name: Golden Hour
             dir: Projects/golden-hour-beach
+            install: Tools/board-check
             commands: |
               node test/smoke.mjs
+              node test/gltf-loader.mjs
 
           - name: Integer Foundry
             dir: .
