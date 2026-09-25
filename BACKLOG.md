@@ -783,7 +783,7 @@ and #222 was closed unmerged an hour of suites later.
 | 9 | Blue Hour's trail prop pack: markers, cairn stones, bridge, bench, fire tower, cabin, radio, headlamp, mushrooms | `Projects/blue-hour-trail` | ½ | Opus 5.5 | blender |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B5 |
 | 10 | Wire Blue Hour's prop pack in, once rank 9 has merged | `Projects/blue-hour-trail` | ¼ | Opus 5.5 |  |  | [Blue Hour: Blender assets](#blue-hour-blender-assets) B6 |
 | 11 | The Fourth Quarter's Blender pipeline, its own copy (#643) | `Projects/fourth-quarter` | ¼ | Opus 5.5 | blender |  | `Projects/fourth-quarter/WISHLIST.md` B1 |
-| 12 | The Fourth Quarter's GLTFLoader at r160, copied from Bell to Bell's, and its loader test | `Projects/fourth-quarter` | ¼ | Opus 5.5 |  |  | `Projects/fourth-quarter/WISHLIST.md` B2 |
+| 12 | The Fourth Quarter's GLTFLoader at r160, copied from Bell to Bell's, and its loader test | `Projects/fourth-quarter` | ¼ | Opus 5.5 |  | claude/fourth-quarter-gltfloader-r160 | `Projects/fourth-quarter/WISHLIST.md` B2 |
 | 13 | The Fourth Quarter's bar pack: the fixtures and furniture `js/world.js` builds from boxes, not the walls its layout builds (#646) | `Projects/fourth-quarter` | ½ | Opus 5.5 | blender |  | `Projects/fourth-quarter/WISHLIST.md` B3 |
 | 14 | Wire the bar pack in, once rank 13 has merged | `Projects/fourth-quarter` | ½ | Opus 5.5 |  |  | `Projects/fourth-quarter/WISHLIST.md` B4 |
 | 15 | Aphelion's Blender pipeline, its own copy (#643) | `Projects/aphelion` | ¼ | Opus 5.5 | blender |  | [Aphelion: Blender assets](#aphelion-blender-assets) B1 |
