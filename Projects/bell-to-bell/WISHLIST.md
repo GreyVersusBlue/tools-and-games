@@ -750,7 +750,7 @@ without `pointer-events:none` on the layer itself it ate every touch meant for
 the room, so the game took no input at all. `smoke.mjs` now asserts the layer
 is inert.
 
-## Blender assets (ranks 21 to 23, from 2026-09-25)
+## Blender assets (ranks 18 to 20, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The shared
 plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
@@ -762,7 +762,7 @@ entry in `tests/props.mjs`; a model path is content and goes in
 `data/assets.json`; and anything added to the scene is registered with
 `registry.add(mesh)` or it will not swap into thermal view.
 
-**B1. The pipeline (rank 21, ¼, Opus 5.5, gate `blender`).** Bell to Bell's
+**B1. The pipeline (rank 18, ¼, Opus 5.5, gate `blender`).** Bell to Bell's
 own copy of `tools/blender/` (#643), in a `tools/` folder this project does
 not have yet. **`common.py` writes glTF Separate** (`.gltf`, `.bin`, and any
 texture beside them) into `Assets/models/blender/`, not a `.glb`, because
@@ -775,7 +775,7 @@ palette comes off the Kenney furniture and the room's texture sets the prop
 has to sit beside; props a hand could cover get 512 px maps if they get maps
 at all (#621); classroom prop 2,000 triangles, desk-top prop 600.
 
-**B2. The classroom pack (rank 22, ½, Opus 5.5, gate `blender`).** First,
+**B2. The classroom pack (rank 19, ½, Opus 5.5, gate `blender`).** First,
 list every primitive `src/world/` builds (`room.js`, `board.js`,
 `students.js`, `tellmesh.js`) and say what each is. The pack is the classroom
 objects among them that `data/assets.json` does not already name. Two groups
@@ -784,9 +784,9 @@ falls back to when it drops the rigged characters at boot, and the tell meshes
 (the phone, the note), which live in a tell group's buckets and are built to
 the centimetre in `tellmesh.js`.
 
-**B3. Wiring the pack (rank 23, ¼, Opus 5.5, no gate, after rank 22).** A
+**B3. Wiring the pack (rank 20, ¼, Opus 5.5, no gate, after rank 19).** A
 `bell-to-bell-blender` recipe in `Tools/board-check/asset-pipeline.mjs` (the
-site's file, called out in the PR body) pinned at rank 22's commit; the
+site's file, called out in the PR body) pinned at rank 19's commit; the
 paths in `data/assets.json`; `registry.add` for every mesh; a `BASELINE`
 entry each in `tests/props.mjs`. All five suites the Site CI entry runs stay
 green.

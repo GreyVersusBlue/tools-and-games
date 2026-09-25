@@ -522,14 +522,14 @@ R14. They are the same kind of row as the site's real-hardware passes.
   the Timing tab on Two Blocks without the hint. Devon's to arrange.
   **Size ½. Model Opus 5.**
 
-## Blender assets (ranks 27 to 29, from 2026-09-25)
+## Blender assets (ranks 24 to 26, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642), which puts
 these three rows above R4. The shared plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs
 Devon's Windows machine; a session without `blender` on PATH skips it and
 takes the next row.
 
-**B1. The sprite pipeline (rank 27, ½, Opus 5.5, gate `blender`).** The first
+**B1. The sprite pipeline (rank 24, ½, Opus 5.5, gate `blender`).** The first
 2D pipeline, so this is where the sprite-sheet renderer is written, and the
 other 2D projects copy it (#643). `common.py` renders straight down with an
 orthographic camera, a transparent film, the light from the side
@@ -541,11 +541,11 @@ and the size under which `spriteFor` keeps drawing the procedural car: at
 twelve boxes a car is 6 px long (#617), where a render adds nothing. The
 validator joins Site CI's Signal City entry.
 
-**B2. The car sheet (rank 28, ½, Opus 5.5, gate `blender`).** The ten
+**B2. The car sheet (rank 25, ½, Opus 5.5, gate `blender`).** The ten
 `ARCHETYPES`, in their four palettes, with frames for the states of the two
 archetypes whose `draw()` reads `t`.
 
-**B3. Wiring the sheet (rank 29, ¼, Opus 5.5, no gate, after rank 28).**
+**B3. Wiring the sheet (rank 26, ¼, Opus 5.5, no gate, after rank 25).**
 `spriteFor` draws a frame from the sheet above the size B1 set and the
 procedural car below it; `sprites.html` shows both side by side;
 `test/sprites.mjs` fails when an archetype has no frame. The sim never reads a
