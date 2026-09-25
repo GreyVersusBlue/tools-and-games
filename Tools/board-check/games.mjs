@@ -292,6 +292,25 @@ export const GAMES = {
         { timeout: 5000 });
     },
   },
+
+  // ---- Signal City: a traffic-signal sim on a 2D canvas. The level select is
+  // up on load; a fresh save opens First Light and nothing after it, so that
+  // card is the way in. The page's own suite (Projects/signal-city/test/
+  // browser.mjs) drives the World through `?debug`; the board's recipe plays
+  // the plain page with a real key, the wiring that suite goes round.
+  'signal-city': {
+    title: 'Signal City',
+    url: '/Projects/signal-city/',
+    vw: 1320, vh: 800, dsf: 1,
+    saveKey: 'signal_city_v1',
+    intro: ['#selectScrim'],
+    async open(p) {
+      await p.waitForSelector('.level-card[data-level="first-light"]:not(.locked)');
+      await p.click('.level-card[data-level="first-light"]');
+      await waitFor(p, () => !document.getElementById('selectScrim').classList.contains('show'),
+        { timeout: 5000 });
+    },
+  },
 };
 
 export const NAMES = Object.keys(GAMES);

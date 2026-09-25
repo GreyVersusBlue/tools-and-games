@@ -367,27 +367,21 @@ on exactly four, so four would pass the lever the calibration turned down. Raisi
 beyond the ramp; a hand that skipped queues with a full exit and cut a
 green over a car stalled 12 s in the box did not change the lock.
 
-### R5. The site's side: board check, preview, card copy
+### R5. The site's side: board check, preview, card copy: done (HISTORY.md #649, #650)
 
-**Size ¼. Model Sonnet 5. Shared files: say so in the PR body.**
-
-- A `signal-city` recipe in `Tools/board-check/games.mjs`: load First
-  Light, press 2, run 20 s at 1x, assert the Signal line reads "Changed by
-  you", cleared is above zero and there are no page errors. Break it by
-  pointing the key at a phase that does not exist.
-- A preview in `capture-previews.mjs`: Rush Hour at dusk mid-surge, or a
-  district of six in the sandbox. Capture on Linux, promote through
-  `promote-previews.mjs` into `assets/previews/signal-city.jpg` and
-  `assets/og/signal-city.jpg`, then `npm run social` and `social:check`.
-  SwiftShader draws a 2D canvas the same as a GPU; this one is not a draft.
-- The card in `index.html` and `landing.html` still says "one
-  crossroads". Mention the district and endless.
-- Fold in #585 while here: `DUSK_LEVELS` in `render.js` becomes a `light`
-  field on the level (`'dusk'`), read by `lightFor`. Every level renders
-  the same; the browser suite's dusk check holds it.
-
-`cd Tools/board-check && npm run check && npm run social:check && node
-ci-check.mjs` is the bar.
+`npm run games signal-city` plays First Light on the plain page: the
+card, the 2 key, 20 s at 1x, and the Signal line reads "Changed by you".
+The cleared count is read once a car has cleared, up to 65 s in, because
+a car counts only past the far end of the map and the first does that
+20.9 to 48.3 s in (#649). Pointing the key at a phase that does not
+exist fails the Signal line alone. The preview is Rush Hour at dusk,
+95 s in, mid-surge, captured on this Windows machine (#650), promoted to
+`assets/previews/signal-city.jpg` and `assets/og/signal-city.jpg`, and
+the page's social block points at it. The card names the district and
+endless, and `landing.html` shows the still in place of the sealed
+tile. #585 is folded in: Rush Hour carries `light: 'dusk'` and
+`lightFor` reads it; with it set to day, "Rush Hour is played at dusk"
+fails alone.
 
 ### R6. The priority corridor follows the vehicle across boxes
 
