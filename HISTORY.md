@@ -1175,6 +1175,8 @@ Generator.
 
 **#647. Torchbearer and Closing Time get no sprite rows.** Neither draws a scene: no 2D canvas context, no `drawImage` and no image file in either folder (checked 2026-09-25). A sprite has nowhere to land until one of them grows a picture, which is a call about the game, not an asset job. Reversible by writing their pipeline rows the way Hearth's is written. *The repo.*
 
+**#648. Endless starts on the district's third day with no events, and its rule is N = 0: the reference hand lasts at least as long as no input on five seeds of six.** The hand's phase choice does not raise a district's capacity, which is where the target climbs to, so it outlasts no input only where the 20 s rule locks early (seed 5, by four days), and N = 1 holds on two seeds of six at most, on either ramp. Day 3's district cuts two idle days and moves nothing else; an event a day from day 4 is off because a surge box-blocked the hand on day 4 of seeds 4 and 5, so events punished playing. Five seeds, not the row's four, because with events on the hand holds on exactly four. Reversible in `endless.js RAMP`; the tables are R4's log. *Signal City, R4.*
+
 ---
 
 # The log

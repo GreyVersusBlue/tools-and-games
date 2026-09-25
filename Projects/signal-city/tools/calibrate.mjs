@@ -29,6 +29,12 @@
 // row per day (cleared against the day's target, LOCK for a locked grid)
 // and, when the days start at 1 and run on unbroken, each seed's first
 // missed day. Twelve boxes cost about 13 s a run. #609 has the table.
+// With `--hand` (R4) each seed is played again by the reference hand
+// (handStep), and the tool prints both first missed days side by side;
+// a seed stops at its first miss, since a run ends there. `--m9` plays
+// the ramp as M9 shipped it (day one a single box) and `--events` the
+// shipped ramp with R4's rejected second lever, an event a day from day
+// 4, instead of the ramp as it ships (endless.js RAMP). #648 has the tables.
 // `--baseline` (R1) plays every level exactly as it ships with no input,
 // and `--hand` plays it with the reference hand (handStep below), or with
 // `--hand=phases,platoons,corridor,walks,offset` only the parts named; both at
@@ -48,7 +54,7 @@ const { score } = await load('scoring.js');
 const { LEVELS, levelById } = await load('levels/pack-01.js');
 const { standardPhases } = await load('signals.js');
 const { loadout, convertible } = await load('campaign.js');
-const { dayLevel, daySeed } = await load('endless.js');
+const { dayLevel, daySeed, RAMP, M9_RAMP, EVENTS_RAMP } = await load('endless.js');
 
 const args = process.argv.slice(2).filter(a => !a.startsWith('--'));
 const flags = process.argv.slice(2).filter(a => a.startsWith('--'));
@@ -243,7 +249,7 @@ const tableHead = title => `\n${title}\n\n| Level | target, wait | ${seeds.map(s
 // Run as a script; importing the file (a suite borrowing controllerFor) does nothing.
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 const handFlag = flags.find(f => f === '--hand' || f.startsWith('--hand='));
-if (isMain && (flags.includes('--baseline') || handFlag)) {
+if (isMain && !flags.includes('--endless') && (flags.includes('--baseline') || handFlag)) {
   // `--hand=phases,platoons,corridor,walks,offset` plays only the parts named; `--hand` is all five.
   // walks rides on phases: it is the greedy's answer to a call (R2)
   const named = handFlag && handFlag.includes('=') ? handFlag.split('=')[1].split(',') : ['phases', 'platoons', 'corridor', 'walks', 'offset'];
@@ -284,23 +290,48 @@ if (isMain && (flags.includes('--baseline') || handFlag)) {
   }
   process.exit(0);
 }
+// One endless day of a city, played through the World: hands-off, or by
+// the reference hand at every step. Returns the World, run to its end.
+export function endlessDay(seed, day, { hand = false, ramp = RAMP } = {}) {
+  const lvl = dayLevel(seed, day, ramp);
+  const w = new World(lvl, daySeed(seed, day));
+  for (let k = 0; k < lvl.duration * 60; k++) { w.step(); if (hand) handStep(w); if (w.stats.gridlock) break; }
+  return w;
+}
+
 if (isMain && flags.includes('--endless')) {
   const days = (args[1] || '1,2,3,4,5,6,7,8,9,10,11,12').split(',').map(Number);
-  const missed = seeds.map(() => null);
-  console.log(`Endless, hands-off: a 20 s rule at every box, ${dayLevel(1, 1).duration} s a day`);
-  console.log('  day target  ' + seeds.map(s => `seed ${s}`.padEnd(12)).join(''));
-  days.forEach((day, j) => {
-    const row = seeds.map((seed, i) => {
-      const lvl = dayLevel(seed, day);
-      const w = new World(lvl, daySeed(seed, day));
-      for (let k = 0; k < lvl.duration * 60; k++) { w.step(); if (w.stats.gridlock) break; }
-      const r = score(w);
-      if (!r.survived && missed[i] === null && days.slice(0, j + 1).every((d, x) => d === x + 1)) missed[i] = day;
-      return `${w.stats.gridlock ? 'LOCK' : String(r.cleared).padStart(4)} ${r.avgWait.toFixed(0).padStart(3)}s`.padEnd(12);
+  const ramp = flags.includes('--m9') ? M9_RAMP : flags.includes('--events') ? EVENTS_RAMP : RAMP;
+  const unbroken = days[0] === 1 && days.every((d, x) => d === x + 1);
+  const modes = handFlag ? [false, true] : [false];
+  const firsts = [];
+  for (const hand of modes) {
+    const missed = seeds.map(() => null);
+    console.log(`\nEndless,${hand ? 'the reference hand' : 'hands-off'}: a 20 s rule at every box, ${dayLevel(1, 1, ramp).duration} s a day, ${ramp === M9_RAMP ? "M9's ramp, from one box" : `from the district's day ${ramp.start}${ramp.events < Infinity ? `, an event a day from day ${ramp.events}` : ''}`}`);
+    console.log('  day boxes target  ' + seeds.map(s => `seed ${s}`.padEnd(12)).join(''));
+    for (const day of days) {
+      const row = seeds.map((seed, i) => {
+        if (unbroken && missed[i] !== null) return '·'.padEnd(12);
+        const w = endlessDay(seed, day, { hand, ramp });
+        const r = score(w);
+        if (!r.survived && missed[i] === null && unbroken) missed[i] = day;
+        return `${w.stats.gridlock ? 'LOCK' : String(r.cleared).padStart(4)} ${r.avgWait.toFixed(0).padStart(3)}s`.padEnd(12);
+      });
+      const l = dayLevel(1, day, ramp);
+      console.log(`  ${String(day).padStart(3)} ${String(l.network.cells.length).padStart(5)} ${String(l.target).padStart(6)}  ${row.join('')}`);
+      if (unbroken && missed.every(m => m !== null)) break;
+    }
+    firsts.push(missed);
+    if (unbroken) console.log('  first missed day: ' + missed.map(m => m ?? `>${days.length}`).join(', '));
+  }
+  if (unbroken && firsts.length === 2) {
+    console.log('\n| seed | hands-off | hand | the hand outlasts it by |\n| --- | --- | --- | --- |');
+    seeds.forEach((s, i) => {
+      const [a, b] = [firsts[0][i], firsts[1][i]];
+      const gap = a === null || b === null ? (b === null && a !== null ? `>${days.length + 1 - a}` : '?') : String(b - a);
+      console.log(`| ${s} | ${a ?? `>${days.length}`} | ${b ?? `>${days.length}`} | ${gap} |`);
     });
-    console.log(`  ${String(day).padStart(3)} ${String(dayLevel(1, day).target).padStart(6)}  ${row.join('')}`);
-  });
-  if (days[0] === 1) console.log('  first missed day: ' + missed.map(m => m ?? `>${days.filter((d, x) => d === x + 1).length}`).join(', '));
+  }
   process.exit(0);
 }
 const levels = !isMain ? [] : which === 'all' ? LEVELS : [levelById(which)].filter(Boolean);

@@ -3,21 +3,53 @@
 // Endless (M9, second increment): the days a run is made of (js/endless.js),
 // what carries overnight, what ends a run, the card's lock, and the record
 // in the save (`endless`, added through repair; signal_city_v1 unchanged).
+// R4 (#648) adds the ramp's rule: the reference hand (tools/calibrate.mjs
+// handStep, imported, not copied) lasts at least as long as no input on
+// four seeds of six. Each seed's run is a child process of this file, as
+// many at once as there are cores (`--jobs=N` for fewer). Site CI plays
+// the first six days, the eight boxes a run grows to by then: the
+// uncapped run is about 1,500 s of simulation, most of it days 7 to 10.
+// `node test/endless.mjs --full` plays every seed to its first miss.
 // Exits non-zero on any FAIL (#13). Imports through pathToFileURL (Windows
 // rule). Every World is built and run to the end before the next is built:
 // car ids come from a module counter the constructor resets.
 
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import path from 'node:path';
+import os from 'node:os';
+import { execFile } from 'node:child_process';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const load = f => import(pathToFileURL(path.join(HERE, '..', 'js', f)).href);
 const { World } = await load('sim.js');
 const { score } = await load('scoring.js');
 const { growCells } = await load('grid.js');
-const { dayLevel, dayTarget, daySeed, demandScale, boxesOn, carryOver, expectedArrivals, DAY_SECONDS, FULL } = await load('endless.js');
+const { dayLevel, dayTarget, daySeed, demandScale, boxesOn, carryOver, expectedArrivals, DAY_SECONDS, FULL, M9_RAMP } = await load('endless.js');
 const { fresh, repair, recordEndless, recordResult, totalStars, SAVE_KEY, SAVE_VERSION } = await load('save.js');
 const { endlessOpen, convertible, loadout, wallet } = await load('campaign.js');
+const { handStep } = await import(pathToFileURL(path.join(HERE, '..', 'tools', 'calibrate.mjs')).href);
+
+// One city's run, day after day through the World until a day is missed
+// or `upTo` is played: no input, or the reference hand at every step. A
+// child process of this file runs one and prints it as JSON.
+function playRun(seed, hand, upTo) {
+  const days = [];
+  for (let day = 1; day <= upTo; day++) {
+    const lvl = dayLevel(seed, day);
+    const w = new World(lvl, daySeed(seed, day));
+    for (let i = 0; i < lvl.duration * 60; i++) { w.step(); if (hand) handStep(w); if (w.stats.gridlock) break; }
+    const r = score(w);
+    days.push(w.stats.gridlock ? 'LOCK' : `${r.cleared}/${r.target}`);
+    if (!r.survived) return { seed, hand, missed: day, days };
+  }
+  return { seed, hand, missed: null, days };
+}
+const childAt = process.argv.indexOf('--run');
+if (childAt > 0) {
+  const [seed, hand, upTo] = process.argv.slice(childAt + 1, childAt + 4).map(Number);
+  process.stdout.write(JSON.stringify(playRun(seed, hand === 1, upTo)));
+  process.exit(0);
+}
 
 let passed = 0, failed = 0;
 const ok = (cond, what, detail = '') => {
@@ -30,7 +62,7 @@ const run = (lvl, seed) => { const w = new World(lvl, seed); for (let i = 0; i <
 
 /* ----------------------------------------------------------------- the days -- */
 
-group('the days: one city, a box more each day, then more traffic');
+group('the days: one city, three boxes on day one, a box more each day, then more traffic');
 
 {
   // the city a day is built on is the generator's, box for box
@@ -41,33 +73,36 @@ group('the days: one city, a box more each day, then more traffic');
     const got = layout(lvl.network.cells);
     if (got.join(' ') !== want.join(' ')) { same = false; bad = `seed ${seed} day ${day}: ${got.join(' ')} against ${want.join(' ')}`; break; }
   }
-  ok(same, 'on six seeds, day n is growCells(seed, n) box for box, and past twelve the full district', bad);
+  ok(same, 'on six seeds, day n is growCells(seed, n + 2) box for box, and past twelve the full district', bad);
+  // the ramp starts on the district's third day (R4, #648)
+  ok(dayLevel(4, 1).network.cells.length === 3 && layout(dayLevel(4, 1, M9_RAMP).network.cells).join() === layout(growCells(4, 1)).join(), 'day one is three boxes; M9\'s ramp, which the calibration still plays, was one', `${dayLevel(4, 1).network.cells.length} and ${dayLevel(4, 1, M9_RAMP).network.cells.length}`);
 
   // yesterday's boxes stand where they stood, with their legs and rings
   let kept = true;
-  for (let seed = 1; seed <= 6; seed++) for (let day = 2; day <= 12; day++) {
+  for (let seed = 1; seed <= 6; seed++) for (let day = 2; day <= 10; day++) {
     const a = layout(dayLevel(seed, day - 1).network.cells);
     const b = layout(dayLevel(seed, day).network.cells);
     if (b.length !== a.length + 1 || b.slice(0, a.length).join() !== a.join()) kept = false;
   }
-  ok(kept, 'on six seeds, each day to twelve is yesterday\'s boxes and one more');
-  ok(dayLevel(4, 13).network.cells.length === FULL && dayLevel(4, 30).network.cells.length === FULL, 'past twelve no box is added', `day 13: ${dayLevel(4, 13).network.cells.length}, day 30: ${dayLevel(4, 30).network.cells.length}`);
+  ok(kept, 'on six seeds, each day to the tenth, which builds the twelfth box, is yesterday\'s boxes and one more');
+  ok(dayLevel(4, 10).network.cells.length === FULL && dayLevel(4, 11).network.cells.length === FULL && dayLevel(4, 30).network.cells.length === FULL, 'past twelve no box is added', `day 11: ${dayLevel(4, 11).network.cells.length}, day 30: ${dayLevel(4, 30).network.cells.length}`);
 
   // the traffic: every leg's demand grows with the day, the layout does not
   const d1 = dayLevel(3, 1).demand[0], d5 = dayLevel(3, 5).demand[0], d20 = dayLevel(3, 20).demand[0];
   const ratio = (a, b) => Object.keys(a).map(l => b[l] / a[l]);
   const r5 = ratio(d1, d5), r20 = ratio(d1, d20);
-  ok(r5.every(x => Math.abs(x - demandScale(5)) < 0.02) && r20.every(x => Math.abs(x - demandScale(20)) < 0.02),
-    'the first box\'s demand on day 5 and day 20 is day one\'s times 1.4 and 2.9', `${r5.map(x => x.toFixed(2)).join(' ')} / ${r20.map(x => x.toFixed(2)).join(' ')}`);
+  ok(demandScale(1) === 1.2 && r5.every(x => Math.abs(x - 1.6 / 1.2) < 0.02) && r20.every(x => Math.abs(x - 3.1 / 1.2) < 0.02),
+    'day one carries the district\'s third day\'s traffic, 1.2, so the first box\'s demand on day 5 and day 20 is day one\'s times 1.6 / 1.2 and 3.1 / 1.2', `${r5.map(x => x.toFixed(2)).join(' ')} / ${r20.map(x => x.toFixed(2)).join(' ')}`);
   const e12 = expectedArrivals(dayLevel(3, 12)), e20 = expectedArrivals(dayLevel(3, 20));
   ok(Math.abs(e20 / e12 - demandScale(20) / demandScale(12)) < 0.02,
-    'so the full district sends 2.9 / 2.1 as many cars on day 20 as on day 12', `${expectedArrivals(dayLevel(3, 12)).toFixed(0)} to ${expectedArrivals(dayLevel(3, 20)).toFixed(0)}`);
+    'so the full district sends 3.1 / 2.3 as many cars on day 20 as on day 12', `${expectedArrivals(dayLevel(3, 12)).toFixed(0)} to ${expectedArrivals(dayLevel(3, 20)).toFixed(0)}`);
 
-  // the target: 20, and 8 more every day, past the full district too
+  // the target: the district's third day's 36, and 8 more every day, past
+  // the full district too (#609's slope, kept by R4)
   const targets = Array.from({ length: 16 }, (_, i) => dayTarget(i + 1));
-  ok(targets.every((t, i) => t === 20 + 8 * i), 'the target is 20 on day one and 8 more every day, past twelve boxes too', targets.join(' '));
+  ok(targets.every((t, i) => t === 36 + 8 * i), 'the target is 36 on day one and 8 more every day, past twelve boxes too', targets.join(' '));
   const lvl = dayLevel(9, 3);
-  ok(lvl.id === 'endless' && lvl.endless && lvl.day === 3 && lvl.citySeed === 9 && !lvl.sandbox && lvl.duration === DAY_SECONDS && lvl.target === 36,
+  ok(lvl.id === 'endless' && lvl.endless && lvl.day === 3 && lvl.citySeed === 9 && !lvl.sandbox && lvl.duration === DAY_SECONDS && lvl.target === 52,
     'a day is a level: id endless, not a sandbox, three minutes, its target on it', `${lvl.name}, ${lvl.duration} s, target ${lvl.target}`);
   ok(daySeed(9, 3) !== daySeed(9, 4) && daySeed(9, 3) !== daySeed(10, 3), 'and each day of each city has its own traffic seed');
   let threw = null;
@@ -80,18 +115,69 @@ group('the days: one city, a box more each day, then more traffic');
 group('the calibration: a hands-off city clears the early days and not the full district');
 
 {
-  // a 20 s rule at every box, the grid's own; #609 has the full table
-  // (days 1 to 12 and 14, 17, 21 on seeds 1 to 6). This samples it.
+  // a 20 s rule at every box, the grid's own; #648's log has the full
+  // table on the ramp as it ships. This samples it.
   const rows = [];
   let all = true;
-  for (const [seed, day] of [[1, 1], [2, 1], [3, 2], [4, 3], [5, 4], [6, 7]]) {
+  for (const [seed, day] of [[1, 1], [2, 1], [3, 2], [4, 3], [5, 1], [6, 5]]) {
     const r = score(run(dayLevel(seed, day), daySeed(seed, day)));
     rows.push(`day ${day} seed ${seed}: ${r.cleared}/${r.target}${r.gridlock ? ' LOCK' : ''}`);
     if (!r.survived) all = false;
   }
-  ok(all, 'six sampled days, one to seven boxes, all survived with the rule left alone', rows.join('; '));
+  ok(all, 'six sampled days, three to seven boxes, all survived with the rule left alone', rows.join('; '));
   const late = score(run(dayLevel(2, 12), daySeed(2, 12)));
   ok(!late.survived && !late.gridlock && late.cleared < late.target, 'and on day 12 the full district, left alone, falls short: the target ends the run, not a lock', `${late.cleared}/${late.target}`);
+}
+
+/* ------------------------------------------------ the hand against no input -- */
+
+group('the hand against no input (R4, #648): playing does not cost a run its days');
+
+{
+  // #648: N = 0. The hand's phase choice does not raise a district's
+  // capacity, which the target climbs to, so it ties no input on most
+  // seeds; what the rule holds is that the ramp does not punish playing.
+  // Five seeds, not the row's four: with an event a day from day 4
+  // (EVENTS_RAMP, the lever #648 turned down) the hand falls short on
+  // seeds 2 and 4 and holds on exactly four, so at four this line passed
+  // the ramp the calibration rejects. As it ships: six of six here, five
+  // of six to the end (seed 1, 9 against 10).
+  const N = 0, SEEDS = [1, 2, 3, 4, 5, 6], ENOUGH = 5;
+  const CAP = process.argv.includes('--full') ? 30 : 6;
+  const self = fileURLToPath(import.meta.url);
+  const jobsArg = process.argv.find(x => x.startsWith('--jobs='));
+  const JOBS = jobsArg ? Number(jobsArg.slice(7)) : os.cpus().length;
+  const child = (seed, hand, upTo) => new Promise((resolve, reject) => execFile(process.execPath, [self, '--run', String(seed), hand ? '1' : '0', String(upTo)], { maxBuffer: 1 << 20 }, (err, out, errOut) => (err ? reject(new Error(`seed ${seed}: ${errOut || err.message}`)) : resolve(JSON.parse(out)))));
+  const pool = async jobs => {
+    const out = [];
+    const queue = jobs.slice();
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(JOBS, queue.length)) }, async () => {
+      while (queue.length) { const j = queue.shift(); out.push(await child(...j)); }
+    }));
+    return new Map(out.map(r => [r.seed, r]));
+  };
+  // no input first, to its first miss; then the hand to that same day, the
+  // one it has to get through to outlast no input
+  const off = await pool(SEEDS.map(s => [s, false, CAP]));
+  const hand = await pool(SEEDS.map(s => [s, true, Math.min(CAP, (off.get(s).missed ?? CAP) + N)]));
+  const text = r => (r.missed ? `missed day ${r.missed}` : `past day ${r.days.length}`);
+  const rows = SEEDS.map(s => {
+    const a = off.get(s), b = hand.get(s);
+    // the hand holds when it gets through every day no input got through, and N more
+    const need = Math.min(CAP, (a.missed ?? CAP + 1) - 1 + N);
+    const holds = b.missed === null ? b.days.length >= need : b.missed > need;
+    const outlasts = a.missed !== null && b.missed === null && b.days.length >= a.missed;
+    return { s, holds, outlasts, line: `seed ${s}: no input ${text(a)}, hand ${text(b)}` };
+  });
+  const held = rows.filter(r => r.holds);
+  ok(held.length >= ENOUGH, `the hand lasts at least as long as no input (N = ${N}) on at least ${ENOUGH} seeds of six, over the first ${CAP} days`, `${held.length} of 6: ${rows.map(r => r.line + (r.holds ? '' : ' SHORT')).join('; ')}`);
+  // and its commands reach the World: where the 20 s rule misses early the
+  // hand gets past that day (seed 5 misses day 2 hands-off). Holding a
+  // green is enough for it: with World.requestPhase refusing everything
+  // this line stays green, and with holdGreen refusing too it fails, the
+  // line above tying six of six
+  const past = rows.filter(r => r.outlasts).map(r => r.s);
+  ok(past.length >= 1, 'and on a seed where no input misses early, the hand gets through that day', `seed ${past.join(', ') || 'none'}`);
 }
 
 /* ---------------------------------------------------------- what ends a run -- */
@@ -108,7 +194,7 @@ group('what ends a run: the day\'s own verdict');
   const d = dayLevel(2, 1);
   const quiet = { ...d, demand: d.demand.map(m => Object.fromEntries(Object.entries(m).map(([l, v]) => [l, v / 3]))) };
   const q = score(run(quiet, daySeed(2, 1)));
-  ok(!q.survived && !q.gridlock && q.reasons.some(x => /cleared of the 20/.test(x)), 'a day that runs its clock out short of the target is not survived', `${q.cleared}/${q.target}: ${q.reasons.join('; ')}`);
+  ok(!q.survived && !q.gridlock && q.reasons.some(x => /cleared of the 36/.test(x)), 'a day that runs its clock out short of the target is not survived', `${q.cleared}/${q.target}: ${q.reasons.join('; ')}`);
   // a locked grid ends it however many it cleared
   const w = new World(dayLevel(2, 1), daySeed(2, 1));
   for (let i = 0; i < 60 * 60; i++) w.step();
@@ -125,13 +211,14 @@ group('what ends a run: the day\'s own verdict');
 group('overnight: rules and timing stay on every box that stood yesterday');
 
 {
-  // seed 2 grows 1,1 1,2 0,1 2,2oT: the fourth box is a ring
-  const y = new World(dayLevel(2, 4), daySeed(2, 4));
+  // seed 2 grows 1,1 1,2 0,1 2,2oT: the fourth box is a ring. Day 2 is
+  // four boxes and day 3 five (R4)
+  const y = new World(dayLevel(2, 2), daySeed(2, 2));
   y.controllers[0].setRules([{ when: 'elapsed', seconds: 9, then: 'next' }, { when: 'queue', movement: y.controllers[0].movements[1], threshold: 4, after: 6, then: 1 }]);
   y.controllers[0].setTiming({ allRed: 2.5, yellow: 4 });
   y.controllers[2].setRules([]);
   for (let i = 0; i < 600; i++) y.step();
-  const t = new World(dayLevel(2, 5), daySeed(2, 5));
+  const t = new World(dayLevel(2, 3), daySeed(2, 3));
   const kept = carryOver(y, t);
   const r0 = JSON.stringify(t.controllers[0].rules), want0 = JSON.stringify(y.controllers[0].rules);
   ok(r0 === want0 && t.controllers[0].timing.allRed === 2.5 && t.controllers[0].timing.yellow === 4, 'box 1 keeps both its rules and its 2.5 s all-red and 4 s yellow', r0);

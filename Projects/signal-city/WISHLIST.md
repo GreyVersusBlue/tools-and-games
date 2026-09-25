@@ -349,19 +349,23 @@ on the shipped Rush Hour (the run ends with the "does not forgive one"
 reason) and on the shipped Main Street (it goes on), and `test/browser.mjs`
 checks that only Rush Hour's card says "one collision ends it".
 
-### R4. Endless: measure the hand, then fix the ramp
+### R4. Endless: measure the hand, then fix the ramp: done (HISTORY.md #648)
 
-**Size ½. Model Fable 5.1.** Hands-off, an endless city clears every day to
-the ninth on five of six seeds: 27 minutes before the target bites (#609).
-First run R1's hand through `--endless` and print both columns. If the hand
-survives no more than two or three days longer than hands-off, skill does
-not matter in endless and the ramp is wrong. Levers, in the order to try
-them: start the run on day 3's district; give each day from day 4 one
-seeded event from the pack's list (a surge, an outage, an ambulance); keep
-the target's slope. Do not steepen the start alone, which fails day one on
-seeds that clear 25. `test/endless.mjs` gains the rule that decides it:
-the hand outlasts no input by at least N days on at least four seeds, with
-N fixed by the calibration and written down before the rule is.
+The hand does not fix endless, and the ramp cannot make it. Run through
+`--endless`, R1's hand first misses on day 11, 12, 10, 11, 6, 10 against
+no input's 11, 12, 11, 11, 2, 10: its phase choice does not raise a
+district's capacity, and the target climbs to that capacity. A run now
+starts on day 3's district (three boxes, a target of 36, still 8 more a
+day), which cuts two idle days and moves nothing else. An event a day from
+day 4 ships off: a surge box-blocked the hand on day 4 of seeds 4 and 5.
+So N is 0. `test/endless.mjs` plays each seed hands-off and then with the
+imported `handStep`, and holds that the hand lasts at least as long as no
+input on five seeds of six over the first six days (`--full` plays them to
+the end), and that where no input misses early (seed 5) the hand gets
+through that day. Five, not the row's four: with events on the hand holds
+on exactly four, so four would pass the lever the calibration turned down. Raising N needs a hand that reads spillback or a lever
+beyond the ramp; a hand that skipped queues with a full exit and cut a
+green over a car stalled 12 s in the box did not change the lock.
 
 ### R5. The site's side: board check, preview, card copy
 
