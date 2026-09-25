@@ -1,5 +1,5 @@
 # Checks for The Fourth Quarter. The two suites under Projects/fourth-quarter/
-# test/ are the cheapest CI in the repo — no browser, no dependency, no
+# test/ were the cheapest CI in the repo — no browser, no dependency, no
 # package.json, two `node` invocations that already exit non-zero on a failed
 # assertion — and until this file they ran when somebody remembered. See
 # Projects/fourth-quarter/WISHLIST.md, Phase 5.
@@ -9,6 +9,10 @@
 # else is in test/*.mjs, so a suite a later phase adds (smoke-layout.mjs and
 # friends) is picked up without editing this file, and fails the job the same
 # way, naming the file.
+#
+# `install: Tools/board-check` is for test/gltf-loader.mjs, the one suite here
+# that drives a browser: it borrows that folder's harness.mjs, and without the
+# install its import dies of ERR_MODULE_NOT_FOUND before a single check runs.
 
 name: Fourth Quarter CI
 
@@ -37,6 +41,7 @@ jobs:
     uses: ./.github/workflows/suite.yml
     with:
       working-directory: Projects/fourth-quarter
+      install: Tools/board-check
       commands: |
         node test/smoke-engine.mjs
         node test/smoke-campaign.mjs

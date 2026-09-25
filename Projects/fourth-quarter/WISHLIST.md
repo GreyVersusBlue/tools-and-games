@@ -942,7 +942,7 @@ apply pressure, and the events to be able to sink you.
 under "What this leaves for a later arc" below is still open, and this project
 has no ranked phases left.
 
-## Blender assets (ranks 13 to 16, from 2026-09-25)
+## Blender assets (ranks 11 to 13, from 2026-09-25)
 
 Blender-made assets rank above everything else (HISTORY.md #642). The plan
 every Blender row shares, including where Blender runs and what `common.py`,
@@ -950,7 +950,7 @@ every Blender row shares, including where Blender runs and what `common.py`,
 A row gated `blender` needs Devon's Windows machine; a session without
 `blender` on PATH skips it and takes the next row.
 
-**B1. The pipeline (rank 13, ¼, Opus 5.5, gate `blender`).** The Fourth
+**B1. The pipeline (rank 11, ¼, Opus 5.5, gate `blender`).** The Fourth
 Quarter's own copy of `tools/blender/` (#643), beside `tools/browser-check.mjs`
 and `tools/measure-load.mjs`. The validator joins
 `.github/workflows/fourth-quarter-ci.yml`. The style sheet decides first:
@@ -968,15 +968,14 @@ and `tools/measure-load.mjs`. The validator joins
 - **Triangles:** fixture 1,500 (stove, prep, crate, stool, table), counter
   piece 800, bottle 150, frame and board 300.
 
-**B2. The GLTFLoader (rank 14, ¼, Opus 5.5, no gate).** Copy
-`Projects/bell-to-bell/libs/addons/loaders/GLTFLoader.js` and
-`libs/addons/utils/BufferGeometryUtils.js` into this project's `libs/addons/`
-(#18's layout), and check both byte for byte against three@0.160.0's own in
-`Tools/board-check/three-0.160.0/` after `npm install` there (#19). A loader
-test in `test/` in the shape of Golden Hour's B2 (BACKLOG.md), in this
-project's workflow.
+**B2. The GLTFLoader. Shipped 2026-09-25, PR #422.** GLTFLoader and
+BufferGeometryUtils vendored unmodified from three@0.160.0 into `libs/addons/`
+(#18's layout), byte for byte against the pack (#19) and against Bell to Bell's
+copies. r160's loader names no SkeletonUtils. `test/gltf-loader.mjs`, port
+8163, 15 checks, run by `fourth-quarter-ci.yml`'s `test/*.mjs` loop, which now
+installs `Tools/board-check`. It loads the bar pack once rank 12 merges.
 
-**B3. The bar pack (rank 15, ½, Opus 5.5, gate `blender`).** The fit-out and
+**B3. The bar pack (rank 12, ½, Opus 5.5, gate `blender`).** The fit-out and
 furniture `js/world.js` builds from `BoxGeometry`: stove, prep and crate by
 kind, the counter and its kick, the back-bar shelf and bottles, the kitchen
 shelf, the cork board and its frame, the TV's frame, the door frame and the
@@ -984,7 +983,7 @@ window sill. **Not** the walls, wall segments, deck lips, panels, rails,
 posts, steps, beams and lintels: they are built from the layout, and the room
 is a description (Phase 1, HISTORY.md #646).
 
-**B4. Wiring the bar (rank 16, ½, Opus 5.5, no gate, after rank 15).** Every
+**B4. Wiring the bar (rank 13, ½, Opus 5.5, no gate, after rank 12).** Every
 piece loads before `world.js` builds the room; a missing file fails a suite
 line. The smoke suites stay green, and `tools/browser-check.mjs` and
 `npm run games fourth-quarter` from `Tools/board-check` are run and named in
