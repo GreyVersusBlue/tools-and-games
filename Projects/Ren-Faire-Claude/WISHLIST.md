@@ -837,6 +837,29 @@ three suites. Decisions #262, #263 and #264.
 nothing about whether an action's *outcome* is asserted rather than just its
 click. Both are real, neither is what round 2 and round 3 kept finding.
 
+## Blender assets (ranks 34 to 36, from 2026-09-25)
+
+Blender-made assets rank above everything else (HISTORY.md #642). The shared
+plan is [`BACKLOG.md`, "Blender assets: the common plan"](../../BACKLOG.md#blender-assets-the-common-plan). A row gated `blender` needs Devon's Windows machine; a session
+without `blender` on PATH skips it and takes the next row.
+
+**B1. The sprite pipeline (rank 34, ¼, Opus 5.5, gate `blender`).** Faire
+Weekend's own copy of Signal City's sprite renderer (#643), straight down, in
+the surveyor's plat's ink: `INK` and `TERRAIN_FILL` from `js/plat.js`, line
+work rather than shading. A frame is one plat cell at scale 1 (`js/mapview.js`)
+at 2x, and a marker that claims four cells gets a frame four cells big. The
+validator joins Site CI's Faire Weekend entry.
+
+**B2. The marker sheet (rank 35, ½, Opus 5.5, gate `blender`).** One drawing
+per plot kind, where a `.plot-marker kind-*` div shows a glyph today, and the
+front gate.
+
+**B3. Wiring the sheet (rank 36, ¼, Opus 5.5, no gate, after rank 35).** The
+marker divs show their frame; the glyph stays in the `title` and the
+accessible name; ghost, blocked and moving markers keep their classes.
+`tests/mapview.mjs` and `tests/wiring.mjs` stay green, and `npm run shoot` is
+run and named.
+
 ## What this leaves for a later arc
 
 - **Sound.** Nothing here makes a noise, and a faire is loud.
