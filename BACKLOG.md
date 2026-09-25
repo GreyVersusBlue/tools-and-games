@@ -117,11 +117,12 @@ row ranks above every other row.
 ## Where things stand — start here
 
 **The site is at version 16** (`index.html:584`, and `landing.html:849,870`).
-**The last batch of ranked work that shipped** is **Signal City R3, hard
-mode on one level (PR #405)**: then rank 13, a ¼ naming Fable 5.1, worked
-under Opus 5.5 (#638), claimed in PR #404. Signal City R4 took its place and
-is rank 60 now. That is the line to update when your batch merges; a PR that
-only changes these files is not a batch and does not belong in it.
+**The last batch of ranked work that shipped** is **Signal City R4,
+endless: measure the hand, then fix the ramp (PR #409)**: rank 60 (13 when
+claimed in PR #407), a ½ naming Fable 5.1, worked under Opus 5.5 (#638).
+Its row is gone and Signal City R5 took rank 60. That is the line to update
+when your batch merges; a PR that only changes these files is not a batch
+and does not belong in it.
 **60 ranked items remain**, and **every one of them names a model.**
 
 **Blender rows lead the list, and they need Devon's machine** (#642,
@@ -141,13 +142,25 @@ has merged. The plan every Blender row shares is
 **On Devon's machine, take rank 1** (Golden Hour's pipeline, a ½ naming Opus
 5.5, gate `blender`); rank 2, Golden Hour's GLTFLoader, is a ¼ in the same area
 and fits the same batch. **In a cloud session, take rank 2 alone**, which is
-the first row with no gate. Rank 60 (Signal City R4) is claimed by
-`claude/signal-city-r4-q8m3`; it was rank 13 when the claim was made. The old
+the first row with no gate. The old
 ranks 1 to 7, now 48 to 54, still want a real GPU, a real phone or a person
 listening for an hour, and their `Gate` cell says which.
 
 The ranks in this header are the new ones. What shipped, and what it means
 for the next session:
+
+**Endless starts on the district's third day, and the hand holds on five
+seeds** (#648, PR #409). R1's hand in `--endless` first misses on about the
+same day as no input (11, 12, 10, 11, 6, 10 against 11, 12, 11, 11, 2, 10):
+choosing phases box by box does not raise a district's capacity, and the
+target climbs to it. Day one is three boxes and 36 now; an event a day ships
+off, because a surge box-blocked the hand on day 4. `test/endless.mjs`
+holds N = 0 on five seeds of six over the first six days, and Site CI's
+Signal City entry takes 14 minutes (`timeout: 30`). **Worth carrying
+forward**: a scratch copy of a project for a break needs the shared
+`assets/js/gvb-save.js` beside it, or the break dies of
+`ERR_MODULE_NOT_FOUND`; and a rule's seed count is worth checking against
+the lever it is meant to reject, since four of six passed the events.
 
 **Rush Hour is Signal City's one hard level** (#641, PR #405): one
 collision ends the run there. R1's hand collides on School Run, Main Street
@@ -805,7 +818,7 @@ and #222 was closed unmerged an hour of suites later.
 | 57 | A 4th prong or deeper side content, only if Devon expands scope | `Projects/the-fracture-cycle` | 2+ | Fable 5.1 |  |  | [The Fracture Cycle](#the-fracture-cycle) |
 | 58 | Verify the rotate-to-play gate on a real device or real touch emulation | `Projects/orbital` | ¼ | Sonnet 5 | phone |  | [Orbital](#orbital) |
 | 59 | Revisit `gvb-save.js` adoption for save-bar UI consistency | `Projects/orbital` | ½ | Fable 5.1 |  |  | [Orbital](#orbital) |
-| 60 | Signal City R4: endless, measure the hand, then fix the ramp | `Projects/signal-city` | ½ | Fable 5.1 |  | `claude/signal-city-r4-q8m3` | [Signal City](#signal-city), `WISHLIST.md` R4 |
+| 60 | Signal City R5: the site's side, a board-check recipe, a preview, the card copy | `Projects/signal-city` | ¼ | Sonnet 5 |  |  | [Signal City](#signal-city), `WISHLIST.md` R5 |
 
 ## Parked — needs a person at a real device
 
@@ -1698,7 +1711,9 @@ sweep is R11, the one-box priority corridor is R6). R1 (¼) shipped in PR #399
 measured the move each level teaches costing the board. R2 (½) shipped in PR #403 (#639, #640): the lesson decides a star on the
 four levels with a default, and `test/stars.mjs` holds it (952 checks
 across ten suites). R3 (¼) shipped in PR #405 (#641): Rush Hour ships
-hard, the one level R1's hand runs clean (959 checks). R4 (½) is rank 13.
+hard, the one level R1's hand runs clean (959 checks). R4 (½) shipped in PR
+#409 (#648): endless starts on day 3's district, and the hand lasts as long
+as no input on five seeds of six (962 checks). R5 (¼) is rank 60.
 
 1. **M0 scaffold**: folder, board card, `ownership.json`, Site CI matrix entry.
 2. **M1 signal model** (`js/signals.js`): movements, a conflict matrix derived
